@@ -325,7 +325,7 @@
     /* The fill engine's page operations (content/fill-ops.js). Gated like
      * `guided_write`, each returning its empty shape in a refused frame: an
      * inventory with no fields, no explored options, no applied rows, no
-     * step state, no sweep rows, no focus. `fill_inventory` forwards the run's standing
+     * step state, no sweep rows, no focus, no sections, no add. `fill_inventory` forwards the run's standing
      * consent AND its runId — a new runId is what releases a latched Stop — and
      * `peek` (the fids only, after a commit that may add or remove fields).
      * `fill_cancel` is ungated on purpose: it carries nothing and only stops
@@ -350,6 +350,16 @@
     fill_focus: (msg) => (frameMayReceiveUserData()
       ? ns.fillOps.focus(msg.fid)
       : false),
+    // Repeating sections (content/sections.js): the frame's sections, and one
+    // press of ONE section's own Add — the sid, plus the heading and entry
+    // count the loop decided from, so a changed view presses nothing. Only
+    // the frame that minted the sid answers the add; every other says null.
+    fill_sections: () => (frameMayReceiveUserData()
+      ? ns.fillOps.sections()
+      : []),
+    fill_add: (msg) => (frameMayReceiveUserData()
+      ? ns.fillOps.add({ sid: msg.sid, heading: msg.heading, entries: msg.entries })
+      : null),
     fill_cancel: () => {
       ns.fillOps.cancel();
       return true;

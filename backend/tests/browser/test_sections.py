@@ -1,0 +1,158 @@
+"""Repeating sections and their own Add buttons (content/sections.js, through
+fill-ops' `sections` and `add`) — notes §5: a section grows only by its own
+Add, an added entry's fields are REQUIRED, and its Delete must never be pressed."""
+
+import re
+
+from tests.browser.conftest import fixture_html
+from tests.browser.pages import oracle
+
+SID = re.compile(r"^[A-Za-z0-9]+-s\d+$")
+
+
+def sections(page):
+    return page.evaluate("() => window.careerStudioCompanion.fillOps.sections()")
+
+
+def add(page, sid, heading, entries):
+    return page.evaluate("(r) => window.careerStudioCompanion.fillOps.add(r)",
+                         {"sid": sid, "heading": heading, "entries": entries})
+
+
+def by_heading(page):
+    return {s["heading"]: s for s in sections(page)}
+
+
+def test_sections_lists_repeating_groups_with_their_entries_and_add_button(page, load):
+    load(page, fixture_html("workday_sections.html"))
+    got = sections(page)
+    assert [{k: v for k, v in s.items() if k != "sid"} for s in got] == [
+        {"heading": "Work Experience", "entries": 1, "filled": [False], "add": "Add Another"},
+        {"heading": "Education", "entries": 1, "filled": [False], "add": "Add Another"},
+        {"heading": "Websites", "entries": 0, "filled": [], "add": "Add"},
+    ]
+    assert all(SID.match(s["sid"]) for s in got) and len({s["sid"] for s in got}) == 3
+    # Only the heading, the counts and the button's words: never an element.
+    assert all(set(s) == {"sid", "heading", "entries", "filled", "add"} for s in got)
+    # An entry holding a committed value is `filled`; the same section keeps its sid.
+    page.fill("#Work-Experience-1-Job-Title", "Analyst")
+    page.keyboard.press("Tab")
+    again = by_heading(page)
+    assert again["Work Experience"]["filled"] == [True]
+    assert again["Work Experience"]["sid"] == got[0]["sid"]
+    assert again["Education"]["filled"] == [False]
+
+
+def test_add_presses_only_the_sections_own_add_button_and_never_delete(page, load):
+    load(page, fixture_html("workday_sections.html"))
+    s = by_heading(page)
+    web = s["Websites"]
+    assert add(page, web["sid"], "Websites", 0) == {"sid": web["sid"], "outcome": "added", "entries": 1}
+    assert oracle(page, "entries") == {"Work Experience": 1, "Education": 1, "Websites": 1}
+    work = s["Work Experience"]
+    assert add(page, work["sid"], "Work Experience", 1)["entries"] == 2
+    assert page.locator("h4", has_text="Work Experience 2").count() == 1
+    assert oracle(page, "entries") == {"Work Experience": 2, "Education": 1, "Websites": 1}
+    assert oracle(page, "deleted") == 0
+    after = by_heading(page)
+    assert (after["Websites"]["entries"], after["Websites"]["add"]) == (1, "Add Another")
+    assert after["Work Experience"]["entries"] == 2
+
+
+def test_an_add_decided_on_an_older_view_never_presses(page, load):
+    load(page, fixture_html("workday_sections.html"))
+    work = by_heading(page)["Work Experience"]
+    # The loop saw one entry; the page now has two (the user pressed Add).
+    page.click("#sec-work > [data-automation-id=add-button]")
+    assert add(page, work["sid"], "Work Experience", 1)["outcome"] == "stale"
+    assert add(page, work["sid"], "Education", 2)["outcome"] == "stale"
+    assert oracle(page, "entries")["Work Experience"] == 2
+    # A sid this frame never minted is not its to answer.
+    assert add(page, "zz-s1", "Work Experience", 2) is None
+
+
+def test_a_latched_stop_never_presses_add(page, load):
+    load(page, fixture_html("workday_sections.html"))
+    web = by_heading(page)["Websites"]
+    page.evaluate("() => window.careerStudioCompanion.fillOps.cancel()")
+    assert add(page, web["sid"], "Websites", 0)["outcome"] == "cancelled"
+    assert oracle(page, "entries")["Websites"] == 0
+
+
+def test_an_add_the_page_ignores_is_not_added(page, load):
+    load(page, """<div role="group" aria-labelledby="h"><h4 id="h">Certifications</h4>
+      <button type="button" data-automation-id="add-button">Add</button></div>""")
+    [cert] = sections(page)
+    assert add(page, cert["sid"], "Certifications", 0) == {"sid": cert["sid"], "outcome": "not_added", "entries": 0}
+
+
+# A section offering every button that looks like Add but is not the section's
+# own: Delete/Remove/Trash by text, name or automation id, a submit, one inside
+# a link, one inside an entry, and a page footer's. Every press is recorded.
+DECOYS = """
+<div role="group" aria-labelledby="w" id="sec">
+  <h4 id="w">Websites</h4>
+  <div class="entries">
+    <div role="group" aria-labelledby="w1"><h4 id="w1">Websites 1</h4>
+      <input aria-label="URL"><button type="button" class="in-entry">Add</button></div>
+  </div>
+  <button type="button" data-automation-id="delete-button">Add</button>
+  <button type="button" aria-label="Remove website">Add another</button>
+  <button type="button" title="Trash">Add</button>
+  <button type="submit">Add</button>
+  <a href="#x"><span role="button">Add</span></a>
+  <button type="button" id="own">Add Another</button>
+</div>
+<div role="group" aria-labelledby="c"><h4 id="c">Certifications</h4>
+  <button type="button" data-automation-id="add-button" aria-label="Delete certification">Add</button>
+  <button type="button">Remove</button><button type="button">Trash</button>
+</div>
+<footer><div role="group" aria-labelledby="f"><h4 id="f">Links</h4>
+  <button type="button" data-automation-id="pageFooterNextButton">Add another</button></div></footer>
+<script>
+  window.pressed = [];
+  for (const b of document.querySelectorAll("button, [role=button]")) {
+    b.addEventListener("click", (e) => { e.preventDefault(); window.pressed.push(b.id || b.className || b.textContent); });
+  }
+</script>"""
+
+
+def test_a_delete_remove_or_trash_control_is_never_pressed(page, load):
+    load(page, DECOYS)
+    got = sections(page)
+    # Only the section that owns a real Add is listed; its Add is its own.
+    assert [(s["heading"], s["entries"], s["add"]) for s in got] == [("Websites", 1, "Add Another")]
+    assert add(page, got[0]["sid"], "Websites", 1)["outcome"] == "not_added"
+    assert page.evaluate("window.pressed") == ["own"]
+
+
+def test_a_section_by_heading_alone_counts_entries_titled_after_it(page, load):
+    load(page, """<section><h3>Education</h3>
+      <div class="entry"><h4>Education 1</h4><label>School <input id="s1"></label></div>
+      <div class="entry" style="display:none"><h4>Education 2</h4><label>School <input></label></div>
+      <button type="button" id="more">Add another education</button></section>
+    <script>
+      document.getElementById("more").addEventListener("click", () => {
+        const e = document.querySelector(".entry").cloneNode(true);
+        e.querySelector("h4").textContent = "Education 2";
+        document.getElementById("more").before(e);
+      });
+    </script>""")
+    [edu] = sections(page)
+    # A hidden (prototype) entry is not one of the page's entries.
+    assert (edu["heading"], edu["entries"], edu["add"]) == ("Education", 1, "Add another education")
+    assert add(page, edu["sid"], "Education", 1)["outcome"] == "added"
+    assert sections(page)[0]["entries"] == 2
+
+
+def test_a_labelled_section_counts_every_numbered_entry_whatever_its_words(page, load):
+    """Counting one entry too few would add one too many — with required
+    fields — so a labelled group's entries are its groups titled "… <n>",
+    even when their words are not the heading's."""
+    load(page, """<div role="group" aria-labelledby="h"><h4 id="h">Work History</h4>
+      <div role="group" aria-label="Job 1"><input aria-label="Employer">
+        <div role="group" aria-label="Phone 1"><input aria-label="Phone"></div></div>
+      <div role="group" aria-label="Job 2" hidden><input aria-label="Employer"></div>
+      <button type="button" data-automation-id="add-button">Add Another</button></div>""")
+    [work] = sections(page)
+    assert (work["heading"], work["entries"]) == ("Work History", 1)

@@ -113,6 +113,8 @@ ns.fillOps = {
   stepState: (r) => { calls.push(["fillOps.stepState", r]); return { version: 1, candidates: [{ mid: "give_up" }] }; },
   sweep: () => { calls.push(["fillOps.sweep", 0]); return [{ fid: "f-1", outcome: "verified" }]; },
   focus: (fid) => { calls.push(["fillOps.focus", fid]); return true; },
+  sections: () => { calls.push(["fillOps.sections", 0]); return [{ sid: "f-s1", heading: "Websites", entries: 0, filled: [], add: "Add" }]; },
+  add: (r) => { calls.push(["fillOps.add", r]); return { sid: "f-s1", outcome: "added", entries: 1 }; },
   cancel: () => { calls.push(["fillOps.cancel", 0]); },
 };
 
@@ -123,6 +125,7 @@ main(async () => {
     skills: [], pairs: [], b64: "", filename: "resume.pdf",
     consentForms: true, runId: "run-2", requests: [{ fid: "f-1", fp: "p" }],
     actions: [{ fid: "f-1", fp: "p", op: "write", value: "x" }], fid: "f-1", fp: "p", value: "v",
+    sid: "f-s1", heading: "Websites", entries: 0,
     // Only when the fixture states one — `undefined` is the shape the floating
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
@@ -385,6 +388,8 @@ FILL_GATED = {
     "fill_step_state": None,  # broadcast: every frame but the fid's own answers null
     "fill_sweep": [],
     "fill_focus": False,
+    "fill_sections": [],
+    "fill_add": None,  # broadcast: every frame but the sid's own answers null
 }
 
 
@@ -416,6 +421,13 @@ def test_fill_step_state_forwards_the_field_and_nothing_else(tmp_path):
     the rest of whatever message carried them."""
     out = _run(tmp_path, type_="fill_step_state", top_frame=True)
     assert out["calls"] == [["fillOps.stepState", {"fid": "f-1", "fp": "p", "value": "v"}]]
+
+
+def test_fill_add_forwards_the_section_and_the_view_it_was_decided_on(tmp_path):
+    """One section's id, the heading and the entry count the loop decided from
+    (the page refuses the press when either changed) — nothing else."""
+    out = _run(tmp_path, type_="fill_add", top_frame=True)
+    assert out["calls"] == [["fillOps.add", {"sid": "f-s1", "heading": "Websites", "entries": 0}]]
 
 
 def test_fill_cancel_reaches_every_frame(tmp_path):

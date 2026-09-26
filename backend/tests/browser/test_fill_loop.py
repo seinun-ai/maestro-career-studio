@@ -8,12 +8,13 @@ from pathlib import Path
 import pytest
 
 from app.schemas.autofill_choose import ChooseRequest
-from app.schemas.autofill_fill import MapRequest, PickRequest, StepRequest
+from app.schemas.autofill_fill import MapRequest, PickRequest, SectionsRequest, StepRequest
 from tests.browser.conftest import EXTENSION
 
 # Every body the loop POSTs must be one the real endpoint accepts.
 MODELS = {"/api/autofill/map": MapRequest, "/api/autofill/pick": PickRequest,
-          "/api/autofill/step": StepRequest, "/api/autofill/choose": ChooseRequest}
+          "/api/autofill/step": StepRequest, "/api/autofill/choose": ChooseRequest,
+          "/api/autofill/sections": SectionsRequest}
 
 LOOP_SOURCES = ["shared/policy.js", "shared/choose.js", "shared/guided-run.js", "shared/fill-loop.js"]
 # The backend's own patterns (app/schemas/autofill_fill.py), restated so a
@@ -79,6 +80,18 @@ DRIVER = """async (spec) => {
       return [{frameId: 1, result: null}, {frameId: 0, result: {version: 1, complete: false, ...s}}];
     }
     if (msg.type === "fill_sweep") return one(take(spec.sweep) ?? []);
+    // `sections`: the page's repeating sections (a list: one snapshot per
+    // read); absent, no frame answers. `stopOnSections`: Stop lands as they are read.
+    if (msg.type === "fill_sections") {
+      if (spec.stopOnSections) stop = true;
+      return spec.sections ? one(take(spec.sections)) : [];
+    }
+    // `add[sid]`: what one press did (a list: one per press); by default the
+    // section grew by one entry.
+    if (msg.type === "fill_add") {
+      return [{frameId: 1, result: null},
+              {frameId: 0, result: {sid: msg.sid, ...(take(spec.add?.[msg.sid]) ?? {outcome: "added", entries: msg.entries + 1})}}];
+    }
     return [];
   };
   const api = async (path, init) => {
@@ -94,6 +107,7 @@ DRIVER = """async (spec) => {
     if (path === "/api/autofill/map") return {fields: Object.fromEntries(body.fields.map(f => [f.fid, spec.map[`${f.fid}:${f.question}`] ?? spec.map[f.fid] ?? {route: "none"}]))};
     if (path === "/api/autofill/pick") return {picks: Object.fromEntries(body.fields.map(f => [f.fid, spec.pick[`${f.fid}:${f.item ?? ""}`] ?? spec.pick[f.fid] ?? {oids: [], reason: "abstained"}]))};
     if (path === "/api/autofill/step") return spec.step.moves.shift() ?? {mid: null, reason: "abstained"};
+    if (path === "/api/autofill/sections") return {sections: Object.fromEntries(body.sections.map(x => [x.sid, spec.kinds?.[x.sid] ?? {kind: "none", wanted: 0}]))};
     if (path === "/api/autofill/choose") return {choices: Object.fromEntries(body.fields.map(f => [f.qid, spec.choose[f.qid] ?? {answer: null, reason: "abstained"}]))};
     throw Object.assign(new Error(path), {status: 502});
   };
@@ -338,7 +352,8 @@ def test_fields_added_or_removed_by_a_commit_are_re_observed_before_continuing(p
     out = run(page, load, frames=[[t, d1, d2, current_box()], [t, d1, ticked]], map=SECTION_MAP,
               peek=[["t", "d1", "c"]], pick={"c": {"oids": ["yes"], "reason": "matched"}})
     assert [a["fid"] for a in actions(out)] == ["c", "t", "d1"]
-    calls = [c for c in out["calls"] if c.startswith("fill_")]
+    # (The round's read of repeating sections — none here — is not part of this order.)
+    calls = [c for c in out["calls"] if c.startswith("fill_") and c != "fill_sections"]
     assert calls[:5] == ["fill_inventory", "fill_apply", "fill_peek", "fill_inventory", "fill_apply"]
     assert statuses(out) == {"t": "verified", "d1": "verified", "c": "verified"}
     # The new inventory mapped nothing again: every field it listed was known.
@@ -1415,6 +1430,124 @@ def test_a_commit_explore_could_not_take_back_is_left_for_the_user(page, load):
     assert not actions(out) and "/api/autofill/pick" not in out["calls"]
 
 
+# ---------- repeating sections: Add what the profile can fill (Task 7)
+
+
+def work(n, **kw):
+    """Work Experience entry n's Job Title and Company, as the inventory lists them."""
+    sec = {"section": f"Work Experience {n}", "repeatIndex": n - 1}
+    return [f(f"t{n}", question="Job Title", **sec, **kw), f(f"c{n}", question="Company", **sec, **kw)]
+
+
+def section(sid="f-s1", heading="Work Experience", entries=1, filled=None):
+    return {"sid": sid, "heading": heading, "entries": entries,
+            "filled": filled if filled is not None else [False] * entries, "add": "Add Another"}
+
+
+JOBS = {"t1": {"route": "slot", "slot": "experience.0.title", "value": "Analyst"},
+        "c1": {"route": "slot", "slot": "experience.0.employer", "value": "Acme"},
+        "t2": {"route": "slot", "slot": "experience.1.title", "value": "Intern"},
+        "c2": {"route": "slot", "slot": "experience.1.employer", "value": "Initech"}}
+
+
+def adds(out):
+    return [{k: m[k] for k in ("sid", "heading", "entries")} for m in out["sent"] if m["type"] == "fill_add"]
+
+
+def test_the_loop_adds_entries_the_profile_can_fill_then_fills_them(page, load):
+    out = run(page, load, frames=[work(1), work(1) + work(2)],
+              sections=[[section(entries=1)], [section(entries=2)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 2}}, map=JOBS)
+    # One press, on the view it was decided from, before anything is mapped.
+    assert adds(out) == [{"sid": "f-s1", "heading": "Work Experience", "entries": 1}]
+    calls = out["calls"]
+    assert calls.index("fill_add") < calls.index("/api/autofill/map")
+    # A full inventory after the add: the new entry's fields are mapped in the same round.
+    assert calls[:calls.index("/api/autofill/map")].count("fill_inventory") == 2
+    [first_map, *_] = bodies(out, "/api/autofill/map")
+    assert [(x["fid"], x["repeat_index"]) for x in first_map["fields"]] == [("t1", 0), ("c1", 0), ("t2", 1), ("c2", 1)]
+    assert statuses(out) == {"t1": "verified", "c1": "verified", "t2": "verified", "c2": "verified"}
+    assert {a["fid"]: a["value"] for a in actions(out, "write")} == {
+        "t1": "Analyst", "c1": "Acme", "t2": "Intern", "c2": "Initech"}
+    # Headings and counts go out; kinds and counts come back — asked once per section.
+    [ask] = bodies(out, "/api/autofill/sections")
+    assert ask["sections"] == [{"sid": "f-s1", "heading": "Work Experience", "entries": 1, "filled": [False]}]
+    # The report says what was added, by kind (value-free).
+    assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 2,
+                                          "entries": 2, "added": 1, "outcome": "added"}]
+
+
+def test_an_entry_already_holding_data_is_reconciled_not_duplicated(page, load):
+    held = work(1, committed="Someone's job", answered=True)
+    out = run(page, load, frames=[held, held + work(2)],
+              sections=[[section(entries=1, filled=[True])], [section(entries=2, filled=[True, False])]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 2}}, map=JOBS)
+    # The held entry counts as one of the two: one Add, never two.
+    assert len(adds(out)) == 1
+    # What it holds stays: never written over.
+    assert statuses(out) == {"t1": "already", "c1": "already", "t2": "verified", "c2": "verified"}
+    assert {a["fid"] for a in actions(out)} == {"t2", "c2"}
+    # Two entries on the page already, one of them held: nothing to add.
+    out = run(page, load, frames=[held + work(2)], sections=[[section(entries=2, filled=[True, False])]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 2}}, map=JOBS)
+    assert adds(out) == [] and statuses(out)["t2"] == "verified"
+
+
+def test_add_never_exceeds_what_the_profile_can_fill(page, load):
+    # As many entries as the profile can fill: nothing is pressed.
+    out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 1}}, map=JOBS)
+    assert adds(out) == [] and "fill_add" not in out["calls"]
+    # More on the page than the profile has: never Add, never Delete.
+    out = run(page, load, frames=[work(1) + work(2)], sections=[[section(entries=2)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 1}}, map=JOBS)
+    assert adds(out) == []
+    # Two short: two presses, one at a time, each on the count the last one left.
+    out = run(page, load, frames=[work(1), work(1) + work(2), work(1) + work(2) + work(3)],
+              sections=[[section(entries=1)], [section(entries=3)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 3}}, map=JOBS)
+    assert [a["entries"] for a in adds(out)] == [1, 2]
+    assert out["report"]["sections"][0]["added"] == 2
+    # A section that is none of the profile's lists, or one the profile has
+    # nothing for, gets nothing; a second section of the same kind gets nothing.
+    out = run(page, load, frames=[work(1)],
+              sections=[[section("f-s1", entries=1), section("f-s2", "Skills", 0), section("f-s3", "Languages", 1),
+                         section("f-s4", "Relevant Experience", 0)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 1}, "f-s3": {"kind": "languages", "wanted": 0},
+                     "f-s4": {"kind": "experience", "wanted": 1}}, map=JOBS)
+    assert adds(out) == []
+
+
+def test_an_add_that_did_not_grow_the_section_is_pressed_once(page, load):
+    """A deliberate write, never a trial: a press that added nothing is not
+    pressed again — not for the next wanted entry, not in a later round."""
+    out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 3}},
+              add={"f-s1": {"outcome": "not_added", "entries": 1}}, map=JOBS)
+    assert len(adds(out)) == 1
+    assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 3,
+                                          "entries": 1, "added": 0, "outcome": "not_added"}]
+    assert statuses(out) == {"t1": "verified", "c1": "verified"}
+    # The page answering "added" without the count growing is not an entry either.
+    out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 2}},
+              add={"f-s1": {"outcome": "added", "entries": 1}}, map=JOBS)
+    assert len(adds(out)) == 1 and out["report"]["sections"][0]["added"] == 0
+
+
+def test_a_stopped_run_never_presses_add(page, load):
+    out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]], stopOnSections=True,
+              kinds={"f-s1": {"kind": "experience", "wanted": 2}}, map=JOBS)
+    assert "fill_add" not in out["calls"] and out["report"]["stopped"] is True
+
+
+def test_sections_the_backend_could_not_classify_add_nothing(page, load):
+    out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]], apiHang=["/api/autofill/sections"],
+              limits={"API_MS": 200}, map=JOBS)
+    assert "fill_add" not in out["calls"]
+    assert statuses(out) == {"t1": "verified", "c1": "verified"}
+
+
 # ---------- the wire
 
 
@@ -1424,7 +1557,8 @@ def test_every_page_message_the_loop_sends_is_a_page_handler():
     block = re.search(r"const PAGE_HANDLERS = \{(.*?)\n  \};", agent, re.S)
     handled = set(re.findall(r"^    ([a-z_]+):", block.group(1), re.M))
     sent = set(re.findall(r'\btype:\s*"([a-z_]+)"', loop))
-    assert sent == {"fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep"}
+    assert sent == {"fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_sections",
+                    "fill_add"}
     assert sent <= handled
 
 

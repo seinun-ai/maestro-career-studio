@@ -519,6 +519,8 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
         "scroll_to_field",
         # The fill engine's page operations (content/fill-ops.js).
         "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
+        # Repeating sections: read them, and press one section's own Add.
+        "fill_sections", "fill_add",
     }
     assert called == set(), (
         "something calls a page handler in-frame again — see this test's "

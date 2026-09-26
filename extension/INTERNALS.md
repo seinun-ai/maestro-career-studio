@@ -28,6 +28,7 @@ worker:
 | `content/inventory.js` | every frame | every fillable control as a field with an element-bound fid and a fingerprint; marks fields the user changed |
 | `content/fill-core.js` | every frame | the generic mechanics: write / explore / choose / set / recommit, verified after the final blur; the adaptive step's versioned state and code-generated moves (stepState / move) |
 | `content/fill-ops.js` | every frame | the engine's page operations behind agent.js's `fill_*` handlers — fingerprint, touched and policy re-checked at execution; every throw returned as an outcome |
+| `content/sections.js` | every frame | repeating sections (Work Experience, Education, Websites…): their headings, entry counts and which entries hold a value, and one press of a section's OWN Add — never a Delete |
 | `content/job-posting.js` | every frame, every page | the shared JSON-LD JobPosting walk |
 | `content/eeo.js` | every frame | voluntary EEO rules and protected-class control handling |
 | `content/autofill.js` | every frame | profile field matching and fill engine |
@@ -375,8 +376,27 @@ know, and each one was learned from a live failure.
   DOM order.** Each repeated block's position among the **visible** blocks of
   its family picks the resume entry, so a hidden prototype block does not shift
   every later entry. DOM order survives only as the fallback for pages that
-  publish no block identity at all. The extension cannot click "Add another"
-  for you — add the blocks first, then fill.
+  publish no block identity at all.
+- **Entries are added only for what the profile can fill.** A repeating
+  section (Work Experience, Education, Websites) grows only by its own Add,
+  and on Workday an added entry's fields are REQUIRED, so an entry nothing
+  can fill blocks the page. Before anything is mapped, the fill loop reads
+  each section's heading and entry count (`fill_sections`), and the backend
+  (`/api/autofill/sections`, headings and counts in, kinds and counts out)
+  names the profile list it holds and how many profile entries have every
+  fact an entry requires: a job its employer and title, a school its name,
+  a website its address (the LinkedIn box is not a section; languages and
+  certifications have no profile facts yet, so none is added). Add is
+  pressed for the difference and never beyond it, one section per list.
+  Entries already on the page count, whatever they hold, and one holding an
+  answer keeps it. A press is a deliberate write, not a trial: once per
+  wanted entry, on the view it was decided from (a changed heading or count
+  presses nothing), never after Stop, and counted only when the entry count
+  grew; a press that added nothing is not repeated in that run. The
+  section's own Add is the only control pressed: never one inside an entry,
+  a submit, a control inside a link, the page's header or footer, or
+  anything whose words, name or automation id say delete, remove or trash.
+  The run report lists what was added per section.
 - **Without the standing agreement permission, signatures, initials,
   passwords and government IDs** (SSN, passport, licence numbers) are refused by
   label (`NEVER_FILLED` in `shared/policy.js`). A `type="password"` input is

@@ -646,6 +646,7 @@ def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
         # each is gated on the receiving side (fill_cancel aside, which carries
         # nothing) — see test_extension_frame_gate.
         "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
+        "fill_sections", "fill_add",
     ]
     # …and the one that must never join it, named rather than left to the list
     # above: a posting's JSON-LD is in the top document, so broadcasting the

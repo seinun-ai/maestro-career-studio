@@ -31,6 +31,8 @@ from app.schemas.autofill_fill import (
     MapResponse,
     PickRequest,
     PickResponse,
+    SectionsRequest,
+    SectionsResponse,
     StepRequest,
     StepResponse,
 )
@@ -41,6 +43,7 @@ from app.services import (
     autofill_map,
     autofill_pick,
     autofill_profile,
+    autofill_sections,
     autofill_step,
     autofill_telemetry,
     base_resume_data,
@@ -313,7 +316,7 @@ def post_choose(
     )
 
 
-# ---------- the fill loop's asks: /map, /pick and /step ----------
+# ---------- the fill loop's asks: /map, /pick, /step and /sections ----------
 
 
 def _facts(
@@ -390,3 +393,13 @@ def post_step(payload: StepRequest, db: Annotated[Session, Depends(get_db)]) -> 
     the moves the page's code generated. The fact comes from the slot."""
     facts, _ = _facts(db, payload.application_id, payload.base)
     return autofill_step.step(payload, facts, db, _job_hint(db, payload.application_id, payload.source_hint))
+
+
+@router.post("/sections", response_model=SectionsResponse)
+def post_sections(payload: SectionsRequest, db: Annotated[Session, Depends(get_db)]) -> SectionsResponse:
+    """Which profile list each repeating section holds, and how many of its
+    entries the profile can fill (the loop presses Add up to that many).
+    Headings and counts in, kinds and counts out: the counts come from the
+    fact catalog here, so no value reaches the model or the response."""
+    facts, _ = _facts(db, payload.application_id, payload.base)
+    return SectionsResponse(sections=autofill_sections.plan(payload.sections, facts, db))

@@ -119,7 +119,7 @@ DETECTION_MODULE_SOURCES = [CONTENT / "job-posting.js", CONTENT / "detect.js"]
 # which is exactly how a driver ends up executing a set nobody chose.
 #
 # THEY DIVERGED with the fill engine (fill-engine plan Task 4), and this is the
-# written-out list that comment asked for. The engine's six files need a REAL
+# written-out list that comment asked for. The engine's files need a REAL
 # DOM — layout, focus, and at load inventory.js constructs a MutationObserver
 # and registers document input/change listeners (this fake document has no
 # addEventListener) — which this fake one cannot give, so they are driven in
@@ -135,6 +135,7 @@ FILL_ENGINE_SOURCES = [
     CONTENT / "inventory.js",
     CONTENT / "fill-core.js",
     CONTENT / "fill-ops.js",
+    CONTENT / "sections.js",
 ]
 PAGE_RUNTIME_SOURCES = [
     SHARED / "decisions.js",

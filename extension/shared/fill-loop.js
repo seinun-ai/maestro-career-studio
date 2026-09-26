@@ -55,6 +55,17 @@
  * - Exploring can commit (a search that finds one hit picks it): the page
  *   takes that back; one it could not take back leaves the field to the user,
  *   named (committed_while_exploring).
+ * - REPEATING SECTIONS grow only by their own Add, and an added entry's fields
+ *   are REQUIRED (notes §5), so each round, before /map, a section gets Add
+ *   pressed only up to the profile entries that can fill one (/sections:
+ *   `wanted`): add = wanted − the entries on the page, never more, never a
+ *   Delete. Entries already there are matched to profile entries in page
+ *   order by /map (repeat_index); one holding data keeps it (`already`).
+ *   Each press is a deliberate write, not a trial: once per wanted entry,
+ *   counted only when the page's entry count grew; a press that did not grow
+ *   it is not pressed again this run. A full inventory follows the adds, so
+ *   the new entries' fields are mapped in the same round. The report's
+ *   `sections` says what was added, by kind — value-free.
  * - Nothing is guessed when the AI cannot be reached (`aiFailure`).
  * - Stop: `cancelled()` is checked before every page action; the panel also
  *   sends `fill_cancel`, which cancels the page operation in flight.
@@ -115,6 +126,9 @@
   const MAP_OPTIONS = 30;
   const PICK_OPTIONS = 250;
   const STEP_CANDIDATES = 60;
+  const MAX_SECTIONS = 20;
+  const MAX_ENTRIES = 50;
+  const SECTION_KINDS = new Set(["experience", "education", "languages", "websites", "certifications"]);
   const HISTORY_KEPT = 8;
   const FID = /^[A-Za-z0-9_-]{1,64}$/;
   const HISTORY_ENTRY = /^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up|choose) -> [a-z_]+( \([a-z_]+\))?$/;
@@ -1019,6 +1033,72 @@
       return order([...texts, ...choices]);
     };
 
+    // ---- repeating sections: Add the entries the profile can fill (see the header)
+    // A section is known by its frame, sid and heading; its plan (kind and
+    // `wanted`) is asked once per run, its log is what the report says.
+    const plans = new Map(); // key -> { kind, wanted }
+    const sectionLog = new Map(); // key -> { heading, kind, wanted, entries, added, outcome }
+    const sectionKey = (s) => `${s.frameId}\n${s.sid}\n${s.heading}`;
+    const sectionOk = (s) => typeof s?.sid === "string" && FID.test(s.sid) && typeof s.heading === "string"
+      && s.heading.trim() !== "" && Number.isInteger(s.entries) && s.entries >= 0 && s.entries <= MAX_ENTRIES;
+    const readSections = async () => (await broadcast({ type: "fill_sections" }) ?? []).flatMap((fr) => (
+      Array.isArray(fr?.result) ? fr.result.filter(sectionOk).map((s) => ({ ...s, frameId: fr.frameId })) : []));
+    const planSections = async (seen) => {
+      const ask = seen.filter((s) => !plans.has(sectionKey(s))).slice(0, MAX_SECTIONS);
+      if (!ask.length || halt()) return;
+      const res = await post("/api/autofill/sections", {
+        ...selector,
+        sections: ask.map((s) => ({
+          sid: s.sid, heading: s.heading.slice(0, 200), entries: s.entries,
+          filled: (Array.isArray(s.filled) ? s.filled : []).slice(0, MAX_ENTRIES).map(Boolean),
+        })),
+      });
+      if (!res) return; // asked again next round
+      for (const s of ask) {
+        const p = res.sections?.[s.sid];
+        const ok = SECTION_KINDS.has(p?.kind) && Number.isInteger(p.wanted) && p.wanted >= 0;
+        plans.set(sectionKey(s), ok ? { kind: p.kind, wanted: Math.min(p.wanted, MAX_ENTRIES) } : { kind: "none", wanted: 0 });
+      }
+    };
+    // Returns whether any entry was added. ONE section per kind: a second
+    // section the model gives the same kind gets nothing, so a kind's entries
+    // are never doubled.
+    const addEntries = async () => {
+      const seen = await readSections();
+      if (!seen.length) return false;
+      await planSections(seen);
+      let added = false;
+      const kinds = new Set();
+      for (const s of seen) {
+        const plan = plans.get(sectionKey(s));
+        if (!plan || plan.kind === "none" || kinds.has(plan.kind)) continue;
+        kinds.add(plan.kind);
+        const key = sectionKey(s);
+        const log = sectionLog.get(key) ?? { heading: s.heading, kind: plan.kind, wanted: plan.wanted, added: 0, outcome: null };
+        sectionLog.set(key, { ...log, entries: s.entries });
+        // A press that did not add (or failed) is never pressed again this run;
+        // one refused as `stale` (the view changed) is decided afresh.
+        if (log.outcome && log.outcome !== "added" && log.outcome !== "stale") continue;
+        let entries = s.entries;
+        while (entries < plan.wanted) {
+          if (halt()) return added;
+          const [got] = results(await broadcast({ type: "fill_add", sid: s.sid, heading: s.heading, entries }))
+            .filter((r) => r?.sid === s.sid);
+          const now = Number.isInteger(got?.entries) ? got.entries : entries;
+          if (got?.outcome !== "added" || now <= entries) {
+            sectionLog.set(key, { ...sectionLog.get(key), outcome: wordOf(got?.outcome) === "added" ? "not_added"
+              : wordOf(got?.outcome) ?? "stale" });
+            break;
+          }
+          const row = sectionLog.get(key);
+          sectionLog.set(key, { ...row, entries: now, added: row.added + (now - entries), outcome: "added" });
+          entries = now;
+          added = true;
+        }
+      }
+      return added;
+    };
+
     let settled = false;
     for (let round = 1; round <= L.MAX_ROUNDS; round += 1) {
       if (halt()) break;
@@ -1030,8 +1110,15 @@
         if (round === 1) throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
         break;
       }
-      const open = observe(frames);
+      let open = observe(frames);
       if (halt()) break;
+      // Entries the profile can fill are added before anything is mapped; a
+      // full inventory then lists their fields, mapped in this same round.
+      if (await addEntries()) {
+        if (halt()) break;
+        const again = await broadcast({ type: "fill_inventory", consentForms, runId });
+        if ((again ?? []).some((fr) => fr?.result !== undefined)) open = observe(again);
+      }
       if (!open.length) {
         if ((settled = await settledDone())) break;
         continue;
@@ -1134,7 +1221,11 @@
         lastOutcome: over && !FINAL.has(r.status) ? "timeout" : r.lastOutcome ?? null,
       };
     });
-    return { runId, fields, host, aiFailure, stopped, timedOut: over };
+    // Per section of a profile kind: how many entries were added (value-free).
+    const sections = [...sectionLog.values()].map(({ heading, kind, wanted, entries, added, outcome }) => ({
+      heading, kind, wanted, entries, added, outcome,
+    }));
+    return { runId, fields, host, aiFailure, stopped, timedOut: over, sections };
   }
 
   // ---- telemetry: one observation per reported field, and never a value.

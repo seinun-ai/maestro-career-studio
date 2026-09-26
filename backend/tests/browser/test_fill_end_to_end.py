@@ -11,7 +11,9 @@ with the panel's two dependencies scripted:
   `chrome.runtime.onMessage` listener, captured by a stubbed `chrome.runtime` —
   and answers in `page_broadcast`'s shape, so a handler that drops a field of
   its message fails here;
-- `api` is a scripted backend keyed by question text: `/map` from a table,
+- `api` is a scripted backend keyed by question text: `/map` from a table
+  (by "<section>/<question>" first, so repeated entries can differ),
+  `/sections` by heading (default: no profile list),
   `/pick` by exact text equality with the fact, `/step` clicking the candidate
   whose description names the fact, else `search:value` when a search box is
   offered, else a category scripted per question, else `open` when the popup is
@@ -29,12 +31,12 @@ from collections import Counter
 
 import pytest
 
-from app.schemas.autofill_fill import MapRequest, PickRequest, StepRequest
+from app.schemas.autofill_fill import MapRequest, PickRequest, SectionsRequest, StepRequest
 from tests.browser.conftest import EXTENSION, fixture_html
 from tests.browser.pages import CATEGORY_POPUP, oracle
 
 MODELS = {"/api/autofill/map": MapRequest, "/api/autofill/pick": PickRequest,
-          "/api/autofill/step": StepRequest}
+          "/api/autofill/step": StepRequest, "/api/autofill/sections": SectionsRequest}
 FIXTURES = ["workday_text.html", "workday_listbox.html", "workday_search.html",
             "popup_with_search.html", "native.html", "workday_date.html", "react_select.html"]
 # The manifest's content scripts, in its order, then the panel-side loop.
@@ -96,7 +98,11 @@ DRIVER = """(spec) => {
         window.__mapHeld = true;
         await new Promise((resolve) => { window.__openMap = resolve; });
       }
-      return { fields: Object.fromEntries(body.fields.map((f) => [f.fid, spec.map[f.question] ?? { route: "none" }])) };
+      return { fields: Object.fromEntries(body.fields.map((f) => [f.fid,
+        spec.map[`${f.section}/${f.question}`] ?? spec.map[f.question] ?? { route: "none" }])) };
+    }
+    if (path === "/api/autofill/sections") {
+      return { sections: Object.fromEntries(body.sections.map((x) => [x.sid, spec.kinds?.[x.heading] ?? { kind: "none", wanted: 0 }])) };
     }
     if (path === "/api/autofill/pick") {
       return { picks: Object.fromEntries(body.fields.map((f) => {
@@ -392,3 +398,40 @@ def test_currently_employed_is_ticked_before_the_dates(e2e_page):
     assert not any(r["status"] == "stale" or r["lastOutcome"] == "stale" for r in out["report"]["fields"])
     for question in ("I currently work here", "Job Title", "Company", "From"):
         assert out["by_question"][question]["status"] == "verified", out["by_question"][question]
+
+
+def test_the_loop_adds_the_entries_the_profile_can_fill_and_fills_them(e2e_page):
+    """workday_sections.html through the real handlers (notes §5): the profile
+    has two jobs, one school and one website; the page shows one Work
+    Experience entry, one Education entry and no Websites entry. Each
+    section's OWN Add is pressed as often as the profile can fill (never
+    Education's: its one entry is enough), never a Delete, and the new
+    entries are filled in the same run."""
+    page = e2e_page
+    text = lambda slot, value: {"route": "slot", "slot": slot, "value": value}  # noqa: E731
+    out = _run(page, fixtures=["workday_sections.html"],
+               kinds={"Work Experience": {"kind": "experience", "wanted": 2},
+                      "Education": {"kind": "education", "wanted": 1},
+                      "Websites": {"kind": "websites", "wanted": 1}},
+               map={"Work Experience 1/Job Title": text("experience.0.title", "Analyst"),
+                    "Work Experience 1/Company": text("experience.0.employer", "Acme"),
+                    "Work Experience 2/Job Title": text("experience.1.title", "Intern"),
+                    "Work Experience 2/Company": text("experience.1.employer", "Initech"),
+                    "Education 1/School or University": text("education.0.school", "State University"),
+                    "Websites 1/URL": text("personal.website", "https://ada.dev")})
+    assert oracle(page, "entries") == {"Work Experience": 2, "Education": 1, "Websites": 1}
+    assert oracle(page, "deleted") == 0
+    assert [oracle(page, f"Work Experience {n}/{q}") for n in (1, 2) for q in ("Job Title", "Company")] == [
+        "Analyst", "Acme", "Intern", "Initech"]
+    assert oracle(page, "Education 1/School or University") == "State University"
+    assert oracle(page, "Websites 1/URL") == "https://ada.dev"
+    adds = [m for m in out["sent"] if m["type"] == "fill_add"]
+    assert [(m["heading"], m["entries"]) for m in adds] == [("Work Experience", 1), ("Websites", 0)]
+    assert out["report"]["sections"] == [
+        {"heading": "Work Experience", "kind": "experience", "wanted": 2, "entries": 2, "added": 1, "outcome": "added"},
+        {"heading": "Education", "kind": "education", "wanted": 1, "entries": 1, "added": 0, "outcome": None},
+        {"heading": "Websites", "kind": "websites", "wanted": 1, "entries": 1, "added": 1, "outcome": "added"},
+    ]
+    filled = {(r["section"], r["question"]): r["status"] for r in out["report"]["fields"]}
+    for key in (("Work Experience 2", "Job Title"), ("Work Experience 2", "Company"), ("Websites 1", "URL")):
+        assert filled[key] == "verified", key

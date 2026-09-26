@@ -240,6 +240,10 @@ def test_the_content_script_is_the_split_modules_in_dependency_order(content_scr
         "content/inventory.js",
         "content/fill-core.js",
         "content/fill-ops.js",
+        # Repeating sections and their own Add (fill-engine revision Task 7):
+        # after fill-ops.js, whose `sections`/`add` reach it at call time, and
+        # after inventory.js, whose frame id it mints section ids under.
+        "content/sections.js",
         "content/job-posting.js",
         "content/eeo.js",
         "content/autofill.js",

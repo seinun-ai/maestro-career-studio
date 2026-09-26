@@ -25,7 +25,8 @@
   // Mutable so a test can force a timeout; the loop never changes them.
   // `undo`: explore's own allowance for taking back what it committed, apart
   // from the explore's, so a slow explore never eats the undo (or the reverse).
-  const budgets = { explore: 5000, undo: 6000, apply: 6000, setItem: 4000, setMax: 20000, step: 2000 };
+  // `add`: one press of a section's Add and the wait for its entry (sections.js).
+  const budgets = { explore: 5000, undo: 6000, apply: 6000, setItem: 4000, setMax: 20000, step: 2000, add: 4000 };
   const inv = () => ns.fillInventory;
   const core = () => ns.fillCore;
   let runId = null;
@@ -33,7 +34,7 @@
   // What each verified operation committed, so the sweep can catch a page
   // that quietly reverts a value after it was verified.
   const verified = new Map(); // fid -> { expected, format }
-  const mine = (fid) => typeof fid === "string" && fid.startsWith(`${inv().frame}-`);
+  const mine = (fid) => typeof fid === "string" && fid.startsWith(`${inv().frame}-`); // a section's sid too
   // Whether Stop is latched: check() without a token throws only then.
   const halted = () => {
     try {
@@ -219,6 +220,26 @@
     return out;
   };
 
+  // The frame's repeating sections (content/sections.js): headings, entry
+  // counts, which entries hold a value, and the words on each one's own Add.
+  const sections = () => ns.fillSections.list(inv().list({ consentForms }).fields);
+  // Press ONE section's own Add, once — a deliberate write, never a trial: on
+  // the view the loop decided from (`heading`, `entries`, else `stale`), under
+  // its own budget and token, so a latched Stop never presses it. Only the
+  // frame that minted the sid answers; every other says null.
+  const add = async (r) => {
+    if (!mine(r?.sid)) return null;
+    await closeLeftOpen(null);
+    try {
+      const got = await ns.fillBase.withinBudget(
+        (t) => ns.fillSections.add(r.sid, { heading: r.heading, entries: r.entries }, t), budgets.add);
+      return { sid: r.sid, ...got };
+    } catch (err) {
+      if (err?.name !== "Cancelled") console.warn("[maestro-cs] add failed:", err?.name);
+      return { sid: r.sid, outcome: err?.name !== "Cancelled" ? "unexpected" : halted() ? "cancelled" : "timeout", entries: null };
+    }
+  };
+
   const focus = (fid) => {
     if (!mine(fid)) return false;
     const el = inv().resolve(fid);
@@ -259,6 +280,7 @@
       return inv().list({ consentForms });
     }),
     explore: serial(explore), apply: serial(applyNow), stepState: serial(stepState), sweep: serial(sweep), focus, budgets,
+    sections: serial(sections), add: serial(add),
     // Stop: latch at once, then close any popup a commit left open on purpose.
     cancel: () => {
       ns.fillBase.cancelAll();

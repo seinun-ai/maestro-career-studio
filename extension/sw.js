@@ -621,17 +621,19 @@ const HANDLERS = {
    * travelling to every frame of the tab, which is what the fan-out gate on
    * the receiving side exists to prevent.
    *
-   * The seven `fill_*` types are the fill engine's page operations (content/
-   * fill-ops.js). They fan out for the same reason `scroll_to_field` does — a
-   * field can be in any frame — and they are safe to broadcast for the
+   * The nine `fill_*` types are the fill engine's page operations (content/
+   * fill-ops.js; `fill_sections`/`fill_add` for repeating sections). They fan
+   * out for the same reason `scroll_to_field` does — a field can be in any
+   * frame — and they are safe to broadcast for the
    * reason the rest are: every one but `fill_cancel` is gated on the
    * receiving side by `frameMayReceiveUserData`, and a frame acts only on
-   * fids it minted itself.
+   * fids (and section sids) it minted itself.
    * `fill_cancel` carries nothing and only stops work already in flight. */
   async page_broadcast(msg, frame, sender) {
     const BROADCASTABLE = ["profile_fill", "collect_open_questions", "fill_answers",
       "guided_write", "scroll_to_field",
-      "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel"];
+      "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
+      "fill_sections", "fill_add"];
     const tabId = fanoutTab(msg, frame, sender);
     if (!BROADCASTABLE.includes(msg.message?.type)) {
       throw new Error(`not broadcastable: ${JSON.stringify(msg.message?.type)}`);

@@ -140,3 +140,39 @@ class StepResponse(BaseModel):
     # answer (open, search, scroll, open a group) and clears the progress
     # floor: progress. `abstained` (mid None) = give up.
     reason: StepReason
+
+
+# ---------- /sections: what each repeating section lists, and how many entries the profile can fill
+
+MAX_SECTIONS = 20
+MAX_ENTRIES = 50
+# The profile lists a repeating section can hold; `none` for anything else
+# (Skills, Resume/CV, a section the model is unsure of).
+SectionKind = Literal["experience", "education", "languages", "websites", "certifications", "none"]
+
+
+class PageSection(BaseModel):
+    """A section as the page reads it: its heading and counts, never a value."""
+
+    model_config = ConfigDict(extra="forbid")
+    # `<frame>-s<n>` (content/sections.js), shaped like a fid.
+    sid: str = Field(min_length=1, max_length=64, pattern=FID)
+    heading: str = Field(max_length=200)
+    entries: int = Field(ge=0, le=MAX_ENTRIES)
+    # Per entry, whether it already holds any committed value.
+    filled: list[bool] = Field(default_factory=list, max_length=MAX_ENTRIES)
+
+
+class SectionsRequest(Selector):
+    sections: list[PageSection] = Field(min_length=1, max_length=MAX_SECTIONS)
+
+
+class SectionPlan(BaseModel):
+    kind: SectionKind
+    # Profile entries of that kind holding the facts a new entry would REQUIRE:
+    # the loop presses Add only up to this many entries.
+    wanted: int = Field(ge=0)
+
+
+class SectionsResponse(BaseModel):
+    sections: dict[str, SectionPlan]

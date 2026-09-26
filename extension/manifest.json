@@ -25,6 +25,7 @@
         "content/inventory.js",
         "content/fill-core.js",
         "content/fill-ops.js",
+        "content/sections.js",
         "content/job-posting.js",
         "content/eeo.js",
         "content/autofill.js",
