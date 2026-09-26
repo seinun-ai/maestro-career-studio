@@ -333,11 +333,11 @@
   // FACT decides which it is (the loop passes format "phone" / "money" by
   // slot) — never its characters. Both empty is NOT equal.
   const fold = (s) => String(s ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
-  // ONE plain amount: an optional currency (code and/or symbol) either side,
-  // digits grouped by 3 with commas or spaces, at most 2 decimals, nothing
-  // else. A range, "80k", "/hour" or "80.000" (a European thousands mark) is
-  // not one, and is compared as text.
-  const MONEY = /^([A-Z]{3})?\s*([^\d\p{L}\s-]*)\s*(\d{1,3}(?:[,\u00a0 ]\d{3})+|\d+)(?:\.(\d{1,2}))?\s*([^\d\p{L}\s-]*)\s*([A-Z]{3})?$/u;
+  // ONE plain amount: an optional currency (code and/or currency sign) either
+  // side, digits grouped by 3 with commas or spaces, at most 2 decimals,
+  // nothing else. A range, "80k", "/hour", "80000+", "(80,000)" or "80.000"
+  // (a European thousands mark) is not one, and is compared as text.
+  const MONEY = /^([A-Z]{3})?\s*(\p{Sc}{0,2})\s*(\d{1,3}(?:[,\u00a0 ]\d{3})+|\d+)(?:\.(\d{1,2}))?\s*(\p{Sc}{0,2})\s*([A-Z]{3})?$/u;
   const moneyOf = (s) => {
     const m = MONEY.exec(String(s ?? "").trim());
     if (!m) return null;
@@ -347,8 +347,13 @@
   };
   // Money compares as a number only when BOTH sides are one plain amount, and
   // a currency both sides state must be the same one ("80000 CAD" ≠ "80000 USD").
+  // A sign on one side and only a code on the other proves nothing ("$" may
+  // be a mask over a fact given in EUR): unequal, the safe direction.
+  const signOnly = (m) => Boolean(m.symbol) && !m.code;
+  const codeOnly = (m) => Boolean(m.code) && !m.symbol;
   const sameMoney = (x, y) => x.value === y.value && (!x.code || !y.code || x.code === y.code)
-    && (!x.symbol || !y.symbol || x.symbol === y.symbol);
+    && (!x.symbol || !y.symbol || x.symbol === y.symbol)
+    && !(signOnly(x) && codeOnly(y)) && !(codeOnly(x) && signOnly(y));
   const equivalent = (actual, wrote, { format } = {}) => {
     const a = fold(actual);
     const w = fold(wrote);

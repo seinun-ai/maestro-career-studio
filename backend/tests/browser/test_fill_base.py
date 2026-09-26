@@ -377,6 +377,11 @@ MONEY_CASES = [
     ("8000050", "$80,000.50", False), ("80", "80k", False), ("$120,000", "$120,000-$140,000", False),
     ("80000", "80000-90000", False), ("80.000", "80", False), ("80000 CAD", "80000 USD", False),
     ("€80000", "$80000", False), ("80000/hour", "80000/year", False), ("about 80k", "80000", False),
+    # A symbol on one side and a code on the other is not proof of one currency.
+    ("$80,000", "80,000 EUR", False), ("€80,000", "80000 USD", False),
+    # Only currency signs are currency: other punctuation changes the meaning.
+    ("80000+", "80000", False), ("<80000", "80000", False), ("~80000", "80000", False),
+    ("(80,000)", "80000", False), ("80,000%", "80000", False),
     ("", "", False),
     # Not an amount at all: the folded text comparison.
     ("Negotiable", "Negotiable", True), ("negotiable ", "Negotiable", True),
