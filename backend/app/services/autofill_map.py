@@ -165,13 +165,17 @@ def _foreign(field: MapField) -> bool:
     return "entry_slot" in field.model_fields_set and field.entry_slot is None
 
 
-def _placed(field: MapField, key: str) -> str:
+def _placed(field: MapField, key: str) -> str | None:
     """The model reads repeated entries in PAGE order; the entry's place in the
     profile is code's (/sections matched what the entries hold): an entry
-    fact's number becomes the entry's `entry_slot`."""
+    fact's number becomes the entry's `entry_slot`. None: a fact of another
+    kind than the section holds."""
     m = _ENTRY.fullmatch(key)
     if m is None or field.entry_slot is None:
         return key
+    # An entry fact of another kind than the section's is not this entry's.
+    if field.entry_kind is not None and m[1] != field.entry_kind:
+        return None
     return f"{m[1]}.{field.entry_slot}.{m[3]}"
 
 
@@ -182,7 +186,7 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     key, p = picked
     if key in facts and p >= _floor(facts[key]):
         key = _placed(field, key)
-        if key not in facts:
+        if key is None or key not in facts:
             return Mapped(route="none")
         value = facts[key].value
         return Mapped(route="slot", slot=key, value=list(value) if isinstance(value, tuple) else value,

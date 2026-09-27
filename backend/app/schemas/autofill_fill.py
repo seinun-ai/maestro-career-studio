@@ -45,6 +45,9 @@ class MapField(BaseModel):
     # NULL: an entry holding something the profile does not have, or past the
     # profile's entries — nothing of the profile's goes into it.
     entry_slot: int | None = Field(default=None, ge=0, le=20)
+    # The kind of profile entry the section holds, sent with `entry_slot`: an
+    # entry fact of another kind is not this entry's (routed none).
+    entry_kind: Literal["experience", "education"] | None = None
     shape: Shape
     multi: bool = False
     required: bool = False
@@ -193,10 +196,13 @@ class SectionPlan(BaseModel):
     # to this many. An added entry takes a profile entry holding every fact it
     # would REQUIRE, never more.
     wanted: int = Field(ge=0)
-    # Why none is added although the profile has more: an entry on the page
-    # holds something the profile does not have, or two hold the same one, so
-    # the page cannot be reconciled with the profile.
-    reason: Literal["held_out_of_order"] | None = None
+    # Why none is added although the profile has more, or why the section is
+    # left alone: the page cannot be reconciled with the profile.
+    # held_out_of_order: two entries hold the same profile entry, and an added
+    # one would not be safe. held_unmatched: an entry holds something the
+    # profile does not have — the whole section is placed nowhere, left to the
+    # user, whatever there was to add.
+    reason: Literal["held_out_of_order", "held_unmatched"] | None = None
     # Jobs and schools only: per page entry, then per entry to add, the profile
     # entry (its catalog index) that entry holds or is given — null for one the
     # profile does not have. Numbers, never values; /map places by it

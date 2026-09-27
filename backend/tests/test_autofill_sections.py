@@ -161,23 +161,37 @@ def test_entries_holding_the_first_jobs_in_order_leave_the_rest_to_add(db_sessio
 
 
 @pytest.mark.usefixtures("jev_on")
-@pytest.mark.parametrize("held, order", [
-    ((["Somewhere Else"],), [None]),        # a job the profile does not have
-    ((["Yes"],), [None]),                   # held, but nothing names the employer
-    ((["Somewhere Else"], []), [None, 0]),  # the empty entry is still placed
+@pytest.mark.parametrize("held", [
+    (["Somewhere Else"],),                  # a job the profile does not have
+    (["Yes"],),                             # held, but nothing names the employer
+    (["Somewhere Else"], []),               # the empty entry too: it may be the foreign one's job again
+    ([], ["Acme"], ["TCS"]),                # a matching entry in the same section
 ])
-def test_a_foreign_entry_is_placed_nowhere_and_adds_nothing(db_session, monkeypatch, held, order):
-    """An entry holding a job the profile does not have: its fields get
-    nothing (order null), and nothing is added — what the page holds cannot
-    be reconciled with the profile, so the report says so."""
+def test_a_section_holding_a_foreign_entry_is_left_to_the_user(db_session, monkeypatch, held):
+    """An entry holding a job the profile does not have may be a profile job
+    under another name: nothing in its section is placed (every entry null),
+    nothing is added, and the report says so even when nothing would have been."""
     assert planned(db_session, monkeypatch, JOBS3, *held) == {
-        "kind": "experience", "wanted": len(held), "reason": "held_out_of_order", "order": order}
+        "kind": "experience", "wanted": len(held), "reason": "held_unmatched", "order": [None] * len(held)}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_foreign_entry_is_reported_when_nothing_was_to_be_added(db_session, monkeypatch):
+    """One job in the profile, the page [TCS, empty]: by placement the empty
+    entry would get job #1 — which may be the TCS entry, spelled another way."""
+    one = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst"}], [])
+    assert planned(db_session, monkeypatch, one, ["TCS"], []) == {
+        "kind": "experience", "wanted": 2, "reason": "held_unmatched", "order": [None, None]}
 
 
 @pytest.mark.usefixtures("jev_on")
 def test_two_entries_holding_one_job_add_nothing(db_session, monkeypatch):
     assert planned(db_session, monkeypatch, JOBS3, ["Acme"], ["ACME Inc."]) == {
         "kind": "experience", "wanted": 2, "reason": "held_out_of_order", "order": [0, None]}
+    # Nothing to add anyway: the second holding is still placed nowhere, silently.
+    one = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst"}], [])
+    assert planned(db_session, monkeypatch, one, ["Acme"], ["ACME Inc."]) == {
+        "kind": "experience", "wanted": 2, "reason": None, "order": [0, None]}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -196,7 +210,7 @@ def test_jobs_at_one_employer_are_told_apart_by_title(db_session, monkeypatch):
     assert planned(db_session, monkeypatch, facts, ["Acme", "Senior Analyst"])["order"] == [1, 0, 2]
     assert planned(db_session, monkeypatch, facts, ["Acme", "analyst"])["order"] == [0, 1, 2]
     assert planned(db_session, monkeypatch, facts, ["Acme"]) == {
-        "kind": "experience", "wanted": 1, "reason": "held_out_of_order", "order": [None]}
+        "kind": "experience", "wanted": 1, "reason": "held_unmatched", "order": [None]}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -207,7 +221,7 @@ def test_education_is_placed_by_the_school(db_session, monkeypatch):
         "kind": "education", "wanted": 2, "reason": None, "order": [0, 1]}
     assert planned(db_session, monkeypatch, facts, ["City College"], **kw) == {
         "kind": "education", "wanted": 2, "reason": None, "order": [1, 0]}
-    assert planned(db_session, monkeypatch, facts, ["Old School"], **kw)["reason"] == "held_out_of_order"
+    assert planned(db_session, monkeypatch, facts, ["Old School"], **kw)["reason"] == "held_unmatched"
 
 
 def test_only_complete_entries_before_the_first_gap_are_wanted():
@@ -239,7 +253,7 @@ def test_a_held_value_that_normalizes_to_nothing_matches_nothing(db_session, mon
                                         {"employer": "Initech", "title": "Intern"}], [])
     fake_jev(monkeypatch, {"w": ("experience", 0.9)})
     got = autofill_sections.plan([held_section("w", "Work Experience", ["Inc.", "Analyst"])], facts, db_session)
-    assert (got["w"].wanted, got["w"].reason, got["w"].order) == (1, "held_out_of_order", [None])
+    assert (got["w"].wanted, got["w"].reason, got["w"].order) == (1, "held_unmatched", [None])
 
 
 @pytest.mark.usefixtures("jev_on")

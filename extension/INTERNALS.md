@@ -422,10 +422,14 @@ know, and each one was learned from a live failure.
   profile entry's facts there, whatever order the page's entries are in — so
   an empty entry above a pre-filled job #1 gets job #2, never job #1 again,
   and a job the resume parser dropped is added in its own place. An entry
-  holding something the profile does not have gets nothing of the profile's,
-  and then nothing is added (nor when two entries hold the same one); an
-  added entry never takes a profile entry missing a fact it requires (a
-  school with no name). What the entries hold goes to the local backend for
+  holding something the profile does not have may be a profile job spelled
+  another way, so its whole section is left to you: nothing placed, nothing
+  added, and the report says so. Two entries holding the same one add
+  nothing. Only the first section of each kind is placed (a second one read
+  as work experience gets nothing), an entry fact of another kind than its
+  section's is never written there, and an order that cannot be read places
+  nothing rather than falling back to page order. An added entry never takes
+  a profile entry missing a fact it requires (a school with no name). What the entries hold goes to the local backend for
   that match only, never to a model. Within one section the page
   listed, a fact is written into one entry only: a website that one entry
   was given, or already holds in a text box, is left for you in another. A

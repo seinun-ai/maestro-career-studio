@@ -67,8 +67,10 @@ _DESCRIBES: dict[str, str] = {
 # A status not listed here derives nothing.
 _US_CITIZEN = {"citizen": "Yes", "permanent_resident": "No", "opt": "No", "stem_opt": "No", "h1b": "No",
                "tn": "No", "other_visa": "No", "not_authorized": "No"}
-# A stored availability that means "today" (the owner's profile says "Immedietly").
-_IMMEDIATE = re.compile(r"immediate|immediet|\basap\b|right away|\bnow\b", re.IGNORECASE)
+# A stored availability that means "today" (the owner's profile says "Immedietly"):
+# the WHOLE value is the word, so "2 weeks from now" or "not immediately" is not.
+_IMMEDIATE = re.compile(r"^\W*(available\s+)?(immediate(ly)?|immediet\w*|asap|now|right\s+away)\W*$",
+                        re.IGNORECASE)
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
 

@@ -437,6 +437,23 @@ def test_an_entry_slot_places_the_fact_by_profile_match(db_session, monkeypatch)
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_an_entry_fact_of_another_kind_than_its_section_is_none(db_session, monkeypatch):
+    """An Education entry's field the model maps to a job's fact: placing the
+    job's index in a school's place would write a plausible wrong value."""
+    got = placed(db_session, monkeypatch, ("experience.0.title", 0.9), entry_slot=1, entry_kind="education")
+    assert got.route == "none"
+    got = placed(db_session, monkeypatch, ("education.0.school", 0.9), entry_slot=1, entry_kind="education")
+    assert (got.slot, got.value) == ("education.1.school", "City College")
+    # A fact that is no entry's is not judged by the section's kind.
+    fake_jev(monkeypatch, {"a": ("personal.city", 0.9)})
+    got = autofill_map.map_fields([field("a", "City", entry_slot=0, entry_kind="experience")], FACTS, db_session,
+                                  eeo_consented=True, low_stakes=False)["a"]
+    assert got.slot == "personal.city"
+    with pytest.raises(ValueError):
+        field("a", "Q", entry_slot=0, entry_kind="websites")
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_without_an_entry_slot_page_order_stands(db_session, monkeypatch):
     got = placed(db_session, monkeypatch, ("experience.1.title", 0.9), repeat_index=1)
     assert (got.slot, got.value) == ("experience.1.title", "Intern")

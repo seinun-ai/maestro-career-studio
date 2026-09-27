@@ -21,9 +21,12 @@ entries (and entries to add) take the profile entries no entry holds, lowest
 first, in page order. `order` says so per entry, and /map writes each entry's
 facts from ITS profile entry (`MapField.entry_slot`), so an entry pre-filled
 out of profile order is never given a job the page already shows. An Add is
-safe only when every entry holding data holds a profile entry, each a
-different one: otherwise nothing is added (`wanted` is the entries there) and
-the plan says why, value-free. What the entries hold (`held`) comes to this
+safe only when every entry holding data holds a different profile entry.
+An entry holding something the profile does not have may be a profile entry
+spelled another way, so its WHOLE section is placed nowhere and nothing is
+added (`held_unmatched`, reported even when nothing was to be added); two
+entries holding the same one add nothing (`held_out_of_order`). The plan says
+why, value-free. What the entries hold (`held`) comes to this
 local backend for that match only.
 """
 
@@ -124,27 +127,32 @@ def _match(kind: str, values: set[str], facts: dict[str, Fact], taken: set[int])
     return next((i for i in hits if i not in taken), hits[0] if hits else None)
 
 
-def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> tuple[list[int | None], list[int], bool]:
-    """Per page entry, the profile entry it holds or is given (None: one the
-    profile does not have, a second holding of one, or past the profile);
-    the profile entries left for entries to add; and whether every entry
-    holding data holds a different profile entry (an Add is safe)."""
+def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> tuple[list[int | None], list[int], bool, bool]:
+    """Per page entry, the profile entry it holds or is given (None: a second
+    holding of one, or past the profile); the profile entries left for
+    entries to add; whether every entry holding data holds a different
+    profile entry (an Add is safe); and whether one holds something the
+    profile does not have (then every entry is None)."""
     held: dict[int, int | None] = {}
     taken: set[int] = set()
+    foreign = False
     for j in range(section.entries):
         values = section.held[j] if j < len(section.held) else []
         if not ((section.filled[j] if j < len(section.filled) else False) or values):
             continue
         # A value that normalizes to nothing ("Inc.") names nothing.
         i = _match(kind, {_norm(v) for v in values} - {""}, facts, taken)
+        foreign = foreign or i is None
         if i is None or i in taken:
             held[j] = None
         else:
             held[j] = i
             taken.add(i)
     free = [i for i in _entries(kind, facts) if i not in taken]
+    if foreign:
+        return [None] * section.entries, [], False, True
     order = [held[j] if j in held else (free.pop(0) if free else None) for j in range(section.entries)]
-    return order, free, None not in held.values()
+    return order, free, None not in held.values(), False
 
 
 def _shares_employer(j: int, facts: dict[str, Fact]) -> bool:
@@ -206,11 +214,13 @@ def plan(sections: list[PageSection], facts: dict[str, Fact], session: Session) 
         if kind not in _NAMED_BY:
             out[s.sid] = SectionPlan(kind=kind, wanted=wanted(kind, facts))
             continue
-        order, free, safe = place(s, kind, facts)
+        order, free, safe, foreign = place(s, kind, facts)
         # Added entries take the free profile entries in order, so only those
         # before the first one missing a required fact are added.
         add = len(list(takewhile(lambda i, k=kind: _complete(k, i, facts), free)))
-        if add and not safe:
+        if foreign:
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_unmatched", order=order)
+        elif add and not safe:
             out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_out_of_order", order=order)
         else:
             out[s.sid] = SectionPlan(kind=kind, wanted=s.entries + add, order=order + free[:add])

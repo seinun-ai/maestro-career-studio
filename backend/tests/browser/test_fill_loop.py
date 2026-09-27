@@ -1577,6 +1577,8 @@ def test_each_entrys_fields_carry_the_profile_entry_it_was_placed_at(page, load)
     [body] = bodies(out, "/api/autofill/map")
     assert {x["fid"]: x.get("entry_slot", "absent") for x in body["fields"]} == {
         "t1": 1, "c1": 1, "t3": 2, "c3": 2}
+    # The section's kind goes with it: a fact of another kind is no entry's.
+    assert {x["entry_kind"] for x in body["fields"]} == {"experience"}
 
 
 def test_a_foreign_entry_and_one_past_the_order_are_placed_nowhere(page, load):
@@ -1592,12 +1594,55 @@ def test_a_foreign_entry_and_one_past_the_order_are_placed_nowhere(page, load):
         "t1": None, "c1": None, "t2": 0, "c2": 0, "t3": None, "c3": None}
 
 
-@pytest.mark.parametrize("order", [None, "0,1", [0, "1"], [0, -1], [0, 1.5], [0, 21]])
-def test_without_a_usable_order_page_order_stands(page, load, order):
-    kinds = {"kind": "experience", "wanted": 1} | ({} if order is None else {"order": order})
+@pytest.mark.parametrize("order", ["absent", None])
+def test_without_an_order_page_order_stands(page, load, order):
+    """A backend that places nothing (an older one, or a kind it does not
+    place): /map is told nothing, and places by page order."""
+    kinds = {"kind": "experience", "wanted": 1} | ({} if order == "absent" else {"order": order})
     out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]], kinds={"f-s1": kinds}, map=JOBS)
     [body] = bodies(out, "/api/autofill/map")
-    assert all("entry_slot" not in x for x in body["fields"])
+    assert all("entry_slot" not in x and "entry_kind" not in x for x in body["fields"])
+
+
+@pytest.mark.parametrize("order", ["0,1", [0, "1"], [0, -1], [0, 1.5], [0, 21], [0] * 51])
+def test_an_order_that_cannot_be_read_places_nothing(page, load, order):
+    """A malformed order is not page order: page order is what can give an
+    empty entry a job the page already shows. The section is placed nowhere."""
+    out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 1, "order": order}}, map=JOBS)
+    [body] = bodies(out, "/api/autofill/map")
+    assert [(x["entry_slot"], x["entry_kind"]) for x in body["fields"]] == [(None, "experience")] * 2
+
+
+def test_only_the_first_section_of_a_kind_is_placed(page, load):
+    """A second section the backend reads as work experience ("Volunteer
+    Experience", misread) is not given job #1 as well: its entries are placed
+    nowhere. The first section of each kind, in page order, keeps its order."""
+    vol = [f("v1", question="Organization", section="Volunteer Experience 1")]
+    school = [f("s1", question="School", section="Education 1")]
+    out = run(page, load, frames=[work(1) + vol + school],
+              sections=[[section("f-s1", entries=1), section("f-s4", "Volunteer Experience", 1),
+                         section("f-s5", "Education", 1)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 1, "order": [0]},
+                     "f-s4": {"kind": "experience", "wanted": 1, "order": [0]},
+                     "f-s5": {"kind": "education", "wanted": 1, "order": [0]}}, map=JOBS)
+    [body] = bodies(out, "/api/autofill/map")
+    assert {x["fid"]: (x.get("entry_slot", "absent"), x.get("entry_kind")) for x in body["fields"]} == {
+        "t1": (0, "experience"), "c1": (0, "experience"), "v1": (None, "experience"), "s1": (0, "education")}
+
+
+def test_a_section_left_to_the_user_says_so(page, load):
+    """held_unmatched: an entry holds a job the profile does not have. Nothing
+    is added, and the report carries the reason even with nothing to add."""
+    out = run(page, load, frames=[work(1, committed="TCS", answered=True) + work(2)],
+              sections=[[section(entries=2, filled=[True, False], held=[["TCS"], []])]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "reason": "held_unmatched",
+                              "order": [None, None]}}, map=JOBS)
+    assert adds(out) == []
+    assert out["report"]["sections"][0]["reason"] == "held_unmatched"
+    lines = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.sectionLines(r)", out["report"])
+    assert lines == ["Work Experience: the items on the page don't match your profile, so this section was left "
+                     "for you."]
 
 
 def site(n, **kw):

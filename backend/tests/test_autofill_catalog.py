@@ -178,18 +178,19 @@ def test_an_unknown_status_derives_no_citizenship(work_auth):
 
 
 @pytest.mark.parametrize("stored", ["Immedietly", "Immediately", "immediate", "ASAP", "right away", "Now",
-                                    "available now", "asap!"])
+                                    "available now", "asap!", " Available immediately. ", "Right  away"])
 def test_an_immediate_start_is_also_a_date(stored):
     f = cat.build({"preferences": {"earliest_start_date": stored}}, [], [], today=TODAY)
     # The words stay the answer to a question asked in words…
-    assert f["preferences.earliest_start_date"].value == stored
+    assert f["preferences.earliest_start_date"].value == stored.strip()
     # …and a date box gets a date.
     assert f["derived.earliest_start_date"].value == "2026-09-26"
     assert f["derived.earliest_start_date"].describe == "the earliest date you can start, as a calendar date"
     assert f["derived.earliest_start_date"].policy == "any"
 
 
-@pytest.mark.parametrize("stored", ["2 weeks notice", "January 2027", "known in a month", "", None])
+@pytest.mark.parametrize("stored", ["2 weeks notice", "January 2027", "known in a month", "", None,
+                                    "2 weeks from now", "Not immediately; 2 weeks notice", "not available right away"])
 def test_a_start_that_is_not_immediate_derives_no_date(stored):
     f = cat.build({"preferences": {"earliest_start_date": stored}}, [], [], today=TODAY)
     assert "derived.earliest_start_date" not in f

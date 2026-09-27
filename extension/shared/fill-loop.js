@@ -61,16 +61,19 @@
  *   `wanted`): add = wanted − the entries on the page, never more, never a
  *   Delete. Each entry is PLACED at a profile entry by the backend
  *   (/sections `order`, matched on what the entries hold): /map is told it
- *   per field (`entry_slot`; null for an entry holding something the profile
- *   does not have), so an empty entry before a pre-filled one is never given
- *   the job the page already shows. One holding data keeps it (`already`).
+ *   per field (`entry_slot`, with the section's `entry_kind`; null places
+ *   nothing there), so an empty entry before a pre-filled one is never given
+ *   the job the page already shows. Only the first section of a kind is
+ *   placed, and an order that cannot be read places nothing — never page
+ *   order. One holding data keeps it (`already`).
  *   Each press is a deliberate write, not a trial: once per wanted entry,
  *   counted only when the page's entry count grew; a press that did not grow
  *   it is not pressed again this run. A full inventory follows the adds, so
  *   the new entries' fields are mapped in the same round. The report's
- *   `sections` says what was added, by kind — value-free. The backend adds
- *   nothing when an entry on the page holds something the profile does not
- *   have, or two hold the same one (`reason` held_out_of_order). Within a
+ *   `sections` says what was added, by kind — value-free. The backend leaves
+ *   a section whose entry holds something the profile does not have to the
+ *   user (`reason` held_unmatched: nothing placed, nothing added), and adds
+ *   nothing when two entries hold the same one (held_out_of_order). Within a
  *   section, one fact is written into ONE entry (`in_another_entry`).
  * - Nothing is guessed when the AI cannot be reached (`aiFailure`).
  * - Stop: `cancelled()` is checked before every page action; the panel also
@@ -938,17 +941,19 @@
     };
 
     // The profile entry /sections placed a field's entry at (`order`, by what
-    // the page's entries hold): { entry_slot } — a number, or null for an
-    // entry holding something the profile does not have or past the order —
-    // for a field in a section the page listed and the backend placed; else
-    // nothing, and /map places by page order.
+    // the page's entries hold), with the section's kind: { entry_slot,
+    // entry_kind } — entry_slot a number, or null (an entry the backend placed
+    // nowhere, one past the order, every entry of a section whose order could
+    // not be read or that is not the first of its kind) — for a field in a
+    // section the page listed and the backend placed; else nothing, and /map
+    // places by page order.
     const placement = (f) => {
       const frameId = rows.get(f.fid)?.frameId;
       const mine = entryOf(frameId, f.section);
-      const order = mine ? orders.get(`${frameId}\n${mine.family}`) : undefined;
-      if (!order) return {};
+      const placed = mine ? placements.get(`${frameId}\n${mine.family}`) : undefined;
+      if (!placed) return {};
       const at = Math.min(Math.max(Number(f.repeatIndex) || 0, 0), 20);
-      return { entry_slot: at < order.length ? order[at] : null };
+      return { entry_slot: placed.order && at < placed.order.length ? placed.order[at] : null, entry_kind: placed.kind };
     };
     const mapFields = async (open) => {
       const unmapped = open.filter((f) => !rows.get(f.fid).route);
@@ -1134,15 +1139,22 @@
     // section: its plan (kind and `wanted`) is asked ONCE per run (a failed or
     // hung ask is recorded as nothing to add, never asked again), a failed
     // press is never repeated, and the report has one row for it.
-    const plans = new Map(); // key -> { kind, wanted, reason }
-    // `${frameId}\n${heading, lowercased}` -> the profile entry each entry holds or is given (/sections `order`)
-    const orders = new Map();
+    const plans = new Map(); // key -> { kind, wanted, reason, order }
+    // `${frameId}\n${heading, lowercased}` -> { kind, order }: the profile entry each
+    // entry holds or is given (/sections `order`; null: place nothing there).
+    // Decided once per section; only the FIRST section of a kind, in page
+    // order, keeps its order (a second one read as the same kind — a misread
+    // "Volunteer Experience" — would be given job #1 again).
+    const placements = new Map();
+    const placedKinds = new Set();
+    const PLACED_KINDS = new Set(["experience", "education"]);
+    const REASONS = new Set(["held_out_of_order", "held_unmatched"]);
     const ENTRY_SLOT_MAX = 20;
     const orderOk = (order) => Array.isArray(order) && order.length <= MAX_ENTRIES
       && order.every((x) => x === null || (Number.isInteger(x) && x >= 0 && x <= ENTRY_SLOT_MAX));
     const sectionLog = new Map(); // key -> { heading, kind, wanted, entries, added, outcome, reason }
     const sectionKey = (s) => `${s.frameId}\n${s.heading}`;
-    const NOTHING = { kind: "none", wanted: 0, reason: null };
+    const NOTHING = { kind: "none", wanted: 0, reason: null, order: undefined };
     const sectionOk = (s) => typeof s?.sid === "string" && FID.test(s.sid) && typeof s.heading === "string"
       && s.heading.trim() !== "" && Number.isInteger(s.entries) && s.entries >= 0 && s.entries <= MAX_ENTRIES;
     const readSections = async () => {
@@ -1169,10 +1181,13 @@
       for (const s of ask) {
         const p = res?.sections?.[s.sid];
         const ok = SECTION_KINDS.has(p?.kind) && Number.isInteger(p.wanted) && p.wanted >= 0;
+        // `order`: undefined when the backend placed nothing (page order
+        // stands); null when it sent one that cannot be read (place nothing —
+        // page order is what could repeat a job the page shows).
         plans.set(sectionKey(s), ok ? {
-          kind: p.kind, wanted: Math.min(p.wanted, MAX_ENTRIES), reason: p.reason === "held_out_of_order" ? p.reason : null,
+          kind: p.kind, wanted: Math.min(p.wanted, MAX_ENTRIES), reason: REASONS.has(p.reason) ? p.reason : null,
+          order: p.order == null ? undefined : orderOk(p.order) ? p.order : null,
         } : NOTHING);
-        if (ok && orderOk(p.order)) orders.set(`${s.frameId}\n${s.heading.toLowerCase()}`, p.order);
       }
     };
     // What one press did, as the report's word: `added` only when the page's
@@ -1189,6 +1204,14 @@
       const seen = await readSections();
       if (!seen.length) return false;
       await planSections(seen);
+      for (const s of seen) {
+        const plan = plans.get(sectionKey(s));
+        const key = `${s.frameId}\n${s.heading.toLowerCase()}`;
+        if (!plan || !PLACED_KINDS.has(plan.kind) || plan.order === undefined || placements.has(key)) continue;
+        const first = !placedKinds.has(plan.kind);
+        placedKinds.add(plan.kind);
+        placements.set(key, { kind: plan.kind, order: first ? plan.order : null });
+      }
       let added = false;
       const kinds = new Set();
       for (const s of seen) {
@@ -1345,8 +1368,9 @@
       };
     });
     // Per section of a profile kind: how many entries were added (value-free).
-    // `reason` held_out_of_order: an entry on the page holds something the
-    // profile does not have (or two hold the same one), so none was added.
+    // `reason` held_unmatched: an entry on the page holds something the
+    // profile does not have, so the section was left alone; held_out_of_order:
+    // two hold the same one, so none was added.
     const sections = [...sectionLog.values()].map(({ heading, kind, wanted, entries, added, outcome, reason }) => ({
       heading, kind, wanted, entries, added, outcome, reason: reason ?? null,
     }));
@@ -1393,10 +1417,14 @@
 
   // ---- the report's repeating sections, as the panel says them: one line per
   // section still short of what the profile can fill (a press that added
-  // nothing, Stop, the clock), or where none was added because an entry on
-  // the page holds something the profile does not have (or two hold the same
-  // one). Empty when there is nothing for the user to add.
+  // nothing, Stop, the clock), where the section was left alone because an
+  // entry on the page holds something the profile does not have, or where
+  // none was added because two hold the same one. Empty when there is
+  // nothing for the user to add.
   const sectionLines = (report) => (report?.sections ?? []).flatMap((s) => {
+    if (s.reason === "held_unmatched") {
+      return [`${s.heading}: the items on the page don't match your profile, so this section was left for you.`];
+    }
     if (s.reason === "held_out_of_order") {
       return [`${s.heading}: the items on the page don't match your profile, so none were added.`];
     }
