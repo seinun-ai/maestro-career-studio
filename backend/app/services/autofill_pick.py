@@ -5,7 +5,9 @@ page-side oid. Every pick is one Jev Choice over those code-owned keys +
 `none`; a set is picked one source item at a time (`item`), so each chosen
 option maps back to the item it stands for. Policy comes from the SLOT,
 server-side. The fast-model fallback returns a confidence and meets the same
-floors. Low-stakes answers (setting on, re-checked here) are what a keen
+floors, both when Jev fails and, as ONE second opinion on the request's
+`Budget`, for the fact picks Jev abstained on (`exact` still refuses a near
+miss; the low-stakes and reasoned routes keep their engines). Low-stakes answers (setting on, re-checked here) are what a keen
 applicant for this job would choose, and are marked `assumed`.
 
 REASONED fields are answered from the work and education history alone
@@ -112,14 +114,15 @@ def _with_jev(fields, facts, hint, session) -> dict[str, Picked]:
     return out
 
 
-def _with_llm(fields, facts, hint, session) -> dict[str, Picked]:
+def _with_llm(fields, facts, hint, session, trace_name="autofill-pick", *,
+              timeout: float | None = None) -> dict[str, Picked]:
     payload = [{"id": f.fid, "question": f.question, "low_stakes": f.route == "low_stakes",
                 "applicant_values": values_for(f, facts.get(f.slot or "")),
                 "options": [o.model_dump() for o in f.options]} for f in fields]
     raw = fast_json(session, _LLM_PROMPT.format(
         rule=_PAGE_TEXT_IS_DATA, keen=keen(facts),
         low_stakes=low_stakes_rule(facts, "return none for that field", subject="a low_stakes field"),
-        job=json.dumps(asdict(hint) if hint else None), fields=json.dumps(payload)), "autofill-pick")
+        job=json.dumps(asdict(hint) if hint else None), fields=json.dumps(payload)), trace_name, timeout=timeout)
     picks = raw.get("picks") if isinstance(raw, dict) else None
     picks = picks if isinstance(picks, dict) else {}
     out = {}
@@ -133,6 +136,21 @@ def _with_llm(fields, facts, hint, session) -> dict[str, Picked]:
         conf = float(conf) if jev._unit(conf) else 0.0
         out[f.fid] = verdict(f, oids[0] if oids else None, conf, _policy(f, facts), complete=f.complete)
     return out
+
+
+def _second_opinion(fields: list[PickField], facts: dict[str, Fact], hint: JobHint | None, session: Session,
+                    budget: Budget) -> dict[str, Picked]:
+    """ONE fast-model pick for the fact fields Jev abstained on, on what is
+    left of the request's budget, through the same `verdict`. Out of time or
+    failed, Jev's abstention stands."""
+    timeout = budget.left()
+    if not fields or timeout is None:
+        return {}
+    try:
+        return _with_llm(fields, facts, hint, session, "autofill-pick-second", timeout=timeout)
+    except llm.LLMProviderError:
+        logger.warning("fast model second opinion failed; Jev's abstentions stand")
+        return {}
 
 
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None) -> dict[str, Picked]:
@@ -154,7 +172,16 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
                 picked = _with_jev(askable, facts, hint, session)
             except llm.LLMProviderError:
                 logger.warning("jev pick failed; the fast model picks this batch")
-        out |= picked if picked is not None else _with_llm(askable, facts, hint, session)
+        if picked is None:
+            picked = _with_llm(askable, facts, hint, session)
+        else:
+            unsure = [f for f in askable if f.route == "slot" and picked[f.fid] == ABSTAIN]
+            decided = {fid: p for fid, p in _second_opinion(unsure, facts, hint, session, budget).items()
+                       if p != ABSTAIN}
+            if decided:
+                logger.info("pick: the fast model decided %d of %d fields Jev abstained on", len(decided), len(unsure))
+            picked |= decided
+        out |= picked
     if reasoned:
         out |= reason(reasoned, facts, session, budget, hint.company if hint else None)
     return out

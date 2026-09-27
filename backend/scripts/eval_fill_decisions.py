@@ -19,8 +19,12 @@ Three reports, each printed as Markdown (and written as JSON with --out):
 Picks and steps run once per engine (Jev, then the fast model; `--engines`),
 reported separately: the fast model's confidence is not calibrated by sharing
 Jev's floors. In a Jev pass Jev's own fallback to the fast model is turned
-off, so a Jev failure is counted as one, never scored as Jev's answer. The
-reasoning route is the fast model's on every engine (autofill_reasoned).
+off, so a Jev failure is counted as one, never scored as Jev's answer, and
+the fast second opinion on Jev's unsure answers is off too: `jev` is Jev
+alone. `routed` is what production runs on the Jev engine: Jev, then ONE fast
+second opinion where Jev was unsure (its failure fallback still refused);
+each result says which engine decided (`decided_by`). The reasoning route is
+the fast model's on every engine (autofill_reasoned).
 
 Only labels, options and each case's own fact go to the models; the cases are
 synthetic. The database is a COPY of the live one, named by the required
@@ -353,6 +357,13 @@ class Run:
     # (option or move id, probability or confidence) of each decision, as
     # the floors saw it: the report shows the number behind an abstain.
     trace: list[tuple[str | None, float]] = field(default_factory=list)
+    # `routed` only: the fields the fast second opinion was asked about, and
+    # whether it decided the last case (it answered where Jev did not).
+    second_asked: set[str] = field(default_factory=set)
+    fast_decided: bool = False
+
+    def decided_by(self) -> str:
+        return "fast" if self.fast_decided else ("jev" if self.engine == "routed" else self.engine)
 
 
 @contextmanager
@@ -368,7 +379,12 @@ def engine_of(run: Run, low_stakes: bool = False):
              (autofill_map, "_with_llm"): autofill_map._with_llm,
              (autofill_step, "fast_json"): autofill_step.fast_json,
              (autofill_pick, "verdict"): autofill_pick.verdict,
-             (autofill_step, "_decide"): autofill_step._decide}
+             (autofill_step, "_decide"): autofill_step._decide,
+             (autofill_map, "_second_opinion"): autofill_map._second_opinion,
+             (autofill_pick, "_second_opinion"): autofill_pick._second_opinion,
+             (autofill_step, "_second_opinion"): autofill_step._second_opinion}
+    fast_calls = {key: saved[key] for key in ((autofill_pick, "_with_llm"), (autofill_map, "_with_llm"),
+                                              (autofill_step, "fast_json"))}
     decide, verdict, step_decide = jev.decide, autofill_pick.verdict, autofill_step._decide
 
     def seen_pick(fld, oid, p, *args, **kwargs):
@@ -389,14 +405,44 @@ def engine_of(run: Run, low_stakes: bool = False):
     def refuse(*_args, **_kwargs):
         raise JevFellBack()
 
-    model_settings.get_autofill_engine = lambda session=None: run.engine
+    def second_opinion(module):
+        """The production second opinion, allowed the fast model the failure
+        fallback is refused."""
+        ask = saved[(module, "_second_opinion")]
+
+        def asked(*args, **kwargs):
+            for (owner, name), fn in fast_calls.items():
+                setattr(owner, name, fn)
+            try:
+                got = ask(*args, **kwargs)
+            finally:
+                for owner, name in fast_calls:
+                    setattr(owner, name, refuse)
+            if module is autofill_map:
+                run.second_asked.update(f.fid for f in args[0])
+            else:
+                run.fast_decided = (any(p != autofill_pick.ABSTAIN for p in got.values()) if isinstance(got, dict)
+                                    else got != autofill_step.ABSTAIN)
+            return got
+        return asked
+
+    engine = "jev" if run.engine == "routed" else run.engine
+    model_settings.get_autofill_engine = lambda session=None: engine
     model_settings.get_autofill_low_stakes = lambda session=None: low_stakes
     autofill_pick.verdict, autofill_step._decide = seen_pick, seen_step
-    if run.engine == "jev":
+    run.fast_decided = False
+    if engine == "jev":
         jev.decide = recorded
         autofill_pick._with_llm = refuse
         autofill_map._with_llm = refuse
         autofill_step.fast_json = refuse
+    if run.engine == "jev":   # Jev alone: its unsure answers stand
+        autofill_map._second_opinion = lambda *_a, **_k: {}
+        autofill_pick._second_opinion = lambda *_a, **_k: {}
+        autofill_step._second_opinion = lambda *_a, **_k: autofill_step.ABSTAIN
+    elif run.engine == "routed":
+        for module in (autofill_map, autofill_pick, autofill_step):
+            module._second_opinion = second_opinion(module)
     try:
         yield
     finally:
@@ -424,7 +470,7 @@ def run_pick(case: dict, run: Run, session, today: str) -> dict:
         outcome = "right" if got in expected else "wrong_write"
     said = {o.oid: o.text for o in fld.options}.get(run.trace[-1][0]) if run.trace else None
     return {"id": case["id"], "policy": policy_of(case), "code_path": bool(case.get("code_path")),
-            "outcome": outcome, "got": got,
+            "outcome": outcome, "got": got, "decided_by": run.decided_by(),
             "reason": picked.reason, "said": said, "p": run.trace[-1][1] if run.trace else None,
             "expected": expected, "question": case["question"], "options": case["options"],
             "fact": case.get("item") or case.get("fact")}
@@ -453,7 +499,7 @@ def run_step(case: dict, run: Run, session, today: str) -> dict:
         outcome = "wrong_click"
     else:
         outcome = "harmless"
-    return {"id": case["id"], "policy": policy_of(case), "outcome": outcome, "got": mid,
+    return {"id": case["id"], "policy": policy_of(case), "outcome": outcome, "got": mid, "decided_by": run.decided_by(),
             "got_describe": describe.get(mid, GIVE_UP_DESCRIBE), "reason": resp.reason, "expected": expected,
             "said": run.trace[-1][0] if run.trace else None, "p": run.trace[-1][1] if run.trace else None,
             "question": case["question"], "fact": case.get("item") or case.get("fact")}
@@ -524,7 +570,7 @@ def run_map(session, run: Run, base: str | None) -> dict:
         for _attempt in range(2):   # one retry of a batch Jev failed
             # The reasoning pass is not a mapping: it is not asked. Jev's raw
             # answers (and their p) are kept only on a Jev pass.
-            if run.engine == "jev":
+            if run.engine in ("jev", "routed"):
                 autofill_map._with_jev = keep
             autofill_map._answerable = lambda *_a, **_k: set()
             try:
@@ -544,7 +590,11 @@ def run_map(session, run: Run, base: str | None) -> dict:
             key, p = raw.get(f.fid, (None, None))
             got = unindexed(m.slot) if m.route == "slot" else f"({m.route}{': ' + key if key and m.route == 'none' else ''})"
             agree = m.route == "slot" and (got == want or got in SAME_FACT.get(want, set()))
-            results.append({**r, "rule_slot": want, "got": got, "p": p, "agree": agree, "retried": failed})
+            # An asked field is one Jev routed none: routed now, the fast model decided it.
+            decided_by = "fast" if f.fid in run.second_asked and m.route != "none" else (
+                "jev" if run.engine == "routed" else run.engine)
+            results.append({**r, "rule_slot": want, "got": got, "p": p, "agree": agree, "retried": failed,
+                            "decided_by": decided_by})
     scored = [r for r in results if r["agree"] is not None]
     return {"engine": run.engine, "rows": results, "absent_from_profile": dict(absent),
             "agreement": (sum(r["agree"] for r in scored) / len(scored)) if scored else None,
@@ -570,6 +620,14 @@ def _p(r: dict) -> str:
     return f"{r['p']:.2f}" if isinstance(r.get("p"), (int, float)) else "—"
 
 
+def print_second_opinions(results: list[dict]) -> None:
+    fast = [r for r in results if r.get("decided_by") == "fast"]
+    if fast:
+        print(f"\nDecided by the fast second opinion ({len(fast)}): "
+              + ", ".join(f"{r.get('id') or r.get('label', '')[:40]} ({r['outcome'] if 'outcome' in r else r['got']})"
+                          for r in fast))
+
+
 def print_picks(engine: str, results: list[dict]) -> None:
     print(f"\n### Labelled picks — {engine}\n")
     print("| policy | cases | right (matched / closest / assumed) | abstained (answer expected) | abstained (right) "
@@ -593,6 +651,7 @@ def print_picks(engine: str, results: list[dict]) -> None:
                   f"at p={_p(r)}")
         elif r["outcome"] in ("jev_failed", "model_failed"):
             print(f"- {r['outcome']} [{r['policy']}] {r['id']}: {r['reason']}")
+    print_second_opinions(results)
 
 
 def print_steps(engine: str, results: list[dict]) -> None:
@@ -610,6 +669,7 @@ def print_steps(engine: str, results: list[dict]) -> None:
                   f"{r['said']} at p={_p(r)})")
         elif r["outcome"] in ("jev_failed", "model_failed"):
             print(f"- {r['outcome']} [{r['policy']}] {r['id']}: {r['reason']}")
+    print_second_opinions(results)
 
 
 def print_map(report: dict) -> None:
@@ -624,6 +684,7 @@ def print_map(report: dict) -> None:
             p = f"{r['p']:.2f}" if isinstance(r["p"], float) else "—"
             label = r["label"].replace("|", "¦")[:140]
             print(f"| {label} | {r['rule_slot']} | {r['got']} | {p} |")
+    print_second_opinions(report["rows"])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -631,8 +692,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--db", type=Path, required=True,
                     help="a COPY of the database (never a file under a checkout's data/ or DATA_DIR)")
     ap.add_argument("--part", choices=["map", "pick", "step", "all"], default="all")
-    ap.add_argument("--engines", default="jev,fast")
-    ap.add_argument("--map-engine", default="jev")
+    ap.add_argument("--engines", default="jev,fast,routed", help="any of jev (alone), fast, routed (production)")
+    ap.add_argument("--map-engine", default="routed")
     ap.add_argument("--base", default=None)
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--only", default=None, help="comma-separated case ids (a smoke run)")

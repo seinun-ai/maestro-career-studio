@@ -953,3 +953,134 @@ def test_keen_lives_beside_the_low_stakes_scope():
 
     assert "previously employed" in autofill_map.keen({})
     assert autofill_pick.keen is autofill_map.keen  # one definition, imported
+
+
+# ---------- the fast model decides when Jev is unsure (owner, 2026-09-27)
+
+SECOND = "autofill-map-second"
+
+
+def second_opinions(prompts):
+    return [p for p in prompts if p["trace_name"] == SECOND]
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("jev_says", [("work_auth.sponsorship_now", 0.7), ("none", 0.95), None])
+def test_when_jev_is_unsure_the_fast_model_decides_at_the_same_floors(db_session, monkeypatch, jev_says):
+    """Jev under the slot's floor, Jev's "no fact", or no readable answer: one
+    fast-model call decides, and its answer must clear the same floor."""
+    calls = fake_jev(monkeypatch, {"s": jev_says} if jev_says else {})
+    if jev_says is None:
+        monkeypatch.setattr(autofill_map.jev, "decide", lambda q, s, session=None: calls.append(1) or {})
+    prompts = fake_llm(monkeypatch, {"s": {"key": "work_auth.sponsorship_now", "confidence": 0.95}})
+    got = run([field("s", "Will you need sponsorship?", "select")], db_session)
+    assert (got["s"].route, got["s"].slot, got["s"].value) == ("slot", "work_auth.sponsorship_now", "No")
+    [asked] = second_opinions(prompts)
+    assert '"s"' in asked["prompt"] and "personal: city" in asked["prompt"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_fast_second_opinion_under_the_floor_leaves_the_field_none(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"s": ("work_auth.sponsorship_now", 0.7)})
+    prompts = fake_llm(monkeypatch, {"s": {"key": "work_auth.sponsorship_now", "confidence": 0.85}})
+    assert run([field("s", "Sponsorship?", "select")], db_session)["s"].route == "none"
+    assert len(second_opinions(prompts)) == 1
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("failure", [llm.LLMProviderError("down"), ValueError("not JSON after retries")])
+def test_a_failed_second_opinion_keeps_jevs_map(db_session, monkeypatch, failure):
+    fake_jev(monkeypatch, {"a": ("personal.city", 0.9), "s": ("work_auth.sponsorship_now", 0.7)})
+
+    def down(**kw):
+        raise failure
+
+    monkeypatch.setattr(autofill_map.llm, "call_openai", down)
+    got = run([field("a", "City"), field("s", "Sponsorship?", "select")], db_session)
+    assert (got["a"].route, got["s"].route) == ("slot", "none")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_no_second_opinion_once_the_budget_is_spent(db_session, monkeypatch):
+    ticks = iter([0.0] + [autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1] * 10)
+    monkeypatch.setattr(autofill_map, "_clock", lambda: next(ticks))
+    fake_jev(monkeypatch, {"s": ("work_auth.sponsorship_now", 0.7)})
+    prompts = fake_llm(monkeypatch, {"s": {"key": "work_auth.sponsorship_now", "confidence": 0.99}})
+    assert run([field("s", "Sponsorship?", "select")], db_session)["s"].route == "none"
+    assert second_opinions(prompts) == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_is_one_bounded_call_for_the_unsure_fields_only(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map, "_clock", lambda: 2.0)
+    fake_jev(monkeypatch, {"a": ("personal.city", 0.9), "s": ("work_auth.sponsorship_now", 0.7),
+                           "n": ("none", 0.95)})
+    prompts = fake_llm(monkeypatch, {"s": {"key": "work_auth.sponsorship_now", "confidence": 0.95},
+                                     "a": {"key": "preferences.how_heard", "confidence": 0.99}})
+    got = run([field("a", "City"), field("s", "Sponsorship?", "select"), field("n", "Anything else?", "select")],
+              db_session)
+    # A field Jev placed is Jev's, whatever the fast model would say.
+    assert (got["a"].slot, got["s"].slot, got["n"].route) == ("personal.city", "work_auth.sponsorship_now", "none")
+    [asked] = second_opinions(prompts)
+    fields = json.loads(asked["prompt"].split("Fields:\n", 1)[1])
+    assert [f["id"] for f in fields] == ["s", "n"]
+    assert asked["max_retries"] == 0 and 1 <= asked["timeout"] <= autofill_map.REQUEST_BUDGET_S
+    assert not [v for v in VALUES if v in asked["prompt"]]
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("key", [PROTECTED, HISTORY, "blocked_eeo", "free_text"])
+def test_jevs_protected_history_eeo_and_free_text_answers_never_reach_the_second_opinion(
+        db_session, monkeypatch, key):
+    fake_jev(monkeypatch, {"q": (key, 0.3)})
+    prompts = fake_llm(monkeypatch, {"q": {"key": "work_auth.sponsorship_now", "confidence": 0.99}})
+    got = run([field("q", "Will you now or in the future require sponsorship?", "popup")], db_session)
+    assert got["q"].route == "none"
+    assert second_opinions(prompts) == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_foreign_entry_never_reaches_the_second_opinion(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"f": ("none", 0.95)})
+    prompts = fake_llm(monkeypatch, {"f": {"key": "experience.0.employer", "confidence": 0.99}})
+    got = run([field("f", "Employer", profile_entry=None, entry_kind="experience")], db_session)
+    assert got["f"].route == "none" and second_opinions(prompts) == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_is_placed_like_jevs_answer(db_session, monkeypatch):
+    """Where an entry sits is code's: the fast model's entry number is replaced
+    by the entry's profile_entry, and a fact of another kind is none."""
+    fake_jev(monkeypatch, {"s": ("none", 0.95), "k": ("none", 0.95)})
+    fake_llm(monkeypatch, {"s": {"key": "education.0.school", "confidence": 0.9},
+                           "k": {"key": "experience.0.employer", "confidence": 0.9}})
+    got = run([field("s", "School", profile_entry=1, entry_kind="education"),
+               field("k", "School", profile_entry=1, entry_kind="education")], db_session)
+    assert (got["s"].slot, got["s"].value) == ("education.1.school", "City College")
+    assert got["k"].route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("fast_says", [("work_auth.sponsorship_now", 0.7), (PROTECTED, 0.9), ("blocked_eeo", 0.9)])
+def test_a_second_opinion_naming_anything_but_no_fact_is_never_a_low_stakes_guess(
+        db_session, monkeypatch, fast_says):
+    calls = fake_jev(monkeypatch, {"q": ("none", 0.95)}, noul={"q": 0.99})
+    fake_llm(monkeypatch, {"q": {"key": fast_says[0], "confidence": fast_says[1]}}, yes={"q": 0.99})
+    got = run([field("q", "Will you need sponsorship?", "popup", options=["Yes", "No"])], db_session,
+              low_stakes=True)
+    assert got["q"].route == "none"
+    assert not [c for c in calls if any(q["type"] == "noul" for q in c["questions"].values())]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_second_opinion_that_agrees_no_fact_answers_keeps_the_low_stakes_pass(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"t": ("none", 0.95)}, noul={"t": 0.99})
+    prompts = fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.9}})
+    got = run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
+    assert got["t"].route == "low_stakes" and len(second_opinions(prompts)) == 1
+
+
+def test_the_fast_engine_asks_no_second_opinion(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, {"s": {"key": "work_auth.sponsorship_now", "confidence": 0.7}})
+    assert run([field("s", "Sponsorship?", "select")], db_session)["s"].route == "none"
+    assert [p["trace_name"] for p in prompts] == ["autofill-map"]

@@ -289,3 +289,55 @@ def _collecting(into):
             return decorate(fn)
         return wrap
     return listens_for
+
+
+# ---------- engines: `jev` is Jev alone, `routed` is production (Jev, then one fast second opinion)
+
+
+def _jev_says_none(monkeypatch):
+    from app.services import jev
+    from tests.test_autofill_choose_jev import _answer
+
+    monkeypatch.setattr(jev, "decide", lambda questions, *_a, **_k: {
+        k: _answer(q["criteria"], "none" if "none" in q["criteria"] else "give_up", 0.9)
+        for k, q in questions.items()})
+
+
+def test_a_jev_pass_is_jev_alone(monkeypatch):
+    from app.services import autofill_pick
+
+    _jev_says_none(monkeypatch)
+    monkeypatch.setattr(autofill_pick, "fast_json", lambda *_a, **_k: pytest.fail("the fast model answered"))
+    case = next(c for c in PICKS["cases"] if c["id"] == "authorized-yes")
+    result = ev.run_pick(case, ev.Run("jev"), None, PICKS["today"])
+    assert (result["outcome"], result["decided_by"]) == ("abstained", "jev")
+
+
+def test_a_routed_pass_scores_the_second_opinion_and_says_who_decided(monkeypatch):
+    from app.services import autofill_pick, autofill_step
+
+    second = autofill_pick._second_opinion
+    _jev_says_none(monkeypatch)
+    monkeypatch.setattr(autofill_pick, "fast_json", lambda *_a, **_k: {
+        "picks": {"c1": {"oids": ["o1"], "confidence": 0.95}}})
+    case = next(c for c in PICKS["cases"] if c["id"] == "authorized-yes")
+    result = ev.run_pick(case, ev.Run("routed"), None, PICKS["today"])
+    assert (result["outcome"], result["decided_by"]) == ("right", "fast")
+    assert autofill_pick._second_opinion is second   # restored
+
+    monkeypatch.setattr(autofill_step, "fast_json", lambda *_a, **_k: {"move": "open", "confidence": 0.9})
+    case = next(c for c in STEPS["cases"] if c["id"] == "closed-popup-open")
+    result = ev.run_step(case, ev.Run("routed"), None, STEPS["today"])
+    assert (result["outcome"], result["decided_by"]) == ("right", "fast")
+
+
+def test_a_routed_pass_still_counts_a_jev_failure(monkeypatch):
+    from app.services import autofill_pick, jev, llm
+
+    def down(*_a, **_k):
+        raise llm.LLMProviderError("Jev could not be reached.")
+
+    monkeypatch.setattr(jev, "decide", down)
+    monkeypatch.setattr(autofill_pick, "fast_json", lambda *_a, **_k: pytest.fail("the fast model answered"))
+    case = next(c for c in PICKS["cases"] if c["id"] == "authorized-yes")
+    assert ev.run_pick(case, ev.Run("routed"), None, PICKS["today"])["outcome"] == "jev_failed"

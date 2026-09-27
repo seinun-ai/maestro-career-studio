@@ -523,6 +523,26 @@ know, and each one was learned from a live failure.
   citizen is Yes, a green card or any visa No, no status nothing), and —
   when your earliest start date says immediately or ASAP — that date as
   today, for a date box. Each is absent when what it comes from is.
+- **Which engine decides.** On the Jev engine (Settings › AI & models ›
+  Form filling), /map, /pick and /step ask Jev first. The fast model
+  decides a request's fields in two cases, always at the same floors:
+  when the Jev call fails, and as ONE second opinion per request for the
+  fields Jev was unsure of. For /map, "unsure" means no readable answer,
+  "no fact", or a fact under its slot's floor. For /pick it means a
+  fact pick Jev abstained on; `exact` still refuses a near miss and a
+  flag slot's nearest option is still `closest`. For /step it means a
+  slot field whose move Jev gave up on or chose under its floor. The
+  second opinion is sent exactly what Jev was sent: labels and fact
+  descriptions for /map, and the slot's own value for /pick and /step.
+  It is one call, with no retries, on what is left of the request's one
+  `Budget`. Out of time or failed, Jev's none stands. Jev's own
+  protected, history, EEO and free-text answers are never asked again,
+  and an entry field /sections placed nowhere is never asked at all. A
+  second opinion is placed by the same `profile_entry` rule, and a field
+  it names as anything but "no fact" never becomes a low-stakes or
+  reasoned guess. The low-stakes and reasoned routes keep their engines.
+  Which engine decided is logged, not reported: no response or telemetry
+  field carries an engine.
 - **Two kinds of answer are the Companion's own**, both listed under
   "Answered for you: check each one" (`assumed`). Both are for a CHOICE only
   (a list, radios, a dropdown: nothing is typed), and only when /map's answer
@@ -590,8 +610,8 @@ know, and each one was learned from a live failure.
      never handed to the adaptive step (/step has no history): its abstain,
      or a list that showed no options, is yours; a surprise on commit is
      retried like a native list's.
-  Both passes are optional and bounded by the request's one `Budget`
-  (`autofill_map`): once a request has spent 6 s
+  Both passes, like the second opinion above, are optional and bounded
+  by the request's one `Budget` (`autofill_map`): once a request has spent 6 s
   (`OPTIONAL_PASS_BUDGET_S`), a pass not yet begun is skipped and its fields
   stay yours, and one that runs is a single request with no retries and a
   real timeout of what is left of 9 s (`REQUEST_BUDGET_S`), so /map and

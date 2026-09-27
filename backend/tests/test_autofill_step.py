@@ -18,6 +18,13 @@ FACTS = autofill_catalog.build(
 GIVE_UP = "give_up"
 
 
+@pytest.fixture(autouse=True)
+def _no_real_fast_model(monkeypatch):
+    """A Jev give-up gets a fast-model second opinion: a test that fakes only
+    Jev must never reach a real provider. It gives up unless a test fakes it."""
+    monkeypatch.setattr(autofill_step.llm, "call_openai", lambda **kw: {})
+
+
 def cands(*mids):
     return [{"mid": m, "describe": f"Move {m}"} for m in mids]
 
@@ -337,3 +344,96 @@ def test_with_worked_here_the_low_stakes_step_drops_the_previously_employed_no(d
                        facts, db_session, None)
     assert "previously employed by" not in prompts[0].split("Otherwise")[1]   # the scope and the keen answer
     assert "their history says they did" in prompts[0]
+
+
+# ---------- the fast model decides when Jev is unsure (owner, 2026-09-27)
+
+SECOND = "autofill-step-second"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("jev_says", [(GIVE_UP, 0.9), ("click:o1", 0.8), ("open", 0.45)])
+@pytest.mark.parametrize("fast_says, expected", [
+    ({"move": "click:o1", "confidence": 0.9}, {"mid": "click:o1", "reason": "matched"}),
+    ({"move": "click:o1", "confidence": 0.84}, {"mid": None, "reason": "abstained"}),  # under 0.85, view incomplete
+    ({"move": "search:value", "confidence": 0.5}, {"mid": "search:value", "reason": "progress"}),
+    ({"move": "open", "confidence": 0.49}, {"mid": None, "reason": "abstained"}),  # under PROGRESS_FLOOR
+    ({"move": GIVE_UP, "confidence": 0.99}, {"mid": None, "reason": "abstained"}),
+])
+def test_when_jev_gives_up_the_fast_model_decides_at_the_same_floors(db_session, monkeypatch, jev_says,
+                                                                     fast_says, expected):
+    fake_jev(monkeypatch, jev_says)
+    prompts = fake_llm(monkeypatch, fast_says)
+    assert step(req(slot="education.0.discipline"), db_session) == expected
+    assert [p["trace_name"] for p in prompts] == [SECOND]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_never_takes_an_exact_near_miss(db_session, monkeypatch):
+    r = req(slot="work_auth.sponsorship_now", complete=True)
+    fake_jev(monkeypatch, (GIVE_UP, 0.9))
+    fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.85})
+    assert step(r, db_session) == {"mid": None, "reason": "abstained"}
+    fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.95})
+    assert step(r, db_session) == {"mid": "click:o1", "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("failure", [llm.LLMProviderError("down"), ValueError("not JSON after retries")])
+def test_a_failed_second_opinion_keeps_jevs_give_up(db_session, monkeypatch, failure):
+    fake_jev(monkeypatch, (GIVE_UP, 0.9))
+
+    def down(**kw):
+        raise failure
+
+    monkeypatch.setattr(autofill_step.llm, "call_openai", down)
+    assert step(req(slot="education.0.discipline"), db_session) == {"mid": None, "reason": "abstained"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_no_second_opinion_once_the_budget_is_spent(db_session, monkeypatch):
+    ticks = iter([0.0] + [autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1] * 10)
+    monkeypatch.setattr(autofill_map, "_clock", lambda: next(ticks))
+    fake_jev(monkeypatch, (GIVE_UP, 0.9))
+    prompts = fake_llm(monkeypatch, {"move": "open", "confidence": 0.99})
+    assert step(req(slot="education.0.discipline"), db_session) == {"mid": None, "reason": "abstained"}
+    assert prompts == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_is_bounded_and_sees_what_jev_saw(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map, "_clock", lambda: 2.0)
+    calls = fake_jev(monkeypatch, (GIVE_UP, 0.9))
+    prompts = fake_llm(monkeypatch, {"move": "open", "confidence": 0.7})
+    r = req(slot="education.0.discipline", history=["open -> no_effect"])
+    assert step(r, db_session) == {"mid": "open", "reason": "progress"}
+    [asked] = prompts
+    assert asked["max_retries"] == 0 and 1 <= asked["timeout"] <= autofill_map.REQUEST_BUDGET_S
+    question = calls[0]["questions"]["f"]
+    assert question["instructions"] in asked["prompt"]
+    assert json.dumps(question["criteria"]) in asked["prompt"]
+    assert json.dumps(calls[0]["state"]) in asked["prompt"]
+    assert "Python" not in asked["prompt"] and "SQL" not in asked["prompt"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_move_jev_took_is_jevs(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("search:value", 0.6))
+    prompts = fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.99})
+    assert step(req(slot="education.0.discipline"), db_session) == {"mid": "search:value", "reason": "progress"}
+    assert prompts == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_low_stakes_step_keeps_its_engine(db_session, monkeypatch):
+    model_settings.set_autofill_low_stakes(db_session, True)
+    fake_jev(monkeypatch, (GIVE_UP, 0.9))
+    prompts = fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.99})
+    assert step(req(route="low_stakes"), db_session) == {"mid": None, "reason": "abstained"}
+    assert prompts == []
+
+
+def test_the_fast_engine_asks_no_second_opinion(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, {"move": GIVE_UP, "confidence": 0.9})
+    assert step(req(slot="education.0.discipline"), db_session)["reason"] == "abstained"
+    assert [p["trace_name"] for p in prompts] == ["autofill-step"]

@@ -13,7 +13,9 @@ fact comes from the SLOT, server-side; the request carries none. Low-stakes
 (setting re-checked here, never trusted from the client) is only for a field
 with no slot, and states the never-list; its answer click is `assumed` at
 ASSUMED_FLOOR (0.4) and its other moves need PROGRESS_FLOOR like any field's.
-The fast model is the same-floors fallback.
+The fast model is the same-floors fallback when Jev fails and, for a slot
+field, ONE second opinion when Jev gives up or its move is under its floor, on
+the request's `Budget` (out of time or failed, Jev's give-up stands).
 """
 
 import json
@@ -26,7 +28,7 @@ from app.schemas.autofill_fill import StepRequest, StepResponse
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
-from app.services.autofill_map import fast_json, keen, low_stakes_rule
+from app.services.autofill_map import Budget, fast_json, keen, low_stakes_rule
 from app.services.autofill_pick import JobHint, values_for, verdict
 
 logger = logging.getLogger(__name__)
@@ -79,7 +81,36 @@ def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, fac
             f"Give up when no move will. {_PAGE_TEXT_IS_DATA}")
 
 
+def _with_llm(req: StepRequest, instructions: str, state: dict, criteria: dict[str, str], policy: str,
+              session: Session, trace_name: str = "autofill-step", *, timeout: float | None = None) -> StepResponse:
+    raw = fast_json(session, _LLM_PROMPT.format(
+        instructions=instructions, state=json.dumps(state), moves=json.dumps(criteria)), trace_name, timeout=timeout)
+    raw = raw if isinstance(raw, dict) else {}
+    mid = raw.get("move") if isinstance(raw.get("move"), str) and raw.get("move") in criteria else None
+    conf = raw.get("confidence")
+    return _decide(req, mid, float(conf) if jev._unit(conf) else 0.0, policy)
+
+
+def _second_opinion(req: StepRequest, instructions: str, state: dict, criteria: dict[str, str], policy: str,
+                    session: Session, budget: Budget) -> StepResponse:
+    """ONE fast-model move for a slot field Jev gave up on, on what is left of
+    the request's budget, at the same floors. Out of time or failed, Jev's
+    give-up stands."""
+    if (timeout := budget.left()) is None:
+        return ABSTAIN
+    try:
+        second = _with_llm(req, instructions, state, criteria, policy, session, "autofill-step-second",
+                           timeout=timeout)
+    except llm.LLMProviderError:
+        logger.warning("fast model second opinion failed; Jev's give-up stands")
+        return ABSTAIN
+    if second != ABSTAIN:
+        logger.info("step: the fast model decided a move Jev gave up on")
+    return second
+
+
 def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None) -> StepResponse:
+    budget = Budget()
     if req.route == "low_stakes":
         # Re-checked here, not trusted from the client; and a field naming a
         # slot is a fact field — a keen-applicant guess would answer it.
@@ -95,16 +126,16 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
     instructions = _instructions(req, values, hint, facts)
     state = {"job": asdict(hint) if hint else None, "history": req.history}
-    if model_settings.get_autofill_engine(session) == "jev":
-        try:
-            answer = jev.decide({req.fid: jev.choice_question(instructions, criteria)}, state, session)
-            got = jev.choice_of(answer.get(req.fid), criteria)
-            return _decide(req, got.choice if got else None, got.probability if got else 0.0, policy)
-        except llm.LLMProviderError:
-            logger.warning("jev step failed; the fast model decides this move")
-    raw = fast_json(session, _LLM_PROMPT.format(
-        instructions=instructions, state=json.dumps(state), moves=json.dumps(criteria)), "autofill-step")
-    raw = raw if isinstance(raw, dict) else {}
-    mid = raw.get("move") if isinstance(raw.get("move"), str) and raw.get("move") in criteria else None
-    conf = raw.get("confidence")
-    return _decide(req, mid, float(conf) if jev._unit(conf) else 0.0, policy)
+    if model_settings.get_autofill_engine(session) != "jev":
+        return _with_llm(req, instructions, state, criteria, policy, session)
+    try:
+        answer = jev.decide({req.fid: jev.choice_question(instructions, criteria)}, state, session)
+    except llm.LLMProviderError:
+        logger.warning("jev step failed; the fast model decides this move")
+        return _with_llm(req, instructions, state, criteria, policy, session)
+    got = jev.choice_of(answer.get(req.fid), criteria)
+    decided = _decide(req, got.choice if got else None, got.probability if got else 0.0, policy)
+    # A low-stakes step keeps its engine.
+    if decided != ABSTAIN or req.route != "slot":
+        return decided
+    return _second_opinion(req, instructions, state, criteria, policy, session, budget)

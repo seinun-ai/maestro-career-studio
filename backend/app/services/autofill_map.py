@@ -3,7 +3,10 @@
 One batched Jev Choice per field over fact DESCRIPTIONS (never values) plus
 sentinels; code looks values up afterwards. The fast model does the same job
 in JSON — with a 0–1 confidence that must clear the SAME floors — when the
-engine is `fast` or a Jev call fails.
+engine is `fast` or a Jev call fails, and as ONE second opinion (on the
+request's `Budget`) for the fields Jev was unsure of: no readable answer, "no
+fact", or a fact under its floor. Jev's protected, history, EEO and free-text
+answers are its own and never asked again.
 
 Low-stakes (setting on, decided by the caller from the server-side setting) is
 a SECOND pass, asked only for fields whose best answer was an explicit,
@@ -54,7 +57,7 @@ HISTORY_UNANSWERED = "history_unanswered"
 LOW_STAKES_FLOOR = 0.8
 ANSWERABLE_FLOOR = 0.8
 # Seconds since the request began after which no optional pass starts, and
-# the whole request's budget (the loop waits 10 s for /map and /pick; one
+# the whole request's budget (the loop waits 10 s for /map, /pick and /step; one
 # fast-model call is typically 1–3 s). An optional call's timeout is what is
 # left of the budget, never under MIN_CALL_S.
 OPTIONAL_PASS_BUDGET_S = 6.0
@@ -212,10 +215,11 @@ def fast_json(session: Session, prompt: str, trace_name: str, *, timeout: float 
         raise llm.LLMProviderError("The AI model sent an answer we couldn't read.", str(exc)) from exc
 
 
-def _with_llm(fields, criteria, session) -> dict[str, tuple[str, float]]:
+def _with_llm(fields, criteria, session, trace_name="autofill-map", *,
+              timeout: float | None = None) -> dict[str, tuple[str, float]]:
     raw = fast_json(session, _LLM_PROMPT.format(
         rule=_PAGE_TEXT_IS_DATA, criteria="\n".join(f"- {k}: {v}" for k, v in criteria.items()),
-        fields=json.dumps(_payload(fields))), "autofill-map")
+        fields=json.dumps(_payload(fields))), trace_name, timeout=timeout)
     mapped = raw.get("map") if isinstance(raw, dict) else None
     asked = {f.fid for f in fields}
     out = {}
@@ -229,7 +233,7 @@ def _with_llm(fields, criteria, session) -> dict[str, tuple[str, float]]:
 
 
 class Budget:
-    """One request's time (/map, /pick): created when the request begins,
+    """One request's time (/map, /pick, /step): created when the request begins,
     asked before each optional call. `clock` is injectable; by default this
     module's `_clock`, read at each call so one patch reaches every request."""
 
@@ -370,6 +374,39 @@ def _said_no_fact(picked: tuple[str, float] | None, *, history: bool = False) ->
     return (key == NO_SLOT or (history and key == HISTORY_UNANSWERED)) and p >= SLOT_FLOOR
 
 
+def _unsure(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact]) -> bool:
+    """Jev left this field to no one: no readable answer, "no fact", or a fact
+    under its floor. Its protected, history, EEO and free-text answers are
+    classifications, not doubts, and a foreign entry is code's none."""
+    if _foreign(field):
+        return False
+    if picked is None:
+        return True
+    key, p = picked
+    return key == NO_SLOT or (key in facts and p < _floor(facts[key]))
+
+
+def _second_opinion(fields: list[MapField], criteria: dict[str, str], session: Session,
+                    budget: Budget) -> dict[str, tuple[str, float]]:
+    """ONE fast-model map of the fields Jev was unsure of, on what is left of
+    the request's budget. Out of time or failed, Jev's none stands."""
+    timeout = budget.left()
+    if not fields or timeout is None:
+        return {}
+    try:
+        return _with_llm(fields, criteria, session, "autofill-map-second", timeout=timeout)
+    except llm.LLMProviderError:
+        logger.warning("fast model second opinion failed; Jev's none stands")
+        return {}
+
+
+def _agrees_no_fact(second: tuple[str, float] | None, *, history: bool) -> bool:
+    """A second opinion keeps a field a guess candidate only by not naming
+    anything else: a fact (at any probability), a protected, EEO or free-text
+    kind keep it the user's. Silence says nothing."""
+    return second is None or second[0] == NO_SLOT or (history and second[0] == HISTORY_UNANSWERED)
+
+
 def _has_history(facts: dict[str, Fact]) -> bool:
     return any((m := _ENTRY.fullmatch(slot)) and m[1] in _HISTORY_KINDS for slot in facts)
 
@@ -378,7 +415,7 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
                eeo_consented: bool, low_stakes: bool) -> dict[str, Mapped]:
     budget = Budget()
     criteria = _criteria(facts)
-    picked = None
+    picked, second = None, {}
     if model_settings.get_autofill_engine(session) == "jev":
         try:
             picked = _with_jev(fields, criteria, session)
@@ -386,11 +423,21 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
             logger.warning("jev map failed; the fast model maps this batch")
     if picked is None:
         picked = _with_llm(fields, criteria, session)
+    else:
+        second = _second_opinion([f for f in fields if _unsure(f, picked.get(f.fid), facts)],
+                                 criteria, session, budget)
     out = {f.fid: _route(f, picked.get(f.fid), facts, eeo_consented=eeo_consented) for f in fields}
+    by_fid = {f.fid: f for f in fields}
+    decided = {fid: routed for fid, answer in second.items()
+               if (routed := _route(by_fid[fid], answer, facts, eeo_consented=eeo_consented)).route != "none"}
+    if decided:
+        logger.info("map: the fast model decided %d of %d fields Jev was unsure of", len(decided), len(second))
+    out |= decided
 
     def leftovers(*, history: bool) -> list[MapField]:
         return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
-                and not _foreign(f) and _said_no_fact(picked.get(f.fid), history=history)]
+                and not _foreign(f) and _said_no_fact(picked.get(f.fid), history=history)
+                and _agrees_no_fact(second.get(f.fid), history=history)]
 
     # Out of time (`budget.left()`), a pass asks nothing: the open questions stay the user's.
     if low_stakes:

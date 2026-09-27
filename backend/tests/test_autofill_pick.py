@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.schemas.autofill_fill import PickField, PickOption
@@ -9,6 +11,14 @@ FACTS = autofill_catalog.build(
     {"education": [{"discipline": "Business Analytics"}], "work_auth": {"sponsorship_now": False},
      "preferences": {"how_heard": "Referral"}},
     [], ["Python", "SQL", "Tableau"])
+
+
+@pytest.fixture(autouse=True)
+def _no_real_fast_model(monkeypatch):
+    """Jev's abstentions get a fast-model second opinion: a test that fakes
+    only Jev must never reach a real provider. It says none unless a test
+    fakes it (`fake_llm`)."""
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", lambda **kw: {})
 
 
 def opts(*texts):
@@ -825,3 +835,110 @@ def test_the_pick_budget_is_the_maps_one_budget(db_session, monkeypatch):
     pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session)
     assert prompts[0]["timeout"] == pytest.approx(autofill_map.REQUEST_BUDGET_S - 3.0)
     assert not hasattr(autofill_pick, "_clock")
+
+
+# ---------- the fast model decides when Jev is unsure (owner, 2026-09-27)
+
+SECOND = "autofill-pick-second"
+DISCIPLINE = "education.0.discipline"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("jev_says", [("none", 0.95), ("o2", 0.4)])
+@pytest.mark.parametrize("fast_says, expected", [
+    ({"oids": ["o2"], "confidence": 0.9}, (["o2"], "matched")),
+    ({"oids": ["o2"], "confidence": 0.6}, (["o2"], "closest")),  # flag, complete: "check it"
+    ({"oids": ["o2"], "confidence": 0.4}, ([], "abstained")),  # under the closest floor
+    ({"oids": [], "confidence": 0.9}, ([], "abstained")),
+])
+def test_when_jev_abstains_the_fast_model_decides_at_the_same_floors(db_session, monkeypatch, jev_says,
+                                                                      fast_says, expected):
+    fake_jev(monkeypatch, {"m": jev_says})
+    prompts = fake_llm(monkeypatch, {"m": fast_says})
+    got = pick([pf("m", slot=DISCIPLINE, options=opts("Accounting", "Information Systems"))], db_session)
+    assert (got["m"].oids, got["m"].reason) == expected
+    assert [p["trace_name"] for p in prompts] == [SECOND]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_never_takes_an_exact_near_miss(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"s": ("none", 0.9)})
+    field = {"slot": "work_auth.sponsorship_now", "options": opts("Yes", "No, not now")}
+    fake_llm(monkeypatch, {"s": {"oids": ["o2"], "confidence": 0.8}})
+    assert pick([pf("s", **field)], db_session)["s"].reason == "abstained"
+    fake_llm(monkeypatch, {"s": {"oids": ["o2"], "confidence": 0.95}})
+    assert pick([pf("s", **field)], db_session)["s"].model_dump() == {"oids": ["o2"], "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("failure", [llm.LLMProviderError("down"), ValueError("not JSON after retries")])
+def test_a_failed_second_opinion_keeps_jevs_picks(db_session, monkeypatch, failure):
+    fake_jev(monkeypatch, {"a": ("o1", 0.95), "m": ("none", 0.9)})
+
+    def down(**kw):
+        raise failure
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", down)
+    got = pick([pf("a", slot=DISCIPLINE, options=opts("Business Analytics")),
+                pf("m", slot=DISCIPLINE, options=opts("Accounting"))], db_session)
+    assert (got["a"].reason, got["m"].reason) == ("matched", "abstained")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_no_second_opinion_once_the_budget_is_spent(db_session, monkeypatch):
+    ticks = iter([0.0] + [autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1] * 10)
+    monkeypatch.setattr(autofill_map, "_clock", lambda: next(ticks))
+    fake_jev(monkeypatch, {"m": ("none", 0.9)})
+    prompts = fake_llm(monkeypatch, {"m": {"oids": ["o1"], "confidence": 0.99}})
+    assert pick([pf("m", slot=DISCIPLINE, options=opts("Business Analytics"))], db_session)["m"].reason == "abstained"
+    assert prompts == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_is_one_bounded_call_for_jevs_abstained_fact_picks_only(db_session, monkeypatch):
+    """Low-stakes and reasoned fields keep their engines; a field Jev answered is Jev's."""
+    model_settings.set_autofill_low_stakes(db_session, True)
+    monkeypatch.setattr(autofill_map, "_clock", lambda: 2.0)
+    calls = fake_jev(monkeypatch, {"a": ("o1", 0.95), "m": ("none", 0.9), "n": ("o1", 0.3), "h": ("none", 0.9)})
+    prompts = fake_llm(monkeypatch, {"a": {"oids": [], "confidence": 1.0}, "m": {"oids": ["o1"], "confidence": 0.95},
+                                     "n": {"oids": ["o1"], "confidence": 0.95},
+                                     "h": {"oids": ["o1"], "confidence": 0.99}})
+    got = pick([pf("a", slot=DISCIPLINE, options=opts("Business Analytics")),
+                pf("m", slot=DISCIPLINE, options=opts("Business Analytics")),
+                pf("n", slot="skills", item="SQL", options=opts("SQL")),
+                pf("h", route="low_stakes", options=opts("LinkedIn"))], db_session)
+    assert {k: v.reason for k, v in got.items()} == {"a": "matched", "m": "matched", "n": "matched",
+                                                     "h": "abstained"}
+    [asked] = prompts
+    assert asked["trace_name"] == SECOND
+    assert asked["max_retries"] == 0 and 1 <= asked["timeout"] <= autofill_map.REQUEST_BUDGET_S
+    sent = json.loads(asked["prompt"].split("Fields: ", 1)[1])
+    assert [f["id"] for f in sent] == ["m", "n"]
+    # Exactly what Jev's state held for those fields: the slot's value, never another.
+    jev_state = {f["id"]: f["applicant_values"] for f in calls[0]["state"]["fields"]}
+    assert {f["id"]: f["applicant_values"] for f in sent} == {"m": jev_state["m"], "n": jev_state["n"]}
+    assert "Tableau" not in asked["prompt"] and "Python" not in asked["prompt"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_comes_before_the_reasoning_call(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"m": ("none", 0.9)})
+    order = []
+
+    def call_openai(**kw):
+        order.append(kw["trace_name"])
+        if kw["trace_name"] == "autofill-reasoned-pick":
+            return {"answers": {}}
+        return {"picks": {"m": {"oids": ["o1"], "confidence": 0.95}}}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No"),
+                             pf("m", slot="education.0.discipline", options=opts("Business Analytics"))], db_session)
+    assert got["m"].reason == "matched"
+    assert order == [SECOND, "autofill-reasoned-pick"]
+
+
+def test_the_fast_engine_asks_no_second_opinion(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, {"m": {"oids": [], "confidence": 0.9}})
+    assert pick([pf("m", slot=DISCIPLINE, options=opts("Accounting"))], db_session)["m"].reason == "abstained"
+    assert [p["trace_name"] for p in prompts] == ["autofill-pick"]
