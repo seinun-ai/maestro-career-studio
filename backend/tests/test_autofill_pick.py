@@ -496,8 +496,8 @@ def test_the_low_stakes_question_reads_as_one_sentence(db_session, monkeypatch):
     calls = fake_jev(monkeypatch)
     pick([pf("h", question="How did you hear?", route="low_stakes", options=opts("LinkedIn"))], db_session)
     text = calls[0]["questions"]["h"]["instructions"]
-    assert text.startswith('Which option of form field h ("How did you hear?") is the one an applicant keen on '
-                           "this job would choose (")
+    assert text.startswith('The applicant gave no answer to form field h ("How did you hear?"). If the field is '
+                           "about anything on this never-list, choose ")
     assert "would an applicant" not in text
 
 
@@ -513,12 +513,19 @@ def test_the_low_stakes_rule_names_its_scope_and_binds_only_low_stakes_fields(db
     pick([field], db_session)
     text = calls[0]["questions"]["x"]["instructions"]
     assert "self-assessment against the job description" in text and "fit and want this job" in text
+    # The exclusion comes first, with its own refusal, and the keen answer is scoped to the kinds listed.
+    assert text.index("never-list") < text.index("Otherwise a low_stakes field is") < text.index("fit and want")
+    assert "for a question in that scope" in text
+    assert "number of years of experience with a specific skill or tool" in text
+    assert calls[0]["questions"]["x"]["criteria"]["none"] == autofill_pick._LOW_STAKES_NONE_TEXT
+    assert f'choose "{autofill_pick._LOW_STAKES_NONE_TEXT}"' in text
     prompts = fake_llm(monkeypatch)
     model_settings.set_autofill_engine(db_session, "fast")
     pick([field], db_session)
     prompt = prompts[0]["prompt"]
     assert "self-assessment against the job description" in prompt
-    assert "for low_stakes fields only: a field with\napplicant_values is answered from its values" in prompt
+    assert "The never-list does not apply to a field with applicant_values: pick the option that states its value." \
+        in prompt
 
 
 # ---------- review: a negative answer must cover the whole period it speaks for
@@ -620,7 +627,7 @@ def test_with_worked_here_no_pick_prompt_says_answer_previously_employed_no(db_s
     autofill_pick.pick([pf("h", question="How did you hear?", route="low_stakes", options=opts("LinkedIn"))],
                        WORKED_HERE, db_session, None)
     text = calls[0]["questions"]["h"]["instructions"]
-    assert "previously employed" not in text.split("If the field asks about")[0]
+    assert "previously employed" not in text.split("Otherwise")[1]   # the scope and the keen answer
     assert "their history says they did" in text
     model_settings.set_autofill_engine(db_session, "fast")
     prompts = fake_llm(monkeypatch)

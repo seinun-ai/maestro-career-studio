@@ -67,10 +67,14 @@ def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, fac
     if req.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), that is the one."
                if hint and hint.source else "")
-        goal = f"the option {keen(facts)}.{src} {low_stakes_rule(facts)}, give up"
+        # The never-list first, as its own condition: see autofill_map.low_stakes_rule.
+        goal = (f"You are filling {field} on a job application; the applicant gave no answer to it. "
+                f"{low_stakes_rule(facts, 'give up (the "Stop" move)')}; for such a field, the goal is to select the option "
+                f"{keen(facts)}.{src}")
     else:
-        goal = f"the option that states the applicant value {json.dumps(values[0])}"
-    return (f"You are filling {field} on a job application. The goal is to select {goal}. "
+        goal = (f"You are filling {field} on a job application. The goal is to select the option that states "
+                f"the applicant value {json.dumps(values[0])}.")
+    return (f"{goal} "
             f"The moves tried so far are the state's history. Which next move gets closer to that goal? {CLICK_RULE} "
             f"Give up when no move will. {_PAGE_TEXT_IS_DATA}")
 

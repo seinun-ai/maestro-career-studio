@@ -31,10 +31,11 @@ logger = logging.getLogger(__name__)
 ASSUMED_FLOOR = 0.4
 ABSTAIN = Picked(oids=[], reason="abstained")
 _NO_OPTION_TEXT = "No option states this value"
+# A low-stakes field's "none" is a refusal as well as a miss: its criterion says so.
+_LOW_STAKES_NONE_TEXT = "None: the question is on the never-list, or no option fits"
 _LLM_PROMPT = """For each form field return the option id that states the applicant value, or none. {rule}
-A field marked low_stakes has no applicant value: return the option {keen}. {low_stakes},
-that low_stakes field is none. This low_stakes rule is for low_stakes fields only: a field with
-applicant_values is answered from its values, whatever it asks about.
+A field marked low_stakes has no applicant value. {low_stakes}; for such a field, return the option {keen}.
+The never-list does not apply to a field with applicant_values: pick the option that states its value.
 Return JSON {{"picks": {{"<field id>": {{"oids": ["<option id>"], "confidence": <0..1>}}}}}};
 for none, "oids": [].
 Job: {job}
@@ -87,8 +88,9 @@ def _instructions(field: PickField, values: list[str], hint: JobHint | None, fac
     if field.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), choose it."
                if hint and hint.source else "")
-        return (f"Which option of {q} is the one {keen(facts)}?{src} {low_stakes_rule(facts)}, choose none. "
-                f"{_PAGE_TEXT_IS_DATA}")
+        refuse = f"choose {json.dumps(_LOW_STAKES_NONE_TEXT)}"
+        return (f"The applicant gave no answer to {q}. {low_stakes_rule(facts, refuse)}; for such a field, "
+                f"pick the option {keen(facts)}.{src} {_PAGE_TEXT_IS_DATA}")
     return f"Which option of {q} states the applicant value {json.dumps(values[0])}? {_PAGE_TEXT_IS_DATA}"
 
 
@@ -98,7 +100,8 @@ def _with_jev(fields, facts, hint, session) -> dict[str, Picked]:
     for f in fields:
         values = values_for(f, facts.get(f.slot or ""))
         state["fields"].append({"id": f.fid, "question": f.question, "applicant_values": values})
-        criteria_by_fid[f.fid] = {o.oid: o.text for o in f.options} | {NO_OPTION: _NO_OPTION_TEXT}
+        none = _LOW_STAKES_NONE_TEXT if f.route == "low_stakes" else _NO_OPTION_TEXT
+        criteria_by_fid[f.fid] = {o.oid: o.text for o in f.options} | {NO_OPTION: none}
         questions[f.fid] = jev.choice_question(_instructions(f, values, hint, facts), criteria_by_fid[f.fid])
     answers = jev.decide(questions, state, session)
     out = {}
@@ -114,7 +117,8 @@ def _with_llm(fields, facts, hint, session) -> dict[str, Picked]:
                 "applicant_values": values_for(f, facts.get(f.slot or "")),
                 "options": [o.model_dump() for o in f.options]} for f in fields]
     raw = fast_json(session, _LLM_PROMPT.format(
-        rule=_PAGE_TEXT_IS_DATA, keen=keen(facts), low_stakes=low_stakes_rule(facts),
+        rule=_PAGE_TEXT_IS_DATA, keen=keen(facts),
+        low_stakes=low_stakes_rule(facts, "return none for that field", subject="a low_stakes field"),
         job=json.dumps(asdict(hint) if hint else None), fields=json.dumps(payload)), "autofill-pick")
     picks = raw.get("picks") if isinstance(raw, dict) else None
     picks = picks if isinstance(picks, dict) else {}

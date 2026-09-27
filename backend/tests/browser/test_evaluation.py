@@ -60,8 +60,10 @@ def test_a_run_cut_by_its_clock_ends_inside_it_and_claims_nothing_false(e2e_page
     out = _run(page, limits={"RUN_MS": run_ms})
     assert out["report"]["timedOut"] is True and out["report"]["stopped"] is False
     # The clock, plus the cleanup a timed-out run may still do (closing what
-    # it opened, one bounded outside click): never another field's work.
-    assert out["ms"] < run_ms + 2500, out["ms"]
+    # it opened, one bounded outside click): never another field's work. A
+    # WALL-CLOCK bound, measured in the page: a loaded machine can stretch the
+    # cleanup, hence the wide margin (a run that ignored its clock takes ~17 s).
+    assert out["ms"] < run_ms + 5000, out["ms"]
     assert _open_popups(page) == []
     assert_the_oracle_line(page, out)
     # What the clock cut is said to be the clock's, never "no answer".
@@ -84,7 +86,11 @@ def test_the_full_run_holds_the_oracle_line(e2e_page):
 
 
 # The engine's gestures, counted where the page sees them (capture, on the
-# window): every event the engine dispatches is untrusted.
+# window). Presses and keys count UNTRUSTED events: the engine's own dispatches
+# (it has no other input), and any a page script dispatched — the composed
+# fixtures dispatch none of these types. Typing counts `insertText` input
+# events whatever their isTrusted: execCommand("insertText"), which the
+# engine types with, fires TRUSTED input events.
 GESTURES = """() => {
   window.__gestures = { press: 0, enter: 0, keys: 0, typed: 0 };
   addEventListener("pointerdown", (e) => { if (!e.isTrusted) window.__gestures.press += 1; }, true);

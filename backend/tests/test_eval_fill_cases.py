@@ -13,8 +13,9 @@ STEPS = ev.load_cases(ev.STEP_CASES)
 
 
 def test_the_case_files_hold_the_plans_counts():
-    assert 38 <= len(PICKS["cases"]) <= 60
-    assert 18 <= len(STEPS["cases"]) <= 30
+    assert 38 <= len(PICKS["cases"]) <= 70
+    assert 18 <= len(STEPS["cases"]) <= 45
+    assert STEPS["today"] == PICKS["today"]
     for cases in (PICKS["cases"], STEPS["cases"]):
         ids = [c["id"] for c in cases]
         assert len(ids) == len(set(ids)), [i for i, n in Counter(ids).items() if n > 1]
@@ -27,6 +28,10 @@ def test_every_pick_case_is_well_formed(case):
     facts = ev.case_facts(case, PICKS["today"])
     if case.get("slot"):
         assert facts[case["slot"]].policy == policy_for(case["slot"])
+    # Only a case whose history lists the job's company carries "worked here".
+    listed = any(j["employer"] == ev.HINT_COMPANY for j in (case.get("history") or {}).get("jobs", []))
+    if case.get("slot") != "derived.previously_employed_here":
+        assert ("derived.previously_employed_here" in facts) is listed
 
 
 @pytest.mark.parametrize("case", STEPS["cases"], ids=lambda c: c["id"])
@@ -45,11 +50,15 @@ def test_the_plans_labelled_cases_are_there():
     on, off = by_id["low-stakes-jd-experience-on"], by_id["low-stakes-jd-experience-off"]
     assert (on["question"], on["low_stakes"], off["low_stakes"]) == (off["question"], "on", "off")
     assert (on["expected"], off["expected"]) == ("Yes", None)
-    policies = Counter(ev.pick_policy(c) for c in PICKS["cases"])
+    policies = Counter(ev.policy_of(c) for c in PICKS["cases"])
     assert all(policies[p] >= 2 for p in ("exact", "flag", "any", "low_stakes", "reasoned")), policies
     # Abstaining is the right answer somewhere in each kind that can abstain.
-    assert {ev.pick_policy(c) for c in PICKS["cases"] if c["expected"] is None} >= {"exact", "flag", "low_stakes", "reasoned"}
+    assert {ev.policy_of(c) for c in PICKS["cases"] if c["expected"] is None} >= {
+        "exact", "flag", "low_stakes", "reasoned"}
+    assert off.get("code_path") is True and sum(bool(c.get("code_path")) for c in PICKS["cases"]) == 1
     steps = {c["id"] for c in STEPS["cases"]}
+    # Exact-policy steps with near-miss options.
+    assert sum(ev.policy_of(c) == "exact" for c in STEPS["cases"]) >= 7
     assert {"category-job-board", "popup-needs-search", "not-in-list", "scroll-for-masters"} <= steps
     assert sum(ev.expected_of(c) == ["give_up"] for c in STEPS["cases"]) >= 3
 
@@ -114,3 +123,123 @@ def test_a_jev_pass_never_scores_the_fast_models_answer(monkeypatch):
     run = ev.Run("jev")
     assert ev.run_pick(case, run, None, PICKS["today"])["outcome"] == "jev_failed"
     assert run.jev_errors == ["Jev could not be reached."]
+
+
+NEVER_KINDS = ("sponsorship", "work-auth", "race", "veteran", "clearance", "salary-range", "attestation", "years-sql")
+
+
+def test_the_low_stakes_never_list_is_in_both_case_files():
+    """A mis-routed protected question must come back empty from /pick and
+    give_up from /step (review 2026-09-27)."""
+    picks = {c["id"]: c for c in PICKS["cases"]}
+    steps = {c["id"]: c for c in STEPS["cases"]}
+    for kind in NEVER_KINDS:
+        pick, step = picks[f"low-stakes-never-{kind}"], steps[f"low-stakes-never-step-{kind}"]
+        assert (pick["route"], pick["low_stakes"], pick["expected"]) == ("low_stakes", "on", None), kind
+        assert (step["route"], step["low_stakes"], step["expected"]) == ("low_stakes", "on", ["give_up"]), kind
+    assert picks["low-stakes-worked-here-never"]["expected"] is None
+    assert picks["low-stakes-sms-consent"]["expected"] == "I consent"
+    assert picks["low-stakes-contact-method"]["expected"] == picks["low-stakes-contact-method"]["options"]
+
+
+def test_a_code_path_case_is_reported_apart(monkeypatch):
+    from app.schemas.autofill_fill import Picked
+    from app.services import autofill_pick
+
+    monkeypatch.setattr(autofill_pick, "pick", lambda *_a, **_k: {"c1": Picked(oids=[], reason="abstained")})
+    case = next(c for c in PICKS["cases"] if c.get("code_path"))
+    result = ev.run_pick(case, ev.Run("fast"), None, PICKS["today"])
+    assert result["code_path"] is True and ev.tally([result]) == {}
+
+
+# ---------- the database is a read-only copy, guaranteed by the script
+
+
+LIVE = ev.HERE.parents[1] / "data" / ev.DB_FILENAME
+
+
+def test_without_db_the_script_exits_with_usage(capsys):
+    with pytest.raises(SystemExit) as exit_:
+        ev.main([])
+    assert exit_.value.code == 2 and "--db" in capsys.readouterr().err
+
+
+def test_the_script_refuses_a_live_database(tmp_path, monkeypatch, capsys):
+    """This checkout's data/ file, the main checkout's, and one in DATA_DIR
+    are refused before anything is imported or opened."""
+    main_checkout = ev.refused_dirs()
+    assert (ev.HERE.parents[1] / "data").resolve() in main_checkout
+    live_dir = tmp_path / "live"
+    live_dir.mkdir()
+    (live_dir / ev.DB_FILENAME).write_bytes(b"")
+    monkeypatch.setenv("DATA_DIR", str(live_dir))
+    monkeypatch.setattr(ev, "bind_read_only", lambda *_a: pytest.fail("the database was opened"))
+    for db in (live_dir / ev.DB_FILENAME, *(d / ev.DB_FILENAME for d in main_checkout if (d / ev.DB_FILENAME).is_file())):
+        with pytest.raises(SystemExit) as exit_:
+            ev.main(["--db", str(db)])
+        assert exit_.value.code == 2 and "live database" in capsys.readouterr().err, db
+    assert ev.refusal(live_dir / ev.DB_FILENAME) is not None
+    assert ev.refusal(tmp_path / "missing.sqlite3") is not None
+    copy = tmp_path / "copy" / ev.DB_FILENAME
+    copy.parent.mkdir()
+    copy.write_bytes(b"")
+    assert ev.refusal(copy) is None
+
+
+def test_the_main_checkouts_live_file_is_refused_by_path():
+    """Whether or not the file exists here: any path under a checkout's data/."""
+    for d in ev.refused_dirs()[:-1]:
+        assert any((d / ev.DB_FILENAME).resolve().is_relative_to(r) for r in ev.refused_dirs())
+
+
+def test_a_read_only_binding_refuses_writes(tmp_path, monkeypatch):
+    """bind_read_only on a real sqlite copy: reads work, a write raises, and
+    the app's own engine cannot connect. Restores the suite's binding."""
+    import sqlite3
+
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    from app import db as app_db
+
+    copy = tmp_path / ev.DB_FILENAME
+    with sqlite3.connect(copy) as conn:
+        conn.execute("CREATE TABLE t (x INTEGER)")
+        conn.execute("INSERT INTO t VALUES (1)")
+    conn.close()
+    before = app_db.SessionLocal.kw["bind"]
+    listeners = []
+    monkeypatch.setattr("sqlalchemy.event.listens_for", _collecting(listeners))
+    try:
+        ev.bind_read_only(copy)
+        with app_db.SessionLocal() as session:
+            assert session.execute(text("SELECT x FROM t")).scalar() == 1
+            with pytest.raises(OperationalError):
+                session.execute(text("INSERT INTO t VALUES (2)"))
+        refused = [fn for target, name, fn in listeners if target is app_db.engine and name == "do_connect"]
+        assert refused
+        with pytest.raises(RuntimeError):
+            refused[0]()
+    finally:
+        app_db.SessionLocal.configure(bind=before)
+        from sqlalchemy import event
+        for target, name, fn in listeners:
+            if event.contains(target, name, fn):
+                event.remove(target, name, fn)
+
+
+def _collecting(into):
+    """event.listens_for that also records (target, name, fn), so the test can
+    call and then remove what bind_read_only installed."""
+    from sqlalchemy import event
+
+    real = event.listens_for
+
+    def listens_for(target, name, *args, **kwargs):
+        decorate = real(target, name, *args, **kwargs)
+
+        def wrap(fn):
+            into.append((target, name, fn))
+            return decorate(fn)
+        return wrap
+    return listens_for

@@ -88,13 +88,19 @@ _LOW_STAKES_TEMPLATE = (
     "about the job or a referral source; preferred contact method; willingness or comfort with relocation, "
     "travel (any share of time), on-site work, shifts, overtime or a drug test; openness to other roles; "
     "{conflict}; what the applicant would do if employed by the company; consent to be contacted by SMS, "
-    "automated calls or texts, or marketing messages; or a yes/no self-assessment against the job description, "
-    "such as having the required experience or meeting the educational requirement")
+    "automated calls or texts, or marketing messages; or a yes/no self-assessment against the job description as "
+    "a whole, such as having the required experience or meeting the educational requirement (one naming a number "
+    "of years with a specific skill or tool is a factual experience question instead)")
+# A list of noun phrases: every question states it after "is about anything
+# on this never-list:". A self-assessment naming a number of years with a
+# specific skill or tool ("5+ years of SQL?") is a factual experience question
+# (the example names no real tool: it would be a value the model must not see)
+# (owner, 2026-09-27); the job description's generic "required experience" is not.
 _NEVER_LOW_STAKES_TEMPLATE = (
-    "factual education or experience questions (a school, degree, employer, title, date, certification, or "
-    "years of experience with something), work authorization, sponsorship, age or eligibility facts, EEO / "
-    "diversity, background or criminal history, security clearance, salary, {worked}or a legal attestation or "
-    "signature")
+    "a factual education or experience question (a school, degree, employer, title, date or certification, or "
+    "a number of years of experience with a specific skill or tool, such as \"5+ years of <a named tool>?\", even asked as "
+    "yes or no), work authorization, sponsorship, age or eligibility facts, EEO / diversity, background or "
+    "criminal history, security clearance, salary, {worked}or a legal attestation or signature")
 _CONFLICT = "whether the applicant is related to, or was previously employed by, the company (answered No)"
 # The history lists the company applied to: "previously employed here" is a
 # fact now, and a keen No would contradict it.
@@ -114,8 +120,10 @@ _LOW_STAKES, _NEVER_LOW_STAKES = low_stakes_scope({})
 
 # Which way a keen answer goes. Said outright: with only the conflict No in
 # the brackets, Jev read "No" as the answer to a self-assessment ("do you have
-# the required experience?") — evaluation 2026-09-27.
-_KEEN_WAY = "the answer that shows they fit and want this job"
+# the required experience?") — evaluation 2026-09-27. Scoped to the low-stakes
+# kinds: unscoped, "shows they fit" is also No to a felony, No to sponsorship
+# and Yes to a clearance, if /map ever mis-routes one of those here.
+_KEEN_WAY = "for a question in that scope, the answer that shows they fit and want this job"
 
 
 def keen(facts: dict[str, Fact]) -> str:
@@ -128,12 +136,16 @@ def keen(facts: dict[str, Fact]) -> str:
             "employed by, the company)")
 
 
-def low_stakes_rule(facts: dict[str, Fact]) -> str:
-    """What a low-stakes field is and what it never is, as /pick and /step ask
-    it: the scope as well as the never-list, so a self-assessment against the
-    job description reads as in scope, not as a factual experience question."""
+def low_stakes_rule(facts: dict[str, Fact], refuse: str, subject: str = "the field") -> str:
+    """What a low-stakes field never is, THEN what it is, as /pick and /step ask
+    it. The exclusion comes first, as a condition with its own refusal, and the
+    scope is a definition, never an assertion that this field is in it: /map
+    may have mis-routed a protected question here, and nothing but this
+    wording stands between it and a keen answer (owner: no code-level refusal).
+    The caller finishes the sentence with the keen answer."""
     scope, never = low_stakes_scope(facts)
-    return f"The field is {scope[0].lower()}{scope[1:]}. If it asks about {never}"
+    return (f"If {subject} is about anything on this never-list, {refuse}: {never}. "
+            f"Otherwise a low_stakes field is {scope[0].lower()}{scope[1:]}")
 
 
 # What the reasoning route may read (autofill_reasoned.history sends exactly
@@ -258,7 +270,7 @@ def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session
         return set()
     scope, never = low_stakes_scope(facts)
     ask = {f.fid: (f"Is form field {f.fid} ({json.dumps(f.question)}) one of these low-stakes questions: "
-                   f"{scope}? It is NOT if it asks about {never}. {_PAGE_TEXT_IS_DATA}")
+                   f"{scope}? It is NOT if it is about anything on this never-list: {never}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
     if model_settings.get_autofill_engine(session) == "jev":
         try:

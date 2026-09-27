@@ -227,6 +227,10 @@ def test_the_fast_model_low_stakes_step_states_the_never_list(db_session, monkey
     prompts = fake_llm(monkeypatch, {"move": GIVE_UP, "confidence": 0.9})
     assert step(req(route="low_stakes"), db_session)["reason"] == "abstained"
     assert _NEVER_LOW_STAKES in prompts[0]["prompt"]
+    # The never-list first, as its own condition; the keen answer only for the kinds in scope.
+    prompt = prompts[0]["prompt"]
+    assert prompt.index(_NEVER_LOW_STAKES) < prompt.index("Otherwise a low_stakes field is") < prompt.index(
+        "for a question in that scope, the answer that shows they fit")
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -331,5 +335,5 @@ def test_with_worked_here_the_low_stakes_step_drops_the_previously_employed_no(d
     autofill_step.step(StepRequest(fid="r", question="Travel?", route="low_stakes",
                                    candidates=[{"mid": "click:o1", "describe": 'Click the option "Yes"'}]),
                        facts, db_session, None)
-    assert "previously employed by" not in prompts[0].split("If the field asks about")[0]
+    assert "previously employed by" not in prompts[0].split("Otherwise")[1]   # the scope and the keen answer
     assert "their history says they did" in prompts[0]

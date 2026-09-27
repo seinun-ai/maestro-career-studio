@@ -23,24 +23,35 @@ off, so a Jev failure is counted as one, never scored as Jev's answer. The
 reasoning route is the fast model's on every engine (autofill_reasoned).
 
 Only labels, options and each case's own fact go to the models; the cases are
-synthetic. Run from backend/, against a COPY of the live database (never the
-live file), with the keys the copy's settings hold:
+synthetic. The database is a COPY of the live one, named by the required
+`--db`, and the script guarantees it only reads it: a path inside any
+checkout's `data/` or the configured DATA_DIR is refused; the session is bound
+to a read-only connection (`mode=ro`, `query_only`) and a probe write must
+fail before anything runs; the app's own engine is made unable to connect;
+settings and the profile are PEEKED (nothing is lazily seeded); SETTINGS_DIR
+and LOGS_DIR default to fresh temporary directories. Run from backend/ (do
+not set DATA_DIR to the copy's directory, or the script refuses it):
 
+    cp <main-checkout>/data/maestro_cs.sqlite3* <scratch>/    # stack stopped, or a backups/ snapshot
     set -a; source <main-checkout>/.env; set +a
-    DATA_DIR=<copy dir> SETTINGS_DIR=<copy dir>/settings LOGS_DIR=<scratch>/logs \\
     BASE_RESUMES_DIR=<main-checkout>/base_resumes \\
-        /opt/anaconda3/bin/python3 -m scripts.eval_fill_decisions --out <scratch>/eval.json
+        /opt/anaconda3/bin/python3 -m scripts.eval_fill_decisions --db <scratch>/maestro_cs.sqlite3 \\
+        --out <scratch>/eval.json
 
-`--part map|pick|step` runs one report; `--base <slug>` picks the resume the
-mapping catalog reads (default: the first active one). Offline shape checks:
-tests/test_eval_fill_cases.py.
+The model keys are the copy's settings (and .env's). `--part map|pick|step`
+runs one report; `--base <slug>` picks the resume the mapping catalog reads
+(default: the first active one); `--only id,id` runs named cases. Offline
+checks: tests/test_eval_fill_cases.py.
 """
 
 import argparse
 import json
 import logging
+import os
 import re
+import subprocess
 import sys
+import tempfile
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -95,6 +106,73 @@ GIVE_UP_DESCRIBE = "Stop: no move will select an option that states the value"
 JOB_KEYS = ("employer", "title", "description", "start", "end", "current")
 SCHOOL_KEYS = ("school", "degree", "discipline", "start_year", "end_year")
 POLICIES = ("exact", "flag", "any", "low_stakes", "reasoned")
+DB_FILENAME = "maestro_cs.sqlite3"
+# The job every case is asked for; a case history listing this company makes
+# "previously employed here" a derived fact (autofill_catalog._worked_here).
+HINT_TITLE, HINT_COMPANY = "Data Analyst", "Acme Corp"
+
+
+# ---------------------------------------------------------------- the database: a read-only copy
+
+
+def refused_dirs() -> list[Path]:
+    """Where a live database lives: every checkout's `data/` (this one and the
+    main checkout, found through git's common dir) and the configured DATA_DIR
+    (the running app's, /app/data by default)."""
+    roots = {HERE.parents[1]}
+    try:
+        common = subprocess.run(["git", "-C", str(HERE), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                capture_output=True, text=True, check=True, timeout=10).stdout.strip()
+        roots.add(Path(common).parent)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    dirs = [root / "data" for root in roots] + [Path(os.environ.get("DATA_DIR") or "/app/data")]
+    return [d.resolve() for d in dirs]
+
+
+def refusal(db: Path) -> str | None:
+    """Why `db` may not be evaluated against, or None."""
+    path = db.resolve()
+    if not path.is_file():
+        return f"{db} is not a file"
+    for d in refused_dirs():
+        if path.is_relative_to(d):
+            return f"{db} is inside {d}, where a live database lives: copy it elsewhere first"
+    return None
+
+
+def bind_read_only(db: Path) -> None:
+    """Every session the app's code opens reads `db` through a read-only
+    connection; the app's own engine cannot connect at all. Raises unless a
+    probe write fails."""
+    import sqlite3
+    from urllib.parse import quote
+
+    from sqlalchemy import create_engine, event, text
+    from sqlalchemy.exc import OperationalError
+
+    from app import db as app_db
+
+    uri = f"file:{quote(str(db.resolve()))}?mode=ro"
+    read_only = create_engine("sqlite://", creator=lambda: sqlite3.connect(uri, uri=True, check_same_thread=False))
+
+    @event.listens_for(read_only, "connect")
+    def _query_only(dbapi_connection, _record):
+        dbapi_connection.execute("PRAGMA query_only=ON")
+
+    @event.listens_for(app_db.engine, "do_connect")
+    def _never(*_args):
+        raise RuntimeError("the evaluation reads the database only through its read-only session")
+
+    app_db.SessionLocal.configure(bind=read_only)
+    with app_db.SessionLocal() as session:
+        try:
+            session.execute(text("CREATE TABLE eval_write_probe (x INTEGER)"))
+            session.commit()
+        except OperationalError:
+            session.rollback()
+        else:
+            raise RuntimeError(f"{db} opened writable: stopping before any model call")
 
 
 # ---------------------------------------------------------------- cases
@@ -118,11 +196,23 @@ def expected_of(case: dict) -> list[str]:
     return [] if got is None else [got] if isinstance(got, str) else list(got)
 
 
-def pick_policy(case: dict) -> str:
+def policy_of(case: dict) -> str:
+    """A case's row in the report: its slot's policy, or its route."""
     from app.services.autofill_slots import policy_for
 
     route = case.get("route", "slot")
     return route if route != "slot" else policy_for(case["slot"])
+
+
+def check_history(cid: str, hist: object) -> None:
+    if not (isinstance(hist, dict) and isinstance(hist.get("jobs"), list) and isinstance(hist.get("schools"), list)):
+        raise ValueError(f"{cid}: a history is jobs and schools")
+    for job in hist["jobs"]:
+        if set(job) - set(JOB_KEYS) or not job.get("employer"):
+            raise ValueError(f"{cid}: a job holds only {JOB_KEYS}, an employer at least")
+    for school in hist["schools"]:
+        if set(school) - set(SCHOOL_KEYS) or not school.get("school"):
+            raise ValueError(f"{cid}: a school holds only {SCHOOL_KEYS}, a school at least")
 
 
 def check_pick_case(case: dict) -> None:
@@ -149,29 +239,22 @@ def check_pick_case(case: dict) -> None:
             raise ValueError(f"{cid}: a {route} case carries no slot or fact")
     if route == "low_stakes" and case.get("low_stakes") not in ("on", "off"):
         raise ValueError(f"{cid}: a low_stakes case names the setting, on or off")
-    if route == "reasoned":
-        hist = case.get("history")
-        if not (isinstance(hist, dict) and isinstance(hist.get("jobs"), list) and isinstance(hist.get("schools"), list)):
-            raise ValueError(f"{cid}: a reasoned case carries a history of jobs and schools")
-        for job in hist["jobs"]:
-            if set(job) - set(JOB_KEYS) or not job.get("employer"):
-                raise ValueError(f"{cid}: a job holds only {JOB_KEYS}, an employer at least")
-        for school in hist["schools"]:
-            if set(school) - set(SCHOOL_KEYS) or not school.get("school"):
-                raise ValueError(f"{cid}: a school holds only {SCHOOL_KEYS}, a school at least")
+    if route == "reasoned" and "history" not in case:
+        raise ValueError(f"{cid}: a reasoned case carries a history of jobs and schools")
+    if "history" in case:
+        check_history(cid, case["history"])
+    if case.get("code_path") and route != "low_stakes":
+        raise ValueError(f"{cid}: only a low_stakes setting check is a code-path case")
 
 
 def check_step_case(case: dict) -> None:
     """Raise ValueError when a step case is malformed (the request must be one /step accepts)."""
-    from app.schemas.autofill_fill import StepRequest
-
     cid = case.get("id")
     route = case.get("route", "slot")
     try:
-        req = step_request(case)
+        step_request(case)
     except Exception as exc:  # pydantic's error names the bad part
         raise ValueError(f"{cid}: not a valid /step request: {exc}") from exc
-    assert isinstance(req, StepRequest)
     mids = {c["mid"] for c in case["candidates"]}
     if "give_up" in mids:
         raise ValueError(f"{cid}: give_up is added by the script, as the page adds it")
@@ -208,8 +291,9 @@ def pick_field(case: dict):
 
 
 def case_facts(case: dict, today: str) -> dict:
-    """The facts one case holds: its slot's fact, its history, and today."""
-    from app.services.autofill_catalog import Fact, _describe
+    """The facts one case holds: its slot's fact, its history, and today; and
+    "previously employed here" when the history lists HINT_COMPANY."""
+    from app.services.autofill_catalog import Fact, _describe, _worked_here
     from app.services.autofill_slots import _as_text, policy_for
 
     facts = {"derived.today": Fact("derived.today", today, "today's date", policy_for("derived.today"))}
@@ -230,6 +314,7 @@ def case_facts(case: dict, today: str) -> dict:
     for i, school in enumerate(hist.get("schools", [])):
         for key in SCHOOL_KEYS:
             add(f"education.{i}.{key}", school.get(key))
+    _worked_here(facts, HINT_COMPANY)
     return facts
 
 
@@ -302,14 +387,14 @@ def run_pick(case: dict, run: Run, session, today: str) -> dict:
     from app.services import autofill_pick, llm
 
     fld = pick_field(case)
-    hint = autofill_pick.JobHint(title="Data Analyst", company="Acme Corp", source=case.get("source"))
+    hint = autofill_pick.JobHint(title=HINT_TITLE, company=HINT_COMPANY, source=case.get("source"))
     run.trace.clear()
     try:
         with engine_of(run, low_stakes=case.get("low_stakes") == "on"):
             picked = autofill_pick.pick([fld], case_facts(case, today), session, hint)["c1"]
     except (JevFellBack, llm.LLMProviderError) as exc:
         failed = "jev_failed" if isinstance(exc, JevFellBack) else "model_failed"
-        return {"id": case["id"], "policy": pick_policy(case), "outcome": failed, "got": None, "reason": str(exc)}
+        return {"id": case["id"], "policy": policy_of(case), "outcome": failed, "got": None, "reason": str(exc)}
     got = next((o.text for o in fld.options if picked.oids and o.oid == picked.oids[0]), None)
     expected = expected_of(case)
     if got is None:
@@ -317,31 +402,25 @@ def run_pick(case: dict, run: Run, session, today: str) -> dict:
     else:
         outcome = "right" if got in expected else "wrong_write"
     said = {o.oid: o.text for o in fld.options}.get(run.trace[-1][0]) if run.trace else None
-    return {"id": case["id"], "policy": pick_policy(case), "outcome": outcome, "got": got,
+    return {"id": case["id"], "policy": policy_of(case), "code_path": bool(case.get("code_path")),
+            "outcome": outcome, "got": got,
             "reason": picked.reason, "said": said, "p": run.trace[-1][1] if run.trace else None,
             "expected": expected, "question": case["question"], "options": case["options"],
             "fact": case.get("item") or case.get("fact")}
-
-
-def step_policy(case: dict) -> str:
-    from app.services.autofill_slots import policy_for
-
-    route = case.get("route", "slot")
-    return route if route != "slot" else policy_for(case["slot"])
 
 
 def run_step(case: dict, run: Run, session, today: str) -> dict:
     from app.services import autofill_pick, autofill_step, llm
 
     req = step_request(case)
-    hint = autofill_pick.JobHint(title="Data Analyst", company="Acme Corp", source=case.get("source"))
+    hint = autofill_pick.JobHint(title=HINT_TITLE, company=HINT_COMPANY, source=case.get("source"))
     run.trace.clear()
     try:
         with engine_of(run, low_stakes=case.get("low_stakes") == "on"):
             resp = autofill_step.step(req, case_facts(case, today), session, hint)
     except (JevFellBack, llm.LLMProviderError) as exc:
         failed = "jev_failed" if isinstance(exc, JevFellBack) else "model_failed"
-        return {"id": case["id"], "policy": step_policy(case), "outcome": failed, "got": None, "reason": str(exc)}
+        return {"id": case["id"], "policy": policy_of(case), "outcome": failed, "got": None, "reason": str(exc)}
     mid = resp.mid or "give_up"
     expected = expected_of(case)
     describe = {c["mid"]: c["describe"] for c in case["candidates"]}
@@ -353,7 +432,7 @@ def run_step(case: dict, run: Run, session, today: str) -> dict:
         outcome = "wrong_click"
     else:
         outcome = "harmless"
-    return {"id": case["id"], "policy": step_policy(case), "outcome": outcome, "got": mid,
+    return {"id": case["id"], "policy": policy_of(case), "outcome": outcome, "got": mid,
             "got_describe": describe.get(mid, GIVE_UP_DESCRIBE), "reason": resp.reason, "expected": expected,
             "said": run.trace[-1][0] if run.trace else None, "p": run.trace[-1][1] if run.trace else None,
             "question": case["question"], "fact": case.get("item") or case.get("fact")}
@@ -382,13 +461,16 @@ def unindexed(slot: str | None) -> str | None:
 
 def catalog(session, base: str | None) -> dict:
     """The real fact catalog, as /map builds it (consent-gated profile + a resume)."""
-    from app.services import autofill_catalog, eeo_consent
+    from app.services import autofill_catalog, autofill_profile, eeo_consent
     from app.services.autofill_context import employment_blocks, resume_skills
     from app.services.base_resume_data import active_base_resume_slugs, load_base_resume
 
     slug = base or next(iter(active_base_resume_slugs(session)), None)
     resume = load_base_resume(slug, session) if slug else None
-    return autofill_catalog.build(eeo_consent.disclosable_profile(session),
+    # disclosable_profile, PEEKED: get_profile / get_consent lazily seed a row and a file mirror.
+    profile = eeo_consent.withhold_unconsented(autofill_profile.peek_profile(session),
+                                               eeo_consent.peek_consent(session).model_dump(mode="json"))
+    return autofill_catalog.build(profile,
                                   employment_blocks(resume) if resume else [],
                                   resume_skills(resume) if resume else [])
 
@@ -404,7 +486,7 @@ def run_map(session, run: Run, base: str | None) -> dict:
     rows = [r for r in rows if unindexed(RULE_TO_SLOT[r["rule_id"]]) in held]
     raw: dict[str, tuple[str, float]] = {}
     with_jev, answerable = autofill_map._with_jev, autofill_map._answerable
-    consented = eeo_consent.get_consent(session).enabled
+    consented = eeo_consent.peek_consent(session).enabled
 
     def keep(fields, criteria, session_):
         got = with_jev(fields, criteria, session_)
@@ -419,8 +501,11 @@ def run_map(session, run: Run, base: str | None) -> dict:
                   for i, r in enumerate(batch)]
         mapped, failed = None, False
         for _attempt in range(2):   # one retry of a batch Jev failed
-            # The reasoning pass is not a mapping: it is not asked.
-            autofill_map._with_jev, autofill_map._answerable = keep, lambda *_a, **_k: set()
+            # The reasoning pass is not a mapping: it is not asked. Jev's raw
+            # answers (and their p) are kept only on a Jev pass.
+            if run.engine == "jev":
+                autofill_map._with_jev = keep
+            autofill_map._answerable = lambda *_a, **_k: set()
             try:
                 with engine_of(run):
                     mapped = autofill_map.map_fields(fields, facts, session, eeo_consented=consented, low_stakes=False)
@@ -432,7 +517,7 @@ def run_map(session, run: Run, base: str | None) -> dict:
         for f, r in zip(fields, batch):
             want = unindexed(RULE_TO_SLOT[r["rule_id"]])
             if mapped is None:
-                results.append({**r, "rule_slot": want, "got": None, "p": None, "agree": None})
+                results.append({**r, "rule_slot": want, "got": None, "p": None, "agree": None, "retried": failed})
                 continue
             m = mapped[f.fid]
             key, p = raw.get(f.fid, (None, None))
@@ -451,6 +536,8 @@ def run_map(session, run: Run, base: str | None) -> dict:
 def tally(results: list[dict]) -> dict[str, Counter]:
     by: dict[str, Counter] = defaultdict(Counter)
     for r in results:
+        if r.get("code_path"):
+            continue   # a setting check, not a model's judgement: reported apart
         by[r["policy"]][r["outcome"]] += 1
         by[r["policy"]]["cases"] += 1
         if r["outcome"] == "right" and r.get("reason"):
@@ -468,11 +555,15 @@ def print_picks(engine: str, results: list[dict]) -> None:
           "| wrong writes | failed (Jev / model) |")
     print("|---|---|---|---|---|---|---|")
     for policy, c in tally(results).items():
-        print(f"| {policy} | {c['cases']} | {c['right']} ({c['right_matched']} / {c['right_closest']} / "
+        label = "reasoned (fast model, every engine)" if policy == "reasoned" else policy
+        print(f"| {label} | {c['cases']} | {c['right']} ({c['right_matched']} / {c['right_closest']} / "
               f"{c['right_assumed']}) | {c['abstained']} | {c['abstained_ok']} | {c['wrong_write']} | "
               f"{c['jev_failed']} / {c['model_failed']} |")
     for r in results:
-        if r["outcome"] == "wrong_write":
+        if r.get("code_path"):
+            print(f"- code-path check {r['id']}: {r['outcome']} (not counted above)")
+    for r in results:
+        if r["outcome"] == "wrong_write" and not r.get("code_path"):
             print(f"- WRONG WRITE [{r['policy']}] {r['id']}: {r['question']!r} fact {r['fact']!r} options {r['options']} "
                   f"expected {r['expected'] or 'none'} got {r['got']!r} ({r['reason']}, p={_p(r)})")
     for r in results:
@@ -516,6 +607,8 @@ def print_map(report: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--db", type=Path, required=True,
+                    help="a COPY of the database (never a file under a checkout's data/ or DATA_DIR)")
     ap.add_argument("--part", choices=["map", "pick", "step", "all"], default="all")
     ap.add_argument("--engines", default="jev,fast")
     ap.add_argument("--map-engine", default="jev")
@@ -523,7 +616,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--only", default=None, help="comma-separated case ids (a smoke run)")
     args = ap.parse_args(argv)
+    if why := refusal(args.db):
+        ap.error(why)
+    # Before the app is imported: its settings read these once.
+    os.environ["DATABASE_URL"] = f"sqlite:///{args.db.resolve()}"
+    os.environ.pop("TEST_DATABASE_URL", None)
+    for name in ("SETTINGS_DIR", "LOGS_DIR"):
+        os.environ.setdefault(name, tempfile.mkdtemp(prefix=f"eval-{name.lower()}-"))
     logging.basicConfig(level=logging.ERROR)
+    bind_read_only(args.db)
 
     from app.db import SessionLocal
 
@@ -548,7 +649,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.part in ("step", "all"):
             for engine in engines:
                 run = Run(engine)
-                results = [run_step(c, run, session, picks["today"]) for c in steps["cases"]]
+                results = [run_step(c, run, session, steps["today"]) for c in steps["cases"]]
                 out[f"step_{engine}"] = {"results": results, "jev_errors": Counter(run.jev_errors)}
                 print_steps(engine, results)
         if args.part in ("map", "all"):
@@ -557,7 +658,7 @@ def main(argv: list[str] | None = None) -> int:
             report["jev_errors"] = Counter(run.jev_errors)
             out["map"] = report
             print_map(report)
-        session.rollback()   # the eval writes nothing
+        session.rollback()   # nothing to undo: the session is read-only (bind_read_only)
     for key, value in out.items():
         if value.get("jev_errors"):
             print(f"\n{key}: Jev errors {dict(value['jev_errors'])}")

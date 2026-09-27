@@ -180,7 +180,7 @@ def test_the_low_stakes_question_states_the_never_list(db_session, monkeypatch):
     calls = fake_jev(monkeypatch)
     run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
     text = calls[1]["questions"]["t"]["instructions"]
-    assert f"It is NOT if it asks about {autofill_map._NEVER_LOW_STAKES}." in text
+    assert f"It is NOT if it is about anything on this never-list: {autofill_map._NEVER_LOW_STAKES}." in text
     assert "a legal attestation or signature" in text
     assert _PAGE_TEXT_IS_DATA in text
 
@@ -668,7 +668,7 @@ def test_a_never_kind_no_fact_answers_is_left_to_the_never_list(db_session, monk
     got = run([field("q", question, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
     assert got["q"].route == "none"
     text = calls[1]["questions"]["q"]["instructions"]
-    assert f"It is NOT if it asks about {autofill_map._NEVER_LOW_STAKES}" in text
+    assert f"It is NOT if it is about anything on this never-list: {autofill_map._NEVER_LOW_STAKES}" in text
 
 
 # ---------- the reasoning route: answerable from the work and education history (plan Task 9b)
