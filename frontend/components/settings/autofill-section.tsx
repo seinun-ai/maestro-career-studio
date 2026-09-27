@@ -329,6 +329,59 @@ function withAnswer(
   return next as LanguageEntry;
 }
 
+/** What a language answer's control shows. A select is case-blind (a stored
+ *  "fluent" shows as Fluent) and shows "Not set" rather than "Choose" when
+ *  nothing, or nothing it offers, is stored. */
+function languageValue(field: FieldDef, stored: unknown): string {
+  const value = fieldValue(field, stored);
+  if (field.type !== "select") return value;
+  return field.options?.find((o) => o.value.toLowerCase() === value.toLowerCase())?.value || NOT_SET.value;
+}
+
+/** One answer's control: a select over its options, or a text box. `onChange`
+ *  gets what to store; undefined ("Not set") removes the key. */
+function FieldControl({
+  id,
+  field,
+  value,
+  hintId,
+  onChange,
+}: {
+  id: string;
+  field: FieldDef;
+  value: string;
+  hintId?: string;
+  onChange: (next: string | boolean | undefined) => void;
+}) {
+  return field.type === "select" ? (
+    <Select
+      value={value}
+      onValueChange={(v) => onChange(v === NOT_SET.value ? undefined : storedFieldValue(field, v))}
+    >
+      <SelectTrigger id={id} size="sm" className="w-full" aria-describedby={hintId}>
+        <SelectValue placeholder="Choose">
+          {field.options?.find((o) => o.value === value)?.label}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {field.options?.map((o) => (
+          <SelectItem key={o.value} value={o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  ) : (
+    <Input
+      id={id}
+      className="h-8 text-sm"
+      value={value}
+      aria-describedby={hintId}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
 function educationList(profile: Profile): EducationEntry[] {
   const value = profile.education;
   if (Array.isArray(value)) return value;
@@ -922,39 +975,13 @@ function AutofillEditor({
                       {field.hint}
                     </p>
                   ) : null}
-                  {field.type === "select" ? (
-                    <Select
-                      value={value}
-                      onValueChange={(v) =>
-                        setField(
-                          group.key,
-                          field.key,
-                          storedFieldValue(field, v),
-                        )
-                      }
-                    >
-                      <SelectTrigger id={id} size="sm" className="w-full" aria-describedby={hintId}>
-                        <SelectValue placeholder="Choose">
-                          {field.options?.find((o) => o.value === value)?.label}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {field.options?.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>
-                            {o.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      id={id}
-                      className="h-8 text-sm"
-                      value={value}
-                      aria-describedby={hintId}
-                      onChange={(e) => setField(group.key, field.key, e.target.value)}
-                    />
-                  )}
+                  <FieldControl
+                    id={id}
+                    field={field}
+                    value={value}
+                    hintId={hintId}
+                    onChange={(next) => setField(group.key, field.key, next)}
+                  />
                 </div>
               );
             })}
@@ -1015,52 +1042,29 @@ function AutofillEditor({
       <fieldset className="space-y-4">
         <legend className={LEGEND}>Languages</legend>
         <p className="text-muted-foreground text-xs">
-          Most important first. The Companion adds a language to a form only when its
-          reading, speaking and writing levels are all set.
+          Most important first. The first four are used, and the Companion adds a
+          language to a form only when its reading, speaking and writing levels are all set.
         </p>
         {languages.map((entry, i) => (
           <CardSection key={i} className="flex items-start gap-2">
             <div className="grid flex-1 items-end gap-4 @xl/setting:grid-cols-3">
               {LANGUAGE_FIELDS.map((field) => {
                 const id = `af-languages-${i}-${field.key}`;
-                const value = fieldValue(field, entry[field.key as keyof LanguageEntry]);
-                const answer = (next: string | boolean | undefined) =>
-                  setLanguages(
-                    languages.map((entry2, j) =>
-                      j === i ? withAnswer(entry2, field.key, next) : entry2,
-                    ),
-                  );
                 return (
                   <div key={field.key} className="grid gap-1.5">
                     <Label htmlFor={id}>{field.label}</Label>
-                    {field.type === "select" ? (
-                      <Select
-                        value={value}
-                        onValueChange={(v) =>
-                          answer(v === NOT_SET.value ? undefined : storedFieldValue(field, v))
-                        }
-                      >
-                        <SelectTrigger id={id} size="sm" className="w-full">
-                          <SelectValue placeholder="Choose">
-                            {field.options?.find((o) => o.value === value)?.label}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {field.options?.map((o) => (
-                            <SelectItem key={o.value} value={o.value}>
-                              {o.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        id={id}
-                        className="h-8 text-sm"
-                        value={value}
-                        onChange={(e) => answer(e.target.value)}
-                      />
-                    )}
+                    <FieldControl
+                      id={id}
+                      field={field}
+                      value={languageValue(field, entry[field.key as keyof LanguageEntry])}
+                      onChange={(next) =>
+                        setLanguages(
+                          languages.map((entry2, j) =>
+                            j === i ? withAnswer(entry2, field.key, next) : entry2,
+                          ),
+                        )
+                      }
+                    />
                   </div>
                 );
               })}

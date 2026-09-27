@@ -298,11 +298,14 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
     the one Save PUTs."""
     src = _read("components/settings/autofill-section.tsx")
     fieldset = _slice(src, "<legend className={LEGEND}>Languages</legend>", "</fieldset>")
-    assert "Most important first." in fieldset
-    # A language missing a level is never added to a form (Workday requires all
-    # three; app/services/autofill_sections._NEEDS): the editor says so.
-    assert ("The Companion adds a language to a form only when its reading, speaking and writing levels "
-            "are all set.") in " ".join(fieldset.split())
+    from app.services.autofill_catalog import MAX_LANGUAGES
+
+    # The catalog serves the first MAX_LANGUAGES, and a language missing a level
+    # is never added to a form (Workday requires all three;
+    # app/services/autofill_sections._NEEDS): the editor says both.
+    assert MAX_LANGUAGES == 4
+    assert ("Most important first. The first four are used, and the Companion adds a language to a form "
+            "only when its reading, speaking and writing levels are all set.") in " ".join(fieldset.split())
     assert "{LANGUAGE_FIELDS.map((field) => {" in fieldset
     assert "id = `af-languages-${i}-${field.key}`" in fieldset
     fields = _slice(src, "const LANGUAGE_FIELDS: FieldDef[] = [", "\n];")
@@ -319,8 +322,20 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
     # The same profile, the same Save: the list is a key of the PUT body.
     set_languages = _slice(src, "const setLanguages = (", "\n  };")
     assert "setDirty(true);" in set_languages and "languages: next" in set_languages
-    # A select set back to "Not set" removes its key, never stores "".
-    assert "NOT_SET" in fieldset
+    # A cleared answer removes its key, never stores "" …
+    with_answer = _slice(src, "function withAnswer(", "\n}\n")
+    assert 'if (value === undefined || value === "") delete next[key];' in with_answer
+    assert "else next[key] = value;" in with_answer
+    assert "withAnswer(entry2, field.key, next)" in fieldset
+    # … and "Not set" is what clears a select: it stores nothing.
+    control = _slice(src, "function FieldControl(", "\n}\n")
+    assert "onChange(v === NOT_SET.value ? undefined : storedFieldValue(field, v))" in control
+    # The select shows "Not set", not "Choose", once chosen; a level stored in
+    # another case ("fluent") shows as its option, never blank.
+    shown = _slice(src, "function languageValue(", "\n}\n")
+    assert "o.value.toLowerCase() === value.toLowerCase()" in shown and "|| NOT_SET.value" in shown
+    assert "value={languageValue(field, entry[field.key as keyof LanguageEntry])}" in fieldset
+    assert "<FieldControl" in fieldset
 
 
 def test_a_custom_question_has_a_visible_label():

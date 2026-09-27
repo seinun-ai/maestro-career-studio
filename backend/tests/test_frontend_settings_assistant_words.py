@@ -670,7 +670,9 @@ def test_the_covenant_question_explains_its_legal_term():
     renderer = _between(_AUTOFILL, "{group.fields.map((field) => {", "</fieldset>")
     assert 'const hintId = field.hint ? `${id}-hint` : undefined;' in renderer
     assert "<p id={hintId}" in renderer
-    assert renderer.count("aria-describedby={hintId}") == 2  # the select and the input
+    assert "hintId={hintId}" in renderer  # handed to the shared control …
+    control = _between(_AUTOFILL, "function FieldControl(", "\n}\n")
+    assert control.count("aria-describedby={hintId}") == 2  # … which the select and the input both read
 
 
 def test_gender_offers_non_binary_and_self_describe():

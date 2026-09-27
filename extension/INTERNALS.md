@@ -417,10 +417,11 @@ know, and each one was learned from a live failure.
   Entries are PLACED before anything is added: an entry already holding data
   is matched to the profile job, school or language it holds (on the
   employer, and the title when two jobs share an employer, the school, or
-  the language, ignoring case, punctuation and company suffixes such as Inc, LLC, Ltd, Corp, Co and GmbH);
-  empty entries, then added ones, take the profile entries no entry holds,
-  in order. /map is told each field's place (`profile_entry`) and writes that
-  profile entry's facts there, whatever order the page's entries are in — so
+  the language, ignoring case and punctuation, and for an employer its
+  company suffix such as Inc, LLC, Ltd, Corp, Co and GmbH); empty entries,
+  then added ones, take the profile entries no entry holds, in order. /map
+  is told each field's place (`profile_entry`) and writes that profile
+  entry's facts there, whatever order the page's entries are in — so
   an empty entry above a pre-filled job #1 gets job #2, never job #1 again,
   and a job the resume parser dropped is added in its own place. An entry
   holding something the profile does not have may be a profile job spelled
