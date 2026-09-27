@@ -36,7 +36,8 @@ _WORDS: dict[str, dict[str, str]] = {
         "opt": "F-1 OPT", "stem_opt": "F-1 STEM OPT extension", "h1b": "H-1B visa", "tn": "TN visa",
         "other_visa": "Another visa", "not_authorized": "Not authorized to work",
     },
-    "eeo.veteran_status": {"not_veteran": "I am not a protected veteran", "veteran": "I am a protected veteran",
+    # Worded as a Yes or a No (`is_yes_no`), so a reversed question is read by its meaning.
+    "eeo.veteran_status": {"not_veteran": "No, I am not a protected veteran", "veteran": "Yes, I am a protected veteran",
                            "decline": "I don't wish to answer"},
     "eeo.disability_status": {"no": "No, I do not have a disability", "yes": "Yes, I have a disability",
                               "decline": "I do not want to answer"},
@@ -114,6 +115,26 @@ class Fact:
     yes_no: bool = False
 
 
+_YES_WORDS, _NO_WORDS = {"yes", "true"}, {"no", "false"}
+_ANSWER_PREFIX = re.compile(r"(yes|no),\s*", re.IGNORECASE)
+
+
+def yes_no_word(text: str, *, letters: bool = True) -> str:
+    """A Yes or a No however it was typed — the panel's pause row stores
+    "yes" as typed, and profiles are hand-edited: yes / true (and y) is "Yes",
+    no / false (and n) is "No", a "yes, …" / "no, …" answer is capitalised.
+    Anything else is left as it is. `letters`: whether a lone y / n counts
+    (never in the personal section, where "Y" may be an initial)."""
+    word = text.strip().lower()
+    if word in _YES_WORDS or (letters and word == "y"):
+        return "Yes"
+    if word in _NO_WORDS or (letters and word == "n"):
+        return "No"
+    if m := _ANSWER_PREFIX.match(text.strip()):
+        return f"{'Yes' if m[1].lower() == 'yes' else 'No'}, {text.strip()[m.end():]}"
+    return text
+
+
 def is_yes_no(value: object) -> bool:
     return isinstance(value, str) and (value in ("Yes", "No") or value.startswith(("Yes, ", "No, ")))
 
@@ -130,7 +151,10 @@ def describe_of(slot: str) -> str:
 
 
 def make_fact(slot: str, value: str | tuple[str, ...], describe: str | None = None) -> Fact:
-    """A fact, described and marked Yes/No by the one rule (`describe_of`, `is_yes_no`)."""
+    """A fact, described and marked Yes/No by the one rule (`describe_of`,
+    `yes_no_word`, `is_yes_no`): the catalog and the evaluation both build here."""
+    if isinstance(value, str):
+        value = yes_no_word(value, letters=not slot.startswith("personal."))
     return Fact(slot, value, describe or describe_of(slot), policy_for(slot), is_yes_no(value))
 
 

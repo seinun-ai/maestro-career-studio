@@ -51,7 +51,7 @@ def test_an_empty_resume_field_is_not_a_fact():
 def test_codes_become_words_a_form_would_show():
     f = facts()
     assert f["work_auth.status"].value == "F-1 STEM OPT extension" and f["work_auth.status"].policy == "exact"
-    assert f["eeo.veteran_status"].value == "I am not a protected veteran"
+    assert f["eeo.veteran_status"].value == "No, I am not a protected veteran"
     assert f["work_auth.sponsorship_future"].value == "Yes"
 
 
@@ -346,3 +346,46 @@ def test_every_description_comes_from_one_lookup():
             assert cat.describe_of(slot) == fact.describe, slot
     assert cat.describe_of("skills") == "applicant skills (a list)"
     assert cat.describe_of("languages.2.read") == "language entry 3: reading level"
+
+
+# ---------- a Yes or a No however it was typed (review of 693483a5)
+
+
+@pytest.mark.parametrize("typed, answer", [("yes", "Yes"), ("YES", "Yes"), ("true", "Yes"), ("Y", "Yes"),
+                                           (" yes ", "Yes"), ("no", "No"), ("NO", "No"), ("false", "No"),
+                                           ("n", "No"), (True, "Yes"), (False, "No")])
+def test_a_stored_yes_or_no_is_one_whatever_its_case(typed, answer):
+    """The panel's pause row stores eligibility answers as typed ("yes"): a
+    lower-case Yes must still be a Yes or No fact, or a reversed question
+    ("are you under 18?") would be asked without its meaning."""
+    f = cat.build({"eligibility": {"over_18": typed}, "preferences": {"willing_to_relocate": typed}}, [], [])
+    for slot in ("eligibility.over_18", "preferences.willing_to_relocate"):
+        assert (f[slot].value, f[slot].yes_no) == (answer, True), slot
+
+
+def test_a_yes_or_no_prefix_is_capitalised_and_other_words_are_left():
+    assert cat.yes_no_word("yes, previously") == "Yes, previously"
+    assert cat.yes_no_word("no, I do not") == "No, I do not"
+    for word in ("Yesterday", "Norway", "N/A", "Not sure", "nope", "yes please"):
+        assert cat.yes_no_word(word) == word, word
+    # A name is never a Yes: a one-letter initial in the personal section stays.
+    assert cat.build({"personal": {"middle_name": "Y"}}, [], [])["personal.middle_name"].value == "Y"
+
+
+def test_veteran_status_reads_as_a_yes_or_no_and_still_names_its_option():
+    f = cat.build({"eeo": {"veteran_status": "not_veteran"}}, [], [])["eeo.veteran_status"]
+    assert (f.value, f.yes_no) == ("No, I am not a protected veteran", True)
+    assert cat.build({"eeo": {"veteran_status": "veteran"}}, [], [])["eeo.veteran_status"].value \
+        == "Yes, I am a protected veteran"
+
+
+# The words whose answer is meant as a Yes or a No: every other status word
+# must not start like one, or it would be read reversed.
+INTENDED_YES_NO = {("eeo.disability_status", "no"), ("eeo.disability_status", "yes"),
+                   ("eeo.veteran_status", "not_veteran"), ("eeo.veteran_status", "veteran"),
+                   ("eeo.hispanic_latino", "yes"), ("eeo.hispanic_latino", "no")}
+
+
+def test_only_the_intended_status_words_read_as_a_yes_or_no():
+    got = {(slot, code) for slot, words in cat._WORDS.items() for code, text in words.items() if cat.is_yes_no(text)}
+    assert got == INTENDED_YES_NO

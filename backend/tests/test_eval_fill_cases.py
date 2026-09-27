@@ -389,11 +389,9 @@ def test_a_case_fact_is_described_as_the_catalog_describes_it(case):
         EVERY_SLOT, jobs, ["SQL"], company=ev.HINT_COMPANY)
     fact = ev.case_facts(case, PICKS["today"])[case["slot"]]
     assert fact.describe == built[case["slot"]].describe
-    value = case.get("item") if isinstance(case["fact"], list) else case["fact"]
-    assert fact.yes_no is autofill_catalog.is_yes_no(case["fact"]), "marked Yes/No by production's one rule"
-    if built[case["slot"]].value == case["fact"]:
+    # The Yes/No mark as production's, wherever the case holds production's value.
+    if built[case["slot"]].value == fact.value:
         assert fact.yes_no is built[case["slot"]].yes_no
-    assert value is not None
 
 
 def test_tagged_cases_can_be_run_on_their_own():

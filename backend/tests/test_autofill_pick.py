@@ -1075,3 +1075,15 @@ def test_the_fast_model_is_told_which_facts_are_a_yes_or_a_no(db_session, monkey
     prompts = fake_llm(monkeypatch)
     autofill_pick.pick([pf("s", slot="work_auth.status", options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
     assert autofill_pick.MEANING_RULE not in prompts[0]["prompt"] and autofill_pick.NEVER_YES_NO in prompts[0]["prompt"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_lower_case_stored_yes_is_read_with_its_meaning_and_still_matched(db_session, monkeypatch):
+    facts = autofill_catalog.build({"eligibility": {"over_18": "yes"}}, [], [])
+    calls = fake_jev(monkeypatch, {"u": ("o2", 0.95)})
+    got = autofill_pick.pick([pf("u", question="Are you under 18 years of age?", slot="eligibility.over_18",
+                                 options=opts("Yes", "No"))], facts, db_session, None)
+    text = calls[0]["questions"]["u"]["instructions"]
+    assert autofill_pick.MEANING_RULE in text and '"Yes"' in text
+    assert calls[0]["state"]["fields"][0]["applicant_values"] == ["Yes"]
+    assert got["u"].model_dump() == {"oids": ["o2"], "reason": "matched"}
