@@ -73,11 +73,6 @@ amounts to **a list of where you applied and when**.
 
 - **Clear it:** in the web app, **Analytics → Autofill coverage → Clear data**.
   This deletes the records but does not turn recording off.
-
-The Companion also remembers, in this browser only, **which clicks and keys
-worked on each kind of form control**, so the next fill tries them first. It
-keeps no answers and no web addresses. **Forget learned widget moves**, in the
-panel's Fill step, clears it.
 - **Turn it off:** there is no switch in the panel. On `chrome://extensions`,
   click the **service worker** link on the Maestro CS Companion card, open its
   **Console** tab, and run:
@@ -87,6 +82,13 @@ panel's Fill step, clears it.
   ```
 
   Run it again with `true` to turn it back on.
+
+### Learned widget moves
+
+Separately from telemetry, the Companion remembers, in this browser only,
+**which clicks and keys worked on each kind of form control**, so the next fill
+tries them first. It keeps no answers and no web addresses. **Forget learned
+widget moves**, in the panel's Fill step, clears it.
 
 ## Different ports
 

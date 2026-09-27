@@ -107,7 +107,12 @@
   const ns = (window.careerStudioCompanion ??= {});
   const { stageFor, rankBaseResumes, restorableSession, sessionTenant } = ns.decisions;
 
-  // `chrome.storage.local`. ONE key, holding the bridge entry that carries a
+  // `chrome.storage.local` holds TWO keys, and they hold different kinds of
+  // thing: `widget.session`, the session pick (everything down to the
+  // `fill.recipes` paragraph is about it), and `fill.recipes`, the recipe
+  // book (that paragraph).
+  //
+  // SESSION PICKS HAVE ONE KEY, holding the bridge entry that carries a
   // user's pick from the page it was made on to the next page of the same
   // wizard — which is a different page LOAD, and therefore a different panel
   // boot with an empty store.
@@ -123,15 +128,15 @@
   // placement and its two levels of dismissal. Nothing writes those now; see
   // `ORPHAN_KEYS` below, which sweeps them.)
   //
-  // ONE KEY RATHER THAN TWO, which is worth keeping written down because the
-  // second one existed and the reason it went is a rule about this store.
-  // Task 8 parked application-less entries on a separate key, and with two keys
-  // populated `restoreSession` preferred by KEY — so an older entry beat a
+  // ONE SESSION KEY RATHER THAN TWO, which is worth keeping written down
+  // because a second session key existed and the reason it went is a rule
+  // about session picks. Task 8 parked application-less entries on a separate
+  // key, and with two keys populated `restoreSession` preferred by KEY — so an older entry beat a
   // fresher one for the whole TTL. One key cannot shadow itself, so the
   // recency tie-break that split needed is not written at all. `panel.pick` is
   // its remains, swept below.
   //
-  // WHAT MAKES ONE KEY SAFE is the `if (entry.applicationId)` guard in
+  // WHAT MAKES ONE SESSION KEY SAFE is the `if (entry.applicationId)` guard in
   // `restoreSession`. A pick made at the Score stage usually has NO application
   // behind it — that is what the Score stage IS, and "use base as-is" is the
   // same shape — and restoring `{id: undefined}` as an application, then
@@ -139,9 +144,9 @@
   // not exist on every page load of that tenant. That guard is not optional
   // decoration on this key; it is the condition of sharing it.
   //
-  // `fill.recipes` IS THE SECOND KEY, and a different KIND of thing, which is
-  // why the rule above does not apply to it: not a pick carried between page
-  // loads but the book of which of the fill engine's own moves worked for
+  // `fill.recipes` IS THE SECOND KEY, and no session pick, so the one-key rule
+  // above does not reach it: not a pick carried between page loads but the
+  // book of which of the fill engine's own moves worked for
   // which KIND of form control (`shared/recipe-book.js` is its one reader and
   // writer, through `recipeDoor`). It holds hashed widget families, known move
   // words, states, counts and day numbers — no label, no value, no URL —
@@ -2773,7 +2778,7 @@
       matchedJobId: card.job?.id ?? null,
       ttlMs: SESSION_TTL_MS,
     };
-    // ONE KEY, ONE SET OF GUARDS, and no tie-break — see `KEY` for the
+    // ONE SESSION KEY, ONE SET OF GUARDS, and no tie-break — see `KEY` for the
     // decision that collapsed Task 8's second key. What was a choice between
     // two entries is a single read: one key cannot shadow itself, so the
     // "an older entry beats a fresher pick for the whole TTL" hazard is gone

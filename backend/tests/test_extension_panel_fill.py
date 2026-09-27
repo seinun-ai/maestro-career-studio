@@ -500,6 +500,9 @@ def test_learned_moves_have_their_own_documented_storage_key():
     assert "fill.recipes" not in orphans
     rule = panel[:panel.index("const KEY = {")]
     assert "`fill.recipes`" in rule[rule.rindex("chrome.storage.local"):]
+    # The one-key reasoning is the SESSION picks', never a claim about the store.
+    assert "holds TWO keys" in rule and "SESSION PICKS HAVE ONE KEY" in rule
+    assert "ONE key, holding" not in rule and "ONE KEY RATHER THAN TWO" not in rule
     fill = (EXTENSION / "panel" / "actions" / "fill.js").read_text(encoding="utf-8")
     assert re.search(r"recipes: store\.recipes\(\)", fill)
     html = (EXTENSION / "panel" / "panel.html").read_text(encoding="utf-8")

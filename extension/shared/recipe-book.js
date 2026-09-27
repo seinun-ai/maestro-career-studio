@@ -20,8 +20,9 @@
  * the site keys that proved a family, and the DAY it was last kept. `clean`
  * drops anything else on every read, so no label, value or URL survives in it.
  *
- * THE LIFECYCLE. Only a move the page VERIFIED and the final sweep did not
- * find reverted is learned (a lesson `kept`), and only a move other than the
+ * THE LIFECYCLE. Only a move the page VERIFIED, that nothing reverted and
+ * that the final sweep re-checked and found holding is learned (a lesson
+ * `kept`, fill-loop.js), and only a move other than the
  * generic one (a generic win teaches nothing):
  * - the first kept run → `probation`, at the site and the family;
  * - a site's recipe is `trusted` after TWO kept runs (one run counts once,

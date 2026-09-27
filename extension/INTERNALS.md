@@ -824,10 +824,12 @@ know, and each one was learned from a live failure.
   failed moves are unchanged. Clicking an option (its tick, once) and leaving a
   field (from inside its widget) have no fallback, so they are never
   reordered, and text boxes and passive choices (a signature, a consent tick)
-  are never looked up. A move is learned only after the final sweep, from a
-  commit whose moves verified and that nothing reverted: a value the sweep
-  found reverted teaches nothing, even one re-committed that then held
-  (`adversarial_recipe_poison.html`). The first such run puts the recipe on
+  are never looked up. A move is learned only from a commit whose moves
+  verified, that nothing reverted, and that the final sweep re-checked and
+  found holding: a value the sweep found reverted teaches nothing, even one
+  re-committed that then held (`adversarial_recipe_poison.html`), and nor
+  does one the sweep could not re-check (its element gone) or a run whose
+  final sweep reached no frame (the page went away). The first such run puts the recipe on
   probation, tried on its own site only; a second run on that site trusts it;
   its family is tried on a new site only once two sites kept it. A
   contradiction (an unconfirmed commit, a revert, the other move winning)

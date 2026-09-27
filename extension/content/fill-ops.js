@@ -204,7 +204,10 @@
     const out = [];
     const reported = new Set();
     // Delayed reversion: a value verified earlier that no longer holds. A
-    // field the user has since edited is theirs, not reverted.
+    // field the user has since edited is theirs, not reverted. One re-checked
+    // and still holding is said so (`held`: the loop's recipe book learns
+    // only from those); one that can no longer be read is dropped, and says
+    // nothing either way.
     for (const [fid, { expected, format }] of [...verified]) {
       const el = inv().resolve(fid);
       const shape = inv().shapeOf(fid);
@@ -216,6 +219,8 @@
         verified.delete(fid);
         reported.add(fid);
         out.push({ fid, outcome: "reverted" });
+      } else {
+        out.push({ fid, outcome: "verified", held: true });
       }
     }
     // Text holding a value and showing an error: commit its own value again.

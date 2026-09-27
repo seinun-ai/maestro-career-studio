@@ -79,7 +79,11 @@ DRIVER = """async (spec) => {
       candidates = s.candidates ?? [];
       return [{frameId: 1, result: null}, {frameId: 0, result: {version: 1, complete: false, ...s}}];
     }
-    if (msg.type === "fill_sweep") return one(take(spec.sweep) ?? []);
+    // A page gone (this round's frames null) answers no sweep either.
+    if (msg.type === "fill_sweep") {
+      return spec.frames[Math.min(Math.max(round, 1), spec.frames.length) - 1] === null
+        ? [{frameId: 0, error: "gone"}] : one(take(spec.sweep) ?? []);
+    }
     // `sections`: the page's repeating sections (a list: one snapshot per
     // read); absent, no frame answers. `stopOnSections`: Stop lands as they are read.
     if (msg.type === "fill_sections") {
@@ -1991,10 +1995,16 @@ KEYS_FIRST = {"open": ["keys", "press"]}
 LEARNED = {"f:fam1": {"key": "s:sitea", "variant": KEYS_FIRST}}
 
 
+# The page's sweep re-checked the field and found it holding (fill-ops `held`).
+HELD = [{"fid": "d", "outcome": "verified", "held": True}]
+
+
 def popup_run(page, load, **kw):
-    """One popup field whose widget family has a recipe key."""
-    return run(page, load, frames=[[f("d", "popup", "Willing to travel?", recipe=RECIPE)]],
-               map={"d": {"route": "slot", "slot": "preferences.travel", "value": "Yes"}},
+    """One popup field whose widget family has a recipe key; by default every
+    sweep re-checks it and finds it holding."""
+    kw.setdefault("sweep", [HELD])
+    kw.setdefault("frames", [[f("d", "popup", "Willing to travel?", recipe=RECIPE)]])
+    return run(page, load, map={"d": {"route": "slot", "slot": "preferences.travel", "value": "Yes"}},
                explore={"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
                pick={"d": {"oids": ["o1"], "reason": "matched"}}, **kw)
 
@@ -2023,7 +2033,7 @@ def test_a_move_the_generic_order_found_is_handed_to_the_book(page, load):
 def test_a_value_the_sweep_found_reverted_is_a_contradiction_never_a_move(page, load):
     """Verified, then reverted before the final sweep, re-committed and held:
     the field is filled, and the move that verified it first is NOT learned."""
-    out = popup_run(page, load, recipes={"book": LEARNED}, sweep=[[{"fid": "d", "outcome": "reverted"}], []],
+    out = popup_run(page, load, recipes={"book": LEARNED}, sweep=[[{"fid": "d", "outcome": "reverted"}], HELD],
                     apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
     assert statuses(out) == {"d": "verified"}
     assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {"open": "keys"},
@@ -2042,6 +2052,27 @@ def test_a_learned_move_the_control_could_not_take_is_a_mismatch(page, load):
                     apply={"Yes": {"outcome": "verified", "variant": {"open": "press"}, "mismatch": "open"}})
     assert statuses(out) == {"d": "verified"}
     assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {"open": "press"}, "outcome": "mismatch"}]
+
+
+def test_a_value_the_final_sweep_could_not_recheck_teaches_nothing(page, load):
+    """Verified, but the final sweep never re-checked it (the page could no
+    longer resolve the element, so it reported nothing): no lesson at all —
+    not reported reverted is not the same as found holding."""
+    out = popup_run(page, load, recipes={"book": LEARNED}, sweep=[[]],
+                    apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
+    assert statuses(out) == {"d": "verified"}
+    assert out["lessons"] is None
+
+
+def test_a_page_gone_before_the_final_sweep_teaches_nothing(page, load):
+    """The page answered a round's sweep, then went away: the final sweep
+    reached no frame, so nothing is recorded — whatever the earlier sweep said."""
+    out = popup_run(page, load, recipes={"book": LEARNED},
+                    frames=[[f("d", "popup", "Willing to travel?", recipe=RECIPE)], None],
+                    apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
+    assert statuses(out) == {"d": "verified"}
+    assert out["calls"].count("fill_sweep") >= 2
+    assert out["lessons"] is None
 
 
 def test_a_set_carries_the_learned_order(page, load):

@@ -94,9 +94,11 @@
  *   never a separate path: same budget, same `failedMoves`, same gates,
  *   verification unchanged. Text and passive choices (a signature box, a
  *   consent tick) are written once, on a decision, and never looked up. Only
- *   once the final sweep has run (never after Stop or the run's clock) does
- *   the book hear each field's lesson: `kept` (the commit's moves verified
- *   and nothing reverted them), `contradicted` (an unconfirmed commit, or a
+ *   once the final sweep has reached the page (never after Stop, the run's
+ *   clock, or a page gone) does the book hear each field's lesson: `kept`
+ *   (the commit's moves verified, nothing reverted them, and the final sweep
+ *   re-checked the value and found it holding; a filled value it could not
+ *   re-check teaches nothing), `contradicted` (an unconfirmed commit, or a
  *   value the sweep found reverted — re-committed or not) or `mismatch` (the
  *   control could not take the learned move). A failing store costs nothing.
  * - Nothing is guessed when the AI cannot be reached (`aiFailure`).
@@ -552,10 +554,14 @@
       if (got.outcome === "unconfirmed") set(f.fid, { moves: got.variant ?? rows.get(f.fid).moves ?? null, contradicted: true });
     };
     // One field's lesson, once the final sweep has run: kept only when the
-    // commit's moves verified and nothing ever reverted the value.
+    // commit's moves verified, nothing ever reverted the value AND the final
+    // sweep re-checked it and found it holding (`held`). A filled value that
+    // sweep could not re-check teaches nothing either way: not reported
+    // reverted is not the same as found holding.
     const KEPT = new Set(Object.values(STATUS));
     const lessonOf = (r) => {
       if (!r?.recipeKeys || (!r.recipe && !r.moves)) return null;
+      if (DONE.has(r.status) && !held.has(r.fid)) return null;
       const used = r.recipe?.key ?? null;
       const outcome = r.mismatch ? (used ? "mismatch" : null)
         : r.contradicted || r.recommits || (r.moves && r.status === "unconfirmed") ? "contradicted"
@@ -1068,10 +1074,19 @@
     // run (on the field's remaining time: `work`); reverting again, it is
     // reported unstable — `unconfirmed`, never filled. The sweep's word about
     // any other field (the user's, a prefilled one) is not ours to act on.
+    // `held`: the fids THIS sweep re-checked and found holding (the page's
+    // `held` rows); `sweptFrames`: whether any frame answered it at all.
+    let held = new Set();
+    let sweptFrames = false;
     const sweep = async () => {
+      held = new Set();
+      sweptFrames = false;
       if (cancelled()) return 0;
       let reverted = 0;
-      for (const r of rowsOf(await broadcast({ type: "fill_sweep" }))) {
+      const frames = await broadcast({ type: "fill_sweep" });
+      sweptFrames = results(frames).length > 0;
+      for (const r of rowsOf(frames)) {
+        if (r?.held === true && r.outcome === "verified") held.add(r.fid);
         const row = rows.get(r?.fid);
         if (!row || !DONE.has(row.status) || r.outcome === "verified" || r.outcome === "cancelled") continue;
         if (REFUSED[r.outcome]) {
@@ -1088,8 +1103,9 @@
       return reverted;
     };
     // Before calling the page done: a quiet period, then one more sweep; done
-    // only if nothing reverted. `finalSwept`: the last call reached its sweep
-    // (the recipe book learns nothing from a run whose end was not swept).
+    // only if nothing reverted. `finalSwept`: the last call's sweep reached a
+    // frame (the recipe book learns nothing from a run whose end was not
+    // swept), and `held` is then what that sweep re-checked.
     let finalSwept = false;
     const settledDone = async () => {
       finalSwept = false;
@@ -1097,7 +1113,7 @@
       if (L.QUIET_MS > 0) await wait(Math.min(L.QUIET_MS, runDeadline - Date.now()));
       if (halt()) return true;
       const clean = (await sweep()) === 0;
-      finalSwept = !halt();
+      finalSwept = sweptFrames && !halt();
       return clean;
     };
     const same = (committed, wrote) => {
