@@ -665,7 +665,9 @@ def create_base_resume_from_kb(
 def get_autofill_profile(application_id: str | None = None, base: str | None = None) -> Any:
     """Read the user's application-form autofill data: `profile` (personal
     contact + address, typed work-authorization answers, preferences like
-    salary/notice/relocation, education, custom Q&A presets), plus `employment`
+    salary/notice/relocation, education, `languages` — each a language with
+    read/speak/write level Basic/Intermediate/Fluent and separate `native`
+    and `fluent` booleans — custom Q&A presets), plus `employment`
     blocks and `skills` from the selected resume when application_id or base is
     given. Response is labeled `source: "profile"` and includes
     `canonical_identity` (`legal_first`, `legal_last`, `preferred`) mapped only

@@ -393,17 +393,17 @@ know, and each one was learned from a live failure.
   every later entry. DOM order survives only as the fallback for pages that
   publish no block identity at all.
 - **Entries are added only for what the profile can fill.** A repeating
-  section (Work Experience, Education, Websites) grows only by its own Add,
-  and on Workday an added entry's fields are REQUIRED, so an entry nothing
-  can fill blocks the page. Before anything is mapped, the fill loop reads
+  section (Work Experience, Education, Languages, Websites) grows only by
+  its own Add, and on Workday an added entry's fields are REQUIRED, so an
+  entry nothing can fill blocks the page. Before anything is mapped, the fill loop reads
   each section's heading and entry count (`fill_sections`), and the backend
   (`/api/autofill/sections`, headings and counts in, kinds, counts and
   profile entry numbers out)
   names the profile list it holds and how many profile entries have every
   fact an entry requires: a job its employer and title, a school its name,
-  a website its address (the LinkedIn box is not a section; languages and
-  certifications have no profile facts yet, so none is added). Add is
-  pressed for the difference and never beyond it, one section per list.
+  a language its name, a website its address (the LinkedIn box is not a
+  section; certifications have no profile facts yet, so none is added).
+  Add is pressed for the difference and never beyond it, one section per list.
   Entries already on the page count, whatever they hold, and one holding an
   answer keeps it. A press is a deliberate write, not a trial: once per
   wanted entry, on the view it was decided from (a changed heading or count
@@ -414,9 +414,9 @@ know, and each one was learned from a live failure.
   anything whose words, name or automation id say delete, remove or trash
   (a button with no type counts outside a form; inside one it would submit).
   Entries are PLACED before anything is added: an entry already holding data
-  is matched to the profile job or school it holds (on the employer, and the
-  title when two jobs share an employer, or the school, ignoring case,
-  punctuation and company suffixes such as Inc, LLC, Ltd, Corp, Co and GmbH);
+  is matched to the profile job, school or language it holds (on the
+  employer, and the title when two jobs share an employer, the school, or
+  the language, ignoring case, punctuation and company suffixes such as Inc, LLC, Ltd, Corp, Co and GmbH);
   empty entries, then added ones, take the profile entries no entry holds,
   in order. /map is told each field's place (`profile_entry`) and writes that
   profile entry's facts there, whatever order the page's entries are in — so

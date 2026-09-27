@@ -15,7 +15,7 @@ Route = Literal["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"
 Format = Literal["phone", "money"]
 # The profile lists whose entries /sections places (by what the page's entries
 # hold) and /map writes by profile entry. The loop's PLACED_KINDS mirrors it.
-EntryKind = Literal["experience", "education"]
+EntryKind = Literal["experience", "education", "languages"]
 # The highest entry index a field may carry (its page entry, or its profile
 # entry). The loop's MAX_ENTRY_INDEX mirrors it.
 MAX_ENTRY_INDEX = 20
@@ -211,10 +211,10 @@ class SectionPlan(BaseModel):
     # profile does not have — the whole section is placed nowhere, left to the
     # user, whatever there was to add.
     reason: Literal["held_twice", "held_unmatched"] | None = None
-    # Jobs and schools only: per page entry, then per entry to add, the profile
-    # entry (its catalog index) that entry holds or is given — null for one the
-    # profile does not have. Numbers, never values; /map places by it
-    # (`MapField.profile_entry`).
+    # Jobs, schools and languages only (EntryKind): per page entry, then per
+    # entry to add, the profile entry (its catalog index) that entry holds or
+    # is given — null for one the profile does not have. Numbers, never
+    # values; /map places by it (`MapField.profile_entry`).
     order: list[int | None] | None = None
 
 

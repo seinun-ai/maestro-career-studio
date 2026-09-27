@@ -465,6 +465,31 @@ def test_an_entry_fact_of_another_kind_than_its_section_is_none(db_session, monk
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_a_language_entry_is_placed_like_a_job_or_a_school(db_session, monkeypatch):
+    """Language 1 holds nothing and the page's Language 2 holds Spanish:
+    /sections placed French in entry 1. The model reads "entry 1" as
+    languages.0; code writes French's level there."""
+    facts = autofill_catalog.build({"languages": [{"language": "Spanish", "read": "Fluent"},
+                                                  {"language": "French", "read": "Basic"}]}, [], [])
+    fake_jev(monkeypatch, {"a": ("languages.0.read", 0.9)})
+    got = autofill_map.map_fields([field("a", "Read", "popup", section="Languages 1", profile_entry=1,
+                                         entry_kind="languages")], facts, db_session,
+                                  eeo_consented=True, low_stakes=False)["a"]
+    assert (got.route, got.slot, got.value) == ("slot", "languages.1.read", "Basic")
+
+
+def test_languages_alone_are_no_history_to_reason_from(db_session, monkeypatch):
+    """The reasoning route reads jobs and schools; a profile holding only
+    languages asks it nothing."""
+    facts = autofill_catalog.build({"languages": [{"language": "Spanish"}]}, [], [])
+    prompts = fake_llm(monkeypatch, {"g": {"key": "none", "confidence": 0.95}}, reasoned={"g": 0.99})
+    got = autofill_map.map_fields([field("g", HISTORY_WORDINGS[0], "select")], facts, db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert got["g"].route == "none"
+    assert [p["trace_name"] for p in prompts] == ["autofill-map"]
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_the_model_is_told_the_profile_entry_a_placed_entry_holds(db_session, monkeypatch):
     """A placed entry is numbered by its profile entry (a number, no value):
     page entry 4 holding job #2 is "entry 1" to the model, which would

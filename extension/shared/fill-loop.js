@@ -74,8 +74,8 @@
  *   nothing written, nothing added, a report line) — never page order. A
  *   section with no placement at all (/sections failed, the heading read as
  *   none) keeps page order only while every entry is empty; one holding data
- *   leaves the section alone too, as does a job or school section with no
- *   order at all. Only a kind's placed first section adds entries; one left
+ *   leaves the section alone too, as does a job, school or language section
+ *   with no order at all. Only a kind's placed first section adds entries; one left
  *   alone still spends its kind. One holding data keeps it (`already`).
  *   Each press is a deliberate write, not a trial: once per wanted entry,
  *   counted only when the page's entry count grew; a press that did not grow
@@ -152,7 +152,7 @@
   // Mirrors of app/schemas/autofill_fill.py's EntryKind and MAX_ENTRY_INDEX
   // (pinned by test_the_loops_entry_limits_mirror_the_backends): the kinds
   // whose entries are placed by profile entry, and the highest entry index.
-  const PLACED_KINDS = new Set(["experience", "education"]);
+  const PLACED_KINDS = new Set(["experience", "education", "languages"]);
   const MAX_ENTRY_INDEX = 20;
   const entryIndex = (n) => Math.min(Math.max(Number(n) || 0, 0), MAX_ENTRY_INDEX);
   const MAX_HELD = 10;
@@ -1171,8 +1171,8 @@
     // order cannot be read, when its entry titles do not run 1..N in page
     // order (the backend places entries by their place on the page, the loop
     // finds a field's entry by its title's number: "1, 3" would give an empty
-    // entry the next one's job), when it is a job or school section the
-    // response gave no order, or when it has no placement at all (/sections
+    // entry the next one's job), when it is a job, school or language section
+    // the response gave no order, or when it has no placement at all (/sections
     // failed or hung, the heading read as none) and an entry held data. With
     // no placement and every entry empty, page order is safe and stands.
     const placements = new Map();
@@ -1249,8 +1249,8 @@
         const first = placed && !placedKinds.has(plan.kind);
         if (placed) placedKinds.add(plan.kind);
         const unreadable = placed && (plan.order === null || !numberedInStep(s));
-        // A job or school section with no order is never page order, held
-        // data or not (an Add by page order could pair a new entry with a
+        // A job, school or language section with no order is never page order,
+        // held data or not (an Add by page order could pair a new entry with a
         // profile entry missing a required fact); any other unplaced section
         // is, while every entry is empty.
         const noOrder = !placed && Boolean(plan) && PLACED_KINDS.has(plan.kind);

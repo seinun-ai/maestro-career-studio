@@ -1662,6 +1662,46 @@ def test_an_older_reason_word_is_still_understood(page, load):
     assert out["report"]["sections"][0]["reason"] == "held_twice"
 
 
+def language(n, **kw):
+    """Languages entry n as Workday renders it (probed live 2026-09-26, Home
+    Depot): a Language popup, a lone "I am fluent in this language." checkbox,
+    and Read / Speak / Write popups (Select One, Basic, Fluent, Intermediate)."""
+    sec = {"section": f"Languages {n}", "repeatIndex": n - 1}
+    lang = {k: v for k, v in kw.items() if k in ("committed", "answered")}
+    return [f(f"l{n}", "popup", "Language", required=n == 1, **sec, **lang),
+            f(f"fl{n}", "group", "I am fluent in this language.", committed="No",
+              options=[opt("yes", "Yes"), opt("no", "No")], optionsComplete=True, **sec),
+            *(f(f"{w[0]}{n}", "popup", w, **sec) for w in ("Read", "Speak", "Write"))]
+
+
+def test_language_entries_are_added_and_placed_by_the_language_they_hold(page, load):
+    """Two profile languages, one Language entry on the page already holding
+    the SECOND (French): one Add, and each entry's fields carry the profile
+    language /sections placed there — entry 1 French's, the added entry 2
+    Spanish's — never Spanish's levels beside French."""
+    held = language(1, committed="French", answered=True)
+    out = run(page, load, frames=[held, held + language(2)],
+              sections=[[section("f-s3", "Languages", 1, filled=[True], held=[["French"]])],
+                        [section("f-s3", "Languages", 2, filled=[True, False], held=[["French"], []])]],
+              kinds={"f-s3": {"kind": "languages", "wanted": 2, "order": [1, 0]}},
+              map={"l2": {"route": "slot", "slot": "languages.0.language", "value": "Spanish"},
+                   "R2": {"route": "slot", "slot": "languages.0.read", "value": "Fluent"}},
+              explore={"l2": {"options": [opt("o1", "French"), opt("o2", "Spanish")], "complete": True},
+                       "R2": {"options": [opt("o1", "Select One"), opt("o2", "Basic"), opt("o3", "Fluent"),
+                                          opt("o4", "Intermediate")], "complete": True}},
+              pick={"l2": {"oids": ["o2"], "reason": "matched"}, "R2": {"oids": ["o3"], "reason": "matched"}})
+    assert adds(out) == [{"sid": "f-s3", "heading": "Languages", "entries": 1}]
+    [body] = bodies(out, "/api/autofill/map")
+    assert {x["fid"]: (x.get("profile_entry", "absent"), x.get("entry_kind")) for x in body["fields"]} == {
+        "fl1": (1, "languages"), "R1": (1, "languages"), "S1": (1, "languages"), "W1": (1, "languages"),
+        "l2": (0, "languages"), "fl2": (0, "languages"), "R2": (0, "languages"), "S2": (0, "languages"),
+        "W2": (0, "languages")}
+    assert statuses(out)["l1"] == "already"
+    assert (statuses(out)["l2"], statuses(out)["R2"]) == ("verified", "verified")
+    assert out["report"]["sections"] == [{"heading": "Languages", "kind": "languages", "wanted": 2,
+                                          "entries": 2, "added": 1, "outcome": "added", "reason": None}]
+
+
 def test_the_loops_entry_limits_mirror_the_backends():
     from typing import get_args
 

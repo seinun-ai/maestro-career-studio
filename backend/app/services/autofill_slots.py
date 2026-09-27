@@ -24,7 +24,7 @@ NO_SLOT = "none"
 _SLOT_POLICY: dict[str, Policy] = {"derived.us_citizen": "exact", "derived.full_name": "flag",
                                    "derived.previously_employed_here": "flag"}
 _EXACT_SECTIONS = frozenset({"work_auth", "eligibility", "eeo"})
-_FLAG_SECTIONS = frozenset({"education", "personal", "experience", "skills", "custom"})
+_FLAG_SECTIONS = frozenset({"education", "personal", "experience", "languages", "skills", "custom"})
 
 
 def policy_for(slot: str | None) -> Policy:

@@ -16,9 +16,9 @@ fact catalog here, so no value leaves the machine.
 
 PLACED BY WHAT THE ENTRIES HOLD. An entry already holding data keeps it, and
 is matched to the profile entry it holds — on the employer (a job; and its
-title, when two jobs share an employer) or the school, normalized. Empty
-entries (and entries to add) take the profile entries no entry holds, lowest
-first, in page order. `order` says so per entry, and /map writes each entry's
+title, when two jobs share an employer), the school or the language,
+normalized. Empty entries (and entries to add) take the profile entries no
+entry holds, lowest first, in page order. `order` says so per entry, and /map writes each entry's
 facts from ITS profile entry (`MapField.profile_entry`), so an entry pre-filled
 out of profile order is never given a job the page already shows. An Add is
 safe only when every entry holding data holds a different profile entry.
@@ -57,7 +57,8 @@ KINDS: dict[SectionKind, str] = {
 }
 # The facts an added entry cannot be saved without (its REQUIRED fields), per
 # kind. An entry missing one is not wanted: Add would leave a required box empty.
-_NEEDS: dict[str, tuple[str, ...]] = {"experience": ("employer", "title"), "education": ("school",)}
+_NEEDS: dict[str, tuple[str, ...]] = {"experience": ("employer", "title"), "education": ("school",),
+                                      "languages": ("language",)}
 # One entry each, when the profile holds it. LinkedIn is not here: it has its
 # own box (Social Network URLs), never a Websites entry.
 _WEBSITES = ("personal.website", "personal.github")
@@ -71,16 +72,15 @@ Sections:
 
 def wanted(kind: str, facts: dict[str, Fact]) -> int:
     """How many entries of a kind NOT placed by profile entry the profile can
-    fill (jobs and schools are counted by `plan`, from their placement).
-    Languages and certifications have no facts yet (languages arrive with the
-    profile's Languages list, fill-engine plan Task 10), so none is ever added."""
+    fill (jobs, schools and languages are counted by `plan`, from their
+    placement). Certifications have no facts yet, so none is ever added."""
     if kind == "websites":
         return sum(slot in facts for slot in _WEBSITES)
     return 0
 
 
 # What names a profile entry, per kind: the value an entry holding it must show.
-_NAMED_BY = {"experience": "employer", "education": "school"}
+_NAMED_BY = {"experience": "employer", "education": "school", "languages": "language"}
 
 
 def _entries(kind: str, facts: dict[str, Fact]) -> list[int]:

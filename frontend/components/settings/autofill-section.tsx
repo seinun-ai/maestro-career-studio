@@ -274,9 +274,20 @@ type EducationEntry = {
   start_year?: string;
   end_year?: string;
 };
+/** One language, stored as the fact catalog reads it
+ *  (backend/app/services/autofill_catalog.py `_languages`). */
+type LanguageEntry = {
+  language?: string;
+  read?: string;
+  speak?: string;
+  write?: string;
+  native?: boolean;
+  fluent?: boolean;
+};
 type Profile = {
   custom?: CustomQA[];
   education?: EducationEntry[] | EducationEntry;
+  languages?: LanguageEntry[];
   [group: string]: unknown;
 };
 
@@ -288,6 +299,35 @@ const EDUCATION_FIELDS: { key: keyof EducationEntry; label: string }[] = [
   { key: "start_year", label: "Start year" },
   { key: "end_year", label: "Graduation year" },
 ];
+
+/** The levels in the words application forms offer, stored as those words. */
+const LANGUAGE_LEVELS = ["Basic", "Intermediate", "Fluent"].map((level) => ({
+  value: level,
+  label: level,
+}));
+/** A language select's way back to no answer: the key is removed, never stored as "". */
+const NOT_SET = { value: "not_set", label: "Not set" };
+
+/** Native and fluent are separate answers: forms ask them apart. */
+const LANGUAGE_FIELDS: FieldDef[] = [
+  { key: "language", label: "Language" },
+  { key: "read", label: "Reading", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] },
+  { key: "speak", label: "Speaking", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] },
+  { key: "write", label: "Writing", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] },
+  { key: "native", label: "Native speaker", type: "select", boolean: true, options: [NOT_SET, ...YES_NO] },
+  { key: "fluent", label: "Fluent", type: "select", boolean: true, options: [NOT_SET, ...YES_NO] },
+];
+
+function withAnswer(
+  entry: LanguageEntry,
+  key: string,
+  value: string | boolean | undefined,
+): LanguageEntry {
+  const next: Record<string, unknown> = { ...entry };
+  if (value === undefined || value === "") delete next[key];
+  else next[key] = value;
+  return next as LanguageEntry;
+}
 
 function educationList(profile: Profile): EducationEntry[] {
   const value = profile.education;
@@ -537,6 +577,7 @@ function AutofillEditor({
 
   const custom: CustomQA[] = Array.isArray(profile.custom) ? profile.custom : [];
   const education = educationList(profile);
+  const languages: LanguageEntry[] = Array.isArray(profile.languages) ? profile.languages : [];
 
   const updateProfile = (updater: (current: Profile) => Profile) => {
     editRevision.current += 1;
@@ -575,6 +616,11 @@ function AutofillEditor({
   const setEducation = (next: EducationEntry[]) => {
     setDirty(true);
     updateProfile((current) => ({ ...current, education: next }));
+  };
+
+  const setLanguages = (next: LanguageEntry[]) => {
+    setDirty(true);
+    updateProfile((current) => ({ ...current, languages: next }));
   };
 
   const declineAllEeo = () => {
@@ -759,6 +805,7 @@ function AutofillEditor({
   // focus goes to the Add button below the list.
   const armFocus = useFocusOnNextCommit();
   const addEducationRef = useRef<HTMLButtonElement>(null);
+  const addLanguageRef = useRef<HTMLButtonElement>(null);
   const addQuestionRef = useRef<HTMLButtonElement>(null);
   const fillHintId = useId();
   const declineHintId = useId();
@@ -962,6 +1009,78 @@ function AutofillEditor({
         >
           <Plus className="size-4" />
           Add education
+        </Button>
+      </fieldset>
+
+      <fieldset className="space-y-4">
+        <legend className={LEGEND}>Languages</legend>
+        <p className="text-muted-foreground text-xs">
+          Most important first.
+        </p>
+        {languages.map((entry, i) => (
+          <CardSection key={i} className="flex items-start gap-2">
+            <div className="grid flex-1 items-end gap-4 @xl/setting:grid-cols-3">
+              {LANGUAGE_FIELDS.map((field) => {
+                const id = `af-languages-${i}-${field.key}`;
+                const value = fieldValue(field, entry[field.key as keyof LanguageEntry]);
+                const answer = (next: string | boolean | undefined) =>
+                  setLanguages(
+                    languages.map((entry2, j) =>
+                      j === i ? withAnswer(entry2, field.key, next) : entry2,
+                    ),
+                  );
+                return (
+                  <div key={field.key} className="grid gap-1.5">
+                    <Label htmlFor={id}>{field.label}</Label>
+                    {field.type === "select" ? (
+                      <Select
+                        value={value}
+                        onValueChange={(v) =>
+                          answer(v === NOT_SET.value ? undefined : storedFieldValue(field, v))
+                        }
+                      >
+                        <SelectTrigger id={id} size="sm" className="w-full">
+                          <SelectValue placeholder="Choose">
+                            {field.options?.find((o) => o.value === value)?.label}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {field.options?.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id={id}
+                        className="h-8 text-sm"
+                        value={value}
+                        onChange={(e) => answer(e.target.value)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <RemoveButton
+              label={`Remove language ${i + 1}`}
+              onClick={() => {
+                setLanguages(languages.filter((_, j) => j !== i));
+                armFocus(addLanguageRef);
+              }}
+            />
+          </CardSection>
+        ))}
+        <Button
+          ref={addLanguageRef}
+          variant="outline"
+          size="sm"
+          onClick={() => setLanguages([...languages, {}])}
+        >
+          <Plus className="size-4" />
+          Add language
         </Button>
       </fieldset>
 

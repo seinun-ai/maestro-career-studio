@@ -13,14 +13,15 @@ from tests.test_autofill_router import _seed_base
 FACTS = autofill_catalog.build(
     {"personal": {"website": "https://ada.dev", "github": "https://github.com/ada",
                   "linkedin": "https://linkedin.com/in/ada"},
-     "education": [{"school": "State University", "degree": "MS"}, {"degree": "BS"}, {"school": "City College"}]},
+     "education": [{"school": "State University", "degree": "MS"}, {"degree": "BS"}, {"school": "City College"}],
+     "languages": [{"language": "Spanish", "read": "Fluent"}, {"read": "Basic"}]},
     [{"employer": "Acme", "title": "Analyst", "start_date": "Aug 2021", "current": True},
      {"employer": "Initech", "title": "Intern"},
      {"employer": "Globex"}],  # no title: an entry the page would require it for
     ["Python"])
 # Every value above that could reach a model if the catalog leaked.
 VALUES = ("ada.dev", "github.com/ada", "linkedin", "State University", "City College", "Acme", "Analyst",
-          "Initech", "Intern", "Globex", "Python")
+          "Initech", "Intern", "Globex", "Python", "Spanish", "Fluent")
 HEADINGS = {"w": "Work Experience", "e": "Education", "s": "Websites", "l": "Languages",
             "c": "Certifications", "x": "Resume/CV"}
 
@@ -76,14 +77,15 @@ def test_sections_maps_headings_to_profile_lists(db_session, monkeypatch):
         "e": ("education", 2),
         # A personal website and a GitHub profile; LinkedIn has its own box.
         "s": ("websites", 2),
-        # No language or certification facts exist yet (languages: Task 10).
-        "l": ("languages", 0), "c": ("certifications", 0),
+        # The page's entry takes Spanish; the entry naming no language is
+        # not a language. No certification facts exist.
+        "l": ("languages", 1), "c": ("certifications", 0),
         "x": ("none", 0),
     }
-    # Jobs and schools are placed entry by entry (the page's one entry, then
-    # the one to add); other lists name no entry, so nothing is placed.
+    # Jobs, schools and languages are placed entry by entry (the page's one
+    # entry, then the one to add); other lists name no entry, so nothing is placed.
     assert {sid: p.order for sid, p in got.items()} == {
-        "w": [0, 1], "e": [0, 2], "s": None, "l": None, "c": None, "x": None}
+        "w": [0, 1], "e": [0, 2], "s": None, "l": [0], "c": None, "x": None}
     [call] = calls
     assert set(call["questions"]) == set(HEADINGS)
     q = call["questions"]["w"]
@@ -221,6 +223,21 @@ def test_education_is_placed_by_the_school(db_session, monkeypatch):
     assert planned(db_session, monkeypatch, facts, ["City College"], **kw) == {
         "kind": "education", "wanted": 2, "reason": None, "order": [1, 0]}
     assert planned(db_session, monkeypatch, facts, ["Old School"], **kw)["reason"] == "held_unmatched"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_languages_are_placed_by_the_language(db_session, monkeypatch):
+    """A Workday Language entry holds the language and its levels: it is the
+    profile language it names, and the rest are added after it."""
+    facts = autofill_catalog.build({"languages": [{"language": "Spanish", "speak": "Fluent"},
+                                                  {"language": "French", "read": "Basic"}]}, [], [])
+    kw = {"sid": "l", "heading": "Languages", "kind": "languages"}
+    assert planned(db_session, monkeypatch, facts, **kw) == {
+        "kind": "languages", "wanted": 2, "reason": None, "order": [0, 1]}
+    assert planned(db_session, monkeypatch, facts, ["french", "Basic", "Basic", "Basic"], **kw) == {
+        "kind": "languages", "wanted": 2, "reason": None, "order": [1, 0]}
+    assert planned(db_session, monkeypatch, facts, ["German", "Fluent"], **kw)["reason"] == "held_unmatched"
+    assert planned(db_session, monkeypatch, facts, ["Spanish"], ["Spanish"], **kw)["reason"] == "held_twice"
 
 
 @pytest.mark.usefixtures("jev_on")

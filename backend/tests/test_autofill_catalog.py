@@ -267,3 +267,53 @@ def test_the_home_depot_in_the_history_is_the_home_depot_applied_to():
                   company="Home Depot")
     assert f["derived.previously_employed_here"].value == "Yes, previously"
     assert "work, or worked," in f["derived.previously_employed_here"].describe
+
+
+# ---------- languages (fill-engine plan Task 10): one entry per language,
+# levels in the words forms show, native and fluent as separate Yes/No.
+
+LANGUAGES = [
+    {"language": "Spanish", "read": "Fluent", "speak": "Intermediate", "write": "Basic",
+     "native": False, "fluent": True},
+    {"language": "  ", "read": "Basic"},  # no language named: not an entry
+    {"language": "French", "speak": "basic", "write": "", "native": "yes"},
+]
+
+
+def test_each_language_is_its_own_entry_of_six_facts():
+    f = cat.build({"languages": LANGUAGES}, [], [])
+    got = {slot: fact.value for slot, fact in f.items() if slot.startswith("languages.")}
+    assert got == {
+        "languages.0.language": "Spanish", "languages.0.read": "Fluent", "languages.0.speak": "Intermediate",
+        "languages.0.write": "Basic", "languages.0.native": "No", "languages.0.fluent": "Yes",
+        # The unnamed entry is skipped, so French is entry 2; absent levels are no facts.
+        "languages.1.language": "French", "languages.1.speak": "Basic", "languages.1.native": "Yes",
+    }
+
+
+def test_language_facts_are_flagged_facts_described_without_values():
+    f = cat.build({"languages": LANGUAGES}, [], [])
+    assert {fact.policy for slot, fact in f.items() if slot.startswith("languages.")} == {"flag"}
+    assert f["languages.0.language"].describe == "language entry 1: the language"
+    assert f["languages.1.speak"].describe == "language entry 2: speaking level"
+    assert f["languages.0.read"].describe == "language entry 1: reading level"
+    assert f["languages.0.write"].describe == "language entry 1: writing level"
+    assert f["languages.0.native"].describe == "language entry 1: a native speaker of it (yes/no)"
+    assert f["languages.0.fluent"].describe == "language entry 1: fluent in it (yes/no)"
+    for slot, fact in f.items():
+        if slot.startswith("languages."):
+            assert str(fact.value) not in fact.describe, slot
+
+
+@pytest.mark.parametrize("level", ["Native", "Expert", "5", True])
+def test_a_level_no_form_word_names_is_no_fact(level):
+    f = cat.build({"languages": [{"language": "Spanish", "read": level, "native": "maybe"}]}, [], [])
+    assert [slot for slot in f if slot.startswith("languages.")] == ["languages.0.language"]
+
+
+def test_languages_are_capped_and_a_wrong_shape_builds_nothing():
+    many = [{"language": f"L{i}"} for i in range(cat.MAX_LANGUAGES + 3)]
+    f = cat.build({"languages": many}, [], [])
+    assert sum(slot.endswith(".language") for slot in f) == cat.MAX_LANGUAGES
+    for shape in ("Spanish", {"language": "Spanish"}, ["Spanish"], None):
+        assert not [s for s in cat.build({"languages": shape}, [], []) if s.startswith("languages.")]

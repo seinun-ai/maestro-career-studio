@@ -27,6 +27,7 @@ from app.services.autofill_slots import Policy, _as_text, policy_for
 MAX_SLOTS = 240  # Jev Choice ceiling 255 incl. sentinels
 MAX_EDUCATION = 4
 MAX_EXPERIENCE = 8
+MAX_LANGUAGES = 4
 MAX_CUSTOM = 30
 
 _WORDS: dict[str, dict[str, str]] = {
@@ -166,6 +167,37 @@ def _experience(out: dict[str, Fact], employment: list[dict[str, Any]]) -> None:
         _add(out, f"experience.{i}.current", bool(block.get("current")))
 
 
+# A language's levels in the words forms offer (Workday: Basic, Fluent,
+# Intermediate), whatever their case; any other word is no fact.
+_LEVELS = {"basic": "Basic", "intermediate": "Intermediate", "fluent": "Fluent"}
+_YES_NO = {True: "Yes", False: "No", "yes": "Yes", "no": "No"}
+_LANGUAGE_FACTS = {"language": "the language", "read": "reading level", "speak": "speaking level",
+                   "write": "writing level", "native": "a native speaker of it (yes/no)",
+                   "fluent": "fluent in it (yes/no)"}
+
+
+def _language_answer(key: str, value: Any) -> str | None:
+    word = value.strip().lower() if isinstance(value, str) else value
+    if key == "language":
+        return (value.strip() or None) if isinstance(value, str) else None
+    if key in ("native", "fluent"):
+        return _YES_NO.get(word) if isinstance(word, (str, bool)) else None
+    return _LEVELS.get(word) if isinstance(word, str) else None
+
+
+def _languages(out: dict[str, Fact], languages: Any) -> None:
+    """One entry per NAMED language, most important first: its reading,
+    speaking and writing levels, and "native" and "fluent" as two separate
+    Yes/No answers. An absent or unreadable answer is no fact."""
+    named = [e for e in (languages if isinstance(languages, list) else [])
+             if isinstance(e, dict) and _language_answer("language", e.get("language"))]
+    for i, entry in enumerate(named[:MAX_LANGUAGES]):
+        for key, what in _LANGUAGE_FACTS.items():
+            if text := _language_answer(key, entry.get(key)):
+                slot = f"languages.{i}.{key}"
+                out[slot] = Fact(slot, text, f"language entry {i + 1}: {what}", policy_for(slot))
+
+
 def _custom(out: dict[str, Fact], custom: Any) -> None:
     """Saved answers, each described by its own question."""
     for i, qa in enumerate((custom if isinstance(custom, list) else [])[:MAX_CUSTOM]):
@@ -231,6 +263,7 @@ def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: lis
     _education(out, profile.get("education"))
     _experience(out, employment or [])
     _worked_here(out, company)
+    _languages(out, profile.get("languages"))
     _add(out, "skills", tuple(s for s in (skills or []) if s), "applicant skills (a list)")
     _custom(out, profile.get("custom"))
     return dict(list(out.items())[:MAX_SLOTS])

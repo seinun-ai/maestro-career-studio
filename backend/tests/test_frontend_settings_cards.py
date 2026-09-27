@@ -291,6 +291,34 @@ def test_autofill_removes_are_named_and_hand_focus_to_add():
     assert "ref={addQuestionRef}" in _button_at(src, "onClick={() => setCustom([...custom, {")
 
 
+def test_languages_are_edited_like_education_and_saved_in_the_same_body():
+    """Fill-engine plan Task 10: one entry per language, most important first,
+    with the levels forms offer (Basic / Intermediate / Fluent) and native and
+    fluent as separate Yes/No answers, stored under `languages` in the profile
+    the one Save PUTs."""
+    src = _read("components/settings/autofill-section.tsx")
+    fieldset = _slice(src, "<legend className={LEGEND}>Languages</legend>", "</fieldset>")
+    assert "Most important first." in fieldset
+    assert "{LANGUAGE_FIELDS.map((field) => {" in fieldset
+    assert "id = `af-languages-${i}-${field.key}`" in fieldset
+    fields = _slice(src, "const LANGUAGE_FIELDS: FieldDef[] = [", "\n];")
+    assert re.findall(r'key: "(\w+)", label: "([^"]+)"', fields) == [
+        ("language", "Language"), ("read", "Reading"), ("speak", "Speaking"), ("write", "Writing"),
+        ("native", "Native speaker"), ("fluent", "Fluent")]
+    assert fields.count("boolean: true") == 2  # native and fluent: Yes/No, stored as booleans
+    levels = _slice(src, "const LANGUAGE_LEVELS = [", "]")
+    assert re.findall(r'"(\w+)"', levels) == ["Basic", "Intermediate", "Fluent"]
+    # Add and Remove as Education has them: a named Remove that hands focus to Add.
+    assert "label={`Remove language ${i + 1}`}" in fieldset and "armFocus(addLanguageRef);" in fieldset
+    add = _button_at(src, "onClick={() => setLanguages([...languages, {}])}")
+    assert "ref={addLanguageRef}" in add and "Add language" in add
+    # The same profile, the same Save: the list is a key of the PUT body.
+    set_languages = _slice(src, "const setLanguages = (", "\n  };")
+    assert "setDirty(true);" in set_languages and "languages: next" in set_languages
+    # A select set back to "Not set" removes its key, never stores "".
+    assert "NOT_SET" in fieldset
+
+
 def test_a_custom_question_has_a_visible_label():
     # Only an aria-label named it; a sighted user saw an unlabelled box.
     src = _read("components/settings/autofill-section.tsx")

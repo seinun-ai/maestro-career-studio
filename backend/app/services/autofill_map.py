@@ -338,7 +338,9 @@ def _said_no_fact(picked: tuple[str, float] | None, *, history: bool = False) ->
 
 
 def _has_history(facts: dict[str, Fact]) -> bool:
-    return any(_ENTRY.fullmatch(slot) for slot in facts)
+    """Jobs or schools (autofill_reasoned.history): a language is placed like
+    them but is no history a question is reasoned from."""
+    return any((m := _ENTRY.fullmatch(slot)) and m[1] in ("experience", "education") for slot in facts)
 
 
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,
