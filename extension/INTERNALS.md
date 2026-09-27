@@ -429,10 +429,11 @@ know, and each one was learned from a live failure.
   added, and the report says so. Two entries holding the same one add
   nothing. Only the first section of each kind is placed (a second one read
   as work experience gets nothing), an entry fact of another kind than its
-  section's is never written there, and a section whose order cannot be
-  read, or whose entry titles do not run 1, 2, 3… down the page (the
-  backend places entries by their place, the Companion finds an entry by its
-  title's number), is left to you rather than filled in page order. A
+  section's is never written there (a language's answers only inside a
+  placed Languages entry, and its name never as a closest match), and a
+  section whose order cannot be read, or whose entry titles do not run 1,
+  2, 3… down the page (the backend places entries by their place, the
+  Companion finds an entry by its title's number), is left to you rather than filled in page order. A
   section the backend could not place at all (the ask failed or was slow,
   its heading was read as no profile list) is filled in page order only
   while every entry is empty; if one holds data the section is left to you.

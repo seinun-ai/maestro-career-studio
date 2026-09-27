@@ -301,7 +301,8 @@ def _placed_key(field: MapField, key: str) -> str | None:
     """Where an entry sits in the profile is code's (/sections matched what the
     entries hold), never the model's: an entry fact's number becomes the
     entry's `profile_entry`, whatever number the model chose. None: a fact of
-    another kind than the section holds."""
+    another kind than the section holds, or a language fact outside a placed
+    Languages entry."""
     m = _ENTRY.fullmatch(key)
     # A language fact means nothing without its language: only a placed Languages entry's field gets one.
     if m is not None and m[1] == "languages" and field.entry_kind != "languages":
