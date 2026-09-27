@@ -66,6 +66,14 @@ _DESCRIBES: dict[str, str] = {
     # A form asks for it as "salary requirements" or "compensation" as often
     # as "desired salary": one fact, described in each wording.
     "preferences.desired_salary": "desired salary, compensation or salary requirements (expected pay)",
+    # Facts built here rather than read from the profile: one lookup, so the
+    # evaluation describes them as production does.
+    "derived.full_name": "your full legal name, for name and signature boxes",
+    "derived.today": "today's date, for a date the applicant signs or fills in today",
+    "derived.earliest_start_date": "the earliest date you can start, as a calendar date",
+    "derived.previously_employed_here": ("whether you work, or worked, for this company, from your work history "
+                                         "(currently or previously)"),
+    "skills": "applicant skills (a list)",
 }
 # "Are you a US citizen?", from every status the profile can store: only a
 # citizen is one; every other status (a green card, any visa, none) is a No.
@@ -99,12 +107,31 @@ class Fact:
     value: str | tuple[str, ...]
     describe: str
     policy: Policy
+    # Whether the answer is itself a Yes or a No ("No", "No, I do not have a
+    # disability", "Yes, previously"), however the profile stored it. Only such
+    # a fact may be asked reversed or negated (/pick and /step MEANING_RULE); a
+    # status, list or name is never turned into a Yes or a No.
+    yes_no: bool = False
 
 
-def _describe(slot: str) -> str:
+def is_yes_no(value: object) -> bool:
+    return isinstance(value, str) and (value in ("Yes", "No") or value.startswith(("Yes, ", "No, ")))
+
+
+def describe_of(slot: str) -> str:
+    """A slot's value-free description: the one lookup production and the
+    evaluation both read (a saved answer is described by its own question)."""
     if slot in _DESCRIBES:
         return _DESCRIBES[slot]
+    if (m := re.fullmatch(r"languages\.(\d+)\.(\w+)", slot)) and m[2] in _LANGUAGE_FACTS:
+        return f"language entry {int(m[1]) + 1}: {_LANGUAGE_FACTS[m[2]]}"
     return re.sub(r"\.(\d+)\.", lambda m: f" entry {int(m.group(1)) + 1}: ", slot).replace(".", ": ").replace("_", " ")
+
+
+
+def make_fact(slot: str, value: str | tuple[str, ...], describe: str | None = None) -> Fact:
+    """A fact, described and marked Yes/No by the one rule (`describe_of`, `is_yes_no`)."""
+    return Fact(slot, value, describe or describe_of(slot), policy_for(slot), is_yes_no(value))
 
 
 def _month(year: str, month: int) -> str | None:
@@ -127,12 +154,12 @@ def ym(text: str | None) -> str | None:
 def _add(out: dict[str, Fact], slot: str, value: Any, describe: str | None = None) -> None:
     if isinstance(value, tuple):
         if value:
-            out[slot] = Fact(slot, value, describe or _describe(slot), policy_for(slot))
+            out[slot] = make_fact(slot, value, describe)
         return
     words = _WORDS.get(re.sub(r"\.\d+\.", ".", slot), {})
     text = (words.get(value) if isinstance(value, str) else None) or _as_text(value)
     if text is not None:
-        out[slot] = Fact(slot, text, describe or _describe(slot), policy_for(slot))
+        out[slot] = make_fact(slot, text, describe)
 
 
 def _profile_sections(out: dict[str, Fact], profile: dict[str, Any]) -> None:
@@ -198,7 +225,7 @@ def _languages(out: dict[str, Fact], languages: Any) -> None:
         for key, what in _LANGUAGE_FACTS.items():
             if text := _language_answer(key, entry.get(key)):
                 slot = f"languages.{i}.{key}"
-                out[slot] = Fact(slot, text, f"language entry {i + 1}: {what}", policy_for(slot))
+                out[slot] = make_fact(slot, text)
 
 
 def _custom(out: dict[str, Fact], custom: Any) -> None:
@@ -214,24 +241,17 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
     personal = profile.get("personal") if isinstance(profile.get("personal"), dict) else {}
     identity = canonical_identity_from_profile({"personal": personal})
     if identity["legal_first"] and identity["legal_last"]:
-        out["derived.full_name"] = Fact("derived.full_name", f"{identity['legal_first']} {identity['legal_last']}",
-                                        "your full legal name, for name and signature boxes",
-                                        policy_for("derived.full_name"))
-    out["derived.today"] = Fact("derived.today", today.isoformat(),
-                                "today's date, for a date the applicant signs or fills in today",
-                                policy_for("derived.today"))
+        out["derived.full_name"] = make_fact("derived.full_name",
+                                             f"{identity['legal_first']} {identity['legal_last']}")
+    out["derived.today"] = make_fact("derived.today", today.isoformat())
     work_auth = profile.get("work_auth") if isinstance(profile.get("work_auth"), dict) else {}
     status = work_auth.get("status")
     if isinstance(status, str) and status in _US_CITIZEN:
-        out["derived.us_citizen"] = Fact(
-            "derived.us_citizen", _US_CITIZEN[status], _describe("derived.us_citizen"),
-            policy_for("derived.us_citizen"))
+        out["derived.us_citizen"] = make_fact("derived.us_citizen", _US_CITIZEN[status])
     preferences = profile.get("preferences") if isinstance(profile.get("preferences"), dict) else {}
     start = preferences.get("earliest_start_date")
     if isinstance(start, str) and _IMMEDIATE.search(start):
-        out["derived.earliest_start_date"] = Fact("derived.earliest_start_date", today.isoformat(),
-                                                  "the earliest date you can start, as a calendar date",
-                                                  policy_for("derived.earliest_start_date"))
+        out["derived.earliest_start_date"] = make_fact("derived.earliest_start_date", today.isoformat())
 
 
 def _worked_here(out: dict[str, Fact], company: str | None) -> None:
@@ -248,10 +268,8 @@ def _worked_here(out: dict[str, Fact], company: str | None) -> None:
         return
     current = any(getattr(out.get(f"experience.{i}.current"), "value", None) == "Yes" for i in matched)
     out.pop("eligibility.previously_employed_here", None)
-    out["derived.previously_employed_here"] = Fact(
-        "derived.previously_employed_here", "Yes, currently" if current else "Yes, previously",
-        "whether you work, or worked, for this company, from your work history (currently or previously)",
-        policy_for("derived.previously_employed_here"))
+    out["derived.previously_employed_here"] = make_fact("derived.previously_employed_here",
+                                                        "Yes, currently" if current else "Yes, previously")
 
 
 def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str], *,
@@ -266,6 +284,6 @@ def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: lis
     _experience(out, employment or [])
     _worked_here(out, company)
     _languages(out, profile.get("languages"))
-    _add(out, "skills", tuple(s for s in (skills or []) if s), "applicant skills (a list)")
+    _add(out, "skills", tuple(s for s in (skills or []) if s))
     _custom(out, profile.get("custom"))
     return dict(list(out.items())[:MAX_SLOTS])

@@ -1324,7 +1324,7 @@
   // ---- the adaptive step: the field's state now, and the moves code allows.
   const MAX_CLICKS = 50;
   const MAX_WORDS = 4; // the backend accepts search:word:0..9
-  const GIVE_UP = { mid: "give_up", describe: "Stop: no move will select an option that states the value" };
+  const GIVE_UP = { mid: "give_up", describe: "Stop: no move will select the goal's answer to the question" };
   const lastState = new WeakMap(); // el -> { version, mids, clicks: [{oid, text, group}], value, words }
   let stateVersion = 0;
   // Page text inside a description is a JSON string: a quote in it cannot end

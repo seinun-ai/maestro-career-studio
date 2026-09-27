@@ -117,7 +117,7 @@ def test_options_are_offered_under_their_oids_plus_none(db_session, monkeypatch)
     calls = fake_jev(monkeypatch, {"h": ("o1", 0.9)})
     got = pick([pf("h", slot="preferences.how_heard", options=opts("none", "Referral"))], db_session)
     assert calls[0]["questions"]["h"]["criteria"] == {
-        "o1": "none", "o2": "Referral", "none": "No option states this value"}
+        "o1": "none", "o2": "Referral", "none": "No option means the same as the fact"}
     assert got["h"].oids == ["o1"]
 
 
@@ -538,7 +538,7 @@ def test_the_low_stakes_rule_names_its_scope_and_binds_only_low_stakes_fields(db
     assert "self-assessment against the job description" in prompt
     assert prompt.index(_NEVER_LOW_STAKES) < prompt.index("Otherwise a low_stakes field is") < prompt.index(
         "for a question in that scope, the answer that shows they fit")
-    assert "The never-list does not apply to a field with applicant_values: pick the option that states its value." \
+    assert "The never-list does not apply to a field with applicant_values: pick the option that means the same as its fact." \
         in prompt
 
 
@@ -972,7 +972,7 @@ def test_the_second_opinion_is_capped(db_session, monkeypatch):
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_slot_only_second_opinion_carries_no_low_stakes_paragraph(db_session, monkeypatch):
-    """The fast model is asked what Jev is: which option states the value."""
+    """The fast model is asked what Jev is: which option means the same as the fact."""
     from app.services.autofill_map import _NEVER_LOW_STAKES
 
     fake_jev(monkeypatch, {"m": ("none", 0.9)})
@@ -1022,3 +1022,56 @@ def test_a_low_stakes_field_carries_no_fact(db_session, monkeypatch):
     calls = fake_jev(monkeypatch)
     pick([pf("h", route="low_stakes", options=opts("LinkedIn"))], db_session)
     assert "fact" not in calls[0]["state"]["fields"][0]
+
+
+# ---------- review of 62b38d48: no "states the value" left; the meaning rule only for a Yes or a No
+
+import re  # noqa: E402
+
+STATES_THE_VALUE = re.compile(r"states (the |its |this )?(applicant )?value", re.IGNORECASE)
+STATUS_FACTS = autofill_catalog.build({"work_auth": {"status": "opt", "sponsorship_now": False},
+                                       "eeo": {"race_ethnicity": ["Asian"]}}, [], [])
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_no_question_or_criterion_asks_for_the_option_that_states_the_value(db_session, monkeypatch):
+    model_settings.set_autofill_low_stakes(db_session, True)
+    calls = fake_jev(monkeypatch)
+    fields = [pf("s", question=AUTHORIZED_WITHOUT, slot="work_auth.sponsorship_now", options=opts("Yes", "No")),
+              pf("h", route="low_stakes", options=opts("LinkedIn"))]
+    pick(fields, db_session)
+    assert not STATES_THE_VALUE.search(json.dumps(calls[0]["questions"]))
+    model_settings.set_autofill_engine(db_session, "fast")
+    prompts = fake_llm(monkeypatch)
+    pick(fields, db_session)   # a mixed batch: the low-stakes paragraph is in it
+    assert "low_stakes" in prompts[0]["prompt"] and not STATES_THE_VALUE.search(prompts[0]["prompt"])
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_meaning_rule_is_asked_for_a_yes_or_no_fact_only(db_session, monkeypatch):
+    """A status or a list value is never turned into a Yes or a No: "Do you
+    require sponsorship?" mapped to the work-authorization status stays none."""
+    calls = fake_jev(monkeypatch)
+    autofill_pick.pick([pf("y", question="Do you require sponsorship now?", slot="work_auth.sponsorship_now",
+                           options=opts("Yes", "No")),
+                        pf("s", question="Do you require sponsorship?", slot="work_auth.status", options=opts("Yes", "No")),
+                        pf("r", question="Are you a member of an underrepresented group?", slot="eeo.race_ethnicity",
+                           item="Asian", options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
+    questions = calls[0]["questions"]
+    assert autofill_pick.MEANING_RULE in questions["y"]["instructions"]
+    for fid in ("s", "r"):
+        assert autofill_pick.MEANING_RULE not in questions[fid]["instructions"], fid
+        assert autofill_pick.NEVER_YES_NO in questions[fid]["instructions"], fid
+
+
+def test_the_fast_model_is_told_which_facts_are_a_yes_or_a_no(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch)
+    autofill_pick.pick([pf("y", slot="work_auth.sponsorship_now", options=opts("Yes", "No")),
+                        pf("s", slot="work_auth.status", options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
+    prompt = prompts[0]["prompt"]
+    fields = {f["id"]: f for f in json.loads(prompt.split("Fields: ", 1)[1])}
+    assert (fields["y"].get("yes_no"), fields["s"].get("yes_no")) == (True, None)
+    assert autofill_pick.MEANING_RULE in prompt and autofill_pick.NEVER_YES_NO in prompt
+    prompts = fake_llm(monkeypatch)
+    autofill_pick.pick([pf("s", slot="work_auth.status", options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
+    assert autofill_pick.MEANING_RULE not in prompts[0]["prompt"] and autofill_pick.NEVER_YES_NO in prompts[0]["prompt"]

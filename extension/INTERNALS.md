@@ -538,8 +538,12 @@ know, and each one was learned from a live failure.
   authorized to work WITHOUT sponsorship?", "are you under 18?") still
   maps to the same slot on /map; the answer flips at pick time, where the
   model reads the fact's description (a No to "will need sponsorship" is a
-  Yes there). No other value travels: the description names the question,
-  never an answer.
+  Yes there). That reading is asked only for a fact whose answer is itself
+  a Yes or a No (`Fact.yes_no`); for any other the question says a
+  status, list or name value is never turned into a Yes or No, so "do you
+  require sponsorship?" mapped to an "F-1 OPT" status stays yours. No
+  other value travels: the description names the question, never an
+  answer.
 - **Which engine decides.** On the Jev engine (Settings › AI & models ›
   Form filling), /map, /pick and /step ask Jev first. The fast model
   decides a request's fields in two cases, always at the same floors:

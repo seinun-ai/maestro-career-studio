@@ -141,6 +141,8 @@ def _verdict(
     return Choice(answer=None, reason="abstained")
 
 
+# Picks by the value alone (no fact description, no reversed-wording rule, unlike
+# /pick): unreachable since the fill loop replaced this pass; Task 13 deletes /choose's Jev half.
 def _pick_options(
     items: list[tuple[ChooseField, str, autofill_slots.Policy]], session: Session
 ) -> dict[str, Choice]:

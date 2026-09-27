@@ -458,3 +458,27 @@ def test_a_steps_goal_carries_the_facts_meaning_beside_its_value(db_session, mon
     assert json.dumps(FACTS["work_auth.sponsorship_now"].describe) in text and '"No"' in text
     assert "reverse" in text and "negat" in text
     assert "Business Analytics" not in text
+
+
+STATES_THE_VALUE = __import__("re").compile(r"states (the |its |this )?(applicant )?value", __import__("re").IGNORECASE)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_no_step_goal_or_move_asks_for_the_option_that_states_the_value(db_session, monkeypatch):
+    model_settings.set_autofill_low_stakes(db_session, True)
+    for r in (req(slot="work_auth.sponsorship_now"), req(route="low_stakes")):
+        calls = fake_jev(monkeypatch)
+        step(r, db_session)
+        assert not STATES_THE_VALUE.search(json.dumps(calls[0]["questions"])), r.route
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_steps_meaning_rule_is_for_a_yes_or_no_fact_only(db_session, monkeypatch):
+    from app.services.autofill_pick import MEANING_RULE, NEVER_YES_NO
+
+    facts = autofill_catalog.build({"work_auth": {"status": "opt", "sponsorship_now": False}}, [], [])
+    for slot, has_rule in (("work_auth.sponsorship_now", True), ("work_auth.status", False)):
+        calls = fake_jev(monkeypatch)
+        autofill_step.step(req(slot=slot), facts, db_session, None)
+        text = calls[0]["questions"]["f"]["instructions"]
+        assert (MEANING_RULE in text, NEVER_YES_NO in text) == (has_rule, not has_rule), slot

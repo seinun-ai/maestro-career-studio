@@ -319,3 +319,30 @@ def test_languages_are_capped_and_a_wrong_shape_builds_nothing():
     assert sum(slot.endswith(".language") for slot in f) == cat.MAX_LANGUAGES
     for shape in ("Spanish", {"language": "Spanish"}, ["Spanish"], None):
         assert not [s for s in cat.build({"languages": shape}, [], []) if s.startswith("languages.")]
+
+
+# ---------- which facts are a Yes or a No, and one description per slot (review, 2026-09-27)
+
+
+def test_a_fact_whose_answer_is_a_yes_or_a_no_says_so():
+    f = cat.build({**PROFILE, "eligibility": {"over_18": True}, "eeo": {"race_ethnicity": ["Asian"]},
+                   "languages": [{"language": "Norwegian", "native": True, "read": "Fluent"}]},
+                  EMPLOYMENT, ["Python"], company="Acme")
+    yes_no = {slot for slot, fact in f.items() if fact.yes_no}
+    for slot in ("work_auth.sponsorship_future", "eligibility.over_18", "derived.us_citizen",
+                 "preferences.willing_to_relocate", "languages.0.native"):
+        assert slot in yes_no, slot
+    for slot in ("work_auth.status", "eeo.race_ethnicity", "skills", "languages.0.language", "languages.0.read",
+                 "education.0.degree", "personal.city", "derived.today"):
+        assert slot not in yes_no, slot
+
+
+def test_every_description_comes_from_one_lookup():
+    """The eval builds its facts with the same `describe_of` production uses."""
+    f = cat.build({**PROFILE, "languages": [{"language": "Norwegian", "read": "Fluent"}],
+                   "personal": {"first_name": "Sample", "last_name": "Person"}}, EMPLOYMENT, ["Python"])
+    for slot, fact in f.items():
+        if not slot.startswith("custom."):
+            assert cat.describe_of(slot) == fact.describe, slot
+    assert cat.describe_of("skills") == "applicant skills (a list)"
+    assert cat.describe_of("languages.2.read") == "language entry 3: reading level"

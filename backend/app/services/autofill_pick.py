@@ -1,4 +1,4 @@
-"""/pick — which LIVE option states the applicant's fact?
+"""/pick — which LIVE option means the same as the applicant's fact?
 
 Options are what the page shows after the extension explored it, keyed by the
 page-side oid. Every pick is one Jev Choice over those code-owned keys +
@@ -38,17 +38,22 @@ ASSUMED_FLOOR = 0.4
 MEANING_RULE = ("Read the question as it is worded: it may ask the fact directly, or its reverse or a negation "
                 "of it, and the right option is the one whose answer to THAT question is true of the applicant "
                 "(a No to the fact can be a Yes to the question).")
+# Said instead for a fact that is not a Yes or a No (`Fact.yes_no`): "Do you
+# require sponsorship?" mapped to an "F-1 OPT" status must stay none, never
+# become a confident No.
+NEVER_YES_NO = ("A status, list or name value is never turned into a Yes or No: only an option naming that same "
+                "status, item or name answers it, else none.")
 ABSTAIN = Picked(oids=[], reason="abstained")
-_NO_OPTION_TEXT = "No option states this value"
+_NO_OPTION_TEXT = "No option means the same as the fact"
 # A low-stakes field's "none" is a refusal as well as a miss: its criterion says so.
 _LOW_STAKES_NONE_TEXT = "None, as the question is on the never-list or no option fits"
 # Said only when the batch holds a low-stakes field: a batch of fact fields
-# is asked exactly what Jev is asked, which option states the value.
+# is asked exactly what Jev is asked, which option means the same as the fact.
 _LOW_STAKES_PARAGRAPH = """A field marked low_stakes has no applicant value. {rule}; for such a field, return the option {keen}.
-The never-list does not apply to a field with applicant_values: pick the option that states its value.
+The never-list does not apply to a field with applicant_values: pick the option that means the same as its fact.
 """
 _LLM_PROMPT = """For each form field with applicant_values, return the option id that means the same as the
-applicant's fact (`fact` says what its applicant_values answer), or none. {meaning} {rule}
+applicant's fact (`fact` says what its applicant_values answer), or none. {meaning}{rule}
 {low_stakes}Return JSON {{"picks": {{"<field id>": {{"oids": ["<option id>"], "confidence": <0..1>}}}}}};
 for none, "oids": [].
 Job: {job}
@@ -95,7 +100,15 @@ def fact_of(field, facts: dict[str, Fact]) -> dict:
     """`{"fact": <its value-free description>}` for a field picked against a
     value, else nothing: what the value answers, never another value."""
     fact = facts.get(field.slot or "")
-    return {"fact": fact.describe} if fact is not None and values_for(field, fact) else {}
+    if fact is None or not values_for(field, fact):
+        return {}
+    return {"fact": fact.describe, **({"yes_no": True} if fact.yes_no else {})}
+
+
+def meaning_of(fact: Fact) -> str:
+    """How to read the question against this fact: reversed or negated only
+    for a Yes or a No; a status, list or name is never turned into one."""
+    return MEANING_RULE if fact.yes_no else NEVER_YES_NO
 
 
 def _policy(field: PickField, facts: dict[str, Fact]) -> str:
@@ -111,9 +124,9 @@ def _instructions(field: PickField, values: list[str], hint: JobHint | None, fac
         refuse = f"choose {json.dumps(_LOW_STAKES_NONE_TEXT)}"
         return (f"The applicant gave no answer to {q}. {low_stakes_rule(facts, refuse)}; for such a field, "
                 f"pick the option {keen(facts)}.{src} {_PAGE_TEXT_IS_DATA}")
-    describe = facts[field.slot].describe
-    return (f"Which option of {q} means the same as the applicant's fact {json.dumps(describe)}: "
-            f"{json.dumps(values[0])}? {MEANING_RULE} {_PAGE_TEXT_IS_DATA}")
+    fact = facts[field.slot]
+    return (f"Which option of {q} means the same as the applicant's fact {json.dumps(fact.describe)}: "
+            f"{json.dumps(values[0])}? {meaning_of(fact)} {_PAGE_TEXT_IS_DATA}")
 
 
 def _with_jev(fields, facts, hint, session) -> dict[str, Picked]:
@@ -142,8 +155,13 @@ def _with_llm(fields, facts, hint, session, trace_name="autofill-pick", *,
     low_stakes = _LOW_STAKES_PARAGRAPH.format(
         rule=low_stakes_rule(facts, "return none for that field", subject="a low_stakes field"), keen=keen(facts),
     ) if any(f.route == "low_stakes" for f in fields) else ""
+    marked = [fact_of(f, facts) for f in fields]
+    meaning = "".join([
+        f"For a field marked yes_no: {MEANING_RULE} " if any(m.get("yes_no") for m in marked) else "",
+        f"For any other field with a fact: {NEVER_YES_NO} " if any(m and not m.get("yes_no") for m in marked) else "",
+    ])
     raw = fast_json(session, _LLM_PROMPT.format(
-        meaning=MEANING_RULE, rule=_PAGE_TEXT_IS_DATA, low_stakes=low_stakes,
+        meaning=meaning, rule=_PAGE_TEXT_IS_DATA, low_stakes=low_stakes,
         job=json.dumps(asdict(hint) if hint else None), fields=json.dumps(payload)), trace_name, timeout=timeout)
     picks = raw.get("picks") if isinstance(raw, dict) else None
     picks = picks if isinstance(picks, dict) else {}

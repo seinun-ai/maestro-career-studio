@@ -362,15 +362,38 @@ def test_the_reversed_wording_cases_are_labelled():
     assert {c["tag"] for c in STEPS["cases"] if c.get("tag")} == {"reversed"}
 
 
-def test_a_case_fact_is_described_as_the_catalog_describes_it():
-    """The pick now reads the fact's description: the eval must send the one production sends."""
+# A profile holding every slot the cases name, built the way production builds it.
+EVERY_SLOT = {
+    "work_auth": {"status": "h1b", "authorized_now": True, "sponsorship_now": False, "sponsorship_future": False},
+    "eligibility": {"over_18": True, "non_compete": False, "previously_employed_here": False},
+    "eeo": {"gender": "male", "race_ethnicity": ["Asian"], "hispanic_latino": "no", "veteran_status": "not_veteran",
+            "disability_status": "no"},
+    "preferences": {"how_heard": "Referral", "willing_to_relocate": True},
+    "personal": {"country": "United States", "state": "Texas"},
+    "education": [{"school": "State University", "degree": "Master's", "discipline": "Analytics"}],
+    "languages": [{"language": "Norwegian"}],
+}
+
+
+@pytest.mark.parametrize("case", [c for c in PICKS["cases"] + STEPS["cases"] if c.get("slot")],
+                         ids=lambda c: c["id"])
+def test_a_case_fact_is_described_as_the_catalog_describes_it(case):
+    """The pick reads the fact's description, and whether it is a Yes or a No:
+    the eval must send what production sends, for every case's slot."""
     from app.services import autofill_catalog
 
-    built = autofill_catalog.build({"work_auth": {"status": "h1b", "sponsorship_future": False},
-                                    "eligibility": {"over_18": True, "non_compete": False}}, [], [])
-    for case in REVERSED:
-        facts = ev.case_facts(case, PICKS["today"])
-        assert facts[case["slot"]].describe == built[case["slot"]].describe, case["id"]
+    # The job's company in the history makes "previously employed here" a
+    # derived fact and drops the standing one: both catalogs, one lookup.
+    jobs = [{"employer": ev.HINT_COMPANY, "title": "Analyst", "current": True}]
+    built = autofill_catalog.build(EVERY_SLOT, jobs, ["SQL"]) | autofill_catalog.build(
+        EVERY_SLOT, jobs, ["SQL"], company=ev.HINT_COMPANY)
+    fact = ev.case_facts(case, PICKS["today"])[case["slot"]]
+    assert fact.describe == built[case["slot"]].describe
+    value = case.get("item") if isinstance(case["fact"], list) else case["fact"]
+    assert fact.yes_no is autofill_catalog.is_yes_no(case["fact"]), "marked Yes/No by production's one rule"
+    if built[case["slot"]].value == case["fact"]:
+        assert fact.yes_no is built[case["slot"]].yes_no
+    assert value is not None
 
 
 def test_tagged_cases_can_be_run_on_their_own():
@@ -379,3 +402,11 @@ def test_tagged_cases_can_be_run_on_their_own():
     assert ev.select_cases(PICKS["cases"], only={"over-18"}, tag=None) == [
         c for c in PICKS["cases"] if c["id"] == "over-18"]
     assert ev.select_cases(PICKS["cases"], only=None, tag=None) == PICKS["cases"]
+
+
+def test_the_derived_cases_expect_a_status_or_list_never_turned_into_yes_or_no():
+    derived = {c["id"]: c for c in PICKS["cases"] if c.get("tag") == "derived"}
+    assert len(derived) >= 3
+    assert all(c["expected"] is None and c["options"] == ["Yes", "No"] for c in derived.values())
+    assert {c["slot"] for c in derived.values()} >= {"work_auth.status", "eeo.race_ethnicity"}
+    assert ev.select_cases(PICKS["cases"], only=None, tag="derived") == list(derived.values())

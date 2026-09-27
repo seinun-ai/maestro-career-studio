@@ -106,7 +106,7 @@ SAME_FACT = {"preferences.earliest_start_date": {"derived.earliest_start_date"},
 KIND_TO_SHAPE = {"text": "text", "textarea": "text", "select": "select", "combobox": "search",
                  "radio": "group", "checkbox": "group"}
 MAP_BATCH = 10
-GIVE_UP_DESCRIBE = "Stop: no move will select an option that states the value"
+GIVE_UP_DESCRIBE = "Stop: no move will select the goal's answer to the question"
 JOB_KEYS = ("employer", "title", "description", "start", "end", "current")
 SCHOOL_KEYS = ("school", "degree", "discipline", "start_year", "end_year")
 POLICIES = ("exact", "flag", "any", "low_stakes", "reasoned")
@@ -323,15 +323,17 @@ def pick_field(case: dict):
 def case_facts(case: dict, today: str) -> dict:
     """The facts one case holds: its slot's fact, its history, and today; and
     "previously employed here" when the history lists HINT_COMPANY."""
-    from app.services.autofill_catalog import Fact, _describe, _worked_here
-    from app.services.autofill_slots import _as_text, policy_for
+    from app.services.autofill_catalog import _worked_here, make_fact
+    from app.services.autofill_slots import _as_text
 
-    facts = {"derived.today": Fact("derived.today", today, "today's date", policy_for("derived.today"))}
+    # Built by the catalog's own `make_fact`: the description and the Yes/No
+    # mark production sends.
+    facts = {"derived.today": make_fact("derived.today", today)}
 
     def add(slot: str, value: Any) -> None:
         value = tuple(value) if isinstance(value, list) else value if isinstance(value, str) else _as_text(value)
         if value not in (None, "", ()):
-            facts[slot] = Fact(slot, value, _describe(slot), policy_for(slot))
+            facts[slot] = make_fact(slot, value)
 
     if case.get("slot"):
         add(case["slot"], case["fact"])

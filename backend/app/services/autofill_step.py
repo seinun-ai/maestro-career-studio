@@ -29,7 +29,7 @@ from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_map import SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule
-from app.services.autofill_pick import MEANING_RULE, JobHint, values_for, verdict
+from app.services.autofill_pick import JobHint, meaning_of, values_for, verdict
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +38,10 @@ GIVE_UP = "give_up"
 # The page's description of a click that opens a group of options (fill-core
 # stepState). Page text only ever follows it, JSON-quoted.
 GROUP_CLICK = "Open the group "
-CLICK_RULE = ("Click an option if it states the applicant value, or if it looks like a category whose "
-              "sub-options will contain it; open a group only if its sub-options will contain it. Never click "
-              "an option that neither states the value nor leads to it.")
-_GIVE_UP_TEXT = "Stop: no move will select an option that states the value"
+CLICK_RULE = ("Click an option if it is the goal's answer to the question as worded, or if it looks like a "
+              "category whose sub-options will contain that answer; open a group only if its sub-options will "
+              "contain it. Never click an option that neither is that answer nor leads to it.")
+_GIVE_UP_TEXT = "Stop: no move will select the goal's answer to the question"
 ABSTAIN = StepResponse(mid=None, reason="abstained")
 _LLM_PROMPT = """{instructions}
 State: {state}
@@ -74,9 +74,10 @@ def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, fac
                 f"{low_stakes_rule(facts, 'give up (the "Stop" move)')}; for such a field, the goal is to select the option "
                 f"{keen(facts)}.{src}")
     else:
+        fact = facts[req.slot]
         goal = (f"You are filling {field} on a job application. The goal is to select the option that means the "
-                f"same as the applicant's fact {json.dumps(facts[req.slot].describe)}: {json.dumps(values[0])}. "
-                f"{MEANING_RULE}")
+                f"same as the applicant's fact {json.dumps(fact.describe)}: {json.dumps(values[0])}. "
+                f"{meaning_of(fact)}")
     return (f"{goal} "
             f"The moves tried so far are the state's history. Which next move gets closer to that goal? {CLICK_RULE} "
             f"Give up when no move will. {_PAGE_TEXT_IS_DATA}")
