@@ -86,6 +86,19 @@
  *   user (`reason` held_unmatched: nothing placed, nothing added), and adds
  *   nothing when two entries hold the same one (held_twice). Within a
  *   section, one fact is written into ONE entry (`in_another_entry`).
+ * - RECIPES (`deps.recipes`, optional: { get, record }) remember which of the
+ *   engine's own moves worked for a widget family (shared/recipe-book.js). A
+ *   popup or search field's recipe is looked up once (by the page's
+ *   value-free keys, `f.recipe`) and its ORDER rides with the field's
+ *   explores and its commit (`variant`) — a proposal to the one controller,
+ *   never a separate path: same budget, same `failedMoves`, same gates,
+ *   verification unchanged. Text and passive choices (a signature box, a
+ *   consent tick) are written once, on a decision, and never looked up. Only
+ *   once the final sweep has run (never after Stop or the run's clock) does
+ *   the book hear each field's lesson: `kept` (the commit's moves verified
+ *   and nothing reverted them), `contradicted` (an unconfirmed commit, or a
+ *   value the sweep found reverted — re-committed or not) or `mismatch` (the
+ *   control could not take the learned move). A failing store costs nothing.
  * - Nothing is guessed when the AI cannot be reached (`aiFailure`).
  * - Stop: `cancelled()` is checked before every page action; the panel also
  *   sends `fill_cancel`, which cancels the page operation in flight.
@@ -261,6 +274,8 @@
       if (typeof dep !== "function") throw new TypeError(`fill-loop: missing dep ${name}`);
     }
     const cancelled = deps.cancelled ?? (() => false);
+    const recipes = typeof deps.recipes?.get === "function" && typeof deps.recipes?.record === "function"
+      ? deps.recipes : null;
     const L = { ...limits };
     const runDeadline = Date.now() + L.RUN_MS;
     const runId = newRunId();
@@ -283,7 +298,8 @@
     else if (options.base) selector.base = String(options.base).slice(0, 200);
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
     // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome,
-    //   deadline, spent, started, recommits, failedMoves, ignored, wrote, wroteAs }
+    //   deadline, spent, started, recommits, failedMoves, ignored, wrote, wroteAs,
+    //   recipeKeys, recipe, moves, contradicted, mismatch }
     //
     // A ROW'S LIFE: new (observe) → open (work, when the loop starts on it)
     // → a final status (finish / done / unconfirmed / outOfTime), or retry
@@ -440,6 +456,7 @@
         .filter((r) => r?.fid === f.fid);
       if (!got) return { outcome: "stale" }; // no frame owns the fid any more
       if (got.outcome === "cancelled") return { outcome: "halted" };
+      heard(f, action.op, got);
       if (REFUSED[got.outcome]) {
         finish(f, REFUSED[got.outcome], { lastOutcome: got.outcome });
         return { outcome: "refused" };
@@ -470,8 +487,11 @@
       // The field's remaining time rides along: the page's explore never runs past it.
       const left = (rows.get(f.fid)?.deadline ?? Infinity) - Date.now();
       const got = merged(await broadcast({
-        type: "fill_explore", requests: [{ fid: f.fid, fp: f.fp, ...(term ? { term } : {}), ...(Number.isFinite(left) ? { ms: left } : {}) }],
+        type: "fill_explore", requests: [withOrder(f, {
+          fid: f.fid, fp: f.fp, ...(term ? { term } : {}), ...(Number.isFinite(left) ? { ms: left } : {}),
+        })],
       }))[f.fid];
+      if (got?.mismatch) heard(f, "explore", got);
       return got ?? { options: [], complete: false, error: "stale" };
     };
     // An explore that went wrong: true when it decided the field for now.
@@ -496,6 +516,51 @@
         return true;
       }
       return false;
+    };
+
+    // ---- recipes: a learned move order per widget family (see the header)
+    // Looked up once per field (again only when its fingerprint changed): a
+    // popup or search with the page's keys, never another shape.
+    const lookUp = async (f) => {
+      const row = rows.get(f.fid);
+      if (row.recipeKeys !== undefined) return;
+      const keys = recipes && CAN_ADAPT.has(f.shape) && f.recipe?.family && f.recipe?.site
+        ? { family: String(f.recipe.family), site: String(f.recipe.site) } : null;
+      let found = null;
+      if (keys) {
+        try {
+          found = await bounded(() => recipes.get(keys), row.deadline);
+        } catch {
+          found = null; // a store that fails is no recipe, never a failed fill
+        }
+      }
+      set(f.fid, { recipeKeys: keys, recipe: found?.key && found.variant ? found : null });
+    };
+    // The field's recipe order on an explore or a commit, when it has one.
+    const withOrder = (f, action) => {
+      const variant = rows.get(f.fid)?.recipe?.variant;
+      return variant ? { ...action, variant } : action;
+    };
+    // What the book may learn from a page operation: the moves a commit took
+    // and whether the page kept them — verified is a candidate (the final
+    // sweep decides), unconfirmed a contradiction — and a learned move the
+    // control could not take (`mismatch`, from any operation).
+    const heard = (f, op, got) => {
+      if (got.mismatch) set(f.fid, { mismatch: got.mismatch, moves: got.variant ?? null });
+      if (op !== "choose" && op !== "set") return;
+      if (got.outcome === "verified" && got.variant) set(f.fid, { moves: got.variant });
+      if (got.outcome === "unconfirmed") set(f.fid, { moves: got.variant ?? rows.get(f.fid).moves ?? null, contradicted: true });
+    };
+    // One field's lesson, once the final sweep has run: kept only when the
+    // commit's moves verified and nothing ever reverted the value.
+    const KEPT = new Set(Object.values(STATUS));
+    const lessonOf = (r) => {
+      if (!r?.recipeKeys || (!r.recipe && !r.moves)) return null;
+      const used = r.recipe?.key ?? null;
+      const outcome = r.mismatch ? (used ? "mismatch" : null)
+        : r.contradicted || r.recommits || (r.moves && r.status === "unconfirmed") ? "contradicted"
+          : r.moves && KEPT.has(r.status) ? "kept" : null;
+      return outcome && { recipe: r.recipeKeys, used, moves: r.moves ?? {}, outcome };
     };
 
     // ---- consent, for the page's policy
@@ -686,7 +751,9 @@
         if (adapts(f, row)) return settle(f, await adapt(f, row, historyEntry("choose", "abstained"), item));
         return finish(f, "needs_answer", { lastOutcome: "abstained" });
       }
-      const out = await act(f, { op: "choose", text: picked.text, ...(f.shape === "search" ? { term: term ?? picked.text } : {}) });
+      const out = await act(f, withOrder(f, {
+        op: "choose", text: picked.text, ...(f.shape === "search" ? { term: term ?? picked.text } : {}),
+      }));
       if (notDone(f, out)) return undefined;
       if (out.outcome === "verified") return done(f, picked.reason, out.committed);
       if (out.outcome === "unconfirmed") return unconfirmed(f, picked.text);
@@ -765,7 +832,7 @@
         // A search set types the item that found each option.
         if (f.shape === "search") action.terms = texts.map((t) => pairs.find(([x]) => x === t)[1]);
         // What was picked is committed even when the clock ran out picking the rest.
-        const out = await act(f, action, { overtime: true });
+        const out = await act(f, withOrder(f, action), { overtime: true });
         if (notDone(f, out)) return undefined;
         if (out.outcome !== "verified" && out.outcome !== "partial") return fail(f, out.reason ?? out.outcome);
         committed = out.committed ?? null;
@@ -842,6 +909,7 @@
       if (row.route === "slot" && (value == null || value === "" || (Array.isArray(value) && !value.length))) {
         return finish(f, "needs_answer", { lastOutcome: "no_value" });
       }
+      await lookUp(f);
       // A search widget says one answer or several only in the rows of an open
       // list (radios or checkboxes): a fact of several items on one whose
       // multiplicity is not known yet (`multi` null) explores its first item
@@ -1020,12 +1088,17 @@
       return reverted;
     };
     // Before calling the page done: a quiet period, then one more sweep; done
-    // only if nothing reverted.
+    // only if nothing reverted. `finalSwept`: the last call reached its sweep
+    // (the recipe book learns nothing from a run whose end was not swept).
+    let finalSwept = false;
     const settledDone = async () => {
+      finalSwept = false;
       if (halt()) return true;
       if (L.QUIET_MS > 0) await wait(Math.min(L.QUIET_MS, runDeadline - Date.now()));
       if (halt()) return true;
-      return (await sweep()) === 0;
+      const clean = (await sweep()) === 0;
+      finalSwept = !halt();
+      return clean;
     };
     const same = (committed, wrote) => {
       const norm = (x) => [x].flat().filter((v) => v != null && v !== "").join(", ").replace(/\s+/g, " ").trim().toLowerCase();
@@ -1402,6 +1475,17 @@
     // Out of rounds with the last one still changing things: the final sweep
     // still runs, and a reversion it finds is reported, not hidden.
     if (!settled) await settledDone();
+    // The book learns from the fields on the page, after the final sweep only.
+    if (recipes && finalSwept && !halt()) {
+      const lessons = listed.map((fid) => lessonOf(rows.get(fid))).filter(Boolean);
+      if (lessons.length) {
+        try {
+          await bounded(() => recipes.record(lessons));
+        } catch {
+          // The book's loss, never the fill's.
+        }
+      }
+    }
 
     const stopped = cancelled();
     const over = timedOut();

@@ -171,6 +171,9 @@
         invalid: ns.fillBase.invalid(el),
         touched: touched.has(fid),
         policyBlocked: fieldBlocked(d.question, optionTexts, consentForms),
+        // Value-free keys for the widget's family (content/recipes.js), or
+        // null: what the loop's recipe book is looked up by.
+        recipe: ns.recipes?.signature(el, shape) ?? null,
       });
     }
     // A fid not listed now whose node left the page is dead: never reacquired

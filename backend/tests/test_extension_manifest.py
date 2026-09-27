@@ -237,6 +237,9 @@ def test_the_content_script_is_the_split_modules_in_dependency_order(content_scr
         "content/field-reader.js",
         "content/fill-base.js",
         "content/shapes.js",
+        # A widget's recipe keys (fill-engine revision Task 11): read by the
+        # inventory at call time, beside the shapes it is handed.
+        "content/recipes.js",
         "content/inventory.js",
         "content/fill-core.js",
         "content/fill-ops.js",

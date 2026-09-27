@@ -23,6 +23,7 @@ ENGINE_SOURCES: list[str] = [
     "content/field-reader.js",
     "content/fill-base.js",
     "content/shapes.js",
+    "content/recipes.js",
     "content/inventory.js",
     "content/fill-core.js",
     "content/fill-ops.js",

@@ -39,9 +39,10 @@ MODELS = {"/api/autofill/map": MapRequest, "/api/autofill/pick": PickRequest,
           "/api/autofill/step": StepRequest, "/api/autofill/sections": SectionsRequest}
 FIXTURES = ["workday_text.html", "workday_listbox.html", "workday_search.html",
             "popup_with_search.html", "native.html", "workday_date.html", "react_select.html"]
-# The manifest's content scripts, in its order, then the panel-side loop.
+# The manifest's content scripts, in its order, then the panel-side loop and
+# the recipe book the panel hands it.
 SOURCES = [*json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
-           ["content_scripts"][0]["js"], "shared/fill-loop.js"]
+           ["content_scripts"][0]["js"], "shared/fill-loop.js", "shared/recipe-book.js"]
 
 # What the backend's /map answers, by question: the fact each field's slot holds.
 MAP = {
@@ -124,9 +125,18 @@ DRIVER = """(spec) => {
     if (path === "/api/autofill/choose") return { choices: {} };
     throw Object.assign(new Error(path), { status: 404 });
   };
+  // `book` (opt-in): the panel's recipe store for this run, over a book the
+  // spec hands in (null: none yet); the book the run left comes back.
+  const book = { current: spec.book ?? null };
+  const recipes = "book" in spec ? ns.recipeBook.store({
+    read: async () => book.current,
+    write: async (next) => { book.current = next; },
+    today: () => spec.today,
+  }) : undefined;
   const t0 = Date.now();
-  window.__run = ns.fillLoop.runFill({ broadcast, api, cancelled: () => stop }, { sourceHint: null })
-    .then((report) => ({ report, sent, posts, ms: Date.now() - t0 }));
+  window.__run = ns.fillLoop.runFill({ broadcast, api, cancelled: () => stop, ...(recipes ? { recipes } : {}) },
+    { sourceHint: null })
+    .then((report) => ({ report, sent, posts, ms: Date.now() - t0, book: book.current }));
   return true;
 }"""
 
@@ -142,12 +152,18 @@ def _page_of(fixtures) -> str:
     return "\n".join(parts)
 
 
-def _start(page, page_js=None, fresh=True, fixtures=FIXTURES, html=None, **spec):
+def _start(page, page_js=None, fresh=True, fixtures=FIXTURES, html=None, url=None, **spec):
     """Load the page composed of `fixtures` — or `html` as it is — (unless
     `fresh` is False: the same page, a second run) and start one run, left in
-    flight as `window.__run`."""
+    flight as `window.__run`. `url`: served at that address (a real host)
+    rather than set into a blank page."""
     if fresh:
-        page.set_content(html if html is not None else _page_of(fixtures))
+        content = html if html is not None else _page_of(fixtures)
+        if url is None:
+            page.set_content(content)
+        else:
+            page.route("**/*", lambda r: r.fulfill(status=200, content_type="text/html", body=content))
+            page.goto(url)
         if page_js:
             page.evaluate(page_js)
         # The listener agent.js registers is the page's whole message door.

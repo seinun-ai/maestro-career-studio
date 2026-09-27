@@ -498,6 +498,36 @@ def test_adversarial_revert_never_undoes_a_later_pick(page, load):
     assert page.inner_text("#relocate") == "No" and oracle(page, "relocate") == "No"
 
 
+def test_adversarial_recipe_poison_opens_from_the_keyboard_only(page, load):
+    load(page, fixture_html("adversarial_recipe_poison.html"), sources=[])
+    page.click("#shift")
+    assert page.is_hidden("#shift-list") and page.evaluate("window.shiftPresses") == 1
+    page.focus("#shift")
+    page.keyboard.press("ArrowDown")
+    assert page.is_visible("#shift-list")
+    page.keyboard.press("Escape")
+    assert page.is_hidden("#shift-list")
+
+
+def test_adversarial_recipe_poison_takes_its_first_commit_back_and_keeps_the_next(page, load):
+    load(page, fixture_html("adversarial_recipe_poison.html"), sources=[])
+    page.focus("#shift")
+    page.keyboard.press("ArrowDown")
+    page.click("#shift-list > li:has-text('Day')")
+    # Taken at first, the way a verify reads it: shown, backing input filled, app holds it…
+    assert page.inner_text("#shift") == "Day" and oracle(page, "shift") == "Day"
+    assert len(page.evaluate("document.querySelector('.hidden-backing').value")) == 32
+    # …then taken back on its own clock, inside the loop's 600 ms quiet period.
+    wait_oracle(page, "shift", "")
+    assert page.inner_text("#shift") == "Select One"
+    assert page.evaluate("document.querySelector('.hidden-backing').value") == ""
+    page.focus("#shift")
+    page.keyboard.press("ArrowDown")
+    page.click("#shift-list > li:has-text('Day')")
+    page.wait_for_timeout(900)
+    assert page.inner_text("#shift") == "Day" and oracle(page, "shift") == "Day"
+
+
 def test_adversarial_same_text_has_two_others_under_different_visible_categories(page, load):
     load(page, fixture_html("adversarial_same_text.html"), sources=[])
     search(page, "referral", "Other", rows=["Other", "Other"])

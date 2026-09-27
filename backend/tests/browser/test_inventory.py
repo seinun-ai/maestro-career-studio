@@ -34,8 +34,9 @@ def test_a_field_record_carries_every_key_later_tasks_read(page, load):
     f = fields(page)[0]
     assert set(f) == {"fid", "fp", "shape", "kind", "multi", "question", "source", "section", "repeatIndex",
                       "required", "help", "committed", "answered", "options", "optionsComplete", "invalid",
-                      "touched", "policyBlocked"}
+                      "touched", "policyBlocked", "recipe"}
     assert (f["kind"], f["source"], f["required"], f["help"]) == ("text", "label-for", True, "As on your ID")
+    assert f["recipe"] is None   # a text box has no move to learn (content/recipes.js)
 
 
 def test_a_fid_survives_repeat_calls_and_a_rerender(page, load):

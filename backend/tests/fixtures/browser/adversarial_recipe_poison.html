@@ -1,0 +1,69 @@
+<!-- ADVERSARIAL, not a reproduction: RECIPE POISONING. A popup button that
+     ignores a synthetic press and opens from the keyboard (ArrowDown), so the
+     engine reaches it by a variant a recipe could learn (`open: keys`). Its
+     FIRST commit is taken by the app (the backing input fills: a verify says
+     verified) and then taken back REVERT_MS later: button, backing input and
+     app all return to "Select One". The clock is on purpose here, unlike
+     adversarial_revert.html: it lands AFTER the engine's own verify of the
+     click (the click's settle, the leave and the read take about 350 ms, and a
+     revert inside them is simply seen and clicked again) and INSIDE the fill
+     loop's 600 ms quiet period before its final sweep, which is what must
+     catch it. Every later commit holds. A lucky verify on this widget must
+     never be learned, and a recipe used on it must be demoted. -->
+<div data-automation-id="formField-shift">
+  <fieldset><legend><div id="rich-label-shift"><div data-automation-id="richText"><p>Preferred shift</p></div></div></legend>
+    <div><button id="shift" type="button" aria-haspopup="listbox" aria-label=" Select One Required" aria-controls="shift-list"
+      aria-expanded="false">Select One</button>
+      <input type="text" class="hidden-backing" style="display:none"></div></fieldset></div>
+<div id="portal"></div>
+<script>
+(() => {
+  // __oracle.shift is what the fake app HOLDS; the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.shift = "";
+  const REVERT_MS = 700;
+  const btn = document.getElementById("shift");
+  const backing = btn.parentElement.querySelector(".hidden-backing");
+  const portal = document.getElementById("portal");
+  // Presses the engine (or anyone) sent to the button, and commits the app took.
+  window.shiftPresses = 0;
+  window.shiftCommits = 0;
+  const show = (text) => { btn.textContent = text; btn.setAttribute("aria-label", ` ${text} Required`); };
+  const ul = document.createElement("ul");
+  ul.id = "shift-list";
+  ul.setAttribute("role", "listbox");
+  ul.style.display = "none";
+  const close = () => { ul.style.display = "none"; btn.setAttribute("aria-expanded", "false"); };
+  const hold = (text) => {
+    show(text);
+    backing.value = text === "Select One" ? "" : "c0ffee00c0ffee00c0ffee00c0ffee00";
+    oracle.shift = text === "Select One" ? "" : text;
+  };
+  for (const text of ["Select One", "Day", "Night"]) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    li.textContent = text;
+    li.addEventListener("click", (e) => {
+      e.stopPropagation();
+      close();
+      hold(text);
+      if (text === "Select One") return;
+      window.shiftCommits += 1;
+      if (window.shiftCommits === 1) setTimeout(() => hold("Select One"), REVERT_MS);
+    });
+    ul.append(li);
+  }
+  portal.append(ul);
+  // A press does nothing but count: this widget opens from the keyboard only.
+  btn.addEventListener("pointerdown", () => { window.shiftPresses += 1; });
+  btn.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      ul.style.display = "block";
+      btn.setAttribute("aria-expanded", "true");
+    } else if (e.key === "Escape") close();
+  });
+  document.addEventListener("click", (e) => {
+    if (!ul.contains(e.target) && !btn.contains(e.target)) close();
+  });
+})();
+</script>

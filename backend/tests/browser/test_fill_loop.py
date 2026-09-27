@@ -112,12 +112,29 @@ DRIVER = """async (spec) => {
     if (path === "/api/autofill/choose") return {choices: Object.fromEntries(body.fields.map(f => [f.qid, spec.choose[f.qid] ?? {answer: null, reason: "abstained"}]))};
     throw Object.assign(new Error(path), {status: 502});
   };
+  // `recipes` (opt-in): the panel's recipe store, scripted. `recipes.book`
+  // answers a lookup by family (a recipe, or null); `recipes.fail` makes both
+  // halves throw. What was looked up and what was recorded come back.
+  const gets = [];
+  let lessons = null;
+  const recipes = spec.recipes ? {
+    get: async (r) => {
+      gets.push(r);
+      if (spec.recipes.fail) throw new Error("storage is unavailable");
+      return spec.recipes.book?.[r.family] ?? null;
+    },
+    record: async (ls) => {
+      lessons = [...(lessons ?? []), ...ls];
+      if (spec.recipes.fail) throw new Error("storage is unavailable");
+    },
+  } : undefined;
   let budget = spec.stopAfter ?? Infinity;
   const t0 = Date.now();
   const report = await window.careerStudioCompanion.fillLoop.runFill(
-    {broadcast, api, cancelled: () => stop || (budget -= 1) < 0, onProgress: (u) => progress.push(u)},
+    {broadcast, api, cancelled: () => stop || (budget -= 1) < 0, onProgress: (u) => progress.push(u),
+     ...(recipes ? {recipes} : {})},
     spec.options ?? {sourceHint: null});
-  return {report, calls, sent, posts, progress, peak, ms: Date.now() - t0};
+  return {report, calls, sent, posts, progress, peak, ms: Date.now() - t0, gets, lessons};
 }"""
 
 
@@ -1965,3 +1982,111 @@ def test_a_list_with_no_options_still_goes_to_the_step_on_the_other_routes(page,
     slot or low-stakes route keeps its step, as before."""
     out = run(page, load, frames=[[f("x", "select", "Authorized?")]], map={"x": route})
     assert out["calls"].count("fill_step_state") == 1
+
+
+# ---------- recipes (revision Task 11): a learned move order, value-free, via deps.recipes
+
+RECIPE = {"family": "f:fam1", "site": "s:sitea"}
+KEYS_FIRST = {"open": ["keys", "press"]}
+LEARNED = {"f:fam1": {"key": "s:sitea", "variant": KEYS_FIRST}}
+
+
+def popup_run(page, load, **kw):
+    """One popup field whose widget family has a recipe key."""
+    return run(page, load, frames=[[f("d", "popup", "Willing to travel?", recipe=RECIPE)]],
+               map={"d": {"route": "slot", "slot": "preferences.travel", "value": "Yes"}},
+               explore={"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
+               pick={"d": {"oids": ["o1"], "reason": "matched"}}, **kw)
+
+
+def variants(out):
+    """Every variant order the loop sent to the page, by operation."""
+    explores = [r.get("variant") for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"]]
+    return {"explore": explores, **{op: [a.get("variant") for a in actions(out, op)] for op in ("choose", "set", "write")}}
+
+
+def test_a_learned_order_rides_with_the_fields_explore_and_its_commit(page, load):
+    out = popup_run(page, load, recipes={"book": LEARNED},
+                    apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
+    assert statuses(out) == {"d": "verified"}
+    assert out["gets"] == [RECIPE]
+    assert variants(out) == {"explore": [KEYS_FIRST], "choose": [KEYS_FIRST], "set": [], "write": []}
+    assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {"open": "keys"}, "outcome": "kept"}]
+
+
+def test_a_move_the_generic_order_found_is_handed_to_the_book(page, load):
+    out = popup_run(page, load, recipes={}, apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
+    assert variants(out) == {"explore": [None], "choose": [None], "set": [], "write": []}
+    assert out["lessons"] == [{"recipe": RECIPE, "used": None, "moves": {"open": "keys"}, "outcome": "kept"}]
+
+
+def test_a_value_the_sweep_found_reverted_is_a_contradiction_never_a_move(page, load):
+    """Verified, then reverted before the final sweep, re-committed and held:
+    the field is filled, and the move that verified it first is NOT learned."""
+    out = popup_run(page, load, recipes={"book": LEARNED}, sweep=[[{"fid": "d", "outcome": "reverted"}], []],
+                    apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
+    assert statuses(out) == {"d": "verified"}
+    assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {"open": "keys"},
+                               "outcome": "contradicted"}]
+
+
+def test_an_unconfirmed_pick_is_a_contradiction(page, load):
+    out = popup_run(page, load, recipes={"book": LEARNED},
+                    apply={"Yes": {"outcome": "unconfirmed", "variant": {"open": "keys"}}})
+    assert statuses(out) == {"d": "unconfirmed"}
+    assert [x["outcome"] for x in out["lessons"]] == ["contradicted"]
+
+
+def test_a_learned_move_the_control_could_not_take_is_a_mismatch(page, load):
+    out = popup_run(page, load, recipes={"book": LEARNED},
+                    apply={"Yes": {"outcome": "verified", "variant": {"open": "press"}, "mismatch": "open"}})
+    assert statuses(out) == {"d": "verified"}
+    assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {"open": "press"}, "outcome": "mismatch"}]
+
+
+def test_a_set_carries_the_learned_order(page, load):
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True, recipe=RECIPE)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
+              explore={"SQL": {"options": [opt("o1", "SQL")]}, "Python": {"options": [opt("o1", "Python")]}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
+              recipes={"book": LEARNED})
+    assert statuses(out) == {"k": "verified"}
+    assert variants(out) == {"explore": [KEYS_FIRST, KEYS_FIRST], "choose": [], "set": [KEYS_FIRST], "write": []}
+
+
+def test_deliberate_writes_never_consult_a_recipe(page, load):
+    """Text (a signature box among them) and passive choices (a consent tick
+    among them) are written once, on a decision: never reordered, never
+    looked up — even carrying a recipe key."""
+    yes_no = [opt("o1", "Yes"), opt("o2", "No")]
+    out = run(page, load, frames=[[
+        f("t", "text", "City", recipe=RECIPE),
+        f("s", "select", "Country", recipe=RECIPE, options=[opt("o1", "Canada")], optionsComplete=True),
+        f("c", "group", "I agree to the terms", recipe=RECIPE, options=yes_no, optionsComplete=True),
+    ]], map={"t": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
+             "s": {"route": "slot", "slot": "personal.country", "value": "Canada"},
+             "c": {"route": "slot", "slot": "consent.terms", "value": "Yes"}},
+        pick={"s": {"oids": ["o1"], "reason": "matched"}, "c": {"oids": ["o1"], "reason": "matched"}},
+        recipes={"book": LEARNED})
+    assert statuses(out) == {"t": "verified", "s": "verified", "c": "verified"}
+    assert out["gets"] == [] and out["lessons"] in (None, [])
+    assert all(v is None for vs in variants(out).values() for v in vs)
+
+
+def test_a_stopped_run_learns_nothing(page, load):
+    out = popup_run(page, load, recipes={"book": LEARNED}, stopAfterApply=True,
+                    apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
+    assert out["report"]["stopped"] is True and out["lessons"] is None
+
+
+def test_a_recipe_store_that_fails_costs_the_fill_nothing(page, load):
+    out = popup_run(page, load, recipes={"fail": True},
+                    apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
+    assert statuses(out) == {"d": "verified"}
+    assert variants(out) == {"explore": [None], "choose": [None], "set": [], "write": []}
+
+
+def test_without_a_recipe_store_no_order_is_sent(page, load):
+    out = popup_run(page, load, apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
+    assert statuses(out) == {"d": "verified"}
+    assert variants(out) == {"explore": [None], "choose": [None], "set": [], "write": []}

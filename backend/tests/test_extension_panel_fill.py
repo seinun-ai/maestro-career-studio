@@ -440,6 +440,73 @@ def test_before_a_fill_the_stage_offers_a_choice_and_reports_nothing(tmp_path):
     assert [msg for msg in out["sent"] if msg["type"] == "panel_prepare"] == []
 
 
+# ---------- learned widget moves (fill-engine revision Task 11) -------------
+#
+# The fill loop remembers which of the engine's own moves opened or searched a
+# KIND of control (`shared/recipe-book.js`), in `chrome.storage.local` under
+# `fill.recipes`. The Fill body offers to forget it, and only when there is
+# something to forget.
+
+_FORGET_DRIVER_JS = _PANEL_FAKES_JS + r"""
+loadModules();
+main(async () => {
+  await settle();
+  const loaded = regions();
+  if (spec.press) {
+    const forget = withClass(REGIONS.rail, "unpick")
+      .find((one) => one.textContent === "Forget learned widget moves");
+    if (!forget) throw new Error("no Forget learned widget moves control");
+    forget.click();
+    await settle();
+  }
+  emit({ loaded, after: regions(), removals, writes, note: NOTE.textContent });
+});
+"""
+LEARNED_BOOK = {"v": 1, "entries": {
+    "s:sitea": {"moves": {"open": "keys"}, "state": "probation", "wins": 1, "seen": 20000},
+    "f:fam1": {"moves": {"open": "keys"}, "state": "probation", "sites": ["s:sitea"], "seen": 20000},
+}}
+
+
+def test_forget_clears_the_store(tmp_path):
+    out = _fill(tmp_path, driver=_FORGET_DRIVER_JS, press=True,
+                stored={"widget.session": _armed_entry(), "fill.recipes": LEARNED_BOOK})
+    rail = _text(out["loaded"]["rail"])
+    assert "Forget learned widget moves" in rail
+    # The hint says what it is and what it is not, in the panel's words.
+    assert ("Companion remembers which clicks and keys worked on each kind of form control. "
+            "It keeps no answers and no web addresses.") in rail
+    # ONE key removed — not a `set` to null, which would leave the key behind.
+    assert out["removals"] == ["fill.recipes"] and out["writes"] == []
+    assert "Forget learned widget moves" not in _text(out["after"]["rail"])
+    assert out["note"] == "Companion forgot the moves it learned."
+
+
+def test_with_nothing_learned_there_is_nothing_to_forget(tmp_path):
+    out = _fill(tmp_path, driver=_FORGET_DRIVER_JS)
+    assert "Forget learned widget moves" not in _text(out["loaded"]["rail"])
+
+
+def test_learned_moves_have_their_own_documented_storage_key():
+    """The panel source pin: `fill.recipes` is a KEY the storage rule names,
+    read with the session through `STORE_DEFAULTS`, never swept as an orphan,
+    handed to the loop as `deps.recipes`, and the book is loaded by the
+    document."""
+    panel = (EXTENSION / "panel" / "panel.js").read_text(encoding="utf-8")
+    key = re.search(r"const KEY = \{([^}]*)\};", panel).group(1)
+    assert 'recipes: "fill.recipes"' in key and 'session: "widget.session"' in key
+    assert re.search(r"const STORE_DEFAULTS = \{[^}]*\[KEY\.recipes\]: null", panel)
+    orphans = re.search(r"const ORPHAN_KEYS = \[(.*?)\];", panel, re.S).group(1)
+    assert "fill.recipes" not in orphans
+    rule = panel[:panel.index("const KEY = {")]
+    assert "`fill.recipes`" in rule[rule.rindex("chrome.storage.local"):]
+    fill = (EXTENSION / "panel" / "actions" / "fill.js").read_text(encoding="utf-8")
+    assert re.search(r"recipes: store\.recipes\(\)", fill)
+    html = (EXTENSION / "panel" / "panel.html").read_text(encoding="utf-8")
+    srcs = re.findall(r'<script src="([^"]+)"></script>', html)
+    assert "../shared/recipe-book.js" in srcs and srcs.index("../shared/recipe-book.js") < srcs.index("panel.js")
+
+
 def test_the_panel_writes_one_apostrophe():
     """Appendix D §1: a string literal writes a straight apostrophe, as the web
     app and every server sentence the panel shows do. D §8's "keep each file's

@@ -48,6 +48,7 @@ missing key, so a typo never reads as "nothing committed".
 | `workday_sections.html` | §5, §4 — Add / Add Another, unnamed Delete, "I currently work here" removes To | `entries`, `deleted`, `"<entry>/<question>"` |
 | `adversarial_revert.html` | §8a's unexplained revert — first pick shows, never commits, reverts when a test calls `window.__revertNow()` | `relocate` |
 | `adversarial_same_text.html` | two "Other" options under different visible categories | `referral` |
+| `adversarial_recipe_poison.html` | recipe poisoning: opens from the keyboard only; its first commit is taken, then taken back 700 ms later (after the engine's own verify, inside the loop's quiet period) | `shift` |
 
 `tests/browser/test_fixture_fidelity.py` drives each fixture with Playwright's
 trusted input and pins the behaviour above; change a fixture and that file first.

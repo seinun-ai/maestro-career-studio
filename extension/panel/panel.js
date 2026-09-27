@@ -138,7 +138,18 @@
   // forcing `match = "exact"`, is a surface claiming an application that does
   // not exist on every page load of that tenant. That guard is not optional
   // decoration on this key; it is the condition of sharing it.
-  const KEY = { session: "widget.session" };
+  //
+  // `fill.recipes` IS THE SECOND KEY, and a different KIND of thing, which is
+  // why the rule above does not apply to it: not a pick carried between page
+  // loads but the book of which of the fill engine's own moves worked for
+  // which KIND of form control (`shared/recipe-book.js` is its one reader and
+  // writer, through `recipeDoor`). It holds hashed widget families, known move
+  // words, states, counts and day numbers — no label, no value, no URL —
+  // bounded to 200 entries, each gone after 60 days unused, and the Fill
+  // body's "Forget learned widget moves" removes the key whole
+  // (`forgetLearnedMoves`). Local, never `sync`: what worked in this browser
+  // is this browser's.
+  const KEY = { session: "widget.session", recipes: "fill.recipes" };
 
   // EVERY KEY THIS EXTENSION HAS EVER WRITTEN TO `chrome.storage.local` AND NO
   // LONGER READS. R-C's storage pass, and the documented set: if it is not
@@ -557,6 +568,12 @@
      * like every other setting, because a second copy is the one that drifts.
      */
     fillMode: "assist",
+    /** How many entries the recipe book holds (`KEY.recipes`): read at boot,
+     * rewritten when a fill run writes the book and when the user forgets it.
+     * The Fill body offers "Forget learned widget moves" only while it is not
+     * zero. A fact about this BROWSER, not the page, so `resetPageFacts`
+     * leaves it alone. */
+    learnedMoves: 0,
     /** The RULE pass's reconciliation, or null until one has run.
      *
      * `reconcileFill`'s own return, unchanged (`shared/decisions.js`) — the
@@ -845,9 +862,10 @@
    * ask with defaults, and treat a failed read as "nothing remembered" rather
    * than as an error the user has to see. A storage read that fails must not
    * cost anyone the panel. */
-  // ONE key, because there is one. The orphans are not read back here — they
-  // are removed once at boot (`sweepOrphanKeys`) and never consulted.
-  const STORE_DEFAULTS = { [KEY.session]: null };
+  // The session key and the recipe book (see `KEY`). The orphans are not read
+  // back here — they are removed once at boot (`sweepOrphanKeys`) and never
+  // consulted.
+  const STORE_DEFAULTS = { [KEY.session]: null, [KEY.recipes]: null };
 
   async function readStore() {
     try {
@@ -1801,6 +1819,8 @@
         eeoConsent: card.eeoConsent,
         // The loop's report and, while it runs, how far it has got.
         loop: card.loop,
+        // Whether the recipe book holds anything to forget.
+        learnedMoves: card.learnedMoves,
         fillRound: card.fillRound,
         // The pause rows' drafts. Handed over whole rather than per row: a body
         // renders the whole list in one pass, and a per-row lookup callback
@@ -1813,7 +1833,7 @@
       },
       act: { editPreview, pickApplication, unpickApplication, pickBase, useBaseAsIs,
              stopUsingBaseAsIs, openTailor, quickTailor,
-             setFillMode, startFill, attachResume, scrollToField, focusField, editAnswer,
+             setFillMode, forgetLearnedMoves, startFill, attachResume, scrollToField, focusField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis },
       build: { node, attach, plural, statusLabel, dayLabel },
@@ -2020,6 +2040,35 @@
     card.fillMode = mode;
     render();
     writeSyncSetting({ fillMode: mode });
+  }
+
+  /** The fill loop's `deps.recipes` for one run: the recipe book
+   * (`shared/recipe-book.js`) over `KEY.recipes`, with `readStore`'s and
+   * `writeStore`'s posture — a failed read is an empty book, a failed write
+   * costs the memory and never the fill. A fresh door per run, so a Forget
+   * between two runs is never undone by a book one of them had read. */
+  function recipeDoor() {
+    return ns.recipeBook.store({
+      read: async () => (await readStore())[KEY.recipes],
+      write: async (book) => {
+        await writeStore({ [KEY.recipes]: book });
+        card.learnedMoves = ns.recipeBook.size(book);
+      },
+    });
+  }
+
+  /** "Forget learned widget moves": the recipe book's key removed whole —
+   * a `remove`, never a `set` to null, which would leave the key behind. The
+   * count goes to zero at once, so the control leaves with the press. */
+  async function forgetLearnedMoves() {
+    card.learnedMoves = 0;
+    card.note = { text: "Companion forgot the moves it learned." };
+    render();
+    try {
+      await chrome.storage.local.remove(KEY.recipes);
+    } catch (err) {
+      console.warn("[maestro-cs] storage remove failed:", err);
+    }
   }
 
   /** Put a residue field in front of the user, in whichever frame holds it.
@@ -3578,6 +3627,8 @@
           .catch((err) => console.warn("[maestro-cs] telemetry failed:", err));
       },
       remember: rememberSession,
+      // The recipe book's door for one fill run (`recipeDoor`).
+      recipes: recipeDoor,
       loadContext,
       loadBaseScores,
       // `evidenceFrom` rides here for `ingestBodyFrom`'s reason: the Track
@@ -3657,6 +3708,8 @@
     // without it — means the assist pass. The narrowing is the choice; a
     // value we cannot read is not a user who made it.
     card.fillMode = card.settings?.fillMode === "rules" ? "rules" : "assist";
+    // Whether there is a recipe book to offer to forget (`readStore` never throws).
+    card.learnedMoves = ns.recipeBook.size((await readStore())[KEY.recipes]);
     render();
     await bindActiveTab();
   }

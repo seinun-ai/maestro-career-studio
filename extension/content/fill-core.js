@@ -75,6 +75,15 @@
  * refuses an id the state did not offer, and treats a click on a list that
  * changed since as stale. A filtered search view is never complete.
  *
+ * A RECIPE'S ORDER (`variant`, shared/recipe-book.js) may reach explore,
+ * choose and set: which of a known pair of moves to try FIRST — `open: keys`
+ * (the keyboard before the press) or `search: debounce` (a longer wait for the
+ * widget's own filter before the Enter). Only the order moves: the other move
+ * stays the fallback, the `reacted` lockout and the Enter gate still decide,
+ * and verification is unchanged. Each operation reports the move each axis
+ * took (`variant`) and an axis whose learned move the control cannot take
+ * (`mismatch`), which is all the book learns from.
+ *
  * Nothing here catches errors: fill-ops turns a throw (Cancelled, Unfocusable,
  * a refused editable box) into an outcome.
  */
@@ -492,7 +501,11 @@
   // text box, a button, anything inside a link. Then wait for the results to
   // SETTLE. Returns the popup, or null (none; or the Enter committed its one
   // hit and closed the list — the caller reads the evidence).
-  const search = async (el, shape, box, term, before, t, w, { press = true } = {}) => {
+  // A learned `search: debounce` first (`variant`, a recipe) only waits
+  // longer — OPEN_MS — for the widget's own filter before that Enter: it never
+  // sends one the gate refuses. `used.search` says which it took, where an
+  // Enter could go at all.
+  const search = async (el, shape, box, term, before, t, w, { press = true, variant, used } = {}) => {
     const snap = snapshot(el, shape);
     const workday = box === el && ns.shapes.workday(el);
     // The same query, still answered by the list the engine settled for it
@@ -522,12 +535,16 @@
     // A generic combobox naming a highlighted option (aria-activedescendant)
     // never gets it: its Enter would pick that option. Workday's Enter
     // searches, highlight or not.
-    if (workday || (!box.getAttribute("aria-activedescendant") && comboBox(box)
-      && !(await b().waitFor(() => searchView(el, shape, before) !== was, ANSWER_MS, t)))) {
+    const gated = !workday && !box.getAttribute("aria-activedescendant") && comboBox(box);
+    const patient = variant?.search?.[0] === "debounce";
+    const silent = async (ms) => !(await b().waitFor(() => searchView(el, shape, before) !== was, ms, t));
+    const enter = workday ? !patient || (await silent(OPEN_MS)) : gated && (await silent(patient ? OPEN_MS : ANSWER_MS));
+    if (enter) {
       shown = textsOf(own(el, before));
       b().keyPress(box, "Enter", t);
       w?.saw("keyboard");
     }
+    if (used && (workday || gated)) used.search = enter ? "enter" : "debounce";
     const got = await waitSettled(el, shape, before, snap, shown, t);
     if (got.pop) settledFor.set(box, { pop: got.pop, texts: textsOf(got.pop), query: box.value });
     return got;
@@ -585,7 +602,12 @@
   // keys themselves committed is taken back (`reclaim`); what could not be
   // is `committed`. `reclaim: false` for explore (fill-ops owns its undo) and
   // for the engine's own undo, which must not undo itself.
-  const open = async (el, shape, term, t, w, { reclaim = true } = {}) => {
+  // `variant` (a recipe's order) may put the keys FIRST (`open: keys`): the
+  // same keys under the same gates — keyable, nothing reacted, the Enter only
+  // after an ArrowDown that changed nothing — then the press if they opened
+  // nothing. A control the keys may never go to cannot take that order
+  // (`used.mismatch`). `used.open` says which move opened the list.
+  const open = async (el, shape, term, t, w, { reclaim = true, variant, used } = {}) => {
     let searchable = shape.open === "search";
     // A search widget with a term runs the search sequence — without the
     // press when the list it opened for an earlier item is still up.
@@ -593,18 +615,23 @@
       const held = heldList(el);
       const before = held ?? b().popups();
       opened.set(el, before);
-      return { ...(await search(el, shape, el, term, before, t, w, { press: !held })), before, searchable };
+      return { ...(await search(el, shape, el, term, before, t, w, { press: !held, variant, used })), before, searchable };
     }
     const before = b().popups();
     opened.set(el, before);
     el.focus?.({ preventScroll: true });
     const snap = snapshot(el, shape);
     const quiet = watch(el, shape);
-    let pop;
+    let pop = null;
     let keyed = false;
-    try {
+    let how = null;
+    const pressIt = async () => {
       pop = await pressWatched(el, quiet, t, w, () => b().waitFor(() => own(el, before), searchable ? SEARCH_OPEN_MS : OPEN_MS, t));
-      // A press that did nothing at all: the keyboard, a genuinely different gesture.
+      if (pop) how = "press";
+    };
+    // The keyboard, a genuinely different gesture: after a press that did
+    // nothing at all, or first under a recipe's order — the same gates either way.
+    const keys = async () => {
       let quietBody = true;
       for (const key of ["ArrowDown", "Enter"]) {
         if (pop || !keyable(el) || !quiet.ignored || reacted.has(el) || !quietBody) break;
@@ -626,9 +653,19 @@
         // only move its highlight: no key goes to this control again.
         if (!quietBody && !pop) reacted.add(el);
       }
+      if (pop) how = "keys";
+    };
+    const keysFirst = variant?.open?.[0] === "keys";
+    if (keysFirst && used && !keyable(el)) used.mismatch = "open";
+    try {
+      for (const step of keysFirst ? [keys, pressIt] : [pressIt, keys]) {
+        if (pop) break;
+        await step();
+      }
     } finally {
       quiet.stop();
     }
+    if (how && used) used.open = how;
     if (keyed && reclaim && moved(el, shape, snap)) {
       await takeBack(el, shape, snap, pop ? b().optionsOf(pop) : [], t);
       if (moved(el, shape, snap)) {
@@ -640,7 +677,7 @@
     if (!pop) return { pop: null, before, searchable };
     const box = pop.querySelector(INNER_SEARCH);
     if (box) searchable = true;
-    if (term && box) return { ...(await search(el, shape, box, term, before, t, w, { press: false })), before, searchable };
+    if (term && box) return { ...(await search(el, shape, box, term, before, t, w, { press: false, variant, used })), before, searchable };
     return { pop: await waitOptions(el, before, t), before, searchable };
   };
   const scrollerOf = (pop) => [pop, ...pop.querySelectorAll("*")]
@@ -808,7 +845,16 @@
     if (text) await choose(el, shape, { text, undo: true }, t);
   };
 
-  async function explore(el, shape, { term, consentForms } = {}, t) {
+  // What an operation's opens and searches did, for the loop's recipe book:
+  // `variant` the move each axis took, and `mismatch` the axis whose learned
+  // move the control could not take. Nothing when no list was opened.
+  const withMoves = (result, used) => {
+    const { mismatch, ...moves } = used;
+    return { ...result, ...(Object.keys(moves).length ? { variant: moves } : {}), ...(mismatch ? { mismatch } : {}) };
+  };
+
+  // `variant`: a recipe's order for the opens and searches (see `open`).
+  async function explore(el, shape, { term, consentForms, variant } = {}, t) {
     if (shape.kind !== "choice") return { options: [], complete: false, searchable: false, error: "not_a_choice" };
     if (shape.passive) {
       const p = shape.passive(el);
@@ -817,9 +863,10 @@
     b().check(t);
     const snap = snapshot(el, shape);
     const w = watch(el, shape);
+    const used = {};
     try {
       // fill-ops owns explore's undo (whatever moved, keys included).
-      let { pop, searchable, unsettled } = await open(el, shape, term, t, w, { reclaim: false });
+      let { pop, searchable, unsettled } = await open(el, shape, term, t, w, { reclaim: false, variant, used });
       let options = pop ? b().optionsOf(pop) : [];
       if (!options.length && term) {
         const word = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
@@ -827,7 +874,7 @@
         // word (fill-ops takes the commit back).
         if (word && !moved(el, shape, snap)) {
           await tidy(el, t);
-          ({ pop, searchable, unsettled } = await open(el, shape, word, t, w, { reclaim: false }));
+          ({ pop, searchable, unsettled } = await open(el, shape, word, t, w, { reclaim: false, variant, used }));
           options = pop ? b().optionsOf(pop) : [];
         }
       }
@@ -854,7 +901,7 @@
           if (why.gestures) out.gestures = why.gestures;
         }
       }
-      return out;
+      return withMoves(out, used);
     } finally {
       w.stop();
     }
@@ -981,7 +1028,17 @@
   // typed — the next item is typed over it; set tidies once, at its end.
   // `asSet`: a set's item on a box not known to take several — rows that turn
   // out to be radios end it (`not_a_set`) before anything is clicked.
-  async function choose(el, shape, { text, term, consentForms, undo = false, keep = false, asSet = false } = {}, t) {
+  // `variant`: a recipe's order for the opens and searches (see `open`); the
+  // result says which moves they took (`withMoves`).
+  async function choose(el, shape, options = {}, t) {
+    const used = {};
+    return withMoves(await chooseOne(el, shape, { ...options, used }, t), used);
+  }
+  // choose's work; `used` hears what its opens and searches did (a set's
+  // items share one).
+  async function chooseOne(el, shape, {
+    text, term, consentForms, undo = false, keep = false, asSet = false, variant, used,
+  } = {}, t) {
     if (shape.kind !== "choice") return { outcome: "unexpected", reason: "not_a_choice" };
     if (blockedText(text, consentForms)) return { outcome: "blocked" };
     if (!undo && ns.isPlaceholderText(text)) return { outcome: "unexpected", reason: "placeholder" };
@@ -1003,7 +1060,7 @@
     try {
       for (let attempt = 0; ; attempt += 1) {
         const { pop, before: popsBefore, committed, unsettled } = await open(el, shape,
-          shape.open === "search" ? (term ?? text) : term, t, w, { reclaim: !undo });
+          shape.open === "search" ? (term ?? text) : term, t, w, { reclaim: !undo, variant, used });
         if (committed) return { outcome: "unexpected", reason: "committed_while_opening" };
         // Only a list the search let settle is picked from — or, once an
         // Enter's commit was taken back, the list still up after it.
@@ -1076,7 +1133,12 @@
   // `missing` ones the page did not offer or did not take. A Workday search
   // box not yet known to take one answer or several is tried as a set: its
   // first item's rows decide (radios: `not_a_set`, nothing clicked).
-  async function set(el, shape, { texts = [], terms = [], consentForms } = {}, t) {
+  // `variant`: a recipe's order for its items' opens and searches.
+  async function set(el, shape, options = {}, t) {
+    const used = {};
+    return withMoves(await setAll(el, shape, { ...options, used }, t), used);
+  }
+  async function setAll(el, shape, { texts = [], terms = [], consentForms, variant, used } = {}, t) {
     const several = shape.multi?.(el);
     const unknown = several == null && shape.open === "search" && ns.shapes.workday(el);
     if (shape.kind !== "choice" || !(several || unknown)) return { outcome: "unexpected", reason: "not_a_set" };
@@ -1108,7 +1170,7 @@
       const keep = shape.open === "search";
       for (const [i, text] of texts.entries()) {
         if (!allowed.includes(text) || holds(el, shape, text)) continue;
-        const got = await choose(el, shape, { text, term: terms[i] ?? text, consentForms, keep, asSet: true }, t);
+        const got = await chooseOne(el, shape, { text, term: terms[i] ?? text, consentForms, keep, asSet: true, variant, used }, t);
         if (got.reason === "not_a_set") {
           await tidy(el, t);
           return { outcome: "unexpected", reason: "not_a_set" };

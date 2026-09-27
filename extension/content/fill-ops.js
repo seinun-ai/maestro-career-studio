@@ -116,8 +116,10 @@
       // `ms`: what the field's clock has left (the loop sends it), so an
       // explore never runs past it; the undo keeps its own allowance.
       const ms = Number.isFinite(r.ms) ? Math.max(0, Math.min(budgets.explore, r.ms)) : budgets.explore;
-      const { got, aborted } = await run((t) => core().explore(el, shape, { term: r.term ?? undefined, consentForms }, t),
-        ms, el);
+      // `variant`: the recipe's move order the loop sends, passed through.
+      const { got, aborted } = await run((t) => core().explore(el, shape, {
+        term: r.term ?? undefined, consentForms, variant: r.variant ?? undefined,
+      }, t), ms, el);
       if (aborted) await cleanup(el);
       let row = got.options ? got : { options: [], complete: false, searchable: false, error: got.reason ?? got.outcome };
       if (!halted() && core().moved(el, shape, snap)) {
@@ -140,8 +142,14 @@
 
   const operate = (a, el, shape, t) => {
     if (a.op === "write") return core().write(el, shape, a.value, t, { format: a.format });
-    if (a.op === "choose") return core().choose(el, shape, { text: a.text, term: a.term ?? undefined, consentForms }, t);
-    if (a.op === "set") return core().set(el, shape, { texts: a.texts ?? [], terms: a.terms ?? [], consentForms }, t);
+    // `variant` (a choose's or a set's): the recipe's move order, passed through;
+    // the result's `variant` / `mismatch` say what the opens and searches did.
+    if (a.op === "choose") {
+      return core().choose(el, shape, { text: a.text, term: a.term ?? undefined, consentForms, variant: a.variant ?? undefined }, t);
+    }
+    if (a.op === "set") {
+      return core().set(el, shape, { texts: a.texts ?? [], terms: a.terms ?? [], consentForms, variant: a.variant ?? undefined }, t);
+    }
     if (a.op === "recommit") return core().recommit(el, shape, t);
     if (a.op === "close") return core().tidy(el, t).then(() => ({ outcome: "closed" }));
     // An adaptive move carries the state version it was chosen from.

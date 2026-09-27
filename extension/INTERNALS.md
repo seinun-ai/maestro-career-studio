@@ -21,10 +21,12 @@ worker:
 | `shared/choose.js` | every frame **and** the panel document | the pure half of the open-question path: routing, the ≤40 `/choose` batch, `rest_fill` shaping, and the one `QUESTIONY` |
 | `shared/guided-run.js` | every frame **and** the panel document | the guided-fill runner: one sequencing/batching engine, transport injected |
 | `shared/policy.js` | every frame **and** the panel document | the shared never-fill policy — read by the fill engine and by the panel's pause row, whose render AND action are the half that is easy to miss |
+| `shared/recipe-book.js` | the panel document | the recipe book: which of the engine's own moves worked per widget family, its lifecycle and bounds; the loop's `deps.recipes` |
 | `shared/profile-fields.js` | every frame **and** the panel document | the label patterns naming a TYPED home in the autofill profile: one table read by the rule that FILLS the field and by the pause row that decides where an answer is LEARNED |
 | `content/field-reader.js` | every frame | the new fill engine's one answer to "what is this field asking" (label-for → … → nearby), with its source |
 | `content/fill-base.js` | every frame | the engine's page primitives: budgets with real cancellation and a latched Stop, validation state, popup ownership, human typing, closing only popups the engine opened |
 | `content/shapes.js` | every frame | widget shapes: recognise, group, read what is COMMITTED, how a choice widget opens |
+| `content/recipes.js` | every frame | a popup or search widget's recipe keys: value-free hashes of its STRUCTURE (its family) and of that family on this host |
 | `content/inventory.js` | every frame | every fillable control as a field with an element-bound fid and a fingerprint; marks fields the user changed |
 | `content/fill-core.js` | every frame | the generic mechanics: write / explore / choose / set / recommit, verified after the final blur; the adaptive step's versioned state and code-generated moves (stepState / move) |
 | `content/fill-ops.js` | every frame | the engine's page operations behind agent.js's `fill_*` handlers — fingerprint, touched and policy re-checked at execution; every throw returned as an outcome |
@@ -800,6 +802,43 @@ know, and each one was learned from a live failure.
   and such a box ends "couldn't operate" after its attempts, as before. A
   re-commit that ends anywhere but a fill — out of time, not committed, no
   answer — is reported as the page having taken the value back.
+- **What worked is remembered, per kind of control, and only as an order.**
+  The engine knows two moves on each of two axes: it opens a list with a
+  press, or from the keyboard when a press did nothing (`open: press|keys`),
+  and it follows a search's typing with an Enter, or waits for the widget's
+  own filter (`search: enter|debounce`). The panel keeps a recipe book
+  (`shared/recipe-book.js`, `chrome.storage.local` key `fill.recipes`) keyed,
+  for a popup or search field only, by value-free hashes (`content/recipes.js`)
+  of the widget's structure (its shape, tag and role, the names of its and its
+  ancestors' automation ids up to the field box with GUIDs stripped, whether
+  it names its list, the popup kind, one answer or several, the kind of
+  committed evidence, the engine version) and of that family on this host.
+  No label, value, option text or URL is in it; a host is only hashed, which
+  hides it but lets a host someone already knows be tested against it. A
+  recipe only puts the move that worked FIRST: the other stays the fallback,
+  and every gate still decides. The keys go only to a control the keyboard may
+  reach, never after anything on it reacted, and the Enter only after an
+  ArrowDown that changed nothing. A learned debounce only waits longer for the
+  widget's filter (2.5 s rather than 0.3 s) before the Enter the gate allows,
+  and never sends one it refuses. Verification, the field's one budget and its
+  failed moves are unchanged. Clicking an option (its tick, once) and leaving a
+  field (from inside its widget) have no fallback, so they are never
+  reordered, and text boxes and passive choices (a signature, a consent tick)
+  are never looked up. A move is learned only after the final sweep, from a
+  commit whose moves verified and that nothing reverted: a value the sweep
+  found reverted teaches nothing, even one re-committed that then held
+  (`adversarial_recipe_poison.html`). The first such run puts the recipe on
+  probation, tried on its own site only; a second run on that site trusts it;
+  its family is tried on a new site only once two sites kept it. A
+  contradiction (an unconfirmed commit, a revert, the other move winning)
+  demotes it, and a learned move the control cannot take (the keys on a submit
+  button) quarantines it: neither is tried again. The book holds 200 entries at
+  most, the least recently kept going first, and an entry is gone after 60 days
+  unused. **Forget learned widget moves**, at the foot of the Fill body while
+  the book holds anything, removes the key. A store that fails costs the fill
+  nothing. A recipe does not know whether a Workday search box takes one answer
+  or several, so a box already holding one still gets its first item typed and
+  taken back before it is left as it stands.
 - Identity fields (name, email, phone) overwrite a wrong ATS prefill and are
   reported under "corrected"; identity **comboboxes** are fill-only-if-empty.
 - Hidden clone fields are skipped, a write a controlled input rejected is

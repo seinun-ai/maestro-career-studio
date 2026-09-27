@@ -51,7 +51,9 @@
 
      fill-loop.js (the fill engine's loop) right after the runner, as a READING
      order: it reads `ns.guidedRun`, `ns.requestChoose` and `ns.isPolicyBlocked`
-     when it RUNS, not when it loads.
+     when it RUNS, not when it loads. recipe-book.js beside it: the book of
+     which engine moves worked, which panel.js reads at boot (its count) and
+     hands the loop as `deps.recipes`.
 
      policy.js is the FOURTH, and it arrives at Task 13 for choose.js's exact
      reason: the pause row must refuse a policy-blocked field — no input for a
@@ -99,6 +101,7 @@
 <script src="../shared/choose.js"></script>
 <script src="../shared/guided-run.js"></script>
 <script src="../shared/fill-loop.js"></script>
+<script src="../shared/recipe-book.js"></script>
 <script src="../shared/policy.js"></script>
 <script src="../shared/profile-fields.js"></script>
 <script src="stages/job.js"></script>

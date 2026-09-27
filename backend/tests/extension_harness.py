@@ -132,6 +132,7 @@ FILL_ENGINE_SOURCES = [
     CONTENT / "field-reader.js",
     CONTENT / "fill-base.js",
     CONTENT / "shapes.js",
+    CONTENT / "recipes.js",
     CONTENT / "inventory.js",
     CONTENT / "fill-core.js",
     CONTENT / "fill-ops.js",

@@ -331,6 +331,9 @@
       return ns.fillLoop.runFill({
         broadcast: (message) => (live() ? store.broadcast(message) : Promise.resolve([])),
         api: store.api,
+        // Which of the engine's own moves worked, per kind of control: tried
+        // first next time, value-free (`recipeDoor` in panel.js).
+        recipes: store.recipes(),
         cancelled: () => !live() || store.read().stopRequested === true,
         onProgress: (update) => {
           if (update.phase !== "round" || !live()) return;
