@@ -100,12 +100,12 @@ identity and the match chip ("Not saved yet" for a job Maestro CS does not
 have, "Saved", or the application's status), the Base → Tailored ATS rings
 under them (read from stored scores, never computed here; with one ring, "Base
 resume score" and "Tailoring can raise it."; with none, "Not scored yet."), and
-one deep link on the last line,
-right-aligned, with **Refresh** at that line's left. The link is labelled by the most specific thing we know — "Open
+one deep link on the last line, right-aligned, with **Refresh** at that line's
+left. The link is labelled by the most specific thing we know — "Open
 application ↗", else "Open in Maestro CS ↗", and nothing at all until the
 service worker has said where the web app is; its `aria-label` spells the
 destination out in full, because beside a job title "Open application" would
-otherwise read as the posting's own apply page. It gets a line to itself
+otherwise read as the posting's own apply page. It stays off the title's line
 because beside the chip it and the job title fight over one axis: at 400px — an
 ordinary side-panel width — the title was left 104px and five wrapped lines.
 
@@ -137,11 +137,13 @@ asking permission of itself.
   rather than about the page. The backend extracts the JD immediately, so the job
   lands parsed and ready for ATS scoring, and a duplicate save says "Already
   saved in Maestro CS" rather than pretending it saved something new.
-- **Refresh** — re-reads this tab the way a tab switch does (`bindPage`: reset,
-  generation bump, `loadContext`), plus the drafts list and the base resumes
-  asked again, so a job or draft added in the web app or by a connected agent
-  shows without leaving the tab. Disabled while any action runs, so it never
-  interrupts a fill; a picked draft comes back from this browser's memory.
+- **Refresh** — re-reads the backend's facts about this tab through a tab
+  switch's own path (`bindPage`: reset, generation bump, `loadContext`), plus
+  the drafts list and the base resumes, so a job or draft added in the web app
+  or by a connected agent shows without leaving the tab. It keeps the work done
+  on the page (`PAGE_WORK`: typed Job fields, the Fill report, typed answers,
+  the drawer, a reopened row) and writes a pick down again first, so the pick
+  survives. Disabled while any action runs, so it never interrupts a fill.
 - **Pick a draft** — on a page nothing has matched, the Job stage asks
   "Applying for one of these?" over your recent draft applications and you name
   the one you are here about. It is an

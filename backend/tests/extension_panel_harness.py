@@ -37,6 +37,9 @@ WHAT IS IN HERE, in four groups:
 - THE SPEC STARTERS. `SETTINGS_REPLY`, the two job rows, the base-resume
   library and the score rows that every stage's driver builds its `api` map
   from — and `_load`, the plain boot that four of the five files use.
+- THE REFRESH DRIVER. `_REFRESH_DRIVER_JS`/`_refresh` press the header's
+  Refresh after whatever the spec says a user did first; the shell, Job and
+  Fill files each claim a different half of what it must keep or re-read.
 
 `_PANEL_FAKES_JS`'S OWN CONTRACT is written inside it, at the top of the
 string. Read that before adding a message type to the fake: the rule is that a
@@ -717,3 +720,139 @@ def _posts(out):
     """
     return [msg for msg in out["sent"]
             if msg["type"] == "api" and (msg.get("init") or {}).get("method") == "POST"]
+
+
+# THE REFRESH DRIVER, here rather than in the shell's file because three files
+# press Refresh: the shell (the re-read itself), the Job stage (typed fields
+# survive it) and the Fill stage (a report and typed answers survive it). What
+# happens BEFORE the press is chosen by the spec, in the order a user would do
+# it: pick a draft, run a fill, type, let time pass.
+_REFRESH_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+// A BROWSER BLURS A REMOVED NODE: focus falls to the body when the focused
+// control leaves the document. The shared fake models no removal, so without
+// this a restore captured AFTER the header's rebuild would still read the
+// thrown-away button's id and pass.
+const holds = (node, target) => node === target
+  || node.children.some((kid) => holds(kid, target));
+for (const root of Object.values(REGIONS)) {
+  const replace = root.replaceChildren.bind(root);
+  root.replaceChildren = (...kids) => {
+    if (ACTIVE && root.children.some((kid) => holds(kid, ACTIVE))) ACTIVE = null;
+    replace(...kids);
+  };
+}
+// STORAGE THAT REMEMBERS what the panel wrote. The shared fake records writes
+// and reads back only `spec.stored`, which is right for one page load and
+// wrong for this one: a pick made before Refresh must be the pick
+// `restoreSession` finds after it, exactly as it would be in a browser.
+const writeLocal = chrome.storage.local.set;
+chrome.storage.local.set = async (patch) => {
+  await writeLocal(patch);
+  spec.stored = { ...(spec.stored ?? {}), ...patch };
+};
+// A CLOCK THE DRIVER CAN MOVE, for the session memory's time limit.
+let skew = 0;
+const realNow = Date.now;
+Date.now = () => realNow() + skew;
+// A loop fill the driver holds open, so "while a fill runs" is a state it can
+// stand in and press Refresh from. ("Saved answers only" runs the rule pass,
+// which this does not touch.)
+let finishRun = null;
+ns.fillLoop.runFill = async (deps) => {
+  deps.onProgress({ phase: "round", round: 1 });
+  await new Promise((resolve) => { finishRun = resolve; });
+  return { runId: "r", host: "job-boards.greenhouse.io", fields: spec.fillFields ?? [],
+           aiFailure: null, stopped: deps.cancelled(), timedOut: false };
+};
+const findTag = (node, tag) => [
+  ...(node.tagName === tag ? [node] : []),
+  ...node.children.flatMap((kid) => findTag(kid, tag)),
+];
+// A user typing: the characters go on the element and reach the panel through
+// the `input` event alone.
+const typeInto = (prefix, edits) => {
+  for (const [key, text] of Object.entries(edits ?? {})) {
+    const input = document.getElementById(`${prefix}${key}`);
+    if (!input) throw new Error(`no input #${prefix}${key}`);
+    input.value = text;
+    input.dispatch("input");
+  }
+};
+// The store as the actions see it: the two lists are written when their read
+// settles and repaint nothing when the answer is stale, so the DOM alone
+// cannot show a late write.
+const lists = () => {
+  const facts = ns.panel.actionStore().read();
+  return { resumes: facts.resumes, applications: facts.applications };
+};
+main(async () => {
+  await settle();
+  const loaded = regions();
+  if (spec.pick !== undefined) {
+    const select = findTag(REGIONS.rail, "SELECT")[0];
+    select.value = select.children.filter((option) => option.value)[spec.pick].value;
+    select.dispatch("change");
+    await settle();
+  }
+  if (spec.startFill) {
+    withClass(REGIONS.foot, "cta")[0].click();
+    await settle();
+  }
+  typeInto("preview-", spec.type);
+  typeInto("answer-", spec.answers);
+  skew = spec.advanceMs ?? 0;
+  // What changed in Maestro CS, or on the page, while the panel sat on it.
+  Object.assign(spec.api, spec.apiAfter ?? {});
+  if (spec.pageAfter) spec.page = { ...(spec.page ?? {}), ...spec.pageAfter };
+  const sentBefore = sent.length;
+  const button = document.getElementById("refresh-page");
+  const beforePress = regions();
+  // FOCUSED, then pressed: the control a user acts through is the one they
+  // are in, and this fake moves focus on `focus()` alone.
+  if (button) {
+    button.focus();
+    button.click();
+  }
+  const pressed = regions();
+  // A second press while the first is still loading.
+  if (button && spec.pressTwice) {
+    const again = document.getElementById("refresh-page");
+    again.focus();
+    again.click();
+  }
+  // Refresh's own load answers and finishes FIRST, and only then does the
+  // load it superseded land: the order in which a missing guard would paint
+  // the stale answer over the fresh one and leave it there.
+  const newest = held.pop();
+  if (newest) newest();
+  await settle();
+  const refreshedLists = lists();
+  release();
+  await settle();
+  const focus = {
+    id: document.activeElement ? document.activeElement.id : null,
+    fresh: Boolean(button && document.activeElement
+                   && document.activeElement.uid !== button.uid),
+  };
+  const refreshed = regions();
+  if (finishRun) finishRun();
+  await settle();
+  emit({ loaded, beforePress, pressed, refreshed, finished: regions(), focus,
+         refreshedLists, finishedLists: lists(),
+         hadButton: Boolean(button), sentAfter: sent.slice(sentBefore), broadcasts });
+});
+"""
+
+
+def _refresh(tmp_path, **spec):
+    """Boot, do what the spec says a user did, press Refresh, and report."""
+    spec.setdefault("tabs", [{"id": 7, "url": POSTING_URL}])
+    spec.setdefault("replies", {"read_settings": SETTINGS_REPLY})
+    return run_node(_REFRESH_DRIVER_JS, spec, tmp_path, source=PANEL_SOURCE)
+
+
+def _gets(sent, needle):
+    """Every backend GET in `sent` whose path holds `needle`."""
+    return [msg for msg in sent if msg["type"] == "api" and needle in msg["path"]
+            and (msg.get("init") or {}).get("method", "GET") == "GET"]

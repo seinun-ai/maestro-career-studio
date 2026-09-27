@@ -1703,16 +1703,23 @@
 
   /** Refresh (`refreshPage`), or nothing on a page the panel reads nothing
    * about. Disabled while any action runs, `statusSegment`'s rule: a re-read
-   * resets the store that action is writing. Its id is how focus comes back
-   * to it across the repaints its own load causes (`withPlaceKept`). */
+   * resets the store that action is writing. While its OWN load runs it is
+   * `aria-disabled` instead, the web app's lock for a control the user is in
+   * (`GapLocked`): a `disabled` button drops focus to the body, and the user
+   * pressed this one a moment ago. Its id is how focus comes back to it across
+   * the repaints its own load causes (`withPlaceKept`).
+   *
+   * Named for where it reads from: what it re-reads is Maestro CS's side of
+   * the page (job, application, drafts, base resumes), not the page itself. */
   function refreshControl() {
     if (card.tabId === null || !isWebPage(card.url)) return null;
     const button = actionButton("refresh", "Refresh", () => {
       refreshPage().catch((err) => console.warn("[maestro-cs] panel could not refresh:", err));
     });
     button.id = REFRESH_ID;
-    button.setAttribute("aria-label", "Refresh this page's job");
+    button.setAttribute("aria-label", "Refresh from Maestro CS");
     button.disabled = card.busy !== null;
+    if (refreshing) button.setAttribute("aria-disabled", "true");
     return button;
   }
 
@@ -2034,8 +2041,10 @@
     const entry = sessionEntryFrom(card, Date.now());
     // No tenant, nothing to scope a memory to. See `sessionEntryFrom`: this is
     // a refusal, not a fallback.
-    if (!entry) return;
-    writeStore({ [KEY.session]: entry });
+    if (!entry) return Promise.resolve();
+    // Returned for the one caller that waits on it (`refreshPage`); a write
+    // that fails is `writeStore`'s warning, never a rejection.
+    return writeStore({ [KEY.session]: entry });
   }
 
   /** Open the second fork level. A disclosure and nothing else: it asks the
@@ -2596,11 +2605,15 @@
   /** Forget everything about the page and read it again: the whole of a tab
    * switch past the fill cancel, and the whole of Refresh. ONE path, so the
    * button re-reads exactly what a tab switch reads and nothing a switch
-   * would not. */
-  async function bindPage(tabId, url) {
+   * would not.
+   *
+   * `carry` is what survives the reset: nothing for a tab switch, and for
+   * Refresh the work done on a page it is not leaving (`PAGE_WORK`). */
+  async function bindPage(tabId, url, carry = {}) {
     // FIRST, and before anything is loaded: everything the store holds is
     // about the page we are leaving.
     resetPageFacts(card);
+    Object.assign(card, carry);
     card.tabId = tabId;
     card.url = url;
     // Every load still in flight is now about a tab the user has left. See
@@ -2622,9 +2635,35 @@
     return token;
   }
 
-  /** Refresh: a tab switch's read, for the tab the panel is already on. A job
-   * or a draft added in the web app, or by a connected agent, reaches the panel
-   * no other way short of leaving the tab and coming back.
+  /** What Refresh keeps across its reset, by one rule: a fact about this
+   * page's DOM or the user's typing is CARRIED, because Refresh does not leave
+   * the page; a fact from the backend (the match, the application and its PDF,
+   * the scores) is RE-READ, which is the point of pressing it. The typed Job
+   * fields, the Fill report, half-typed pause answers, the QnA drawer, the
+   * attach, a reopened row: all still true of this page. `previewTyped` rides
+   * with the preview, and `loadPosting`'s guard keeps extraction off it.
+   *
+   * NOT CARRIED besides the backend's: `busy` and the fill's run state
+   * (`fillRound`, `stopRequested`), since nothing can be running; and `note`,
+   * which Refresh writes. `hasForm` and `fileInputs` are carried and read
+   * again, so the Fill primary does not blink out while the detect is asked.
+   * `baseSlug` travels only as the user's pick (`refreshPage`): the library's
+   * default is re-derived from the re-read library. */
+  const PAGE_WORK = [
+    "touched", "hasForm", "fileInputs", "attached", "baseSelected", "baseArmed",
+    "tailorOpen", "revisit", "fill", "eeoConsent", "residue", "essays",
+    "closest", "blank", "aiNote", "writeResults", "loop", "answers", "qna",
+    "preview", "previewTyped", "prepared",
+  ];
+
+  /** True while a Refresh's own load runs: a second press is ignored rather
+   * than starting a second load (`refreshControl` marks it `aria-disabled`). */
+  let refreshing = false;
+
+  /** Refresh: a tab switch's read of the backend, for the page the panel is
+   * already on. A job or a draft added in the web app, or by a connected
+   * agent, reaches the panel no other way short of leaving the tab and coming
+   * back. What the user did on the page stays (`PAGE_WORK`).
    *
    * REFUSED WHILE ANY ACTION RUNS, here and by the disabled control. The reset
    * clears `busy` and the generation bump ends a running fill's panel half, so
@@ -2637,15 +2676,36 @@
    * what the owner added elsewhere: the drafts the picker offers and the base
    * resumes. A switch keeps them; a request to re-read does not.
    *
+   * A PICK IS WRITTEN DOWN AGAIN FIRST. It comes back through
+   * `restoreSession`, which trusts the memory for `SESSION_TTL_MS` from when it
+   * was written, and only while this tab's entry is the one under the key: a
+   * pick 31 minutes old, or one another tab's pick has overwritten, would be
+   * dropped by the very button meant to show more. Awaited, so the load reads
+   * the new entry. A draft deleted in the web app is still dropped: the detail
+   * read's 404 does that whatever the memory says.
+   *
    * Says so in the note, the panel's one live region, only when the load left
    * it empty: a sentence the load wrote (an unreachable backend) is the news. */
   async function refreshPage() {
-    if (card.busy !== null || card.tabId === null || !isWebPage(card.url)) return;
-    forgetLibraryLists();
-    const token = await bindPage(card.tabId, card.url);
-    if (!current(token) || card.busy !== null || card.note !== null) return;
-    card.note = { text: "Refreshed." };
+    if (refreshing || card.busy !== null || card.tabId === null || !isWebPage(card.url)) {
+      return;
+    }
+    refreshing = true;
     render();
+    try {
+      if (card.claimed || card.baseSelected || card.baseArmed) await rememberSession();
+      // Re-checked after the await: an action may have started during it.
+      if (card.busy !== null) return;
+      const carry = Object.fromEntries(PAGE_WORK.map((key) => [key, card[key]]));
+      if (card.baseSelected) carry.baseSlug = card.baseSlug;
+      forgetLibraryLists();
+      const token = await bindPage(card.tabId, card.url, carry);
+      if (!current(token) || card.busy !== null || card.note !== null) return;
+      card.note = { text: "Refreshed." };
+    } finally {
+      refreshing = false;
+      render();
+    }
   }
 
   // ---------- loading, and whose answers are allowed to land ----------
@@ -3463,10 +3523,11 @@
     render();
   }
 
-  /** The base-resume library, asked for once per panel rather than once per
-   * tab: it is not a fact about a page, which is why `resetPageFacts` keeps it.
-   * `resumesRequest` is a latch held as a promise, so two quick tab switches
-   * spend one round trip rather than two. */
+  /** The base-resume library, asked for once per panel (or per Refresh)
+   * rather than once per tab: it is not a fact about a page, which is why
+   * `resetPageFacts` keeps it. `resumesRequest` is a latch held as a promise,
+   * so two quick tab switches spend one round trip rather than two; Refresh
+   * replaces it (`forgetLibraryLists`). */
   let resumesRequest = null;
 
   async function loadBaseResumes(token) {
@@ -3510,8 +3571,9 @@
     render();
   }
 
-  /** Recent drafts, asked for once per panel rather than once per tab: the
-   * list is not a fact about a page, which is why `resetPageFacts` keeps it.
+  /** Recent drafts, asked for once per panel (or per Refresh) rather than once
+   * per tab: the list is not a fact about a page, which is why
+   * `resetPageFacts` keeps it.
    *
    * THE WIRE is `GET /api/applications?status=draft`, and both halves are
    * decisions:
@@ -3521,8 +3583,8 @@
    *   already submitted. (A "change target across every status" picker is a
    *   different feature and would need a different sentence on the row.)
    * - Lazy: loaded when Job is active and nothing has matched the page, which
-   *   is the only state that renders the list — and once per panel, not once
-   *   per tab, which is what the latch below is for.
+   *   is the only state that renders the list — and once per panel (or per
+   *   Refresh), not once per tab, which is what the latch below is for.
    *
    * THE SETTLE-TIME WRITE is `loadBaseResumes`'s exception, taken for the
    * same reason: this list is TAB-INDEPENDENT, so an answer arriving after a

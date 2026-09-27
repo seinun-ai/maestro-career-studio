@@ -35,10 +35,12 @@ from tests.extension_panel_harness import (
     SCORES,
     SETTINGS_REPLY,
     _by_class,
+    _gets,
     _load,
     _posts,
     _PANEL_FAKES_JS,
     _rail_rows,
+    _refresh,
     _reply,
     _rows,
     _text,
@@ -2713,3 +2715,26 @@ def test_a_list_read_on_an_earlier_page_stops_offering_the_deleted_draft(tmp_pat
     offered = _offered(out["second"])
     assert offered, "the unbound page offered nothing to bind to"
     assert "app-1" not in offered, "the picker still offers the deleted draft"
+
+
+def test_typed_job_fields_survive_a_refresh(tmp_path):
+    """Refresh re-reads what Maestro CS says about the page and keeps what the
+    user did ON it. The typed title is still in its box even though the page
+    now answers with a fuller posting (which would otherwise land over it),
+    and the match is still asked again."""
+    fuller = _reply({"url": POSTING_URL, "title": "Principal ML Engineer | Lightning AI",
+                     "text": POSTING_TEXT + "\n\nWe also want you to lead the team.",
+                     "source": "json-ld"})
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": TRACKED_URL}],
+                   page={"extract_job_posting": POSTING_REPLY},
+                   pageAfter={"extract_job_posting": fuller},
+                   type={"title": "Staff ML Engineer"},
+                   api={"job-boards": _reply(
+                       {"match": "none", "job": None, "application": None}),
+                        "/api/base-resumes": _reply(BASE_RESUMES)})
+    assert _preview_inputs(out["refreshed"]["rail"]) == {
+        "title": "Staff ML Engineer",
+        "company": "Lightning AI",
+        "location": "Remote, US",
+    }
+    assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1

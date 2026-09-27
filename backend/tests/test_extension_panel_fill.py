@@ -47,9 +47,11 @@ from tests.extension_panel_harness import (
     SETTINGS_REPLY,
     _armed_entry,
     _by_class,
+    _gets,
     _jump_label,
     _PANEL_FAKES_JS,
     _rail_rows,
+    _REFRESH_DRIVER_JS,
     _reply,
     _rows,
     _text,
@@ -3633,3 +3635,17 @@ def test_a_loop_that_reaches_no_page_says_so_and_takes_stop_away(tmp_path):
     assert note["text"].startswith("Couldn't reach this page.")
     assert _by_class(settled["foot"], "stop") == []
     assert _by_class(settled["rail"], "loop") == []
+
+
+def test_a_fill_report_and_typed_answers_survive_a_refresh(tmp_path):
+    """The report and the half-typed pause answer are about this page, which
+    Refresh does not leave: both are still on screen after it, while the
+    match is asked again."""
+    out = _fill(tmp_path, driver=_REFRESH_DRIVER_JS, startFill=True,
+                answers={"q1": "Night"})
+    before = _rows_of(out["beforePress"]["rail"])
+    assert before, "the fill never reported"
+    assert _rows_of(out["refreshed"]["rail"]) == before
+    [box] = [node for node in _walk(out["refreshed"]["rail"]) if node["id"] == "answer-q1"]
+    assert box["value"] == "Night"
+    assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1

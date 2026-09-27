@@ -135,10 +135,12 @@ from tests.extension_panel_harness import (
     SETTINGS_REPLY,
     _armed_entry,
     _by_class,
+    _gets,
     _load,
     _PANEL_FAKES_JS,
     _panel_script,
     _rail_rows,
+    _refresh,
     _reply,
     _rows,
     _text,
@@ -2762,106 +2764,15 @@ def test_the_reopened_bodys_primary_is_the_one_that_actually_runs(undone):
 # adds in the web app, or through a connected agent, therefore stayed invisible
 # until they left the tab and came back. Refresh is that same re-read for the
 # tab the panel is already on: `bindPage`, which `onTab` also runs, plus the
-# two tab-independent lists forgotten first so they are read again too.
-
-_REFRESH_DRIVER_JS = _PANEL_FAKES_JS + r"""
-const ns = loadModules();
-// A BROWSER BLURS A REMOVED NODE: focus falls to the body when the focused
-// control leaves the document. The shared fake models no removal, so without
-// this a restore captured AFTER the header's rebuild would still read the
-// thrown-away button's id and pass.
-const holds = (node, target) => node === target
-  || node.children.some((kid) => holds(kid, target));
-for (const root of Object.values(REGIONS)) {
-  const replace = root.replaceChildren.bind(root);
-  root.replaceChildren = (...kids) => {
-    if (ACTIVE && root.children.some((kid) => holds(kid, ACTIVE))) ACTIVE = null;
-    replace(...kids);
-  };
-}
-// STORAGE THAT REMEMBERS what the panel wrote. The shared fake records writes
-// and reads back only `spec.stored`, which is right for one page load and
-// wrong for this one: a pick made before Refresh must be the pick
-// `restoreSession` finds after it, exactly as it would be in a browser.
-const writeLocal = chrome.storage.local.set;
-chrome.storage.local.set = async (patch) => {
-  await writeLocal(patch);
-  spec.stored = { ...(spec.stored ?? {}), ...patch };
-};
-// A fill the driver holds open, so "while a fill runs" is a state it can
-// stand in and press Refresh from.
-let finishRun = null;
-ns.fillLoop.runFill = async (deps) => {
-  deps.onProgress({ phase: "round", round: 1 });
-  await new Promise((resolve) => { finishRun = resolve; });
-  return { runId: "r", host: "job-boards.greenhouse.io", fields: spec.fillFields ?? [],
-           aiFailure: null, stopped: deps.cancelled(), timedOut: false };
-};
-const findTag = (node, tag) => [
-  ...(node.tagName === tag ? [node] : []),
-  ...node.children.flatMap((kid) => findTag(kid, tag)),
-];
-main(async () => {
-  await settle();
-  const loaded = regions();
-  if (spec.pick !== undefined) {
-    const select = findTag(REGIONS.rail, "SELECT")[0];
-    select.value = select.children.filter((option) => option.value)[spec.pick].value;
-    select.dispatch("change");
-    await settle();
-  }
-  if (spec.startFill) {
-    withClass(REGIONS.foot, "cta")[0].click();
-    await settle();
-  }
-  // What changed in Maestro CS while the panel sat on this page.
-  Object.assign(spec.api, spec.apiAfter ?? {});
-  const sentBefore = sent.length;
-  const button = document.getElementById("refresh-page");
-  const beforePress = regions();
-  // FOCUSED, then pressed: the control a user acts through is the one they
-  // are in, and this fake moves focus on `focus()` alone.
-  if (button) {
-    button.focus();
-    button.click();
-  }
-  const pressed = regions();
-  // Refresh's own load answers and finishes FIRST, and only then does the
-  // load it superseded land: the order in which a missing guard would paint
-  // the stale answer over the fresh one and leave it there.
-  const newest = held.pop();
-  if (newest) newest();
-  await settle();
-  release();
-  await settle();
-  const focus = {
-    id: document.activeElement ? document.activeElement.id : null,
-    fresh: Boolean(button && document.activeElement
-                   && document.activeElement.uid !== button.uid),
-  };
-  const refreshed = regions();
-  if (finishRun) finishRun();
-  await settle();
-  emit({ loaded, beforePress, pressed, refreshed, finished: regions(), focus,
-         hadButton: Boolean(button), sentAfter: sent.slice(sentBefore), broadcasts });
-});
-"""
-
-
-def _refresh(tmp_path, **spec):
-    spec.setdefault("tabs", [{"id": 7, "url": POSTING_URL}])
-    spec.setdefault("replies", {"read_settings": SETTINGS_REPLY})
-    return run_node(_REFRESH_DRIVER_JS, spec, tmp_path, source=PANEL_SOURCE)
+# two tab-independent lists forgotten first so they are read again too. It
+# re-reads what the BACKEND says and keeps the work done on this page: the Job
+# and Fill stage files hold the typed fields and the fill report surviving it.
+# The driver is the harness's (`_refresh`), because those two files press it too.
 
 
 def _refresh_button(region):
     found = [node for node in _walk(region) if node["id"] == "refresh-page"]
     return found[0] if found else None
-
-
-def _gets(sent, needle):
-    return [msg for msg in sent if msg["type"] == "api" and needle in msg["path"]
-            and (msg.get("init") or {}).get("method", "GET") == "GET"]
 
 
 _UNMATCHED = _reply({"match": "none", "job": None, "application": None})
@@ -3033,12 +2944,8 @@ def test_refresh_keeps_focus_and_is_named_for_what_it_does(tmp_path):
     button = _refresh_button(out["loaded"]["identity"])
     assert button["tag"] == "BUTTON"
     assert button["text"] == "Refresh"
-    assert button["attrs"]["aria-label"] == "Refresh this page's job"
+    assert button["attrs"]["aria-label"] == "Refresh from Maestro CS"
     assert out["focus"] == {"id": "refresh-page", "fresh": True}
-    # The id is in the focus restore's own list of the ids it serves.
-    doc = re.search(r"/\*\*((?:(?!\*/).)*)\*/\s*function withPlaceKept",
-                    _panel_script("panel.js"), re.S)
-    assert doc and "`refresh-page`" in doc.group(1)
 
 
 def test_a_page_that_is_not_a_web_page_offers_no_refresh(tmp_path):
@@ -3047,3 +2954,72 @@ def test_a_page_that_is_not_a_web_page_offers_no_refresh(tmp_path):
     out = _refresh(tmp_path, tabs=[{"id": 7, "url": "chrome://settings"}], api={})
     assert out["hadButton"] is False
     assert [node for node in _walk(out["loaded"]["identity"]) if node["tag"] == "BUTTON"] == []
+
+
+def test_a_base_resume_read_superseded_by_refresh_never_replaces_the_newer_one(tmp_path):
+    """The base-resume latch's twin of the drafts-list test: the read Refresh
+    replaced lands last with the older library and drops it."""
+    newer = [*BASE_RESUMES, {"slug": "staff_ml", "display_name": "Staff ML"}]
+    out = _refresh(tmp_path, hold=["/api/base-resumes"], api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB, "application": None}),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+    }, apiAfter={"/api/base-resumes": _reply(newer)})
+    assert "Staff ML" in _text(out["refreshed"]["rail"])
+    assert [row["slug"] for row in out["finishedLists"]["resumes"]] == [
+        "data_scientist", "ai_ml_engineer", "staff_ml"]
+
+
+def _picked_then_refreshed(tmp_path, **spec):
+    return _refresh(tmp_path, tabs=[{"id": 7, "url": APPLY_URL}], pick=0,
+                    page=_REFRESH_APPLY_PAGE, api={
+                        "myworkdayjobs": _UNMATCHED,
+                        "GET /api/applications?": _reply([_refresh_draft(1)]),
+                        "GET /api/applications/app-1": _reply(
+                            {"id": "app-1", "pdf_path": "renders/app-1.pdf",
+                             "status": "draft"}),
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "/api/ats-scores": _reply(SCORES),
+                    }, **spec)
+
+
+def test_a_pick_older_than_the_memory_lasts_survives_a_refresh(tmp_path):
+    """The pick lives in this browser's memory for 30 minutes from when it was
+    written. Refresh writes it again first, so a draft picked 31 minutes ago
+    is still armed afterwards rather than silently dropped."""
+    out = _picked_then_refreshed(tmp_path, advanceMs=31 * 60 * 1000)
+    identity = out["refreshed"]["identity"]
+    assert _by_class(identity, "chip")[0]["text"] == "Draft application"
+    assert f"{APP_URL}/applications/app-1" in [
+        link["href"] for link in _by_class(identity, "linkish")]
+
+
+def test_a_picked_draft_deleted_in_the_web_app_is_dropped_by_refresh(tmp_path):
+    """Writing the memory again does not keep a dead pick alive: the detail
+    read's 404 still unbinds it, and the picker is offered again."""
+    out = _picked_then_refreshed(tmp_path, apiAfter={
+        "GET /api/applications/app-1": {
+            "ok": False, "error": "Application not found", "status": 404},
+        "GET /api/applications?": _reply([_refresh_draft(2)])})
+    identity = out["refreshed"]["identity"]
+    assert "Draft application" not in _text(identity)
+    assert "app-1" not in json.dumps(identity)
+    assert _draft_names(out["refreshed"]["rail"]) == ["Acme 2 · Research Engineer 2"]
+    assert _rows(_rail_rows({"regions": out["refreshed"]}))["job"]["state"] == "active"
+
+
+def test_a_second_press_while_refreshing_is_ignored_and_keeps_focus(tmp_path):
+    """While its load runs, Refresh is marked `aria-disabled` rather than
+    `disabled`, so the focus the user pressed it with stays on it, and a
+    second press is ignored rather than starting a second load."""
+    out = _refresh(tmp_path, pressTwice=True, hold=["lightningai"], api={
+        "lightningai": _UNMATCHED,
+        "/api/base-resumes": _reply(BASE_RESUMES),
+    })
+    pressed = _refresh_button(out["pressed"]["identity"])
+    assert pressed["attrs"].get("aria-disabled") == "true"
+    assert pressed["disabled"] is False
+    assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1
+    after = _refresh_button(out["finished"]["identity"])
+    assert after["attrs"].get("aria-disabled") in (None, "false")
+    assert out["focus"]["id"] == "refresh-page"
