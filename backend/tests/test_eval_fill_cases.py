@@ -508,3 +508,9 @@ def test_now_or_in_the_future_cases_ask_the_derived_fact():
     assert {i: by_id[i]["slot"] for i in NOW_OR_FUTURE_IDS} == dict.fromkeys(
         NOW_OR_FUTURE_IDS, "derived.sponsorship_now_or_future")
     assert (by_id["sponsor-now-yes-later-no"]["fact"], by_id["sponsor-now-yes-later-no"]["expected"]) == ("Yes", "Yes")
+
+
+def test_now_or_in_the_future_agrees_with_the_future_rule_in_map_agreement():
+    """The old rule's `sponsorship_future` rows now map to the derived fact:
+    one fact, not a disagreement."""
+    assert "derived.sponsorship_now_or_future" in ev.SAME_FACT["work_auth.sponsorship_future"]

@@ -1316,3 +1316,30 @@ def test_now_or_in_the_future_judged_same_picks_the_combined_answer(db_session, 
                              facts, db_session, None)
     assert calls[0]["state"]["fields"][0]["answer"] == "Yes"
     assert got["q"].model_dump() == {"oids": ["o1"], "reason": "matched"}
+
+
+# ---------- the statement's wording (review of 521b4651 / 71a1f4fb)
+
+
+@pytest.mark.parametrize("slot, profile, said", [
+    ("derived.us_citizen", {"work_auth": {"status": "h1b"}}, 'for the applicant, "is a US citizen" is not true'),
+    ("derived.sponsorship_now_or_future", {"work_auth": {"sponsorship_now": False, "sponsorship_future": False}},
+     'for the applicant, "will need visa sponsorship now or in the future" is not true'),
+])
+def test_a_statement_drops_the_whole_yes_no_parenthetical(slot, profile, said):
+    fact = autofill_catalog.build(profile, [], [])[slot]
+    assert autofill_pick.statement_of(fact, fact.value) == said
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_saved_answer_carries_no_statement(db_session, monkeypatch):
+    """A saved answer's description is its own question: "saved answer to: …
+    is not true" would read as the saved answer being false."""
+    facts = autofill_catalog.build({"custom": [{"question": "Do you have a clearance?", "answer": "No"}]}, [], [])
+    calls = fake_jev(monkeypatch, {"c": ("o2", 0.95)}, ways={"c": ("same", 0.95)})
+    got = autofill_pick.pick([pf("c", question="Do you have a clearance?", slot="custom.0", options=opts("Yes", "No"))],
+                             facts, db_session, None)
+    [state] = calls[0]["state"]["fields"]
+    assert state == {"id": "c", "question": "Do you have a clearance?", "answer": "No"}
+    assert "that is" not in calls[0]["questions"]["c"]["instructions"]
+    assert got["c"].reason == "matched"

@@ -103,7 +103,9 @@ RULE_TO_SLOT: dict[str, str] = {
 }
 # The same fact under its derived name: an answer naming either agrees.
 SAME_FACT = {"preferences.earliest_start_date": {"derived.earliest_start_date"},
-             "eligibility.previously_employed_here": {"derived.previously_employed_here"}}
+             "eligibility.previously_employed_here": {"derived.previously_employed_here"},
+             # The old rule answered "now or in the future" from the future answer.
+             "work_auth.sponsorship_future": {"derived.sponsorship_now_or_future"}}
 # Telemetry's control kinds as the fill loop's shapes (a combobox is a search
 # box or a popup; /map reads the shape only to tell prose from a choice).
 KIND_TO_SHAPE = {"text": "text", "textarea": "text", "select": "select", "combobox": "search",

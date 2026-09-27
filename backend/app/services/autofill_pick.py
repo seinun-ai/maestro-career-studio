@@ -121,7 +121,9 @@ class Computed:
 
 
 def statement_of(fact: Fact, answer: str) -> str:
-    about = re.sub(r"\s*\(yes/no\)\s*$", "", fact.describe)
+    """The whole trailing "(yes/no…)" goes ("(yes/no; derived from …)" too): what
+    is true or not true is the proposition, not its provenance."""
+    about = re.sub(r"\s*\(yes/no[^)]*\)\s*$", "", fact.describe)
     return f"for the applicant, {json.dumps(about)} is {'true' if answer == 'Yes' else 'not true'}"
 
 
@@ -151,7 +153,10 @@ def polarity_answers(fields, facts: dict[str, Fact], session: Session, budget: B
     out: dict[str, Computed | None] = {}
     for fid, fact in yes_no.items():
         answer = autofill_polarity.answer_for(str(fact.value), ways[fid].way)
-        stated = ways[fid].way == autofill_polarity.SAME and answer in ("Yes", "No")
+        # A saved answer is described by its own question ("saved answer to:
+        # …"): a statement would read as that answer being false. Literal only.
+        stated = (ways[fid].way == autofill_polarity.SAME and answer in ("Yes", "No")
+                  and not fact.slot.startswith("custom."))
         out[fid] = Computed(answer, statement_of(fact, answer) if stated else None) if answer is not None else None
     return out
 
