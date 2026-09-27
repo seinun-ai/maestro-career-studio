@@ -1036,9 +1036,13 @@ def test_the_pick_is_asked_for_the_answer_code_computed(db_session, monkeypatch,
     text = calls[0]["questions"]["s"]["instructions"]
     assert f"The applicant's answer to form field s ({json.dumps(AUTHORIZED_WITHOUT)}) is {json.dumps(answer)}" in text
     assert "Which option states that answer?" in text
-    assert SPONSOR_NOW not in json.dumps(calls[0])
     [state] = calls[0]["state"]["fields"]
-    assert state == {"id": "s", "question": AUTHORIZED_WITHOUT, "answer": answer}
+    if way == "opposite":   # flipped: no description, so nothing can flip it back
+        assert "needs employer visa sponsorship now" not in json.dumps(calls[0])
+        assert state == {"id": "s", "question": AUTHORIZED_WITHOUT, "answer": answer}
+    else:   # nothing flipped: the answer says what it is about
+        said = 'that is, for the applicant, "needs employer visa sponsorship now" is not true'
+        assert said in text and state["that_is"] in said
     assert got["s"].model_dump() == {"oids": ["o1" if answer == "Yes" else "o2"], "reason": "matched"}
 
 
@@ -1260,3 +1264,42 @@ def test_the_main_pick_is_not_asked_again_without_the_time_or_for_a_missing_key(
     with pytest.raises(llm.LLMProviderError):
         pick([pf("m", slot=DISCIPLINE, options=opts("Business Analytics"))], db_session)
     assert len(calls) == 1
+
+
+# ---------- a SAME answer says what it is about; an OPPOSITE one never (tag-run follow-up)
+
+VISA = "Visa sponsorship"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("way, stated", [("same", True), ("opposite", False)])
+def test_only_a_same_answer_states_the_fact_it_answers(db_session, monkeypatch, way, stated):
+    calls = fake_jev(monkeypatch, {"s": ("o2", 0.95)}, ways={"s": (way, 0.95)})
+    pick([pf("s", question=VISA, slot="work_auth.sponsorship_now",
+             options=opts("I will require sponsorship", "I will not require sponsorship"))], db_session)
+    text = calls[0]["questions"]["s"]["instructions"]
+    assert ('that is, for the applicant, "needs employer visa sponsorship now" is not true' in text) is stated
+    assert ("that_is" in calls[0]["state"]["fields"][0]) is stated
+    # The statement is the value-free description and the answer: no other value travels.
+    blob = json.dumps(calls[0])
+    assert not [v for v in ("Business Analytics", "Referral", "Python", "SQL", "Tableau") if v in blob]
+
+
+def test_the_fast_model_gets_the_statement_beside_a_same_answer(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, ways={"s": ("same", 0.95), "o": ("opposite", 0.95)})
+    pick([pf("s", question=VISA, slot="work_auth.sponsorship_now", options=opts("I will require sponsorship",
+                                                                                "I will not require sponsorship")),
+          pf("o", question=AUTHORIZED_WITHOUT, slot="work_auth.sponsorship_now", options=opts("Yes", "No"))],
+         db_session)
+    fields = {f["id"]: f for f in json.loads(prompts[0]["prompt"].split("Fields: ", 1)[1])}
+    assert fields["s"]["that_is"] == 'for the applicant, "needs employer visa sponsorship now" is not true'
+    assert "that_is" not in fields["o"] and fields["o"]["answer"] == "Yes"
+    assert "`that_is`" in prompts[0]["prompt"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_wordy_same_value_states_itself(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"d": ("o2", 0.99)}, ways={"d": ("same", 0.99)})
+    autofill_pick.pick([pf("d", question="Disability status", slot="eeo.disability_status",
+                           options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
+    assert "that_is" not in calls[0]["state"]["fields"][0]

@@ -542,8 +542,10 @@ know, and each one was learned from a live failure.
   1. **Polarity** (`autofill_polarity`): the model judges only whether
      the question asks the SAME thing as the fact's value-free
      description (an undirected label — "Protected veteran status", "Age
-     requirement" — counts as same), the OPPOSITE (a reverse or a
-     negation), or neither (it asks about something else). The
+     requirement" — counts as same, unless its words negate or reverse
+     the fact: "Unrestricted work authorization (no sponsorship
+     required)" is opposite), the OPPOSITE (a reverse or a negation), or
+     neither (it asks about something else). The
      value is not sent, and every Yes/No description is a proposition
      with a direction ("has a disability", "is a protected veteran",
      never "disability status"). Jev first, over code-owned keys, at the
@@ -565,8 +567,13 @@ know, and each one was learned from a live failure.
      disability", "Yes, previously") is never rewritten, so an opposite
      question about one is yours.
   3. **A literal pick**: "the applicant's answer to this question is
-     Yes: which option states that answer?" — with no fact description,
-     so nothing can flip it back. /pick's Jev pick, its fast fallback and
+     Yes: which option states that answer?" After a flip it carries no
+     fact description, so nothing can flip it back. A same answer that
+     is a plain Yes or No also says what it is about, in the
+     description's words ("No; that is, for the applicant, "will need
+     visa sponsorship in the future" is not true"), so an undirected
+     label over statement options can be read; nothing was flipped
+     there. /pick's Jev pick, its fast fallback and
      its second opinion all ask that; /step names the answer in its goal
      and decides the polarity itself (unsure, it gives up).
   Any other fact is picked against its description and value, and the

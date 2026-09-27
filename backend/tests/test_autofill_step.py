@@ -556,3 +556,12 @@ def test_the_main_step_is_not_asked_again_without_the_time_or_for_a_missing_key(
     with pytest.raises(llm.LLMProviderError):
         step(req(slot="education.0.discipline"), db_session)
     assert len(calls) == 1
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("way, stated", [("same", True), ("opposite", False)])
+def test_only_a_same_step_goal_states_the_fact_it_answers(db_session, monkeypatch, way, stated):
+    calls = fake_jev(monkeypatch, way=(way, 0.95))
+    step(req(question="Visa sponsorship", slot="work_auth.sponsorship_now"), db_session)
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert ('that is, for the applicant, "needs employer visa sponsorship now" is not true' in text) is stated

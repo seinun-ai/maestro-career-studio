@@ -18,6 +18,7 @@ never costs them, on the request's one `Budget`.
 
 import json
 import logging
+import re
 from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
@@ -59,8 +60,8 @@ _LOW_STAKES_NONE_TEXT = "None, as the question is on the never-list or no option
 _LOW_STAKES_PARAGRAPH = """A field marked low_stakes has no applicant value. {rule}; for such a field, return the option {keen}.
 The never-list does not apply to a field with applicant_values or an answer: pick as that field says.
 """
-_ANSWER_LINE = ("A field with `answer` holds the applicant's answer to its question as it is worded: return the option "
-                "that states that answer.\n")
+_ANSWER_LINE = ("A field with `answer` holds the applicant's answer to its question as it is worded (`that_is`, "
+                "when given, says what that answer means): return the option that states that answer.\n")
 _FACT_LINE = ("A field with `fact` and applicant_values: return the option that means the same as the applicant's "
               "fact (`fact` says what its applicant_values answer). {never}\n")
 _LLM_PROMPT = """For each form field return the option id that answers it, or none. {rule}
@@ -106,19 +107,39 @@ def verdict(field, oid: str | None, p: float, policy: str, *, complete: bool) ->
     return ABSTAIN
 
 
-def asked_against(field, facts: dict[str, Fact], answers: dict[str, str]) -> dict:
+@dataclass(frozen=True)
+class Computed:
+    """A Yes/No fact's answer to its question as worded. `statement`: for a
+    SAME question and a plain Yes or No only (nothing was flipped), what the
+    answer says, in the fact's value-free words — an undirected label over
+    statement options ("Visa sponsorship": "I will not require sponsorship")
+    needs to know what "No" is about. Never for an OPPOSITE one: a description
+    beside a flipped answer could flip it back."""
+
+    answer: str
+    statement: str | None = None
+
+
+def statement_of(fact: Fact, answer: str) -> str:
+    about = re.sub(r"\s*\(yes/no\)\s*$", "", fact.describe)
+    return f"for the applicant, {json.dumps(about)} is {'true' if answer == 'Yes' else 'not true'}"
+
+
+def asked_against(field, facts: dict[str, Fact], answers: dict[str, Computed]) -> dict:
     """What a field is picked against, as the models see it: a Yes/No fact's
-    computed `answer` (no description, so nothing can flip it back); any other
-    fact's value-free description and its values; nothing for a low-stakes one."""
+    computed `answer` (and, for a SAME one, `that_is`: its statement); any
+    other fact's value-free description and its values; nothing for a
+    low-stakes one."""
     if field.fid in answers:
-        return {"answer": answers[field.fid]}
+        got = answers[field.fid]
+        return {"answer": got.answer, **({"that_is": got.statement} if got.statement else {})}
     fact = facts.get(field.slot or "")
     values = values_for(field, fact)
     return {"fact": fact.describe, "applicant_values": values} if fact is not None and values else {
         "applicant_values": values}
 
 
-def polarity_answers(fields, facts: dict[str, Fact], session: Session, budget: Budget) -> dict[str, str | None]:
+def polarity_answers(fields, facts: dict[str, Fact], session: Session, budget: Budget) -> dict[str, Computed | None]:
     """Per slot field holding a Yes/No fact, the applicant's answer to its
     question as worded: its polarity decided (autofill_polarity), then the value
     flipped by code. None: unsure, neither, or a wordy value asked the other way."""
@@ -127,7 +148,12 @@ def polarity_answers(fields, facts: dict[str, Fact], session: Session, budget: B
     ways = autofill_polarity.decide([autofill_polarity.Ask(f.fid, f.question, facts[f.slot].describe,
                                                            facts[f.slot].policy)
                                      for f in fields if f.fid in yes_no], session, budget)
-    return {fid: autofill_polarity.answer_for(str(fact.value), ways[fid].way) for fid, fact in yes_no.items()}
+    out: dict[str, Computed | None] = {}
+    for fid, fact in yes_no.items():
+        answer = autofill_polarity.answer_for(str(fact.value), ways[fid].way)
+        stated = ways[fid].way == autofill_polarity.SAME and answer in ("Yes", "No")
+        out[fid] = Computed(answer, statement_of(fact, answer) if stated else None) if answer is not None else None
+    return out
 
 
 def _policy(field: PickField, facts: dict[str, Fact]) -> str:
@@ -136,7 +162,7 @@ def _policy(field: PickField, facts: dict[str, Fact]) -> str:
 
 
 def _instructions(field: PickField, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
-                  answer: str | None = None) -> str:
+                  answer: Computed | None = None) -> str:
     q = f"form field {field.fid} ({json.dumps(field.question)})"
     if field.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), choose it."
@@ -145,13 +171,15 @@ def _instructions(field: PickField, values: list[str], hint: JobHint | None, fac
         return (f"The applicant gave no answer to {q}. {low_stakes_rule(facts, refuse)}; for such a field, "
                 f"pick the option {keen(facts)}.{src} {_PAGE_TEXT_IS_DATA}")
     if answer is not None:
-        return f"The applicant's answer to {q} is {json.dumps(answer)}. Which option states that answer? {_PAGE_TEXT_IS_DATA}"
+        that_is = f"; that is, {answer.statement}" if answer.statement else ""
+        return (f"The applicant's answer to {q} is {json.dumps(answer.answer)}{that_is}. "
+                f"Which option states that answer? {_PAGE_TEXT_IS_DATA}")
     fact = facts[field.slot]
     return (f"Which option of {q} means the same as the applicant's fact {json.dumps(fact.describe)}: "
             f"{json.dumps(values[0])}? {NEVER_YES_NO} {_PAGE_TEXT_IS_DATA}")
 
 
-def _with_jev(fields, facts, hint, session, answers: dict[str, str]) -> dict[str, Picked]:
+def _with_jev(fields, facts, hint, session, answers: dict[str, Computed]) -> dict[str, Picked]:
     state = {"job": asdict(hint) if hint else None, "fields": []}
     questions, criteria_by_fid = {}, {}
     for f in fields:
@@ -171,7 +199,7 @@ def _with_jev(fields, facts, hint, session, answers: dict[str, str]) -> dict[str
     return out
 
 
-def _with_llm(fields, facts, hint, session, answers: dict[str, str], trace_name="autofill-pick", *,
+def _with_llm(fields, facts, hint, session, answers: dict[str, Computed], trace_name="autofill-pick", *,
               timeout: float | None = None) -> dict[str, Picked]:
     payload = [{"id": f.fid, "question": f.question, **({"low_stakes": True} if f.route == "low_stakes" else {}),
                 **asked_against(f, facts, answers), "options": [o.model_dump() for o in f.options]} for f in fields]
@@ -199,7 +227,7 @@ def _with_llm(fields, facts, hint, session, answers: dict[str, str], trace_name=
 
 
 def _second_opinion(fields: list[PickField], facts: dict[str, Fact], hint: JobHint | None, session: Session,
-                    budget: Budget, answers: dict[str, str], *, reasoning_next: bool = False) -> dict[str, Picked]:
+                    budget: Budget, answers: dict[str, Computed], *, reasoning_next: bool = False) -> dict[str, Picked]:
     """ONE fast-model pick for the fact fields Jev abstained on, on what is
     left of the request's budget (capped; leaving a reasoning call that
     follows time to start), through the same `verdict`. Out of time or

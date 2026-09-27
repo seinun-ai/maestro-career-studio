@@ -237,6 +237,9 @@ def test_a_label_without_a_direction_of_its_own_is_offered_as_same(db_session, m
     decide([ask("q", question="Protected veteran status", describe="is a protected veteran")], db_session)
     criteria = calls[0]["questions"]["q"]["criteria"]
     assert "without a direction of its own" in criteria[SAME] and "status label" in criteria[SAME]
+    # A terse label that does negate or reverse the fact ("Unrestricted work authorization (no sponsorship
+    # required)") is not undirected: the same criterion sends it to Opposite.
+    assert "do not negate or reverse the fact" in criteria[SAME] and "it is Opposite" in criteria[SAME]
     assert "reverse or a negation" in criteria[OPPOSITE]
     assert "something else" in criteria[NEITHER] and "direction" not in criteria[NEITHER]
     prompts = fake_llm(monkeypatch)

@@ -67,8 +67,9 @@ _clock = time.monotonic
 # reading those as neither would leave the most common fields unfilled.
 # OPPOSITE and NEITHER stay tight.
 CRITERIA = {
-    SAME: "Same: the question asks what the fact says, or asks about it without a direction of its own (such as "
-          "a status label whose options state it), so the fact's answer is the question's answer",
+    SAME: "Same: the question asks what the fact says, or asks about it without a direction of its own (a label "
+          "whose words do not negate or reverse the fact, such as a status label whose options state it; if its "
+          "words do negate or reverse it, it is Opposite), so the fact's answer is the question's answer",
     OPPOSITE: "Opposite: the question asks the reverse or a negation of the fact, so a Yes to the fact is a No "
               "to the question",
     NEITHER: "Neither: the question asks about something else",

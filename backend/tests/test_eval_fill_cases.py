@@ -484,3 +484,13 @@ def test_the_neutral_cases_expect_a_pick_from_an_undirected_label():
     assert all(c["expected"] for c in neutral.values())
     assert neutral["neutral-employment-with-company"]["options"] == ["Current Associate", "Former Associate",
                                                                       "Not Applicable"]
+
+
+def test_a_label_form_reversed_case_and_a_same_statement_case_are_labelled():
+    by_id = {c["id"]: c for c in PICKS["cases"]}
+    label = by_id["reversed-label-unrestricted-authorization"]
+    assert (label["tag"], label["question"], label["fact"], label["expected"]) == (
+        "reversed", "Unrestricted work authorization (no sponsorship required)", "Yes", "No")
+    visa = by_id["neutral-visa-sponsorship"]
+    assert (visa["tag"], visa["slot"], visa["fact"], visa["expected"]) == (
+        "neutral", "work_auth.sponsorship_future", "No", "I will not require sponsorship")

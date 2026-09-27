@@ -29,7 +29,7 @@ from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_map import SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule, main_call
-from app.services.autofill_pick import NEVER_YES_NO, JobHint, polarity_answers, values_for, verdict
+from app.services.autofill_pick import NEVER_YES_NO, Computed, JobHint, polarity_answers, values_for, verdict
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def _decide(req: StepRequest, mid: str | None, p: float, policy: str) -> StepRes
 
 
 def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
-                  answer: str | None = None) -> str:
+                  answer: Computed | None = None) -> str:
     field = f"form field {req.fid} ({json.dumps(req.question)})"
     if req.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), that is the one."
@@ -77,8 +77,9 @@ def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, fac
     elif answer is not None:
         # A Yes/No fact: its polarity decided and the value flipped by code
         # (autofill_pick.polarity_answers); the goal is literal.
+        that_is = f"; that is, {answer.statement}" if answer.statement else ""
         goal = (f"You are filling {field} on a job application. For the applicant, the answer to the question is "
-                f"{json.dumps(answer)}: the goal is to select the option that states that answer.")
+                f"{json.dumps(answer.answer)}{that_is}: the goal is to select the option that states that answer.")
     else:
         fact = facts[req.slot]
         goal = (f"You are filling {field} on a job application. The goal is to select the option that means the "
