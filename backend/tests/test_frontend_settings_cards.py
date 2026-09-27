@@ -433,3 +433,48 @@ def test_a_header_action_renders_nowhere_until_the_slot_exists():
     # Mutant: the action rendered inline in the body for a frame, then jumped into the header.
     action = _slice(_CARD, "export function SettingCardAction(", "\n}\n")
     assert "return slot ? createPortal(children, slot) : null;" in action
+
+
+# --- The low-stakes switch (fill-engine plan Task 9) -----------------------------
+
+_AUTOFILL = _read("components/settings/autofill-section.tsx")
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def test_the_low_stakes_switch_sits_beside_the_agreement_switch():
+    boxes = _slice(_AUTOFILL, "function CompanionPermissions(", "\n}\n")
+    assert boxes.index('id="consent-forms"') < boxes.index("<LowStakesSwitch />")
+    switch = _slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n")
+    assert '<Label htmlFor="low-stakes">Answer low-stakes questions for me</Label>' in switch
+    assert 'id="low-stakes"' in switch and "aria-describedby={hintId}" in switch
+    # Off until the server says otherwise, and never trusted from here: /map
+    # and /pick read the setting server-side.
+    assert "checked={options.data?.low_stakes ?? false}" in switch
+
+
+def test_the_low_stakes_switch_reads_and_writes_its_own_setting():
+    switch = _slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n")
+    assert 'queryKey: ["settings", "autofill-options"]' in switch
+    assert 'apiFetch<AutofillOptions>("/api/settings/autofill-options")' in switch
+    assert 'method: "PUT"' in switch and "body: JSON.stringify(value)" in switch
+    assert 'qc.setQueryData(["settings", "autofill-options"], result);' in switch
+    assert 'toast.error(couldnt("save this setting", err))' in switch
+    assert "const saveOnce = useSingleFlight(saveOptions.mutate);" in switch
+    assert "onCheckedChange={(low_stakes) => saveOnce({ low_stakes })}" in switch
+    types = _read("lib/types.ts")
+    assert "export interface AutofillOptions {\n  low_stakes: boolean;\n}" in types
+
+
+def test_the_low_stakes_help_names_the_widened_kinds_and_the_never_list():
+    switch = _flat(_slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n"))
+    for kind in ("how you heard about the job", "how to contact you", "relocate", "travel", "on site",
+                 "shifts or overtime", "drug test", "other roles", "related to", "used to work for",
+                 "text and marketing messages", "experience and education the job description asks for"):
+        assert kind in switch, kind
+    for kind in ("your education and work history", "work authorization", "sponsorship", "age",
+                 "diversity questions", "background checks", "security clearance", "salary", "signatures"):
+        assert kind in switch, kind
+    assert "Answered for you" in switch

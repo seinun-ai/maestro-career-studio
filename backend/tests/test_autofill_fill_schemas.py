@@ -108,3 +108,13 @@ def test_field_ids_are_the_extensions_shape():
             MapField(**_map_field(fid=fid))
         with pytest.raises(ValidationError):
             PickField(**_pick_field(fid=fid))
+
+
+def test_a_reasoned_field_is_picked_but_never_stepped():
+    """The reasoning route answers in /pick only: the adaptive step has no
+    history to answer from, so it refuses the route."""
+    from app.schemas.autofill_fill import StepRequest
+
+    assert PickField(**_pick_field(route="reasoned")).route == "reasoned"
+    with pytest.raises(ValidationError):
+        StepRequest(fid="a", question="Q", route="reasoned", candidates=[{"mid": "open", "describe": "Open"}])

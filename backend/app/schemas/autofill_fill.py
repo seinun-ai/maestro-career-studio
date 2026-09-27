@@ -7,7 +7,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Shape = Literal["text", "date", "select", "group", "search", "popup"]
-Route = Literal["slot", "free_text", "low_stakes", "none", "blocked"]
+# `reasoned`: a choice answered from the work and education history only
+# (autofill_map._answerable, autofill_pick._reason), marked `assumed`.
+Route = Literal["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]
 # How a written value compares with what the page shows: decided by the fact's
 # SLOT (autofill_map.format_of), never by what the value looks like.
 Format = Literal["phone", "money"]
@@ -92,7 +94,7 @@ class PickField(BaseModel):
     model_config = ConfigDict(extra="forbid")
     fid: str = Field(min_length=1, max_length=64, pattern=FID)
     question: str = Field(max_length=300)
-    route: Literal["slot", "low_stakes"]
+    route: Literal["slot", "low_stakes", "reasoned"]
     slot: str | None = Field(default=None, max_length=120)
     item: str | None = Field(default=None, max_length=300)  # one member of a set slot
     options: list[PickOption] = Field(min_length=1, max_length=MAX_PICK_OPTIONS)

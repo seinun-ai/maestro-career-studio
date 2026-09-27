@@ -11,6 +11,13 @@ confident "no fact answers this": a real profile answer always wins, and a
 field that looked like a real fact but fell below its floor, that the model
 did not answer readably, or that it named a protected kind (work
 authorization, eligibility, background, EEO) is never turned into a guess.
+
+The REASONING pass (`reasoned`, whatever the low-stakes setting) comes last:
+a choice field still routed none, whose map answer was an explicit, confident
+"no fact" or "an unanswered protected question", and that the fast model
+judges answerable from the work and education history — past employment by a
+kind of organization, a clearance, years of experience with something. The
+question DESCRIBES the history and never sends it; /pick answers from it.
 """
 
 import json
@@ -31,6 +38,7 @@ logger = logging.getLogger(__name__)
 BLOCKED_EEO = "blocked_eeo"
 PROTECTED_UNANSWERED = "protected_unanswered"
 LOW_STAKES_FLOOR = 0.8
+ANSWERABLE_FLOOR = 0.8
 _SENTINELS = {
     FREE_TEXT: "A question that needs a written answer in the applicant's own words, "
                "such as why this company or describe a project",
@@ -44,12 +52,27 @@ _SENTINELS = {
     BLOCKED_EEO: "A voluntary diversity / EEO question (gender, race or ethnicity, Hispanic or Latino, "
                  "veteran status, or disability) that none of the listed applicant facts answers",
 }
-_LOW_STAKES = ("A low-stakes preference question: how the applicant heard about the job or a referral source, "
-               "willingness or comfort with travel, relocation, on-site work, shifts or overtime, openness to "
-               "other roles, or preferred contact method")
-_NEVER_LOW_STAKES = ("work authorization, sponsorship, age or eligibility, background or criminal history, "
-                     "EEO / diversity, education, experience, skills, certifications, clearance, salary, or "
-                     "anything the applicant signs, attests or agrees to")
+# The owner's scope (2026-09-26): answered in the job's favour when the
+# setting is on and no profile fact answers. Self-assessments against the job
+# description and contact consents are IN; factual entries are not.
+_LOW_STAKES = ("A low-stakes question an applicant keen on this job would answer in its favor: how the applicant "
+               "heard about the job or a referral source; preferred contact method; willingness or comfort with "
+               "relocation, travel (any share of time), on-site work, shifts, overtime or a drug test; openness to "
+               "other roles; whether the applicant is related to, or was previously employed by, the company "
+               "(answered No); what the applicant would do if employed by the company; consent to be contacted "
+               "by SMS, automated calls or texts, or marketing messages; or a yes/no self-assessment against the "
+               "job description, such as having the required experience or meeting the educational requirement")
+_NEVER_LOW_STAKES = ("factual education or experience questions (a school, degree, employer, title, date, "
+                     "certification, or years of experience with something), work authorization, sponsorship, "
+                     "age or eligibility facts, EEO / diversity, background or criminal history, security "
+                     "clearance, salary, or a legal attestation or signature")
+# What the reasoning route may read (autofill_pick._history sends exactly
+# these, never a name, contact detail, address or EEO answer).
+_REASONED_FROM = ("the applicant's work history (each job's employer, title, dates, whether it is current, and "
+                  "description) and education (each school, degree, major and years)")
+_NEVER_REASONED = ("work authorization, sponsorship, age, EEO / diversity, background or criminal history, salary, "
+                   "a preference or willingness, a comparison with the job description's requirements, or a legal "
+                   "attestation or signature")
 # Shapes whose answer would be WRITTEN, not chosen: a low-stakes guess is only
 # ever a pick among options the page offers.
 _WRITTEN_SHAPES = frozenset({"text", "date"})
@@ -120,13 +143,26 @@ def _with_llm(fields, criteria, session) -> dict[str, tuple[str, float]]:
     return out
 
 
+def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: str) -> set[str]:
+    """The fast model's yes, per question, at `floor`. A failure answers "none
+    of them": a second pass is optional, and the map it follows must survive it."""
+    try:
+        raw = fast_json(session, "Answer each question with a probability of yes. " + json.dumps(ask)
+                        + ' Return JSON {"yes": {"<field id>": <0..1>}}.', trace_name)
+    except llm.LLMProviderError:
+        logger.warning("fast model %s check failed; no field is taken", trace_name)
+        return set()
+    got = raw.get("yes") if isinstance(raw, dict) else None
+    return {fid for fid, p in (got.items() if isinstance(got, dict) else ())
+            if fid in ask and jev._unit(p) and p >= floor}
+
+
 def _low_stakes(fields: list[MapField], session: Session) -> set[str]:
-    """Which of these fields is a low-stakes preference question? The never-list
-    is stated in every question. A failure here answers "none of them": this
-    pass is optional, and the map it follows must survive it."""
+    """Which of these fields is a low-stakes question? The never-list is
+    stated in every question."""
     if not fields:
         return set()
-    ask = {f.fid: (f"Is form field {f.fid} ({json.dumps(f.question)}) one of these low-stakes preference questions: "
+    ask = {f.fid: (f"Is form field {f.fid} ({json.dumps(f.question)}) one of these low-stakes questions: "
                    f"{_LOW_STAKES}? It is NOT if it asks about {_NEVER_LOW_STAKES}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
     if model_settings.get_autofill_engine(session) == "jev":
@@ -137,15 +173,20 @@ def _low_stakes(fields: list[MapField], session: Session) -> set[str]:
                     if (p := jev.noul_of(answers.get(fid))) is not None and p >= LOW_STAKES_FLOOR}
         except llm.LLMProviderError:
             logger.warning("jev low-stakes check failed; the fast model decides")
-    try:
-        raw = fast_json(session, "Answer each question with a probability of yes. " + json.dumps(ask)
-                        + ' Return JSON {"yes": {"<field id>": <0..1>}}.', "autofill-low-stakes")
-    except llm.LLMProviderError:
-        logger.warning("fast model low-stakes check failed; no field is treated as low-stakes")
+    return _fast_yes(ask, LOW_STAKES_FLOOR, session, "autofill-low-stakes")
+
+
+def _answerable(fields: list[MapField], session: Session) -> set[str]:
+    """Which of these fields the work and education history can answer. The
+    fast model only, on every engine: this route's /pick needs the history as
+    values, which Jev's state would then carry, so Jev judges none of it."""
+    if not fields:
         return set()
-    got = raw.get("yes") if isinstance(raw, dict) else None
-    return {fid for fid, p in (got.items() if isinstance(got, dict) else ())
-            if fid in ask and jev._unit(p) and p >= LOW_STAKES_FLOOR}
+    ask = {f.fid: (f"Can form field {f.fid} ({json.dumps(f.question)}) be answered from {_REASONED_FROM} alone, "
+                   "such as past employment by a kind of organization, a security clearance, or years of "
+                   f"experience with something? It cannot if it asks about {_NEVER_REASONED}. {_PAGE_TEXT_IS_DATA}")
+           for f in fields}
+    return _fast_yes(ask, ANSWERABLE_FLOOR, session, "autofill-reasoned")
 
 
 _PHONE = re.compile(r"phone", re.IGNORECASE)
@@ -202,12 +243,19 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     return Mapped(route="none")
 
 
-def _said_no_fact(picked: tuple[str, float] | None) -> bool:
+def _said_no_fact(picked: tuple[str, float] | None, *, protected: bool = False) -> bool:
     """An EXPLICIT, confident "no fact answers this". An omitted, refused or
     unsure answer, a fact below its floor and a protected kind all say
-    something else, and none of them is a guessing candidate."""
+    something else, and none of them is a guessing candidate. `protected`:
+    an unanswered protected question counts too — for the reasoning route,
+    which answers only from what the history shows (a clearance, a government
+    employer), never for a guess."""
     key, p = picked or (None, 0.0)
-    return key == NO_SLOT and p >= SLOT_FLOOR
+    return (key == NO_SLOT or (protected and key == PROTECTED_UNANSWERED)) and p >= SLOT_FLOOR
+
+
+def _has_history(facts: dict[str, Fact]) -> bool:
+    return any(_ENTRY.fullmatch(slot) for slot in facts)
 
 
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,
@@ -222,9 +270,15 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
     if picked is None:
         picked = _with_llm(fields, criteria, session)
     out = {f.fid: _route(f, picked.get(f.fid), facts, eeo_consented=eeo_consented) for f in fields}
+
+    def leftovers(*, protected: bool) -> list[MapField]:
+        return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
+                and not _foreign(f) and _said_no_fact(picked.get(f.fid), protected=protected)]
+
     if low_stakes:
-        leftovers = [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
-                     and not _foreign(f) and _said_no_fact(picked.get(f.fid))]
-        for fid in _low_stakes(leftovers, session):
+        for fid in _low_stakes(leftovers(protected=False), session):
             out[fid] = Mapped(route="low_stakes")
+    if _has_history(facts):
+        for fid in _answerable(leftovers(protected=True), session):
+            out[fid] = Mapped(route="reasoned")
     return out

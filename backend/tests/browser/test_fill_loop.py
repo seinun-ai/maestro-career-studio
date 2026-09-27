@@ -1876,3 +1876,40 @@ def test_an_observation_label_never_carries_the_value_written(page, load):
     # Blanked when it holds the value (whole words, any case); a word inside
     # another word ("No" in "number") is not the value.
     assert [o["label"] for o in obs] == ["", "Phone number", ""]
+
+
+# ---------- the reasoning route (plan Task 9b): /pick's alone, never /step's
+
+GOVERNMENT = "Are you currently, or have you within the last five years been, employed by a US government agency?"
+
+
+def test_a_reasoned_popup_is_picked_with_its_route_and_listed_to_check(page, load):
+    out = run(page, load, frames=[[f("g", "popup", GOVERNMENT)]], map={"g": {"route": "reasoned"}},
+              explore={"g": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
+              pick={"g": {"oids": ["o2"], "reason": "assumed"}})
+    assert statuses(out) == {"g": "assumed"}
+    [pick] = bodies(out, "/api/autofill/pick")
+    [field] = pick["fields"]
+    assert (field["route"], field["slot"]) == ("reasoned", None)
+
+
+def test_a_reasoned_native_list_is_picked_with_the_others(page, load):
+    out = run(page, load, frames=[[f("s", "select", "Do you hold a US Security Clearance?",
+                                     options=[opt("o1", "Yes"), opt("o2", "No")], optionsComplete=True)]],
+              map={"s": {"route": "reasoned"}}, pick={"s": {"oids": ["o1"], "reason": "assumed"}})
+    assert statuses(out) == {"s": "assumed"}
+    assert "fill_explore" not in out["calls"]
+    assert [x["route"] for b in bodies(out, "/api/autofill/pick") for x in b["fields"]] == ["reasoned"]
+
+
+@pytest.mark.parametrize("case", ["abstained", "unexpected", "no_options"])
+def test_a_reasoned_field_the_pick_did_not_finish_is_the_users_never_stepped(page, load, case):
+    """/step has no history to answer from: a reasoned abstain is left for the user."""
+    explore = {} if case == "no_options" else {
+        "g": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}}
+    pick = {"g": {"oids": ["o2"], "reason": "assumed"} if case == "unexpected" else {"oids": [], "reason": "abstained"}}
+    out = run(page, load, frames=[[f("g", "popup", GOVERNMENT)]], map={"g": {"route": "reasoned"}},
+              explore=explore, pick=pick, apply={"No": {"outcome": "unexpected", "reason": "new_options"}})
+    # An unexpected commit is retried like a native list's, then given up.
+    assert statuses(out)["g"] == ("cannot_operate" if case == "unexpected" else "needs_answer")
+    assert "fill_step_state" not in out["calls"] and "/api/autofill/step" not in out["calls"]

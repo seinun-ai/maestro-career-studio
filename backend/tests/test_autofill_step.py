@@ -298,3 +298,22 @@ def test_a_plain_click_is_an_answer_only_and_only_a_group_click_is_progress(db_s
     assert step(req(slot="education.0.discipline", candidates=group), db_session) == {
         "mid": "click:o1", "reason": "progress"}
     assert step(req(slot="work_auth.sponsorship_now", candidates=plain), db_session)["reason"] == "abstained"
+
+
+def test_a_low_stakes_step_says_which_way_a_conflict_question_goes(db_session, monkeypatch):
+    """Owner, 2026-09-26: "related to / previously employed by the company" is
+    low-stakes, answered No — the step says so, as /pick does."""
+    from app.services import autofill_pick
+
+    model_settings.set_autofill_low_stakes(db_session, True)
+    prompts = []
+
+    def call_openai(**kw):
+        prompts.append(kw["prompt"])
+        return {"move": "give_up", "confidence": 0.9}
+
+    monkeypatch.setattr(autofill_step.llm, "call_openai", call_openai)
+    autofill_step.step(StepRequest(fid="r", question="Are you related to a current employee?", route="low_stakes",
+                                   candidates=[{"mid": "click:o1", "describe": 'Click the option "No"'}]),
+                       {}, db_session, None)
+    assert autofill_pick._KEEN in prompts[0] and "No to being related to" in prompts[0]

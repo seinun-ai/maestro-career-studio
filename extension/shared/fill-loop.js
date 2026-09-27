@@ -29,6 +29,10 @@
  *   so, a fresh inventory comes before the next field: one that went is
  *   dropped, never written after it went and not reported; one that came is
  *   mapped and joins the round.
+ * - A `reasoned` field (answered from the work and education history, /map's
+ *   reasoning route) is picked like a low-stakes one, with no slot, and is
+ *   never handed to /step, which has no history to answer from: its abstain
+ *   is the user's.
  * - When the generic path is surprised (an unexpected commit, no options, an
  *   honest "no option states it" over a popup), /step picks the next move from
  *   the moves the page's code listed. A click is sent `as: "progress"` only when
@@ -412,7 +416,12 @@
       }
     };
     const question = (f) => String(f.question ?? "").slice(0, 300);
-    const routeOf = (row) => (row.route === "low_stakes" ? "low_stakes" : "slot");
+    // The routes /pick takes for a field no fact answers; any other is a slot's.
+    const NO_SLOT_ROUTES = new Set(["low_stakes", "reasoned"]);
+    const routeOf = (row) => (NO_SLOT_ROUTES.has(row.route) ? row.route : "slot");
+    // Whether the adaptive step may take a field over: a popup or search, on a
+    // route /step answers (the reasoning route is /pick's alone).
+    const adapts = (f, row) => CAN_ADAPT.has(f.shape) && routeOf(row) !== "reasoned";
     const policyBlocks = (text) => Boolean(ns.isPolicyBlocked?.(text, { consentForms }));
 
     // ---- the page: one operation at a time, each awaited
@@ -536,7 +545,7 @@
     // Fields whose whole option list the inventory already read (native
     // select, radio, checkbox): no explore, so they are picked together, 40 a call.
     const pickedTogether = (f, row) => Boolean(f.options?.length && f.optionsComplete && usable(f.options).length)
-      && (row.route === "low_stakes" || (typeof row.value === "string" && row.value) || itemOf(f, row) !== undefined);
+      && (NO_SLOT_ROUTES.has(row.route) || (typeof row.value === "string" && row.value) || itemOf(f, row) !== undefined);
     const pickBatch = async (fields) => {
       const out = new Map();
       const asks = fields.map((f) => {
@@ -674,14 +683,14 @@
       if (picked.abstained) {
         // An honest "no option states it" over a popup is where categories,
         // search boxes and "Not in list" live. A native list showed everything.
-        if (CAN_ADAPT.has(f.shape)) return settle(f, await adapt(f, row, historyEntry("choose", "abstained"), item));
+        if (adapts(f, row)) return settle(f, await adapt(f, row, historyEntry("choose", "abstained"), item));
         return finish(f, "needs_answer", { lastOutcome: "abstained" });
       }
       const out = await act(f, { op: "choose", text: picked.text, ...(f.shape === "search" ? { term: term ?? picked.text } : {}) });
       if (notDone(f, out)) return undefined;
       if (out.outcome === "verified") return done(f, picked.reason, out.committed);
       if (out.outcome === "unconfirmed") return unconfirmed(f, picked.text);
-      if (out.outcome === "unexpected" && CAN_ADAPT.has(f.shape)) {
+      if (out.outcome === "unexpected" && adapts(f, row)) {
         return settle(f, await adapt(f, row, historyEntry("choose", "unexpected", out.reason), item));
       }
       return fail(f, out.reason ?? out.outcome);
@@ -873,6 +882,7 @@
       }
       if (allBlocked(opts)) return finish(f, "blocked", { lastOutcome: "blocked" });
       if (isSet) return commitSet(f, row, opts, complete, noOptions, learnt);
+      if (noOptions && !adapts(f, row)) return finish(f, "needs_answer", { lastOutcome: "no_options" });
       if (noOptions) return settle(f, await adapt(f, row, noOptions, item));
       return commitOne(f, row, opts, complete, term, item, prepicked);
     };

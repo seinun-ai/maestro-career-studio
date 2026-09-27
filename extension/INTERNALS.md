@@ -488,7 +488,9 @@ know, and each one was learned from a live failure.
   handed to a model — these are knockout answers, and one you did not give is
   one nobody may supply for you. "Previously employed here" is stored as a
   single standing answer even though it is per-employer by nature; where it is
-  not true, change it by hand before filling.
+  not true, change it by hand before filling. The one exception is yours to
+  switch on: with low-stakes answers on (below), a "previously employed by" or
+  "related to an employee" question no stored answer covers is answered No.
 - **Salary history is refused without the agreement permission.**
   Current/present/previous salary, last drawn salary, current CTC, salary
   history, wage history, compensation history, and an unqualified
@@ -505,6 +507,47 @@ know, and each one was learned from a live failure.
   citizen is Yes, a green card or any visa No, no status nothing), and —
   when your earliest start date says immediately or ASAP — that date as
   today, for a date box. Each is absent when what it comes from is.
+- **Two kinds of answer are the Companion's own**, both listed under
+  "Answered for you: check each one" (`assumed`). Both are for a CHOICE only
+  (a list, radios, a dropdown: nothing is typed), and only when /map's answer
+  was an explicit, confident "no fact of yours answers this" — a profile
+  answer always wins. The model decides which kind a question is; there are
+  no label rules.
+  1. **Low-stakes** — off by default; the web app's "Answer low-stakes
+     questions for me" in Profile › Autofill (`/api/settings/autofill-options`),
+     re-read server-side by /map, /pick and /step, never trusted from the
+     Companion. Answered the way an applicant keen on this job would: how you
+     heard about the job or a referral source, preferred contact method,
+     willingness or comfort (relocate, travel, on site, shifts, overtime, a
+     drug test), openness to other roles, "related to or previously employed
+     by the company" (No), "if you become employed by …" (in the job's
+     favor), SMS, automated-call and marketing consents, and yes/no
+     self-assessments against the job description ("do you have the required
+     experience", "do you meet the educational requirement"). Never: factual
+     education or experience questions, work authorization, sponsorship, age
+     or eligibility facts, EEO, background or criminal history, security
+     clearance, salary, legal attestations and signatures. Both lists are
+     `_LOW_STAKES` / `_NEVER_LOW_STAKES` (`backend/app/services/autofill_map.py`),
+     stated in every question; a field the map named a protected or EEO
+     question is never a candidate. The pick needs 0.4.
+  2. **Reasoned** (`reasoned`, at every setting) — a choice the work and
+     education history answers: "employed by a US government agency in the
+     last five years", "do you hold a US security clearance", "years of
+     experience with X". The fast model judges it answerable from a
+     DESCRIPTION of the history (no values), and an unanswered protected
+     question may be one. Jev is not used for this route: /pick's answer needs
+     the history as values, which Jev's state would then carry. /pick answers
+     a batch's reasoned fields in ONE fast-model call given each job's
+     employer, title, dates, current flag and description, each school's
+     name, degree, major and years, and today's date — never a name, contact
+     detail, address, job location, GPA, work-authorization or EEO answer. An
+     answer counts only when it names an offered option, clears 0.85 and
+     cites (`shown_by`) at least one job or school of the history, every one
+     real. Silence is not No: a clearance the history never mentions is no
+     answer. "Not employed by that kind of organization" is shown only by
+     dated jobs over the period asked at clearly private companies. A reasoned
+     field is never handed to the adaptive step (/step has no history): its
+     abstain is yours.
 - **A subframe has to look like an application form before it gets anything.**
   The fill and attach fan-out reaches every frame in the tab — that is why a
   Greenhouse or Lever form in a subframe works at all — so an ad, analytics or

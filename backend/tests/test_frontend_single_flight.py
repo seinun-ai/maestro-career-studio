@@ -90,6 +90,8 @@ _SITES = [
     ("components/resume-editor/kb-import-drawer.tsx", "importMutation"),
     ("app/templates/[id]/page.tsx", "recompileM"),
     ("components/resume-versions/version-history-sheet.tsx", "restore"),
+    # The low-stakes switch (a double click flipped it twice).
+    ("components/settings/autofill-section.tsx", "saveOptions"),
 ]
 
 

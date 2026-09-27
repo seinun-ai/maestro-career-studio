@@ -33,6 +33,7 @@ import { couldnt } from "@/lib/error-text";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import type {
+  AutofillOptions,
   EeoConsent,
   EeoConsentUpdate,
   KBProfileOut,
@@ -1105,6 +1106,74 @@ function CompanionPermissions({
         />
       </div>
       {consent.consent_forms ? <AgreedOn consent={consent} /> : null}
+      <LowStakesSwitch />
     </CardSection>
+  );
+}
+
+/** Questions no answer of yours covers and whose answer barely matters, which
+ *  the Companion answers in the job's favor while this is on (off by
+ *  default). Its own setting, not the consent record: it is a preference,
+ *  not a permission to disclose or agree. The server re-reads it on every
+ *  fill (/map and /pick), so this switch is the only way to turn it on. The
+ *  kinds, and the never list, are the backend's (`_LOW_STAKES`,
+ *  `_NEVER_LOW_STAKES` in backend/app/services/autofill_map.py). */
+function LowStakesSwitch() {
+  const qc = useQueryClient();
+  const hintId = useId();
+  const options = useQuery({
+    queryKey: ["settings", "autofill-options"],
+    queryFn: () => apiFetch<AutofillOptions>("/api/settings/autofill-options"),
+  });
+  const saveOptions = useMutation({
+    mutationFn: (value: AutofillOptions) =>
+      apiFetch<AutofillOptions>("/api/settings/autofill-options", {
+        method: "PUT",
+        body: JSON.stringify(value),
+      }),
+    onSuccess: (result) => {
+      qc.setQueryData(["settings", "autofill-options"], result);
+      toast.success(
+        result.low_stakes
+          ? "The Companion now answers low-stakes questions"
+          : "The Companion won't answer low-stakes questions",
+      );
+    },
+    onError: (err: Error) => toast.error(couldnt("save this setting", err)),
+  });
+  const saveOnce = useSingleFlight(saveOptions.mutate);
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="grid gap-1">
+        <Label htmlFor="low-stakes">Answer low-stakes questions for me</Label>
+        <div id={hintId} className="text-muted-foreground grid gap-1 text-xs">
+          <p>
+            When none of your answers covers it, the Companion answers in the
+            job&apos;s favor: how you heard about the job, how to contact you,
+            whether you&apos;d relocate, travel, work on site, work shifts or
+            overtime, or take a drug test, openness to other roles, whether
+            you&apos;re related to or used to work for the company, consent to
+            text and marketing messages, and whether you have the experience
+            and education the job description asks for. It lists them under
+            Answered for you, so you can check each one.
+          </p>
+          <p>
+            It never guesses your education and work history, work
+            authorization, sponsorship, age, diversity questions, background
+            checks, security clearance, salary, or signatures.
+          </p>
+        </div>
+        {options.isError ? (
+          <p className="text-xs font-medium">Couldn&apos;t load this setting.</p>
+        ) : null}
+      </div>
+      <Switch
+        id="low-stakes"
+        aria-describedby={hintId}
+        checked={options.data?.low_stakes ?? false}
+        disabled={!options.data}
+        onCheckedChange={(low_stakes) => saveOnce({ low_stakes })}
+      />
+    </div>
   );
 }

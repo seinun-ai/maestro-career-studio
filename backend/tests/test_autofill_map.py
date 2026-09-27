@@ -43,13 +43,23 @@ def fake_jev(monkeypatch, wanted=None, noul=None):
     return calls
 
 
-def fake_llm(monkeypatch, mapped=None, yes=None):
+@pytest.fixture(autouse=True)
+def _no_real_fast_model(monkeypatch):
+    """The reasoning pass asks the fast model even on the Jev engine: a test
+    that fakes only Jev must never reach a real provider. Nothing is judged
+    answerable from the history unless a test says so (`fake_llm(reasoned=…)`)."""
+    monkeypatch.setattr(autofill_map.llm, "call_openai", lambda **kw: {})
+
+
+def fake_llm(monkeypatch, mapped=None, yes=None, reasoned=None):
     prompts = []
 
     def call_openai(**kw):
         prompts.append(kw)
         if kw["trace_name"] == "autofill-low-stakes":
             return {"yes": yes or {}}
+        if kw["trace_name"] == "autofill-reasoned":
+            return {"yes": reasoned or {}}
         return {"map": mapped or {}}
 
     monkeypatch.setattr(autofill_map.llm, "call_openai", call_openai)
@@ -170,8 +180,8 @@ def test_the_low_stakes_question_states_the_never_list(db_session, monkeypatch):
     calls = fake_jev(monkeypatch)
     run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
     text = calls[1]["questions"]["t"]["instructions"]
-    assert "It is NOT if it asks about work authorization, sponsorship" in text
-    assert "anything the applicant signs, attests or agrees to" in text
+    assert f"It is NOT if it asks about {autofill_map._NEVER_LOW_STAKES}." in text
+    assert "a legal attestation or signature" in text
     assert _PAGE_TEXT_IS_DATA in text
 
 
@@ -335,7 +345,8 @@ def test_the_fast_model_protected_sentinel_is_never_low_stakes(db_session, monke
     prompts = fake_llm(monkeypatch, {"f": {"key": PROTECTED, "confidence": 0.99}}, yes={"f": 0.99})
     got = run([field("f", "Will you need sponsorship in the future?", "select")], db_session,
               low_stakes=True)
-    assert got["f"].route == "none" and len(prompts) == 1
+    assert got["f"].route == "none"
+    assert [p["trace_name"] for p in prompts if p["trace_name"] == "autofill-low-stakes"] == []
 
 
 # ---------- review fixes: errors and quoting ----------
@@ -516,3 +527,205 @@ def test_profile_entry_is_optional_bounded_and_absent_is_not_null():
         field("a", "Q", profile_entry=-1)
     with pytest.raises(ValueError):
         field("a", "Q", profile_entry=21)
+
+
+# ---------- the widened low-stakes scope (owner, 2026-09-26; plan Task 9b)
+
+# The owner's Home Depot and Guidehouse questions (field notes §8, §8a) the
+# low-stakes setting answers in the job's favour when no profile fact does.
+LOW_STAKES_WORDINGS = [
+    "How Did You Hear About Us?",
+    "Preferred Contact Method",
+    "Are you willing to take a drug test if the position requires?",
+    "What percentage of time are you willing to travel?",
+    "Are you willing to relocate?",
+    "Are you or have you ever been related to a current Guidehouse employee?",
+    "If you become employed by Guidehouse, will you terminate any outside employment?",
+    "Do you consent to receive automated calls or texts to the phone number(s) I provided?",
+    "Based on the job description, do you have the required amount of directly relevant work experience?",
+    "Do you meet the educational requirement in the job description?",
+]
+
+
+def test_the_low_stakes_scope_names_every_widened_kind():
+    scope = autofill_map._LOW_STAKES
+    for kind in ("heard about the job", "referral", "contact method", "relocation", "travel", "on-site",
+                 "shifts", "overtime", "drug test", "other roles", "related to", "previously employed by",
+                 "if employed by the company", "SMS", "automated calls or texts", "marketing",
+                 "self-assessment against the job description", "required experience",
+                 "educational requirement"):
+        assert kind in scope, kind
+
+
+def test_the_never_list_keeps_facts_knockouts_and_attestations_out():
+    never = autofill_map._NEVER_LOW_STAKES
+    for kind in ("factual education or experience", "school", "degree", "employer", "work authorization",
+                 "sponsorship", "age or eligibility", "EEO", "background or criminal history",
+                 "security clearance", "salary", "legal attestation or signature"):
+        assert kind in never, kind
+    # Self-assessments and contact consents are no longer on it.
+    assert "agrees to" not in never and "skills" not in never
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", LOW_STAKES_WORDINGS)
+def test_a_widened_low_stakes_question_is_asked_with_both_lists_and_answered(db_session, monkeypatch, question):
+    calls = fake_jev(monkeypatch, noul={"q": 0.95})
+    got = run([field("q", question, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["q"].route == "low_stakes"
+    text = calls[1]["questions"]["q"]["instructions"]
+    assert json.dumps(question) in text
+    assert autofill_map._LOW_STAKES in text and autofill_map._NEVER_LOW_STAKES in text
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_profile_fact_still_wins_over_a_widened_low_stakes_kind(db_session, monkeypatch):
+    """Willing to relocate is low-stakes only when the profile has no answer."""
+    facts = autofill_catalog.build({"preferences": {"willing_to_relocate": True}}, [], [])
+    calls = fake_jev(monkeypatch, {"r": ("preferences.willing_to_relocate", 0.9)}, noul={"r": 0.99})
+    got = autofill_map.map_fields([field("r", "Are you willing to relocate?", "popup")], facts, db_session,
+                                  eeo_consented=True, low_stakes=True)
+    assert (got["r"].route, got["r"].value) == ("slot", "Yes") and len(calls) == 1
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question, picked", [
+    ("Will you now or in the future require sponsorship?", (PROTECTED, 0.95)),
+    ("Do you hold a US Security Clearance?", (PROTECTED, 0.9)),
+    ("Race", ("blocked_eeo", 0.95)),
+    ("Will you need sponsorship?", ("work_auth.sponsorship_now", 0.7)),  # a fact below its floor
+])
+def test_a_never_kind_the_map_names_is_never_asked_as_low_stakes(db_session, monkeypatch, question, picked):
+    calls = fake_jev(monkeypatch, {"q": picked}, noul={"q": 0.99})
+    got = run([field("q", question, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["q"].route == "none"
+    assert not [c for c in calls if any(q["type"] == "noul" for q in c["questions"].values())]
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "What are your annual salary requirements?",
+    "Highest degree completed",
+    "Are you legally authorized to work in the United States?",
+])
+def test_a_never_kind_no_fact_answers_is_left_to_the_never_list(db_session, monkeypatch, question):
+    """No label rules (owner): a salary, education-entry or work-authorization
+    question the map found no fact for reaches the low-stakes question, which
+    names its kind as never — and the model's no keeps it for the user."""
+    calls = fake_jev(monkeypatch, noul={"q": 0.05})
+    got = run([field("q", question, "popup", options=["Yes", "No"])], db_session, low_stakes=True)
+    assert got["q"].route == "none"
+    text = calls[1]["questions"]["q"]["instructions"]
+    assert f"It is NOT if it asks about {autofill_map._NEVER_LOW_STAKES}" in text
+
+
+# ---------- the reasoning route: answerable from the work and education history (plan Task 9b)
+
+HISTORY_WORDINGS = [
+    "Are you currently, or have you within the last five years been, employed by a US government agency?",
+    "Within the last three years, have you been employed by a federal contractor?",
+    "Do you hold a US Security Clearance?",
+    "How many years of experience do you have with SQL?",
+]
+
+
+def test_a_choice_no_fact_answers_is_reasoned_when_the_history_can_answer_it(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, {"g": {"key": "none", "confidence": 0.95}}, reasoned={"g": 0.9})
+    got = run([field("g", HISTORY_WORDINGS[0], "popup", options=["Yes", "No"])], db_session)
+    assert got["g"].model_dump() == {"route": "reasoned", "slot": None, "value": None, "format": None}
+    [asked] = [p for p in prompts if p["trace_name"] == "autofill-reasoned"]
+    assert HISTORY_WORDINGS[0] in asked["prompt"]
+
+
+@pytest.mark.parametrize("question", HISTORY_WORDINGS)
+def test_the_reasoning_question_describes_the_history_and_never_sends_it(db_session, monkeypatch, question):
+    prompts = fake_llm(monkeypatch, {"q": {"key": "none", "confidence": 0.95}}, reasoned={"q": 0.95})
+    assert run([field("q", question, "select", options=["Yes", "No"])], db_session)["q"].route == "reasoned"
+    [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-reasoned"]
+    assert autofill_map._REASONED_FROM in asked and autofill_map._NEVER_REASONED in asked
+    assert _PAGE_TEXT_IS_DATA in asked
+    assert not [v for v in VALUES if v in asked and v not in question]
+
+
+def test_the_reasoning_never_list_keeps_knockouts_preferences_and_self_assessments_out():
+    never = autofill_map._NEVER_REASONED
+    for kind in ("work authorization", "sponsorship", "age", "EEO", "background or criminal history", "salary",
+                 "preference or willingness", "job description", "legal attestation or signature"):
+        assert kind in never, kind
+    assert "clearance" not in never  # the history may say it
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_reasoning_pass_is_the_fast_model_even_on_the_jev_engine(db_session, monkeypatch):
+    """Jev judges nothing here: the map question never carries the history,
+    and /pick's answer would need it as values in Jev's state."""
+    calls = fake_jev(monkeypatch, {"c": (PROTECTED, 0.9)})
+    prompts = fake_llm(monkeypatch, reasoned={"c": 0.85})
+    got = run([field("c", "Do you hold a US Security Clearance?", "popup", options=["Yes", "No"])], db_session)
+    assert got["c"].route == "reasoned"
+    assert len(calls) == 1 and [p["trace_name"] for p in prompts] == ["autofill-reasoned"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_reasoning_pass_runs_whatever_the_low_stakes_setting(db_session, monkeypatch):
+    for low_stakes in (False, True):
+        fake_jev(monkeypatch, noul={"t": 0.99})
+        prompts = fake_llm(monkeypatch, reasoned={"g": 0.9, "t": 0.9})
+        got = run([field("g", HISTORY_WORDINGS[0], "popup"), field("t", "Willing to travel?", "select")],
+                  db_session, low_stakes=low_stakes)
+        assert got["g"].route == "reasoned"
+        # A field the low-stakes pass took is not asked again.
+        assert got["t"].route == ("low_stakes" if low_stakes else "reasoned")
+        [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-reasoned"]
+        assert ('"t"' in asked) is (not low_stakes)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_only_a_choice_no_fact_answers_is_a_reasoning_candidate(db_session, monkeypatch):
+    fields = [field("a", "City"),  # a fact
+              field("w", "Why us?"),  # free text
+              field("x", "Years with SQL", "text"),  # written, not chosen
+              field("d", "Date you left government service", "date"),
+              field("e", "Race", "popup"),  # EEO sentinel
+              field("s", "Sponsorship?", "select"),  # a fact below its floor
+              field("u", "Clearance?", "select"),  # an unsure map answer
+              field("f", "Clearance?", "select", profile_entry=None),  # a foreign entry
+              field("g", HISTORY_WORDINGS[0], "group"),
+              field("c", "Do you hold a US Security Clearance?", "popup")]
+    fake_jev(monkeypatch, {"a": ("personal.city", 0.9), "w": ("free_text", 0.9), "e": ("blocked_eeo", 0.9),
+                           "s": ("work_auth.sponsorship_now", 0.7), "u": ("none", 0.5), "c": (PROTECTED, 0.9)})
+    prompts = fake_llm(monkeypatch, reasoned=dict.fromkeys("awxdesufgc", 0.99))
+    got = run(fields, db_session, eeo_consented=False)
+    assert {k for k, m in got.items() if m.route == "reasoned"} == {"g", "c"}
+    [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-reasoned"]
+    assert '"g"' in asked and '"c"' in asked and '"s"' not in asked and '"a"' not in asked
+
+
+def test_an_unsure_or_unreadable_reasoning_answer_stays_none(db_session, monkeypatch):
+    none = {"key": "none", "confidence": 0.95}
+    fake_llm(monkeypatch, {"a": none, "b": none, "c": none, "d": none},
+             reasoned={"a": 0.79, "b": "0.9", "c": True, "zz": 0.99})
+    got = run([field(k, HISTORY_WORDINGS[0], "select") for k in "abcd"], db_session)
+    assert {k: m.route for k, m in got.items()} == dict.fromkeys("abcd", "none")
+
+
+def test_no_history_means_no_reasoning_pass(db_session, monkeypatch):
+    facts = autofill_catalog.build({"personal": {"city": "Springfield"}}, [], ["Python"])
+    prompts = fake_llm(monkeypatch, {"g": {"key": "none", "confidence": 0.95}}, reasoned={"g": 0.99})
+    got = autofill_map.map_fields([field("g", HISTORY_WORDINGS[0], "select")], facts, db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert got["g"].route == "none"
+    assert [p["trace_name"] for p in prompts] == ["autofill-map"]
+
+
+@pytest.mark.parametrize("failure", [llm.LLMProviderError("down"), ValueError("not JSON after retries")])
+def test_a_failed_reasoning_pass_keeps_the_map(db_session, monkeypatch, failure):
+    def call(**kw):
+        if kw["trace_name"] == "autofill-reasoned":
+            raise failure
+        return {"map": {"a": {"key": "personal.city", "confidence": 0.95},
+                        "g": {"key": "none", "confidence": 0.95}}}
+
+    monkeypatch.setattr(autofill_map.llm, "call_openai", call)
+    got = run([field("a", "City"), field("g", HISTORY_WORDINGS[0], "select")], db_session)
+    assert (got["a"].route, got["g"].route) == ("slot", "none")
