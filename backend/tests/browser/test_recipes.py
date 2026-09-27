@@ -523,11 +523,14 @@ def test_a_recipe_used_on_a_widget_that_reverts_is_demoted_not_promoted(loop_pag
     out = loop_run(page, html, seeded, SHIFT)
     assert page.evaluate("window.shiftPresses") == 0   # the recipe was tried first
     assert out["book"]["entries"][recipe["site"]]["state"] == "demoted"
+    # Re-committed after the take-back, and reported as what the app holds.
+    assert out["by_question"]["Preferred shift"]["status"] == "verified" and oracle(page, "shift") == "Day"
 
 
 def test_recipes_hold_no_values_labels_or_urls(loop_page):
     page = loop_page
     out = loop_run(page, KEYBOARD_ONLY, None, TRAVEL)
+    assert oracle(page, "travel") == "Yes"
     stored = json.dumps(out["book"])
     assert out["book"]["entries"], "nothing was learned: this test would prove nothing"
     for word in ("Willing", "travel", "Yes", "No", "Select One", "acme", "careers", "apply", "job/42", "https",

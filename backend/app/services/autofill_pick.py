@@ -23,7 +23,7 @@ from app.schemas.autofill_fill import Picked, PickField
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
-from app.services.autofill_map import Budget, fast_json, keen, low_stakes_scope
+from app.services.autofill_map import Budget, fast_json, keen, low_stakes_rule
 from app.services.autofill_reasoned import reason
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,9 @@ ASSUMED_FLOOR = 0.4
 ABSTAIN = Picked(oids=[], reason="abstained")
 _NO_OPTION_TEXT = "No option states this value"
 _LLM_PROMPT = """For each form field return the option id that states the applicant value, or none. {rule}
-A field marked low_stakes has no applicant value: return the option {keen},
-unless the field asks about {never} — then return none.
+A field marked low_stakes has no applicant value: return the option {keen}. {low_stakes},
+that low_stakes field is none. This low_stakes rule is for low_stakes fields only: a field with
+applicant_values is answered from its values, whatever it asks about.
 Return JSON {{"picks": {{"<field id>": {{"oids": ["<option id>"], "confidence": <0..1>}}}}}};
 for none, "oids": [].
 Job: {job}
@@ -86,8 +87,8 @@ def _instructions(field: PickField, values: list[str], hint: JobHint | None, fac
     if field.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), choose it."
                if hint and hint.source else "")
-        return (f"Which option of {q} is the one {keen(facts)}?{src} If the field asks "
-                f"about {low_stakes_scope(facts)[1]}, choose none. {_PAGE_TEXT_IS_DATA}")
+        return (f"Which option of {q} is the one {keen(facts)}?{src} {low_stakes_rule(facts)}, choose none. "
+                f"{_PAGE_TEXT_IS_DATA}")
     return f"Which option of {q} states the applicant value {json.dumps(values[0])}? {_PAGE_TEXT_IS_DATA}"
 
 
@@ -113,7 +114,7 @@ def _with_llm(fields, facts, hint, session) -> dict[str, Picked]:
                 "applicant_values": values_for(f, facts.get(f.slot or "")),
                 "options": [o.model_dump() for o in f.options]} for f in fields]
     raw = fast_json(session, _LLM_PROMPT.format(
-        rule=_PAGE_TEXT_IS_DATA, keen=keen(facts), never=low_stakes_scope(facts)[1],
+        rule=_PAGE_TEXT_IS_DATA, keen=keen(facts), low_stakes=low_stakes_rule(facts),
         job=json.dumps(asdict(hint) if hint else None), fields=json.dumps(payload)), "autofill-pick")
     picks = raw.get("picks") if isinstance(raw, dict) else None
     picks = picks if isinstance(picks, dict) else {}

@@ -2,6 +2,7 @@
 reproduced, asserted as the new engine must behave."""
 
 from tests.browser.conftest import fixture_html
+from tests.browser.pages import oracle
 
 NS = "window.careerStudioCompanion"
 
@@ -45,6 +46,7 @@ def test_5_a_rejected_click_is_never_reported_filled(page, load):
     f = inventory(page)[0]
     row = apply(page, {"fid": f["fid"], "fp": f["fp"], "op": "choose", "text": "India", "term": "ind"})
     assert row["outcome"] != "verified" and row["committed"] == ""
+    assert oracle(page, "country") == ""
 
 
 def test_6_a_hidden_unrelated_option_is_never_clicked(page, load):

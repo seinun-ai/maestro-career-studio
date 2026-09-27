@@ -501,6 +501,26 @@ def test_the_low_stakes_question_reads_as_one_sentence(db_session, monkeypatch):
     assert "would an applicant" not in text
 
 
+@pytest.mark.usefixtures("jev_on")
+def test_the_low_stakes_rule_names_its_scope_and_binds_only_low_stakes_fields(db_session, monkeypatch):
+    """Evaluation 2026-09-27 (scripts/eval_fill_decisions.py): given only the
+    never-list, the fast model read "sponsorship, age, EEO" as a refusal for
+    EVERY field of the batch, and both engines read a job-description
+    self-assessment as a factual experience question (Jev answered it No)."""
+    model_settings.set_autofill_low_stakes(db_session, True)
+    field = pf("x", question="Do you have the required experience?", route="low_stakes", options=opts("Yes", "No"))
+    calls = fake_jev(monkeypatch)
+    pick([field], db_session)
+    text = calls[0]["questions"]["x"]["instructions"]
+    assert "self-assessment against the job description" in text and "fit and want this job" in text
+    prompts = fake_llm(monkeypatch)
+    model_settings.set_autofill_engine(db_session, "fast")
+    pick([field], db_session)
+    prompt = prompts[0]["prompt"]
+    assert "self-assessment against the job description" in prompt
+    assert "for low_stakes fields only: a field with\napplicant_values is answered from its values" in prompt
+
+
 # ---------- review: a negative answer must cover the whole period it speaks for
 
 def _jobs_facts(*jobs):

@@ -6,6 +6,10 @@
 <div id="menu-root"></div>
 <script>
 (() => {
+  // __oracle.country is what the fake app HOLDS (react-select's own state,
+  // set by an accepted option click only); the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.country = "";
   const OPTIONS = ["United States", "United Kingdom", "India", "Canada"];
   const input = document.getElementById("country");
   const menuRoot = document.getElementById("menu-root");
@@ -15,6 +19,7 @@
   const pick = (text) => {
     valueBox.querySelector(".select__placeholder, .select__single-value").outerHTML = `<div class="select__single-value">${text}</div>`;
     input.value = "";
+    oracle.country = text;
     closeMenu();
   };
   const renderMenu = () => {

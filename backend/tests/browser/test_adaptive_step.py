@@ -68,7 +68,7 @@ def test_a_popup_that_needs_a_search_is_opened_searched_and_picked(page, load):
     s = state(page, f, "Information Systems")
     click = next(c["mid"] for c in s["candidates"] if c["describe"] == 'Click the option "Information Systems"')
     assert move(page, f, click, "Information Systems")["outcome"] == "verified"
-    assert page.inner_text("#fos") == "Information Systems"
+    assert page.inner_text("#fos") == "Information Systems" and oracle(page, "fos") == "Information Systems"
 
 
 def test_a_search_field_types_into_its_own_box_and_takes_the_query_back(page, load):
@@ -154,6 +154,7 @@ def test_give_up_takes_back_a_query_the_engine_typed(page, load):
     move(page, f, "search:value", "Texas")
     assert move(page, f, "give_up", "Texas")["outcome"] == "closed"
     assert page.input_value("#school") == "" and not list_shown(page)
+    assert oracle(page, "school") == ""   # a search and a give_up commit nothing
 
 
 def test_a_state_is_consumed_by_one_move_and_a_changed_list_is_stale(page, load):
@@ -182,6 +183,7 @@ def test_a_filtered_search_view_is_never_complete(page, load):
     move(page, f, "open", "Information Systems")
     move(page, f, "search:value", "Information Systems")
     assert state(page, f, "Information Systems")["complete"] is False
+    assert oracle(page, "fos") == ""
 
 
 def test_an_unfiltered_short_list_is_complete(page, load):
@@ -192,6 +194,7 @@ def test_an_unfiltered_short_list_is_complete(page, load):
     s = state(page, f, "Yes")
     assert s["complete"] is True and s["popupOpen"] is True
     assert [o["text"] for o in s["options"]] == ["Yes", "No"]
+    assert oracle(page, "auth") == ""   # opening commits nothing
 
 
 def test_a_move_chosen_from_an_older_state_is_stale(page, load):
@@ -200,6 +203,7 @@ def test_a_move_chosen_from_an_older_state_is_stale(page, load):
     old = state(page, f, "Yes")["version"]
     move(page, f, "open", "Yes")
     assert move(page, f, "click:o1", "Yes", version=old)["outcome"] == "stale"
+    assert oracle(page, "auth") == ""
 
 
 def test_a_move_the_state_did_not_offer_is_refused(page, load):
@@ -208,7 +212,7 @@ def test_a_move_the_state_did_not_offer_is_refused(page, load):
     v = state(page, f, "Yes")["version"]  # no popup: no click is offered
     row = move(page, f, "click:o1", "Yes", version=v)
     assert (row["outcome"], row["reason"]) == ("unexpected", "not_offered")
-    assert page.inner_text("#auth") == "Select One"
+    assert page.inner_text("#auth") == "Select One" and oracle(page, "auth") == ""
 
 
 def test_candidates_are_ids_code_generated_and_capped(page, load):
@@ -220,6 +224,7 @@ def test_candidates_are_ids_code_generated_and_capped(page, load):
     assert len(s["candidates"]) <= 60 and s["candidates"][-1]["mid"] == "give_up"
     assert "close" not in mids(s)  # give_up closes; close stays a cleanup move only
     assert move(page, f, "close", "Yes")["outcome"] == "closed" and not list_shown(page)
+    assert oracle(page, "auth") == ""
 
 
 LONG_LIST = """<label id='l'>Country</label>
@@ -415,6 +420,7 @@ def test_a_click_the_widget_ignores_has_no_effect(page, load):
     assert move(page, f, "search:value", "India")["outcome"] == "progressed"
     row = move(page, f, "click:o1", "India")
     assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "no_effect", "")
+    assert oracle(page, "country") == ""
 
 
 def test_a_menu_the_widget_re_renders_is_found_again_and_still_closed(page, load):
@@ -428,6 +434,7 @@ def test_a_menu_the_widget_re_renders_is_found_again_and_still_closed(page, load
     page.evaluate("document.getElementById('menu-root').innerHTML = document.getElementById('menu-root').innerHTML")
     assert move(page, f, "give_up", "India")["outcome"] == "closed"
     assert page.evaluate("document.getElementById('menu-root').innerHTML") == ""
+    assert oracle(page, "country") == ""
 
 
 def test_an_unmarked_category_is_clicked_as_progress_then_its_leaf_as_the_answer(page, load):

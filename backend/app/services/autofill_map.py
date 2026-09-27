@@ -112,14 +112,28 @@ def low_stakes_scope(facts: dict[str, Fact]) -> tuple[str, str]:
 _LOW_STAKES, _NEVER_LOW_STAKES = low_stakes_scope({})
 
 
+# Which way a keen answer goes. Said outright: with only the conflict No in
+# the brackets, Jev read "No" as the answer to a self-assessment ("do you have
+# the required experience?") — evaluation 2026-09-27.
+_KEEN_WAY = "the answer that shows they fit and want this job"
+
+
 def keen(facts: dict[str, Fact]) -> str:
     """The low-stakes answer (/pick, /step), and which way a conflict question
     goes. When the history lists the company applied to, "previously employed
     here" is a fact and a keen No would contradict it, so only a relative is a No."""
     if WORKED_HERE in facts:
-        return "an applicant keen on this job would choose (No to being related to someone at the company)"
-    return ("an applicant keen on this job would choose (No to being related to, or previously employed by, "
-            "the company)")
+        return f"an applicant keen on this job would choose ({_KEEN_WAY}; No to being related to someone at the company)"
+    return (f"an applicant keen on this job would choose ({_KEEN_WAY}; No to being related to, or previously "
+            "employed by, the company)")
+
+
+def low_stakes_rule(facts: dict[str, Fact]) -> str:
+    """What a low-stakes field is and what it never is, as /pick and /step ask
+    it: the scope as well as the never-list, so a self-assessment against the
+    job description reads as in scope, not as a factual experience question."""
+    scope, never = low_stakes_scope(facts)
+    return f"The field is {scope[0].lower()}{scope[1:]}. If it asks about {never}"
 
 
 # What the reasoning route may read (autofill_reasoned.history sends exactly

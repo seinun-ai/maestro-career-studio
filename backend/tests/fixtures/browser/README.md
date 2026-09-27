@@ -19,7 +19,7 @@ inline in its test, not here.
 
 ## The oracle
 
-Every Workday and adversarial fixture keeps `window.__oracle[<field>]`: the
+Every Workday, adversarial and custom-widget fixture keeps `window.__oracle[<field>]`: the
 value the fake APP holds — what live Workday would save — as distinct from what
 the page shows. It is set only by the widget's own commit path (a real leave for
 text and dates, the result row's radio or checkbox for a search, the option
@@ -49,6 +49,13 @@ missing key, so a typo never reads as "nothing committed".
 | `adversarial_revert.html` | §8a's unexplained revert — first pick shows, never commits, reverts when a test calls `window.__revertNow()` | `relocate` |
 | `adversarial_same_text.html` | two "Other" options under different visible categories | `referral` |
 | `adversarial_recipe_poison.html` | recipe poisoning: opens from the keyboard only; its first commit is taken, then taken back 700 ms later (after the engine's own verify, inside the loop's quiet period) | `shift` |
+| `adversarial_trusted_only.html` | a Workday-style popup whose handlers act on trusted input only (`event.isTrusted`): the engine has none, so the honest outcome is `unsupported` | `shift_pref` |
+| `adversarial_virtual_same_text.html` | `adversarial_same_text`'s two "Other" options in a virtualized popup list: eight rows rendered, the second "Other" (under "Social Media") outside the first window | `found` |
+| `react_select.html` | a React-Select combobox (not a Workday reproduction); commits on the option click, `window.rejectClicks` refuses them | `country` |
+| `popup_with_search.html` | a popup button whose dialog holds its own search box (generic, not Workday) | `fos` |
+
+`native.html` keeps no oracle: a native control's own value (`input_value`,
+`checked`) is what the page submits, so tests read that.
 
 `tests/browser/test_fixture_fidelity.py` drives each fixture with Playwright's
 trusted input and pins the behaviour above; change a fixture and that file first.

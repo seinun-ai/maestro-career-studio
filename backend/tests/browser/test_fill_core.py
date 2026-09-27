@@ -258,6 +258,7 @@ def test_unmoved_proof_verifies_only_an_answer_the_field_already_held(page, load
     verified only if the display already stated it before."""
     load(page, fixture_html("workday_listbox.html"))
     assert apply(page, inv(page)["Degree"], op="choose", text="Masters")["outcome"] == "verified"
+    assert oracle(page, "degree") == "Masters"
     got = page.evaluate("""() => { const ns = window.careerStudioCompanion; const el = document.getElementById('degree');
         const shape = ns.shapes.of(el); const before = shape.evidence(el);
         return [ns.fillCore.verify(el, shape, 'Masters', {before}),
@@ -330,7 +331,7 @@ def test_the_sweep_catches_a_popup_whose_backing_input_emptied(page, load):
     """The button still shows the pick; the app no longer holds it (§8a)."""
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["Degree"]
-    assert apply(page, f, op="choose", text="Masters")["outcome"] == "verified"
+    assert apply(page, f, op="choose", text="Masters")["outcome"] == "verified" and oracle(page, "degree") == "Masters"
     page.evaluate("() => { document.getElementById('degree').parentElement.querySelector('.hidden-backing').value = ''; }")
     assert {r["fid"]: r["outcome"] for r in page.evaluate(f"() => {OPS}.sweep()")}[f["fid"]] == "reverted"
 
@@ -382,9 +383,11 @@ def test_react_select_commits_and_a_rejected_click_is_not_filled(page, load):
     f = inv(page)["Country"]
     assert [o["text"] for o in explore(page, f, "united")["options"]] == ["United States", "United Kingdom"]
     assert apply(page, f, op="choose", text="India", term="ind")["outcome"] == "verified"
+    assert oracle(page, "country") == "India"
     page.evaluate("window.rejectClicks = true")
     row = apply(page, f, op="choose", text="Canada", term="can")
     assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "not_committed", "India")
+    assert oracle(page, "country") == "India"
 
 
 def test_workday_search_waits_past_searching_and_commits_the_pill(page, load):
@@ -599,6 +602,7 @@ def test_enter_is_only_sent_to_search_widgets(page, load):
     assert apply(page, f["Office"], op="choose", text="Boston", term="bos")["outcome"] == "verified"
     assert apply(page, f["School or University"], op="choose", text="Texas A&M University", term="Texas")["outcome"] == "verified"
     assert page.evaluate("window.enters") == ["cb", "school"]
+    assert oracle(page, "school") == "Texas A&M University"
     assert page.input_value("#nm") == "Sam" and page.input_value("#cb") == "Boston"
 
 
@@ -1088,6 +1092,7 @@ def test_a_gesture_that_changed_something_is_never_no_effect(page, load):
     page.evaluate("window.rejectClicks = true")
     row = apply(page, inv(page)["Country"], op="choose", text="Canada", term="can")
     assert (row["outcome"], row["reason"]) == ("unexpected", "not_committed")
+    assert oracle(page, "country") == ""
 
 
 # --- safety
@@ -1122,6 +1127,7 @@ def test_a_field_the_user_edits_while_the_model_decides_is_never_written(page, l
     page.type("#city", "Mine")
     row = apply(page, f, op="write", value="Springfield")
     assert row["outcome"] == "yours" and page.input_value("#city") == "Mine"
+    assert oracle(page, "city") is None   # the user's typing never left the box: nothing committed
 
 
 def test_an_action_without_a_fingerprint_is_refused(page, load):
@@ -1150,7 +1156,7 @@ def test_cancel_cleanup_never_wipes_a_text_value(page, load):
     apply(page, f, op="write", value="Springfield")
     page.evaluate(f"() => {OPS}.cancel()")
     apply(page, f, op="write", value="Other")
-    assert page.input_value("#city") == "Springfield"
+    assert page.input_value("#city") == "Springfield" and oracle(page, "city") == "Springfield"
 
 
 def test_the_sweep_catches_a_value_the_page_reverts_later(page, load):
@@ -1165,7 +1171,7 @@ def test_the_sweep_catches_a_value_the_page_reverts_later(page, load):
 def test_engine_writes_do_not_mark_a_field_touched(page, load):
     load(page, fixture_html("workday_text.html"))
     apply(page, inv(page)["City"], op="write", value="Springfield")
-    assert inv(page)["City"]["touched"] is False
+    assert inv(page)["City"]["touched"] is False and oracle(page, "city") == "Springfield"
 
 
 # --- review carry-overs: popups the engine opens are closed, policy per
@@ -1345,12 +1351,13 @@ def test_reinjecting_the_engine_keeps_its_state(page, load):
     g = inv(page)["City"]
     assert g["fid"] == f["fid"] and g["touched"] is True
     assert apply(page, g, op="write", value="Springfield")["outcome"] in ("yours", "cancelled")
-    assert page.input_value("#city") == "Mine"
+    assert page.input_value("#city") == "Mine" and oracle(page, "city") is None
     page.evaluate(f"() => {OPS}.inventory({{runId: 'r2'}})")
     zip_ = inv(page)["Postal Code"]
     page.evaluate(f"() => {OPS}.cancel()")
     _reinject(page, ENGINE)
     assert apply(page, zip_, op="write", value="12345")["outcome"] == "cancelled"
+    assert oracle(page, "zip") is None
 
 
 def test_a_reinjected_agent_answers_a_message_once(page, load):
@@ -1376,7 +1383,7 @@ def test_a_reinjected_agent_answers_a_message_once(page, load):
       for (const cb of window.__listeners) cb({ type: 'fill_apply', actions: [a] }, { id: 'ext' }, resolve);
     })""", {"fid": f["fid"], "fp": f["fp"], "op": "write", "value": "Springfield"})
     assert reply["ok"] and reply["data"][0]["outcome"] == "verified"
-    assert page.evaluate("window.__writes") == 1
+    assert page.evaluate("window.__writes") == 1 and oracle(page, "city") == "Springfield"
 
 
 def test_concurrent_operations_run_one_at_a_time(page, load):
@@ -1391,6 +1398,7 @@ def test_concurrent_operations_run_one_at_a_time(page, load):
         {"fid": f["City"]["fid"], "fp": f["City"]["fp"], "op": "write", "value": "Springfield"},
         {"fid": f["Postal Code"]["fid"], "fp": f["Postal Code"]["fp"], "op": "write", "value": "12345"}])
     assert [r[0]["outcome"] for r in rows] == ["verified", "verified"]
+    assert (oracle(page, "city"), oracle(page, "zip")) == ("Springfield", "12345")
     assert page.evaluate("window.__log") == ["city:focus", "city:blur", "city:done", "zip:focus", "zip:blur", "zip:done"]
 
 

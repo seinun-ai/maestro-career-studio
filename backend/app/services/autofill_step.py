@@ -26,7 +26,7 @@ from app.schemas.autofill_fill import StepRequest, StepResponse
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
-from app.services.autofill_map import fast_json, keen, low_stakes_scope
+from app.services.autofill_map import fast_json, keen, low_stakes_rule
 from app.services.autofill_pick import JobHint, values_for, verdict
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, fac
     if req.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), that is the one."
                if hint and hint.source else "")
-        goal = f"the option {keen(facts)}.{src} If the field asks about {low_stakes_scope(facts)[1]}, give up"
+        goal = f"the option {keen(facts)}.{src} {low_stakes_rule(facts)}, give up"
     else:
         goal = f"the option that states the applicant value {json.dumps(values[0])}"
     return (f"You are filling {field} on a job application. The goal is to select {goal}. "

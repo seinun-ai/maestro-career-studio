@@ -136,6 +136,23 @@ def test_an_empty_entry_before_a_held_one_gets_the_next_job_never_a_duplicate(db
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_an_empty_entry_before_job_one_with_nothing_to_add_gets_job_two(db_session, monkeypatch):
+    """[empty, job #1] when the page already has as many entries as the
+    profile can fill (Globex has no title): no Add, and the empty entry is
+    job #2 — never job #1 a second time (evaluation carry note)."""
+    assert planned(db_session, monkeypatch, FACTS, [], ["Acme"]) == {
+        "kind": "experience", "wanted": 2, "reason": None, "order": [1, 0]}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_entries_prefilled_out_of_profile_order_keep_what_they_hold(db_session, monkeypatch):
+    """Both entries pre-filled, job #2 above job #1: each entry is placed at
+    the job it holds, nothing is added (evaluation carry note)."""
+    assert planned(db_session, monkeypatch, FACTS, ["Intern", "Initech"], ["Analyst", "Acme"]) == {
+        "kind": "experience", "wanted": 2, "reason": None, "order": [1, 0]}
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_a_job_the_parser_dropped_is_added_in_its_place(db_session, monkeypatch):
     """Workday's parser filled jobs #1 and #3 and dropped #2: one Add, and
     the new entry gets job #2."""

@@ -110,7 +110,8 @@ DRIVER = """async (spec) => {
     if (path.startsWith("/api/autofill/context")) return {eeo_consent: {consent_forms: false}};
     // An entry placed nowhere (profile_entry null) gets nothing, as the real /map does.
     if (path === "/api/autofill/map") return {fields: Object.fromEntries(body.fields.map(f => [f.fid, f.profile_entry === null ? {route: "none"} : spec.map[`${f.fid}:${f.question}`] ?? spec.map[f.fid] ?? {route: "none"}]))};
-    if (path === "/api/autofill/pick") return {picks: Object.fromEntries(body.fields.map(f => [f.fid, spec.pick[`${f.fid}:${f.item ?? ""}`] ?? spec.pick[f.fid] ?? {oids: [], reason: "abstained"}]))};
+    // A scripted pick may be a list too: one entry per /pick call for that field.
+    if (path === "/api/autofill/pick") return {picks: Object.fromEntries(body.fields.map(f => [f.fid, take(spec.pick[`${f.fid}:${f.item ?? ""}`]) ?? take(spec.pick[f.fid]) ?? {oids: [], reason: "abstained"}]))};
     if (path === "/api/autofill/step") return spec.step.moves.shift() ?? {mid: null, reason: "abstained"};
     if (path === "/api/autofill/sections") return {sections: Object.fromEntries(body.sections.map(x => [x.sid, spec.kinds?.[x.sid] ?? {kind: "none", wanted: 0}]))};
     if (path === "/api/autofill/choose") return {choices: Object.fromEntries(body.fields.map(f => [f.qid, spec.choose[f.qid] ?? {answer: null, reason: "abstained"}]))};

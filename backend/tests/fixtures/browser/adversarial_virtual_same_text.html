@@ -1,0 +1,84 @@
+<!-- ADVERSARIAL, not a reproduction: adversarial_same_text.html's two "Other"
+     options under different visible categories, in a VIRTUALIZED list (the
+     row reuse of §2's skills list): only the eight rows in view are in the
+     DOM. "Other" under "Job Board" is in the first window; "Other" under
+     "Social Media" is 18 rows further down, outside it. A person scrolling
+     the list sees both; choosing "Other" from the first window alone is a
+     guess between them. Category headers are rows without role=option. -->
+<div data-automation-id="formField-sourceCategory">
+  <fieldset><legend><div id="rich-label-found"><div data-automation-id="richText"><p>Where did you find this job?</p></div><abbr title="required">*</abbr></div></legend>
+    <div><button id="found" type="button" aria-haspopup="listbox" aria-label=" Select One Required" aria-controls="found-list"
+      aria-expanded="false">Select One</button>
+      <input type="text" class="hidden-backing" style="display:none"></div></fieldset></div>
+<div id="portal"></div>
+<style>
+  #found-list { height: 240px; width: 360px; overflow-y: auto; position: relative; border: 1px solid #888; margin: 0; padding: 0; }
+  #found-list .row { position: absolute; left: 0; right: 0; height: 30px; line-height: 30px; list-style: none; }
+  #found-list .header { font-weight: bold; }
+</style>
+<script>
+(() => {
+  // __oracle.found is what the fake app HOLDS ("<category> / <option>");
+  // the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.found = "";
+  const TREE = [["Job Board", ["Indeed", "LinkedIn", "Monster", "Other"]],
+                ["Agency", ["Robert Half", "Randstad", "Adecco", "Kelly Services"]],
+                ["Events", ["Career Fair", "Conference", "Hackathon", "Meetup"]],
+                ["Referral", ["Employee Referral", "Friend"]],
+                ["Social Media", ["Facebook", "Instagram", "Twitter", "Other"]]];
+  const ROWS = TREE.flatMap(([category, leaves]) => [{ header: category }, ...leaves.map((text) => ({ category, text }))]);
+  const ROW_H = 30;
+  const WINDOW = 8;
+  const btn = document.getElementById("found");
+  const backing = btn.parentElement.querySelector(".hidden-backing");
+  const portal = document.getElementById("portal");
+  const ul = document.createElement("ul");
+  ul.id = "found-list";
+  ul.setAttribute("role", "listbox");
+  ul.style.display = "none";
+  const spacer = document.createElement("li");
+  spacer.style.cssText = `height:${ROWS.length * ROW_H}px;list-style:none`;
+  spacer.setAttribute("aria-hidden", "true");
+  ul.append(spacer);
+  portal.append(ul);
+  window.renders = 0;
+  // Only the rows in view are in the DOM, in order, as siblings — a header
+  // row sits right before its first option when it is in the window.
+  const render = () => {
+    window.renders += 1;
+    for (const r of [...ul.querySelectorAll(".row")]) r.remove();
+    const first = Math.min(Math.floor(ul.scrollTop / ROW_H), ROWS.length - WINDOW);
+    for (let i = Math.max(0, first); i < Math.min(ROWS.length, first + WINDOW); i += 1) {
+      const row = ROWS[i];
+      const li = document.createElement("li");
+      li.className = row.header ? "row header" : "row";
+      li.style.top = `${i * ROW_H}px`;
+      li.textContent = row.header ?? row.text;
+      if (!row.header) {
+        li.setAttribute("role", "option");
+        li.addEventListener("click", (e) => {
+          e.stopPropagation();
+          ul.style.display = "none";
+          btn.setAttribute("aria-expanded", "false");
+          btn.textContent = row.text;
+          btn.setAttribute("aria-label", ` ${row.text} Required`);
+          backing.value = "5ca1ab1e5ca1ab1e5ca1ab1e5ca1ab1e";
+          oracle.found = `${row.category} / ${row.text}`;
+        });
+      }
+      ul.append(li);
+    }
+  };
+  ul.addEventListener("scroll", () => requestAnimationFrame(render));
+  btn.addEventListener("click", () => {
+    const opening = ul.style.display === "none";
+    ul.style.display = opening ? "block" : "none";
+    btn.setAttribute("aria-expanded", String(opening));
+    if (opening) { ul.scrollTop = 0; render(); }
+  });
+  document.addEventListener("click", (e) => {
+    if (!ul.contains(e.target) && !btn.contains(e.target)) { ul.style.display = "none"; btn.setAttribute("aria-expanded", "false"); }
+  });
+})();
+</script>

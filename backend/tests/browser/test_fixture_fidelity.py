@@ -540,6 +540,66 @@ def test_adversarial_same_text_has_two_others_under_different_visible_categories
     assert oracle(page, "referral") == "Social Media / Other"
 
 
+def test_adversarial_trusted_only_opens_and_picks_for_a_person_only(page, load):
+    load(page, fixture_html("adversarial_trusted_only.html"), sources=[])
+    # What a script can send: dispatched events and el.click() change nothing.
+    page.evaluate("""() => { const b = document.getElementById('shift-pref');
+      for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'])
+        b.dispatchEvent(new MouseEvent(t, {bubbles: true, cancelable: true}));
+      b.click();
+      b.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', bubbles: true})); }""")
+    assert page.is_hidden("#shift-pref-list") and page.evaluate("window.ignoredEvents") == 3
+    page.evaluate("document.querySelector('#shift-pref-list li:nth-child(2)').click()")
+    assert oracle(page, "shift_pref") == "" and page.inner_text("#shift-pref") == "Select One"
+    # A person's click and key do.
+    page.click("#shift-pref")
+    assert page.is_visible("#shift-pref-list")
+    page.click("#shift-pref-list > li:has-text('Day')")
+    assert page.inner_text("#shift-pref") == "Day" and oracle(page, "shift_pref") == "Day"
+    assert len(page.evaluate("document.querySelector('#shift-pref').parentElement.querySelector('.hidden-backing').value")) == 32
+    page.focus("#shift-pref")
+    page.keyboard.press("ArrowDown")
+    assert page.is_visible("#shift-pref-list")
+
+
+def test_adversarial_virtual_same_text_renders_one_window_and_the_second_other_below_it(page, load):
+    load(page, fixture_html("adversarial_virtual_same_text.html"), sources=[])
+    page.click("#found")
+    rows = "#found-list .row"
+    assert page.locator(rows).all_inner_texts() == [
+        "Job Board", "Indeed", "LinkedIn", "Monster", "Other", "Agency", "Robert Half", "Randstad"]
+    assert page.locator("#found-list [role=option]").count() == 6   # headers are not options
+    page.hover("#found-list")
+    page.mouse.wheel(0, 2000)   # trusted scrolling re-renders the window
+    page.wait_for_function("() => [...document.querySelectorAll('#found-list .row')].some((r) => r.textContent === 'Social Media')")
+    texts = page.locator(rows).all_inner_texts()
+    assert texts[-5:] == ["Social Media", "Facebook", "Instagram", "Twitter", "Other"] and "Job Board" not in texts
+    assert oracle(page, "found") == ""
+    page.locator("#found-list [role=option]", has_text="Other").click()
+    assert page.inner_text("#found") == "Other" and oracle(page, "found") == "Social Media / Other"
+
+
+def test_react_select_commits_on_the_option_click_and_a_refused_click_holds_nothing(page, load):
+    load(page, fixture_html("react_select.html"), sources=[])
+    page.evaluate("window.rejectClicks = true")
+    page.click("#country")
+    page.click("#country-menu [role=option]:has-text('India')")
+    assert oracle(page, "country") == ""
+    page.evaluate("window.rejectClicks = false")
+    page.click("#country")
+    page.click("#country-menu [role=option]:has-text('India')")
+    assert page.inner_text(".select__single-value") == "India" and oracle(page, "country") == "India"
+
+
+def test_popup_with_search_commits_the_searched_option(page, load):
+    load(page, fixture_html("popup_with_search.html"), sources=[])
+    page.click("#fos")
+    page.type("#fos-q", "systems")
+    assert oracle(page, "fos") == ""
+    page.click("#fos-list [role=option]:has-text('Information Systems')")
+    assert page.inner_text("#fos") == "Information Systems" and oracle(page, "fos") == "Information Systems"
+
+
 # --- unfocused-window mode (conftest.UNFOCUSED_WINDOW; §1, §6): programmatic
 # focus()/blur() move focus but fire no events, as on the live page.
 LEAVE = """(el) => { el.blur(); el.dispatchEvent(new FocusEvent('blur'));
