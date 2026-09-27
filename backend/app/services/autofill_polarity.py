@@ -61,11 +61,17 @@ POLARITY_RESERVE_S = jev.TIMEOUT_S + 2 * MIN_CALL_S
 MEMORY_TTL_S = 600.0
 MEMORY_MAX = 500
 _clock = time.monotonic
+# SAME is wide on purpose: most forms ask a knockout or EEO question with an
+# undirected label ("Protected veteran status", "Age requirement",
+# "Employment with this company" over Current / Former / Not Applicable), and
+# reading those as neither would leave the most common fields unfilled.
+# OPPOSITE and NEITHER stay tight.
 CRITERIA = {
-    SAME: "Same: the question asks what the fact says, so a Yes to the fact is a Yes to the question",
+    SAME: "Same: the question asks what the fact says, or asks about it without a direction of its own (such as "
+          "a status label whose options state it), so the fact's answer is the question's answer",
     OPPOSITE: "Opposite: the question asks the reverse or a negation of the fact, so a Yes to the fact is a No "
               "to the question",
-    NEITHER: "Neither: the question asks something else, or which one it asks cannot be told",
+    NEITHER: "Neither: the question asks about something else",
 }
 _LLM_PROMPT = """For each form field, does its question ask the same thing as the applicant fact named beside it,
 or its opposite (the reverse or a negation of it), or neither? {rule}

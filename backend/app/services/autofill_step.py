@@ -28,7 +28,7 @@ from app.schemas.autofill_fill import StepRequest, StepResponse
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
-from app.services.autofill_map import SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule
+from app.services.autofill_map import SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule, main_call
 from app.services.autofill_pick import NEVER_YES_NO, JobHint, polarity_answers, values_for, verdict
 
 logger = logging.getLogger(__name__)
@@ -143,12 +143,14 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     # The fast step (its engine, or Jev's failure fallback) is one request of
     # what is left of the budget, no retries.
     if model_settings.get_autofill_engine(session) != "jev":
-        return _with_llm(req, instructions, state, criteria, policy, session, timeout=budget.rest())
+        return main_call(budget, lambda timeout: _with_llm(req, instructions, state, criteria, policy, session,
+                                                         timeout=timeout), "fast step")
     try:
         answer = jev.decide({req.fid: jev.choice_question(instructions, criteria)}, state, session)
     except llm.LLMProviderError:
         logger.warning("jev step failed; the fast model decides this move")
-        return _with_llm(req, instructions, state, criteria, policy, session, timeout=budget.rest())
+        return main_call(budget, lambda timeout: _with_llm(req, instructions, state, criteria, policy, session,
+                                                         timeout=timeout), "fast step")
     got = jev.choice_of(answer.get(req.fid), criteria)
     decided = _decide(req, got.choice if got else None, got.probability if got else 0.0, policy)
     # A low-stakes step keeps its engine.

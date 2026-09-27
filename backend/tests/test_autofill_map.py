@@ -921,7 +921,9 @@ def test_the_optional_passes_carry_a_timeout_and_no_retries(db_session, monkeypa
     run([field("t", "Willing to travel?", "select"), field("g", HISTORY_WORDINGS[0], "select")], db_session,
         low_stakes=True)
     by_trace = {p["trace_name"]: p for p in prompts}
-    assert "timeout" not in by_trace["autofill-map"]
+    # The main map too: one request of what is left of the budget, no retries of its own.
+    assert (by_trace["autofill-map"]["timeout"], by_trace["autofill-map"]["max_retries"]) == (
+        pytest.approx(autofill_map.REQUEST_BUDGET_S), 0)   # the clock stands still: nothing spent yet
     for trace in ("autofill-low-stakes", "autofill-reasoned"):
         assert by_trace[trace]["max_retries"] == 0, trace
         assert 1 <= by_trace[trace]["timeout"] <= autofill_map.REQUEST_BUDGET_S, trace
@@ -1128,3 +1130,47 @@ def test_a_second_opinion_never_makes_a_field_free_text(db_session, monkeypatch)
                            "g": {"key": "blocked_eeo", "confidence": 0.95}})
     got = run([field("w", "Anything else?"), field("g", "Gender", "select")], db_session, eeo_consented=False)
     assert (got["w"].route, got["g"].route) == ("none", "blocked")
+
+
+# ---------- the main fast call: bounded by the request, and one retry while there is time (re-review of 6b90eb96)
+
+REFUSED = llm.LLMProviderError("OpenAI refused your API key. Check it in Settings › AI & models.")
+
+
+def flaky_map(monkeypatch, first):
+    """The main map call fails once with `first`, then answers."""
+    calls = []
+
+    def call_openai(**kw):
+        if kw["trace_name"] == "autofill-map":
+            calls.append(kw)
+            if len(calls) == 1:
+                raise first
+            return {"map": {"a": {"key": "personal.city", "confidence": 0.9}}}
+        return {}
+
+    monkeypatch.setattr(autofill_map.llm, "call_openai", call_openai)
+    return calls
+
+
+@pytest.mark.parametrize("first", [ValueError("not JSON after retries"),
+                                   llm.LLMProviderError("The AI model didn't answer (it timed out).")])
+def test_a_malformed_or_failed_main_map_is_asked_once_more_while_there_is_time(db_session, monkeypatch, first):
+    times = [0.0, 0.0, 3.0, 3.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    calls = flaky_map(monkeypatch, first)
+    assert run([field("a", "City")], db_session)["a"].slot == "personal.city"
+    assert [c["timeout"] for c in calls] == [pytest.approx(9.0), pytest.approx(6.0)]
+    assert all(c["max_retries"] == 0 for c in calls)
+
+
+@pytest.mark.parametrize("first, times", [
+    (ValueError("not JSON after retries"), [0.0, 0.0, 7.5]),   # 1.5 s left: under 2 x MIN_CALL_S
+    (REFUSED, [0.0]),   # a refused key is not a transient failure
+])
+def test_the_main_map_is_not_asked_again_without_the_time_or_for_a_refused_key(db_session, monkeypatch, first, times):
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    calls = flaky_map(monkeypatch, first)
+    with pytest.raises(llm.LLMProviderError):
+        run([field("a", "City")], db_session)
+    assert len(calls) == 1

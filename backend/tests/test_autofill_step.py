@@ -522,3 +522,37 @@ def test_the_fast_step_is_bounded_by_the_request(db_session, monkeypatch):
     prompts = fake_llm(monkeypatch, {"move": "open", "confidence": 0.9})
     step(req(slot="education.0.discipline"), db_session)
     assert (prompts[0]["timeout"], prompts[0]["max_retries"]) == (pytest.approx(autofill_map.REQUEST_BUDGET_S - 2.0), 0)
+
+
+
+def flaky_step(monkeypatch, first):
+    calls = []
+
+    def call_openai(**kw):
+        if kw["trace_name"] == "autofill-step":
+            calls.append(kw)
+            if len(calls) == 1:
+                raise first
+            return {"move": "open", "confidence": 0.9}
+        return {}
+
+    monkeypatch.setattr(autofill_step.llm, "call_openai", call_openai)
+    return calls
+
+
+def test_a_malformed_main_step_is_asked_once_more_while_there_is_time(db_session, monkeypatch):
+    times = [0.0, 0.0, 3.0, 3.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    calls = flaky_step(monkeypatch, ValueError("not JSON after retries"))
+    assert step(req(slot="education.0.discipline"), db_session) == {"mid": "open", "reason": "progress"}
+    assert [c["timeout"] for c in calls] == [pytest.approx(9.0), pytest.approx(6.0)]
+
+
+@pytest.mark.parametrize("first, times", [(ValueError("not JSON after retries"), [0.0, 0.0, 7.5]),
+                                          (llm.LLMProviderError(llm.NO_KEY_MESSAGE), [0.0])])
+def test_the_main_step_is_not_asked_again_without_the_time_or_for_a_missing_key(db_session, monkeypatch, first, times):
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    calls = flaky_step(monkeypatch, first)
+    with pytest.raises(llm.LLMProviderError):
+        step(req(slot="education.0.discipline"), db_session)
+    assert len(calls) == 1

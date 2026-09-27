@@ -39,7 +39,7 @@ import logging
 import re
 import time
 from collections.abc import Callable
-from typing import get_args
+from typing import TypeVar, get_args
 
 from sqlalchemy.orm import Session
 
@@ -50,6 +50,7 @@ from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_F
 from app.services.autofill_slots import FREE_TEXT, NO_SLOT
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 BLOCKED_EEO = "blocked_eeo"
 PROTECTED_UNANSWERED = "protected_unanswered"
@@ -262,10 +263,36 @@ class Budget:
             timeout = min(timeout, OPTIONAL_PASS_BUDGET_S - elapsed - reserve)
         return max(MIN_CALL_S, timeout)
 
+    def remaining(self) -> float:
+        """What is left of REQUEST_BUDGET_S (may be under MIN_CALL_S, or none)."""
+        return REQUEST_BUDGET_S - (self._now() - self._started)
+
     def rest(self) -> float:
         """The timeout a request's MAIN call takes (not optional: it always
         runs): what is left of REQUEST_BUDGET_S, never under MIN_CALL_S."""
-        return max(MIN_CALL_S, REQUEST_BUDGET_S - (self._now() - self._started))
+        return max(MIN_CALL_S, self.remaining())
+
+
+def _transient(exc: llm.LLMProviderError) -> bool:
+    """A failure worth one more try: a malformed reply, a timeout, an outage —
+    never a missing or refused key."""
+    message = str(exc)
+    return message not in (llm.NO_KEY_MESSAGE, llm.NO_GEMINI_KEY_MESSAGE) and "refused your API key" not in message
+
+
+def main_call(budget: Budget, call: Callable[[float], "T"], what: str) -> "T":
+    """A request's MAIN fast call (/map, /pick, /step on the fast engine, or
+    Jev's failure fallback): one request of what is left of the budget
+    (`rest`), no retries of its own. After a malformed reply or a transient
+    failure it is asked ONCE more, only while at least 2 x MIN_CALL_S is left;
+    otherwise the failure stands, as ever."""
+    try:
+        return call(budget.rest())
+    except llm.LLMProviderError as exc:
+        if not _transient(exc) or budget.remaining() < 2 * MIN_CALL_S:
+            raise
+        logger.warning("%s failed (%s); asked once more", what, exc)
+        return call(budget.rest())
 
 
 def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: str, timeout: float) -> set[str]:
@@ -439,7 +466,7 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
         except llm.LLMProviderError:
             logger.warning("jev map failed; the fast model maps this batch")
     if picked is None:
-        picked = _with_llm(fields, criteria, session)
+        picked = main_call(budget, lambda timeout: _with_llm(fields, criteria, session, timeout=timeout), "fast map")
     else:
         second = _second_opinion([f for f in fields if _unsure(f, picked.get(f.fid), facts)],
                                  criteria, session, budget)

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from app.services import autofill_map, autofill_polarity, llm
+from app.services import autofill_map, autofill_polarity, llm, model_settings
 from app.services.autofill_polarity import NEITHER, OPPOSITE, SAME, Ask
 from tests.test_autofill_choose_jev import _answer, jev_on  # noqa: F401  (fixture)
 
@@ -223,3 +223,24 @@ def test_the_memory_is_bounded_and_forgets_after_its_time(monkeypatch):
 def test_the_memory_holds_no_value():
     """Keys are the question (page text), the fact's description and its policy; entries a way and an engine."""
     assert [f.name for f in autofill_polarity.Polarity.__dataclass_fields__.values()] == ["way", "engine"]
+
+
+# ---------- an undirected label reads as SAME (re-review of 6b90eb96)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_label_without_a_direction_of_its_own_is_offered_as_same(db_session, monkeypatch):
+    """"Protected veteran status" or "Age requirement" asks about the fact
+    with no direction of its own: that is SAME, never NEITHER — or the most
+    common fields would be left unfilled."""
+    calls = fake_jev(monkeypatch)
+    decide([ask("q", question="Protected veteran status", describe="is a protected veteran")], db_session)
+    criteria = calls[0]["questions"]["q"]["criteria"]
+    assert "without a direction of its own" in criteria[SAME] and "status label" in criteria[SAME]
+    assert "reverse or a negation" in criteria[OPPOSITE]
+    assert "something else" in criteria[NEITHER] and "direction" not in criteria[NEITHER]
+    prompts = fake_llm(monkeypatch)
+    autofill_polarity.forget()
+    model_settings.set_autofill_engine(db_session, "fast")
+    decide([ask("q", question="Protected veteran status", describe="is a protected veteran")], db_session)
+    assert "without a direction of its own" in prompts[0]["prompt"]

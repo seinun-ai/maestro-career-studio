@@ -26,7 +26,15 @@ from app.schemas.autofill_fill import Picked, PickField
 from app.services import autofill_polarity, jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
-from app.services.autofill_map import MIN_CALL_S, SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule
+from app.services.autofill_map import (
+    MIN_CALL_S,
+    SECOND_OPINION_MAX_S,
+    Budget,
+    fast_json,
+    keen,
+    low_stakes_rule,
+    main_call,
+)
 from app.services.autofill_reasoned import reason
 
 logger = logging.getLogger(__name__)
@@ -234,7 +242,8 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
         if picked is None:
             # One request of what is left of the budget, no retries: a slow
             # batch never outlives the Companion's wait.
-            picked = _with_llm(askable, facts, hint, session, answers, timeout=budget.rest())
+            picked = main_call(budget, lambda timeout: _with_llm(askable, facts, hint, session, answers,
+                                                                 timeout=timeout), "fast pick")
         else:
             unsure = [f for f in askable if f.route == "slot" and picked[f.fid] == ABSTAIN]
             decided = {fid: p for fid, p in _second_opinion(unsure, facts, hint, session, budget, answers,

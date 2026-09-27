@@ -1226,3 +1226,37 @@ def test_a_step_after_a_pick_does_not_ask_the_polarity_again(db_session, monkeyp
     assert len(polarity_calls) == 1   # remembered from the pick
     assert '"Yes"' in step_calls[0]["s"]["instructions"]
     assert real is not None
+
+
+
+def flaky_pick(monkeypatch, first):
+    calls = []
+
+    def call_openai(**kw):
+        if kw["trace_name"] == "autofill-pick":
+            calls.append(kw)
+            if len(calls) == 1:
+                raise first
+            return {"picks": {"m": {"oids": ["o1"], "confidence": 0.95}}}
+        return polarity_reply(kw) if kw["trace_name"].startswith("autofill-polarity") else {}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    return calls
+
+
+def test_a_malformed_main_pick_is_asked_once_more_while_there_is_time(db_session, monkeypatch):
+    times = [0.0, 0.0, 3.0, 3.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    calls = flaky_pick(monkeypatch, ValueError("not JSON after retries"))
+    got = pick([pf("m", slot=DISCIPLINE, options=opts("Business Analytics"))], db_session)
+    assert got["m"].reason == "matched" and [c["timeout"] for c in calls] == [pytest.approx(9.0), pytest.approx(6.0)]
+
+
+@pytest.mark.parametrize("first, times", [(ValueError("not JSON after retries"), [0.0, 0.0, 7.5]),
+                                          (llm.LLMProviderError(llm.NO_KEY_MESSAGE), [0.0])])
+def test_the_main_pick_is_not_asked_again_without_the_time_or_for_a_missing_key(db_session, monkeypatch, first, times):
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    calls = flaky_pick(monkeypatch, first)
+    with pytest.raises(llm.LLMProviderError):
+        pick([pf("m", slot=DISCIPLINE, options=opts("Business Analytics"))], db_session)
+    assert len(calls) == 1

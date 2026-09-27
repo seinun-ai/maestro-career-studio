@@ -476,3 +476,11 @@ def test_the_new_reversed_cases_cover_same_opposite_and_a_wordy_value():
     assert by_id["reversed-able-without-visa"]["expected"] == "Yes"
     assert (by_id["reversed-disability-free"]["slot"], by_id["reversed-disability-free"]["expected"]) \
         == ("eeo.disability_status", None)
+
+
+def test_the_neutral_cases_expect_a_pick_from_an_undirected_label():
+    neutral = {c["id"]: c for c in PICKS["cases"] if c.get("tag") == "neutral"}
+    assert {"neutral-veteran-status", "neutral-disability-status", "neutral-employment-with-company"} <= set(neutral)
+    assert all(c["expected"] for c in neutral.values())
+    assert neutral["neutral-employment-with-company"]["options"] == ["Current Associate", "Former Associate",
+                                                                      "Not Applicable"]
