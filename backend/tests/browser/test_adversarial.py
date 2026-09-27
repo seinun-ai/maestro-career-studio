@@ -7,8 +7,9 @@ revert, same text, recipe poisoning (their tests live beside the code they
 exercise), a widget that takes trusted input only (here), and the same text
 under another category outside a virtualized list's window (here). Scripted
 loop cases (test_fill_loop's driver) cover the carry notes about sections and
-reverts. A case that exposes an engine gap is xfail(strict=True) with the gap
-named, never fixed here.
+reverts. The two engine gaps this set found (a same-text option outside a
+virtualized window; two sections read as one kind) were fixed on the owner's
+decisions of 2026-09-27, and their tests pass as written.
 """
 
 import pytest
@@ -181,8 +182,8 @@ def test_volunteer_experience_read_as_none_leaves_work_experience_placed(page, l
 
 def test_two_sections_read_as_work_experience_never_double_a_job(page, load):
     """Volunteer Experience above Work Experience, both misread as work
-    experience: whichever section is placed, job #1 is never written twice
-    and nothing is added. WHICH one is placed is the xfail below's."""
+    experience: job #1 is never written twice and nothing is added (the
+    test below: neither section is placed)."""
     out = run(page, load, frames=[VOLUNTEER + work(1)],
               sections=[[section("f-s4", "Volunteer Experience", 1), section("f-s1", entries=1)]],
               kinds={"f-s4": {"kind": "experience", "wanted": 1, "order": [0]},
@@ -195,17 +196,58 @@ def test_two_sections_read_as_work_experience_never_double_a_job(page, load):
     assert written.count("Acme") <= 1 and adds(out) == []
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "engine gap (Task 12): with two sections read as one kind, fill-loop.js addEntries places the FIRST in page "
-    "order — a misread 'Volunteer Experience' above 'Work Experience' is given job #1 and the real Work Experience "
-    "gets nothing; the loop cannot tell which one is misread, so leaving both alone would be the safe outcome"))
+AMBIGUOUS_LINE = "{}: another section on this page looks like the same kind of list, so this section was left for you."
+
+
 def test_a_misread_volunteer_section_above_work_experience_is_not_given_a_job(page, load):
+    """Which of two sections read as one kind is misread cannot be told:
+    neither is placed, neither grows, and the report says so for each."""
     out = run(page, load, frames=[VOLUNTEER + work(1)],
               sections=[[section("f-s4", "Volunteer Experience", 1), section("f-s1", entries=1)]],
               kinds={"f-s4": {"kind": "experience", "wanted": 1, "order": [0]},
                      "f-s1": {"kind": "experience", "wanted": 1, "order": [0]}},
               map=JOBS | {"v1": {"route": "slot", "slot": "experience.0.employer", "value": "Acme"}})
     assert "v1" not in {a["fid"] for a in actions(out)}
+    assert actions(out) == [] and adds(out) == []
+    [body] = bodies(out, "/api/autofill/map")
+    assert {x["fid"]: x.get("profile_entry", "absent") for x in body["fields"]} == {"v1": None, "t1": None, "c1": None}
+    assert statuses(out) == {"v1": "needs_answer", "t1": "needs_answer", "c1": "needs_answer"}
+    assert [(s["heading"], s["reason"], s["added"]) for s in out["report"]["sections"]] == [
+        ("Volunteer Experience", "ambiguous_kind", 0), ("Work Experience", "ambiguous_kind", 0)]
+    lines = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.sectionLines(r)", out["report"])
+    assert lines == [AMBIGUOUS_LINE.format("Volunteer Experience"), AMBIGUOUS_LINE.format("Work Experience")]
+
+
+def test_the_backends_ambiguous_kind_leaves_both_sections_and_others_are_placed(page, load):
+    """/sections says so itself (every entry null, nothing to add): the loop
+    adds nothing there and places an Education section as ever."""
+    school = [f("s1", question="School", section="Education 1")]
+    both = {"kind": "experience", "wanted": 1, "reason": "ambiguous_kind", "order": [None]}
+    out = run(page, load, frames=[VOLUNTEER + work(1) + school],
+              sections=[[section("f-s4", "Volunteer Experience", 1), section("f-s1", entries=1),
+                         section("f-s5", "Education", 1)]],
+              kinds={"f-s4": both, "f-s1": both, "f-s5": {"kind": "education", "wanted": 2, "order": [0]}},
+              map=JOBS | {"s1": {"route": "slot", "slot": "education.0.school", "value": "State University"}})
+    [body] = bodies(out, "/api/autofill/map")
+    placed = {x["fid"]: (x.get("profile_entry", "absent"), x.get("entry_kind")) for x in body["fields"]}
+    assert placed == {"v1": (None, None), "t1": (None, None), "c1": (None, None), "s1": (0, "education")}
+    assert adds(out) and {a["sid"] for a in adds(out)} == {"f-s5"}
+    assert {s["heading"]: s["reason"] for s in out["report"]["sections"]} == {
+        "Volunteer Experience": "ambiguous_kind", "Work Experience": "ambiguous_kind", "Education": None}
+
+
+def test_a_second_section_of_a_kind_placed_in_an_earlier_round_is_left_alone(page, load):
+    """Work Experience was placed and filled before "Volunteer Experience"
+    (read as the same kind) appeared: what was done stands, and the late
+    section is never given a job or an Add."""
+    out = run(page, load, frames=[work(1), work(1) + VOLUNTEER],
+              sections=[[section("f-s1", entries=1)],
+                        [section("f-s1", entries=1), section("f-s4", "Volunteer Experience", 1)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 1, "order": [0]},
+                     "f-s4": {"kind": "experience", "wanted": 2, "order": [0]}},
+              map=JOBS | {"v1": {"route": "slot", "slot": "experience.0.employer", "value": "Acme"}})
+    assert "v1" not in {a["fid"] for a in actions(out)} and adds(out) == []
+    assert {s["heading"]: s["reason"] for s in out["report"]["sections"]}["Volunteer Experience"] == "ambiguous_kind"
 
 
 # ---------- two Websites entries

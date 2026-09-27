@@ -410,3 +410,33 @@ def test_the_route_404s_an_unknown_application(db_session):
     r = _post(db_session, "/api/autofill/sections",
               {"application_id": str(uuid4()), "sections": [{"sid": "f-s1", "heading": "Education", "entries": 0}]})
     assert r.status_code == 404
+
+
+# ---------- two sections read as one placed kind (owner, 2026-09-27)
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("kind, first, second", [("experience", "Volunteer Experience", "Work Experience"),
+                                                 ("education", "Education", "Certificates and Courses"),
+                                                 ("languages", "Languages", "Spoken languages")])
+def test_two_sections_of_one_placed_kind_are_both_left_to_the_user(db_session, monkeypatch, kind, first, second):
+    """Which one is misread cannot be told: neither is placed, neither grows,
+    and each says why. Sections of other kinds are planned as before."""
+    fake_jev(monkeypatch, {"a": (kind, 0.9), "b": (kind, 0.9), "s": ("websites", 0.9),
+                           "o": ("education" if kind != "education" else "experience", 0.9)})
+    other = "Education" if kind != "education" else "Work Experience"
+    got = autofill_sections.plan([held_section("a", first, []), held_section("b", second, ["Acme"], []),
+                                  held_section("s", "Websites", []), held_section("o", other, [])],
+                                 FACTS, db_session)
+    assert got["a"].model_dump() == {"kind": kind, "wanted": 1, "reason": "ambiguous_kind", "order": [None]}
+    assert got["b"].model_dump() == {"kind": kind, "wanted": 2, "reason": "ambiguous_kind", "order": [None, None]}
+    assert (got["s"].reason, got["s"].wanted) == (None, 2)
+    assert got["o"].reason is None and got["o"].order[0] == 0
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_two_websites_sections_are_not_an_ambiguous_kind(db_session, monkeypatch):
+    """Only the kinds placed by profile entry: a second Websites section is the loop's one-per-kind rule."""
+    fake_jev(monkeypatch, {"s": ("websites", 0.9), "t": ("websites", 0.9)})
+    got = autofill_sections.plan([held_section("s", "Websites", []), held_section("t", "Links", [])], FACTS, db_session)
+    assert {sid: p.reason for sid, p in got.items()} == {"s": None, "t": None}

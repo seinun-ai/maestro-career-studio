@@ -67,8 +67,9 @@
  *   (/sections `order`, matched on what the entries hold): /map is told it
  *   per field (`profile_entry`, with the section's `entry_kind`; null places
  *   nothing there), so an empty entry before a pre-filled one is never given
- *   the job the page already shows. Only the first section of a kind is
- *   placed. An order that cannot be read, or a section whose entry titles do
+ *   the job the page already shows. Two sections of one job, school or
+ *   language kind are BOTH left alone (`ambiguous_kind`): which one is
+ *   misread cannot be told. An order that cannot be read, or a section whose entry titles do
  *   not run 1..N in page order (the backend places by place, the loop finds
  *   an entry by its title's number), leaves the section alone (`unplaced`:
  *   nothing written, nothing added, a report line) — never page order. A
@@ -1268,9 +1269,9 @@
     const plans = new Map(); // sectionKey -> { kind, wanted, reason, order }
     // sectionKey -> { kind, order }: the profile entry each entry holds or is
     // given (/sections `order`; null: place nothing there). Decided once per
-    // section; only the FIRST section of a kind, in page order, keeps its
-    // order (a second one read as the same kind — a misread "Volunteer
-    // Experience" — would be given job #1 again).
+    // section. Two sections read as one job, school or language kind (a
+    // misread "Volunteer Experience") are both left alone (`ambiguous_kind`);
+    // otherwise a later section of a kind already placed is placed nowhere.
     // { kind: null, order: null }: the section is LEFT ALONE — nothing written
     // there, nothing added, and the report says so (`unplaced`) — when its
     // order cannot be read, when its entry titles do not run 1..N in page
@@ -1285,7 +1286,10 @@
     const placedKinds = new Set();
     // The backend's words for why a section added nothing; `held_out_of_order`
     // is the earlier name of held_twice.
-    const REASON_OF = { held_twice: "held_twice", held_out_of_order: "held_twice", held_unmatched: "held_unmatched" };
+    const REASON_OF = {
+      held_twice: "held_twice", held_out_of_order: "held_twice", held_unmatched: "held_unmatched",
+      ambiguous_kind: "ambiguous_kind",
+    };
     const orderOk = (order) => Array.isArray(order) && order.length <= MAX_ENTRIES
       && order.every((x) => x === null || (Number.isInteger(x) && x >= 0 && x <= MAX_ENTRY_INDEX));
     const numberedInStep = (s) => Array.isArray(s.numbers) && s.numbers.length === s.entries
@@ -1340,16 +1344,36 @@
       return wordOf(got.outcome) ?? "stale";
     };
     // Returns whether any entry was added. ONE section per kind: a second
-    // section the model gives the same kind gets nothing, so a kind's entries
-    // are never doubled.
+    // section the model gives the same kind gets nothing (a job, school or
+    // language kind: neither does the first), so a kind's entries are never
+    // doubled.
     const addEntries = async () => {
       const seen = await readSections();
       if (!seen.length) return false;
       await planSections(seen);
+      // Two sections of one job, school or language kind (a "Volunteer
+      // Experience" misread above the real Work Experience): which one is
+      // misread cannot be told, so NEITHER is placed or grows — both are left
+      // to the user (`ambiguous_kind`), as is one that appears after its kind
+      // was placed in an earlier round (what was done there stands).
+      const earlier = new Set(placedKinds);
+      const count = new Map();
+      for (const key of new Set(seen.map(sectionKey))) {
+        const kind = plans.get(key)?.kind;
+        if (PLACED_KINDS.has(kind)) count.set(kind, (count.get(kind) ?? 0) + 1);
+      }
       for (const s of seen) {
         const key = sectionKey(s);
         const plan = plans.get(key);
         if (placements.has(key)) continue;
+        if (plan && PLACED_KINDS.has(plan.kind)
+          && (plan.reason === "ambiguous_kind" || count.get(plan.kind) > 1 || earlier.has(plan.kind))) {
+          placedKinds.add(plan.kind);
+          placements.set(key, { kind: null, order: null });
+          sectionLog.set(key, { heading: s.heading, kind: plan.kind, wanted: s.entries,
+            entries: s.entries, added: 0, outcome: null, reason: "ambiguous_kind" });
+          continue;
+        }
         const placed = Boolean(plan) && PLACED_KINDS.has(plan.kind) && plan.order !== undefined;
         const first = placed && !placedKinds.has(plan.kind);
         if (placed) placedKinds.add(plan.kind);
@@ -1613,6 +1637,9 @@
     }
     if (s.reason === "held_twice") {
       return [`${s.heading}: the items on the page don't match your profile, so none were added.`];
+    }
+    if (s.reason === "ambiguous_kind") {
+      return [`${s.heading}: another section on this page looks like the same kind of list, so this section was left for you.`];
     }
     if (!(s.entries < s.wanted)) return [];
     const needed = s.wanted - (s.entries - s.added); // what the section was short of before the run

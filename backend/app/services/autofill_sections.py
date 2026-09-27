@@ -29,6 +29,11 @@ section is placed nowhere and nothing is added (`held_unmatched`, reported
 even when nothing was to be added); two entries holding the same one add
 nothing (`held_twice`). The plan says why, value-free. What the entries hold
 (`held`) comes to this local backend for that match only.
+
+TWO SECTIONS OF ONE PLACED KIND (a "Volunteer Experience" read as work
+experience above the real one): which is misread cannot be told, so neither
+is placed nor grows — every entry null, nothing to add (`ambiguous_kind`).
+Sections of other kinds are planned as ever.
 """
 
 import json
@@ -213,10 +218,15 @@ def plan(sections: list[PageSection], facts: dict[str, Fact], session: Session) 
             logger.warning("jev sections failed; the fast model classifies them")
     if picked is None:
         picked = _with_llm(sections, session)
+    kinds = {s.sid: kind if p >= SLOT_FLOOR else NONE for s in sections
+             for kind, p in [picked.get(s.sid, (NONE, 0.0))]}
+    twice = {k for k in _NAMED_BY if sum(kind == k for kind in kinds.values()) > 1}
     out = {}
     for s in sections:
-        kind, p = picked.get(s.sid, (NONE, 0.0))
-        kind = kind if p >= SLOT_FLOOR else NONE
+        kind = kinds[s.sid]
+        if kind in twice:
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="ambiguous_kind", order=[None] * s.entries)
+            continue
         if kind not in _NAMED_BY:
             out[s.sid] = SectionPlan(kind=kind, wanted=wanted(kind, facts))
             continue

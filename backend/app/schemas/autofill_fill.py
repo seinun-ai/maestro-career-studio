@@ -209,8 +209,11 @@ class SectionPlan(BaseModel):
     # held_twice: two entries hold the same profile entry, and an added
     # one would not be safe. held_unmatched: an entry holds something the
     # profile does not have — the whole section is placed nowhere, left to the
-    # user, whatever there was to add.
-    reason: Literal["held_twice", "held_unmatched"] | None = None
+    # user, whatever there was to add. ambiguous_kind: another section on
+    # the page reads as the same job, school or language list, and which one
+    # is misread cannot be told — neither is placed (every entry null) and
+    # neither grows.
+    reason: Literal["held_twice", "held_unmatched", "ambiguous_kind"] | None = None
     # Jobs, schools and languages only (EntryKind): per page entry, then per
     # entry to add, the profile entry (its catalog index) that entry holds or
     # is given — null for one the profile does not have. Numbers, never

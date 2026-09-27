@@ -429,8 +429,15 @@ know, and each one was learned from a live failure.
   holding something the profile does not have may be a profile job spelled
   another way, so its whole section is left to you: nothing placed, nothing
   added, and the report says so. Two entries holding the same one add
-  nothing. Only the first section of each kind is placed (a second one read
-  as work experience gets nothing), an entry fact of another kind than its
+  nothing. When two sections read as one job, school or language list (a
+  "Volunteer Experience" misread above the real Work Experience), which one
+  is misread cannot be told, so neither is placed and neither grows: both
+  are left to you, and the report says so for each ("another section on
+  this page looks like the same kind of list"). /sections says so itself
+  (`ambiguous_kind`, every entry placed nowhere), and the Companion checks
+  again across frames and rounds: a section that appears after its kind was
+  placed in an earlier round is left to you too, and what was done in the
+  first stands. Sections of other kinds are unaffected. An entry fact of another kind than its
   section's is never written there (a language's answers only inside a
   placed Languages entry, and its name never as a closest match), and a
   section whose order cannot be read, or whose entry titles do not run 1,

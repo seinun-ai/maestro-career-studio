@@ -1738,10 +1738,11 @@ def test_the_loops_entry_limits_mirror_the_backends():
     assert set(re.findall(r'"([a-z]+)"', kinds)) == set(get_args(EntryKind))
 
 
-def test_only_the_first_section_of_a_kind_is_placed(page, load):
+def test_two_sections_of_a_kind_are_both_placed_nowhere(page, load):
     """A second section the backend reads as work experience ("Volunteer
-    Experience", misread) is not given job #1 as well: its entries are placed
-    nowhere. The first section of each kind, in page order, keeps its order."""
+    Experience", misread) makes the kind ambiguous: which one is misread
+    cannot be told, so neither is given job #1 (owner, 2026-09-27). A section
+    of another kind keeps its order."""
     vol = [f("v1", question="Organization", section="Volunteer Experience 1")]
     school = [f("s1", question="School", section="Education 1")]
     out = run(page, load, frames=[work(1) + vol + school],
@@ -1752,7 +1753,7 @@ def test_only_the_first_section_of_a_kind_is_placed(page, load):
                      "f-s5": {"kind": "education", "wanted": 1, "order": [0]}}, map=JOBS)
     [body] = bodies(out, "/api/autofill/map")
     assert {x["fid"]: (x.get("profile_entry", "absent"), x.get("entry_kind")) for x in body["fields"]} == {
-        "t1": (0, "experience"), "c1": (0, "experience"), "v1": (None, "experience"), "s1": (0, "education")}
+        "t1": (None, None), "c1": (None, None), "v1": (None, None), "s1": (0, "education")}
 
 
 def test_a_section_left_to_the_user_says_so(page, load):
