@@ -23,7 +23,10 @@ off, so a Jev failure is counted as one, never scored as Jev's answer, and
 the fast second opinion on Jev's unsure answers is off too: `jev` is Jev
 alone. `routed` is what production runs on the Jev engine: Jev, then ONE fast
 second opinion where Jev was unsure (its failure fallback still refused);
-each result says which engine decided (`decided_by`). The reasoning route is
+each result says which engine decided (`decided_by`). A Yes/No fact's
+question polarity (autofill_polarity: same / opposite, decided before the
+literal pick) is reported per result (`polarity`, and `polarity_by`: the
+engine that decided it); `jev` asks Jev alone for it too. The reasoning route is
 the fast model's on every engine (autofill_reasoned).
 
 Only labels, options and each case's own fact go to the models; the cases are
@@ -368,6 +371,13 @@ class Run:
     # whether it decided the last case (it answered where Jev did not).
     second_asked: set[str] = field(default_factory=set)
     fast_decided: bool = False
+    # fid -> autofill_polarity.Polarity, for a Yes/No fact's last case.
+    polarity: dict = field(default_factory=dict)
+
+    def polarity_of(self, fid: str) -> dict:
+        """same / opposite / unsure (asked, undecided) / None (no Yes/No fact), and its engine."""
+        p = self.polarity.get(fid)
+        return {"polarity": (p.way or "unsure") if p else None, "polarity_by": p.engine if p else None}
 
     def decided_by(self) -> str:
         return "fast" if self.fast_decided else ("jev" if self.engine == "routed" else self.engine)
@@ -377,7 +387,7 @@ class Run:
 def engine_of(run: Run, low_stakes: bool = False):
     """Force the engine and the low-stakes setting; in a Jev pass, record
     Jev's failures and refuse the fast-model fallback."""
-    from app.services import autofill_map, autofill_pick, autofill_step, jev, llm, model_settings
+    from app.services import autofill_map, autofill_pick, autofill_polarity, autofill_step, jev, llm, model_settings
 
     saved = {(model_settings, "get_autofill_engine"): model_settings.get_autofill_engine,
              (model_settings, "get_autofill_low_stakes"): model_settings.get_autofill_low_stakes,
@@ -389,9 +399,18 @@ def engine_of(run: Run, low_stakes: bool = False):
              (autofill_step, "_decide"): autofill_step._decide,
              (autofill_map, "_second_opinion"): autofill_map._second_opinion,
              (autofill_pick, "_second_opinion"): autofill_pick._second_opinion,
-             (autofill_step, "_second_opinion"): autofill_step._second_opinion}
+             (autofill_step, "_second_opinion"): autofill_step._second_opinion,
+             (autofill_polarity, "_with_llm"): autofill_polarity._with_llm,
+             (autofill_polarity, "_second_opinion"): autofill_polarity._second_opinion,
+             (autofill_polarity, "decide"): autofill_polarity.decide}
     fast_calls = {key: saved[key] for key in ((autofill_pick, "_with_llm"), (autofill_map, "_with_llm"),
-                                              (autofill_step, "fast_json"))}
+                                              (autofill_step, "fast_json"), (autofill_polarity, "_with_llm"))}
+    polarity_decide = autofill_polarity.decide
+
+    def seen_polarity(*args, **kwargs):
+        got = polarity_decide(*args, **kwargs)
+        run.polarity.update(got)
+        return got
     decide, verdict, step_decide = jev.decide, autofill_pick.verdict, autofill_step._decide
 
     def seen_pick(fld, oid, p, *args, **kwargs):
@@ -427,6 +446,8 @@ def engine_of(run: Run, low_stakes: bool = False):
                     setattr(owner, name, refuse)
             if module is autofill_map:
                 run.second_asked.update(f.fid for f in args[0])
+            elif module is autofill_polarity:
+                pass   # recorded by `seen_polarity`, with its engine
             else:
                 run.fast_decided = (any(p != autofill_pick.ABSTAIN for p in got.values()) if isinstance(got, dict)
                                     else got != autofill_step.ABSTAIN)
@@ -437,18 +458,22 @@ def engine_of(run: Run, low_stakes: bool = False):
     model_settings.get_autofill_engine = lambda session=None: engine
     model_settings.get_autofill_low_stakes = lambda session=None: low_stakes
     autofill_pick.verdict, autofill_step._decide = seen_pick, seen_step
+    autofill_polarity.decide = seen_polarity
     run.fast_decided = False
+    run.polarity.clear()
     if engine == "jev":
         jev.decide = recorded
         autofill_pick._with_llm = refuse
         autofill_map._with_llm = refuse
         autofill_step.fast_json = refuse
+        autofill_polarity._with_llm = refuse
     if run.engine == "jev":   # Jev alone: its unsure answers stand
         autofill_map._second_opinion = lambda *_a, **_k: {}
         autofill_pick._second_opinion = lambda *_a, **_k: {}
         autofill_step._second_opinion = lambda *_a, **_k: autofill_step.ABSTAIN
+        autofill_polarity._second_opinion = lambda *_a, **_k: {}
     elif run.engine == "routed":
-        for module in (autofill_map, autofill_pick, autofill_step):
+        for module in (autofill_map, autofill_pick, autofill_step, autofill_polarity):
             module._second_opinion = second_opinion(module)
     try:
         yield
@@ -477,7 +502,7 @@ def run_pick(case: dict, run: Run, session, today: str) -> dict:
         outcome = "right" if got in expected else "wrong_write"
     said = {o.oid: o.text for o in fld.options}.get(run.trace[-1][0]) if run.trace else None
     return {"id": case["id"], "policy": policy_of(case), "code_path": bool(case.get("code_path")),
-            "outcome": outcome, "got": got, "decided_by": run.decided_by(),
+            "outcome": outcome, "got": got, "decided_by": run.decided_by(), **run.polarity_of("c1"),
             "reason": picked.reason, "said": said, "p": run.trace[-1][1] if run.trace else None,
             "expected": expected, "question": case["question"], "options": case["options"],
             "fact": case.get("item") or case.get("fact")}
@@ -507,6 +532,7 @@ def run_step(case: dict, run: Run, session, today: str) -> dict:
     else:
         outcome = "harmless"
     return {"id": case["id"], "policy": policy_of(case), "outcome": outcome, "got": mid, "decided_by": run.decided_by(),
+            **run.polarity_of("s1"),
             "got_describe": describe.get(mid, GIVE_UP_DESCRIBE), "reason": resp.reason, "expected": expected,
             "said": run.trace[-1][0] if run.trace else None, "p": run.trace[-1][1] if run.trace else None,
             "question": case["question"], "fact": case.get("item") or case.get("fact")}
@@ -627,6 +653,14 @@ def _p(r: dict) -> str:
     return f"{r['p']:.2f}" if isinstance(r.get("p"), (int, float)) else "—"
 
 
+def print_polarity(results: list[dict]) -> None:
+    """How the Yes/No facts' questions were read (same / opposite / unsure), and by which engine."""
+    asked = [r for r in results if r.get("polarity")]
+    if asked:
+        print(f"\nPolarity of Yes/No questions: {dict(Counter(r['polarity'] for r in asked))}; decided by "
+              f"{dict(Counter(r['polarity_by'] for r in asked if r.get('polarity_by')))}")
+
+
 def print_second_opinions(results: list[dict]) -> None:
     fast = [r for r in results if r.get("decided_by") == "fast"]
     if fast:
@@ -658,6 +692,7 @@ def print_picks(engine: str, results: list[dict]) -> None:
                   f"at p={_p(r)}")
         elif r["outcome"] in ("jev_failed", "model_failed"):
             print(f"- {r['outcome']} [{r['policy']}] {r['id']}: {r['reason']}")
+    print_polarity(results)
     print_second_opinions(results)
 
 
@@ -676,6 +711,7 @@ def print_steps(engine: str, results: list[dict]) -> None:
                   f"{r['said']} at p={_p(r)})")
         elif r["outcome"] in ("jev_failed", "model_failed"):
             print(f"- {r['outcome']} [{r['policy']}] {r['id']}: {r['reason']}")
+    print_polarity(results)
     print_second_opinions(results)
 
 

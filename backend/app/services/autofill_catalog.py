@@ -110,8 +110,8 @@ class Fact:
     policy: Policy
     # Whether the answer is itself a Yes or a No ("No", "No, I do not have a
     # disability", "Yes, previously"), however the profile stored it. Only such
-    # a fact may be asked reversed or negated (/pick and /step MEANING_RULE); a
-    # status, list or name is never turned into a Yes or a No.
+    # a fact's question has a polarity (autofill_polarity: same or opposite,
+    # code flips a plain Yes/No); a status, list or name is never turned into one.
     yes_no: bool = False
 
 

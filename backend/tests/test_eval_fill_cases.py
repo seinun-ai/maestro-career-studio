@@ -16,7 +16,7 @@ STEPS = ev.load_cases(ev.STEP_CASES)
 
 
 def test_the_case_files_hold_the_plans_counts():
-    assert 38 <= len(PICKS["cases"]) <= 70
+    assert 38 <= len(PICKS["cases"]) <= 80
     assert 18 <= len(STEPS["cases"]) <= 45
     assert STEPS["today"] == PICKS["today"]
     for cases in (PICKS["cases"], STEPS["cases"]):
@@ -294,13 +294,17 @@ def _collecting(into):
 # ---------- engines: `jev` is Jev alone, `routed` is production (Jev, then one fast second opinion)
 
 
-def _jev_says_none(monkeypatch):
+def _jev_says_none(monkeypatch, way=("same", 0.95)):
+    """Jev: none to a pick, give_up to a step, `way` to a polarity question."""
     from app.services import jev
     from tests.test_autofill_choose_jev import _answer
 
-    monkeypatch.setattr(jev, "decide", lambda questions, *_a, **_k: {
-        k: _answer(q["criteria"], "none" if "none" in q["criteria"] else "give_up", 0.9)
-        for k, q in questions.items()})
+    def decide(questions, *_a, **_k):
+        return {k: _answer(q["criteria"], *(way if "opposite" in q["criteria"] else
+                                            ("none" if "none" in q["criteria"] else "give_up", 0.9)))
+                for k, q in questions.items()}
+
+    monkeypatch.setattr(jev, "decide", decide)
 
 
 def test_a_jev_pass_is_jev_alone(monkeypatch):
@@ -408,3 +412,63 @@ def test_the_derived_cases_expect_a_status_or_list_never_turned_into_yes_or_no()
     assert all(c["expected"] is None and c["options"] == ["Yes", "No"] for c in derived.values())
     assert {c["slot"] for c in derived.values()} >= {"work_auth.status", "eeo.race_ethnicity"}
     assert ev.select_cases(PICKS["cases"], only=None, tag="derived") == list(derived.values())
+
+
+# ---------- the polarity split (owner, 2026-09-27): each result says how a Yes/No question was read
+
+
+def _jev_picks(monkeypatch, option, way):
+    """Jev: `way` to the polarity question, `option` (a text) to the pick."""
+    from app.services import jev
+    from tests.test_autofill_choose_jev import _answer
+
+    def decide(questions, *_a, **_k):
+        return {k: _answer(q["criteria"], *(way if "opposite" in q["criteria"] else (option, 0.95)))
+                for k, q in questions.items()}
+
+    monkeypatch.setattr(jev, "decide", decide)
+
+
+def test_a_reversed_case_reports_its_polarity_and_the_engine_that_read_it(monkeypatch):
+    case = next(c for c in PICKS["cases"] if c["id"] == "reversed-authorized-without-sponsorship")
+    _jev_picks(monkeypatch, "Yes", ("opposite", 0.95))
+    result = ev.run_pick(case, ev.Run("jev"), None, PICKS["today"])
+    assert (result["outcome"], result["polarity"], result["polarity_by"]) == ("right", "opposite", "jev")
+
+
+def test_jev_alone_leaves_an_unsure_polarity_unsure(monkeypatch):
+    from app.services import autofill_polarity
+
+    case = next(c for c in PICKS["cases"] if c["id"] == "reversed-authorized-without-sponsorship")
+    _jev_picks(monkeypatch, "Yes", ("neither", 0.99))
+    monkeypatch.setattr(autofill_polarity, "fast_json", lambda *_a, **_k: pytest.fail("the fast model answered"))
+    result = ev.run_pick(case, ev.Run("jev"), None, PICKS["today"])
+    assert (result["outcome"], result["polarity"], result["polarity_by"]) == ("abstained", "unsure", None)
+
+
+def test_a_routed_pass_lets_the_fast_model_read_the_polarity_jev_was_unsure_of(monkeypatch):
+    from app.services import autofill_polarity
+
+    case = next(c for c in PICKS["cases"] if c["id"] == "reversed-authorized-without-sponsorship")
+    _jev_picks(monkeypatch, "Yes", ("neither", 0.99))
+    monkeypatch.setattr(autofill_polarity, "fast_json", lambda *_a, **_k: {
+        "polarity": {"c1": {"key": "opposite", "confidence": 0.95}}})
+    result = ev.run_pick(case, ev.Run("routed"), None, PICKS["today"])
+    assert (result["outcome"], result["polarity"], result["polarity_by"]) == ("right", "opposite", "fast")
+    assert autofill_polarity._second_opinion.__name__ == "_second_opinion"   # restored
+
+
+def test_a_fact_that_is_not_a_yes_or_no_asks_no_polarity(monkeypatch):
+    case = next(c for c in PICKS["cases"] if c["id"] == "derived-status-for-sponsorship")
+    _jev_says_none(monkeypatch)
+    result = ev.run_pick(case, ev.Run("jev"), None, PICKS["today"])
+    assert (result["polarity"], result["polarity_by"]) == (None, None)
+
+
+def test_the_new_reversed_cases_cover_same_opposite_and_a_wordy_value():
+    by_id = {c["id"]: c for c in REVERSED}
+    assert (by_id["reversed-require-sponsorship-same"]["fact"], by_id["reversed-require-sponsorship-same"]["expected"]) \
+        == ("Yes", "Yes")
+    assert by_id["reversed-able-without-visa"]["expected"] == "Yes"
+    assert (by_id["reversed-disability-free"]["slot"], by_id["reversed-disability-free"]["expected"]) \
+        == ("eeo.disability_status", None)

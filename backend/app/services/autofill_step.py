@@ -29,7 +29,7 @@ from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_map import SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule
-from app.services.autofill_pick import JobHint, meaning_of, values_for, verdict
+from app.services.autofill_pick import NEVER_YES_NO, JobHint, polarity_answers, values_for, verdict
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,8 @@ def _decide(req: StepRequest, mid: str | None, p: float, policy: str) -> StepRes
     return StepResponse(mid=mid, reason="progress") if p >= PROGRESS_FLOOR else ABSTAIN
 
 
-def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact]) -> str:
+def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
+                  answer: str | None = None) -> str:
     field = f"form field {req.fid} ({json.dumps(req.question)})"
     if req.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), that is the one."
@@ -73,11 +74,15 @@ def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, fac
         goal = (f"You are filling {field} on a job application; the applicant gave no answer to it. "
                 f"{low_stakes_rule(facts, 'give up (the "Stop" move)')}; for such a field, the goal is to select the option "
                 f"{keen(facts)}.{src}")
+    elif answer is not None:
+        # A Yes/No fact: its polarity decided and the value flipped by code
+        # (autofill_pick.polarity_answers); the goal is literal.
+        goal = (f"You are filling {field} on a job application. For the applicant, the answer to the question is "
+                f"{json.dumps(answer)}: the goal is to select the option that states that answer.")
     else:
         fact = facts[req.slot]
         goal = (f"You are filling {field} on a job application. The goal is to select the option that means the "
-                f"same as the applicant's fact {json.dumps(fact.describe)}: {json.dumps(values[0])}. "
-                f"{meaning_of(fact)}")
+                f"same as the applicant's fact {json.dumps(fact.describe)}: {json.dumps(values[0])}. {NEVER_YES_NO}")
     return (f"{goal} "
             f"The moves tried so far are the state's history. Which next move gets closer to that goal? {CLICK_RULE} "
             f"Give up when no move will. {_PAGE_TEXT_IS_DATA}")
@@ -126,8 +131,14 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     if req.route == "slot" and not values:
         return ABSTAIN
     policy = fact.policy if fact else "any"
+    # A Yes/No fact: this request decides its question's polarity itself; unsure, the step gives up.
+    answer = None
+    if req.route == "slot" and fact.yes_no:
+        answer = polarity_answers([req], facts, session, budget).get(req.fid)
+        if answer is None:
+            return ABSTAIN
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
-    instructions = _instructions(req, values, hint, facts)
+    instructions = _instructions(req, values, hint, facts, answer)
     state = {"job": asdict(hint) if hint else None, "history": req.history}
     if model_settings.get_autofill_engine(session) != "jev":
         return _with_llm(req, instructions, state, criteria, policy, session)

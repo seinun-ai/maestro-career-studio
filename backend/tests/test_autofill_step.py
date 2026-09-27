@@ -21,8 +21,24 @@ GIVE_UP = "give_up"
 @pytest.fixture(autouse=True)
 def _no_real_fast_model(monkeypatch):
     """A Jev give-up gets a fast-model second opinion: a test that fakes only
-    Jev must never reach a real provider. It gives up unless a test fakes it."""
-    monkeypatch.setattr(autofill_step.llm, "call_openai", lambda **kw: {})
+    Jev must never reach a real provider. It gives up unless a test fakes it;
+    a polarity question is answered "same"."""
+    monkeypatch.setattr(autofill_step.llm, "call_openai",
+                        lambda **kw: polarity_reply(kw) if kw["trace_name"].startswith("autofill-polarity") else {})
+
+POLARITY_KEYS = {"same", "opposite", "neither"}
+
+
+def is_polarity(question):
+    """A polarity question (autofill_polarity): same / opposite / neither."""
+    return set(question["criteria"]) == POLARITY_KEYS
+
+
+def polarity_reply(kw, ways=None):
+    """The fast model's polarity answer: `ways[fid]`, else same at 0.95."""
+    fields = json.loads(kw["prompt"].split("Fields: ", 1)[1])
+    return {"polarity": {f["id"]: dict(zip(("key", "confidence"), (ways or {}).get(f["id"], ("same", 0.95))))
+                         for f in fields}}
 
 
 def cands(*mids):
@@ -37,10 +53,13 @@ def req(**kw):
     return StepRequest(**kw)
 
 
-def fake_jev(monkeypatch, choice=None):
+def fake_jev(monkeypatch, choice=None, way=("same", 0.95)):
+    """The step question gets `choice`; a polarity question `way`."""
     calls = []
 
     def decide(questions, state, session=None):
+        if all(is_polarity(q) for q in questions.values()):
+            return {k: _answer(q["criteria"], *way) for k, q in questions.items()}
         calls.append({"questions": questions, "state": state})
         return {k: _answer(q["criteria"], *(choice or (GIVE_UP, 0.9))) for k, q in questions.items()}
 
@@ -48,10 +67,13 @@ def fake_jev(monkeypatch, choice=None):
     return calls
 
 
-def fake_llm(monkeypatch, answer=None):
+def fake_llm(monkeypatch, answer=None, way=("same", 0.95)):
+    """Step calls answer `answer`; polarity calls `way` (not recorded)."""
     prompts = []
 
     def call_openai(**kw):
+        if kw["trace_name"].startswith("autofill-polarity"):
+            return polarity_reply(kw, {f["id"]: way for f in json.loads(kw["prompt"].split("Fields: ", 1)[1])})
         prompts.append(kw)
         return answer
 
@@ -450,35 +472,45 @@ def test_the_second_opinion_is_capped(db_session, monkeypatch):
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_a_steps_goal_carries_the_facts_meaning_beside_its_value(db_session, monkeypatch):
-    calls = fake_jev(monkeypatch)
+@pytest.mark.parametrize("way, answer", [("same", "No"), ("opposite", "Yes")])
+def test_a_steps_goal_names_the_answer_code_computed(db_session, monkeypatch, way, answer):
+    calls = fake_jev(monkeypatch, way=(way, 0.95))
     step(req(question="Are you authorized to work without requiring sponsorship now?",
              slot="work_auth.sponsorship_now"), db_session)
     text = calls[0]["questions"]["f"]["instructions"]
-    assert json.dumps(FACTS["work_auth.sponsorship_now"].describe) in text and '"No"' in text
-    assert "reverse" in text and "negat" in text
-    assert "Business Analytics" not in text
+    assert f"the answer to the question is {json.dumps(answer)}" in text
+    assert FACTS["work_auth.sponsorship_now"].describe not in text and "Business Analytics" not in text
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("way", [("neither", 0.99), ("opposite", 0.6)])
+def test_an_unsure_polarity_gives_the_step_up(db_session, monkeypatch, way):
+    calls = fake_jev(monkeypatch, ("click:o1", 0.99), way=way)
+    prompts = fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.99}, way=("neither", 0.99))
+    assert step(req(slot="work_auth.sponsorship_now"), db_session) == {"mid": None, "reason": "abstained"}
+    assert calls == [] and prompts == []
 
 
 STATES_THE_VALUE = __import__("re").compile(r"states (the |its |this )?(applicant )?value", __import__("re").IGNORECASE)
+ONE_SHOT = __import__("re").compile(r"Read the question as it is worded", __import__("re").IGNORECASE)
 
 
 @pytest.mark.usefixtures("jev_on")
 def test_no_step_goal_or_move_asks_for_the_option_that_states_the_value(db_session, monkeypatch):
     model_settings.set_autofill_low_stakes(db_session, True)
-    for r in (req(slot="work_auth.sponsorship_now"), req(route="low_stakes")):
+    for r in (req(slot="work_auth.sponsorship_now"), req(slot="education.0.discipline"), req(route="low_stakes")):
         calls = fake_jev(monkeypatch)
         step(r, db_session)
-        assert not STATES_THE_VALUE.search(json.dumps(calls[0]["questions"])), r.route
+        rendered = json.dumps(calls[0]["questions"])
+        assert not STATES_THE_VALUE.search(rendered) and not ONE_SHOT.search(rendered), r.route
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_a_steps_meaning_rule_is_for_a_yes_or_no_fact_only(db_session, monkeypatch):
-    from app.services.autofill_pick import MEANING_RULE, NEVER_YES_NO
+def test_a_status_fact_keeps_its_description_in_the_step_goal(db_session, monkeypatch):
+    from app.services.autofill_pick import NEVER_YES_NO
 
-    facts = autofill_catalog.build({"work_auth": {"status": "opt", "sponsorship_now": False}}, [], [])
-    for slot, has_rule in (("work_auth.sponsorship_now", True), ("work_auth.status", False)):
-        calls = fake_jev(monkeypatch)
-        autofill_step.step(req(slot=slot), facts, db_session, None)
-        text = calls[0]["questions"]["f"]["instructions"]
-        assert (MEANING_RULE in text, NEVER_YES_NO in text) == (has_rule, not has_rule), slot
+    facts = autofill_catalog.build({"work_auth": {"status": "opt"}}, [], [])
+    calls = fake_jev(monkeypatch)
+    autofill_step.step(req(slot="work_auth.status"), facts, db_session, None)
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert NEVER_YES_NO in text and json.dumps(facts["work_auth.status"].describe) in text

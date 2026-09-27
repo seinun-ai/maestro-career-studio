@@ -17,18 +17,36 @@ FACTS = autofill_catalog.build(
 def _no_real_fast_model(monkeypatch):
     """Jev's abstentions get a fast-model second opinion: a test that fakes
     only Jev must never reach a real provider. It says none unless a test
-    fakes it (`fake_llm`)."""
-    monkeypatch.setattr(autofill_pick.llm, "call_openai", lambda **kw: {})
+    fakes it (`fake_llm`); a polarity question is answered "same"."""
+    monkeypatch.setattr(autofill_pick.llm, "call_openai",
+                        lambda **kw: polarity_reply(kw) if kw["trace_name"].startswith("autofill-polarity") else {})
+
+POLARITY_KEYS = {"same", "opposite", "neither"}
+
+
+def is_polarity(question):
+    """A polarity question (autofill_polarity): same / opposite / neither."""
+    return set(question["criteria"]) == POLARITY_KEYS
+
+
+def polarity_reply(kw, ways=None):
+    """The fast model's polarity answer: `ways[fid]`, else same at 0.95."""
+    fields = json.loads(kw["prompt"].split("Fields: ", 1)[1])
+    return {"polarity": {f["id"]: dict(zip(("key", "confidence"), (ways or {}).get(f["id"], ("same", 0.95))))
+                         for f in fields}}
 
 
 def opts(*texts):
     return [PickOption(oid=f"o{i}", text=t) for i, t in enumerate(texts, start=1)]
 
 
-def fake_jev(monkeypatch, choice=None):
+def fake_jev(monkeypatch, choice=None, ways=None):
+    """Pick questions get `choice[fid]`; polarity questions `ways[fid]` (default: same)."""
     calls = []
 
     def decide(questions, state, session=None):
+        if all(is_polarity(q) for q in questions.values()):
+            return {k: _answer(q["criteria"], *(ways or {}).get(k, ("same", 0.95))) for k, q in questions.items()}
         calls.append({"questions": questions, "state": state})
         return {k: _answer(q["criteria"], *(choice or {}).get(k, ("none", 0.9))) for k, q in questions.items()}
 
@@ -36,10 +54,14 @@ def fake_jev(monkeypatch, choice=None):
     return calls
 
 
-def fake_llm(monkeypatch, picks=None):
+def fake_llm(monkeypatch, picks=None, ways=None):
+    """Pick calls answer `picks`; polarity calls `ways` (default: same), and
+    are not recorded in `prompts`."""
     prompts = []
 
     def call_openai(**kw):
+        if kw["trace_name"].startswith("autofill-polarity"):
+            return polarity_reply(kw, ways)
         prompts.append(kw)
         return {"picks": picks or {}}
 
@@ -538,7 +560,7 @@ def test_the_low_stakes_rule_names_its_scope_and_binds_only_low_stakes_fields(db
     assert "self-assessment against the job description" in prompt
     assert prompt.index(_NEVER_LOW_STAKES) < prompt.index("Otherwise a low_stakes field is") < prompt.index(
         "for a question in that scope, the answer that shows they fit")
-    assert "The never-list does not apply to a field with applicant_values: pick the option that means the same as its fact." \
+    assert "The never-list does not apply to a field with applicant_values or an answer: pick as that field says." \
         in prompt
 
 
@@ -983,37 +1005,101 @@ def test_a_slot_only_second_opinion_carries_no_low_stakes_paragraph(db_session, 
     assert '"Business Analytics"' in prompt or "Business Analytics" in prompt
 
 
-# ---------- the fact's meaning travels with its value (owner, 2026-09-27: reversed wordings)
+# ---------- a Yes/No fact: polarity first, code flips, then a literal pick (owner, 2026-09-27)
+
+import re  # noqa: E402
 
 SPONSOR_NOW = FACTS["work_auth.sponsorship_now"].describe
 AUTHORIZED_WITHOUT = "Are you authorized to work without requiring sponsorship now?"
+STATES_THE_VALUE = re.compile(r"states (the |its |this )?(applicant )?value", re.IGNORECASE)
+# The one-shot "judge, flip and pick" instruction the split replaced: never asked again.
+ONE_SHOT = re.compile(r"Read the question as it is worded|reverse or a negation of it, and the right option",
+                      re.IGNORECASE)
+STATUS_FACTS = autofill_catalog.build({"work_auth": {"status": "opt", "sponsorship_now": False},
+                                       "eeo": {"race_ethnicity": ["Asian"],
+                                               "disability_status": "no"}}, [], [])
+
+
+def sponsor_field(**kw):
+    return pf("s", question=kw.pop("question", AUTHORIZED_WITHOUT), slot="work_auth.sponsorship_now",
+              options=opts("Yes", "No"), **kw)
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_jev_is_asked_for_the_option_that_means_the_fact_as_the_question_is_worded(db_session, monkeypatch):
-    """"No" means nothing alone: "authorized WITHOUT sponsorship?" asks the
-    reverse of "needs sponsorship", and its right answer to a No is Yes."""
-    calls = fake_jev(monkeypatch, {"s": ("o1", 0.95)})
-    pick([pf("s", question=AUTHORIZED_WITHOUT, slot="work_auth.sponsorship_now", options=opts("Yes", "No"))],
-         db_session)
+@pytest.mark.parametrize("way, answer", [("same", "No"), ("opposite", "Yes")])
+def test_the_pick_is_asked_for_the_answer_code_computed(db_session, monkeypatch, way, answer):
+    """"No" to "needs sponsorship" is "Yes" to "authorized WITHOUT sponsorship":
+    the AI only said which way the question runs; code flipped the value, and
+    the pick is literal — with no description left to flip it back."""
+    calls = fake_jev(monkeypatch, {"s": ("o1" if answer == "Yes" else "o2", 0.95)}, ways={"s": (way, 0.95)})
+    got = pick([sponsor_field()], db_session)
     text = calls[0]["questions"]["s"]["instructions"]
-    assert json.dumps(SPONSOR_NOW) in text and '"No"' in text
-    assert "reverse" in text and "negat" in text
+    assert f"The applicant's answer to form field s ({json.dumps(AUTHORIZED_WITHOUT)}) is {json.dumps(answer)}" in text
+    assert "Which option states that answer?" in text
+    assert SPONSOR_NOW not in json.dumps(calls[0])
     [state] = calls[0]["state"]["fields"]
-    assert (state["fact"], state["applicant_values"]) == (SPONSOR_NOW, ["No"])
+    assert state == {"id": "s", "question": AUTHORIZED_WITHOUT, "answer": answer}
+    assert got["s"].model_dump() == {"oids": ["o1" if answer == "Yes" else "o2"], "reason": "matched"}
 
 
-def test_the_fast_model_is_given_each_facts_meaning_beside_its_value(db_session, monkeypatch):
-    prompts = fake_llm(monkeypatch)
-    pick([pf("s", question=AUTHORIZED_WITHOUT, slot="work_auth.sponsorship_now", options=opts("Yes", "No")),
-          pf("k", slot="skills", item="SQL", options=opts("SQL"))], db_session)
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("way", [("neither", 0.99), ("opposite", 0.6), ("same", 0.8)])
+def test_an_unsure_polarity_abstains_without_a_pick(db_session, monkeypatch, way):
+    calls = fake_jev(monkeypatch, {"s": ("o1", 0.99)}, ways={"s": way})
+    prompts = fake_llm(monkeypatch, ways={"s": ("neither", 0.99)})   # the fast second opinion is unsure too
+    got = pick([sponsor_field()], db_session)
+    assert got["s"].reason == "abstained" and calls == [] and prompts == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_wordy_value_asked_the_opposite_way_abstains(db_session, monkeypatch):
+    """"No, I do not have a disability" is never rewritten into a Yes."""
+    calls = fake_jev(monkeypatch, {"d": ("o1", 0.99)}, ways={"d": ("opposite", 0.99)})
+    fake_llm(monkeypatch, ways={"d": ("opposite", 0.99)})
+    got = autofill_pick.pick([pf("d", question="Are you free of any disability?", slot="eeo.disability_status",
+                                 options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
+    assert got["d"].reason == "abstained" and calls == []
+    calls = fake_jev(monkeypatch, {"d": ("o2", 0.99)}, ways={"d": ("same", 0.99)})
+    autofill_pick.pick([pf("d", question="Do you have a disability?", slot="eeo.disability_status",
+                           options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
+    assert json.dumps("No, I do not have a disability") in calls[0]["questions"]["d"]["instructions"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_status_or_list_fact_keeps_its_description_and_is_never_a_yes_or_no(db_session, monkeypatch):
+    """No polarity for a fact that is not a Yes or a No: its description and
+    NEVER_YES_NO, as before."""
+    calls = fake_jev(monkeypatch)
+    autofill_pick.pick([pf("s", question="Do you require sponsorship?", slot="work_auth.status", options=opts("Yes", "No")),
+                        pf("r", question="Are you a member of an underrepresented group?", slot="eeo.race_ethnicity",
+                           item="Asian", options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
+    for fid, slot, value in (("s", "work_auth.status", "F-1 OPT"), ("r", "eeo.race_ethnicity", "Asian")):
+        text = calls[0]["questions"][fid]["instructions"]
+        assert json.dumps(STATUS_FACTS[slot].describe) in text and json.dumps(value) in text, fid
+        assert autofill_pick.NEVER_YES_NO in text, fid
+    assert {f["id"]: f.get("fact") for f in calls[0]["state"]["fields"]} == {
+        "s": STATUS_FACTS["work_auth.status"].describe, "r": STATUS_FACTS["eeo.race_ethnicity"].describe}
+
+
+def test_the_fast_model_is_given_the_answer_for_a_yes_or_no_and_the_fact_for_the_rest(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, ways={"s": ("opposite", 0.95)})
+    pick([sponsor_field(), pf("k", slot="skills", item="SQL", options=opts("SQL"))], db_session)
     prompt = prompts[0]["prompt"]
-    fields = json.loads(prompt.split("Fields: ", 1)[1])
-    assert [(f["fact"], f["applicant_values"]) for f in fields] == [(SPONSOR_NOW, ["No"]),
-                                                                    (FACTS["skills"].describe, ["SQL"])]
-    assert "reverse" in prompt and "negat" in prompt
-    # The description is value-free: no other value of the applicant's rides along.
+    fields = {f["id"]: f for f in json.loads(prompt.split("Fields: ", 1)[1])}
+    assert (fields["s"].get("answer"), "fact" in fields["s"], "applicant_values" in fields["s"]) == ("Yes", False, False)
+    assert (fields["k"]["fact"], fields["k"]["applicant_values"]) == (FACTS["skills"].describe, ["SQL"])
     assert "Business Analytics" not in prompt and "Tableau" not in prompt and "Referral" not in prompt
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_picks_the_literal_answer(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"s": ("none", 0.9)}, ways={"s": ("opposite", 0.95)})
+    prompts = fake_llm(monkeypatch, {"s": {"oids": ["o1"], "confidence": 0.95}})
+    got = pick([sponsor_field()], db_session)
+    [asked] = prompts
+    assert asked["trace_name"] == SECOND
+    assert json.loads(asked["prompt"].split("Fields: ", 1)[1])[0]["answer"] == "Yes"
+    assert got["s"].model_dump() == {"oids": ["o1"], "reason": "matched"}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1021,69 +1107,31 @@ def test_a_low_stakes_field_carries_no_fact(db_session, monkeypatch):
     model_settings.set_autofill_low_stakes(db_session, True)
     calls = fake_jev(monkeypatch)
     pick([pf("h", route="low_stakes", options=opts("LinkedIn"))], db_session)
-    assert "fact" not in calls[0]["state"]["fields"][0]
-
-
-# ---------- review of 62b38d48: no "states the value" left; the meaning rule only for a Yes or a No
-
-import re  # noqa: E402
-
-STATES_THE_VALUE = re.compile(r"states (the |its |this )?(applicant )?value", re.IGNORECASE)
-STATUS_FACTS = autofill_catalog.build({"work_auth": {"status": "opt", "sponsorship_now": False},
-                                       "eeo": {"race_ethnicity": ["Asian"]}}, [], [])
+    assert "fact" not in calls[0]["state"]["fields"][0] and "answer" not in calls[0]["state"]["fields"][0]
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_no_question_or_criterion_asks_for_the_option_that_states_the_value(db_session, monkeypatch):
+def test_no_prompt_asks_the_one_shot_rule_or_for_the_option_that_states_the_value(db_session, monkeypatch):
     model_settings.set_autofill_low_stakes(db_session, True)
-    calls = fake_jev(monkeypatch)
-    fields = [pf("s", question=AUTHORIZED_WITHOUT, slot="work_auth.sponsorship_now", options=opts("Yes", "No")),
-              pf("h", route="low_stakes", options=opts("LinkedIn"))]
+    assert not hasattr(autofill_pick, "MEANING_RULE")
+    calls = fake_jev(monkeypatch, ways={"s": ("opposite", 0.95)})
+    fields = [sponsor_field(), pf("h", route="low_stakes", options=opts("LinkedIn")),
+              pf("m", slot=DISCIPLINE, options=opts("Accounting"))]
     pick(fields, db_session)
-    assert not STATES_THE_VALUE.search(json.dumps(calls[0]["questions"]))
+    rendered = json.dumps(calls)
+    assert not STATES_THE_VALUE.search(rendered) and not ONE_SHOT.search(rendered)
     model_settings.set_autofill_engine(db_session, "fast")
-    prompts = fake_llm(monkeypatch)
+    prompts = fake_llm(monkeypatch, ways={"s": ("opposite", 0.95)})
     pick(fields, db_session)   # a mixed batch: the low-stakes paragraph is in it
-    assert "low_stakes" in prompts[0]["prompt"] and not STATES_THE_VALUE.search(prompts[0]["prompt"])
-
-
-@pytest.mark.usefixtures("jev_on")
-def test_the_meaning_rule_is_asked_for_a_yes_or_no_fact_only(db_session, monkeypatch):
-    """A status or a list value is never turned into a Yes or a No: "Do you
-    require sponsorship?" mapped to the work-authorization status stays none."""
-    calls = fake_jev(monkeypatch)
-    autofill_pick.pick([pf("y", question="Do you require sponsorship now?", slot="work_auth.sponsorship_now",
-                           options=opts("Yes", "No")),
-                        pf("s", question="Do you require sponsorship?", slot="work_auth.status", options=opts("Yes", "No")),
-                        pf("r", question="Are you a member of an underrepresented group?", slot="eeo.race_ethnicity",
-                           item="Asian", options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
-    questions = calls[0]["questions"]
-    assert autofill_pick.MEANING_RULE in questions["y"]["instructions"]
-    for fid in ("s", "r"):
-        assert autofill_pick.MEANING_RULE not in questions[fid]["instructions"], fid
-        assert autofill_pick.NEVER_YES_NO in questions[fid]["instructions"], fid
-
-
-def test_the_fast_model_is_told_which_facts_are_a_yes_or_a_no(db_session, monkeypatch):
-    prompts = fake_llm(monkeypatch)
-    autofill_pick.pick([pf("y", slot="work_auth.sponsorship_now", options=opts("Yes", "No")),
-                        pf("s", slot="work_auth.status", options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
     prompt = prompts[0]["prompt"]
-    fields = {f["id"]: f for f in json.loads(prompt.split("Fields: ", 1)[1])}
-    assert (fields["y"].get("yes_no"), fields["s"].get("yes_no")) == (True, None)
-    assert autofill_pick.MEANING_RULE in prompt and autofill_pick.NEVER_YES_NO in prompt
-    prompts = fake_llm(monkeypatch)
-    autofill_pick.pick([pf("s", slot="work_auth.status", options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
-    assert autofill_pick.MEANING_RULE not in prompts[0]["prompt"] and autofill_pick.NEVER_YES_NO in prompts[0]["prompt"]
+    assert "low_stakes" in prompt and not STATES_THE_VALUE.search(prompt) and not ONE_SHOT.search(prompt)
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_a_lower_case_stored_yes_is_read_with_its_meaning_and_still_matched(db_session, monkeypatch):
+def test_a_lower_case_stored_yes_is_flipped_and_still_matched(db_session, monkeypatch):
     facts = autofill_catalog.build({"eligibility": {"over_18": "yes"}}, [], [])
-    calls = fake_jev(monkeypatch, {"u": ("o2", 0.95)})
+    calls = fake_jev(monkeypatch, {"u": ("o2", 0.95)}, ways={"u": ("opposite", 0.95)})
     got = autofill_pick.pick([pf("u", question="Are you under 18 years of age?", slot="eligibility.over_18",
                                  options=opts("Yes", "No"))], facts, db_session, None)
-    text = calls[0]["questions"]["u"]["instructions"]
-    assert autofill_pick.MEANING_RULE in text and '"Yes"' in text
-    assert calls[0]["state"]["fields"][0]["applicant_values"] == ["Yes"]
+    assert calls[0]["state"]["fields"][0]["answer"] == "No"
     assert got["u"].model_dump() == {"oids": ["o2"], "reason": "matched"}

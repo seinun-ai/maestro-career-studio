@@ -69,6 +69,9 @@
     {"id": "reversed-not-a-citizen", "tag": "reversed", "question": "Are you a foreign national (not a U.S. citizen)?", "options": ["Yes", "No"], "slot": "derived.us_citizen", "fact": "No", "expected": "Yes"},
     {"id": "derived-status-for-sponsorship", "tag": "derived", "question": "Do you require sponsorship to work in the United States?", "options": ["Yes", "No"], "slot": "work_auth.status", "fact": "F-1 OPT", "expected": null},
     {"id": "derived-status-for-citizen", "tag": "derived", "question": "Are you a U.S. citizen?", "options": ["Yes", "No"], "slot": "work_auth.status", "fact": "H-1B visa", "expected": null},
-    {"id": "derived-race-for-yes-no", "tag": "derived", "question": "Do you identify as a member of an underrepresented group?", "options": ["Yes", "No"], "slot": "eeo.race_ethnicity", "fact": ["Asian"], "item": "Asian", "expected": null}
+    {"id": "derived-race-for-yes-no", "tag": "derived", "question": "Do you identify as a member of an underrepresented group?", "options": ["Yes", "No"], "slot": "eeo.race_ethnicity", "fact": ["Asian"], "item": "Asian", "expected": null},
+    {"id": "reversed-require-sponsorship-same", "tag": "reversed", "question": "Do you require sponsorship?", "options": ["Yes", "No"], "slot": "work_auth.sponsorship_future", "fact": "Yes", "expected": "Yes"},
+    {"id": "reversed-able-without-visa", "tag": "reversed", "question": "Are you able to work for us now without visa sponsorship?", "options": ["Yes", "No"], "slot": "work_auth.sponsorship_now", "fact": "No", "expected": "Yes"},
+    {"id": "reversed-disability-free", "tag": "reversed", "question": "Are you free of any disability?", "options": ["Yes", "No"], "slot": "eeo.disability_status", "fact": "No, I do not have a disability", "expected": null}
   ]
 }
