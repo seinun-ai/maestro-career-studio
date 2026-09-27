@@ -27,13 +27,15 @@ def test_sections_lists_repeating_groups_with_their_entries_and_add_button(page,
     load(page, fixture_html("workday_sections.html"))
     got = sections(page)
     assert [{k: v for k, v in s.items() if k != "sid"} for s in got] == [
-        {"heading": "Work Experience", "entries": 1, "filled": [False], "held": [[]], "add": "Add Another"},
-        {"heading": "Education", "entries": 1, "filled": [False], "held": [[]], "add": "Add Another"},
-        {"heading": "Websites", "entries": 0, "filled": [], "held": [], "add": "Add"},
+        {"heading": "Work Experience", "entries": 1, "filled": [False], "held": [[]], "numbers": [1],
+         "add": "Add Another"},
+        {"heading": "Education", "entries": 1, "filled": [False], "held": [[]], "numbers": [1], "add": "Add Another"},
+        {"heading": "Websites", "entries": 0, "filled": [], "held": [], "numbers": [], "add": "Add"},
     ]
     assert all(SID.match(s["sid"]) for s in got) and len({s["sid"] for s in got}) == 3
-    # Only the heading, the counts, what each entry holds and the button's words: never an element.
-    assert all(set(s) == {"sid", "heading", "entries", "filled", "held", "add"} for s in got)
+    # Only the heading, the counts, what each entry holds, its title's number
+    # and the button's words: never an element.
+    assert all(set(s) == {"sid", "heading", "entries", "filled", "held", "numbers", "add"} for s in got)
     # An entry holding a committed value is `filled`, and says what it holds
     # (for the local backend's reconciliation); the same section keeps its sid.
     page.fill("#Work-Experience-1-Job-Title", "Analyst")
@@ -147,6 +149,22 @@ def test_a_section_by_heading_alone_counts_entries_titled_after_it(page, load):
     assert (edu["heading"], edu["entries"], edu["add"]) == ("Education", 1, "Add another education")
     assert add(page, edu["sid"], "Education", 1)["outcome"] == "added"
     assert sections(page)[0]["entries"] == 2
+
+
+def test_each_entry_reports_its_titles_number_in_page_order(page, load):
+    """The loop places an entry by its title's number ("Work Experience 3" is
+    entry 3), the backend by its place on the page: a page numbering its
+    entries 1, 3 must say so, or they would disagree."""
+    load(page, """<div role="group" aria-labelledby="h"><h4 id="h">Work Experience</h4>
+      <div role="group" aria-label="Work Experience 1"><input aria-label="Employer"></div>
+      <div role="group" aria-label="Work Experience 3"><input aria-label="Employer"></div>
+      <button type="button" data-automation-id="add-button">Add Another</button></div>
+    <section><h3>Education</h3>
+      <div class="entry"><h4>Education 2</h4><label>School <input></label></div>
+      <div class="entry"><h4>Education 1</h4><label>School <input></label></div>
+      <button type="button">Add another</button></section>""")
+    assert [(s["heading"], s["numbers"]) for s in sections(page)] == [("Work Experience", [1, 3]),
+                                                                        ("Education", [2, 1])]
 
 
 def test_a_labelled_section_counts_every_numbered_entry_whatever_its_words(page, load):

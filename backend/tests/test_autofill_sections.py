@@ -70,11 +70,10 @@ def test_sections_maps_headings_to_profile_lists(db_session, monkeypatch):
     assert {sid: (p.kind, p.wanted) for sid, p in got.items()} == {
         # Two jobs have an employer AND a title; Globex has no title.
         "w": ("experience", 2),
-        # Entries pair with profile entries by POSITION, so only the complete
-        # ones before the first gap count: State University, then the BS
-        # entry names no school — an added entry 2 would pair with it and
-        # leave its required School empty. City College is past the gap.
-        "e": ("education", 1),
+        # The page's entry takes State University; the BS entry names no
+        # school (an added entry would leave its required School empty), so
+        # the Add brings City College, past it.
+        "e": ("education", 2),
         # A personal website and a GitHub profile; LinkedIn has its own box.
         "s": ("websites", 2),
         # No language or certification facts exist yet (languages: Task 10).
@@ -84,7 +83,7 @@ def test_sections_maps_headings_to_profile_lists(db_session, monkeypatch):
     # Jobs and schools are placed entry by entry (the page's one entry, then
     # the one to add); other lists name no entry, so nothing is placed.
     assert {sid: p.order for sid, p in got.items()} == {
-        "w": [0, 1], "e": [0], "s": None, "l": None, "c": None, "x": None}
+        "w": [0, 1], "e": [0, 2], "s": None, "l": None, "c": None, "x": None}
     [call] = calls
     assert set(call["questions"]) == set(HEADINGS)
     q = call["questions"]["w"]
@@ -187,7 +186,7 @@ def test_a_foreign_entry_is_reported_when_nothing_was_to_be_added(db_session, mo
 @pytest.mark.usefixtures("jev_on")
 def test_two_entries_holding_one_job_add_nothing(db_session, monkeypatch):
     assert planned(db_session, monkeypatch, JOBS3, ["Acme"], ["ACME Inc."]) == {
-        "kind": "experience", "wanted": 2, "reason": "held_out_of_order", "order": [0, None]}
+        "kind": "experience", "wanted": 2, "reason": "held_twice", "order": [0, None]}
     # Nothing to add anyway: the second holding is still placed nowhere, silently.
     one = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst"}], [])
     assert planned(db_session, monkeypatch, one, ["Acme"], ["ACME Inc."]) == {
@@ -224,12 +223,28 @@ def test_education_is_placed_by_the_school(db_session, monkeypatch):
     assert planned(db_session, monkeypatch, facts, ["Old School"], **kw)["reason"] == "held_unmatched"
 
 
-def test_only_complete_entries_before_the_first_gap_are_wanted():
+def test_only_complete_entries_are_wanted():
     facts = autofill_catalog.build({"education": [{"school": "State U"}, {"degree": "BS"}, {"school": "City"}]},
                                    [{"employer": "Acme"}, {"employer": "Initech", "title": "Intern"}], [])
-    # A gap at entry 1 (no school) or entry 0 (no title): nothing past it.
-    assert autofill_sections.wanted("education", facts) == 1
-    assert autofill_sections.wanted("experience", facts) == 0
+    # An entry missing a required fact (no school, no title) is skipped, not a wall.
+    assert autofill_sections.wanted("education", facts) == 2
+    assert autofill_sections.wanted("experience", facts) == 1
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_an_add_skips_a_profile_entry_missing_a_required_fact(db_session, monkeypatch):
+    """Placed by profile entry, an Add need not stop at a gap: education
+    [A, (no school), C] on an empty page adds A and C, never the one with no
+    school."""
+    facts = autofill_catalog.build({"education": [{"school": "A"}, {"degree": "BS"}, {"school": "C"}]}, [], [])
+    fake_jev(monkeypatch, {"e": ("education", 0.9)})
+    got = autofill_sections.plan([PageSection(sid="e", heading="Education", entries=0)], facts, db_session)
+    assert got["e"].model_dump() == {"kind": "education", "wanted": 2, "reason": None, "order": [0, 2]}
+
+
+def test_place_names_its_parts():
+    got = autofill_sections.place(held_section("w", "Work Experience", [], ["Acme"]), "experience", JOBS3)
+    assert got == autofill_sections.Placement(order=[1, 0], free=[2], safe=True, foreign=False)
 
 
 @pytest.mark.usefixtures("jev_on")

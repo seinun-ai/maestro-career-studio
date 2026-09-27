@@ -17,6 +17,10 @@ Policy = Literal["any", "flag", "exact"]
 FREE_TEXT = "free_text"
 NO_SLOT = "none"
 
+# Slots whose policy is not their section's: derived facts (autofill_catalog)
+# sit in their own `derived` section, but US citizenship is a knockout answer
+# and the full name a fact about the applicant.
+_SLOT_POLICY: dict[str, Policy] = {"derived.us_citizen": "exact", "derived.full_name": "flag"}
 _EXACT_SECTIONS = frozenset({"work_auth", "eligibility", "eeo"})
 _FLAG_SECTIONS = frozenset({"education", "personal", "experience", "skills", "custom"})
 
@@ -24,6 +28,8 @@ _FLAG_SECTIONS = frozenset({"education", "personal", "experience", "skills", "cu
 def policy_for(slot: str | None) -> Policy:
     if slot is None:
         return "flag"
+    if slot in _SLOT_POLICY:
+        return _SLOT_POLICY[slot]
     section = slot.split(".", 1)[0]
     if section in _EXACT_SECTIONS:
         return "exact"

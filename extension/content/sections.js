@@ -31,6 +31,9 @@
  *
  * NOT SEEN: sections inside shadow roots (the walk is `document`'s own).
  *
+ * An entry's number is its title's ("Work Experience 3" → 3), reported in
+ * page order beside what it holds.
+ *
  * WHAT THIS FILE PUBLISHES: ns.fillSections = { list, add }.
  */
 (() => {
@@ -108,7 +111,7 @@
     if (!heading || ns.repeatOf(heading) || !base().visible(el)) return null;
     const groups = [...el.querySelectorAll('[role="group"]')].filter((g) => ns.repeatOf(titleOf(g)) && base().visible(g));
     const entries = groups.filter((g) => !groups.some((o) => o !== g && o.contains(g)))
-      .map((g) => ({ el: g, block: true, has: (n) => g.contains(n) }));
+      .map((g) => ({ el: g, block: true, n: ns.repeatOf(titleOf(g)).n, has: (n) => g.contains(n) }));
     const button = ownAdds(el, entries, el)[0] ?? null;
     return button || !needAdd ? { key: el, aria: true, heading, entries, button } : null;
   };
@@ -129,14 +132,15 @@
     if (!titles.length) return null;
     const titlesIn = (n) => titles.filter((x) => n.contains(x)).length;
     const entries = titles.map((t, k) => {
+      const number = ns.repeatOf(text(t)).n;
       let node = t.parentElement;
       if (node === container) {
         // Flat: the title sits in the container itself; the entry runs to the next title (or the stretch's end).
         const next = titles[k + 1] ?? end;
-        return { el: t, block: false, has: (n) => container.contains(n) && precedes(t, n) && (!next || precedes(n, next)) };
+        return { el: t, block: false, n: number, has: (n) => container.contains(n) && precedes(t, n) && (!next || precedes(n, next)) };
       }
       while (node.parentElement !== container && titlesIn(node.parentElement) === 1) node = node.parentElement;
-      return { el: node, block: true, has: (n) => node.contains(n) };
+      return { el: node, block: true, n: number, has: (n) => node.contains(n) };
     }).filter((e) => base().visible(e.el));
     // Nothing marks where a FLAT entry ends, so an Add-like button inside one
     // ("Add responsibility") could pass for the section's: with flat entries,
@@ -190,6 +194,10 @@
       sid: mint(key, aria), heading, entries: entries.length,
       filled: entries.map((e) => held.some(([n]) => e.has(n))),
       held: entries.map(holds),
+      // Each entry's title number, in page order ("Work Experience 3" → 3):
+      // the loop finds a field's entry by it, the backend places by position,
+      // so the loop places only a section numbered 1..N.
+      numbers: entries.map((e) => e.n),
       add: text(button) || button.value || "",
     }));
   };

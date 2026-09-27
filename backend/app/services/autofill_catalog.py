@@ -16,8 +16,9 @@ it is derived from is.
 import re
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, get_args
 
+from app.schemas.autofill_profile import WorkAuthStatus
 from app.services.autofill_profile import canonical_identity_from_profile
 from app.services.autofill_slots import Policy, _as_text, policy_for
 
@@ -62,14 +63,14 @@ _DESCRIBES: dict[str, str] = {
     # as "desired salary": one fact, described in each wording.
     "preferences.desired_salary": "desired salary, compensation or salary requirements (expected pay)",
 }
-# Work-authorization statuses that answer "are you a US citizen?". Only a
-# citizen is one: every other status (a green card, any visa, none) is a No.
-# A status not listed here derives nothing.
-_US_CITIZEN = {"citizen": "Yes", "permanent_resident": "No", "opt": "No", "stem_opt": "No", "h1b": "No",
-               "tn": "No", "other_visa": "No", "not_authorized": "No"}
-# A stored availability that means "today" (the owner's profile says "Immedietly"):
-# the WHOLE value is the word, so "2 weeks from now" or "not immediately" is not.
-_IMMEDIATE = re.compile(r"^\W*(available\s+)?(immediate(ly)?|immediet\w*|asap|now|right\s+away)\W*$",
+# "Are you a US citizen?", from every status the profile can store: only a
+# citizen is one; every other status (a green card, any visa, none) is a No.
+# A status the profile cannot store derives nothing.
+_US_CITIZEN = {status: "Yes" if status == "citizen" else "No" for status in get_args(WorkAuthStatus)}
+# A stored availability that means "today" (the owner's profile says "Immedietly";
+# "Immediatly", "Immediate start", "Available: now"): the WHOLE value is the
+# word, so "2 weeks from now" or "not immediately" is not.
+_IMMEDIATE = re.compile(r"^\W*(available\W*)?(immedi[ae]?t\w*(\s+start)?|asap|now|right\s+away)\W*$",
                         re.IGNORECASE)
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
@@ -164,20 +165,24 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
     identity = canonical_identity_from_profile({"personal": personal})
     if identity["legal_first"] and identity["legal_last"]:
         out["derived.full_name"] = Fact("derived.full_name", f"{identity['legal_first']} {identity['legal_last']}",
-                                        "your full legal name, for name and signature boxes", "flag")
+                                        "your full legal name, for name and signature boxes",
+                                        policy_for("derived.full_name"))
     out["derived.today"] = Fact("derived.today", today.isoformat(),
-                                "today's date, for a date the applicant signs or fills in today", "any")
+                                "today's date, for a date the applicant signs or fills in today",
+                                policy_for("derived.today"))
     work_auth = profile.get("work_auth") if isinstance(profile.get("work_auth"), dict) else {}
     status = work_auth.get("status")
     if isinstance(status, str) and status in _US_CITIZEN:
         out["derived.us_citizen"] = Fact(
             "derived.us_citizen", _US_CITIZEN[status],
-            "whether you are a US citizen, derived from your work-authorization status (yes/no)", "exact")
+            "whether you are a US citizen, derived from your work-authorization status (yes/no)",
+            policy_for("derived.us_citizen"))
     preferences = profile.get("preferences") if isinstance(profile.get("preferences"), dict) else {}
     start = preferences.get("earliest_start_date")
     if isinstance(start, str) and _IMMEDIATE.search(start):
         out["derived.earliest_start_date"] = Fact("derived.earliest_start_date", today.isoformat(),
-                                                  "the earliest date you can start, as a calendar date", "any")
+                                                  "the earliest date you can start, as a calendar date",
+                                                  policy_for("derived.earliest_start_date"))
 
 
 def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str], *,

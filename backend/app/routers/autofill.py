@@ -321,7 +321,9 @@ def post_choose(
 
 def _today(theirs: date | None) -> date:
     """The applicant's date: the browser's, when it is within a day of the
-    server's (no time zone is further apart), else the server's."""
+    server's, else the server's. A browser's local date is at most a day from
+    the UTC date a container's clock gives (UTC−12 to UTC+14), and the same
+    as a server on the applicant's own machine."""
     ours = date.today()
     return theirs if theirs is not None and abs((theirs - ours).days) <= 1 else ours
 

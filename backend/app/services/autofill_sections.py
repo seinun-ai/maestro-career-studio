@@ -19,13 +19,13 @@ is matched to the profile entry it holds — on the employer (a job; and its
 title, when two jobs share an employer) or the school, normalized. Empty
 entries (and entries to add) take the profile entries no entry holds, lowest
 first, in page order. `order` says so per entry, and /map writes each entry's
-facts from ITS profile entry (`MapField.entry_slot`), so an entry pre-filled
+facts from ITS profile entry (`MapField.profile_entry`), so an entry pre-filled
 out of profile order is never given a job the page already shows. An Add is
 safe only when every entry holding data holds a different profile entry.
 An entry holding something the profile does not have may be a profile entry
 spelled another way, so its WHOLE section is placed nowhere and nothing is
 added (`held_unmatched`, reported even when nothing was to be added); two
-entries holding the same one add nothing (`held_out_of_order`). The plan says
+entries holding the same one add nothing (`held_twice`). The plan says
 why, value-free. What the entries hold (`held`) comes to this
 local backend for that match only.
 """
@@ -33,7 +33,7 @@ local backend for that match only.
 import json
 import logging
 import re
-from itertools import takewhile
+from typing import NamedTuple
 
 from sqlalchemy.orm import Session
 
@@ -78,14 +78,10 @@ def wanted(kind: str, facts: dict[str, Fact]) -> int:
     needs = _NEEDS.get(kind)
     if not needs:
         return 0
-    # What `plan` wants of a section with no entries yet: added entries take
-    # the profile entries in order, so only the complete ones before the first
-    # gap count — an entry added for an incomplete profile entry would leave a
-    # REQUIRED field empty.
-    n = 0
-    while _complete(kind, n, facts):
-        n += 1
-    return n
+    # What `plan` wants of a section with no entries yet: the complete profile
+    # entries — one missing a required fact is skipped, since an entry added
+    # for it would leave a REQUIRED field empty.
+    return sum(_complete(kind, i, facts) for i in _entries(kind, facts))
 
 
 # What names a profile entry, per kind: the value an entry holding it must show.
@@ -110,7 +106,10 @@ def _complete(kind: str, i: int, facts: dict[str, Fact]) -> bool:
 
 def _match(kind: str, values: set[str], facts: dict[str, Fact], taken: set[int]) -> int | None:
     """The profile entry an entry holding `values` (normalized) holds, by the
-    value that names it; the first not already taken when several do."""
+    value that names it: the first not already `taken` when several do. When
+    every hit is taken, a TAKEN one is returned — not None — so the caller
+    sees a second holding of one entry (a duplicate) rather than a foreign
+    entry. None: the profile has no such entry."""
     key = _NAMED_BY[kind]
     hits = []
     for i in _entries(kind, facts):
@@ -127,12 +126,20 @@ def _match(kind: str, values: set[str], facts: dict[str, Fact], taken: set[int])
     return next((i for i in hits if i not in taken), hits[0] if hits else None)
 
 
-def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> tuple[list[int | None], list[int], bool, bool]:
+class Placement(NamedTuple):
     """Per page entry, the profile entry it holds or is given (None: a second
-    holding of one, or past the profile); the profile entries left for
+    holding of one, past the profile, or every entry of a section holding a
+    foreign one); the profile entries no entry holds or is given, left for
     entries to add; whether every entry holding data holds a different
-    profile entry (an Add is safe); and whether one holds something the
-    profile does not have (then every entry is None)."""
+    profile entry; and whether one holds something the profile does not have."""
+
+    order: list[int | None]
+    free: list[int]
+    safe: bool
+    foreign: bool
+
+
+def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> Placement:
     held: dict[int, int | None] = {}
     taken: set[int] = set()
     foreign = False
@@ -148,11 +155,19 @@ def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> tuple[list
         else:
             held[j] = i
             taken.add(i)
-    free = [i for i in _entries(kind, facts) if i not in taken]
     if foreign:
-        return [None] * section.entries, [], False, True
-    order = [held[j] if j in held else (free.pop(0) if free else None) for j in range(section.entries)]
-    return order, free, None not in held.values(), False
+        return Placement([None] * section.entries, [], False, True)
+    free = [i for i in _entries(kind, facts) if i not in taken]
+    order: list[int | None] = []
+    for j in range(section.entries):
+        if j in held:
+            order.append(held[j])
+        elif free:
+            order.append(free[0])
+            free = free[1:]
+        else:
+            order.append(None)
+    return Placement(order, free, None not in held.values(), False)
 
 
 def _shares_employer(j: int, facts: dict[str, Fact]) -> bool:
@@ -214,14 +229,15 @@ def plan(sections: list[PageSection], facts: dict[str, Fact], session: Session) 
         if kind not in _NAMED_BY:
             out[s.sid] = SectionPlan(kind=kind, wanted=wanted(kind, facts))
             continue
-        order, free, safe, foreign = place(s, kind, facts)
-        # Added entries take the free profile entries in order, so only those
-        # before the first one missing a required fact are added.
-        add = len(list(takewhile(lambda i, k=kind: _complete(k, i, facts), free)))
-        if foreign:
-            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_unmatched", order=order)
-        elif add and not safe:
-            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_out_of_order", order=order)
+        placed = place(s, kind, facts)
+        # Added entries take the free profile entries that hold every fact an
+        # entry requires, in order: one missing a fact is skipped (placed by
+        # profile entry, a gap is no wall).
+        add = [i for i in placed.free if _complete(kind, i, facts)]
+        if placed.foreign:
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_unmatched", order=placed.order)
+        elif add and not placed.safe:
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_twice", order=placed.order)
         else:
-            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries + add, order=order + free[:add])
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries + len(add), order=placed.order + add)
     return out

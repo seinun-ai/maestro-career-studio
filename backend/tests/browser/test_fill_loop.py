@@ -104,8 +104,8 @@ DRIVER = """async (spec) => {
     inflight[path] -= 1;
     if (spec.apiHang?.includes(path)) return new Promise(() => {});
     if (path.startsWith("/api/autofill/context")) return {eeo_consent: {consent_forms: false}};
-    // An entry placed nowhere (entry_slot null) gets nothing, as the real /map does.
-    if (path === "/api/autofill/map") return {fields: Object.fromEntries(body.fields.map(f => [f.fid, f.entry_slot === null ? {route: "none"} : spec.map[`${f.fid}:${f.question}`] ?? spec.map[f.fid] ?? {route: "none"}]))};
+    // An entry placed nowhere (profile_entry null) gets nothing, as the real /map does.
+    if (path === "/api/autofill/map") return {fields: Object.fromEntries(body.fields.map(f => [f.fid, f.profile_entry === null ? {route: "none"} : spec.map[`${f.fid}:${f.question}`] ?? spec.map[f.fid] ?? {route: "none"}]))};
     if (path === "/api/autofill/pick") return {picks: Object.fromEntries(body.fields.map(f => [f.fid, spec.pick[`${f.fid}:${f.item ?? ""}`] ?? spec.pick[f.fid] ?? {oids: [], reason: "abstained"}]))};
     if (path === "/api/autofill/step") return spec.step.moves.shift() ?? {mid: null, reason: "abstained"};
     if (path === "/api/autofill/sections") return {sections: Object.fromEntries(body.sections.map(x => [x.sid, spec.kinds?.[x.sid] ?? {kind: "none", wanted: 0}]))};
@@ -464,49 +464,22 @@ def test_the_final_sweep_runs_even_when_the_rounds_run_out(page, load):
     assert out["calls"].count("fill_sweep") == 2
 
 
-def test_phone_slots_are_written_with_the_phone_format(page, load):
-    out = run(page, load, frames=[[f("p", question="Phone"), f("c", question="City")]],
-              map={"p": {"route": "slot", "slot": "personal.phone", "value": "5550100000"},
-                   "c": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
-    assert statuses(out) == {"p": "verified", "c": "verified"}
-    writes = {a["fid"]: a for a in actions(out, "write")}
-    assert writes["p"]["format"] == "phone" and "format" not in writes["c"]
-
-
-def test_salary_slots_write_with_money_format(page, load):
-    """The FACT decides the format: a salary slot compares as a number, a
-    number-looking answer in another slot does not."""
-    out = run(page, load, frames=[[f("s", question="Desired salary"), f("y", question="Years of experience")]],
-              map={"s": {"route": "slot", "slot": "preferences.desired_salary", "value": "80000"},
-                   "y": {"route": "slot", "slot": "experience.years", "value": "8"}})
-    assert statuses(out) == {"s": "verified", "y": "verified"}
-    writes = {a["fid"]: a for a in actions(out, "write")}
-    assert writes["s"]["format"] == "money" and "format" not in writes["y"]
-
-
-def test_only_a_salary_word_in_the_slot_name_makes_it_money(page, load):
-    slots = {"a": "preferences.salary", "b": "preferences.expected_compensation", "c": "custom.pay",
-             "d": "personal.payroll_id", "e": "personal.paypal_email", "g": "custom.display_name"}
-    out = run(page, load, frames=[[f(k, question=f"Q{k}") for k in slots]],
-              map={k: {"route": "slot", "slot": v, "value": "1"} for k, v in slots.items()})
-    writes = {a["fid"]: a.get("format") for a in actions(out, "write")}
-    assert writes == {"a": "money", "b": "money", "c": "money", "d": None, "e": None, "g": None}
-
-
-def test_the_backends_format_wins_over_the_slot_name(page, load):
-    """/map says the format (decided by the slot, server-side); the loop's own
-    reading of the slot name is only for a response that does not say."""
+def test_the_write_format_is_the_backends(page, load):
+    """/map says the format, decided by the slot server-side (the backend's
+    `format_of` is the only reading of a slot name). The loop never guesses
+    one: a response that does not say, or names a format it does not know,
+    writes with none."""
     out = run(page, load, frames=[[f("p", question="Contact number"), f("s", question="Desired salary"),
-                                   f("o", question="Phone")]],
+                                   f("c", question="City"), f("o", question="Phone"), f("x", question="X")]],
               map={"p": {"route": "slot", "slot": "custom.4", "value": "5550100000", "format": "phone"},
-                   "s": {"route": "slot", "slot": "preferences.desired_salary", "value": "80000", "format": None},
-                   "o": {"route": "slot", "slot": "personal.phone", "value": "5550100000"}})
+                   "s": {"route": "slot", "slot": "preferences.desired_salary", "value": "80000", "format": "money"},
+                   "c": {"route": "slot", "slot": "personal.city", "value": "Springfield", "format": None},
+                   "o": {"route": "slot", "slot": "personal.phone", "value": "5550100000"},
+                   "x": {"route": "slot", "slot": "personal.phone", "value": "1", "format": "zip"}})
+    assert set(statuses(out).values()) == {"verified"}
     writes = {a["fid"]: a.get("format") for a in actions(out, "write")}
-    assert writes == {"p": "phone", "s": None, "o": "phone"}
-    # A format the loop does not know is none at all.
-    out = run(page, load, frames=[[f("x", question="X")]],
-              map={"x": {"route": "slot", "slot": "personal.phone", "value": "1", "format": "zip"}})
-    assert "format" not in actions(out, "write")[0]
+    assert writes == {"p": "phone", "s": "money", "c": None, "o": None, "x": None}
+    assert not [a for a in actions(out, "write") if "format" in a and a["format"] is None]
 
 
 def test_every_backend_call_carries_the_browsers_date(page, load):
@@ -1466,10 +1439,11 @@ def work(n, **kw):
     return [f(f"t{n}", question="Job Title", **sec, **kw), f(f"c{n}", question="Company", **sec, **kw)]
 
 
-def section(sid="f-s1", heading="Work Experience", entries=1, filled=None, held=None):
+def section(sid="f-s1", heading="Work Experience", entries=1, filled=None, held=None, numbers=None):
     return {"sid": sid, "heading": heading, "entries": entries,
             "filled": filled if filled is not None else [False] * entries,
-            "held": held if held is not None else [[]] * entries, "add": "Add Another"}
+            "held": held if held is not None else [[]] * entries,
+            "numbers": numbers if numbers is not None else list(range(1, entries + 1)), "add": "Add Another"}
 
 
 JOBS = {"t1": {"route": "slot", "slot": "experience.0.title", "value": "Analyst"},
@@ -1551,23 +1525,23 @@ def test_add_never_exceeds_what_the_profile_can_fill(page, load):
     assert adds(out) == []
 
 
-def test_entries_held_out_of_order_add_nothing_and_the_report_says_why(page, load):
+def test_entries_held_twice_add_nothing_and_the_report_says_why(page, load):
     """The backend found two entries holding the same profile job
     (app/services/autofill_sections): nothing is added."""
     out = run(page, load, frames=[work(1, committed="Initech", answered=True) + work(2, committed="Initech", answered=True)],
               sections=[[section(entries=2, filled=[True, True], held=[["Initech"], ["Initech"]])]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 2, "reason": "held_out_of_order",
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "reason": "held_twice",
                               "order": [1, None]}}, map=JOBS)
     assert adds(out) == []
     assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 2,
                                           "entries": 2, "added": 0, "outcome": None,
-                                          "reason": "held_out_of_order"}]
+                                          "reason": "held_twice"}]
 
 
 def test_each_entrys_fields_carry_the_profile_entry_it_was_placed_at(page, load):
     """/sections placed the page's entries by what they hold (`order`): entry 1
     is empty and entry 2 holds job #1, so entry 1 gets job #2 and the added
-    entry 3 gets job #3. /map is told each field's `entry_slot`; a field in
+    entry 3 gets job #3. /map is told each field's `profile_entry`; a field in
     no listed section is told nothing."""
     held = work(2, committed="Acme", answered=True)
     out = run(page, load, frames=[work(1) + held, work(1) + held + work(3)],
@@ -1577,7 +1551,7 @@ def test_each_entrys_fields_carry_the_profile_entry_it_was_placed_at(page, load)
               map=JOBS | {"city": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
     assert len(adds(out)) == 1
     [body] = bodies(out, "/api/autofill/map")
-    assert {x["fid"]: x.get("entry_slot", "absent") for x in body["fields"]} == {
+    assert {x["fid"]: x.get("profile_entry", "absent") for x in body["fields"]} == {
         "t1": 1, "c1": 1, "t3": 2, "c3": 2}
     # The section's kind goes with it: a fact of another kind is no entry's.
     assert {x["entry_kind"] for x in body["fields"]} == {"experience"}
@@ -1589,10 +1563,10 @@ def test_a_foreign_entry_and_one_past_the_order_are_placed_nowhere(page, load):
     puts nothing of the profile's there."""
     out = run(page, load, frames=[work(1) + work(2) + work(3)],
               sections=[[section(entries=3)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 3, "reason": "held_out_of_order",
+              kinds={"f-s1": {"kind": "experience", "wanted": 3, "reason": "held_twice",
                               "order": [None, 0]}}, map=JOBS)
     [body] = bodies(out, "/api/autofill/map")
-    assert {x["fid"]: x.get("entry_slot", "absent") for x in body["fields"]} == {
+    assert {x["fid"]: x.get("profile_entry", "absent") for x in body["fields"]} == {
         "t1": None, "c1": None, "t2": 0, "c2": 0, "t3": None, "c3": None}
 
 
@@ -1603,35 +1577,37 @@ def test_without_an_order_page_order_stands(page, load, order):
     kinds = {"kind": "experience", "wanted": 1} | ({} if order == "absent" else {"order": order})
     out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]], kinds={"f-s1": kinds}, map=JOBS)
     [body] = bodies(out, "/api/autofill/map")
-    assert all("entry_slot" not in x and "entry_kind" not in x for x in body["fields"])
+    assert all("profile_entry" not in x and "entry_kind" not in x for x in body["fields"])
 
 
 @pytest.mark.parametrize("order", ["0,1", [0, "1"], [0, -1], [0, 1.5], [0, 21], [0] * 51])
 def test_an_order_that_cannot_be_read_places_nothing(page, load, order):
     """A malformed order is not page order: page order is what can give an
-    empty entry a job the page already shows. The section is placed nowhere."""
+    empty entry a job the page already shows. The section is left alone —
+    placed nowhere, nothing added — and the report says so."""
     out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 1, "order": order}}, map=JOBS)
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "order": order}}, map=JOBS)
     [body] = bodies(out, "/api/autofill/map")
-    assert [(x["entry_slot"], x["entry_kind"]) for x in body["fields"]] == [(None, "experience")] * 2
+    assert [(x["profile_entry"], "entry_kind" in x) for x in body["fields"]] == [(None, False)] * 2
+    assert adds(out) == [] and out["report"]["sections"][0]["reason"] == "unplaced"
 
 
-@pytest.mark.parametrize("how", ["failed", "none", "older"])
+@pytest.mark.parametrize("how", ["failed", "none", "a response without order"])
 def test_a_section_with_held_entries_and_no_placement_is_left_alone(page, load, how):
     """No placement for a section — /sections failed or hung, the model read
-    the heading as none, or an older backend sent no order — yet an entry
+    the heading as none, or a response without order — yet an entry
     holds data ([empty, "Acme"]): page order would give the empty entry job
     #1 again. Nothing is written in the section, nothing is added, and the
     report says the section was left."""
     held = work(2, committed="Acme", answered=True)
     kinds = {"failed": None, "none": {"kind": "none", "wanted": 0},
-             "older": {"kind": "experience", "wanted": 3}}[how]
+             "a response without order": {"kind": "experience", "wanted": 3}}[how]
     spec = {"apiHang": ["/api/autofill/sections"], "limits": {"API_MS": 200}} if kinds is None \
         else {"kinds": {"f-s1": kinds}}
     out = run(page, load, frames=[work(1) + held],
               sections=[[section(entries=2, filled=[False, True], held=[[], ["Acme"]])]], map=JOBS, **spec)
     [body] = bodies(out, "/api/autofill/map")
-    assert [(x["fid"], x["entry_slot"], "entry_kind" in x) for x in body["fields"]] == [
+    assert [(x["fid"], x["profile_entry"], "entry_kind" in x) for x in body["fields"]] == [
         ("t1", None, False), ("c1", None, False)]
     assert actions(out) == [] and adds(out) == []
     assert statuses(out) == {"t1": "needs_answer", "c1": "needs_answer", "t2": "already", "c2": "already"}
@@ -1644,9 +1620,41 @@ def test_a_section_with_only_empty_entries_and_no_placement_keeps_page_order(pag
     out = run(page, load, frames=[work(1) + work(2)], sections=[[section(entries=2)]],
               apiHang=["/api/autofill/sections"], limits={"API_MS": 200}, map=JOBS)
     [body] = bodies(out, "/api/autofill/map")
-    assert all("entry_slot" not in x for x in body["fields"])
+    assert all("profile_entry" not in x for x in body["fields"])
     assert statuses(out) == {"t1": "verified", "c1": "verified", "t2": "verified", "c2": "verified"}
     assert page.evaluate("(r) => window.careerStudioCompanion.fillLoop.sectionLines(r)", out["report"]) == []
+
+
+@pytest.mark.parametrize("numbers", [[1, 3], [2, 1], [1], [0, 1]])
+def test_a_section_numbered_out_of_step_with_its_entries_is_left_alone(page, load, numbers):
+    """The backend places entries by their place on the page, the loop finds a
+    field's entry by its title's number: a page numbering its two entries
+    "1, 3" (or out of order, or not every one) would give an empty entry the
+    job the next one holds. Unless the titles run 1..N in page order, the
+    section is placed nowhere."""
+    out = run(page, load, frames=[work(1) + work(3)], sections=[[section(entries=2, numbers=numbers)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 3, "order": [1, 0, 2]}}, map=JOBS)
+    [body] = bodies(out, "/api/autofill/map")
+    assert all(x["profile_entry"] is None and "entry_kind" not in x for x in body["fields"])
+    assert adds(out) == [] and out["report"]["sections"][0]["reason"] == "unplaced"
+
+
+def test_an_older_reason_word_is_still_understood(page, load):
+    out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 1, "reason": "held_out_of_order", "order": [0]}},
+              map=JOBS)
+    assert out["report"]["sections"][0]["reason"] == "held_twice"
+
+
+def test_the_loops_entry_limits_mirror_the_backends():
+    from typing import get_args
+
+    from app.schemas.autofill_fill import MAX_ENTRY_INDEX, EntryKind
+
+    loop = (EXTENSION / "shared" / "fill-loop.js").read_text(encoding="utf-8")
+    assert re.search(r"const MAX_ENTRY_INDEX = (\d+);", loop).group(1) == str(MAX_ENTRY_INDEX)
+    kinds = re.search(r"const PLACED_KINDS = new Set\(\[(.*?)\]\);", loop).group(1)
+    assert set(re.findall(r'"([a-z]+)"', kinds)) == set(get_args(EntryKind))
 
 
 def test_only_the_first_section_of_a_kind_is_placed(page, load):
@@ -1662,7 +1670,7 @@ def test_only_the_first_section_of_a_kind_is_placed(page, load):
                      "f-s4": {"kind": "experience", "wanted": 1, "order": [0]},
                      "f-s5": {"kind": "education", "wanted": 1, "order": [0]}}, map=JOBS)
     [body] = bodies(out, "/api/autofill/map")
-    assert {x["fid"]: (x.get("entry_slot", "absent"), x.get("entry_kind")) for x in body["fields"]} == {
+    assert {x["fid"]: (x.get("profile_entry", "absent"), x.get("entry_kind")) for x in body["fields"]} == {
         "t1": (0, "experience"), "c1": (0, "experience"), "v1": (None, "experience"), "s1": (0, "education")}
 
 

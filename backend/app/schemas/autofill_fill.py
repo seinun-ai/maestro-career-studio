@@ -11,6 +11,12 @@ Route = Literal["slot", "free_text", "low_stakes", "none", "blocked"]
 # How a written value compares with what the page shows: decided by the fact's
 # SLOT (autofill_map.format_of), never by what the value looks like.
 Format = Literal["phone", "money"]
+# The profile lists whose entries /sections places (by what the page's entries
+# hold) and /map writes by profile entry. The loop's PLACED_KINDS mirrors it.
+EntryKind = Literal["experience", "education"]
+# The highest entry index a field may carry (its page entry, or its profile
+# entry). The loop's MAX_ENTRY_INDEX mirrors it.
+MAX_ENTRY_INDEX = 20
 Reason = Literal["matched", "closest", "assumed", "abstained"]
 MAX_FIELDS = 40
 MAX_MAP_OPTIONS = 30
@@ -39,15 +45,15 @@ class MapField(BaseModel):
     fid: str = Field(min_length=1, max_length=64, pattern=FID)
     question: str = Field(max_length=300)
     section: str | None = Field(default=None, max_length=200)
-    repeat_index: int = Field(default=0, ge=0, le=20)
+    repeat_index: int = Field(default=0, ge=0, le=MAX_ENTRY_INDEX)
     # The profile entry /sections placed this field's entry at (its `order`),
     # by what the page's entries hold. ABSENT: no placement, page order stands.
     # NULL: an entry holding something the profile does not have, or past the
     # profile's entries — nothing of the profile's goes into it.
-    entry_slot: int | None = Field(default=None, ge=0, le=20)
-    # The kind of profile entry the section holds, sent with `entry_slot`: an
+    profile_entry: int | None = Field(default=None, ge=0, le=MAX_ENTRY_INDEX)
+    # The kind of profile entry the section holds, sent with `profile_entry`: an
     # entry fact of another kind is not this entry's (routed none).
-    entry_kind: Literal["experience", "education"] | None = None
+    entry_kind: EntryKind | None = None
     shape: Shape
     multi: bool = False
     required: bool = False
@@ -198,15 +204,15 @@ class SectionPlan(BaseModel):
     wanted: int = Field(ge=0)
     # Why none is added although the profile has more, or why the section is
     # left alone: the page cannot be reconciled with the profile.
-    # held_out_of_order: two entries hold the same profile entry, and an added
+    # held_twice: two entries hold the same profile entry, and an added
     # one would not be safe. held_unmatched: an entry holds something the
     # profile does not have — the whole section is placed nowhere, left to the
     # user, whatever there was to add.
-    reason: Literal["held_out_of_order", "held_unmatched"] | None = None
+    reason: Literal["held_twice", "held_unmatched"] | None = None
     # Jobs and schools only: per page entry, then per entry to add, the profile
     # entry (its catalog index) that entry holds or is given — null for one the
     # profile does not have. Numbers, never values; /map places by it
-    # (`MapField.entry_slot`).
+    # (`MapField.profile_entry`).
     order: list[int | None] | None = None
 
 

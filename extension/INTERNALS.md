@@ -418,7 +418,7 @@ know, and each one was learned from a live failure.
   title when two jobs share an employer, or the school, ignoring case,
   punctuation and company suffixes such as Inc, LLC, Ltd, Corp, Co and GmbH);
   empty entries, then added ones, take the profile entries no entry holds,
-  in order. /map is told each field's place (`entry_slot`) and writes that
+  in order. /map is told each field's place (`profile_entry`) and writes that
   profile entry's facts there, whatever order the page's entries are in — so
   an empty entry above a pre-filled job #1 gets job #2, never job #1 again,
   and a job the resume parser dropped is added in its own place. An entry
@@ -427,12 +427,17 @@ know, and each one was learned from a live failure.
   added, and the report says so. Two entries holding the same one add
   nothing. Only the first section of each kind is placed (a second one read
   as work experience gets nothing), an entry fact of another kind than its
-  section's is never written there, and an order that cannot be read places
-  nothing rather than falling back to page order. A section the backend
-  could not place at all (the ask failed or was slow, its heading was read as
-  no profile list) is filled in page order only while every entry is empty;
-  if one holds data the section is left to you, and the report says so. An added entry never takes
-  a profile entry missing a fact it requires (a school with no name). What the entries hold goes to the local backend for
+  section's is never written there, and a section whose order cannot be
+  read, or whose entry titles do not run 1, 2, 3… down the page (the
+  backend places entries by their place, the Companion finds an entry by its
+  title's number), is left to you rather than filled in page order. A
+  section the backend could not place at all (the ask failed or was slow,
+  its heading was read as no profile list) is filled in page order only
+  while every entry is empty; if one holds data the section is left to you.
+  Each of these says so in the report. An added entry never takes a profile
+  entry missing a fact it requires (a school with no name): it is skipped,
+  and the next complete one is added. What the entries hold goes to the
+  local backend for
   that match only, never to a model. Within one section the page
   listed, a fact is written into one entry only: a website that one entry
   was given, or already holds in a text box, is left for you in another. A

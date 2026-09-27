@@ -1,8 +1,10 @@
 from datetime import date
+from typing import get_args
 
 import pytest
 
 from app.services import autofill_catalog as cat
+from app.schemas.autofill_profile import WorkAuthStatus
 from app.services import autofill_slots
 
 PROFILE = {
@@ -157,14 +159,11 @@ def test_today_defaults_to_the_real_clock():
     assert cat.build({}, [], [])["derived.today"].value == date.today().isoformat()
 
 
-@pytest.mark.parametrize("status, citizen", [
-    ("citizen", "Yes"),
-    ("permanent_resident", "No"), ("opt", "No"), ("stem_opt", "No"), ("h1b", "No"), ("tn", "No"),
-    ("other_visa", "No"), ("not_authorized", "No"),
-])
-def test_us_citizen_is_derived_from_every_work_authorization_status(status, citizen):
+@pytest.mark.parametrize("status", get_args(WorkAuthStatus))
+def test_us_citizen_is_derived_from_every_work_authorization_status(status):
+    """Every status the profile can store answers it: only a citizen is one."""
     f = derived({"work_auth": {"status": status}})
-    assert f["derived.us_citizen"].value == citizen
+    assert f["derived.us_citizen"].value == ("Yes" if status == "citizen" else "No")
     assert f["derived.us_citizen"].describe == ("whether you are a US citizen, derived from your "
                                                 "work-authorization status (yes/no)")
     # A knockout answer: it maps only at the exact floor, and a near miss is refused.
@@ -178,7 +177,8 @@ def test_an_unknown_status_derives_no_citizenship(work_auth):
 
 
 @pytest.mark.parametrize("stored", ["Immedietly", "Immediately", "immediate", "ASAP", "right away", "Now",
-                                    "available now", "asap!", " Available immediately. ", "Right  away"])
+                                    "available now", "asap!", " Available immediately. ", "Right  away",
+                                    "Immediatly", "Immediate start", "Available: now"])
 def test_an_immediate_start_is_also_a_date(stored):
     f = cat.build({"preferences": {"earliest_start_date": stored}}, [], [], today=TODAY)
     # The words stay the answer to a question asked in words…
@@ -215,3 +215,15 @@ def test_derived_facts_survive_the_size_cap():
     f = cat.build({"personal": {"first_name": "A", "last_name": "B"}, "work_auth": {"status": "opt"},
                    "custom": [{"question": f"q{i}", "answer": "a"} for i in range(30)]}, many, ["x"] * 50, today=TODAY)
     assert {"derived.full_name", "derived.today", "derived.us_citizen"} <= set(f)
+
+
+@pytest.mark.parametrize("slot, policy", [
+    ("derived.us_citizen", "exact"), ("derived.full_name", "flag"), ("derived.today", "any"),
+    ("derived.earliest_start_date", "any"),
+])
+def test_derived_policies_come_from_policy_for(slot, policy):
+    """One place decides a slot's policy, derived slots included."""
+    assert autofill_slots.policy_for(slot) == policy
+    f = cat.build({"personal": {"first_name": "A", "last_name": "B"}, "work_auth": {"status": "tn"},
+                   "preferences": {"earliest_start_date": "ASAP"}}, [], [], today=TODAY)
+    assert f[slot].policy == policy

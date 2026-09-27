@@ -3497,7 +3497,7 @@ def test_entries_the_loop_did_not_add_are_named_and_keep_the_step_open(tmp_path)
     says nothing."""
     out = _loop(tmp_path, report={**DONE_REPORT, "sections": [
         _section("Work Experience", "experience", 3, 2, 1, "not_added"),
-        _section("Education", "education", 1, 1, 0, None, "held_out_of_order"),
+        _section("Education", "education", 1, 1, 0, None, "held_twice"),
         _section("Websites", "websites", 1, 1, 1, "added"),
         _section("Languages", "languages", 0, 1, 0, None),
         _section("Certifications", "experience", 2, 2, 0, None, "held_unmatched"),

@@ -426,13 +426,13 @@ def placed(db_session, monkeypatch, picked, low_stakes=False, noul=None, **kw):
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_an_entry_slot_places_the_fact_by_profile_match(db_session, monkeypatch):
+def test_a_profile_entry_places_the_fact_by_profile_match(db_session, monkeypatch):
     """Page entry 1 is empty and entry 2 holds job #1: /sections placed job #2
     in entry 1. The model still reads "entry 1" as experience.0; code writes
     job #2 there, never a duplicate of job #1."""
-    got = placed(db_session, monkeypatch, ("experience.0.title", 0.9), repeat_index=0, entry_slot=1)
+    got = placed(db_session, monkeypatch, ("experience.0.title", 0.9), repeat_index=0, profile_entry=1)
     assert (got.route, got.slot, got.value) == ("slot", "experience.1.title", "Intern")
-    got = placed(db_session, monkeypatch, ("education.1.school", 0.9), repeat_index=1, entry_slot=0)
+    got = placed(db_session, monkeypatch, ("education.1.school", 0.9), repeat_index=1, profile_entry=0)
     assert (got.slot, got.value) == ("education.0.school", "State University")
 
 
@@ -440,55 +440,79 @@ def test_an_entry_slot_places_the_fact_by_profile_match(db_session, monkeypatch)
 def test_an_entry_fact_of_another_kind_than_its_section_is_none(db_session, monkeypatch):
     """An Education entry's field the model maps to a job's fact: placing the
     job's index in a school's place would write a plausible wrong value."""
-    got = placed(db_session, monkeypatch, ("experience.0.title", 0.9), entry_slot=1, entry_kind="education")
+    got = placed(db_session, monkeypatch, ("experience.0.title", 0.9), profile_entry=1, entry_kind="education")
     assert got.route == "none"
-    got = placed(db_session, monkeypatch, ("education.0.school", 0.9), entry_slot=1, entry_kind="education")
+    got = placed(db_session, monkeypatch, ("education.0.school", 0.9), profile_entry=1, entry_kind="education")
     assert (got.slot, got.value) == ("education.1.school", "City College")
     # A fact that is no entry's is not judged by the section's kind.
     fake_jev(monkeypatch, {"a": ("personal.city", 0.9)})
-    got = autofill_map.map_fields([field("a", "City", entry_slot=0, entry_kind="experience")], FACTS, db_session,
+    got = autofill_map.map_fields([field("a", "City", profile_entry=0, entry_kind="experience")], FACTS, db_session,
                                   eeo_consented=True, low_stakes=False)["a"]
     assert got.slot == "personal.city"
     with pytest.raises(ValueError):
-        field("a", "Q", entry_slot=0, entry_kind="websites")
+        field("a", "Q", profile_entry=0, entry_kind="websites")
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_without_an_entry_slot_page_order_stands(db_session, monkeypatch):
+def test_the_model_is_told_the_profile_entry_a_placed_entry_holds(db_session, monkeypatch):
+    """A placed entry is numbered by its profile entry (a number, no value):
+    page entry 4 holding job #2 is "entry 1" to the model, which would
+    otherwise look for a fourth job the profile does not have."""
+    calls = fake_jev(monkeypatch, {"a": ("experience.1.title", 0.9)})
+    autofill_map.map_fields([field("a", "Job Title", section="Work Experience 4", repeat_index=3, profile_entry=1,
+                                   entry_kind="experience"), field("b", "City", repeat_index=2)],
+                            JOBS3, db_session, eeo_consented=True, low_stakes=False)
+    assert [x["entry"] for x in calls[0]["state"]["form_fields"]] == [1, 2]
+
+
+def test_entry_kinds_are_defined_once():
+    """EntryKind (the schema) is the one list: the map's entry-fact pattern is
+    built from it."""
+    from typing import get_args
+
+    from app.schemas.autofill_fill import EntryKind
+
+    for kind in get_args(EntryKind):
+        assert autofill_map._ENTRY.fullmatch(f"{kind}.3.title")
+    assert not autofill_map._ENTRY.fullmatch("websites.0.url")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_without_a_profile_entry_page_order_stands(db_session, monkeypatch):
     got = placed(db_session, monkeypatch, ("experience.1.title", 0.9), repeat_index=1)
     assert (got.slot, got.value) == ("experience.1.title", "Intern")
 
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_foreign_entry_routes_none_and_is_never_a_guess(db_session, monkeypatch):
-    """entry_slot null: the entry holds a job the profile does not have (or
+    """profile_entry null: the entry holds a job the profile does not have (or
     lies past the profile's entries). Nothing of the profile's goes into it —
     not even at full confidence, and never as a low-stakes guess."""
-    assert placed(db_session, monkeypatch, ("experience.0.title", 0.99), entry_slot=None).route == "none"
+    assert placed(db_session, monkeypatch, ("experience.0.title", 0.99), profile_entry=None).route == "none"
     assert placed(db_session, monkeypatch, ("none", 0.95), low_stakes=True, noul={"a": 0.99},
-                  shape="select", options=["Yes", "No"], entry_slot=None).route == "none"
+                  shape="select", options=["Yes", "No"], profile_entry=None).route == "none"
 
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_placed_slot_the_profile_entry_lacks_is_none(db_session, monkeypatch):
-    got = placed(db_session, monkeypatch, ("experience.0.employer", 0.9), entry_slot=7)
+    got = placed(db_session, monkeypatch, ("experience.0.employer", 0.9), profile_entry=7)
     assert got.route == "none"
 
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_fact_with_no_entry_number_is_not_moved(db_session, monkeypatch):
     fake_jev(monkeypatch, {"a": ("personal.city", 0.9)})
-    got = autofill_map.map_fields([field("a", "City", entry_slot=2)], FACTS, db_session,
+    got = autofill_map.map_fields([field("a", "City", profile_entry=2)], FACTS, db_session,
                                   eeo_consented=True, low_stakes=False)["a"]
     assert (got.slot, got.value) == ("personal.city", "Springfield")
 
 
-def test_entry_slot_is_optional_bounded_and_absent_is_not_null():
-    assert "entry_slot" not in field("a", "Q").model_fields_set
-    assert field("a", "Q", entry_slot=None).entry_slot is None
-    assert "entry_slot" in MapField.model_validate({"fid": "a", "question": "Q", "shape": "text",
-                                                    "entry_slot": None}).model_fields_set
+def test_profile_entry_is_optional_bounded_and_absent_is_not_null():
+    assert "profile_entry" not in field("a", "Q").model_fields_set
+    assert field("a", "Q", profile_entry=None).profile_entry is None
+    assert "profile_entry" in MapField.model_validate({"fid": "a", "question": "Q", "shape": "text",
+                                                    "profile_entry": None}).model_fields_set
     with pytest.raises(ValueError):
-        field("a", "Q", entry_slot=-1)
+        field("a", "Q", profile_entry=-1)
     with pytest.raises(ValueError):
-        field("a", "Q", entry_slot=21)
+        field("a", "Q", profile_entry=21)
