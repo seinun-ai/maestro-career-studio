@@ -32,7 +32,7 @@ ASSUMED_FLOOR = 0.4
 ABSTAIN = Picked(oids=[], reason="abstained")
 _NO_OPTION_TEXT = "No option states this value"
 # A low-stakes field's "none" is a refusal as well as a miss: its criterion says so.
-_LOW_STAKES_NONE_TEXT = "None: the question is on the never-list, or no option fits"
+_LOW_STAKES_NONE_TEXT = "None, as the question is on the never-list or no option fits"
 _LLM_PROMPT = """For each form field return the option id that states the applicant value, or none. {rule}
 A field marked low_stakes has no applicant value. {low_stakes}; for such a field, return the option {keen}.
 The never-list does not apply to a field with applicant_values: pick the option that states its value.

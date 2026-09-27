@@ -507,6 +507,8 @@ def test_the_low_stakes_rule_names_its_scope_and_binds_only_low_stakes_fields(db
     never-list, the fast model read "sponsorship, age, EEO" as a refusal for
     EVERY field of the batch, and both engines read a job-description
     self-assessment as a factual experience question (Jev answered it No)."""
+    from app.services.autofill_map import _NEVER_LOW_STAKES
+
     model_settings.set_autofill_low_stakes(db_session, True)
     field = pf("x", question="Do you have the required experience?", route="low_stakes", options=opts("Yes", "No"))
     calls = fake_jev(monkeypatch)
@@ -514,7 +516,7 @@ def test_the_low_stakes_rule_names_its_scope_and_binds_only_low_stakes_fields(db
     text = calls[0]["questions"]["x"]["instructions"]
     assert "self-assessment against the job description" in text and "fit and want this job" in text
     # The exclusion comes first, with its own refusal, and the keen answer is scoped to the kinds listed.
-    assert text.index("never-list") < text.index("Otherwise a low_stakes field is") < text.index("fit and want")
+    assert text.index(_NEVER_LOW_STAKES) < text.index("Otherwise a low_stakes field is") < text.index("fit and want")
     assert "for a question in that scope" in text
     assert "number of years of experience with a specific skill or tool" in text
     assert calls[0]["questions"]["x"]["criteria"]["none"] == autofill_pick._LOW_STAKES_NONE_TEXT
@@ -524,6 +526,8 @@ def test_the_low_stakes_rule_names_its_scope_and_binds_only_low_stakes_fields(db
     pick([field], db_session)
     prompt = prompts[0]["prompt"]
     assert "self-assessment against the job description" in prompt
+    assert prompt.index(_NEVER_LOW_STAKES) < prompt.index("Otherwise a low_stakes field is") < prompt.index(
+        "for a question in that scope, the answer that shows they fit")
     assert "The never-list does not apply to a field with applicant_values: pick the option that states its value." \
         in prompt
 

@@ -1,7 +1,10 @@
 """The fill-decision evaluation's labelled cases are well formed (offline: no
 model is called). scripts/eval_fill_decisions.py runs them against the models."""
 
+import os
+import subprocess
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
@@ -186,10 +189,53 @@ def test_the_script_refuses_a_live_database(tmp_path, monkeypatch, capsys):
     assert ev.refusal(copy) is None
 
 
-def test_the_main_checkouts_live_file_is_refused_by_path():
-    """Whether or not the file exists here: any path under a checkout's data/."""
-    for d in ev.refused_dirs()[:-1]:
-        assert any((d / ev.DB_FILENAME).resolve().is_relative_to(r) for r in ev.refused_dirs())
+def test_the_main_checkout_is_refused():
+    """The main checkout's root, found independently of the script, has its
+    data/ among the refused directories."""
+    common = subprocess.run(["git", "-C", str(Path(__file__).parent), "rev-parse", "--path-format=absolute",
+                             "--git-common-dir"], capture_output=True, text=True, check=True).stdout.strip()
+    assert (Path(common).parent / "data").resolve() in ev.refused_dirs()
+
+
+def _stand_in(tmp_path, monkeypatch):
+    """A refused directory that is not the live one: DATA_DIR pointed at a
+    temporary directory holding a file named like the database."""
+    live_dir = tmp_path / "live"
+    live_dir.mkdir()
+    (live_dir / ev.DB_FILENAME).write_bytes(b"")
+    monkeypatch.setenv("DATA_DIR", str(live_dir))
+    return live_dir
+
+
+def test_a_refused_directory_spelled_in_another_case_is_refused(tmp_path, monkeypatch):
+    """macOS ignores case: ".../LIVE/..." is the live directory. Identity, not spelling, decides."""
+    _stand_in(tmp_path, monkeypatch)
+    other = tmp_path / "LIVE" / ev.DB_FILENAME
+    if not other.is_file():
+        pytest.skip("this filesystem tells case apart: another spelling is another directory")
+    assert "live database" in ev.refusal(other)
+
+
+def test_the_main_checkouts_data_in_upper_case_is_refused():
+    """The real live directory, spelled DATA: only stat is used, nothing is opened."""
+    lives = [d for d in ev.refused_dirs() if d.name == "data" and (d / ev.DB_FILENAME).is_file()]
+    if not lives:
+        pytest.skip("no live database on this machine")
+    upper = lives[0].parent / "DATA" / ev.DB_FILENAME
+    if not upper.is_file():
+        pytest.skip("this filesystem tells case apart")
+    assert "live database" in ev.refusal(upper)
+
+
+def test_a_hard_link_to_a_file_in_a_refused_directory_is_refused(tmp_path, monkeypatch):
+    live_dir = _stand_in(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    for name in (ev.DB_FILENAME, f"{ev.DB_FILENAME}-wal"):
+        (live_dir / name).write_bytes(b"x")
+        link = elsewhere / f"copy-of-{name}"
+        os.link(live_dir / name, link)
+        assert "same file" in ev.refusal(link), name
 
 
 def test_a_read_only_binding_refuses_writes(tmp_path, monkeypatch):

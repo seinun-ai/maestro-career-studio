@@ -130,14 +130,33 @@ def refused_dirs() -> list[Path]:
     return [d.resolve() for d in dirs]
 
 
+def _identity(path: Path) -> tuple[int, int]:
+    st = path.stat()
+    return st.st_dev, st.st_ino
+
+
 def refusal(db: Path) -> str | None:
-    """Why `db` may not be evaluated against, or None."""
+    """Why `db` may not be evaluated against, or None.
+
+    By file IDENTITY, never by spelling: macOS's filesystem ignores case, so
+    ".../DATA/..." names the live directory while no string compare says so,
+    and a hard link elsewhere IS the live file. Every directory above `db`
+    is compared (device, inode) with each refused directory, and `db` itself
+    with every file in them. Only stat is used: nothing is opened."""
     path = db.resolve()
     if not path.is_file():
         return f"{db} is not a file"
+    refused = {}
     for d in refused_dirs():
-        if path.is_relative_to(d):
+        if d.is_dir():
+            refused[_identity(d)] = d
+    for parent in path.parents:
+        if (d := refused.get(_identity(parent))) is not None:
             return f"{db} is inside {d}, where a live database lives: copy it elsewhere first"
+    for d in refused.values():
+        for live in d.iterdir():
+            if live.is_file() and path.samefile(live):
+                return f"{db} is the same file as {live}, a live database: copy it, never link it"
     return None
 
 
@@ -160,7 +179,9 @@ def bind_read_only(db: Path) -> None:
     def _query_only(dbapi_connection, _record):
         dbapi_connection.execute("PRAGMA query_only=ON")
 
-    @event.listens_for(app_db.engine, "do_connect")
+    # insert=True: before make_engine's own do_connect listener, which would
+    # pre-create (and chmod) the file its URL names.
+    @event.listens_for(app_db.engine, "do_connect", insert=True)
     def _never(*_args):
         raise RuntimeError("the evaluation reads the database only through its read-only session")
 
