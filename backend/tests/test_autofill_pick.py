@@ -696,12 +696,14 @@ def test_a_no_whose_jobs_start_after_the_window_start_abstains(db_session, monke
 
 @pytest.mark.parametrize("text", ["I have not", "I haven't", "Not currently", "Not at this time", "I do not",
                                   "I don’t", "I am not", "I'm not", "Does not apply", "Doesn't apply",
-                                  "Under 1 year", "< 1 year", "Fewer than 2 years", "Zero", "Nope"])
+                                  "Under 1 year", "< 1 year", "Fewer than 2 years", "Zero", "Nope",
+                                  "I’m not", "I have never", "I didn't"])
 def test_more_refusal_wordings_are_negatives(text):
     assert autofill_reasoned.negative(text)
 
 
-@pytest.mark.parametrize("text", ["Understood", "Notable", "Nowhere else", "Iowa", "1-3 years", "Zeroth"])
+@pytest.mark.parametrize("text", ["Understood", "Notable", "Nowhere else", "Iowa", "1-3 years", "Zeroth",
+                                  "Nonprofit"])
 def test_words_that_only_start_like_a_refusal_are_not_negatives(text):
     assert not autofill_reasoned.negative(text)
 

@@ -576,7 +576,10 @@ know, and each one was learned from a live failure.
      today] (start: `since` or 12 months ago, whichever is earlier) is dated
      and cited, and the cited jobs reach back to that start (a 2024 job
      cannot speak for 2021): a skipped job, an undated one, or a history cut
-     at the catalog's 8-job limit means no answer. /pick trusts the Companion's
+     at the catalog's 8-job limit means no answer. A gap between listed jobs
+     is taken as not employed then: the resume is treated as the complete
+     record of its dated periods, and the answer is `assumed`, listed for you
+     to check. /pick trusts the Companion's
      `reasoned` route as it trusts a low-stakes one — the classification is
      /map's, the setting and the answer are the server's. A reasoned field is
      never handed to the adaptive step (/step has no history): its abstain,

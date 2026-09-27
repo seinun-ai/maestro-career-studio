@@ -77,7 +77,7 @@ _HISTORY_FACT = re.compile(r"(experience|education)\.(\d+)\.(\w+)")
 # purpose — a false match only asks for coverage, never answers.
 _NEGATIVE = re.compile(
     r"^[^\w<]*(?:(?:no|nope|none|not|n/?a|never|zero|0|less than|fewer than|under|does ?n[o’']t|"
-    r"i(?:'m| am) not|i (?:have|am|do)(?: not|n[’']t))\b|<)", re.IGNORECASE)
+    r"i[’']m not|i (?:have|had|did|was|do|am)(?: not| never|n[’']t))\b|<)", re.IGNORECASE)
 # However recent a negative's `since`, it speaks for at least the last year.
 _MIN_WINDOW_MONTHS = 12
 _MONTH = re.compile(r"(\d{4})-(0[1-9]|1[0-2])")
