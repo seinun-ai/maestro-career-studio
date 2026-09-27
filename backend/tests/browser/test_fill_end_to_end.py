@@ -410,8 +410,8 @@ def test_the_loop_adds_the_entries_the_profile_can_fill_and_fills_them(e2e_page)
     page = e2e_page
     text = lambda slot, value: {"route": "slot", "slot": slot, "value": value}  # noqa: E731
     out = _run(page, fixtures=["workday_sections.html"],
-               kinds={"Work Experience": {"kind": "experience", "wanted": 2},
-                      "Education": {"kind": "education", "wanted": 1},
+               kinds={"Work Experience": {"kind": "experience", "wanted": 2, "order": [0, 1]},
+                      "Education": {"kind": "education", "wanted": 1, "order": [0]},
                       "Websites": {"kind": "websites", "wanted": 1}},
                map={"Work Experience 1/Job Title": text("experience.0.title", "Analyst"),
                     "Work Experience 1/Company": text("experience.0.employer", "Acme"),

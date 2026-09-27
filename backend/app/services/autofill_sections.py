@@ -70,18 +70,13 @@ Sections:
 
 
 def wanted(kind: str, facts: dict[str, Fact]) -> int:
-    """How many entries of `kind` the profile can fill. Languages and
-    certifications have no facts yet (languages arrive with the profile's
-    Languages list, fill-engine plan Task 10), so none is ever added."""
+    """How many entries of a kind NOT placed by profile entry the profile can
+    fill (jobs and schools are counted by `plan`, from their placement).
+    Languages and certifications have no facts yet (languages arrive with the
+    profile's Languages list, fill-engine plan Task 10), so none is ever added."""
     if kind == "websites":
         return sum(slot in facts for slot in _WEBSITES)
-    needs = _NEEDS.get(kind)
-    if not needs:
-        return 0
-    # What `plan` wants of a section with no entries yet: the complete profile
-    # entries — one missing a required fact is skipped, since an entry added
-    # for it would leave a REQUIRED field empty.
-    return sum(_complete(kind, i, facts) for i in _entries(kind, facts))
+    return 0
 
 
 # What names a profile entry, per kind: the value an entry holding it must show.

@@ -1459,7 +1459,7 @@ def adds(out):
 def test_the_loop_adds_entries_the_profile_can_fill_then_fills_them(page, load):
     out = run(page, load, frames=[work(1), work(1) + work(2)],
               sections=[[section(entries=1)], [section(entries=2)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 2}}, map=JOBS)
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "order": [0, 1]}}, map=JOBS)
     # One press, on the view it was decided from, before anything is mapped.
     assert adds(out) == [{"sid": "f-s1", "heading": "Work Experience", "entries": 1}]
     calls = out["calls"]
@@ -1503,16 +1503,16 @@ def test_an_entry_already_holding_data_counts_and_is_never_overwritten(page, loa
 def test_add_never_exceeds_what_the_profile_can_fill(page, load):
     # As many entries as the profile can fill: nothing is pressed.
     out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 1}}, map=JOBS)
+              kinds={"f-s1": {"kind": "experience", "wanted": 1, "order": [0]}}, map=JOBS)
     assert adds(out) == [] and "fill_add" not in out["calls"]
     # More on the page than the profile has: never Add, never Delete.
     out = run(page, load, frames=[work(1) + work(2)], sections=[[section(entries=2)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 1}}, map=JOBS)
+              kinds={"f-s1": {"kind": "experience", "wanted": 1, "order": [0]}}, map=JOBS)
     assert adds(out) == []
     # Two short: two presses, one at a time, each on the count the last one left.
     out = run(page, load, frames=[work(1), work(1) + work(2), work(1) + work(2) + work(3)],
               sections=[[section(entries=1)], [section(entries=3)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 3}}, map=JOBS)
+              kinds={"f-s1": {"kind": "experience", "wanted": 3, "order": [0, 1, 2]}}, map=JOBS)
     assert [a["entries"] for a in adds(out)] == [1, 2]
     assert out["report"]["sections"][0]["added"] == 2
     # A section that is none of the profile's lists, or one the profile has
@@ -1520,8 +1520,8 @@ def test_add_never_exceeds_what_the_profile_can_fill(page, load):
     out = run(page, load, frames=[work(1)],
               sections=[[section("f-s1", entries=1), section("f-s2", "Skills", 0), section("f-s3", "Languages", 1),
                          section("f-s4", "Relevant Experience", 0)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 1}, "f-s3": {"kind": "languages", "wanted": 0},
-                     "f-s4": {"kind": "experience", "wanted": 1}}, map=JOBS)
+              kinds={"f-s1": {"kind": "experience", "wanted": 1, "order": [0]}, "f-s3": {"kind": "languages", "wanted": 0},
+                     "f-s4": {"kind": "experience", "wanted": 1, "order": [0]}}, map=JOBS)
     assert adds(out) == []
 
 
@@ -1571,13 +1571,29 @@ def test_a_foreign_entry_and_one_past_the_order_are_placed_nowhere(page, load):
 
 
 @pytest.mark.parametrize("order", ["absent", None])
-def test_without_an_order_page_order_stands(page, load, order):
-    """A backend that places nothing (an older one, or a kind it does not
-    place): /map is told nothing, and places by page order."""
-    kinds = {"kind": "experience", "wanted": 1} | ({} if order == "absent" else {"order": order})
+def test_a_job_or_school_section_without_an_order_is_left_alone(page, load, order):
+    """Jobs and schools are placed by profile entry: a response without an
+    order for one is not page order, even with every entry empty — an Add by
+    page order could pair a new entry with a profile entry missing a
+    required fact. Nothing written, nothing added, a report line."""
+    kinds = {"kind": "experience", "wanted": 2} | ({} if order == "absent" else {"order": order})
     out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]], kinds={"f-s1": kinds}, map=JOBS)
     [body] = bodies(out, "/api/autofill/map")
-    assert all("profile_entry" not in x and "entry_kind" not in x for x in body["fields"])
+    assert all(x["profile_entry"] is None and "entry_kind" not in x for x in body["fields"])
+    assert adds(out) == [] and out["report"]["sections"][0]["reason"] == "unplaced"
+
+
+def test_a_kind_placed_nowhere_never_adds_in_a_second_section(page, load):
+    """The first Work Experience section is left alone (numbered 1, 3): its
+    kind is spent. A second section read as the same kind ("Volunteer
+    Experience") never presses Add — its entries' fields are placed nowhere,
+    so an added entry would stand with its required fields blank."""
+    vol = [f("v1", question="Organization", section="Volunteer Experience 1")]
+    out = run(page, load, frames=[work(1) + work(3) + vol],
+              sections=[[section("f-s1", entries=2, numbers=[1, 3]), section("f-s4", "Volunteer Experience", 1)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 3, "order": [0, 1, 2]},
+                     "f-s4": {"kind": "experience", "wanted": 3, "order": [0, 1, 2]}}, map=JOBS)
+    assert "fill_add" not in out["calls"]
 
 
 @pytest.mark.parametrize("order", ["0,1", [0, "1"], [0, -1], [0, 1.5], [0, 21], [0] * 51])
@@ -1755,7 +1771,7 @@ def test_an_add_that_did_not_grow_the_section_is_pressed_once(page, load):
     """A deliberate write, never a trial: a press that added nothing is not
     pressed again — not for the next wanted entry, not in a later round."""
     out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 3}},
+              kinds={"f-s1": {"kind": "experience", "wanted": 3, "order": [0, 1, 2]}},
               add={"f-s1": {"outcome": "not_added", "entries": 1}}, map=JOBS)
     assert len(adds(out)) == 1
     assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 3,
@@ -1763,14 +1779,14 @@ def test_an_add_that_did_not_grow_the_section_is_pressed_once(page, load):
     assert statuses(out) == {"t1": "verified", "c1": "verified"}
     # The page answering "added" without the count growing is not an entry either.
     out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 2}},
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "order": [0, 1]}},
               add={"f-s1": {"outcome": "added", "entries": 1}}, map=JOBS)
     assert len(adds(out)) == 1 and out["report"]["sections"][0]["added"] == 0
 
 
 def test_a_stopped_run_never_presses_add(page, load):
     out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]], stopOnSections=True,
-              kinds={"f-s1": {"kind": "experience", "wanted": 2}}, map=JOBS)
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "order": [0, 1]}}, map=JOBS)
     assert "fill_add" not in out["calls"] and out["report"]["stopped"] is True
 
 
@@ -1788,7 +1804,7 @@ def test_a_section_re_rendered_after_a_failed_add_is_not_pressed_again(page, loa
     heading, not only its sid: the page re-rendering it under a new sid does
     not buy a second press, nor a second report row."""
     out = run(page, load, frames=[work(1)], sections=[[section("f-s1", entries=1)], [section("f-s9", entries=1)]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 2}, "f-s9": {"kind": "experience", "wanted": 2}},
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "order": [0, 1]}, "f-s9": {"kind": "experience", "wanted": 2, "order": [0, 1]}},
               add={"f-s1": {"outcome": "not_added", "entries": 1}}, map=JOBS)
     assert out["calls"].count("fill_sections") >= 2
     assert adds(out) == [{"sid": "f-s1", "heading": "Work Experience", "entries": 1}]

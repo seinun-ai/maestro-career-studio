@@ -434,7 +434,9 @@ know, and each one was learned from a live failure.
   section the backend could not place at all (the ask failed or was slow,
   its heading was read as no profile list) is filled in page order only
   while every entry is empty; if one holds data the section is left to you.
-  Each of these says so in the report. An added entry never takes a profile
+  Each of these says so in the report, and a section left to you still
+  counts as its kind's one section: a second section read as the same kind
+  never gets an Add. An added entry never takes a profile
   entry missing a fact it requires (a school with no name): it is skipped,
   and the next complete one is added. What the entries hold goes to the
   local backend for

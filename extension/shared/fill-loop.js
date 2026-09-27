@@ -69,9 +69,10 @@
  *   an entry by its title's number), leaves the section alone (`unplaced`:
  *   nothing written, nothing added, a report line) — never page order. A
  *   section with no placement at all (/sections failed, the heading read as
- *   none, a response without order) keeps page order only while every entry
- *   is empty; one holding data leaves the section alone too. One holding
- *   data keeps it (`already`).
+ *   none) keeps page order only while every entry is empty; one holding data
+ *   leaves the section alone too, as does a job or school section with no
+ *   order at all. Only a kind's placed first section adds entries; one left
+ *   alone still spends its kind. One holding data keeps it (`already`).
  *   Each press is a deliberate write, not a trial: once per wanted entry,
  *   counted only when the page's entry count grew; a press that did not grow
  *   it is not pressed again this run. A full inventory follows the adds, so
@@ -1160,10 +1161,10 @@
     // order cannot be read, when its entry titles do not run 1..N in page
     // order (the backend places entries by their place on the page, the loop
     // finds a field's entry by its title's number: "1, 3" would give an empty
-    // entry the next one's job), or when it has no placement at all
-    // (/sections failed or hung, the heading read as none, a response without
-    // order) and an entry held data. With no placement and every entry
-    // empty, page order is safe and stands.
+    // entry the next one's job), when it is a job or school section the
+    // response gave no order, or when it has no placement at all (/sections
+    // failed or hung, the heading read as none) and an entry held data. With
+    // no placement and every entry empty, page order is safe and stands.
     const placements = new Map();
     const heldAtStart = new Map(); // sectionKey -> any entry held data when first seen
     const placedKinds = new Set();
@@ -1238,8 +1239,14 @@
         const first = placed && !placedKinds.has(plan.kind);
         if (placed) placedKinds.add(plan.kind);
         const unreadable = placed && (plan.order === null || !numberedInStep(s));
-        const unplacedHeld = !placed && (!plan || plan.kind === "none" || PLACED_KINDS.has(plan.kind)) && heldAtStart.get(key);
-        if (unreadable || unplacedHeld) {
+        // A job or school section with no order is never page order, held
+        // data or not (an Add by page order could pair a new entry with a
+        // profile entry missing a required fact); any other unplaced section
+        // is, while every entry is empty.
+        const noOrder = !placed && Boolean(plan) && PLACED_KINDS.has(plan.kind);
+        const unplacedHeld = !placed && (!plan || plan.kind === "none") && heldAtStart.get(key);
+        if (noOrder) placedKinds.add(plan.kind);
+        if (unreadable || noOrder || unplacedHeld) {
           placements.set(key, { kind: null, order: null });
           sectionLog.set(key, { heading: s.heading, kind: plan?.kind ?? "none", wanted: s.entries,
             entries: s.entries, added: 0, outcome: null, reason: "unplaced" });
@@ -1252,8 +1259,15 @@
       for (const s of seen) {
         const plan = plans.get(sectionKey(s));
         if (!plan || plan.kind === "none" || kinds.has(plan.kind)) continue;
-        // Left alone (see `placements`): nothing is added either.
-        if (placements.get(sectionKey(s))?.kind === null) continue;
+        // Only a kind's placed first section adds. One left alone, or placed
+        // nowhere as a second of its kind, adds nothing — and a left-alone
+        // first section still spends its kind, so a second section read as
+        // the same kind never adds entries whose fields go nowhere.
+        const placedHere = placements.get(sectionKey(s));
+        if (placedHere && (placedHere.kind === null || placedHere.order === null)) {
+          kinds.add(plan.kind);
+          continue;
+        }
         kinds.add(plan.kind);
         const key = sectionKey(s);
         const log = sectionLog.get(key)

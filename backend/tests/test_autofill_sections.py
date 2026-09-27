@@ -223,14 +223,6 @@ def test_education_is_placed_by_the_school(db_session, monkeypatch):
     assert planned(db_session, monkeypatch, facts, ["Old School"], **kw)["reason"] == "held_unmatched"
 
 
-def test_only_complete_entries_are_wanted():
-    facts = autofill_catalog.build({"education": [{"school": "State U"}, {"degree": "BS"}, {"school": "City"}]},
-                                   [{"employer": "Acme"}, {"employer": "Initech", "title": "Intern"}], [])
-    # An entry missing a required fact (no school, no title) is skipped, not a wall.
-    assert autofill_sections.wanted("education", facts) == 2
-    assert autofill_sections.wanted("experience", facts) == 1
-
-
 @pytest.mark.usefixtures("jev_on")
 def test_an_add_skips_a_profile_entry_missing_a_required_fact(db_session, monkeypatch):
     """Placed by profile entry, an Add need not stop at a gap: education
@@ -344,8 +336,7 @@ def test_the_route_counts_from_the_selected_resume(db_session, monkeypatch, tmp_
 
     def plan(secs, facts, session):
         seen.update(facts=facts, sections=secs)
-        return {s.sid: autofill_sections.SectionPlan(kind="experience", wanted=autofill_sections.wanted(
-            "experience", facts)) for s in secs}
+        return {s.sid: autofill_sections.SectionPlan(kind="experience", wanted=2) for s in secs}
 
     monkeypatch.setattr(autofill_sections, "plan", plan)
     r = _post(db_session, "/api/autofill/sections",
