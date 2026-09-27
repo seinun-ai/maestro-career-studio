@@ -417,7 +417,7 @@ def test_health_counts_agree_with_their_nouns():
     cards = _read("components/resume-health/finding-cards.tsx")
     assert '{ key: "ask", one: "question", many: "questions",' in _flat(cards)
     assert "const noun = meta ? (count === 1 ? meta.one : meta.many) : key;" in cards
-    assert "{countWords(key, count)}" in _read("components/resume-health/health-report-page.tsx")
+    # (The report page's count chips went with its left rail, Task 11: its tabs show plain counts.)
     badges = _read("components/resume-health/health-badges.tsx")
     assert "[countWords(key, count)]" in badges
     assert "${count} ${key}" not in badges

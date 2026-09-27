@@ -228,3 +228,17 @@ def test_condense_still_vetoes_dropped_entities(db_session, monkeypatch):
     )
     monkeypatch.setattr(hg.model_settings, "get_smart_model", lambda s: "test-model")
     assert guarded_rewrite(db_session, ORIGINAL, objective="condense") is None
+
+
+def test_question_reaches_guarded_rewrite_without_allowing_invented_numbers(db_session, monkeypatch):
+    from app.services import health_guards as hg
+    prompts = []
+    def fake(**kwargs):
+        prompts.append(kwargs["prompt"])
+        return {"rewrite": "Built a guide adopted by the support team."}
+    monkeypatch.setattr(hg.llm, "call_openai", fake)
+    result = guarded_rewrite(db_session, "Built a guide.", context="support team adopted it", question="Who used it?")
+    assert result == "Built a guide adopted by the support team."
+    assert "Who used it?" in prompts[0]
+    monkeypatch.setattr(hg.llm, "call_openai", lambda **kw: {"rewrite": "Built a guide adopted by 40 teams."})
+    assert guarded_rewrite(db_session, "Built a guide.", context="support team adopted it", question="Who used it?") is None

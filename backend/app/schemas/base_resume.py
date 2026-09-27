@@ -48,6 +48,9 @@ class BaseResumeDetail(BaseModel):
     archived_at: datetime | None = None
     # Present on PATCH /edits responses — which entries the ops actually touched.
     applied: list[dict] | None = None
+    # Present on PATCH /edits responses: the version the edit left latest. An edit that changes
+    # nothing writes no version, so this is the one before it (the question pass's Undo reads it).
+    version_number: int | None = None
     # Present on POST /import responses — list rows the parser had to drop
     # (see kb_consolidation._validate_with_salvage); empty means a clean parse.
     parse_warnings: list[str] | None = None

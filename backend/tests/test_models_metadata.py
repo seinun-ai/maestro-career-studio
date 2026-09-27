@@ -10,6 +10,7 @@ def test_all_planned_tables_are_registered():
         "autofill_field_observations",
         "base_resumes",
         "bullet_classifications",
+        "bullet_disputes",
         "bullet_rewrites",
         "chat_attachments",
         "chat_messages",

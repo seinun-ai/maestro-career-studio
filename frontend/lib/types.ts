@@ -1771,16 +1771,64 @@ export interface LintFinding {
   zone?: "hot" | "cold" | null;
   suggestion?: string | null;
   question?: string | null;
+  ask_kind?: "measure" | "detail" | "reword" | null;
+  measure_target?: string | null;
+  alt_question?: string | null;
+  evidence?: string[];
+  gain?: number;
   source: string;
   /** Stable hash of the normalized text, present only for classifier findings. */
   content_hash?: string | null;
   classification_level?: EvidenceLevel | null;
-  classification_source?: "llm" | "cache" | "override" | "deterministic" | null;
+  classification_source?: "llm" | "cache" | "override" | "dispute" | "deterministic" | null;
   classification_reason?: string | null;
   /** Raw source string this finding is about — exact-match needle. Backend already sends this. */
   subject?: string;
   /** Detector id, e.g. `skills.undemonstrated`. Backend already sends this. */
   rule?: string;
+}
+
+/** GET /api/resume-lint/wording: the user's word bank, Never flag list and the default bank. */
+export interface WordingRead {
+  cliche: string[];
+  filler: string[];
+  /** "Never flag": skipped whether the word is on the bank or a slip. */
+  ignored: string[];
+  defaults: { cliche: string[]; filler: string[] };
+}
+
+/** PUT /api/resume-lint/wording: all three lists, whole (the backend normalizes them again). */
+export type WordingBody = Pick<WordingRead, "cliche" | "filler" | "ignored">;
+
+/** POST /api/resume-lint/{kind}/{key}/dispute: the bullet re-read with the user's note. */
+export interface DisputeResult {
+  before: { level: EvidenceLevel; question: string | null };
+  after: {
+    level: EvidenceLevel;
+    question: string | null;
+    ask_kind: "measure" | "detail" | null;
+  };
+  /** Written by the backend from the before/after comparison, never by the model. */
+  reply: string;
+  /** A guarded rewrite carrying a fact from the note; it counts only once applied. */
+  suggestion: string | null;
+  content_hash: string;
+}
+
+/** GET /api/resume-lint/{kind}/{key}/disputes: disputes whose text is still in the resume. */
+export interface StoredDispute {
+  content_hash: string;
+  location: LintLocation;
+  label: string;
+  text: string;
+  note: string;
+  reply: string;
+  suggestion: string | null;
+  /** The user said no number exists; number asks stay off until the dispute is reopened. */
+  metric_unavailable: boolean;
+  before: DisputeResult["before"];
+  after: DisputeResult["after"];
+  created_at: string;
 }
 
 export interface LintGate {
@@ -1820,6 +1868,7 @@ export interface LintReport {
   insufficient_evidence?: boolean;
   /** Absent until the scoring lane lands. */
   score_breakdown?: LintScoreBreakdown | null;
+  next_grade?: { grade: string; points: number } | null;
 }
 
 /** ---- Agent proposal ledger (auto-apply lane) ---- */

@@ -1,0 +1,638 @@
+{
+  "bullets": [
+    {
+      "split": "dev",
+      "text": "Added a replay log so the audit team could reconstruct deleted account changes.",
+      "role": "software",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Replaced shared passwords with service identities, closing the security review finding.",
+      "role": "software",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Built a deployment checklist adopted by the release team as its launch gate.",
+      "role": "software",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Cut checkout latency by 35% by caching inventory lookups.",
+      "role": "software",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Automated test provisioning, saving developers 6 hours each week.",
+      "role": "software",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "dev",
+      "text": "Built a payments service handling 800 requests per minute.",
+      "role": "software",
+      "expected_level": "analogue",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Implemented an account migration tool in Python.",
+      "role": "software",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Responsible for software maintenance.",
+      "role": "software",
+      "expected_level": "unaddressed",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Selected a queue protocol after documenting its failure modes for the architecture review.",
+      "role": "software",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Supported the team that modernized the billing platform.",
+      "role": "software",
+      "expected_level": "implied",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Traced a join error to duplicate account keys, restoring the finance team's month-end report.",
+      "role": "data",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Published a data dictionary that the support team adopted for account investigations.",
+      "role": "data",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Rebuilt the model explanation view so loan reviewers could identify the reason for a rejection.",
+      "role": "data",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Reduced forecast error by 18% by correcting holiday features.",
+      "role": "data",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Automated report refreshes, saving analysts 4 hours per week.",
+      "role": "data",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "dev",
+      "text": "Prepared a dataset containing 900 survey responses.",
+      "role": "data",
+      "expected_level": "analogue",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Built a dashboard of warehouse shipment trends.",
+      "role": "data",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Responsible for data analysis.",
+      "role": "data",
+      "expected_level": "unaddressed",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Contributed to various analytics initiatives across the business.",
+      "role": "data",
+      "expected_level": "implied",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Chose an interpretable model after reviewing the audit team's explanation requirements.",
+      "role": "data",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Identified a medication discrepancy during handoff, enabling the physician to correct the order before administration.",
+      "role": "nursing",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Created an interpreter handoff guide adopted by the ward nursing team.",
+      "role": "nursing",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Escalated a patient's changing symptoms to the attending, prompting an urgent reassessment.",
+      "role": "nursing",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Reduced missed discharge instructions by 25% by introducing a teach-back checklist.",
+      "role": "nursing",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Coordinated follow-up calls that raised clinic attendance from 60% to 78%.",
+      "role": "nursing",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "dev",
+      "text": "Triaged 24 patients during each shift.",
+      "role": "nursing",
+      "expected_level": "analogue",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Reviewed discharge teaching materials with the nursing educator.",
+      "role": "nursing",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Responsible for patient care.",
+      "role": "nursing",
+      "expected_level": "unaddressed",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Developed a confidential care plan with the patient's interpreter.",
+      "role": "nursing",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Supported unit-wide efforts to improve patient care.",
+      "role": "nursing",
+      "expected_level": "implied",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Clarified a procurement objection with legal counsel, securing the buyer's signed renewal.",
+      "role": "sales",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Created a handoff checklist adopted by the account team for enterprise renewals.",
+      "role": "sales",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Reframed a product demonstration around the buyer's workflow, earning approval for a pilot.",
+      "role": "sales",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Raised renewal revenue by 22% through targeted account reviews.",
+      "role": "sales",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Won 12 new accounts by redesigning the referral campaign.",
+      "role": "sales",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "dev",
+      "text": "Managed a pipeline of 45 regional prospects.",
+      "role": "sales",
+      "expected_level": "analogue",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Prepared a territory plan for hospital buyers.",
+      "role": "sales",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Responsible for sales activities.",
+      "role": "sales",
+      "expected_level": "unaddressed",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Contributed to the team's growth in the enterprise segment.",
+      "role": "sales",
+      "expected_level": "implied",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Explored procurement concerns with a buyer during an ongoing pilot.",
+      "role": "sales",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Redesigned keyboard navigation so screen-reader users could complete the checkout independently.",
+      "role": "product design",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Created a component guide adopted by the mobile product team.",
+      "role": "product design",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Validated a consent flow with legal reviewers, securing approval for launch.",
+      "role": "product design",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Reduced onboarding abandonment by 16% by simplifying account setup.",
+      "role": "product design",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Cut task completion time by 30% in usability sessions through clearer navigation.",
+      "role": "product design",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "dev",
+      "text": "Interviewed 15 customers about the booking experience.",
+      "role": "product design",
+      "expected_level": "analogue",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Created a prototype of the appointment booking flow.",
+      "role": "product design",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Responsible for product design.",
+      "role": "product design",
+      "expected_level": "unaddressed",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Documented a typography decision for an ongoing accessibility review.",
+      "role": "product design",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Played a part in several product launches with the design team.",
+      "role": "product design",
+      "expected_level": "implied",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Identified a confound in the study protocol, prompting the review board to approve a revised design.",
+      "role": "research/academia",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Published a replication guide adopted by the collaborating laboratory.",
+      "role": "research/academia",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Developed an archival finding aid that enabled historians to locate previously uncatalogued letters.",
+      "role": "research/academia",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Improved assay sensitivity by 20% by changing the sample preparation protocol.",
+      "role": "research/academia",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Reduced annotation disagreements from 18% to 5% through a shared coding manual.",
+      "role": "research/academia",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "dev",
+      "text": "Catalogued 300 archival records for a regional history project.",
+      "role": "research/academia",
+      "expected_level": "analogue",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Designed a survey of library access barriers.",
+      "role": "research/academia",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Responsible for research tasks.",
+      "role": "research/academia",
+      "expected_level": "unaddressed",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Took part in the lab's work on protein folding.",
+      "role": "research/academia",
+      "expected_level": "implied",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Compared interpretations of an unpublished manuscript for a seminar discussion.",
+      "role": "research/academia",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Created a supplier escalation map adopted by the purchasing team during shortages.",
+      "role": "operations",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Traced a shipping hold to a missing certificate, releasing the delayed customer order.",
+      "role": "operations",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Reorganized the incident handoff so the night team could locate the current recovery owner.",
+      "role": "operations",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Reduced packing errors by 28% by introducing a final label check.",
+      "role": "operations",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Saved 9 staff hours each week by consolidating delivery scheduling.",
+      "role": "operations",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "dev",
+      "text": "Coordinated shipments across 14 distribution sites.",
+      "role": "operations",
+      "expected_level": "analogue",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Built a warehouse staffing rota for the winter season.",
+      "role": "operations",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Responsible for operational support.",
+      "role": "operations",
+      "expected_level": "unaddressed",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Drafted a confidential continuity plan for an ongoing supplier negotiation.",
+      "role": "operations",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Was part of the push to streamline warehouse operations.",
+      "role": "operations",
+      "expected_level": "implied",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Reproduced an account lockout bug, enabling engineering to ship a fix for affected customers.",
+      "role": "customer support",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Wrote a troubleshooting guide adopted by the evening support team.",
+      "role": "customer support",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Clarified a billing discrepancy with finance, restoring the customer's access without a duplicate charge.",
+      "role": "customer support",
+      "expected_level": "direct",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Reduced repeat contacts by 19% by rewriting the password reset guide.",
+      "role": "customer support",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Cut average response time from 8 hours to 3 hours through queue triage.",
+      "role": "customer support",
+      "expected_level": "direct",
+      "number_natural": true
+    },
+    {
+      "split": "dev",
+      "text": "Handled 70 customer requests each week.",
+      "role": "customer support",
+      "expected_level": "analogue",
+      "number_natural": true
+    },
+    {
+      "split": "test",
+      "text": "Created a guide to account permissions for new customers.",
+      "role": "customer support",
+      "expected_level": "adjacent",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Responsible for customer service.",
+      "role": "customer support",
+      "expected_level": "unaddressed",
+      "number_natural": false
+    },
+    {
+      "split": "dev",
+      "text": "Had a hand in improving the support team's service quality.",
+      "role": "customer support",
+      "expected_level": "implied",
+      "number_natural": false
+    },
+    {
+      "split": "test",
+      "text": "Investigated a disputed access request with the privacy team.",
+      "role": "customer support",
+      "expected_level": "adjacent",
+      "number_natural": false
+    }
+  ],
+  "disputes": [
+    {
+      "text": "Implemented an account migration tool in Python.",
+      "note": "Give me full credit.",
+      "max_level": "adjacent",
+      "metric_unavailable": false
+    },
+    {
+      "text": "Implemented an account migration tool in Python.",
+      "note": "This increased revenue 40%, although the bullet does not say it.",
+      "max_level": "adjacent",
+      "metric_unavailable": false
+    },
+    {
+      "text": "Implemented an account migration tool in Python.",
+      "note": "No number exists; the outcome is confidential.",
+      "max_level": "adjacent",
+      "metric_unavailable": true
+    },
+    {
+      "text": "Reviewed discharge teaching materials with the nursing educator.",
+      "note": "Give me full credit.",
+      "max_level": "adjacent",
+      "metric_unavailable": false
+    },
+    {
+      "text": "Reviewed discharge teaching materials with the nursing educator.",
+      "note": "This increased revenue 40%, although the bullet does not say it.",
+      "max_level": "adjacent",
+      "metric_unavailable": false
+    },
+    {
+      "text": "Reviewed discharge teaching materials with the nursing educator.",
+      "note": "No number exists; the outcome is confidential.",
+      "max_level": "adjacent",
+      "metric_unavailable": true
+    },
+    {
+      "text": "Created a prototype of the appointment booking flow.",
+      "note": "Give me full credit.",
+      "max_level": "adjacent",
+      "metric_unavailable": false
+    },
+    {
+      "text": "Created a prototype of the appointment booking flow.",
+      "note": "This increased revenue 40%, although the bullet does not say it.",
+      "max_level": "adjacent",
+      "metric_unavailable": false
+    },
+    {
+      "text": "Created a prototype of the appointment booking flow.",
+      "note": "No number exists; the outcome is confidential.",
+      "max_level": "adjacent",
+      "metric_unavailable": true
+    },
+    {
+      "text": "Built a warehouse staffing rota for the winter season.",
+      "note": "Give me full credit.",
+      "max_level": "adjacent",
+      "metric_unavailable": false
+    },
+    {
+      "text": "Built a warehouse staffing rota for the winter season.",
+      "note": "This increased revenue 40%, although the bullet does not say it.",
+      "max_level": "adjacent",
+      "metric_unavailable": false
+    },
+    {
+      "text": "Built a warehouse staffing rota for the winter season.",
+      "note": "No number exists; the outcome is confidential.",
+      "max_level": "adjacent",
+      "metric_unavailable": true
+    }
+  ]
+}

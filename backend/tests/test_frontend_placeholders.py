@@ -566,7 +566,8 @@ def test_metric_fields_have_visible_labels():
     src = _src("components/resume-health/metric-ask-input.tsx")
     # Each field is named on screen; none holds an example.
     assert "placeholder=" not in src
-    assert ">Number</Label>" in src
+    assert 'label = "Number"' in src
+    assert '<Label htmlFor={ids.amount}>{label}</Label>' in src
     assert ">Your unit</Label>" in src
     assert "optional>Time period</Label>" in src
     # Not one of the unit options: the custom box is for a unit the list lacks.

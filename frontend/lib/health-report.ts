@@ -6,7 +6,7 @@
  * mirror) — both must stay in lockstep with health_score.LEVEL_VALUES.
  */
 
-import type { ResumeData } from "./types";
+import type { ResumeData, WordingBody, WordingRead } from "./types";
 
 export const LEVEL_VALUES: Record<string, number> = {
   direct: 1.0,
@@ -22,8 +22,6 @@ export type ScoreBreakdown = {
   n_scoreable: number;
   capped_by: "fatal" | "serious" | null;
 };
-
-export type StreamFilter = "all" | "fix" | "ask" | "note";
 
 export const CONTENT_CHANGED_PREFIX = "content changed since analysis";
 
@@ -50,6 +48,145 @@ export function isContentChangedError(err: {
     err.status === 409 &&
     (err.message ?? "").startsWith(CONTENT_CHANGED_PREFIX)
   );
+}
+
+/**
+ * The dispute endpoint's own sentences (backend/app/services/health_disputes.py OVERRIDDEN and
+ * UNREADABLE), matched to tell its failures apart, never shown from the error itself. Pinned equal
+ * to the Python by test_frontend_health_report.py.
+ */
+export const DISPUTE_DETAIL = {
+  overridden: "You set this rating yourself. Set it back to automatic first.",
+  unreadable: "Couldn't re-read this bullet. Try again.",
+} as const;
+
+/** Which words a failed dispute gets on its card: the two 409s differ only by `detail`. */
+export function disputeFailure(err: {
+  status?: number;
+  message?: string;
+}): "changed" | "overridden" | "failed" {
+  if (isContentChangedError(err)) return "changed";
+  if (err.status === 409 && err.message === DISPUTE_DETAIL.overridden) return "overridden";
+  return "failed";
+}
+
+/** A dispute moved the rating or the question: the report is out of date and runs again. */
+export function disputeChangedRating(result: {
+  before: { level: string; question: string | null };
+  after: { level: string; question: string | null };
+}): boolean {
+  return (
+    result.before.level !== result.after.level ||
+    result.before.question !== result.after.question
+  );
+}
+
+type Rated = {
+  type: string;
+  content_hash?: string | null;
+  classification_level?: string | null;
+};
+
+const isOpen = (f: { type: string }) => f.type === "ask" || f.type === "fix";
+/** A finding that rates its text (a bullet, the summary). The summary's years check (C2) carries
+ *  the summary's hash too, but rates nothing, so it is not one. */
+const ratesText = (f: Rated) => Boolean(f.content_hash && f.classification_level);
+
+/** Some ask or fix in `findings` still rates the text with this hash. */
+export function hasOpenRating(findings: Rated[], hash: string): boolean {
+  return findings.some((f) => isOpen(f) && ratesText(f) && f.content_hash === hash);
+}
+
+type Where = { section: string; index?: number | null; bullet_index?: number | null };
+
+/**
+ * The asks and fixes a re-run settled. One that rates text stays open while any open ask or fix
+ * rates that text, wherever it sits (a dispute or an override that changes the question gives it a
+ * new id; a deleted bullet moves the ones below it), and while its place holds an open ask or fix on
+ * text the prior report never had (an applied rewrite that is still flagged). A bullet that only
+ * moved keeps a hash the prior report had, so it never holds another place open. One that rates no
+ * text (an employment gap, the summary's years check) shares its location with others, so it keeps
+ * the id test.
+ */
+export function resolvedFindings<T extends Rated & { id: string; location: Where }>(
+  prior: T[],
+  next: (Rated & { id: string; location: Where })[],
+): T[] {
+  const nextIds = new Set(next.map((f) => f.id));
+  const priorHashes = new Set(prior.map((f) => f.content_hash).filter(Boolean));
+  const where = (f: { location: Where }) =>
+    JSON.stringify([f.location.section, f.location.index ?? null, f.location.bullet_index ?? null]);
+  const rewrittenOpen = new Set(
+    next
+      .filter((f) => isOpen(f) && ratesText(f) && !priorHashes.has(f.content_hash))
+      .map(where),
+  );
+  return prior.filter(
+    (f) =>
+      isOpen(f) &&
+      (ratesText(f)
+        ? !hasOpenRating(next, f.content_hash!) && !rewrittenOpen.has(where(f))
+        : !nextIds.has(f.id)),
+  );
+}
+
+/**
+ * "Fixed this session" across re-runs (planner decision: the session is the page's). The entries
+ * kept so far and a re-run's newly fixed ones merge by id (a newer entry replaces an older one), and
+ * an entry whose finding is open again in `next` leaves: rated text an open ask or fix rates again,
+ * or, for one that rates no text, its id back among the open findings.
+ */
+export function mergeResolved<T extends Rated & { id: string }>(
+  kept: T[],
+  fresh: T[],
+  next: (Rated & { id: string })[],
+): T[] {
+  const openIds = new Set(next.filter(isOpen).map((f) => f.id));
+  const reopened = (f: T) => (ratesText(f) ? hasOpenRating(next, f.content_hash!) : openIds.has(f.id));
+  const byId = new Map<string, T>();
+  for (const f of [...kept, ...fresh]) byId.set(f.id, f);
+  return [...byId.values()].filter((f) => !reopened(f));
+}
+
+const samePlace = (a: Where, b: Where) =>
+  a.section === b.section &&
+  (a.index ?? null) === (b.index ?? null) &&
+  (a.bullet_index ?? null) === (b.bullet_index ?? null);
+
+/**
+ * The tab a dispute's re-run moves the disputed bullet to, or null when it stays put (or left the
+ * report). The bullet is the open ask or fix with the disputed text AT the disputed place, before and
+ * after: "no number exists" turns a number question into a detail question, and the page opens the
+ * detail tab before it adopts the report, so the new card mounts in the open panel on its reply.
+ */
+export function disputeTabMove<T extends Actionable & Rated & { location: Where }>(
+  prior: T[],
+  next: T[],
+  hash: string,
+  where: Where,
+): ActionTab | null {
+  const at = (list: T[]) =>
+    list.find((f) => isOpen(f) && f.content_hash === hash && samePlace(f.location, where));
+  const before = at(prior);
+  const after = at(next);
+  if (!before || !after) return null;
+  const from = actionTabOf(before);
+  const to = actionTabOf(after);
+  return from && to && from !== to ? to : null;
+}
+
+/**
+ * The dispute a Fixed entry carries: only one whose own re-run lifted the bullet out of the report
+ * (`lifted`, recorded by the page). A reply left from an earlier dispute that moved nothing never
+ * rides on a bullet the user later fixed by hand.
+ */
+export function liftedDispute<D>(
+  finding: { content_hash?: string | null },
+  lifted: ReadonlySet<string>,
+  disputes: Record<string, D>,
+): D | undefined {
+  const hash = finding.content_hash;
+  return hash && lifted.has(hash) ? disputes[hash] : undefined;
 }
 
 type GateLike = { tier: string; status: string };
@@ -107,11 +244,6 @@ export function checkDoneWords(report: { grade: string; insufficient_evidence?: 
     : `Check done. Grade ${report.grade}.`;
 }
 
-/** "Add numbers to 2 bullets": the button that opens the number questions. */
-export function addNumbersLabel(n: number): string {
-  return `Add numbers to ${n} ${n === 1 ? "bullet" : "bullets"}`;
-}
-
 export function potentialPoints(
   levelName: string | null | undefined,
   nScoreable: number | null | undefined,
@@ -120,6 +252,16 @@ export function potentialPoints(
   const value = LEVEL_VALUES[levelName];
   if (value == null) return null;
   return Math.round((100 * (1 - value)) / nScoreable);
+}
+
+export function groupPoints(
+  findings: { level?: number | null; gain?: number | null }[],
+  nScoreable: number | null | undefined,
+): number {
+  return findings.reduce((sum, finding) => {
+    if (finding.gain != null) return sum + finding.gain;
+    return sum + (potentialPoints(levelNameOf(finding), nScoreable) ?? 0);
+  }, 0);
 }
 
 export function levelNameOf(finding: {
@@ -147,26 +289,6 @@ export function groupKey(finding: {
   return section;
 }
 
-export type FindingGroup<T> = { key: string; findings: T[] };
-
-export function groupFindings<
-  T extends { location: { section: string; index?: number | null } },
->(findings: T[]): FindingGroup<T>[] {
-  const order: string[] = [];
-  const buckets = new Map<string, T[]>();
-  for (const finding of findings) {
-    const key = groupKey(finding);
-    let bucket = buckets.get(key);
-    if (!bucket) {
-      bucket = [];
-      buckets.set(key, bucket);
-      order.push(key);
-    }
-    bucket.push(finding);
-  }
-  return order.map((key) => ({ key, findings: buckets.get(key)! }));
-}
-
 export function sharedCoaching(
   findings: { why: string; how: string }[],
 ): { why: string; how: string } | null {
@@ -178,48 +300,6 @@ export function sharedCoaching(
     return { why, how };
   }
   return null;
-}
-
-/**
- * Group-header blurb when every finding shares issue + how.
- *
- * The backend's `issue` strings are complete sentences with varying subjects
- * ("Has a scale metric…", "A reader can't tell what you did here.") — they
- * CANNOT be conjugated into a count-led sentence, which is how this shipped
- * "2 items here are a reader can't tell what you did here". Both copy strings
- * are therefore reproduced verbatim; the count is introduced with a colon,
- * which is agreement-free. The rail's jump list already carries counts, so a
- * plural-shaped sentence buys nothing.
- */
-export function hoistBlurb(
-  findings: { issue: string; how: string }[],
-): string | null {
-  if (findings.length === 0) return null;
-  const issue = findings[0].issue;
-  const how = findings[0].how;
-  if (!issue && !how) return null;
-  if (!findings.every((f) => f.issue === issue && f.how === how)) return null;
-  const count = findings.length;
-  const how1 =
-    count > 1 ? how.replace(/\bthis bullet\b/gi, "each bullet") : how;
-  const body = [issue, how1].filter(Boolean).join(" ");
-  if (count === 1) return body;
-  const lowered = issue ? issue.charAt(0).toLowerCase() + issue.slice(1) : "";
-  return `${count} bullets here: ${[lowered, how1].filter(Boolean).join(" ")}`;
-}
-
-/**
- * The part of a finding label that the group header does NOT already say.
- * Labels arrive as "<entry> · bullet N"; the header names the entry, so the
- * collapsed row shows only the tail. Without this a long entry name ("Bone
- * Muscle Research Center — Research Assistant - Data Science & Bioinformatics")
- * eats the whole row and pushes the chips and action past the card edge.
- */
-export function shortFindingLabel(label: string): string {
-  const cut = label.lastIndexOf(" · ");
-  if (cut < 0) return label;
-  const tail = label.slice(cut + 3).trim();
-  return tail || label;
 }
 
 export function groupTitle(key: string, data?: ResumeData | null): string {
@@ -366,18 +446,146 @@ export function fatalGateFailed(gates: { tier: string; status: string }[] | unde
   return (gates ?? []).some((g) => g.tier === "fatal" && g.status === "fail");
 }
 
-export function filterFindings<T extends { type: string }>(
-  findings: T[],
-  filter: StreamFilter,
-): T[] {
-  if (filter === "all") return findings;
-  return findings.filter((f) => f.type === filter);
-}
-
 export const METRIC_ASK_NEEDLE = "What number measures this";
 
-export function isMetricAsk(question: string | null | undefined): boolean {
-  return (question ?? "").includes(METRIC_ASK_NEEDLE);
+export function isMetricAsk(finding: { ask_kind?: string | null; question?: string | null }): boolean {
+  return finding.ask_kind ? finding.ask_kind === "measure" : (finding.question ?? "").includes(METRIC_ASK_NEEDLE);
+}
+
+export function nextGradeLine(report: { next_grade?: { grade: string; points: number } | null }): string | null {
+  const next = report.next_grade;
+  return next ? `${next.points} ${next.points === 1 ? "point" : "points"} to ${next.grade}` : null;
+}
+
+/** The grade bands' floors, lowest first: `health_score.GRADE_BANDS` (below 40 is F). */
+export const GRADE_FLOORS = [40, 55, 70, 85] as const;
+
+/**
+ * How far the score is from its band's floor to the next band's (0 to 1), for the summary band's bar.
+ * Null when there is no next grade to reach (an A, or a score a failed check caps).
+ */
+export function nextGradeProgress(report: {
+  score: number;
+  next_grade?: { grade: string; points: number } | null;
+}): number | null {
+  const next = report.next_grade;
+  if (!next) return null;
+  const target = report.score + next.points;
+  const floor = Math.max(0, ...GRADE_FLOORS.filter((f) => f <= report.score));
+  if (target <= floor) return null;
+  return Math.min(1, Math.max(0, (report.score - floor) / (target - floor)));
+}
+
+/** "Checked 2 minutes ago · Version 28": the header's stamp (`ago` is the relative time). */
+export function checkedWords(ago: string, version: number | null | undefined): string {
+  return version != null ? `Checked ${ago} · Version ${version}` : `Checked ${ago}`;
+}
+
+/** The report's flag for a resume with no number in any scored bullet: the summary band's callout. */
+export const NO_NUMBERS_RULE = "evidence.no_numbers";
+
+/** The report's tabs, one per kind of action, then what is done. */
+export type HealthTab = "number" | "detail" | "reword" | "shorten" | "notes" | "done";
+export type ActionTab = Exclude<HealthTab, "done">;
+
+export const HEALTH_TABS: { id: HealthTab; label: string }[] = [
+  { id: "number", label: "Needs a number" },
+  { id: "detail", label: "Needs detail" },
+  { id: "reword", label: "Reword" },
+  { id: "shorten", label: "Shorten" },
+  { id: "notes", label: "Notes" },
+  { id: "done", label: "Done" },
+];
+
+const ACTION_TABS: ActionTab[] = ["number", "detail", "reword", "shorten", "notes"];
+
+/** `?tab=` as a tab, or null for anything else (no param, an old or mistyped value). */
+export function parseHealthTab(raw: string | null | undefined): HealthTab | null {
+  return HEALTH_TABS.find((t) => t.id === raw)?.id ?? null;
+}
+
+type Actionable = {
+  type: string;
+  ask_kind?: string | null;
+  question?: string | null;
+  rule?: string;
+};
+
+/**
+ * The tab a finding is acted on in: a number question, any other question, a rewrite, a too-long
+ * bullet, or any other note. Null for a check (the banner above the tabs) and for "No numbers
+ * anywhere" (the summary band's callout).
+ */
+export function actionTabOf(finding: Actionable): ActionTab | null {
+  if (finding.type === "ask") return isMetricAsk(finding) ? "number" : "detail";
+  if (finding.type === "fix") return "reword";
+  if (finding.type === "note") {
+    if (finding.rule === NO_NUMBERS_RULE) return null;
+    return finding.rule === "bullet.too_long" ? "shorten" : "notes";
+  }
+  return null;
+}
+
+/** Every finding in its tab, in report order. */
+export function findingsByTab<T extends Actionable>(findings: T[]): Record<ActionTab, T[]> {
+  const tabs: Record<ActionTab, T[]> = { number: [], detail: [], reword: [], shorten: [], notes: [] };
+  for (const finding of findings) {
+    const tab = actionTabOf(finding);
+    if (tab) tabs[tab].push(finding);
+  }
+  return tabs;
+}
+
+/**
+ * The tab to open on: the one whose findings would gain the most points, the earlier tab on a tie.
+ * With no gain anywhere, the first tab with anything in it; with nothing at all, Notes (it always
+ * holds the Wording group and its Edit word list).
+ */
+export function defaultHealthTab<T extends Actionable & { gain?: number | null }>(findings: T[]): ActionTab {
+  const tabs = findingsByTab(findings);
+  let pick: ActionTab | null = null;
+  let best = 0;
+  for (const tab of ACTION_TABS) {
+    const gain = tabs[tab].reduce((sum, f) => sum + (f.gain ?? 0), 0);
+    if (gain > best) {
+      best = gain;
+      pick = tab;
+    }
+  }
+  return pick ?? ACTION_TABS.find((tab) => tabs[tab].length > 0) ?? "notes";
+}
+
+export type RuleGroup<T> = { key: string; title: string; findings: T[] };
+
+/**
+ * A tab's rows grouped by the rule they break, first appearance first, so each rule is stated once
+ * in its group's header. A finding with a detector id groups by it (titled from RULE_TITLES); a
+ * question or a rewrite has none, and groups by its issue sentence, which is the rule's own words.
+ */
+export function ruleGroups<T extends { rule?: string; issue: string }>(findings: T[]): RuleGroup<T>[] {
+  const order: string[] = [];
+  const buckets = new Map<string, T[]>();
+  for (const finding of findings) {
+    const key = finding.rule ?? finding.issue;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = [];
+      buckets.set(key, bucket);
+      order.push(key);
+    }
+    bucket.push(finding);
+  }
+  return order.map((key) => {
+    const list = buckets.get(key)!;
+    const rule = list[0].rule;
+    return { key, title: (rule && RULE_TITLES[rule]) || list[0].issue, findings: list };
+  });
+}
+
+/** The skill group a listed skill sits in ("Languages"), for the unscored-skills table. */
+export function skillGroupOf(data: ResumeData | null | undefined, skill: string): string | null {
+  const group = data?.skills?.find((g) => g.items.includes(skill));
+  return group ? group.category || null : null;
 }
 
 export function isBulletSubjectRule(rule: string | undefined): boolean {
@@ -605,4 +813,327 @@ export async function staleFindingIds<
     }),
   );
   return stale;
+}
+
+/**
+ * The one write behind every health Apply: the summary, or one bullet, replaced by `value`. With a
+ * `hash`, the server refuses it (409) when the text changed since the check.
+ */
+export function bulletEditOp(
+  location: { section: string; index?: number | null; bullet_index?: number | null },
+  value: string,
+  hash?: string | null,
+): LintEditOp {
+  const guard = hash != null ? { expected_content_hash: hash } : {};
+  const { section, index, bullet_index } = location;
+  return section === "summary"
+    ? { kind: "replace_summary", value, ...guard }
+    : { kind: "replace_bullet", section, index, bullet_index, value, ...guard };
+}
+
+// --- Wording: spelling and grammar slips, clichés and filler (zero score) ----------------------
+
+/** A wording note: `language.cliche`, `language.filler` or `language.slip`. */
+export function isWordingRule(rule: string | undefined): boolean {
+  return rule != null && rule.startsWith("language.");
+}
+
+/** The Wording checklist's notes, and the rest for the rule table. */
+export function splitWordingNotes<T extends { rule?: string }>(notes: T[]): { wording: T[]; other: T[] } {
+  const wording: T[] = [];
+  const other: T[] = [];
+  for (const note of notes) (isWordingRule(note.rule) ? wording : other).push(note);
+  return { wording, other };
+}
+
+/**
+ * A slip's fix, read from its issue sentence (resume_lint.py `_slip_notes`: "'<span>' looks like a
+ * slip: '<fix>'."). The span is the note's `subject`, so an apostrophe in either one is not a
+ * delimiter. Null when the sentence is not that one.
+ */
+export function slipFix(note: { subject?: string; issue: string }): string | null {
+  if (!note.subject) return null;
+  const head = `'${note.subject}' looks like a slip: '`;
+  if (!note.issue.startsWith(head) || !note.issue.endsWith("'.")) return null;
+  return note.issue.slice(head.length, -2) || null;
+}
+
+/**
+ * The hash-guarded edit that applies a wording note's `suggestion` (the backend's whole edited text,
+ * set only when the rewrite guards accept it). Null when there is nothing to apply here: no
+ * suggestion, no hash, or an Other section, which has no bullet edit op (its wording is copy-only).
+ */
+export function wordingEditOp(note: {
+  location: { section: string; index?: number | null; bullet_index?: number | null };
+  suggestion?: string | null;
+  content_hash?: string | null;
+}): LintEditOp | null {
+  if (note.suggestion == null || !note.content_hash || note.location.section.startsWith("extra:")) return null;
+  return bulletEditOp(note.location, note.suggestion, note.content_hash);
+}
+
+/** health_wording.MAX_CHARS and MAX_ENTRIES (pinned equal by test_frontend_health_report.py). */
+export const WORD_MAX_CHARS = 40;
+export const WORD_LIST_MAX = 200;
+
+/** As health_wording.normalize: trimmed, inner whitespace collapsed, lower-cased. */
+export function normalizeWord(raw: string): string {
+  return raw.trim().split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+}
+
+/** `list` with `raw` added, or why it can't be: the backend's limits, said before the Save. */
+export function addWord(list: string[], raw: string): { list: string[] } | { error: string } {
+  const word = normalizeWord(raw);
+  if (!word) return { error: "Type a word or phrase." };
+  if (word.length > WORD_MAX_CHARS) return { error: `Keep it to ${WORD_MAX_CHARS} characters or fewer.` };
+  if (list.includes(word)) return { error: "That's already on this list." };
+  if (list.length >= WORD_LIST_MAX) return { error: `This list is full (${WORD_LIST_MAX}). Remove one first.` };
+  return { list: [...list, word] };
+}
+
+/** `list` with its add field's text committed, as Save sends it: a blank field adds nothing. */
+export function withDraft(list: string[], draft: string): { list: string[] } | { error: string } {
+  return normalizeWord(draft) ? addWord(list, draft) : { list };
+}
+
+/** Never flag can hold this subject (Ignore is offered). */
+export function canIgnore(subject: string | undefined): subject is string {
+  const word = normalizeWord(subject ?? "");
+  return word.length > 0 && word.length <= WORD_MAX_CHARS;
+}
+
+/** The PUT /wording body with `subject` on Never flag: the whole current lists, as the PUT wants. */
+export function withIgnored(wording: WordingRead, subject: string): WordingBody {
+  const word = normalizeWord(subject);
+  return {
+    cliche: wording.cliche,
+    filler: wording.filler,
+    ignored: wording.ignored.includes(word) ? wording.ignored : [...wording.ignored, word],
+  };
+}
+
+// --- The question pass: every ask on one page, answered in one go --------------------------------
+
+/** "2 of 6 answered". A skipped row still counts: Skip lasts this visit, so the total is every row. */
+export function passProgress(rows: { answered: boolean; skipped: boolean }[]): {
+  answered: number;
+  total: number;
+  words: string;
+} {
+  const answered = rows.filter((row) => row.answered && !row.skipped).length;
+  const total = rows.length;
+  return { answered, total, words: `${answered} of ${total} answered` };
+}
+
+/**
+ * The pass's primary button: "Write 3 new wordings" ("Write new wordings" with none to write). A
+ * bullet's drafted text is its wording; "version" is only ever the resume's.
+ */
+export function writeWordingsLabel(n: number): string {
+  if (n === 0) return "Write new wordings";
+  return `Write ${n} new ${n === 1 ? "wording" : "wordings"}`;
+}
+
+/** Where a pass row is: typing, queued for or being drafted, drafted, saved, or overtaken by a change. */
+export type PassStatus =
+  | "answering"
+  | "queued"
+  | "drafting"
+  | "failed"
+  | "drafted"
+  | "saving"
+  | "saved"
+  | "changed"
+  | "checking"
+  | "gone"
+  | "unrewritable";
+
+/**
+ * A row's answer, Skip for now and Not right? are open only while nothing writes it: Write N new
+ * wordings drafts from the answers it read on the click, so a queued row is shut until its draft lands.
+ */
+export function passRowOpen(status: PassStatus): boolean {
+  return status === "answering" || status === "failed";
+}
+
+/** Not right? is offered on a row the check still rates as it stands: never while it is written or saved. */
+export function passRowDisputable(status: PassStatus): boolean {
+  return status === "answering" || status === "failed" || status === "drafted" || status === "unrewritable";
+}
+
+/** New wording that would change the bullet: blank, or the bullet itself (spaces aside), saves nothing. */
+export function changesText(original: string | null, text: string): boolean {
+  const next = text.trim();
+  return original != null && next.length > 0 && next !== original.trim();
+}
+
+/**
+ * The version an Undo restores: V0, only when this write is the version right after it. A write that
+ * changed nothing leaves V0 latest, and one another write beat to V0 + 1 is later still; restoring V0
+ * then would throw someone else's write away.
+ */
+export function undoTarget(v0: number | null, written: number | null | undefined): number | null {
+  return v0 != null && written != null && written === v0 + 1 ? v0 : null;
+}
+
+export type SaveBatchDeps<R, W> = {
+  /** The latest version before the write (V0); a failed read saves without an Undo. */
+  latestVersion: () => Promise<number | null>;
+  /** ONE `/edits` call for these rows, answering with the version it left latest. */
+  write: (rows: R[]) => Promise<W>;
+  /** After a 409: the rows whose text no longer matches their hash. */
+  changedKeys: (rows: R[]) => Promise<Set<string>>;
+  /** The 409 a hash guard answers. */
+  isChanged: (err: unknown) => boolean;
+  keyOf: (row: R) => string;
+};
+
+/**
+ * Save a batch of rows as one write. The 409 does not say which op failed, so the rows whose text no
+ * longer matches are dropped and the rest sent once more; when no row explains it, or the second write
+ * 409s too, every row left is marked changed and nothing more is sent. `undoTo` is V0 only when the
+ * write is V0 + 1 (`undoTarget`). Any other failure is the caller's.
+ */
+export async function saveBatch<R, W extends { version_number?: number | null }>(
+  targets: R[],
+  deps: SaveBatchDeps<R, W>,
+): Promise<{ sent: R[]; changed: Set<string>; undoTo: number | null; result: W | null }> {
+  const v0 = await deps.latestVersion().catch(() => null);
+  const changed = new Set<string>();
+  let sent = targets;
+  let result: W;
+  try {
+    result = await deps.write(sent);
+  } catch (err) {
+    if (!deps.isChanged(err)) throw err;
+    const found = await deps.changedKeys(sent);
+    for (const row of sent) if (found.size === 0 || found.has(deps.keyOf(row))) changed.add(deps.keyOf(row));
+    sent = sent.filter((row) => !changed.has(deps.keyOf(row)));
+    if (sent.length === 0) return { sent, changed, undoTo: null, result: null };
+    try {
+      // The rest, once.
+      result = await deps.write(sent);
+    } catch (again) {
+      if (!deps.isChanged(again)) throw again;
+      for (const row of sent) changed.add(deps.keyOf(row));
+      return { sent: [], changed, undoTo: null, result: null };
+    }
+  }
+  return { sent, changed, undoTo: undoTarget(v0, result.version_number), result };
+}
+
+/**
+ * Accept all shown: every accepted row as ONE `/edits` call (one transaction, one new version), each
+ * op guarded by its bullet's hash so a bullet that changed since the check refuses the batch (409).
+ */
+export function batchEditOps(
+  rows: {
+    finding: {
+      location: { section: string; index?: number | null; bullet_index?: number | null };
+      content_hash?: string | null;
+    };
+    text: string;
+  }[],
+): LintEditOp[] {
+  return rows.map((row) => bulletEditOp(row.finding.location, row.text, row.finding.content_hash));
+}
+
+/** The latest version number in a versions list (null with none): the V0 an undo restores. */
+export function latestVersionNumber(versions: { version_number: number }[]): number | null {
+  return versions.length === 0 ? null : Math.max(...versions.map((v) => v.version_number));
+}
+
+/** Runs `fn` over `items`, at most `limit` at a time (the pass drafts three at once). */
+export async function mapPool<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      await fn(items[index], index);
+    }
+  }
+  const n = Math.min(limit, items.length);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+}
+
+export type PassOutcome = { points: number; fixed: number; notRight: number; skipped: number };
+
+/**
+ * What a pass did, from the report it started on and the check it closes with: the score change,
+ * the pass's own rows the check now calls fixed (`resolvedFindings`; a row the user marked not right
+ * counts there instead), and the rows marked not right or skipped.
+ */
+export function passOutcome<T extends Rated & { id: string; location: Where }>(
+  prior: { score: number; findings: T[] },
+  next: { score: number; findings: (Rated & { id: string; location: Where })[] },
+  passIds: ReadonlySet<string>,
+  disputedHashes: ReadonlySet<string>,
+  skipped: number,
+): PassOutcome {
+  const fixed = resolvedFindings(prior.findings, next.findings).filter(
+    (f) => passIds.has(f.id) && !(f.content_hash && disputedHashes.has(f.content_hash)),
+  ).length;
+  return { points: next.score - prior.score, fixed, notRight: disputedHashes.size, skipped };
+}
+
+/** The one toast a pass closes with: "+6 points · 3 fixed · 2 not right · 1 skipped". */
+export function passOutcomeWords({ points, fixed, notRight, skipped }: PassOutcome): string {
+  const score =
+    points === 0
+      ? "Same score"
+      : `${points > 0 ? "+" : ""}${points} ${Math.abs(points) === 1 ? "point" : "points"}`;
+  const parts = [score];
+  if (fixed > 0) parts.push(`${fixed} fixed`);
+  if (notRight > 0) parts.push(`${notRight} not right`);
+  if (skipped > 0) parts.push(`${skipped} skipped`);
+  return parts.join(" · ");
+}
+
+export type BulletContext = { heading: string; dates: string | null; bullets: string[]; active: number };
+
+const dateRange = (...parts: (string | null | undefined)[]) =>
+  parts.filter(Boolean).join(" – ") || null;
+
+/**
+ * The item an asked bullet sits in, from the resume: its heading, dates and every bullet, with the
+ * asked one's index (the pass's context pane). Null when the place no longer holds a bullet.
+ */
+export function bulletContext(
+  data: ResumeData,
+  location: { section: string; index?: number | null; bullet_index?: number | null },
+): BulletContext | null {
+  const { section, index, bullet_index } = location;
+  const make = (heading: string, dates: string | null, bullets: string[] | undefined, active: number) =>
+    bullets && active >= 0 && active < bullets.length ? { heading, dates, bullets, active } : null;
+  if (section === "summary") return data.summary ? make("Summary", null, [data.summary], 0) : null;
+  if (bullet_index == null) return null;
+  if (section.startsWith("extra:")) {
+    const sec = data.extra_sections?.find((s) => s.key === section.slice("extra:".length));
+    if (!sec) return null;
+    if (sec.type === "bullets") return make(sec.title, null, sec.bullets, bullet_index);
+    const entry = index != null ? sec.entries?.[index] : undefined;
+    return entry ? make(entry.heading || sec.title, dateRange(entry.date), entry.bullets, bullet_index) : null;
+  }
+  if (index == null) return null;
+  const heading = groupTitle(`${section}:${index}`, data);
+  if (section === "experience") {
+    const entry = data.experience?.[index];
+    return entry ? make(heading, dateRange(entry.start_date, entry.end_date), entry.bullets, bullet_index) : null;
+  }
+  if (section === "projects") {
+    const entry = data.projects?.[index];
+    return entry ? make(heading, dateRange(entry.date), entry.bullets, bullet_index) : null;
+  }
+  if (section === "education") {
+    const entry = data.education?.[index];
+    return entry
+      ? make(heading, dateRange(entry.start_date, entry.end_date ?? entry.graduation_date), entry.bullets, bullet_index)
+      : null;
+  }
+  return null;
 }

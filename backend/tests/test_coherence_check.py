@@ -249,7 +249,7 @@ def test_bullet_level_notes_match_by_entry_index(db_session, monkeypatch):
         "subject": "Did stuff",
     }
 
-    def fake_rule_notes(resume):
+    def fake_rule_notes(resume, **_kwargs):
         # Fabricate a "new" defect (not present for `base`) at entry[1] so this
         # test exercises `_in_scope`/`_changed`, not the inherited-defect check.
         return [] if resume is base else [fake_note_at_entry1]

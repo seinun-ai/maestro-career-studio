@@ -15,8 +15,8 @@ import { cn } from "@/lib/utils";
  * **A narrow reading measure is a BODY concern, not a shell concern.** A page
  * whose prose wants ~65 characters wraps that prose itself (or, for a
  * scanning layout, applies `max-w-[65ch]` inside cards). `PageMeasure` remains
- * for a single reading column; the health report is two-pane above 1024px and
- * does not wrap the page in it.
+ * for a single reading column; the health report is a scanning layout (a
+ * summary band and tabs) and does not wrap the page in it.
  */
 export function PageShell({
   children,

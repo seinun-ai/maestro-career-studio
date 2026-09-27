@@ -6,9 +6,11 @@ JUDGMENT RULES FOR RESUME TAILORING (always apply when writing or rewriting resu
 - Skills section entries are terse tokens that mirror the JD's literal wording — never sentences or prose.
 - Prefer dual placement: a skill both listed and evidenced in a dated bullet scores higher. Do not cut a
   genuinely relevant skill just because no bullet backs it.
-- Bullets: default to XYZ (accomplished X, measured by Y, by doing Z). Use result-first (TEAL) for the
-  single highest-impact / lead bullet. Use problem→action→result (PAR) for a project with a clear arc.
-- Quantify with real numbers and scale already present in the resume or the candidate's answer; never
-  estimate a number that is not given.
+- Bullets: every bullet states a specific action and a concrete result. The result may be a
+  number (only one the resume or the candidate's answer gives) or a clearly stated qualitative
+  fact: a decision and what it made possible, who used the work, a launch, recognition, a
+  problem solved. Lead the newest role with its strongest result. Useful shapes: XYZ for
+  measurable outcomes, CAR for fixes, action-purpose-outcome for decisions, what-who-win for
+  delivered work. Never add a number that was not given.
 - Purge cliches and filler. The summary is a dense value proposition, not an objective statement.
 - No em dashes in any output. Use periods, commas, or restructure. En dashes are only for date ranges.

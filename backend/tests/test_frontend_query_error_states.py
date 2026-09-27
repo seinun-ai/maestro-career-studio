@@ -242,6 +242,7 @@ _FAILURE_BRANCHES = {
     "components/settings/setting-card.tsx": "const loadFailed = queries.some((q) => isLoadFailure(q));",
     "components/career/first-run-import-card.tsx": "if (isLoadFailure(entities)) {",
     "components/resume-health/health-report-page.tsx": "if (isLoadFailure(baseQuery)) {",
+    "components/resume-health/question-pass.tsx": "if (isLoadFailure(baseQuery)) {",
     "components/chat/chat-page.tsx": "const threadFailed = sessionId !== null && isLoadFailure(detail);",
     "components/setup/getting-started-card.tsx": "if (isLoadFailure(setupStatus)) {",
     "components/chat/scope-picker.tsx": "{isLoadFailure(kbEntities) ? (",

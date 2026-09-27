@@ -391,3 +391,83 @@ def test_every_qid_appears_so_the_model_can_key_its_reply(db_session):
         ],
     )
     assert "a-0" in prompt and "a-1" in prompt
+
+
+# --------------------------------------------------------------------------- #
+# Tailoring follows the health rubric (health check v3, Task 13)
+
+def _prompt_file(key):
+    return (prompt_assembly.prompts.PROMPT_DIR / f"{key}.txt").read_text(encoding="utf-8")
+
+
+def test_tailoring_skill_asks_for_a_result_not_a_number_in_every_bullet():
+    text = _prompt_file("tailoring_skill")
+    assert "every bullet states a specific action and a concrete result" in text
+    assert "a clearly stated qualitative\n  fact" in text
+    assert "Never add a number that was not given." in text
+    # The old default quantified every bullet; it must not come back.
+    assert "default to XYZ" not in text
+    assert "Quantify with real numbers" not in text
+    assert "Purge cliches and filler." in text
+
+
+def test_gap_tailor_asks_for_a_result_and_numbers_only_where_given():
+    text = _prompt_file("gap_tailor")
+    assert "Keep every bullet truthful, specific and ending in a result" in text
+    assert "use\n  real numbers only where given." in text
+    assert "quantified with real numbers" not in text
+
+
+def test_chat_system_asks_for_a_result_not_quantified_impact():
+    text = _prompt_file("chat_system")
+    assert "quantified impact" not in text
+    assert "a real number only where one is given" in text
+
+
+def test_skill_preamble_lists_the_default_word_bank(db_session):
+    from app.services import health_wording
+
+    p = prompt_assembly.build_gap_tailor_prompt({"summary": "x"}, {"skills": []}, [], [])
+
+    expected = "Never use these words: " + ", ".join(
+        health_wording.DEFAULT_CLICHE + health_wording.DEFAULT_FILLER) + "."
+    assert expected in p
+    assert p.index("JUDGMENT RULES FOR RESUME TAILORING") < p.index(expected)
+    assert p.index(expected) < p.index("You are tailoring a resume")
+
+
+def test_skill_preamble_follows_a_user_edit_to_the_word_bank(db_session):
+    from app.services import health_wording
+
+    health_wording.save(db_session, cliche=["synergy", "rockstar"], filler=["very", "really"],
+                        ignored=["really"])
+
+    tailor = prompt_assembly.build_gap_tailor_prompt({"summary": "x"}, {"skills": []}, [], [])
+    enrich = prompt_assembly.build_gap_enrichment_prompt(
+        {"summary": "x"}, {"skills": []}, {"gaps": []})
+
+    for p in (tailor, enrich):
+        assert "Never use these words: synergy, rockstar, very.\n" in p
+        assert "results-driven" not in p  # a default the user removed is gone
+
+
+def test_skill_preamble_drops_every_never_flag_word(db_session):
+    from app.services import health_wording
+
+    health_wording.save(db_session, cliche=["synergy"], filler=["very"],
+                        ignored=["synergy", "very"])
+
+    p = prompt_assembly.build_gap_tailor_prompt({"summary": "x"}, {"skills": []}, [], [])
+
+    assert "Never use these words" not in p
+
+
+def test_word_bank_line_survives_a_customized_skill_prompt(db_session):
+    from app.services import health_wording
+
+    prompt_assembly.prompts.set_prompt("tailoring_skill", "MY OWN RULES\n", db_session)
+    health_wording.save(db_session, cliche=["synergy"], filler=[], ignored=[])
+
+    p = prompt_assembly.build_gap_tailor_prompt({"summary": "x"}, {"skills": []}, [], [])
+
+    assert p.startswith("MY OWN RULES\nNever use these words: synergy.\n\n---\n\n")

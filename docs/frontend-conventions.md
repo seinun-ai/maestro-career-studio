@@ -53,11 +53,11 @@
   is measured there too (`test_placed_palette_text_meets_aa_where_it_sits`).
   **Selected
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
-  `Check` plus `aria-pressed` (health-report filters, Review changes,
+  `Check` plus `aria-pressed` (Review changes,
   SourceToggle, the Agent inbox's history filter, the zoom presets, employment types,
   section presets, and the template picker): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
-  `test_selected_tonal_toggles_show_a_check` pins the first four. Three exceptions carry the state
+  `test_selected_tonal_toggles_show_a_check` pins the first three. Three exceptions carry the state
   without a Check: the formatting panel's segmented buttons are solid
   `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
   and a Check would widen every segment in a narrow pane), Career history's
@@ -127,16 +127,72 @@
   and a Check before its name, and says so with `aria-pressed`. The card's
   accessible name is only the template's name, so the default mark and the
   Needs setup badge and the ATS warning line are its `aria-describedby`.
+- **Judged resume text** (the text a check rates: a health row's bullet, a pass row, a wording row)
+  is upright `text-sm text-foreground`, wrapped within `max-w-[65ch]`, with a `border-l-2
+  border-border pl-3` quote rule (`judged-text.tsx`). A compact quote uses `line-clamp-3` and a
+  visible Show all toggle with `aria-expanded`; it is never italic, grey or cut to one line. Metadata
+  alone uses muted text; location, level and attention are plain text, never colour alone.
+- **One filled button per health view.** The report's is **Start the questions** (the summary band);
+  every card action is tonal or text-style (Write new wording and Apply suggestion included). The
+  question pass's is **Write N new wordings** until nothing is left to write, then **Accept all
+  shown**; a modal's own confirm is filled, since it is a view of its own. Pinned by
+  `test_one_filled_button_per_view` and `test_one_filled_button_in_view`.
+- **The health report** is one column (owner decision: no rail): the header's stamp ("Checked 2
+  minutes ago · Version 28") with an icon Check again, a full-width summary band (grade, the bar to
+  the server's `next_grade`, composition, the "No numbers anywhere" callout, the stale banner, Start
+  the questions), the checks, then tabs by ACTION (`actionTabOf`: Needs a number, Needs detail,
+  Reword, Shorten, Notes, then Done) with plain counts. `?tab=` is read with `useSearchParams`; with
+  none, the tab whose findings gain the most opens, chosen once per visit. Every panel is
+  `keepMounted`, so drafts survive a switch. In a tab, rows group by the rule they break
+  (`ruleGroups`), whose header states the rule and its points once; a row is the entry and bullet,
+  the clamped quote, the bullet's own question, one text-style action and ⋯. Ask controls read
+  `ask_kind` (a legacy stored report falls back to the question's wording); a measure ask names its
+  target and offers its number-free alternative. Re-runs run one at a time (`runLatest`'s queue),
+  and the page adopts no report older than the last one it adopted. Done lists this session's
+  fixes, disputes (Reopen) and hand-set ratings still in the report (Back to automatic). A rated
+  bullet offers a quiet **Not right?** (a free-text dispute, `dispute-box.tsx`) unless the user set
+  its rating by hand; the page keeps the reply per content hash, so it survives the re-run a moved
+  rating triggers and opens the tab the bullet moved to (`disputeTabMove`); a bullet the dispute
+  lifts out of the report carries the reply, and any suggestion as wording to copy, on its Fixed
+  entry, which takes focus. A suggestion applies through the same hash-guarded Apply, one per card
+  (the dispute's replaces the card's own).
+- **The Wording checklist** (`wording-checklist.tsx`) holds the `language.*` notes (slips, clichés,
+  filler; zero score) inside Notes, shown with every report ("No wording issues." with no hits) so
+  **Edit word list** is always reachable. A row shows the bullet as judged text, the slip as a word
+  diff (else the issue), and text-style **Apply**/**Remove** (the backend's guarded `suggestion`
+  through `bulletEditOp`, hash-guarded; copy-only for Other sections; with no suggestion, a cliché
+  row says to rewrite it in your own words and any other says to edit it in the resume) and
+  **Ignore** (adds the word to Never flag, then re-runs). One word list change
+  runs at a time (GET, PUT, re-run). **Edit word list** (`word-list-dialog.tsx`) edits Clichés,
+  Filler words and Never flag as a draft that Cancel drops; Reset to defaults fills the draft only;
+  Save commits a typed-but-unadded word (or stops on its error), sends all three and re-runs.
+- **The question pass** (`/base-resumes/[slug]/health/questions`, `question-pass.tsx`; `?from=<tab>`,
+  read with `useSearchParams`, sends Back to that tab) puts every ask on one page, rows fixed when it
+  opens: each the full bullet, its own question and field (a measure ask's labelled number fields with
+  the number-free swap, a detail ask's two-line box), **Not right?** (only while the check still
+  rates the row as it stands, `passRowDisputable`) and **Skip for now** (this visit only; the row
+  still counts in "2 of 6 answered"). Write drafts three `answerAsk` calls at a time, rows filling in
+  as each lands; a queued row's fields, Skip and Not right? are shut until its draft lands. Accept all
+  shown first lists the rows with a checkbox each (`accept-all-dialog.tsx`); wording that equals its
+  bullet says "No change to save" and is never sent. Every accept, one row or all, is ONE
+  hash-guarded `/edits` call and one version (`saveBatch` in `lib/health-report.ts`, wired by
+  `use-pass-writes.ts`); a 409 marks the rows whose text no longer matches ("This bullet changed.
+  Write it again?", which re-runs the check for that row) and sends the rest once. Undo is offered
+  only when the write is the version right after the one read before it (`/edits` answers with
+  `version_number`) and restores only while that write is still the latest (`if_latest`; a 409 says
+  to use Version history, and focus lands on the row's Saved line). At 1280 and up a context pane
+  shows the active row's item with its bullet highlighted; below that, its dates and the bullets
+  above and below sit on the row. Typed answers and open edits register the leave guard; leaving
+  re-runs the check in the background, adopts its report only if none newer is cached, and says what
+  the pass did in one toast (`passOutcomeWords`).
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or
   rhythms: the shell is `mx-auto`, so a narrower cap indents the whole column.
   **A narrow reading measure is a BODY concern (`PageMeasure` or
-  `max-w-[65ch]` on the sentences), never a shell concern.** The health
-  report is two-pane at ≥1024px: a sticky ~300px rail (grade, composition,
-  jump list, filters, batch number-asks, Check again) and a finding stream; the ~65ch measure
-  lives inside card prose, not as `PageMeasure` around the page. Below 1024px
-  the rail stacks above the stream. `PageHeader` owns the type scale; call sites pass
+  `max-w-[65ch]` on the sentences), never a shell concern.** The one-column
+  health report keeps its ~65ch measure inside card prose, not as `PageMeasure` around the page.
+  `PageHeader` owns the type scale; call sites pass
   `title`/`subtitle`/`actions`/`leading` and do not restate classes; its
   actions cluster sits in a wrapping row under `justify-between` so a long
   title never squeezes the title block to zero width, and so a toolbar that
@@ -507,7 +563,8 @@
   that content. A chip that renders a resume-derived string needs a width cap
   plus `truncate`, its row's trailing controls need `shrink-0` so they hold
   their place, and if a heading already names the thing, render only the part
-  the heading does not (`shortFindingLabel`). Also: `truncate` inside a TABLE
+  the heading does not; a label that must show whole (a health row's "<entry> · bullet N", under a
+  rule heading) wraps with `break-words` instead. Also: `truncate` inside a TABLE
   needs `table-fixed` — auto layout sizes the cell to its longest content, so
   the cell never shrinks and the ellipsis never engages.
 - **The 768–1023px band is the layout's worst case.** `MOBILE_BREAKPOINT =
@@ -841,8 +898,8 @@
   need waits for `open` (`useBaseResumes(false, { enabled: open })`,
   `useRoleCategories({ enabled: open })`). The page around a kept dialog
   stays mounted: a failed background refetch keeps it (`useLoadFailureError`,
-  not `query.error`), and a filter hides the section that holds kept dialogs
-  instead of unmounting it (the health report's notes). A kept LLM proposal that edits
+  not `query.error`), and a tab that holds kept dialogs stays mounted when it
+  is not shown (the health report's Notes, `keepMounted`). A kept LLM proposal that edits
   by index carries the basis it was made against (`serverKey` of the saved
   copy): once the resume moves on, the proposal is described without names,
   says so, and Apply is disabled. On Referrals the inline empty-state form
@@ -1115,7 +1172,9 @@
     the group is **Checks**; a fatal check's badge is **Must fix** and the
     other tier **Serious**; **Mark as OK** and **Undo**, never gate, blocker
     or waive; **Check health**, **Check again**, **Health report**; **Check
-    template**, never certify. **Version 12** and **Version history**.
+    template**, never certify. **Version 12** and **Version history**: "version" is only ever the
+    resume's. A bullet's drafted text is its **wording** (**Write new wording**, **Write 3 new
+    wordings**, **Accept 2 new wordings**), never a new version.
     **skill group**, **School**, **On-site**, **Role**, **Employment type**,
     **Offer**, **Diversity questions (voluntary)**. **Persona** keeps its
     name. The model roles are **Fast model**, **Smart model** and

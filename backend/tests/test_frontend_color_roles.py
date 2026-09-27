@@ -320,8 +320,8 @@ def test_selected_tonal_toggles_show_a_check():
     # The secondary container is a quiet fill (1.16:1 against the light page)
     # and its text is lighter than an outline button's, so `tonal` alone no
     # longer reads as "on". M3's selected filter chip leads with a check.
-    assert "aria-pressed={filter === f.id}" in _HEALTH
-    assert "{filter === f.id && <Check />}" in _HEALTH
+    # (The health report's filter chips went with its left rail, Task 11: its tabs carry the state.)
+    assert "aria-pressed={filter === f.id}" not in _HEALTH
     assert "{review ? <Check /> : <GitCompare />}" in _STUDIO
     source = _read("components/source-toggle.tsx")
     assert "{value === s && <Check" in source

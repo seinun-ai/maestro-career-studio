@@ -223,10 +223,11 @@ def test_every_health_surface_says_the_same_count():
     page = _read("components/resume-health/health-report-page.tsx")
     assert "const counts = body ? healthCounts(body) : {};" in page
     assert "body.counts?.[key]" not in page
-    assert '{ id: "gates", label: "Checks"' in page
-    assert "leftToFix(counts, nonNote.length)" in page
-    assert "checkDoneWords(result)" in page and "Check done. Grade ${result.grade}." not in page
-    assert "scoreCompositionLine(body.score, body.score_breakdown, gates)" in page
+    assert "leftToFix(\n    counts,\n    findings.filter((f) => f.type === \"fix\" || f.type === \"ask\").length,\n  );" in page
+    runs = _read("components/resume-health/use-health-runs.ts")
+    band = _read("components/resume-health/summary-band.tsx")
+    assert "checkDoneWords(result)" in runs and "Check done. Grade ${result.grade}." not in runs
+    assert "scoreCompositionLine(body.score, body.score_breakdown, gates)" in band
     assert "summarizeCounts(healthCounts(data))" in _read("components/resume-health/health-badges.tsx")
 
 
@@ -315,9 +316,10 @@ def test_health_copy_first_read():
     # The zone orders the fix list and sets severity; it never weights the score (health_score).
     assert 'ATTENTION_BADGE_LABEL = "Higher priority";' in _read("components/attention-zone.tsx")
     page = _read("components/resume-health/health-report-page.tsx")
-    assert "addNumbersLabel(metricAsks.length)" in page and "number questions" not in page
-    assert "` · Version ${body.resume_version_number}`" in page
-    assert "number questions" not in _read("components/resume-health/batch-ask-dialog.tsx")
+    band = _read("components/resume-health/summary-band.tsx")
+    assert "Start the questions ({askCount})" in band and "number questions" not in page
+    assert "checkedWords(formatTimeAgo(body.created_at), body.resume_version_number)" in page
+    assert "number questions" not in _read("components/resume-health/question-pass.tsx")
     cards = _read("components/resume-health/finding-cards.tsx")
     assert "This rating is wrong…" in cards and ">\n            Change rating\n" not in cards
 
@@ -458,7 +460,8 @@ def test_answer_and_review_hand_focus_into_the_opened_card():
 def test_checking_again_keeps_focus_on_a_check_button():
     page = _read("components/resume-health/health-report-page.tsx")
     assert page.count("<FocusHandoff to={checkRef}") == 3
-    assert "{analyzeButton(checkRef)}" in page
+    # The header's icon Check again is the target (Task 11: the rail's button went with the rail).
+    assert "ref={checkRef}" in page[page.index("<PageHeader"): page.index("{reportFailed ? (")]
 
 
 def test_update_score_keeps_its_one_guard():
@@ -501,9 +504,9 @@ def test_finding_rows_wrap_inside_their_cards():
     cards = _read("components/resume-health/finding-cards.tsx")
     row = _block(cards, "function CollapsedRow(", "\nexport function FindingGroupHeader(")
     assert '<div className="flex min-w-0 flex-wrap items-start gap-2">' in row
-    assert '<span className="flex min-w-0 flex-wrap items-center gap-1.5">' in row
+    assert '<span className="text-muted-foreground min-w-0 text-xs break-words">' in row
     chrome = _block(cards, "export function ExpandedFindingChrome(", "\nfunction ClassificationOverrideDialog(")
-    assert "whitespace-normal" in chrome and "flex-wrap" in chrome
+    assert "break-words" in chrome and "flex-wrap" in chrome
 
 
 # --- Item 14: the number question starts empty ------------------------------

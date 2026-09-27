@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import begin_write, get_db
 from app.models.application import Application
 from app.models.base_resume import BaseResume
 from app.schemas.resume_version import (
@@ -80,9 +80,24 @@ def diff_version(
 
 @router.post("/{kind}/{key}/{number}/restore", response_model=ResumeVersionRestoreResult)
 def restore_version(
-    kind: Kind, key: str, number: int, db: Annotated[Session, Depends(get_db)]
+    kind: Kind,
+    key: str,
+    number: int,
+    db: Annotated[Session, Depends(get_db)],
+    if_latest: int | None = None,
 ):
-    """Copy a past version's snapshot into the live resume; history is append-only."""
+    """Copy a past version's snapshot into the live resume; history is append-only.
+
+    `if_latest` makes it an undo: restore only while version `if_latest` is still the latest (the
+    health question pass undoes its own write this way, so a write that landed since is never
+    thrown away). The check and the restore are one transaction under the write lock.
+    """
+    if if_latest is not None:
+        begin_write(db)
+        latest = service.latest_version(db, kind, key)
+        if latest is None or latest.version_number != if_latest:
+            db.rollback()  # let go of the write lock now
+            raise HTTPException(status_code=409, detail="resume changed since")
     try:
         snapshot, version = service.restore(db, kind, key, number)
     except LookupError as e:
