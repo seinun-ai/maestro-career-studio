@@ -352,7 +352,8 @@ def pick_from_history(fields, db_session, facts=HISTORY_FACTS):
 
 
 def test_private_employers_answer_the_government_question_no_and_it_is_assumed(db_session, monkeypatch):
-    prompts = fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1", "j2"]}})
+    prompts = fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1", "j2"],
+                                                "since": "2021-09"}})
     got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session)
     assert got["g"].model_dump() == {"oids": ["o2"], "reason": "assumed"}
     [asked] = prompts
@@ -418,7 +419,8 @@ def test_the_reasoning_payload_never_carries_name_contact_address_or_eeo(db_sess
 @pytest.mark.usefixtures("jev_on")
 def test_one_fast_call_answers_every_reasoned_field_and_jev_never_sees_the_history(db_session, monkeypatch):
     calls = fake_jev(monkeypatch, {"m": ("o1", 0.9)})
-    prompts = fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1", "j2"]}})
+    prompts = fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1", "j2"],
+                                                "since": "2021-09"}})
     got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No"), reasoned("c", CLEARANCE, "Yes", "No"),
                              pf("m", slot="education.0.discipline", options=opts("Business Analytics"))],
                             db_session)
@@ -455,7 +457,7 @@ def test_a_failed_reasoning_call_abstains_and_keeps_the_other_picks(db_session, 
 
 def test_the_reasoning_route_needs_no_low_stakes_setting(db_session, monkeypatch):
     assert model_settings.get_autofill_low_stakes(db_session) is False
-    fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j2"]}})
+    fake_reasoner(monkeypatch, {"g": {"oid": "o1", "confidence": 0.9, "shown_by": ["j2"]}})
     assert pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session)["g"].reason == "assumed"
 
 
@@ -482,3 +484,80 @@ def test_the_low_stakes_question_reads_as_one_sentence(db_session, monkeypatch):
     assert text.startswith('Which option of form field h ("How did you hear?") is the one an applicant keen on '
                            "this job would choose (")
     assert "would an applicant" not in text
+
+
+# ---------- review: a negative answer must cover the whole period it speaks for
+
+def _jobs_facts(*jobs):
+    return autofill_catalog.build({}, list(jobs), [], today=date(2026, 9, 26))
+
+
+SEINUN, TCS = JOBS
+INFOSYS = {"employer": "Infosys", "title": "Intern", "start_date": "Jan 2017", "end_date": "May 2018",
+           "current": False, "description": ""}
+
+
+@pytest.mark.parametrize("text", ["No", "No, I have not", "Not Applicable", "None", "N/A", "none of these"])
+def test_an_option_that_reads_as_a_negative_is_known_as_one(text):
+    assert autofill_pick._negative(text)
+
+
+@pytest.mark.parametrize("text", ["Yes", "Novice", "Nonprofit", "5+ years", "Current Associate"])
+def test_an_option_that_is_not_a_negative_is_not_one(text):
+    assert not autofill_pick._negative(text)
+
+
+@pytest.mark.parametrize("answer, expected", [
+    # Infosys ended before the window: it need not be cited.
+    ({"shown_by": ["j1", "j2"], "since": "2021-09"}, "assumed"),
+    # "Ever": every job overlaps, and every one is cited.
+    ({"shown_by": ["j1", "j2", "j3"], "since": "2016-01"}, "assumed"),
+    ({"shown_by": ["j1"], "since": "2021-09"}, "abstained"),  # TCS runs into the window and was skipped
+    ({"shown_by": ["j1", "j2"], "since": "2016-01"}, "abstained"),  # Infosys skipped
+    ({"shown_by": ["j1", "j2"]}, "abstained"),  # no window
+    ({"shown_by": ["j1", "j2"], "since": "last five years"}, "abstained"),
+    ({"shown_by": ["j1", "j2"], "since": "2021-13"}, "abstained"),
+])
+def test_a_no_must_cite_every_job_in_its_window(db_session, monkeypatch, answer, expected):
+    fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, **answer}})
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(SEINUN, TCS, INFOSYS))
+    assert got["g"].reason == expected
+
+
+@pytest.mark.parametrize("undated", [
+    {"employer": "Globex", "title": "Analyst", "current": False},  # no dates at all
+    {"employer": "Globex", "title": "Analyst", "start_date": "2019", "current": False},  # no end, not current
+])
+def test_a_no_over_an_undated_history_abstains(db_session, monkeypatch, undated):
+    fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1", "j2"],
+                                      "since": "2021-09"}})
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(SEINUN, undated))
+    assert got["g"].reason == "abstained"
+
+
+def test_a_no_for_a_period_no_job_reaches_abstains(db_session, monkeypatch):
+    """Every job ended before the window: nothing shows where the applicant worked in it."""
+    fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1"], "since": "2023-09"}})
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(TCS))
+    assert got["g"].reason == "abstained"
+
+
+def test_not_applicable_and_none_are_negatives_too(db_session, monkeypatch):
+    fake_reasoner(monkeypatch, {"g": {"oid": "o3", "confidence": 0.9, "shown_by": ["j1"]},
+                                "y": {"oid": "o1", "confidence": 0.9, "shown_by": ["j1"]}})
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Current employee", "Former employee", "Not Applicable"),
+                             reasoned("y", YEARS, "None", "1-3 years")], db_session)
+    assert (got["g"].reason, got["y"].reason) == ("abstained", "abstained")
+
+
+def test_a_positive_answer_needs_no_window(db_session, monkeypatch):
+    fake_reasoner(monkeypatch, {"y": {"oid": "o3", "confidence": 0.9, "shown_by": ["j1", "j2"]}})
+    got = pick_from_history([reasoned("y", YEARS, "Less than 1 year", "1-3 years", "3-5 years", "5+ years")],
+                            db_session)
+    assert got["y"].reason == "assumed"
+
+
+def test_the_prompt_asks_a_negative_for_its_window(db_session, monkeypatch):
+    prompts = fake_reasoner(monkeypatch)
+    pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session)
+    assert autofill_pick._WINDOW_RULE in prompts[0]["prompt"] and '"since"' in prompts[0]["prompt"]

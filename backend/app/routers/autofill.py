@@ -348,11 +348,16 @@ def _facts(
     except Exception:  # noqa: BLE001 — fail closed, as withhold_unconsented does
         logger.exception("eeo consent could not be read; the fill treats it as not given")
         consented = False
+    # The job's company, so "previously employed here" can be read off the
+    # history for THIS application (autofill_catalog._worked_here).
+    application = db.get(Application, application_id) if application_id is not None else None
+    job = db.get(Job, application.job_id) if application is not None else None
     facts = autofill_catalog.build(
         eeo_consent.disclosable_profile(db),
         employment_blocks(resume) if resume else [],
         resume_skills(resume) if resume else [],
         today=_today(today),
+        company=job.company if job else None,
     )
     return facts, consented
 

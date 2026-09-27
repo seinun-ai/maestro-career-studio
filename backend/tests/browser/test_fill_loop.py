@@ -1913,3 +1913,12 @@ def test_a_reasoned_field_the_pick_did_not_finish_is_the_users_never_stepped(pag
     # An unexpected commit is retried like a native list's, then given up.
     assert statuses(out)["g"] == ("cannot_operate" if case == "unexpected" else "needs_answer")
     assert "fill_step_state" not in out["calls"] and "/api/autofill/step" not in out["calls"]
+
+
+@pytest.mark.parametrize("route", [{"route": "slot", "slot": "work_auth.authorized_now", "value": "Yes"},
+                                   {"route": "low_stakes"}])
+def test_a_list_with_no_options_still_goes_to_the_step_on_the_other_routes(page, load, route):
+    """Only the reasoning route stops at "no options": a select or group on a
+    slot or low-stakes route keeps its step, as before."""
+    out = run(page, load, frames=[[f("x", "select", "Authorized?")]], map={"x": route})
+    assert out["calls"].count("fill_step_state") == 1

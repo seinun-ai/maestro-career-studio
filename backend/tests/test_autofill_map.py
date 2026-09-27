@@ -290,6 +290,7 @@ def test_text_and_date_fields_are_never_low_stakes(db_session, monkeypatch, shap
 # ---------- review fixes: who may become a low-stakes guess ----------
 
 PROTECTED = autofill_map.PROTECTED_UNANSWERED
+HISTORY = autofill_map.HISTORY_UNANSWERED
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -345,8 +346,7 @@ def test_the_fast_model_protected_sentinel_is_never_low_stakes(db_session, monke
     prompts = fake_llm(monkeypatch, {"f": {"key": PROTECTED, "confidence": 0.99}}, yes={"f": 0.99})
     got = run([field("f", "Will you need sponsorship in the future?", "select")], db_session,
               low_stakes=True)
-    assert got["f"].route == "none"
-    assert [p["trace_name"] for p in prompts if p["trace_name"] == "autofill-low-stakes"] == []
+    assert got["f"].route == "none" and len(prompts) == 1
 
 
 # ---------- review fixes: errors and quoting ----------
@@ -591,7 +591,7 @@ def test_a_profile_fact_still_wins_over_a_widened_low_stakes_kind(db_session, mo
 @pytest.mark.usefixtures("jev_on")
 @pytest.mark.parametrize("question, picked", [
     ("Will you now or in the future require sponsorship?", (PROTECTED, 0.95)),
-    ("Do you hold a US Security Clearance?", (PROTECTED, 0.9)),
+    ("Do you hold a US Security Clearance?", (HISTORY, 0.9)),
     ("Race", ("blocked_eeo", 0.95)),
     ("Will you need sponsorship?", ("work_auth.sponsorship_now", 0.7)),  # a fact below its floor
 ])
@@ -659,7 +659,7 @@ def test_the_reasoning_never_list_keeps_knockouts_preferences_and_self_assessmen
 def test_the_reasoning_pass_is_the_fast_model_even_on_the_jev_engine(db_session, monkeypatch):
     """Jev judges nothing here: the map question never carries the history,
     and /pick's answer would need it as values in Jev's state."""
-    calls = fake_jev(monkeypatch, {"c": (PROTECTED, 0.9)})
+    calls = fake_jev(monkeypatch, {"c": (HISTORY, 0.9)})
     prompts = fake_llm(monkeypatch, reasoned={"c": 0.85})
     got = run([field("c", "Do you hold a US Security Clearance?", "popup", options=["Yes", "No"])], db_session)
     assert got["c"].route == "reasoned"
@@ -690,15 +690,18 @@ def test_only_a_choice_no_fact_answers_is_a_reasoning_candidate(db_session, monk
               field("s", "Sponsorship?", "select"),  # a fact below its floor
               field("u", "Clearance?", "select"),  # an unsure map answer
               field("f", "Clearance?", "select", profile_entry=None),  # a foreign entry
+              field("p", "Are you 18 or older?", "select"),  # a protected question
               field("g", HISTORY_WORDINGS[0], "group"),
               field("c", "Do you hold a US Security Clearance?", "popup")]
     fake_jev(monkeypatch, {"a": ("personal.city", 0.9), "w": ("free_text", 0.9), "e": ("blocked_eeo", 0.9),
-                           "s": ("work_auth.sponsorship_now", 0.7), "u": ("none", 0.5), "c": (PROTECTED, 0.9)})
-    prompts = fake_llm(monkeypatch, reasoned=dict.fromkeys("awxdesufgc", 0.99))
+                           "s": ("work_auth.sponsorship_now", 0.7), "u": ("none", 0.5), "p": (PROTECTED, 0.95),
+                           "c": (HISTORY, 0.9)})
+    prompts = fake_llm(monkeypatch, reasoned=dict.fromkeys("awxdesufpgc", 0.99))
     got = run(fields, db_session, eeo_consented=False)
     assert {k for k, m in got.items() if m.route == "reasoned"} == {"g", "c"}
     [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-reasoned"]
-    assert '"g"' in asked and '"c"' in asked and '"s"' not in asked and '"a"' not in asked
+    assert '"g"' in asked and '"c"' in asked
+    assert not [k for k in "awxdesufp" if f'"{k}"' in asked]
 
 
 def test_an_unsure_or_unreadable_reasoning_answer_stays_none(db_session, monkeypatch):
@@ -729,3 +732,80 @@ def test_a_failed_reasoning_pass_keeps_the_map(db_session, monkeypatch, failure)
     monkeypatch.setattr(autofill_map.llm, "call_openai", call)
     got = run([field("a", "City"), field("g", HISTORY_WORDINGS[0], "select")], db_session)
     assert (got["a"].route, got["g"].route) == ("slot", "none")
+
+
+# ---------- review: only a history question may be reasoned; the passes are bounded
+
+@pytest.mark.parametrize("question, key, confidence", [
+    ("Will you now or in the future require sponsorship?", PROTECTED, 0.95),
+    ("Are you legally authorized to work in the United States?", PROTECTED, 0.95),
+    ("Are you 18 years of age or older?", PROTECTED, 0.95),
+    ("Race", "blocked_eeo", 0.95),
+    ("Will you need sponsorship?", "work_auth.sponsorship_now", 0.7),  # a fact below its floor
+])
+def test_a_protected_eeo_or_shaky_fact_question_is_never_reasoned(db_session, monkeypatch, question, key,
+                                                                   confidence):
+    """Reproduced in review: the history's one job "answered" sponsorship and
+    age. Only a no-fact or history question reaches the reasoning pass —
+    whatever the model would say about it."""
+    facts = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst", "start_date": "Aug 2021",
+                                         "current": True}], [])
+    prompts = fake_llm(monkeypatch, {"q": {"key": key, "confidence": confidence}}, reasoned={"q": 0.99})
+    # With consent, so the EEO sentinel reads "none", not "blocked".
+    got = autofill_map.map_fields([field("q", question, "popup", options=["Yes", "No"])], facts, db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert got["q"].route == "none"
+    assert [p["trace_name"] for p in prompts] == ["autofill-map"]
+
+
+def test_a_history_question_is_reasoned(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, {"c": {"key": HISTORY, "confidence": 0.9}}, reasoned={"c": 0.9})
+    got = run([field("c", "Do you hold a US Security Clearance?", "popup", options=["Yes", "No"])], db_session)
+    assert got["c"].route == "reasoned"
+    assert [p["trace_name"] for p in prompts] == ["autofill-map", "autofill-reasoned"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_every_map_question_offers_the_history_sentinel_and_it_is_never_low_stakes(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"c": (HISTORY, 0.9)}, noul={"c": 0.99})
+    got = run([field("c", "Do you hold a US Security Clearance?", "popup")], db_session, low_stakes=True)
+    criteria = calls[0]["questions"]["c"]["criteria"]
+    assert HISTORY in criteria and "security clearance" in criteria[HISTORY]
+    assert "clearance" not in criteria[PROTECTED]
+    assert got["c"].route == "none" and len(calls) == 1  # no low-stakes question; the reasoning said no
+
+
+def test_a_batch_with_no_open_choice_makes_exactly_one_model_call(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, {"a": {"key": "personal.city", "confidence": 0.9},
+                                     "w": {"key": "free_text", "confidence": 0.9},
+                                     "n": {"key": "none", "confidence": 0.95},
+                                     "s": {"key": "work_auth.sponsorship_now", "confidence": 0.95}},
+                       yes={"n": 0.99}, reasoned={"n": 0.99})
+    got = run([field("a", "City"), field("w", "Why us?"), field("n", "Anything else?"),
+               field("s", "Sponsorship?", "select")], db_session, low_stakes=True)
+    assert [m.route for m in got.values()] == ["slot", "free_text", "none", "slot"]
+    assert len(prompts) == 1
+
+
+@pytest.mark.parametrize("low_stakes", [False, True])
+def test_the_optional_passes_are_skipped_past_the_time_budget(db_session, monkeypatch, low_stakes):
+    """/map must answer inside the loop's 10 s: a map that took the budget
+    leaves its open questions to the user rather than ask again."""
+    ticks = iter([0.0, autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1, 100.0, 200.0])
+    monkeypatch.setattr(autofill_map, "_clock", lambda: next(ticks))
+    prompts = fake_llm(monkeypatch, {"g": {"key": "none", "confidence": 0.95}}, yes={"g": 0.99},
+                       reasoned={"g": 0.99})
+    got = run([field("g", HISTORY_WORDINGS[0], "select")], db_session, low_stakes=low_stakes)
+    assert got["g"].route == "none"
+    assert [p["trace_name"] for p in prompts] == ["autofill-map"]
+
+
+def test_within_the_budget_both_passes_run(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map, "_clock", lambda: 0.0)
+    prompts = fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.95},
+                                     "g": {"key": HISTORY, "confidence": 0.95}},
+                       yes={"t": 0.99}, reasoned={"g": 0.99})
+    got = run([field("t", "Willing to travel?", "select"), field("g", HISTORY_WORDINGS[0], "select")],
+              db_session, low_stakes=True)
+    assert (got["t"].route, got["g"].route) == ("low_stakes", "reasoned")
+    assert [p["trace_name"] for p in prompts] == ["autofill-map", "autofill-low-stakes", "autofill-reasoned"]

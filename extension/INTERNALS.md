@@ -488,9 +488,14 @@ know, and each one was learned from a live failure.
   handed to a model — these are knockout answers, and one you did not give is
   one nobody may supply for you. "Previously employed here" is stored as a
   single standing answer even though it is per-employer by nature; where it is
-  not true, change it by hand before filling. The one exception is yours to
-  switch on: with low-stakes answers on (below), a "previously employed by" or
-  "related to an employee" question no stored answer covers is answered No.
+  not true, change it by hand before filling. For an application whose
+  company your work history lists, the backend derives "previously employed
+  here" as Yes and drops the standing answer for that application (company
+  names match the way section entries do, ignoring case, punctuation and
+  suffixes such as Inc or Ltd); it only ever derives Yes. The one exception
+  to "never guessed" is yours to switch on: with low-stakes answers on
+  (below), a "previously employed by" or "related to an employee" question no
+  answer covers is answered No.
 - **Salary history is refused without the agreement permission.**
   Current/present/previous salary, last drawn salary, current CTC, salary
   history, wage history, compensation history, and an unqualified
@@ -528,15 +533,19 @@ know, and each one was learned from a live failure.
      or eligibility facts, EEO, background or criminal history, security
      clearance, salary, legal attestations and signatures. Both lists are
      `_LOW_STAKES` / `_NEVER_LOW_STAKES` (`backend/app/services/autofill_map.py`),
-     stated in every question; a field the map named a protected or EEO
-     question is never a candidate. The pick needs 0.4.
+     stated in every question; a field the map named a protected, EEO or
+     history question is never a candidate. The pick needs 0.4.
   2. **Reasoned** (`reasoned`, at every setting) — a choice the work and
      education history answers: "employed by a US government agency in the
      last five years", "do you hold a US security clearance", "years of
-     experience with X". The fast model judges it answerable from a
-     DESCRIPTION of the history (no values), and an unanswered protected
-     question may be one. Jev is not used for this route: /pick's answer needs
-     the history as values, which Jev's state would then carry. /pick answers
+     experience with X". Only a field the map called "no fact" or a HISTORY
+     question no fact answers (its own sentinel, `history_unanswered`) is a
+     candidate — never a protected question (work authorization, sponsorship,
+     age or eligibility, background), an EEO one, or a fact below its floor,
+     so the history can never answer sponsorship or age. The fast model
+     judges it answerable from a DESCRIPTION of the history (no values). Jev
+     is not used for this route: /pick's answer needs the history as values,
+     which Jev's state would then carry. /pick answers
      a batch's reasoned fields in ONE fast-model call given each job's
      employer, title, dates, current flag and description, each school's
      name, degree, major and years, and today's date — never a name, contact
@@ -545,9 +554,20 @@ know, and each one was learned from a live failure.
      cites (`shown_by`) at least one job or school of the history, every one
      real. Silence is not No: a clearance the history never mentions is no
      answer. "Not employed by that kind of organization" is shown only by
-     dated jobs over the period asked at clearly private companies. A reasoned
-     field is never handed to the adaptive step (/step has no history): its
-     abstain is yours.
+     dated jobs over the period asked at clearly private companies. A
+     NEGATIVE answer (an option reading No, None, Not applicable or N/A)
+     speaks for a period, so the model also names its first month (`since`),
+     and code takes it only when every job overlapping [since, today] is
+     dated and cited and at least one cited job overlaps it: a skipped job
+     or an undated one means no answer. /pick trusts the Companion's
+     `reasoned` route as it trusts a low-stakes one — the classification is
+     /map's, the setting and the answer are the server's. A reasoned field is
+     never handed to the adaptive step (/step has no history): its abstain,
+     or a list that showed no options, is yours; a surprise on commit is
+     retried like a native list's.
+  Both passes are optional and bounded: once /map has spent 6 s
+  (`OPTIONAL_PASS_BUDGET_S`), a pass not yet begun is skipped and its fields
+  stay yours, so /map answers inside the Companion's 10 s wait.
 - **A subframe has to look like an application form before it gets anything.**
   The fill and attach fan-out reaches every frame in the tab — that is why a
   Greenhouse or Lever form in a subframe works at all — so an ad, analytics or

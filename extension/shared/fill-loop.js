@@ -882,7 +882,7 @@
       }
       if (allBlocked(opts)) return finish(f, "blocked", { lastOutcome: "blocked" });
       if (isSet) return commitSet(f, row, opts, complete, noOptions, learnt);
-      if (noOptions && !adapts(f, row)) return finish(f, "needs_answer", { lastOutcome: "no_options" });
+      if (noOptions && routeOf(row) === "reasoned") return finish(f, "needs_answer", { lastOutcome: "no_options" });
       if (noOptions) return settle(f, await adapt(f, row, noOptions, item));
       return commitOne(f, row, opts, complete, term, item, prepicked);
     };

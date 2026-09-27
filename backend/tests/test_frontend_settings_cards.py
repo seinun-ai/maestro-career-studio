@@ -478,3 +478,10 @@ def test_the_low_stakes_help_names_the_widened_kinds_and_the_never_list():
                  "diversity questions", "background checks", "security clearance", "salary", "signatures"):
         assert kind in switch, kind
     assert "Answered for you" in switch
+    assert "what you would do if you become employed by the company" in switch
+
+
+def test_the_low_stakes_help_says_the_work_history_answers_some_questions_at_any_setting():
+    switch = _flat(_slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n"))
+    assert ("Fill may also answer questions about past employers, a security clearance or years of "
+            "experience from your work history, and lists those to check too.") in switch

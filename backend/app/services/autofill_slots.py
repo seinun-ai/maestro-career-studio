@@ -19,8 +19,10 @@ NO_SLOT = "none"
 
 # Slots whose policy is not their section's: derived facts (autofill_catalog)
 # sit in their own `derived` section, but US citizenship is a knockout answer
-# and the full name a fact about the applicant.
-_SLOT_POLICY: dict[str, Policy] = {"derived.us_citizen": "exact", "derived.full_name": "flag"}
+# and the full name a fact about the applicant — as is having worked for the
+# job's company (a "Former Associate" option is a flagged near miss of Yes).
+_SLOT_POLICY: dict[str, Policy] = {"derived.us_citizen": "exact", "derived.full_name": "flag",
+                                   "derived.previously_employed_here": "flag"}
 _EXACT_SECTIONS = frozenset({"work_auth", "eligibility", "eeo"})
 _FLAG_SECTIONS = frozenset({"education", "personal", "experience", "skills", "custom"})
 

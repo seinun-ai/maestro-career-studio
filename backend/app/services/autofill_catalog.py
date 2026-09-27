@@ -9,8 +9,10 @@ become the words a form shows ("stem_opt" → "F-1 STEM OPT extension").
 DERIVED facts (`derived.*`) are computed here from the profile and the clock,
 in their own section so /map's description says where each comes from: the
 full legal name, today's date, US citizenship read off the work-authorization
-status, and an "immediately" availability as a date. Each is absent when what
-it is derived from is.
+status, an "immediately" availability as a date, and — for an application
+whose company the work history lists — "previously employed here" as Yes,
+in place of the standing answer, which is the same for every company. Each is
+absent when what it is derived from is.
 """
 
 import re
@@ -74,6 +76,16 @@ _IMMEDIATE = re.compile(r"^\W*(available\W*)?(immedi[ae]?t\w*(\s+start)?|asap|no
                         re.IGNORECASE)
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+
+
+# A company name as one key: casefold, no suffix (Inc, LLC, Co., GmbH…; dots
+# dropped first, so "L.L.C." is "llc"), no punctuation. One rule for placing
+# page entries (autofill_sections) and for "worked here before".
+_SUFFIX = re.compile(r"\b(inc|llc|llp|ltd|limited|corp|corporation|co|company|plc|gmbh)\b")
+
+
+def name_key(text: str) -> str:
+    return " ".join(_SUFFIX.sub(" ", re.sub(r"[^\w\s]", " ", text.casefold().replace(".", ""))).split())
 
 
 @dataclass(frozen=True)
@@ -185,15 +197,32 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
                                                   policy_for("derived.earliest_start_date"))
 
 
+def _worked_here(out: dict[str, Fact], company: str | None) -> None:
+    """The job's company among the history's employers: Yes for THIS
+    application, and the company-agnostic standing answer goes. Only ever
+    Yes — a company the resume does not list may still be a past employer."""
+    key = name_key(company or "")
+    employers = {name_key(str(f.value)) for slot, f in out.items()
+                 if slot.startswith("experience.") and slot.endswith(".employer")}
+    if key and key in employers:
+        out.pop("eligibility.previously_employed_here", None)
+        out["derived.previously_employed_here"] = Fact(
+            "derived.previously_employed_here", "Yes",
+            "whether you worked for this company before, from your work history (yes/no)",
+            policy_for("derived.previously_employed_here"))
+
+
 def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str], *,
-          today: date | None = None) -> dict[str, Fact]:
-    """`today`: the clock derived dates read (tests inject it); the server's by default."""
+          today: date | None = None, company: str | None = None) -> dict[str, Fact]:
+    """`today`: the clock derived dates read (tests inject it); the server's by
+    default. `company`: the application's job's company, when there is one."""
     out: dict[str, Fact] = {}
     profile = profile or {}
     _profile_sections(out, profile)
     _derived(out, profile, today or date.today())
     _education(out, profile.get("education"))
     _experience(out, employment or [])
+    _worked_here(out, company)
     _add(out, "skills", tuple(s for s in (skills or []) if s), "applicant skills (a list)")
     _custom(out, profile.get("custom"))
     return dict(list(out.items())[:MAX_SLOTS])

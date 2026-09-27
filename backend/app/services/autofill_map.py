@@ -14,15 +14,22 @@ authorization, eligibility, background, EEO) is never turned into a guess.
 
 The REASONING pass (`reasoned`, whatever the low-stakes setting) comes last:
 a choice field still routed none, whose map answer was an explicit, confident
-"no fact" or "an unanswered protected question", and that the fast model
-judges answerable from the work and education history — past employment by a
-kind of organization, a clearance, years of experience with something. The
-question DESCRIBES the history and never sends it; /pick answers from it.
+"no fact" or "a history question no fact answers" (its own sentinel, apart
+from the protected one: a protected, EEO or shaky-fact field is never a
+candidate), and that the fast model judges answerable from the work and
+education history — past employment by a kind of organization, a clearance,
+years of experience with something. The question DESCRIBES the history and
+never sends it; /pick answers from it.
+
+Both extra passes are optional and share a time budget: past
+OPTIONAL_PASS_BUDGET_S since the map began, a pass is skipped, so /map
+answers inside the loop's 10 s wait.
 """
 
 import json
 import logging
 import re
+import time
 from typing import get_args
 
 from sqlalchemy.orm import Session
@@ -37,8 +44,13 @@ logger = logging.getLogger(__name__)
 
 BLOCKED_EEO = "blocked_eeo"
 PROTECTED_UNANSWERED = "protected_unanswered"
+HISTORY_UNANSWERED = "history_unanswered"
 LOW_STAKES_FLOOR = 0.8
 ANSWERABLE_FLOOR = 0.8
+# Seconds since the map began after which no optional pass starts (the loop
+# waits 10 s for /map; one fast-model call is typically 1–3 s).
+OPTIONAL_PASS_BUDGET_S = 6.0
+_clock = time.monotonic
 _SENTINELS = {
     FREE_TEXT: "A question that needs a written answer in the applicant's own words, "
                "such as why this company or describe a project",
@@ -47,6 +59,11 @@ _SENTINELS = {
     # answer has somewhere to go that is not "none" (a low-stakes candidate).
     PROTECTED_UNANSWERED: "A work-authorization, sponsorship, age or eligibility, or background-check "
                           "question that none of the listed applicant facts answers",
+    # Offered in every question too, so a question the work history may answer
+    # has somewhere to go that is neither a protected question nor "none".
+    HISTORY_UNANSWERED: "A question about past employers or a kind of employer (a government agency, a "
+                        "federal contractor), a security clearance, or years of experience with something, "
+                        "which none of the listed applicant facts answers",
     # Always offered too: without consent it marks the field `blocked`; with
     # consent the EEO facts are listed, and choosing this means none answers it.
     BLOCKED_EEO: "A voluntary diversity / EEO question (gender, race or ethnicity, Hispanic or Latino, "
@@ -243,15 +260,14 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     return Mapped(route="none")
 
 
-def _said_no_fact(picked: tuple[str, float] | None, *, protected: bool = False) -> bool:
+def _said_no_fact(picked: tuple[str, float] | None, *, history: bool = False) -> bool:
     """An EXPLICIT, confident "no fact answers this". An omitted, refused or
-    unsure answer, a fact below its floor and a protected kind all say
-    something else, and none of them is a guessing candidate. `protected`:
-    an unanswered protected question counts too — for the reasoning route,
-    which answers only from what the history shows (a clearance, a government
-    employer), never for a guess."""
+    unsure answer, a fact below its floor, a protected or EEO kind all say
+    something else, and none of them is a candidate for either pass.
+    `history`: a history question no fact answers counts too — for the
+    reasoning route only, never for a low-stakes guess."""
     key, p = picked or (None, 0.0)
-    return (key == NO_SLOT or (protected and key == PROTECTED_UNANSWERED)) and p >= SLOT_FLOOR
+    return (key == NO_SLOT or (history and key == HISTORY_UNANSWERED)) and p >= SLOT_FLOOR
 
 
 def _has_history(facts: dict[str, Fact]) -> bool:
@@ -260,6 +276,7 @@ def _has_history(facts: dict[str, Fact]) -> bool:
 
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,
                eeo_consented: bool, low_stakes: bool) -> dict[str, Mapped]:
+    started = _clock()
     criteria = _criteria(facts)
     picked = None
     if model_settings.get_autofill_engine(session) == "jev":
@@ -271,14 +288,16 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
         picked = _with_llm(fields, criteria, session)
     out = {f.fid: _route(f, picked.get(f.fid), facts, eeo_consented=eeo_consented) for f in fields}
 
-    def leftovers(*, protected: bool) -> list[MapField]:
+    def leftovers(*, history: bool) -> list[MapField]:
+        if _clock() - started >= OPTIONAL_PASS_BUDGET_S:
+            return []  # out of time: the open questions stay the user's
         return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
-                and not _foreign(f) and _said_no_fact(picked.get(f.fid), protected=protected)]
+                and not _foreign(f) and _said_no_fact(picked.get(f.fid), history=history)]
 
     if low_stakes:
-        for fid in _low_stakes(leftovers(protected=False), session):
+        for fid in _low_stakes(leftovers(history=False), session):
             out[fid] = Mapped(route="low_stakes")
     if _has_history(facts):
-        for fid in _answerable(leftovers(protected=True), session):
+        for fid in _answerable(leftovers(history=True), session):
             out[fid] = Mapped(route="reasoned")
     return out

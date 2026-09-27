@@ -227,3 +227,30 @@ def test_derived_policies_come_from_policy_for(slot, policy):
     f = cat.build({"personal": {"first_name": "A", "last_name": "B"}, "work_auth": {"status": "tn"},
                    "preferences": {"earliest_start_date": "ASAP"}}, [], [], today=TODAY)
     assert f[slot].policy == policy
+
+
+# ---------- review: "previously employed by <this company>" from the work history
+
+def test_the_jobs_company_in_the_history_derives_previously_employed_yes():
+    f = cat.build({"eligibility": {"previously_employed_here": False}},
+                  [{"employer": "Tata Consultancy Services Ltd.", "title": "Engineer"}], [],
+                  company="TATA CONSULTANCY SERVICES")
+    fact = f["derived.previously_employed_here"]
+    assert fact.value == "Yes" and "from your work history" in fact.describe
+    # The standing answer is company-agnostic: for THIS job it would be wrong.
+    assert "eligibility.previously_employed_here" not in f
+
+
+@pytest.mark.parametrize("company", [None, "", "Globex", "Tata"])
+def test_no_match_derives_nothing_and_keeps_the_standing_answer(company):
+    f = cat.build({"eligibility": {"previously_employed_here": False}},
+                  [{"employer": "Tata Consultancy Services", "title": "Engineer"}], [], company=company)
+    assert "derived.previously_employed_here" not in f
+    assert f["eligibility.previously_employed_here"].value == "No"
+
+
+def test_company_names_match_the_way_sections_match_employers():
+    from app.services import autofill_sections
+
+    assert autofill_sections.name_key is cat.name_key
+    assert cat.name_key("Acme, Inc.") == cat.name_key("ACME") == "acme"

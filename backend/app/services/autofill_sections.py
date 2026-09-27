@@ -39,7 +39,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import PageSection, SectionKind, SectionPlan
 from app.services import jev, llm, model_settings
-from app.services.autofill_catalog import Fact
+from app.services.autofill_catalog import Fact, name_key
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, SLOT_FLOOR
 from app.services.autofill_map import fast_json
 
@@ -81,13 +81,6 @@ def wanted(kind: str, facts: dict[str, Fact]) -> int:
 
 # What names a profile entry, per kind: the value an entry holding it must show.
 _NAMED_BY = {"experience": "employer", "education": "school"}
-_SUFFIX = re.compile(r"\b(inc|llc|llp|ltd|limited|corp|corporation|co|company|plc|gmbh)\b")
-
-
-def _norm(text: str) -> str:
-    """Casefold, no company suffix (Inc, LLC, Co., GmbH… — dots dropped
-    first, so "L.L.C." is "llc"), no punctuation, single spaces."""
-    return " ".join(_SUFFIX.sub(" ", re.sub(r"[^\w\s]", " ", text.casefold().replace(".", ""))).split())
 
 
 def _entries(kind: str, facts: dict[str, Fact]) -> list[int]:
@@ -109,13 +102,13 @@ def _match(kind: str, values: set[str], facts: dict[str, Fact], taken: set[int])
     hits = []
     for i in _entries(kind, facts):
         name = facts.get(f"{kind}.{i}.{key}")
-        if name is None or _norm(str(name.value)) not in values:
+        if name is None or name_key(str(name.value)) not in values:
             continue
         # Two profile jobs at one employer: the employer cannot say which one
         # the entry holds, so its title must match too.
         if kind == "experience" and _shares_employer(i, facts):
             title = facts.get(f"experience.{i}.title")
-            if title is None or _norm(str(title.value)) not in values:
+            if title is None or name_key(str(title.value)) not in values:
                 continue
         hits.append(i)
     return next((i for i in hits if i not in taken), hits[0] if hits else None)
@@ -143,7 +136,7 @@ def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> Placement:
         if not ((section.filled[j] if j < len(section.filled) else False) or values):
             continue
         # A value that normalizes to nothing ("Inc.") names nothing.
-        i = _match(kind, {_norm(v) for v in values} - {""}, facts, taken)
+        i = _match(kind, {name_key(v) for v in values} - {""}, facts, taken)
         foreign = foreign or i is None
         if i is None or i in taken:
             held[j] = None
@@ -166,7 +159,7 @@ def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> Placement:
 
 
 def _shares_employer(j: int, facts: dict[str, Fact]) -> bool:
-    employers = {slot: _norm(str(f.value)) for slot, f in facts.items()
+    employers = {slot: name_key(str(f.value)) for slot, f in facts.items()
                  if re.fullmatch(r"experience\.\d+\.employer", slot)}
     mine = employers.get(f"experience.{j}.employer")
     return sum(e == mine for e in employers.values()) > 1

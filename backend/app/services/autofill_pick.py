@@ -11,7 +11,11 @@ applicant for this job would choose, and are marked `assumed`.
 REASONED fields (`_reason`) are answered from the work and education history
 alone, in ONE fast-model call per batch, only on what the history positively
 shows (the model must name the jobs or schools that show it), and are marked
-`assumed` too: listed for the user to check.
+`assumed` too: listed for the user to check. A NEGATIVE answer (No, Not
+applicable, None) speaks for a whole period, so it also names the period's
+start, and code takes it only when every job in that period is dated and
+cited. /pick trusts the client's `reasoned` route as it trusts a low-stakes
+one: the classification is /map's, and the answer still needs the history.
 """
 
 import json
@@ -57,13 +61,17 @@ _PRIVATE_EMPLOYERS_RULE = ('"Have you been employed by <a kind of organization, 
                            "employer it lists there is clearly a private company (a named corporation or "
                            "consultancy); list those jobs. An employer that could be of that kind, or a period the "
                            "jobs do not reach, is none.")
+_WINDOW_RULE = ('For a negative answer (No, Not applicable, None), also return "since": "YYYY-MM", the first month '
+                'of the period the question asks about (the earliest job\'s start when it asks about ever), and list '
+                "in shown_by every job in that period.")
 _REASONED_PROMPT = """You answer job-application questions from the applicant's history below, and only from it. {rule}
 - {silence}
 - {private}
+- {window}
 - Count years of experience from the dates of the jobs that show it: today is {today}, and a current job runs to today.
 - Never answer a question about {never}: return none.
 Return JSON {{"answers": {{"<field id>": {{"oid": "<option id or none>", "confidence": <0..1>,
-"shown_by": ["<history id>"]}}}}}}.
+"shown_by": ["<history id>"], "since": "<YYYY-MM, for a negative answer>"}}}}}}.
 History: {history}
 Fields: {fields}
 """
@@ -73,6 +81,11 @@ Fields: {fields}
 _JOB_KEYS = ("employer", "title", "description", "start", "end", "current")
 _SCHOOL_KEYS = ("school", "degree", "discipline", "start_year", "end_year")
 _HISTORY_FACT = re.compile(r"(experience|education)\.(\d+)\.(\w+)")
+# An option that answers "no / none of it" for a period: judged on the
+# option's own words, since a page may say "Not Applicable" for No.
+_NEGATIVE = re.compile(r"^\W*(no|none|not applicable|n/?a)\b", re.IGNORECASE)
+_MONTH = re.compile(r"(\d{4})-(0[1-9]|1[0-2])")
+_YEAR_OR_MONTH = re.compile(r"(\d{4})(?:-(0[1-9]|1[0-2]))?")
 
 
 @dataclass(frozen=True)
@@ -184,15 +197,52 @@ def _history(facts: dict[str, Fact]) -> dict:
     return {"today": today.value if today else None, **listed}
 
 
-def _reasoned_verdict(entry: object, offered: set[str], shown: set[str]) -> Picked:
+def _negative(text: str) -> bool:
+    return bool(_NEGATIVE.match(text))
+
+
+def _month_index(text: object, *, last: bool) -> int | None:
+    """"2021-08" → a month number; a bare year is its first month (`last`:
+    its last), so an unsure edge always widens a job, never narrows it."""
+    m = _YEAR_OR_MONTH.fullmatch(text) if isinstance(text, str) else None
+    if m is None:
+        return None
+    month = int(m[2]) if m[2] else (12 if last else 1)
+    return int(m[1]) * 12 + month - 1
+
+
+def _covers(since: object, cited: set[str], history: dict) -> bool:
+    """A negative answer speaks for [since, today]: every job overlapping it
+    must be dated and cited, and at least one cited job must overlap it. An
+    undated job could be anywhere, so it fails the answer."""
+    if not (isinstance(since, str) and _MONTH.fullmatch(since)):
+        return False
+    start_of, today = _month_index(since, last=False), _month_index(str(history["today"])[:7], last=True)
+    if today is None:
+        return False
+    overlapping = set()
+    for job in history["jobs"]:
+        begin = _month_index(job.get("start"), last=False)
+        end = today if job.get("current") == "Yes" else _month_index(job.get("end"), last=True)
+        if begin is None or end is None:
+            return False
+        if begin <= today and end >= start_of:
+            overlapping.add(job["id"])
+    return bool(overlapping) and overlapping <= cited
+
+
+def _reasoned_verdict(entry: object, offered: dict[str, str], history: dict, shown: set[str]) -> Picked:
     """An answer only when it names an offered option, clears the floor, and
     cites at least one job or school of the history — every one it cites
-    real. Anything else is silence, and silence is not an answer."""
+    real; a negative answer also covers its whole period (`_covers`).
+    Anything else is silence, and silence is not an answer."""
     entry = entry if isinstance(entry, dict) else {}
     oid, conf, shown_by = entry.get("oid"), entry.get("confidence"), entry.get("shown_by")
     if not (isinstance(oid, str) and oid in offered and jev._unit(conf) and conf >= REASONED_FLOOR):
         return ABSTAIN
     if not (isinstance(shown_by, list) and shown_by and all(isinstance(i, str) and i in shown for i in shown_by)):
+        return ABSTAIN
+    if _negative(offered[oid]) and not _covers(entry.get("since"), set(shown_by), history):
         return ABSTAIN
     return Picked(oids=[oid], reason="assumed")
 
@@ -211,14 +261,15 @@ def _reason(fields: list[PickField], facts: dict[str, Fact], session: Session) -
     try:
         raw = fast_json(session, _REASONED_PROMPT.format(
             rule=_PAGE_TEXT_IS_DATA, silence=_SILENCE_RULE, private=_PRIVATE_EMPLOYERS_RULE,
-            today=history["today"], never=_NEVER_REASONED, history=json.dumps(history),
+            window=_WINDOW_RULE, today=history["today"], never=_NEVER_REASONED, history=json.dumps(history),
             fields=json.dumps(payload)), "autofill-reasoned-pick")
     except llm.LLMProviderError:
         logger.warning("fast model reasoning failed; its fields are left to the user")
         return {f.fid: ABSTAIN for f in fields}
     answers = raw.get("answers") if isinstance(raw, dict) else None
     answers = answers if isinstance(answers, dict) else {}
-    return {f.fid: _reasoned_verdict(answers.get(f.fid), {o.oid for o in f.options}, shown) for f in fields}
+    return {f.fid: _reasoned_verdict(answers.get(f.fid), {o.oid: o.text for o in f.options}, history, shown)
+            for f in fields}
 
 
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None) -> dict[str, Picked]:

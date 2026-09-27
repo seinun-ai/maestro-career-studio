@@ -1152,15 +1152,21 @@ function LowStakesSwitch() {
             job&apos;s favor: how you heard about the job, how to contact you,
             whether you&apos;d relocate, travel, work on site, work shifts or
             overtime, or take a drug test, openness to other roles, whether
-            you&apos;re related to or used to work for the company, consent to
-            text and marketing messages, and whether you have the experience
-            and education the job description asks for. It lists them under
+            you&apos;re related to or used to work for the company, what you
+            would do if you become employed by the company, consent to text
+            and marketing messages, and whether you have the experience and
+            education the job description asks for. It lists them under
             Answered for you, so you can check each one.
           </p>
           <p>
             It never guesses your education and work history, work
             authorization, sponsorship, age, diversity questions, background
             checks, security clearance, salary, or signatures.
+          </p>
+          <p>
+            Whether this is on or off, Fill may also answer questions about
+            past employers, a security clearance or years of experience from
+            your work history, and lists those to check too.
           </p>
         </div>
         {options.isError ? (

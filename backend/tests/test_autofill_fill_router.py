@@ -302,3 +302,23 @@ def test_every_fact_route_reads_the_browsers_date(db_session, monkeypatch):
     assert seen["facts"]["derived.today"].value == yesterday
     r = _post(db_session, "/api/autofill/map", {"today": "not a date", "fields": [MAP_FIELD]})
     assert r.status_code == 422
+
+
+
+@pytest.mark.usefixtures("profile")
+def test_the_applications_company_reaches_the_catalog(db_session, monkeypatch, tmp_path):
+    """A job at a company the resume lists: "previously employed here" is Yes
+    for this application, whatever the standing answer says."""
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    first_job = next(e for e in SAMPLE_RESUME["experience"] if e.get("enabled", True))
+    db_session.get(Job, application.job_id).company = first_job["company"]
+    db_session.commit()
+    seen = _spy_map(monkeypatch)
+    assert _post(db_session, "/api/autofill/map", {"application_id": str(application.id),
+                                                   "fields": [MAP_FIELD]}).status_code == 200
+    assert seen["facts"]["derived.previously_employed_here"].value == "Yes"
+    assert "eligibility.previously_employed_here" not in seen["facts"]
+    seen = _spy_map(monkeypatch)
+    assert _post(db_session, "/api/autofill/map", {"base": slug, "fields": [MAP_FIELD]}).status_code == 200
+    assert "derived.previously_employed_here" not in seen["facts"]
