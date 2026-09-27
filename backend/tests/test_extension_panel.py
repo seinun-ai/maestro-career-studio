@@ -32,6 +32,9 @@ THIS FILE — everything that is true before any one stage is:
     the data takes the view back. It is item 4's twin and sits at the end of
     the file rather than beside it because it is DRIVEN — every claim is a real
     press through the real render loop — where `railModel`'s section is a table.
+12. REFRESH — the header's re-read of the bound tab: the tab switch's own
+    reset and load, the two tab-independent lists read again, refused while
+    an action runs, stale landings dropped, the pick and the focus kept.
 
 THE STAGE FILES — one per rail stage, each holding the body AND the actions
 behind it, because a body and the round trip it fires are two halves of one
@@ -1565,7 +1568,7 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     assert _by_class(identity, "delta")[0]["text"] == "+12"
     # …and the header link now has something more specific than the job. It
     # lives in the identity block since the brand row's deletion — LAST, on a
-    # line of its own.
+    # line only Refresh shares.
     [link] = _by_class(out["regions"]["identity"], "linkish")
     assert link["href"] == f"{APP_URL}/applications/app-1"
     assert link["text"] == "Open application ↗"
@@ -1578,8 +1581,11 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     # the chip was the first home and a measured mistake: `.who` and a nowrap
     # link share one axis there, so at 400px — a NORMAL side-panel width — the
     # job title was cut to 104px and wrapped five times to buy the link its
-    # 129. Last child of the block, alone, competing with nothing.
-    assert identity["children"][-1]["class"] == "linkish"
+    # 129. The block's last line, shared only with Refresh at its left, so it
+    # competes with nothing that wraps.
+    last = identity["children"][-1]
+    assert last["class"] == "id-foot"
+    assert [kid["class"] for kid in last["children"]] == ["refresh", "linkish"]
     [row1] = _by_class(identity, "row1")
     assert [kid["class"] for kid in row1["children"]] == ["who", "chip app"]
     # Every endpoint is the widget's, unchanged — a panel that invented a route
@@ -2747,3 +2753,297 @@ def test_the_reopened_bodys_primary_is_the_one_that_actually_runs(undone):
     assert [msg["path"] for msg in undone["posts"]] == ["/api/ats-scores"]
     assert json.loads(undone["posts"][0]["init"]["body"]) == {"job_id": "job-lightning"}
 
+
+
+# ---------- 12. REFRESH: the tab switch's re-read, on demand ----------
+#
+# The panel reads the page's job, the applications and the drafts list when
+# the tab changes or the page reloads, and at no other time. A job the owner
+# adds in the web app, or through a connected agent, therefore stayed invisible
+# until they left the tab and came back. Refresh is that same re-read for the
+# tab the panel is already on: `bindPage`, which `onTab` also runs, plus the
+# two tab-independent lists forgotten first so they are read again too.
+
+_REFRESH_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+// A BROWSER BLURS A REMOVED NODE: focus falls to the body when the focused
+// control leaves the document. The shared fake models no removal, so without
+// this a restore captured AFTER the header's rebuild would still read the
+// thrown-away button's id and pass.
+const holds = (node, target) => node === target
+  || node.children.some((kid) => holds(kid, target));
+for (const root of Object.values(REGIONS)) {
+  const replace = root.replaceChildren.bind(root);
+  root.replaceChildren = (...kids) => {
+    if (ACTIVE && root.children.some((kid) => holds(kid, ACTIVE))) ACTIVE = null;
+    replace(...kids);
+  };
+}
+// STORAGE THAT REMEMBERS what the panel wrote. The shared fake records writes
+// and reads back only `spec.stored`, which is right for one page load and
+// wrong for this one: a pick made before Refresh must be the pick
+// `restoreSession` finds after it, exactly as it would be in a browser.
+const writeLocal = chrome.storage.local.set;
+chrome.storage.local.set = async (patch) => {
+  await writeLocal(patch);
+  spec.stored = { ...(spec.stored ?? {}), ...patch };
+};
+// A fill the driver holds open, so "while a fill runs" is a state it can
+// stand in and press Refresh from.
+let finishRun = null;
+ns.fillLoop.runFill = async (deps) => {
+  deps.onProgress({ phase: "round", round: 1 });
+  await new Promise((resolve) => { finishRun = resolve; });
+  return { runId: "r", host: "job-boards.greenhouse.io", fields: spec.fillFields ?? [],
+           aiFailure: null, stopped: deps.cancelled(), timedOut: false };
+};
+const findTag = (node, tag) => [
+  ...(node.tagName === tag ? [node] : []),
+  ...node.children.flatMap((kid) => findTag(kid, tag)),
+];
+main(async () => {
+  await settle();
+  const loaded = regions();
+  if (spec.pick !== undefined) {
+    const select = findTag(REGIONS.rail, "SELECT")[0];
+    select.value = select.children.filter((option) => option.value)[spec.pick].value;
+    select.dispatch("change");
+    await settle();
+  }
+  if (spec.startFill) {
+    withClass(REGIONS.foot, "cta")[0].click();
+    await settle();
+  }
+  // What changed in Maestro CS while the panel sat on this page.
+  Object.assign(spec.api, spec.apiAfter ?? {});
+  const sentBefore = sent.length;
+  const button = document.getElementById("refresh-page");
+  const beforePress = regions();
+  // FOCUSED, then pressed: the control a user acts through is the one they
+  // are in, and this fake moves focus on `focus()` alone.
+  if (button) {
+    button.focus();
+    button.click();
+  }
+  const pressed = regions();
+  // Refresh's own load answers and finishes FIRST, and only then does the
+  // load it superseded land: the order in which a missing guard would paint
+  // the stale answer over the fresh one and leave it there.
+  const newest = held.pop();
+  if (newest) newest();
+  await settle();
+  release();
+  await settle();
+  const focus = {
+    id: document.activeElement ? document.activeElement.id : null,
+    fresh: Boolean(button && document.activeElement
+                   && document.activeElement.uid !== button.uid),
+  };
+  const refreshed = regions();
+  if (finishRun) finishRun();
+  await settle();
+  emit({ loaded, beforePress, pressed, refreshed, finished: regions(), focus,
+         hadButton: Boolean(button), sentAfter: sent.slice(sentBefore), broadcasts });
+});
+"""
+
+
+def _refresh(tmp_path, **spec):
+    spec.setdefault("tabs", [{"id": 7, "url": POSTING_URL}])
+    spec.setdefault("replies", {"read_settings": SETTINGS_REPLY})
+    return run_node(_REFRESH_DRIVER_JS, spec, tmp_path, source=PANEL_SOURCE)
+
+
+def _refresh_button(region):
+    found = [node for node in _walk(region) if node["id"] == "refresh-page"]
+    return found[0] if found else None
+
+
+def _gets(sent, needle):
+    return [msg for msg in sent if msg["type"] == "api" and needle in msg["path"]
+            and (msg.get("init") or {}).get("method", "GET") == "GET"]
+
+
+_UNMATCHED = _reply({"match": "none", "job": None, "application": None})
+_REFRESH_APPLY_PAGE = {
+    "detect_page": _reply({"tier": "B", "form": True, "score": 2}),
+    "extract_job_posting": _reply(
+        {"url": APPLY_URL, "title": "Apply — Acme", "text": "", "source": "body"}),
+}
+
+
+def _refresh_draft(i):
+    return {"id": f"app-{i}", "job_id": f"job-{i}", "base_resume": "ai_ml_engineer",
+            "status": "draft", "job_company": f"Acme {i}",
+            "job_title": f"Research Engineer {i}"}
+
+
+def _draft_names(region):
+    selects = [node for node in _walk(region) if node["tag"] == "SELECT"]
+    if not selects:
+        return []
+    return [_text(option) for option in selects[0]["children"] if option.get("value")]
+
+
+def test_refresh_re_runs_the_job_match_and_the_loaders(tmp_path):
+    """The owner's case: the job was added in the web app while the panel sat
+    on its posting. Before Refresh the page is "Not saved yet"; after it the
+    panel shows the saved job, from one more match and one more library read,
+    and says in the live note that it re-read."""
+    out = _refresh(tmp_path, api={
+        "lightningai": _UNMATCHED,
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+    }, apiAfter={"lightningai": _reply(
+        {"match": "exact", "job": LIGHTNING_JOB, "application": None})})
+    before = out["beforePress"]["identity"]
+    assert _by_class(before, "chip")[0]["text"] == "Not saved yet"
+    after = out["refreshed"]["identity"]
+    assert _by_class(after, "title")[0]["text"] == "Research Engineer"
+    assert _by_class(after, "co")[0]["text"] == "Lightning AI"
+    assert _by_class(after, "chip")[0]["text"] == "Saved"
+    assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1
+    # The base-resume library is tab-independent but cheap, so it is read again.
+    assert len(_gets(out["sentAfter"], "/api/base-resumes")) == 1
+    [note] = _by_class(out["refreshed"]["foot"], "note")
+    assert note["text"] == "Refreshed."
+    assert _rows(_rail_rows({"regions": out["refreshed"]}))["score"]["state"] == "active"
+
+
+def test_a_newly_added_application_appears_in_the_picker_after_refresh(tmp_path):
+    """The drafts list survives a tab switch on purpose (it is not about the
+    page), which is exactly why a draft created elsewhere never reached the
+    picker. Refresh forgets it and asks again."""
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": APPLY_URL}],
+                   page=_REFRESH_APPLY_PAGE, api={
+                       "myworkdayjobs": _UNMATCHED,
+                       "GET /api/applications?": _reply([_refresh_draft(1)]),
+                       "/api/base-resumes": _reply(BASE_RESUMES),
+                       "/api/ats-scores": _reply(SCORES),
+                   }, apiAfter={"GET /api/applications?": _reply(
+                       [_refresh_draft(2), _refresh_draft(1)])})
+    assert _draft_names(out["beforePress"]["rail"]) == ["Acme 1 · Research Engineer 1"]
+    assert _draft_names(out["refreshed"]["rail"]) == [
+        "Acme 2 · Research Engineer 2", "Acme 1 · Research Engineer 1"]
+    assert len(_gets(out["sentAfter"], "/api/applications?")) == 1
+
+
+def test_a_drafts_list_read_superseded_by_refresh_never_replaces_the_newer_one(tmp_path):
+    """The drafts list is written when its read settles, whatever the tab (it
+    is not about the page), so the generation cannot stop an older read. Its
+    latch does: Refresh replaces it, and the read it replaced drops its answer
+    rather than putting the list without the new draft back."""
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": APPLY_URL}],
+                   page=_REFRESH_APPLY_PAGE, hold=["GET /api/applications?"], api={
+                       "myworkdayjobs": _UNMATCHED,
+                       "GET /api/applications?": _reply([_refresh_draft(1)]),
+                       "/api/base-resumes": _reply(BASE_RESUMES),
+                       "/api/ats-scores": _reply(SCORES),
+                   }, apiAfter={"GET /api/applications?": _reply(
+                       [_refresh_draft(2), _refresh_draft(1)])})
+    assert _draft_names(out["finished"]["rail"]) == [
+        "Acme 2 · Research Engineer 2", "Acme 1 · Research Engineer 1"]
+
+
+def test_refresh_is_disabled_while_a_fill_runs_and_never_cancels_it(tmp_path):
+    """Refresh resets the page facts and bumps the generation, which is how a
+    tab switch ends a running fill. So it must never run during an action:
+    the control is disabled, and a press that reaches it anyway (this fake
+    dispatches clicks at disabled controls) sends nothing, no `fill_cancel`,
+    and leaves the run to land its own report."""
+    verified = {"fid": "v1", "frameId": 0, "question": "First name", "section": "",
+                "required": False, "shape": "text", "status": "verified",
+                "answer": "Ada", "route": "slot", "slot": "personal.first_name",
+                "lastOutcome": None}
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
+                   stored={"widget.session": _armed_entry()}, startFill=True,
+                   fillFields=[verified],
+                   replies={"read_settings": SETTINGS_REPLY,
+                            "panel_frame0": _reply({"tier": "B", "form": True, "score": 2}),
+                            "panel_prepare": _reply({"injected": True}),
+                            "telemetry": _reply({"posted": 0})},
+                   api={"lightningai": _UNMATCHED,
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "/api/ats-scores": _reply(SCORES)})
+    button = _refresh_button(out["beforePress"]["identity"])
+    assert button is not None
+    assert button["disabled"] is True
+    assert _by_class(out["beforePress"]["foot"], "stop"), "the fill was not running"
+    assert [msg for msg in out["broadcasts"]
+            if msg["message"]["type"] == "fill_cancel"] == []
+    assert _gets(out["sentAfter"], "/api/jobs/match") == []
+    # The store was not reset: the run is still on screen after the press…
+    assert _by_class(out["refreshed"]["foot"], "stop")
+    assert _by_class(out["refreshed"]["foot"], "cta")[0]["class"] == "cta spin"
+    # …and its report lands, which a bumped generation would have discarded.
+    [note] = _by_class(out["finished"]["foot"], "note")
+    assert note["text"] == "Fill finished. Review before you submit."
+    assert _rows(_rail_rows({"regions": out["finished"]}))["fill"]["numeral"] == "✓"
+    assert not _refresh_button(out["finished"]["identity"])["disabled"]
+
+
+def test_a_load_in_flight_when_refresh_is_pressed_never_paints_over_it(tmp_path):
+    """The first load's match is still on the wire when the owner presses
+    Refresh. Refresh's own load answers first; the superseded one lands after
+    it with the old "not saved" answer and must be discarded."""
+    out = _refresh(tmp_path, hold=["lightningai"], api={
+        "lightningai": _UNMATCHED,
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+    }, apiAfter={"lightningai": _reply(
+        {"match": "exact", "job": LIGHTNING_JOB, "application": None})})
+    # Mid-load when pressed: nothing but the host.
+    assert "Lightning AI" not in _text(out["beforePress"]["identity"])
+    after = out["finished"]["identity"]
+    assert _by_class(after, "title")[0]["text"] == "Research Engineer"
+    assert _by_class(after, "chip")[0]["text"] == "Saved"
+    assert "Not saved yet" not in _text(after)
+
+
+def test_the_selected_application_survives_a_refresh(tmp_path):
+    """A draft picked by hand lives in this browser's memory, not in the
+    backend's match, so Refresh keeps it the way a wizard's next page does:
+    `restoreSession` re-arms it and the detail read confirms it."""
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": APPLY_URL}], pick=0,
+                   page=_REFRESH_APPLY_PAGE, api={
+                       "myworkdayjobs": _UNMATCHED,
+                       "GET /api/applications?": _reply([_refresh_draft(1)]),
+                       "GET /api/applications/app-1": _reply(
+                           {"id": "app-1", "pdf_path": "renders/app-1.pdf",
+                            "status": "draft"}),
+                       "/api/base-resumes": _reply(BASE_RESUMES),
+                       "/api/ats-scores": _reply(SCORES),
+                   })
+    for phase in ("beforePress", "refreshed"):
+        identity = out[phase]["identity"]
+        assert _by_class(identity, "chip")[0]["text"] == "Draft application", phase
+        assert f"{APP_URL}/applications/app-1" in [
+            link["href"] for link in _by_class(identity, "linkish")], phase
+    assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1
+
+
+def test_refresh_keeps_focus_and_is_named_for_what_it_does(tmp_path):
+    """Visible text "Refresh", an accessible name that says what it re-reads,
+    and a stable id so the render loop hands focus back to the rebuilt control
+    after every repaint the refresh causes."""
+    out = _refresh(tmp_path, api={
+        "lightningai": _UNMATCHED,
+        "/api/base-resumes": _reply(BASE_RESUMES),
+    })
+    button = _refresh_button(out["loaded"]["identity"])
+    assert button["tag"] == "BUTTON"
+    assert button["text"] == "Refresh"
+    assert button["attrs"]["aria-label"] == "Refresh this page's job"
+    assert out["focus"] == {"id": "refresh-page", "fresh": True}
+    # The id is in the focus restore's own list of the ids it serves.
+    doc = re.search(r"/\*\*((?:(?!\*/).)*)\*/\s*function withPlaceKept",
+                    _panel_script("panel.js"), re.S)
+    assert doc and "`refresh-page`" in doc.group(1)
+
+
+def test_a_page_that_is_not_a_web_page_offers_no_refresh(tmp_path):
+    """`onTab` asks nothing about a `chrome://` tab, so there is nothing for
+    Refresh to re-read there either."""
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": "chrome://settings"}], api={})
+    assert out["hadButton"] is False
+    assert [node for node in _walk(out["loaded"]["identity"]) if node["tag"] == "BUTTON"] == []

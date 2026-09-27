@@ -101,7 +101,7 @@ have, "Saved", or the application's status), the Base → Tailored ATS rings
 under them (read from stored scores, never computed here; with one ring, "Base
 resume score" and "Tailoring can raise it."; with none, "Not scored yet."), and
 one deep link on the last line,
-right-aligned. The link is labelled by the most specific thing we know — "Open
+right-aligned, with **Refresh** at that line's left. The link is labelled by the most specific thing we know — "Open
 application ↗", else "Open in Maestro CS ↗", and nothing at all until the
 service worker has said where the web app is; its `aria-label` spells the
 destination out in full, because beside a job title "Open application" would
@@ -137,6 +137,11 @@ asking permission of itself.
   rather than about the page. The backend extracts the JD immediately, so the job
   lands parsed and ready for ATS scoring, and a duplicate save says "Already
   saved in Maestro CS" rather than pretending it saved something new.
+- **Refresh** — re-reads this tab the way a tab switch does (`bindPage`: reset,
+  generation bump, `loadContext`), plus the drafts list and the base resumes
+  asked again, so a job or draft added in the web app or by a connected agent
+  shows without leaving the tab. Disabled while any action runs, so it never
+  interrupts a fill; a picked draft comes back from this browser's memory.
 - **Pick a draft** — on a page nothing has matched, the Job stage asks
   "Applying for one of these?" over your recent draft applications and you name
   the one you are here about. It is an

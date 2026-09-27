@@ -265,6 +265,8 @@
    * pattern one layer down. */
   const REVISIT_ID = (key) => `stg-open-${key}`;
   const STAGE_BODY_ID = (key) => `stg-body-${key}`;
+  // The header's Refresh, stable for the focus restore alone.
+  const REFRESH_ID = "refresh-page";
 
   /** The ONE primary action per stage — the design's "one primary at a time,
    * always in the footer". The map is here rather than inside the footer
@@ -709,7 +711,8 @@
   };
 
   /** Everything above that is a claim about the PAGE, forgotten when the page
-   * changes. Called at the top of `onTab`, before anything is loaded.
+   * changes. Called at the top of `bindPage` (a tab switch, and Refresh),
+   * before anything is loaded.
    *
    * The render loop's full rebuild protects the DOM, not the store: a region
    * rebuilt from a fact that belongs to the tab you just left is still the
@@ -797,7 +800,7 @@
     // next page would be this panel asking a question nobody typed.
     store.qna = EMPTY_QNA;
     // Cleared HERE is what lets a stale action simply RETURN without unwinding
-    // anything: `generation` is bumped in `onTab` immediately after this runs,
+    // anything: `generation` is bumped in `bindPage` immediately after this runs,
     // so by the time an in-flight `addJob` finds its token stale, its `busy`
     // has already been cleared by the page change that made it stale. Every
     // action gets that for free — `scoreAllBases` inherited it whole — and it
@@ -1559,7 +1562,7 @@
     return parent;
   }
 
-  /** The footer's primary, and the ONLY caller left.
+  /** The footer's primary, and the header's Refresh (`refreshControl`).
    *
    * `comingSoon` LIVED HERE as this function's default `onClick`, and it is
    * gone rather than kept: the primaries landed one task at a time and it stood
@@ -1683,16 +1686,34 @@
     // it explains what the rail is about to skip, so it belongs beside what it
     // is about.
     if (decision.shortcutNote) children.push(node("div", "sub", decision.shortcutNote));
-    // THE LINK IS LAST, on a line of its own, and it took a measurement to get
-    // there. Beside the chip in `row1` was the obvious home and the wrong one:
+    // THE LINK IS LAST, on a line only Refresh shares, and it took a
+    // measurement to get there. Beside the chip in `row1` was the obvious home and the wrong one:
     // `who` and a `flex: none` link compete for one axis, and at the widths a
     // side panel is actually dragged to (measured at 320/360/400) the job title
     // was left 104px and five wrapped lines — a header that pushed the rail off
     // screen to make room for a link. Down here it competes with nothing, and
     // the block's bottom-right is where a card's one way out belongs anyway.
+    // Refresh sits at that line's left: the link keeps its right edge, and
+    // neither competes with the title.
+    const refresh = refreshControl();
     const link = deepLinkAnchor();
-    if (link) children.push(link);
+    if (refresh || link) children.push(attach(node("div", "id-foot"), refresh, link));
     region("identity").replaceChildren(...children);
+  }
+
+  /** Refresh (`refreshPage`), or nothing on a page the panel reads nothing
+   * about. Disabled while any action runs, `statusSegment`'s rule: a re-read
+   * resets the store that action is writing. Its id is how focus comes back
+   * to it across the repaints its own load causes (`withPlaceKept`). */
+  function refreshControl() {
+    if (card.tabId === null || !isWebPage(card.url)) return null;
+    const button = actionButton("refresh", "Refresh", () => {
+      refreshPage().catch((err) => console.warn("[maestro-cs] panel could not refresh:", err));
+    });
+    button.id = REFRESH_ID;
+    button.setAttribute("aria-label", "Refresh this page's job");
+    button.disabled = card.busy !== null;
+    return button;
   }
 
   // ---- what a stage body is handed ----
@@ -2311,8 +2332,9 @@
    * rebuild is about to throw away, so the identity that survives it has to be
    * a string: the controls worth restoring carry a stable one for exactly this
    * (`stg-open-<stage>`, `tailor-options`, `preview-<key>`, `answer-<qid>`,
-   * `qna-question`, `fill-mode-<mode>`). A control with no id gets no restore, which is the honest
-   * behaviour rather than a gap — there is nothing to find it by, and guessing
+   * `qna-question`, `fill-mode-<mode>`, and the header's `refresh-page`). A
+   * control with no id gets no restore, which is the honest behaviour rather
+   * than a gap — there is nothing to find it by, and guessing
    * by position is how focus lands on the wrong control after a list reorders.
    *
    * FOCUS IS NEVER TAKEN, only given back: with nothing focused,
@@ -2322,7 +2344,8 @@
    *
    * THE LOOKUP IS DOCUMENT-WIDE and the restore happens BETWEEN the rail's
    * rebuild and the footer's, which is a constraint rather than a detail: it
-   * works today because every stable id on this surface belongs to the rail. A
+   * works today because every stable id on this surface belongs to the header
+   * or the rail, and `render` rebuilds both inside `rebuild`. A
    * footer control that gained one would be found here and focused a moment
    * before `renderFoot` replaced it, which is a restore onto a node about to be
    * thrown away. Scoping the search to the rail is the fix IF that day comes;
@@ -2498,11 +2521,14 @@
     // is the call that drops a stale `revisit`, so a second one would be a
     // second place the store can change during a paint.
     const open = openRow(decision);
-    renderIdentity(decision);
-    // AROUND THE RAIL AND NOTHING ELSE. The other two regions hold no scroll
-    // and — bar the footer's primary, which is where a press LEAVES the user
-    // rather than where it takes them from — nothing worth keeping a place in.
-    withPlaceKept(() => renderRail(decision, open));
+    // AROUND THE HEADER AND THE RAIL, and not the footer. The header holds one
+    // control worth keeping a place in (Refresh, whose own load repaints it
+    // several times); the footer's primary is where a press LEAVES the user
+    // rather than where it takes them from.
+    withPlaceKept(() => {
+      renderIdentity(decision);
+      renderRail(decision, open);
+    });
     renderFoot(open);
   }
 
@@ -2564,6 +2590,14 @@
       ask("page_broadcast", { tabId: card.tabId, message: { type: "fill_cancel" } })
         .catch((err) => console.warn("[maestro-cs] could not stop the fill on the tab left:", err));
     }
+    await bindPage(tabId, url);
+  }
+
+  /** Forget everything about the page and read it again: the whole of a tab
+   * switch past the fill cancel, and the whole of Refresh. ONE path, so the
+   * button re-reads exactly what a tab switch reads and nothing a switch
+   * would not. */
+  async function bindPage(tabId, url) {
     // FIRST, and before anything is loaded: everything the store holds is
     // about the page we are leaving.
     resetPageFacts(card);
@@ -2572,6 +2606,7 @@
     // Every load still in flight is now about a tab the user has left. See
     // `current` for what that costs and what stops it.
     generation += 1;
+    const token = generation;
     // A settings tab, a new tab, a PDF viewer, `about:blank`. The panel is open
     // across all of them and the user tabs through them constantly, so asking
     // the backend about a `chrome://` url would be a round trip per glance for
@@ -2581,9 +2616,36 @@
     // confident lie `resetPageFacts` exists to prevent.
     if (!isWebPage(url)) {
       render();
-      return;
+      return token;
     }
-    await loadContext(generation);
+    await loadContext(token);
+    return token;
+  }
+
+  /** Refresh: a tab switch's read, for the tab the panel is already on. A job
+   * or a draft added in the web app, or by a connected agent, reaches the panel
+   * no other way short of leaving the tab and coming back.
+   *
+   * REFUSED WHILE ANY ACTION RUNS, here and by the disabled control. The reset
+   * clears `busy` and the generation bump ends a running fill's panel half, so
+   * a Refresh mid-fill would abandon the run without the `fill_cancel` a tab
+   * switch sends, and a mid-POST one would drop the answer the user is waiting
+   * for. This path never sends `fill_cancel`: it cannot run beside anything
+   * that would need one.
+   *
+   * The two tab-independent lists are forgotten too, because they are exactly
+   * what the owner added elsewhere: the drafts the picker offers and the base
+   * resumes. A switch keeps them; a request to re-read does not.
+   *
+   * Says so in the note, the panel's one live region, only when the load left
+   * it empty: a sentence the load wrote (an unreachable backend) is the news. */
+  async function refreshPage() {
+    if (card.busy !== null || card.tabId === null || !isWebPage(card.url)) return;
+    forgetLibraryLists();
+    const token = await bindPage(card.tabId, card.url);
+    if (!current(token) || card.busy !== null || card.note !== null) return;
+    card.note = { text: "Refreshed." };
+    render();
   }
 
   // ---------- loading, and whose answers are allowed to land ----------
@@ -2600,7 +2662,7 @@
   // offers a fill and a PDF attach aimed at a job the user is not looking at.
   // The SW would pass both, because a stale `card.tabId` is a valid tab id.
   //
-  // `generation` is bumped at `onTab`, once, beside the binding it protects.
+  // `generation` is bumped at `bindPage`, once, beside the binding it protects.
   //
   // THE RULE, for EVERY async function in this file that writes the store —
   // not just the loaders below. Tasks 7 and 8 add user-initiated actions (add
@@ -3409,8 +3471,9 @@
 
   async function loadBaseResumes(token) {
     if (card.resumes === null) {
+      const request = (resumesRequest ??= api("/api/base-resumes"));
+      let rows;
       try {
-        resumesRequest ??= api("/api/base-resumes");
         // The ONE settle-time write in this file that is deliberate, and it is
         // safe for a reason that does not generalise: this list is
         // TAB-INDEPENDENT. The library is the same rows whichever posting the
@@ -3419,11 +3482,16 @@
         // about the previous page, it is the same fact arriving late. Nothing
         // reads it as a claim about a posting. `card.scores`, which IS read
         // that way, lands in a local and waits for the guard.
-        card.resumes = await resumesRequest;
+        rows = await request;
       } catch (_) {
-        resumesRequest = null; // a transient failure may retry on the next tab.
+        // A transient failure may retry on the next tab.
+        if (resumesRequest === request) resumesRequest = null;
         return;
       }
+      // …unless Refresh has asked again since (`forgetLibraryLists`): then
+      // this answer is the OLDER copy of the fact, and the newer read owns it.
+      if (resumesRequest !== request) return;
+      card.resumes = rows;
     }
     if (!current(token)) return;
     // The first row is the default, and it is VISIBLE rather than implied:
@@ -3498,7 +3566,7 @@
    * which application the user is here about. A wrong offer costs a glance. A
    * wrong guess would autofill somebody else's form.
    *
-   * THE `http(s)` GUARD IS `onTab`'s, not restated here. Both callers descend
+   * THE `http(s)` GUARD IS `bindPage`'s, not restated here. Both callers descend
    * from it — `loadContext` is the only thing that calls this, and it is only
    * reached past that early return — so a `chrome://` tab never reaches this
    * function at all and a conjunct for it would be an `if` that cannot fail,
@@ -3512,16 +3580,30 @@
 
   async function loadApplications(token) {
     if (card.applications !== null) return;
+    const request = (applicationsRequest ??= api("/api/applications?status=draft&limit=100"));
+    let rows;
     try {
-      applicationsRequest ??= api("/api/applications?status=draft&limit=100");
-      const rows = await applicationsRequest;
-      card.applications = Array.isArray(rows) ? rows : [];
+      rows = await request;
     } catch (_) {
-      applicationsRequest = null;
+      if (applicationsRequest === request) applicationsRequest = null;
       return;
     }
+    // A Refresh since this went out asked again; the newer list owns the slot.
+    if (applicationsRequest !== request) return;
+    card.applications = Array.isArray(rows) ? rows : [];
     if (!current(token)) return;
     render();
+  }
+
+  /** Refresh's half that a tab switch does not do: both tab-independent lists
+   * forgotten, latches and all, so the next load reads them again. A read
+   * still in flight finds its latch replaced and drops its answer, rather than
+   * landing an older list over the newer one. */
+  function forgetLibraryLists() {
+    card.resumes = null;
+    resumesRequest = null;
+    card.applications = null;
+    applicationsRequest = null;
   }
 
   // ---------- the actions' seam: the handle they write the store through -----

@@ -88,11 +88,11 @@ body {
  * `.linkish` OUTLIVED THE BAND because it was never the band's: `.qna` styles a
  * BUTTON with it (see its own note), so it stays a free-standing rule. */
 
-.linkish {
+.linkish, .refresh {
   font: 600 12px/1 var(--cs-font); color: var(--cs-primary);
   text-decoration: none; padding: 7px 8px; border-radius: 8px;
 }
-.linkish:hover { background: var(--cs-primary-tonal); }
+.linkish:hover, .refresh:hover:not(:disabled) { background: var(--cs-primary-tonal); }
 
 .identity {
   flex: none; padding: 14px 14px 12px; background: var(--cs-surface);
@@ -115,6 +115,18 @@ body {
   display: block; width: fit-content; white-space: nowrap;
   margin: 10px 0 0 auto;
 }
+/* The last line holds Refresh at its left and the link at its right; the
+ * link's auto margin does the pushing, so a line with no Refresh (a
+ * `chrome://` tab) is the link alone exactly as before. Refresh is a button
+ * dressed as `.linkish`, hence the three UA resets, and its -8px margin lines
+ * its text up with the job title above. `:disabled` spelled out, as for
+ * `.fork button`: this rule sets `cursor`. */
+.identity .id-foot { display: flex; align-items: flex-start; }
+.identity .refresh {
+  border: none; background: none; cursor: pointer;
+  margin: 10px 0 0 -8px; white-space: nowrap;
+}
+.identity .refresh:disabled { opacity: .6; cursor: default; }
 .chip {
   font: 700 10.5px/1 var(--cs-font); border-radius: 999px; padding: 5px 9px;
   flex: none; margin-top: 2px; letter-spacing: .02em;
