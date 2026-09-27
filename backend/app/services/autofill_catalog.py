@@ -85,7 +85,10 @@ _SUFFIX = re.compile(r"\b(inc|llc|llp|ltd|limited|corp|corporation|co|company|pl
 
 
 def name_key(text: str) -> str:
-    return " ".join(_SUFFIX.sub(" ", re.sub(r"[^\w\s]", " ", text.casefold().replace(".", ""))).split())
+    """A leading "the" is not part of the name ("The Home Depot" is "Home Depot"),
+    unless it is the whole name."""
+    key = " ".join(_SUFFIX.sub(" ", re.sub(r"[^\w\s]", " ", text.casefold().replace(".", ""))).split())
+    return key[4:] if key.startswith("the ") else key
 
 
 @dataclass(frozen=True)
@@ -199,17 +202,22 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
 
 def _worked_here(out: dict[str, Fact], company: str | None) -> None:
     """The job's company among the history's employers: Yes for THIS
-    application, and the company-agnostic standing answer goes. Only ever
-    Yes — a company the resume does not list may still be a past employer."""
+    application — "Yes, currently" when a matching job is current, else "Yes,
+    previously", so a pick between "Current Associate" and "Former Associate"
+    has the words to choose by — and the company-agnostic standing answer
+    goes. Only ever Yes: a company the resume does not list may still be a
+    past employer."""
     key = name_key(company or "")
-    employers = {name_key(str(f.value)) for slot, f in out.items()
-                 if slot.startswith("experience.") and slot.endswith(".employer")}
-    if key and key in employers:
-        out.pop("eligibility.previously_employed_here", None)
-        out["derived.previously_employed_here"] = Fact(
-            "derived.previously_employed_here", "Yes",
-            "whether you worked for this company before, from your work history (yes/no)",
-            policy_for("derived.previously_employed_here"))
+    matched = [m[1] for slot, f in out.items()
+               if (m := re.fullmatch(r"experience\.(\d+)\.employer", slot)) and key and name_key(str(f.value)) == key]
+    if not matched:
+        return
+    current = any(getattr(out.get(f"experience.{i}.current"), "value", None) == "Yes" for i in matched)
+    out.pop("eligibility.previously_employed_here", None)
+    out["derived.previously_employed_here"] = Fact(
+        "derived.previously_employed_here", "Yes, currently" if current else "Yes, previously",
+        "whether you work, or worked, for this company, from your work history (currently or previously)",
+        policy_for("derived.previously_employed_here"))
 
 
 def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str], *,

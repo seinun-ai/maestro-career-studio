@@ -328,3 +328,72 @@ def test_custom_endpoint_still_works_without_a_key(monkeypatch):
     client = llm._get_client()
 
     assert str(client.base_url).startswith("http://localhost:11434")
+
+
+# ---------- a per-call timeout (the fill's optional passes, plan Task 9b)
+
+def test_a_timeout_reaches_the_openai_request_with_no_sdk_retries(monkeypatch, tmp_path):
+    monkeypatch.setattr(llm.settings, "logs_dir", tmp_path)
+    seen = {}
+
+    class _Resp:
+        class _Choice:
+            class message:  # noqa: N801
+                content = '{"ok": true}'
+        choices = [_Choice()]
+        usage = None
+
+    class _Client:
+        def with_options(self, **kw):
+            seen["options"] = kw
+            return self
+
+        class chat:  # noqa: N801
+            class completions:  # noqa: N801
+                @staticmethod
+                def create(**kw):
+                    seen["create"] = kw
+                    return _Resp()
+
+    monkeypatch.setattr(llm, "_get_client", lambda: _Client())
+    assert llm.call_openai(prompt="hi", model="gpt-4o-mini", timeout=3.5, max_retries=0) == {"ok": True}
+    assert seen["options"] == {"timeout": 3.5, "max_retries": 0}
+
+
+def test_without_a_timeout_the_client_is_used_as_it_is(monkeypatch, tmp_path):
+    monkeypatch.setattr(llm.settings, "logs_dir", tmp_path)
+
+    class _Resp:
+        class _Choice:
+            class message:  # noqa: N801
+                content = '{"ok": true}'
+        choices = [_Choice()]
+        usage = None
+
+    class _Client:
+        def with_options(self, **kw):
+            raise AssertionError("no per-call options without a timeout")
+
+        class chat:  # noqa: N801
+            class completions:  # noqa: N801
+                @staticmethod
+                def create(**kw):
+                    return _Resp()
+
+    monkeypatch.setattr(llm, "_get_client", lambda: _Client())
+    assert llm.call_openai(prompt="hi", model="gpt-4o-mini") == {"ok": True}
+
+
+def test_a_gemini_timeout_is_passed_and_running_out_is_a_provider_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(llm.settings, "logs_dir", tmp_path)
+    monkeypatch.setattr(llm.settings, "gemini_api_key", "gemini-test")
+    seen = {}
+
+    def slow(request, timeout):
+        seen["timeout"] = timeout
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(llm, "urlopen", slow)
+    with pytest.raises(llm.LLMProviderError):
+        llm.call_openai(prompt="hi", model="gemini-3-flash-preview", timeout=2.0, max_retries=0)
+    assert seen["timeout"] == 2.0

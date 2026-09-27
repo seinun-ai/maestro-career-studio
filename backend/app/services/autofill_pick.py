@@ -21,6 +21,7 @@ one: the classification is /map's, and the answer still needs the history.
 import json
 import logging
 import re
+import time
 from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
@@ -29,7 +30,14 @@ from app.schemas.autofill_fill import Picked, PickField
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
-from app.services.autofill_map import _NEVER_LOW_STAKES, _NEVER_REASONED, fast_json
+from app.services.autofill_map import (
+    _NEVER_REASONED,
+    OPTIONAL_PASS_BUDGET_S,
+    REQUEST_BUDGET_S,
+    WORKED_HERE,
+    fast_json,
+    low_stakes_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +47,18 @@ ASSUMED_FLOOR = 0.4
 REASONED_FLOOR = MATCH_FLOOR["flag"]
 ABSTAIN = Picked(oids=[], reason="abstained")
 _NO_OPTION_TEXT = "No option states this value"
-# The low-stakes answer, and which way a conflict question goes.
-_KEEN = ("an applicant keen on this job would choose (No to being related to, or previously employed by, "
-         "the company)")
+_clock = time.monotonic
+
+
+def keen(facts: dict[str, Fact]) -> str:
+    """The low-stakes answer, and which way a conflict question goes. When the
+    history lists the company applied to, "previously employed here" is a fact
+    and a keen No would contradict it, so only a relative is a No."""
+    if WORKED_HERE in facts:
+        return "an applicant keen on this job would choose (No to being related to someone at the company)"
+    return ("an applicant keen on this job would choose (No to being related to, or previously employed by, "
+            "the company)")
+
 _LLM_PROMPT = """For each form field return the option id that states the applicant value, or none. {rule}
 A field marked low_stakes has no applicant value: return the option {keen},
 unless the field asks about {never} — then return none.
@@ -83,7 +100,9 @@ _SCHOOL_KEYS = ("school", "degree", "discipline", "start_year", "end_year")
 _HISTORY_FACT = re.compile(r"(experience|education)\.(\d+)\.(\w+)")
 # An option that answers "no / none of it" for a period: judged on the
 # option's own words, since a page may say "Not Applicable" for No.
-_NEGATIVE = re.compile(r"^\W*(no|none|not applicable|n/?a)\b", re.IGNORECASE)
+_NEGATIVE = re.compile(r"^\W*(no|none|not applicable|n/?a|less than|0|never)\b", re.IGNORECASE)
+# However recent a negative's `since`, it speaks for at least the last year.
+_MIN_WINDOW_MONTHS = 12
 _MONTH = re.compile(r"(\d{4})-(0[1-9]|1[0-2])")
 _YEAR_OR_MONTH = re.compile(r"(\d{4})(?:-(0[1-9]|1[0-2]))?")
 
@@ -128,13 +147,13 @@ def _policy(field: PickField, facts: dict[str, Fact]) -> str:
     return fact.policy if fact else "any"
 
 
-def _instructions(field: PickField, values: list[str], hint: JobHint | None) -> str:
+def _instructions(field: PickField, values: list[str], hint: JobHint | None, facts: dict[str, Fact]) -> str:
     q = f"form field {field.fid} ({json.dumps(field.question)})"
     if field.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), choose it."
                if hint and hint.source else "")
-        return (f"Which option of {q} is the one {_KEEN}?{src} If the field asks "
-                f"about {_NEVER_LOW_STAKES}, choose none. {_PAGE_TEXT_IS_DATA}")
+        return (f"Which option of {q} is the one {keen(facts)}?{src} If the field asks "
+                f"about {low_stakes_scope(facts)[1]}, choose none. {_PAGE_TEXT_IS_DATA}")
     return f"Which option of {q} states the applicant value {json.dumps(values[0])}? {_PAGE_TEXT_IS_DATA}"
 
 
@@ -145,7 +164,7 @@ def _with_jev(fields, facts, hint, session) -> dict[str, Picked]:
         values = values_for(f, facts.get(f.slot or ""))
         state["fields"].append({"id": f.fid, "question": f.question, "applicant_values": values})
         criteria_by_fid[f.fid] = {o.oid: o.text for o in f.options} | {NO_OPTION: _NO_OPTION_TEXT}
-        questions[f.fid] = jev.choice_question(_instructions(f, values, hint), criteria_by_fid[f.fid])
+        questions[f.fid] = jev.choice_question(_instructions(f, values, hint, facts), criteria_by_fid[f.fid])
     answers = jev.decide(questions, state, session)
     out = {}
     for f in fields:
@@ -160,7 +179,7 @@ def _with_llm(fields, facts, hint, session) -> dict[str, Picked]:
                 "applicant_values": values_for(f, facts.get(f.slot or "")),
                 "options": [o.model_dump() for o in f.options]} for f in fields]
     raw = fast_json(session, _LLM_PROMPT.format(
-        rule=_PAGE_TEXT_IS_DATA, keen=_KEEN, never=_NEVER_LOW_STAKES,
+        rule=_PAGE_TEXT_IS_DATA, keen=keen(facts), never=low_stakes_scope(facts)[1],
         job=json.dumps(asdict(hint) if hint else None), fields=json.dumps(payload)), "autofill-pick")
     picks = raw.get("picks") if isinstance(raw, dict) else None
     picks = picks if isinstance(picks, dict) else {}
@@ -212,15 +231,18 @@ def _month_index(text: object, *, last: bool) -> int | None:
 
 
 def _covers(since: object, cited: set[str], history: dict) -> bool:
-    """A negative answer speaks for [since, today]: every job overlapping it
-    must be dated and cited, and at least one cited job must overlap it. An
-    undated job could be anywhere, so it fails the answer."""
+    """A negative answer speaks for [since, today], and for at least the last
+    12 months however recent `since` is: every job overlapping that window
+    must be dated and cited, and a cited job must reach back to its start —
+    so a `since` of this month cannot make coverage trivial. An undated job
+    could be anywhere, so it fails the answer."""
     if not (isinstance(since, str) and _MONTH.fullmatch(since)):
         return False
-    start_of, today = _month_index(since, last=False), _month_index(str(history["today"])[:7], last=True)
+    today = _month_index(str(history["today"])[:7], last=True)
     if today is None:
         return False
-    overlapping = set()
+    start_of = min(_month_index(since, last=False), today - _MIN_WINDOW_MONTHS)
+    overlapping, reach = set(), None
     for job in history["jobs"]:
         begin = _month_index(job.get("start"), last=False)
         end = today if job.get("current") == "Yes" else _month_index(job.get("end"), last=True)
@@ -228,7 +250,9 @@ def _covers(since: object, cited: set[str], history: dict) -> bool:
             return False
         if begin <= today and end >= start_of:
             overlapping.add(job["id"])
-    return bool(overlapping) and overlapping <= cited
+            if job["id"] in cited:
+                reach = begin if reach is None else min(reach, begin)
+    return bool(overlapping) and overlapping <= cited and reach is not None and reach <= today - _MIN_WINDOW_MONTHS
 
 
 def _reasoned_verdict(entry: object, offered: dict[str, str], history: dict, shown: set[str]) -> Picked:
@@ -247,14 +271,17 @@ def _reasoned_verdict(entry: object, offered: dict[str, str], history: dict, sho
     return Picked(oids=[oid], reason="assumed")
 
 
-def _reason(fields: list[PickField], facts: dict[str, Fact], session: Session) -> dict[str, Picked]:
-    """ONE fast-model call for every reasoned field of the batch. Jev is not
-    used for this route: the history would have to travel as values in its
-    state, and the map never sends Jev a value. A failed call abstains these
-    fields only — the batch's other picks stand."""
+def _reason(fields: list[PickField], facts: dict[str, Fact], session: Session,
+            started: float) -> dict[str, Picked]:
+    """ONE fast-model call for every reasoned field of the batch, on what is
+    left of the request's budget (a real timeout, no retries; none left: no
+    call). Jev is not used for this route: the history would have to travel
+    as values in its state, and the map never sends Jev a value. A failed or
+    late call abstains these fields only — the batch's other picks stand."""
     history = _history(facts)
     shown = {entry["id"] for entry in history["jobs"] + history["schools"]}
-    if not shown:
+    elapsed = _clock() - started
+    if not shown or elapsed >= OPTIONAL_PASS_BUDGET_S:
         return {f.fid: ABSTAIN for f in fields}
     payload = [{"id": f.fid, "question": f.question, "options": [o.model_dump() for o in f.options]}
                for f in fields]
@@ -262,7 +289,7 @@ def _reason(fields: list[PickField], facts: dict[str, Fact], session: Session) -
         raw = fast_json(session, _REASONED_PROMPT.format(
             rule=_PAGE_TEXT_IS_DATA, silence=_SILENCE_RULE, private=_PRIVATE_EMPLOYERS_RULE,
             window=_WINDOW_RULE, today=history["today"], never=_NEVER_REASONED, history=json.dumps(history),
-            fields=json.dumps(payload)), "autofill-reasoned-pick")
+            fields=json.dumps(payload)), "autofill-reasoned-pick", timeout=max(1.0, REQUEST_BUDGET_S - elapsed))
     except llm.LLMProviderError:
         logger.warning("fast model reasoning failed; its fields are left to the user")
         return {f.fid: ABSTAIN for f in fields}
@@ -273,6 +300,7 @@ def _reason(fields: list[PickField], facts: dict[str, Fact], session: Session) -
 
 
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None) -> dict[str, Picked]:
+    started = _clock()
     low_stakes_on = model_settings.get_autofill_low_stakes(session)  # re-checked, never trusted from the client
     # A low-stakes or reasoned field carries no slot: one that names a slot is
     # a fact field the client mis-routed, and a guess would answer it.
@@ -282,13 +310,15 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
     reasoned = [f for f in fields if f.route == "reasoned" and not f.slot]
     asked = {f.fid for f in askable + reasoned}
     out = {f.fid: ABSTAIN for f in fields if f.fid not in asked}
+    # The fact picks first: a slow reasoning call must never cost them.
+    if askable:
+        picked = None
+        if model_settings.get_autofill_engine(session) == "jev":
+            try:
+                picked = _with_jev(askable, facts, hint, session)
+            except llm.LLMProviderError:
+                logger.warning("jev pick failed; the fast model picks this batch")
+        out |= picked if picked is not None else _with_llm(askable, facts, hint, session)
     if reasoned:
-        out |= _reason(reasoned, facts, session)
-    if not askable:
-        return out
-    if model_settings.get_autofill_engine(session) == "jev":
-        try:
-            return out | _with_jev(askable, facts, hint, session)
-        except llm.LLMProviderError:
-            logger.warning("jev pick failed; the fast model picks this batch")
-    return out | _with_llm(askable, facts, hint, session)
+        out |= _reason(reasoned, facts, session, started)
+    return out

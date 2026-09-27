@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Literal
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -276,6 +276,7 @@ def _call_gemini(
     model: str,
     response_format: ResponseFormat,
     images: list[bytes] | None = None,
+    timeout: float = 120,
 ) -> tuple[str, Usage]:
     gemini_key = get_gemini_key()
     if not gemini_key:
@@ -309,12 +310,18 @@ def _call_gemini(
         method="POST",
     )
     try:
-        with urlopen(request, timeout=120) as response:
+        with urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise _no_answer(_gemini_reason(exc.code, body),
                          f"Gemini API request failed: {exc.code} {body}", provider="Gemini") from exc
+    except (TimeoutError, URLError) as exc:
+        # A caller's short timeout running out is the provider not answering
+        # in time, not a local crash (URLError wraps a connect timeout).
+        if isinstance(exc, URLError) and not isinstance(exc.reason, TimeoutError):
+            raise
+        raise _no_answer("it took too long", f"Gemini API request timed out: {exc}", provider="Gemini") from exc
 
     return _gemini_text(data), _gemini_usage(data)
 
@@ -359,9 +366,14 @@ def _call_model(
     model: str,
     response_format: ResponseFormat,
     images: list[bytes] | None = None,
+    timeout: float | None = None,
 ) -> tuple[str, Usage]:
+    """`timeout`: seconds for this one request, with no SDK retries behind it
+    (a caller on a budget, such as the fill's optional passes); None keeps the
+    client's own timeout and retries."""
     if _is_gemini_model(model):
-        return _call_gemini(prompt, model, response_format, images)
+        return _call_gemini(prompt, model, response_format, images,
+                            **({"timeout": timeout} if timeout is not None else {}))
 
     content: Any = prompt
     if images:
@@ -378,8 +390,11 @@ def _call_model(
     if response_format == "json" and _json_mode_supported():
         kwargs["response_format"] = {"type": "json_object"}
 
+    client = _get_client()
+    if timeout is not None:
+        client = client.with_options(timeout=timeout, max_retries=0)
     try:
-        response = _get_client().chat.completions.create(**kwargs)
+        response = client.chat.completions.create(**kwargs)
     except openai.OpenAIError as exc:
         # Normalize to LLMProviderError so provider outages mean ONE exception
         # type for every caller (app.main maps it to 502). The Gemini path raises
@@ -447,7 +462,10 @@ def call_openai(
     max_retries: int = 2,
     trace_name: str = "llm-call",
     images: list[bytes] | None = None,
+    timeout: float | None = None,
 ) -> dict[str, Any] | str:
+    """`timeout`: per request, no SDK retries (see `_call_model`); pair it with
+    `max_retries=0` to bound the whole call."""
     if response_format not in {"json", "text"}:
         raise ValueError("response_format must be 'json' or 'text'")
 
@@ -465,7 +483,7 @@ def call_openai(
                 "image_count": len(images) if images else 0,
             },
         ) as record:
-            response_text, usage = _call_model(prompt, model, response_format, images)
+            response_text, usage = _call_model(prompt, model, response_format, images, timeout)
             record(response_text, usage)
         _log_call(prompt, model, response_text, attempt)
 

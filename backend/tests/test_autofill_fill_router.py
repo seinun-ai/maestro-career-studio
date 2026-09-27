@@ -317,7 +317,7 @@ def test_the_applications_company_reaches_the_catalog(db_session, monkeypatch, t
     seen = _spy_map(monkeypatch)
     assert _post(db_session, "/api/autofill/map", {"application_id": str(application.id),
                                                    "fields": [MAP_FIELD]}).status_code == 200
-    assert seen["facts"]["derived.previously_employed_here"].value == "Yes"
+    assert seen["facts"]["derived.previously_employed_here"].value.startswith("Yes, ")
     assert "eligibility.previously_employed_here" not in seen["facts"]
     seen = _spy_map(monkeypatch)
     assert _post(db_session, "/api/autofill/map", {"base": slug, "fields": [MAP_FIELD]}).status_code == 200

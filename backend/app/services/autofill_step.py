@@ -26,8 +26,8 @@ from app.schemas.autofill_fill import StepRequest, StepResponse
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
-from app.services.autofill_map import _NEVER_LOW_STAKES, fast_json
-from app.services.autofill_pick import _KEEN, JobHint, values_for, verdict
+from app.services.autofill_map import fast_json, low_stakes_scope
+from app.services.autofill_pick import JobHint, keen, values_for, verdict
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +62,12 @@ def _decide(req: StepRequest, mid: str | None, p: float, policy: str) -> StepRes
     return StepResponse(mid=mid, reason="progress") if p >= PROGRESS_FLOOR else ABSTAIN
 
 
-def _instructions(req: StepRequest, values: list[str], hint: JobHint | None) -> str:
+def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact]) -> str:
     field = f"form field {req.fid} ({json.dumps(req.question)})"
     if req.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), that is the one."
                if hint and hint.source else "")
-        goal = f"the option {_KEEN}.{src} If the field asks about {_NEVER_LOW_STAKES}, give up"
+        goal = f"the option {keen(facts)}.{src} If the field asks about {low_stakes_scope(facts)[1]}, give up"
     else:
         goal = f"the option that states the applicant value {json.dumps(values[0])}"
     return (f"You are filling {field} on a job application. The goal is to select {goal}. "
@@ -89,7 +89,7 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         return ABSTAIN
     policy = fact.policy if fact else "any"
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
-    instructions = _instructions(req, values, hint)
+    instructions = _instructions(req, values, hint, facts)
     state = {"job": asdict(hint) if hint else None, "history": req.history}
     if model_settings.get_autofill_engine(session) == "jev":
         try:

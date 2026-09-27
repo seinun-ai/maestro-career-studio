@@ -236,7 +236,7 @@ def test_the_jobs_company_in_the_history_derives_previously_employed_yes():
                   [{"employer": "Tata Consultancy Services Ltd.", "title": "Engineer"}], [],
                   company="TATA CONSULTANCY SERVICES")
     fact = f["derived.previously_employed_here"]
-    assert fact.value == "Yes" and "from your work history" in fact.describe
+    assert fact.value == "Yes, previously" and "from your work history" in fact.describe
     # The standing answer is company-agnostic: for THIS job it would be wrong.
     assert "eligibility.previously_employed_here" not in f
 
@@ -254,3 +254,16 @@ def test_company_names_match_the_way_sections_match_employers():
 
     assert autofill_sections.name_key is cat.name_key
     assert cat.name_key("Acme, Inc.") == cat.name_key("ACME") == "acme"
+
+
+@pytest.mark.parametrize("a, b", [("The Home Depot", "Home Depot"), ("Home Depot", "the home depot, inc.")])
+def test_a_leading_the_is_not_part_of_the_name(a, b):
+    assert cat.name_key(a) == cat.name_key(b) == "home depot"
+    assert cat.name_key("Theranos") == "theranos" and cat.name_key("The") == "the"
+
+
+def test_the_home_depot_in_the_history_is_the_home_depot_applied_to():
+    f = cat.build({}, [{"employer": "The Home Depot", "title": "Associate", "end_date": "2021-06"}], [],
+                  company="Home Depot")
+    assert f["derived.previously_employed_here"].value == "Yes, previously"
+    assert "work, or worked," in f["derived.previously_employed_here"].describe

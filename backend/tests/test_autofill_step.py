@@ -316,4 +316,22 @@ def test_a_low_stakes_step_says_which_way_a_conflict_question_goes(db_session, m
     autofill_step.step(StepRequest(fid="r", question="Are you related to a current employee?", route="low_stakes",
                                    candidates=[{"mid": "click:o1", "describe": 'Click the option "No"'}]),
                        {}, db_session, None)
-    assert autofill_pick._KEEN in prompts[0] and "No to being related to" in prompts[0]
+    assert autofill_pick.keen({}) in prompts[0] and "No to being related to" in prompts[0]
+
+
+def test_with_worked_here_the_low_stakes_step_drops_the_previously_employed_no(db_session, monkeypatch):
+    model_settings.set_autofill_low_stakes(db_session, True)
+    facts = autofill_catalog.build({}, [{"employer": "Guidehouse", "title": "Consultant", "start_date": "2019-01",
+                                         "end_date": "2021-06"}], [], company="Guidehouse")
+    prompts = []
+
+    def call_openai(**kw):
+        prompts.append(kw["prompt"])
+        return {"move": "give_up", "confidence": 0.9}
+
+    monkeypatch.setattr(autofill_step.llm, "call_openai", call_openai)
+    autofill_step.step(StepRequest(fid="r", question="Travel?", route="low_stakes",
+                                   candidates=[{"mid": "click:o1", "describe": 'Click the option "Yes"'}]),
+                       facts, db_session, None)
+    assert "previously employed by" not in prompts[0].split("If the field asks about")[0]
+    assert "their history says they did" in prompts[0]

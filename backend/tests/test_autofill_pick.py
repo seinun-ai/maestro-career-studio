@@ -472,7 +472,7 @@ def test_a_low_stakes_pick_says_which_way_a_conflict_question_goes(db_session, m
     model_settings.set_autofill_engine(db_session, "fast")
     pick([pf("r", question="Are you related to a current employee?", route="low_stakes", options=opts("Yes", "No"))],
          db_session)
-    assert autofill_pick._KEEN in prompts[0]["prompt"]
+    assert autofill_pick.keen({}) in prompts[0]["prompt"]
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -561,3 +561,119 @@ def test_the_prompt_asks_a_negative_for_its_window(db_session, monkeypatch):
     prompts = fake_reasoner(monkeypatch)
     pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session)
     assert autofill_pick._WINDOW_RULE in prompts[0]["prompt"] and '"since"' in prompts[0]["prompt"]
+
+
+# ---------- re-check: worked-here keen wording, real timeouts, harder negatives, current or former
+
+WORKED_HERE = autofill_catalog.build({}, [{"employer": "The Home Depot", "title": "Associate", "start_date": "2019-01",
+                                           "end_date": "2021-06"}], [], company="Home Depot",
+                                     today=date(2026, 9, 26))
+
+
+def test_the_keen_rule_follows_the_facts():
+    assert "previously employed" in autofill_pick.keen({})
+    assert "previously employed" not in autofill_pick.keen(WORKED_HERE)
+    assert "No to being related to someone at the company" in autofill_pick.keen(WORKED_HERE)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_with_worked_here_no_pick_prompt_says_answer_previously_employed_no(db_session, monkeypatch):
+    model_settings.set_autofill_low_stakes(db_session, True)
+    calls = fake_jev(monkeypatch)
+    autofill_pick.pick([pf("h", question="How did you hear?", route="low_stakes", options=opts("LinkedIn"))],
+                       WORKED_HERE, db_session, None)
+    text = calls[0]["questions"]["h"]["instructions"]
+    assert "previously employed" not in text.split("If the field asks about")[0]
+    assert "their history says they did" in text
+    model_settings.set_autofill_engine(db_session, "fast")
+    prompts = fake_llm(monkeypatch)
+    autofill_pick.pick([pf("h", question="How did you hear?", route="low_stakes", options=opts("LinkedIn"))],
+                       WORKED_HERE, db_session, None)
+    assert "No to being related to, or previously employed by" not in prompts[0]["prompt"]
+
+
+def test_the_reasoning_call_has_a_timeout_and_no_retries_and_runs_after_the_fact_picks(db_session, monkeypatch):
+    order = []
+
+    def call_openai(**kw):
+        order.append(kw)
+        if kw["trace_name"] == "autofill-reasoned-pick":
+            return {"answers": {}}
+        return {"picks": {"m": {"oids": ["o1"], "confidence": 0.95}}}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No"),
+                             pf("m", slot="education.0.discipline", options=opts("Business Analytics"))], db_session)
+    assert got["m"].reason == "matched"
+    assert [kw["trace_name"] for kw in order] == ["autofill-pick", "autofill-reasoned-pick"]
+    assert "timeout" not in order[0]
+    assert order[1]["max_retries"] == 0 and 1 <= order[1]["timeout"] <= autofill_pick.REQUEST_BUDGET_S
+
+
+def test_fact_picks_survive_a_reasoning_call_that_times_out(db_session, monkeypatch):
+    def call_openai(**kw):
+        if kw["trace_name"] == "autofill-reasoned-pick":
+            raise llm.LLMProviderError("The AI model didn't answer (it took too long).")
+        return {"picks": {"m": {"oids": ["o1"], "confidence": 0.95}}}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No"),
+                             pf("m", slot="education.0.discipline", options=opts("Business Analytics"))], db_session)
+    assert (got["m"].reason, got["g"].reason) == ("matched", "abstained")
+
+
+def test_the_reasoning_call_is_skipped_past_the_budget(db_session, monkeypatch):
+    ticks = iter([0.0, autofill_pick.OPTIONAL_PASS_BUDGET_S + 0.5])
+    monkeypatch.setattr(autofill_pick, "_clock", lambda: next(ticks))
+    prompts = fake_reasoner(monkeypatch, {"g": {"oid": "o1", "confidence": 0.99, "shown_by": ["j1"]}})
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session)
+    assert got["g"].reason == "abstained" and prompts == []
+
+
+@pytest.mark.parametrize("text", ["Less than 1 year", "0 years", "0-1 years", "Never"])
+def test_less_than_zero_and_never_are_negatives(text):
+    assert autofill_pick._negative(text)
+
+
+def test_a_negative_must_reach_back_a_year_whatever_since_says(db_session, monkeypatch):
+    """A `since` of this month cannot make coverage trivial: the window is at
+    least the last 12 months, and a cited job must reach back that far."""
+    new_job = {"employer": "Seinun", "title": "Analyst", "start_date": "Mar 2026", "current": True, "description": ""}
+    fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1"], "since": "2026-09"}})
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(new_job))
+    assert got["g"].reason == "abstained"
+    # A job skipped inside the last 12 months fails it too, whatever `since` says.
+    fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1"], "since": "2026-09"}})
+    old_job = {"employer": "Acme", "title": "Analyst", "start_date": "2020-01", "end_date": "2026-01",
+               "current": False, "description": ""}
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(new_job, old_job))
+    assert got["g"].reason == "abstained"
+    fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1", "j2"], "since": "2026-09"}})
+    got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, _jobs_facts(new_job, old_job))
+    assert got["g"].reason == "assumed"
+
+
+def test_less_than_a_year_needs_the_same_coverage(db_session, monkeypatch):
+    fake_reasoner(monkeypatch, {"y": {"oid": "o1", "confidence": 0.9, "shown_by": ["j1"]}})
+    got = pick_from_history([reasoned("y", YEARS, "Less than 1 year", "1-3 years")], db_session)
+    assert got["y"].reason == "abstained"
+
+
+# Home Depot's own options (field notes §8a, question 0).
+HOME_DEPOT = ("Current Associate", "Current Associate with a subsidiary of The Home Depot",
+              "Former Associate of The Home Depot or its subsidiaries", "Not Applicable")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("current, value", [(False, "Yes, previously"), (True, "Yes, currently")])
+def test_worked_here_says_current_or_former_to_the_pick(db_session, monkeypatch, current, value):
+    job = {"employer": "The Home Depot", "title": "Associate", "start_date": "2019-01",
+           "end_date": None if current else "2021-06", "current": current}
+    facts = autofill_catalog.build({}, [job], [], company="Home Depot")
+    assert facts["derived.previously_employed_here"].value == value
+    calls = fake_jev(monkeypatch, {"p": ("o3" if not current else "o1", 0.9)})
+    got = autofill_pick.pick([pf("p", question="Currently or previously employed by The Home Depot?",
+                                 slot="derived.previously_employed_here", options=opts(*HOME_DEPOT))],
+                             facts, db_session, None)
+    assert f'"{value}"' in calls[0]["questions"]["p"]["instructions"]
+    assert got["p"].oids == (["o1"] if current else ["o3"])

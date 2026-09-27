@@ -809,3 +809,76 @@ def test_within_the_budget_both_passes_run(db_session, monkeypatch):
               db_session, low_stakes=True)
     assert (got["t"].route, got["g"].route) == ("low_stakes", "reasoned")
     assert [p["trace_name"] for p in prompts] == ["autofill-map", "autofill-low-stakes", "autofill-reasoned"]
+
+
+# ---------- re-check: the company applied to is never reasoned; worked-here narrows low-stakes; real timeouts
+
+WORKED_HERE = autofill_catalog.build({}, [{"employer": "Guidehouse", "title": "Consultant", "start_date": "2019-01",
+                                           "end_date": "2021-06"}], [], company="Guidehouse")
+
+
+def test_the_history_sentinel_is_a_kind_of_organization_not_any_employer():
+    history = autofill_map._SENTINELS[HISTORY]
+    assert "a KIND of organization" in history and "past employers" not in history
+    assert ("whether the applicant worked for, or is related to someone at, the company applied to"
+            in autofill_map._NEVER_REASONED)
+
+
+def test_previously_employed_by_the_company_applied_to_is_never_reasoned(db_session, monkeypatch):
+    """Probe: filed history_unanswered, then a reasoned "No" citing every job.
+    The reasoning question names the company applied to as never, and a
+    model that says so leaves the field to the user."""
+    question = "Have you previously been employed by Guidehouse?"
+    prompts = fake_llm(monkeypatch, {"p": {"key": HISTORY, "confidence": 0.9}}, reasoned={"p": 0.05})
+    got = run([field("p", question, "popup", options=["Yes", "No"])], db_session)
+    assert got["p"].route == "none"
+    [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-reasoned"]
+    assert question in asked and "the company applied to" in asked
+
+
+def test_worked_here_takes_previously_employed_out_of_the_low_stakes_scope(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.95}}, yes={"t": 0.9})
+    autofill_map.map_fields([field("t", "Willing to travel?", "select")], WORKED_HERE, db_session,
+                            eeo_consented=True, low_stakes=True)
+    [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-low-stakes"]
+    assert "was previously employed by" not in asked
+    assert "related to someone at the company (answered No)" in asked  # a relative is still a keen No
+    assert "whether the applicant worked for this company (their history says they did)" in asked
+    # Without the derived fact, the full scope stands.
+    prompts = fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.95}}, yes={"t": 0.9})
+    run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
+    [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-low-stakes"]
+    assert "was previously employed by" in asked
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_worked_here_narrows_the_jev_low_stakes_question_too(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, noul={"t": 0.9})
+    autofill_map.map_fields([field("t", "Willing to travel?", "select")], WORKED_HERE, db_session,
+                            eeo_consented=True, low_stakes=True)
+    text = calls[1]["questions"]["t"]["instructions"]
+    assert "was previously employed by" not in text
+    assert "their history says they did" in text
+
+
+def test_the_optional_passes_carry_a_timeout_and_no_retries(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map, "_clock", lambda: 2.0)
+    prompts = fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.95},
+                                     "g": {"key": HISTORY, "confidence": 0.95}},
+                       yes={"t": 0.99}, reasoned={"g": 0.99})
+    run([field("t", "Willing to travel?", "select"), field("g", HISTORY_WORDINGS[0], "select")], db_session,
+        low_stakes=True)
+    by_trace = {p["trace_name"]: p for p in prompts}
+    assert "timeout" not in by_trace["autofill-map"]
+    for trace in ("autofill-low-stakes", "autofill-reasoned"):
+        assert by_trace[trace]["max_retries"] == 0, trace
+        assert 1 <= by_trace[trace]["timeout"] <= autofill_map.REQUEST_BUDGET_S, trace
+
+
+def test_the_timeout_is_what_is_left_of_the_budget(db_session, monkeypatch):
+    ticks = iter([0.0, 5.0, 5.0, 5.5, 5.5])
+    monkeypatch.setattr(autofill_map, "_clock", lambda: next(ticks))
+    prompts = fake_llm(monkeypatch, {"g": {"key": HISTORY, "confidence": 0.95}}, reasoned={"g": 0.99})
+    run([field("g", HISTORY_WORDINGS[0], "select")], db_session)
+    [asked] = [p for p in prompts if p["trace_name"] == "autofill-reasoned"]
+    assert asked["timeout"] == pytest.approx(autofill_map.REQUEST_BUDGET_S - 5.0)

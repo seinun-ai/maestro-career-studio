@@ -22,8 +22,13 @@ years of experience with something. The question DESCRIBES the history and
 never sends it; /pick answers from it.
 
 Both extra passes are optional and share a time budget: past
-OPTIONAL_PASS_BUDGET_S since the map began, a pass is skipped, so /map
-answers inside the loop's 10 s wait.
+OPTIONAL_PASS_BUDGET_S since the map began, a pass is skipped, and one that
+runs gets what is left of REQUEST_BUDGET_S as a real request timeout with no
+retries, so /map answers inside the loop's 10 s wait.
+
+When the work history lists the company applied to (`derived.previously_employed_here`),
+"previously employed by the company, answered No" leaves the low-stakes scope
+and joins its never-list for that request (`low_stakes_scope`).
 """
 
 import json
@@ -47,10 +52,15 @@ PROTECTED_UNANSWERED = "protected_unanswered"
 HISTORY_UNANSWERED = "history_unanswered"
 LOW_STAKES_FLOOR = 0.8
 ANSWERABLE_FLOOR = 0.8
-# Seconds since the map began after which no optional pass starts (the loop
-# waits 10 s for /map; one fast-model call is typically 1–3 s).
+# Seconds since the request began after which no optional pass starts, and
+# the whole request's budget (the loop waits 10 s for /map and /pick; one
+# fast-model call is typically 1–3 s). An optional call's timeout is what is
+# left of the budget, never under MIN_CALL_S.
 OPTIONAL_PASS_BUDGET_S = 6.0
+REQUEST_BUDGET_S = 9.0
+MIN_CALL_S = 1.0
 _clock = time.monotonic
+WORKED_HERE = "derived.previously_employed_here"
 _SENTINELS = {
     FREE_TEXT: "A question that needs a written answer in the applicant's own words, "
                "such as why this company or describe a project",
@@ -61,7 +71,7 @@ _SENTINELS = {
                           "question that none of the listed applicant facts answers",
     # Offered in every question too, so a question the work history may answer
     # has somewhere to go that is neither a protected question nor "none".
-    HISTORY_UNANSWERED: "A question about past employers or a kind of employer (a government agency, a "
+    HISTORY_UNANSWERED: "A question about past employment by a KIND of organization (a government agency, a "
                         "federal contractor), a security clearance, or years of experience with something, "
                         "which none of the listed applicant facts answers",
     # Always offered too: without consent it marks the field `blocked`; with
@@ -72,23 +82,40 @@ _SENTINELS = {
 # The owner's scope (2026-09-26): answered in the job's favour when the
 # setting is on and no profile fact answers. Self-assessments against the job
 # description and contact consents are IN; factual entries are not.
-_LOW_STAKES = ("A low-stakes question an applicant keen on this job would answer in its favor: how the applicant "
-               "heard about the job or a referral source; preferred contact method; willingness or comfort with "
-               "relocation, travel (any share of time), on-site work, shifts, overtime or a drug test; openness to "
-               "other roles; whether the applicant is related to, or was previously employed by, the company "
-               "(answered No); what the applicant would do if employed by the company; consent to be contacted "
-               "by SMS, automated calls or texts, or marketing messages; or a yes/no self-assessment against the "
-               "job description, such as having the required experience or meeting the educational requirement")
-_NEVER_LOW_STAKES = ("factual education or experience questions (a school, degree, employer, title, date, "
-                     "certification, or years of experience with something), work authorization, sponsorship, "
-                     "age or eligibility facts, EEO / diversity, background or criminal history, security "
-                     "clearance, salary, or a legal attestation or signature")
+_LOW_STAKES_TEMPLATE = (
+    "A low-stakes question an applicant keen on this job would answer in its favor: how the applicant heard "
+    "about the job or a referral source; preferred contact method; willingness or comfort with relocation, "
+    "travel (any share of time), on-site work, shifts, overtime or a drug test; openness to other roles; "
+    "{conflict}; what the applicant would do if employed by the company; consent to be contacted by SMS, "
+    "automated calls or texts, or marketing messages; or a yes/no self-assessment against the job description, "
+    "such as having the required experience or meeting the educational requirement")
+_NEVER_LOW_STAKES_TEMPLATE = (
+    "factual education or experience questions (a school, degree, employer, title, date, certification, or "
+    "years of experience with something), work authorization, sponsorship, age or eligibility facts, EEO / "
+    "diversity, background or criminal history, security clearance, salary, {worked}or a legal attestation or "
+    "signature")
+_CONFLICT = "whether the applicant is related to, or was previously employed by, the company (answered No)"
+# The history lists the company applied to: "previously employed here" is a
+# fact now, and a keen No would contradict it.
+_CONFLICT_WORKED_HERE = "whether the applicant is related to someone at the company (answered No)"
+_WORKED_HERE_NEVER = "whether the applicant worked for this company (their history says they did), "
+
+
+def low_stakes_scope(facts: dict[str, Fact]) -> tuple[str, str]:
+    """The low-stakes kinds and the never-list for THIS request's facts."""
+    worked = WORKED_HERE in facts
+    return (_LOW_STAKES_TEMPLATE.format(conflict=_CONFLICT_WORKED_HERE if worked else _CONFLICT),
+            _NEVER_LOW_STAKES_TEMPLATE.format(worked=_WORKED_HERE_NEVER if worked else ""))
+
+
+_LOW_STAKES, _NEVER_LOW_STAKES = low_stakes_scope({})
 # What the reasoning route may read (autofill_pick._history sends exactly
 # these, never a name, contact detail, address or EEO answer).
 _REASONED_FROM = ("the applicant's work history (each job's employer, title, dates, whether it is current, and "
                   "description) and education (each school, degree, major and years)")
 _NEVER_REASONED = ("work authorization, sponsorship, age, EEO / diversity, background or criminal history, salary, "
-                   "a preference or willingness, a comparison with the job description's requirements, or a legal "
+                   "a preference or willingness, a comparison with the job description's requirements, whether "
+                   "the applicant worked for, or is related to someone at, the company applied to, or a legal "
                    "attestation or signature")
 # Shapes whose answer would be WRITTEN, not chosen: a low-stakes guess is only
 # ever a pick among options the page offers.
@@ -134,12 +161,14 @@ def _with_jev(fields, criteria, session) -> dict[str, tuple[str, float]]:
     return out
 
 
-def fast_json(session: Session, prompt: str, trace_name: str) -> object:
+def fast_json(session: Session, prompt: str, trace_name: str, *, timeout: float | None = None) -> object:
     """One fast-model JSON call. JSON that stays malformed after the client's
-    retries is a provider failure (a 502 with a detail), not a crash."""
+    retries is a provider failure (a 502 with a detail), not a crash.
+    `timeout`: an optional call on a budget — one request, that long, no retries."""
+    budget = {"timeout": timeout, "max_retries": 0} if timeout is not None else {}
     try:
         return llm.call_openai(prompt=prompt, model=model_settings.get_fast_model(session),
-                               response_format="json", trace_name=trace_name)
+                               response_format="json", trace_name=trace_name, **budget)
     except ValueError as exc:
         raise llm.LLMProviderError("The AI model sent an answer we couldn't read.", str(exc)) from exc
 
@@ -160,12 +189,20 @@ def _with_llm(fields, criteria, session) -> dict[str, tuple[str, float]]:
     return out
 
 
-def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: str) -> set[str]:
+def time_left(started: float) -> float | None:
+    """The timeout an optional call may take, or None once none should start."""
+    elapsed = _clock() - started
+    if elapsed >= OPTIONAL_PASS_BUDGET_S:
+        return None
+    return max(MIN_CALL_S, REQUEST_BUDGET_S - elapsed)
+
+
+def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: str, timeout: float) -> set[str]:
     """The fast model's yes, per question, at `floor`. A failure answers "none
     of them": a second pass is optional, and the map it follows must survive it."""
     try:
         raw = fast_json(session, "Answer each question with a probability of yes. " + json.dumps(ask)
-                        + ' Return JSON {"yes": {"<field id>": <0..1>}}.', trace_name)
+                        + ' Return JSON {"yes": {"<field id>": <0..1>}}.', trace_name, timeout=timeout)
     except llm.LLMProviderError:
         logger.warning("fast model %s check failed; no field is taken", trace_name)
         return set()
@@ -174,13 +211,15 @@ def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: s
             if fid in ask and jev._unit(p) and p >= floor}
 
 
-def _low_stakes(fields: list[MapField], session: Session) -> set[str]:
+def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session, started: float) -> set[str]:
     """Which of these fields is a low-stakes question? The never-list is
     stated in every question."""
-    if not fields:
+    timeout = time_left(started)
+    if not fields or timeout is None:
         return set()
+    scope, never = low_stakes_scope(facts)
     ask = {f.fid: (f"Is form field {f.fid} ({json.dumps(f.question)}) one of these low-stakes questions: "
-                   f"{_LOW_STAKES}? It is NOT if it asks about {_NEVER_LOW_STAKES}. {_PAGE_TEXT_IS_DATA}")
+                   f"{scope}? It is NOT if it asks about {never}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
     if model_settings.get_autofill_engine(session) == "jev":
         try:
@@ -190,20 +229,23 @@ def _low_stakes(fields: list[MapField], session: Session) -> set[str]:
                     if (p := jev.noul_of(answers.get(fid))) is not None and p >= LOW_STAKES_FLOOR}
         except llm.LLMProviderError:
             logger.warning("jev low-stakes check failed; the fast model decides")
-    return _fast_yes(ask, LOW_STAKES_FLOOR, session, "autofill-low-stakes")
+        if (timeout := time_left(started)) is None:
+            return set()
+    return _fast_yes(ask, LOW_STAKES_FLOOR, session, "autofill-low-stakes", timeout)
 
 
-def _answerable(fields: list[MapField], session: Session) -> set[str]:
+def _answerable(fields: list[MapField], session: Session, started: float) -> set[str]:
     """Which of these fields the work and education history can answer. The
     fast model only, on every engine: this route's /pick needs the history as
     values, which Jev's state would then carry, so Jev judges none of it."""
-    if not fields:
+    timeout = time_left(started)
+    if not fields or timeout is None:
         return set()
     ask = {f.fid: (f"Can form field {f.fid} ({json.dumps(f.question)}) be answered from {_REASONED_FROM} alone, "
                    "such as past employment by a kind of organization, a security clearance, or years of "
                    f"experience with something? It cannot if it asks about {_NEVER_REASONED}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
-    return _fast_yes(ask, ANSWERABLE_FLOOR, session, "autofill-reasoned")
+    return _fast_yes(ask, ANSWERABLE_FLOOR, session, "autofill-reasoned", timeout)
 
 
 _PHONE = re.compile(r"phone", re.IGNORECASE)
@@ -289,15 +331,14 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
     out = {f.fid: _route(f, picked.get(f.fid), facts, eeo_consented=eeo_consented) for f in fields}
 
     def leftovers(*, history: bool) -> list[MapField]:
-        if _clock() - started >= OPTIONAL_PASS_BUDGET_S:
-            return []  # out of time: the open questions stay the user's
         return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
                 and not _foreign(f) and _said_no_fact(picked.get(f.fid), history=history)]
 
+    # Out of time (`time_left`), a pass asks nothing: the open questions stay the user's.
     if low_stakes:
-        for fid in _low_stakes(leftovers(history=False), session):
+        for fid in _low_stakes(leftovers(history=False), facts, session, started):
             out[fid] = Mapped(route="low_stakes")
     if _has_history(facts):
-        for fid in _answerable(leftovers(history=True), session):
+        for fid in _answerable(leftovers(history=True), session, started):
             out[fid] = Mapped(route="reasoned")
     return out
