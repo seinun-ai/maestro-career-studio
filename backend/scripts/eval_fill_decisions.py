@@ -44,7 +44,7 @@ not set DATA_DIR to the copy's directory, or the script refuses it):
 
 The model keys are the copy's settings (and .env's). `--part map|pick|step`
 runs one report; `--base <slug>` picks the resume the mapping catalog reads
-(default: the first active one); `--only id,id` runs named cases. Offline
+(default: the first active one); `--only id,id` runs named cases, `--tag reversed` the tagged ones. Offline
 checks: tests/test_eval_fill_cases.py.
 """
 
@@ -213,6 +213,11 @@ def rule_ids() -> set[str]:
 
 def load_cases(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def select_cases(cases: list[dict], *, only: set[str] | None, tag: str | None) -> list[dict]:
+    """The cases a run asks: named by id (`--only`), or carrying a tag (`--tag`), else all."""
+    return [c for c in cases if (only is None or c["id"] in only) and (tag is None or c.get("tag") == tag)]
 
 
 def expected_of(case: dict) -> list[str]:
@@ -697,6 +702,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base", default=None)
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--only", default=None, help="comma-separated case ids (a smoke run)")
+    ap.add_argument("--tag", default=None, help='only the cases carrying this tag (e.g. "reversed")')
     args = ap.parse_args(argv)
     if why := refusal(args.db):
         ap.error(why)
@@ -717,10 +723,9 @@ def main(argv: list[str] | None = None) -> int:
         check_pick_case(case)
     for case in steps["cases"]:
         check_step_case(case)
-    if args.only:
-        only = set(args.only.split(","))
-        picks["cases"] = [c for c in picks["cases"] if c["id"] in only]
-        steps["cases"] = [c for c in steps["cases"] if c["id"] in only]
+    only = set(args.only.split(",")) if args.only else None
+    picks["cases"] = select_cases(picks["cases"], only=only, tag=args.tag)
+    steps["cases"] = select_cases(steps["cases"], only=only, tag=args.tag)
     with SessionLocal() as session:
         if args.part in ("pick", "all"):
             for engine in engines:

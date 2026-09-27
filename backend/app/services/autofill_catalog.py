@@ -56,6 +56,7 @@ _DESCRIBES: dict[str, str] = {
     "eligibility.over_18": "is 18 or older (yes/no)",
     "eligibility.previously_employed_here": "has worked for this company before (yes/no)",
     "eligibility.non_compete": "is bound by a non-compete or similar agreement (yes/no)",
+    "derived.us_citizen": "whether you are a US citizen, derived from your work-authorization status (yes/no)",
     "eeo.gender": "gender (voluntary self-identification)",
     "eeo.gender_self_describe": "gender in the applicant's own words (voluntary self-identification)",
     "eeo.race_ethnicity": "race or ethnicity (voluntary self-identification, a list)",
@@ -223,8 +224,7 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
     status = work_auth.get("status")
     if isinstance(status, str) and status in _US_CITIZEN:
         out["derived.us_citizen"] = Fact(
-            "derived.us_citizen", _US_CITIZEN[status],
-            "whether you are a US citizen, derived from your work-authorization status (yes/no)",
+            "derived.us_citizen", _US_CITIZEN[status], _describe("derived.us_citizen"),
             policy_for("derived.us_citizen"))
     preferences = profile.get("preferences") if isinstance(profile.get("preferences"), dict) else {}
     start = preferences.get("earliest_start_date")

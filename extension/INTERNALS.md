@@ -531,6 +531,15 @@ know, and each one was learned from a live failure.
   citizen is Yes, a green card or any visa No, no status nothing), and —
   when your earliest start date says immediately or ASAP — that date as
   today, for a date box. Each is absent when what it comes from is.
+- **A value is picked by what it means.** /pick and /step send a fact's
+  value-free description beside its value ("will need visa sponsorship in
+  the future (yes/no)": "No") and ask for the option that means the same
+  as the question is worded. So a reversed or negated question ("are you
+  authorized to work WITHOUT sponsorship?", "are you under 18?") still
+  maps to the same slot on /map; the answer flips at pick time, where the
+  model reads the fact's description (a No to "will need sponsorship" is a
+  Yes there). No other value travels: the description names the question,
+  never an answer.
 - **Which engine decides.** On the Jev engine (Settings › AI & models ›
   Form filling), /map, /pick and /step ask Jev first. The fast model
   decides a request's fields in two cases, always at the same floors:
@@ -542,8 +551,8 @@ know, and each one was learned from a live failure.
   slot field whose move Jev gave up on or chose under its floor. The
   second opinion is sent the same data as Jev and the same question:
   labels and fact descriptions for /map; for /pick and /step the slot's
-  own value, the options or moves, and the job, asked which option states
-  the value (its /pick prompt carries the low-stakes paragraph only when
+  own value with its description, the options or moves, and the job,
+  asked which option means the same as the fact (its /pick prompt carries the low-stakes paragraph only when
   the batch holds a low-stakes field, which a second opinion never does).
   It is one call, with no retries, on what is left of the request's one
   `Budget`, and never longer than 4 s (`SECOND_OPINION_MAX_S`). Where an

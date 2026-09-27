@@ -341,3 +341,41 @@ def test_a_routed_pass_still_counts_a_jev_failure(monkeypatch):
     monkeypatch.setattr(autofill_pick, "fast_json", lambda *_a, **_k: pytest.fail("the fast model answered"))
     case = next(c for c in PICKS["cases"] if c["id"] == "authorized-yes")
     assert ev.run_pick(case, ev.Run("routed"), None, PICKS["today"])["outcome"] == "jev_failed"
+
+
+# ---------- reversed and negated wordings (owner, 2026-09-27): tagged, run on their own
+
+REVERSED = [c for c in PICKS["cases"] if c.get("tag") == "reversed"]
+
+
+def test_the_reversed_wording_cases_are_labelled():
+    by_id = {c["id"]: c for c in REVERSED}
+    assert len(by_id) >= 5
+    assert (by_id["reversed-authorized-without-sponsorship"]["fact"],
+            by_id["reversed-authorized-without-sponsorship"]["expected"]) == ("No", "Yes")
+    assert (by_id["reversed-sponsor-direct-control"]["fact"], by_id["reversed-sponsor-direct-control"]["expected"]) \
+        == ("No", "No")
+    assert (by_id["reversed-under-18"]["fact"], by_id["reversed-under-18"]["expected"]) == ("Yes", "No")
+    assert by_id["reversed-no-non-compete"]["slot"] == "eligibility.non_compete"
+    assert by_id["reversed-not-a-citizen"]["slot"] == "derived.us_citizen"
+    assert all(ev.policy_of(c) == "exact" for c in REVERSED)
+    assert {c["tag"] for c in STEPS["cases"] if c.get("tag")} == {"reversed"}
+
+
+def test_a_case_fact_is_described_as_the_catalog_describes_it():
+    """The pick now reads the fact's description: the eval must send the one production sends."""
+    from app.services import autofill_catalog
+
+    built = autofill_catalog.build({"work_auth": {"status": "h1b", "sponsorship_future": False},
+                                    "eligibility": {"over_18": True, "non_compete": False}}, [], [])
+    for case in REVERSED:
+        facts = ev.case_facts(case, PICKS["today"])
+        assert facts[case["slot"]].describe == built[case["slot"]].describe, case["id"]
+
+
+def test_tagged_cases_can_be_run_on_their_own():
+    picked = ev.select_cases(PICKS["cases"], only=None, tag="reversed")
+    assert picked == REVERSED
+    assert ev.select_cases(PICKS["cases"], only={"over-18"}, tag=None) == [
+        c for c in PICKS["cases"] if c["id"] == "over-18"]
+    assert ev.select_cases(PICKS["cases"], only=None, tag=None) == PICKS["cases"]

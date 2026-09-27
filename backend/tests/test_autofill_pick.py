@@ -981,3 +981,44 @@ def test_a_slot_only_second_opinion_carries_no_low_stakes_paragraph(db_session, 
     prompt = prompts[0]["prompt"]
     assert _NEVER_LOW_STAKES not in prompt and "low_stakes" not in prompt and "keen" not in prompt
     assert '"Business Analytics"' in prompt or "Business Analytics" in prompt
+
+
+# ---------- the fact's meaning travels with its value (owner, 2026-09-27: reversed wordings)
+
+SPONSOR_NOW = FACTS["work_auth.sponsorship_now"].describe
+AUTHORIZED_WITHOUT = "Are you authorized to work without requiring sponsorship now?"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_jev_is_asked_for_the_option_that_means_the_fact_as_the_question_is_worded(db_session, monkeypatch):
+    """"No" means nothing alone: "authorized WITHOUT sponsorship?" asks the
+    reverse of "needs sponsorship", and its right answer to a No is Yes."""
+    calls = fake_jev(monkeypatch, {"s": ("o1", 0.95)})
+    pick([pf("s", question=AUTHORIZED_WITHOUT, slot="work_auth.sponsorship_now", options=opts("Yes", "No"))],
+         db_session)
+    text = calls[0]["questions"]["s"]["instructions"]
+    assert json.dumps(SPONSOR_NOW) in text and '"No"' in text
+    assert "reverse" in text and "negat" in text
+    [state] = calls[0]["state"]["fields"]
+    assert (state["fact"], state["applicant_values"]) == (SPONSOR_NOW, ["No"])
+
+
+def test_the_fast_model_is_given_each_facts_meaning_beside_its_value(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch)
+    pick([pf("s", question=AUTHORIZED_WITHOUT, slot="work_auth.sponsorship_now", options=opts("Yes", "No")),
+          pf("k", slot="skills", item="SQL", options=opts("SQL"))], db_session)
+    prompt = prompts[0]["prompt"]
+    fields = json.loads(prompt.split("Fields: ", 1)[1])
+    assert [(f["fact"], f["applicant_values"]) for f in fields] == [(SPONSOR_NOW, ["No"]),
+                                                                    (FACTS["skills"].describe, ["SQL"])]
+    assert "reverse" in prompt and "negat" in prompt
+    # The description is value-free: no other value of the applicant's rides along.
+    assert "Business Analytics" not in prompt and "Tableau" not in prompt and "Referral" not in prompt
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_low_stakes_field_carries_no_fact(db_session, monkeypatch):
+    model_settings.set_autofill_low_stakes(db_session, True)
+    calls = fake_jev(monkeypatch)
+    pick([pf("h", route="low_stakes", options=opts("LinkedIn"))], db_session)
+    assert "fact" not in calls[0]["state"]["fields"][0]

@@ -447,3 +447,14 @@ def test_the_second_opinion_is_capped(db_session, monkeypatch):
     prompts = fake_llm(monkeypatch, {"move": "open", "confidence": 0.9})
     step(req(slot="education.0.discipline"), db_session)
     assert prompts[0]["timeout"] == pytest.approx(autofill_map.SECOND_OPINION_MAX_S)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_steps_goal_carries_the_facts_meaning_beside_its_value(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch)
+    step(req(question="Are you authorized to work without requiring sponsorship now?",
+             slot="work_auth.sponsorship_now"), db_session)
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert json.dumps(FACTS["work_auth.sponsorship_now"].describe) in text and '"No"' in text
+    assert "reverse" in text and "negat" in text
+    assert "Business Analytics" not in text
