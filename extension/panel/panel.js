@@ -2068,10 +2068,14 @@
    * zero, the control leaves, and focus goes to a stable control of the
    * stage (the Fill row's door when it is one, else the chosen fill mode)
    * rather than falling to the body with the button. A refused remove keeps
-   * the count and the control, and says so in `failureNote`'s shape. */
+   * the count and the control, and says so in `failureNote`'s shape.
+   * UNDER THE BOOK'S LOCK (`fill.recipes`, the one `recipeBook.store`'s
+   * record holds), so a run finishing in another tab cannot write the old
+   * book back across the remove; unlocked where `navigator.locks` is absent. */
   async function forgetLearnedMoves() {
+    const remove = () => chrome.storage.local.remove(KEY.recipes);
     try {
-      await chrome.storage.local.remove(KEY.recipes);
+      await (navigator.locks?.request ? navigator.locks.request("fill.recipes", remove) : remove());
     } catch (err) {
       console.warn("[maestro-cs] storage remove failed:", err);
       card.note = { text: "Couldn't forget the learned moves. Try again.", error: true };
@@ -2307,7 +2311,7 @@
    * rebuild is about to throw away, so the identity that survives it has to be
    * a string: the controls worth restoring carry a stable one for exactly this
    * (`stg-open-<stage>`, `tailor-options`, `preview-<key>`, `answer-<qid>`,
-   * `qna-question`). A control with no id gets no restore, which is the honest
+   * `qna-question`, `fill-mode-<mode>`). A control with no id gets no restore, which is the honest
    * behaviour rather than a gap — there is nothing to find it by, and guessing
    * by position is how focus lands on the wrong control after a list reorders.
    *

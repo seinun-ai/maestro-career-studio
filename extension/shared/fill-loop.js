@@ -556,7 +556,9 @@
     const heard = (f, op, got) => {
       const tried = Boolean(rows.get(f.fid).recipe);
       if (got.mismatch) set(f.fid, { mismatch: got.mismatch, moves: got.variant ?? null });
-      if (tried && OUTRIGHT.has(op === "explore" ? got.error : got.reason)) set(f.fid, { contradicted: true });
+      // Only the operations that carry the order: an adaptive move carries none.
+      const ordered = op === "explore" || op === "choose" || op === "set";
+      if (tried && ordered && OUTRIGHT.has(op === "explore" ? got.error : got.reason)) set(f.fid, { contradicted: true });
       if (op !== "choose" && op !== "set") return;
       if (got.varied?.length) set(f.fid, { moves: null, ...(tried ? { contradicted: true } : {}) });
       else if (got.outcome === "verified" && got.variant) set(f.fid, { moves: got.variant });

@@ -2005,8 +2005,8 @@ def popup_run(page, load, **kw):
     kw.setdefault("sweep", [HELD])
     kw.setdefault("frames", [[f("d", "popup", "Willing to travel?", recipe=RECIPE)]])
     kw.setdefault("explore", {"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}})
-    return run(page, load, map={"d": {"route": "slot", "slot": "preferences.travel", "value": "Yes"}},
-               pick={"d": {"oids": ["o1"], "reason": "matched"}}, **kw)
+    kw.setdefault("pick", {"d": {"oids": ["o1"], "reason": "matched"}})
+    return run(page, load, map={"d": {"route": "slot", "slot": "preferences.travel", "value": "Yes"}}, **kw)
 
 
 def variants(out):
@@ -2108,6 +2108,17 @@ def test_a_recipe_under_which_the_explore_committed_is_contradicted(page, load):
         "options": [], "complete": False, "error": "committed_while_exploring", "committed": "No"}})
     assert statuses(out) == {"d": "needs_answer"}
     assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {}, "outcome": "contradicted"}]
+
+
+def test_an_adaptive_step_that_failed_is_not_the_recipes_fault(page, load):
+    """The pick abstains and the adaptive step takes over: its moves carry no
+    recipe order, so a move that finds no popup demotes nothing."""
+    out = popup_run(page, load, recipes={"book": LEARNED}, pick={"d": {"oids": [], "reason": "abstained"}},
+                    apply={"open": {"outcome": "unexpected", "reason": "no_popup"}},
+                    step={"states": [{"candidates": [{"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}],
+                          "moves": [{"mid": "open", "reason": "progress"}]})
+    assert any(a["op"] == "move" and a["mid"] == "open" for a in actions(out, "move"))
+    assert out["lessons"] is None
 
 
 def test_an_outright_failure_with_no_recipe_in_use_teaches_nothing(page, load):
