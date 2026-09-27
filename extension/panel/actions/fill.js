@@ -27,7 +27,13 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const duringAction = ns.panelDuringAction;
-  const { reconcileFill } = ns.decisions;
+  const { reconcileFill, sameApplication } = ns.decisions;
+
+  /** The attach, when it belongs to the application bound now
+   * (`sameApplication`): Refresh can carry one made for another. */
+  const attachedHere = (facts) =>
+    (sameApplication(facts.attached?.applicationId, facts.application)
+      ? facts.attached : null);
   // The guided-fill runner, read off the namespace for the shared modules'
   // reason: the Fill stage below calls it with this panel's bound tab's
   // transport, and the runner itself knows nothing about which world it is in.
@@ -357,7 +363,7 @@
     // Value-free: labels, shapes and outcomes, never an answer (fill-loop.js).
     store.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(loop));
     const after = store.read();
-    const finished = fillFinished({ loop, attached: after.attached });
+    const finished = fillFinished({ loop, attached: attachedHere(after) });
     store.write({
       loop,
       fillRound: null,
@@ -516,12 +522,12 @@
     // The SAME predicate a pause-row submit will ask, over this run's numbers.
     // Written as one function so the two paths converge rather than agree — see
     // `fillFinished`.
-    // `after.attached` and not null: an attach made BEFORE this run is still on
+    // The attach and not null: an attach made BEFORE this run is still on
     // this page, and a fill that answered nothing over a page already carrying
     // the résumé has not un-attached it.
     const finished = fillFinished({ fill: after.fill, writeResults: out.writeResults,
                                     residue: out.residue, essays: out.essays,
-                                    attached: after.attached });
+                                    attached: attachedHere(after) });
     const blank = out.blank ?? 0;
     store.write({
       residue: out.residue,
@@ -664,7 +670,9 @@
           : "Couldn't attach your resume. The page's upload boxes changed, so "
             + "check them and try again.");
       }
-      return { filename, count };
+      // STAMPED with its application, so a Refresh that binds another one
+      // cannot show this PDF as that one's (`sameApplication`).
+      return { filename, count, applicationId };
     }, "Couldn't attach your resume.");
     if (!done) return;
     const attached = done.out;

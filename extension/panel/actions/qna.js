@@ -130,7 +130,10 @@
       // `answered` is the question this paragraph belongs to and `question` is
       // left alone — the box keeps what the user has since typed, and the
       // answer says out loud which question it is for.
-      qna: { ...after.qna, answered: question, answer, copied: false },
+      // STAMPED with what grounded it, so it is shown only beside that
+      // application (`sameApplication`); null for the job-and-base grounding.
+      qna: { ...after.qna, answered: question, answer, copied: false,
+             applicationId: grounding.application_id ?? null },
       note: { text: grounding.application_id
         ? "Saved to this application's Q&A history."
         : "Answered from your base resume and this job." },

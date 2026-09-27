@@ -40,6 +40,7 @@ from tests.extension_panel_harness import (
     BASE_RESUMES,
     DECISIONS_JS,
     EXTENSION,
+    LIGHTNING_JOB,
     OTHER_URL,
     PANEL_CSS,
     PANEL_SOURCE,
@@ -2701,7 +2702,8 @@ _TAILORED_DETAIL = {"id": "app-remembered", "status": "draft", "applied_at": Non
                     "pdf_path": "renders/app-remembered/tailored-resume.pdf"}
 
 
-def _attach(tmp_path, *, file_inputs=1, detail=None, attach_reply=ATTACH_ONE, **spec):
+def _attach(tmp_path, *, file_inputs=1, detail=None, attach_reply=ATTACH_ONE,
+            driver=_ATTACH_DRIVER_JS, **spec):
     """Boot on the apply page of a job whose application is already tailored,
     with the page reporting `file_inputs` upload boxes.
 
@@ -2737,7 +2739,7 @@ def _attach(tmp_path, *, file_inputs=1, detail=None, attach_reply=ATTACH_ONE, **
            "GET /api/applications/app-remembered":
                detail if isinstance(detail, list) else _reply(detail or _TAILORED_DETAIL)}
     api.update(spec.pop("api", {}))
-    return run_node(_ATTACH_DRIVER_JS, {**spec, "api": api, "replies": replies},
+    return run_node(driver, {**spec, "api": api, "replies": replies},
                     tmp_path, source=PANEL_SOURCE)
 
 
@@ -3649,3 +3651,58 @@ def test_a_fill_report_and_typed_answers_survive_a_refresh(tmp_path):
     [box] = [node for node in _walk(out["refreshed"]["rail"]) if node["id"] == "answer-q1"]
     assert box["value"] == "Night"
     assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1
+
+
+def _attached_rows(region):
+    return [_text(row) for row in _by_class(region, "prog") if "Resume attached" in _text(row)]
+
+
+def test_an_attach_for_the_same_application_survives_a_refresh(tmp_path):
+    """The attach is about this page AND this application; Refresh changes
+    neither, so the report row stays and no second offer appears."""
+    out = _attach(tmp_path, driver=_REFRESH_DRIVER_JS, attach=True)
+    assert _attached_rows(out["beforePress"]["rail"]), "the attach never landed"
+    assert _attached_rows(out["refreshed"]["rail"])
+    assert _by_class(out["refreshed"]["rail"], "attach") == []
+
+
+def test_an_attach_for_another_application_is_not_shown_after_refresh(tmp_path):
+    """The web app (or an agent) linked a DIFFERENT application to this page
+    while the panel sat on it. After Refresh the backend's match binds that
+    one, so "Resume attached" about the first application's PDF would be a
+    claim about the wrong document, and it would hide the offer for the right
+    one. The attach is stamped with its application and read only beside it."""
+    other = {"id": "app-other", "status": "draft"}
+    out = _attach(tmp_path, driver=_REFRESH_DRIVER_JS, attach=True, apiAfter={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB, "application": other}),
+        "GET /api/applications/app-other": _reply(
+            {"id": "app-other", "status": "draft", "applied_at": None,
+             "pdf_path": "renders/app-other/other-resume.pdf"}),
+    })
+    assert _attached_rows(out["beforePress"]["rail"]), "the attach never landed"
+    assert _attached_rows(out["refreshed"]["rail"]) == []
+    assert "other-resume.pdf" in _attach_text(out["refreshed"])
+
+
+def test_a_qna_answer_for_another_application_is_not_shown_after_refresh(tmp_path):
+    """The drawer's answer was grounded in the application bound when it was
+    asked. Refresh keeps the drawer, and keeps the answer only beside that
+    same application; for another one it is a paragraph about the wrong
+    record, ready to be copied into this form."""
+    qa = {"POST /api/qa": _reply({"answers": ["Because I like distributed training."]})}
+    same = _attach(tmp_path, driver=_REFRESH_DRIVER_JS, ask="Why this role?", api=qa)
+    assert "distributed training" in _text(same["beforePress"]["rail"]), "never answered"
+    assert "distributed training" in _text(same["refreshed"]["rail"])
+    other = {"id": "app-other", "status": "draft"}
+    moved = _attach(tmp_path, driver=_REFRESH_DRIVER_JS, ask="Why this role?", api=qa,
+                    apiAfter={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB, "application": other}),
+        "GET /api/applications/app-other": _reply(
+            {"id": "app-other", "status": "draft", "applied_at": None,
+             "pdf_path": "renders/app-other/other-resume.pdf"}),
+    })
+    refreshed = moved["refreshed"]["rail"]
+    assert "distributed training" not in _text(refreshed)
+    # The drawer itself, and the typed question, are about the page and stay.
+    [box] = [node for node in _walk(refreshed) if node["id"] == "qna-question"]
+    assert box["value"] == "Why this role?"

@@ -105,7 +105,8 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
-  const { stageFor, rankBaseResumes, restorableSession, sessionTenant } = ns.decisions;
+  const { stageFor, rankBaseResumes, restorableSession, sessionTenant,
+          sameApplication } = ns.decisions;
 
   // `chrome.storage.local` holds TWO keys, and they hold different kinds of
   // thing: `widget.session`, the session pick (everything down to the
@@ -347,8 +348,8 @@
   // so it is one object several loads share — and a stray write to it would be
   // a default that quietly became the last question anyone typed. Every writer
   // below spreads it into a new object rather than touching it.
-  const EMPTY_QNA = Object.freeze(
-    { open: false, question: "", answered: null, answer: null, copied: false });
+  const EMPTY_QNA = Object.freeze({ open: false, question: "", answered: null,
+                                    answer: null, applicationId: null, copied: false });
 
   /** Everything the panel renders. Nothing here is derived: `stageFor` derives
    * the stage from these facts on every render, and no field below caches that
@@ -1836,7 +1837,9 @@
         // second home for a stage decision.
         pdfReady: card.pdfReady === true,
         fileInputs: card.fileInputs,
-        attached: card.attached,
+        // Only beside the application it was made for (`sameApplication`).
+        attached: sameApplication(card.attached?.applicationId, card.application)
+          ? card.attached : null,
         // The REAL filename, which the panel already knows: `evidenceFrom`
         // takes it off the application detail's `pdf_path`. Handed over so the
         // offer can name the document rather than saying "your resume" about a
@@ -1862,7 +1865,10 @@
         // The composer, whole: open-ness, the draft question, the answer and
         // the question it answers. One object rather than five keys because
         // the body renders them as one control and they are written together.
-        qna: card.qna,
+        // The answer only beside the application it was grounded in: the draft
+        // question and the open drawer are the page's, and stay either way.
+        qna: sameApplication(card.qna.applicationId, card.application)
+          ? card.qna : { ...card.qna, answered: null, answer: null, copied: false },
       },
       act: { editPreview, pickApplication, unpickApplication, pickBase, useBaseAsIs,
              stopUsingBaseAsIs, openTailor, quickTailor,
@@ -2641,7 +2647,10 @@
    * the scores) is RE-READ, which is the point of pressing it. The typed Job
    * fields, the Fill report, half-typed pause answers, the QnA drawer, the
    * attach, a reopened row: all still true of this page. `previewTyped` rides
-   * with the preview, and `loadPosting`'s guard keeps extraction off it.
+   * with the preview, and `loadPosting`'s guard keeps extraction off it. The
+   * attach and the drawer's answer are also about an APPLICATION, which the
+   * re-read may change, so they are stamped and shown only beside the one they
+   * were made for (`sameApplication`).
    *
    * NOT CARRIED besides the backend's: `busy` and the fill's run state
    * (`fillRound`, `stopRequested`), since nothing can be running; and `note`,
@@ -2693,9 +2702,11 @@
     refreshing = true;
     render();
     try {
+      const pressedOn = generation;
       if (card.claimed || card.baseSelected || card.baseArmed) await rememberSession();
-      // Re-checked after the await: an action may have started during it.
-      if (card.busy !== null) return;
+      // Re-checked after the await: the user may have switched tabs during it
+      // (that switch has already read the tab it went to), or started an action.
+      if (!current(pressedOn) || card.busy !== null) return;
       const carry = Object.fromEntries(PAGE_WORK.map((key) => [key, card[key]]));
       if (card.baseSelected) carry.baseSlug = card.baseSlug;
       forgetLibraryLists();

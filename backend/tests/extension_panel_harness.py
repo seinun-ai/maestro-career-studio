@@ -746,8 +746,16 @@ for (const root of Object.values(REGIONS)) {
 // and reads back only `spec.stored`, which is right for one page load and
 // wrong for this one: a pick made before Refresh must be the pick
 // `restoreSession` finds after it, exactly as it would be in a browser.
+// `holdPressWrite` holds the write a press makes, so "the user switched tabs
+// while Refresh was still writing the pick down" is a state the driver can
+// stand in.
 const writeLocal = chrome.storage.local.set;
+let pressing = false;
+let releaseWrite = null;
 chrome.storage.local.set = async (patch) => {
+  if (pressing && spec.holdPressWrite) {
+    await new Promise((resolve) => { releaseWrite = resolve; });
+  }
   await writeLocal(patch);
   spec.stored = { ...(spec.stored ?? {}), ...patch };
 };
@@ -799,6 +807,20 @@ main(async () => {
     withClass(REGIONS.foot, "cta")[0].click();
     await settle();
   }
+  if (spec.attach) {
+    const box = withClass(REGIONS.rail, "attach")[0];
+    if (!box) throw new Error("no attach offer to press");
+    withClass(box, "save")[0].click();
+    await settle();
+  }
+  if (spec.ask !== undefined) {
+    const drawer = withClass(REGIONS.rail, "qna")[0];
+    withClass(drawer, "linkish")[0].click();
+    await settle();
+    typeInto("", { "qna-question": spec.ask });
+    withClass(withClass(REGIONS.rail, "qna")[0], "save")[0].click();
+    await settle();
+  }
   typeInto("preview-", spec.type);
   typeInto("answer-", spec.answers);
   skew = spec.advanceMs ?? 0;
@@ -812,9 +834,17 @@ main(async () => {
   // are in, and this fake moves focus on `focus()` alone.
   if (button) {
     button.focus();
+    pressing = true;
     button.click();
+    pressing = false;
   }
   const pressed = regions();
+  if (spec.switchDuringPress !== undefined) {
+    await onActivated({ tabId: spec.switchDuringPress });
+    await settle();
+    if (releaseWrite) releaseWrite();
+    await settle();
+  }
   // A second press while the first is still loading.
   if (button && spec.pressTwice) {
     const again = document.getElementById("refresh-page");

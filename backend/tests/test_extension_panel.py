@@ -1378,7 +1378,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # survived the tab would offer a paragraph about a job the user has left
         # — ready to be copied into a different employer's form.
         "qna": {"open": True, "question": "Why us?", "answered": "Why us?",
-                "answer": "Because…", "copied": True},
+                "answer": "Because…", "applicationId": "app-1", "copied": True},
         # Not about the posting, and so not cleared: where the app is, which
         # tab we are bound to, the resume library — and `fillMode`, which is a
         # standing choice about HOW to fill rather than a fact about what was.
@@ -1410,7 +1410,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "loop": None, "fillRound": None, "stopRequested": False,
         "eeoConsent": None, "answers": {},
         "qna": {"open": False, "question": "", "answered": None, "answer": None,
-                "copied": False},
+                "applicationId": None, "copied": False},
         "settings": {"appUrl": APP_URL}, "tabId": 7, "url": POSTING_URL,
         "resumes": [{"slug": "ai_ml_engineer"}], "fillMode": "rules",
         "fault": {"text": "the backend is unreachable", "error": True},
@@ -3023,3 +3023,26 @@ def test_a_second_press_while_refreshing_is_ignored_and_keeps_focus(tmp_path):
     after = _refresh_button(out["finished"]["identity"])
     assert after["attrs"].get("aria-disabled") in (None, "false")
     assert out["focus"]["id"] == "refresh-page"
+
+
+def test_a_tab_switch_while_refresh_writes_the_pick_ends_that_refresh(tmp_path):
+    """Refresh writes the pick down before it re-reads, and the user can
+    switch tabs during that write. The switch has already read the new tab;
+    the Refresh pressed on the old one must not then run against it."""
+    out = _picked_then_refreshed(tmp_path, holdPressWrite=True, switchDuringPress=42,
+                                 tabUrls={"42": POSTING_URL},
+                                 apiAfter={"lightningai": _UNMATCHED})
+    assert "job-boards.greenhouse.io" in _text(out["finished"]["identity"])
+    assert len(_gets(out["sentAfter"], "lightningai")) == 1
+    assert _gets(out["sentAfter"], "myworkdayjobs") == []
+
+
+def test_a_refresh_in_flight_looks_as_unpressable_as_a_disabled_one():
+    """`aria-disabled` keeps focus where `disabled` would drop it, and the
+    stylesheet has to dim it the same way and give it no hover, or the
+    control looks live while it ignores presses."""
+    dimmed = re.search(r'([^{}]*)\{\s*opacity: \.6; cursor: default; \}', PANEL_CSS[
+        PANEL_CSS.index(".identity .refresh:disabled"):])
+    assert dimmed and '.identity .refresh[aria-disabled="true"]' in dimmed.group(1)
+    hover = re.search(r"\.refresh:hover[^{]*\{", PANEL_CSS)
+    assert hover and ':not([aria-disabled="true"])' in hover.group(0)

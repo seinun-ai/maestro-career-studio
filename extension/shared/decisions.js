@@ -13,7 +13,8 @@
  * that used to be split across two files is written out below in full.
  *
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
- * postingId, sessionTenant, restorableSession, reconcileFill, sanitizeAnswer }.
+ * postingId, sessionTenant, restorableSession, reconcileFill, sanitizeAnswer,
+ * sameApplication }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -440,8 +441,27 @@
       .trim();
   }
 
+  /** Whether a record the panel stamped at write time (`stamp`, an
+   * application id or null) belongs beside the application bound NOW.
+   *
+   * The attach and the QnA answer are about this page AND about the
+   * application they were made for: the PDF is that application's, the answer
+   * was grounded in it. Refresh keeps the page's work, and the backend may
+   * since have linked a different application to the page, so both are read
+   * through this rather than trusted because they survived. `pickApplication`
+   * clears the attach for the same reason; this is the rule for a change of
+   * application the panel did not make itself.
+   *
+   * Null matches null: an answer grounded in the job and a base resume, with
+   * no application, is still that answer while no application is bound. An
+   * attach always has an application (`attachResume` refuses without one), so
+   * it never stamps null. */
+  function sameApplication(stamp, application) {
+    return stamp === (application?.id ?? null);
+  }
+
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession,
-    reconcileFill, sanitizeAnswer,
+    reconcileFill, sanitizeAnswer, sameApplication,
   };
 })();
