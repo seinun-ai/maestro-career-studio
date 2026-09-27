@@ -104,7 +104,8 @@ DRIVER = """async (spec) => {
     inflight[path] -= 1;
     if (spec.apiHang?.includes(path)) return new Promise(() => {});
     if (path.startsWith("/api/autofill/context")) return {eeo_consent: {consent_forms: false}};
-    if (path === "/api/autofill/map") return {fields: Object.fromEntries(body.fields.map(f => [f.fid, spec.map[`${f.fid}:${f.question}`] ?? spec.map[f.fid] ?? {route: "none"}]))};
+    // An entry placed nowhere (entry_slot null) gets nothing, as the real /map does.
+    if (path === "/api/autofill/map") return {fields: Object.fromEntries(body.fields.map(f => [f.fid, f.entry_slot === null ? {route: "none"} : spec.map[`${f.fid}:${f.question}`] ?? spec.map[f.fid] ?? {route: "none"}]))};
     if (path === "/api/autofill/pick") return {picks: Object.fromEntries(body.fields.map(f => [f.fid, spec.pick[`${f.fid}:${f.item ?? ""}`] ?? spec.pick[f.fid] ?? {oids: [], reason: "abstained"}]))};
     if (path === "/api/autofill/step") return spec.step.moves.shift() ?? {mid: null, reason: "abstained"};
     if (path === "/api/autofill/sections") return {sections: Object.fromEntries(body.sections.map(x => [x.sid, spec.kinds?.[x.sid] ?? {kind: "none", wanted: 0}]))};
@@ -1510,7 +1511,7 @@ def test_an_entry_already_holding_data_counts_and_is_never_overwritten(page, loa
     out = run(page, load, frames=[held, held + work(2)],
               sections=[[section(entries=1, filled=[True], held=[["Acme", "Acme"]])],
                         [section(entries=2, filled=[True, False])]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 2}}, map=JOBS)
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "order": [0, 1]}}, map=JOBS)
     # What the entry holds goes to the (local) backend, which reconciles it.
     [ask] = bodies(out, "/api/autofill/sections")
     assert ask["sections"][0]["held"] == [["Acme", "Acme"]]
@@ -1521,7 +1522,7 @@ def test_an_entry_already_holding_data_counts_and_is_never_overwritten(page, loa
     assert {a["fid"] for a in actions(out)} == {"t2", "c2"}
     # Two entries on the page already, one of them held: nothing to add.
     out = run(page, load, frames=[held + work(2)], sections=[[section(entries=2, filled=[True, False])]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 2}}, map=JOBS)
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "order": [0, 1]}}, map=JOBS)
     assert adds(out) == [] and statuses(out)["t2"] == "verified"
 
 
@@ -1551,14 +1552,15 @@ def test_add_never_exceeds_what_the_profile_can_fill(page, load):
 
 
 def test_entries_held_out_of_order_add_nothing_and_the_report_says_why(page, load):
-    """The backend found an entry holding a later profile entry than its place
-    (reconciliation, app/services/autofill_sections): nothing is added."""
-    out = run(page, load, frames=[work(1, committed="Initech", answered=True)],
-              sections=[[section(entries=1, filled=[True], held=[["Initech"]])]],
-              kinds={"f-s1": {"kind": "experience", "wanted": 1, "reason": "held_out_of_order"}}, map=JOBS)
+    """The backend found two entries holding the same profile job
+    (app/services/autofill_sections): nothing is added."""
+    out = run(page, load, frames=[work(1, committed="Initech", answered=True) + work(2, committed="Initech", answered=True)],
+              sections=[[section(entries=2, filled=[True, True], held=[["Initech"], ["Initech"]])]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 2, "reason": "held_out_of_order",
+                              "order": [1, None]}}, map=JOBS)
     assert adds(out) == []
-    assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 1,
-                                          "entries": 1, "added": 0, "outcome": None,
+    assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 2,
+                                          "entries": 2, "added": 0, "outcome": None,
                                           "reason": "held_out_of_order"}]
 
 
@@ -1612,6 +1614,39 @@ def test_an_order_that_cannot_be_read_places_nothing(page, load, order):
               kinds={"f-s1": {"kind": "experience", "wanted": 1, "order": order}}, map=JOBS)
     [body] = bodies(out, "/api/autofill/map")
     assert [(x["entry_slot"], x["entry_kind"]) for x in body["fields"]] == [(None, "experience")] * 2
+
+
+@pytest.mark.parametrize("how", ["failed", "none", "older"])
+def test_a_section_with_held_entries_and_no_placement_is_left_alone(page, load, how):
+    """No placement for a section — /sections failed or hung, the model read
+    the heading as none, or an older backend sent no order — yet an entry
+    holds data ([empty, "Acme"]): page order would give the empty entry job
+    #1 again. Nothing is written in the section, nothing is added, and the
+    report says the section was left."""
+    held = work(2, committed="Acme", answered=True)
+    kinds = {"failed": None, "none": {"kind": "none", "wanted": 0},
+             "older": {"kind": "experience", "wanted": 3}}[how]
+    spec = {"apiHang": ["/api/autofill/sections"], "limits": {"API_MS": 200}} if kinds is None \
+        else {"kinds": {"f-s1": kinds}}
+    out = run(page, load, frames=[work(1) + held],
+              sections=[[section(entries=2, filled=[False, True], held=[[], ["Acme"]])]], map=JOBS, **spec)
+    [body] = bodies(out, "/api/autofill/map")
+    assert [(x["fid"], x["entry_slot"], "entry_kind" in x) for x in body["fields"]] == [
+        ("t1", None, False), ("c1", None, False)]
+    assert actions(out) == [] and adds(out) == []
+    assert statuses(out) == {"t1": "needs_answer", "c1": "needs_answer", "t2": "already", "c2": "already"}
+    lines = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.sectionLines(r)", out["report"])
+    assert lines == ["Work Experience: the items on the page couldn't be matched to your profile, so this "
+                     "section was left for you."]
+
+
+def test_a_section_with_only_empty_entries_and_no_placement_keeps_page_order(page, load):
+    out = run(page, load, frames=[work(1) + work(2)], sections=[[section(entries=2)]],
+              apiHang=["/api/autofill/sections"], limits={"API_MS": 200}, map=JOBS)
+    [body] = bodies(out, "/api/autofill/map")
+    assert all("entry_slot" not in x for x in body["fields"])
+    assert statuses(out) == {"t1": "verified", "c1": "verified", "t2": "verified", "c2": "verified"}
+    assert page.evaluate("(r) => window.careerStudioCompanion.fillLoop.sectionLines(r)", out["report"]) == []
 
 
 def test_only_the_first_section_of_a_kind_is_placed(page, load):

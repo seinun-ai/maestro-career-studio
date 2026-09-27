@@ -428,7 +428,10 @@ know, and each one was learned from a live failure.
   nothing. Only the first section of each kind is placed (a second one read
   as work experience gets nothing), an entry fact of another kind than its
   section's is never written there, and an order that cannot be read places
-  nothing rather than falling back to page order. An added entry never takes
+  nothing rather than falling back to page order. A section the backend
+  could not place at all (the ask failed or was slow, its heading was read as
+  no profile list) is filled in page order only while every entry is empty;
+  if one holds data the section is left to you, and the report says so. An added entry never takes
   a profile entry missing a fact it requires (a school with no name). What the entries hold goes to the local backend for
   that match only, never to a model. Within one section the page
   listed, a fact is written into one entry only: a website that one entry

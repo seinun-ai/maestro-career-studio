@@ -65,7 +65,11 @@
  *   nothing there), so an empty entry before a pre-filled one is never given
  *   the job the page already shows. Only the first section of a kind is
  *   placed, and an order that cannot be read places nothing — never page
- *   order. One holding data keeps it (`already`).
+ *   order. A section with no placement at all (/sections failed, the heading
+ *   read as none, an older backend) keeps page order only while every entry
+ *   is empty; one holding data leaves the section alone (`unplaced`: nothing
+ *   written, nothing added, a report line). One holding data keeps it
+ *   (`already`).
  *   Each press is a deliberate write, not a trial: once per wanted entry,
  *   counted only when the page's entry count grew; a press that did not grow
  *   it is not pressed again this run. A full inventory follows the adds, so
@@ -952,6 +956,7 @@
       const mine = entryOf(frameId, f.section);
       const placed = mine ? placements.get(`${frameId}\n${mine.family}`) : undefined;
       if (!placed) return {};
+      if (!placed.kind) return { entry_slot: null };
       const at = Math.min(Math.max(Number(f.repeatIndex) || 0, 0), 20);
       return { entry_slot: placed.order && at < placed.order.length ? placed.order[at] : null, entry_kind: placed.kind };
     };
@@ -1145,7 +1150,14 @@
     // Decided once per section; only the FIRST section of a kind, in page
     // order, keeps its order (a second one read as the same kind — a misread
     // "Volunteer Experience" — would be given job #1 again).
+    // { kind: null, order: null }: a section with NO placement (/sections
+    // failed or hung, the heading read as none, an older backend with no
+    // order) whose entries held data — page order could give an empty entry
+    // a job the page already shows, so nothing is written there or added,
+    // and the report says the section was left (`unplaced`). With every
+    // entry empty, page order is safe and stands.
     const placements = new Map();
+    const heldAtStart = new Map(); // `${frameId}\n${heading, lowercased}` -> any entry held data
     const placedKinds = new Set();
     const PLACED_KINDS = new Set(["experience", "education"]);
     const REASONS = new Set(["held_out_of_order", "held_unmatched"]);
@@ -1160,7 +1172,12 @@
     const readSections = async () => {
       const seen = (await broadcast({ type: "fill_sections" }) ?? []).flatMap((fr) => (
         Array.isArray(fr?.result) ? fr.result.filter(sectionOk).map((s) => ({ ...s, frameId: fr.frameId })) : []));
-      for (const s of seen) listedSections.add(`${s.frameId}\n${s.heading.toLowerCase()}`);
+      for (const s of seen) {
+        const key = `${s.frameId}\n${s.heading.toLowerCase()}`;
+        listedSections.add(key);
+        // Whether any entry held data when the section was first seen.
+        if (!heldAtStart.has(key)) heldAtStart.set(key, Array.isArray(s.filled) && s.filled.some(Boolean));
+      }
       return seen;
     };
     const planSections = async (seen) => {
@@ -1207,7 +1224,15 @@
       for (const s of seen) {
         const plan = plans.get(sectionKey(s));
         const key = `${s.frameId}\n${s.heading.toLowerCase()}`;
-        if (!plan || !PLACED_KINDS.has(plan.kind) || plan.order === undefined || placements.has(key)) continue;
+        if (placements.has(key)) continue;
+        const unplaced = !plan || plan.kind === "none" || (PLACED_KINDS.has(plan.kind) && plan.order === undefined);
+        if (unplaced && heldAtStart.get(key)) {
+          placements.set(key, { kind: null, order: null });
+          sectionLog.set(sectionKey(s), { heading: s.heading, kind: plan?.kind ?? "none", wanted: s.entries,
+            entries: s.entries, added: 0, outcome: null, reason: "unplaced" });
+          continue;
+        }
+        if (!plan || !PLACED_KINDS.has(plan.kind) || plan.order === undefined) continue;
         const first = !placedKinds.has(plan.kind);
         placedKinds.add(plan.kind);
         placements.set(key, { kind: plan.kind, order: first ? plan.order : null });
@@ -1217,6 +1242,8 @@
       for (const s of seen) {
         const plan = plans.get(sectionKey(s));
         if (!plan || plan.kind === "none" || kinds.has(plan.kind)) continue;
+        // Left alone (see `placements`): nothing is added either.
+        if (placements.get(`${s.frameId}\n${s.heading.toLowerCase()}`)?.kind === null) continue;
         kinds.add(plan.kind);
         const key = sectionKey(s);
         const log = sectionLog.get(key)
@@ -1422,6 +1449,9 @@
   // none was added because two hold the same one. Empty when there is
   // nothing for the user to add.
   const sectionLines = (report) => (report?.sections ?? []).flatMap((s) => {
+    if (s.reason === "unplaced") {
+      return [`${s.heading}: the items on the page couldn't be matched to your profile, so this section was left for you.`];
+    }
     if (s.reason === "held_unmatched") {
       return [`${s.heading}: the items on the page don't match your profile, so this section was left for you.`];
     }
