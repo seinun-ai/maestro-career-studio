@@ -539,15 +539,26 @@ know, and each one was learned from a live failure.
   fact pick Jev abstained on; `exact` still refuses a near miss and a
   flag slot's nearest option is still `closest`. For /step it means a
   slot field whose move Jev gave up on or chose under its floor. The
-  second opinion is sent exactly what Jev was sent: labels and fact
-  descriptions for /map, and the slot's own value for /pick and /step.
+  second opinion is sent the same data as Jev and the same question:
+  labels and fact descriptions for /map; for /pick and /step the slot's
+  own value, the options or moves, and the job, asked which option states
+  the value (its /pick prompt carries the low-stakes paragraph only when
+  the batch holds a low-stakes field, which a second opinion never does).
   It is one call, with no retries, on what is left of the request's one
-  `Budget`. Out of time or failed, Jev's none stands. Jev's own
-  protected, history, EEO and free-text answers are never asked again,
-  and an entry field /sections placed nowhere is never asked at all. A
-  second opinion is placed by the same `profile_entry` rule, and a field
-  it names as anything but "no fact" never becomes a low-stakes or
-  reasoned guess. The low-stakes and reasoned routes keep their engines.
+  `Budget`, and never longer than 4 s (`SECOND_OPINION_MAX_S`). Where an
+  optional pass may follow (/map's low-stakes and reasoning passes,
+  /pick's reasoning call), it also ends a second before the 6 s after
+  which no optional pass starts, so it cannot crowd them out. A give-up
+  step therefore costs at most Jev's 2 s plus 4 s against the field's
+  clock. Out of time or failed, Jev's none stands. Jev's own protected,
+  history, EEO and free-text answers are never asked again, and an entry
+  field /sections placed nowhere is never asked at all. On /map the
+  second opinion may decide only a fact (placed by the same
+  `profile_entry` rule) or an EEO block, never a free-text answer. A field
+  it names as anything but "no fact" never becomes a low-stakes guess, and
+  never a reasoned one either, unless what it names is the history
+  sentinel (a history question no fact answers), which keeps a reasoning
+  candidate one. The low-stakes and reasoned routes keep their engines.
   Which engine decided is logged, not reported: no response or telemetry
   field carries an engine.
 - **Two kinds of answer are the Companion's own**, both listed under
@@ -621,8 +632,8 @@ know, and each one was learned from a live failure.
   by the request's one `Budget` (`autofill_map`): once a request has spent 6 s
   (`OPTIONAL_PASS_BUDGET_S`), a pass not yet begun is skipped and its fields
   stay yours, and one that runs is a single request with no retries and a
-  real timeout of what is left of 9 s (`REQUEST_BUDGET_S`), so /map and
-  /pick answer inside the Companion's 10 s wait. /pick makes its fact picks
+  real timeout of what is left of 9 s (`REQUEST_BUDGET_S`), so /map,
+  /pick and /step answer inside the Companion's 10 s wait. /pick makes its fact picks
   first and the reasoning call after, so a slow or failed reasoning call
   never costs them.
 - **A subframe has to look like an application form before it gets anything.**

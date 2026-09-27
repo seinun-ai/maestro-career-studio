@@ -942,3 +942,42 @@ def test_the_fast_engine_asks_no_second_opinion(db_session, monkeypatch):
     prompts = fake_llm(monkeypatch, {"m": {"oids": [], "confidence": 0.9}})
     assert pick([pf("m", slot=DISCIPLINE, options=opts("Accounting"))], db_session)["m"].reason == "abstained"
     assert [p["trace_name"] for p in prompts] == ["autofill-pick"]
+
+
+# ---------- review of the second opinion: capped for the reasoning call; the fast model asked what Jev is
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_leaves_the_reasoning_call_time(db_session, monkeypatch):
+    left = [0.0, 3.0, 5.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: left.pop(0) if len(left) > 1 else left[0])
+    fake_jev(monkeypatch, {"m": ("none", 0.9)})
+    prompts = fake_reasoner(monkeypatch)
+    pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No"),
+                       pf("m", slot="education.0.discipline", options=opts("Business Analytics"))], db_session)
+    by = {p["trace_name"]: p for p in prompts}
+    # 3 s in: what leaves the reasoning call a second before OPTIONAL_PASS_BUDGET_S, never over the cap.
+    assert by[SECOND]["timeout"] == pytest.approx(autofill_map.OPTIONAL_PASS_BUDGET_S - 3.0 - autofill_map.MIN_CALL_S)
+    assert "autofill-reasoned-pick" in by
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_is_capped(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map, "_clock", lambda: 0.0)
+    fake_jev(monkeypatch, {"m": ("none", 0.9)})
+    prompts = fake_llm(monkeypatch)
+    pick([pf("m", slot=DISCIPLINE, options=opts("Accounting"))], db_session)
+    assert prompts[0]["timeout"] == pytest.approx(autofill_map.SECOND_OPINION_MAX_S)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_slot_only_second_opinion_carries_no_low_stakes_paragraph(db_session, monkeypatch):
+    """The fast model is asked what Jev is: which option states the value."""
+    from app.services.autofill_map import _NEVER_LOW_STAKES
+
+    fake_jev(monkeypatch, {"m": ("none", 0.9)})
+    prompts = fake_llm(monkeypatch)
+    pick([pf("m", slot=DISCIPLINE, options=opts("Accounting"))], db_session)
+    prompt = prompts[0]["prompt"]
+    assert _NEVER_LOW_STAKES not in prompt and "low_stakes" not in prompt and "keen" not in prompt
+    assert '"Business Analytics"' in prompt or "Business Analytics" in prompt

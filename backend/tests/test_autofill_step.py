@@ -437,3 +437,13 @@ def test_the_fast_engine_asks_no_second_opinion(db_session, monkeypatch):
     prompts = fake_llm(monkeypatch, {"move": GIVE_UP, "confidence": 0.9})
     assert step(req(slot="education.0.discipline"), db_session)["reason"] == "abstained"
     assert [p["trace_name"] for p in prompts] == ["autofill-step"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_is_capped(db_session, monkeypatch):
+    """A give-up step costs at most Jev's 2 s plus this cap against the field's clock."""
+    monkeypatch.setattr(autofill_map, "_clock", lambda: 0.0)
+    fake_jev(monkeypatch, (GIVE_UP, 0.9))
+    prompts = fake_llm(monkeypatch, {"move": "open", "confidence": 0.9})
+    step(req(slot="education.0.discipline"), db_session)
+    assert prompts[0]["timeout"] == pytest.approx(autofill_map.SECOND_OPINION_MAX_S)

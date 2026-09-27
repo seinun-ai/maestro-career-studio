@@ -28,7 +28,7 @@ from app.schemas.autofill_fill import StepRequest, StepResponse
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
-from app.services.autofill_map import Budget, fast_json, keen, low_stakes_rule
+from app.services.autofill_map import SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule
 from app.services.autofill_pick import JobHint, values_for, verdict
 
 logger = logging.getLogger(__name__)
@@ -94,9 +94,10 @@ def _with_llm(req: StepRequest, instructions: str, state: dict, criteria: dict[s
 def _second_opinion(req: StepRequest, instructions: str, state: dict, criteria: dict[str, str], policy: str,
                     session: Session, budget: Budget) -> StepResponse:
     """ONE fast-model move for a slot field Jev gave up on, on what is left of
-    the request's budget, at the same floors. Out of time or failed, Jev's
-    give-up stands."""
-    if (timeout := budget.left()) is None:
+    the request's budget, capped (a give-up step costs at most Jev's 2 s plus
+    this against the field's clock), at the same floors. Out of time or
+    failed, Jev's give-up stands."""
+    if (timeout := budget.left(SECOND_OPINION_MAX_S)) is None:
         return ABSTAIN
     try:
         second = _with_llm(req, instructions, state, criteria, policy, session, "autofill-step-second",

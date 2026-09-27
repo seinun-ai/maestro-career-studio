@@ -25,7 +25,7 @@ from app.schemas.autofill_fill import Picked, PickField
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
-from app.services.autofill_map import Budget, fast_json, keen, low_stakes_rule
+from app.services.autofill_map import MIN_CALL_S, SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule
 from app.services.autofill_reasoned import reason
 
 logger = logging.getLogger(__name__)
@@ -35,10 +35,13 @@ ABSTAIN = Picked(oids=[], reason="abstained")
 _NO_OPTION_TEXT = "No option states this value"
 # A low-stakes field's "none" is a refusal as well as a miss: its criterion says so.
 _LOW_STAKES_NONE_TEXT = "None, as the question is on the never-list or no option fits"
-_LLM_PROMPT = """For each form field return the option id that states the applicant value, or none. {rule}
-A field marked low_stakes has no applicant value. {low_stakes}; for such a field, return the option {keen}.
+# Said only when the batch holds a low-stakes field: a batch of fact fields
+# is asked exactly what Jev is asked, which option states the value.
+_LOW_STAKES_PARAGRAPH = """A field marked low_stakes has no applicant value. {rule}; for such a field, return the option {keen}.
 The never-list does not apply to a field with applicant_values: pick the option that states its value.
-Return JSON {{"picks": {{"<field id>": {{"oids": ["<option id>"], "confidence": <0..1>}}}}}};
+"""
+_LLM_PROMPT = """For each form field return the option id that states the applicant value, or none. {rule}
+{low_stakes}Return JSON {{"picks": {{"<field id>": {{"oids": ["<option id>"], "confidence": <0..1>}}}}}};
 for none, "oids": [].
 Job: {job}
 Fields: {fields}
@@ -116,12 +119,14 @@ def _with_jev(fields, facts, hint, session) -> dict[str, Picked]:
 
 def _with_llm(fields, facts, hint, session, trace_name="autofill-pick", *,
               timeout: float | None = None) -> dict[str, Picked]:
-    payload = [{"id": f.fid, "question": f.question, "low_stakes": f.route == "low_stakes",
+    payload = [{"id": f.fid, "question": f.question, **({"low_stakes": True} if f.route == "low_stakes" else {}),
                 "applicant_values": values_for(f, facts.get(f.slot or "")),
                 "options": [o.model_dump() for o in f.options]} for f in fields]
+    low_stakes = _LOW_STAKES_PARAGRAPH.format(
+        rule=low_stakes_rule(facts, "return none for that field", subject="a low_stakes field"), keen=keen(facts),
+    ) if any(f.route == "low_stakes" for f in fields) else ""
     raw = fast_json(session, _LLM_PROMPT.format(
-        rule=_PAGE_TEXT_IS_DATA, keen=keen(facts),
-        low_stakes=low_stakes_rule(facts, "return none for that field", subject="a low_stakes field"),
+        rule=_PAGE_TEXT_IS_DATA, low_stakes=low_stakes,
         job=json.dumps(asdict(hint) if hint else None), fields=json.dumps(payload)), trace_name, timeout=timeout)
     picks = raw.get("picks") if isinstance(raw, dict) else None
     picks = picks if isinstance(picks, dict) else {}
@@ -139,11 +144,12 @@ def _with_llm(fields, facts, hint, session, trace_name="autofill-pick", *,
 
 
 def _second_opinion(fields: list[PickField], facts: dict[str, Fact], hint: JobHint | None, session: Session,
-                    budget: Budget) -> dict[str, Picked]:
+                    budget: Budget, *, reasoning_next: bool = False) -> dict[str, Picked]:
     """ONE fast-model pick for the fact fields Jev abstained on, on what is
-    left of the request's budget, through the same `verdict`. Out of time or
+    left of the request's budget (capped; leaving a reasoning call that
+    follows time to start), through the same `verdict`. Out of time or
     failed, Jev's abstention stands."""
-    timeout = budget.left()
+    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S if reasoning_next else 0.0)
     if not fields or timeout is None:
         return {}
     try:
@@ -176,7 +182,8 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
             picked = _with_llm(askable, facts, hint, session)
         else:
             unsure = [f for f in askable if f.route == "slot" and picked[f.fid] == ABSTAIN]
-            decided = {fid: p for fid, p in _second_opinion(unsure, facts, hint, session, budget).items()
+            decided = {fid: p for fid, p in _second_opinion(unsure, facts, hint, session, budget,
+                                                             reasoning_next=bool(reasoned)).items()
                        if p != ABSTAIN}
             if decided:
                 logger.info("pick: the fast model decided %d of %d fields Jev abstained on", len(decided), len(unsure))

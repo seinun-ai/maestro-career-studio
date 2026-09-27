@@ -1084,3 +1084,47 @@ def test_the_fast_engine_asks_no_second_opinion(db_session, monkeypatch):
     prompts = fake_llm(monkeypatch, {"s": {"key": "work_auth.sponsorship_now", "confidence": 0.7}})
     assert run([field("s", "Sponsorship?", "select")], db_session)["s"].route == "none"
     assert [p["trace_name"] for p in prompts] == ["autofill-map"]
+
+
+# ---------- review of the second opinion: it never crowds out the optional passes, never drafts prose
+
+
+def clock_of(*times):
+    """A patched `_clock`: each read takes the next time, the last one repeating."""
+    left = list(times)
+    return lambda: left.pop(0) if len(left) > 1 else left[0]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_is_capped(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map, "_clock", clock_of(0.0))
+    fake_jev(monkeypatch, {"s": ("work_auth.sponsorship_now", 0.7)})
+    prompts = fake_llm(monkeypatch)
+    run([field("s", "Sponsorship?", "select")], db_session)
+    [asked] = second_opinions(prompts)
+    assert asked["timeout"] == pytest.approx(autofill_map.SECOND_OPINION_MAX_S)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_leaves_the_optional_passes_time_to_start(db_session, monkeypatch):
+    """Asked 4 s in, the second opinion may take only what leaves the
+    low-stakes pass a second before OPTIONAL_PASS_BUDGET_S — and that pass runs."""
+    monkeypatch.setattr(autofill_map, "_clock", clock_of(0.0, 4.0, 4.9))
+    fake_jev(monkeypatch, {"s": ("work_auth.sponsorship_now", 0.7), "t": ("none", 0.95)}, noul={"t": 0.99})
+    prompts = fake_llm(monkeypatch)
+    got = run([field("s", "Sponsorship?", "select"), field("t", "Willing to travel?", "select")], db_session,
+              low_stakes=True)
+    [asked] = second_opinions(prompts)
+    assert asked["timeout"] == pytest.approx(autofill_map.MIN_CALL_S)
+    assert got["t"].route == "low_stakes"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_second_opinion_never_makes_a_field_free_text(db_session, monkeypatch):
+    """Only a slot or an EEO block is the second opinion's to decide: a field
+    Jev said no fact answers never becomes a model-drafted answer."""
+    fake_jev(monkeypatch, {"w": ("none", 0.95), "g": ("none", 0.95)})
+    fake_llm(monkeypatch, {"w": {"key": "free_text", "confidence": 0.95},
+                           "g": {"key": "blocked_eeo", "confidence": 0.95}})
+    got = run([field("w", "Anything else?"), field("g", "Gender", "select")], db_session, eeo_consented=False)
+    assert (got["w"].route, got["g"].route) == ("none", "blocked")

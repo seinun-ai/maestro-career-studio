@@ -63,6 +63,10 @@ ANSWERABLE_FLOOR = 0.8
 OPTIONAL_PASS_BUDGET_S = 6.0
 REQUEST_BUDGET_S = 9.0
 MIN_CALL_S = 1.0
+# The fast second opinion on Jev's unsure answers (/map, /pick, /step) never
+# takes longer than this, and where an optional pass may follow it leaves that
+# pass MIN_CALL_S before OPTIONAL_PASS_BUDGET_S to start in.
+SECOND_OPINION_MAX_S = 4.0
 _clock = time.monotonic
 WORKED_HERE = "derived.previously_employed_here"
 _SENTINELS = {
@@ -244,12 +248,19 @@ class Budget:
     def _now(self) -> float:
         return (self._clock or _clock)()
 
-    def left(self) -> float | None:
-        """The timeout an optional call may take, or None once none should start."""
+    def left(self, cap: float | None = None, *, reserve: float = 0.0) -> float | None:
+        """The timeout an optional call may take, or None once none should start.
+        `cap`: at most that long. `reserve`: end that long before
+        OPTIONAL_PASS_BUDGET_S, so a later optional call can still start."""
         elapsed = self._now() - self._started
         if elapsed >= OPTIONAL_PASS_BUDGET_S:
             return None
-        return max(MIN_CALL_S, REQUEST_BUDGET_S - elapsed)
+        timeout = REQUEST_BUDGET_S - elapsed
+        if cap is not None:
+            timeout = min(timeout, cap)
+        if reserve:
+            timeout = min(timeout, OPTIONAL_PASS_BUDGET_S - elapsed - reserve)
+        return max(MIN_CALL_S, timeout)
 
 
 def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: str, timeout: float) -> set[str]:
@@ -389,8 +400,9 @@ def _unsure(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
 def _second_opinion(fields: list[MapField], criteria: dict[str, str], session: Session,
                     budget: Budget) -> dict[str, tuple[str, float]]:
     """ONE fast-model map of the fields Jev was unsure of, on what is left of
-    the request's budget. Out of time or failed, Jev's none stands."""
-    timeout = budget.left()
+    the request's budget (capped, leaving the optional passes time to start).
+    Out of time or failed, Jev's none stands."""
+    timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S)
     if not fields or timeout is None:
         return {}
     try:
@@ -427,9 +439,12 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
         second = _second_opinion([f for f in fields if _unsure(f, picked.get(f.fid), facts)],
                                  criteria, session, budget)
     out = {f.fid: _route(f, picked.get(f.fid), facts, eeo_consented=eeo_consented) for f in fields}
+    # Only a fact or an EEO block is the second opinion's to decide: a field
+    # Jev said no fact answers never becomes a model-drafted free-text answer.
     by_fid = {f.fid: f for f in fields}
     decided = {fid: routed for fid, answer in second.items()
-               if (routed := _route(by_fid[fid], answer, facts, eeo_consented=eeo_consented)).route != "none"}
+               if (routed := _route(by_fid[fid], answer, facts, eeo_consented=eeo_consented)).route
+               in ("slot", "blocked")}
     if decided:
         logger.info("map: the fast model decided %d of %d fields Jev was unsure of", len(decided), len(second))
     out |= decided
