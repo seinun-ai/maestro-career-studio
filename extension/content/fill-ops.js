@@ -145,7 +145,11 @@
     // `variant` (a choose's or a set's): the recipe's move order, passed through;
     // the result's `variant` / `mismatch` say what the opens and searches did.
     if (a.op === "choose") {
-      return core().choose(el, shape, { text: a.text, term: a.term ?? undefined, consentForms, variant: a.variant ?? undefined }, t);
+      // `where`: the picked option's category path, from explore.
+      return core().choose(el, shape, {
+        text: a.text, where: typeof a.where === "string" ? a.where : undefined, term: a.term ?? undefined,
+        consentForms, variant: a.variant ?? undefined,
+      }, t);
     }
     if (a.op === "set") {
       return core().set(el, shape, { texts: a.texts ?? [], terms: a.terms ?? [], consentForms, variant: a.variant ?? undefined }, t);

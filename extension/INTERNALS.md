@@ -694,9 +694,17 @@ know, and each one was learned from a live failure.
   list redrew for another option on the way into view is `stale`, never
   clicked. Two options with the same text are one option — the first — only
   when they sit under the same visible category path; otherwise explore
-  lists both, the adaptive step's click moves name each one's place (`Click
-  the option "Other" (under "Job Board")`), and a choose by text alone is
-  `ambiguous`, nothing clicked. A set's items share one open list: each is
+  lists both, each with its path (`where`), and the adaptive step's click
+  moves name each one's place (`Click the option "Other" (under "Job
+  Board")`). A long list is read from its top, and its header rows are
+  remembered by their place in the list, so an option whose header has
+  scrolled out of a virtualized window still reads under it (one option,
+  never two). The loop carries the picked option's path into its choose,
+  which commits only an option under that path, scrolling the list the way
+  explore read it. The text under no such path is `ambiguous`, nothing
+  clicked. A choose by text alone reads a long list whole before it
+  commits, so the same text under another category outside the window is
+  `ambiguous` too. A set's items share one open list: each is
   typed over the last query, and the next waits for the last one's pill. A
   Workday box not yet known to take one answer or several is tried as a
   set; radio rows end it before any click. UNMEASURED: the 500 ms quiet

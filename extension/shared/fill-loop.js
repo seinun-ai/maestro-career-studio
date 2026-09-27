@@ -609,10 +609,13 @@
         },
       };
     };
+    // `where`: the picked option's category path, when explore read one — the
+    // choose commits the option under it, never the same text elsewhere.
     const pickOf = (got, offered) => {
       if (!got) return null;
-      const text = got.oids?.length && STATUS[got.reason] ? offered.find((o) => o.oid === got.oids[0])?.text : undefined;
-      return text ? { text, reason: got.reason } : { abstained: true };
+      const o = got.oids?.length && STATUS[got.reason] ? offered.find((x) => x.oid === got.oids[0]) : undefined;
+      if (!o?.text) return { abstained: true };
+      return { text: o.text, reason: got.reason, ...(typeof o.where === "string" ? { where: o.where } : {}) };
     };
     const pick = async (f, row, opts, complete, item) => {
       const { offered, field } = pickAsk(f, row, opts, complete, item);
@@ -770,7 +773,8 @@
         return finish(f, "needs_answer", { lastOutcome: "abstained" });
       }
       const out = await act(f, withOrder(f, {
-        op: "choose", text: picked.text, ...(f.shape === "search" ? { term: term ?? picked.text } : {}),
+        op: "choose", text: picked.text, ...(picked.where !== undefined ? { where: picked.where } : {}),
+        ...(f.shape === "search" ? { term: term ?? picked.text } : {}),
       }));
       if (notDone(f, out)) return undefined;
       if (out.outcome === "verified") return done(f, picked.reason, out.committed);

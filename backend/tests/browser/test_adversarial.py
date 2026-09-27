@@ -59,15 +59,76 @@ def test_explore_scrolls_a_virtualized_list_and_lists_both_others(page, load):
     assert oracle(page, "found") == "" and not list_shown(page)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "engine gap (Task 12): choose finds an option by text in the rendered window first (fill-core findOption), "
-    "so a second 'Other' under another category outside a virtualized list's window is never seen and the "
-    "visible one is clicked — the same-text ambiguity rule holds only while both are rendered"))
+FOUND = "Where did you find this job?"
+
+
 def test_the_same_text_outside_a_virtualized_window_is_still_ambiguous(page, load):
+    """A choose by text alone reads the whole list before it commits: the
+    second "Other" sits under another category outside the window."""
     load(page, fixture_html("adversarial_virtual_same_text.html"))
-    row_ = apply(page, inv(page)["Where did you find this job?"], op="choose", text="Other")
+    row_ = apply(page, inv(page)[FOUND], op="choose", text="Other")
     assert oracle(page, "found") == "", f"committed {oracle(page, 'found')!r}"
     assert (row_["outcome"], row_["reason"]) == ("unexpected", "ambiguous")
+    assert not list_shown(page)
+
+
+def _others(page):
+    got = explore(page, inv(page)[FOUND])
+    assert all(isinstance(o.get("where"), str) for o in got["options"])
+    return [o for o in got["options"] if o["text"] == "Other"]
+
+
+@pytest.mark.parametrize("category, at", [("Job Board", 0), ("Social Media", 1)])
+def test_a_choice_carrying_its_category_commits_the_option_under_it(page, load, category, at):
+    """Explore names each option's category path; a choose that carries it
+    commits the option under that path, scrolling the list the way explore read it."""
+    load(page, fixture_html("adversarial_virtual_same_text.html"))
+    others = _others(page)
+    assert len({o["where"] for o in others}) == 2 and category in others[at]["where"]
+    row_ = apply(page, inv(page)[FOUND], op="choose", text="Other", where=others[at]["where"])
+    assert (row_["outcome"], oracle(page, "found")) == ("verified", f"{category} / Other"), row_
+    assert not list_shown(page)
+
+
+def test_a_category_no_option_sits_under_is_never_guessed(page, load):
+    load(page, fixture_html("adversarial_virtual_same_text.html"))
+    row_ = apply(page, inv(page)[FOUND], op="choose", text="Other", where="\u203aEvents")
+    assert (row_["outcome"], row_["reason"]) == ("unexpected", "ambiguous")
+    assert oracle(page, "found") == "" and not list_shown(page)
+
+
+def test_an_option_whose_header_scrolled_out_of_the_window_is_read_once(page, load):
+    """A page step shorter than the rendered window (one row of overscan)
+    starts the next window below its first rows' header: those rows still
+    read under it — one option is never listed, or chosen, as two."""
+    load(page, fixture_html("adversarial_virtual_same_text.html"))
+    page.add_style_tag(content="#found-list { height: 210px; }")
+    got = explore(page, inv(page)[FOUND])
+    texts = [o["text"] for o in got["options"]]
+    assert len(texts) == len(set(texts)) + 1 and texts.count("Other") == 2
+    assert [o["where"] for o in got["options"] if o["text"] == "Randstad"] == [
+        next(o["where"] for o in got["options"] if o["text"] == "Robert Half")]
+    row_ = apply(page, inv(page)[FOUND], op="choose", text="Randstad")
+    assert (row_["outcome"], oracle(page, "found")) == ("verified", "Agency / Randstad"), row_
+
+
+def test_a_unique_option_in_a_virtualized_list_is_committed_as_before(page, load):
+    load(page, fixture_html("adversarial_virtual_same_text.html"))
+    row_ = apply(page, inv(page)[FOUND], op="choose", text="Instagram")
+    assert (row_["outcome"], oracle(page, "found")) == ("verified", "Social Media / Instagram"), row_
+
+
+def test_the_loop_carries_the_picked_options_category_into_its_choose(page, load):
+    """/pick sees oids and texts only; the choose names the picked option's path."""
+    options = [{**opt("o1", "Other"), "where": "\u203aJob Board"}, {**opt("o2", "Other"), "where": "\u203aSocial Media"}]
+    out = run(page, load, frames=[[f("d", "popup", FOUND)]],
+              map={"d": {"route": "slot", "slot": "preferences.how_heard", "value": "Facebook"}},
+              explore={"d": {"options": options, "complete": True}},
+              pick={"d": {"oids": ["o2"], "reason": "closest"}})
+    [body] = bodies(out, "/api/autofill/pick")
+    assert body["fields"][0]["options"] == [{"oid": "o1", "text": "Other"}, {"oid": "o2", "text": "Other"}]
+    [choose] = actions(out, "choose")
+    assert (choose["text"], choose["where"]) == ("Other", "\u203aSocial Media")
 
 
 # ---------- a revert, then a re-commit that ends in another status

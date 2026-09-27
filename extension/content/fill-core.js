@@ -134,8 +134,11 @@
   // step's options and click moves) drops it. Only that row goes: oids keep
   // numbering the list as the page shows it, and nothing else is hidden.
   const isAnswerRow = (o) => !ns.isPlaceholderText(o.text);
-  const flag = (options, consentForms) => options.filter(isAnswerRow).map(({ oid, text, selected }) => ({
+  // `where`: an explored option's category path (`reader`), carried back by
+  // a choose so the same text under another category is never clicked instead.
+  const flag = (options, consentForms) => options.filter(isAnswerRow).map(({ oid, text, selected, where }) => ({
     oid, text, selected: Boolean(selected), policyBlocked: blockedText(text, consentForms),
+    ...(typeof where === "string" ? { where } : {}),
   }));
   const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
   // The options a decision named: its exact text, else the equivalent
@@ -152,21 +155,24 @@
       .map((id) => g.getRootNode().getElementById?.(id)?.textContent ?? "").join(" ");
     return b().clean(g.getAttribute("aria-label") || by);
   };
-  const headerBefore = (o) => {
+  const isHeaderRow = (s) => !s.matches(OPTIONISH) && !s.querySelector(OPTIONISH) && Boolean(b().clean(s.textContent));
+  // The nearest header row before an option among the rows in the DOM, or
+  // null when none is (in a virtualized list, it may have scrolled out).
+  const headerIn = (o) => {
     for (let s = o.previousElementSibling; s; s = s.previousElementSibling) {
-      if (s.matches(OPTIONISH) || s.querySelector(OPTIONISH)) continue;
-      const text = b().clean(s.textContent);
-      if (text) return text;
+      if (isHeaderRow(s)) return b().clean(s.textContent);
     }
-    return "";
+    return null;
   };
-  const pathOf = (o, pop) => {
+  const headerBefore = (o) => headerIn(o) ?? "";
+  const pathWith = (o, pop, header) => {
     const parts = [];
     for (let n = o.parentElement; n && n !== pop.parentElement; n = n.parentElement) {
       if (n.matches('[role="group"], [role="treeitem"]')) parts.push(groupName(n));
     }
-    return [...parts, o.getAttribute("aria-level") ?? "", headerBefore(o)].join("\u203a");
+    return [...parts, o.getAttribute("aria-level") ?? "", header].join("\u203a");
   };
+  const pathOf = (o, pop) => pathWith(o, pop, headerBefore(o));
   // The same, in words a model reads: the groups and the header, outermost first.
   const placeOf = (o, pop) => {
     const parts = [];
@@ -691,40 +697,136 @@
   };
   const scrollerOf = (pop) => [pop, ...pop.querySelectorAll("*")]
     .find((n) => n.scrollHeight > n.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) ?? null;
-  // Every option, a page and a frame at a time down a long list (a
-  // virtualized one holds only the rows in view), until the scroll position
-  // stops changing. Identical options — the same text under the same
-  // category path (`one`) — are read once; the same text under different
-  // categories is two options, both listed.
-  const readAll = async (pop, t) => {
-    const seen = new Map();
-    const box = scrollerOf(pop);
-    let complete = !box;
+  // A long list read from its top, a page and a frame at a time: the header
+  // rows seen so far, by their place in the list. A virtualized window drops
+  // the header its first rows sit under, so without them the same option
+  // would read under two paths. `path` is null for an option whose header
+  // cannot be known: one seen before the reading reached it from the top.
+  const reader = (pop, box) => {
+    const headers = []; // [{ y, text }], y: the row's offset in the list
+    const yOf = (n) => n.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+    let fromTop = false;
+    return {
+      top() {
+        fromTop = true;
+      },
+      see() {
+        for (const parent of new Set(b().optionsOf(pop).map((o) => o.el.parentElement))) {
+          for (const n of parent.children) {
+            if (!isHeaderRow(n) || !b().visible(n)) continue;
+            const y = yOf(n);
+            if (!headers.some((h) => Math.abs(h.y - y) < 2)) headers.push({ y, text: b().clean(n.textContent) });
+          }
+        }
+      },
+      path(el) {
+        const inView = headerIn(el);
+        if (inView !== null) return pathWith(el, pop, inView);
+        if (!fromTop && box.scrollTop > 0) return null;
+        const y = yOf(el);
+        const above = headers.filter((h) => h.y < y - 1).sort((a, z) => z.y - a.y)[0];
+        return pathWith(el, pop, above?.text ?? "");
+      },
+    };
+  };
+  // A long list from its top down, a page and a frame at a time, until the
+  // scroll position stops changing or `visit` (one call per page) says stop.
+  const pages = async (pop, box, t, visit) => {
+    const r = reader(pop, box);
+    if (box.scrollTop > 0) {
+      box.scrollTop = 0;
+      await redrawn(t);
+    }
+    r.top();
     for (let i = 0; i < 30; i += 1) {
-      for (const o of b().optionsOf(pop)) {
-        const key = `${o.text}\n${pathOf(o.el, pop)}`;
-        if (!seen.has(key)) seen.set(key, o);
-      }
-      if (complete) break;
+      r.see();
+      if (visit(r)) return { stopped: true, complete: false };
       const top = box.scrollTop;
       box.scrollTop = top + box.clientHeight;
       await redrawn(t);
-      if (box.scrollTop === top) complete = true; // the next pass reads the last page, then stops
+      if (box.scrollTop === top) return { complete: true };
     }
-    return { options: [...seen.values()].map((o, i) => ({ oid: `o${i + 1}`, text: o.text, selected: isHeld(o) })), complete };
+    return { complete: false };
   };
-  // The one option to click (`one`: { hit } | { ambiguous } | {}): in view,
-  // else from the top of a long list down, a page and a frame at a time.
-  const findOption = async (pop, text, t) => {
+  // Every option, down a long list (a virtualized one holds only the rows in
+  // view), each with its category path (`where`). Identical options — the
+  // same text under the same category path (`one`) — are read once; the same
+  // text under different categories is two options, both listed.
+  const readAll = async (pop, t) => {
+    const box = scrollerOf(pop);
+    if (!box) {
+      const seen = new Map();
+      for (const o of b().optionsOf(pop)) {
+        const where = pathOf(o.el, pop);
+        if (!seen.has(`${o.text}\n${where}`)) seen.set(`${o.text}\n${where}`, { ...o, where });
+      }
+      return { options: [...seen.values()].map((o, i) => ({ oid: `o${i + 1}`, text: o.text, selected: isHeld(o), where: o.where })), complete: true };
+    }
+    const seen = new Map();
+    const { complete } = await pages(pop, box, t, (r) => {
+      for (const o of b().optionsOf(pop)) {
+        const where = r.path(o.el);
+        if (!seen.has(`${o.text}\n${where}`)) seen.set(`${o.text}\n${where}`, { ...o, where });
+      }
+      return false;
+    });
+    return { options: [...seen.values()].map((o, i) => ({ oid: `o${i + 1}`, text: o.text, selected: isHeld(o), where: o.where })), complete };
+  };
+  // The one option to click: { hit } | { ambiguous } | {} (`one`).
+  // - `where` (the path explore read it under): an option with that text
+  //   under that path — in view, else from the top of the list down. The
+  //   text under no such path is `ambiguous`: never a guess.
+  // - text alone: a long list is read whole first, so the same text under
+  //   another category outside the window is still `ambiguous`; then the
+  //   one option found is looked up again by its path.
+  // - `quick` (the engine's own undo): the first hit, in view or down the list.
+  const findOption = async (pop, text, t, { where, quick = false } = {}) => {
+    const box = scrollerOf(pop);
+    if (!box) {
+      const hits = match(b().optionsOf(pop), text);
+      if (where === undefined) return one(hits, pop);
+      const hit = hits.find((h) => pathOf(h.el, pop) === where);
+      return hit ? { hit: { ...hit, where } } : hits.length ? { ambiguous: true } : {};
+    }
+    if (quick) return firstOption(pop, box, text, t);
+    const view = reader(pop, box);
+    if (where !== undefined) {
+      const hit = match(b().optionsOf(pop), text).find((h) => view.path(h.el) === where);
+      if (hit) return { hit: { ...hit, where } };
+      let found = null;
+      let seen = false;
+      await pages(pop, box, t, (r) => {
+        const hits = match(b().optionsOf(pop), text);
+        seen ||= hits.length > 0;
+        found = hits.find((h) => r.path(h.el) === where) ?? null;
+        return Boolean(found);
+      });
+      return found ? { hit: { ...found, where } } : seen ? { ambiguous: true } : {};
+    }
+    const kinds = new Map(); // text + path -> [text, path]
+    await pages(pop, box, t, (r) => {
+      for (const h of match(b().optionsOf(pop), text)) {
+        const path = r.path(h.el);
+        kinds.set(`${h.text}\n${path}`, [h.text, path]);
+      }
+      return kinds.size > 1;
+    });
+    if (kinds.size > 1) return { ambiguous: true };
+    if (!kinds.size) return {};
+    const [[exact, path]] = kinds.values();
+    return findOption(pop, exact, t, { where: path });
+  };
+  // The first option with this text: in view, else from the top of the list down.
+  const firstOption = async (pop, box, text, t) => {
     const look = () => one(match(b().optionsOf(pop), text), pop);
     let found = look();
-    const box = found.hit || found.ambiguous ? null : scrollerOf(pop);
-    if (box && box.scrollTop > 0) {
+    if (found.hit || found.ambiguous) return found;
+    if (box.scrollTop > 0) {
       box.scrollTop = 0;
       await redrawn(t);
       found = look();
     }
-    for (let i = 0; box && !found.hit && !found.ambiguous && i < 30; i += 1) {
+    for (let i = 0; !found.hit && !found.ambiguous && i < 30; i += 1) {
       const top = box.scrollTop;
       box.scrollTop = top + box.clientHeight;
       await redrawn(t);
@@ -733,13 +835,13 @@
     }
     return found;
   };
-  // The option found AGAIN by its text right before the click: bringing it
-  // into view makes a virtualized list redraw, and a reused row may show
-  // another option by then (notes §2 rules 3, 4).
-  const refind = async (pop, hit, text, t) => {
+  // The option found AGAIN, by its text and path, right before the click:
+  // bringing it into view makes a virtualized list redraw, and a reused row
+  // may show another option by then (notes §2 rules 3, 4).
+  const refind = async (pop, hit, text, t, quick) => {
     hit.el.scrollIntoView?.({ block: "nearest" });
     await redrawn(t);
-    return (await findOption(pop, text, t)).hit ?? null;
+    return (await findOption(pop, quick ? text : hit.text, t, quick ? { quick } : { where: hit.where })).hit ?? null;
   };
   // The real control inside an option: a Workday result row holds a radio
   // (one answer) or a checkbox (several), and a click on the ROW only
@@ -1050,7 +1152,7 @@
   // choose's work; `used` hears what its opens and searches did (a set's
   // items share one).
   async function chooseOne(el, shape, {
-    text, term, consentForms, undo = false, keep = false, asSet = false, variant, used,
+    text, where, term, consentForms, undo = false, keep = false, asSet = false, variant, used,
   } = {}, t) {
     if (shape.kind !== "choice") return { outcome: "unexpected", reason: "not_a_choice" };
     if (blockedText(text, consentForms)) return { outcome: "blocked" };
@@ -1089,7 +1191,7 @@
           await tidy(el, t);
           return { outcome: "unexpected", ...(unsettled ? { reason: "unsettled" } : w.reason("no_popup")) };
         }
-        const found = await findOption(live, text, t);
+        const found = await findOption(live, text, t, undo ? { quick: true } : { where });
         if (!found.hit) {
           const options = flag(b().optionsOf(live), consentForms);
           if (found.ambiguous) return done({ outcome: "unexpected", reason: "ambiguous", options });
@@ -1102,7 +1204,7 @@
         if ((multi || shape.multi?.(el)) && (isHeld(hit) || holds(el, shape, hit.text))) {
           return done(alreadyThere(el, shape, hit.text));
         }
-        hit = await refind(live, hit, text, t);
+        hit = await refind(live, hit, text, t, undo);
         if (!hit) return done({ outcome: "unexpected", reason: "option_missing", options: flag(b().optionsOf(live), consentForms) });
         if ((multi || shape.multi?.(el)) && isHeld(hit)) return done(alreadyThere(el, shape, hit.text));
         const gestures = gesturesFor(hit.el);
