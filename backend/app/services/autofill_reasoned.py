@@ -32,7 +32,7 @@ from app.schemas.autofill_fill import Picked, PickField
 from app.services import jev, llm
 from app.services.autofill_catalog import MAX_EXPERIENCE, Fact, name_key
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR
-from app.services.autofill_map import NEVER_REASONED, Budget, fast_json
+from app.services.autofill_map import _HISTORY_KINDS, NEVER_REASONED, Budget, fast_json
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ Fields: {fields}
 # job's location or a GPA, which no such question needs.
 _JOB_KEYS = ("employer", "title", "description", "start", "end", "current")
 _SCHOOL_KEYS = ("school", "degree", "discipline", "start_year", "end_year")
-_HISTORY_FACT = re.compile(r"(experience|education)\.(\d+)\.(\w+)")
+_HISTORY_FACT = re.compile(rf"({'|'.join(_HISTORY_KINDS)})\.(\d+)\.(\w+)")
 # An option that answers "no / none of it / not that much": judged on its own
 # words (a page may say "Not Applicable" for No). The refusal side is wide on
 # purpose — a false match only asks for coverage, never answers.

@@ -80,6 +80,21 @@ def test_an_exact_slot_never_takes_a_near_miss(db_session, monkeypatch):
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_a_near_miss_language_is_refused_and_a_near_miss_level_is_flagged(db_session, monkeypatch):
+    """The language's NAME is exact: "Swedish" beside Norwegian's levels would
+    state a language the applicant never gave. Its levels stay flag."""
+    facts = autofill_catalog.build({"languages": [{"language": "Norwegian", "read": "Fluent"}]}, [], [])
+    fake_jev(monkeypatch, {"l": ("o2", 0.7), "r": ("o2", 0.7)})
+    got = autofill_pick.pick([pf("l", slot="languages.0.language", options=opts("Danish", "Swedish")),
+                              pf("r", slot="languages.0.read", options=opts("Basic", "Intermediate"))],
+                             facts, db_session, None)
+    assert got["l"].reason == "abstained"
+    assert got["r"].model_dump() == {"oids": ["o2"], "reason": "closest"}
+    assert autofill_catalog.build({"languages": [{"language": "Norwegian", "native": True}]}, [], [])[
+        "languages.0.native"].policy == "flag"
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_no_option_stating_it_abstains(db_session, monkeypatch):
     fake_jev(monkeypatch, {"h": ("none", 0.95)})
     got = pick([pf("h", slot="preferences.how_heard", options=opts("LinkedIn", "Indeed"))], db_session)

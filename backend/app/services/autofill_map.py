@@ -276,6 +276,9 @@ def _answerable(fields: list[MapField], session: Session, budget: Budget) -> set
 _PHONE = re.compile(r"phone", re.IGNORECASE)
 _MONEY = re.compile(r"(^|[._])(desired_)?(salary|compensation|pay)([._]|$)", re.IGNORECASE)
 _ENTRY = re.compile(rf"({'|'.join(get_args(EntryKind))})\.(\d+)\.(.+)")
+# The entry kinds that are the applicant's HISTORY (autofill_reasoned reads
+# exactly these); a language is placed like them but is no history.
+_HISTORY_KINDS = ("experience", "education")
 
 
 def format_of(slot: str | None) -> Format | None:
@@ -300,6 +303,9 @@ def _placed_key(field: MapField, key: str) -> str | None:
     entry's `profile_entry`, whatever number the model chose. None: a fact of
     another kind than the section holds."""
     m = _ENTRY.fullmatch(key)
+    # A language fact means nothing without its language: only a placed Languages entry's field gets one.
+    if m is not None and m[1] == "languages" and field.entry_kind != "languages":
+        return None
     if m is None or field.profile_entry is None:
         return key
     # An entry fact of another kind than the section's is not this entry's.
@@ -338,9 +344,7 @@ def _said_no_fact(picked: tuple[str, float] | None, *, history: bool = False) ->
 
 
 def _has_history(facts: dict[str, Fact]) -> bool:
-    """Jobs or schools (autofill_reasoned.history): a language is placed like
-    them but is no history a question is reasoned from."""
-    return any((m := _ENTRY.fullmatch(slot)) and m[1] in ("experience", "education") for slot in facts)
+    return any((m := _ENTRY.fullmatch(slot)) and m[1] in _HISTORY_KINDS for slot in facts)
 
 
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,

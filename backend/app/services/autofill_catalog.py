@@ -189,6 +189,8 @@ def _languages(out: dict[str, Fact], languages: Any) -> None:
     """One entry per NAMED language, most important first: its reading,
     speaking and writing levels, and "native" and "fluent" as two separate
     Yes/No answers. An absent or unreadable answer is no fact."""
+    # Numbered over NAMED entries only (unlike `_education`): a language fact
+    # means nothing without its language, and /sections places entries by it.
     named = [e for e in (languages if isinstance(languages, list) else [])
              if isinstance(e, dict) and _language_answer("language", e.get("language"))]
     for i, entry in enumerate(named[:MAX_LANGUAGES]):

@@ -291,9 +291,11 @@ def test_each_language_is_its_own_entry_of_six_facts():
     }
 
 
-def test_language_facts_are_flagged_facts_described_without_values():
+def test_language_facts_are_described_without_values_and_only_the_name_is_exact():
     f = cat.build({"languages": LANGUAGES}, [], [])
-    assert {fact.policy for slot, fact in f.items() if slot.startswith("languages.")} == {"flag"}
+    assert {slot: fact.policy for slot, fact in f.items() if slot.startswith("languages.0.")} == {
+        "languages.0.language": "exact", "languages.0.read": "flag", "languages.0.speak": "flag",
+        "languages.0.write": "flag", "languages.0.native": "flag", "languages.0.fluent": "flag"}
     assert f["languages.0.language"].describe == "language entry 1: the language"
     assert f["languages.1.speak"].describe == "language entry 2: speaking level"
     assert f["languages.0.read"].describe == "language entry 1: reading level"

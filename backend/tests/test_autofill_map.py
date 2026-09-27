@@ -476,6 +476,33 @@ def test_a_language_entry_is_placed_like_a_job_or_a_school(db_session, monkeypat
                                          entry_kind="languages")], facts, db_session,
                                   eeo_consented=True, low_stakes=False)["a"]
     assert (got.route, got.slot, got.value) == ("slot", "languages.1.read", "Basic")
+    # The language's NAME is exact, so it maps only at the exact floor.
+    for p, route in ((0.85, "none"), (0.95, "slot")):
+        fake_jev(monkeypatch, {"a": ("languages.0.language", p)})
+        got = autofill_map.map_fields([field("a", "Language", "popup", section="Languages 1", profile_entry=1,
+                                             entry_kind="languages")], facts, db_session,
+                                      eeo_consented=True, low_stakes=False)["a"]
+        assert (got.route, got.value) == (route, "French" if route == "slot" else None)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_language_fact_reaches_only_a_field_in_a_placed_languages_entry(db_session, monkeypatch):
+    """A language fact means nothing without its language: an unsectioned
+    "Are you a native English speaker?" mapped to language entry 1's native
+    answer (Spanish's) would write a false Yes."""
+    facts = autofill_catalog.build({"languages": [{"language": "Spanish", "native": True}]}, [], [])
+    question = "Are you a native English speaker?"
+
+    def mapped(**kw):
+        fake_jev(monkeypatch, {"a": ("languages.0.native", 0.95)})
+        return autofill_map.map_fields([field("a", question, "group", options=["Yes", "No"], **kw)], facts,
+                                       db_session, eeo_consented=True, low_stakes=False)["a"]
+
+    assert mapped().route == "none"
+    assert mapped(section="Languages 1").route == "none"  # a section never placed is no Languages entry
+    assert mapped(section="Work Experience 1", profile_entry=0, entry_kind="experience").route == "none"
+    got = mapped(section="Languages 1", profile_entry=0, entry_kind="languages")
+    assert (got.route, got.slot, got.value) == ("slot", "languages.0.native", "Yes")
 
 
 def test_languages_alone_are_no_history_to_reason_from(db_session, monkeypatch):

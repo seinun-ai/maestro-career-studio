@@ -17,17 +17,18 @@ fact catalog here, so no value leaves the machine.
 PLACED BY WHAT THE ENTRIES HOLD. An entry already holding data keeps it, and
 is matched to the profile entry it holds — on the employer (a job; and its
 title, when two jobs share an employer), the school or the language,
-normalized. Empty entries (and entries to add) take the profile entries no
-entry holds, lowest first, in page order. `order` says so per entry, and /map writes each entry's
-facts from ITS profile entry (`MapField.profile_entry`), so an entry pre-filled
-out of profile order is never given a job the page already shows. An Add is
-safe only when every entry holding data holds a different profile entry.
-An entry holding something the profile does not have may be a profile entry
-spelled another way, so its WHOLE section is placed nowhere and nothing is
-added (`held_unmatched`, reported even when nothing was to be added); two
-entries holding the same one add nothing (`held_twice`). The plan says
-why, value-free. What the entries hold (`held`) comes to this
-local backend for that match only.
+normalized by `name_key` (case and punctuation; the company suffixes it drops,
+Inc or LLC, matter only for an employer). Empty entries (and entries to add)
+take the profile entries no entry holds, lowest first, in page order. `order`
+says so per entry, and /map writes each entry's facts from ITS profile entry
+(`MapField.profile_entry`), so an entry pre-filled out of profile order is
+never given a job the page already shows. An Add is safe only when every entry
+holding data holds a different profile entry. An entry holding something the
+profile does not have may be a profile entry spelled another way, so its WHOLE
+section is placed nowhere and nothing is added (`held_unmatched`, reported
+even when nothing was to be added); two entries holding the same one add
+nothing (`held_twice`). The plan says why, value-free. What the entries hold
+(`held`) comes to this local backend for that match only.
 """
 
 import json
