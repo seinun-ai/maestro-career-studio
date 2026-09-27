@@ -24,7 +24,8 @@ NO_SLOT = "none"
 # job's company (a "Former Associate" option is a flagged near miss of Yes).
 # An entry's slot is looked up without its index: a language's NAME is exact
 # (a near-miss language is a different one), its levels its section's flag.
-_SLOT_POLICY: dict[str, Policy] = {"derived.us_citizen": "exact", "derived.full_name": "flag",
+_SLOT_POLICY: dict[str, Policy] = {"derived.us_citizen": "exact", "derived.sponsorship_now_or_future": "exact",
+                                   "derived.full_name": "flag",
                                    "derived.previously_employed_here": "flag", "languages.language": "exact"}
 _EXACT_SECTIONS = frozenset({"work_auth", "eligibility", "eeo"})
 _FLAG_SECTIONS = frozenset({"education", "personal", "experience", "languages", "skills", "custom"})

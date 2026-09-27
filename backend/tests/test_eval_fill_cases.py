@@ -494,3 +494,17 @@ def test_a_label_form_reversed_case_and_a_same_statement_case_are_labelled():
     visa = by_id["neutral-visa-sponsorship"]
     assert (visa["tag"], visa["slot"], visa["fact"], visa["expected"]) == (
         "neutral", "work_auth.sponsorship_future", "No", "I will not require sponsorship")
+
+
+NOW_OR_FUTURE_IDS = {"sponsor-future-yes", "sponsor-worded-options", "sponsor-not-sure",
+                     "reversed-authorized-without-sponsorship", "reversed-sponsor-direct-control",
+                     "sponsor-now-yes-later-no", "exact-sponsor-worded", "reversed-step-authorized-without-sponsorship"}
+
+
+def test_now_or_in_the_future_cases_ask_the_derived_fact():
+    """A question worded "now or in the future" maps to the fact derived from
+    both answers; the case the old future-only rule got wrong is one of them."""
+    by_id = {c["id"]: c for c in PICKS["cases"] + STEPS["cases"]}
+    assert {i: by_id[i]["slot"] for i in NOW_OR_FUTURE_IDS} == dict.fromkeys(
+        NOW_OR_FUTURE_IDS, "derived.sponsorship_now_or_future")
+    assert (by_id["sponsor-now-yes-later-no"]["fact"], by_id["sponsor-now-yes-later-no"]["expected"]) == ("Yes", "Yes")

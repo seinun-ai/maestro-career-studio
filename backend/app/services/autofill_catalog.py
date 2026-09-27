@@ -58,6 +58,9 @@ _DESCRIBES: dict[str, str] = {
     "eligibility.previously_employed_here": "has worked for this company before (yes/no)",
     "eligibility.non_compete": "is bound by a non-compete or similar agreement (yes/no)",
     "derived.us_citizen": "is a US citizen (yes/no; derived from the applicant's work authorization)",
+    # The wording most US forms use; the profile asks now and later apart.
+    "derived.sponsorship_now_or_future": ("will need visa sponsorship now or in the future (yes/no; from the "
+                                          "applicant's now and later answers)"),
     "eeo.gender": "gender (voluntary self-identification)",
     "eeo.gender_self_describe": "gender in the applicant's own words (voluntary self-identification)",
     "eeo.race_ethnicity": "race or ethnicity (voluntary self-identification, a list)",
@@ -277,10 +280,26 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
     status = work_auth.get("status")
     if isinstance(status, str) and status in _US_CITIZEN:
         out["derived.us_citizen"] = make_fact("derived.us_citizen", _US_CITIZEN[status])
+    if (either := _now_or_future(work_auth)) is not None:
+        out["derived.sponsorship_now_or_future"] = make_fact("derived.sponsorship_now_or_future", either)
     preferences = profile.get("preferences") if isinstance(profile.get("preferences"), dict) else {}
     start = preferences.get("earliest_start_date")
     if isinstance(start, str) and _IMMEDIATE.search(start):
         out["derived.earliest_start_date"] = make_fact("derived.earliest_start_date", today.isoformat())
+
+
+def _now_or_future(work_auth: dict[str, Any]) -> str | None:
+    """"Will you now or in the future require sponsorship?", from the two
+    answers the profile holds: Yes when either is Yes, No only when both are
+    No, nothing otherwise (one missing or unreadable, and no Yes)."""
+    answers = []
+    for key in ("sponsorship_now", "sponsorship_future"):
+        value = work_auth.get(key)
+        text = _as_text(value) if isinstance(value, bool) else value if isinstance(value, str) else None
+        answers.append(yes_no_word(text, letters=True) if text else None)
+    if "Yes" in answers:
+        return "Yes"
+    return "No" if answers == ["No", "No"] else None
 
 
 def _worked_here(out: dict[str, Fact], company: str | None) -> None:

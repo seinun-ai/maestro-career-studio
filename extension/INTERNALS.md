@@ -528,7 +528,10 @@ know, and each one was learned from a live failure.
   full legal name (first and last, for name and signature boxes), today's
   date (the browser's, so an evening in the US is not already tomorrow),
   whether you are a US citizen (from the work-authorization status: a
-  citizen is Yes, a green card or any visa No, no status nothing), and —
+  citizen is Yes, a green card or any visa No, no status nothing), whether
+  you will need visa sponsorship now or in the future — the wording most
+  forms use — (Yes when your now or your later answer is Yes, No only when
+  both are No), and —
   when your earliest start date says immediately or ASAP — that date as
   today, for a date box. Each is absent when what it comes from is.
 - **A Yes or No is picked by what the question asks, in three steps.** A

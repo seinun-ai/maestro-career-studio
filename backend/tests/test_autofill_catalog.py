@@ -119,7 +119,7 @@ def test_exact_slots_are_described_in_words_a_form_uses():
     assert f["eligibility.over_18"].describe == "is 18 or older (yes/no)"
     assert f["eligibility.previously_employed_here"].describe == "has worked for this company before (yes/no)"
     exact = [fact for fact in f.values() if fact.policy == "exact"]
-    assert len(exact) == 15  # 14 profile answers and the citizenship derived from the status
+    assert len(exact) == 16  # 14 profile answers, the citizenship and "now or in the future" derived
     for fact in exact:
         assert ":" not in fact.describe, fact.slot  # hand-written, not the slot's path
         assert str(fact.value) not in fact.describe, fact.slot
@@ -397,6 +397,7 @@ def test_only_the_intended_status_words_read_as_a_yes_or_no():
 # described by its own question). Polarity judges a question against this
 # description: "disability status" has no direction, "has a disability" does.
 YES_NO_SLOTS = ("work_auth.authorized_now", "work_auth.sponsorship_now", "work_auth.sponsorship_future",
+                "derived.sponsorship_now_or_future",
                 "eligibility.over_18", "eligibility.previously_employed_here", "eligibility.non_compete",
                 "eeo.hispanic_latino", "eeo.disability_status", "eeo.veteran_status", "derived.us_citizen",
                 "derived.previously_employed_here", "languages.0.native", "languages.0.fluent",
@@ -419,3 +420,27 @@ def test_every_description_a_yes_or_no_fact_carries_has_a_direction():
     assert built["eeo.disability_status"].describe == "has a disability (voluntary self-identification)"
     assert built["eeo.veteran_status"].describe == "is a protected veteran (voluntary self-identification)"
     assert built["experience.0.current"].describe == "experience entry 1: is the applicant's current job (yes/no)"
+
+
+# ---------- "now or in the future": derived from the two answers the applicant gave (owner, 2026-09-27)
+
+NOW_OR_FUTURE = "derived.sponsorship_now_or_future"
+
+
+@pytest.mark.parametrize("now, later, answer", [
+    (False, False, "No"), (False, True, "Yes"), (True, False, "Yes"), (True, True, "Yes"),
+    ("yes", "no", "Yes"), ("NO", "no", "No"),
+    (None, False, None), (False, None, None), (None, True, "Yes"), (True, None, "Yes"),
+    ("maybe", False, None),
+])
+def test_sponsorship_now_or_in_the_future_is_derived_from_both_answers(now, later, answer):
+    """Yes when either answer is Yes; No only when both are No; otherwise no fact."""
+    work_auth = {k: v for k, v in (("sponsorship_now", now), ("sponsorship_future", later)) if v is not None}
+    f = derived({"work_auth": work_auth})
+    if answer is None:
+        assert NOW_OR_FUTURE not in f
+        return
+    fact = f[NOW_OR_FUTURE]
+    assert (fact.value, fact.yes_no, fact.policy) == (answer, True, "exact")
+    assert fact.describe == ("will need visa sponsorship now or in the future "
+                             "(yes/no; from the applicant's now and later answers)")

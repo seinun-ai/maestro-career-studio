@@ -1174,3 +1174,19 @@ def test_the_main_map_is_not_asked_again_without_the_time_or_for_a_refused_key(d
     with pytest.raises(llm.LLMProviderError):
         run([field("a", "City")], db_session)
     assert len(calls) == 1
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_now_or_in_the_future_is_offered_as_its_own_derived_fact(db_session, monkeypatch):
+    """No label rule: the question maps to the derived fact because the model
+    reads its description; the criterion names it, never its value."""
+    facts = autofill_catalog.build({"work_auth": {"sponsorship_now": True, "sponsorship_future": False}}, [], [])
+    calls = fake_jev(monkeypatch, {"q": ("derived.sponsorship_now_or_future", 0.95)})
+    got = autofill_map.map_fields([field("q", "Will you now or in the future require sponsorship?", "select",
+                                         options=["Yes", "No"])], facts, db_session, eeo_consented=True,
+                                  low_stakes=False)
+    criteria = calls[0]["questions"]["q"]["criteria"]
+    assert criteria["derived.sponsorship_now_or_future"] == (
+        "will need visa sponsorship now or in the future (yes/no; from the applicant's now and later answers)")
+    assert (got["q"].slot, got["q"].value) == ("derived.sponsorship_now_or_future", "Yes")
+    assert '"Yes"' not in json.dumps(calls[0]["questions"]) and '"No"' not in json.dumps(calls[0]["questions"])

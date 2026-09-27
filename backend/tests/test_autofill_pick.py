@@ -1303,3 +1303,16 @@ def test_a_wordy_same_value_states_itself(db_session, monkeypatch):
     autofill_pick.pick([pf("d", question="Disability status", slot="eeo.disability_status",
                            options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
     assert "that_is" not in calls[0]["state"]["fields"][0]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_now_or_in_the_future_judged_same_picks_the_combined_answer(db_session, monkeypatch):
+    """Needs sponsorship now but not later: "now or in the future?" is Yes —
+    the case the old future-only rule answered No."""
+    facts = autofill_catalog.build({"work_auth": {"sponsorship_now": True, "sponsorship_future": False}}, [], [])
+    calls = fake_jev(monkeypatch, {"q": ("o1", 0.95)}, ways={"q": ("same", 0.95)})
+    got = autofill_pick.pick([pf("q", question="Will you now or in the future require sponsorship?",
+                                 slot="derived.sponsorship_now_or_future", options=opts("Yes", "No"))],
+                             facts, db_session, None)
+    assert calls[0]["state"]["fields"][0]["answer"] == "Yes"
+    assert got["q"].model_dump() == {"oids": ["o1"], "reason": "matched"}
