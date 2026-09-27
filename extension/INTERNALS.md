@@ -401,7 +401,8 @@ know, and each one was learned from a live failure.
   profile entry numbers out)
   names the profile list it holds and how many profile entries have every
   fact an entry requires: a job its employer and title, a school its name,
-  a language its name, a website its address (the LinkedIn box is not a
+  a language its name and its read, speak and write levels (Workday
+  requires all three), a website its address (the LinkedIn box is not a
   section; certifications have no profile facts yet, so none is added).
   Add is pressed for the difference and never beyond it, one section per list.
   Entries already on the page count, whatever they hold, and one holding an

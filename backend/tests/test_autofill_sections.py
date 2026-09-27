@@ -225,12 +225,15 @@ def test_education_is_placed_by_the_school(db_session, monkeypatch):
     assert planned(db_session, monkeypatch, facts, ["Old School"], **kw)["reason"] == "held_unmatched"
 
 
+LEVELS = {"read": "Fluent", "speak": "Fluent", "write": "Basic"}
+
+
 @pytest.mark.usefixtures("jev_on")
 def test_languages_are_placed_by_the_language(db_session, monkeypatch):
     """A Workday Language entry holds the language and its levels: it is the
     profile language it names, and the rest are added after it."""
-    facts = autofill_catalog.build({"languages": [{"language": "Spanish", "speak": "Fluent"},
-                                                  {"language": "French", "read": "Basic"}]}, [], [])
+    facts = autofill_catalog.build({"languages": [{"language": "Spanish", **LEVELS},
+                                                  {"language": "French", **LEVELS}]}, [], [])
     kw = {"sid": "l", "heading": "Languages", "kind": "languages"}
     assert planned(db_session, monkeypatch, facts, **kw) == {
         "kind": "languages", "wanted": 2, "reason": None, "order": [0, 1]}
@@ -238,6 +241,23 @@ def test_languages_are_placed_by_the_language(db_session, monkeypatch):
         "kind": "languages", "wanted": 2, "reason": None, "order": [1, 0]}
     assert planned(db_session, monkeypatch, facts, ["German", "Fluent"], **kw)["reason"] == "held_unmatched"
     assert planned(db_session, monkeypatch, facts, ["Spanish"], ["Spanish"], **kw)["reason"] == "held_twice"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_language_without_all_three_levels_is_never_added(db_session, monkeypatch):
+    """Workday's Read / Speak / Write popups are REQUIRED ("Read Fluent
+    Required"), and an added entry's fields are required: a profile language
+    missing a level is never Added. One the page already holds is still that
+    language, never a foreign one."""
+    facts = autofill_catalog.build({"languages": [{"language": "Spanish", **LEVELS},
+                                                  {"language": "French"},
+                                                  {"language": "Hindi", "read": "Fluent", "speak": "Basic"},
+                                                  {"language": "Tamil", **LEVELS}]}, [], [])
+    kw = {"sid": "l", "heading": "Languages", "kind": "languages"}
+    assert planned(db_session, monkeypatch, facts, **kw) == {
+        "kind": "languages", "wanted": 2, "reason": None, "order": [0, 3]}
+    assert planned(db_session, monkeypatch, facts, ["French"], **kw) == {
+        "kind": "languages", "wanted": 3, "reason": None, "order": [1, 0, 3]}
 
 
 @pytest.mark.usefixtures("jev_on")

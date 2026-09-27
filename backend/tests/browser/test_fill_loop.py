@@ -1664,14 +1664,17 @@ def test_an_older_reason_word_is_still_understood(page, load):
 
 def language(n, **kw):
     """Languages entry n as Workday renders it (probed live 2026-09-26, Home
-    Depot): a Language popup, a lone "I am fluent in this language." checkbox,
-    and Read / Speak / Write popups (Select One, Basic, Fluent, Intermediate)."""
+    Depot): a required Language popup, a lone "I am fluent in this language."
+    checkbox (not required), and required Read / Speak / Write popups (Select
+    One, Basic, Fluent, Intermediate). An added entry's fields are required
+    too. Simplified: the test's explore offers the Language popup 2 options,
+    not the 61 seen live."""
     sec = {"section": f"Languages {n}", "repeatIndex": n - 1}
     lang = {k: v for k, v in kw.items() if k in ("committed", "answered")}
-    return [f(f"l{n}", "popup", "Language", required=n == 1, **sec, **lang),
+    return [f(f"l{n}", "popup", "Language", required=True, **sec, **lang),
             f(f"fl{n}", "group", "I am fluent in this language.", committed="No",
               options=[opt("yes", "Yes"), opt("no", "No")], optionsComplete=True, **sec),
-            *(f(f"{w[0]}{n}", "popup", w, **sec) for w in ("Read", "Speak", "Write"))]
+            *(f(f"{w[0]}{n}", "popup", w, required=True, **sec) for w in ("Read", "Speak", "Write"))]
 
 
 def test_language_entries_are_added_and_placed_by_the_language_they_hold(page, load):

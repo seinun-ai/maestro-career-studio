@@ -57,8 +57,10 @@ KINDS: dict[SectionKind, str] = {
 }
 # The facts an added entry cannot be saved without (its REQUIRED fields), per
 # kind. An entry missing one is not wanted: Add would leave a required box empty.
+# A language's Read / Speak / Write popups are required on Workday; its
+# "I am fluent in this language." box is not.
 _NEEDS: dict[str, tuple[str, ...]] = {"experience": ("employer", "title"), "education": ("school",),
-                                      "languages": ("language",)}
+                                      "languages": ("language", "read", "speak", "write")}
 # One entry each, when the profile holds it. LinkedIn is not here: it has its
 # own box (Social Network URLs), never a Websites entry.
 _WEBSITES = ("personal.website", "personal.github")
