@@ -299,6 +299,10 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
     src = _read("components/settings/autofill-section.tsx")
     fieldset = _slice(src, "<legend className={LEGEND}>Languages</legend>", "</fieldset>")
     assert "Most important first." in fieldset
+    # A language missing a level is never added to a form (Workday requires all
+    # three; app/services/autofill_sections._NEEDS): the editor says so.
+    assert ("The Companion adds a language to a form only when its reading, speaking and writing levels "
+            "are all set.") in " ".join(fieldset.split())
     assert "{LANGUAGE_FIELDS.map((field) => {" in fieldset
     assert "id = `af-languages-${i}-${field.key}`" in fieldset
     fields = _slice(src, "const LANGUAGE_FIELDS: FieldDef[] = [", "\n];")

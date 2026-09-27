@@ -1015,7 +1015,8 @@ function AutofillEditor({
       <fieldset className="space-y-4">
         <legend className={LEGEND}>Languages</legend>
         <p className="text-muted-foreground text-xs">
-          Most important first.
+          Most important first. The Companion adds a language to a form only when its
+          reading, speaking and writing levels are all set.
         </p>
         {languages.map((entry, i) => (
           <CardSection key={i} className="flex items-start gap-2">
