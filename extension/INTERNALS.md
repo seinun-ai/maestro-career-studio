@@ -432,8 +432,9 @@ know, and each one was learned from a live failure.
   nothing. When two sections read as one job, school or language list (a
   "Volunteer Experience" misread above the real Work Experience), which one
   is misread cannot be told, so neither is placed and neither grows: both
-  are left to you, and the report says so for each ("another section on
-  this page looks like the same kind of list"). /sections says so itself
+  are left to you, and the report says so for each, naming the other
+  ("this section looks like the same kind of list as "Work Experience"").
+  /sections says so itself
   (`ambiguous_kind`, every entry placed nowhere), and the Companion checks
   again across frames and rounds: a section that appears after its kind was
   placed in an earlier round is left to you too, and what was done in the
@@ -719,8 +720,12 @@ know, and each one was learned from a live failure.
   scrolled out of a virtualized window still reads under it (one option,
   never two). The loop carries the picked option's path into its choose,
   which commits only an option under that path, scrolling the list the way
-  explore read it. The text under no such path is `ambiguous`, nothing
-  clicked. A choose by text alone reads a long list whole before it
+  explore read it — and only when the choose opens the view explore read:
+  a search box explored without the term its choose types (its default
+  list may group options under headers its search results lack), or rows
+  explore found by one word of the term, carry no path. A set carries each
+  item's path the same way. The text under no such path is `ambiguous`,
+  nothing clicked. A header row is a visible non-option row with text. A choose by text alone reads a long list whole before it
   commits, so the same text under another category outside the window is
   `ambiguous` too. A set's items share one open list: each is
   typed over the last query, and the next waits for the last one's pill. A

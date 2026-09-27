@@ -579,6 +579,24 @@ def test_adversarial_virtual_same_text_renders_one_window_and_the_second_other_b
     assert page.inner_text("#found") == "Other" and oracle(page, "found") == "Social Media / Other"
 
 
+def test_adversarial_search_headers_groups_the_default_list_and_searches_flat(page, load):
+    load(page, fixture_html("adversarial_search_headers.html"), sources=[])
+    page.click("#arrangement")
+    box = "[data-automation-id=activeListContainer]"
+    page.wait_for_selector(box)
+    assert page.locator(f"{box} > *").all_inner_texts() == [
+        "In office", "On site", "Hybrid", "Away from office", "Remote", "Field based"]
+    assert page.locator(f"{box} [role=option]").count() == 4   # headers are not options
+    page.fill("#arrangement", "Remote")
+    page.press("#arrangement", "Enter")
+    page.wait_for_function("() => document.querySelector('[data-automation-id=activeListContainer]').children[0]"
+                           ".textContent === 'Remote'")
+    assert page.locator(f"{box} > *").all_inner_texts() == ["Remote", "Remote with travel"]
+    assert oracle(page, "arrangement") == ""
+    page.locator(f"{box} [role=option]", has_text="Remote").first.locator("input[type=radio]").click()
+    assert oracle(page, "arrangement") == "Remote"
+
+
 def test_react_select_commits_on_the_option_click_and_a_refused_click_holds_nothing(page, load):
     load(page, fixture_html("react_select.html"), sources=[])
     page.evaluate("window.rejectClicks = true")

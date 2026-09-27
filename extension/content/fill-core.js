@@ -155,7 +155,10 @@
       .map((id) => g.getRootNode().getElementById?.(id)?.textContent ?? "").join(" ");
     return b().clean(g.getAttribute("aria-label") || by);
   };
-  const isHeaderRow = (s) => !s.matches(OPTIONISH) && !s.querySelector(OPTIONISH) && Boolean(b().clean(s.textContent));
+  // A header row: a VISIBLE non-option row with text — one rule for the
+  // rows in the DOM (`headerIn`) and the rows a long list's reading remembers.
+  const isHeaderRow = (s) => !s.matches(OPTIONISH) && !s.querySelector(OPTIONISH) && b().visible(s)
+    && Boolean(b().clean(s.textContent));
   // The nearest header row before an option among the rows in the DOM, or
   // null when none is (in a virtualized list, it may have scrolled out).
   const headerIn = (o) => {
@@ -713,7 +716,7 @@
       see() {
         for (const parent of new Set(b().optionsOf(pop).map((o) => o.el.parentElement))) {
           for (const n of parent.children) {
-            if (!isHeaderRow(n) || !b().visible(n)) continue;
+            if (!isHeaderRow(n)) continue;
             const y = yOf(n);
             if (!headers.some((h) => Math.abs(h.y - y) < 2)) headers.push({ y, text: b().clean(n.textContent) });
           }
@@ -983,6 +986,7 @@
       // fill-ops owns explore's undo (whatever moved, keys included).
       let { pop, searchable, unsettled } = await open(el, shape, term, t, w, { reclaim: false, variant, used });
       let options = pop ? b().optionsOf(pop) : [];
+      let byWord = false;
       if (!options.length && term) {
         const word = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
         // A term that already committed something is not searched again by a
@@ -991,6 +995,7 @@
           await tidy(el, t);
           ({ pop, searchable, unsettled } = await open(el, shape, word, t, w, { reclaim: false, variant, used }));
           options = pop ? b().optionsOf(pop) : [];
+          byWord = true;
         }
       }
       let got = pop && options.length ? await readAll(pop, t) : { options: [], complete: false };
@@ -1005,7 +1010,10 @@
       await tidy(el, t);
       // A filtered search view is never the complete list. `multi` only when the
       // rows said so: checkboxes (several answers) or radios (one).
-      const out = { options: flag(got.options, consentForms), complete: got.complete && !term, searchable };
+      // Rows found by a word are not the view a choose typing the term opens:
+      // their paths would name nothing there.
+      const rowsRead = byWord ? got.options.map(({ where, ...o }) => o) : got.options;
+      const out = { options: flag(rowsRead, consentForms), complete: got.complete && !term, searchable };
       if (rows) out.multi = rows === "multi";
       if (!out.options.length) {
         if (pop) out.error = "empty_popup";
@@ -1253,7 +1261,7 @@
     const used = {};
     return withMoves(await setAll(el, shape, { ...options, used }, t), used);
   }
-  async function setAll(el, shape, { texts = [], terms = [], consentForms, variant, used } = {}, t) {
+  async function setAll(el, shape, { texts = [], terms = [], wheres = [], consentForms, variant, used } = {}, t) {
     const several = shape.multi?.(el);
     const unknown = several == null && shape.open === "search" && ns.shapes.workday(el);
     if (shape.kind !== "choice" || !(several || unknown)) return { outcome: "unexpected", reason: "not_a_set" };
@@ -1285,7 +1293,9 @@
       const keep = shape.open === "search";
       for (const [i, text] of texts.entries()) {
         if (!allowed.includes(text) || holds(el, shape, text)) continue;
-        const got = await chooseOne(el, shape, { text, term: terms[i] ?? text, consentForms, keep, asSet: true, variant, used }, t);
+        // An item's path (from explore) finds it without reading a long list whole.
+        const where = typeof wheres[i] === "string" ? wheres[i] : undefined;
+        const got = await chooseOne(el, shape, { text, where, term: terms[i] ?? text, consentForms, keep, asSet: true, variant, used }, t);
         if (got.reason === "not_a_set") {
           await tidy(el, t);
           return { outcome: "unexpected", reason: "not_a_set" };

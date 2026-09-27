@@ -113,6 +113,22 @@ def test_an_option_whose_header_scrolled_out_of_the_window_is_read_once(page, lo
     assert (row_["outcome"], oracle(page, "found")) == ("verified", "Agency / Randstad"), row_
 
 
+def test_a_hidden_row_is_never_a_header(page, load):
+    """One visibility rule for header rows, in the window and down the list: a
+    hidden row between a window's first options and its top is not their header."""
+    load(page, fixture_html("adversarial_virtual_same_text.html"))
+    page.evaluate("""() => {
+      const ul = document.getElementById("found-list");
+      const ghost = document.createElement("li");
+      ghost.textContent = "Ghost";
+      ghost.style.display = "none";
+      ul.firstElementChild.after(ghost);
+    }""")
+    got = explore(page, inv(page)[FOUND])
+    assert not [o for o in got["options"] if "Ghost" in o["where"]]
+    assert "Agency" in next(o["where"] for o in got["options"] if o["text"] == "Adecco")
+
+
 def test_a_unique_option_in_a_virtualized_list_is_committed_as_before(page, load):
     load(page, fixture_html("adversarial_virtual_same_text.html"))
     row_ = apply(page, inv(page)[FOUND], op="choose", text="Instagram")
@@ -130,6 +146,72 @@ def test_the_loop_carries_the_picked_options_category_into_its_choose(page, load
     assert body["fields"][0]["options"] == [{"oid": "o1", "text": "Other"}, {"oid": "o2", "text": "Other"}]
     [choose] = actions(out, "choose")
     assert (choose["text"], choose["where"]) == ("Other", "\u203aSocial Media")
+
+
+ARRANGEMENT = "Preferred work arrangement"
+
+
+def test_a_search_explored_without_a_term_commits_its_unique_option(e2e_page):
+    """A search box explored without a term reads its default list, whose
+    header rows give each option a path; the choose then types the option
+    and sees flat results with no header. That is not the view explore read,
+    so the choose carries no path: the unique option commits."""
+    page = e2e_page
+    out = _run(page, fixtures=["adversarial_search_headers.html"], map={ARRANGEMENT: {"route": "low_stakes"}},
+               picks={ARRANGEMENT: {"text": "Remote", "reason": "assumed"}})
+    assert oracle(page, "arrangement") == "Remote", out["by_question"][ARRANGEMENT]
+    assert out["by_question"][ARRANGEMENT]["status"] == "assumed"
+    [choose] = [a for m in out["sent"] if m["type"] == "fill_apply" for a in m["actions"] if a["op"] == "choose"]
+    assert (choose["text"], choose["term"], "where" in choose) == ("Remote", "Remote", False)
+
+
+def test_rows_an_explore_found_by_a_word_carry_no_path(page, load):
+    """A term with no results is searched again by one of its words: those
+    rows are not the view a choose typing the term opens, so they name no path."""
+    load(page, fixture_html("adversarial_search_headers.html"))
+    got = explore(page, inv(page)[ARRANGEMENT], term="Remote nowhere")
+    assert [o["text"] for o in got["options"]] == ["Remote", "Remote with travel"]
+    assert not [o for o in got["options"] if "where" in o]
+    default = explore(page, inv(page)[ARRANGEMENT])
+    assert all("where" in o for o in default["options"])
+
+
+@pytest.mark.parametrize("value, carried", [(None, False), ("Remote", True)])
+def test_a_search_choose_carries_a_path_only_from_the_view_it_opens(page, load, value, carried):
+    """Explored with the term the choose types (a fact's value), the view is
+    the same and the path travels; explored without one, it does not."""
+    options = [{**opt("o1", "Remote"), "where": "\u203aAway from office"}]
+    route = {"route": "slot", "slot": "preferences.arrangement", "value": value} if value else {"route": "low_stakes"}
+    out = run(page, load, frames=[[f("a", "search", ARRANGEMENT)]], map={"a": route},
+              explore={("Remote" if value else "a"): {"options": options, "complete": False, "multi": False}},
+              pick={"a": {"oids": ["o1"], "reason": "matched" if value else "assumed"}})
+    [choose] = actions(out, "choose")
+    assert ("where" in choose) is carried and choose["term"] == "Remote"
+
+
+def test_a_set_carries_each_items_path_when_explore_read_one(page, load):
+    """Each item's option was explored with the term the set types for it:
+    its path travels, so the set does not read a long list whole per item.
+    An item explore gave no path for is carried as null (read whole)."""
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=None)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
+              explore={"SQL": {"options": [{**opt("o1", "SQL"), "where": "\u203aData"}], "multi": True},
+                       "Python": {"options": [opt("o1", "Python")], "multi": True}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
+              apply={"SQL+Python": {"outcome": "verified", "added": ["SQL", "Python"], "missing": []}})
+    [s] = actions(out, "set")
+    assert (s["texts"], s["terms"], s["wheres"]) == (["SQL", "Python"], ["SQL", "Python"], ["\u203aData", None])
+
+
+def test_a_set_item_commits_by_its_path_on_a_long_list(page, load):
+    """The skills box of workday_search.html (a virtualized result list): an
+    item carrying the path explore read commits."""
+    load(page, fixture_html("workday_search.html"))
+    skills = inv(page)["Type to Add Skills"]
+    got = explore(page, skills, term="Python")
+    where = next(o["where"] for o in got["options"] if o["text"] == "Python")
+    row_ = apply(page, inv(page)["Type to Add Skills"], op="set", texts=["Python"], terms=["Python"], wheres=[where])
+    assert row_["outcome"] == "verified" and oracle(page, "skills") == ["SQL", "Python"]
 
 
 # ---------- a revert, then a re-commit that ends in another status
@@ -196,7 +278,7 @@ def test_two_sections_read_as_work_experience_never_double_a_job(page, load):
     assert written.count("Acme") <= 1 and adds(out) == []
 
 
-AMBIGUOUS_LINE = "{}: another section on this page looks like the same kind of list, so this section was left for you."
+AMBIGUOUS_LINE = '{}: this section looks like the same kind of list as "{}", so it was left for you.'
 
 
 def test_a_misread_volunteer_section_above_work_experience_is_not_given_a_job(page, load):
@@ -215,7 +297,8 @@ def test_a_misread_volunteer_section_above_work_experience_is_not_given_a_job(pa
     assert [(s["heading"], s["reason"], s["added"]) for s in out["report"]["sections"]] == [
         ("Volunteer Experience", "ambiguous_kind", 0), ("Work Experience", "ambiguous_kind", 0)]
     lines = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.sectionLines(r)", out["report"])
-    assert lines == [AMBIGUOUS_LINE.format("Volunteer Experience"), AMBIGUOUS_LINE.format("Work Experience")]
+    assert lines == [AMBIGUOUS_LINE.format("Volunteer Experience", "Work Experience"),
+                     AMBIGUOUS_LINE.format("Work Experience", "Volunteer Experience")]
 
 
 def test_the_backends_ambiguous_kind_leaves_both_sections_and_others_are_placed(page, load):
@@ -248,6 +331,11 @@ def test_a_second_section_of_a_kind_placed_in_an_earlier_round_is_left_alone(pag
               map=JOBS | {"v1": {"route": "slot", "slot": "experience.0.employer", "value": "Acme"}})
     assert "v1" not in {a["fid"] for a in actions(out)} and adds(out) == []
     assert {s["heading"]: s["reason"] for s in out["report"]["sections"]}["Volunteer Experience"] == "ambiguous_kind"
+    # Work Experience's writes, made in the first round, stand.
+    assert [(a["fid"], a["value"]) for a in actions(out, "write")] == [("t1", "Analyst"), ("c1", "Acme")]
+    assert (statuses(out)["t1"], statuses(out)["c1"]) == ("verified", "verified")
+    lines = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.sectionLines(r)", out["report"])
+    assert lines == [AMBIGUOUS_LINE.format("Volunteer Experience", "Work Experience")]
 
 
 # ---------- two Websites entries

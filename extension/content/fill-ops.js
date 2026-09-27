@@ -152,7 +152,11 @@
       }, t);
     }
     if (a.op === "set") {
-      return core().set(el, shape, { texts: a.texts ?? [], terms: a.terms ?? [], consentForms, variant: a.variant ?? undefined }, t);
+      // `wheres`: each item's category path, from explore (null: the text alone).
+      return core().set(el, shape, {
+        texts: a.texts ?? [], terms: a.terms ?? [], wheres: Array.isArray(a.wheres) ? a.wheres : [],
+        consentForms, variant: a.variant ?? undefined,
+      }, t);
     }
     if (a.op === "recommit") return core().recommit(el, shape, t);
     if (a.op === "close") return core().tidy(el, t).then(() => ({ outcome: "closed" }));

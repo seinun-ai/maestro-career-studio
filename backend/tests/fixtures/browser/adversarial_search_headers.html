@@ -1,0 +1,107 @@
+<!-- ADVERSARIAL, not a reproduction: a Workday-style search box (the
+     markup and gestures of workday_search.html, §2: press opens the default
+     list, Enter searches on key-up, the result row's radio commits) whose
+     DEFAULT list groups its options under header rows (rows without
+     role=option), while its search results are a flat list with no headers.
+     The notes do not say whether live Workday shows such headers. An option
+     read in the default list sits under a header; the same option found by a
+     search sits under none. Every option text is unique. -->
+<div data-automation-id="formField-arrangement"><label for="arrangement">Preferred work arrangement*</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="arrangement" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+<div id="portal"></div>
+<style>
+  [data-automation-id="activeListContainer"] { width: 420px; border: 1px solid #888; background: #fff; }
+  [data-automation-id="activeListContainer"] > * { height: 30px; display: flex; align-items: center; }
+  [data-automation-id="activeListContainer"] > .header { font-weight: bold; }
+  [data-automation-id="promptLeafNode"] { display: flex; align-items: center; gap: 6px; }
+</style>
+<script>
+(() => {
+  // __oracle.arrangement is what the fake app HOLDS: set only by a result
+  // row's radio. The engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.arrangement = "";
+  const GROUPS = [["In office", ["On site", "Hybrid"]], ["Away from office", ["Remote", "Field based"]]];
+  const LEAVES = GROUPS.flatMap(([, leaves]) => leaves).concat(["Remote with travel"]);
+  const input = document.getElementById("arrangement");
+  const pills = input.closest('[data-automation-id="multiSelectContainer"]')
+    .querySelector('[data-automation-id="selectedItemList"]');
+  const portal = document.getElementById("portal");
+  let box = null;
+  let token = 0;
+  const close = () => { box = null; portal.replaceChildren(); };
+  const leafRow = (text) => {
+    const row = document.createElement("div");
+    row.setAttribute("role", "option");
+    row.setAttribute("data-automation-id", "menuItem");
+    row.setAttribute("aria-selected", "false");
+    const leaf = document.createElement("div");
+    leaf.setAttribute("data-automation-id", "promptLeafNode");
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.setAttribute("data-automation-id", "radioBtn");
+    radio.tabIndex = -1;
+    radio.checked = oracle.arrangement === text;
+    const label = document.createElement("div");
+    label.setAttribute("data-automation-id", "promptOption");
+    label.textContent = text;
+    leaf.append(radio, label);
+    row.append(leaf);
+    radio.addEventListener("click", (e) => {
+      e.stopPropagation();
+      oracle.arrangement = text;
+      const li = document.createElement("li");
+      const pill = document.createElement("div");
+      pill.setAttribute("data-automation-id", "selectedItem");
+      pill.setAttribute("role", "option");
+      const p = document.createElement("p");
+      p.setAttribute("data-automation-id", "promptOption");
+      p.textContent = text;
+      pill.append(p);
+      li.append(pill);
+      pills.replaceChildren(li);
+      input.value = "";
+      close();
+    });
+    return row;
+  };
+  const headerRow = (text) => {
+    const row = document.createElement("div");
+    row.className = "header";
+    row.textContent = text;
+    return row;
+  };
+  const show = (rows) => box && box.replaceChildren(...rows);
+  input.addEventListener("mousedown", () => {
+    if (box) return;
+    requestAnimationFrame(() => {
+      if (box) return;
+      box = document.createElement("div");
+      box.setAttribute("data-automation-id", "activeListContainer");
+      box.setAttribute("role", "listbox");
+      portal.replaceChildren(box);
+      show(GROUPS.flatMap(([header, leaves]) => [headerRow(header), ...leaves.map(leafRow)]));
+    });
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+  // Enter searches on key-up while the list is open; results are flat, never a single-hit commit.
+  input.addEventListener("keyup", (e) => {
+    if (e.key !== "Enter" || !box) return;
+    const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const mine = ++token;
+    setTimeout(() => {
+      if (!box || mine !== token) return;
+      const hits = LEAVES.filter((t) => words.every((w) => t.toLowerCase().includes(w)));
+      show(hits.length ? hits.map(leafRow) : [headerRow("No Items.")]);
+    }, 150);
+  });
+  document.addEventListener("mousedown", (e) => {
+    if (!box || portal.contains(e.target) || e.target === input) return;
+    close();
+  });
+})();
+</script>

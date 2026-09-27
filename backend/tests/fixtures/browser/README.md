@@ -51,6 +51,7 @@ missing key, so a typo never reads as "nothing committed".
 | `adversarial_recipe_poison.html` | recipe poisoning: opens from the keyboard only; its first commit is taken, then taken back 700 ms later (after the engine's own verify, inside the loop's quiet period) | `shift` |
 | `adversarial_trusted_only.html` | a Workday-style popup whose handlers act on trusted input only (`event.isTrusted`): the engine has none, so the honest outcome is `unsupported` | `shift_pref` |
 | `adversarial_virtual_same_text.html` | `adversarial_same_text`'s two "Other" options in a virtualized popup list: eight rows rendered, the second "Other" (under "Social Media") outside the first window | `found` |
+| `adversarial_search_headers.html` | a Workday-style search box (§2's gestures) whose default list groups options under header rows while its search results are flat: an option's category path differs between the two views | `arrangement` |
 | `react_select.html` | a React-Select combobox (not a Workday reproduction); commits on the option click, `window.rejectClicks` refuses them | `country` |
 | `popup_with_search.html` | a popup button whose dialog holds its own search box (generic, not Workday) | `fos` |
 

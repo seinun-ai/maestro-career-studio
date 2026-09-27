@@ -107,9 +107,11 @@ DRIVER = """(spec) => {
     }
     if (path === "/api/autofill/pick") {
       return { picks: Object.fromEntries(body.fields.map((f) => {
-        const fact = factOf(f.question, f.item);
+        // `picks[question]`: { text, reason } for a field with no fact (a low-stakes one).
+        const scripted = spec.picks?.[f.question];
+        const fact = scripted ? scripted.text : factOf(f.question, f.item);
         const o = f.options.find((one) => one.text === fact);
-        return [f.fid, o ? { oids: [o.oid], reason: "matched" } : { oids: [], reason: "abstained" }];
+        return [f.fid, o ? { oids: [o.oid], reason: scripted?.reason ?? "matched" } : { oids: [], reason: "abstained" }];
       })) };
     }
     if (path === "/api/autofill/step") {

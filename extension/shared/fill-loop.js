@@ -760,6 +760,14 @@
       else if (r.outcome === "stale") fail(f, r.why);
     };
 
+    // Whether a choose opens the view explore read, so an explored option's
+    // category path (`where`) still names it there. A search box's choose
+    // types `term ?? the picked text`: only a search explored with that same
+    // term shows the same rows (its default list may group options under
+    // headers its search results do not have). Any other shape opens its
+    // list unfiltered, as explore did.
+    const sameView = (f, term) => f.shape !== "search" || term !== undefined;
+
     // ---- one value
     const commitOne = async (f, row, opts, complete, term, item, prepicked) => {
       const picked = prepicked !== undefined ? prepicked : await pick(f, row, opts, complete, item);
@@ -774,7 +782,7 @@
         return finish(f, "needs_answer", { lastOutcome: "abstained" });
       }
       const out = await act(f, withOrder(f, {
-        op: "choose", text: picked.text, ...(picked.where !== undefined ? { where: picked.where } : {}),
+        op: "choose", text: picked.text, ...(picked.where !== undefined && sameView(f, term) ? { where: picked.where } : {}),
         ...(f.shape === "search" ? { term: term ?? picked.text } : {}),
       }));
       if (notDone(f, out)) return undefined;
@@ -793,7 +801,7 @@
       const worked = all.slice(0, L.MAX_ITEMS);
       const byPolicy = new Set(worked.filter(policyBlocks));
       const todo = worked.filter((item) => !byPolicy.has(item));
-      const pairs = []; // [option text, source item, reason]
+      const pairs = []; // [option text, source item, reason, its path when explore read one]
       const missed = new Map(); // source item -> the history entry the adaptive step starts from
       const late = []; // source items the field's clock ran out on
       if (noOptions) {
@@ -840,7 +848,7 @@
             late.push(...todo.slice(i));
             break;
           }
-          if (p?.text) pairs.push([p.text, item, p.reason]);
+          if (p?.text) pairs.push([p.text, item, p.reason, p.where]);
           else if (p?.abstained) missed.set(item, historyEntry("choose", "abstained"));
         }
       }
@@ -854,6 +862,10 @@
         const action = { op: "set", texts };
         // A search set types the item that found each option.
         if (f.shape === "search") action.terms = texts.map((t) => pairs.find(([x]) => x === t)[1]);
+        // Each item's path, where explore read one (null: the text alone). A
+        // set types the item it explored with, so the view is the one explore read.
+        const wheres = texts.map((t) => pairs.find(([x]) => x === t)[3] ?? null);
+        if (wheres.some((w) => typeof w === "string")) action.wheres = wheres;
         // What was picked is committed even when the clock ran out picking the rest.
         const out = await act(f, withOrder(f, action), { overtime: true });
         if (notDone(f, out)) return undefined;
@@ -1284,6 +1296,7 @@
     const placements = new Map();
     const heldAtStart = new Map(); // sectionKey -> any entry held data when first seen
     const placedKinds = new Set();
+    const kindHeading = new Map(); // kind -> the heading of the first section that spent it
     // The backend's words for why a section added nothing; `held_out_of_order`
     // is the earlier name of held_twice.
     const REASON_OF = {
@@ -1358,25 +1371,34 @@
       // was placed in an earlier round (what was done there stands).
       const earlier = new Set(placedKinds);
       const count = new Map();
-      for (const key of new Set(seen.map(sectionKey))) {
-        const kind = plans.get(key)?.kind;
-        if (PLACED_KINDS.has(kind)) count.set(kind, (count.get(kind) ?? 0) + 1);
+      const headings = new Map(); // kind -> the headings read as it now, in page order
+      for (const s of new Map(seen.map((x) => [sectionKey(x), x])).values()) {
+        const kind = plans.get(sectionKey(s))?.kind;
+        if (!PLACED_KINDS.has(kind)) continue;
+        count.set(kind, (count.get(kind) ?? 0) + 1);
+        headings.set(kind, [...(headings.get(kind) ?? []), s.heading]);
       }
+      // The other section read as this one's kind, when one is known.
+      const otherOf = (s, kind) => (headings.get(kind) ?? []).find((h) => h !== s.heading)
+        ?? (kindHeading.get(kind) !== s.heading ? kindHeading.get(kind) : undefined);
       for (const s of seen) {
         const key = sectionKey(s);
         const plan = plans.get(key);
         if (placements.has(key)) continue;
         if (plan && PLACED_KINDS.has(plan.kind)
           && (plan.reason === "ambiguous_kind" || count.get(plan.kind) > 1 || earlier.has(plan.kind))) {
+          const other = otherOf(s, plan.kind);
           placedKinds.add(plan.kind);
+          if (!kindHeading.has(plan.kind)) kindHeading.set(plan.kind, s.heading);
           placements.set(key, { kind: null, order: null });
           sectionLog.set(key, { heading: s.heading, kind: plan.kind, wanted: s.entries,
-            entries: s.entries, added: 0, outcome: null, reason: "ambiguous_kind" });
+            entries: s.entries, added: 0, outcome: null, reason: "ambiguous_kind", ...(other ? { other } : {}) });
           continue;
         }
         const placed = Boolean(plan) && PLACED_KINDS.has(plan.kind) && plan.order !== undefined;
         const first = placed && !placedKinds.has(plan.kind);
         if (placed) placedKinds.add(plan.kind);
+        if (placed && first) kindHeading.set(plan.kind, s.heading);
         const unreadable = placed && (plan.order === null || !numberedInStep(s));
         // A job, school or language section with no order is never page order,
         // held data or not (an Add by page order could pair a new entry with a
@@ -1385,6 +1407,7 @@
         const noOrder = !placed && Boolean(plan) && PLACED_KINDS.has(plan.kind);
         const unplacedHeld = !placed && (!plan || plan.kind === "none") && heldAtStart.get(key);
         if (noOrder) placedKinds.add(plan.kind);
+        if (noOrder && !kindHeading.has(plan.kind)) kindHeading.set(plan.kind, s.heading);
         if (unreadable || noOrder || unplacedHeld) {
           placements.set(key, { kind: null, order: null });
           sectionLog.set(key, { heading: s.heading, kind: plan?.kind ?? "none", wanted: s.entries,
@@ -1578,8 +1601,9 @@
     // `reason` held_unmatched: an entry on the page holds something the
     // profile does not have, so the section was left alone; held_twice:
     // two hold the same one, so none was added.
-    const sections = [...sectionLog.values()].map(({ heading, kind, wanted, entries, added, outcome, reason }) => ({
-      heading, kind, wanted, entries, added, outcome, reason: reason ?? null,
+    // `other` (ambiguous_kind only): the heading of the other section read as the same kind.
+    const sections = [...sectionLog.values()].map(({ heading, kind, wanted, entries, added, outcome, reason, other }) => ({
+      heading, kind, wanted, entries, added, outcome, reason: reason ?? null, ...(other ? { other } : {}),
     }));
     return { runId, fields, host, aiFailure, stopped, timedOut: over, sections };
   }
@@ -1639,7 +1663,9 @@
       return [`${s.heading}: the items on the page don't match your profile, so none were added.`];
     }
     if (s.reason === "ambiguous_kind") {
-      return [`${s.heading}: another section on this page looks like the same kind of list, so this section was left for you.`];
+      return [s.other
+        ? `${s.heading}: this section looks like the same kind of list as "${s.other}", so it was left for you.`
+        : `${s.heading}: another section on this page looks like the same kind of list, so this section was left for you.`];
     }
     if (!(s.entries < s.wanted)) return [];
     const needed = s.wanted - (s.entries - s.added); // what the section was short of before the run
