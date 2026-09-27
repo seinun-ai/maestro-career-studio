@@ -827,9 +827,11 @@ know, and each one was learned from a live failure.
   are never looked up. A move is learned only from a commit whose moves
   verified, that nothing reverted, and that the final sweep re-checked and
   found holding: a value the sweep found reverted teaches nothing, even one
-  re-committed that then held (`adversarial_recipe_poison.html`), and nor
-  does one the sweep could not re-check (its element gone) or a run whose
-  final sweep reached no frame (the page went away). The first such run puts the recipe on
+  re-committed that then held (`adversarial_recipe_poison.html`). A value the
+  final sweep could not re-check (its element gone) is never kept, though a
+  revert or an unconfirmed commit seen earlier still counts against the move;
+  a run whose final sweep reached no frame (the page went away) records
+  nothing. The first such run puts the recipe on
   probation, tried on its own site only; a second run on that site trusts it;
   its family is tried on a new site only once two sites kept it. A
   contradiction (an unconfirmed commit, a revert, the other move winning)

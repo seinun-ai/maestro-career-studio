@@ -2064,6 +2064,17 @@ def test_a_value_the_final_sweep_could_not_recheck_teaches_nothing(page, load):
     assert out["lessons"] is None
 
 
+def test_a_revert_is_a_contradiction_even_when_the_final_sweep_cannot_recheck(page, load):
+    """Seen reverting, re-committed, then gone from the final sweep's view
+    (element gone, or re-rendered under a new fid): the revert was observed,
+    so it still demotes the recipe; only a `kept` needs the final re-check."""
+    out = popup_run(page, load, recipes={"book": LEARNED}, sweep=[[{"fid": "d", "outcome": "reverted"}], []],
+                    apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
+    assert statuses(out) == {"d": "verified"}
+    assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {"open": "keys"},
+                               "outcome": "contradicted"}]
+
+
 def test_a_page_gone_before_the_final_sweep_teaches_nothing(page, load):
     """The page answered a round's sweep, then went away: the final sweep
     reached no frame, so nothing is recorded — whatever the earlier sweep said."""

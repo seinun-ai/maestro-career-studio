@@ -98,7 +98,7 @@
  *   clock, or a page gone) does the book hear each field's lesson: `kept`
  *   (the commit's moves verified, nothing reverted them, and the final sweep
  *   re-checked the value and found it holding; a filled value it could not
- *   re-check teaches nothing), `contradicted` (an unconfirmed commit, or a
+ *   re-check is never kept), `contradicted` (an unconfirmed commit, or a
  *   value the sweep found reverted — re-committed or not) or `mismatch` (the
  *   control could not take the learned move). A failing store costs nothing.
  * - Nothing is guessed when the AI cannot be reached (`aiFailure`).
@@ -553,19 +553,20 @@
       if (got.outcome === "verified" && got.variant) set(f.fid, { moves: got.variant });
       if (got.outcome === "unconfirmed") set(f.fid, { moves: got.variant ?? rows.get(f.fid).moves ?? null, contradicted: true });
     };
-    // One field's lesson, once the final sweep has run: kept only when the
-    // commit's moves verified, nothing ever reverted the value AND the final
-    // sweep re-checked it and found it holding (`held`). A filled value that
-    // sweep could not re-check teaches nothing either way: not reported
-    // reverted is not the same as found holding.
+    // One field's lesson, once the final sweep has run. A mismatch or a
+    // contradiction (an unconfirmed commit, a revert a sweep saw) was
+    // observed, and is always recorded. Kept only when the commit's moves
+    // verified, nothing ever reverted the value AND the final sweep
+    // re-checked it and found it holding (`held`): a filled value that sweep
+    // could not re-check is not kept — not reported reverted is not the same
+    // as found holding.
     const KEPT = new Set(Object.values(STATUS));
     const lessonOf = (r) => {
       if (!r?.recipeKeys || (!r.recipe && !r.moves)) return null;
-      if (DONE.has(r.status) && !held.has(r.fid)) return null;
       const used = r.recipe?.key ?? null;
       const outcome = r.mismatch ? (used ? "mismatch" : null)
         : r.contradicted || r.recommits || (r.moves && r.status === "unconfirmed") ? "contradicted"
-          : r.moves && KEPT.has(r.status) ? "kept" : null;
+          : r.moves && KEPT.has(r.status) && held.has(r.fid) ? "kept" : null;
       return outcome && { recipe: r.recipeKeys, used, moves: r.moves ?? {}, outcome };
     };
 
