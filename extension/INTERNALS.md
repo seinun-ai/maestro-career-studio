@@ -549,7 +549,10 @@ know, and each one was learned from a live failure.
   `Budget`, and never longer than 4 s (`SECOND_OPINION_MAX_S`). Where an
   optional pass may follow (/map's low-stakes and reasoning passes,
   /pick's reasoning call), it also ends a second before the 6 s after
-  which no optional pass starts, so it cannot crowd them out. A give-up
+  which no optional pass starts, so the next optional pass still has time
+  to start. Only the next one: with low-stakes on and a slow second
+  opinion, the low-stakes pass can use the time the reasoning pass needed,
+  and that pass is skipped (its fields stay yours). A give-up
   step therefore costs at most Jev's 2 s plus 4 s against the field's
   clock. Out of time or failed, Jev's none stands. Jev's own protected,
   history, EEO and free-text answers are never asked again, and an entry
