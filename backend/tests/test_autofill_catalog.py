@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from typing import get_args
 
@@ -164,8 +165,7 @@ def test_us_citizen_is_derived_from_every_work_authorization_status(status):
     """Every status the profile can store answers it: only a citizen is one."""
     f = derived({"work_auth": {"status": status}})
     assert f["derived.us_citizen"].value == ("Yes" if status == "citizen" else "No")
-    assert f["derived.us_citizen"].describe == ("whether you are a US citizen, derived from your "
-                                                "work-authorization status (yes/no)")
+    assert f["derived.us_citizen"].describe == "is a US citizen (yes/no; derived from the applicant's work authorization)"
     # A knockout answer: it maps only at the exact floor, and a near miss is refused.
     assert f["derived.us_citizen"].policy == "exact"
 
@@ -236,7 +236,7 @@ def test_the_jobs_company_in_the_history_derives_previously_employed_yes():
                   [{"employer": "Tata Consultancy Services Ltd.", "title": "Engineer"}], [],
                   company="TATA CONSULTANCY SERVICES")
     fact = f["derived.previously_employed_here"]
-    assert fact.value == "Yes, previously" and "from your work history" in fact.describe
+    assert fact.value == "Yes, previously" and "from the work history" in fact.describe
     # The standing answer is company-agnostic: for THIS job it would be wrong.
     assert "eligibility.previously_employed_here" not in f
 
@@ -266,7 +266,7 @@ def test_the_home_depot_in_the_history_is_the_home_depot_applied_to():
     f = cat.build({}, [{"employer": "The Home Depot", "title": "Associate", "end_date": "2021-06"}], [],
                   company="Home Depot")
     assert f["derived.previously_employed_here"].value == "Yes, previously"
-    assert "work, or worked," in f["derived.previously_employed_here"].describe
+    assert "works, or has worked," in f["derived.previously_employed_here"].describe
 
 
 # ---------- languages (fill-engine plan Task 10): one entry per language,
@@ -389,3 +389,33 @@ INTENDED_YES_NO = {("eeo.disability_status", "no"), ("eeo.disability_status", "y
 def test_only_the_intended_status_words_read_as_a_yes_or_no():
     got = {(slot, code) for slot, words in cat._WORDS.items() for code, text in words.items() if cat.is_yes_no(text)}
     assert got == INTENDED_YES_NO
+
+
+# ---------- a Yes/No fact's description is a proposition with a direction (review of 6cd77787)
+
+# Every slot whose answer can be a Yes or a No (a saved custom answer is
+# described by its own question). Polarity judges a question against this
+# description: "disability status" has no direction, "has a disability" does.
+YES_NO_SLOTS = ("work_auth.authorized_now", "work_auth.sponsorship_now", "work_auth.sponsorship_future",
+                "eligibility.over_18", "eligibility.previously_employed_here", "eligibility.non_compete",
+                "eeo.hispanic_latino", "eeo.disability_status", "eeo.veteran_status", "derived.us_citizen",
+                "derived.previously_employed_here", "languages.0.native", "languages.0.fluent",
+                "experience.0.current", "preferences.willing_to_relocate")
+
+
+def test_every_description_a_yes_or_no_fact_carries_has_a_direction():
+    profile = {"work_auth": {"status": "citizen", "authorized_now": True, "sponsorship_now": False,
+                             "sponsorship_future": False},
+               "eligibility": {"over_18": True, "previously_employed_here": False, "non_compete": False},
+               "eeo": {"hispanic_latino": "no", "disability_status": "no", "veteran_status": "not_veteran"},
+               "languages": [{"language": "Norwegian", "native": True, "fluent": True}],
+               "preferences": {"willing_to_relocate": True}}
+    built = cat.build(profile, EMPLOYMENT, [])
+    worked = cat.build(profile, EMPLOYMENT, [], company="Acme")
+    for slot in YES_NO_SLOTS:
+        fact = (built | worked)[slot]
+        assert fact.yes_no, slot
+        assert not re.search(r"\b(status|type|kind)\b", fact.describe, re.IGNORECASE), (slot, fact.describe)
+    assert built["eeo.disability_status"].describe == "has a disability (voluntary self-identification)"
+    assert built["eeo.veteran_status"].describe == "is a protected veteran (voluntary self-identification)"
+    assert built["experience.0.current"].describe == "experience entry 1: is the applicant's current job (yes/no)"

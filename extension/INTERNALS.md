@@ -542,12 +542,21 @@ know, and each one was learned from a live failure.
   1. **Polarity** (`autofill_polarity`): the model judges only whether
      the question asks the SAME thing as the fact's value-free
      description, the OPPOSITE (a reverse or a negation), or neither. The
-     value is not sent. Jev first, over code-owned keys, at the slot's
-     floor (exact 0.9); where it is unsure or says neither, ONE fast
-     second opinion at the same floor, on the request's `Budget` and its
-     4 s cap. On the fast engine, or when the Jev call fails, the fast
-     model decides. Still unsure, or neither: the field is yours. Which
-     engine decided is logged.
+     value is not sent, and every Yes/No description is a proposition
+     with a direction ("has a disability", "is a protected veteran",
+     never "disability status"). Jev first, over code-owned keys, at the
+     slot's floor but never under 0.8 (exact 0.9; a preference is not
+     flipped at its 0.5). A confident Jev "neither" leaves the field
+     yours; where Jev is unsure (under the floor, or no readable answer),
+     ONE fast second opinion at the same floor. Its call is capped at
+     2 s and ends by 2 s into the request, so Jev's pick (2 s), the
+     pick's second opinion and the reasoning call (a second each) still
+     start before 6 s. On the fast engine, or when the Jev call fails,
+     the fast model decides. Still unsure: the field is yours. Which
+     engine decided is logged. A confident answer is remembered in the
+     backend for 10 minutes (at most 500, by question, description and
+     policy: page text, never a value), so a /step after a /pick, or the
+     next run on the form, does not ask again; an unsure one never is.
   2. **Code flips**: same keeps the value; opposite turns a plain Yes
      into No and No into Yes. A wordy value ("No, I do not have a
      disability", "Yes, previously") is never rewritten, so an opposite
@@ -578,7 +587,9 @@ know, and each one was learned from a live failure.
   job (its /pick prompt carries the low-stakes paragraph only when
   the batch holds a low-stakes field, which a second opinion never does).
   It is one call, with no retries, on what is left of the request's one
-  `Budget`, and never longer than 4 s (`SECOND_OPINION_MAX_S`). Where an
+  `Budget`, and never longer than 4 s (`SECOND_OPINION_MAX_S`). The fast
+  engine's own pick and step (and Jev's failure fallback) are one call of
+  what is left of the 9 s too, with no retries. Where an
   optional pass may follow (/map's low-stakes and reasoning passes,
   /pick's reasoning call), it also ends a second before the 6 s after
   which no optional pass starts, so the next optional pass still has time

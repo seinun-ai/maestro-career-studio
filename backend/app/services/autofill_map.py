@@ -262,6 +262,11 @@ class Budget:
             timeout = min(timeout, OPTIONAL_PASS_BUDGET_S - elapsed - reserve)
         return max(MIN_CALL_S, timeout)
 
+    def rest(self) -> float:
+        """The timeout a request's MAIN call takes (not optional: it always
+        runs): what is left of REQUEST_BUDGET_S, never under MIN_CALL_S."""
+        return max(MIN_CALL_S, REQUEST_BUDGET_S - (self._now() - self._started))
+
 
 def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: str, timeout: float) -> set[str]:
     """The fast model's yes, per question, at `floor`. A failure answers "none

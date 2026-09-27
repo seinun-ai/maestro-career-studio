@@ -459,6 +459,7 @@ def engine_of(run: Run, low_stakes: bool = False):
     model_settings.get_autofill_low_stakes = lambda session=None: low_stakes
     autofill_pick.verdict, autofill_step._decide = seen_pick, seen_step
     autofill_polarity.decide = seen_polarity
+    autofill_polarity.forget()   # each case, on each engine, asks its own polarity
     run.fast_decided = False
     run.polarity.clear()
     if engine == "jev":

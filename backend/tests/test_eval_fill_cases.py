@@ -440,17 +440,21 @@ def test_jev_alone_leaves_an_unsure_polarity_unsure(monkeypatch):
     from app.services import autofill_polarity
 
     case = next(c for c in PICKS["cases"] if c["id"] == "reversed-authorized-without-sponsorship")
-    _jev_picks(monkeypatch, "Yes", ("neither", 0.99))
+    _jev_picks(monkeypatch, "Yes", ("opposite", 0.5))
     monkeypatch.setattr(autofill_polarity, "fast_json", lambda *_a, **_k: pytest.fail("the fast model answered"))
     result = ev.run_pick(case, ev.Run("jev"), None, PICKS["today"])
     assert (result["outcome"], result["polarity"], result["polarity_by"]) == ("abstained", "unsure", None)
+    # A confident neither is Jev's decision: no answer, and no second opinion even when routed.
+    _jev_picks(monkeypatch, "Yes", ("neither", 0.99))
+    result = ev.run_pick(case, ev.Run("routed"), None, PICKS["today"])
+    assert (result["outcome"], result["polarity"], result["polarity_by"]) == ("abstained", "neither", "jev")
 
 
 def test_a_routed_pass_lets_the_fast_model_read_the_polarity_jev_was_unsure_of(monkeypatch):
     from app.services import autofill_polarity
 
     case = next(c for c in PICKS["cases"] if c["id"] == "reversed-authorized-without-sponsorship")
-    _jev_picks(monkeypatch, "Yes", ("neither", 0.99))
+    _jev_picks(monkeypatch, "Yes", ("opposite", 0.5))
     monkeypatch.setattr(autofill_polarity, "fast_json", lambda *_a, **_k: {
         "polarity": {"c1": {"key": "opposite", "confidence": 0.95}}})
     result = ev.run_pick(case, ev.Run("routed"), None, PICKS["today"])

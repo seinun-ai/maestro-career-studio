@@ -42,6 +42,14 @@ def fake_llm(monkeypatch, ways=None, fail=None):
     return prompts
 
 
+@pytest.fixture(autouse=True)
+def _fresh_memory():
+    """Each test starts with nothing remembered (the cache is per process)."""
+    autofill_polarity.forget()
+    yield
+    autofill_polarity.forget()
+
+
 def decide(asks, db_session, budget=None):
     return autofill_polarity.decide(asks, db_session, budget or autofill_map.Budget())
 
@@ -62,16 +70,29 @@ def test_code_flips_only_a_plain_yes_or_no(value, way, answer):
 # ---------- Jev first, one fast second opinion, same floors
 
 @pytest.mark.usefixtures("jev_on")
-def test_jev_decides_at_the_slots_floor(db_session, monkeypatch):
-    fake_jev(monkeypatch, {"a": (OPPOSITE, 0.95), "b": (SAME, 0.92), "c": (SAME, 0.6)})
+def test_jev_decides_at_the_slots_floor_and_never_under_the_polarity_floor(db_session, monkeypatch):
+    """An `any` slot (willing to relocate) is not flipped at its 0.5 match
+    floor: polarity needs max(the slot's floor, POLARITY_FLOOR)."""
+    fake_jev(monkeypatch, {"a": (OPPOSITE, 0.95), "b": (SAME, 0.92), "c": (SAME, 0.6), "d": (OPPOSITE, 0.8)})
     fake_llm(monkeypatch)   # the second opinion (for c) says nothing
-    got = decide([ask("a"), ask("b"), ask("c", policy="any")], db_session)
+    got = decide([ask("a"), ask("b"), ask("c", describe="preferences: willing to relocate", policy="any"),
+                  ask("d", describe="preferences: willing to relocate", policy="any")], db_session)
+    assert autofill_polarity.POLARITY_FLOOR == 0.8
     assert {k: (p.way, p.engine) for k, p in got.items()} == {
-        "a": (OPPOSITE, "jev"), "b": (SAME, "jev"), "c": (SAME, "jev")}   # any's floor is 0.5
+        "a": (OPPOSITE, "jev"), "b": (SAME, "jev"), "c": (None, None), "d": (OPPOSITE, "jev")}
 
 
 @pytest.mark.usefixtures("jev_on")
-@pytest.mark.parametrize("jev_says", [(OPPOSITE, 0.85), (NEITHER, 0.99)])
+def test_a_confident_jev_neither_abstains_without_a_second_opinion(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": (NEITHER, 0.95)})
+    prompts = fake_llm(monkeypatch, {"q": (OPPOSITE, 0.99)})
+    got = decide([ask("q")], db_session)["q"]
+    assert (got.way, got.engine) == (NEITHER, "jev") and prompts == []
+    assert autofill_polarity.answer_for("Yes", got.way) is None
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("jev_says", [(OPPOSITE, 0.85), (NEITHER, 0.6)])
 def test_when_jev_is_unsure_one_fast_second_opinion_decides(db_session, monkeypatch, jev_says):
     fake_jev(monkeypatch, {"q": jev_says, "r": (SAME, 0.95)})
     prompts = fake_llm(monkeypatch, {"q": (OPPOSITE, 0.95)})
@@ -81,16 +102,16 @@ def test_when_jev_is_unsure_one_fast_second_opinion_decides(db_session, monkeypa
     [asked] = prompts
     assert asked["trace_name"] == "autofill-polarity-second"
     assert [f["id"] for f in json.loads(asked["prompt"].split("Fields: ", 1)[1])] == ["q"]
-    assert asked["max_retries"] == 0 and asked["timeout"] <= autofill_map.SECOND_OPINION_MAX_S
+    assert asked["max_retries"] == 0 and asked["timeout"] <= autofill_polarity.POLARITY_MAX_S == 2.0
 
 
 @pytest.mark.usefixtures("jev_on")
-@pytest.mark.parametrize("fast_says", [(OPPOSITE, 0.85), (NEITHER, 0.99), None])
-def test_a_second_opinion_under_the_floor_or_neither_leaves_it_unsure(db_session, monkeypatch, fast_says):
+@pytest.mark.parametrize("fast_says, way", [((OPPOSITE, 0.85), None), ((NEITHER, 0.99), NEITHER), (None, None)])
+def test_a_second_opinion_under_the_floor_or_neither_leaves_no_answer(db_session, monkeypatch, fast_says, way):
     fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
     fake_llm(monkeypatch, {"q": fast_says} if fast_says else {})
     got = decide([ask("q")], db_session)["q"]
-    assert (got.way, got.engine) == (None, None)
+    assert got.way == way and autofill_polarity.answer_for("No", got.way) is None
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -148,3 +169,57 @@ def test_the_polarity_call_carries_no_value(db_session, monkeypatch):
 def test_nothing_to_decide_asks_nothing(db_session, monkeypatch):
     prompts = fake_llm(monkeypatch)
     assert decide([], db_session) == {} and prompts == []
+
+
+# ---------- the budget: capped at 2 s, leaving the pick, its second opinion and the reasoning call their slots
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_polarity_second_opinion_leaves_the_rest_of_the_request_its_time(db_session, monkeypatch):
+    """Asked 0.5 s in, it may take only what leaves Jev's pick (2 s), the
+    pick's second opinion and the reasoning call (a second each) their start
+    before OPTIONAL_PASS_BUDGET_S."""
+    times = [0.0, 0.5]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    fake_jev(monkeypatch, {"q": (OPPOSITE, 0.5)})
+    prompts = fake_llm(monkeypatch)
+    decide([ask("q")], db_session)
+    expected = autofill_map.OPTIONAL_PASS_BUDGET_S - 0.5 - autofill_polarity.POLARITY_RESERVE_S
+    assert prompts[0]["timeout"] == pytest.approx(expected) and 0 < expected <= autofill_polarity.POLARITY_MAX_S
+    assert autofill_polarity.POLARITY_RESERVE_S == pytest.approx(2.0 + 2 * autofill_map.MIN_CALL_S)
+
+
+# ---------- remembered for a while: a /step after a /pick, or a second run, does not ask again
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_confident_answer_is_remembered_and_an_unsure_one_never(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"q": (OPPOSITE, 0.95), "u": (OPPOSITE, 0.5), "n": (NEITHER, 0.95),
+                                   "u2": (OPPOSITE, 0.5)})
+    fake_llm(monkeypatch)
+    decide([ask("q"), ask("u", question="Are you unsure?"), ask("n", question="Something else?")], db_session)
+    calls.clear()
+    got = decide([ask("q2"), ask("u2", question="Are you unsure?"), ask("n2", question="Something else?")],
+                 db_session)
+    assert (got["q2"].way, got["n2"].way, got["u2"].way) == (OPPOSITE, NEITHER, None)
+    [call] = calls   # only the unsure one is asked again
+    assert set(call["questions"]) == {"u2"}
+
+
+def test_the_memory_is_bounded_and_forgets_after_its_time(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(autofill_polarity, "_clock", lambda: now[0])
+    key = ("Q", SPONSOR, "exact")
+    autofill_polarity._remember(key, autofill_polarity.Polarity(SAME, "jev"))
+    assert autofill_polarity._recall(key).way == SAME
+    now[0] += autofill_polarity.MEMORY_TTL_S + 1
+    assert autofill_polarity._recall(key) is None
+    for i in range(autofill_polarity.MEMORY_MAX + 20):
+        autofill_polarity._remember((f"Q{i}", SPONSOR, "exact"), autofill_polarity.Polarity(SAME, "jev"))
+    assert len(autofill_polarity._memory) == autofill_polarity.MEMORY_MAX
+    assert autofill_polarity._recall(("Q0", SPONSOR, "exact")) is None   # the oldest went first
+
+
+def test_the_memory_holds_no_value():
+    """Keys are the question (page text), the fact's description and its policy; entries a way and an engine."""
+    assert [f.name for f in autofill_polarity.Polarity.__dataclass_fields__.values()] == ["way", "engine"]

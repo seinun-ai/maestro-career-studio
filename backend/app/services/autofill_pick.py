@@ -1,4 +1,5 @@
-"""/pick — which LIVE option means the same as the applicant's fact?
+"""/pick — which LIVE option answers a field: the one stating a Yes/No fact's
+computed answer (autofill_polarity), or the one meaning the same as any other fact?
 
 Options are what the page shows after the extension explored it, keyed by the
 page-side oid. Every pick is one Jev Choice over those code-owned keys +
@@ -45,8 +46,8 @@ _NO_OPTION_TEXT = "No option means the same as the fact"
 _NO_ANSWER_TEXT = "No option states this answer"
 # A low-stakes field's "none" is a refusal as well as a miss: its criterion says so.
 _LOW_STAKES_NONE_TEXT = "None, as the question is on the never-list or no option fits"
-# Said only when the batch holds a low-stakes field: a batch of fact fields
-# is asked exactly what Jev is asked, which option means the same as the fact.
+# Said only when the batch holds a low-stakes field: a batch without one (a
+# second opinion always) is asked exactly what Jev is asked of each field.
 _LOW_STAKES_PARAGRAPH = """A field marked low_stakes has no applicant value. {rule}; for such a field, return the option {keen}.
 The never-list does not apply to a field with applicant_values or an answer: pick as that field says.
 """
@@ -153,10 +154,10 @@ def _with_jev(fields, facts, hint, session, answers: dict[str, str]) -> dict[str
         criteria_by_fid[f.fid] = {o.oid: o.text for o in f.options} | {NO_OPTION: none}
         questions[f.fid] = jev.choice_question(_instructions(f, values, hint, facts, answers.get(f.fid)),
                                                criteria_by_fid[f.fid])
-    answers = jev.decide(questions, state, session)
+    replies = jev.decide(questions, state, session)
     out = {}
     for f in fields:
-        got = jev.choice_of(answers.get(f.fid), criteria_by_fid[f.fid])
+        got = jev.choice_of(replies.get(f.fid), criteria_by_fid[f.fid])
         out[f.fid] = verdict(f, got.choice if got else None, got.probability if got else 0.0,
                              _policy(f, facts), complete=f.complete)
     return out
@@ -231,7 +232,9 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
             except llm.LLMProviderError:
                 logger.warning("jev pick failed; the fast model picks this batch")
         if picked is None:
-            picked = _with_llm(askable, facts, hint, session, answers)
+            # One request of what is left of the budget, no retries: a slow
+            # batch never outlives the Companion's wait.
+            picked = _with_llm(askable, facts, hint, session, answers, timeout=budget.rest())
         else:
             unsure = [f for f in askable if f.route == "slot" and picked[f.fid] == ABSTAIN]
             decided = {fid: p for fid, p in _second_opinion(unsure, facts, hint, session, budget, answers,

@@ -514,3 +514,11 @@ def test_a_status_fact_keeps_its_description_in_the_step_goal(db_session, monkey
     autofill_step.step(req(slot="work_auth.status"), facts, db_session, None)
     text = calls[0]["questions"]["f"]["instructions"]
     assert NEVER_YES_NO in text and json.dumps(facts["work_auth.status"].describe) in text
+
+
+def test_the_fast_step_is_bounded_by_the_request(db_session, monkeypatch):
+    times = [0.0, 2.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    prompts = fake_llm(monkeypatch, {"move": "open", "confidence": 0.9})
+    step(req(slot="education.0.discipline"), db_session)
+    assert (prompts[0]["timeout"], prompts[0]["max_retries"]) == (pytest.approx(autofill_map.REQUEST_BUDGET_S - 2.0), 0)

@@ -686,7 +686,7 @@ def test_the_reasoning_call_has_a_timeout_and_no_retries_and_runs_after_the_fact
                              pf("m", slot="education.0.discipline", options=opts("Business Analytics"))], db_session)
     assert got["m"].reason == "matched"
     assert [kw["trace_name"] for kw in order] == ["autofill-pick", "autofill-reasoned-pick"]
-    assert "timeout" not in order[0]
+    assert order[0]["max_retries"] == 0   # the fast pick: one request of what is left of the budget
     assert order[1]["max_retries"] == 0 and 1 <= order[1]["timeout"] <= autofill_map.REQUEST_BUDGET_S
 
 
@@ -1135,3 +1135,94 @@ def test_a_lower_case_stored_yes_is_flipped_and_still_matched(db_session, monkey
                                  options=opts("Yes", "No"))], facts, db_session, None)
     assert calls[0]["state"]["fields"][0]["answer"] == "No"
     assert got["u"].model_dump() == {"oids": ["o2"], "reason": "matched"}
+
+
+# ---------- review of 6cd77787: the polarity step never crowds out the rest of the request
+
+
+def test_the_fast_pick_is_bounded_by_the_request(db_session, monkeypatch):
+    """The fast engine's pick, and Jev's failure fallback, are one request of
+    what is left of REQUEST_BUDGET_S, no retries: a slow batch never outlives
+    the Companion's wait."""
+    times = [0.0, 3.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    prompts = fake_llm(monkeypatch)
+    pick([pf("m", slot=DISCIPLINE, options=opts("Accounting"))], db_session)
+    [asked] = prompts
+    assert asked["trace_name"] == "autofill-pick" and asked["max_retries"] == 0
+    assert asked["timeout"] == pytest.approx(autofill_map.REQUEST_BUDGET_S - 3.0)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_fallback_pick_is_bounded_by_the_request(db_session, monkeypatch):
+    def down(*a, **k):
+        raise llm.LLMProviderError("down")
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", down)
+    monkeypatch.setattr(autofill_map, "_clock", lambda: 0.0)
+    prompts = fake_llm(monkeypatch)
+    pick([pf("m", slot=DISCIPLINE, options=opts("Accounting"))], db_session)
+    assert (prompts[0]["timeout"], prompts[0]["max_retries"]) == (pytest.approx(autofill_map.REQUEST_BUDGET_S), 0)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_after_polarity_the_second_opinion_and_the_reasoning_call_still_get_their_slots(db_session, monkeypatch):
+    """Worst case, by the clock: polarity's fast second opinion asked 0.5 s in
+    ends by 2 s; Jev's pick may run to 4 s; the pick's second opinion then
+    gets 1 s, and the reasoning call starts at 5 s with what is left."""
+    times = [0.0, 0.5, 4.0, 5.0]
+    monkeypatch.setattr(autofill_map, "_clock", lambda: times.pop(0) if len(times) > 1 else times[0])
+    facts = autofill_catalog.build({**HISTORY_PROFILE, "eligibility": {"over_18": True}}, JOBS, ["SQL"],
+                                   today=date(2026, 9, 26))
+    fake_jev(monkeypatch, {"u": ("none", 0.9)}, ways={"u": ("opposite", 0.5)})
+    traces = []
+
+    def call_openai(**kw):
+        traces.append(kw)
+        if kw["trace_name"].startswith("autofill-polarity"):
+            return polarity_reply(kw, {"u": ("opposite", 0.95)})
+        return {"answers": {}} if kw["trace_name"] == "autofill-reasoned-pick" else {"picks": {}}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    autofill_pick.pick([pf("u", question="Are you under 18?", slot="eligibility.over_18", options=opts("Yes", "No")),
+                        reasoned("g", GOVERNMENT, "Yes", "No")], facts, db_session, None)
+    by = {kw["trace_name"]: kw["timeout"] for kw in traces}
+    assert by == {"autofill-polarity-second": pytest.approx(1.5), SECOND: pytest.approx(1.0),
+                  "autofill-reasoned-pick": pytest.approx(autofill_map.REQUEST_BUDGET_S - 5.0)}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_step_after_a_pick_does_not_ask_the_polarity_again(db_session, monkeypatch):
+    from app.schemas.autofill_fill import StepRequest
+    from app.services import autofill_step
+
+    polarity_calls = []
+    real = autofill_pick.jev.decide
+
+    fake_jev(monkeypatch, {"s": ("none", 0.9)}, ways={"s": ("opposite", 0.95)})
+    faked = autofill_pick.jev.decide
+
+    def counting(questions, state, session=None):
+        if all(is_polarity(q) for q in questions.values()):
+            polarity_calls.append(questions)
+        return faked(questions, state, session)
+
+    monkeypatch.setattr(autofill_pick.jev, "decide", counting)
+    pick([sponsor_field()], db_session)
+    assert len(polarity_calls) == 1
+    step_calls = []
+
+    def step_decide(questions, state, session=None):
+        if all(is_polarity(q) for q in questions.values()):
+            polarity_calls.append(questions)
+            return faked(questions, state, session)
+        step_calls.append(questions)
+        return {k: _answer(q["criteria"], "give_up", 0.9) for k, q in questions.items()}
+
+    monkeypatch.setattr(autofill_step.jev, "decide", step_decide)
+    autofill_step.step(StepRequest(fid="s", question=AUTHORIZED_WITHOUT, route="slot", slot="work_auth.sponsorship_now",
+                                   candidates=[{"mid": "click:o1", "describe": 'Click the option "Yes"'},
+                                               {"mid": "give_up", "describe": "stop"}]), FACTS, db_session, None)
+    assert len(polarity_calls) == 1   # remembered from the pick
+    assert '"Yes"' in step_calls[0]["s"]["instructions"]
+    assert real is not None

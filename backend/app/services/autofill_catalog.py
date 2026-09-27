@@ -57,13 +57,16 @@ _DESCRIBES: dict[str, str] = {
     "eligibility.over_18": "is 18 or older (yes/no)",
     "eligibility.previously_employed_here": "has worked for this company before (yes/no)",
     "eligibility.non_compete": "is bound by a non-compete or similar agreement (yes/no)",
-    "derived.us_citizen": "whether you are a US citizen, derived from your work-authorization status (yes/no)",
+    "derived.us_citizen": "is a US citizen (yes/no; derived from the applicant's work authorization)",
     "eeo.gender": "gender (voluntary self-identification)",
     "eeo.gender_self_describe": "gender in the applicant's own words (voluntary self-identification)",
     "eeo.race_ethnicity": "race or ethnicity (voluntary self-identification, a list)",
     "eeo.hispanic_latino": "is Hispanic or Latino (voluntary self-identification)",
-    "eeo.veteran_status": "protected veteran status (voluntary self-identification)",
-    "eeo.disability_status": "disability status (voluntary self-identification)",
+    # A Yes/No answer's description is a proposition WITH a direction: polarity
+    # (autofill_polarity) judges a question against it, and "disability status"
+    # cannot say whether "are you free of any disability?" asks it or its opposite.
+    "eeo.veteran_status": "is a protected veteran (voluntary self-identification)",
+    "eeo.disability_status": "has a disability (voluntary self-identification)",
     # A form asks for it as "salary requirements" or "compensation" as often
     # as "desired salary": one fact, described in each wording.
     "preferences.desired_salary": "desired salary, compensation or salary requirements (expected pay)",
@@ -72,8 +75,8 @@ _DESCRIBES: dict[str, str] = {
     "derived.full_name": "your full legal name, for name and signature boxes",
     "derived.today": "today's date, for a date the applicant signs or fills in today",
     "derived.earliest_start_date": "the earliest date you can start, as a calendar date",
-    "derived.previously_employed_here": ("whether you work, or worked, for this company, from your work history "
-                                         "(currently or previously)"),
+    "derived.previously_employed_here": ("works, or has worked, for this company (from the work history: "
+                                         "currently or previously)"),
     "skills": "applicant skills (a list)",
 }
 # "Are you a US citizen?", from every status the profile can store: only a
@@ -146,6 +149,8 @@ def describe_of(slot: str) -> str:
         return _DESCRIBES[slot]
     if (m := re.fullmatch(r"languages\.(\d+)\.(\w+)", slot)) and m[2] in _LANGUAGE_FACTS:
         return f"language entry {int(m[1]) + 1}: {_LANGUAGE_FACTS[m[2]]}"
+    if m := re.fullmatch(r"experience\.(\d+)\.current", slot):
+        return f"experience entry {int(m[1]) + 1}: is the applicant's current job (yes/no)"
     return re.sub(r"\.(\d+)\.", lambda m: f" entry {int(m.group(1)) + 1}: ", slot).replace(".", ": ").replace("_", " ")
 
 

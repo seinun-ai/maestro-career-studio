@@ -140,13 +140,15 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
     instructions = _instructions(req, values, hint, facts, answer)
     state = {"job": asdict(hint) if hint else None, "history": req.history}
+    # The fast step (its engine, or Jev's failure fallback) is one request of
+    # what is left of the budget, no retries.
     if model_settings.get_autofill_engine(session) != "jev":
-        return _with_llm(req, instructions, state, criteria, policy, session)
+        return _with_llm(req, instructions, state, criteria, policy, session, timeout=budget.rest())
     try:
         answer = jev.decide({req.fid: jev.choice_question(instructions, criteria)}, state, session)
     except llm.LLMProviderError:
         logger.warning("jev step failed; the fast model decides this move")
-        return _with_llm(req, instructions, state, criteria, policy, session)
+        return _with_llm(req, instructions, state, criteria, policy, session, timeout=budget.rest())
     got = jev.choice_of(answer.get(req.fid), criteria)
     decided = _decide(req, got.choice if got else None, got.probability if got else 0.0, policy)
     # A low-stakes step keeps its engine.

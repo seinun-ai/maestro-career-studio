@@ -65,6 +65,17 @@ def _hermetic_embedder(request, monkeypatch):
     monkeypatch.setattr(embeddings, "embed_texts", fake_embed_texts)
 
 
+@pytest.fixture(autouse=True)
+def _no_remembered_polarity():
+    """autofill_polarity remembers confident answers per process: every test
+    starts, and leaves, with nothing remembered."""
+    from app.services import autofill_polarity
+
+    autofill_polarity.forget()
+    yield
+    autofill_polarity.forget()
+
+
 # Tests delete from every table. Refuse anything that could be real data: the
 # app's own database, a file under the repo's data/ mount, or a file named
 # like the dev database.
