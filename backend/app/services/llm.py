@@ -49,6 +49,8 @@ NO_GEMINI_KEY_MESSAGE = "No Gemini API key is set. Add one in Settings › AI & 
 
 
 _KEY_REFUSED = "your key was refused"
+# One wording for a request that ran out of time, whichever provider it was.
+_TIMED_OUT = "it timed out"
 
 
 def _no_answer(reason: str, provider_detail: str, provider: str = "OpenAI") -> LLMProviderError:
@@ -109,7 +111,7 @@ def _openai_reason(exc: Exception) -> str:
     if isinstance(status, int):
         return _status_reason(status, getattr(exc, "code", None))
     if isinstance(exc, openai.APITimeoutError):
-        return "it timed out"
+        return _TIMED_OUT
     if isinstance(exc, openai.APIConnectionError):
         return "no connection"
     return "unknown error"
@@ -321,7 +323,7 @@ def _call_gemini(
         # in time, not a local crash (URLError wraps a connect timeout).
         if isinstance(exc, URLError) and not isinstance(exc.reason, TimeoutError):
             raise
-        raise _no_answer("it took too long", f"Gemini API request timed out: {exc}", provider="Gemini") from exc
+        raise _no_answer(_TIMED_OUT, f"Gemini API request timed out: {exc}", provider="Gemini") from exc
 
     return _gemini_text(data), _gemini_usage(data)
 

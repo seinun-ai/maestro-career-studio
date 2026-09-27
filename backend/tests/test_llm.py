@@ -397,3 +397,30 @@ def test_a_gemini_timeout_is_passed_and_running_out_is_a_provider_error(monkeypa
     with pytest.raises(llm.LLMProviderError):
         llm.call_openai(prompt="hi", model="gemini-3-flash-preview", timeout=2.0, max_retries=0)
     assert seen["timeout"] == 2.0
+
+
+def test_both_providers_say_a_timeout_the_same_way(monkeypatch, tmp_path):
+    import httpx
+    import openai
+
+    monkeypatch.setattr(llm.settings, "logs_dir", tmp_path)
+
+    class _Client:
+        def with_options(self, **kw):
+            return self
+
+        class chat:  # noqa: N801
+            class completions:  # noqa: N801
+                @staticmethod
+                def create(**kw):
+                    raise openai.APITimeoutError(request=httpx.Request("POST", "https://api.example.test"))
+
+    monkeypatch.setattr(llm, "_get_client", lambda: _Client())
+    with pytest.raises(llm.LLMProviderError) as openai_err:
+        llm.call_openai(prompt="hi", model="gpt-4o-mini", timeout=2.0, max_retries=0)
+    monkeypatch.setattr(llm.settings, "gemini_api_key", "gemini-test")
+    monkeypatch.setattr(llm, "urlopen", lambda request, timeout: (_ for _ in ()).throw(TimeoutError("slow")))
+    with pytest.raises(llm.LLMProviderError) as gemini_err:
+        llm.call_openai(prompt="hi", model="gemini-3-flash-preview", timeout=2.0, max_retries=0)
+    assert "(it timed out)" in str(openai_err.value)
+    assert str(openai_err.value).replace("OpenAI", "Gemini") == str(gemini_err.value).replace("OpenAI", "Gemini")

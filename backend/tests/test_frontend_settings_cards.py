@@ -483,5 +483,7 @@ def test_the_low_stakes_help_names_the_widened_kinds_and_the_never_list():
 
 def test_the_low_stakes_help_says_the_work_history_answers_some_questions_at_any_setting():
     switch = _flat(_slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n"))
-    assert ("Fill may also answer questions about past employers, a security clearance or years of "
-            "experience from your work history, and lists those to check too.") in switch
+    assert ("Fill may also answer questions about past employment by a kind of organization (such as a "
+            "government agency), a security clearance or years of experience from your work history, and lists "
+            "those to check too.") in switch
+    assert "(/map, /pick and /step)" in _slice(_AUTOFILL, "/** Questions no answer of yours covers", "function LowStakesSwitch(")

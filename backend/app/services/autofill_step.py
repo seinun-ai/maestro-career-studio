@@ -26,8 +26,8 @@ from app.schemas.autofill_fill import StepRequest, StepResponse
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
-from app.services.autofill_map import fast_json, low_stakes_scope
-from app.services.autofill_pick import JobHint, keen, values_for, verdict
+from app.services.autofill_map import fast_json, keen, low_stakes_scope
+from app.services.autofill_pick import JobHint, values_for, verdict
 
 logger = logging.getLogger(__name__)
 

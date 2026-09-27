@@ -494,7 +494,9 @@ know, and each one was learned from a live failure.
   so a pick between "Current Associate" and "Former Associate" has the words
   to choose by — and drops the standing answer for that application (company
   names match the way section entries do, ignoring case, punctuation, a
-  leading "The" and suffixes such as Inc or Ltd); it only ever derives Yes,
+  leading "The" and suffixes such as Inc or Ltd — otherwise exactly, so
+  "Amazon" in the history against a job at "Amazon Web Services" derives
+  nothing and the standing answer stays); it only ever derives Yes,
   and while it stands the low-stakes scope below loses "previously employed
   by the company (No)" and names it as never. The one exception
   to "never guessed" is yours to switch on: with low-stakes answers on
@@ -549,7 +551,11 @@ know, and each one was learned from a live failure.
      age or eligibility, background), an EEO one, or a fact below its floor,
      so the history can never answer sponsorship or age. Whether you worked
      for, or are related to someone at, the company applied to is on the
-     reasoning never-list (that is the derived fact above, or yours). The fast model
+     reasoning never-list (that is the derived fact above, or yours), and a
+     reasoned field that NAMES the company applied to — in its question or
+     any option ("Former Associate of The Home Depot") — is refused before
+     any model sees it; a generic wording ("the company", "us") is held back
+     by the never-list alone, in the prompt. The fast model
      judges it answerable from a DESCRIPTION of the history (no values). Jev
      is not used for this route: /pick's answer needs the history as values,
      which Jev's state would then carry. /pick answers
@@ -562,18 +568,22 @@ know, and each one was learned from a live failure.
      real. Silence is not No: a clearance the history never mentions is no
      answer. "Not employed by that kind of organization" is shown only by
      dated jobs over the period asked at clearly private companies. A
-     NEGATIVE answer (an option reading No, None, Not applicable, N/A, Never,
-     Less than or 0) speaks for a period, so the model also names its first
-     month (`since`), and code takes it only when every job overlapping
-     [since, today] — at least the last 12 months, however recent `since` —
-     is dated and cited, and a cited job reaches back to that window's start:
-     a skipped job or an undated one means no answer. /pick trusts the Companion's
+     NEGATIVE answer — an option reading as a refusal (No, None, Not, Never,
+     N/A, Zero, Under, Less or Fewer than, "I have not", "Does not apply",
+     "<"…), OR one the model marks `negative`, since either side may only
+     withhold — speaks for a period, so the model also names its first month
+     (`since`), and code takes it only when every job overlapping [start,
+     today] (start: `since` or 12 months ago, whichever is earlier) is dated
+     and cited, and the cited jobs reach back to that start (a 2024 job
+     cannot speak for 2021): a skipped job, an undated one, or a history cut
+     at the catalog's 8-job limit means no answer. /pick trusts the Companion's
      `reasoned` route as it trusts a low-stakes one — the classification is
      /map's, the setting and the answer are the server's. A reasoned field is
      never handed to the adaptive step (/step has no history): its abstain,
      or a list that showed no options, is yours; a surprise on commit is
      retried like a native list's.
-  Both passes are optional and bounded: once a request has spent 6 s
+  Both passes are optional and bounded by the request's one `Budget`
+  (`autofill_map`): once a request has spent 6 s
   (`OPTIONAL_PASS_BUDGET_S`), a pass not yet begun is skipped and its fields
   stay yours, and one that runs is a single request with no retries and a
   real timeout of what is left of 9 s (`REQUEST_BUDGET_S`), so /map and

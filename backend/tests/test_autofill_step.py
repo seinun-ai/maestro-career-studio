@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.autofill_fill import StepRequest
-from app.services import autofill_catalog, autofill_step, llm, model_settings
+from app.services import autofill_catalog, autofill_map, autofill_step, llm, model_settings
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_map import _NEVER_LOW_STAKES
 from app.services.autofill_pick import JobHint
@@ -303,8 +303,6 @@ def test_a_plain_click_is_an_answer_only_and_only_a_group_click_is_progress(db_s
 def test_a_low_stakes_step_says_which_way_a_conflict_question_goes(db_session, monkeypatch):
     """Owner, 2026-09-26: "related to / previously employed by the company" is
     low-stakes, answered No — the step says so, as /pick does."""
-    from app.services import autofill_pick
-
     model_settings.set_autofill_low_stakes(db_session, True)
     prompts = []
 
@@ -316,7 +314,7 @@ def test_a_low_stakes_step_says_which_way_a_conflict_question_goes(db_session, m
     autofill_step.step(StepRequest(fid="r", question="Are you related to a current employee?", route="low_stakes",
                                    candidates=[{"mid": "click:o1", "describe": 'Click the option "No"'}]),
                        {}, db_session, None)
-    assert autofill_pick.keen({}) in prompts[0] and "No to being related to" in prompts[0]
+    assert autofill_map.keen({}) in prompts[0] and "No to being related to" in prompts[0]
 
 
 def test_with_worked_here_the_low_stakes_step_drops_the_previously_employed_no(db_session, monkeypatch):

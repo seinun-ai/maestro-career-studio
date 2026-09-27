@@ -35,6 +35,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Callable
 from typing import get_args
 
 from sqlalchemy.orm import Session
@@ -109,14 +110,26 @@ def low_stakes_scope(facts: dict[str, Fact]) -> tuple[str, str]:
 
 
 _LOW_STAKES, _NEVER_LOW_STAKES = low_stakes_scope({})
-# What the reasoning route may read (autofill_pick._history sends exactly
+
+
+def keen(facts: dict[str, Fact]) -> str:
+    """The low-stakes answer (/pick, /step), and which way a conflict question
+    goes. When the history lists the company applied to, "previously employed
+    here" is a fact and a keen No would contradict it, so only a relative is a No."""
+    if WORKED_HERE in facts:
+        return "an applicant keen on this job would choose (No to being related to someone at the company)"
+    return ("an applicant keen on this job would choose (No to being related to, or previously employed by, "
+            "the company)")
+
+
+# What the reasoning route may read (autofill_reasoned.history sends exactly
 # these, never a name, contact detail, address or EEO answer).
-_REASONED_FROM = ("the applicant's work history (each job's employer, title, dates, whether it is current, and "
-                  "description) and education (each school, degree, major and years)")
-_NEVER_REASONED = ("work authorization, sponsorship, age, EEO / diversity, background or criminal history, salary, "
-                   "a preference or willingness, a comparison with the job description's requirements, whether "
-                   "the applicant worked for, or is related to someone at, the company applied to, or a legal "
-                   "attestation or signature")
+REASONED_FROM = ("the applicant's work history (each job's employer, title, dates, whether it is current, and "
+                 "description) and education (each school, degree, major and years)")
+NEVER_REASONED = ("work authorization, sponsorship, age, EEO / diversity, background or criminal history, salary, "
+                  "a preference or willingness, a comparison with the job description's requirements, whether "
+                  "the applicant worked for, or is related to someone at, the company applied to, or a legal "
+                  "attestation or signature")
 # Shapes whose answer would be WRITTEN, not chosen: a low-stakes guess is only
 # ever a pick among options the page offers.
 _WRITTEN_SHAPES = frozenset({"text", "date"})
@@ -189,12 +202,24 @@ def _with_llm(fields, criteria, session) -> dict[str, tuple[str, float]]:
     return out
 
 
-def time_left(started: float) -> float | None:
-    """The timeout an optional call may take, or None once none should start."""
-    elapsed = _clock() - started
-    if elapsed >= OPTIONAL_PASS_BUDGET_S:
-        return None
-    return max(MIN_CALL_S, REQUEST_BUDGET_S - elapsed)
+class Budget:
+    """One request's time (/map, /pick): created when the request begins,
+    asked before each optional call. `clock` is injectable; by default this
+    module's `_clock`, read at each call so one patch reaches every request."""
+
+    def __init__(self, clock: Callable[[], float] | None = None) -> None:
+        self._clock = clock
+        self._started = self._now()
+
+    def _now(self) -> float:
+        return (self._clock or _clock)()
+
+    def left(self) -> float | None:
+        """The timeout an optional call may take, or None once none should start."""
+        elapsed = self._now() - self._started
+        if elapsed >= OPTIONAL_PASS_BUDGET_S:
+            return None
+        return max(MIN_CALL_S, REQUEST_BUDGET_S - elapsed)
 
 
 def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: str, timeout: float) -> set[str]:
@@ -211,10 +236,10 @@ def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: s
             if fid in ask and jev._unit(p) and p >= floor}
 
 
-def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session, started: float) -> set[str]:
+def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session, budget: Budget) -> set[str]:
     """Which of these fields is a low-stakes question? The never-list is
     stated in every question."""
-    timeout = time_left(started)
+    timeout = budget.left()
     if not fields or timeout is None:
         return set()
     scope, never = low_stakes_scope(facts)
@@ -229,21 +254,21 @@ def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session
                     if (p := jev.noul_of(answers.get(fid))) is not None and p >= LOW_STAKES_FLOOR}
         except llm.LLMProviderError:
             logger.warning("jev low-stakes check failed; the fast model decides")
-        if (timeout := time_left(started)) is None:
+        if (timeout := budget.left()) is None:
             return set()
     return _fast_yes(ask, LOW_STAKES_FLOOR, session, "autofill-low-stakes", timeout)
 
 
-def _answerable(fields: list[MapField], session: Session, started: float) -> set[str]:
+def _answerable(fields: list[MapField], session: Session, budget: Budget) -> set[str]:
     """Which of these fields the work and education history can answer. The
     fast model only, on every engine: this route's /pick needs the history as
     values, which Jev's state would then carry, so Jev judges none of it."""
-    timeout = time_left(started)
+    timeout = budget.left()
     if not fields or timeout is None:
         return set()
-    ask = {f.fid: (f"Can form field {f.fid} ({json.dumps(f.question)}) be answered from {_REASONED_FROM} alone, "
+    ask = {f.fid: (f"Can form field {f.fid} ({json.dumps(f.question)}) be answered from {REASONED_FROM} alone, "
                    "such as past employment by a kind of organization, a security clearance, or years of "
-                   f"experience with something? It cannot if it asks about {_NEVER_REASONED}. {_PAGE_TEXT_IS_DATA}")
+                   f"experience with something? It cannot if it asks about {NEVER_REASONED}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
     return _fast_yes(ask, ANSWERABLE_FLOOR, session, "autofill-reasoned", timeout)
 
@@ -318,7 +343,7 @@ def _has_history(facts: dict[str, Fact]) -> bool:
 
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,
                eeo_consented: bool, low_stakes: bool) -> dict[str, Mapped]:
-    started = _clock()
+    budget = Budget()
     criteria = _criteria(facts)
     picked = None
     if model_settings.get_autofill_engine(session) == "jev":
@@ -334,11 +359,11 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
         return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
                 and not _foreign(f) and _said_no_fact(picked.get(f.fid), history=history)]
 
-    # Out of time (`time_left`), a pass asks nothing: the open questions stay the user's.
+    # Out of time (`budget.left()`), a pass asks nothing: the open questions stay the user's.
     if low_stakes:
-        for fid in _low_stakes(leftovers(history=False), facts, session, started):
+        for fid in _low_stakes(leftovers(history=False), facts, session, budget):
             out[fid] = Mapped(route="low_stakes")
     if _has_history(facts):
-        for fid in _answerable(leftovers(history=True), session, started):
+        for fid in _answerable(leftovers(history=True), session, budget):
             out[fid] = Mapped(route="reasoned")
     return out

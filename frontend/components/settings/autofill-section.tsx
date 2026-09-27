@@ -1115,7 +1115,7 @@ function CompanionPermissions({
  *  the Companion answers in the job's favor while this is on (off by
  *  default). Its own setting, not the consent record: it is a preference,
  *  not a permission to disclose or agree. The server re-reads it on every
- *  fill (/map and /pick), so this switch is the only way to turn it on. The
+ *  fill (/map, /pick and /step), so this switch is the only way to turn it on. The
  *  kinds, and the never list, are the backend's (`_LOW_STAKES`,
  *  `_NEVER_LOW_STAKES` in backend/app/services/autofill_map.py). */
 function LowStakesSwitch() {
@@ -1165,8 +1165,9 @@ function LowStakesSwitch() {
           </p>
           <p>
             Whether this is on or off, Fill may also answer questions about
-            past employers, a security clearance or years of experience from
-            your work history, and lists those to check too.
+            past employment by a kind of organization (such as a government
+            agency), a security clearance or years of experience from your
+            work history, and lists those to check too.
           </p>
         </div>
         {options.isError ? (

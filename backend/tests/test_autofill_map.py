@@ -642,13 +642,13 @@ def test_the_reasoning_question_describes_the_history_and_never_sends_it(db_sess
     prompts = fake_llm(monkeypatch, {"q": {"key": "none", "confidence": 0.95}}, reasoned={"q": 0.95})
     assert run([field("q", question, "select", options=["Yes", "No"])], db_session)["q"].route == "reasoned"
     [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-reasoned"]
-    assert autofill_map._REASONED_FROM in asked and autofill_map._NEVER_REASONED in asked
+    assert autofill_map.REASONED_FROM in asked and autofill_map.NEVER_REASONED in asked
     assert _PAGE_TEXT_IS_DATA in asked
     assert not [v for v in VALUES if v in asked and v not in question]
 
 
 def test_the_reasoning_never_list_keeps_knockouts_preferences_and_self_assessments_out():
-    never = autofill_map._NEVER_REASONED
+    never = autofill_map.NEVER_REASONED
     for kind in ("work authorization", "sponsorship", "age", "EEO", "background or criminal history", "salary",
                  "preference or willingness", "job description", "legal attestation or signature"):
         assert kind in never, kind
@@ -821,7 +821,7 @@ def test_the_history_sentinel_is_a_kind_of_organization_not_any_employer():
     history = autofill_map._SENTINELS[HISTORY]
     assert "a KIND of organization" in history and "past employers" not in history
     assert ("whether the applicant worked for, or is related to someone at, the company applied to"
-            in autofill_map._NEVER_REASONED)
+            in autofill_map.NEVER_REASONED)
 
 
 def test_previously_employed_by_the_company_applied_to_is_never_reasoned(db_session, monkeypatch):
@@ -882,3 +882,22 @@ def test_the_timeout_is_what_is_left_of_the_budget(db_session, monkeypatch):
     run([field("g", HISTORY_WORDINGS[0], "select")], db_session)
     [asked] = [p for p in prompts if p["trace_name"] == "autofill-reasoned"]
     assert asked["timeout"] == pytest.approx(autofill_map.REQUEST_BUDGET_S - 5.0)
+
+
+
+def test_one_budget_with_an_injectable_clock():
+    now = iter([10.0, 12.0, 10.0 + autofill_map.OPTIONAL_PASS_BUDGET_S, 10.0 + 8.8])
+    budget = autofill_map.Budget(lambda: next(now))
+    assert budget.left() == pytest.approx(autofill_map.REQUEST_BUDGET_S - 2.0)
+    assert budget.left() is None
+    later = iter([0.0, 5.9])
+    assert autofill_map.Budget(lambda: next(later)).left() == pytest.approx(
+        max(autofill_map.MIN_CALL_S, autofill_map.REQUEST_BUDGET_S - 5.9))
+    assert not hasattr(autofill_map, "time_left")
+
+
+def test_keen_lives_beside_the_low_stakes_scope():
+    from app.services import autofill_pick
+
+    assert "previously employed" in autofill_map.keen({})
+    assert autofill_pick.keen is autofill_map.keen  # one definition, imported
