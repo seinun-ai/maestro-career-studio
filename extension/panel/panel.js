@@ -2063,17 +2063,26 @@
   }
 
   /** "Forget learned widget moves": the recipe book's key removed whole —
-   * a `remove`, never a `set` to null, which would leave the key behind. The
-   * count goes to zero at once, so the control leaves with the press. */
+   * a `remove`, never a `set` to null, which would leave the key behind.
+   * SUCCESS IS SAID ONLY ONCE THE REMOVE HAS LANDED: then the count goes to
+   * zero, the control leaves, and focus goes to a stable control of the
+   * stage (the Fill row's door when it is one, else the chosen fill mode)
+   * rather than falling to the body with the button. A refused remove keeps
+   * the count and the control, and says so in `failureNote`'s shape. */
   async function forgetLearnedMoves() {
-    card.learnedMoves = 0;
-    card.note = { text: "Companion forgot the moves it learned." };
-    render();
     try {
       await chrome.storage.local.remove(KEY.recipes);
     } catch (err) {
       console.warn("[maestro-cs] storage remove failed:", err);
+      card.note = { text: "Couldn't forget the learned moves. Try again.", error: true };
+      render();
+      return;
     }
+    card.learnedMoves = 0;
+    card.note = { text: "The Companion forgot the moves it learned." };
+    render();
+    (document.getElementById(REVISIT_ID("fill")) ?? document.getElementById(`fill-mode-${card.fillMode}`))
+      ?.focus({ preventScroll: true });
   }
 
   /** Put a residue field in front of the user, in whichever frame holds it.

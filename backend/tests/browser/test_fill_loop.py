@@ -2004,8 +2004,8 @@ def popup_run(page, load, **kw):
     sweep re-checks it and finds it holding."""
     kw.setdefault("sweep", [HELD])
     kw.setdefault("frames", [[f("d", "popup", "Willing to travel?", recipe=RECIPE)]])
+    kw.setdefault("explore", {"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}})
     return run(page, load, map={"d": {"route": "slot", "slot": "preferences.travel", "value": "Yes"}},
-               explore={"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
                pick={"d": {"oids": ["o1"], "reason": "matched"}}, **kw)
 
 
@@ -2084,6 +2084,47 @@ def test_a_page_gone_before_the_final_sweep_teaches_nothing(page, load):
     assert statuses(out) == {"d": "verified"}
     assert out["calls"].count("fill_sweep") >= 2
     assert out["lessons"] is None
+
+
+@pytest.mark.parametrize("failure", [
+    {"outcome": "unexpected", "reason": "committed_while_opening"},
+    {"outcome": "unexpected", "reason": "unsettled"},
+    {"outcome": "unexpected", "reason": "no_popup"},
+    {"outcome": "unexpected", "reason": "no_effect", "gestures": ["keyboard"]},
+])
+def test_a_recipe_under_which_the_commit_failed_outright_is_contradicted(page, load, failure):
+    """No verified or unconfirmed value to learn from, but the learned order
+    was in use and the commit failed: that demotes the recipe tried (moves
+    empty, so the family is not taught anything)."""
+    out = popup_run(page, load, recipes={"book": LEARNED}, apply={"Yes": failure})
+    assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {}, "outcome": "contradicted"}]
+
+
+def test_a_recipe_under_which_the_explore_committed_is_contradicted(page, load):
+    """The harm case, earliest: a keys-first explore whose keys picked a value
+    the page would not give back. The field is left to the user, and the
+    recipe tried is demoted."""
+    out = popup_run(page, load, recipes={"book": LEARNED}, explore={"d": {
+        "options": [], "complete": False, "error": "committed_while_exploring", "committed": "No"}})
+    assert statuses(out) == {"d": "needs_answer"}
+    assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {}, "outcome": "contradicted"}]
+
+
+def test_an_outright_failure_with_no_recipe_in_use_teaches_nothing(page, load):
+    out = popup_run(page, load, recipes={}, apply={"Yes": {"outcome": "unexpected", "reason": "committed_while_opening"}})
+    assert out["lessons"] is None
+
+
+def test_a_set_whose_items_opened_differently_is_not_learned_as_one_move(page, load):
+    kw = dict(frames=[[f("k", "search", "Skills", multi=True, recipe=RECIPE)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
+              explore={"SQL": {"options": [opt("o1", "SQL")]}, "Python": {"options": [opt("o1", "Python")]}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
+              apply={"SQL+Python": {"outcome": "verified", "variant": {"open": "keys"}, "varied": ["open"]}},
+              sweep=[[{"fid": "k", "outcome": "verified", "held": True}]])
+    assert run(page, load, recipes={}, **kw)["lessons"] is None
+    out = run(page, load, recipes={"book": LEARNED}, **kw)
+    assert out["lessons"] == [{"recipe": RECIPE, "used": "s:sitea", "moves": {}, "outcome": "contradicted"}]
 
 
 def test_a_set_carries_the_learned_order(page, load):

@@ -257,7 +257,10 @@ global.chrome = {
         return { ...query, ...stored };
       },
       set: async (patch) => { writes.push(patch); },
-      remove: async (keys) => { removals.push(keys); },
+      remove: async (keys) => {
+        if (spec.removeThrows) throw new Error("storage is unavailable");
+        removals.push(keys);
+      },
     },
     // The SETTINGS store, and a different list on purpose: `sync` follows the
     // profile to every browser the user signs into, `local` does not. A test

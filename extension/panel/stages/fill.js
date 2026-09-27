@@ -71,6 +71,9 @@
       button.type = "button";
       button.setAttribute("role", "radio");
       button.setAttribute("aria-checked", on ? "true" : "false");
+      // Stable across a rebuild (panel.js `withPlaceKept`), and where focus
+      // goes when the Forget control it sits above leaves.
+      button.id = `fill-mode-${mode}`;
       button.disabled = facts.busy === true;
       button.addEventListener("click", () => act.setFillMode(mode));
       build.attach(seg, button);
@@ -699,6 +702,38 @@
   const NO_FORM_HERE = "No application form here. Open the employer's Apply "
     + "page to start filling.";
 
+  const FORGET_HINT_ID = "forget-moves-hint";
+
+  /** "Forget learned widget moves", while the recipe book holds anything.
+   *
+   * LAST IN THE BODY, and quiet (`unpick`'s muted text button, the panel's
+   * way of offering a way out that is not the next step): it is a
+   * preference about this browser, not a line of the run's report, so it sits
+   * under everything the run says. The hint says what is kept and what is
+   * not, because "learned" next to a form of your answers reads like the
+   * answers. Out of reach while anything runs, `modeControl`'s rule.
+   */
+  function forgetRow({ facts, act, build }) {
+    if (!facts.learnedMoves) return null;
+    const row = build.node("div", null);
+    const button = build.node("button", "unpick", "Forget learned widget moves");
+    button.type = "button";
+    button.disabled = facts.busy === true;
+    button.setAttribute("aria-describedby", FORGET_HINT_ID);
+    button.addEventListener("click", () => act.forgetLearnedMoves());
+    const hint = build.node("div", "sub",
+      "The Companion remembers which clicks and keys worked on each kind of form control. "
+      + "It keeps no answers and no web addresses.");
+    hint.id = FORGET_HINT_ID;
+    return build.attach(row, button, hint);
+  }
+  // The body, with the Forget control under it on every path.
+  function fillBody(ctx) {
+    const body = fillBodyOf(ctx);
+    const forget = forgetRow(ctx);
+    return forget ? ctx.build.attach(body, forget) : body;
+  }
+
   /** The Fill stage: choose the pass, run it, and read what it actually did.
    *
    * ON A PAGE WITH NO FORM none of the below is offered, and that is the
@@ -751,34 +786,6 @@
    * What FAILED is the note slot's, and the action writes a different sentence
    * for the partial case than for the page that was never reached.
    */
-  /** "Forget learned widget moves", while the recipe book holds anything.
-   *
-   * LAST IN THE BODY, and quiet (`unpick`'s muted text button, the panel's
-   * way of offering a way out that is not the next step): it is a
-   * preference about this browser, not a line of the run's report, so it sits
-   * under everything the run says. The hint says what is kept and what is
-   * not, because "learned" next to a form of your answers reads like the
-   * answers. Out of reach while anything runs, `modeControl`'s rule.
-   */
-  function forgetRow({ facts, act, build }) {
-    if (!facts.learnedMoves) return null;
-    const row = build.node("div", null);
-    const button = build.node("button", "unpick", "Forget learned widget moves");
-    button.type = "button";
-    button.disabled = facts.busy === true;
-    button.addEventListener("click", () => act.forgetLearnedMoves());
-    return build.attach(row, button, build.node("div", "sub",
-      "Companion remembers which clicks and keys worked on each kind of form control. "
-      + "It keeps no answers and no web addresses."));
-  }
-
-  // The body, with the Forget control under it on every path.
-  function fillBody(ctx) {
-    const body = fillBodyOf(ctx);
-    const forget = forgetRow(ctx);
-    return forget ? ctx.build.attach(body, forget) : body;
-  }
-
   function fillBodyOf(ctx) {
     const { facts, build } = ctx;
     const { node, attach } = build;

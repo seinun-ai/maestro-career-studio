@@ -87,7 +87,9 @@ amounts to **a list of where you applied and when**.
 
 Separately from telemetry, the Companion remembers, in this browser only,
 **which clicks and keys worked on each kind of form control**, so the next fill
-tries them first. It keeps no answers and no web addresses. **Forget learned
+tries them first. It keeps no answers and no web addresses, but someone with
+access to this browser could still work out which employers' application sites
+you used, roughly when you last used each, and how often. **Forget learned
 widget moves**, in the panel's Fill step, clears it.
 
 ## Different ports

@@ -493,7 +493,7 @@
           fid: f.fid, fp: f.fp, ...(term ? { term } : {}), ...(Number.isFinite(left) ? { ms: left } : {}),
         })],
       }))[f.fid];
-      if (got?.mismatch) heard(f, "explore", got);
+      if (got) heard(f, "explore", got);
       return got ?? { options: [], complete: false, error: "stale" };
     };
     // An explore that went wrong: true when it decided the field for now.
@@ -546,11 +546,20 @@
     // What the book may learn from a page operation: the moves a commit took
     // and whether the page kept them — verified is a candidate (the final
     // sweep decides), unconfirmed a contradiction — and a learned move the
-    // control could not take (`mismatch`, from any operation).
+    // control could not take (`mismatch`, from any operation). Under a recipe,
+    // an operation that failed OUTRIGHT (its open committed a value, its list
+    // never settled or never opened, the widget ignored it) is a contradiction
+    // too, of the recipe tried only (no moves: its family is taught nothing).
+    // A set whose items opened differently (`varied`) is no one move: nothing
+    // to learn, and a contradiction under a recipe.
+    const OUTRIGHT = new Set(["committed_while_opening", "committed_while_exploring", "unsettled", "no_popup", "no_effect"]);
     const heard = (f, op, got) => {
+      const tried = Boolean(rows.get(f.fid).recipe);
       if (got.mismatch) set(f.fid, { mismatch: got.mismatch, moves: got.variant ?? null });
+      if (tried && OUTRIGHT.has(op === "explore" ? got.error : got.reason)) set(f.fid, { contradicted: true });
       if (op !== "choose" && op !== "set") return;
-      if (got.outcome === "verified" && got.variant) set(f.fid, { moves: got.variant });
+      if (got.varied?.length) set(f.fid, { moves: null, ...(tried ? { contradicted: true } : {}) });
+      else if (got.outcome === "verified" && got.variant) set(f.fid, { moves: got.variant });
       if (got.outcome === "unconfirmed") set(f.fid, { moves: got.variant ?? rows.get(f.fid).moves ?? null, contradicted: true });
     };
     // One field's lesson, once the final sweep has run. A mismatch or a
@@ -1492,14 +1501,20 @@
     // Out of rounds with the last one still changing things: the final sweep
     // still runs, and a reversion it finds is reported, not hidden.
     if (!settled) await settledDone();
-    // The book learns from the fields on the page, after the final sweep only.
-    if (recipes && finalSwept && !halt()) {
+    // The book learns from the fields on the page, after the final sweep only
+    // (`finalSwept` already says it ran unhalted). The write gets an allowance
+    // of its own past the run's clock, so a run that ends at RUN_MS keeps them.
+    if (recipes && finalSwept && !cancelled()) {
       const lessons = listed.map((fid) => lessonOf(rows.get(fid))).filter(Boolean);
       if (lessons.length) {
+        let timer;
         try {
-          await bounded(() => recipes.record(lessons));
+          await Promise.race([Promise.resolve().then(() => recipes.record(lessons)),
+            new Promise((resolve) => { timer = setTimeout(resolve, L.API_MS); })]);
         } catch {
           // The book's loss, never the fill's.
+        } finally {
+          clearTimeout(timer);
         }
       }
     }

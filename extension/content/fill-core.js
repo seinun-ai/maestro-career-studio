@@ -502,9 +502,18 @@
   // SETTLE. Returns the popup, or null (none; or the Enter committed its one
   // hit and closed the list — the caller reads the evidence).
   // A learned `search: debounce` first (`variant`, a recipe) only waits
-  // longer — OPEN_MS — for the widget's own filter before that Enter: it never
-  // sends one the gate refuses. `used.search` says which it took, where an
+  // longer — OPEN_MS — for a combobox's own filter before that Enter: it never
+  // sends one the gate refuses. (A Workday box always gets its Enter, so it
+  // never learns a debounce.) `used.search` says which it took, where an
   // Enter could go at all.
+  // What an operation's opens and searches did, heard axis by axis (`used`):
+  // the move each took, and `varied` — the axes whose moves DIFFERED within
+  // one operation (a set's items that opened two ways are no one move).
+  const note = (used, axis, move) => {
+    if (!used) return;
+    if (used[axis] === undefined) used[axis] = move;
+    else if (used[axis] !== move && !(used.varied ??= []).includes(axis)) used.varied.push(axis);
+  };
   const search = async (el, shape, box, term, before, t, w, { press = true, variant, used } = {}) => {
     const snap = snapshot(el, shape);
     const workday = box === el && ns.shapes.workday(el);
@@ -538,13 +547,13 @@
     const gated = !workday && !box.getAttribute("aria-activedescendant") && comboBox(box);
     const patient = variant?.search?.[0] === "debounce";
     const silent = async (ms) => !(await b().waitFor(() => searchView(el, shape, before) !== was, ms, t));
-    const enter = workday ? !patient || (await silent(OPEN_MS)) : gated && (await silent(patient ? OPEN_MS : ANSWER_MS));
+    const enter = workday || (gated && (await silent(patient ? OPEN_MS : ANSWER_MS)));
     if (enter) {
       shown = textsOf(own(el, before));
       b().keyPress(box, "Enter", t);
       w?.saw("keyboard");
     }
-    if (used && (workday || gated)) used.search = enter ? "enter" : "debounce";
+    if (workday || gated) note(used, "search", enter ? "enter" : "debounce");
     const got = await waitSettled(el, shape, before, snap, shown, t);
     if (got.pop) settledFor.set(box, { pop: got.pop, texts: textsOf(got.pop), query: box.value });
     return got;
@@ -665,7 +674,7 @@
     } finally {
       quiet.stop();
     }
-    if (how && used) used.open = how;
+    if (how) note(used, "open", how);
     if (keyed && reclaim && moved(el, shape, snap)) {
       await takeBack(el, shape, snap, pop ? b().optionsOf(pop) : [], t);
       if (moved(el, shape, snap)) {
@@ -846,11 +855,15 @@
   };
 
   // What an operation's opens and searches did, for the loop's recipe book:
-  // `variant` the move each axis took, and `mismatch` the axis whose learned
-  // move the control could not take. Nothing when no list was opened.
+  // `variant` the move each axis took (the first, when they varied), `varied`
+  // the axes whose moves differed, and `mismatch` the axis whose learned move
+  // the control could not take. Nothing when no list was opened.
   const withMoves = (result, used) => {
-    const { mismatch, ...moves } = used;
-    return { ...result, ...(Object.keys(moves).length ? { variant: moves } : {}), ...(mismatch ? { mismatch } : {}) };
+    const { mismatch, varied, ...moves } = used;
+    return {
+      ...result, ...(Object.keys(moves).length ? { variant: moves } : {}),
+      ...(varied?.length ? { varied } : {}), ...(mismatch ? { mismatch } : {}),
+    };
   };
 
   // `variant`: a recipe's order for the opens and searches (see `open`).

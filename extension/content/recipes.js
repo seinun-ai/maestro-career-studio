@@ -33,7 +33,7 @@
   const MARKERS = ["data-automation-id", "data-uxi-widget-type"];
   // A 32-hex id, a UUID: per tenant or per load, never part of a kind.
   const GUIDISH = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16,}/gi;
-  const UP = 4; // ancestors read, at most: the field box is never further out
+  const UP = 4; // ancestors read above the element, at most: the field box is never further out
   const edge = (n) => !n || n === document.body || n === document.documentElement || n.tagName === "FORM";
 
   // A 53-bit string hash (cyrb53), in base 36. Not a secret: it only has to
@@ -50,8 +50,9 @@
     h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
     return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
   };
-  // The marker names on the element and its ancestors, up to the field box
-  // (Workday's `formField-*` wrapper, else UP levels, never past a form).
+  // The marker names on the element and on up to UP of its ancestors (so UP
+  // + 1 nodes at most), stopping at the field box (Workday's `formField-*`
+  // wrapper) and never reaching past a form.
   const markers = (el) => {
     const names = [];
     for (let n = el, d = 0; !edge(n) && d <= UP; n = n.parentElement, d += 1) {

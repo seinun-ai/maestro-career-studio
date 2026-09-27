@@ -81,7 +81,10 @@
     }
     return { v: VERSION, entries };
   };
-  const live = (e, today) => Boolean(e) && today - e.seen <= TTL_DAYS;
+  // Kept within TTL_DAYS, and not in the future: a `seen` past tomorrow (a
+  // clock set wrong, a hand-edited book) would otherwise never expire and
+  // never be evicted. A day of clock skew is allowed.
+  const live = (e, today) => Boolean(e) && today - e.seen <= TTL_DAYS && e.seen <= today + 1;
   const orderOf = (moves) => Object.fromEntries(Object.entries(moves)
     .map(([axis, move]) => [axis, [move, ...AXES[axis].filter((m) => m !== move)]]));
 
@@ -101,9 +104,31 @@
   // names, the lesson either did not exercise or moved the same way.
   const agrees = (e, moves) => Object.entries(e.moves).every(([axis, move]) => moves[axis] === undefined || moves[axis] === move);
 
+  // One run's kept lessons, folded per key: the moves the run kept there,
+  // `torn` when two of its fields moved differently on one axis (the run
+  // contradicts itself), and — for a family — the sites that kept it. So the
+  // ORDER of a run's lessons never matters.
+  const foldKept = (kept) => {
+    const runs = new Map();
+    for (const { recipe, moves: said } of kept) {
+      for (const key of [recipe.site, recipe.family]) {
+        const r = runs.get(key) ?? { moves: {}, torn: false, sites: new Set() };
+        for (const [axis, move] of Object.entries(movesOf(said))) {
+          if (r.moves[axis] !== undefined && r.moves[axis] !== move) r.torn = true;
+          else r.moves[axis] = move;
+        }
+        if (key === recipe.family) r.sites.add(recipe.site);
+        runs.set(key, r);
+      }
+    }
+    return runs;
+  };
+
   // A new book from `raw` and one run's lessons ({ recipe, used, moves,
-  // outcome: kept | contradicted | mismatch }). Kept lessons first, so a run
-  // that both kept and contradicted a move ends with it demoted.
+  // outcome: kept | contradicted | mismatch }). Kept lessons first, folded
+  // per key and judged against the book as it was BEFORE the run (one run is
+  // one success, however many fields it kept); then the rest, so a run that
+  // both kept and contradicted a move ends with it demoted.
   const learn = (raw, lessons, today) => {
     const entries = new Map(Object.entries(clean(raw).entries).filter(([, e]) => live(e, today)));
     // Re-inserted when kept, so the map's order is least recently kept first.
@@ -115,32 +140,24 @@
       const e = entries.get(key);
       if (e) entries.set(key, { ...e, state });
     };
-    const won = new Set(); // one run is one success, however many fields it kept
     const all = (Array.isArray(lessons) ? lessons : []).filter((l) => l && KEY.test(l.recipe?.family ?? "")
       && KEY.test(l.recipe?.site ?? ""));
-    for (const { recipe, moves: said } of all.filter((l) => l.outcome === "kept")) {
-      const moves = movesOf(said);
-      const teach = learnt(moves);
-      for (const key of [recipe.site, recipe.family]) {
-        const e = entries.get(key);
-        if (e && !TRIED.has(e.state)) continue; // demoted and quarantined stay so until they expire
-        if (e && !agrees(e, moves)) { // the other move won
-          demote(key);
-          continue;
-        }
-        if (!Object.keys(teach).length) continue; // nothing a recipe holds was exercised
-        const was = e ?? { moves: {}, state: "probation", ...(key === recipe.site ? { wins: 0 } : { sites: [] }) };
-        const next = { ...was, moves: { ...was.moves, ...teach }, seen: today };
-        if (key === recipe.site) {
-          if (!won.has(key)) next.wins = was.wins + 1;
-          if (next.wins >= 2) next.state = "trusted";
-        } else {
-          if (!was.sites.includes(recipe.site)) next.sites = [...was.sites, recipe.site].slice(-MAX_SITES);
-          if (next.sites.length >= 2) next.state = "trusted";
-        }
-        won.add(key);
-        put(key, next);
+    for (const [key, { moves, torn, sites }] of foldKept(all.filter((l) => l.outcome === "kept"))) {
+      const e = entries.get(key);
+      if (e && !TRIED.has(e.state)) continue; // demoted and quarantined stay so until they expire
+      if (torn || (e && !agrees(e, moves))) { // the run disagreed with itself, or the other move won
+        demote(key);
+        continue;
       }
+      const teach = learnt(moves);
+      if (!Object.keys(teach).length) continue; // nothing a recipe holds was exercised
+      const site = key.startsWith("s:");
+      const was = e ?? { moves: {}, state: "probation", ...(site ? { wins: 0 } : { sites: [] }) };
+      const next = { ...was, moves: { ...was.moves, ...teach }, seen: today };
+      if (site) next.wins = was.wins + 1;
+      else next.sites = [...new Set([...was.sites, ...sites])].slice(-MAX_SITES);
+      if ((site ? next.wins : next.sites.length) >= 2) next.state = "trusted";
+      put(key, next);
     }
     for (const { recipe, used, moves: said, outcome } of all.filter((l) => l.outcome !== "kept")) {
       if (outcome === "mismatch") {
@@ -164,10 +181,18 @@
 
   const size = (raw) => Object.keys(clean(raw).entries).length;
 
+  // Two tabs may finish a run together: each record's read → learn → write
+  // holds the `fill.recipes` Web Lock, so the second reads what the first
+  // wrote. Without `navigator.locks` (an older or insecure context) it runs
+  // unlocked, as before.
+  const locked = (fn) => (globalThis.navigator?.locks?.request
+    ? globalThis.navigator.locks.request("fill.recipes", fn) : fn());
+
   // The fill loop's `deps.recipes` over a store: `read()` / `write(book)` are
   // the panel's storage (async; a failed read is an empty book), `today()`
   // the day number. The book is read once for a run's lookups and again right
-  // before its one write, so a book another run wrote meanwhile is kept.
+  // before its one write, under the lock, so a book another run wrote
+  // meanwhile is kept.
   const store = ({ read, write, today = () => Math.floor(Date.now() / DAY_MS) }) => {
     const load = async () => {
       try {
@@ -181,8 +206,10 @@
       get: async (recipe) => consult((book ??= await load()), recipe, today()),
       record: async (lessons) => {
         if (!Array.isArray(lessons) || !lessons.length) return;
-        book = learn(await load(), lessons, today());
-        await write(book);
+        await locked(async () => {
+          book = learn(await load(), lessons, today());
+          await write(book);
+        });
       },
     };
   };

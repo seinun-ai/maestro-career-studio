@@ -813,8 +813,10 @@ know, and each one was learned from a live failure.
   ancestors' automation ids up to the field box with GUIDs stripped, whether
   it names its list, the popup kind, one answer or several, the kind of
   committed evidence, the engine version) and of that family on this host.
-  No label, value, option text or URL is in it; a host is only hashed, which
-  hides it but lets a host someone already knows be tested against it. A
+  No label, value, option text or URL is in it, but it is not nothing: the
+  site hash can be matched against public lists of employers' application
+  hosts, so the book can show which employers' sites were used, and its day
+  numbers and counts show roughly when each was last used and how often. A
   recipe only puts the move that worked FIRST: the other stays the fallback,
   and every gate still decides. The keys go only to a control the keyboard may
   reach, never after anything on it reacted, and the Enter only after an

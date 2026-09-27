@@ -459,7 +459,8 @@ main(async () => {
     forget.click();
     await settle();
   }
-  emit({ loaded, after: regions(), removals, writes, note: NOTE.textContent });
+  emit({ loaded, after: regions(), removals, writes, note: NOTE.textContent,
+         focused: document.activeElement?.id ?? null });
 });
 """
 LEARNED_BOOK = {"v": 1, "entries": {
@@ -473,13 +474,27 @@ def test_forget_clears_the_store(tmp_path):
                 stored={"widget.session": _armed_entry(), "fill.recipes": LEARNED_BOOK})
     rail = _text(out["loaded"]["rail"])
     assert "Forget learned widget moves" in rail
-    # The hint says what it is and what it is not, in the panel's words.
-    assert ("Companion remembers which clicks and keys worked on each kind of form control. "
-            "It keeps no answers and no web addresses.") in rail
+    # The hint says what it is and what it is not, in the panel's words, and
+    # the button names it as its description.
+    hint = ("The Companion remembers which clicks and keys worked on each kind of form control. "
+            "It keeps no answers and no web addresses.")
+    assert hint in rail
+    [button] = [n for n in _walk(out["loaded"]["rail"]) if n["text"] == "Forget learned widget moves"]
+    [described] = [n for n in _walk(out["loaded"]["rail"]) if n["id"] == button["attrs"]["aria-describedby"]]
+    assert described["text"] == hint
     # ONE key removed — not a `set` to null, which would leave the key behind.
     assert out["removals"] == ["fill.recipes"] and out["writes"] == []
     assert "Forget learned widget moves" not in _text(out["after"]["rail"])
-    assert out["note"] == "Companion forgot the moves it learned."
+    assert out["note"] == "The Companion forgot the moves it learned."
+    # The pressed control is gone: focus goes to a stable one in the stage.
+    assert out["focused"] == "fill-mode-rules"
+
+
+def test_a_forget_the_store_refused_says_so_and_keeps_the_control(tmp_path):
+    out = _fill(tmp_path, driver=_FORGET_DRIVER_JS, press=True, removeThrows=True,
+                stored={"widget.session": _armed_entry(), "fill.recipes": LEARNED_BOOK})
+    assert out["note"] == "Couldn't forget the learned moves. Try again."
+    assert "Forget learned widget moves" in _text(out["after"]["rail"])
 
 
 def test_with_nothing_learned_there_is_nothing_to_forget(tmp_path):
@@ -500,9 +515,6 @@ def test_learned_moves_have_their_own_documented_storage_key():
     assert "fill.recipes" not in orphans
     rule = panel[:panel.index("const KEY = {")]
     assert "`fill.recipes`" in rule[rule.rindex("chrome.storage.local"):]
-    # The one-key reasoning is the SESSION picks', never a claim about the store.
-    assert "holds TWO keys" in rule and "SESSION PICKS HAVE ONE KEY" in rule
-    assert "ONE key, holding" not in rule and "ONE KEY RATHER THAN TWO" not in rule
     fill = (EXTENSION / "panel" / "actions" / "fill.js").read_text(encoding="utf-8")
     assert re.search(r"recipes: store\.recipes\(\)", fill)
     html = (EXTENSION / "panel" / "panel.html").read_text(encoding="utf-8")
