@@ -2723,6 +2723,8 @@
     // `current` for what that costs and what stops it.
     generation += 1;
     const token = generation;
+    // A new page binding: the late re-detect's cap starts again.
+    frameDetects = 0;
     // A settings tab, a new tab, a PDF viewer, `about:blank`. The panel is open
     // across all of them and the user tabs through them constantly, so asking
     // the backend about a `chrome://` url would be a round trip per glance for
@@ -3202,12 +3204,17 @@
    * FRAME 0 FIRST, then EVERY FRAME when frame 0 has no form. An application
    * form can live in a subframe — Greenhouse's cross-origin embed on block.xyz,
    * inserted when the Apply tab opens — where frame 0 scores below the bar and
-   * the embed above it. `form` is then true when ANY frame says so, which is
-   * the condition `frameMayReceiveUserData` (content/agent.js) uses to admit a
-   * frame to a fill, so the offer matches what the fill can reach. `tier` and
+   * the embed above it. `form` is then true when a SUBFRAME says so with a
+   * score of at least `SUBFRAME_FORM_SCORE`: the embed scores 3, and an ad or
+   * offer iframe with identity fields and an "Apply now" button can reach 2.
+   * Only this offer reads the stricter bar; the write gate
+   * (`frameMayReceiveUserData`, content/agent.js) is each frame's own verdict,
+   * unchanged, so every frame the offer counts is one the fill can reach. `tier` and
    * `fileInputs` stay frame 0's (the attach offer is unchanged), and the
    * answer is null only when no frame answered at all, which is what sends
    * `askDetectPrepared` to inject. The fan-out carries no user data. */
+  const SUBFRAME_FORM_SCORE = 3;
+
   async function askDetect() {
     let top = null;
     try {
@@ -3230,7 +3237,8 @@
       .filter((one) => one?.result !== undefined && one.result !== null);
     if (top === null && answered.length === 0) return null;
     return { ...(top ?? { tier: "none", form: false, score: 0, fileInputs: 0 }),
-             form: answered.some((one) => one.result?.form === true) };
+             form: answered.some((one) => one.result?.form === true
+               && (one.frameId === 0 || Number(one.result?.score) >= SUBFRAME_FORM_SCORE)) };
   }
 
   /** A subframe of the bound tab finished loading: ask again, once per burst.
@@ -3240,9 +3248,16 @@
    * change, long after the 1/2/4 s schedule has run out. Debounced, because a
    * page loads several frames at once; only while there is no form yet, never
    * while an action runs, and under the generation rule — the answer lands
-   * only on the page that asked. Refresh covers the same case by hand. */
+   * only on the page that asked. Refresh covers the same case by hand.
+   *
+   * CAPPED at `FRAME_DETECT_MAX` asks per page binding: a page rotating ad
+   * iframes finishes a subframe load every few seconds, and asking every frame
+   * each time would be a cost with no end. `bindPage` (a tab switch, Refresh)
+   * starts the count again. */
   const FRAME_DETECT_MS = 500;
+  const FRAME_DETECT_MAX = 5;
   let frameDetectTimer = null;
+  let frameDetects = 0;
 
   function scheduleFrameDetect() {
     clearTimeout(frameDetectTimer);
@@ -3255,6 +3270,8 @@
 
   async function detectLateFrame(token) {
     if (!current(token) || card.hasForm || card.busy !== null || !isWebPage(card.url)) return;
+    if (frameDetects >= FRAME_DETECT_MAX) return;
+    frameDetects += 1;
     const verdict = await askDetect();
     if (!current(token) || card.hasForm || card.busy !== null) return;
     if (verdict?.form !== true) return;

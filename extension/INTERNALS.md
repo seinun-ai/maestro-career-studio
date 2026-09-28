@@ -54,13 +54,16 @@ reference, never a value) so the engine never overwrites it.
 
 `detect.js` is the decision point and it answers only when asked — the panel
 sends `detect_page` to frame 0 of the tab it is bound to, because a panel runs in
-no page, and, when frame 0 has no form, to every frame (`page_broadcast`). The
-form verdict is true when any frame's is: an application form can be an
-embedded cross-origin iframe (Greenhouse's embed on block.xyz, inserted when the
-Apply tab opens), and a frame whose own verdict is `form` is exactly what
-`frameMayReceiveUserData` admits to a fill. A subframe of the bound tab that
-finishes loading (`webNavigation.onCompleted`) asks again once, debounced, while
-no form is known and nothing is running; Refresh covers it by hand. It reads,
+no page, and, when frame 0 has no form, to every frame (`page_broadcast`). An
+application form can be an embedded cross-origin iframe (Greenhouse's embed on
+block.xyz, inserted when the Apply tab opens), so a subframe's `form` counts —
+at a stricter bar, score 3 or more, because an ad or offer iframe with identity
+fields and an "Apply now" button can score 2. Only the offer reads that bar;
+`frameMayReceiveUserData` still admits each frame by its own verdict. A subframe
+of the bound tab that finishes loading (`webNavigation.onCompleted`) asks again,
+debounced, while no form is known and nothing is running, at most five times
+per page binding (a tab switch or Refresh starts over); Refresh covers it by
+hand. It reads,
 scores and returns four keys: the tier, whether a form's evidence held, the
 score behind it, and how many upload boxes a resume could go into (frame 0's
 count only, so the attach offer is unchanged). It holds no state, registers no observer and touches nothing on the page.

@@ -689,6 +689,83 @@ def test_a_form_frame_added_after_the_page_loaded_brings_the_primary(tmp_path):
     assert "No application form here" not in _text(out["settled"]["rail"])
 
 
+def test_a_subframe_alone_needs_a_score_of_three_to_count_as_the_form(tmp_path):
+    """A stricter bar when frame 0 has no form: an ad or offer iframe with
+    identity fields and an "Apply now" button can score 2; the block.xyz
+    Greenhouse embed scores 3. Only the OFFER reads this bar — the write gate
+    (`frameMayReceiveUserData`) is each frame's own verdict, unchanged."""
+    (tmp_path / "ad").mkdir()
+    (tmp_path / "embed").mkdir()
+    ad = _fill(tmp_path / "ad", replies={"panel_frame0": _reply(TOP_NO_FORM)},
+               frames={"detect_page": [
+                   {"frameId": 0, "result": TOP_NO_FORM},
+                   {"frameId": 6, "result": {**EMBED_FORM, "score": 2}}]})
+    embed = _fill(tmp_path / "embed", replies={"panel_frame0": _reply(TOP_NO_FORM)},
+                  frames={"detect_page": [
+                      {"frameId": 0, "result": TOP_NO_FORM},
+                      {"frameId": 5, "result": EMBED_FORM}]})
+    assert _by_class(ad["loaded"]["foot"], "cta") == []
+    assert "No application form here" in _text(ad["loaded"]["rail"])
+    assert _text(_by_class(embed["loaded"]["foot"], "cta")[0]) == "Autofill"
+
+
+_LATE_STEPS_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+const asked = () => broadcasts.filter((msg) => msg.message.type === "detect_page").length;
+main(async () => {
+  await settle();
+  const counts = [];
+  for (const step of spec.steps) {
+    const before = asked();
+    if (step.busy) ns.panel.actionStore().write({ busy: "fill" });
+    if (step.switchTo !== undefined) {
+      await onActivated({ tabId: step.switchTo });
+      await settle();
+    }
+    for (const frameId of step.frames ?? []) {
+      await navCompleted({ tabId: step.tabId ?? 7, frameId });
+      await settle();
+    }
+    counts.push(asked() - before);
+  }
+  emit({ counts, settled: regions() });
+});
+"""
+
+
+def _late_steps(tmp_path, steps, **spec):
+    tmp_path.mkdir(exist_ok=True)
+    spec.setdefault("replies", {"panel_frame0": _reply(TOP_NO_FORM)})
+    spec.setdefault("frames", {"detect_page": [{"frameId": 0, "result": TOP_NO_FORM}]})
+    return _fill(tmp_path, driver=_LATE_STEPS_DRIVER_JS, steps=steps, **spec)
+
+
+def test_the_late_re_detect_asks_at_most_five_times_per_page(tmp_path):
+    """A page that keeps rotating ad iframes finishes a subframe load every
+    few seconds; asking every frame each time is a cost with no end. Five
+    asks per page binding, and a tab switch (or Refresh) starts a new page."""
+    out = _late_steps(tmp_path, [{"frames": [3, 4, 5, 6, 7, 8, 9]},
+                                 {"frames": [10]},
+                                 {"switchTo": 8, "tabId": 8, "frames": [3]}],
+                      tabUrls={"8": "https://jobs.example.com/apply"})
+    assert out["counts"][0] == 5
+    assert out["counts"][1] == 0
+    assert out["counts"][2] >= 1
+
+
+def test_the_late_re_detect_asks_nothing_while_busy_with_a_form_or_for_a_tab_left(
+        tmp_path):
+    busy = _late_steps(tmp_path / "busy", [{"busy": True, "frames": [3]}])
+    formed = _late_steps(tmp_path / "formed", [{"frames": [3]}],
+                         replies={"panel_frame0": _reply(EMBED_FORM)})
+    left = _late_steps(tmp_path / "left", [
+        {"switchTo": 8, "frames": []}, {"tabId": 7, "frames": [3]}],
+        tabUrls={"8": "https://jobs.example.com/apply"})
+    assert busy["counts"] == [0]
+    assert formed["counts"] == [0]
+    assert left["counts"][1] == 0
+
+
 def test_the_default_mode_is_assist_and_the_choice_is_remembered_for_the_profile(tmp_path):
     """The mode is a SETTING, not a page fact.
 
