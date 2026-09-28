@@ -46,8 +46,8 @@
    * read; here it is `base` on the QA body, and sending it is what makes the
    * sentence this action prints ("Answered from your base resume and this
    * posting") a true one. Without it the route grounds on a generic default
-   * resume the user never picked — the document the whole Score stage exists to
-   * have them choose against — so the panel would be filling an essay box from
+   * resume the user never picked — the document the Job step's base question
+   * exists to have them choose — so the panel would be filling an essay box from
    * one resume while the fill beside it wrote from another.
    *
    * `null` is the third rung and it now has TWO ways of being reached: nothing

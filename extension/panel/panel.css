@@ -245,7 +245,7 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0;
 }
 
-/* The Score stage's ranked list: one row per base resume, best first.
+/* The Job step's ranked base list: one row per base resume, best first.
  *
  * A BUTTON where the mockup drew a div, because the row is the control — so
  * the first four declarations are the button reset the mockup never needed
@@ -273,10 +273,9 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * RANKING and never merely the top of the list — an all-unscored library has
  * no best, and a green chip on the first row would invent one.
  *
- * Namespaced under `.baserow` like its siblings, and here that is more than
- * tidiness: "score" is also a STAGE key, so a bare `.score` would be inherited
- * by whatever Task 12 or 15 happens to call a class of that name — silently,
- * and looking like a chip. */
+ * Namespaced under `.baserow` like its siblings: "score" is a common word,
+ * so a bare `.score` would be inherited by whatever a later task happens to
+ * call a class of that name — silently, and looking like a chip. */
 .baserow .score {
   margin-left: auto; font: 700 12px/1 var(--cs-font); border-radius: 999px;
   padding: 5px 8px; background: var(--cs-surface-2); color: var(--cs-muted);

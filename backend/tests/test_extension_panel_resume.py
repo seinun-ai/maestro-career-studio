@@ -331,6 +331,25 @@ def test_create_pdf_renders_the_applications_pdf_and_the_rail_moves_on(tmp_path)
     assert out["writes"][-1]["widget.session"]["pdfReady"] is True
 
 
+def test_a_create_pdf_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
+    """The generation rule on the render round trip: the user may leave while
+    the PDF is made, and "PDF created." (and a session entry saying so) about
+    the page they left must not land on the one they are on."""
+    out = _resume(tmp_path, pressCta=True, hold=["/render"], switchTo=42,
+                  tabUrls={"42": "chrome://settings"}, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft"}}),
+        "/api/applications/app-1/render": _reply(
+            {"tex_path": "r/app-1.tex", "pdf_path": "renders/app-1.pdf"}),
+        "/api/applications/app-1": _reply({"pdf_path": None, "status": "draft"})})
+    assert [msg["path"] for msg in _posts(out)] == ["/api/applications/app-1/render"]
+    settled = out["settled"]
+    assert "PDF created" not in _text(settled["foot"])
+    assert [n for n in _walk(settled["foot"]) if "spin" in str(n.get("class"))] == []
+    assert not any(write.get("widget.session", {}).get("pdfReady")
+                   for write in out["writes"])
+
+
 def test_a_create_pdf_that_fails_says_so_and_keeps_the_step(tmp_path):
     out = _resume(tmp_path, pressCta=True, api={
         "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,

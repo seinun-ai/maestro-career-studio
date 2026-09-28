@@ -68,8 +68,8 @@ def context_from_job(
 ) -> tuple[Job, dict[str, Any]]:
     """The job and the resume a job-level answer is written FROM.
 
-    `base_slug` is the caller's own pick — the side panel sends the base the
-    Score stage selected, which is the same resume its fill would have used —
+    `base_slug` is the caller's own pick — the side panel sends the base its
+    Job step chose, which is the same resume its fill would have used —
     and it goes through `load_base_resume`, so the table gate applies exactly as
     it does everywhere else. Without one, the generic default above stands.
 

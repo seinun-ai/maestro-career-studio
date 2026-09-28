@@ -73,8 +73,8 @@
  * parts of one stage's body, and three files that all have to agree about what
  * a run reported would buy a boundary and cost the agreement.
  *
- * SIZES: job 317 · resume 288 · fill 846 · track 139, this roster
- * 104. Stated because a threshold nobody can measure against is not one. (The
+ * SIZES: job 359 · resume 201 · fill 846 · track 139, this roster
+ * 103. Stated because a threshold nobody can measure against is not one. (The
  * roster was FOUR for one commit — Task 15's opening cut was the MOVE, and the
  * Track body landed in the commit after it.)
  */
