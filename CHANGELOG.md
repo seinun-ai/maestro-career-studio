@@ -28,6 +28,117 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-09-27
+
+### Breaking changes
+
+- **Three migrations run by themselves at startup.** One stores health-check
+  results with the rubric that judged them, and a table for your disputes.
+  The other two refresh the built-in tailoring prompts (tailoring rules, gap
+  tailoring and the Assistant's instructions) and the built-in health-check
+  prompts. A built-in prompt moves to the new default only if you never
+  edited it; one you changed in Settings › AI & models › Prompts is left
+  as it is.
+- **Agree again to let the Companion fill agreements and signatures.** The
+  permission now covers more (see Changed), so a yes given before this
+  release is off until you give it again. Profile › Autofill says so beside
+  the switch: "This now covers more than when you agreed. Turn it on again
+  to allow it." Your diversity consent is unchanged.
+- API routes and MCP tools: none removed or renamed. The health report gains
+  `next_grade` and a question on each finding, and `get_autofill_profile`
+  gains `languages`.
+
+### Added
+
+- **A new Fill in the Companion.** "Saved answers + AI" now works a form the
+  way you would, Workday-style dropdowns, searches and checkboxes included,
+  and counts a field filled only once it has checked what the page actually
+  kept. When it finishes it lists what it filled, the closest matches it
+  picked, what it answered for you and what still needs your answer; select
+  a row to jump to that field. Stop ends a run at any time. "Saved answers
+  only" still runs the earlier fill.
+- **Answers come from your saved answers.** With a Jev key saved and Jev
+  chosen in Settings › AI & models › Form filling, Jev picks first, in about
+  a tenth of a second, and your fast model decides where Jev is unsure.
+  Without Jev, your fast model does it all.
+- **Yes/No questions worded in reverse are read correctly**, such as "I do
+  not require sponsorship". Fill first works out whether the question asks
+  the same thing as your answer or the opposite, and leaves the field to you
+  when it can't tell. "Now or in the future" sponsorship questions are
+  answered from both of your sponsorship answers.
+- **Fill adds entries** for the jobs, schools, languages and websites your
+  profile holds, using the section's own Add button, and fills each one.
+- **Fill remembers which clicks worked** for each kind of box, so the next
+  form with the same widgets goes faster. No labels, values or page
+  addresses are kept. "Forget learned widget moves" in the Fill step clears
+  it.
+- **Answer low-stakes questions for me** (Profile › Autofill, off by
+  default): questions none of your answers covers and whose answer barely
+  matters, like willingness to travel or a preferred contact method, are
+  answered in the job's favor. Never work authorization, sponsorship,
+  diversity questions, salary, background checks or signatures.
+- **Languages** in Profile › Autofill: reading, speaking and writing levels
+  (Basic, Intermediate, Fluent), plus separate Native and Fluent answers.
+  The Companion adds a language to a form only when all three levels are
+  set.
+- **Health check v3.**
+  - Each bullet gets its own question, a number only where one fits the
+    work, always with a way to answer without one. A result stated clearly
+    in words now earns full credit.
+  - "Start the questions" opens a question pass: every question on one page,
+    answered all at once or row by row, saved to the resume as one change
+    you can undo.
+  - **Not right?** on a finding tells the check why it's wrong, and it reads
+    that bullet again with your note. A level never rises without words from
+    the bullet itself, and "no number exists" is remembered for that text.
+  - A wording checklist flags spelling and grammar slips, clichés and filler
+    words, with Apply or Remove where the fix reads cleanly. The cliché and
+    filler lists, and a Never flag list, are yours to edit.
+  - A summary band on top: the grade, the points to the next one, and "No
+    numbers anywhere" when no bullet has a number (a note, not a penalty).
+    Findings sit under tabs by what they need.
+- **Windows**, through Docker Desktop's WSL 2 engine: install, update and
+  the Claude extension work with the clone in your WSL home
+  ([On Windows: use WSL](docs/GETTING_STARTED.md#on-windows-use-wsl)).
+- **Drag to reorder** bullets, sections and section order in the resume
+  editor, by mouse or keyboard. Each bullet's ⋯ menu has Move to top, Move
+  up, Move down and Delete.
+
+### Changed
+
+- **The Companion panel has four steps: Job, Resume, Fill, Track.** Save job
+  also scores your base resumes and picks the best match, in the same press.
+- **A shorter Resume step**: use your base resume or tailor to this job. An
+  application with a tailored resume but no PDF yet gets **Create PDF**.
+- **Refresh** in the panel reads this page's job and applications again, so
+  a PDF you made in Maestro CS shows up. What you typed and the Fill report
+  stay.
+- **Letting the Companion fill agreements and signatures now covers every
+  field**, including signatures, initials, typed-name attestations and
+  salary history. It still never moves to the next page and never submits.
+- Tailoring writes bullets by the health check's rule: a concrete result,
+  with a number only where you gave one, not a number in every line.
+- Health checks judge each bullet again under the new rubric the next time
+  they run, so a score or grade can move.
+- Score and tailor: each card has one button, **Analyze gaps**; Restart gap
+  analysis and Mark applied without tailoring are in the card's ⋯ menu.
+- Career opens on your history: Quick capture rests as one line, and each
+  profile section (Contact, Summary, Skills, Notes for the AI) has its own
+  Edit.
+
+### Fixed
+
+- The panel no longer asks you to tailor again when you come back to a job
+  whose tailored resume is ready.
+- Long steps in the panel scroll instead of being cut off.
+- Fill no longer types your phone number into a phone extension or country
+  code box, or your street address into a second address line.
+- Workday application steps are recognized as forms, so Fill is offered on
+  them.
+- A resume upload counts as attached when the page lists the file, even on
+  pages that clear the upload box (Workday), and never when the page refused
+  it.
+
 ## [0.6.0] — 2026-09-24
 
 ### Breaking changes
