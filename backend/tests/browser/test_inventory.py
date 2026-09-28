@@ -524,9 +524,74 @@ def test_nameless_radios_beside_another_kind_of_field_are_not_pulled_into_a_grou
 
 
 def test_nameless_checkboxes_stay_lone(page, load):
-    load(page, "<div><div><input type='checkbox' id='a'><label for='a'>Email me updates</label></div>"
-               "<div><input type='checkbox' id='b'><label for='b'>Text me updates</label></div></div>")
     """Only radios group by their container: two nameless boxes are two
     yes/no answers, each asking its own label."""
+    load(page, "<div><div><input type='checkbox' id='a'><label for='a'>Email me updates</label></div>"
+               "<div><input type='checkbox' id='b'><label for='b'>Text me updates</label></div></div>")
     assert [(f["question"], f["multi"]) for f in fields(page)] == [
         ("Email me updates", False), ("Text me updates", False)]
+
+
+
+# Review of the first cut (reviewer probes, 2026-09-28).
+def summary(page):
+    return [(f["question"], [o["text"] for o in f["options"]]) for f in fields(page)]
+
+
+@pytest.mark.parametrize("html, want", [
+    ("<p>Intro to the application</p><div role=radiogroup aria-label='Willing to relocate?'>"
+     "<input type=radio name=q id=y><span>Yes</span><input type=radio name=q id=n><span>No</span></div>",
+     [("Willing to relocate?", ["", ""])]),
+    ("<span id=qq>Willing to relocate?</span><div role=radiogroup aria-labelledby=qq><div><input type=radio name=q>"
+     "<span>Yes</span></div><div><input type=radio name=q><span>No</span></div></div>",
+     [("Willing to relocate?", ["", ""])]),
+    ("<div><span>Willing to relocate?</span><input type=radio name=q id=y><span>Yes</span>"
+     "<input type=radio name=q id=n><span>No</span></div>",
+     [("Willing to relocate?", ["", ""])]),
+    ("<div><p>Willing to relocate?</p><div><input type=radio name=q id=y><span>Yes</span></div>"
+     "<div><input type=radio name=q id=n><span>No</span></div></div>",
+     [("Willing to relocate?", ["", ""])]),
+    ("<div><span>Languages</span><input type=checkbox name=l><span>Python</span>"
+     "<input type=checkbox name=l><span>Java</span><input type=checkbox name=l><span>Go</span></div>",
+     [("Languages", ["", "", ""])]),
+    ("<div><p>By applying you agree we may run a background check.</p>"
+     "<div><input type=checkbox id=c><span>Send me job alerts</span></div></div>",
+     [("", ["Yes", "No"])]),
+], ids=["radiogroup", "labelledby-group", "flat-radios", "wrapped-radios", "flat-checkboxes", "lone-checkbox"])
+def test_options_labelled_after_them_are_never_shifted_onto_their_neighbours_text(page, load, html, want):
+    """An option whose label is an unassociated span AFTER it reads no text —
+    never the text before it (the question, or the previous option's label)."""
+    load(page, html)
+    assert summary(page) == want
+
+
+def test_two_nameless_questions_under_one_wrapper_are_two_groups(page, load):
+    load(page, "<div><span>Need sponsorship?</span>"
+               "<div><input type=radio id=a><label for=a>Yes</label></div><div><input type=radio id=b><label for=b>No</label></div>"
+               "<span>Over 18?</span>"
+               "<div><input type=radio id=c><label for=c>Yes</label></div><div><input type=radio id=d><label for=d>No</label></div></div>")
+    assert summary(page) == [("Need sponsorship?", ["Yes", "No"]), ("Over 18?", ["Yes", "No"])]
+
+
+def test_nameless_radios_with_repeated_option_texts_are_never_merged(page, load):
+    """Nothing but the repeat tells the two questions apart: no group may
+    hold two options that read the same."""
+    load(page, "<div><span>Questions</span>" + "".join(
+        f"<div><input type=radio id={i}><label for={i}>{t}</label></div>"
+        for i, t in (("a", "Yes"), ("b", "No"), ("c", "Yes"), ("d", "No"))) + "</div>")
+    for _, options in summary(page):
+        assert len(options) == len(set(options)), options
+
+
+def test_a_group_deep_under_an_intro_paragraph_asks_nothing(page, load):
+    """A named group with no container, six wrappers under a heading and an
+    intro sentence: the sentence is no question."""
+    load(page, "<div><h2>Voluntary Self-Identification</h2><p>Completion of this form is voluntary and will not "
+               "affect your application.</p>" + "<div>" * 6 + "<label><input type=radio name=v>I am a protected veteran"
+               "</label><label><input type=radio name=v>I am not a protected veteran</label>" + "</div>" * 7)
+    assert [(f["question"], f["source"]) for f in fields(page)] == [("", None)]
+
+
+def test_a_group_asked_by_the_text_before_it_reports_the_preceding_source(page, load):
+    load(page, fixture_html("gem_form.html"))
+    assert {f["source"] for f in fields(page) if f["shape"] == "group"} == {"preceding"}

@@ -139,10 +139,13 @@ def test_the_climb_stops_at_an_ancestor_holding_another_field(page, load):
     assert page.evaluate(READ, "#a")["question"] == ""
 
 
-def test_a_heading_before_the_box_is_neither_its_label_nor_a_way_past(page, load):
+@pytest.mark.parametrize("heading", ["<h3>Contact</h3>", "<div class='hdr-9'><h3>Contact information</h3></div>"],
+                         ids=["direct", "wrapped"])
+def test_a_heading_before_the_box_is_neither_its_label_nor_a_way_past(page, load, heading):
     """A section heading is no field's label, and the text above it belongs to
-    something else (a job description, the previous section)."""
-    load(page, f"<p class='x'>We are a fast-growing team.</p><div><h3>Contact</h3>{wrapped('<input id=a>')}</div>")
+    something else (a job description, the previous section) — wrapped in a
+    div or not."""
+    load(page, f"<span class='x'>Your details</span><section>{heading}{wrapped('<input id=a placeholder=Phone>')}</section>")
     assert page.evaluate(READ, "#a")["question"] == ""
 
 
@@ -152,3 +155,84 @@ def test_every_other_source_still_comes_first(page, load):
                "<div><span class='t-1'>Preceding text</span><div><input id=b aria-label='Own label'></div></div>")
     got = [page.evaluate(READ, s) for s in ("#a", "#b")]
     assert [(g["question"], g["source"]) for g in got] == [("Nearby label", "nearby"), ("Own label", "aria-label")]
+
+
+# Review of the first cut (reviewer probes, 2026-09-28): what the preceding
+# text must NOT become.
+@pytest.mark.parametrize("html", [
+    "<p>Intro to the application</p><input type=radio name=q id=a><span>Yes</span>",
+    "<div><p>By applying you agree we may run a background check.</p>"
+    "<div><input type=checkbox id=a><span>Send me job alerts</span></div></div>",
+], ids=["radio", "lone-checkbox"])
+def test_a_choice_never_takes_the_text_before_it(page, load, html):
+    """A radio's or checkbox's own label follows it; the text before it is a
+    neighbour's (the previous option's, a paragraph)."""
+    load(page, html)
+    assert page.evaluate(READ, "#a")["question"] == ""
+
+
+@pytest.mark.parametrize("html", [
+    "<div><input id=a><span class=c1>First name</span><input id=b><span class=c1>Last name</span></div>",
+    "<div><p>Tell us about you</p><div class=x1><input id=a><label class=x2>First name</label></div>"
+    "<div class=x1><input id=b><label class=x2>Last name</label></div></div>",
+], ids=["flat", "wrapped"])
+def test_boxes_labelled_after_them_never_take_the_text_before(page, load, html):
+    """A label AFTER each box: the text before the second box is the first
+    box's label, and the text before the first box is an intro."""
+    load(page, html)
+    assert [page.evaluate(READ, s)["question"] for s in ("#a", "#b")] == ["", ""]
+
+
+@pytest.mark.parametrize("html", [
+    # an instruction paragraph: a sentence, not a label
+    "<div><h3>Contact</h3><p>We will use this to reach you about your application.</p>"
+    "<div><input id=a placeholder='Phone number'></div></div>",
+    # the previous field's error message
+    "<div><div><label for=e>Email</label><input id=e></div><span class=msg>Please enter a valid email address</span>"
+    "<div><input id=a placeholder='Phone'></div></div>",
+    # helper text between the real label and the box: which one is the label?
+    "<div><span>Phone</span><span>Include country code</span><div><input id=a></div></div>",
+    # a table's header row
+    "<table><tr><th>Company</th><th>Title</th></tr><tr><td><input id=a></td></tr></table>",
+    # screen-reader-only text
+    "<div><span style='position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)'>Loading</span>"
+    "<div><input id=a placeholder='Search'></div></div>",
+    "<style>.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}</style>"
+    "<div><span class='sr-only'>Loading</span><div><input id=a placeholder='Search'></div></div>",
+    # a live region and an alert
+    "<div><span aria-live='polite'>Saved</span><div><input id=a></div></div>",
+    "<div><div role='alert'><span>Check this field</span></div><div><input id=a></div></div>",
+    # a label AFTER the box's wrapper, below an intro
+    "<div><p>Section intro text</p><div class=w><input id=a role=combobox placeholder='Select...'></div>"
+    "<span class=z>Country</span></div>",
+    # too long for a label
+    "<div><span>Tell us in your own words what excites you about this role and our team</span><div><input id=a></div></div>",
+], ids=["instructions", "previous-error", "helper-between", "table-header", "clipped", "sr-only-class", "live-region",
+        "alert", "label-after-wrapper", "too-long"])
+def test_text_that_is_not_a_label_is_never_read_as_one(page, load, html):
+    load(page, html)
+    assert page.evaluate(READ, "#a")["question"] == ""
+
+
+def test_a_cell_before_the_box_in_its_own_row_is_its_label(page, load):
+    """The climb never leaves the box's table row (a header row names columns,
+    not this box), but a cell beside it in the row is its label."""
+    load(page, "<table><tr><td>Company</td><td><input id=a></td></tr></table>")
+    assert page.evaluate(READ, "#a")["question"] == "Company"
+
+
+@pytest.mark.parametrize("before, question", [("<span>Willing to relocate?</span>", "Willing to relocate?"),
+                                              ("<p>Please answer every question below honestly.</p>", "")])
+def test_a_group_container_named_only_by_the_text_before_it(page, load, before, question):
+    """readField(container) — a nameless radiogroup's question — reads the
+    preceding text only when it passes the label test."""
+    load(page, f"{before}<div role=radiogroup id=g><label><input type=radio name=q>Yes</label>"
+               "<label><input type=radio name=q>No</label></div>")
+    got = page.evaluate(READ, "#g")
+    assert (got["question"], got["source"]) == (question, "preceding" if question else None)
+
+
+def test_a_label_under_a_heading_is_still_the_label(page, load):
+    """A heading BEFORE the candidate ends the look-back, not the answer."""
+    load(page, f"<section><h3>Contact</h3><span class='b-47'>Phone</span>{wrapped('<input id=a>')}</section>")
+    assert page.evaluate(READ, "#a")["question"] == "Phone"

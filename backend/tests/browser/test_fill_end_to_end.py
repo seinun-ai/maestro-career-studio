@@ -528,3 +528,33 @@ def test_a_gem_form_is_filled_by_the_text_before_each_field(e2e_page):
     for question in GEM_MAP:
         assert out["by_question"][question]["status"] == "verified", out["by_question"].get(question)
     assert "" not in out["by_question"]
+
+
+def _checked(page):
+    return page.evaluate("[...document.querySelectorAll('input:checked')].map((i) => i.id)")
+
+
+def test_options_labelled_after_them_are_never_chosen_by_their_neighbours_text(e2e_page):
+    """Reviewer probe (2026-09-28): options whose labels are spans AFTER them
+    read no text, so the fact "Yes" matches none of them. Nothing is checked
+    and the question is left for the user — never "No" checked and reported
+    verified because its option read the previous option's "Yes"."""
+    page = e2e_page
+    out = _run(page, html="<p>Intro to the application</p><div role=radiogroup aria-label='Willing to relocate?'>"
+                          "<input type=radio name=q id=y><span>Yes</span><input type=radio name=q id=n><span>No</span></div>",
+               map={"Willing to relocate?": {"route": "slot", "slot": "work_auth.relocate", "value": "Yes"}})
+    assert _checked(page) == []
+    assert out["by_question"]["Willing to relocate?"]["status"] == "needs_answer"
+
+
+def test_two_nameless_questions_under_one_wrapper_are_both_filled(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<div><span>Need sponsorship?</span>"
+               "<div><input type=radio id=a><label for=a>Yes</label></div><div><input type=radio id=b><label for=b>No</label></div>"
+               "<span>Over 18?</span>"
+               "<div><input type=radio id=c><label for=c>Yes</label></div><div><input type=radio id=d><label for=d>No</label></div></div>",
+               map={"Need sponsorship?": {"route": "slot", "slot": "work_auth.sponsorship", "value": "No"},
+                    "Over 18?": {"route": "slot", "slot": "work_auth.over_18", "value": "Yes"}})
+    assert _checked(page) == ["b", "c"]
+    assert {q: r["status"] for q, r in out["by_question"].items()} == {
+        "Need sponsorship?": "verified", "Over 18?": "verified"}

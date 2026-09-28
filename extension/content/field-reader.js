@@ -62,6 +62,81 @@
   };
   const fromIds = (el, attr) => clean((el.getAttribute(attr) ?? "").split(/\s+/).filter(Boolean)
     .map((id) => text(byId(el, id))).join(" "));
+  // A field's SECTION comes from h1–h5: an <h6> is a sub-label inside an
+  // entry ("Dates" in "Work Experience 2"), and taking it would drop the
+  // entry's number. ANY_HEADING (h6 too) is for content/sections.js and the
+  // preceding label's stop.
+  const HEADING = "h1, h2, h3, h4, h5, [role=heading]";
+  const ANY_HEADING = "h1, h2, h3, h4, h5, h6, [role=heading]";
+
+  // THE TEXT BEFORE A FIELD: the "preceding" source, and a group's question
+  // in shapes.js. For a box nothing names — Gem's bare input under a
+  // hashed-class span — so no class name matters. A wrong label maps to a
+  // wrong fact and a wrong write; every doubt abstains ("").
+  // Never label text: fill-base's error nodes, and live regions.
+  const NOT_LABEL = '[role="alert"], [aria-live], [data-automation-id="errorMessage"], [class*="error" i]';
+  const MAX_CLIMB = 6;
+  // A label is short and is no sentence ("Phone", "Are you over 18?", "City:").
+  const labelish = (t) => t.length <= 80 && t.split(" ").length <= 12 && !/[.!]$/.test(t.replace(STAR, ""));
+  const shownIn = (e, top) => {
+    for (let n = e; n; n = n === top ? null : n.parentElement) {
+      if (!ns.fillBase.visible(n) || n.matches(NOT_LABEL)) return false;
+      const r = n.getBoundingClientRect();
+      if (r.width <= 1 || r.height <= 1) return false; // screen-reader-only
+    }
+    return true;
+  };
+  // What a person sees in `top`: its visible text nodes, none in an error.
+  const shownText = (top) => {
+    let out = "";
+    const walk = document.createTreeWalker(top, NodeFilter.SHOW_TEXT);
+    for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+      if (clean(t.data) && shownIn(t.parentElement, top)) out += t.data;
+    }
+    return clean(out);
+  };
+  // `own`: the field's controls (a group's members). Climb from `start`
+  // (at most MAX_CLIMB, never out of a table row or past a form) while the
+  // ancestor holds no other field; at each level the nearest earlier sibling
+  // with text is the candidate. It is refused when it is no label, when a
+  // heading or another field comes first, or when another text or an
+  // unlabelled control sits just before it (a label after that control: its
+  // own, not ours) — unless `own` is labelled (the page labels its options,
+  // so text after a labelled control is not a trailing label). A single
+  // field with any text after it at a level has its label there: abstain.
+  const precedingLabel = (start, own, { group = false } = {}) => {
+    const mine = (c) => own.some((o) => o === c || o.contains(c));
+    const ownLabels = new Set(own.flatMap((o) => [...(o.labels ?? [])]));
+    const attached = ownLabels.size > 0;
+    const foreign = (n) => (n.matches(CONTROL) ? [n] : [...n.querySelectorAll(CONTROL)]).some((c) => !mine(c));
+    const heading = (n) => n.matches(ANY_HEADING) || n.querySelector(ANY_HEADING) !== null;
+    const skip = (n) => n.matches("script, style, template") || ownLabels.has(n) || own.some((o) => n.contains(o));
+    for (let node = start, d = 0; node && d < MAX_CLIMB && !edge(node) && !node.matches("tr, table");
+      d += 1, node = node.parentElement) {
+      if (node !== start && foreign(node)) return "";
+      if (!group) {
+        for (let s = node.nextElementSibling; s && !foreign(s); s = s.nextElementSibling) {
+          if (!skip(s) && shownText(s)) return "";
+        }
+      }
+      let cand = null;
+      for (let s = node.previousElementSibling; s; s = s.previousElementSibling) {
+        if (skip(s)) continue;
+        const blocks = heading(s) || foreign(s);
+        const t = blocks ? "" : shownText(s);
+        if (!blocks && !t) continue;
+        if (cand === null) {
+          if (blocks || !labelish(t)) return "";
+          cand = t;
+        } else {
+          return heading(s) || (attached && foreign(s)) ? cand : "";
+        }
+      }
+      if (cand !== null) return cand;
+    }
+    return "";
+  };
+  ns.precedingLabel = precedingLabel;
   const SOURCES = [
     ["label-for", (el) => {
       const lab = el.id && rootOf(el).querySelector?.(`label[for="${CSS.escape(el.id)}"]`);
@@ -89,30 +164,10 @@
       }
       return "";
     }],
-    // LAST, when nothing above names the field (Gem: a bare box labelled by a
-    // hashed-class span above its wrappers). Climb while the ancestor holds
-    // no other field; the first visible previous sibling with text is the
-    // label. A sibling holding another control, or a heading (a section title,
-    // with other things' text above it), ends the search.
-    ["preceding", (el) => {
-      for (let node = el, d = 0; node && d < 6 && !edge(node); d += 1, node = node.parentElement) {
-        if (node !== el && [...node.querySelectorAll(CONTROL)].some((c) => otherControl(c, el))) break;
-        for (let s = node.previousElementSibling; s; s = s.previousElementSibling) {
-          if (s.matches("script, style, template") || !ns.fillBase.visible(s)) continue;
-          if (s.matches(`${ANY_HEADING}, ${CONTROL}`) || s.querySelector(CONTROL)) return "";
-          const t = text(s);
-          if (t) return t;
-        }
-      }
-      return "";
-    }],
+    // LAST: the text before a box nothing names (Gem). A radio's or
+    // checkbox's own label FOLLOWS it; the text before it is a neighbour's.
+    ["preceding", (el) => (isChoice(el) ? "" : precedingLabel(el, [el]))],
   ];
-  // A field's SECTION comes from h1–h5: an <h6> is a sub-label inside an
-  // entry ("Dates" in "Work Experience 2"), and taking it would drop the
-  // entry's number. ANY_HEADING (h6 too) is for content/sections.js and the
-  // "preceding" source's stop.
-  const HEADING = "h1, h2, h3, h4, h5, [role=heading]";
-  const ANY_HEADING = "h1, h2, h3, h4, h5, h6, [role=heading]";
   // "Work Experience 2" is the second repeat; "Step 2 of 4" / "Page 2" is not.
   // ONE rule for what a numbered title is: `ns.repeatOf` (also content/
   // sections.js); shared/fill-loop.js keeps a mirror of these two patterns,

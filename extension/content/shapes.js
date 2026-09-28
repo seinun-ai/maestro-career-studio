@@ -229,9 +229,24 @@
   // Radio/checkbox members: same name in the same form (or root), else the
   // nearest grouping container. A nameless RADIO outside any container (Gem)
   // belongs with the nameless radios of the nearest ancestor holding others
-  // and no other kind of control; a nameless checkbox there is alone (a
-  // yes/no answer of its own).
+  // and no other kind of control — only its own run of them, cut at any
+  // visible text that is not an option's label (a second question), and never
+  // a run in which two options read the same. A nameless checkbox there is
+  // alone (a yes/no answer of its own).
   const namelessRadio = (x) => x instanceof HTMLInputElement && x.type === "radio" && !x.name && !x.closest(GROUPER);
+  const radioRun = (n, radios, el) => {
+    const labels = radios.flatMap((r) => [...r.labels]);
+    const runs = [[]];
+    const walk = document.createTreeWalker(n, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    for (let x = walk.nextNode(); x; x = walk.nextNode()) {
+      if (radios.includes(x)) runs.at(-1).push(x);
+      else if (x.nodeType === Node.TEXT_NODE && clean(x.data) && ns.fillBase.visible(x.parentElement)
+        && !labels.some((l) => l.contains(x)) && runs.at(-1).length) runs.push([]);
+    }
+    const run = runs.find((r) => r.includes(el));
+    const texts = run.map((r) => readField(r).question);
+    return new Set(texts).size === texts.length ? run : [el];
+  };
   const members = (el) => memo("members", el, () => {
     if (el.name) {
       return [...(el.form ?? el.getRootNode()).querySelectorAll(`input[type="${el.type}"][name="${CSS.escape(el.name)}"]`)];
@@ -243,30 +258,17 @@
     for (let n = el.parentElement; n && !edge(n); n = n.parentElement) {
       const controls = [...n.querySelectorAll(CONTROL)];
       if (!controls.every(namelessRadio)) break;
-      if (controls.length > 1) return controls;
+      if (controls.length > 1) return radioRun(n, controls, el);
     }
     return [el];
   });
   const lone = (el) => el.type === "checkbox" && members(el).length < 2;
   const labelOf = (input) => readField(input).question;
-  // A group with no container question asks the text BEFORE its first member:
-  // the nearest preceding visible sibling (climbing at most 8 levels) that is
-  // not a member's label, stopping at another field's control.
+  // A group with no container question asks the text BEFORE its first
+  // member (ns.precedingLabel, field-reader.js: the same stops as a field's).
   const precedingQuestion = (ms) => {
-    const { CONTROL } = ns.fieldControls;
-    const memberLabels = new Set(ms.flatMap((m) => [...(m.labels ?? [])]));
-    let node = ms[0].closest("label") ?? ms[0];
-    for (let d = 0; node && d < 8 && !edge(node); d += 1, node = node.parentElement) {
-      for (let s = node.previousElementSibling; s; s = s.previousElementSibling) {
-        if (s.matches("script, style, template") || !ns.fillBase.visible(s)) continue;
-        const controls = [...(s.matches(CONTROL) ? [s] : []), ...s.querySelectorAll(CONTROL)];
-        if (controls.some((c) => !ms.includes(c))) return null;
-        if (controls.length || memberLabels.has(s)) continue;
-        const t = clean(s.innerText || s.textContent);
-        if (t) return { question: clean(t.replace(STAR, "")), source: "nearby", required: STAR.test(t) };
-      }
-    }
-    return null;
+    const t = ns.precedingLabel(ms[0].closest("label") ?? ms[0], ms, { group: true });
+    return t ? { question: clean(t.replace(STAR, "")), source: "preceding", required: STAR.test(t) } : null;
   };
   // Never a member's own option label ("Yes"): no question beats a wrong one.
   const groupQuestion = (el) => {

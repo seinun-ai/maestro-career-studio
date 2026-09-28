@@ -1,14 +1,23 @@
 <!--
-  Gem's application form (jobs.gem.com), observed live 2026-09-27, when every
-  label the Companion read there came back empty. A hand-written copy of the
-  STRUCTURE only: the class names are made up in Gem's hashed style.
+  Gem's application form (jobs.gem.com), observed live 2026-09-27 by a
+  read-only probe, when every label the Companion read there came back empty.
+  A hand-written copy of the STRUCTURE only: the class names are made up in
+  Gem's hashed style.
   - No <form>, no iframe, no shadow root.
   - A text box is a bare <input type=text>: no id, name, aria-* or placeholder.
-    Its label is a sibling <span> of the box's wrapper chain, three wrappers
-    above the input, with a required "*" in its own span.
+    Its label is a sibling <span> one level above the box's wrapper chain —
+    the input's 4th ancestor (the row) holds the span:
+      div.flex (row)
+        span.bodyImportant "First name" > span.requiredAsterisk "*"
+        div.textField > div.inputWrapper > div.inputElementAndIconWrapper > input[type=text]
   - A Yes/No question is two <input type=radio id=…> with NO name, no fieldset
-    and no radiogroup; each has a label[for]. The question <span> is five
-    ancestors above a radio.
+    and no radiogroup; each has a label[for]. The question <span> sits five
+    ancestors above each input, in a row div:
+      div.flex (row)
+        div.flex > span.bodyImportant "Are you graduating…?" > span.requiredAsterisk "*"
+        div > div.flex > div.flex > div.flex >
+          div > input[type=radio id] + label[for] "Yes" + div.helpTextContainer (empty)
+          div > input[type=radio id] + label[for] "No"  + div.helpTextContainer (empty)
   Where the observation is silent (how the app takes a value), this page does
   the simplest thing a React app does: a text box's app value follows its
   input events, and a question holds one answer that sets `checked` on both
