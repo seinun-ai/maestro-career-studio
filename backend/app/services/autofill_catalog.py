@@ -73,6 +73,13 @@ _DESCRIBES: dict[str, str] = {
     # A form asks for it as "salary requirements" or "compensation" as often
     # as "desired salary": one fact, described in each wording.
     "preferences.desired_salary": "desired salary, compensation or salary requirements (expected pay)",
+    # Said with the boxes beside them that they never answer: offered as
+    # "personal: phone" / "personal: address", /map sent the phone number to
+    # "Phone Extension" and line 1 to "Address Line 2" (live Workday, 2026-09-27).
+    "personal.phone": ("the applicant's full phone number (the whole number; never a phone extension, a fax "
+                       "number, a country calling code or a phone type)"),
+    "personal.address": ("the applicant's street address, line 1 (never a second address line, an apartment, "
+                         "suite or unit, or a county)"),
     # Facts built here rather than read from the profile: one lookup, so the
     # evaluation describes them as production does.
     "derived.full_name": "your full legal name, for name and signature boxes",

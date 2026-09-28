@@ -532,6 +532,15 @@ know, and each one was learned from a live failure.
   overrides another policy block such as signature, consent, terms, credentials,
   or government-ID wording. With the permission, "salary requirements" and
   "compensation" questions fill from the same fact.
+- **The phone and street address say which boxes they never answer.** /map
+  offers them as "the whole number; never a phone extension, a fax number, a
+  country calling code or a phone type" and "street address, line 1 (never a
+  second address line, an apartment, suite or unit, or a county)" — no label
+  rule decides it. Offered as "personal: phone" and "personal: address", Fill
+  typed the phone number into Workday's "Phone Extension" and "Country Phone
+  Code" and line 1 into "Address Line 2", and verification passed them
+  (2026-09-27). `backend/scripts/fill_map_cases.json` holds these labels for
+  the evaluation.
 - **Some answers are derived, never stored.** The backend adds facts computed
   from the profile (`derived.*`, described to the model as derived): your
   full legal name (first and last, for name and signature boxes), today's

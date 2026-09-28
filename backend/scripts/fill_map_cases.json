@@ -1,0 +1,24 @@
+{
+  "about": "Labelled /map cases: which fact (or none) each label asks for, over this file's synthetic personal facts. `expected` lists every acceptable answer: a slot, or \"none\" (nothing is written). Any other slot is a WRONG WRITE. The first three are live Workday wrong writes (2026-09-27); \"County\" is the eval's old telemetry label that mapped to the street address.",
+  "facts": {
+    "personal.first_name": "Sample",
+    "personal.last_name": "Person",
+    "personal.email": "sample@example.test",
+    "personal.phone": "555-0100",
+    "personal.address": "1 Main St",
+    "personal.city": "Springfield",
+    "personal.state": "Illinois",
+    "personal.postal_code": "62701",
+    "personal.country": "United States"
+  },
+  "cases": [
+    {"id": "phone-extension", "question": "Phone Extension", "shape": "text", "expected": ["none"]},
+    {"id": "address-line-2", "question": "Address Line 2", "shape": "text", "expected": ["none"]},
+    {"id": "country-phone-code", "question": "Country Phone Code", "shape": "search",
+     "expected": ["none", "personal.country"]},
+    {"id": "phone-number", "question": "Phone Number", "shape": "text", "expected": ["personal.phone"]},
+    {"id": "address-line-1", "question": "Address Line 1", "shape": "text", "expected": ["personal.address"]},
+    {"id": "fax", "question": "Fax Number", "shape": "text", "expected": ["none"]},
+    {"id": "county", "question": "County", "shape": "text", "expected": ["none"]}
+  ]
+}

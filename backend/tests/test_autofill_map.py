@@ -422,6 +422,21 @@ def test_salary_requirements_are_offered_as_the_desired_salary_fact(db_session, 
     assert "salary requirements" in described and "compensation" in described and "80000" not in described
 
 
+@pytest.mark.usefixtures("jev_on")
+def test_the_phone_and_address_facts_are_offered_as_what_they_are_not(db_session, monkeypatch):
+    """Live Workday typed the phone number into "Phone Extension" and line 1
+    into "Address Line 2": the model is told the whole number and line 1, and
+    the boxes neither answers."""
+    facts = autofill_catalog.build({"personal": {"phone": "555-0100", "address": "1 Main St"}}, [], [])
+    calls = fake_jev(monkeypatch)
+    autofill_map.map_fields([field("e", "Phone Extension"), field("a", "Address Line 2")], facts, db_session,
+                            eeo_consented=True, low_stakes=False)
+    criteria = calls[0]["questions"]["e"]["criteria"]
+    phone, address = criteria["personal.phone"], criteria["personal.address"]
+    assert "whole number" in phone and "extension" in phone and "555-0100" not in phone
+    assert "line 1" in address and "second address line" in address and "1 Main St" not in address
+
+
 # ---------- entry placement: the model reads entries in page order, code places them
 
 

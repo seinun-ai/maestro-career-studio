@@ -1,6 +1,6 @@
 """Meaning evaluation of the fill engine's decisions (fill-engine revision Task 12).
 
-Three reports, each printed as Markdown (and written as JSON with --out):
+Four reports, each printed as Markdown (and written as JSON with --out):
 
 - MAPPING AGREEMENT (diagnostic, not ground truth): the distinct
   (label, kind, rule_id) rows of `autofill_field_observations` whose rule id
@@ -15,6 +15,10 @@ Three reports, each printed as Markdown (and written as JSON with --out):
 - LABELLED STEPS (`fill_step_cases.json`): each case through `autofill_step.step`,
   scored as right, WRONG CLICK (an option that does not state the fact),
   wrong-but-harmless move, or give_up.
+- LABELLED MAPS (`fill_map_cases.json`, with `--part map`): each label through
+  `autofill_map.map_fields` over the file's synthetic facts, scored as right,
+  missed (none where a fact was expected) or a WRONG WRITE (any slot not
+  expected: "Phone Extension" given the phone number).
 
 Picks and steps run once per engine (Jev, then the fast model; `--engines`),
 reported separately: the fast model's confidence is not calibrated by sharing
@@ -46,7 +50,7 @@ not set DATA_DIR to the copy's directory, or the script refuses it):
         --out <scratch>/eval.json
 
 The model keys are the copy's settings (and .env's). `--part map|pick|step`
-runs one report; `--base <slug>` picks the resume the mapping catalog reads
+runs one report (map: the agreement and the labelled maps); `--base <slug>` picks the resume the mapping catalog reads
 (default: the first active one); `--only id,id` runs named cases, `--tag reversed` the tagged ones. Offline
 checks: tests/test_eval_fill_cases.py.
 """
@@ -68,6 +72,7 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 PICK_CASES = HERE / "fill_pick_cases.json"
 STEP_CASES = HERE / "fill_step_cases.json"
+MAP_CASES = HERE / "fill_map_cases.json"
 EXTENSION = HERE.parents[1] / "extension"
 RULE_FILES = (EXTENSION / "content" / "autofill.js", EXTENSION / "content" / "eeo.js")
 
@@ -303,6 +308,30 @@ def check_step_case(case: dict) -> None:
     if route == "low_stakes" and (case.get("slot") or case.get("fact") is not None or
                                   case.get("low_stakes") not in ("on", "off")):
         raise ValueError(f"{cid}: a low_stakes case names the setting and carries no slot or fact")
+
+
+def check_map_case(case: dict, facts: dict[str, str]) -> None:
+    """Raise ValueError when a map case is malformed: `expected` lists slots
+    the file's facts hold, or "none"."""
+    cid = case.get("id")
+    expected = case.get("expected")
+    if not (isinstance(expected, list) and expected and all(e == "none" or e in facts for e in expected)):
+        raise ValueError(f"{cid}: expected is a non-empty list of the file's fact slots or \"none\"")
+    if not case.get("question"):
+        raise ValueError(f"{cid}: a map case needs a question")
+
+
+def map_field(case: dict, fid: str = "m0"):
+    from app.schemas.autofill_fill import MapField
+
+    return MapField(fid=fid, question=case["question"], shape=case["shape"], options=case.get("options", []))
+
+
+def map_case_facts(cases: dict) -> dict:
+    """The map cases' facts, built by the catalog's own `make_fact` (production's descriptions)."""
+    from app.services.autofill_catalog import make_fact
+
+    return {slot: make_fact(slot, value) for slot, value in cases["facts"].items()}
 
 
 def step_request(case: dict):
@@ -637,6 +666,33 @@ def run_map(session, run: Run, base: str | None) -> dict:
             "scored": len(scored), "failed_batches_rows": len(results) - len(scored)}
 
 
+def run_map_cases(cases: list[dict], facts: dict, run: Run, session) -> list[dict]:
+    """Each labelled label through /map, a batch at a time; no optional pass is asked."""
+    from app.services import autofill_map, llm
+
+    answerable, results = autofill_map._answerable, []
+    for start in range(0, len(cases), MAP_BATCH):
+        batch = cases[start:start + MAP_BATCH]
+        fields = [map_field(c, f"m{start + i}") for i, c in enumerate(batch)]
+        autofill_map._answerable = lambda *_a, **_k: set()
+        try:
+            with engine_of(run):
+                mapped = autofill_map.map_fields(fields, facts, session, eeo_consented=False, low_stakes=False)
+        except (JevFellBack, llm.LLMProviderError) as exc:
+            failed = "jev_failed" if isinstance(exc, JevFellBack) else "model_failed"
+            results += [{"id": c["id"], "outcome": failed, "got": None, "expected": c["expected"]} for c in batch]
+            continue
+        finally:
+            autofill_map._answerable = answerable
+        for f, c in zip(fields, batch):
+            m = mapped[f.fid]
+            got = m.slot if m.route == "slot" else "none" if m.route in ("none", "blocked") else m.route
+            outcome = "right" if got in c["expected"] else "missed" if got == "none" else "wrong_write"
+            results.append({"id": c["id"], "question": c["question"], "outcome": outcome, "got": got,
+                            "expected": c["expected"]})
+    return results
+
+
 # ---------------------------------------------------------------- reports
 
 
@@ -733,6 +789,16 @@ def print_map(report: dict) -> None:
     print_second_opinions(report["rows"])
 
 
+def print_map_cases(engine: str, results: list[dict]) -> None:
+    c = Counter(r["outcome"] for r in results)
+    print(f"\n### Labelled maps — {engine}\n")
+    print(f"{len(results)} cases: {c['right']} right, {c['missed']} missed, {c['wrong_write']} wrong writes, "
+          f"{c['jev_failed']} / {c['model_failed']} failed (Jev / model)")
+    for r in results:
+        if r["outcome"] in ("wrong_write", "missed"):
+            print(f"- {r['outcome'].upper()} {r['id']}: {r['question']!r} expected {r['expected']} got {r['got']}")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--db", type=Path, required=True,
@@ -759,14 +825,17 @@ def main(argv: list[str] | None = None) -> int:
 
     engines = [e for e in args.engines.split(",") if e]
     out: dict[str, Any] = {}
-    picks, steps = load_cases(PICK_CASES), load_cases(STEP_CASES)
+    picks, steps, maps = load_cases(PICK_CASES), load_cases(STEP_CASES), load_cases(MAP_CASES)
     for case in picks["cases"]:
         check_pick_case(case)
     for case in steps["cases"]:
         check_step_case(case)
+    for case in maps["cases"]:
+        check_map_case(case, maps["facts"])
     only = set(args.only.split(",")) if args.only else None
     picks["cases"] = select_cases(picks["cases"], only=only, tag=args.tag)
     steps["cases"] = select_cases(steps["cases"], only=only, tag=args.tag)
+    maps["cases"] = select_cases(maps["cases"], only=only, tag=args.tag)
     with SessionLocal() as session:
         if args.part in ("pick", "all"):
             for engine in engines:
@@ -781,6 +850,11 @@ def main(argv: list[str] | None = None) -> int:
                 out[f"step_{engine}"] = {"results": results, "jev_errors": Counter(run.jev_errors)}
                 print_steps(engine, results)
         if args.part in ("map", "all"):
+            for engine in engines:
+                run = Run(engine)
+                results = run_map_cases(maps["cases"], map_case_facts(maps), run, session)
+                out[f"map_cases_{engine}"] = {"results": results, "jev_errors": Counter(run.jev_errors)}
+                print_map_cases(engine, results)
             run = Run(args.map_engine)
             report = run_map(session, run, args.base)
             report["jev_errors"] = Counter(run.jev_errors)

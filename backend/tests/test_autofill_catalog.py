@@ -202,6 +202,23 @@ def test_desired_salary_is_described_in_the_words_forms_ask_with():
         "desired salary, compensation or salary requirements (expected pay)")
 
 
+def test_the_phone_and_street_address_say_what_they_are_not():
+    """Live Workday (2026-09-27): "Phone Extension" got the phone number and
+    "Address Line 2" got line 1, because /map offered only "personal: phone"
+    and "personal: address". Each is described by what it IS, and by the
+    neighbouring boxes it never answers."""
+    f = cat.build({"personal": {"phone": "555-0100", "address": "1 Main St"}}, [], [])
+    phone, address = f["personal.phone"].describe, f["personal.address"].describe
+    for described in (phone, address):
+        assert not described.startswith("personal:"), described
+    assert "full phone number" in phone
+    for never in ("extension", "fax", "country calling code"):
+        assert never in phone, never
+    assert "line 1" in address
+    for never in ("second address line", "apartment", "county"):
+        assert never in address, never
+
+
 def test_derived_descriptions_carry_no_values():
     f = cat.build({"personal": {"first_name": "Sample", "last_name": "Person"}, "work_auth": {"status": "citizen"},
                    "preferences": {"earliest_start_date": "Immedietly"}}, [], [], today=TODAY)

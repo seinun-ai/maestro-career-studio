@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from app.services.autofill_catalog import describe_of
 from app.services.autofill_slots import policy_for
 from scripts import eval_fill_decisions as ev
 
@@ -514,3 +515,52 @@ def test_now_or_in_the_future_agrees_with_the_future_rule_in_map_agreement():
     """The old rule's `sponsorship_future` rows now map to the derived fact:
     one fact, not a disagreement."""
     assert "derived.sponsorship_now_or_future" in ev.SAME_FACT["work_auth.sponsorship_future"]
+
+
+# ---------- labelled /map cases (fill_map_cases.json): live Workday wrong writes, 2026-09-27
+
+MAPS = ev.load_cases(ev.MAP_CASES)
+
+
+@pytest.mark.parametrize("case", MAPS["cases"], ids=lambda c: c["id"])
+def test_every_map_case_is_well_formed(case):
+    ev.check_map_case(case, MAPS["facts"])
+    ev.map_field(case)   # a field /map accepts
+
+
+def test_the_map_cases_hold_the_live_wrong_writes():
+    """"Phone Extension" got the phone number, "Address Line 2" got line 1,
+    and "Country Phone Code" searched for the phone number."""
+    by_id = {c["id"]: c for c in MAPS["cases"]}
+    assert len(by_id) == len(MAPS["cases"])
+    assert by_id["phone-extension"]["expected"] == ["none"]
+    assert by_id["address-line-2"]["expected"] == ["none"]
+    assert "personal.phone" not in by_id["country-phone-code"]["expected"]
+    assert by_id["phone-number"]["expected"] == ["personal.phone"]
+    assert by_id["address-line-1"]["expected"] == ["personal.address"]
+    facts = ev.map_case_facts(MAPS)
+    assert "personal.address_2" not in facts   # line 2 has nowhere to go but none
+    assert facts["personal.phone"].describe == describe_of("personal.phone")
+
+
+def test_a_malformed_map_case_is_refused():
+    with pytest.raises(ValueError, match="expected"):
+        ev.check_map_case({"id": "x", "question": "Q", "shape": "text", "expected": ["personal.nope"]}, MAPS["facts"])
+    with pytest.raises(ValueError, match="expected"):
+        ev.check_map_case({"id": "x", "question": "Q", "shape": "text", "expected": []}, MAPS["facts"])
+
+
+def test_a_map_case_is_scored_against_the_slot_it_routes(monkeypatch):
+    """The scorer, with /map stubbed: no model is called."""
+    from app.schemas.autofill_fill import Mapped
+    from app.services import autofill_map
+
+    cases = [c for c in MAPS["cases"] if c["id"] in ("phone-extension", "phone-number", "country-phone-code")]
+    routed = {"phone-extension": Mapped(route="slot", slot="personal.phone", value="555-0100"),
+              "phone-number": Mapped(route="none"),
+              "country-phone-code": Mapped(route="slot", slot="personal.country", value="United States")}
+    fid_of = {f"m{i}": c["id"] for i, c in enumerate(cases)}
+    monkeypatch.setattr(autofill_map, "map_fields",
+                        lambda fields, *_a, **_k: {f.fid: routed[fid_of[f.fid]] for f in fields})
+    got = {r["id"]: r["outcome"] for r in ev.run_map_cases(cases, ev.map_case_facts(MAPS), ev.Run("fast"), None)}
+    assert got == {"phone-extension": "wrong_write", "phone-number": "missed", "country-phone-code": "right"}
