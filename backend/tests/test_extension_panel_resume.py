@@ -295,7 +295,7 @@ def test_a_draft_whose_resume_has_no_pdf_offers_create_pdf_and_never_a_fresh_tai
     assert NO_PDF_LINE in [line["text"] for line in _by_class(body, "sub")]
     [base] = _by_class(body, "fork")[0]["children"]
     assert base["text"] == "Use my base resume"
-    assert base["disabled"] is True
+    assert base["attrs"]["aria-disabled"] == "true"
     assert _described_by(loaded["rail"], base) == BOUND_REASON
     assert "Quick tailor" not in _text(loaded["rail"])
     assert FORK_LINE not in _text(loaded["rail"])
@@ -1150,3 +1150,68 @@ def test_the_bound_application_answers_even_when_the_scores_read_fails(tmp_path)
         rows = _rows(_rail_rows(out))
         assert rows["job"]["summary"] == "Data Scientist"
         assert rows["resume"]["summary"] == "Tailored resume ready"
+
+
+# ---------- the base limb acts only when it can mean something ----------
+
+_BASE_GUARD_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+const byId = (id) => findById(REGIONS.rail, id);
+main(async () => {
+  await settle();
+  const loaded = regions();
+  if (spec.tailorFirst === true) {
+    byId("resume-tailor").click();
+    await settle();
+    byId("resume-quick").click();       // held open: the tailor is running
+  }
+  const writesBefore = writes.length;
+  byId("resume-base").click();
+  await settle();
+  const facts = ns.panel.actionStore().read();
+  const after = { baseArmed: facts.baseArmed === true,
+                  writesDuring: writes.length - writesBefore };
+  release();
+  await settle();
+  emit({ loaded, after });
+});
+"""
+
+
+def test_the_base_limb_does_nothing_while_a_tailor_runs(tmp_path):
+    """`actingLimb` locks with `aria-disabled` so focus survives the rebuild,
+    which means the click still arrives. The action refuses while `busy`, as
+    `stopUsingBaseAsIs` does, or the base would arm under a running tailor."""
+    out = run_node(_BASE_GUARD_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "stored": {"widget.session": {**PICKED_ENTRY, "at": int(time.time() * 1000)}},
+        "hold": ["quick-tailor"],
+        "tailorFirst": True,
+        "api": {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                       "application": None}),
+                "/api/base-resumes": _reply(SCORE_RESUMES),
+                "GET /api/ats-scores": _reply(SCORE_ROWS),
+                "quick-tailor": TAILORED_REPLY},
+    }, tmp_path, source=PANEL_SOURCE)
+    assert out["after"] == {"baseArmed": False, "writesDuring": 0}
+
+
+def test_the_base_limb_beside_an_application_is_focusable_and_does_nothing(tmp_path):
+    """Off for good beside an application, so `aria-disabled` rather than
+    `disabled`: a keyboard user can reach it and hear its reason. Pressed, it
+    changes nothing."""
+    out = run_node(_BASE_GUARD_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "api": {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                       "application": {"id": "app-1", "status": "draft"}}),
+                "/api/applications/app-1": _reply({"pdf_path": None, "status": "draft"}),
+                "/api/base-resumes": _reply(SCORE_RESUMES),
+                "GET /api/ats-scores": _reply(SCORE_ROWS)},
+    }, tmp_path, source=PANEL_SOURCE)
+    base = next(n for n in _walk(out["loaded"]["rail"]) if n["id"] == "resume-base")
+    assert base["disabled"] is False
+    assert base["attrs"]["aria-disabled"] == "true"
+    assert base["attrs"]["aria-describedby"] == "base-off-note"
+    assert out["after"] == {"baseArmed": False, "writesDuring": 0}

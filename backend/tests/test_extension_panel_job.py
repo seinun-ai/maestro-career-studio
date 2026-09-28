@@ -875,11 +875,12 @@ def test_picking_an_application_arms_the_rail_and_writes_this_pages_tenant(tmp_p
     assert _picker(settled["rail"]) is None
 
 
-def test_a_picked_draft_with_no_pdf_says_why_base_as_is_is_off_and_the_way_out(tmp_path):
+def test_a_picked_draft_with_no_pdf_turns_the_base_off_and_offers_create_pdf(tmp_path):
     """THE DEAD BUTTON, on the page it was found on (Task 25's first read): a
     draft picked on an apply page, whose tailored resume has no PDF yet. The
     stage is Resume, and the base button used to arm a claim nothing reads
-    beside an application. It is disabled now, with one short sentence naming
+    beside an application. It is off now (`aria-disabled`, still focusable),
+    with one short sentence naming
     this binding as the user's own pick (the Job row's Stop using this draft
     is the way back to the base), and the step's primary is Create PDF."""
     out = _pick(tmp_path, api=_picker_api(**{
@@ -889,7 +890,7 @@ def test_a_picked_draft_with_no_pdf_says_why_base_as_is_is_off_and_the_way_out(t
     assert _rows(_rail_rows({"regions": settled}))["resume"]["state"] == "active"
     base = next(n for n in _walk(settled["rail"])
                 if n["tag"] == "BUTTON" and n["text"] == "Use my base resume")
-    assert base["disabled"] is True
+    assert base["attrs"]["aria-disabled"] == "true"
     [reason] = [n for n in _walk(settled["rail"])
                 if n["id"] and n["id"] == base["attrs"]["aria-describedby"]]
     assert reason["text"] == "You picked a draft for this page, so it uses that resume."

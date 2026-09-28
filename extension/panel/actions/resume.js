@@ -158,6 +158,11 @@
    */
   function useBaseAsIs(store) {
     const facts = store.read();
+    // Both limbs that fire this lock with `aria-disabled` (focus survives the
+    // rebuild), so the click still arrives: refused while anything runs, and
+    // beside an application, whose own resume `stageFor` uses whatever the
+    // flag says (`fillFromBase` needs `!hasApplication`).
+    if (facts.busy !== null || facts.application) return;
     if (!facts.baseSlug) {
       // Nothing to be as-is. `loadBaseResumes` names the library's first row
       // as the default, so this is an EMPTY library rather than an unmade

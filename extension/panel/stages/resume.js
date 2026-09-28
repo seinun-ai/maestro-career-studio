@@ -165,8 +165,10 @@
       return attach(body, again);
     }
     if (facts.application) {
+      // `aria-disabled`, not `disabled`: off for good here, so a keyboard user
+      // can still reach it and hear why. `useBaseAsIs` ignores the press.
       const base = forkButton(ctx, "resume-base", WORDS.base, act.useBaseAsIs);
-      base.disabled = true;
+      base.setAttribute("aria-disabled", "true");
       base.setAttribute("aria-describedby", BASE_OFF_ID);
       const why = node("div", "sub", facts.claimed ? BASE_OFF.claimed : BASE_OFF.matched);
       why.id = BASE_OFF_ID;
