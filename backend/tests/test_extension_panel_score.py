@@ -458,7 +458,9 @@ REGIONS.rail.replaceChildren = (...kids) => {
   const rows = withClass(REGIONS.rail, "stg");
   const active = rows.findIndex((row) => row.className.split(" ").includes("active"));
   const chip = withClass(REGIONS.identity, "chip")[0];
-  paints.push({ chip: chip ? chip.textContent : null, active: keys[active] ?? null });
+  const text = (node) => [node.textContent, ...node.children.map(text)].join(" ");
+  paints.push({ chip: chip ? chip.textContent : null, active: keys[active] ?? null,
+                noPdf: text(REGIONS.rail).includes("no PDF yet") });
 };
 main(async () => {
   await settle();
@@ -484,6 +486,28 @@ def test_a_saved_and_scored_job_never_paints_the_job_step_as_current(tmp_path):
     matched = [paint for paint in out["paints"] if paint["chip"] is not None]
     assert matched, out["paints"]
     assert {paint["active"] for paint in matched} == {"resume"}, out["paints"]
+
+
+def test_a_bound_application_with_its_pdf_never_paints_a_no_pdf_resume_step(tmp_path):
+    """The application's detail read is what says it has a PDF, so it lands
+    before the render that paints the matched page: painted first, the rail
+    showed Resume with "no PDF yet" and a live Create PDF for one round trip,
+    then jumped to Fill."""
+    out = run_node(_PAINTS_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "api": {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                       "application": {"id": "app-1", "status": "draft",
+                                                       "base_resume": "data_scientist"}}),
+                "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
+                                                   "status": "draft"}),
+                "/api/base-resumes": _reply(SCORE_RESUMES),
+                "GET /api/ats-scores": _reply(SCORE_ROWS)},
+    }, tmp_path, source=PANEL_SOURCE)
+    matched = [paint for paint in out["paints"] if paint["chip"] is not None]
+    assert matched, out["paints"]
+    assert {paint["active"] for paint in matched} == {"fill"}, out["paints"]
+    assert not any(paint["noPdf"] for paint in out["paints"]), out["paints"]
 
 
 # ---------- restorableSession: may this memory be used on THIS page? --------

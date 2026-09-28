@@ -282,7 +282,14 @@ global.chrome = {
                        && msg.path === "/api/settings/autofill")
           ? profileReply(msg)
           : apiReply(wire);
+        // `holdSkip` lets the first N matching requests through: the load
+        // and a later action can ask the same path (an application's detail),
+        // and a test about the action must not stall the load.
         if ((spec.hold ?? []).some((needle) => wire.includes(needle))) {
+          if ((spec.holdSkip ?? 0) > 0) {
+            spec.holdSkip -= 1;
+            return reply;
+          }
           return new Promise((resolve) => held.push(() => resolve(reply)));
         }
         return reply;

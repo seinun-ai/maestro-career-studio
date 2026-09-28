@@ -3015,7 +3015,7 @@ def test_a_gone_pdf_answered_after_a_tab_switch_never_stamps_the_new_page(tmp_pa
             "pdf_path": None}
     next_step = f"{LIGHTNING_APPLY_URL}/step2"
     out = _attach(tmp_path, press=True, switchTo=9,
-                  hold=["/api/applications/app-remembered"],
+                  hold=["/api/applications/app-remembered"], holdSkip=1,
                   tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
                   tabUrls={"9": next_step}, pokeAfter=True, releaseOrder="newest",
                   detail=[_reply(_TAILORED_DETAIL), _reply(gone),
@@ -3030,7 +3030,8 @@ def test_a_gone_pdf_answered_after_a_tab_switch_never_stamps_the_new_page(tmp_pa
 def test_the_control_is_out_of_reach_while_the_attach_is_open(tmp_path):
     """`actingLimb`'s rule: a control that stayed live would send a second
     document into a page the first ask is still walking."""
-    out = _attach(tmp_path, press=True, hold=["/api/applications/app-remembered"])
+    out = _attach(tmp_path, press=True, hold=["/api/applications/app-remembered"],
+                  holdSkip=1)
     [button] = _by_class(out["clicked"]["rail"], "save")
     assert button["attrs"].get("disabled") is True or button.get("disabled") is True
 
@@ -3062,7 +3063,7 @@ def test_an_attach_that_lands_on_a_tab_the_user_left_changes_nothing(tmp_path):
     """
     next_step = f"{LIGHTNING_APPLY_URL}/step2"
     out = _attach(tmp_path, press=True, switchTo=9,
-                  hold=["/api/applications/app-remembered"],
+                  hold=["/api/applications/app-remembered"], holdSkip=1,
                   tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
                   tabUrls={"9": next_step})
     settled = out["settled"]

@@ -2892,6 +2892,12 @@
       await loadBaseScores(token, { paint: false });
       if (!current(token)) return;
     }
+    // THE SAME FOR AN APPLICATION, whose PDF decides Resume: its detail read
+    // lands before the render (see `loadApplicationDetail`).
+    if (card.application) {
+      await loadApplicationDetail(token);
+      if (!current(token)) return;
+    }
     render();
 
     // AWAITED: this one decides whether filling can happen here. A rail whose
@@ -2919,76 +2925,74 @@
 
     // Cheap, and it makes the base list a ranking rather than a guess — and,
     // since Score merged into Job, the ranking's best closes the Job step. NOT
-    // awaited all the same: an application (the detail read below) answers the
+    // awaited all the same: an application (its detail read above) answers the
     // base question without it, and a slow or failed read leaves the Job step
     // open on its list with its own primary, never a stage claimed wrongly.
     if (!scoresFirst) loadBaseScores(token);
+  }
 
-    // THE READ THAT IS ALSO A VALIDATION, and since the ghost-binding round it
-    // is named as one. `restoreSession` above deliberately makes no round trip
-    // — it arms from what this browser remembers — so on a wizard's second page
-    // the binding on screen has never been checked against the backend at all.
-    // This GET is already being made for the PDF and the status, and it is
-    // aimed at the application's own resource, so a 404 from it is the backend
-    // saying the row is gone: authoritative, free, and the only place the panel
-    // can learn it. See the catch for the rule about what is NOT authoritative.
-    if (card.application) {
-      try {
-        const detail = await api(`/api/applications/${card.application.id}`);
-        if (!current(token)) return;
-        card.pdfReady = Boolean(detail.pdf_path);
-        // The Track stage's evidence line, out of the read that was already
-        // being made: `pdf_path` is here for `pdfReady` anyway, and
-        // `applied_at` costs nothing beside it.
-        card.evidence = evidenceFrom(detail);
-        // The status may have moved on since the pick — marked applied in the
-        // web app, or in another tab. The row is truth; the memory is a cache.
-        card.application = { ...card.application, status: detail.status ?? "draft" };
-      } catch (err) {
-        if (!current(token)) return;
-        // A 404 IS THE ONE FAILURE THAT MEANS SOMETHING, and the whole
-        // discrimination is this line. The user deleted the draft in the web
-        // app; the bridge restored it anyway, because a restore reads disk and
-        // asks nothing. Below this branch is every other failure — the SW
-        // asleep, no network, a 500, a message that got no answer — and each
-        // one says nothing whatever about whether the application exists. They
-        // must keep the binding: the bridge's tolerance of an unreachable
-        // backend is a deliberate design (a wizard is six page loads and a
-        // flaky connection must not cost the user their pick), and unbinding on
-        // one of them would be this panel forgetting a real application while
-        // OFFLINE — the same lie in the mirror.
-        //
-        // WHICH bindings may be dropped is not decided here.
-        // `dropDeletedApplication` owns that rule — a claim, never the
-        // backend's own match, and its docstring is where the reasoning lives
-        // — so this call is a REQUEST and the line after it reads the answer.
-        // One owner, because two places agreeing about which bindings are
-        // droppable is two places free to stop agreeing.
-        if (err?.status === 404) {
-          dropDeletedApplication();
-          if (!card.application) {
-            // The user is unbound on a page that still has a form in front of
-            // them, so the way back is offered rather than left for the next
-            // page load: this is the door `shouldLoadApplications` describes,
-            // and a restored pick never went through it (the binding was
-            // already there when it was asked).
-            //
-            // A list ALREADY READ is not re-read, and does not need to be:
-            // `dropDeletedApplication` has taken the dead row out of it, which
-            // is the one thing this panel has learned about it. A round trip
-            // to hear the rest of the same list again is a fetch the user did
-            // not ask for.
-            if (shouldLoadApplications(card)) await loadApplications(token);
-            return;
-          }
+  /** The bound application's detail: its PDF, its evidence, its status.
+   *
+   * THE READ THAT IS ALSO A VALIDATION, and since the ghost-binding round it
+   * is named as one. `restoreSession` deliberately makes no round trip
+   * — it arms from what this browser remembers — so on a wizard's second page
+   * the binding on screen has never been checked against the backend at all.
+   * This GET is already being made for the PDF and the status, and it is
+   * aimed at the application's own resource, so a 404 from it is the backend
+   * saying the row is gone: authoritative, free, and the only place the panel
+   * can learn it. See the catch for the rule about what is NOT authoritative.
+   *
+   * AWAITED BEFORE THE STAGE RENDER (`loadContext`): `pdfReady` decides
+   * Resume, so painted first, a bound application with its PDF flashed Resume
+   * with "no PDF yet" and a live Create PDF for one round trip.
+   */
+  async function loadApplicationDetail(token) {
+    try {
+      const detail = await api(`/api/applications/${card.application.id}`);
+      if (!current(token)) return;
+      card.pdfReady = Boolean(detail.pdf_path);
+      // The Track stage's evidence line, out of the read that was already
+      // being made: `pdf_path` is here for `pdfReady` anyway, and
+      // `applied_at` costs nothing beside it.
+      card.evidence = evidenceFrom(detail);
+      // The status may have moved on since the pick — marked applied in the
+      // web app, or in another tab. The row is truth; the memory is a cache.
+      card.application = { ...card.application, status: detail.status ?? "draft" };
+    } catch (err) {
+      if (!current(token)) return;
+      // A 404 IS THE ONE FAILURE THAT MEANS SOMETHING, and the whole
+      // discrimination is this line. The user deleted the draft in the web
+      // app; the bridge restored it anyway, because a restore reads disk and
+      // asks nothing. Below this branch is every other failure — the SW
+      // asleep, no network, a 500, a message that got no answer — and each
+      // one says nothing whatever about whether the application exists. They
+      // must keep the binding: the bridge's tolerance of an unreachable
+      // backend is a deliberate design (a wizard is six page loads and a
+      // flaky connection must not cost the user their pick), and unbinding on
+      // one of them would be this panel forgetting a real application while
+      // OFFLINE — the same lie in the mirror.
+      //
+      // WHICH bindings may be dropped is not decided here.
+      // `dropDeletedApplication` owns that rule — a claim, never the
+      // backend's own match, and its docstring is where the reasoning lives
+      // — so this call is a REQUEST and the line after it reads the answer.
+      // One owner, because two places agreeing about which bindings are
+      // droppable is two places free to stop agreeing.
+      if (err?.status === 404) {
+        dropDeletedApplication();
+        if (!card.application) {
+          // Unbound now, so the rest of `loadContext` runs as for any
+          // unmatched page: the Job step, and the draft picker's offer
+          // (`shouldLoadApplications`) — whose list, if already read, has had
+          // the dead row taken out by `dropDeletedApplication`.
+          return;
         }
-        card.pdfReady = false; // unknown reads as not-ready: it offers to tailor.
-        // And nothing to show, for the same reason: a read that failed told us
-        // nothing about what this application holds, and the last page's
-        // answer is not an answer about this one.
-        card.evidence = null;
       }
-      render();
+      card.pdfReady = false; // unknown reads as not-ready: it offers Create PDF.
+      // And nothing to show, for the same reason: a read that failed told us
+      // nothing about what this application holds, and the last page's
+      // answer is not an answer about this one.
+      card.evidence = null;
     }
   }
 
