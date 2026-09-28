@@ -58,8 +58,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   a row to jump to that field. Stop ends a run at any time. "Saved answers
   only" still runs the earlier fill.
 - **Answers come from your saved answers.** With a Jev key saved and Jev
-  chosen in Settings › AI & models › Form filling, Jev picks first, in about
-  a tenth of a second, and your fast model decides where Jev is unsure.
+  chosen in Settings › AI & models › Form filling, Jev picks first and your
+  fast model decides where Jev is unsure.
   Without Jev, your fast model does it all.
 - **Yes/No questions worded in reverse are read correctly**, such as "I do
   not require sponsorship". Fill first works out whether the question asks
@@ -109,7 +109,7 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 - **The Companion panel has four steps: Job, Resume, Fill, Track.** Save job
   also scores your base resumes and picks the best match, in the same press.
 - **A shorter Resume step**: use your base resume or tailor to this job. An
-  application with a tailored resume but no PDF yet gets **Create PDF**.
+  application whose resume has no PDF yet gets **Create PDF**.
 - **Refresh** in the panel reads this page's job and applications again, so
   a PDF you made in Maestro CS shows up. What you typed and the Fill report
   stay.
@@ -131,8 +131,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 - The panel no longer asks you to tailor again when you come back to a job
   whose tailored resume is ready.
 - Long steps in the panel scroll instead of being cut off.
-- Fill no longer types your phone number into a phone extension or country
-  code box, or your street address into a second address line.
+- Fill no longer types your phone number into a phone extension box, or your
+  street address into a second address line.
 - Workday application steps are recognized as forms, so Fill is offered on
   them.
 - A resume upload counts as attached when the page lists the file, even on
