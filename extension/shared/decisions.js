@@ -68,7 +68,11 @@
   }) {
     const jobDone = match === "exact";
     const fillFromBase = baseArmed === true && !hasApplication;
-    const scoreDone = jobDone && hasScores === true && baseSelected === true;
+    // An application answers the base question with the base it was made
+    // from: a backend-matched one is bound with no click, restore or pick, and
+    // demanding one parked the rail in front of a tailored PDF.
+    const scoreDone = jobDone
+      && (hasApplication === true || (hasScores === true && baseSelected === true));
     const resumeDone = jobDone && hasApplication === true && pdfReady === true;
     const isDraft = (status ?? "draft") === "draft";
     const trackDone = hasApplication === true && !isDraft;

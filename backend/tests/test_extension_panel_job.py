@@ -918,19 +918,19 @@ def test_the_bridge_survives_a_detail_get_that_fails(tmp_path):
     assert entry["applicationId"] == "app-1"
     assert entry["tenant"] == ACME_TENANT
     # The failure is said (duringAction's catch) while the pick STANDS (the
-    # chip claims only what the pick itself established). The action returned
-    # before loadBaseScores, so the rail degrades to the earliest stage whose
-    # data is missing — Score, whose own CTA re-earns the ranking — rather
-    # than claiming a readiness nothing read. Everything downstream recovers
-    # on the next load or the next press; the bridge is the one thing that
-    # must not wait for either.
+    # chip claims only what the pick itself established). The picked
+    # application answers the base question, but its PDF was never read, so
+    # the rail stops at Resume — the earliest step whose data is missing —
+    # rather than claiming a readiness nothing read: Fill stays locked.
+    # Everything downstream recovers on the next load or the next press; the
+    # bridge is the one thing that must not wait for either.
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == "Couldn't open that draft. Check that Maestro CS is running."
     assert _by_class(out["settled"]["identity"], "chip")[0]["text"] == (
         "Draft application")
     rows = _rows(_rail_rows({"regions": out["settled"]}))
-    assert rows["score"]["state"] == "active"
-    assert rows["resume"]["state"] == "locked"
+    assert rows["resume"]["state"] == "active"
+    assert rows["fill"]["state"] == "locked"
 
 
 def test_a_pick_on_the_apply_page_restores_on_the_next_wizard_step(tmp_path):

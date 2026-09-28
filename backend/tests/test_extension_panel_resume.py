@@ -277,8 +277,9 @@ def test_base_as_is_is_visibly_off_beside_a_draft_whose_resume_has_no_pdf(tmp_pa
     "Use base resume as is" armed a claim `stageFor` ignores beside an
     application (`fillFromBase` needs `!hasApplication`): a click that changed
     nothing. Now it is disabled, and the sentence it points at says why and
-    what to do."""
-    out = _resume(tmp_path, pickBase=0, api={
+    what to do. No base is clicked first: the application answers the base
+    question, so the rail opens straight on Resume."""
+    out = _resume(tmp_path, api={
         "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
                                "application": {"id": "app-1", "status": "draft"}}),
         "/api/applications/app-1": _reply({"pdf_path": None, "status": "draft"})})
@@ -1025,3 +1026,58 @@ def test_the_arming_page_offers_the_way_out_too(tmp_path):
     # The limb that re-asserts a claim already in force is not offered here
     # either — the reopened body drops it wherever it is opened.
     assert "Use base resume as is" not in _limbs(out["reopened"]["rail"])
+
+
+# ---------- a bound application answers the base question ----------
+#
+# THE "asks to tailor again" BUG, driven. A job tailored in the web app or over
+# MCP, opened on its posting: the backend's `/api/jobs/match` binds the
+# application, so no base is clicked, no session is restored and no draft is
+# picked. The rail stuck on the base step in front of a tailored application
+# with its PDF, and Fill stayed locked. The application's own `base_resume` is
+# the answer, and it is also the base the rings compare against.
+
+BOUND_APPLICATION = {"id": "app-1", "status": "draft", "base_resume": "data_scientist"}
+BOUND_TAILORED_ROW = {"target_type": "application", "target_id": "app-1",
+                      "phase": "tailored", "composite": 77.0}
+
+
+def _bound(tmp_path, scores):
+    tmp_path.mkdir(exist_ok=True)
+    return _load(tmp_path, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": BOUND_APPLICATION}),
+        "/api/base-resumes": _reply(SCORE_RESUMES),
+        "/api/ats-scores": scores,
+        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
+                                           "status": "draft",
+                                           "base_resume": "data_scientist"}),
+    })
+
+
+def _journey(out):
+    rows = _rows(_rail_rows(out))
+    return {key: (row["state"], row["numeral"]) for key, row in rows.items()}
+
+
+def test_a_bound_application_with_its_pdf_opens_at_fill_with_no_base_click(tmp_path):
+    out = _bound(tmp_path, _reply([*SCORE_ROWS, BOUND_TAILORED_ROW]))
+    journey = _journey(out)
+    assert journey["job"] == ("done", "✓")
+    assert journey["resume"] == ("done", "✓")
+    assert journey["fill"][0] == "active"
+    # The Base ring is the base the application was tailored from (64), not
+    # the ranking's best (72), so the "+N" says what tailoring did.
+    identity = out["regions"]["identity"]
+    assert [ring["text"] for ring in _by_class(identity, "ring")] == ["64", "77"]
+    assert _by_class(identity, "delta")[0]["text"] == "+13"
+
+
+def test_the_bound_application_answers_even_when_the_scores_read_fails(tmp_path):
+    failed = _bound(tmp_path / "failed", {"ok": False, "error": "boom", "status": 500})
+    empty = _bound(tmp_path / "empty", _reply([]))
+    for out in (failed, empty):
+        journey = _journey(out)
+        assert journey["job"] == ("done", "✓")
+        assert journey["resume"] == ("done", "✓")
+        assert journey["fill"][0] == "active"

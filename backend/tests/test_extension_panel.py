@@ -236,6 +236,15 @@ _CARDS = {
     "base_shortcut_unmatched": {"match": None, "hasApplication": False, "pdfReady": False,
                                 "status": None, "touched": False, "hasForm": True,
                                 "baseArmed": True, "hasScores": False, "baseSelected": False},
+    # A job tailored in the web app or over MCP, bound by the backend's own
+    # match: nothing was clicked here, and the scores may not be read yet. The
+    # application answers the base question with the base it was tailored from.
+    "bound_unscored": {"match": "exact", "hasApplication": True, "pdfReady": True,
+                       "status": "draft", "touched": False, "hasForm": True,
+                       "baseArmed": False, "hasScores": False, "baseSelected": False},
+    "bound_no_pdf": {"match": "exact", "hasApplication": True, "pdfReady": False,
+                     "status": "draft", "touched": False, "hasForm": True,
+                     "baseArmed": False, "hasScores": True, "baseSelected": False},
 }
 
 
@@ -294,6 +303,19 @@ def test_score_needs_both_the_scores_and_a_chosen_base(stages):
     assert stages["picked_unscored"]["stage"] == "score"
     assert stages["picked_unscored"]["done"]["score"] is False
     assert stages["scored_and_picked"]["done"]["score"] is True
+
+
+def test_a_bound_application_answers_the_base_question(stages):
+    """THE "asks to tailor again" BUG, as the stage table sees it.
+
+    The base question used to be answered only by a click, a restore or a pick,
+    all of which a backend-matched application skips. The rail then stuck on
+    the base step in front of a tailored application with its PDF, and Fill
+    stayed locked. The application's own base is the answer.
+    """
+    assert stages["bound_unscored"]["stage"] == "fill"
+    assert stages["bound_unscored"]["done"]["resume"] is True
+    assert stages["bound_no_pdf"]["stage"] == "resume"
 
 
 def test_done_marks_only_the_steps_the_data_supports(stages):
@@ -2120,9 +2142,9 @@ def test_a_profile_with_no_orphans_is_not_written_to(tmp_path):
 
 def _revisit_api():
     """A page with everything behind it: a matched job, a draft application with
-    a rendered PDF, the library and its scores. Nothing is picked yet, so the
-    journey opens at Score and ONE press (a base row) completes three steps at
-    once — which is what puts done rows on the rail to reopen."""
+    a rendered PDF, the library and its scores. The application answers the
+    base question, so the journey opens at Fill with three done rows on the
+    rail to reopen — no click needed (the "asks to tailor again" fix)."""
     return {
         "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
                                "application": {"id": "app-1", "status": "draft"}}),
@@ -2156,9 +2178,11 @@ const press = (key) => {
 };
 main(async () => {
   await settle();
-  const atScore = regions();
-  // The user picks a base. The ordinary way the Score step completes, and it
-  // completes Resume with it — the application already has its PDF.
+  const loaded = regions();
+  // The user reopens Score and picks a base there: a pick closes the reopened
+  // row and writes the session entry, which the last test below reads.
+  opener("score").click();
+  await settle();
   withClass(REGIONS.rail, "baserow")[0].click();
   await settle();
   const atFill = regions();
@@ -2208,7 +2232,7 @@ main(async () => {
   opener("score").click();
   await settle();
   const unfocused = document.activeElement;
-  emit({ atScore, atFill, scoreOpen, scoreClosed, resumeOpen, swapped, kept,
+  emit({ loaded, atFill, scoreOpen, scoreClosed, resumeOpen, swapped, kept,
          duringRun, afterRun,
          unfocusedAfterRender: unfocused === null, writes, sent });
 });
@@ -2247,16 +2271,16 @@ def _open_body(regions_):
 def test_the_journey_reaches_a_rail_with_done_rows_on_it(revisited):
     """The fixture's own premise, pinned before anything is asked of it.
 
-    One press on a base row completes Score AND Resume — the application's PDF
-    was already rendered — so the rail this section reopens rows on is real
-    rather than arranged: three done rows, one active, and the body under the
-    active one.
+    The backend-matched application answers the base question and already has
+    its PDF, so the rail opens on Fill with nothing clicked: three done rows,
+    one active, and the body under the active one. A base picked in the
+    reopened Score row closes it again and leaves the rail where it was.
     """
-    assert _rows(_rail_rows({"regions": revisited["atScore"]}))["score"]["state"] == "active"
-    rows = _rows(_rail_rows({"regions": revisited["atFill"]}))
-    assert [rows[key]["state"] for key in ("job", "score", "resume", "fill", "track")] == [
-        "done", "done", "done", "active", "locked"]
-    assert _open_body(revisited["atFill"]) == "fill"
+    for phase in ("loaded", "atFill"):
+        rows = _rows(_rail_rows({"regions": revisited[phase]}))
+        assert [rows[key]["state"] for key in ("job", "score", "resume", "fill", "track")] == [
+            "done", "done", "done", "active", "locked"], phase
+        assert _open_body(revisited[phase]) == "fill", phase
 
 
 def test_a_done_row_is_a_door_and_only_for_the_three_stages_that_have_one(revisited):
@@ -2620,8 +2644,6 @@ const statusButton = (label) => withClass(REGIONS.foot, "status-seg")
   .flatMap((segment) => segment.children)
   .filter((button) => button.textContent === label)[0];
 main(async () => {
-  await settle();
-  withClass(REGIONS.rail, "baserow")[0].click();
   await settle();
   opener("resume").click();
   await settle();

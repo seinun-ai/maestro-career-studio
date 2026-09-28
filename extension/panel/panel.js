@@ -1157,6 +1157,13 @@
       ? { id: result.job.id, company: result.job.company, title: result.job.title }
       : null;
     store.application = result.application ?? null;
+    // The application's base is the base question's answer, as a pick's is
+    // (`pickApplication`): the Base ring and the "+N" compare against the
+    // resume it was tailored from, and the ranking must not move off it.
+    if (store.application?.base_resume) {
+      store.baseSlug = store.application.base_resume;
+      store.baseSelected = true;
+    }
     // The backend named this page (or named nothing). That is not a claim
     // the user made, so a leftover `claimed` from a pick on the previous
     // posting must not open an un-pick door here.

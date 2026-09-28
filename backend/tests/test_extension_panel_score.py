@@ -77,6 +77,13 @@ main(async () => {
     await settle();
     picked = regions();
   }
+  // A done row opened again from the rail, by the id the rail stamps on it.
+  if (spec.reopen !== undefined) {
+    const door = findById(REGIONS.rail, `stg-open-${spec.reopen}`);
+    if (!door) throw new Error(`no way back into the ${spec.reopen} row`);
+    door.click();
+    await settle();
+  }
   let clicked = null;
   if (spec.click === true) {
     withClass(REGIONS.foot, "cta")[0].click();
@@ -738,10 +745,10 @@ def test_a_score_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_path
     assert [n for n in _walk(settled["foot"]) if "spin" in str(n.get("class"))] == []
 
 
-# The state the merge exists for: a job with a TAILORED application whose base
-# has not been picked. `stageFor` puts that on Score — the pick is missing, and
-# nothing about having tailored once answers it — so the Score-all button is in
-# reach on a page that is already showing a Before -> After pair.
+# The state the merge exists for: a job with a TAILORED application, its Score
+# row reopened to score the bases again — so the Score-all button is in reach
+# on a page that is already showing a Before -> After pair. (The application
+# answers the base question, so the rail itself is past Score.)
 TAILORED_ROW = {"target_type": "application", "target_id": "app-1",
                 "phase": "tailored", "composite": 84.2, "engine_version": "ats-2.3.0"}
 RESCORED_ROWS = [
@@ -765,7 +772,7 @@ def test_scoring_the_bases_again_never_costs_the_tailored_ring(tmp_path):
     wholesale deletes the tailored composite and puts "tailor to raise it"
     beside an application that already was, until the next navigation.
     """
-    out = _score(tmp_path, click=True, api={
+    out = _score(tmp_path, reopen="score", click=True, api={
         "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
                                "application": {"id": "app-1", "status": "draft"}}),
         "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
