@@ -179,24 +179,35 @@ asking permission of itself.
   employer's reading. A resume with no score says "not scored" rather than zero
   and sorts last, the scored best is preselected until you pick another, and a
   pick made by hand wins over the ranking permanently.
-- **Use base resume as is / Tailor** — the Resume stage is a fork on two
-  levels, because the first question is whether to tailor at all and "quick or
-  custom" is only a question for the user who said yes. Nothing is pre-selected:
-  choosing a tailoring path on your behalf is not the panel's call. *Tailor*
-  discloses **Quick tailor** — the same function the footer's primary runs, one
-  behaviour and one label — and **Tailor in Maestro CS ↗**, a real link to
-  `/jobs/{id}?tab=fit` and never an API call, because the panel has no business creating a tailoring
-  session behind your back; it picks the result up on the next load instead.
-  Each choice carries one short line saying what it does, the first level's
-  two before anything is pressed and the second level's two with their limbs.
-- ***Use base resume as is* is off beside an application.** `stageFor`'s
-  shortcut needs no application, so armed beside one the claim changed nothing
-  on screen (a dead button, found on a picked draft whose resume had no PDF).
-  The limb is disabled and `aria-describedby` a sentence saying why: the
-  application already has its tailored resume (the one the Companion uses), or
-  it has no PDF yet (Create PDF in Maestro CS, and, for a picked draft, Stop
-  using this draft under Job to use the base).
-- ***Use base resume as is* asks the backend for nothing and arms a fill from
+- **The Resume step is short, and keyed on what is true** (owner-approved copy,
+  2026-09-27). With no application it asks one question: **Use my base resume**
+  or **Tailor to this job**, with one muted line ("Base: your resume unchanged.
+  Tailor: fit it to this job first."). Nothing is pre-selected. *Tailor to this
+  job* discloses **Quick tailor** — the same function the footer's primary runs,
+  one behaviour and one label — and **Tailor in Maestro CS ↗**, a real link to
+  `/jobs/{id}?tab=fit` and never an API call (the panel has no business creating
+  a gap analysis behind your back), with one line: "Quick tailor makes the PDF
+  here. A PDF you make in Maestro CS shows up here automatically." (the second
+  sentence only beside the link; the panel picks the PDF up on its next load or
+  Refresh). With a tailored PDF the step is simply done, its row reading
+  "Tailored resume ready · 77" (the tailored score when stored); reopened, it
+  offers one small **Tailor again in Maestro CS ↗** link and no footer primary,
+  because Quick tailor there would replace the tailored draft unasked.
+- **An application with no PDF yet gets Create PDF, never Quick tailor.** Its
+  tailored resume is stored and only the PDF is missing, so Quick tailor would
+  run a fresh tailor (the "asks to tailor again" report). The body says "Your
+  tailored resume has no PDF yet." and the footer's primary is **Create PDF**
+  (`createPdf`: `POST /api/applications/{id}/render`, the web app's own
+  endpoint, deterministic). Fill stays locked until the PDF exists: the rule
+  that Resume is done only with a PDF is unchanged. *Use my base resume* shows
+  disabled beside it, `aria-describedby` one sentence: "This job already has a
+  draft application, so it uses that resume." (a backend match) or "You picked
+  a draft for this page, so it uses that resume." (your own pick; Stop using
+  this draft under Job is the way back to the base). `stageFor`'s shortcut
+  needs no application, so armed beside one the claim would change nothing.
+- **A limb locked while an action runs is `aria-disabled`, not `disabled`**, so
+  the pressed control keeps focus across the rebuild its own busy causes.
+- ***Use my base resume* asks the backend for nothing and arms a fill from
   your base resume, with no application at all.** It is the FIRST rung of `stageFor`, above
   the library ladder, because **filling a form is a question about the PAGE**
   while the Save job → tailor → fill flow is a question about the library.
@@ -211,7 +222,7 @@ asking permission of itself.
   would be a claim about which of them happened. A render that fails after the
   tailor committed is not an error path — the application exists either way, and
   is remembered, or the next page of the wizard would offer to tailor a job that
-  already has one.
+  already has one; the step then offers Create PDF.
 - **Fill this form, "Saved answers + AI"** — the fill loop (`shared/fill-loop.js`),
   reported in groups by what happened to each field, with **Stop** in the footer
   while it runs. A tab switch or a same-tab url change also ends a run, as it does

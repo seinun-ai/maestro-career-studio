@@ -329,7 +329,8 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * exact failure `actingLimb` was added to prevent. `.cta:disabled`'s idiom,
  * because they are the same state on the same surface — and, for the Quick
  * limb, on the button's own twin in the footer. */
-.fork button:disabled { opacity: .6; cursor: default; }
+.fork button:disabled,
+.fork button[aria-disabled="true"] { opacity: .6; cursor: default; }
 
 /* The Fill stage's mode control: two segments, one of them on.
  *

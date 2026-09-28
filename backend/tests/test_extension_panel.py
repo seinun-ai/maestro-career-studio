@@ -2400,7 +2400,9 @@ def test_a_reopened_row_brings_its_primary_with_it(revisited):
     """
     assert _by_class(revisited["atFill"]["foot"], "cta")[0]["text"] == "Fill this form"
     assert _by_class(revisited["jobOpen"]["foot"], "cta")[0]["text"] == "Score base resumes"
-    assert _by_class(revisited["resumeOpen"]["foot"], "cta")[0]["text"] == "Quick tailor"
+    # A done Resume row with its PDF has no primary at all: Quick tailor there
+    # would replace the tailored draft unasked (`primaryRefused`).
+    assert _by_class(revisited["resumeOpen"]["foot"], "cta") == []
     # Closing gives it back to the data — the two are the same answer whenever
     # nothing is reopened.
     assert _by_class(revisited["jobClosed"]["foot"], "cta")[0]["text"] == "Fill this form"

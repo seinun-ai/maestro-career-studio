@@ -922,7 +922,7 @@
    * THE DEFAULTS ARE ALREADY EVERYWHERE, which is what makes silence honest
    * here rather than a swallow. `sw.js`'s `DEFAULTS` owns the real values and
    * every reader of this answer already has a rule for not having it: no
-   * `appUrl`, no link (`deepLink`, `customLink`); an unreadable `fillMode`
+   * `appUrl`, no link (`deepLink`, `fitLink`); an unreadable `fillMode`
    * narrows to `"assist"` (`boot`). A backend that is genuinely unreachable is
    * still said out loud on every page, by `applyMatch`, in the words of the
    * question the user actually asked.
@@ -1109,19 +1109,23 @@
    * after a failed score, and the re-run on a reopened row). */
   function stageAction(stage) {
     if (stage === "job" && card.match === "exact") return "Score base resumes";
+    // An application's tailored resume is stored; only its PDF can be missing.
+    if (stage === "resume" && card.application) return "Create PDF";
     return STAGE_LABELS[stage] ?? null;
   }
 
   /** Would this stage's primary be a button that cannot do what it says?
    *
-   * TWO REFUSALS, and they are one rule: a label in `STAGE_LABELS` is a
-   * CONSTANT, so a stage whose primary is only sometimes possible has to say
-   * so here rather than by rewording itself. Both cases are a control that
-   * would run into nothing.
+   * THREE REFUSALS, and they are one rule: a stage whose primary is only
+   * sometimes possible says so here rather than by rewording itself. Each is
+   * a control that would run into nothing, or into harm.
    *
-   * - JOB, when the binding is the user's own claim. "Save job" under a row the
+   * - JOB, when the binding is the user's own claim. A primary under a row the
    *   user has already bound by hand is an offer to add what is added; the
    *   body offers the switcher and the un-pick instead.
+   * - RESUME, when the application already has its PDF (a reopened done row).
+   *   Quick tailor would replace the tailored draft unasked; the body's link
+   *   tailors again in Maestro CS, which asks first.
    * - FILL, without a form on the page. This is where the shortcut's old
    *   `hasForm` gate went (`stageFor`'s note): the stage is now decided by
    *   whose question is still open, and "can it run HERE" is decided by the
@@ -1136,6 +1140,9 @@
    */
   function primaryRefused(stage) {
     if (stage === "job") return card.claimed === true;
+    // A reopened done Resume row: Quick tailor would replace the tailored
+    // draft unasked, so its one way on is the body's link to Maestro CS.
+    if (stage === "resume") return card.application !== null && card.pdfReady === true;
     if (stage === "fill") return card.hasForm !== true;
     return false;
   }
@@ -3914,7 +3921,7 @@
    * fault, and the one a user would have to notice for us. */
   const { addJob, pickApplication, unpickApplication, dropDeletedApplication,
           scoreAllBases, quickTailor, useBaseAsIs,
-          stopUsingBaseAsIs, startFill,
+          stopUsingBaseAsIs, createPdf, startFill,
           attachResume, submitAnswer, askQuestion, setStatus, trackThis } =
     ns.panelActions(actionStore());
 
@@ -3938,6 +3945,7 @@
    * the label and the behaviour cannot part. */
   function stageRun(stage) {
     if (stage === "job" && card.match === "exact") return () => scoreAllBases();
+    if (stage === "resume" && card.application) return () => createPdf();
     return STAGE_RUN[stage];
   }
 

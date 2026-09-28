@@ -94,7 +94,7 @@
  *
  * WHAT THIS FILE PUBLISHES: ns.panelActions = (store) => ({ addJob,
  * pickApplication, unpickApplication, dropDeletedApplication, scoreAllBases,
- * quickTailor, useBaseAsIs, stopUsingBaseAsIs, startFill, submitAnswer,
+ * quickTailor, useBaseAsIs, stopUsingBaseAsIs, createPdf, startFill, submitAnswer,
  * askQuestion, setStatus, trackThis }).
  */
 (() => {
@@ -149,6 +149,7 @@
     quickTailor: () => resume.quickTailor(store),
     useBaseAsIs: () => resume.useBaseAsIs(store),
     stopUsingBaseAsIs: () => resume.stopUsingBaseAsIs(store),
+    createPdf: () => resume.createPdf(store),
     startFill: () => fill.startFill(store),
     attachResume: () => fill.attachResume(store),
     submitAnswer: (qid) => pause.submitAnswer(store, qid),
