@@ -254,6 +254,14 @@ _CARDS = {
                                  "touched": True, "hasForm": True,
                                  "baseArmed": True, "hasScores": False,
                                  "baseChosen": False},
+    # The same, but NOT from the base: filled with one draft, then switched to
+    # a draft whose resume has no PDF. `touched` survives the switch, and the
+    # new draft's PDF is still the open question.
+    "filled_then_switched_no_pdf": {"match": "exact", "hasApplication": True,
+                                    "pdfReady": False, "status": "draft",
+                                    "touched": True, "hasForm": True,
+                                    "baseArmed": False, "hasScores": True,
+                                    "baseChosen": True},
 }
 
 
@@ -336,6 +344,16 @@ def test_a_page_filled_here_never_sends_the_rail_back_to_resume(stages):
     assert out["skipped"] == ["resume"]
     # Not the user's claim to withdraw: nobody chose it, the path did.
     assert out["choiceSkipped"] == []
+
+
+def test_only_a_page_filled_from_the_base_skips_resume(stages):
+    """The rule is track-this's and nobody else's: `touched` also comes from
+    an attach or a pause answer and survives a draft switch, Refresh and later
+    wizard pages. Filled, then switched to a draft with no PDF, the open
+    question is that draft's PDF — so Resume, not Track."""
+    out = stages["filled_then_switched_no_pdf"]
+    assert out["stage"] == "resume"
+    assert out["skipped"] == []
 
 
 def test_done_marks_only_the_steps_the_data_supports(stages):

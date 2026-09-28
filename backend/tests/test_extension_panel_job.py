@@ -2225,6 +2225,25 @@ def _unpick(tmp_path, **spec):
     return run_node(_UNPICK_DRIVER_JS, spec, tmp_path, source=PANEL_SOURCE)
 
 
+def test_filled_then_switched_to_a_draft_with_no_pdf_goes_back_to_resume(tmp_path):
+    """Filled with a draft that has its PDF (the session remembers `touched`),
+    then switched from the reopened Job row to a draft whose resume has no
+    PDF: the new draft's PDF is the open question, so the step is Resume and
+    Create PDF is the footer's primary — not Track with Resume hidden."""
+    picked = _pick(tmp_path)
+    entry = {**_session_writes(picked)[-1]["widget.session"], "touched": True}
+    out = _unpick(tmp_path, stored={"widget.session": entry}, switchDraft="app-2",
+                  api=_picker_api(**{"GET /api/applications/app-2": _reply(
+                      {"id": "app-2", "pdf_path": None, "status": "draft"})}))
+    before = _rows(_rail_rows({"regions": out["reopened"]}))
+    assert before["fill"]["state"] == "done"      # the page was filled
+    switched = out["switched"]
+    rows = _rows(_rail_rows({"regions": switched}))
+    assert rows["resume"]["state"] == "active"
+    assert _by_class(switched["foot"], "cta")[0]["text"] == "Create PDF"
+    assert "This application's resume has no PDF yet." in _text(switched["rail"])
+
+
 def test_a_done_job_row_is_a_door_for_a_claim_and_for_a_backend_match(tmp_path):
     """Every done Job row reopens, onto different bodies. A pick the user made
     is theirs to withdraw, so a claim reopens onto the switcher and the

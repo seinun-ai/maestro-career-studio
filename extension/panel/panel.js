@@ -234,9 +234,10 @@
    *
    * AND A SKIPPED ROW CAN BE A DOOR TOO, which is the list's other half and
    * why this function is not simply `REOPENABLE.includes`. A done row is a
-   * door because the work can be redone; a SKIPPED row is a door only when the
+   * door because the work can be redone; a SKIPPED row is a door when the
    * skip is a claim the user made — "use base as-is" — because then there is
-   * something to withdraw. `stageFor`'s `choiceSkipped` is the provenance and
+   * something to withdraw, or when it is a Resume row filled past with its
+   * application's PDF still missing, because Create PDF is behind it. `stageFor`'s `choiceSkipped` is the provenance and
    * `railModel` carries it onto the row as `skipChoice`; a row skipped by the
    * path's own arithmetic (Job on an unmatched apply url) stays a wall.
    * Reported
@@ -247,7 +248,14 @@
   const REOPENABLE = ["job", "resume", "fill"];
 
   function isReopenable(row) {
-    if (row.state === "skipped") return row.skipChoice === true;
+    // A skipped row is a door for the user's own claim, and for a Resume row
+    // the rail filled past (`stageFor`, track-this) while its application
+    // still has no PDF: Create PDF and Tailor in Maestro CS are in its body.
+    // A view, so reopening it ticks nothing.
+    if (row.state === "skipped") {
+      return row.skipChoice === true || (row.key === "resume"
+        && card.application !== null && card.pdfReady !== true);
+    }
     return row.state === "done" && REOPENABLE.includes(row.key);
   }
 

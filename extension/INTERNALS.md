@@ -219,10 +219,12 @@ asking permission of itself.
   that resume." (your own pick; Stop using this draft under Job is the way
   back to the base). `stageFor`'s shortcut needs no application, so armed
   beside one the claim would change nothing, and `useBaseAsIs` ignores it.
-- **A page this extension filled never sends the rail back to Resume.** With
-  an application bound and no PDF, `touched` makes Resume skipped (never done)
-  and the rail moves on to Track: armed, filled, then Track this (an
-  application from the base, no PDF) stays at Track.
+- **A page filled from the base never sends the rail back to Resume.** With
+  an application bound and no PDF, `touched` and `baseArmed` together (track
+  this's signature) make Resume skipped, never done, and the rail moves on to
+  Track: armed, filled, then Track this stays at Track. `touched` alone is not
+  enough — filling with one draft and switching to one with no PDF is Resume.
+  The skipped row is still a door, onto Create PDF and Tailor in Maestro CS.
 - **A limb locked while an action runs is `aria-disabled`, not `disabled`**, so
   the pressed control keeps focus across the rebuild its own busy causes.
 - ***Use my base resume* asks the backend for nothing and arms a fill from

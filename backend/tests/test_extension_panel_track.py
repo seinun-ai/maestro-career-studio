@@ -108,8 +108,17 @@ main(async () => {
     release();
     await settle();
   }
+  // A row opened again from the rail after everything landed.
+  let reopened = null;
+  if (spec.reopen !== undefined) {
+    const door = findById(REGIONS.rail, `stg-open-${spec.reopen}`);
+    if (!door) throw new Error(`no way back into the ${spec.reopen} row`);
+    door.click();
+    await settle();
+    reopened = regions();
+  }
   const facts = ns.panel.actionStore().read();
-  emit({ loaded, clicked, settled: regions(), sent, writes,
+  emit({ loaded, clicked, settled: regions(), reopened, sent, writes,
          statuses: statusButtons().map((button) => button.textContent),
          facts: {
            claimed: facts.claimed === true,
@@ -722,12 +731,21 @@ def test_armed_filled_then_tracked_stays_at_track(tmp_path):
     an application from the base with no PDF; the ladder used to read that as
     "Resume not done" and send the user back to a step they had finished by
     filling. Resume is skipped — never done — and Track stays the step."""
-    out = _track_this(tmp_path)
+    out = _track_this(tmp_path, reopen="resume")
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["track"]["state"] == "active"
     assert rows["resume"]["state"] == "skipped"
     assert rows["resume"]["numeral"] != "✓"
     assert rows["fill"]["state"] == "done"
+    # The skipped row is a DOOR: the application still has no PDF, and Create
+    # PDF and Tailor in Maestro CS live in its body. Reopening ticks nothing.
+    reopened = out["reopened"]
+    body = next(n for n in _walk(reopened["rail"]) if n.get("id") == "stg-body-resume")
+    assert "This application's resume has no PDF yet." in _text(body)
+    assert _by_class(reopened["foot"], "cta")[0]["text"] == "Create PDF"
+    again = _rows(_rail_rows({"regions": reopened}))
+    assert (again["resume"]["state"], again["resume"]["numeral"]) == ("skipped", "2")
+    assert again["track"]["state"] == "active"
 
 
 def test_the_track_this_button_is_offered_when_the_job_is_already_in_the_library(
