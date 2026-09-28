@@ -299,12 +299,12 @@
     // same words: they run one function, and two labels for one behaviour is
     // how a user comes to believe there are two.
     resume: "Quick tailor",
-    // Was "Autofill this form" while this primary was inert. The Fill body's
-    // own limb reads the same two words for the Resume stage's reason — one
-    // function, one label — and they are deliberately short, because this fill
-    // is not only a form fill: the mode control above the button is what says
-    // which pass is about to run.
-    fill: "Fill this form",
+    // One word, and short on purpose (owner decision, 2026-09-27): "Fill this
+    // form" wrapped onto three lines beside the status chips. "Autofill" is
+    // the app's own word for the answers it fills from (Profile › Autofill),
+    // and the mode control above the button says which pass is about to run.
+    // The STEP is still "Fill".
+    fill: "Autofill",
     // AND NO `track`, which is a decision rather than an omission — this map is
     // documented above as one a stage may be absent from, and Track is the
     // stage that is.

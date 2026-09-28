@@ -436,7 +436,7 @@ def test_before_a_fill_the_stage_offers_a_choice_and_reports_nothing(tmp_path):
         "form's questions, your saved answers and career history.")
     # One primary, in the one place, and it says what it starts.
     [cta] = _by_class(out["loaded"]["foot"], "cta")
-    assert cta["text"] == "Fill this form"
+    assert cta["text"] == "Autofill"
     assert cta["disabled"] is False
     # Nothing has been injected and nothing has been asked of the page: the
     # panel prepares a tab when the user asks for something that needs it.
@@ -610,7 +610,7 @@ def test_a_form_that_arrives_late_gives_the_stage_its_primary_back(tmp_path):
     assert _rows(_rail_rows({"regions": out["loaded"]}))["fill"]["state"] == "active"
     assert out["modes"] == ["Saved answers only", "Saved answers + AI"]
     [cta] = _by_class(out["loaded"]["foot"], "cta")
-    assert cta["text"] == "Fill this form"
+    assert cta["text"] == "Autofill"
     assert cta["disabled"] is False
     assert "No application form on this page" not in _text(rail)
 

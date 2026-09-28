@@ -1447,7 +1447,7 @@ def test_the_late_yes_alone_arms_the_primary_and_moves_no_stage(tmp_path):
     assert _by_class(at_yes["foot"], "cta") == []
     assert _rows(_rail_rows({"regions": out["regions"]}))["fill"]["state"] == "active"
     [cta] = _by_class(out["regions"]["foot"], "cta")
-    assert cta["text"] == "Fill this form"
+    assert cta["text"] == "Autofill"
     assert cta["disabled"] is False
     # And no injection got us there: the page ANSWERED both times, and the
     # detect's injection rung reads a silence rather than a no.

@@ -93,7 +93,7 @@ it armed. Three rules hold the shape up:
 - **The footer holds exactly one primary**, and it follows the OPEN row: Save
   job (Update scores once the job is saved: the retry, and the re-run on
   a reopened row; none on a bound application's read-only Job row), Quick
-  tailor, Fill this form (withheld by
+  tailor, Autofill (withheld by
   `primaryRefused` on a page with no form; a late detect yes gives it back,
   moving no stage). Track has none: its way
   onward is the header's link, and its control is the permanent Draft/Applied
@@ -243,12 +243,12 @@ asking permission of itself.
   tailor committed is not an error path — the application exists either way, and
   is remembered, or the next page of the wizard would offer to tailor a job that
   already has one; the step then offers Create PDF.
-- **Fill this form, "Saved answers + AI"** — the fill loop (`shared/fill-loop.js`),
+- **Autofill, "Saved answers + AI"** — the fill loop (`shared/fill-loop.js`),
   reported in groups by what happened to each field, with **Stop** in the footer
   while it runs. A tab switch or a same-tab url change also ends a run, as it does
   the rule pass's: the panel half by the generation check, the page half by
   `fill_cancel` to the tab being left.
-- **Fill this form, "Saved answers only"** — the Fill stage runs the hybrid pipeline on this page: the
+- **Autofill, "Saved answers only"** — the Fill stage runs the hybrid pipeline on this page: the
   profile rule pass, then one batched `/api/autofill/choose` call for everything
   the rules did not cover (chunked at 40 fields), then the sequenced writer. The
   AI pass's prompt carries your saved answers and your career history; the EEO
@@ -359,7 +359,7 @@ asking permission of itself.
   matched this page to the very job the entry names, and a backend that
   recognises a *different* job discards the memory rather than offering it.
   `done.fill` rides the same entry, which is why reopening the ticked Fill row is
-  how you reach Fill this form again on page three of a form the extension has
+  how you reach Autofill again on page three of a form the extension has
   already finished once.
 
 ## Rules the code depends on
@@ -1113,9 +1113,9 @@ Two things bound that:
   and every MV3 reload orphans the scripts in every open tab, which shows up as
   "No job description found on this page" over a visible JD, forever. The panel
   injects them (`panel_prepare`, `chrome.scripting`) on three routes and no
-  others: Fill this form and Attach resume, both user gestures, and once per page
+  others: Autofill and Attach resume, both user gestures, and once per page
   after a posting read has come back silent. In a tab that already HAS them
-  (every Fill this form does this) the files re-run in the same isolated world:
+  (every Autofill does this) the files re-run in the same isolated world:
   the fill engine's modules and `agent.js`'s message listener load once
   (`ns.loadedOnce`), so the user's edits, a latched Stop and the verified-value
   memory survive and every message is still handled exactly once. Never speculatively on a load —

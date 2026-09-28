@@ -121,6 +121,6 @@ in `DEFAULTS` at the top of `sw.js`.)
   close button.
 - **Multi-step applications** may still need some fields entered by hand. The
   application you picked is remembered for 30 minutes as you move through the
-  steps, so press **Fill this form** again on each page.
+  steps, so press **Autofill** again on each page.
 
 How it works inside: [INTERNALS.md](INTERNALS.md).

@@ -2459,7 +2459,7 @@ def test_a_reopened_row_brings_its_primary_with_it(revisited):
     to act on it — and the alternative, a second Start fill inside the body, is
     the two-writers-for-one-behaviour that footer exists to prevent.
     """
-    assert _by_class(revisited["atFill"]["foot"], "cta")[0]["text"] == "Fill this form"
+    assert _by_class(revisited["atFill"]["foot"], "cta")[0]["text"] == "Autofill"
     # A bound application's Job row is read-only: its own base answered the
     # question, so there is nothing to save and nothing to re-rank.
     assert _by_class(revisited["jobOpen"]["foot"], "cta") == []
@@ -2468,7 +2468,7 @@ def test_a_reopened_row_brings_its_primary_with_it(revisited):
     assert _by_class(revisited["resumeOpen"]["foot"], "cta") == []
     # Closing gives it back to the data — the two are the same answer whenever
     # nothing is reopened.
-    assert _by_class(revisited["jobClosed"]["foot"], "cta")[0]["text"] == "Fill this form"
+    assert _by_class(revisited["jobClosed"]["foot"], "cta")[0]["text"] == "Autofill"
     # The status segment is NOT the primary and does not move with it: it
     # belongs to the application, which is the same application either way.
     assert len(_by_class(revisited["jobOpen"]["foot"], "status-seg")) == 1

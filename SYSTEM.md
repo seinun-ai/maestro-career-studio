@@ -563,7 +563,7 @@ file to open.
   bases in the same press, and an unscored saved job is scored once when Job opens. `hasForm` is
   NOT a stage input. ONE row shows a body (the active one, or a DONE row reopened as view state;
   the active row is the way back); the footer's one primary follows the OPEN row: Save job (then
-  Update scores), Quick tailor (Create PDF when an application lacks its PDF), Fill this form.
+  Update scores), Quick tailor (Create PDF when an application lacks its PDF), Autofill.
   The panel document is a family of scripts (panel.html owns roster and order): `panel.js`
   owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`)
   get a per-render snapshot, per-CONCERN actions (`panel/actions/*.js`) a handle with one
@@ -583,7 +583,7 @@ file to open.
   embedded Greenhouse `gh_jid`), pinned by `test_extension_posting_identity.py`; add a key to
   BOTH. **`extension/INTERNALS.md` owns the rest.**
 - **Guided fill** (design doc `2026-08-16-guided-apply-design`, unpublished — §10):
-  the panel's **Fill** stage — **Fill this form** → `panel_prepare` (the
+  the panel's **Fill** stage — **Autofill** → `panel_prepare` (the
   gesture-backed injection; `preparePage` is the only other injector) → a run. `fillMode` (`storage.sync`):
   "Saved answers + AI" (default) runs the fill loop (`shared/fill-loop.js`: Stop, report grouped by status,
   jump via `fill_focus`, `loop_fill` telemetry); "Saved answers only" runs the rule pass below; its rows are `reconcileFill`'s
