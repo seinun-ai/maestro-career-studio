@@ -113,6 +113,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 - **Refresh** in the panel reads this page's job and applications again, so
   a PDF you made in Maestro CS shows up. What you typed and the Fill report
   stay.
+- The panel's fill button is now **Autofill**, and the note under the panel
+  sits on its own line instead of under the buttons.
 - **Letting the Companion fill agreements and signatures now covers every
   field**, including signatures, initials, typed-name attestations and
   salary history. It still never moves to the next page and never submits.
@@ -135,6 +137,12 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   street address into a second address line.
 - Workday application steps are recognized as forms, so Fill is offered on
   them.
+- An application form embedded from another site (such as a Greenhouse form
+  inside a company's careers page) is found, so Autofill is offered for it,
+  including when the form only appears after you select Apply.
+- Forms whose labels aren't linked to their fields (such as Gem's) are read:
+  the Companion takes the short label just before a field, and groups Yes/No
+  buttons that belong to one question.
 - A resume upload counts as attached when the page lists the file, even on
   pages that clear the upload box (Workday), and never when the page refused
   it.
