@@ -834,7 +834,7 @@ def test_the_panel_binds_to_the_active_tab_and_stays_bound(booted):
     the SW would pass it. These three listeners are that guard.
     """
     assert booted["queries"] == [{"active": True, "lastFocusedWindow": True}]
-    assert booted["listeners"] == ["onActivated", "onUpdated"]
+    assert booted["listeners"] == ["onActivated", "onUpdated", "webNavigation.onCompleted"]
     # The url is the only fact the panel has about a page it has not asked the
     # backend about yet, so it is what the identity line shows — which makes it
     # the visible proof of which tab the panel is bound to.

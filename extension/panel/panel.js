@@ -2679,6 +2679,14 @@
       healPosting(generation).catch(
         (err) => console.warn(`[maestro-cs] panel could not re-read tab ${tabId}:`, err));
     });
+    // A SUBFRAME of the bound tab finished loading, which is how an embedded
+    // application form arrives with no url change (`scheduleFrameDetect`).
+    // Frame 0's own loads are `onUpdated`'s above. `webNavigation` is already
+    // a permission (the SW's frame fan-out lists frames with it).
+    chrome.webNavigation.onCompleted.addListener(({ tabId, frameId }) => {
+      if (tabId !== card.tabId || frameId === 0) return;
+      scheduleFrameDetect();
+    });
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (tab) await onTab(tab.id, tab.url ?? "");
   }
@@ -3189,15 +3197,70 @@
   }
 
   /** The one detection ask, so the first attempt and every retry are the same
-   * message with the same silence-is-no reading. */
+   * message with the same silence-is-no reading.
+   *
+   * FRAME 0 FIRST, then EVERY FRAME when frame 0 has no form. An application
+   * form can live in a subframe — Greenhouse's cross-origin embed on block.xyz,
+   * inserted when the Apply tab opens — where frame 0 scores below the bar and
+   * the embed above it. `form` is then true when ANY frame says so, which is
+   * the condition `frameMayReceiveUserData` (content/agent.js) uses to admit a
+   * frame to a fill, so the offer matches what the fill can reach. `tier` and
+   * `fileInputs` stay frame 0's (the attach offer is unchanged), and the
+   * answer is null only when no frame answered at all, which is what sends
+   * `askDetectPrepared` to inject. The fan-out carries no user data. */
   async function askDetect() {
+    let top = null;
     try {
-      return await ask("panel_frame0", {
+      top = await ask("panel_frame0", {
         tabId: card.tabId, message: { type: "detect_page" },
       });
     } catch (_) {
-      return null;
+      top = null;
     }
+    if (top?.form === true) return top;
+    let frames = [];
+    try {
+      frames = await ask("page_broadcast", {
+        tabId: card.tabId, message: { type: "detect_page" },
+      });
+    } catch (_) {
+      frames = [];
+    }
+    const answered = (Array.isArray(frames) ? frames : [])
+      .filter((one) => one?.result !== undefined && one.result !== null);
+    if (top === null && answered.length === 0) return null;
+    return { ...(top ?? { tier: "none", form: false, score: 0, fileInputs: 0 }),
+             form: answered.some((one) => one.result?.form === true) };
+  }
+
+  /** A subframe of the bound tab finished loading: ask again, once per burst.
+   *
+   * The late case the retry ladder cannot reach: a page that inserts its
+   * application iframe when the user opens an Apply tab does it with no url
+   * change, long after the 1/2/4 s schedule has run out. Debounced, because a
+   * page loads several frames at once; only while there is no form yet, never
+   * while an action runs, and under the generation rule — the answer lands
+   * only on the page that asked. Refresh covers the same case by hand. */
+  const FRAME_DETECT_MS = 500;
+  let frameDetectTimer = null;
+
+  function scheduleFrameDetect() {
+    clearTimeout(frameDetectTimer);
+    const token = generation;
+    frameDetectTimer = setTimeout(() => {
+      detectLateFrame(token).catch(
+        (err) => console.warn("[maestro-cs] panel could not re-detect a frame:", err));
+    }, FRAME_DETECT_MS);
+  }
+
+  async function detectLateFrame(token) {
+    if (!current(token) || card.hasForm || card.busy !== null || !isWebPage(card.url)) return;
+    const verdict = await askDetect();
+    if (!current(token) || card.hasForm || card.busy !== null) return;
+    if (verdict?.form !== true) return;
+    card.hasForm = true;
+    card.fileInputs = countFileInputs(verdict);
+    render();
   }
 
   /** How long the panel keeps re-asking a page that has not finished rendering.

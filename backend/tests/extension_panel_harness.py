@@ -108,6 +108,11 @@ PANEL_OWN_SRCS = [src for src in PANEL_SCRIPT_SRCS if not src.startswith("../")]
 _PANEL_FAKES_JS = r"""
 let onActivated = null;
 let onUpdated = null;
+// A frame of some tab finished loading (`chrome.webNavigation.onCompleted`):
+// how the panel hears that an iframe was added with no url change, such as
+// an embedded application form a page inserts when its Apply tab opens.
+let onNavCompleted = null;
+const navCompleted = async (details) => { if (onNavCompleted) await onNavCompleted(details); };
 const queries = [];
 const listeners = [];
 const sent = [];
@@ -232,6 +237,11 @@ global.chrome = {
     get: async (tabId) => ({ id: tabId, url: (spec.tabUrls ?? {})[tabId] ?? "" }),
     onActivated: { addListener: (fn) => { listeners.push("onActivated"); onActivated = fn; } },
     onUpdated: { addListener: (fn) => { listeners.push("onUpdated"); onUpdated = fn; } },
+  },
+  webNavigation: {
+    onCompleted: {
+      addListener: (fn) => { listeners.push("webNavigation.onCompleted"); onNavCompleted = fn; },
+    },
   },
   // The panel reads its remembered pick straight from storage and writes one
   // back. `writes` is the whole record of that — what was stored, under which

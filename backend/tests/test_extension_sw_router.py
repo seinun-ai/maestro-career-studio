@@ -647,6 +647,10 @@ def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
         # nothing) — see test_extension_frame_gate.
         "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
         "fill_sections", "fill_add",
+        # The form verdict, asked of every frame when frame 0 has none: an
+        # embedded cross-origin form (Greenhouse on block.xyz) is in a
+        # subframe. It carries and returns no user data.
+        "detect_page",
     ]
     # …and the one that must never join it, named rather than left to the list
     # above: a posting's JSON-LD is in the top document, so broadcasting the

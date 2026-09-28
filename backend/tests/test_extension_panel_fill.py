@@ -615,6 +615,80 @@ def test_a_form_that_arrives_late_gives_the_stage_its_primary_back(tmp_path):
     assert "No application form on this page" not in _text(rail)
 
 
+# ---------- an application form in a subframe ----------
+#
+# block.xyz, live: the Greenhouse form is an embedded cross-origin iframe
+# (job-boards.greenhouse.io/embed/job_app…), inserted only when the user opens
+# the Apply tab. Frame 0 scores 1 against a threshold of 2; the embed scores 3.
+# The fill already reaches subframes (every fill message is a fan-out, and
+# `frameMayReceiveUserData` admits a frame whose own detect says `form`), so
+# the offer has to be asked of every frame too.
+
+TOP_NO_FORM = {"tier": "none", "form": False, "score": 1, "fileInputs": 0}
+EMBED_FORM = {"tier": "B", "form": True, "score": 3, "fileInputs": 1}
+
+
+def test_a_form_in_an_embedded_frame_is_offered_and_filled(tmp_path):
+    out = _fill(tmp_path, start=True,
+                replies={"panel_frame0": _reply(TOP_NO_FORM)},
+                frames={"detect_page": [{"frameId": 0, "result": TOP_NO_FORM},
+                                        {"frameId": 5, "result": EMBED_FORM}]})
+    loaded = out["loaded"]
+    [cta] = _by_class(loaded["foot"], "cta")
+    assert (cta["text"], cta["disabled"]) == ("Autofill", False)
+    assert "No application form here" not in _text(loaded["rail"])
+    # The run is a fan-out, which is how it reaches the embed: the rule pass
+    # went out to every frame of the tab.
+    assert "profile_fill" in _broadcast_types(out)
+
+
+def test_a_page_whose_frames_all_say_no_is_still_no_form(tmp_path):
+    out = _fill(tmp_path, replies={"panel_frame0": _reply(TOP_NO_FORM)},
+                frames={"detect_page": [{"frameId": 0, "result": TOP_NO_FORM},
+                                        {"frameId": 5, "result": {**TOP_NO_FORM,
+                                                                  "score": 0}}]})
+    assert _by_class(out["loaded"]["foot"], "cta") == []
+    assert "No application form here" in _text(out["loaded"]["rail"])
+
+
+_LATE_FRAME_DRIVER_JS = _PANEL_FAKES_JS + r"""
+loadModules();
+const asked = () => broadcasts.filter((msg) => msg.message.type === "detect_page").length;
+main(async () => {
+  await settle();
+  const loaded = regions();
+  const before = asked();
+  // The Apply tab inserts the embed: no url change, just a subframe that
+  // finishes loading. A frame of ANOTHER tab first, which must ask nothing.
+  spec.frames.detect_page = spec.lateFrames;
+  await navCompleted({ tabId: 99, frameId: 3 });
+  await settle();
+  const otherTab = asked() - before;
+  await navCompleted({ tabId: 7, frameId: 3 });
+  await navCompleted({ tabId: 7, frameId: 4 });
+  await settle();
+  emit({ loaded, settled: regions(), otherTab, asked: asked() - before });
+});
+"""
+
+
+def test_a_form_frame_added_after_the_page_loaded_brings_the_primary(tmp_path):
+    """The embed arrives after the retry ladder has given up, with no url
+    change. A subframe of the bound tab finishing its load asks every frame
+    again, once for a burst of frames; another tab's frames ask nothing."""
+    out = _fill(tmp_path, driver=_LATE_FRAME_DRIVER_JS,
+                replies={"panel_frame0": _reply(TOP_NO_FORM)},
+                frames={"detect_page": [{"frameId": 0, "result": TOP_NO_FORM}]},
+                lateFrames=[{"frameId": 0, "result": TOP_NO_FORM},
+                            {"frameId": 3, "result": EMBED_FORM}])
+    assert _by_class(out["loaded"]["foot"], "cta") == []
+    assert out["otherTab"] == 0
+    assert out["asked"] == 1
+    [cta] = _by_class(out["settled"]["foot"], "cta")
+    assert (cta["text"], cta["disabled"]) == ("Autofill", False)
+    assert "No application form here" not in _text(out["settled"]["rail"])
+
+
 def test_the_default_mode_is_assist_and_the_choice_is_remembered_for_the_profile(tmp_path):
     """The mode is a SETTING, not a page fact.
 

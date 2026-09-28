@@ -628,12 +628,18 @@ const HANDLERS = {
    * reason the rest are: every one but `fill_cancel` is gated on the
    * receiving side by `frameMayReceiveUserData`, and a frame acts only on
    * fids (and section sids) it minted itself.
-   * `fill_cancel` carries nothing and only stops work already in flight. */
+   * `fill_cancel` carries nothing and only stops work already in flight.
+   *
+   * `detect_page` is the form verdict asked of EVERY frame, which the panel
+   * does when frame 0 has no form: an embedded cross-origin application form
+   * (Greenhouse's embed on block.xyz) lives in a subframe, and the fill already
+   * reaches it through the types above. It carries nothing from the user and
+   * returns only `detectPage()`'s verdict. */
   async page_broadcast(msg, frame, sender) {
     const BROADCASTABLE = ["profile_fill", "collect_open_questions", "fill_answers",
       "guided_write", "scroll_to_field",
       "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
-      "fill_sections", "fill_add"];
+      "fill_sections", "fill_add", "detect_page"];
     const tabId = fanoutTab(msg, frame, sender);
     if (!BROADCASTABLE.includes(msg.message?.type)) {
       throw new Error(`not broadcastable: ${JSON.stringify(msg.message?.type)}`);

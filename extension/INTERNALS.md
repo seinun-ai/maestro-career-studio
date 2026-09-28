@@ -54,9 +54,16 @@ reference, never a value) so the engine never overwrites it.
 
 `detect.js` is the decision point and it answers only when asked — the panel
 sends `detect_page` to frame 0 of the tab it is bound to, because a panel runs in
-no page. It reads, scores and returns four keys: the tier, whether a form's
-evidence held, the score behind it, and how many upload boxes a resume could go
-into. It holds no state, registers no observer and touches nothing on the page.
+no page, and, when frame 0 has no form, to every frame (`page_broadcast`). The
+form verdict is true when any frame's is: an application form can be an
+embedded cross-origin iframe (Greenhouse's embed on block.xyz, inserted when the
+Apply tab opens), and a frame whose own verdict is `form` is exactly what
+`frameMayReceiveUserData` admits to a fill. A subframe of the bound tab that
+finishes loading (`webNavigation.onCompleted`) asks again once, debounced, while
+no form is known and nothing is running; Refresh covers it by hand. It reads,
+scores and returns four keys: the tier, whether a form's evidence held, the
+score behind it, and how many upload boxes a resume could go into (frame 0's
+count only, so the attach offer is unchanged). It holds no state, registers no observer and touches nothing on the page.
 Tier A is a JobPosting **verdict** (a page either declares one or it does not),
 Tier B is form evidence over a threshold, the two do not combine into one number,
 and an ATS host is worth zero points on its own. On a miss the panel offers

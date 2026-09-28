@@ -444,17 +444,20 @@
      * COUNT and never the inputs themselves: what the panel decides with it is
      * whether to OFFER an attach, and one number is the whole of that decision.
      *
-     * WHAT IT IS NOT: a promise about the frame the form is in. This handler
-     * only ever answers for frame 0 (`panel_frame0`), so on a Greenhouse or
-     * Lever posting — where the form is a subframe — it honestly reports zero
-     * and the panel offers nothing. The attach fan-out still reaches those
-     * frames; the OFFER does not, and that is the conservative direction.
+     * EVERY FRAME ANSWERS IT NOW, not only frame 0: the panel asks frame 0
+     * first (`panel_frame0`) and, when frame 0 has no form, every frame
+     * (`page_broadcast`), so a form in a subframe — Greenhouse's cross-origin
+     * embed — turns the Fill offer on. `form` is folded across frames (any
+     * frame true), which is the same verdict `frameMayReceiveUserData` reads.
+     * The COUNT is still frame 0's alone: on a posting whose form is a
+     * subframe the attach offer stays off. The attach fan-out still reaches
+     * those frames; the OFFER does not, and that is the conservative direction.
      *
      * Ungated for `extract_job_posting`'s reason and no other: it reads the
-     * frame it already runs in and returns nothing derived from the user. The
-     * panel only ever asks frame 0, where `frameMayReceiveUserData` would pass
-     * it anyway — so the gate is not what is being skipped here, it is what
-     * this answer has no business consulting. */
+     * frame it already runs in and returns nothing derived from the user — a
+     * verdict and a count — so it is safe to fan out to every frame, ad and
+     * analytics iframes included, and the gate is not what is being skipped
+     * here: it is what this answer has no business consulting. */
     detect_page: () => {
       const { tier, form, score } = ns.detectPage();
       return { tier, form, score, fileInputs: attachableFileInputs().length };
