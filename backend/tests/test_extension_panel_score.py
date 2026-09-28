@@ -323,6 +323,85 @@ def test_the_scorer_is_asked_once_per_page_even_when_it_fails(tmp_path):
         "Couldn't score your base resumes. Check that Maestro CS is running.")
 
 
+BOUND_TO_DATA_SCIENTIST = _reply({
+    "match": "exact", "job": LIGHTNING_JOB,
+    "application": {"id": "app-1", "status": "draft", "base_resume": "data_scientist"}})
+
+
+def test_a_bound_applications_job_row_is_read_only_and_names_its_own_base(tmp_path):
+    """With an application bound, its own base answered the question, so the
+    reopened Job row says which base it was tailored from and the ranked list
+    is information only: no pick, and the Before ring does not move. The
+    ranking's best (AI/ML Engineer, 72) is not what the application used."""
+    out = _score(tmp_path, reopen="job", api={
+        "lightningai": BOUND_TO_DATA_SCIENTIST,
+        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
+                                           "status": "draft"})})
+    body = _by_class(out["loaded"]["rail"], "stg-body")[0]
+    assert _by_class(body, "sub")[0]["text"] == "Tailored from Data Scientist · 64"
+    rows = _by_class(body, "baserow")
+    assert [_text(row) for row in rows] == [
+        "AI/ML Engineer 72", "Data Scientist 64", "Backend Engineer not scored"]
+    # Information, not a control: no button, no radio, nothing to press (the
+    # harness's fake refuses a click on a node with no listener, so a row
+    # that grew one would be caught by any driver that pressed it).
+    assert {row["tag"] for row in rows} == {"DIV"}
+    assert all("role" not in row["attrs"] for row in rows)
+    assert all(node["tag"] != "BUTTON" for row in rows for node in _walk(row))
+    assert _by_class(out["loaded"]["identity"], "ring")[0]["text"] == "64"
+
+
+def test_with_no_application_the_reopened_list_is_still_a_pick(tmp_path):
+    """The other case: nothing bound, so the list is a radiogroup of buttons
+    and a click is the user's choice."""
+    out = _score(tmp_path, reopen="job")
+    body = _by_class(out["loaded"]["rail"], "stg-body")[0]
+    rows = _by_class(body, "baserow")
+    assert {row["tag"] for row in rows} == {"BUTTON"}
+    assert {row["attrs"]["role"] for row in rows} == {"radio"}
+    assert "Tailored from" not in _text(body)
+
+
+_PAINTS_DRIVER_JS = _PANEL_FAKES_JS + r"""
+loadModules();
+// Every rail paint, with the chip the header painted in the same render and
+// the row that was active in it.
+const paints = [];
+const replace = REGIONS.rail.replaceChildren.bind(REGIONS.rail);
+REGIONS.rail.replaceChildren = (...kids) => {
+  replace(...kids);
+  const keys = ["job", "resume", "fill", "track"];
+  const rows = withClass(REGIONS.rail, "stg");
+  const active = rows.findIndex((row) => row.className.split(" ").includes("active"));
+  const chip = withClass(REGIONS.identity, "chip")[0];
+  paints.push({ chip: chip ? chip.textContent : null, active: keys[active] ?? null });
+};
+main(async () => {
+  await settle();
+  emit({ paints });
+});
+"""
+
+
+def test_a_saved_and_scored_job_never_paints_the_job_step_as_current(tmp_path):
+    """Scores are a stage input (`baseChosen`), so a saved, unbound job's
+    scores are read BEFORE the render that follows the match: without that,
+    the rail showed Job for one round trip and then jumped to Resume. The only
+    earlier paint is the pre-match one, which knows nothing about the page
+    yet and carries no chip."""
+    out = run_node(_PAINTS_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "api": {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                       "application": None}),
+                "/api/base-resumes": _reply(SCORE_RESUMES),
+                "GET /api/ats-scores": _reply(SCORE_ROWS)},
+    }, tmp_path, source=PANEL_SOURCE)
+    matched = [paint for paint in out["paints"] if paint["chip"] is not None]
+    assert matched, out["paints"]
+    assert {paint["active"] for paint in matched} == {"resume"}, out["paints"]
+
+
 # ---------- restorableSession: may this memory be used on THIS page? --------
 #
 # ORPHANED BY R-C AND RE-HOMED HERE. The 13-row table that drove this function

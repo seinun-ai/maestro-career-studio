@@ -29,7 +29,8 @@
     fork: "Base: your resume unchanged. Tailor: fit it to this job first.",
     // The second sentence is about the link, so it goes with it.
     quick: "Quick tailor makes the PDF here.",
-    custom: "A PDF you make in Maestro CS shows up here automatically.",
+    // The panel reads the backend on load and on Refresh, never on a timer.
+    custom: "A PDF you make in Maestro CS shows up here when you select Refresh.",
     noPdf: "Your tailored resume has no PDF yet.",
     again: "Tailor again in Maestro CS ↗",
   };

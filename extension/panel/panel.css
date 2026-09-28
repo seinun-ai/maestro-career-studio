@@ -258,6 +258,8 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   background: var(--cs-surface); cursor: pointer;
 }
 .baserow.sel { border-color: var(--cs-primary); background: var(--cs-primary-tonal); }
+/* Information only, beside a bound application: no pointer, nothing to press. */
+.baserow.ro { cursor: default; }
 .baserow .r {
   width: 14px; height: 14px; border-radius: 50%;
   border: 2px solid var(--cs-muted); flex: none;

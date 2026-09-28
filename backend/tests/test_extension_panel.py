@@ -2147,11 +2147,13 @@ def test_a_profile_with_no_orphans_is_not_written_to(tmp_path):
 def _revisit_api():
     """A page with everything behind it: a matched job, a draft application with
     a rendered PDF, the library and its scores. The application answers the
-    base question, so the journey opens at Fill with three done rows on the
-    rail to reopen — no click needed (the "asks to tailor again" fix)."""
+    base question with its own base, so the journey opens at Fill with done
+    rows on the rail to reopen — no click needed (the "asks to tailor again"
+    fix)."""
     return {
         "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
-                               "application": {"id": "app-1", "status": "draft"}}),
+                               "application": {"id": "app-1", "status": "draft",
+                                               "base_resume": "data_scientist"}}),
         "/api/base-resumes": _reply(BASE_RESUMES),
         "/api/ats-scores": _reply(SCORES),
         # A LIST: the first read is the load's, the second is the status PATCH's
@@ -2183,11 +2185,10 @@ const press = (key) => {
 main(async () => {
   await settle();
   const loaded = regions();
-  // The user reopens Job and picks a base there: a pick closes the reopened
-  // row and writes the session entry, which the last test below reads.
+  // Opened and closed again, which is a view change and nothing else.
   opener("job").click();
   await settle();
-  withClass(REGIONS.rail, "baserow")[0].click();
+  opener("job").click();
   await settle();
   const atFill = regions();
   // …and goes back to Job. The rail is scrolled, because a done row is
@@ -2236,6 +2237,13 @@ main(async () => {
   opener("job").click();
   await settle();
   const unfocused = document.activeElement;
+  // Refresh with a row reopened: it writes the bound application's base down
+  // again and carries the view across its reload, so this is the one moment a
+  // session write happens while `revisit` is set.
+  if (findById(REGIONS.rail, "stg-body-job") === null) opener("job").click();
+  await settle();
+  document.getElementById("refresh-page").click();
+  await settle();
   emit({ loaded, atFill, jobOpen, jobClosed, resumeOpen, swapped, kept,
          duringRun, afterRun,
          unfocusedAfterRender: unfocused === null, writes, sent });
@@ -2277,8 +2285,8 @@ def test_the_journey_reaches_a_rail_with_done_rows_on_it(revisited):
 
     The backend-matched application answers the base question and already has
     its PDF, so the rail opens on Fill with nothing clicked: two done rows,
-    one active, and the body under the active one. A base picked in the
-    reopened Job row closes it again and leaves the rail where it was.
+    one active, and the body under the active one. Opening and closing the
+    Job row leaves the rail where it was.
     """
     for phase in ("loaded", "atFill"):
         rows = _rows(_rail_rows({"regions": revisited[phase]}))
@@ -2585,7 +2593,7 @@ def test_which_body_is_open_is_never_written_down(revisited):
     """`revisit` is view state, and the session entry is what the OTHER surface
     reads: a card restoring "the user was looking at Score" would be the panel
     telling the floating card where to point its attention."""
-    assert revisited["writes"], "the pick should have written a session entry"
+    assert revisited["writes"], "Refresh should have written a session entry"
     assert "revisit" not in json.dumps(revisited["writes"])
     # AND NOT OVER THE WIRE EITHER, which is the same rule aimed at the other
     # destination. `sent` is every message this panel put on the SW's door,

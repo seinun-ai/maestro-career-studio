@@ -2864,7 +2864,6 @@
     }
     if (!current(token)) return;
     applyMatch(result, card);
-    render();
 
     // The backend did not put an application on this page. Before falling back
     // to "nothing armed", see whether this browser remembers one being picked
@@ -2872,9 +2871,24 @@
     // one of them is what makes a surface look like it forgot what it was
     // doing.
     // `restorableSession` owns whether the memory may be used; the backend's
-    // own answer always wins over it.
+    // own answer always wins over it. A storage read, so it costs the paint
+    // below no round trip.
     if (!card.application) await restoreSession(token);
     if (!current(token)) return;
+
+    // THE SCORES ARE A STAGE INPUT for a saved job with no application: the
+    // ranking's best is what closes the Job step (`baseChosen`). So they are
+    // read BEFORE the render that paints the matched page — painted first, the
+    // rail showed Job for one round trip and then jumped to Resume. An
+    // application answers the base question itself, and then the read stays
+    // unawaited below. `paint: false` keeps the read's own renders out of the
+    // way; the one render after it paints what it found.
+    const scoresFirst = card.match === "exact" && card.application === null;
+    if (scoresFirst) {
+      await loadBaseScores(token, { paint: false });
+      if (!current(token)) return;
+    }
+    render();
 
     // AWAITED: this one decides whether filling can happen here. A rail whose
     // Fill primary appears a beat after the rail settles is a control arriving
@@ -2904,7 +2918,7 @@
     // awaited all the same: an application (the detail read below) answers the
     // base question without it, and a slow or failed read leaves the Job step
     // open on its list with its own primary, never a stage claimed wrongly.
-    loadBaseScores(token);
+    if (!scoresFirst) loadBaseScores(token);
 
     // THE READ THAT IS ALSO A VALIDATION, and since the ghost-binding round it
     // is named as one. `restoreSession` above deliberately makes no round trip
@@ -3573,11 +3587,11 @@
    * primary to score. An answer with no scored base, on a Job step, is what
    * asks the scorer once (`shouldScoreOnOpen`).
    */
-  async function loadBaseScores(token) {
+  async function loadBaseScores(token, { paint = true } = {}) {
     // The library first: the ranking is OVER base resumes, and the default
     // pick — which is what the identity card's "Before" ring reads — comes out
     // of that list.
-    await loadBaseResumes(token);
+    await loadBaseResumes(token, { paint });
     if (!current(token) || !card.job) return;
     let rows;
     try {
@@ -3595,7 +3609,7 @@
     } catch (_) {
       if (!current(token)) return;
       card.scores = null;   // "we do not know", which is what null means here.
-      render();
+      if (paint) render();
       return;
     }
     if (!current(token)) return;
@@ -3609,7 +3623,7 @@
       const best = rankBaseResumes(card.resumes, card.scores)[0];
       if (best && best.score !== null) card.baseSlug = best.slug;
     }
-    render();
+    if (paint) render();
     // The Job step opening on a saved job that no base has a score for is
     // scored now, with no press (owner decision, 2026-09-27). Synchronous to
     // the guard above, so it starts for this page or not at all; the action
@@ -3638,7 +3652,7 @@
    * replaces it (`forgetLibraryLists`). */
   let resumesRequest = null;
 
-  async function loadBaseResumes(token) {
+  async function loadBaseResumes(token, { paint = true } = {}) {
     if (card.resumes === null) {
       const request = (resumesRequest ??= api("/api/base-resumes"));
       let rows;
@@ -3676,7 +3690,7 @@
     // resumes yet, and a panel that threw on the empty library would take the
     // whole load down for the one user who needs the empty state most.
     if (!card.baseSlug) card.baseSlug = card.resumes?.[0]?.slug ?? null;
-    render();
+    if (paint) render();
   }
 
   /** Recent drafts, asked for once per panel (or per Refresh) rather than once

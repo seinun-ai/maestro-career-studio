@@ -146,7 +146,7 @@ TAILORED_REPLY = _reply({"application_id": "app-quick", "session_id": "sess-1",
 # What the choices do: one short muted line under each level (2026-09-27).
 FORK_LINE = "Base: your resume unchanged. Tailor: fit it to this job first."
 OPTIONS_LINE = ("Quick tailor makes the PDF here. A PDF you make in Maestro CS "
-                "shows up here automatically.")
+                "shows up here when you select Refresh.")
 # With no link to Maestro CS there is nothing to promise about it.
 OPTIONS_LINE_HERE = "Quick tailor makes the PDF here."
 

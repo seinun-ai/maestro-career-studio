@@ -114,7 +114,8 @@
     // which happened is this token still being current.
     const token = store.token();
     store.write({
-      application: { id: chosen.id, status: chosen.status ?? "draft" },
+      application: { id: chosen.id, status: chosen.status ?? "draft",
+                     base_resume: chosen.base_resume ?? null },
       job: {
         id: chosen.job_id,
         company: chosen.job_company,
@@ -172,6 +173,7 @@
       application: {
         id: chosen.id,
         status: detail.status ?? chosen.status ?? "draft",
+        base_resume: chosen.base_resume ?? null,
       },
       note: { text: `Using ${chosen.job_company} · ${chosen.job_title}.` },
     });

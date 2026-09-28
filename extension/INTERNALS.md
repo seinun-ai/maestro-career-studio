@@ -178,7 +178,12 @@ asking permission of itself.
   is: the web app's `ATS_SCORE_LEAD` sentence, our estimate and not an
   employer's reading. A resume with no score says "not scored" rather than zero
   and sorts last, the scored best is preselected until you pick another, and a
-  pick made by hand wins over the ranking permanently.
+  pick made by hand wins over the ranking permanently. For a saved job with no
+  application the scores are a stage input, so `loadContext` reads them before
+  the first render of the matched page (no Job-then-Resume flash). **Beside a
+  bound application the reopened Job row is read-only**: one line, "Tailored
+  from Data Scientist · 64" (the application's own base), and the ranked list
+  as information, with no pick and no change to the Before ring.
 - **The Resume step is short, and keyed on what is true** (owner-approved copy,
   2026-09-27). With no application it asks one question: **Use my base resume**
   or **Tailor to this job**, with one muted line ("Base: your resume unchanged.
@@ -187,9 +192,10 @@ asking permission of itself.
   one behaviour and one label — and **Tailor in Maestro CS ↗**, a real link to
   `/jobs/{id}?tab=fit` and never an API call (the panel has no business creating
   a gap analysis behind your back), with one line: "Quick tailor makes the PDF
-  here. A PDF you make in Maestro CS shows up here automatically." (the second
-  sentence only beside the link; the panel picks the PDF up on its next load or
-  Refresh). With a tailored PDF the step is simply done, its row reading
+  here. A PDF you make in Maestro CS shows up here when you select Refresh."
+  (the second sentence only beside the link; the panel reads the backend on
+  load and on Refresh, never on a timer). With a tailored PDF the step is
+  simply done, its row reading
   "Tailored resume ready · 77" (the tailored score when stored); reopened, it
   offers one small **Tailor again in Maestro CS ↗** link and no footer primary,
   because Quick tailor there would replace the tailored draft unasked.

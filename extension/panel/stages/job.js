@@ -277,16 +277,39 @@
     row.setAttribute("aria-checked", selected ? "true" : "false");
     const dot = node("span", "r");
     dot.setAttribute("aria-hidden", "true");
-    // "not scored" is a WORD, never a zero: a base resume nobody has scored
-    // against this job has no number, and printing one would be the panel
-    // inventing the judgement it exists to render. Rounded, never computed —
-    // the composite is the backend's (design §4.2).
+    attach(row, dot, ...rowText(build, entry, best));
+    row.addEventListener("click", () => act.pickBase(entry.slug));
+    return row;
+  }
+
+  /** A row's name and its composite. "not scored" is a WORD, never a zero: a
+   * base resume nobody has scored against this job has no number, and
+   * printing one would be the panel inventing the judgement it exists to
+   * render. Rounded, never computed — the composite is the backend's. */
+  function rowText({ node }, entry, best) {
     const score = entry.score === null
       ? node("span", "score", "not scored")
       : node("span", best ? "score good" : "score", String(Math.round(entry.score)));
-    attach(row, dot, node("b", null, entry.display_name || entry.slug), score);
-    row.addEventListener("click", () => act.pickBase(entry.slug));
-    return row;
+    return [node("b", null, entry.display_name || entry.slug), score];
+  }
+
+  /** The same row as information only: a bound application already answered
+   * the base question, so there is nothing to pick and nothing to press. */
+  function infoRow({ build }, entry, best, usedSlug) {
+    const row = build.node("div", entry.slug === usedSlug ? "baserow ro sel" : "baserow ro");
+    return build.attach(row, ...rowText(build, entry, best));
+  }
+
+  /** Which base a bound application was tailored from, in one line: its own
+   * `base_resume` (the pick's and the restore's `baseSlug` otherwise), by the
+   * name the web app shows, and its score for this job when one is stored. */
+  function tailoredFrom({ facts }, ranked, usedSlug) {
+    const used = ranked.find((entry) => entry.slug === usedSlug);
+    const name = used?.display_name || facts.application?.base_resume_name
+      || "your base resume";
+    return used && used.score !== null
+      ? `Tailored from ${name} · ${Math.round(used.score)}`
+      : `Tailored from ${name}`;
   }
 
   /** The saved job's base question: every base resume this job has an
@@ -302,16 +325,30 @@
    * `best` is the top of the RANKING rather than the top of the list: an
    * all-unscored library has no best, and the green chip must not land on
    * whichever row happens to be first.
+   *
+   * READ-ONLY BESIDE AN APPLICATION (owner decision, 2026-09-27): its own base
+   * answered the question, so the body names that base and shows the ranking
+   * as information. A pick there would move the Before ring off the resume
+   * the application was actually tailored from.
    */
   function baseBody(ctx) {
     const { node, attach } = ctx.build;
     const ranked = rankBaseResumes(ctx.facts.resumes, ctx.facts.scores);
     const best = ranked.findIndex((entry) => entry.score !== null);
+    const body = node("div", "stg-body");
+    if (ctx.facts.application) {
+      const usedSlug = ctx.facts.application.base_resume || ctx.facts.baseSlug;
+      const list = node("div");
+      ranked.forEach((entry, index) =>
+        attach(list, infoRow(ctx, entry, index === best, usedSlug)));
+      return attach(body, node("div", "sub", tailoredFrom(ctx, ranked, usedSlug)), list,
+                    node("div", "sub", ATS_SCORE_LEAD));
+    }
     const list = node("div");
     list.setAttribute("role", "radiogroup");
     list.setAttribute("aria-label", "Base resume, best match first");
     ranked.forEach((entry, index) => attach(list, baseRow(ctx, entry, index === best)));
-    return attach(node("div", "stg-body"), list,
+    return attach(body, list,
                   node("div", "sub", rankingNote(ctx, ranked)),
                   node("div", "sub", ATS_SCORE_LEAD));
   }
