@@ -166,7 +166,11 @@ body {
   list-style: none;
   display: flex; flex-direction: column; gap: 6px;
 }
+/* `flex: none` because a flex item shrinks by default: an open step taller
+ * than the rail was squeezed to fit and `overflow: hidden` cut its bottom off
+ * mid-sentence. Unshrunk, the rail overflows and scrolls instead. */
 .stg {
+  flex: none;
   background: var(--cs-surface); border: 1px solid var(--cs-line);
   border-radius: 14px; overflow: hidden;
 }

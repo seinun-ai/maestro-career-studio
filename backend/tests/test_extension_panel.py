@@ -2473,7 +2473,27 @@ def test_the_rail_numeral_is_centered_without_a_clipped_line_box():
     assert "stg-num" in PANEL_SOURCE
 
 
-_TYPING_DRIVER_JS = _PANEL_FAKES_JS + r"""
+def test_a_step_never_shrinks_so_a_long_one_scrolls_the_rail():
+    """The Resume and Fill bodies were cut off mid-sentence (owner's
+    screenshots, 2026-09-27).
+
+    `.rail` is a flex column with `overflow-y: auto`, and a flex item's
+    `flex-shrink` defaults to 1: when the open step's body is taller than the
+    rail, the browser shrinks every step to fit instead of overflowing, and
+    `.stg { overflow: hidden }` (it rounds the body's corners) then clips the
+    bottom of the open one. `flex: none` keeps each step at its content height,
+    so the rail overflows and scrolls. The fake DOM has no layout, so this is
+    the stylesheet's claim rather than a measurement.
+    """
+    rail = re.search(r"^\.rail\s*\{([^}]+)\}", PANEL_CSS, re.M)
+    assert rail and re.search(r"overflow-y:\s*auto", rail.group(1))
+    assert re.search(r"flex-direction:\s*column", rail.group(1))
+    step = re.search(r"^\.stg\s*\{([^}]+)\}", PANEL_CSS, re.M)
+    assert step, "the .stg rule moved"
+    assert re.search(r"(?:^|;|\s)flex:\s*none\s*;", step.group(1)), step.group(1)
+
+
+_TYPING_DRIVER_JS =_PANEL_FAKES_JS + r"""
 loadModules();
 main(async () => {
   // The drafts read is HELD, so the boot settles with the Job body on screen
