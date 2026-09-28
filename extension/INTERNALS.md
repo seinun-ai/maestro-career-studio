@@ -91,8 +91,9 @@ it armed. Three rules hold the shape up:
   its score on Job ("AI/ML Engineer · 72"), which is what makes a preselected
   best an answer you can see rather than one made for you.
 - **The footer holds exactly one primary**, and it follows the OPEN row: Save
-  job (Score base resumes once the job is saved: the retry, and the re-run on
-  a reopened row), Quick tailor, Fill this form (withheld by
+  job (Update scores once the job is saved: the retry, and the re-run on
+  a reopened row; none on a bound application's read-only Job row), Quick
+  tailor, Fill this form (withheld by
   `primaryRefused` on a page with no form; a late detect yes gives it back,
   moving no stage). Track has none: its way
   onward is the header's link, and its control is the permanent Draft/Applied
@@ -170,8 +171,9 @@ asking permission of itself.
   built on, so the choice (and the number Quick tailor reports afterwards) is not
   blind. **Saving the job scores the bases in the same press** (`addJob` then
   `scoreAllBases`, one `busy` span), and a saved job that no base has a score for
-  is scored when its Job step opens, once per page and job (`scoredFor`), so a
-  failure never loops. The cost is the deterministic ATS engine, one local pass
+  is scored when its Job step opens, quietly (no red note, and never over a
+  note already there) and once per panel and job (`autoScored`), so a failure
+  never loops and a tab round trip never re-asks; Refresh asks again. The cost is the deterministic ATS engine, one local pass
   per base resume and no model call; the web app's Score and tailor tab spends
   it the same way on a first visit. Scores are otherwise READ (cheap, computes
   nothing). The base list is also where the panel says, once, what an ATS score

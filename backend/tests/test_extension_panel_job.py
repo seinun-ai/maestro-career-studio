@@ -569,6 +569,23 @@ def test_saving_a_job_scores_its_bases_in_the_same_press(tmp_path):
     assert rows["resume"]["state"] == "active"
 
 
+def test_a_score_that_fails_after_a_save_keeps_the_save_in_the_sentence(tmp_path):
+    """The job WAS saved; only the scoring failed. One note slot, so the
+    failure sentence carries the save's confirmation in front of it."""
+    out = _job_stage(tmp_path, click=True, api={
+        "job-boards": [
+            _reply({"match": "none", "job": None, "application": None}),
+            _reply({"match": "exact", "job": SAVED_JOB, "application": None}),
+        ],
+        "POST /api/jobs": _reply(SAVED_JOB),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "GET /api/ats-scores": _reply([]),
+        "POST /api/ats-scores": {"ok": False, "error": "boom", "status": 500},
+    })
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == "Saved. Found 3 skills. Couldn't score your base resumes. Try again."
+
+
 def test_a_posting_already_in_the_library_says_so_rather_than_claiming_a_save(tmp_path):
     """`already_existed` is a transient attribute rather than a column (design
     §8.14), and it is the difference between "saved" and "you saved this last

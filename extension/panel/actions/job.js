@@ -82,7 +82,7 @@
       note: { text: saved },
     });
     store.render();
-    await scoreAllBases(store, `${saved} `);
+    await scoreAllBases(store, { lead: `${saved} ` });
     if (!store.current(token)) return;
     // The stage advances because the data moved, not because anything here
     // said so. `loadContext` keeps the note it did not write, so what the user
@@ -96,13 +96,17 @@
    *
    * THREE WAYS IN, one function: a save (`addJob`, above), the Job step
    * opening on a saved job with no scored base (`loadBaseScores` in panel.js,
-   * once per page and job — `scoredFor` is that latch, so a failure or an
-   * empty answer never loops), and the Job step's footer primary, which is the
-   * retry and the re-run: the panel cannot see whether a stored score predates
-   * an engine change, so re-running stays the user's to ask for.
+   * once per panel and job — every way in records the job with `scored`, so a
+   * failure or an empty answer never loops and a tab round trip never re-asks;
+   * Refresh forgets it), and the Job step's footer primary, Update scores,
+   * which is the retry and the re-run: the panel cannot see whether a stored
+   * score predates an engine change, so re-running stays the user's to ask for.
    *
    * `lead` is the sentence the caller already said ("Saved. Found 3 skills. "),
-   * kept in front of this one because the note slot holds one line.
+   * kept in front of this one, success or failure, because the note slot holds
+   * one line. `quiet` is the automatic way in: no red note on failure, and a
+   * success names the best match only in an empty slot, so a sentence the load
+   * wrote is never wiped.
    *
    * NOTHING IS RE-READ AFTERWARDS, which is the one place this diverges from
    * `addJob`'s shape, and the reason is narrower than it first looks: the POST
@@ -114,7 +118,7 @@
    * save's spinner keeps turning), a note on failure, and the generation check
    * on BOTH limbs.
    */
-  async function scoreAllBases(store, lead = "") {
+  async function scoreAllBases(store, { lead = "", quiet = false } = {}) {
     if (store.read().busy !== null) return;
     const job = store.read().job;
     if (!job) {
@@ -124,11 +128,11 @@
       store.render();
       return;
     }
-    store.write({ scoredFor: job.id });
+    store.scored(job.id);
     const done = await duringAction(store, "job", () =>
       store.api("/api/ats-scores", {
         method: "POST", body: JSON.stringify({ job_id: job.id }),
-      }), "Couldn't score your base resumes.");
+      }), `${lead}Couldn't score your base resumes.`, { quiet });
     if (!done) return;
     // No `token` past here, and that is the same divergence the paragraph above
     // names: nothing is re-read, so there is no second round trip to guard.
@@ -156,6 +160,9 @@
     store.write({ scores });
     const ranked = rankBaseResumes(facts.resumes, scores);
     const best = ranked[0];
+    const say = (text) => {
+      if (!quiet || store.read().note === null) store.write({ note: { text } });
+    };
     if (best && best.score !== null) {
       // `loadBaseScores`' rule, and for the same reason: scoring may move the
       // ranking onto a different resume, and it may NOT move a choice the user
@@ -163,13 +170,13 @@
       // (`stageFor`'s `baseChosen`), and it is named in the note and on the
       // Job row's summary rather than chosen silently.
       if (!facts.baseSelected) store.write({ baseSlug: best.slug });
-      store.write({ note: { text: `${lead}Best match: ${best.display_name || best.slug} (ATS score ${
-        Math.round(best.score)}).` } });
+      say(`${lead}Best match: ${best.display_name || best.slug} (ATS score ${
+        Math.round(best.score)}).`);
     } else {
       // Scored, and still nothing to rank: an empty library, or rows the
       // ranking could not put a number on. Saying "best match: undefined"
       // would be the panel claiming a judgement it does not have.
-      store.write({ note: { text: `${lead}Scored, but no base resume got an ATS score.` } });
+      say(`${lead}Scored, but no base resume got an ATS score.`);
     }
     store.render();
   }

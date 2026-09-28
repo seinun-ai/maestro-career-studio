@@ -245,7 +245,7 @@
     if (!scored) {
       return facts.busy === true
         ? "Scoring your base resumes for this job."
-        : "Not scored for this job yet. Select Score base resumes below.";
+        : "Not scored for this job yet. Select Update scores below.";
     }
     // No engine id beside the count: a scorer's version string is its own
     // name for itself, not a word a job seeker can act on. The count is over

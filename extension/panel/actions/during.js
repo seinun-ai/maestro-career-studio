@@ -71,17 +71,23 @@
    * `failed` IS THE CALL SITE'S SENTENCE, and a failure never reaches the note
    * as raw text: "Couldn't <what>." (a string, or `{ what, answered }` when a
    * refusal from the backend deserves its own sentence), finished by
-   * `failureNote` with the next step. */
-  async function duringAction(store, kind, call, failed) {
+   * `failureNote` with the next step.
+   *
+   * `quiet` is for a round trip nobody pressed for (the Job step's automatic
+   * score): it leaves the note slot alone on both ends, so a sentence the load
+   * wrote is not wiped and a failure is not a red line about an action the
+   * user never took. */
+  async function duringAction(store, kind, call, failed, { quiet = false } = {}) {
     const token = store.token();
-    store.write({ busy: kind, note: null });
+    store.write(quiet ? { busy: kind } : { busy: kind, note: null });
     store.render();
     let out;
     try {
       out = await call();
     } catch (err) {
       if (!store.current(token)) return null;
-      store.write({ busy: null, note: { text: failureNote(failed, err), error: true } });
+      store.write(quiet ? { busy: null }
+        : { busy: null, note: { text: failureNote(failed, err), error: true } });
       store.render();
       return null;
     }

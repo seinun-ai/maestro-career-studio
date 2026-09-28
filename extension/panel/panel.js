@@ -453,13 +453,6 @@
      */
     applications: null,
     scores: null,       // latest_scores rows; null = not asked, [] = none
-    /** The job id this page has already asked the scorer about, or null: the
-     * latch that makes "score when the Job step opens on an unscored job" a
-     * once-per-page cost (`shouldScoreOnOpen`). Written by `scoreAllBases` on
-     * every way in, so a save's own scoring, a failure and an empty answer all
-     * spend it. PAGE-SHAPED: `resetPageFacts` clears it, so Refresh and a tab
-     * switch may ask again. */
-    scoredFor: null,
     busy: null,         // the stage key of the action currently running, or null
     note: null,         // {text, error} — the last thing that happened HERE
     /** The posting on the page, as the user may still edit it, or null until
@@ -761,7 +754,6 @@
     store.baseSelected = false;
     store.baseArmed = false;
     store.scores = null;
-    store.scoredFor = null;
     // The fork the user opened belonged to the posting they opened it on.
     store.tailorOpen = false;
     // And so did the done row they reopened. Every fact the reopened body
@@ -1108,7 +1100,8 @@
    * step is the base question, and its primary scores the bases (the retry
    * after a failed score, and the re-run on a reopened row). */
   function stageAction(stage) {
-    if (stage === "job" && card.match === "exact") return "Score base resumes";
+    // "Update scores", the glossary's word for scoring every base again.
+    if (stage === "job" && card.match === "exact") return "Update scores";
     // An application's tailored resume is stored; only its PDF can be missing.
     if (stage === "resume" && card.application) return "Create PDF";
     return STAGE_LABELS[stage] ?? null;
@@ -1120,9 +1113,10 @@
    * sometimes possible says so here rather than by rewording itself. Each is
    * a control that would run into nothing, or into harm.
    *
-   * - JOB, when the binding is the user's own claim. A primary under a row the
-   *   user has already bound by hand is an offer to add what is added; the
-   *   body offers the switcher and the un-pick instead.
+   * - JOB, when an application is bound. A claimed binding's body offers the
+   *   switcher and the un-pick; a backend-bound one's is read-only (the
+   *   application's own base answered the question), so Update scores there
+   *   would re-rank a list nobody can pick from.
    * - RESUME, when the application already has its PDF (a reopened done row).
    *   Quick tailor would replace the tailored draft unasked; the body's link
    *   tailors again in Maestro CS, which asks first.
@@ -1139,7 +1133,9 @@
    * change at all — the repaint is the whole of it.
    */
   function primaryRefused(stage) {
-    if (stage === "job") return card.claimed === true;
+    // A bound application answered the base question, so its reopened Job row
+    // is information only: nothing to save, nothing to re-rank.
+    if (stage === "job") return card.claimed === true || card.application !== null;
     // A reopened done Resume row: Quick tailor would replace the tailored
     // draft unasked, so its one way on is the body's link to Maestro CS.
     if (stage === "resume") return card.application !== null && card.pdfReady === true;
@@ -2782,6 +2778,7 @@
       // (that switch has already read the tab it went to), or started an action.
       if (!current(pressedOn) || card.busy !== null) return;
       const carry = Object.fromEntries(PAGE_WORK.map((key) => [key, card[key]]));
+      if (card.job) autoScored.delete(card.job.id);
       if (card.baseSelected) carry.baseSlug = card.baseSlug;
       forgetLibraryLists();
       const token = await bindPage(card.tabId, card.url, carry);
@@ -2832,6 +2829,13 @@
   // Anything read as a fact ABOUT the posting follows the three steps.
   let generation = 0;
   const current = (token) => token === generation;
+
+  /** The job ids the scorer has been asked about in this panel's lifetime, by
+   * any way in (`scoreAllBases` records each). The automatic score on open
+   * skips these, so a failing or empty scorer is asked once per panel rather
+   * than on every return to the tab; Refresh forgets the page's job, because
+   * pressing it is the user asking to re-read. */
+  const autoScored = new Set();
 
   // WHEN THIS PAINTS: after every landing, not once at the end. A surface
   // whose loads run before it is on screen can afford one render at the end;
@@ -3628,19 +3632,21 @@
     // scored now, with no press (owner decision, 2026-09-27). Synchronous to
     // the guard above, so it starts for this page or not at all; the action
     // holds the generation rule for its own round trip.
-    if (shouldScoreOnOpen(card)) scoreAllBases();
+    if (shouldScoreOnOpen(card)) scoreAllBases({ quiet: true });
   }
 
   /** Score the bases WITHOUT a press? Only when the Job step is what the user
    * is on, the job is saved, nothing is running, the library has a resume to
-   * score, no base in it has a score for this job, and this page has not asked
-   * the scorer about this job before (`scoredFor`, so a failure or an empty
-   * answer is asked once, not on every read). The cost is the deterministic
+   * score, no base in it has a score for this job, and this panel has not
+   * asked the scorer about this job before (`autoScored`, so a failure or an
+   * empty answer is asked once, not on every read or every return). No
+   * application and no armed base: either answers the base question itself. The cost is the deterministic
    * ATS engine, one local pass per base resume and no model call, and the web
    * app's Score and tailor tab spends it the same way on a first visit. */
   function shouldScoreOnOpen(store) {
     if (store.busy !== null || !store.job || store.match !== "exact") return false;
-    if (store.scoredFor === store.job.id || !store.resumes?.length) return false;
+    if (store.application !== null || store.baseArmed === true) return false;
+    if (autoScored.has(store.job.id) || !store.resumes?.length) return false;
     if (rankBaseResumes(store.resumes, store.scores)[0]?.score != null) return false;
     return stageFor(cardFacts(store)).stage === "job";
   }
@@ -3917,6 +3923,8 @@
           .catch((err) => console.warn("[maestro-cs] telemetry failed:", err));
       },
       remember: rememberSession,
+      // Record that the scorer was asked about this job (`autoScored`).
+      scored: (jobId) => autoScored.add(jobId),
       // The recipe book's door for one fill run (`recipeDoor`).
       recipes: recipeDoor,
       loadContext,

@@ -1356,7 +1356,6 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # is `evidence`'s failure by a second route.
         "fileInputs": 2, "attached": {"filename": "tailored.pdf", "count": 1},
         "baseSelected": True, "baseArmed": True, "scores": [{"composite": 72}],
-        "scoredFor": "job-lightning",
         "busy": "tailor", "note": {"text": "Tailored — 84"},
         # A disclosure rather than a claim, and still the page's: the fork the
         # user opened on one posting must not be open on the next.
@@ -1427,7 +1426,6 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "evidence": None, "touched": False, "hasForm": False,
         "fileInputs": 0, "attached": None, "baseSlug": None,
         "baseSelected": False, "baseArmed": False, "scores": None,
-        "scoredFor": None,
         "busy": None, "note": None, "preview": None, "previewTyped": False,
         "prepared": False, "tailorOpen": False,
         "revisit": None,
@@ -2221,11 +2219,14 @@ main(async () => {
   press("job");
   await settle();
   const swapped = regions();
-  // AN ACTION STARTED FROM THE REOPENED ROW, with its round trip HELD open —
+  // AN ACTION STARTED WHILE A ROW IS REOPENED, with its round trip HELD open —
   // which is the only moment in which "every door is shut" can be observed.
   // TWO doors exist here (Job reopened, Resume done beside it), and that is
-  // the point: a guard written as "the open one" leaves the other live.
-  withClass(REGIONS.foot, "cta")[0].click();
+  // the point: a guard written as "the open one" leaves the other live. The
+  // action is the footer's status segment (a bound application's reopened Job
+  // row has no primary), and its PATCH fails, so the rail stays where it was.
+  withClass(REGIONS.foot, "status-seg")[0].children
+    .find((button) => button.textContent === "Applied").click();
   const duringRun = regions();
   release();
   await settle();
@@ -2257,11 +2258,15 @@ def revisited(tmp_path_factory):
         "tabs": [{"id": 7, "url": POSTING_URL}],
         "replies": {"read_settings": SETTINGS_REPLY,
                     "panel_frame0": _reply({"tier": "A", "form": True, "score": 3})},
-        "api": _revisit_api(),
-        # The re-score's POST only, so the load's GET of the same path still
+        # The status PATCH only, so the load's GET of the same path still
         # lands: "while an action is open" is a state the driver has to be able
-        # to stand in, and a held reply is the only way to stand in it.
-        "hold": ["POST /api/ats-scores"],
+        # to stand in, and a held reply is the only way to stand in it. It is
+        # FIRST in the map, because the GET's needle matches the PATCH's wire
+        # too and the first needle that matches answers.
+        "api": {"PATCH /api/applications/app-1": {"ok": False, "error": "boom",
+                                                  "status": 500},
+                **_revisit_api()},
+        "hold": ["PATCH /api/applications/app-1"],
     }, tmp_path_factory.mktemp("panel_revisit"), source=PANEL_SOURCE)
 
 
@@ -2407,7 +2412,9 @@ def test_a_reopened_row_brings_its_primary_with_it(revisited):
     the two-writers-for-one-behaviour that footer exists to prevent.
     """
     assert _by_class(revisited["atFill"]["foot"], "cta")[0]["text"] == "Fill this form"
-    assert _by_class(revisited["jobOpen"]["foot"], "cta")[0]["text"] == "Score base resumes"
+    # A bound application's Job row is read-only: its own base answered the
+    # question, so there is nothing to save and nothing to re-rank.
+    assert _by_class(revisited["jobOpen"]["foot"], "cta") == []
     # A done Resume row with its PDF has no primary at all: Quick tailor there
     # would replace the tailored draft unasked (`primaryRefused`).
     assert _by_class(revisited["resumeOpen"]["foot"], "cta") == []
@@ -2612,8 +2619,7 @@ def test_nothing_can_be_started_from_a_door_while_an_action_is_open(revisited):
     The reopen is `statusSegment`'s rule applied to a new control: every control
     on this surface reads `busy`, because a round trip that some control does
     not know about is one the user can interrupt. The failure a narrower guard
-    allows is specific — reopen Job at Fill, press Score base resumes, then
-    press the
+    allows is specific — reopen Job at Fill, press Applied, then press the
     RESUME door beside it — and what it does is swap the body out from under a
     running action, replacing the progress the user is waiting on with another
     stage's step while the action is still writing.
@@ -2627,9 +2633,10 @@ def test_nothing_can_be_started_from_a_door_while_an_action_is_open(revisited):
     assert sorted(doors) == ["fill", "job", "resume"]
     assert {key: door["disabled"] for key, door in doors.items()} == {
         "job": True, "resume": True, "fill": True}
-    # The footer's own primary greys with them — one action at a time is the
+    # The footer's controls grey with them — one action at a time is the
     # rule they are all reading.
-    assert _by_class(revisited["duringRun"]["foot"], "cta")[0]["disabled"] is True
+    segment = _by_class(revisited["duringRun"]["foot"], "status-seg")[0]
+    assert {button["disabled"] for button in segment["children"]} == {True}
     # …and they come back when the round trip lands, rather than staying shut.
     assert {key: door["disabled"] for key, door in _openers(revisited["afterRun"]).items()} == {
         "job": False, "resume": False, "fill": False}
@@ -2805,7 +2812,7 @@ def test_the_reopened_bodys_primary_is_the_one_that_actually_runs(undone):
     pressing it sends the OPEN row's round trip. A footer that read "Score base
     resumes" and ran the Fill stage's runner would pass every assertion about
     the text on it."""
-    assert _by_class(undone["reopened"]["foot"], "cta")[0]["text"] == "Score base resumes"
+    assert _by_class(undone["reopened"]["foot"], "cta")[0]["text"] == "Update scores"
     assert [msg["path"] for msg in undone["posts"]] == ["/api/ats-scores"]
     assert json.loads(undone["posts"][0]["init"]["body"]) == {"job_id": "job-lightning"}
 
@@ -2876,6 +2883,21 @@ def test_refresh_re_runs_the_job_match_and_the_loaders(tmp_path):
     # on past Job.
     rows = _rows(_rail_rows({"regions": out["refreshed"]}))
     assert (rows["job"]["state"], rows["resume"]["state"]) == ("done", "active")
+
+
+def test_refresh_asks_the_scorer_again_for_a_job_it_already_tried(tmp_path):
+    """The automatic score is once per panel and job, so leaving and coming
+    back never re-asks a failing scorer. Refresh is the user asking to re-read,
+    so it may: one more POST after the press."""
+    out = _refresh(tmp_path, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": None}),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "GET /api/ats-scores": _reply([]),
+    })
+    posts = [msg for msg in out["sentAfter"]
+             if (msg.get("init") or {}).get("method") == "POST"]
+    assert [msg["path"] for msg in posts] == ["/api/ats-scores"]
 
 
 def test_a_newly_added_application_appears_in_the_picker_after_refresh(tmp_path):

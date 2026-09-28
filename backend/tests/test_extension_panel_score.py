@@ -40,6 +40,7 @@ from tests.extension_panel_harness import (
     SCORE_RESUMES,
     SCORE_ROWS,
     SETTINGS_REPLY,
+    _armed_entry,
     _by_class,
     _load,
     _PANEL_FAKES_JS,
@@ -64,7 +65,7 @@ SCORE_BODY_CODE = js_code(_panel_script("stages/job.js"))
 # compute call this surface makes does while it is open.
 
 _SCORE_STAGE_DRIVER_JS = _PANEL_FAKES_JS + r"""
-loadModules();
+const ns = loadModules();
 const baseRows = () => withClass(REGIONS.rail, "baserow");
 main(async () => {
   await settle();
@@ -109,7 +110,8 @@ main(async () => {
   }
   release();
   await settle();
-  emit({ loaded, picked, focusedAfterPick, clicked, settled: regions(), sent, writes });
+  emit({ loaded, picked, focusedAfterPick, clicked, settled: regions(), sent, writes,
+         scores: ns.panel.actionStore().read().scores });
 });
 """
 
@@ -308,19 +310,101 @@ def test_a_scored_job_opens_with_the_best_base_chosen_and_the_job_step_done(tmp_
     assert _posted(out) == []
 
 
-def test_the_scorer_is_asked_once_per_page_even_when_it_fails(tmp_path):
-    """A failed score on open must not loop: the re-read after it finds no
-    scores again, and asking again would be a request per render. The Job
-    step stays open with its own primary, which is the retry."""
+def test_an_automatic_score_that_fails_is_quiet_and_asked_once(tmp_path):
+    """Nobody pressed anything, so a failure is not a red sentence: the list
+    says it is not scored and names the retry, the footer's Update scores. A
+    re-read that finds no scores again must not ask again (one POST)."""
     out = _score(tmp_path, api={"GET /api/ats-scores": _reply([])})
     assert _posted(out) == ["/api/ats-scores"]
     settled = out["settled"]
     assert _rows(_rail_rows({"regions": settled}))["job"]["state"] == "active"
     [cta] = _by_class(settled["foot"], "cta")
-    assert (cta["text"], cta["disabled"]) == ("Score base resumes", False)
+    assert (cta["text"], cta["disabled"]) == ("Update scores", False)
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"] == (
-        "Couldn't score your base resumes. Check that Maestro CS is running.")
+    assert (note["text"], note["class"]) == ("", "note")
+    assert _by_class(settled["rail"], "sub")[0]["text"] == (
+        "Not scored for this job yet. Select Update scores below.")
+
+
+_AUTO_SCORE_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+const posts = () => sent.filter((msg) => (msg.init || {}).method === "POST"
+                                && msg.path === "/api/ats-scores").length;
+main(async () => {
+  await settle();
+  const out = { loadPosts: posts() };
+  if (spec.noteWhileHeld !== undefined) {
+    // A note already in the slot while the automatic score is out.
+    ns.panel.actionStore().write({ note: { text: spec.noteWhileHeld } });
+    release();
+    await settle();
+    out.note = withClass(REGIONS.foot, "note")[0].textContent;
+  }
+  if (spec.roundTrip === true) {
+    await onActivated({ tabId: 42 });
+    await settle();
+    await onActivated({ tabId: 7 });
+    await settle();
+    out.roundTripPosts = posts();
+  }
+  if (spec.busyLoad === true) {
+    const store = ns.panel.actionStore();
+    store.write({ busy: "fill" });
+    await store.loadBaseScores(store.token());
+    await settle();
+    out.busyPosts = posts();
+  }
+  emit(out);
+});
+"""
+
+
+def _auto(tmp_path, **spec):
+    tmp_path.mkdir(exist_ok=True)
+    spec.setdefault("tabs", [{"id": 7, "url": POSTING_URL}])
+    spec.setdefault("replies", {"read_settings": SETTINGS_REPLY})
+    api = {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                  "application": None}),
+           "/api/base-resumes": _reply(SCORE_RESUMES),
+           "GET /api/ats-scores": _reply([])}
+    api.update(spec.pop("api", {}))
+    return run_node(_AUTO_SCORE_DRIVER_JS, {**spec, "api": api}, tmp_path,
+                    source=PANEL_SOURCE)
+
+
+def test_an_automatic_score_never_wipes_a_note_already_there(tmp_path):
+    failed = _auto(tmp_path / "failed", hold=["POST /api/ats-scores"],
+                   noteWhileHeld="Kept.")
+    scored = _auto(tmp_path / "scored", hold=["POST /api/ats-scores"],
+                   noteWhileHeld="Kept.",
+                   api={"POST /api/ats-scores": _reply(SCORE_ROWS)})
+    assert failed["note"] == "Kept."
+    assert scored["note"] == "Kept."
+
+
+def test_leaving_and_coming_back_does_not_score_the_job_again(tmp_path):
+    """Once per panel, not once per page: the job's id is remembered across a
+    tab round trip, so a failing scorer is not asked on every return."""
+    out = _auto(tmp_path, roundTrip=True, tabUrls={"42": "chrome://settings",
+                                                   "7": POSTING_URL})
+    assert out["loadPosts"] == 1
+    assert out["roundTripPosts"] == 1
+
+
+def test_nothing_is_scored_automatically_beside_an_application_an_armed_base_or_a_run(
+        tmp_path):
+    bound = _auto(tmp_path / "bound", api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft"}}),
+        "/api/applications/app-1": _reply({"pdf_path": "r.pdf", "status": "draft"})})
+    armed = _auto(tmp_path / "armed", stored={"widget.session": _armed_entry()})
+    # The load's own scores read fails (so nothing is asked then); the second
+    # read, made while a fill runs, finds no scores and must still not ask.
+    busy = _auto(tmp_path / "busy", busyLoad=True, api={"GET /api/ats-scores": [
+        {"ok": False, "error": "boom", "status": 500}, _reply([])]})
+    assert bound["loadPosts"] == 0
+    assert armed["loadPosts"] == 0
+    assert busy["busyPosts"] == 0
 
 
 BOUND_TO_DATA_SCIENTIST = _reply({
@@ -756,7 +840,7 @@ def test_score_all_bases_is_the_one_compute_call_and_it_says_what_it_found(tmp_p
         "Scoring your base resumes for this job.")
     [cta] = _by_class(loaded["foot"], "cta")
     assert (cta["text"], cta["class"], cta["disabled"]) == (
-        "Score base resumes", "cta spin", True)
+        "Update scores", "cta spin", True)
     # The widget's endpoint and body, unchanged — a panel that invented a route
     # would 404 in the browser and pass here.
     [post] = [msg for msg in out["sent"] if msg["type"] == "api"
@@ -881,10 +965,8 @@ def test_a_score_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_path
     assert [n for n in _walk(settled["foot"]) if "spin" in str(n.get("class"))] == []
 
 
-# The state the merge exists for: a job with a TAILORED application, its Job
-# row reopened to score the bases again — so Score base resumes is in reach on
-# a page that is already showing a Before -> After pair. (The application
-# answers the base question, so the rail itself is past Job.)
+# A tailored application's score row beside the base rows, as the GET returns
+# it, and a re-score that answers for the bases alone.
 TAILORED_ROW = {"target_type": "application", "target_id": "app-1",
                 "phase": "tailored", "composite": 84.2, "engine_version": "ats-2.3.0"}
 RESCORED_ROWS = [
@@ -895,35 +977,27 @@ RESCORED_ROWS = [
 ]
 
 
-def test_scoring_the_bases_again_never_costs_the_tailored_ring(tmp_path):
+def test_scoring_the_bases_again_never_costs_the_tailored_row(tmp_path):
     """`card.scores` has TWO consumers where the widget's had one.
 
     `POST /api/ats-scores` runs `score_all_bases`, which returns BASE rows only
-    (backend/app/services/ats_score.py:128 — one `score_target(…,
-    "base_resume", …)` per slug). The GET returns `latest_scores` for every
-    target on the job, the tailored application included. The two are
-    schema-equal and the POST's answer is a SUBSET — which is exactly why "the
-    POST's answer IS the scores" reads true and is not: the ranking is one
-    reader of that array and `renderAts`' After ring is the other. Replacing it
-    wholesale deletes the tailored composite and puts "tailor to raise it"
-    beside an application that already was, until the next navigation.
+    (backend/app/services/ats_score.py — one `score_target(…, "base_resume",
+    …)` per slug). The GET returns `latest_scores` for every target on the
+    job, a tailored application included. The POST's answer is a SUBSET, so
+    replacing the array wholesale would delete the tailored composite the
+    After ring reads. Update scores is offered only with no application bound
+    (a bound one's Job row is read-only), so the row is asserted in the store.
     """
     out = _score(tmp_path, reopen="job", click=True, api={
-        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
-                               "application": {"id": "app-1", "status": "draft"}}),
-        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
-                                           "status": "draft"}),
         "GET /api/ats-scores": _reply([*SCORE_ROWS, TAILORED_ROW]),
         "POST /api/ats-scores": _reply(RESCORED_ROWS)})
-    assert [ring["text"] for ring in _by_class(out["loaded"]["identity"], "ring")] == [
-        "72", "84"]
     settled = out["settled"]
     # The base number moved, because that is what was re-scored…
     assert _base_rows(settled["rail"])[0] == ("AI/ML Engineer 75", "score good")
-    # …and the tailored one survived, because nothing re-scored it.
-    assert [ring["text"] for ring in _by_class(settled["identity"], "ring")] == ["75", "84"]
-    assert _by_class(settled["identity"], "delta")[0]["text"] == "+9"
-    assert "tailor to raise it" not in _text(settled["identity"])
+    # …and the tailored row survived, because nothing re-scored it.
+    assert TAILORED_ROW in out["scores"]
+    assert [row for row in out["scores"] if row["target_type"] == "base_resume"] == (
+        RESCORED_ROWS)
 
 
 def test_the_count_is_of_the_rows_the_ranking_shows(tmp_path):

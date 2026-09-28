@@ -145,7 +145,7 @@
     // second copy of the unbinding, which is the whole reason it lives beside
     // `unpickApplication` instead of inside panel.js's `loadContext`.
     dropDeletedApplication: () => pick.dropDeletedApplication(store),
-    scoreAllBases: () => job.scoreAllBases(store),
+    scoreAllBases: (options) => job.scoreAllBases(store, options),
     quickTailor: () => resume.quickTailor(store),
     useBaseAsIs: () => resume.useBaseAsIs(store),
     stopUsingBaseAsIs: () => resume.stopUsingBaseAsIs(store),

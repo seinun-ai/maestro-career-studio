@@ -563,7 +563,7 @@ file to open.
   bases in the same press, and an unscored saved job is scored once when Job opens. `hasForm` is
   NOT a stage input. ONE row shows a body (the active one, or a DONE row reopened as view state;
   the active row is the way back); the footer's one primary follows the OPEN row: Save job (then
-  Score base resumes), Quick tailor (Create PDF when an application lacks its PDF), Fill this form.
+  Update scores), Quick tailor (Create PDF when an application lacks its PDF), Fill this form.
   The panel document is a family of scripts (panel.html owns roster and order): `panel.js`
   owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`)
   get a per-render snapshot, per-CONCERN actions (`panel/actions/*.js`) a handle with one
