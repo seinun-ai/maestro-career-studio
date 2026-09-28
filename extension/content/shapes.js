@@ -227,24 +227,36 @@
   };
 
   // Radio/checkbox members: same name in the same form (or root), else the
-  // nearest grouping container; a nameless one outside any container is alone.
+  // nearest grouping container. A nameless RADIO outside any container (Gem)
+  // belongs with the nameless radios of the nearest ancestor holding others
+  // and no other kind of control; a nameless checkbox there is alone (a
+  // yes/no answer of its own).
+  const namelessRadio = (x) => x instanceof HTMLInputElement && x.type === "radio" && !x.name && !x.closest(GROUPER);
   const members = (el) => memo("members", el, () => {
     if (el.name) {
       return [...(el.form ?? el.getRootNode()).querySelectorAll(`input[type="${el.type}"][name="${CSS.escape(el.name)}"]`)];
     }
     const c = el.closest(GROUPER);
-    return c ? [...c.querySelectorAll(`input[type="${el.type}"]`)] : [el];
+    if (c) return [...c.querySelectorAll(`input[type="${el.type}"]`)];
+    if (el.type !== "radio") return [el];
+    const { CONTROL } = ns.fieldControls;
+    for (let n = el.parentElement; n && !edge(n); n = n.parentElement) {
+      const controls = [...n.querySelectorAll(CONTROL)];
+      if (!controls.every(namelessRadio)) break;
+      if (controls.length > 1) return controls;
+    }
+    return [el];
   });
   const lone = (el) => el.type === "checkbox" && members(el).length < 2;
   const labelOf = (input) => readField(input).question;
   // A group with no container question asks the text BEFORE its first member:
-  // the nearest preceding visible sibling (climbing at most 4 levels) that is
+  // the nearest preceding visible sibling (climbing at most 8 levels) that is
   // not a member's label, stopping at another field's control.
   const precedingQuestion = (ms) => {
     const { CONTROL } = ns.fieldControls;
     const memberLabels = new Set(ms.flatMap((m) => [...(m.labels ?? [])]));
     let node = ms[0].closest("label") ?? ms[0];
-    for (let d = 0; node && d < 4 && !edge(node); d += 1, node = node.parentElement) {
+    for (let d = 0; node && d < 8 && !edge(node); d += 1, node = node.parentElement) {
       for (let s = node.previousElementSibling; s; s = s.previousElementSibling) {
         if (s.matches("script, style, template") || !ns.fillBase.visible(s)) continue;
         const controls = [...(s.matches(CONTROL) ? [s] : []), ...s.querySelectorAll(CONTROL)];

@@ -501,3 +501,30 @@ def test_salary_requirements_are_filled_only_with_the_agreement_permission(e2e_p
     assert oracle(page, "salary") == 80000 and page.input_value("#sal") == "$80,000.00"
     [write] = [a for m in on["sent"] if m["type"] == "fill_apply" for a in m["actions"] if a["op"] == "write"]
     assert (write["value"], write["format"]) == ("80000", "money")
+
+
+GEM_MAP = {
+    "First name": {"route": "slot", "slot": "personal.first_name", "value": "Ada"},
+    "Last name": {"route": "slot", "slot": "personal.last_name", "value": "Lovelace"},
+    "Email": {"route": "slot", "slot": "personal.email", "value": "ada@example.com"},
+    "LinkedIn URL": {"route": "slot", "slot": "personal.linkedin", "value": "https://example.com/ada"},
+    "Are you graduating in 2027?": {"route": "slot", "slot": "education.0.graduating", "value": "No"},
+    "Is your degree in Computer Science?": {"route": "slot", "slot": "education.0.discipline_cs", "value": "Yes"},
+}
+
+
+def test_a_gem_form_is_filled_by_the_text_before_each_field(e2e_page):
+    """gem_form.html (jobs.gem.com, live 2026-09-27): nothing names a box but
+    the text before it, and each Yes/No question is two nameless radios. Every
+    box is written, and each question gets exactly one answer — the one its
+    fact states, not merely the first option."""
+    page = e2e_page
+    out = _run(page, fixtures=["gem_form.html"], map=GEM_MAP)
+    assert [oracle(page, k) for k in ("gem_first_name", "gem_last_name", "gem_email", "gem_linkedin")] == [
+        "Ada", "Lovelace", "ada@example.com", "https://example.com/ada"]
+    assert (oracle(page, "gem_graduating"), oracle(page, "gem_cs_degree")) == ("No", "Yes")
+    assert page.evaluate("[...document.querySelectorAll('#gem-form input[type=radio]:checked')].map((r) => r.id)") == [
+        "r7c1f0-no", "r2e9b4-yes"]
+    for question in GEM_MAP:
+        assert out["by_question"][question]["status"] == "verified", out["by_question"].get(question)
+    assert "" not in out["by_question"]

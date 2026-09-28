@@ -488,3 +488,45 @@ def test_a_placeholder_row_does_not_hide_that_every_answer_is_never_fill(page, l
     load(page, """<label for='s'>Your statement</label><select id='s'>
       <option>I certify that the above is true</option><option>—</option></select>""")
     assert by_question(page)["Your statement"]["policyBlocked"] is True
+
+
+def test_gem_fields_read_their_questions_and_group_nameless_radios(page, load):
+    """Live Gem (jobs.gem.com, 2026-09-27; fixtures/browser/gem_form.html): a
+    bare text box labelled by a hashed-class span above its wrappers, and
+    Yes/No radios with no name and no container, asked by a span five
+    ancestors up."""
+    load(page, fixture_html("gem_form.html"))
+    got = fields(page)
+    assert [(f["shape"], f["question"], f["required"]) for f in got] == [
+        ("text", "First name", True), ("text", "Last name", True), ("text", "Email", True),
+        ("text", "LinkedIn URL", False),
+        ("group", "Are you graduating in 2027?", True),
+        ("group", "Is your degree in Computer Science?", True)]
+    assert [[o["text"] for o in f["options"]] for f in got[4:]] == [["Yes", "No"], ["Yes", "No"]]
+
+
+def test_nameless_radios_outside_any_container_are_one_group(page, load):
+    load(page, "<div><p class='q-1'>Willing to travel?</p><div><div><input type='radio' id='y'><label for='y'>Yes</label></div>"
+               "<div><input type='radio' id='n'><label for='n'>No</label></div></div></div>")
+    got = fields(page)
+    assert [(f["shape"], f["question"], [o["text"] for o in f["options"]]) for f in got] == [
+        ("group", "Willing to travel?", ["Yes", "No"])]
+
+
+def test_nameless_radios_beside_another_kind_of_field_are_not_pulled_into_a_group(page, load):
+    """The group is the nearest ancestor holding nameless radios and nothing
+    else: a text box between two questions keeps them apart."""
+    load(page, "<div><div><p>Relocate?</p><input type='radio' id='r'><label for='r'>Yes</label></div>"
+               "<label for='t'>City</label><input id='t'>"
+               "<div><p>Travel?</p><input type='radio' id='v'><label for='v'>Yes</label></div></div>")
+    assert [(f["shape"], f["question"]) for f in fields(page)] == [
+        ("group", "Relocate?"), ("text", "City"), ("group", "Travel?")]
+
+
+def test_nameless_checkboxes_stay_lone(page, load):
+    load(page, "<div><div><input type='checkbox' id='a'><label for='a'>Email me updates</label></div>"
+               "<div><input type='checkbox' id='b'><label for='b'>Text me updates</label></div></div>")
+    """Only radios group by their container: two nameless boxes are two
+    yes/no answers, each asking its own label."""
+    assert [(f["question"], f["multi"]) for f in fields(page)] == [
+        ("Email me updates", False), ("Text me updates", False)]

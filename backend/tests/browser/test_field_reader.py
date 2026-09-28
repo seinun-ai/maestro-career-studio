@@ -105,3 +105,50 @@ def test_an_h6_sub_label_inside_an_entry_is_not_its_section(page, load):
     load(page, "<div><h4>Work Experience 2</h4><h6>Dates</h6><input id='a' aria-label='From'></div>")
     got = page.evaluate(READ, "#a")
     assert (got["section"], got["repeatIndex"]) == ("Work Experience 2", 1)
+
+
+# The "preceding" source: the last resort, for a box nothing names (Gem, live
+# 2026-09-27 — fixtures/browser/gem_form.html): the text just before the box's
+# wrapper chain, whatever its classes.
+def wrapped(inner, n=3):
+    return "<div class='a1x'>" * n + inner + "</div>" * n
+
+
+def test_an_unassociated_sibling_span_three_wrappers_up_is_the_label(page, load):
+    load(page, f"<div class='flex-30'><span class='bodyImportant-47'>First name<span class='req-76'>*</span></span>"
+               f"{wrapped('<input id=a type=text>')}</div>")
+    got = page.evaluate(READ, "#a")
+    assert (got["question"], got["source"], got["required"]) == ("First name", "preceding", True)
+
+
+def test_hidden_preceding_text_is_never_the_label(page, load):
+    load(page, "<div><span class='t-1'>Last name</span><span class='e-2' style='display:none'>This field is required</span>"
+               f"{wrapped('<input id=a>')}</div>"
+               "<div><span class='t-1' style='visibility:hidden'>Hidden helper</span>"
+               f"{wrapped('<input id=b>')}</div>")
+    assert [page.evaluate(READ, s)["question"] for s in ("#a", "#b")] == ["Last name", ""]
+
+
+def test_a_preceding_sibling_holding_another_control_ends_the_search(page, load):
+    load(page, f"<div><span class='t-1'>Phone</span><div><input id=o></div>{wrapped('<input id=a>', 2)}</div>")
+    assert page.evaluate(READ, "#a")["question"] == ""
+
+
+def test_the_climb_stops_at_an_ancestor_holding_another_field(page, load):
+    load(page, f"<span class='t-1'>Name</span><div>{wrapped('<input id=a>', 2)}<input id=b></div>")
+    assert page.evaluate(READ, "#a")["question"] == ""
+
+
+def test_a_heading_before_the_box_is_neither_its_label_nor_a_way_past(page, load):
+    """A section heading is no field's label, and the text above it belongs to
+    something else (a job description, the previous section)."""
+    load(page, f"<p class='x'>We are a fast-growing team.</p><div><h3>Contact</h3>{wrapped('<input id=a>')}</div>")
+    assert page.evaluate(READ, "#a")["question"] == ""
+
+
+def test_every_other_source_still_comes_first(page, load):
+    load(page, "<div><span class='t-1'>Preceding text</span><div><div class='field-label'>Nearby label</div>"
+               "<input id=a></div></div>"
+               "<div><span class='t-1'>Preceding text</span><div><input id=b aria-label='Own label'></div></div>")
+    got = [page.evaluate(READ, s) for s in ("#a", "#b")]
+    assert [(g["question"], g["source"]) for g in got] == [("Nearby label", "nearby"), ("Own label", "aria-label")]

@@ -54,6 +54,7 @@ missing key, so a typo never reads as "nothing committed".
 | `adversarial_search_headers.html` | a Workday-style search box (§2's gestures) whose default list groups options under header rows while its search results are flat: an option's category path differs between the two views | `arrangement` |
 | `react_select.html` | a React-Select combobox (not a Workday reproduction); commits on the option click, `window.rejectClicks` refuses them | `country` |
 | `popup_with_search.html` | a popup button whose dialog holds its own search box (generic, not Workday) | `fos` |
+| `gem_form.html` | jobs.gem.com, live 2026-09-27 — bare text boxes labelled only by a hashed-class span above their wrappers; Yes/No radios with no name and no container, asked five ancestors up | `gem_first_name`, `gem_last_name`, `gem_email`, `gem_linkedin`, `gem_graduating`, `gem_cs_degree` |
 
 `native.html` keeps no oracle: a native control's own value (`input_value`,
 `checked`) is what the page submits, so tests read that.

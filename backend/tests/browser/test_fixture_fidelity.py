@@ -618,6 +618,28 @@ def test_popup_with_search_commits_the_searched_option(page, load):
     assert page.inner_text("#fos") == "Information Systems" and oracle(page, "fos") == "Information Systems"
 
 
+
+# --- gem_form.html (jobs.gem.com, live 2026-09-27)
+def test_gem_boxes_and_radios_have_nothing_but_their_page_text_to_name_them(page, load):
+    load(page, fixture_html("gem_form.html"), sources=[])
+    bare = page.evaluate("""() => [...document.querySelectorAll('#gem-form input')].every((i) =>
+      !i.name && !i.closest('form, fieldset, [role=radiogroup], [role=group]')
+      && ![...i.attributes].some((a) => /^(aria-|placeholder$)/.test(a.name)))""")
+    assert bare is True
+    assert page.evaluate("document.querySelectorAll('#gem-form input[type=text][id]').length") == 0
+
+
+def test_gem_text_is_held_as_typed_and_a_question_holds_one_answer(page, load):
+    load(page, fixture_html("gem_form.html"), sources=[])
+    assert oracle(page, "gem_first_name") is None and oracle(page, "gem_graduating") == ""
+    page.locator("#gem-form input[type=text]").first.fill("Ada")
+    assert oracle(page, "gem_first_name") == "Ada"
+    page.click("label[for=r7c1f0-no]")
+    page.click("label[for=r7c1f0-yes]")
+    assert oracle(page, "gem_graduating") == "Yes" and oracle(page, "gem_cs_degree") == ""
+    checked = "() => [...document.querySelectorAll('#gem-form input[type=radio]:checked')].map((r) => r.id)"
+    assert page.evaluate(checked) == ["r7c1f0-yes"]
+
 # --- unfocused-window mode (conftest.UNFOCUSED_WINDOW; §1, §6): programmatic
 # focus()/blur() move focus but fire no events, as on the live page.
 LEAVE = """(el) => { el.blur(); el.dispatchEvent(new FocusEvent('blur'));

@@ -1,6 +1,7 @@
 /* Maestro CS Companion — the field reader: ONE answer to "what is this field
  * asking", with the source it came from. Strength order:
  *   label-for → label-wrap → labelledby (every id) → aria-label → legend → nearby
+ *   → preceding (the text before the field's own box, whatever its classes)
  * A Workday dropdown's aria-label is "<question> <value> Required"; on its
  * Application Questions step the question part is EMPTY and the real question
  * is the fieldset legend — so the button's own value and "Required" are
@@ -52,6 +53,7 @@
   const otherControl = (c, el) => c !== el && !el.contains(c)
     && !(isChoice(el) && el.name && isChoice(c) && c.name === el.name);
   ns.fieldControls = { CONTROL, isChoice, otherControl };
+  const edge = (n) => n === document.body || n === document.documentElement || n.tagName === "FORM";
   const precedes = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   const withoutControls = (node) => {
     const copy = node.cloneNode(true);
@@ -87,10 +89,28 @@
       }
       return "";
     }],
+    // LAST, when nothing above names the field (Gem: a bare box labelled by a
+    // hashed-class span above its wrappers). Climb while the ancestor holds
+    // no other field; the first visible previous sibling with text is the
+    // label. A sibling holding another control, or a heading (a section title,
+    // with other things' text above it), ends the search.
+    ["preceding", (el) => {
+      for (let node = el, d = 0; node && d < 6 && !edge(node); d += 1, node = node.parentElement) {
+        if (node !== el && [...node.querySelectorAll(CONTROL)].some((c) => otherControl(c, el))) break;
+        for (let s = node.previousElementSibling; s; s = s.previousElementSibling) {
+          if (s.matches("script, style, template") || !ns.fillBase.visible(s)) continue;
+          if (s.matches(`${ANY_HEADING}, ${CONTROL}`) || s.querySelector(CONTROL)) return "";
+          const t = text(s);
+          if (t) return t;
+        }
+      }
+      return "";
+    }],
   ];
   // A field's SECTION comes from h1–h5: an <h6> is a sub-label inside an
   // entry ("Dates" in "Work Experience 2"), and taking it would drop the
-  // entry's number. ANY_HEADING (h6 too) is for content/sections.js alone.
+  // entry's number. ANY_HEADING (h6 too) is for content/sections.js and the
+  // "preceding" source's stop.
   const HEADING = "h1, h2, h3, h4, h5, [role=heading]";
   const ANY_HEADING = "h1, h2, h3, h4, h5, h6, [role=heading]";
   // "Work Experience 2" is the second repeat; "Step 2 of 4" / "Page 2" is not.
