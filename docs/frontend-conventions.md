@@ -1151,6 +1151,9 @@
     **Add job** (the sidebar, the tracker, `/new`'s title "Add a job") and
     **Save job** (its submit and the Companion's), never New application or
     Extract job: a job becomes an application when you tailor or apply.
+    **Autofill** is the Companion's Fill-step button that fills the form in
+    front of you (never Fill this form or Start fill); it is distinct from the
+    web app's **Autofill** settings tab, which holds the answers it fills from.
     **Jobs** (the page at `/applications` and its sidebar item, which list
     saved jobs as well as applications), never Applications as a page name
     (the ratchet's "Applications page" rule; a count of actual applications
