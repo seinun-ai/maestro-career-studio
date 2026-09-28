@@ -514,18 +514,30 @@ def engine_of(run: Run, low_stakes: bool = False):
             setattr(module, name, value)
 
 
+def job_hint(case: dict):
+    """The job every /pick and /step case is asked for, with the case's page source."""
+    from app.services import autofill_pick
+
+    return autofill_pick.JobHint(title=HINT_TITLE, company=HINT_COMPANY, source=case.get("source"))
+
+
+def failure(case: dict, exc: Exception) -> dict:
+    """A case whose engine call failed: Jev fell back, or the model provider errored."""
+    failed = "jev_failed" if isinstance(exc, JevFellBack) else "model_failed"
+    return {"id": case["id"], "policy": policy_of(case), "outcome": failed, "got": None, "reason": str(exc)}
+
+
 def run_pick(case: dict, run: Run, session, today: str) -> dict:
     from app.services import autofill_pick, llm
 
     fld = pick_field(case)
-    hint = autofill_pick.JobHint(title=HINT_TITLE, company=HINT_COMPANY, source=case.get("source"))
+    hint = job_hint(case)
     run.trace.clear()
     try:
         with engine_of(run, low_stakes=case.get("low_stakes") == "on"):
             picked = autofill_pick.pick([fld], case_facts(case, today), session, hint)["c1"]
     except (JevFellBack, llm.LLMProviderError) as exc:
-        failed = "jev_failed" if isinstance(exc, JevFellBack) else "model_failed"
-        return {"id": case["id"], "policy": policy_of(case), "outcome": failed, "got": None, "reason": str(exc)}
+        return failure(case, exc)
     got = next((o.text for o in fld.options if picked.oids and o.oid == picked.oids[0]), None)
     expected = expected_of(case)
     if got is None:
@@ -541,17 +553,16 @@ def run_pick(case: dict, run: Run, session, today: str) -> dict:
 
 
 def run_step(case: dict, run: Run, session, today: str) -> dict:
-    from app.services import autofill_pick, autofill_step, llm
+    from app.services import autofill_step, llm
 
     req = step_request(case)
-    hint = autofill_pick.JobHint(title=HINT_TITLE, company=HINT_COMPANY, source=case.get("source"))
+    hint = job_hint(case)
     run.trace.clear()
     try:
         with engine_of(run, low_stakes=case.get("low_stakes") == "on"):
             resp = autofill_step.step(req, case_facts(case, today), session, hint)
     except (JevFellBack, llm.LLMProviderError) as exc:
-        failed = "jev_failed" if isinstance(exc, JevFellBack) else "model_failed"
-        return {"id": case["id"], "policy": policy_of(case), "outcome": failed, "got": None, "reason": str(exc)}
+        return failure(case, exc)
     mid = resp.mid or "give_up"
     expected = expected_of(case)
     describe = {c["mid"]: c["describe"] for c in case["candidates"]}
