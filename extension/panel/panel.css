@@ -531,10 +531,15 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 
 /* ------- footer: status, the last thing that happened, one primary ------- */
 
+/* A COLUMN: the note on a full-width line of its own, the action row under it.
+ * One row put the note beside the controls, where a long sentence ("Attached
+ * Ajey_…pdf. Check the upload before you submit.") ran under the Draft/Applied
+ * chips and squeezed the primary onto three lines (owner's screenshot,
+ * 2026-09-27). */
 .p-foot {
   flex: none; padding: 12px 14px; background: var(--cs-surface);
   border-top: 1px solid var(--cs-line);
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-direction: column; align-items: stretch;
 }
 .sub { color: var(--cs-muted); font-size: 12px; min-width: 0; }
 /* The footer's one sentence, and two kinds of it. A backend that cannot be
@@ -543,19 +548,31 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * than on a tonal chip, so it is picked for contrast against `--cs-surface` in
  * each scheme — darkened in light, lightened in dark — the same reason
  * `--cs-warn-text` is a token at all. */
-.note { color: var(--cs-muted); font-size: 12px; min-width: 0; }
+/* `overflow-wrap: anywhere` so a long filename breaks inside its own line
+ * rather than overflowing it; the live region holds the whole sentence. The
+ * gap to the action row only when there is something to say. */
+.note { color: var(--cs-muted); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
+.note:not(:empty) { margin-bottom: 8px; }
 .note.error { color: var(--cs-danger-text); font-weight: 600; }
-.foot-controls { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+/* The action row: the status segment at the left, the primary pushed right by
+ * its own auto margin. It WRAPS: at 320px Draft, Applied, Stop and a spinning
+ * primary are 29px wider than the row, and a primary on a line of its own
+ * beats one hanging off the panel. */
+.foot-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .status-seg { display: flex; gap: 6px; }
 .status-seg button {
+  white-space: nowrap;
   font: 700 12px/1 var(--cs-font); padding: 8px 12px; border-radius: 999px;
   border: 1px solid var(--cs-line); background: var(--cs-surface);
   color: var(--cs-muted); cursor: pointer;
 }
 .status-seg button.on { background: var(--cs-good-tonal); color: var(--cs-good); border-color: transparent; }
 .status-seg button.draft-on { background: var(--cs-warn-tonal); color: var(--cs-warn-text); border-color: transparent; }
+/* Never wraps and never shrinks: a primary broken over three lines ("Fill /
+ * this / form") reads as three buttons. */
 .cta {
-  margin-left: auto; font: 700 13.5px/1 var(--cs-font);
+  margin-left: auto; flex: none; white-space: nowrap; min-width: 96px;
+  font: 700 13.5px/1 var(--cs-font);
   background: var(--cs-primary); color: var(--cs-on-primary);
   border: none; border-radius: 12px; padding: 12px 18px; cursor: pointer;
   box-shadow: var(--cs-shadow);

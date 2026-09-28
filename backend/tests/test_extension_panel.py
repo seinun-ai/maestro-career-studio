@@ -2561,6 +2561,34 @@ def test_the_rail_numeral_is_centered_without_a_clipped_line_box():
     assert "stg-num" in PANEL_SOURCE
 
 
+def test_the_footer_note_has_its_own_line_above_the_actions():
+    """The note overlapped the Draft/Applied chips ("Attached Ajey_…pdf. Check
+    the upload before you submit.") and the primary wrapped onto three lines
+    (owner's screenshot, 2026-09-27). The footer is a column: the note is a
+    full-width line of its own that wraps a long filename rather than running
+    under the controls, and the action row below it holds the status segment
+    and a primary that never wraps. The live region keeps the whole sentence."""
+    foot = re.search(r'<div id="foot"[^>]*>(.*?)\n</div>', PANEL_HTML, re.S).group(1)
+    # The note first, then the row of controls: two separate rows, in order.
+    assert re.findall(r'<div id="([a-z-]+)"', foot) == ["note", "foot-controls"]
+    def rule(selector):
+        found = re.search(rf"^{re.escape(selector)}\s*\{{([^}}]+)\}}", PANEL_CSS, re.M)
+        assert found, f"no {selector} rule"
+        return found.group(1)
+    assert re.search(r"flex-direction:\s*column", rule(".p-foot"))
+    assert re.search(r"overflow-wrap:\s*anywhere", rule(".note"))
+    controls = rule(".foot-controls")
+    assert "margin-left: auto" not in controls
+    # Measured at 320px: Draft, Applied, Stop and a spinning primary are 29px
+    # wider than the row, so the row wraps rather than overflowing the panel.
+    assert re.search(r"flex-wrap:\s*wrap", controls)
+    cta = rule(".cta")
+    assert re.search(r"white-space:\s*nowrap", cta)
+    assert re.search(r"flex:\s*none", cta)
+    assert re.search(r"min-width:", cta)
+    assert re.search(r"white-space:\s*nowrap", rule(".status-seg button"))
+
+
 def test_a_step_never_shrinks_so_a_long_one_scrolls_the_rail():
     """The Resume and Fill bodies were cut off mid-sentence (owner's
     screenshots, 2026-09-27).
@@ -2581,7 +2609,7 @@ def test_a_step_never_shrinks_so_a_long_one_scrolls_the_rail():
     assert re.search(r"(?:^|;|\s)flex:\s*none\s*;", step.group(1)), step.group(1)
 
 
-_TYPING_DRIVER_JS =_PANEL_FAKES_JS + r"""
+_TYPING_DRIVER_JS = _PANEL_FAKES_JS + r"""
 loadModules();
 main(async () => {
   // The drafts read is HELD, so the boot settles with the Job body on screen
