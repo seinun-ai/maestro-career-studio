@@ -274,7 +274,7 @@ def _described_by(region, control):
     return reason["text"]
 
 
-NO_PDF_LINE = "Your tailored resume has no PDF yet."
+NO_PDF_LINE = "This application's resume has no PDF yet."
 BOUND_REASON = "This job already has a draft application, so it uses that resume."
 
 
@@ -293,12 +293,16 @@ def test_a_draft_whose_resume_has_no_pdf_offers_create_pdf_and_never_a_fresh_tai
     assert _rows(_rail_rows({"regions": loaded}))["resume"]["state"] == "active"
     body = _body(loaded)
     assert NO_PDF_LINE in [line["text"] for line in _by_class(body, "sub")]
-    [base] = _by_class(body, "fork")[0]["children"]
+    [base, link] = _by_class(body, "fork")[0]["children"]
     assert base["text"] == "Use my base resume"
     assert base["attrs"]["aria-disabled"] == "true"
     assert _described_by(loaded["rail"], base) == BOUND_REASON
     assert "Quick tailor" not in _text(loaded["rail"])
     assert FORK_LINE not in _text(loaded["rail"])
+    # …and the way to tailor it, in Maestro CS, where the web app asks before
+    # replacing anything.
+    assert (link["tag"], link["text"]) == ("A", "Tailor in Maestro CS ↗")
+    assert link["href"] == f"{APP_URL}/jobs/job-lightning?tab=fit"
     [cta] = _by_class(loaded["foot"], "cta")
     assert cta["text"] == "Create PDF"
 
@@ -352,13 +356,13 @@ def test_a_tailored_pdf_makes_the_step_done_and_reopens_onto_one_small_link(tmp_
                                            "status": "draft"})},
         reopen="resume")
     rows = _rows(_rail_rows({"regions": out["reopened"]}))
-    assert rows["resume"]["summary"] == "Tailored resume ready"
+    assert rows["resume"]["summary"] == "Resume ready"
     body = _body(out["reopened"])
     assert _by_class(body, "fork") == []
     [again] = [n for n in _walk(body) if n["tag"] == "A"]
-    assert again["text"] == "Tailor again in Maestro CS ↗"
+    assert again["text"] == "Tailor in Maestro CS ↗"
     assert again["href"] == f"{APP_URL}/jobs/job-lightning?tab=fit"
-    assert _text(body) == "Tailor again in Maestro CS ↗"
+    assert _text(body) == "Tailor in Maestro CS ↗"
     assert _by_class(out["reopened"]["foot"], "cta") == []
 
 
@@ -972,9 +976,9 @@ def test_a_tailor_from_the_reopened_door_takes_the_claim_off_the_body(tmp_path):
     body = _body(out["reopened"])
     assert "Using AI/ML Engineer as is" not in _text(body)
     assert _by_class(body, "unpick") == []
-    # …and it is the done step's body: a tailored resume with its PDF, and one
-    # small way to tailor again.
-    assert _text(body) == "Tailor again in Maestro CS ↗"
+    # …and it is the done step's body: a resume with its PDF, and one small
+    # way to tailor in Maestro CS.
+    assert _text(body) == "Tailor in Maestro CS ↗"
 
 
 def test_stop_using_base_as_is_returns_the_rail_to_the_ladder(tmp_path):
@@ -1130,7 +1134,7 @@ def test_a_bound_application_with_its_pdf_opens_at_fill_with_no_base_click(tmp_p
     # the tailored resume with its own.
     rows = _rows(_rail_rows(out))
     assert rows["job"]["summary"] == "Data Scientist · 64"
-    assert rows["resume"]["summary"] == "Tailored resume ready · 77"
+    assert rows["resume"]["summary"] == "Resume ready · 77"
     # The Base ring is the base the application was tailored from (64), not
     # the ranking's best (72), so the "+N" says what tailoring did.
     identity = out["regions"]["identity"]
@@ -1149,7 +1153,7 @@ def test_the_bound_application_answers_even_when_the_scores_read_fails(tmp_path)
         # No score to print, so the summaries say only what is known.
         rows = _rows(_rail_rows(out))
         assert rows["job"]["summary"] == "Data Scientist"
-        assert rows["resume"]["summary"] == "Tailored resume ready"
+        assert rows["resume"]["summary"] == "Resume ready"
 
 
 # ---------- the base limb acts only when it can mean something ----------

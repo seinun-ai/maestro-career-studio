@@ -716,6 +716,20 @@ def test_track_this_is_one_post_and_the_page_is_the_users_claim(tmp_path):
     assert written["status"] == "draft"
 
 
+def test_armed_filled_then_tracked_stays_at_track(tmp_path):
+    """The rail never goes back to Resume once this extension filled the page
+    with an application bound (owner decision, 2026-09-27). Track-this makes
+    an application from the base with no PDF; the ladder used to read that as
+    "Resume not done" and send the user back to a step they had finished by
+    filling. Resume is skipped — never done — and Track stays the step."""
+    out = _track_this(tmp_path)
+    rows = _rows(_rail_rows({"regions": out["settled"]}))
+    assert rows["track"]["state"] == "active"
+    assert rows["resume"]["state"] == "skipped"
+    assert rows["resume"]["numeral"] != "✓"
+    assert rows["fill"]["state"] == "done"
+
+
 def test_the_track_this_button_is_offered_when_the_job_is_already_in_the_library(
         tmp_path):
     """The affordance, before the press: a job_id the route will accept, a

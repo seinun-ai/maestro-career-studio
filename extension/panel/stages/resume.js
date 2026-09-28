@@ -31,8 +31,10 @@
     quick: "Quick tailor makes the PDF here.",
     // The panel reads the backend on load and on Refresh, never on a timer.
     custom: "A PDF you make in Maestro CS shows up here when you select Refresh.",
-    noPdf: "Your tailored resume has no PDF yet.",
-    again: "Tailor again in Maestro CS ↗",
+    // Neutral: an application's resume may be tailored or the base unchanged
+    // (track-this), and the panel cannot tell which.
+    noPdf: "This application's resume has no PDF yet.",
+    link: "Tailor in Maestro CS ↗",
   };
 
   /** Why the base is off beside an application: one sentence, by who bound
@@ -132,14 +134,14 @@
 
   /** The Resume step, in four shapes, each keyed on what is TRUE:
    *
-   * - An application WITH its PDF: the step is done ("Tailored resume ready"
-   *   on the row). Reopened, one small link to tailor again in Maestro CS,
-   *   where replacing a tailored draft asks first. No fork: Quick tailor here
-   *   would replace it unasked.
-   * - An application WITHOUT a PDF: its tailored resume exists and only the
-   *   PDF is missing, so the step's primary (the footer) is Create PDF, never
-   *   Quick tailor — that runs a fresh tailor. The base is shown off, with
-   *   its one-sentence reason.
+   * - An application WITH its PDF: the step is done ("Resume ready" on the
+   *   row). Reopened, one small link to tailor in Maestro CS, where replacing
+   *   a draft asks first. No fork: Quick tailor here would replace it unasked.
+   * - An application WITHOUT a PDF: its resume is stored and only the PDF is
+   *   missing, so the step's primary (the footer) is Create PDF, never Quick
+   *   tailor — that runs a fresh tailor — beside the same link. The base is
+   *   shown off, with its one-sentence reason. "Tailored" is never said: the
+   *   application may hold the base unchanged (track-this).
    * - The base-as-is claim, reopened from its skipped row: the claim in the
    *   user's own words, the tailoring choice, and the withdraw. The base limb
    *   is dropped: pressing it would re-assert a claim already in force.
@@ -157,7 +159,7 @@
     const { node, attach } = build;
     const body = node("div", "stg-body");
     if (facts.application && facts.pdfReady) {
-      const again = fitLink(ctx, WORDS.again);
+      const again = fitLink(ctx, WORDS.link);
       if (again) {
         again.id = "resume-again";
         again.className = "linkish";
@@ -172,8 +174,10 @@
       base.setAttribute("aria-describedby", BASE_OFF_ID);
       const why = node("div", "sub", facts.claimed ? BASE_OFF.claimed : BASE_OFF.matched);
       why.id = BASE_OFF_ID;
+      // Create PDF is the footer's primary; tailoring it is Maestro CS's,
+      // where replacing a draft asks first.
       return attach(body, node("div", "sub", WORDS.noPdf),
-                    attach(node("div", "fork"), base), why);
+                    attach(node("div", "fork"), base, fitLink(ctx, WORDS.link)), why);
     }
     const armed = facts.baseArmed === true;
     if (armed) {

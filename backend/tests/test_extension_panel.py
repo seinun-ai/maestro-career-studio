@@ -246,6 +246,14 @@ _CARDS = {
     "bound_no_pdf": {"match": "exact", "hasApplication": True, "pdfReady": False,
                      "status": "draft", "touched": False, "hasForm": True,
                      "baseArmed": False, "hasScores": True, "baseChosen": False},
+    # Filled HERE, then an application with no PDF bound to the page (track
+    # this, from the base): the fill is what the user did, so the rail does not
+    # go back to Resume for a PDF.
+    "filled_then_bound_no_pdf": {"match": "exact", "hasApplication": True,
+                                 "pdfReady": False, "status": "draft",
+                                 "touched": True, "hasForm": True,
+                                 "baseArmed": True, "hasScores": False,
+                                 "baseChosen": False},
 }
 
 
@@ -317,6 +325,17 @@ def test_a_bound_application_answers_the_base_question(stages):
     assert stages["bound_unscored"]["stage"] == "fill"
     assert stages["bound_unscored"]["done"]["resume"] is True
     assert stages["bound_no_pdf"]["stage"] == "resume"
+
+
+def test_a_page_filled_here_never_sends_the_rail_back_to_resume(stages):
+    """Resume without a PDF is SKIPPED (never done) once the page was filled
+    with an application bound, and the ladder moves on: fill done, so Track."""
+    out = stages["filled_then_bound_no_pdf"]
+    assert out["stage"] == "track"
+    assert out["done"]["resume"] is False
+    assert out["skipped"] == ["resume"]
+    # Not the user's claim to withdraw: nobody chose it, the path did.
+    assert out["choiceSkipped"] == []
 
 
 def test_done_marks_only_the_steps_the_data_supports(stages):

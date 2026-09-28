@@ -422,7 +422,9 @@ def test_a_bound_applications_job_row_is_read_only_and_names_its_own_base(tmp_pa
         "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
                                            "status": "draft"})})
     body = _by_class(out["loaded"]["rail"], "stg-body")[0]
-    assert _by_class(body, "sub")[0]["text"] == "Tailored from Data Scientist · 64"
+    # Neutral: the panel cannot tell a tailored resume from the base unchanged
+    # (a track-this application), so it names the base and nothing more.
+    assert _by_class(body, "sub")[0]["text"] == "Resume from Data Scientist · 64"
     rows = _by_class(body, "baserow")
     assert [_text(row) for row in rows] == [
         "AI/ML Engineer 72", "Data Scientist 64", "Backend Engineer not scored"]
@@ -443,7 +445,7 @@ def test_with_no_application_the_reopened_list_is_still_a_pick(tmp_path):
     rows = _by_class(body, "baserow")
     assert {row["tag"] for row in rows} == {"BUTTON"}
     assert {row["attrs"]["role"] for row in rows} == {"radio"}
-    assert "Tailored from" not in _text(body)
+    assert "Resume from" not in _text(body)
 
 
 _PAINTS_DRIVER_JS = _PANEL_FAKES_JS + r"""

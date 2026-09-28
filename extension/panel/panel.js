@@ -1032,7 +1032,10 @@
           && decision.choiceSkipped.includes(stage.key),
         // What a DONE row settled, in a few words (`stageSummaries`): the
         // base and its score on Job, the tailored resume on Resume.
-        summary: state === "skipped" ? SKIPPED_SUMMARY
+        // The base-as-is words only under the shortcut: a Resume row skipped
+        // because the page was filled past it (`stageFor`) says nothing it
+        // does not know.
+        summary: state === "skipped" ? (decision.fillFromBase ? SKIPPED_SUMMARY : "")
           : state === "done" ? summaries[stage.key] ?? "" : "",
       };
     });
@@ -1043,8 +1046,9 @@
    *
    * JOB names the chosen base and its score for this job ("AI/ML Engineer ·
    * 72"), which is what makes a preselected best an answer the user can see
-   * rather than one made for them. RESUME says the tailored resume is ready,
-   * with its own score when one is stored. A base with no name in the library
+   * rather than one made for them. RESUME says the application's resume is
+   * ready, with its own score when one is stored — never "tailored", which the
+   * panel cannot tell from a base resume unchanged (a track-this application). A base with no name in the library
    * (archived since) prints nothing: the slug is an API key, not a word. */
   function stageSummaries() {
     const withScore = (words, score) => (score === null ? words : `${words} · ${score}`);
@@ -1056,7 +1060,7 @@
         ? withScore(base.display_name,
                     compositeFor(card.scores, "base_resume", card.baseSlug, "base"))
         : "",
-      resume: withScore("Tailored resume ready", tailored),
+      resume: withScore("Resume ready", tailored),
     };
   }
 

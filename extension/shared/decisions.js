@@ -57,6 +57,13 @@
    *   backend-matched application arrives with no click, restore or pick, and
    *   demanding one parked the rail in front of a tailored PDF with Fill
    *   locked (the "asks to tailor again" bug, 2026-09-27).
+   * - A PAGE THIS EXTENSION FILLED NEVER SENDS THE RAIL BACK TO RESUME
+   *   (owner decision, 2026-09-27). With an application bound and no PDF,
+   *   `touched` makes Resume SKIPPED — never done, because no PDF exists —
+   *   and the ladder moves on (fill done, so Track). The case is track-this:
+   *   armed base, filled, then an application made from the base with no PDF,
+   *   which used to send the user back to "tailor" a step they had finished
+   *   by filling. Not a claim, so not in `choiceSkipped`: nothing to withdraw.
    * - `mark-applied` requires only a draft application (the 2026-08-16
    *   lesson: the confirmation page is where it is most wanted);
    *   `track-this` keeps the `touched` requirement, because before a
@@ -85,6 +92,8 @@
       || (hasScores === true && baseChosen === true);
     const jobDone = saved && baseAnswered;
     const resumeDone = saved && hasApplication === true && pdfReady === true;
+    const resumeFilledPast = saved && hasApplication === true && !resumeDone
+      && touched === true;
     const isDraft = (status ?? "draft") === "draft";
     const trackDone = hasApplication === true && !isDraft;
     // `touched` and nothing else: `done.fill` is this extension's own claim
@@ -104,7 +113,7 @@
       fillFromBase ? (fillDone ? "track" : "fill")
         : !jobDone ? "job"
           : trackDone ? "track"
-            : !resumeDone ? "resume"
+            : !resumeDone && !resumeFilledPast ? "resume"
               : !fillDone ? "fill"
                 : "track";
 
@@ -114,7 +123,8 @@
       // What the current path does not REQUIRE — never what is done. An
       // unmatched shortcut names Job here while `done.job` stays false, so the
       // rail greys the row and still offers Save job.
-      skipped: fillFromBase ? (saved ? ["resume"] : ["job", "resume"]) : [],
+      skipped: fillFromBase ? (saved ? ["resume"] : ["job", "resume"])
+        : resumeFilledPast ? ["resume"] : [],
       // WHOSE skip it is — the same rows as `skipped`, filtered down to the
       // ones a user can take back. A skip has two provenances and they are not
       // interchangeable: `baseArmed` is a CLAIM the user made ("use base

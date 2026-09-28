@@ -183,7 +183,7 @@ asking permission of itself.
   pick made by hand wins over the ranking permanently. For a saved job with no
   application the scores are a stage input, so `loadContext` reads them before
   the first render of the matched page (no Job-then-Resume flash). **Beside a
-  bound application the reopened Job row is read-only**: one line, "Tailored
+  bound application the reopened Job row is read-only**: one line, "Resume
   from Data Scientist · 64" (the application's own base), and the ranked list
   as information, with no pick and no change to the Before ring.
 - **The Resume step is short, and keyed on what is true** (owner-approved copy,
@@ -196,23 +196,31 @@ asking permission of itself.
   a gap analysis behind your back), with one line: "Quick tailor makes the PDF
   here. A PDF you make in Maestro CS shows up here when you select Refresh."
   (the second sentence only beside the link; the panel reads the backend on
-  load and on Refresh, never on a timer). With a tailored PDF the step is
-  simply done, its row reading
-  "Tailored resume ready · 77" (the tailored score when stored); reopened, it
-  offers one small **Tailor again in Maestro CS ↗** link and no footer primary,
-  because Quick tailor there would replace the tailored draft unasked.
+  load and on Refresh, never on a timer). With an application and its PDF the
+  step is simply done, its row reading "Resume ready · 77" (the application's
+  score when stored); reopened, it offers one small **Tailor in Maestro CS ↗**
+  link and no footer primary, because Quick tailor there would replace the
+  draft unasked. **The panel never says "tailored" about an application's
+  resume**: a track-this application holds the base unchanged, and the panel
+  cannot tell the two apart.
 - **An application with no PDF yet gets Create PDF, never Quick tailor.** Its
-  tailored resume is stored and only the PDF is missing, so Quick tailor would
-  run a fresh tailor (the "asks to tailor again" report). The body says "Your
-  tailored resume has no PDF yet." and the footer's primary is **Create PDF**
-  (`createPdf`: `POST /api/applications/{id}/render`, the web app's own
-  endpoint, deterministic). Fill stays locked until the PDF exists: the rule
-  that Resume is done only with a PDF is unchanged. *Use my base resume* shows
-  disabled beside it, `aria-describedby` one sentence: "This job already has a
-  draft application, so it uses that resume." (a backend match) or "You picked
-  a draft for this page, so it uses that resume." (your own pick; Stop using
-  this draft under Job is the way back to the base). `stageFor`'s shortcut
-  needs no application, so armed beside one the claim would change nothing.
+  resume is stored and only the PDF is missing, so Quick tailor would run a
+  fresh tailor (the "asks to tailor again" report). The body says "This
+  application's resume has no PDF yet." beside the same Tailor in Maestro CS
+  link, and the footer's primary is **Create PDF** (`createPdf`: `POST
+  /api/applications/{id}/render`, the web app's own endpoint, deterministic).
+  Fill stays locked until the PDF exists: the rule that Resume is done only
+  with a PDF is unchanged. *Use my base resume* shows off beside it
+  (`aria-disabled`, so the keyboard reaches it), `aria-describedby` one
+  sentence: "This job already has a draft application, so it uses that
+  resume." (a backend match) or "You picked a draft for this page, so it uses
+  that resume." (your own pick; Stop using this draft under Job is the way
+  back to the base). `stageFor`'s shortcut needs no application, so armed
+  beside one the claim would change nothing, and `useBaseAsIs` ignores it.
+- **A page this extension filled never sends the rail back to Resume.** With
+  an application bound and no PDF, `touched` makes Resume skipped (never done)
+  and the rail moves on to Track: armed, filled, then Track this (an
+  application from the base, no PDF) stays at Track.
 - **A limb locked while an action runs is `aria-disabled`, not `disabled`**, so
   the pressed control keeps focus across the rebuild its own busy causes.
 - ***Use my base resume* asks the backend for nothing and arms a fill from

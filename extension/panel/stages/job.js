@@ -300,16 +300,18 @@
     return build.attach(row, ...rowText(build, entry, best));
   }
 
-  /** Which base a bound application was tailored from, in one line: its own
+  /** Which base a bound application's resume came from, in one line: its own
    * `base_resume` (the pick's and the restore's `baseSlug` otherwise), by the
-   * name the web app shows, and its score for this job when one is stored. */
+   * name the web app shows, and its score for this job when one is stored.
+   * "Resume from", never "Tailored from": the panel cannot tell a tailored
+   * resume from the base unchanged (a track-this application). */
   function tailoredFrom({ facts }, ranked, usedSlug) {
     const used = ranked.find((entry) => entry.slug === usedSlug);
     const name = used?.display_name || facts.application?.base_resume_name
       || "your base resume";
     return used && used.score !== null
-      ? `Tailored from ${name} · ${Math.round(used.score)}`
-      : `Tailored from ${name}`;
+      ? `Resume from ${name} · ${Math.round(used.score)}`
+      : `Resume from ${name}`;
   }
 
   /** The saved job's base question: every base resume this job has an
