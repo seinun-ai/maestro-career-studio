@@ -155,7 +155,9 @@ asking permission of itself.
   or by a connected agent shows without leaving the tab. It keeps the work done
   on the page (`PAGE_WORK`: typed Job fields, the Fill report, typed answers,
   the drawer, a reopened row) and writes a pick down again first, so the pick
-  survives. The attach and the drawer's answer show only beside the
+  survives. Only a real pick, claim or armed base is written: a bound
+  application's own base is `baseFromApplication`, a backend fact re-read on
+  every load and never saved as a pick. The attach and the drawer's answer show only beside the
   application they were made for (`sameApplication`), since the re-read can
   bind another. Disabled while any action runs, so it never interrupts a fill.
 - **Pick a draft** — on a page nothing has matched, the Job stage asks

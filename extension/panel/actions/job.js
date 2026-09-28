@@ -169,7 +169,9 @@
       // has already made. The preselected best is what closes the Job step
       // (`stageFor`'s `baseChosen`), and it is named in the note and on the
       // Job row's summary rather than chosen silently.
-      if (!facts.baseSelected) store.write({ baseSlug: best.slug });
+      if (!facts.baseSelected && !facts.baseFromApplication) {
+        store.write({ baseSlug: best.slug });
+      }
       say(`${lead}Best match: ${best.display_name || best.slug} (ATS score ${
         Math.round(best.score)}).`);
     } else {

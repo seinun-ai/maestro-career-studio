@@ -440,6 +440,12 @@
     attached: null,
     baseSlug: null,
     baseSelected: false,
+    /** The base came from the bound application's own `base_resume`
+     * (`applyMatch`), not from a pick. It keeps the ranking off `baseSlug`
+     * as a pick does, and — unlike `baseSelected` — it is not a claim: the
+     * backend named this page, so Refresh does not write it down as one. A
+     * backend fact, so re-read rather than carried (`PAGE_WORK`). */
+    baseFromApplication: false,
     baseArmed: false,   // the base-resume shortcut, restored from the session
     resumes: null,      // the base-resume library; null = not asked, [] = none
     /** Recent draft applications, for the Job-stage picker.
@@ -752,6 +758,7 @@
     store.attached = null;
     store.baseSlug = null;
     store.baseSelected = false;
+    store.baseFromApplication = false;
     store.baseArmed = false;
     store.scores = null;
     // The fork the user opened belonged to the posting they opened it on.
@@ -1168,6 +1175,7 @@
       store.match = null;
       store.job = null;
       store.application = null;
+      store.baseFromApplication = false;
       store.claimed = false;
       store.pdfReady = false;
       // One line, and never a login-shaped card, because there is no account
@@ -1197,13 +1205,12 @@
       ? { id: result.job.id, company: result.job.company, title: result.job.title }
       : null;
     store.application = result.application ?? null;
-    // The application's base is the base question's answer, as a pick's is
-    // (`pickApplication`): the Base ring and the "+N" compare against the
-    // resume it was tailored from, and the ranking must not move off it.
-    if (store.application?.base_resume) {
-      store.baseSlug = store.application.base_resume;
-      store.baseSelected = true;
-    }
+    // The application's base is the base question's answer: the Base ring
+    // and the "+N" compare against the resume it came from, and the ranking
+    // must not move off it. Its own flag, not `baseSelected`: the backend
+    // named this page, which is not a pick the user made.
+    store.baseFromApplication = Boolean(store.application?.base_resume);
+    if (store.baseFromApplication) store.baseSlug = store.application.base_resume;
     // The backend named this page (or named nothing). That is not a claim
     // the user made, so a leftover `claimed` from a pick on the previous
     // posting must not open an un-pick door here.
@@ -3631,7 +3638,7 @@
     // arguing with them. It moves `baseSlug` and NEVER `baseSelected`, which
     // stays the user's own pick (`pickBase`); the moved `baseSlug` is the
     // preselected best that closes the Job step (`cardFacts`' `baseChosen`).
-    if (!card.baseSelected) {
+    if (!card.baseSelected && !card.baseFromApplication) {
       const best = rankBaseResumes(card.resumes, card.scores)[0];
       if (best && best.score !== null) card.baseSlug = best.slug;
     }

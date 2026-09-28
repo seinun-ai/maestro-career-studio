@@ -810,6 +810,11 @@ main(async () => {
     select.dispatch("change");
     await settle();
   }
+  // A done row reopened before the press, so Refresh runs with a view open.
+  if (spec.reopen !== undefined) {
+    document.getElementById(`stg-open-${spec.reopen}`).click();
+    await settle();
+  }
   if (spec.startFill) {
     withClass(REGIONS.foot, "cta")[0].click();
     await settle();
@@ -835,6 +840,7 @@ main(async () => {
   Object.assign(spec.api, spec.apiAfter ?? {});
   if (spec.pageAfter) spec.page = { ...(spec.page ?? {}), ...spec.pageAfter };
   const sentBefore = sent.length;
+  const writesBefore = writes.length;
   const button = document.getElementById("refresh-page");
   const beforePress = regions();
   // FOCUSED, then pressed: the control a user acts through is the one they
@@ -877,7 +883,8 @@ main(async () => {
   await settle();
   emit({ loaded, beforePress, pressed, refreshed, finished: regions(), focus,
          refreshedLists, finishedLists: lists(),
-         hadButton: Boolean(button), sentAfter: sent.slice(sentBefore), broadcasts });
+         hadButton: Boolean(button), sentAfter: sent.slice(sentBefore), broadcasts,
+         writesAfter: writes.slice(writesBefore) });
 });
 """
 

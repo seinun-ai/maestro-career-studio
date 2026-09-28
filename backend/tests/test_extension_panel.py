@@ -1374,7 +1374,8 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # show one employer's filename under another employer's posting, which
         # is `evidence`'s failure by a second route.
         "fileInputs": 2, "attached": {"filename": "tailored.pdf", "count": 1},
-        "baseSelected": True, "baseArmed": True, "scores": [{"composite": 72}],
+        "baseSelected": True, "baseFromApplication": True, "baseArmed": True,
+        "scores": [{"composite": 72}],
         "busy": "tailor", "note": {"text": "Tailored — 84"},
         # A disclosure rather than a claim, and still the page's: the fork the
         # user opened on one posting must not be open on the next.
@@ -1444,8 +1445,8 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "claimed": False,
         "evidence": None, "touched": False, "hasForm": False,
         "fileInputs": 0, "attached": None, "baseSlug": None,
-        "baseSelected": False, "baseArmed": False, "scores": None,
-        "busy": None, "note": None, "preview": None, "previewTyped": False,
+        "baseSelected": False, "baseFromApplication": False, "baseArmed": False,
+        "scores": None, "busy": None, "note": None, "preview": None, "previewTyped": False,
         "prepared": False, "tailorOpen": False,
         "revisit": None,
         "fill": None, "writeResults": None, "residue": None, "essays": None,
@@ -1537,7 +1538,24 @@ def test_a_match_writes_the_panels_own_shape_and_not_the_endpoints(applied_match
     assert applied_match["exact_no_application"]["store"]["claimed"] is False
     assert applied_match["none"]["store"] == {**STALE, "match": "none", "job": None,
                                              "application": None, "claimed": False,
+                                             "baseFromApplication": False,
                                              "settings": None}
+
+
+def test_an_applications_own_base_is_its_own_flag_and_never_a_pick(tmp_path):
+    """The base a bound application came from answers the base question and
+    holds the Before ring, but the backend named it: `baseSelected` (a pick,
+    which Refresh writes down as a claim) stays untouched."""
+    out = run_node(_APPLY_MATCH_DRIVER_JS, {"populated": {"baseSelected": False},
+                                            "cases": {"based": {"result": {
+        "match": "exact", "job": {"id": "j9", "company": "L", "title": "R"},
+        "application": {"id": "a9", "status": "draft",
+                        "base_resume": "data_scientist"}}}}},
+                   tmp_path, source=PANEL_SOURCE)
+    store = out["based"]["store"]
+    assert store["baseSlug"] == "data_scientist"
+    assert store["baseFromApplication"] is True
+    assert store["baseSelected"] is False
 
 
 def test_an_unreachable_backend_clears_every_fact_it_could_no_longer_vouch_for(applied_match):
@@ -2257,13 +2275,6 @@ main(async () => {
   opener("job").click();
   await settle();
   const unfocused = document.activeElement;
-  // Refresh with a row reopened: it writes the bound application's base down
-  // again and carries the view across its reload, so this is the one moment a
-  // session write happens while `revisit` is set.
-  if (findById(REGIONS.rail, "stg-body-job") === null) opener("job").click();
-  await settle();
-  document.getElementById("refresh-page").click();
-  await settle();
   emit({ loaded, atFill, jobOpen, jobClosed, resumeOpen, swapped, kept,
          duringRun, afterRun,
          unfocusedAfterRender: unfocused === null, writes, sent });
@@ -2615,21 +2626,44 @@ def test_a_load_landing_while_you_type_does_not_take_the_field_away(tmp_path):
     assert out["value"] == "Staff Research Engineer"
 
 
-def test_which_body_is_open_is_never_written_down(revisited):
-    """`revisit` is view state, and the session entry is what the OTHER surface
-    reads: a card restoring "the user was looking at Score" would be the panel
-    telling the floating card where to point its attention."""
-    assert revisited["writes"], "Refresh should have written a session entry"
-    assert "revisit" not in json.dumps(revisited["writes"])
+def test_which_body_is_open_is_never_written_down(revisited, tmp_path):
+    """`revisit` is view state, and the session entry is what the next page
+    load reads: restoring "the user was looking at Job" would be the panel
+    carrying a view across a page as if it were a fact.
+
+    The write is made at the one moment it can carry the view: a draft the
+    user picked (a claim, which Refresh writes down again) and its Job row
+    reopened, so `revisit` is set when `refreshPage` writes the entry."""
+    out = _picked_then_refreshed(tmp_path, reopen="job")
+    assert _open_body(out["beforePress"]) == "job"
+    entries = [write["widget.session"] for write in out["writesAfter"]
+               if write.get("widget.session")]
+    assert entries, "Refresh should have written the claim down again"
+    assert "revisit" not in json.dumps(entries)
     # AND NOT OVER THE WIRE EITHER, which is the same rule aimed at the other
     # destination. `sent` is every message this panel put on the SW's door,
-    # request bodies included, so a view field folded into any POST — a score
-    # run, a status PATCH, an ingest — shows up here. The non-empty guard is not
-    # ceremony: an assertion that "revisit" is absent from nothing passes on a
-    # driver that sent nothing at all.
+    # request bodies included, so a view field folded into any request — a
+    # score run, a status PATCH, an ingest — shows up here. The non-empty guard
+    # is not ceremony: an assertion that "revisit" is absent from nothing
+    # passes on a driver that sent nothing at all.
     assert [msg for msg in revisited["sent"] if msg["type"] == "api"], (
         "the drive should have reached the backend at all")
     assert "revisit" not in json.dumps(revisited["sent"])
+
+
+def test_refresh_never_saves_a_backend_match_as_a_pick(tmp_path):
+    """The backend named this page and its application: that is not a choice
+    the user made, so Refresh writes no session entry for it (the bridge is
+    for a pick, a claim or an armed base)."""
+    out = _refresh(tmp_path, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft",
+                                               "base_resume": "data_scientist"}}),
+        "/api/applications/app-1": _reply({"pdf_path": "r.pdf", "status": "draft"}),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+    })
+    assert [write for write in out["writesAfter"] if write.get("widget.session")] == []
 
 
 def test_nothing_can_be_started_from_a_door_while_an_action_is_open(revisited):
