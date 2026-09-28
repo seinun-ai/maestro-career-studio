@@ -170,7 +170,7 @@ def _patches(out):
 def _track_body(regions):
     """The Track row's body, or None when the row has none."""
     rows = _by_class(regions["rail"], "stg")
-    bodies = _by_class(rows[4], "stg-body")
+    bodies = _by_class(rows[3], "stg-body")
     return bodies[0] if bodies else None
 
 
@@ -193,7 +193,7 @@ def test_the_journey_ends_on_the_track_row_and_the_body_says_where_you_are(draft
     """
     rows = _rows(_rail_rows({"regions": drafted["loaded"]}))
     assert rows["track"]["state"] == "active"
-    for done in ("job", "score", "resume", "fill"):
+    for done in ("job", "resume", "fill"):
         assert rows[done]["state"] == "done", done
     body = _track_body(drafted["loaded"])
     assert "Still a draft" in _text(body)
@@ -406,7 +406,7 @@ def test_the_track_this_state_is_not_contradicted_by_the_footer(tmp_path):
     assert loaded_rows["track"]["state"] == "active"
     # …and NOT ticked: a draft is on the Track step with the press still ahead
     # of it, which is what stops the tick from being "Track is always done".
-    assert loaded_rows["track"]["numeral"] == "5"
+    assert loaded_rows["track"]["numeral"] == "4"
     assert "not tracked yet" in _text(_track_body(out["loaded"]))
     assert _by_class(out["loaded"]["foot"], "cta") == []
     assert out["statuses"] == []
@@ -416,7 +416,7 @@ def test_the_track_this_state_is_not_contradicted_by_the_footer(tmp_path):
 
 def test_marking_it_applied_ends_the_rail(tmp_path):
     """The other half of "the whole surface moves", and the half it used to get
-    wrong: before `railModel` grew `ticked` the Track row kept its blue "5"
+    wrong: before `railModel` grew `ticked` the Track row kept its blue numeral
     forever, so finishing the entire journey looked like stopping half-way
     through the last step.
 
@@ -428,7 +428,7 @@ def test_marking_it_applied_ends_the_rail(tmp_path):
     settled = _track(tmp_path, press="Applied")["settled"]
     rows = _rows(_rail_rows({"regions": settled}))
     assert [rows[key]["numeral"] for key in
-            ("job", "score", "resume", "fill", "track")] == ["✓"] * 5
+            ("job", "resume", "fill", "track")] == ["✓"] * 4
     assert rows["track"]["state"] == "active"
 
 

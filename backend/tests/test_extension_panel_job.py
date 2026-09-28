@@ -507,15 +507,17 @@ def test_a_saved_job_is_sent_as_edited_and_the_stage_advances_on_the_reload(tmp_
         ],
         "POST /api/jobs": _reply(SAVED_JOB),
         "/api/base-resumes": _reply(BASE_RESUMES),
-        "/api/ats-scores": _reply([]),
+        "GET /api/ats-scores": _reply(SCORES[:2]),
+        "POST /api/ats-scores": _reply(SCORES[:2]),
     })
-    [post] = _posts(out)
+    post = _posts(out)[0]
     assert post["path"] == "/api/jobs"
     assert json.loads(post["init"]["body"]) == {
         "raw_text": POSTING_TEXT.replace("Lightning AI", "Lightning AI, Inc."),
         "source_url": TRACKED_URL,
     }
-    # The whole conversation, in order. The second match read is `loadContext`
+    # The whole conversation, in order. The scores POST is the same press
+    # scoring the saved job's bases. The second match read is `loadContext`
     # re-run, and the scores read after it is the proof that the reload found a
     # job where the first pass found none — the panel only asks for the scores
     # of a job it has.
@@ -529,16 +531,42 @@ def test_a_saved_job_is_sent_as_edited_and_the_stage_advances_on_the_reload(tmp_
     assert [f'{(msg.get("init") or {}).get("method", "GET")} {msg["path"].split("?")[0]}'
             for msg in out["sent"] if msg["type"] == "api"] == [
         "GET /api/jobs/match", "GET /api/applications", "GET /api/base-resumes",
-        "POST /api/jobs", "GET /api/jobs/match", "GET /api/ats-scores"]
+        "POST /api/jobs", "POST /api/ats-scores", "GET /api/jobs/match",
+        "GET /api/ats-scores"]
     settled = out["settled"]
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"] == "Saved. Found 3 skills."
+    assert note["text"] == "Saved. Found 3 skills. Best match: Data Scientist (ATS score 72)."
     assert note["class"] == "note"
     rows = _rows(_rail_rows({"regions": settled}))
     assert rows["job"]["state"] == "done"
-    assert rows["score"]["state"] == "active"
+    assert rows["resume"]["state"] == "active"
     # The body went with the step: nothing offers to add this job again.
     assert _by_class(settled["rail"], "kv") == []
+
+
+def test_saving_a_job_scores_its_bases_in_the_same_press(tmp_path):
+    """One press: the save, then the scores, which need the saved job. The best
+    base is preselected and counts as chosen, so the Job step is done and the
+    rail is on Resume without a second press."""
+    out = _job_stage(tmp_path, click=True, api={
+        "job-boards": [
+            _reply({"match": "none", "job": None, "application": None}),
+            _reply({"match": "exact", "job": SAVED_JOB, "application": None}),
+        ],
+        "POST /api/jobs": _reply(SAVED_JOB),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "GET /api/ats-scores": _reply(SCORES[:2]),
+        "POST /api/ats-scores": _reply(SCORES[:2]),
+    })
+    assert [msg["path"] for msg in _posts(out)] == ["/api/jobs", "/api/ats-scores"]
+    assert json.loads(_posts(out)[1]["init"]["body"]) == {"job_id": "job-just-saved"}
+    settled = out["settled"]
+    [note] = _by_class(settled["foot"], "note")
+    assert note["text"] == "Saved. Found 3 skills. Best match: Data Scientist (ATS score 72)."
+    rows = _rows(_rail_rows({"regions": settled}))
+    assert rows["job"]["state"] == "done"
+    assert rows["job"]["summary"] == "Data Scientist · 72"
+    assert rows["resume"]["state"] == "active"
 
 
 def test_a_posting_already_in_the_library_says_so_rather_than_claiming_a_save(tmp_path):
@@ -550,9 +578,11 @@ def test_a_posting_already_in_the_library_says_so_rather_than_claiming_a_save(tm
         "job-boards": _reply({"match": "none", "job": None, "application": None}),
         "POST /api/jobs": _reply({**SAVED_JOB, "already_existed": True}),
         "/api/base-resumes": _reply(BASE_RESUMES),
+        "POST /api/ats-scores": _reply(SCORES[:2]),
     })
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"] == "Already saved in Maestro CS."
+    assert note["text"] == (
+        "Already saved in Maestro CS. Best match: Data Scientist (ATS score 72).")
 
 
 # ---------- the application picker: no match, and the user's drafts ----------
@@ -2179,12 +2209,13 @@ def _unpick(tmp_path, **spec):
     return run_node(_UNPICK_DRIVER_JS, spec, tmp_path, source=PANEL_SOURCE)
 
 
-def test_a_claimed_job_row_is_a_door_a_backend_match_is_not(tmp_path):
-    """The reopen door is for a CLAIM, not for every done Job row.
-
-    A pick the user made is theirs to withdraw. A backend exact-match is the
-    page being that posting — the web app is where a wrong JD gets fixed, and
-    this row gets no door.
+def test_a_done_job_row_is_a_door_for_a_claim_and_for_a_backend_match(tmp_path):
+    """Every done Job row reopens, onto different bodies. A pick the user made
+    is theirs to withdraw, so a claim reopens onto the switcher and the
+    un-pick (below). A backend exact-match is the page being that posting, so
+    it reopens onto the base list (test_extension_panel.py's revisit section),
+    never onto the Save job preview: since Score merged into Job, a saved
+    job's Job step is the base question.
     """
     picked = _unpick(tmp_path)
     assert "stg-open-job" in [n["id"] for n in _walk(picked["armed"]["rail"])]
@@ -2198,7 +2229,7 @@ def test_a_claimed_job_row_is_a_door_a_backend_match_is_not(tmp_path):
         "GET /api/applications/app-from-backend": _reply(
             {"pdf_path": "r.pdf", "status": "draft"}),
     })
-    assert "stg-open-job" not in [n["id"] for n in _walk(matched["regions"]["rail"])]
+    assert "stg-open-job" in [n["id"] for n in _walk(matched["regions"]["rail"])]
 
 
 def test_reopening_a_claimed_job_shows_the_binding_the_picker_and_a_way_out(tmp_path):

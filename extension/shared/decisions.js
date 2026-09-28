@@ -39,11 +39,24 @@
    *   which re-asks. The shortcut sitting above that check does not bend the
    *   rule: its copy claims a fill from base is possible — a page-and-session
    *   fact — never that the job exists. `done.job` stays false and the rail's
-   *   Job row still offers Add job.
-   * - The shortcut skips Score/Resume VISIBLY: `skipped` NAMES them, and it
-   *   means "not required on the current path", never "done". `choiceSkipped`
-   *   then names the one of them the user actually chose, because a skip they
+   *   Job row still offers Save job.
+   * - The shortcut skips Resume VISIBLY: `skipped` NAMES it, and it means
+   *   "not required on the current path", never "done". `choiceSkipped` then
+   *   names the rows the user actually chose to skip, because a skip they
    *   chose is a door back and a skip the path computed is not.
+   * - FOUR STEPS, and the first one asks two questions: is the job saved, and
+   *   which base resume goes with it (Score was merged into Job, 2026-09-27).
+   *   `done.job` is both answered. `baseChosen` is a pick the user made OR the
+   *   ranking's scored best, preselected: the owner's call, and honest because
+   *   it is not silent — the Job row's summary names the base and its score,
+   *   and the done row reopens onto the ranked list. `hasScores` still has to
+   *   be true beside it, so a base clicked in an unscored list does not close
+   *   the step while its own primary can still score it.
+   * - AN APPLICATION ANSWERS THE BASE QUESTION with the base it was made from,
+   *   and so does the base-as-is claim with the base it armed. A
+   *   backend-matched application arrives with no click, restore or pick, and
+   *   demanding one parked the rail in front of a tailored PDF with Fill
+   *   locked (the "asks to tailor again" bug, 2026-09-27).
    * - `mark-applied` requires only a draft application (the 2026-08-16
    *   lesson: the confirmation page is where it is most wanted);
    *   `track-this` keeps the `touched` requirement, because before a
@@ -64,16 +77,14 @@
    */
   function stageFor({
     match, hasApplication, pdfReady, status, touched, hasForm,
-    baseArmed, hasScores, baseSelected,
+    baseArmed, hasScores, baseChosen,
   }) {
-    const jobDone = match === "exact";
+    const saved = match === "exact";
     const fillFromBase = baseArmed === true && !hasApplication;
-    // An application answers the base question with the base it was made
-    // from: a backend-matched one is bound with no click, restore or pick, and
-    // demanding one parked the rail in front of a tailored PDF.
-    const scoreDone = jobDone
-      && (hasApplication === true || (hasScores === true && baseSelected === true));
-    const resumeDone = jobDone && hasApplication === true && pdfReady === true;
+    const baseAnswered = hasApplication === true || fillFromBase
+      || (hasScores === true && baseChosen === true);
+    const jobDone = saved && baseAnswered;
+    const resumeDone = saved && hasApplication === true && pdfReady === true;
     const isDraft = (status ?? "draft") === "draft";
     const trackDone = hasApplication === true && !isDraft;
     // `touched` and nothing else: `done.fill` is this extension's own claim
@@ -87,26 +98,23 @@
     // `done`'s: without the `trackDone` rung an application attached via
     // track-this and then marked applied — so `pdfReady` is false, it was
     // never tailored — fell through to "resume" and asked the user to tailor a
-    // resume for a job they had already applied to.
+    // resume for a job they had already applied to. (`trackDone` implies an
+    // application, which answers the base question, so it can sit below Job.)
     const stage =
       fillFromBase ? (fillDone ? "track" : "fill")
         : !jobDone ? "job"
           : trackDone ? "track"
-            : !scoreDone ? "score"
-              : !resumeDone ? "resume"
-                : !fillDone ? "fill"
-                  : "track";
+            : !resumeDone ? "resume"
+              : !fillDone ? "fill"
+                : "track";
 
     return {
       stage,
-      done: { job: jobDone, score: scoreDone, resume: resumeDone,
-              fill: fillDone, track: trackDone },
+      done: { job: jobDone, resume: resumeDone, fill: fillDone, track: trackDone },
       // What the current path does not REQUIRE — never what is done. An
       // unmatched shortcut names Job here while `done.job` stays false, so the
-      // rail greys the row and still offers Add job.
-      skipped: fillFromBase
-        ? (jobDone ? ["score", "resume"] : ["job", "score", "resume"])
-        : [],
+      // rail greys the row and still offers Save job.
+      skipped: fillFromBase ? (saved ? ["resume"] : ["job", "resume"]) : [],
       // WHOSE skip it is — the same rows as `skipped`, filtered down to the
       // ones a user can take back. A skip has two provenances and they are not
       // interchangeable: `baseArmed` is a CLAIM the user made ("use base
@@ -117,13 +125,11 @@
       // the answer stays per-row.
       //
       // ONLY `resume`, and that is the honest reading rather than a narrowing.
-      // The claim was made in answer to the RESUME stage's own question — the
-      // fork asks "tailor, or not?" and "use base as-is" is the no — so Resume
-      // is the row that holds it. Score is skipped because nothing needs a
-      // ranking when nothing is being tailored, and Job because the shortcut
-      // is a page-and-session fact that never asked the library: neither is a
-      // decision anybody made, and putting a withdraw door on either would be
-      // a second entrance to one claim.
+      // The claim was made in answer to the RESUME stage's own question — "tailor,
+      // or not?" and "use my base resume" is the no — so Resume is the row that
+      // holds it. Job is skipped on an unmatched page because the shortcut is a
+      // page-and-session fact that never asked the library: nobody decided
+      // that, and a withdraw door there would be a second entrance to one claim.
       //
       // The empty list when `fillFromBase` is false is not "no claim exists" —
       // `baseArmed` may still be true beside an application that has overtaken

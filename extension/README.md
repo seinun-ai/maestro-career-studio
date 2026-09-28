@@ -5,10 +5,10 @@ at to your local Maestro CS app.
 
 ## What it does
 
-- **Save the job.** Grab the title, company and job description from the page
-  you are reading. You can correct them before saving.
-- **Score it.** See how each of your base resumes scores against this job, best
-  first, or score them all with one click.
+- **Save the job and pick a base resume.** Grab the title, company and job
+  description from the page you are reading, and correct them before saving.
+  Saving scores each of your base resumes against the job and picks the best
+  one; you can pick another.
 - **Pick or tailor a resume.** Use a base resume as is, run Quick tailor, or
   open the job in the app for a custom tailoring session.
 - **Fill the application.** Fill the form from your saved answers (Profile ›

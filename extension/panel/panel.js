@@ -138,9 +138,9 @@
   // its remains, swept below.
   //
   // WHAT MAKES ONE SESSION KEY SAFE is the `if (entry.applicationId)` guard in
-  // `restoreSession`. A pick made at the Score stage usually has NO application
-  // behind it — that is what the Score stage IS, and "use base as-is" is the
-  // same shape — and restoring `{id: undefined}` as an application, then
+  // `restoreSession`. A base picked in the Job step usually has NO application
+  // behind it — that is what choosing a base before tailoring IS, and "use base
+  // as-is" is the same shape — and restoring `{id: undefined}` as an application, then
   // forcing `match = "exact"`, is a surface claiming an application that does
   // not exist on every page load of that tenant. That guard is not optional
   // decoration on this key; it is the condition of sharing it.
@@ -195,7 +195,6 @@
   // stage renamed there fails to render rather than rendering blank.
   const STAGES = [
     { key: "job", name: "Job" },
-    { key: "score", name: "Score" },
     { key: "resume", name: "Resume" },
     { key: "fill", name: "Fill" },
     { key: "track", name: "Track" },
@@ -221,16 +220,12 @@
    * in. So the door is the exit from a state the session bridge is keeping
    * true, not from a store that forgot to reset.
    *
-   * Score and Resume are the same shape one step earlier — a base picked in
-   * haste, a tailor worth re-running — and reopening either is how a user takes
-   * that back without the panel guessing that they want to.
-   *
-   * JOB IS ON IT ONLY FOR A CLAIM. A pick the user made is theirs to
-   * withdraw, so a done Job row is a door when `claimed === true`. A backend
-   * exact-match is the page being that posting; the web app is where a wrong
-   * JD gets fixed, and that Job row stays a wall. Re-offering "Save job" under
-   * a backend-matched row that reads "✓ in library" is still the panel
-   * offering to add a job it has just said is added — that case gets no door.
+   * Job and Resume are the same shape earlier on — a base preselected or
+   * picked in haste, a tailor worth re-running — and reopening either is how a
+   * user takes that back without the panel guessing that they want to. A done
+   * Job row opens onto the ranked base list (the job is saved, so the Save job
+   * preview is never offered again) or, for a draft the user picked by hand
+   * (`claimed`), onto the switcher and the un-pick.
    *
    * TRACK IS NOT ON IT EITHER, for a duller reason: Track is never done while
    * the user is looking at it (`done.track` and `stage === "track"` are the
@@ -243,19 +238,17 @@
    * skip is a claim the user made — "use base as-is" — because then there is
    * something to withdraw. `stageFor`'s `choiceSkipped` is the provenance and
    * `railModel` carries it onto the row as `skipChoice`; a row skipped by the
-   * path's own arithmetic (Score under the shortcut, Job on an unmatched apply
-   * url) stays a wall, exactly as a backend-matched Job row does. Reported
+   * path's own arithmetic (Job on an unmatched apply url) stays a wall.
+   * Reported
    * live on an Itron wizard: the user armed the base, the Resume row read
    * "Using your base resume as is.", and the only way back to the tailoring fork
    * was to unbind the whole page.
    */
-  const REOPENABLE = ["score", "resume", "fill"];
+  const REOPENABLE = ["job", "resume", "fill"];
 
   function isReopenable(row) {
     if (row.state === "skipped") return row.skipChoice === true;
-    if (row.state !== "done") return false;
-    if (row.key === "job") return card.claimed === true;
-    return REOPENABLE.includes(row.key);
+    return row.state === "done" && REOPENABLE.includes(row.key);
   }
 
   /** The two stable ids the rail builds, and they are stable for two different
@@ -291,8 +284,9 @@
    * stage, and a rename costs every reference to it — worth paying once, with
    * the move that took a sibling into its own file. */
   const STAGE_LABELS = {
+    // Before the save. Once the job is saved the Job step's question is the
+    // base, and its primary scores the bases again (`stageAction`).
     job: "Save job",
-    score: "Score base resumes",
     // The words the stage body's own Quick limb uses, and deliberately the
     // same words: they run one function, and two labels for one behaviour is
     // how a user comes to believe there are two.
@@ -459,6 +453,13 @@
      */
     applications: null,
     scores: null,       // latest_scores rows; null = not asked, [] = none
+    /** The job id this page has already asked the scorer about, or null: the
+     * latch that makes "score when the Job step opens on an unscored job" a
+     * once-per-page cost (`shouldScoreOnOpen`). Written by `scoreAllBases` on
+     * every way in, so a save's own scoring, a failure and an empty answer all
+     * spend it. PAGE-SHAPED: `resetPageFacts` clears it, so Refresh and a tab
+     * switch may ask again. */
+    scoredFor: null,
     busy: null,         // the stage key of the action currently running, or null
     note: null,         // {text, error} — the last thing that happened HERE
     /** The posting on the page, as the user may still edit it, or null until
@@ -548,7 +549,7 @@
      * DATA WINS, which is what the second key is for. `over` is the stage the
      * row was opened over, so `openRow` can tell "the rail is where it was" from
      * "the rail has moved on" and drop the view when it has: a re-pick that
-     * sends the journey back to Score, a tailor that lands a PDF, a page change
+     * sends the journey back to Job, a tailor that lands a PDF, a page change
      * that resets the facts. View state must never outlive the facts it was
      * opened over. One field rather than two because the pair is meaningless
      * apart — a `revisit` with no `over` cannot yield, and an `over` with no
@@ -760,6 +761,7 @@
     store.baseSelected = false;
     store.baseArmed = false;
     store.scores = null;
+    store.scoredFor = null;
     // The fork the user opened belonged to the posting they opened it on.
     store.tailorOpen = false;
     // And so did the done row they reopened. Every fact the reopened body
@@ -974,9 +976,9 @@
    *
    * SKIPPED is "not required on the path you took", which is why it is tested
    * BEFORE locked and never merged into done. The base-resume shortcut reaches
-   * Fill without Score or Resume, and — when the job is not in the library at
-   * all — without Job either: that row is greyed and still re-askable, never
-   * ticked (decisions.js: "the rail greys the row and still offers Add job").
+   * Fill without Resume, and — when the job is not in the library at all —
+   * without Job either: that row is greyed and still re-askable, never ticked
+   * (decisions.js: "the rail greys the row and still offers Save job").
    *
    * LOCKED is the remainder: a later stage, visible but not yet reachable.
    *
@@ -994,7 +996,7 @@
    * READ OFF `done` DIRECTLY, for every stage, which is why this is not a
    * Track special case. It is also why it changes nothing anywhere else: walk
    * the ladder in `stageFor` and every other rung is guarded by the negation of
-   * its own done-ness — `!jobDone ? "job"`, `!scoreDone ? "score"`,
+   * its own done-ness — `!jobDone ? "job"`,
    * `!resumeDone ? "resume"`, `!fillDone ? "fill"` (and `fillFromBase`'s short
    * rail takes the same shape, `fillDone ? "track" : "fill"`). Track is the
    * only stage the ladder can reach while its own `done` is true, so "read the
@@ -1009,7 +1011,7 @@
    * nothing at all. Where the user IS is still not merely a thing they
    * finished; it is now also allowed to be a thing they finished.
    */
-  function railModel(decision) {
+  function railModel(decision, summaries = {}) {
     return STAGES.map((stage, index) => {
       const state =
         decision.stage === stage.key ? "active"
@@ -1036,9 +1038,34 @@
         // done or active has not been skipped by anyone.
         skipChoice: state === "skipped"
           && decision.choiceSkipped.includes(stage.key),
-        summary: state === "skipped" ? SKIPPED_SUMMARY : "",
+        // What a DONE row settled, in a few words (`stageSummaries`): the
+        // base and its score on Job, the tailored resume on Resume.
+        summary: state === "skipped" ? SKIPPED_SUMMARY
+          : state === "done" ? summaries[stage.key] ?? "" : "",
       };
     });
+  }
+
+  /** The done rows' summaries, out of the store: `railModel` stays a function
+   * of its arguments, and this is the one reader of the facts it prints.
+   *
+   * JOB names the chosen base and its score for this job ("AI/ML Engineer ·
+   * 72"), which is what makes a preselected best an answer the user can see
+   * rather than one made for them. RESUME says the tailored resume is ready,
+   * with its own score when one is stored. A base with no name in the library
+   * (archived since) prints nothing: the slug is an API key, not a word. */
+  function stageSummaries() {
+    const withScore = (words, score) => (score === null ? words : `${words} · ${score}`);
+    const base = (card.resumes ?? []).find((resume) => resume.slug === card.baseSlug);
+    const tailored = card.application
+      ? compositeFor(card.scores, "application", card.application.id, "tailored") : null;
+    return {
+      job: base?.display_name
+        ? withScore(base.display_name,
+                    compositeFor(card.scores, "base_resume", card.baseSlug, "base"))
+        : "",
+      resume: withScore("Tailored resume ready", tailored),
+    };
   }
 
   /** Where the identity block's link goes, or null when there is nowhere
@@ -1077,7 +1104,13 @@
     };
   }
 
-  const stageAction = (stage) => STAGE_LABELS[stage] ?? null;
+  /** The open row's primary label. A constant per stage but one: a SAVED job's
+   * step is the base question, and its primary scores the bases (the retry
+   * after a failed score, and the re-run on a reopened row). */
+  function stageAction(stage) {
+    if (stage === "job" && card.match === "exact") return "Score base resumes";
+    return STAGE_LABELS[stage] ?? null;
+  }
 
   /** Would this stage's primary be a button that cannot do what it says?
    *
@@ -1376,6 +1409,12 @@
    * "we have at least one row", not "we asked": null and [] mean different
    * things everywhere else in this file too.
    *
+   * `baseChosen` is the user's pick (`baseSelected`) OR a selected base that
+   * has a score for this job, which is the ranking's best preselected by
+   * `loadBaseScores`/`scoreAllBases`: the owner's rule (2026-09-27) that the
+   * preselected best counts as chosen. It is named on the Job row's summary
+   * and the row reopens onto the list, so the choice is never silent.
+   *
    * Takes the store rather than closing over it, like `resetPageFacts` and
    * `applyMatch` — this section is "the pure parts", and a function that reads
    * a module-level `card` is not one of them however pure its arithmetic. */
@@ -1389,7 +1428,8 @@
       hasForm: store.hasForm,
       baseArmed: store.baseArmed,
       hasScores: Array.isArray(store.scores) && store.scores.length > 0,
-      baseSelected: store.baseSelected,
+      baseChosen: store.baseSelected === true || (store.baseSlug !== null
+        && compositeFor(store.scores, "base_resume", store.baseSlug, "base") !== null),
     };
   }
 
@@ -1461,8 +1501,8 @@
    *
    * `baseArmed` IS REMEMBERED AND NOT DERIVED. The tempting derivation is
    * `application === null && Boolean(baseSlug)`, which arms the shortcut for
-   * every user who owns a base resume and skips Score and Resume for people who
-   * never asked. Here it is a deliberate answer ("use base as-is"), made on the
+   * every user who owns a base resume and skips Resume for people who never
+   * asked. Here it is a deliberate answer ("use base as-is"), made on the
    * posting and spent on the apply page — a different page load, which is
    * exactly what this entry exists to cross.
    */
@@ -1660,7 +1700,8 @@
       // and still have no score, and the hint must stay true then too. With a
       // number, the ring says whose score it is and the hint is a sentence —
       // "60 Base — tailor to raise it" joined two clauses with a dash (Task 25).
-      // What an ATS score IS is said once, in the Score step (`stages/score.js`).
+      // What an ATS score IS is said once, in the Job step's base list
+      // (`stages/job.js`).
       attach(ats, ringColumn(before, "var(--cs-primary)",
                              before === null ? "ATS score" : "Base resume score"),
              node("span", "hint",
@@ -1760,8 +1801,8 @@
    *   user nobody read the copy.
    *
    * DESIGNED FROM THREE BODIES rather than from the first one: Job needs
-   * free-text fields plus a write on every keystroke, Score needs a list plus
-   * a selection callback, Resume needs an anchor's href plus three triggers.
+   * free-text fields plus a write on every keystroke, the base list needs a
+   * list plus a selection callback, Resume needs an anchor's href plus three triggers.
    * The groups are what all three have in common; the KEYS grow with the
    * bodies, and a body that wants something not on this list adds it here
    * rather than reaching for the store.
@@ -1778,6 +1819,9 @@
         scores: card.scores,
         baseSlug: card.baseSlug,
         job: card.job,
+        // Is the job in Maestro CS? Then the Job step's question is the base,
+        // and its body is the ranked list rather than the Save job preview.
+        jobSaved: card.match === "exact",
         // `hasForm` IS BACK ON THIS SNAPSHOT, with ONE reader, and the reader
         // is the change. It was dropped when the Job picker stopped gating on
         // it — a fact handed to five bodies that none of them wants is an
@@ -2000,13 +2044,13 @@
 
   /** Take this base resume, and remember it.
    *
-   * THE PICK IS THE USER'S. `baseSelected` is what `stageFor` reads to call
-   * the Score stage done, and only this function and a restore ever set it —
-   * `loadBaseScores` moves `baseSlug` by ranking and leaves `baseSelected`
-   * alone on purpose, because a panel that ticked the step off by sorting a
-   * list would be answering on the user's behalf. It follows that this is also
-   * the one place the ranking may be overridden: clicking the second row means
-   * the second row, and the next score read must not slide off it.
+   * THE PICK IS THE USER'S. `baseSelected` says so, and only this function,
+   * a restore and an application's own base ever set it — `loadBaseScores`
+   * moves `baseSlug` by ranking and leaves `baseSelected` alone. The ranking's
+   * best does close the Job step (`cardFacts`' `baseChosen`), visibly, on the
+   * row's summary; this is the one place it may be overridden: clicking the
+   * second row means the second row, and the next score read must not slide
+   * off it.
    *
    * The write is what makes the pick outlive the page. An ATS wizard is six
    * page loads and each one rebuilds this panel's facts from scratch
@@ -2016,10 +2060,10 @@
   function pickBase(slug) {
     card.baseSlug = slug;
     card.baseSelected = true;
-    // A pick made in a REOPENED Score row answers the question it was reopened
+    // A pick made in a REOPENED Job row answers the question it was reopened
     // to ask, so the view closes. It has to be said here because a switch made
     // from Resume leaves the stage on Resume, and `openRow`'s "the rail moved
-    // on" limb never fires: the Score body stayed open under an active Resume
+    // on" limb never fires: the base list stayed open under an active Resume
     // row, and the tailoring fork never came back (reported live).
     card.revisit = null;
     // Painted BEFORE the write, and the order is the point: the store is the
@@ -2033,8 +2077,8 @@
   /** Write down what this panel is armed with, under the bridge key.
    *
    * IT WRITES AN APPLICATION-LESS ENTRY, which is the whole of Task 9's session
-   * decision and the thing to be careful about. A base picked at the Score
-   * stage and a base-as-is arming are choices made BEFORE any application
+   * decision and the thing to be careful about. A base picked in the Job
+   * step and a base-as-is arming are choices made BEFORE any application
    * exists, and they are exactly what has to survive the next page of a wizard
    * — so refusing to write them (the older behaviour) loses the user's answer
    * at the page boundary. `restoreSession`'s `if (entry.applicationId)` guard
@@ -2194,17 +2238,18 @@
    * THE TWO WAYS A REOPENED ROW DIES, and both are the same rule: the view may
    * not outlive the facts it was opened over.
    *
-   * - THE RAIL MOVED ON (`over`). The user reopened Score while standing at
+   * - THE RAIL MOVED ON (`over`). The user reopened Job while standing at
    *   Fill; a tailor lands a PDF, or a pick sends the journey back, and the
    *   stage the row was opened beside is not the stage any more. Yielding is
    *   what "data always wins" means here — the alternative is a panel showing a
    *   step the user chose two facts ago.
    * - THE ROW IS NO LONGER A DOOR. Narrower and still reachable: under the base
    *   shortcut the stage is pinned to `fill`/`track` by the shortcut rung, so
-   *   `done.score` can fall (a score re-read that comes back empty) while the
-   *   stage sits exactly where it was. Without this limb the rail would then
-   *   render the Score body under a row it has just re-drawn as SKIPPED, which
-   *   is the un-skip feature arriving by accident rather than by decision.
+   *   `done.job` can fall (a Refresh whose match no longer names the job)
+   *   while the stage sits exactly where it was. Without this limb the rail
+   *   would then render the Job body under a row it has just re-drawn as
+   *   SKIPPED, which is the un-skip feature arriving by accident rather than
+   *   by decision.
    *
    *   IT IS `isReopenable`'S OWN ANSWER, over the rows the rail is about to
    *   draw, and asking it here rather than re-stating "still done" is what lets
@@ -2260,7 +2305,7 @@
   }
 
   function renderRail(decision, open) {
-    region("rail").replaceChildren(...railModel(decision).map((row) => {
+    region("rail").replaceChildren(...railModel(decision, stageSummaries()).map((row) => {
       const stage = node("li", `stg ${row.state}`);
       // Announced, not merely coloured: the rail IS "where am I", and a screen
       // reader gets none of the border, the tick, or the opacity. `aria-current`
@@ -2280,9 +2325,8 @@
       // prints a ✓ in it, which is what a rail that has ENDED looks like.
       const numeral = node("span", "stg-num", row.ticked ? "✓" : row.n);
       numeral.setAttribute("aria-label", row.stateLabel);
-      // A DONE ROW IS A DOOR — for Score/Resume/Fill always, and for Job when
-      // the binding is a user claim; so is a row SKIPPED by a claim, which is
-      // the base-as-is Resume row. `isReopenable` carries which and why. A REAL BUTTON rather than a click handler on the
+      // A DONE ROW IS A DOOR — Job, Resume and Fill; so is a row SKIPPED by a
+      // claim, which is the base-as-is Resume row. `isReopenable` carries which and why. A REAL BUTTON rather than a click handler on the
       // row: the whole line is the target, it has to be reachable and pressable
       // from the keyboard, and `aria-expanded` is how a screen reader is told
       // that this is a thing that opens rather than a heading that moved.
@@ -2353,8 +2397,9 @@
    * BY ID, and only by id. `document.activeElement` is a live node that this
    * rebuild is about to throw away, so the identity that survives it has to be
    * a string: the controls worth restoring carry a stable one for exactly this
-   * (`stg-open-<stage>`, `tailor-options`, `preview-<key>`, `answer-<qid>`,
-   * `qna-question`, `fill-mode-<mode>`, and the header's `refresh-page`). A
+   * (`stg-open-<stage>`, `tailor-options`, `preview-<key>`, `base-<slug>`,
+   * `resume-<choice>`, `answer-<qid>`, `qna-question`, `fill-mode-<mode>`, and
+   * the header's `refresh-page`). A
    * control with no id gets no restore, which is the honest behaviour rather
    * than a gap — there is nothing to find it by, and guessing
    * by position is how focus lands on the wrong control after a list reorders.
@@ -2391,8 +2436,23 @@
     // halves of this function fight: the scroll is put back and then thrown
     // away, every time, invisibly. Asking for focus without scrolling is what
     // makes the restore authoritative.
-    if (focused) document.getElementById(focused)?.focus({ preventScroll: true });
+    if (!focused) return;
+    // THE HANDOFF. A control that went with its body — a base picked in a
+    // reopened Job row, a Resume choice that finished the step — has nothing to
+    // come back to, so focus goes to that row's door rather than the document:
+    // the control that opens what the user was just in.
+    const row = CONTROL_ROWS.find(([prefix]) => focused.startsWith(prefix))?.[1];
+    const target = document.getElementById(focused)
+      ?? (row ? document.getElementById(REVISIT_ID(row)) : null);
+    target?.focus({ preventScroll: true });
   }
+
+  /** Which row's body a stable control id belongs to, by its prefix. */
+  const CONTROL_ROWS = [
+    ["preview-", "job"], ["draft-pick", "job"], ["base-", "job"],
+    ["tailor-options", "resume"], ["resume-", "resume"],
+    ["fill-mode-", "fill"], ["answer-", "fill"], ["qna-", "fill"],
+  ];
 
   /** The two statuses this panel WRITES, which is not the two it can read.
    *
@@ -2530,7 +2590,7 @@
       // week" path at best, and the click that starts it is the click the user
       // makes when nothing on screen says the first one is still going.
       const cta = actionButton(card.busy === open ? "cta spin" : "cta",
-                               label, STAGE_RUN[open]);
+                               label, stageRun(open));
       cta.disabled = card.busy !== null;
       controls.push(cta);
     }
@@ -2809,9 +2869,9 @@
     if (!card.application) await restoreSession(token);
     if (!current(token)) return;
 
-    // AWAITED, where the scores are not: this one decides a STAGE. A rail that
-    // shows Score and then jumps to Fill a beat later is stage navigation by
-    // accident, which is the one thing this design says it never does.
+    // AWAITED: this one decides whether filling can happen here. A rail whose
+    // Fill primary appears a beat after the rail settles is a control arriving
+    // by accident, which is the one thing this design says it never does.
     await loadHasForm(token);
     if (!current(token)) return;
     render();
@@ -2820,7 +2880,8 @@
     // one: the Job stage is what the user is on only once the match, the
     // remembered pick and the form verdict have all had their say. Reading a
     // posting off a page whose stage is Fill would be a read nobody asked for.
-    if (stageFor(cardFacts(card)).stage === "job") await loadPosting(token);
+    // Nor off a SAVED job: its Job step asks for the base, not the posting.
+    if (previewShown(card)) await loadPosting(token);
     if (!current(token)) return;
 
     // The picker is a Job-stage cost, and only when a form is in front of the
@@ -2831,9 +2892,11 @@
     if (shouldLoadApplications(card)) await loadApplications(token);
     if (!current(token)) return;
 
-    // Cheap, and it makes the base list a ranking rather than a guess. NOT
-    // awaited: the ranking is presentation (design §4.2), so a slow or failed
-    // read costs the ordering and nothing else — no stage waits on it.
+    // Cheap, and it makes the base list a ranking rather than a guess — and,
+    // since Score merged into Job, the ranking's best closes the Job step. NOT
+    // awaited all the same: an application (the detail read below) answers the
+    // base question without it, and a slow or failed read leaves the Job step
+    // open on its list with its own primary, never a stage claimed wrongly.
     loadBaseScores(token);
 
     // THE READ THAT IS ALSO A VALIDATION, and since the ghost-binding round it
@@ -2939,7 +3002,7 @@
     const entry = restorableSession(stored[KEY.session], scope);
     if (!entry) return;
     // GUARDED: an entry may name no application at all. This panel writes
-    // exactly those — a base picked at the Score stage, and the base-as-is
+    // exactly those — a base picked in the Job step, and the base-as-is
     // arming — where the whole point is a choice made BEFORE an application
     // exists, and `{id: undefined}` restored as an application is the "ready
     // state claiming an application" bug in the shape that produced it. This
@@ -3499,8 +3562,9 @@
    *
    * A READ, and cheap: `GET /api/ats-scores?job_id=`
    * returns whatever has already been computed and computes nothing. Failure is
-   * silent on purpose — a panel without the ranking is the panel that shipped
-   * at Task 5, so an outage costs the ordering and nothing else.
+   * silent on purpose — the Job step stays open on its list, with its own
+   * primary to score. An answer with no scored base, on a Job step, is what
+   * asks the scorer once (`shouldScoreOnOpen`).
    */
   async function loadBaseScores(token) {
     // The library first: the ranking is OVER base resumes, and the default
@@ -3531,14 +3595,33 @@
     card.scores = rows;
     // Move the selection onto the best resume, unless the user has picked one:
     // a ranking that quietly overrode an explicit choice would be the panel
-    // arguing with them. It moves `baseSlug` and NEVER `baseSelected` — the
-    // Score stage completes when the USER picks (`pickBase`), and a panel that
-    // ticked it off by ranking would be answering on their behalf.
+    // arguing with them. It moves `baseSlug` and NEVER `baseSelected`, which
+    // stays the user's own pick (`pickBase`); the moved `baseSlug` is the
+    // preselected best that closes the Job step (`cardFacts`' `baseChosen`).
     if (!card.baseSelected) {
       const best = rankBaseResumes(card.resumes, card.scores)[0];
       if (best && best.score !== null) card.baseSlug = best.slug;
     }
     render();
+    // The Job step opening on a saved job that no base has a score for is
+    // scored now, with no press (owner decision, 2026-09-27). Synchronous to
+    // the guard above, so it starts for this page or not at all; the action
+    // holds the generation rule for its own round trip.
+    if (shouldScoreOnOpen(card)) scoreAllBases();
+  }
+
+  /** Score the bases WITHOUT a press? Only when the Job step is what the user
+   * is on, the job is saved, nothing is running, the library has a resume to
+   * score, no base in it has a score for this job, and this page has not asked
+   * the scorer about this job before (`scoredFor`, so a failure or an empty
+   * answer is asked once, not on every read). The cost is the deterministic
+   * ATS engine, one local pass per base resume and no model call, and the web
+   * app's Score and tailor tab spends it the same way on a first visit. */
+  function shouldScoreOnOpen(store) {
+    if (store.busy !== null || !store.job || store.match !== "exact") return false;
+    if (store.scoredFor === store.job.id || !store.resumes?.length) return false;
+    if (rankBaseResumes(store.resumes, store.scores)[0]?.score != null) return false;
+    return stageFor(cardFacts(store)).stage === "job";
   }
 
   /** The base-resume library, asked for once per panel (or per Refresh)
@@ -3654,8 +3737,14 @@
    * `test_a_chrome_page_is_offered_nothing_and_asks_for_nothing` pins it.
    */
   function shouldLoadApplications(store) {
-    return store.application == null
-      && stageFor(cardFacts(store)).stage === "job";
+    return store.application == null && previewShown(store);
+  }
+
+  /** Is the Job step showing the posting preview (and the draft picker)? It
+   * is the Job stage on a job Maestro CS does not have; a SAVED job's Job
+   * step is the base list instead, and asks for neither read. */
+  function previewShown(store) {
+    return store.match !== "exact" && stageFor(cardFacts(store)).stage === "job";
   }
 
   async function loadApplications(token) {
@@ -3842,8 +3931,15 @@
    * there is exactly one primary and it is always in the same place. One
    * function means one `busy` key, so pressing both cannot open two tailors,
    * and the labels are the same words so nobody reads them as two features. */
-  const STAGE_RUN = { job: addJob, score: scoreAllBases, resume: quickTailor,
-                      fill: startFill };
+  const STAGE_RUN = { job: addJob, resume: quickTailor, fill: startFill };
+
+  /** `STAGE_RUN`, read the way `stageAction` reads the labels: a saved job's
+   * primary scores the bases. The two functions branch on the same fact, so
+   * the label and the behaviour cannot part. */
+  function stageRun(stage) {
+    if (stage === "job" && card.match === "exact") return () => scoreAllBases();
+    return STAGE_RUN[stage];
+  }
 
   /** Remove the keys nothing reads any more. Once per panel open, and it is
    * the only thing in this file that touches them.

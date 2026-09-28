@@ -39,7 +39,7 @@ worker:
 | `content/agent.js` | every frame | page RPC front door, extraction wrapper, resume attach |
 | `panel/panel.{html,css,js}` | the side panel | the store, the loaders, the generation guard, the render loop, the tab binding; sends everything through the service worker |
 | `panel/stages/*.js` + `panel/stages.js` | the side panel | one file per rail stage — a body is handed a per-render snapshot (`stageContext`), never the store, and `card` is never published — gathered by a roster that throws when a script tag is missing |
-| `panel/actions/*.js` + `panel/actions.js` | the side panel | one file per concern (save job, pick a draft, score, quick tailor + base as is, fill this form, submit one pause-row answer, ask one question, mark draft/applied), each handed one `write(patch)` door (`actionStore` refuses a key the store lacks); `actions/during.js` is the `busy` span they all read, and `busy` covers everything an action writes including its learn tail |
+| `panel/actions/*.js` + `panel/actions.js` | the side panel | one file per concern (save job and score its bases, pick a draft, quick tailor + base as is, fill this form, submit one pause-row answer, ask one question, mark draft/applied), each handed one `write(patch)` door (`actionStore` refuses a key the store lacks); `actions/during.js` is the `busy` span they all read, and `busy` covers everything an action writes including its learn tail |
 | `sw.js` | the extension | every backend call, the frame fan-out, the one sanctioned injection, the hotkey, and giving the toolbar icon to the side panel |
 
 ## The gate
@@ -64,24 +64,35 @@ nothing and constructs no telemetry observation.
 
 ## The rail
 
-Five stages — **Job → Score → Resume → Fill → Track** — and the active one is
+Four stages — **Job → Resume → Fill → Track** — and the active one is
 **inferred from the store** by `ns.decisions.stageFor` on every render, never set
-by what was clicked. An action ends by re-running a load; "advance to Score" is
-not a sentence any of them can say. Three rules hold the shape up:
+by what was clicked. An action ends by re-running a load; "advance to Resume" is
+not a sentence any of them can say. **Job asks two questions**: is the job
+saved, and which base resume goes with it (Score merged into Job on
+2026-09-27). It is done when the job is saved AND a base is chosen: picked by
+you, or the ranking's scored best, preselected; an application bound to the page
+answers with its own `base_resume`, and so does a base-as-is claim with the base
+it armed. Three rules hold the shape up:
 
-- **ONE row shows a body**: the active one, or a DONE row you reopened. Score,
-  Resume and Fill are always reopenable; **Job only when the binding is your own
-  pick** (`claimed`), which is where un-pick and switch-draft live. Reopening is
+- **ONE row shows a body**: the active one, or a DONE row you reopened. Job,
+  Resume and Fill are always reopenable: a done Job row opens onto the ranked
+  base list, or, when the binding is your own pick (`claimed`), onto the
+  switcher and the un-pick, never onto the Save job preview. Reopening is
   view state — never persisted, dropped when the stage moves or the page facts
   reset — and it rewinds no tick. In code the reopened row is `card.revisit`; a
   row skipped by a CLAIM (`choiceSkipped`: base as is' Resume row names the
   choice and carries its withdraw) reopens too, a skip the path computed does
   not, and the active row keeps its styling while another is open — and is
   itself a button then, the way back, which closes the reopened view. A base
-  pick in a reopened Score closes it too (`pickBase`): switching base from
-  Resume leaves the stage on Resume, so nothing else would.
+  pick in a reopened Job row closes it too (`pickBase`): switching base from
+  Resume leaves the stage on Resume, so nothing else would. A control that
+  leaves with its body hands focus to that row's door (`withPlaceKept`).
+- **A done row says what it settled** (`stageSummaries`): the chosen base and
+  its score on Job ("AI/ML Engineer · 72"), which is what makes a preselected
+  best an answer you can see rather than one made for you.
 - **The footer holds exactly one primary**, and it follows the OPEN row: Save
-  job, Score base resumes, Quick tailor, Fill this form (withheld by
+  job (Score base resumes once the job is saved: the retry, and the re-run on
+  a reopened row), Quick tailor, Fill this form (withheld by
   `primaryRefused` on a page with no form; a late detect yes gives it back,
   moving no stage). Track has none: its way
   onward is the header's link, and its control is the permanent Draft/Applied
@@ -89,7 +100,7 @@ not a sentence any of them can say. Three rules hold the shape up:
 - **Nothing is claimed that is not known.** `match !== "exact"` means "we do not
   know", not "none", so an unreachable backend opens the journey at Job rather
   than claiming the job exists. Skipping is not doing: arming a base resume skips
-  Score and Resume *visibly* — dashed, "Using your base resume as is.", never a
+  Resume *visibly* — dashed, "Using your base resume as is.", never a
   tick, and never the word "Skipped" (it reads as declined, and it is the Agent
   inbox's word for a rejected job; a screen reader hears "not needed"). And `done.fill` is this extension's own claim that it filled or
   attached HERE, so an application marked applied inside the web app does not
@@ -156,17 +167,18 @@ asking permission of itself.
   the flow the picker exists for.
 - **The base resumes are RANKED by this job's own ATS scores**, best first, each
   row showing its number — the same per-base scores the Score and tailor tab is
-  built on, so the pick (and the number fast tailoring reports afterwards) is not
-  blind. Scores are READ on open (cheap, computes nothing); **Score base
-  resumes** is a button rather than something that happens on open, because
-  scoring every base silently on every panel open is answering a question nobody
-  asked. The Score step is also where the panel says, once, what an ATS score
+  built on, so the choice (and the number Quick tailor reports afterwards) is not
+  blind. **Saving the job scores the bases in the same press** (`addJob` then
+  `scoreAllBases`, one `busy` span), and a saved job that no base has a score for
+  is scored when its Job step opens, once per page and job (`scoredFor`), so a
+  failure never loops. The cost is the deterministic ATS engine, one local pass
+  per base resume and no model call; the web app's Score and tailor tab spends
+  it the same way on a first visit. Scores are otherwise READ (cheap, computes
+  nothing). The base list is also where the panel says, once, what an ATS score
   is: the web app's `ATS_SCORE_LEAD` sentence, our estimate and not an
-  employer's reading. A resume
-  with no score says "not scored" rather than zero and sorts last, a pick made by
-  hand wins over the ranking permanently, and the line underneath names the
-  engine version behind the numbers, or says nothing when the rows disagree about
-  it — stored scores outlive the scorer that made them.
+  employer's reading. A resume with no score says "not scored" rather than zero
+  and sorts last, the scored best is preselected until you pick another, and a
+  pick made by hand wins over the ranking permanently.
 - **Use base resume as is / Tailor** — the Resume stage is a fork on two
   levels, because the first question is whether to tailor at all and "quick or
   custom" is only a question for the user who said yes. Nothing is pre-selected:

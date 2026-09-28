@@ -14,10 +14,8 @@
  * user, so the rail needs a door back to a step it has already ticked. What did
  * NOT change is the reason that sentence existed — a body still appears only
  * where its stage's own controls make sense. `REOPENABLE` (panel.js) is
- * Score/Resume/Fill always, and Job only when the binding is a user claim:
- * a Job body under a backend-matched "✓ in library" would still be the panel
- * offering to add a job it has just said is added, but a claimed pick is
- * the user's to withdraw.
+ * Job, Resume and Fill: a done Job row opens onto the base list (or, for a
+ * draft the user picked, the switcher), never onto the Save job preview.
  *
  * REOPENING IS A VIEW, NEVER A STAGE. `stageFor` does not read `revisit`, no
  * tick is cleared by opening a row, and the data-active row keeps its active
@@ -38,7 +36,7 @@
  * have.
  *
  * IT IS RESTATED IN EVERY FILE UNDER `stages/`, deliberately and not by
- * accident: five files each POINTING at a rule they do not carry is how a body
+ * accident: four files each POINTING at a rule they do not carry is how a body
  * ends up reading `card`, which is the whole failure the seam exists to make
  * impossible. One exception is spelled out where it is taken — a body may read
  * `shared/decisions.js` and `shared/policy.js` off the namespace, because those
@@ -65,7 +63,8 @@
  * them are cut three ways, for the reason `panel/actions.js`'s header gives.
  *
  * WHEN THIS DIRECTORY SPLITS AGAIN. It does not: a stage is the unit, the rail
- * has five of them, and a sixth would be a sixth file rather than a decision.
+ * has four of them (Score merged into Job, 2026-09-27), and a fifth would be a
+ * file rather than a decision.
  * The live question is the other direction — a FILE growing past its stage, of
  * which `stages/fill.js` (549 lines: mode control, three progress rows, the
  * open list with its pause rows, the drawer) is the only candidate. TRIGGER
@@ -74,7 +73,7 @@
  * parts of one stage's body, and three files that all have to agree about what
  * a run reported would buy a boundary and cost the agreement.
  *
- * SIZES: job 207 · score 129 · resume 147 · fill 549 · track 128, this roster
+ * SIZES: job 317 · resume 288 · fill 846 · track 139, this roster
  * 104. Stated because a threshold nobody can measure against is not one. (The
  * roster was FOUR for one commit — Task 15's opening cut was the MOVE, and the
  * Track body landed in the commit after it.)
@@ -90,7 +89,6 @@
    * user as a rail row that simply does nothing. */
   const bodies = {
     job: ns.panelStageJob,
-    score: ns.panelStageScore,
     resume: ns.panelStageResume,
     fill: ns.panelStageFill,
     track: ns.panelStageTrack,

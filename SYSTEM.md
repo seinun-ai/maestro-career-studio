@@ -557,13 +557,13 @@ file to open.
 - **Chrome extension** (`extension/`; on screen **the Companion**): MV3; the **side panel**
   (`panel/`) is the ONE surface — toolbar icon (`openPanelOnActionClick`) and hotkey
   (Alt+Shift+J → `sidePanel.open`, guarded: that method is Chrome 116 and the minimum is 114)
-  both open it. Five-stage rail — Job → Score → Resume → Fill → Track — whose active stage is
+  both open it. Four-stage rail — Job → Resume → Fill → Track — whose active stage is
   INFERRED from the store by `ns.decisions.stageFor` every render, never set by what was
-  clicked. A stage is "which question is still open", so `hasForm` is NOT one of its inputs:
-  whether filling can happen HERE is decided at the Fill body and the footer. ONE row shows a
-  body (the active one, or a DONE row reopened as view state; the active row is the way back,
-  and a base pick closes a reopened Score), and the footer's one primary
-  follows the OPEN row: Save job, Score base resumes, Quick tailor, Fill this form.
+  clicked. Job = saved AND a base chosen (a pick, the scored best preselected, or a bound
+  application's own `base_resume`); Save job scores the bases in the same press, and an unscored
+  saved job is scored once when Job opens. `hasForm` is NOT a stage input. ONE row shows a
+  body (the active one, or a DONE row reopened as view state; the active row is the way back);
+  the footer's one primary follows the OPEN row: Save job (then Score base resumes), Quick tailor, Fill this form.
   The panel document is a family of scripts (panel.html owns roster and order): `panel.js`
   owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`)
   get a per-render snapshot, per-CONCERN actions (`panel/actions/*.js`) a handle with one

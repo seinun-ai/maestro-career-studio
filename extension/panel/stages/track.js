@@ -1,6 +1,6 @@
 /* Maestro CS Companion — the Track stage's body: the journey's end.
  *
- * One of five files behind `ns.panelStages`; `panel/stages.js` is the joiner
+ * One of four files behind `ns.panelStages`; `panel/stages.js` is the joiner
  * and carries the whole contract. Read it before adding anything here.
  *
  * THE RULE, restated because a file that only POINTS at it is a file that

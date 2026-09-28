@@ -1,7 +1,17 @@
 /* Maestro CS Companion — the Job stage's body.
  *
- * One of five files behind `ns.panelStages`; `panel/stages.js` is the joiner
+ * One of four files behind `ns.panelStages`; `panel/stages.js` is the joiner
  * and carries the whole contract. Read it before adding anything here.
+ *
+ * THE STEP ASKS TWO QUESTIONS: is the job saved, and which base resume goes
+ * with it. So it has three bodies — the editable preview before a save, the
+ * ranked base list after one (what was the Score step until 2026-09-27), and
+ * the claimed binding's switcher when the user picked a draft by hand.
+ *
+ * ONE EXCEPTION to the rule below, the same one every file in this directory
+ * may make: `shared/decisions.js` is read off the namespace, because the
+ * ranking is a DECISION both surfaces read one copy of rather than a fact
+ * about this render.
  *
  * THE RULE, restated because a file that only POINTS at it is a file that
  * half-remembers it: NOTHING HERE REACHES FOR ANYTHING. No `card`, no `chrome`,
@@ -18,6 +28,7 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
+  const { rankBaseResumes } = ns.decisions;
 
   /** Thousands separators without a locale. `toLocaleString` would read the
    * user's, and this is one number inside an English sentence. */
@@ -75,6 +86,7 @@
     if (facts.claimed === true && facts.application) {
       return claimedJobBody(ctx);
     }
+    if (facts.jobSaved === true) return baseBody(ctx);
     const kv = node("div", "kv");
     for (const [key, label] of facts.previewFields) {
       const input = node("input");
@@ -214,6 +226,94 @@
     const label = node("label", "sub", "Applying for one of these?");
     label.setAttribute("for", DRAFT_PICK_ID);
     return attach(node("div", "appick"), label, select);
+  }
+
+  /** What an ATS score IS, said once in the panel where the numbers first
+   * appear, as the app's own estimate (docs/frontend-conventions.md, the
+   * glossary's ATS score). The web app's Score and tailor tab says the same
+   * sentence (`ATS_SCORE_LEAD`, frontend/lib/ats-words.ts). */
+  const ATS_SCORE_LEAD = "An ATS score (0 to 100) is our estimate of how an "
+    + "applicant tracking system would rate each resume for this job.";
+
+  /** The one line under the ranked list: how much of it is real. */
+  function rankingNote({ facts, build }, ranked) {
+    if (!ranked.length) return "No base resumes yet. Add one in Maestro CS.";
+    const scored = ranked.filter((row) => row.score !== null).length;
+    // While the scorer runs (on the save, or when this step opens on a job
+    // nobody has scored), and otherwise the retry, named in words because its
+    // button sits in the footer rather than in this body.
+    if (!scored) {
+      return facts.busy === true
+        ? "Scoring your base resumes for this job."
+        : "Not scored for this job yet. Select Score base resumes below.";
+    }
+    // No engine id beside the count: a scorer's version string is its own
+    // name for itself, not a word a job seeker can act on. The count is over
+    // `ranked`, so it describes the rows on screen and nothing wider.
+    return `${build.plural(scored, "base resume")} scored for this job`;
+  }
+
+  /** One selectable base resume: the radio dot, the name, the composite.
+   *
+   * `role="radio"` on a real button rather than an `<input type=radio>`: the
+   * row IS the control (the dot is drawn by CSS from the selected class), and
+   * a hidden input with a label wrapped round the same box would be two
+   * elements where one does. No roving tabindex, so every row is tabbable —
+   * worse than the ARIA pattern on a long list, and it never traps anyone,
+   * which is the trade a first version should make.
+   *
+   * `aria-checked` and not colour alone: the selected row differs from the
+   * rest by a border and a tint, and neither reaches a screen reader.
+   */
+  function baseRow({ facts, act, build }, entry, best) {
+    const { node, attach } = build;
+    const selected = entry.slug === facts.baseSlug;
+    const row = node("button", selected ? "baserow sel" : "baserow");
+    row.type = "button";
+    // Stable across a rebuild (panel.js `withPlaceKept`), which hands focus to
+    // the Job row's door when a pick closes the list.
+    row.id = `base-${entry.slug}`;
+    row.setAttribute("role", "radio");
+    row.setAttribute("aria-checked", selected ? "true" : "false");
+    const dot = node("span", "r");
+    dot.setAttribute("aria-hidden", "true");
+    // "not scored" is a WORD, never a zero: a base resume nobody has scored
+    // against this job has no number, and printing one would be the panel
+    // inventing the judgement it exists to render. Rounded, never computed —
+    // the composite is the backend's (design §4.2).
+    const score = entry.score === null
+      ? node("span", "score", "not scored")
+      : node("span", best ? "score good" : "score", String(Math.round(entry.score)));
+    attach(row, dot, node("b", null, entry.display_name || entry.slug), score);
+    row.addEventListener("click", () => act.pickBase(entry.slug));
+    return row;
+  }
+
+  /** The saved job's base question: every base resume this job has an
+   * opinion about, best first, and one of them selected — the ranking's best
+   * until the user picks another.
+   *
+   * ORDERED BY `rankBaseResumes` and by nothing else. The library's own order
+   * is the order they were created in, which is a listing that makes users
+   * pick blind (decisions.js records what that cost). The ORDER is this
+   * surface's choice; the numbers in it are the backend's, and nothing here
+   * computes one.
+   *
+   * `best` is the top of the RANKING rather than the top of the list: an
+   * all-unscored library has no best, and the green chip must not land on
+   * whichever row happens to be first.
+   */
+  function baseBody(ctx) {
+    const { node, attach } = ctx.build;
+    const ranked = rankBaseResumes(ctx.facts.resumes, ctx.facts.scores);
+    const best = ranked.findIndex((entry) => entry.score !== null);
+    const list = node("div");
+    list.setAttribute("role", "radiogroup");
+    list.setAttribute("aria-label", "Base resume, best match first");
+    ranked.forEach((entry, index) => attach(list, baseRow(ctx, entry, index === best)));
+    return attach(node("div", "stg-body"), list,
+                  node("div", "sub", rankingNote(ctx, ranked)),
+                  node("div", "sub", ATS_SCORE_LEAD));
   }
 
   ns.panelStageJob = jobBody;

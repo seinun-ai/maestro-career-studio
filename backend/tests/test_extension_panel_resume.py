@@ -180,12 +180,12 @@ def test_the_fork_belongs_to_the_step_you_are_on_and_asks_one_question_first(tmp
     """
     out = _resume(tmp_path)
     rows = _by_class(out["loaded"]["rail"], "stg")
-    assert rows[2]["class"] == "stg active"
-    # One level, two limbs, and the Score row above it carries no body of its
+    assert rows[1]["class"] == "stg active"
+    # One level, two limbs, and the Job row above it carries no body of its
     # own: a done row is a tick and a summary.
     assert _limbs(out["loaded"]["rail"]) == ["Use base resume as is", "Tailor"]
     assert len(_by_class(out["loaded"]["rail"], "stg-body")) == 1
-    assert _by_class(rows[1], "stg-body") == []
+    assert _by_class(rows[0], "stg-body") == []
     # Nothing is pre-selected. Picking a tailoring path on the user's behalf is
     # the thing this fork exists to stop.
     assert [limb["class"] for limb in _by_class(out["loaded"]["rail"], "fork")[0]["children"]] == [
@@ -627,10 +627,10 @@ def test_a_tailor_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_pat
 
 # ---------- switching base from the reopened Score row ----------------------
 #
-# Standing on Resume, the user reopens Score to switch base and picks one. The
+# Standing on Resume, the user reopens Job to switch base and picks one. The
 # stage does not move — Resume is still the open question, only about another
 # base — so `openRow`'s "the rail moved on" limb never fires. Reported live:
-# the Score body stayed open under a Resume row that was active and had no way
+# the base list stayed open under a Resume row that was active and had no way
 # in, so the tailoring fork never came back.
 
 _SWITCH_BASE_DRIVER_JS = _PANEL_FAKES_JS + r"""
@@ -639,7 +639,7 @@ const door = (key) => findById(REGIONS.rail, `stg-open-${key}`);
 main(async () => {
   await settle();
   const loaded = regions();
-  door("score").click();
+  door("job").click();
   await settle();
   const reopened = regions();
   if (spec.back === true) {
@@ -682,13 +682,13 @@ def _open_bodies(region):
     return [node["id"].removeprefix("stg-body-") for node in _by_class(region, "stg-body")]
 
 
-def test_a_base_picked_from_the_reopened_score_row_returns_to_the_tailoring_fork(tmp_path):
-    """The pick answers the question the Score row was reopened to ask, so the
+def test_a_base_picked_from_the_reopened_job_row_returns_to_the_tailoring_fork(tmp_path):
+    """The pick answers the question the Job row was reopened to ask, so the
     view closes and the body goes back to the step the user is on: the fork,
     now for the base they just chose."""
     out = _switch_base(tmp_path, "Data Scientist")
     assert _rows(_rail_rows({"regions": out["loaded"]}))["resume"]["state"] == "active"
-    assert _open_bodies(out["reopened"]["rail"]) == ["score"]
+    assert _open_bodies(out["reopened"]["rail"]) == ["job"]
     picked = out["picked"]
     assert _rows(_rail_rows({"regions": picked}))["resume"]["state"] == "active"
     assert _open_bodies(picked["rail"]) == ["resume"]
@@ -710,7 +710,7 @@ def test_repicking_the_same_base_from_the_reopened_row_also_closes_it(tmp_path):
 
 
 def test_the_step_you_are_on_is_a_way_back_while_another_row_is_open(tmp_path):
-    """Reopened Score, then changed their mind without picking: the active row
+    """Reopened Job, then changed their mind without picking: the active row
     is the natural thing to press, and before this it was not a control at
     all, so the only way back was the ▾ on the row they had opened."""
     out = _switch_base(tmp_path, back=True)
@@ -749,7 +749,7 @@ main(async () => {
   // Which rows offer a door AT ALL, asked of the rendered rail rather than of
   // the model: the door is a real <button> with a stable id, and "the rail
   // drew one" is the only version of this question the user can see.
-  const doors = ["job", "score", "resume", "fill", "track"]
+  const doors = ["job", "resume", "fill", "track"]
     .filter((key) => opener(key) !== null);
   const door = opener("resume");
   if (door) door.click();
@@ -831,20 +831,18 @@ def _body(painted):
 
 
 def test_the_row_you_skipped_by_choice_is_a_door_and_the_ones_the_path_skipped_are_not(tmp_path):
-    """THE DISTINCTION, rendered. All three of Job, Score and Resume are greyed
-    and dashed on this page, and exactly one of them opens.
+    """THE DISTINCTION, rendered. Both Job and Resume are greyed and dashed on
+    this page, and exactly one of them opens.
 
     The user pressed one button, and it answered the RESUME stage's own
-    question ("tailor, or not?"). Score is skipped because nothing needs a
-    ranking when nothing is being tailored and Job because the shortcut never
-    asked the library — neither is a decision anybody made, so neither has
-    anything to withdraw. A door on those two would be a rail offering to undo
-    arithmetic.
+    question ("tailor, or not?"). Job is skipped because the shortcut never
+    asked the library — not a decision anybody made, so nothing to withdraw.
+    A door there would be a rail offering to undo arithmetic.
     """
     out = _armed(tmp_path)
     rows = _rows(_rail_rows({"regions": out["armed"]}))
-    assert [rows[key]["state"] for key in ("job", "score", "resume")] == [
-        "skipped", "skipped", "skipped"]
+    assert [rows[key]["state"] for key in ("job", "resume")] == [
+        "skipped", "skipped"]
     assert rows["fill"]["state"] == "active"
     assert out["doors"] == ["resume"]
     # …and the door says so the way every other one does, rather than by being
@@ -1066,6 +1064,11 @@ def test_a_bound_application_with_its_pdf_opens_at_fill_with_no_base_click(tmp_p
     assert journey["job"] == ("done", "✓")
     assert journey["resume"] == ("done", "✓")
     assert journey["fill"][0] == "active"
+    # What each done row settled: the application's base and its score, and
+    # the tailored resume with its own.
+    rows = _rows(_rail_rows(out))
+    assert rows["job"]["summary"] == "Data Scientist · 64"
+    assert rows["resume"]["summary"] == "Tailored resume ready · 77"
     # The Base ring is the base the application was tailored from (64), not
     # the ranking's best (72), so the "+N" says what tailoring did.
     identity = out["regions"]["identity"]
@@ -1081,3 +1084,7 @@ def test_the_bound_application_answers_even_when_the_scores_read_fails(tmp_path)
         assert journey["job"] == ("done", "✓")
         assert journey["resume"] == ("done", "✓")
         assert journey["fill"][0] == "active"
+        # No score to print, so the summaries say only what is known.
+        rows = _rows(_rail_rows(out))
+        assert rows["job"]["summary"] == "Data Scientist"
+        assert rows["resume"]["summary"] == "Tailored resume ready"

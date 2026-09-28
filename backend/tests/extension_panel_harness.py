@@ -659,7 +659,7 @@ def _rail_rows(out):
          # that had merely stopped on its last step.
          "numeral": _by_class(row, "stg-num")[0]["text"],
          "summary": _by_class(row, "stg-sum")[0]["text"]}
-        for key, row in zip(["job", "score", "resume", "fill", "track"],
+        for key, row in zip(["job", "resume", "fill", "track"],
                             _by_class(out["regions"]["rail"], "stg"), strict=True)
     ]
 
