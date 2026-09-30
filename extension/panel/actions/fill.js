@@ -346,7 +346,11 @@
         // The resume, BEFORE the loop's final sweep and once (`runFill`'s
         // `beforeSweep`): Lever and Ashby parse an upload into the form's
         // fields, and the sweep then re-reads every field the engine verified.
-        beforeSweep: async () => { auto = await autoAttachResume(store, token, stopped); },
+        // A written file asks for a settle before that sweep (`ATTACH_SETTLE_MS`).
+        beforeSweep: async () => {
+          auto = await autoAttachResume(store, token, stopped);
+          return wroteFile(auto) ? ATTACH_SETTLE_MS : 0;
+        },
         onProgress: (update) => {
           if (update.phase !== "round" || !live()) return;
           store.write({ fillRound: update.round });
@@ -368,7 +372,13 @@
     const loop = done.out;
     // Value-free: labels, shapes and outcomes, never an answer (fill-loop.js).
     store.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(loop));
-    const attachLine = landAutoAttach(store, auto);
+    // A Stop or the run's clock after the attach skipped the sweep that would
+    // have re-read the fields verified before it: the report does not vouch
+    // for them. A note rather than demoting each one, since nothing SEEN
+    // changed and the fields say what was verified when it was.
+    const unswept = wroteFile(auto) && (loop.stopped || loop.timedOut);
+    const attachLine = unswept ? uncheckedLine(auto) : landAutoAttach(store, auto);
+    if (unswept) landAutoAttach(store, auto);
     const after = store.read();
     const finished = fillFinished({ loop, attached: attachedHere(after) });
     store.write({
@@ -705,11 +715,24 @@
     // résumé went into both — the report said so honestly afterwards, which
     // is not the same as the refusal having held.
     if (!wanted()) return null;
-    const frames = await store.attachPdf(
-      `/api/applications/${applicationId}/pdf`, filename, expect, resumeOnly);
+    let frames;
+    try {
+      frames = await store.attachPdf(
+        `/api/applications/${applicationId}/pdf`, filename, expect, resumeOnly);
+    } catch (err) {
+      // A status is the backend refusing the PDF, before any page was sent
+      // anything; with none the channel failed after the send (Autofill).
+      if (resumeOnly && err?.status === undefined) throw lostReply();
+      throw err;
+    }
     const count = frames.reduce((total, frame) => total + provenOf(frame.result), 0);
     if (!count) {
       if (!frames.some((frame) => frame.result !== undefined)) {
+        // Sent and the answer lost (the page navigated during the proof wait)
+        // is not "never delivered", which Chrome words as no receiving end.
+        if (resumeOnly && frames.some((frame) => !UNDELIVERED.test(frame.error ?? ""))) {
+          throw lostReply();
+        }
         throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
       }
       if (resumeOnly && !frames.some((frame) => (frame.result?.written ?? 0) > 0)) {
@@ -743,10 +766,23 @@
     return { filename, count, applicationId };
   }
 
+  const UNDELIVERED = /could not establish connection|receiving end does not exist/i;
+  const lostReply = () => Object.assign(ns.guidedRun.shown(
+    "Couldn't confirm the upload. Check the upload box, and attach your resume only if "
+    + "it isn't listed."), { written: true });
+
   /** A frame's attach answer as a proven count: the button's write answers a
    * number, Autofill's `{written, proven}`. */
   const provenOf = (result) => (typeof result === "number" ? result : result?.proven ?? 0);
   const LEFT_FOR_YOU = "The Companion left the upload box for you.";
+  // How long the loop waits after a written file before its final sweep: an
+  // ATS that parses the upload into the form (Lever, Ashby) does it 1-3 s
+  // after the file row appears.
+  const ATTACH_SETTLE_MS = 3000;
+  const CHECK_FIELDS = "Check the filled fields, since the page may have changed them.";
+  const wroteFile = (auto) => auto?.outcome === "attached" || auto?.outcome === "unconfirmed";
+  const uncheckedLine = (auto) => (auto.outcome === "attached"
+    ? `Resume attached: ${auto.filename}. ${CHECK_FIELDS}` : `${auto.text} ${CHECK_FIELDS}`);
 
   /** Autofill's own attach: the owner's request (2026-09-30) that a run
    * also put the resume in the page's upload box, which until then only the

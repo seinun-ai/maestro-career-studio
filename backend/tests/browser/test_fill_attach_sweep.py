@@ -51,11 +51,14 @@ PAGE = """<form>
         row.textContent = name;
         document.getElementById("uploaded").append(row);
       }
-      window.__parses += 1;
-      parse();
-      if (window.__parseMode === "always") {
-        city.addEventListener("blur", () => setTimeout(parse, 50));
-      }
+      // The parse lands `__parseDelay` ms after the row (Lever: 1-3 s).
+      setTimeout(() => {
+        window.__parses += 1;
+        parse();
+        if (window.__parseMode === "always") {
+          city.addEventListener("blur", () => setTimeout(parse, 50));
+        }
+      }, window.__parseDelay ?? 0);
     }, 150);
   });
 })();
@@ -86,24 +89,32 @@ DRIVER = """(spec) => {
     if (path === "/api/autofill/step") return { mid: "give_up", reason: "abstained" };
     throw Object.assign(new Error(path), { status: 404 });
   };
-  const deps = { broadcast, api, cancelled: () => false };
+  const deps = { broadcast, api, cancelled: () => spec.cancelled === true };
+  let sweepsBeforeHook = null;
   if (spec.hook) {
+    // The panel's hook, as `beforeSweep`'s contract has it: attach, and answer
+    // how long the page should get to settle before the sweep (the panel's
+    // own answer after a written file is `ATTACH_SETTLE_MS`).
     deps.beforeSweep = async () => {
       hooks += 1;
+      sweepsBeforeHook = sent.filter((m) => m.type === "fill_sweep").length;
+      if (spec.hookThrows) throw new Error("the attach broke");
       const [frame] = await deliver({ type: "attach_resume_pdf", b64: spec.pdf,
         filename: "Jane_Doe_Resume.pdf", expect: 1, resumeOnly: true });
       window.__attach = frame?.result ?? null;
+      return frame?.result?.written ? spec.settleMs ?? 0 : 0;
     };
   }
   window.__run = ns.fillLoop.runFill(deps, { sourceHint: null })
-    .then((report) => ({ report, sent, hooks, attach: window.__attach ?? null }));
+    .then((report) => ({ report, sent, hooks, sweepsBeforeHook, attach: window.__attach ?? null }));
   return true;
 }"""
 
 
-def _run(page, hook=True, parse="once"):
+def _run(page, hook=True, parse="once", parse_delay=0, **spec):
     page.set_content(PAGE)
-    page.evaluate("(mode) => { window.__parseMode = mode; }", parse)
+    page.evaluate("([mode, delay]) => { window.__parseMode = mode; window.__parseDelay = delay; }",
+                  [parse, parse_delay])
     page.evaluate("""() => {
       window.chrome = window.chrome || {};
       Object.defineProperty(window.chrome, "runtime", { configurable: true, value: {
@@ -111,9 +122,10 @@ def _run(page, hook=True, parse="once"):
     }""")
     for src in SOURCES:
         page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
-    page.evaluate(DRIVER, {"hook": hook, "pdf": PDF})
+    page.evaluate(DRIVER, {"hook": hook, "pdf": PDF, **spec})
     out = page.evaluate("() => window.__run")
-    out["city"] = next(r for r in out["report"]["fields"] if r["question"] == "City")
+    out["city"] = next((r for r in out["report"]["fields"] if r["question"] == "City"), None)
+    out["sweeps"] = [m for m in out["sent"] if m["type"] == "fill_sweep"]
     out["writes"] = [a for m in out["sent"] if m["type"] == "fill_apply" for a in m["actions"]
                      if a.get("value") == "Springfield"]
     return out
@@ -153,3 +165,42 @@ def test_without_the_hook_the_loop_is_unchanged(blank):
     assert blank.evaluate("window.__parses") == 0
     assert len(out["writes"]) == 1
     assert out["city"]["status"] == "verified"
+
+
+def test_a_parse_landing_after_the_row_is_caught_after_the_settle(blank):
+    """Lever and Ashby parse 1-3 s after the file row. The hook answers how
+    long to settle after a written file, and the final sweep waits that long."""
+    out = _run(blank, parse_delay=1500, settleMs=3000)
+    assert blank.evaluate("window.__parses") == 1
+    assert len(out["writes"]) == 2
+    assert blank.input_value("#city") == "Springfield"
+    assert out["city"]["status"] == "verified"
+
+
+def test_a_hook_that_asks_no_settle_keeps_the_usual_quiet_period(blank):
+    """The same late parse with no settle asked: the sweep runs first, which
+    is why the panel asks for one."""
+    out = _run(blank, parse_delay=1500, settleMs=0)
+    assert len(out["writes"]) == 1
+
+
+# ---------- `beforeSweep`, the engine's contract ----------
+
+def test_a_run_already_cancelled_never_calls_the_hook(blank):
+    out = _run(blank, cancelled=True)
+    assert out["hooks"] == 0
+    assert out["report"]["stopped"] is True
+
+
+def test_a_hook_that_throws_still_leaves_a_swept_run(blank):
+    out = _run(blank, hookThrows=True)
+    assert out["hooks"] == 1
+    assert len(out["sweeps"]) > out["sweepsBeforeHook"]
+    assert out["city"]["status"] == "verified"
+
+
+def test_the_hook_runs_once_across_two_final_sweeps(blank):
+    """The overwrite sends the loop round again, so `settledDone` runs twice."""
+    out = _run(blank)
+    assert out["hooks"] == 1
+    assert len(out["sweeps"]) - out["sweepsBeforeHook"] >= 2

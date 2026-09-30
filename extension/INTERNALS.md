@@ -361,8 +361,12 @@ asking permission of itself.
   Ashby parse an upload into the form's fields, and Workday re-renders the
   upload section, so the sweep re-reads every field the engine verified and a
   changed one gets its one re-commit per run (a page that takes it back again
-  is reported unconfirmed, never filled). A later parse is not seen. "Saved
-  answers only" attaches last. Never after a Stop, a tab change or the run's
+  is reported unconfirmed, never filled). A written file makes the hook ask
+  for a 3 s settle before that sweep (the parse lands 1-3 s after the file
+  row), within the run's clock; a later parse is not seen. When a Stop or the
+  clock skips that sweep, the note says "Check the filled fields, since the
+  page may have changed them." rather than demoting each verified field,
+  since nothing seen changed. "Saved answers only" attaches last. Never after a Stop, a tab change or the run's
   clock running out; Stop and the tab are asked again right before the write,
   after the PDF read. Narrower than the button: the button's own
   source only (the application's tailored PDF; a base used as is has none, so
@@ -375,11 +379,13 @@ asking permission of itself.
   on one page (not after an attach here, nor after one it could not confirm).
   The write re-checks all of it in each frame (`resumeOnly`, beside `expect`)
   and answers `{written, proven}`; its proof is stricter than the button's: a
-  box with an upload widget counts only by the page's own new row, and a held
-  `files` proves only a bare input with no widget. Outcomes: attached; written
-  and not proven (the hedged "Couldn't confirm the upload…", which blocks
-  another automatic try on the page); nothing written (a refusal at write
-  time, no PDF, no frame: "The Companion left the upload box for you.",
+  hidden input in an upload widget counts only by the page's own new row, and
+  a held `files` proves a bare or visible input (its own control shows it).
+  Outcomes: attached; written and not proven (the hedged "Couldn't confirm the
+  upload…", which blocks another automatic try on the page), including a
+  reply lost after the send (a frame error other than "no receiving end", or
+  the channel failing with no HTTP status); nothing written (a refusal at
+  write time, no PDF, no frame: "The Companion left the upload box for you.",
   which blocks nothing); or skipped with its reason. The run's note ends with
   it, the Fill body carries it as its own row (`autoAttach`, stamped with the
   application the attach used) with the button still under it, reading

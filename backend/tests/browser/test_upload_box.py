@@ -75,9 +75,13 @@ for (const input of document.querySelectorAll("input[type=file]")) {
   });
 }
 </script>"""
-# An uploader that keeps the file in its input and never prints a row: the
-# page has not shown that it took anything.
+# A drag-and-drop uploader that keeps the file in its HIDDEN input and never
+# prints a row: the page has not shown that it took anything.
 SILENT = """<h4>Resume</h4><div class="uploader"><p>Drop a file here</p>
+  <input type="file" name="resume" style="display:none"></div>"""
+# A visible native file input in a wrapper: the browser's own control shows
+# the chosen file, so holding it is the proof.
+NATIVE = """<h4>Resume</h4><div class="field"><p>PDF only</p>
   <input type="file" name="resume"></div>"""
 # A bare input straight in a form: holding the file IS the upload.
 BARE = """<form><input type="file" name="resume"></form>"""
@@ -237,6 +241,11 @@ def test_a_file_held_but_never_shown_is_not_proof_for_autofill(blank):
 def test_the_button_write_still_counts_a_held_file(blank):
     _load(blank, SILENT)
     assert _attach(blank, resume_only=False) == 1
+
+
+def test_a_visible_native_input_in_a_wrapper_holding_the_file_is_the_upload(blank):
+    _load(blank, NATIVE)
+    assert _attach(blank) == {"written": 1, "proven": 1}
 
 
 def test_a_bare_input_holding_the_file_is_the_upload(blank):

@@ -421,9 +421,9 @@
    * to unchecked.
    *
    * `resumeOnly` IS AUTOFILL'S WRITE (`theResumeBox`): it answers `{written,
-   * proven}`, so "nothing written" differs from "not proven", and a box with
-   * an upload widget counts only by its row (a held `files` proves only a bare
-   * input, where holding the file IS the upload). The button keeps both. */
+   * proven}`, so "nothing written" differs from "not proven", and a HIDDEN
+   * input in an upload widget counts only by its row (a held `files` proves a
+   * bare or visible input, whose own control shows it). The button keeps both. */
   async function attachResumePdf(b64, filename, expect, resumeOnly = false) {
     const reply = (written, proven) => (resumeOnly ? { written, proven } : proven);
     const all = attachableFileInputs();
@@ -457,8 +457,10 @@
     const rowProof = (t) => t.widget !== null && t.widget.isConnected
       && rowsNaming(t.widget, filename) > t.rows
       && uploadErrors(t.widget, filename) <= t.errors;
+    // Autofill's write takes a held `files` only from an input on screen (the
+    // browser's own control shows it); a hidden one's uploader must show a row.
     const proven = (t) => ((t.input.isConnected && t.input.files?.length === 1)
-      && !(resumeOnly && t.widget !== null)) || rowProof(t);
+      && !(resumeOnly && t.widget !== null && !isOnScreen(t.input))) || rowProof(t);
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     // THE SETTLE, and it is `valueHolds`' banner applied to the one writer that
     // did not have it. Reading `input.files` on the tick that assigned it reads

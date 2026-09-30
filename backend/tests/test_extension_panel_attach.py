@@ -237,6 +237,25 @@ def test_saved_answers_and_ai_attaches_before_the_final_sweep(tmp_path):
     [ask] = _attach_asks(out)
     assert ask["resumeOnly"] is True
     assert _note(out["settled"]).endswith(ATTACHED)
+    # A written file asks the loop for a settle before its sweep: a parse
+    # lands 1-3 s after the file row.
+    assert run["settle"] == 3000
+
+
+def test_nothing_written_asks_for_no_settle(tmp_path):
+    out = _loop_with_pdf(tmp_path, page=_page({"kind": "resume", "occupied": True}))
+    [run] = out["runs"]
+    assert run["settle"] == 0
+
+
+def test_an_attach_the_sweep_never_followed_says_to_check_the_fields(tmp_path):
+    """The run's clock ran out in the settle, so the fields verified before
+    the attach were never re-read: the report says so rather than vouch for
+    them."""
+    out = _loop_with_pdf(tmp_path, timedOutAfterHook=True)
+    assert _note(out["settled"]).endswith(
+        "Resume attached: tailored-resume.pdf. Check the filled fields, since the page "
+        "may have changed them.")
 
 
 def test_a_box_that_already_lists_a_file_is_left_alone(tmp_path):
@@ -373,6 +392,27 @@ def test_nothing_written_is_its_own_outcome_and_blocks_nothing(tmp_path, why):
     assert len(_attach_asks(again)) == 2
 
 
+@pytest.mark.parametrize("reply", [
+    # The message went out and the page navigated during the proof wait.
+    _reply([{"frameId": 0, "error": "The message port closed before a response was received."}]),
+    # The panel's own channel failed after the send, with no HTTP status.
+    {"ok": False, "error": "Extension context invalidated."},
+])
+def test_a_lost_reply_after_the_send_is_unconfirmed_and_not_retried(tmp_path, reply):
+    out = _autofill(tmp_path, EMPTY_RESUME_BOX, attach_reply=reply)
+    assert "Couldn't confirm the upload" in _note(out["settled"])
+    again = _autofill(tmp_path, EMPTY_RESUME_BOX, attach_reply=reply, again=True)
+    assert len(_attach_asks(again)) == 1
+
+
+def test_a_pdf_the_backend_would_not_send_wrote_nothing(tmp_path):
+    """An HTTP status is the backend answering the PDF fetch, before any page
+    was sent anything."""
+    out = _autofill(tmp_path, EMPTY_RESUME_BOX,
+                    attach_reply={"ok": False, "status": 404, "error": "PDF fetch failed (404)"})
+    assert _note(out["settled"]).endswith(LEFT)
+
+
 def test_a_box_that_holds_a_file_offers_attach_anyway(tmp_path):
     """The press is still the user's, and says what it would do."""
     out = _autofill(tmp_path, {"kind": "resume", "occupied": True})
@@ -450,14 +490,17 @@ let open = null;
 const gate = () => new Promise((resolve) => { open = resolve; });
 const attachAsks = () => sent.filter((m) => m.type === "attach_pdf").length;
 ns.fillLoop.runFill = async (deps) => {
-  const run = { hooked: typeof deps.beforeSweep === "function", attachesAtSweep: null };
+  const run = { hooked: typeof deps.beforeSweep === "function", attachesAtSweep: null, settle: null };
   runs.push(run);
   deps.onProgress({ phase: "round", round: 1 });
   if (spec.holdRun) await gate();
-  if (!deps.cancelled() && run.hooked) await deps.beforeSweep();
+  if (!deps.cancelled() && run.hooked) run.settle = await deps.beforeSweep();
   run.attachesAtSweep = attachAsks();
+  // `timedOutAfterHook`: the run's clock ran out in the settle, so the final
+  // sweep never ran after the attach.
   return { runId: "r", host: spec.report.host, fields: spec.report.fields,
-           aiFailure: null, stopped: deps.cancelled() && !spec.switchTo, timedOut: false };
+           aiFailure: null, stopped: deps.cancelled() && !spec.switchTo,
+           timedOut: spec.timedOutAfterHook === true };
 };
 const stopButton = () => withClass(REGIONS.foot, "stop")[0] ?? null;
 main(async () => {
