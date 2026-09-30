@@ -103,6 +103,22 @@ def test_unsupported_or_trivial_evidence_cannot_back_high_level(evidence):
     assert bc._validate(TEXT, assessment(evidence=evidence))["level"] == "adjacent"
 
 
+@pytest.mark.parametrize("quote", ['"finance could close the ledger"', "“finance could close the ledger”",
+                                   "'finance could close the ledger'", "`finance could close the ledger`"])
+def test_quote_wrapped_in_quote_marks_still_backs_the_level(quote):
+    # A large batch once came back with every quote wrapped in literal quote marks; strict
+    # matching demoted all 26 bullets of a resume to adjacent (A read as D).
+    result = bc._validate(TEXT, assessment(evidence=[quote]))
+    assert result["level"] == "direct"
+    assert result["evidence"] == ["finance could close the ledger"]
+
+
+def test_typographic_quotes_and_dashes_match_their_plain_forms():
+    text = "Built the team’s release pipeline – cutting deploy time by half"
+    result = bc._validate(text, assessment(evidence=["the team's release pipeline - cutting deploy time"]))
+    assert result["level"] == "direct"
+
+
 @pytest.mark.parametrize("changes,question", [
     ({"measure_target": None}, "What did finance stop doing by hand?"),
     ({"alt_question": None}, None),

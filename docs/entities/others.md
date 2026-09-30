@@ -361,7 +361,7 @@
   answers returns, per text, a level, 1–3 `evidence` quotes, one `question`, `ask_kind`
   (`measure`|`detail`), `measure_target`, `alt_question`, up to three `language` slips
   (`{span, fix}`), a reason and a confidence. `_validate` is STRUCTURAL: a quote must be verbatim
-  (case and whitespace aside) and at least three words, and `analogue`/`direct` without one drops to
+  (case, whitespace, curly quotes, dashes and any wrapping quote marks aside) and at least three words, and `analogue`/`direct` without one drops to
   `adjacent`; a `measure` ask survives only when its target names the bullet's own words (half its
   content words, as whole words) AND its alternative asks for no number — otherwise it becomes a
   detail ask carrying that alternative (or none, and the report falls back to static per-level copy,

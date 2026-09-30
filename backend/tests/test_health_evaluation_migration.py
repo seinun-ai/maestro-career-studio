@@ -30,6 +30,26 @@ def test_health_schema_preserves_old_cache_and_false_default(tmp_path):
         assert not db.execute("SELECT name FROM sqlite_master WHERE name='bullet_disputes'").fetchall()
 
 
+def test_quote_demoted_evaluations_are_cleared_and_everything_else_kept(tmp_path):
+    path = tmp_path / "demoted.sqlite3"
+    cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
+    command.upgrade(cfg, "4022b54933e6")
+    rows = [("demoted", "adjacent", None, 2, "[]"),
+            ("overridden", "adjacent", "adjacent", 2, "[]"),
+            ("quoted", "adjacent", None, 2, '["built the thing"]'),
+            ("direct", "direct", None, 2, "[]"),
+            ("old_rubric", "adjacent", None, 1, None)]
+    with closing(sqlite3.connect(path)) as db:
+        db.executemany("INSERT INTO bullet_classifications (content_hash, level, override_level,"
+                       " rubric_version, evidence_json) VALUES (?, ?, ?, ?, ?)", rows)
+        db.commit()
+    command.upgrade(cfg, "643ba5470e73")
+    with closing(sqlite3.connect(path)) as db:
+        kept = {r[0] for r in db.execute("SELECT content_hash FROM bullet_classifications")}
+    assert kept == {"overridden", "quoted", "direct", "old_rubric"}
+
+
 def test_prompt_resync_deletes_only_previous_default(tmp_path):
     from importlib import import_module
     old = import_module("migrations.versions.d08dd68e4eff_resync_health_prompts").OLD_RESUME_BULLET_CLASSIFY

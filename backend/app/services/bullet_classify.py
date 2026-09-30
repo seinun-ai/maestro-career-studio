@@ -25,6 +25,13 @@ _LEVEL_RANK = ("unaddressed", "implied", "adjacent", "analogue", "direct")
 _NUMBER_ASK = re.compile(r"\d|\bhow (?:many|much)\b|\bwhat (?:number|percent|percentage)\b"
                          r"|\bquantif|\bmetric", re.IGNORECASE)
 _WORD = re.compile(r"[a-z][a-z'-]{3,}")
+_TYPOGRAPHIC = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": "-", "—": "-"})
+_WRAPPING_MARKS = "\"'`“”‘’"
+
+
+def _fold(text: str) -> str:
+    """Case, whitespace, curly quotes and dashes folded, so a quote matches its plain form."""
+    return " ".join(text.translate(_TYPOGRAPHIC).split()).lower()
 
 
 def _s(value, limit: int) -> str | None:
@@ -50,13 +57,15 @@ def _validate(text: str, entry: dict, *, metric_unavailable: bool = False) -> di
     # Resolve applicability FIRST, so this very response's flag demotes its own number ask.
     metric_unavailable = metric_unavailable or entry.get("metric_unavailable") is True
     norm = " ".join(text.split()).lower()
+    folded = _fold(text)
     raw_ev = entry.get("evidence")
     raw_ev = raw_ev if isinstance(raw_ev, list) else []   # a bare string is not a list of quotes
     spans = []
     for s in raw_ev:
-        s = _s(s, 200)
+        # The model sometimes wraps each quote in quote marks; they are not part of the quote.
+        s = _s(s.strip().strip(_WRAPPING_MARKS) if isinstance(s, str) else s, 200)
         # A quote must be verbatim AND carry content: at least 3 words, so "the" can't back a level.
-        if s and len(s.split()) >= 3 and " ".join(s.split()).lower() in norm:
+        if s and len(s.split()) >= 3 and _fold(s) in folded:
             spans.append(s)
     spans = spans[:3]
     if _LEVEL_RANK.index(level) > _LEVEL_RANK.index("adjacent") and not spans:

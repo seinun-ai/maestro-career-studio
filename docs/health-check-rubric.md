@@ -34,7 +34,8 @@ approved evaluator contract. Code validates the model response and computes scor
   approach, or a natural measure. Every measure question names its target and has a number-free
   alternative. Source: approved evaluator contract.
 - **Evidence validation** [weak]: `analogue` and `direct` need a verbatim quote of at least three words
-  from the bullet, else the level drops to `adjacent`. A measure question survives only when its target
+  from the bullet (case, whitespace, curly quotes, dashes and wrapping quote marks aside), else
+  the level drops to `adjacent`. A measure question survives only when its target
   is in the bullet's own words and its alternative asks for no number; otherwise the alternative is
   asked instead. Quotes validate structure, not the truth or quality of a model's judgment.
   Source: evaluator contract, `bullet_classify._validate`.
