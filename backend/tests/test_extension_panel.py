@@ -1396,6 +1396,9 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # show one employer's filename under another employer's posting, which
         # is `evidence`'s failure by a second route.
         "fileInputs": 2, "attached": {"filename": "tailored.pdf", "count": 1},
+        # Autofill's own attach report is the same page's claim.
+        "autoAttach": {"applicationId": "app-1", "outcome": "skipped",
+                       "text": "A file is already attached; the Companion left it."},
         "baseSelected": True, "baseFromApplication": True, "baseArmed": True,
         "scores": [{"composite": 72}],
         "busy": "tailor", "note": {"text": "Tailored — 84"},
@@ -1466,7 +1469,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "match": None, "job": None, "application": None, "pdfReady": False,
         "claimed": False,
         "evidence": None, "touched": False, "hasForm": False,
-        "fileInputs": 0, "attached": None, "baseSlug": None,
+        "fileInputs": 0, "attached": None, "autoAttach": None, "baseSlug": None,
         "baseSelected": False, "baseFromApplication": False, "baseArmed": False,
         "scores": None, "busy": None, "note": None, "preview": None, "previewTyped": False,
         "prepared": False, "tailorOpen": False,

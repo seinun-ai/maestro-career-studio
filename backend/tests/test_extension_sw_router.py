@@ -489,6 +489,51 @@ def test_a_pdf_the_backend_would_not_send_carries_its_status(tmp_path):
     assert out["reply"]["status"] == 404
 
 
+
+_ATTACH_FORWARD_DRIVER_JS = r"""
+let listener = null;
+const delivered = [];
+global.fetch = async () => ({ ok: true, status: 200,
+                              arrayBuffer: async () => new Uint8Array([37, 80, 68, 70]).buffer });
+global.chrome = {
+  runtime: {
+    id: "maestro-cs-test",
+    onMessage: { addListener: (callback) => { listener = callback; } },
+    getManifest: () => ({ content_scripts: [{ js: ["content/agent.js"] }] }),
+  },
+  commands: { onCommand: { addListener: () => {} } },
+  sidePanel: { setPanelBehavior: async () => {} },
+  storage: { sync: { get: async (defaults) => ({ ...defaults }) } },
+  webNavigation: { getAllFrames: async () => [{ frameId: 0 }] },
+  tabs: { sendMessage: async (tabId, message) => { delivered.push(message); return { ok: true, data: 1 }; } },
+};
+vm.runInThisContext(source);
+main(async () => {
+  const reply = await new Promise((resolve) => {
+    listener({ type: "attach_pdf", tabId: 7, path: "/api/applications/app-1/pdf",
+               filename: "resume.pdf", expect: 1, ...spec.extra },
+             { id: chrome.runtime.id }, resolve);
+  });
+  emit({ reply, delivered });
+});
+"""
+
+
+@pytest.mark.parametrize("extra, forwarded", [
+    ({"resumeOnly": True}, True),
+    ({}, False),
+    # Only a literal true: a malformed value must not become a looser write,
+    # and it must not become Autofill's stricter one by accident either.
+    ({"resumeOnly": "yes"}, False),
+])
+def test_autofills_resume_only_attach_reaches_the_frames(tmp_path, extra, forwarded):
+    """`resumeOnly` is checked where it can hold, in each frame at write time
+    (`attachResumePdf`), so the worker carries it through."""
+    out = run_node(_ATTACH_FORWARD_DRIVER_JS, {"extra": extra}, tmp_path, source=SW_JS)
+    [message] = out["delivered"]
+    assert message["type"] == "attach_resume_pdf"
+    assert message["resumeOnly"] is forwarded
+
 # ---------- what the widget's test file used to be the only home for --------
 #
 # THREE PINS THAT WERE ORPHANED BY THE DELETION, not three new ideas. R-C

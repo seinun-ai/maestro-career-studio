@@ -337,7 +337,7 @@ def test_detect_page_answers_the_verdict_and_nothing_of_the_page(tmp_path):
     """The side panel's only way to ask "does this tab hold a form?" — it runs
     in no page, so detection is not a function it can call.
 
-    FOUR keys, pinned. `detectPage` also returns `signals`, which names the
+    FIVE keys, pinned. `detectPage` also returns `signals`, which names the
     selectors, hosts and phrases that fired on this document; that is page
     content by another route, and the panel has no use for it. The smallest
     honest answer is the one that crosses the boundary.
@@ -346,17 +346,20 @@ def test_detect_page_answers_the_verdict_and_nothing_of_the_page(tmp_path):
     three — a count of controls this document renders, nothing derived from the
     user — which is what keeps this handler ungated. It is a COUNT and never the
     inputs: what the panel decides with it is whether to OFFER an attach.
+    `uploads` is the fifth, per counted box a kind word and a boolean
+    (`uploadBoxOf`): what Autofill's own attach decides with, never a label
+    or a filename.
 
     Ungated for `extract_job_posting`'s reason and no other: it reads the frame
     it already runs in and returns nothing derived from the user.
     """
     out = _run(tmp_path, type_="detect_page", top_frame=False, form=True)
 
-    assert set(out["data"]) == {"tier", "form", "score", "fileInputs"}
+    assert set(out["data"]) == {"tier", "form", "score", "fileInputs", "uploads"}
     assert out["data"]["form"] is True
     # …and the verdict is the page's own, not re-derived from `score` here.
     assert _run(tmp_path, type_="detect_page", top_frame=True, form=False)["data"] == {
-        "tier": "none", "form": False, "score": 0, "fileInputs": 0}
+        "tier": "none", "form": False, "score": 0, "fileInputs": 0, "uploads": []}
 
 
 def test_the_offer_counts_exactly_the_boxes_the_attach_would_write_to(tmp_path):

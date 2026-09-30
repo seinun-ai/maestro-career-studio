@@ -446,6 +446,11 @@
      * so this is how many boxes really took the file.
      */
     attached: null,
+    /** What Autofill's own attach did on this page, or null when it did not
+     * look (no PDF, no box, a stopped run): `{applicationId, outcome, text,
+     * filename}`, `outcome` "attached", "skipped" or "unconfirmed". Page-shaped
+     * like `attached`, and read beside the application it was made for. */
+    autoAttach: null,
     baseSlug: null,
     baseSelected: false,
     /** The base came from the bound application's own `base_resume`
@@ -764,6 +769,7 @@
     // employer's filename under another employer's posting.
     store.fileInputs = 0;
     store.attached = null;
+    store.autoAttach = null;
     store.baseSlug = null;
     store.baseSelected = false;
     store.baseFromApplication = false;
@@ -1913,6 +1919,8 @@
         // Only beside the application it was made for (`sameApplication`).
         attached: sameApplication(card.attached?.applicationId, card.application)
           ? card.attached : null,
+        autoAttach: sameApplication(card.autoAttach?.applicationId, card.application)
+          ? card.autoAttach : null,
         // The REAL filename, which the panel already knows: `evidenceFrom`
         // takes it off the application detail's `pdf_path`. Handed over so the
         // offer can name the document rather than saying "your resume" about a
@@ -2761,8 +2769,8 @@
    * `baseSlug` travels only as the user's pick (`refreshPage`): the library's
    * default is re-derived from the re-read library. */
   const PAGE_WORK = [
-    "touched", "hasForm", "fileInputs", "attached", "baseSelected", "baseArmed",
-    "tailorOpen", "revisit", "fill", "eeoConsent", "residue", "essays",
+    "touched", "hasForm", "fileInputs", "attached", "autoAttach", "baseSelected",
+    "baseArmed", "tailorOpen", "revisit", "fill", "eeoConsent", "residue", "essays",
     "closest", "blank", "aiNote", "writeResults", "loop", "answers", "qna",
     "preview", "previewTyped", "prepared",
   ];
@@ -4018,8 +4026,8 @@
        * receiving frames still go through `frameMayReceiveUserData` — a résumé
        * is the user's PII and is gated exactly as a fill is. The tab is bound
        * here like the other three, so an action cannot name one. */
-      attachPdf: (path, filename, expect) =>
-        ask("attach_pdf", { tabId: card.tabId, path, filename, expect }),
+      attachPdf: (path, filename, expect, resumeOnly = false) =>
+        ask("attach_pdf", { tabId: card.tabId, path, filename, expect, resumeOnly }),
       /** The page's upload-box count, asked FRESH.
        *
        * The same frame-0 detect `loadHasForm` runs, exposed because the attach
@@ -4031,6 +4039,16 @@
        * Bound to this panel's tab like every other door here, and it carries no
        * user data in either direction — it is a count of controls. */
       detectFileInputs: async () => countFileInputs(await askDetect()),
+      /** The same fresh detect, with the per-box `uploads` Autofill's attach
+       * decides with (`uploadBoxOf`, content/agent.js): `{fileInputs, uploads}`,
+       * `uploads` null from a content script that predates it, and null when
+       * the page did not answer. */
+      detectUploads: async () => {
+        const verdict = await askDetect();
+        if (!verdict) return null;
+        return { fileInputs: countFileInputs(verdict),
+                 uploads: Array.isArray(verdict.uploads) ? verdict.uploads : null };
+      },
       // Fire-and-forget and swallowed, which is telemetry's rule everywhere:
       // it may never surface an error or delay a fill. The opt-in check and the
       // key scrub are the service worker's — this is only the hand-off.

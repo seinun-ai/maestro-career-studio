@@ -332,15 +332,17 @@
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
                   closest: null, writeResults: null, blank: null, aiNote: null,
                   loop: null, fillRound: 0, stopRequested: false });
+    const stopped = () => !live() || store.read().stopRequested === true;
+    let auto = null;
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
-      return ns.fillLoop.runFill({
+      const loop = await ns.fillLoop.runFill({
         broadcast: (message) => (live() ? store.broadcast(message) : Promise.resolve([])),
         api: store.api,
         // Which of the engine's own moves worked, per kind of control: tried
         // first next time, value-free (`recipeDoor` in panel.js).
         recipes: store.recipes(),
-        cancelled: () => !live() || store.read().stopRequested === true,
+        cancelled: stopped,
         onProgress: (update) => {
           if (update.phase !== "round" || !live()) return;
           store.write({ fillRound: update.round });
@@ -351,6 +353,9 @@
         base: facts.application ? null : facts.baseSlug,
         sourceHint: ns.fillLoop.sourceHintOf(facts.url),
       });
+      // The resume last, and not after a Stop (`autoAttachResume`).
+      if (!loop.stopped) auto = await autoAttachResume(store, token, stopped);
+      return loop;
     }, "Couldn't fill this form.");
     if (!done) {
       if (live()) {
@@ -362,6 +367,7 @@
     const loop = done.out;
     // Value-free: labels, shapes and outcomes, never an answer (fill-loop.js).
     store.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(loop));
+    const attachLine = landAutoAttach(store, auto, facts.application?.id ?? null);
     const after = store.read();
     const finished = fillFinished({ loop, attached: attachedHere(after) });
     store.write({
@@ -369,8 +375,17 @@
       fillRound: null,
       stopRequested: false,
       aiNote: aiNoteFor(loop.aiFailure),
-      note: { text: loopNote(loop, store.build.plural) },
+      note: { text: [loopNote(loop, store.build.plural), attachLine].filter(Boolean).join(" ") },
     });
+    endRun(store, finished);
+  }
+
+  /** A run's last three moves: tick the step when it is finished, paint, and
+   * write the tick down. `touched` is the bit that outlives this page: an ATS
+   * wizard is six page loads and `resetPageFacts` clears the store on every
+   * one of them, so without the write the rail would ask for this fill again
+   * on the next step of a form the extension has already finished. */
+  function endRun(store, finished) {
     if (finished) store.write({ touched: true });
     store.render();
     if (finished) store.remember();
@@ -457,6 +472,7 @@
                   closest: null, writeResults: null, blank: null, aiNote: null,
                   loop: null });
     let noSavedAnswers = false;
+    let auto = null;
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
       let run;
@@ -511,10 +527,13 @@
         throw ns.guidedRun.shown(
           "Couldn't finish filling this page. Reload the tab to fill the rest.");
       }
+      // "Saved answers only" attaches too: the file is the user's own.
+      auto = await autoAttachResume(store, token, () => !store.current(token));
       return run;
     }, "Couldn't fill this form.");
     if (!done) return;
     const { out } = done;
+    const attachLine = landAutoAttach(store, auto, facts.application?.id ?? null);
     // RE-READ for the rule pass's own result: it landed in the store from
     // inside the run, which is where the progress rows want it.
     const after = store.read();
@@ -540,25 +559,18 @@
       // is still open, and an unanswered essay is exactly that — they are kept
       // apart in the store because they are ANSWERED differently, not because
       // they are different news.
-      note: { text: fillNote({ open, blank, finished, noSavedAnswers, closest: out.closest },
-                             store.build.plural) },
+      note: { text: [fillNote({ open, blank, finished, noSavedAnswers, closest: out.closest },
+                              store.build.plural), attachLine].filter(Boolean).join(" ") },
     });
-    if (finished) store.write({ touched: true });
-    store.render();
-    // `touched` is the bit that outlives this page: an ATS wizard is six page
-    // loads and `resetPageFacts` clears the store on every one of them, so
-    // without the write the rail would ask for this fill again on the next step
-    // of a form the extension has already finished.
-    if (finished) store.remember();
+    endRun(store, finished);
   }
 
   /** Put the tailored PDF into this page's upload box.
    *
-   * USER-PRESSED, ALWAYS. This is not a step of `startFill` and must not become
-   * one: a fill writes text into fields the user can read back at a glance,
-   * and an upload is a whole document leaving for an employer. The body offers
-   * the control and the user decides; nothing here runs on a load, a detect or
-   * the end of a run.
+   * USER-PRESSED, ALWAYS: nothing attaches on a load or a detect. Autofill is
+   * the other press that attaches, under narrower rules (`autoAttachResume`,
+   * the owner's request of 2026-09-30); this is the one for every other case:
+   * a box of unknown kind, a page the run left alone, or another page.
    *
    * IT ASKS THE PAGE FOR NOTHING AND CHOOSES NOTHING. Which boxes exist was
    * settled by the detect pass (`card.fileInputs`), and the BODY refuses to
@@ -609,70 +621,7 @@
     const token = store.token();
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
-      const detail = await store.api(`/api/applications/${applicationId}`);
-      if (!detail.pdf_path) {
-        // The store is corrected on the way past: `pdfReady` is what put this
-        // control on screen, and leaving it true would keep offering an attach
-        // for a document that is gone. The render in `duringAction`'s catch is
-        // what takes the control away.
-        //
-        // PAST THE GUARD, and this is the write the rule exists for. Two awaits
-        // stand above it, so a user who switches tabs across either of them
-        // gets this answer about the application they LEFT stamped onto the one
-        // they are now looking at: the new page's `pdfReady` goes false, its
-        // Resume stage re-offers a tailor for an application whose PDF is
-        // perfectly good, and its attach offer disappears. `duringAction`'s own
-        // check discards the ERROR on a stale generation and cannot help here,
-        // because by then this write has already landed.
-        if (store.current(token)) store.write({ pdfReady: false });
-        throw ns.guidedRun.shown("Couldn't find the tailored PDF. Open it in "
-          + "Maestro CS and select Create PDF.");
-      }
-      const filename = detail.pdf_path.split(/[\\/]/).pop() || "tailored-resume.pdf";
-      // THE OFFER'S OWN BELIEF, sent with the write. `facts.fileInputs` is what
-      // put this control on screen in the state it is in — one box means the
-      // button was live, several means it was dead — and the engine refuses the
-      // whole write in any frame whose list no longer says the same thing.
-      //
-      // WITHOUT IT THE REFUSAL WAS DECORATION. The count is frame 0's and is
-      // taken at DETECT time; the write runs at PRESS time across every gated
-      // frame. A Workday step that reveals a cover-letter uploader when the
-      // résumé section expands moved from one box to two in between, and the
-      // résumé went into both — the report said so honestly afterwards, which
-      // is not the same as the refusal having held.
-      const expect = facts.fileInputs;
-      const frames = await store.attachPdf(
-        `/api/applications/${applicationId}/pdf`, filename, expect);
-      const count = frames.reduce((total, frame) => total + (frame.result ?? 0), 0);
-      if (!count) {
-        if (!frames.some((frame) => frame.result !== undefined)) {
-          throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
-        }
-        // ZERO HAS TWO CAUSES and they are different news, so the panel asks
-        // rather than guessing: the boxes refused the file, or the page grew
-        // one and the refusal above fired. The fresh count answers it, and
-        // WRITING IT BACK is what makes the row itself say why — it flips to
-        // the several-boxes refusal, in the same words the offer would have
-        // used had the page looked like this when we first asked.
-        //
-        // THE SAME-BOXES ZERO IS HEDGED, not "no box took it". The engine's
-        // zero means it could not CONFIRM the upload — no file held, no new
-        // row naming it in time — and a page can take the file with neither
-        // (an uploader whose row is slower than the wait, or shaped in a way
-        // the proof does not read). Telling the user to attach it again on
-        // such a page is how Workday's `multiple` uploader ends up with two
-        // copies, so the sentence sends them to look first.
-        const now = await store.detectFileInputs();
-        if (store.current(token)) store.write({ fileInputs: now });
-        throw ns.guidedRun.shown(now === expect
-          ? "Couldn't confirm the upload. Check the upload box, and attach your "
-            + "resume only if it isn't listed."
-          : "Couldn't attach your resume. The page's upload boxes changed, so "
-            + "check them and try again.");
-      }
-      // STAMPED with its application, so a Refresh that binds another one
-      // cannot show this PDF as that one's (`sameApplication`).
-      return { filename, count, applicationId };
+      return sendResume(store, applicationId, facts.fileInputs, token);
     }, "Couldn't attach your resume.");
     if (!done) return;
     const attached = done.out;
@@ -706,11 +655,155 @@
       // the evidence.
       note: { text: `Attached ${attached.filename}. Check the upload before you submit.` },
     });
-    if (finished) store.write({ touched: true });
-    store.render();
-    // The session entry, for `startFill`'s reason: an ATS wizard is six page
-    // loads and `resetPageFacts` clears the store on every one of them.
-    if (finished) store.remember();
+    endRun(store, finished);
+  }
+
+  /** The write itself, shared by the button and Autofill's own attach: the
+   * PDF re-read, the fan-out through the service worker, and the readback.
+   * Returns `{filename, count, applicationId}`, or throws a shown sentence.
+   *
+   * `expect` is the box count the caller's decision was made on, and every
+   * frame refuses the whole write unless its own list still says the same
+   * (see below). `resumeOnly` is Autofill's: each frame also refuses unless
+   * its one box reads as an empty resume box (`attachResumePdf`). Called
+   * INSIDE a `duringAction` span, whose token it is handed. */
+  async function sendResume(store, applicationId, expect, token, resumeOnly = false) {
+    const detail = await store.api(`/api/applications/${applicationId}`);
+    if (!detail.pdf_path) {
+      // The store is corrected on the way past: `pdfReady` is what put this
+      // control on screen, and leaving it true would keep offering an attach
+      // for a document that is gone. The render in `duringAction`'s catch is
+      // what takes the control away.
+      //
+      // PAST THE GUARD, and this is the write the rule exists for. Two awaits
+      // stand above it, so a user who switches tabs across either of them
+      // gets this answer about the application they LEFT stamped onto the one
+      // they are now looking at: the new page's `pdfReady` goes false, its
+      // Resume stage re-offers a tailor for an application whose PDF is
+      // perfectly good, and its attach offer disappears. `duringAction`'s own
+      // check discards the ERROR on a stale generation and cannot help here,
+      // because by then this write has already landed.
+      if (store.current(token)) store.write({ pdfReady: false });
+      throw ns.guidedRun.shown("Couldn't find the tailored PDF. Open it in "
+        + "Maestro CS and select Create PDF.");
+    }
+    const filename = detail.pdf_path.split(/[\\/]/).pop() || "tailored-resume.pdf";
+    // THE OFFER'S OWN BELIEF, sent with the write. `expect` is what
+    // put this control on screen in the state it is in — one box means the
+    // button was live, several means it was dead — and the engine refuses the
+    // whole write in any frame whose list no longer says the same thing.
+    //
+    // WITHOUT IT THE REFUSAL WAS DECORATION. The count is frame 0's and is
+    // taken at DETECT time; the write runs at PRESS time across every gated
+    // frame. A Workday step that reveals a cover-letter uploader when the
+    // résumé section expands moved from one box to two in between, and the
+    // résumé went into both — the report said so honestly afterwards, which
+    // is not the same as the refusal having held.
+    const frames = await store.attachPdf(
+      `/api/applications/${applicationId}/pdf`, filename, expect, resumeOnly);
+    const count = frames.reduce((total, frame) => total + (frame.result ?? 0), 0);
+    if (!count) {
+      if (!frames.some((frame) => frame.result !== undefined)) {
+        throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
+      }
+      // ZERO HAS TWO CAUSES and they are different news, so the panel asks
+      // rather than guessing: the boxes refused the file, or the page grew
+      // one and the refusal above fired. The fresh count answers it, and
+      // WRITING IT BACK is what makes the row itself say why — it flips to
+      // the several-boxes refusal, in the same words the offer would have
+      // used had the page looked like this when we first asked.
+      //
+      // THE SAME-BOXES ZERO IS HEDGED, not "no box took it". The engine's
+      // zero means it could not CONFIRM the upload — no file held, no new
+      // row naming it in time — and a page can take the file with neither
+      // (an uploader whose row is slower than the wait, or shaped in a way
+      // the proof does not read). Telling the user to attach it again on
+      // such a page is how Workday's `multiple` uploader ends up with two
+      // copies, so the sentence sends them to look first.
+      const now = await store.detectFileInputs();
+      if (store.current(token)) store.write({ fileInputs: now });
+      throw ns.guidedRun.shown(now === expect
+        ? "Couldn't confirm the upload. Check the upload box, and attach your "
+          + "resume only if it isn't listed."
+        : "Couldn't attach your resume. The page's upload boxes changed, so "
+          + "check them and try again.");
+    }
+    // STAMPED with its application, so a Refresh that binds another one
+    // cannot show this PDF as that one's (`sameApplication`).
+    return { filename, count, applicationId };
+  }
+
+  /** Autofill's own attach: the owner's request (2026-09-30) that a run
+   * also put the resume in the page's upload box, which until then only the
+   * Attach resume press did. Called at the END of a run, inside its `busy`
+   * span: Workday re-renders the upload section after an upload, so the
+   * fields are written first and the attach is the run's last page write.
+   *
+   * THE PRESS IS AUTOFILL'S, AND THE RULES ARE NARROWER THAN THE BUTTON'S:
+   * - the button's own source only, the application's tailored PDF (a base
+   *   used as is has no PDF here, so nothing is attached and nothing said);
+   * - a FRESH detect, since the run may have moved the page: exactly one box
+   *   must read as a resume box (`uploadBoxOf`, content/agent.js), and only it
+   *   is written, so a cover-letter or "additional documents" box is never
+   *   auto-attached (beside a resume box, as on Greenhouse, it is simply not
+   *   the target) and a page whose boxes cannot be told apart is left to the
+   *   button;
+   * - never over a file already there, and never twice on one page: not after
+   *   this panel attached here, and not after an attach it could not confirm
+   *   (that file may be on the page, and a second copy is what the hedge is
+   *   for);
+   * - the write re-checks all of it in each frame (`resumeOnly`);
+   * - both fill modes: the file is the user's own, not an AI answer.
+   *
+   * Returns the report `{outcome, text, filename, count}` or null for "said
+   * nothing"; `startFill` writes it. Never throws: a failure is its line. */
+  async function autoAttachResume(store, token, stopped) {
+    const facts = store.read();
+    if (!facts.application || facts.pdfReady !== true) return null;
+    if (attachedHere(facts)) return null;
+    const before = sameApplication(facts.autoAttach?.applicationId, facts.application)
+      ? facts.autoAttach : null;
+    if (before && before.outcome !== "skipped") return null;
+    const page = await store.detectUploads().catch(() => null);
+    if (!page || !store.current(token) || stopped()) return null;
+    store.write({ fileInputs: page.fileInputs });
+    const { uploads, fileInputs } = page;
+    if (!uploads || !fileInputs || uploads.length !== fileInputs) return null;
+    const resumes = uploads.filter((box) => box.kind === "resume");
+    const skipped = (text) => ({ outcome: "skipped", text });
+    const one = fileInputs === 1;
+    if (resumes.length === 1 && resumes[0].occupied) {
+      return skipped("A file is already attached; the Companion left it.");
+    }
+    if (!resumes.length && uploads.every((box) => box.kind === "other")) {
+      return skipped(one ? "The upload box isn't for a resume, so the Companion left it."
+        : "None of the upload boxes is for a resume, so the Companion left them.");
+    }
+    if (resumes.length !== 1) {
+      return skipped(one
+        ? "Couldn't tell if the upload box is for a resume. Attach it yourself if it is."
+        : "Couldn't tell which upload box is for a resume. Attach it yourself.");
+    }
+    try {
+      const sent = await sendResume(store, facts.application.id, fileInputs, token, true);
+      return { outcome: "attached", ...sent,
+               text: `Resume attached: ${sent.filename}. Check the upload before you submit.` };
+    } catch (err) {
+      return { outcome: "unconfirmed",
+               text: err?.shown === true ? err.message : "Couldn't attach your resume." };
+    }
+  }
+
+  /** The run's report of its attach, written past the run's own guard:
+   * `autoAttach` for the Fill body's row, `attached` when it landed (which is
+   * what `fillFinished` counts and what takes the button away), and the
+   * sentence that follows the run's own. */
+  function landAutoAttach(store, auto, applicationId) {
+    if (!auto) return null;
+    const { outcome, text, filename, count } = auto;
+    store.write({ autoAttach: { applicationId, outcome, text, filename: filename ?? null } });
+    if (outcome === "attached") store.write({ attached: { filename, count, applicationId } });
+    return text;
   }
 
   ns.panelActionsFill = { startFill, attachResume };

@@ -217,6 +217,89 @@
     return widget;
   }
 
+  /** What an upload box is FOR, and whether it already holds a file:
+   * `{kind, occupied}`, the facts Autofill's own attach decides with
+   * (`attachResumePdf`'s `resumeOnly`, and `detect_page`'s `uploads`).
+   *
+   * A NARROW RULE ON THE BOX'S OWN WORDS, not the fill's AI mapping: the
+   * inventory skips file inputs, a file slot is not a fact the profile holds,
+   * and what the rule decides is only whether an automatic attach may go
+   * ahead, so a miss costs a press of Attach resume. `kind` is "resume",
+   * "other" (a cover letter, a transcript, "additional documents"…) or
+   * "unknown", read nearest first: the box's own label (the field reader's
+   * question, aria labels on it and its uploader, its name, id and automation
+   * id), then the uploader's visible text, then its section heading. The first
+   * level with a word decides, and a level naming another document wins over
+   * one naming a resume ("Resume or cover letter" is not a resume box).
+   *
+   * `occupied` is any file already there: files in the input, or a file row
+   * in its uploader (a filename, or a `file-upload-item`). A parent that holds
+   * another box leaves only the input's own parent to look in. */
+  const RESUME_WORDS = /\b(?:r[eé]sum[eé]s?|cv|curriculum\s+vitae)\b/i;
+  const OTHER_DOC_WORDS = new RegExp(String.raw`\b(?:${[
+    String.raw`cover\s*letters?`, String.raw`motivation(?:al)?\s+letters?`,
+    "transcripts?", "portfolios?", String.raw`writing\s+samples?`, "references?",
+    "certificat(?:e|es|ion|ions)", "diplomas?", "licen[cs]es?", "photos?", "headshots?",
+    "additional", "supporting",
+    String.raw`other\s+(?:documents?|files?|attachments?)`,
+  ].join("|")})\b`, "i");
+  const FILE_ROW = /[\p{L}\p{N}][^\s/\\:*?"<>|,()]*\.(?:pdf|docx?|rtf|odt|txt|pages)\b/iu;
+  // "candidate_cv", "resumeUpload" → "candidate cv", "resume Upload".
+  const words = (value) => String(value ?? "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_\-.]+/g, " ");
+
+  function kindOf(texts) {
+    const text = texts.filter(Boolean).join(" ");
+    if (OTHER_DOC_WORDS.test(text)) return "other";
+    return RESUME_WORDS.test(text) ? "resume" : null;
+  }
+
+  function uploadBoxOf(input) {
+    const box = uploadWidgetOf(input) ?? input.parentElement;
+    const read = typeof ns.readField === "function"
+      ? ns.readField(input) : { question: "", section: "" };
+    const own = [read.question, words(input.id), words(input.name)];
+    for (let el = input; el; el = el === box ? null : el.parentElement) {
+      own.push(el.getAttribute("aria-label"), words(el.getAttribute("data-automation-id")));
+      for (const id of (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean)) {
+        own.push(document.getElementById(id)?.textContent);
+      }
+    }
+    const shown = String(box?.innerText ?? "");
+    const kind = kindOf(own) ?? kindOf([shown]) ?? kindOf([read.section]) ?? "unknown";
+    const occupied = (input.files?.length ?? 0) > 0 || FILE_ROW.test(shown)
+      || Boolean(box?.querySelector('[data-automation-id="file-upload-item"]'));
+    return { kind, occupied };
+  }
+
+  /** AUTOFILL'S OWN ATTACH writes to ONE box: the page's only box reading as
+   * a resume box, and only while it holds no file. Checked here at write time
+   * for `expect`'s reason. Never a replacement, never a cover-letter box, and
+   * no box at all when two read as resume boxes. The button's write reads no
+   * kind. */
+  function theResumeBox(inputs) {
+    const resumes = inputs.filter((input) => {
+      try {
+        return uploadBoxOf(input).kind === "resume";
+      } catch (_) {
+        return false;
+      }
+    });
+    return resumes.length === 1 && !uploadBoxOf(resumes[0]).occupied ? resumes : [];
+  }
+
+  /** `uploadBoxOf` for every box `attachableFileInputs` counts, in its order.
+   * A box whose read throws is unknown and occupied: nothing is attached to it. */
+  function uploadBoxes() {
+    return attachableFileInputs().map((input) => {
+      try {
+        return uploadBoxOf(input);
+      } catch (_) {
+        return { kind: "unknown", occupied: true };
+      }
+    });
+  }
+
   /** Error words in `text`, with the filename cut out first so a file called
    * `error-log.pdf` is not its own failure. */
   function errorWords(text, filename) {
@@ -320,9 +403,10 @@
    * `Number.isInteger` rather than a truthiness test — `expect: 0` is a real
    * claim ("this page had no box"), and it must refuse rather than fall through
    * to unchecked. */
-  async function attachResumePdf(b64, filename, expect) {
-    const inputs = attachableFileInputs();
-    if (Number.isInteger(expect) && inputs.length !== expect) return 0;
+  async function attachResumePdf(b64, filename, expect, resumeOnly = false) {
+    const all = attachableFileInputs();
+    if (Number.isInteger(expect) && all.length !== expect) return 0;
+    const inputs = resumeOnly ? theResumeBox(all) : all;
     if (!inputs.length) return 0;
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const file = new File([bytes], filename, { type: "application/pdf" });
@@ -428,11 +512,13 @@
     /** The page's own detection verdict, for the side panel — which runs in no
      * page, so `detectPage()` is not a function it can call.
      *
-     * FOUR keys and no more. `detectPage` also returns `signals`, which names
+     * FIVE keys and no more. `detectPage` also returns `signals`, which names
      * the hosts, selectors and phrases that fired on this document: that is
      * page content by another route, and the panel has no use for it. What
      * crosses the boundary is the verdict — the tier, whether a form is here,
-     * the score behind it, and how many upload boxes a résumé could go into.
+     * the score behind it, how many upload boxes a résumé could go into, and
+     * per box its kind and whether it holds a file (`uploadBoxOf`): a word and
+     * a boolean, never a label or a filename.
      *
      * `fileInputs` RIDES THE DETECT PASS rather than earning a message of its
      * own, and that is the decision rather than a convenience: the panel
@@ -460,7 +546,8 @@
      * here: it is what this answer has no business consulting. */
     detect_page: () => {
       const { tier, form, score } = ns.detectPage();
-      return { tier, form, score, fileInputs: attachableFileInputs().length };
+      const uploads = uploadBoxes();
+      return { tier, form, score, fileInputs: uploads.length, uploads };
     },
     profile_fill: (msg) => (frameMayReceiveUserData()
       ? ns.fillFormFromProfile(msg.profile, msg.employment, msg.eeoEnabled === true,
@@ -479,7 +566,7 @@
       ? scrollToField(msg.qid)
       : false),
     attach_resume_pdf: (msg) => (frameMayReceiveUserData()
-      ? attachResumePdf(msg.b64, msg.filename, msg.expect)
+      ? attachResumePdf(msg.b64, msg.filename, msg.expect, msg.resumeOnly === true)
       : 0),
     /* The fill engine's page operations (content/fill-ops.js). Gated like
      * `guided_write`, each returning its empty shape in a refused frame: an

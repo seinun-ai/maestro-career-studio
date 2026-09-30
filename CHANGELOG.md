@@ -57,6 +57,10 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   picked, what it answered for you and what still needs your answer; select
   a row to jump to that field. Stop ends a run at any time. "Saved answers
   only" still runs the earlier fill.
+- **Autofill also attaches your resume** when the page has an empty resume
+  upload box. It never replaces a file already there and never uses a
+  cover-letter or other document box; Attach resume is still there for
+  those.
 - **Answers come from your saved answers.** With a Jev key saved and Jev
   chosen in Settings › AI & models › Form filling, Jev picks first and your
   fast model decides where Jev is unsure.

@@ -13,8 +13,9 @@ at to your local Maestro CS app.
   open the job in the app for a custom tailoring session.
 - **Fill the application.** Fill the form from your saved answers (Profile ›
   Autofill in the app), with optional AI help for the questions they cannot
-  answer. Fields it could not fill are listed so you can finish them, and it can
-  attach your tailored resume PDF when you ask.
+  answer. Fields it could not fill are listed so you can finish them. Autofill
+  also attaches your tailored resume PDF to an empty resume upload box, and
+  Attach resume does it by hand.
 - **Track it.** Mark the application Draft or Applied from the panel.
 
 Open the panel with the toolbar icon or `Alt+Shift+J` (change it at

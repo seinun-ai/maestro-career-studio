@@ -182,10 +182,10 @@
 
   /** The attach: the tailored PDF into this page's own upload box.
    *
-   * OFFERED, NEVER TAKEN. The panel does not attach during a fill and does not
-   * attach on a load — a fill writes text a user can read back at a glance, and
-   * an upload is a whole document going to an employer. So this is a control
-   * and the press is the whole of the decision.
+   * A PRESS, NEVER A LOAD. Nothing attaches on a load or a detect: an upload
+   * is a whole document going to an employer. Autofill attaches too, but only
+   * to one empty box that reads as a resume box (`autoAttachResume`); this
+   * control is for every other case, and the press is the whole of it.
    *
    * THREE STATES OFF ONE NUMBER, and the number is the page's own count of
    * boxes a résumé could go into (`fileInputs`, from the detect pass):
@@ -216,13 +216,28 @@
    * reload away. That is deliberate for this round — the interesting failure is
    * an attach that silently went to the wrong place, and offering to do it
    * again is how a user ends up with two.
+   *
+   * AUTOFILL'S OWN ATTACH (`autoAttach`) reports here too. Landed, it is the
+   * same done row. Left alone or unconfirmed, its line comes first and the
+   * offer stays under it, since the press is then the user's again.
    */
   function attachRow(ctx) {
-    const { facts, act, build } = ctx;
+    const { facts, build } = ctx;
     if (facts.attached) {
       return progressRow(ctx, DONE, "Resume attached",
                          `${facts.attached.filename} · ${boxes(facts.attached.count)}`);
     }
+    const auto = facts.autoAttach;
+    const said = auto?.outcome === "skipped"
+      ? progressRow(ctx, SKIPPED, "Resume not attached", auto.text)
+      : auto?.outcome === "unconfirmed" ? progressRow(ctx, OPEN, "Resume upload", auto.text) : null;
+    const offer = attachOffer(ctx);
+    return said && offer ? build.attach(build.node("div"), said, offer) : said ?? offer;
+  }
+
+  /** The Attach resume offer itself: `attachRow`'s three states off one number. */
+  function attachOffer(ctx) {
+    const { facts, act, build } = ctx;
     if (!facts.pdfReady || facts.fileInputs < 1) return null;
     const many = facts.fileInputs > 1;
     const box = build.node("div", "attach");

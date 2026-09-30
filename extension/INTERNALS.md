@@ -68,9 +68,10 @@ an SPA's pushState also fires) rebinds at once, while an SPA still shows the
 step being left, so after one the ladder runs every rung even over a yes and
 re-reads the upload count on each: a Workday step change otherwise kept the
 previous step's count, and the attach offer came one step late (CarMax). It reads,
-scores and returns four keys: the tier, whether a form's evidence held, the
-score behind it, and how many upload boxes a resume could go into (frame 0's
-count only, so the attach offer is unchanged). It holds no state, registers no observer and touches nothing on the page.
+scores and returns five keys: the tier, whether a form's evidence held, the
+score behind it, how many upload boxes a resume could go into (frame 0's
+count only, so the attach offer is unchanged) and, per box, its kind and
+whether it holds a file. It holds no state, registers no observer and touches nothing on the page.
 Tier A is a JobPosting **verdict** (a page either declares one or it does not),
 Tier B is form evidence over a threshold, the two do not combine into one number,
 and an ATS host is worth zero points on its own. On a miss the panel offers
@@ -326,9 +327,9 @@ asking permission of itself.
   nothing, in which case the panel says so rather than sending a body the route
   would refuse.
 - **Attach resume** — the tailored PDF into this page's own upload box.
-  **Offered, never taken**: the panel does not attach during a fill and does not
-  attach on a load, because a fill writes text you can read back at a glance and
-  an upload is a whole document going to an employer. Three states off the page's
+  **Always a press, never a load**: an upload is a whole document going to an
+  employer. Autofill is the other press that attaches (below); this button
+  covers every case it leaves alone. Three states off the page's
   own count of boxes a resume could go into: one box is the offer, naming the
   file; none is nothing at all; **more than one is a sentence and a dead button**,
   because the panel cannot tell a resume box from a cover-letter box and the page
@@ -352,6 +353,24 @@ asking permission of itself.
   upload. Check the upload box, and attach your resume only if it isn't
   listed." — because a page can take the file without either proof, and a
   second press there is a second copy. There is no second press.
+- **Autofill attaches the resume too** (owner, 2026-09-30), in both fill
+  modes (the file is the user's own, not an AI answer), once per run and
+  AFTER the fields: Workday re-renders the upload section after an upload, so
+  the attach is the run's last page write, inside its `busy` span and not
+  after a Stop or a tab change. Narrower than the button: the button's own
+  source only (the application's tailored PDF; a base used as is has none, so
+  nothing is attached and nothing said), a fresh detect, exactly one box
+  reading as a resume box, holding no file, and only that box is written
+  (beside a cover-letter box, as on Greenhouse, the resume box alone). A box
+  already listing a file is left ("A file is already attached; the Companion
+  left it."), a cover-letter or other document box is never attached, boxes
+  that cannot be told apart are left to the button, and nothing is tried twice
+  on one page (not after an attach here, nor after one it could not confirm).
+  The write re-checks all of it in each frame (`resumeOnly`, beside `expect`). The run's
+  note ends with the outcome ("Resume attached: <file>. …", the hedged
+  "Couldn't confirm the upload…", or why it left the box), and the Fill body
+  carries it as its own row (`autoAttach`) with the button still under it
+  when the press is the user's again.
 - **Mark applied** — the Draft/Applied segment lives in the footer permanently,
   so there is no nudge to hunt for. It is withheld for a status outside that pair,
   because pressing Draft on an `interviewing` application would silently walk the
@@ -396,6 +415,15 @@ know, and each one was learned from a live failure.
 - **ONE definition of "a box a résumé could go into".** `agent.js`'s
   `attachableFileInputs` is read by `attachResumePdf` AND by `detect_page`'s
   `fileInputs` count, which is what lets the panel offer an attach it can honour.
+- **What a box is FOR is a narrow rule on its own words**, `agent.js`'s
+  `uploadBoxOf`, not the fill's AI mapping: the inventory skips file inputs and
+  a file slot is not a profile fact. Nearest level with a word decides: the box's
+  own label (field reader question, aria labels on it and its uploader, name,
+  id, automation id), then the uploader's text, then its section heading; a
+  word for another document (cover letter, transcript, "additional"…) beats
+  "resume"/"CV" at the same level. `occupied` is files in the input or a file
+  row (a filename, or `file-upload-item`) in the uploader. `detect_page` returns
+  one `{kind, occupied}` per counted box (`uploads`): a word and a boolean.
 - **Posting identity is one table in two languages.** `shared/decisions.js`
   `postingId` mirrors the backend's `job_url_match.posting_id` (query keys
   `currentJobId`, `jk`, `vjk`, `gh_jid`; LinkedIn's `/jobs/view/<id>` path). The

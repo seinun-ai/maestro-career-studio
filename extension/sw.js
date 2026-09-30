@@ -591,6 +591,8 @@ const HANDLERS = {
       // `expect: "1"` must not quietly become "no check", which is the shape
       // that turns a refusal into an unguarded write.
       expect: Number.isInteger(msg.expect) ? msg.expect : undefined,
+      // Autofill's own attach (`attachResumePdf`): only a literal true.
+      resumeOnly: msg.resumeOnly === true,
     });
   },
 
