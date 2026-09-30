@@ -95,6 +95,37 @@ def test_unreadable_consent_fails_closed(db_session, monkeypatch):
     assert "eeo.gender" not in seen["facts"] and seen["kw"]["eeo_consented"] is False
 
 
+AGREES = "derived.agrees_to_terms"
+
+
+@pytest.mark.usefixtures("profile")
+@pytest.mark.parametrize("stored, present", [
+    (None, False),                                                   # never given
+    (EeoConsent(consent_forms=False), False),                        # off
+    (EeoConsent(consent_forms=True, policy_version="1"), False),     # lapsed: agreed under policy 1
+    (EeoConsent(consent_forms=True, policy_version="2"), True),      # on, under policy 2
+])
+def test_agreeing_to_terms_is_a_fact_only_while_the_agreement_permission_is_on(db_session, monkeypatch,
+                                                                               stored, present):
+    if stored is not None:
+        eeo_consent.EEO_CONSENT.set(stored, db_session)
+    for path, body, spy in (("/api/autofill/map", {"fields": [MAP_FIELD]}, _spy_map),
+                            ("/api/autofill/pick", {"fields": [PICK_FIELD]}, _spy_pick)):
+        seen = spy(monkeypatch)
+        assert _post(db_session, path, body).status_code == 200
+        assert (AGREES in seen["facts"]) is present, path
+
+
+@pytest.mark.usefixtures("profile")
+def test_an_unreadable_agreement_permission_is_no_agreement(db_session, monkeypatch):
+    eeo_consent.EEO_CONSENT.set(EeoConsent(consent_forms=True, policy_version="2"), db_session)
+    monkeypatch.setattr(eeo_consent, "get_consent",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    seen = _spy_map(monkeypatch)
+    assert _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]}).status_code == 200
+    assert AGREES not in seen["facts"]
+
+
 @pytest.mark.usefixtures("profile")
 def test_map_reads_low_stakes_from_the_setting_not_the_client(db_session, monkeypatch):
     seen = _spy_map(monkeypatch)

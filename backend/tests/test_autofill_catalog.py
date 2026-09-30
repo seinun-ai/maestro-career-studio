@@ -462,3 +462,19 @@ def test_sponsorship_now_or_in_the_future_is_derived_from_both_answers(now, late
     assert (fact.value, fact.yes_no, fact.policy) == (answer, True, "exact")
     assert fact.describe == ("will need visa sponsorship now or in the future "
                              "(yes/no; from the applicant's now and later answers)")
+
+
+# ---------- agreeing to terms: a fact only while the agreement permission is on (live CarMax, 2026-09-30)
+
+AGREES = "derived.agrees_to_terms"
+
+
+def test_agreeing_to_terms_is_a_fact_only_with_the_agreement_permission():
+    """With consent_forms on, the owner decided consent and terms ticks are
+    fillable; the permission only lifted the label policy, and /map had no
+    fact for a terms box. It is one now, and only while the permission is."""
+    assert AGREES not in derived({}) and AGREES not in cat.with_agreement(derived({}), False)
+    fact = cat.with_agreement(derived({}), True)[AGREES]
+    assert (fact.value, fact.yes_no, fact.policy) == ("Yes", True, "exact")
+    assert fact.describe.startswith("agrees to the application's terms")
+    assert not re.search(r"\b(status|type|kind)\b", fact.describe, re.IGNORECASE)

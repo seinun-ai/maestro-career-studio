@@ -555,6 +555,35 @@ def test_salary_requirements_are_filled_only_with_the_agreement_permission(e2e_p
     assert (write["value"], write["format"]) == ("80000", "money")
 
 
+# Live CarMax Workday's terms box (2026-09-30): one checkbox, its label the agreement.
+TERMS = "Yes, I have read and consent to all the terms and conditions"
+TERMS_PAGE = f"""<div data-automation-id="formField-agreementCheckbox">
+  <input type="checkbox" id="terms" aria-required="true"><label for="terms">{TERMS}</label></div>"""
+
+
+def test_a_terms_box_is_ticked_only_while_agreeing_to_terms_is_a_fact(e2e_page, monkeypatch):
+    """With the agreement permission on, the label policy lets the box
+    through, and the REAL /map ties it to `derived.agrees_to_terms` — which
+    the catalog holds only while that permission is served on. Without the
+    fact (a lapsed agreement) nothing answers the box and it is left."""
+    from app.services import autofill_catalog
+
+    page = e2e_page
+    facts = autofill_catalog.with_agreement(autofill_catalog.build({}, [], []), True)
+    real_backend(page, monkeypatch, facts, kinds={}, keys={TERMS: "derived.agrees_to_terms"})
+    # /pick stays scripted: the option whose text is the fact's value ("Yes").
+    pick_by = {TERMS: {"route": "slot", "slot": "derived.agrees_to_terms", "value": "Yes"}}
+    on = _run(page, html=TERMS_PAGE, backend=True, consentForms=True, map=pick_by)
+    assert page.is_checked("#terms")
+    assert on["by_question"][TERMS]["status"] == "verified", on["by_question"][TERMS]
+
+    facts.pop("derived.agrees_to_terms")
+    off = _run(page, html=TERMS_PAGE, backend=True, consentForms=True, map=pick_by)
+    assert not page.is_checked("#terms")
+    assert off["by_question"][TERMS]["status"] == "needs_answer"
+    assert not [a for m in off["sent"] if m["type"] == "fill_apply" for a in m["actions"]]
+
+
 GEM_MAP = {
     "First name": {"route": "slot", "slot": "personal.first_name", "value": "Ada"},
     "Last name": {"route": "slot", "slot": "personal.last_name", "value": "Lovelace"},

@@ -451,6 +451,23 @@ def test_the_veteran_fact_is_offered_for_a_military_question(db_session, monkeyp
     assert "not" not in described
 
 
+@pytest.mark.usefixtures("jev_on")
+def test_a_terms_checkbox_maps_to_agreeing_to_terms(db_session, monkeypatch):
+    """With the agreement permission, "Yes, I have read and consent to all the
+    terms and conditions" (live CarMax Workday, 2026-09-30) is offered a fact
+    that answers it, at the exact floor."""
+    terms = "Yes, I have read and consent to all the terms and conditions"
+    facts = autofill_catalog.with_agreement(autofill_catalog.build({}, [], []), True)
+    calls = fake_jev(monkeypatch, {"t": ("derived.agrees_to_terms", 0.95)})
+    got = autofill_map.map_fields([field("t", terms, "group", options=["Yes", "No"])], facts, db_session,
+                                  eeo_consented=False, low_stakes=False)["t"]
+    assert (got.route, got.slot, got.value) == ("slot", "derived.agrees_to_terms", "Yes")
+    assert "terms" in calls[0]["questions"]["t"]["criteria"]["derived.agrees_to_terms"]
+    fake_jev(monkeypatch, {"t": ("derived.agrees_to_terms", 0.85)})
+    assert autofill_map.map_fields([field("t", terms, "group", options=["Yes", "No"])], facts, db_session,
+                                   eeo_consented=False, low_stakes=False)["t"].route == "none"
+
+
 # ---------- entry placement: the model reads entries in page order, code places them
 
 

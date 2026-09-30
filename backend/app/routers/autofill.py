@@ -334,8 +334,9 @@ def _facts(
     """The fact catalog and whether EEO answers may be disclosed.
 
     Built from the CONSENT-GATED profile (inv-eeo-standing-consent): without
-    standing consent there is no `eeo.*` fact, so no model is ever offered one.
-    The resume is the one the panel points at — `_selected_resume`, as /context,
+    standing consent there is no `eeo.*` fact, so no model is ever offered one,
+    and without the agreement permission (`consent_forms`, as served: a lapsed
+    one is off) there is no `derived.agrees_to_terms`. The resume is the one the panel points at — `_selected_resume`, as /context,
     so an unknown application stays a 404 — and neither selector is a
     profile-only fill."""
     resume = (
@@ -344,10 +345,11 @@ def _facts(
         else _selected_resume(db, application_id, base)
     )
     try:
-        consented = eeo_consent.get_consent(db).enabled
+        consent = eeo_consent.get_consent(db)
+        consented, agrees = consent.enabled, consent.consent_forms
     except Exception:  # noqa: BLE001 — fail closed, as withhold_unconsented does
         logger.exception("eeo consent could not be read; the fill treats it as not given")
-        consented = False
+        consented = agrees = False
     # The job's company, so "previously employed here" can be read off the
     # history for THIS application (autofill_catalog._worked_here).
     application = db.get(Application, application_id) if application_id is not None else None
@@ -359,7 +361,8 @@ def _facts(
         today=_today(today),
         company=job.company if job else None,
     )
-    return facts, consented
+    # Served: an agreement given under an older policy reads off (lapsed).
+    return autofill_catalog.with_agreement(facts, agrees), consented
 
 
 def _job_hint(

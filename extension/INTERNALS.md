@@ -553,7 +553,14 @@ know, and each one was learned from a live failure.
   revocable consent). Next / Save and Continue and Submit are never clicked at
   any setting. It is a switch you give in Profile beside the EEO opt-in: two
   switches, because opting into EEO fill must not also opt you into agreeing to
-  terms. A box is looked at before it is clicked, never re-ticked, and a
+  terms. Lifting the policy only lets a box reach /map; what answers it is a
+  derived fact the backend holds only while the permission is served on
+  (`derived.agrees_to_terms`, Yes, exact: "agrees to the application's terms
+  and conditions, privacy notice, acknowledgements and similar agreements"),
+  so a terms or consent box is ticked, and with the permission off, lapsed
+  or never given no fact exists and the box is left (live Workday left one
+  with the permission on, 2026-09-30). Signature and typed-name boxes take
+  the full legal name (`derived.full_name`). A box is looked at before it is clicked, never re-ticked, and a
   cancelled click is "not accepted", not agreed. Only callers that pass the
   permission get it: `fillFormFromProfile` and the fill loop's inventory; the
   old engine's model path (`collectOpenQuestions`) and the pause rows never do.

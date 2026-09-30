@@ -406,7 +406,7 @@ file to open.
   and `test_autofill_choose_jev.py` (`test_eeo_values_never_reach_jev_without_consent`). No inference
   or invented EEO answers; never solicit pasted demographic answers in chat when consented values are
   in Profile. Human-only at ANY setting is Next/Submit and nothing wider; `consent_forms` lifts every
-  label refusal for callers that pass it (the fill loop, a model included), never the old collector/pause rows.
+  label refusal for callers passing it (a model included; never old collector/pause rows) and alone adds `derived.agrees_to_terms`.
 - **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict
   extractors; `pdfinterwordspaceon` + the parse_certified gate protect this — see the shared header
   partial `_header.tex.j2`, which BOTH resume and cover-letter templates include (format/scanner

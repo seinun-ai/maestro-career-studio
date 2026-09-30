@@ -25,6 +25,7 @@ NO_SLOT = "none"
 # An entry's slot is looked up without its index: a language's NAME is exact
 # (a near-miss language is a different one), its levels its section's flag.
 _SLOT_POLICY: dict[str, Policy] = {"derived.us_citizen": "exact", "derived.sponsorship_now_or_future": "exact",
+                                   "derived.agrees_to_terms": "exact",
                                    "derived.full_name": "flag",
                                    "derived.previously_employed_here": "flag", "languages.language": "exact"}
 _EXACT_SECTIONS = frozenset({"work_auth", "eligibility", "eeo"})

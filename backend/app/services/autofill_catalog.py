@@ -12,7 +12,9 @@ full legal name, today's date, US citizenship read off the work-authorization
 status, an "immediately" availability as a date, and — for an application
 whose company the work history lists — "previously employed here" as Yes,
 in place of the standing answer, which is the same for every company. Each is
-absent when what it is derived from is.
+absent when what it is derived from is. `with_agreement` adds Yes to the
+application's own terms and consent boxes, only while the standing agreement
+permission (`consent_forms`) is served on.
 """
 
 import re
@@ -88,6 +90,9 @@ _DESCRIBES: dict[str, str] = {
     "derived.earliest_start_date": "the earliest date you can start, as a calendar date",
     "derived.previously_employed_here": ("works, or has worked, for this company (from the work history: "
                                          "currently or previously)"),
+    "derived.agrees_to_terms": ("agrees to the application's terms and conditions, privacy notice, "
+                                "acknowledgements and similar agreements (yes/no; only when the applicant "
+                                "allowed the Companion to fill agreements)"),
     "skills": "applicant skills (a list)",
 }
 # "Are you a US citizen?", from every status the profile can store: only a
@@ -350,6 +355,19 @@ def _worked_here(out: dict[str, Fact], company: str | None) -> None:
     out.pop("eligibility.previously_employed_here", None)
     out["derived.previously_employed_here"] = make_fact("derived.previously_employed_here",
                                                         "Yes, currently" if current else "Yes, previously")
+
+
+AGREES_TO_TERMS = "derived.agrees_to_terms"
+
+
+def with_agreement(facts: dict[str, Fact], agrees: bool) -> dict[str, Fact]:
+    """The catalog, plus Yes to the application's own terms and consent boxes
+    when `agrees` — the standing agreement permission as SERVED (on, and not
+    lapsed; owner, 2026-09-26: with it on, consent and terms ticks are the
+    Companion's to fill). Without it there is no such fact at all."""
+    if agrees is not True:
+        return facts
+    return dict(list({**facts, AGREES_TO_TERMS: make_fact(AGREES_TO_TERMS, "Yes")}.items())[:MAX_SLOTS])
 
 
 def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str], *,

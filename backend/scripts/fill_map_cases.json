@@ -1,5 +1,5 @@
 {
-  "about": "Labelled /map cases: which fact (or none) each label asks for, over this file's synthetic personal facts. `expected` lists every acceptable answer: a slot, or \"none\" (nothing is written). Any other slot is a WRONG WRITE. The first three are live Workday wrong writes (2026-09-27); \"County\" is the eval's old telemetry label that mapped to the street address; \"Military Status:\" found no fact on live Workday (2026-09-30).",
+  "about": "Labelled /map cases: which fact (or none) each label asks for, over this file's synthetic personal facts. `expected` lists every acceptable answer: a slot, or \"none\" (nothing is written). Any other slot is a WRONG WRITE. The first three are live Workday wrong writes (2026-09-27); \"County\" is the eval's old telemetry label that mapped to the street address; \"Military Status:\" and the terms box found no fact on live Workday (2026-09-30).",
   "facts": {
     "personal.first_name": "Sample",
     "personal.last_name": "Person",
@@ -10,7 +10,8 @@
     "personal.state": "Illinois",
     "personal.postal_code": "62701",
     "personal.country": "United States",
-    "eeo.veteran_status": "No, I am not a protected veteran"
+    "eeo.veteran_status": "No, I am not a protected veteran",
+    "derived.agrees_to_terms": "Yes"
   },
   "cases": [
     {"id": "phone-extension", "question": "Phone Extension", "shape": "text", "expected": ["none"]},
@@ -21,6 +22,8 @@
     {"id": "address-line-1", "question": "Address Line 1", "shape": "text", "expected": ["personal.address"]},
     {"id": "fax", "question": "Fax Number", "shape": "text", "expected": ["none"]},
     {"id": "county", "question": "County", "shape": "text", "expected": ["none"]},
-    {"id": "military-status", "question": "Military Status:", "shape": "popup", "expected": ["eeo.veteran_status"]}
+    {"id": "military-status", "question": "Military Status:", "shape": "popup", "expected": ["eeo.veteran_status"]},
+    {"id": "terms-and-conditions", "question": "Yes, I have read and consent to all the terms and conditions",
+     "shape": "group", "expected": ["derived.agrees_to_terms"]}
   ]
 }
