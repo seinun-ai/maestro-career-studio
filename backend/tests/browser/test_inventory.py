@@ -614,3 +614,15 @@ def test_same_name_checkboxes_in_separate_entries_are_each_their_own_box(page, l
     boxes = [f for f in fields(page) if f["shape"] == "group"]
     assert [(f["question"], [o["text"] for o in f["options"]], f["multi"], f["repeatIndex"]) for f in boxes] == [
         ("I currently work here", ["Yes", "No"], False, 0), ("I currently work here", ["Yes", "No"], False, 1)]
+
+
+def test_a_named_set_whose_boxes_each_sit_in_their_own_group_splits_into_lone_boxes(page, load):
+    """KNOWN LIMIT, pinned as it stands: a checkbox's same-name members stop at
+    its nearest grouping container (for Workday's per-entry "I currently work
+    here"), so a named multi-select whose every box is wrapped in its own
+    role=group reads as one lone yes/no box per option, not one set."""
+    load(page, "<fieldset><legend>Which days can you work?</legend>" + "".join(
+        f"<div role=group><input type=checkbox name=days id={d}><label for={d}>{d}</label></div>"
+        for d in ("Monday", "Tuesday")) + "</fieldset>")
+    assert [(f["question"], f["multi"], [o["text"] for o in f["options"]]) for f in fields(page)] == [
+        ("Monday", False, ["Yes", "No"]), ("Tuesday", False, ["Yes", "No"])]
