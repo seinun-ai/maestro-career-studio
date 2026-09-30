@@ -37,6 +37,10 @@
     {"id": "agree-to-relocate", "question": "Do you agree to relocate?", "shape": "group", "expected": ["none"]},
     {"id": "sms-opt-in", "question": "I agree to receive text messages about my application", "shape": "group",
      "expected": ["none"]},
-    {"id": "talent-community", "question": "Join our talent community", "shape": "group", "expected": ["none"]}
+    {"id": "talent-community", "question": "Join our talent community", "shape": "group", "expected": ["none"]},
+    {"id": "felony-conviction", "question": "Have you ever been convicted of a felony?", "shape": "group",
+     "expected": ["none"]},
+    {"id": "pending-charges", "question": "Do you have any pending criminal charges?", "shape": "group",
+     "expected": ["none"]}
   ]
 }

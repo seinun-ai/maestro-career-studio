@@ -571,6 +571,18 @@ def test_a_placed_websites_entry_never_takes_the_linkedin(db_session, monkeypatc
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_a_placed_websites_entry_takes_only_its_own_url(db_session, monkeypatch):
+    """Only the profile's k-th URL is ever written in placed Websites entry k:
+    a saved answer or a derived fact the model names there is none."""
+    facts = SITES | autofill_catalog.build({"custom": [{"question": "Portfolio?", "answer": "https://ada.art"}]},
+                                           [], [])
+    for picked in ("custom.0", "derived.today"):
+        assert picked in facts
+        assert site(db_session, monkeypatch, picked, facts, profile_entry=0, entry_kind="websites").route == "none", \
+            picked
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_a_language_entry_is_placed_like_a_job_or_a_school(db_session, monkeypatch):
     """Language 1 holds nothing and the page's Language 2 holds Spanish:
     /sections placed French in entry 1. The model reads "entry 1" as

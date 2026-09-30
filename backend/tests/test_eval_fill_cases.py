@@ -390,8 +390,8 @@ def test_a_case_fact_is_described_as_the_catalog_describes_it(case):
     # The job's company in the history makes "previously employed here" a
     # derived fact and drops the standing one: both catalogs, one lookup.
     jobs = [{"employer": ev.HINT_COMPANY, "title": "Analyst", "current": True}]
-    built = autofill_catalog.build(EVERY_SLOT, jobs, ["SQL"]) | autofill_catalog.build(
-        EVERY_SLOT, jobs, ["SQL"], company=ev.HINT_COMPANY)
+    built = autofill_catalog.with_agreement(autofill_catalog.build(EVERY_SLOT, jobs, ["SQL"]), True) | (
+        autofill_catalog.build(EVERY_SLOT, jobs, ["SQL"], company=ev.HINT_COMPANY))
     fact = ev.case_facts(case, PICKS["today"])[case["slot"]]
     assert fact.describe == built[case["slot"]].describe
     # The Yes/No mark as production's, wherever the case holds production's value.
@@ -547,6 +547,12 @@ def test_the_map_cases_hold_the_live_wrong_writes():
     # Not an agreement: a willingness question, and optional opt-ins (the low-stakes setting's).
     for case in ("agree-to-relocate", "sms-opt-in", "talent-community"):
         assert "derived.agrees_to_terms" not in by_id[case]["expected"], case
+    # Criminal history is never an agreement: a Yes there would be a catastrophic wrong write.
+    for case in ("felony-conviction", "pending-charges"):
+        assert by_id[case]["expected"] == ["none"], case
+    picks = {c["id"]: c for c in PICKS["cases"]}
+    assert (picks["conviction-is-no-agreement"]["slot"], picks["conviction-is-no-agreement"]["expected"]) == (
+        "derived.agrees_to_terms", None)
     facts = ev.map_case_facts(MAPS)
     assert "personal.address_2" not in facts   # line 2 has nowhere to go but none
     assert facts["personal.phone"].describe == describe_of("personal.phone")

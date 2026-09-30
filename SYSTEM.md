@@ -397,16 +397,16 @@ file to open.
   policy ≥ 2 (an older yes is served off, `consent_forms_lapsed`). The server owns the stamp
   (`acknowledged_at`, `policy_version`); `consent_forms` turns on only on its own yes carrying the
   current policy (`agreed_policy`; `test_eeo_consent.py`). One flag for both would make an EEO yes
-  agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled`
-  for every outward reader: `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's
-  slot catalog (model providers — Jev, OpenRouter serving Jev — are recipients too); it fails CLOSED
-  when consent cannot be computed. The MCP client keeps its OWN strip — two gates, not a relocated
-  one. Which path asks never decides whether protected-class data is served. Pinned by
-  `test_autofill_router.py`, `test_autofill_choose.py` (`test_without_consent_no_diversity_answer_reaches_the_model`)
-  and `test_autofill_choose_jev.py` (`test_eeo_values_never_reach_jev_without_consent`). No inference or invented EEO answers;
-  never solicit pasted demographic answers in chat when consented values are in Profile. Human-only at ANY setting is Next/Submit
-  and nothing wider; `consent_forms` lifts every label refusal for the callers that pass it (the fill loop, a model included;
-  never the old collector/pause rows), and only it, as served (lapsed or unreadable: absent), adds `derived.agrees_to_terms`.
+  agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless
+  `enabled` for every outward reader: `GET /api/autofill/context`, the `/choose` prompt AND the Jev
+  engine's slot catalog (model providers — Jev, OpenRouter serving Jev — are recipients too); it
+  fails CLOSED when consent cannot be computed. The MCP client keeps its OWN strip — two gates, not
+  a relocated one. Which path asks never decides whether protected-class data is served. Pins
+  (router, `/choose`, Jev): `.system_md_enforcement.json`. No inference or invented EEO answers;
+  never solicit pasted demographic answers in chat when consented values are in Profile. Human-only
+  at ANY setting is Next/Submit and nothing wider; `consent_forms` lifts every label refusal for the
+  callers that pass it (the fill loop, a model included; never the old collector/pause rows), and
+  only it, as served (lapsed or unreadable: absent), adds `derived.agrees_to_terms`.
 - **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict
   extractors; `pdfinterwordspaceon` + the parse_certified gate protect this — see the shared header
   partial `_header.tex.j2`, which BOTH resume and cover-letter templates include (format/scanner

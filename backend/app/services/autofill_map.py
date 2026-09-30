@@ -375,18 +375,18 @@ def _foreign(field: MapField) -> bool:
 def _placed_key(field: MapField, key: str, facts: dict[str, Fact]) -> str | None:
     """Where an entry sits in the profile is code's (/sections matched what the
     entries hold), never the model's. In a placed Websites entry a URL is the
-    profile's `profile_entry`-th URL, whichever one the model chose (None past
-    the profile's, and for any other personal fact); any other fact is placed
-    by `_placed_entry_key`."""
-    urls = websites(facts)
-    if field.entry_kind == "websites" and field.profile_entry is not None and key.startswith("personal."):
-        return _nth_url(urls, key, field.profile_entry)
+    profile's `profile_entry`-th URL, whichever one the model chose, and
+    nothing else (None past the profile's, and for any other fact); elsewhere
+    a fact is placed by `_placed_entry_key`."""
+    if field.entry_kind == "websites" and field.profile_entry is not None:
+        return _nth_url(websites(facts), key, field.profile_entry)
     return _placed_entry_key(field, key)
 
 
 def _nth_url(urls: list[str], key: str, k: int) -> str | None:
     """A placed Websites entry's URL: the profile's k-th, when the model named
-    one of them; any other personal fact (the LinkedIn has its own box) is none."""
+    one of them; any other fact (the LinkedIn, which has its own box, a saved
+    answer, a derived fact, another entry's) is none."""
     return urls[k] if key in urls and k < len(urls) else None
 
 

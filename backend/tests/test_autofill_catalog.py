@@ -489,7 +489,8 @@ def test_agreeing_to_terms_covers_the_applications_own_statements_and_no_optiona
     assert described.startswith("agrees to the application's own terms and conditions")
     for covered in ("privacy notice", "certification", "acknowledgement", "background-check authorization"):
         assert covered in described, covered
-    for never in ("texts", "marketing", "job alerts", "talent community", "willingness or circumstances"):
+    for never in ("texts", "marketing", "job alerts", "talent community", "willingness or circumstances",
+                  "criminal history, convictions or charges", "anything a background check might find"):
         assert never in described.split("never", 1)[1], never
 
 

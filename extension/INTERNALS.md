@@ -592,7 +592,9 @@ know, and each one was learned from a live failure.
   conditions, privacy notice, certification, acknowledgement and
   background-check authorization statements; never an optional opt-in to
   texts, marketing, job alerts or a talent community, which stay the
-  low-stakes setting's, and never a willingness question), so such a box is
+  low-stakes setting's, never a willingness question, and never criminal
+  history, convictions or charges or anything a background check might
+  find), so such a box is
   ticked, and with the permission off, lapsed, unreadable or never given no
   fact exists and the box is left (live Workday left one with the permission
   on, 2026-09-30). A background-check box /map still calls a protected

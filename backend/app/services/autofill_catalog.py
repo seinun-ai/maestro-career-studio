@@ -101,8 +101,9 @@ _DESCRIBES: dict[str, str] = {
     "derived.agrees_to_terms": ("agrees to the application's own terms and conditions, privacy notice, "
                                 "certification, acknowledgement and background-check authorization statements "
                                 "(yes/no; never an optional opt-in to texts, marketing, job alerts or a talent "
-                                "community, and never a question about the applicant's willingness or "
-                                "circumstances)"),
+                                "community, never a question about the applicant's willingness or "
+                                "circumstances, and never a question about criminal history, convictions or "
+                                "charges, or anything a background check might find)"),
     "skills": "applicant skills (a list)",
 }
 # "Are you a US citizen?", from every status the profile can store: only a
