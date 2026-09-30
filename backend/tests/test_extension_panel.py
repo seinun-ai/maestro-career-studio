@@ -5,7 +5,7 @@ the pure decisions the panel renders from. Tests here run the real functions
 via the node harness, under this repo's standing rule for extension tests:
 behavioural tables over source pins wherever the code can be executed.
 
-THE SUBJECT IS NOW SIX FILES, and this docstring is the map of all of them. A
+THE SUBJECT IS NOW SEVEN FILES, and this docstring is the map of all of them. A
 section that is not on this list is a section the next author will not find.
 
 THIS FILE — everything that is true before any one stage is:
@@ -55,6 +55,10 @@ claim:
                                     the QnA drawer — three sections of ONE
                                     subject, because `fillBody` renders all of
                                     it;
+  `test_extension_panel_attach.py`  the attach beyond its button: the offer
+                                    following a wizard's in-page steps, and
+                                    Autofill attaching the resume (cut from
+                                    the Fill file by the trigger below);
   `test_extension_panel_track.py`   the status in words, the evidence line and
                                     its honest absence, and the one PATCH this
                                     extension makes.

@@ -146,6 +146,9 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 - A resume upload counts as attached when the page lists the file, even on
   pages that clear the upload box (Workday), and never when the page refused
   it.
+- On Workday, Attach resume is offered on the step with the resume upload
+  box, not one step later.
+- The "I currently work here" box is ticked for your current job on Workday.
 
 ## [0.6.0] — 2026-09-24
 

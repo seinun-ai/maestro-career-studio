@@ -2664,7 +2664,9 @@
     chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
       if (tabId !== card.tabId) return;
       if (changeInfo.url) {
-        onTab(tabId, changeInfo.url).catch(
+        // IN PLACE: the tab changed its address, and on an SPA (a Workday
+        // step) the page still shows the step being left for a moment.
+        onTab(tabId, changeInfo.url, { inPlace: true }).catch(
           (err) => console.warn(`[maestro-cs] panel could not reload tab ${tabId}:`, err));
         return;
       }
@@ -2691,7 +2693,7 @@
     if (tab) await onTab(tab.id, tab.url ?? "");
   }
 
-  async function onTab(tabId, url) {
+  async function onTab(tabId, url, { inPlace = false } = {}) {
     // A LOOP STILL RUNNING is two halves. The panel half ends with the
     // generation bump below (its `cancelled()` reads it); the page half — a
     // popup it holds open, a set half-written — ends only when the page is
@@ -2702,7 +2704,7 @@
       ask("page_broadcast", { tabId: card.tabId, message: { type: "fill_cancel" } })
         .catch((err) => console.warn("[maestro-cs] could not stop the fill on the tab left:", err));
     }
-    await bindPage(tabId, url);
+    await bindPage(tabId, url, {}, { inPlace });
   }
 
   /** Forget everything about the page and read it again: the whole of a tab
@@ -2711,8 +2713,9 @@
    * would not.
    *
    * `carry` is what survives the reset: nothing for a tab switch, and for
-   * Refresh the work done on a page it is not leaving (`PAGE_WORK`). */
-  async function bindPage(tabId, url, carry = {}) {
+   * Refresh the work done on a page it is not leaving (`PAGE_WORK`).
+   * `inPlace` is a url change inside the bound tab (`loadHasForm`). */
+  async function bindPage(tabId, url, carry = {}, { inPlace = false } = {}) {
     // FIRST, and before anything is loaded: everything the store holds is
     // about the page we are leaving.
     resetPageFacts(card);
@@ -2736,7 +2739,7 @@
       render();
       return token;
     }
-    await loadContext(token);
+    await loadContext(token, { inPlace });
     return token;
   }
 
@@ -2883,7 +2886,7 @@
    * `pdfReady` is what `stageFor` reads to decide Resume-is-done, so without
    * it the rail asks a user with a rendered PDF to tailor one.
    */
-  async function loadContext(token) {
+  async function loadContext(token, { inPlace = false } = {}) {
     // Paint the binding BEFORE the first round trip. `resetPageFacts` has just
     // emptied the store, so without this the panel shows an empty identity for
     // as long as the match takes — and the tab's host is a fact we already
@@ -2932,7 +2935,7 @@
     // AWAITED: this one decides whether filling can happen here. A rail whose
     // Fill primary appears a beat after the rail settles is a control arriving
     // by accident, which is the one thing this design says it never does.
-    await loadHasForm(token);
+    await loadHasForm(token, { inPlace });
     if (!current(token)) return;
     render();
 
@@ -3139,15 +3142,22 @@
    * Failing is not a note. "This tab has no content scripts" is a fact about
    * our own reach, not about the page and not about anything the user did; the
    * panel's one sentence belongs to what they just asked for. */
-  async function loadHasForm(token) {
+  async function loadHasForm(token, { inPlace = false } = {}) {
     const verdict = await askDetectPrepared(token);
     if (!current(token)) return;
     card.hasForm = verdict?.form === true;
     card.fileInputs = countFileInputs(verdict);
-    // AN IMMEDIATE YES IS THE WHOLE ANSWER. A Greenhouse-class page whose form
-    // is in the first paint costs exactly the one round trip it always did —
-    // the retry below is for the pages that answered no, and nothing else.
-    if (!card.hasForm) retryHasForm(token);
+    // AN IMMEDIATE YES IS THE WHOLE ANSWER on a page the panel was opened or
+    // switched onto: a Greenhouse-class page whose form is in the first paint
+    // costs exactly the one round trip it always did.
+    //
+    // NOT AFTER AN IN-PLACE URL CHANGE. An SPA step (Workday) changes the url
+    // before it renders, so this first read is the step being LEFT, and every
+    // Workday apply step answers `form: true` (the apply route) whatever it
+    // shows. The upload count taken here was held for the whole step: the
+    // attach offer was one step late in both directions (CarMax, 2026-09-30).
+    // So the ladder runs there too, and re-reads the count on every rung.
+    if (!card.hasForm || inPlace) retryHasForm(token, { allRungs: inPlace });
   }
 
   /** The upload-box count off a detect verdict, defensively.
@@ -3314,9 +3324,10 @@
    * buy an answer it already has.
    *
    * ONE CADENCE, TWO LADDERS, and the constant is the only thing they share.
-   * `retryHasForm` starts only when the first answer was no and stops at the
-   * first yes; `retryPosting` starts on every Job-stage page and stops when an
-   * answer stops improving. They do not even begin together — a page with a
+   * `retryHasForm` starts when the first answer was no and stops at the
+   * first yes, or after an in-place url change and then runs every rung to
+   * settle the upload count (`loadHasForm`); `retryPosting` starts on every
+   * Job-stage page and stops when an answer stops improving. They do not even begin together — a page with a
    * form the user has armed no base for sits at Job, so the posting ladder runs
    * there while the form ladder never started, and a page that is not a posting
    * at all runs the form ladder alone — so folding them into one loop would be
@@ -3327,7 +3338,7 @@
    */
   const PAGE_RETRY_MS = [1000, 2000, 4000];
 
-  async function retryHasForm(token) {
+  async function retryHasForm(token, { allRungs = false } = {}) {
     for (const delay of PAGE_RETRY_MS) {
       await sleep(delay);
       // Before the ASK, because `askDetect` names `card.tabId` and that field
@@ -3358,7 +3369,8 @@
         // the offer would then wait for some unrelated render.
         if (card.fileInputs !== before) render();
       }
-      if (verdict?.form !== true) continue;
+      // A yes already known is the in-place ladder settling only the count.
+      if (verdict?.form !== true || card.hasForm) continue;
       card.hasForm = true;
       // A REPAINT IS THE WHOLE OF IT, and that is a shrink rather than an
       // oversight. A late yes MOVES NO STAGE any more — `stageFor` stopped
@@ -3377,7 +3389,8 @@
       // whole point is worse than no call: it reads as the mechanism keeping
       // the picker alive, and the picker no longer needs one.
       render();
-      return;
+      // After an in-place url change the count is still settling: every rung.
+      if (!allRungs) return;
     }
   }
 

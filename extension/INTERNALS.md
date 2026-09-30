@@ -63,7 +63,11 @@ fields and an "Apply now" button can score 2. Only the offer reads that bar;
 of the bound tab that finishes loading (`webNavigation.onCompleted`) asks again,
 debounced, while no form is known and nothing is running, at most five times
 per page binding (a tab switch or Refresh starts over); Refresh covers it by
-hand. It reads,
+hand. A url change inside the bound tab (`tabs.onUpdated` with a url, which
+an SPA's pushState also fires) rebinds at once, while an SPA still shows the
+step being left, so after one the ladder runs every rung even over a yes and
+re-reads the upload count on each: a Workday step change otherwise kept the
+previous step's count, and the attach offer came one step late (CarMax). It reads,
 scores and returns four keys: the tier, whether a form's evidence held, the
 score behind it, and how many upload boxes a resume could go into (frame 0's
 count only, so the attach offer is unchanged). It holds no state, registers no observer and touches nothing on the page.
