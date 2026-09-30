@@ -17,7 +17,7 @@ worker:
 
 | file | runs | does |
 |---|---|---|
-| `shared/decisions.js` | every frame **and** the panel document | the pure decisions the panel renders from — `stageFor`, the base ranking, `reconcileFill`, the session guards, `sanitizeAnswer` |
+| `shared/decisions.js` | every frame **and** the panel document | the pure decisions the panel renders from — `stageFor`, the base ranking, `reconcileFill`, the session guards, `sanitizeAnswer`, `describesJob` |
 | `shared/choose.js` | every frame **and** the panel document | the pure half of the open-question path: routing, the ≤40 `/choose` batch, `rest_fill` shaping, and the one `QUESTIONY` |
 | `shared/guided-run.js` | every frame **and** the panel document | the guided-fill runner: one sequencing/batching engine, transport injected |
 | `shared/policy.js` | every frame **and** the panel document | the shared never-fill policy — read by the fill engine and by the panel's pause row, whose render AND action are the half that is easy to miss |
@@ -156,15 +156,28 @@ asking permission of itself.
   description in three fields you can correct before anything is saved (schema.org
   `JobPosting` JSON-LD when the site provides it, visible text otherwise). The
   line under them says "Job description found (N words)" only for a job signal
-  (`source` `json-ld`, or `content`: a job-description container), because
-  three filled boxes over an empty description otherwise looks exactly like a
-  successful read; a long `<main>` (`page`) or the whole page (`body`) is only
-  the page's text, still editable and saved as it is, and the line says "No job
-  description found on this page"; when the page answers nothing at all it says the Companion
+  (`decisions.describesJob`: `source` `json-ld`, or `content`, a job-description
+  container), because three filled boxes over an empty description otherwise
+  looks exactly like a successful read; a long `<main>` (`page`) or the whole
+  page (`body`) is only the page's text, and the line says "No job description
+  found on this page"; when the page answers nothing at all it says the Companion
   can't read this page and to reload the tab, which is a claim about our reach
-  rather than about the page. The backend extracts the JD immediately, so the job
-  lands parsed and ready for ATS scoring, and a duplicate save says "Already
-  saved in Maestro CS" rather than pretending it saved something new.
+  rather than about the page. **The posting is read from frame 0 first, then
+  from every frame** (`askPosting`, `page_broadcast`) when frame 0's answer is
+  not a job description: iCIMS serves the careers site's chrome in the top
+  document and the posting in a same-origin iframe (`#icims_content_iframe`). A
+  subframe's answer is taken only when it is a job description, the richest by
+  `landPosting`'s order (provenance, then size), so an ad iframe's text never
+  replaces the top document's; the first read, every retry rung and the
+  reload heal all go through it. **Save job refuses a blank job**: with no title
+  and no job description it posts nothing and says "The Companion couldn't read
+  this job's description from the page. Open the job post on its own page, or
+  add the job in Maestro CS." (a typed title is enough to save page text). The backend
+  extracts the JD immediately, so the job lands parsed and ready for ATS
+  scoring, and a duplicate save says "Already saved in Maestro CS" rather than
+  pretending it saved something new. A job the scorer cannot read yet (422: no
+  skills, or no description read) gets "…Open the job in Maestro CS and choose
+  Refresh details.", since Refresh details is the web app's control.
 - **Refresh** — re-reads the backend's facts about this tab through a tab
   switch's own path (`bindPage`: reset, generation bump, `loadContext`), plus
   the drafts list and the base resumes, so a job or draft added in the web app
@@ -423,7 +436,8 @@ know, and each one was learned from a live failure.
 - **Sender model.** A panel has no `sender.tab` (that is the discriminator) and
   NAMES its bound tab, so sw.js's `sender.id !== chrome.runtime.id` is the WHOLE
   of provenance for a tab-less sender; `detect_page` joins `extract_job_posting`
-  as a frame-0 read because the panel runs in no page. Content scripts are the
+  as a frame-0 read because the panel runs in no page, and both are also
+  broadcastable, asked of every frame only when frame 0 has no answer. Content scripts are the
   fill engine and the field work and NOTHING else since R-C deleted the floating
   card, so `fanoutTab`'s content-script branch is a written rule with no caller.
 - **The COMMIT GESTURE.** `visitControl`/`leaveControl` (plus the
@@ -462,7 +476,10 @@ know, and each one was learned from a live failure.
   key …") are told apart by `MISSING_KEY`/`REFUSED_KEY`, the web app's own
   patterns (`frontend/lib/error-text.ts`, pinned equal); any other status gets
   the call site's own sentence, else "Try again."
-  The raw message goes to the console. A run with no saved answers leads its
+  The raw message goes to the console unless the call site's `answered`
+  function recognised the refusal (Chrome lists an extension page's warnings
+  under chrome://extensions → Errors, where an expected refusal reads as a
+  fault); the automatic on-open score logs nothing. A run with no saved answers leads its
   note with "No saved answers yet …", and `sw.js`' `attach_pdf` puts the status
   on its error the way `api()` does, so a failed PDF fetch reads as the backend
   answering rather than as an app that is not running.

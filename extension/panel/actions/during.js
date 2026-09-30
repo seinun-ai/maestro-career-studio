@@ -137,16 +137,24 @@
    * failure (`keyProblem`) is the key's step, add one or check it; any other
    * status means the backend answered and refused, so the step is the call
    * site's `answered` sentence when it has one (a string, or a function of the
-   * error that may decline with null), else another try. */
+   * error that may decline with null), else another try.
+   *
+   * ONLY THE UNEXPECTED IS LOGGED. A refusal the call site's `answered`
+   * FUNCTION recognised and explained (a job the scorer cannot read yet, a
+   * resume `/api/qa` cannot read) is an ordinary state, and Chrome lists an
+   * extension page's warnings under chrome://extensions → Errors, where it
+   * would read as a fault. Everything else still goes to the console. */
   function failureNote(failed, err) {
     if (err?.shown === true) return String(err.message);
-    console.warn("[maestro-cs] panel action failed:", err);
     const { what = "Couldn't do that.", answered = null } =
       typeof failed === "string" ? { what: failed } : failed ?? {};
+    const key = err?.status === undefined ? null : keyProblem(err);
+    const recognised = err?.status !== undefined && !key && typeof answered === "function"
+      ? answered(err) : null;
+    if (!recognised) console.warn("[maestro-cs] panel action failed:", err);
     if (err?.status === undefined) return `${what} Check that Maestro CS is running.`;
-    const key = keyProblem(err);
     if (key) return `${what} ${KEY_STEPS[key]}`;
-    const own = typeof answered === "function" ? answered(err) : answered;
+    const own = recognised ?? (typeof answered === "string" ? answered : null);
     return own || `${what} Try again.`;
   }
 

@@ -32,13 +32,15 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Breaking changes
 
-- **Three migrations run by themselves at startup.** One stores health-check
+- **Four migrations run by themselves at startup.** One stores health-check
   results with the rubric that judged them, and a table for your disputes.
-  The other two refresh the built-in tailoring prompts (tailoring rules, gap
+  Two refresh the built-in tailoring prompts (tailoring rules, gap
   tailoring and the Assistant's instructions) and the built-in health-check
   prompts. A built-in prompt moves to the new default only if you never
   edited it; one you changed in Settings › AI & models › Prompts is left
-  as it is.
+  as it is. The fourth clears saved health-check results for bullets the
+  check marked down by mistake, so the next health check reads those
+  bullets again; a rating you set by hand is kept.
 - **Agree again to let the Companion fill agreements and signatures.** The
   permission now covers more (see Changed), so a yes given before this
   release is off until you give it again. Profile › Autofill says so beside
@@ -156,6 +158,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 - Fill no longer adds an empty second website entry.
 - Military status is answered from your veteran answer.
 - With Agreements on, terms and consent boxes are ticked.
+- The Companion reads a job description shown inside an embedded frame
+  (iCIMS), and no longer saves a blank job when it can't read one.
 
 ## [0.6.0] — 2026-09-24
 

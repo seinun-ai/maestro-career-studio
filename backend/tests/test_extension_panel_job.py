@@ -113,7 +113,7 @@ main(async () => {
   release();
   await settle();
   const afterALateLanding = regions();
-  if (spec.click !== true) { emit({ loaded, afterALateLanding, sent }); return; }
+  if (spec.click !== true) { emit({ loaded, afterALateLanding, sent, warnings }); return; }
   withClass(REGIONS.foot, "cta")[0].click();
   // Synchronous, and deliberately: `addJob` sets `busy` and paints before its
   // first await, so this is the surface as the user sees it mid-save.
@@ -126,7 +126,7 @@ main(async () => {
   }
   release();
   await settle();
-  emit({ loaded, afterALateLanding, clicked, settled: regions(), sent });
+  emit({ loaded, afterALateLanding, clicked, settled: regions(), sent, warnings });
 });
 """
 
@@ -231,7 +231,7 @@ def test_page_text_is_never_called_a_job_description(tmp_path, source, words):
     page. The count was over whatever text the page had. The panel claims a
     job description only when the extractor found one by a job signal (a
     JobPosting record, or a job-description container); any other text is
-    still editable and still saved as it is, but it is not called one."""
+    not called one, and it is saved only under a title the user gives it."""
     out = _load(tmp_path, page={
         "extract_job_posting": _reply({"url": POSTING_URL, "title": "Recipes",
                                        "text": words, "source": source}),
@@ -2804,3 +2804,151 @@ def test_typed_job_fields_survive_a_refresh(tmp_path):
         "location": "Remote, US",
     }
     assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1
+
+
+# ---------- a posting inside an embedded frame ----------
+#
+# careers-gmr.icims.com, live (2026-09-30): the top document is the careers
+# site's chrome — navigation, footer, and a WebSite JSON-LD — and the posting
+# (a JobPosting JSON-LD with title, company and a 3,700-character description)
+# is in a same-origin iframe, `#icims_content_iframe`, loaded with
+# `in_iframe=1`. Frame 0 answered with its own body text, so Save job posted
+# the navigation and the backend stored a job with no title, no company and
+# no skills. The posting has to be asked of every frame when frame 0's answer
+# is not a job description.
+
+TOP_CHROME = {"url": POSTING_URL, "title": "AI Engineer | Careers",
+              "text": "Skip to Main Content\nHOME\nSEARCH JOBS\nBENEFITS\nContact Us\n"
+                      "Privacy Policy\nSite Usage",
+              "source": "body"}
+EMBEDDED_TEXT = "\n".join([
+    "Title: AI Engineer",
+    "Company: Global Medical Response",
+    "Location: Lewisville, TX",
+    "",
+    "Build machine learning systems in Python and PyTorch.",
+])
+EMBEDDED_POSTING = {"url": f"{POSTING_URL}?in_iframe=1", "title": "AI Engineer | Careers",
+                    "text": EMBEDDED_TEXT, "source": "json-ld"}
+# An ad or chat iframe: more text than the top document, and no job signal.
+AD_FRAME = {"url": "https://ads.example.test/slot", "title": "Ad",
+            "text": "Sponsored " * 80, "source": "body"}
+COULDNT_READ = ("The Companion couldn't read this job's description from the page. "
+                "Open the job post on its own page, or add the job in Maestro CS.")
+
+
+def _posting_broadcasts(out):
+    return [msg for msg in out["sent"] if msg["type"] == "page_broadcast"
+            and (msg.get("message") or {}).get("type") == "extract_job_posting"]
+
+
+def _embedded(tmp_path, frames, **spec):
+    """The Job stage on a page whose frame 0 is the careers site's chrome."""
+    spec.setdefault("page", {"extract_job_posting": _reply(TOP_CHROME),
+                             "detect_page": _reply({"tier": "none", "form": False,
+                                                    "score": 0})})
+    return _job_stage(tmp_path, frames={"extract_job_posting": frames}, **spec)
+
+
+def test_a_posting_inside_an_embedded_frame_fills_the_preview(tmp_path):
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
+                               {"frameId": 4, "result": EMBEDDED_POSTING}])
+    assert _posting_broadcasts(out), "no frame but frame 0 was asked for the posting"
+    assert _preview_inputs(out["loaded"]["rail"]) == {
+        "title": "AI Engineer",
+        "company": "Global Medical Response",
+        "location": "Lewisville, TX",
+    }
+    assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
+        "Job description found (8 words)")
+
+
+def test_save_job_sends_the_embedded_frames_posting(tmp_path):
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
+                               {"frameId": 4, "result": EMBEDDED_POSTING}],
+                    click=True, api={
+                        "job-boards": _reply({"match": "none", "job": None,
+                                              "application": None}),
+                        "POST /api/jobs": _reply(SAVED_JOB),
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "POST /api/ats-scores": _reply(SCORES[:2]),
+                    })
+    [post, _score] = _posts(out)
+    assert post["path"] == "/api/jobs"
+    assert json.loads(post["init"]["body"])["raw_text"] == EMBEDDED_TEXT
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"].startswith("Saved. Found 3 skills.")
+
+
+def test_the_richest_frame_wins_and_a_frame_with_no_job_signal_never_does(tmp_path):
+    """An ad frame with more text than anything else is still not a posting:
+    only a frame whose own answer is a job description can replace frame 0's."""
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
+                               {"frameId": 3, "result": AD_FRAME},
+                               {"frameId": 4, "result": EMBEDDED_POSTING},
+                               {"frameId": 5, "result": {**EMBEDDED_POSTING,
+                                                         "text": "Short.",
+                                                         "source": "content"}}])
+    assert _preview_inputs(out["loaded"]["rail"])["title"] == "AI Engineer"
+
+
+def test_a_posting_frame_0_answers_is_never_asked_of_the_other_frames(tmp_path):
+    """Today's behaviour where it works: a described posting in the top
+    document is the whole answer, and no frame beside it is read."""
+    out = _job_stage(tmp_path, frames={"extract_job_posting": [
+        {"frameId": 4, "result": EMBEDDED_POSTING}]})
+    assert _posting_broadcasts(out) == []
+    assert _preview_inputs(out["loaded"]["rail"])["title"] == "Machine Learning Engineer"
+
+
+def test_a_page_where_no_frame_holds_a_posting_is_never_saved_blank(tmp_path):
+    """THE LIVE ROW, refused: no title and nothing that is a job description.
+    Posting it spent an extraction on the site's navigation and left a job
+    with no title, no company and no skills in the library."""
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
+                               {"frameId": 3, "result": AD_FRAME}],
+                    click=True, api={
+                        "job-boards": _reply({"match": "none", "job": None,
+                                              "application": None}),
+                        "POST /api/jobs": _reply(SAVED_JOB),
+                    })
+    assert _posts(out) == []
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == COULDNT_READ
+    assert note["class"] == "note"
+
+
+def test_a_title_typed_over_page_text_is_still_saved(tmp_path):
+    """The refusal is for a save with NOTHING in it: a user who names the job
+    has told the extraction what it is looking at."""
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME}],
+                    click=True, type={"title": "AI Engineer"}, api={
+                        "job-boards": _reply({"match": "none", "job": None,
+                                              "application": None}),
+                        "POST /api/jobs": _reply(SAVED_JOB),
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "POST /api/ats-scores": _reply(SCORES[:2]),
+                    })
+    assert [post["path"] for post in _posts(out)] == ["/api/jobs", "/api/ats-scores"]
+
+
+NO_SKILLS = ("No skills were found in this job's description. Check the description, "
+             "then choose Refresh details.")
+
+
+def test_a_saved_job_with_no_skills_says_where_to_refresh_it_and_warns_nothing(tmp_path):
+    """The backend refuses to score a job with no skills (422). That refusal is
+    expected and explained, so it is not a warning in chrome://extensions, and
+    the next step names where Refresh details is: the web app, not the panel."""
+    no_skills_job = {**SAVED_JOB, "extracted_json": {"skills": []}}
+    out = _job_stage(tmp_path, click=True, api={
+        "job-boards": _reply({"match": "none", "job": None, "application": None}),
+        "POST /api/jobs": _reply(no_skills_job),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "POST /api/ats-scores": {"ok": False, "error": NO_SKILLS, "status": 422},
+    })
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "Saved. Found 0 skills. Couldn't score your base resumes. "
+        "Open the job in Maestro CS and choose Refresh details.")
+    assert out["warnings"] == []

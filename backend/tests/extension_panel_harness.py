@@ -120,6 +120,12 @@ const writes = [];
 const removals = [];
 const syncWrites = [];
 const broadcasts = [];
+// Every `console.warn` the panel wrote. A warning is not private: Chrome lists
+// an extension page's warnings under chrome://extensions → Errors, so a
+// refusal the panel expected and explained must not land there as a fault.
+// Recorded here and not printed; a driver that has a claim to make emits it.
+const warnings = [];
+console.warn = (...args) => { warnings.push(args.map(String).join(" ")); };
 
 // The SW's `api` handler, as a fixture. Keys are matched as SUBSTRINGS of
 // `"<METHOD> <path>"`, so a test names `/api/base-resumes` — or the tenant slug

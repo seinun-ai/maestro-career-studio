@@ -28,20 +28,11 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
-  const { rankBaseResumes } = ns.decisions;
+  const { rankBaseResumes, describesJob } = ns.decisions;
 
   /** Thousands separators without a locale. `toLocaleString` would read the
    * user's, and this is one number inside an English sentence. */
   const grouped = (n) => String(n).replace(/\B(?=(\d{3})+$)/g, ",");
-
-  /** The extractor's sources that ARE a job description: a JobPosting record,
-   * or a job-description container (`extractJobPosting` in content/agent.js).
-   * `page` (a long <main>) and `body` (the whole page) are only the page's
-   * text. Task 25's first read found "Job description found (13 words)" over a
-   * recipe page, because the count was over whatever text a page had. The
-   * text is still in the boxes and still saved as it is; it is just not
-   * called a job description. */
-  const JOB_SIGNALS = new Set(["json-ld", "content"]);
 
   /** The one line under the preview: where the job description came from, and
    * how much of it there is. The count is the honest signal that the grab
@@ -65,8 +56,11 @@
    * about a question nobody has asked yet.
    */
   function previewNote(preview) {
+    // Only text found by a job signal is called a job description
+    // (`describesJob`): Task 25's first read found "Job description found (13
+    // words)" over a recipe page, because the count was over any page text.
     const text = String(preview.text ?? "").trim();
-    if (text && JOB_SIGNALS.has(preview.source)) {
+    if (describesJob(preview)) {
       return `Job description found (${grouped(text.split(/\s+/).length)} words)`;
     }
     return preview.source === "unreachable"

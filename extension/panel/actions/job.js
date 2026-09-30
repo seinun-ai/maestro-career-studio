@@ -22,7 +22,24 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const duringAction = ns.panelDuringAction;
-  const { rankBaseResumes } = ns.decisions;
+  const { rankBaseResumes, describesJob } = ns.decisions;
+
+  /** The backend's two refusals of a job the scorer cannot read yet, both 422:
+   * no skills in its description (`normalize_jd`), or no description read at
+   * all (`get_scorable_job`). Matched on the sentence because the status is
+   * shared with every other refusal of the call; pinned against the backend's
+   * own text by `test_the_panel_recognises_the_backends_own_unreadable_job_sentences`.
+   * Both name Refresh details, a control of the web app's job page, so the
+   * panel's next step says where it is. */
+  const UNREADABLE_JOB = /No skills were found in this job's description|This job's description hasn't been read yet/;
+  const REFRESH_STEP = "Open the job in Maestro CS and choose Refresh details.";
+
+  /** What Save job says when the page gave it nothing to save: no title and no
+   * job description (`describesJob`). Posting the page's text anyway stored a
+   * job with no title, no company and no skills — a careers site's navigation,
+   * around a posting its iframe held (iCIMS, 2026-09-30). */
+  const UNREAD_POSTING = "The Companion couldn't read this job's description from the page. "
+    + "Open the job post on its own page, or add the job in Maestro CS.";
 
   /** Add job: save the posting in front of the user, as they have edited it.
    *
@@ -58,6 +75,13 @@
       store.write({
         note: { text: "Nothing to save yet. Add a title or open a job page." },
       });
+      store.render();
+      return;
+    }
+    // Text, but not a posting: no title to name it and nothing the extractor
+    // found by a job signal. A title the user typed is enough to go on.
+    if (!String(facts.preview?.title ?? "").trim() && !describesJob(facts.preview)) {
+      store.write({ note: { text: UNREAD_POSTING } });
       store.render();
       return;
     }
@@ -129,10 +153,15 @@
       return;
     }
     store.scored(job.id);
+    const what = `${lead}Couldn't score your base resumes.`;
     const done = await duringAction(store, "job", () =>
       store.api("/api/ats-scores", {
         method: "POST", body: JSON.stringify({ job_id: job.id }),
-      }), `${lead}Couldn't score your base resumes.`, { quiet });
+      }), {
+      what,
+      answered: (err) => (err.status === 422 && UNREADABLE_JOB.test(String(err.message))
+        ? `${what} ${REFRESH_STEP}` : null),
+    }, { quiet });
     if (!done) return;
     // No `token` past here, and that is the same divergence the paragraph above
     // names: nothing is re-read, so there is no second round trip to guard.

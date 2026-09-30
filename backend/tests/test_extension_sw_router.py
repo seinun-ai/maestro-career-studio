@@ -291,8 +291,9 @@ def test_the_panel_only_handlers_refuse_a_sender_that_carries_a_tab(panel_handle
 
 
 def test_frame_zero_reads_are_allow_listed_and_addressed_to_the_top_document(panel_handlers):
-    """`extract_job_posting` lives in the top document, so the panel needs a
-    door page_broadcast deliberately does not open. That door names a frame,
+    """`extract_job_posting` is asked of the top document first, so the panel
+    needs a door that names frame 0 (every frame is asked through
+    page_broadcast only when frame 0 has no job description). That door names a frame,
     which is why its list is its own: a type added here can be aimed at the top
     document of any tab, and `profile_fill` is exactly the type that must not
     be.
@@ -668,10 +669,10 @@ def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
     deliberately NOT merged with (see that handler's own note: this list may
     not name a frame, the other one may).
 
-    EXPLOIT THIS PIN EXISTS FOR: adding `"extract_job_posting"` to
-    BROADCASTABLE left the suite green. `panel_frame0`'s list is pinned by a
-    driven test three sections up; this one had its only pin in
-    `test_extension_widget.py`. A type added here is a message fanned out to
+    EXPLOIT THIS PIN EXISTS FOR: a type added to BROADCASTABLE once left the
+    suite green. `panel_frame0`'s list is pinned by a driven test three
+    sections up; this one had its only pin in `test_extension_widget.py`.
+    A type added here is a message fanned out to
     EVERY frame of a tab — including the ad and analytics iframes a job page
     carries — so the list growing quietly is exactly the failure
     `frameMayReceiveUserData` exists to catch on the other side.
@@ -696,11 +697,12 @@ def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
         # embedded cross-origin form (Greenhouse on block.xyz) is in a
         # subframe. It carries and returns no user data.
         "detect_page",
+        # The posting, asked of every frame when frame 0's answer is not a job
+        # description: iCIMS renders the posting in a same-origin iframe
+        # (`#icims_content_iframe`). It carries nothing and returns only the
+        # frame's own page text, the public posting.
+        "extract_job_posting",
     ]
-    # …and the one that must never join it, named rather than left to the list
-    # above: a posting's JSON-LD is in the top document, so broadcasting the
-    # read would touch every subframe for nothing. It has `panel_frame0`.
-    assert "extract_job_posting" not in listed.group(1)
 
 
 _HOTKEY_DRIVER_JS = r"""

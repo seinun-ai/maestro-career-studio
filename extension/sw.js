@@ -606,10 +606,7 @@ const HANDLERS = {
    * copy, because `attach_pdf` asks the same question.
    *
    * The type is allow-listed, not merely checked for existence in
-   * PAGE_HANDLERS. `extract_job_posting` is deliberately absent: a posting's
-   * JSON-LD is in the top document, so broadcasting it would read every
-   * subframe on the page for nothing. The panel, which runs in no page,
-   * reaches that one through `panel_frame0` rather than by widening this list.
+   * PAGE_HANDLERS.
    *
    * `scroll_to_field` is the fifth and it is the cheapest thing on the list:
    * the panel's residue rows are jumps to controls the fill could not answer,
@@ -636,12 +633,19 @@ const HANDLERS = {
    * does when frame 0 has no form: an embedded cross-origin application form
    * (Greenhouse's embed on block.xyz) lives in a subframe, and the fill already
    * reaches it through the types above. It carries nothing from the user and
-   * returns only `detectPage()`'s verdict. */
+   * returns only `detectPage()`'s verdict.
+   *
+   * `extract_job_posting` is the posting read asked of EVERY frame, which the
+   * panel does only when frame 0's answer is not a job description: iCIMS
+   * serves the posting in a same-origin iframe (`#icims_content_iframe`) under
+   * a top document that is the careers site's chrome. It carries nothing from
+   * the user and returns each frame's own page text — the public posting, the
+   * same thing `panel_frame0` returns for the top document. */
   async page_broadcast(msg, frame, sender) {
     const BROADCASTABLE = ["profile_fill", "collect_open_questions", "fill_answers",
       "guided_write", "scroll_to_field",
       "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
-      "fill_sections", "fill_add", "detect_page"];
+      "fill_sections", "fill_add", "detect_page", "extract_job_posting"];
     const tabId = fanoutTab(msg, frame, sender);
     if (!BROADCASTABLE.includes(msg.message?.type)) {
       throw new Error(`not broadcastable: ${JSON.stringify(msg.message?.type)}`);
@@ -669,9 +673,10 @@ const HANDLERS = {
     return { injected: true };
   },
 
-  /** Frame 0 only, for reads that live in the top document (a posting's
-   * JSON-LD). The panel runs in no page at all, so this is its door to
-   * handlers that a content script would simply call.
+  /** Frame 0 only, for reads asked of the top document first (a posting's
+   * JSON-LD; the other frames are asked through `page_broadcast` only when
+   * this answer has none). The panel runs in no page at all, so this is its
+   * door to handlers that a content script would simply call.
    *
    * Allow-listed for the same reason `page_broadcast`'s types are, and the two
    * lists are deliberately not one: this one may name a frame, so a type added

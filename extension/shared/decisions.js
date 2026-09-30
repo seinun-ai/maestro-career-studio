@@ -14,7 +14,7 @@
  *
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
  * postingId, sessionTenant, restorableSession, reconcileFill, sanitizeAnswer,
- * sameApplication }.
+ * sameApplication, describesJob }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -488,8 +488,25 @@
     return stamp === (application?.id ?? null);
   }
 
+  /** The extractor's sources that ARE a job description: a JobPosting record,
+   * or a job-description container (`extractJobPosting` in content/agent.js).
+   * `page` (a long <main>) and `body` (the whole page) are only the page's
+   * text: a recipe page, or a careers site's navigation around a posting that
+   * lives in an iframe (iCIMS). */
+  const JOB_SIGNALS = new Set(["json-ld", "content"]);
+
+  /** Whether an extraction, or a preview made from one, holds a job
+   * description: text, found by a job signal. THREE readers, one rule: the
+   * Job step's sub line claims "Job description found" only for this; the
+   * posting read asks the other frames of the tab when frame 0's answer is not
+   * this, and takes a subframe's answer only when it is; and Save job refuses
+   * a save that has neither this nor a title. */
+  function describesJob(posting) {
+    return Boolean(String(posting?.text ?? "").trim()) && JOB_SIGNALS.has(posting?.source);
+  }
+
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession,
-    reconcileFill, sanitizeAnswer, sameApplication,
+    reconcileFill, sanitizeAnswer, sameApplication, describesJob,
   };
 })();

@@ -111,7 +111,7 @@ main(async () => {
   release();
   await settle();
   emit({ loaded, picked, focusedAfterPick, clicked, settled: regions(), sent, writes,
-         scores: ns.panel.actionStore().read().scores });
+         scores: ns.panel.actionStore().read().scores, warnings });
 });
 """
 
@@ -354,6 +354,7 @@ main(async () => {
     await settle();
     out.busyPosts = posts();
   }
+  out.warnings = warnings;
   emit(out);
 });
 """
@@ -928,6 +929,68 @@ def test_a_refused_score_says_the_next_step_by_status(tmp_path, status, error, s
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == f"Couldn't score your base resumes. {step}"
     assert note["class"] == "note error"
+
+
+
+# The backend's two refusals of a job it cannot score yet (both 422): no
+# skills in the description (`normalize_jd`), or no description read at all
+# (`get_scorable_job`). Both are ordinary states of a saved job, so the panel
+# explains them and does not log them as faults.
+NO_SKILLS = ("No skills were found in this job's description. Check the description, "
+             "then choose Refresh details.")
+NOT_READ = "This job's description hasn't been read yet. Choose Refresh details on the job page."
+REFRESH_STEP = "Open the job in Maestro CS and choose Refresh details."
+
+
+@pytest.mark.parametrize("error", [NO_SKILLS, NOT_READ])
+def test_a_job_the_scorer_cannot_read_says_where_to_refresh_it(tmp_path, error):
+    """"Choose Refresh details" names a control the panel does not have, so the
+    panel says where it is. An expected refusal is not a warning: Chrome lists
+    an extension page's warnings under chrome://extensions → Errors."""
+    out = _score(tmp_path, click=True, api={
+        "GET /api/ats-scores": _reply([]),
+        "POST /api/ats-scores": {"ok": False, "error": error, "status": 422}})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == f"Couldn't score your base resumes. {REFRESH_STEP}"
+    assert out["warnings"] == []
+
+
+def test_an_unexpected_score_failure_is_still_logged(tmp_path):
+    out = _score(tmp_path, click=True, api={
+        "GET /api/ats-scores": _reply([]),
+        "POST /api/ats-scores": {"ok": False, "error": "boom", "status": 500}})
+    assert len(out["warnings"]) == 1
+    assert "boom" in out["warnings"][0]
+
+
+def test_the_automatic_score_is_silent_about_a_job_it_cannot_read(tmp_path):
+    """The on-open score is nobody's press: no note and no warning."""
+    out = _auto(tmp_path, api={
+        "POST /api/ats-scores": {"ok": False, "error": NO_SKILLS, "status": 422}})
+    assert out["loadPosts"] == 1
+    assert out["warnings"] == []
+
+
+def test_the_panel_recognises_the_backends_own_unreadable_job_sentences():
+    """ONE sentence, two languages: the panel matches the backend's refusal
+    text, so the pin reads it from the backend rather than from a copy."""
+    from app.services.ats.jd_normalizer import normalize_jd
+    from app.services.ats_score import get_scorable_job
+
+    with pytest.raises(ValueError) as no_skills:
+        normalize_jd({"skills": []})
+
+    class _Session:
+        def get(self, _model, _id):
+            return type("Job", (), {"extracted_json": None})()
+
+    with pytest.raises(ValueError) as not_read:
+        get_scorable_job(_Session(), "job-1")
+    job_js = (EXTENSION / "panel" / "actions" / "job.js").read_text(encoding="utf-8")
+    literal = _regex_literal(job_js, "UNREADABLE_JOB")
+    pattern = re.compile(literal[1:literal.rindex("/")])
+    for sentence in (str(no_skills.value), str(not_read.value), NO_SKILLS, NOT_READ):
+        assert pattern.search(sentence), sentence
 
 
 def _regex_literal(source, name):

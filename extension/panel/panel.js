@@ -106,7 +106,7 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const { stageFor, rankBaseResumes, restorableSession, sessionTenant,
-          sameApplication } = ns.decisions;
+          sameApplication, describesJob } = ns.decisions;
 
   // `chrome.storage.local` holds TWO keys, and they hold different kinds of
   // thing: `widget.session`, the session pick (everything down to the
@@ -3410,11 +3410,10 @@
 
   /** The posting on the page, for the Job stage's editable preview.
    *
-   * The same door `loadHasForm` uses and for the same reason: extraction is a
-   * page function and this document is in no page. `extract_job_posting` reads
-   * the TOP frame only — a posting's JSON-LD is in the top document, and the
-   * subframes are the application FORM's business, not the posting's — which
-   * is exactly what `panel_frame0` addresses.
+   * The same doors `loadHasForm` uses and for the same reason: extraction is a
+   * page function and this document is in no page. `askPosting` reads the TOP
+   * frame first and the other frames only when the top frame's answer is not a
+   * job description (an iCIMS posting lives in an iframe).
    *
    * A failure is not a note and not a fault. The panel asked the page a
    * question about itself and got nothing; three empty boxes say that, and they
@@ -3442,15 +3441,55 @@
   /** The one extraction ask, so the first attempt and every retry are the same
    * message read the same way — `askDetect`'s twin, and split out for the same
    * reason: two copies of a silence-is-nothing rule would eventually disagree
-   * about what a page that did not answer means. */
+   * about what a page that did not answer means.
+   *
+   * FRAME 0 FIRST, then EVERY FRAME when frame 0's answer is not a job
+   * description (`describesJob`). A posting can live in a subframe: iCIMS
+   * serves the careers site's chrome in the top document and the posting, its
+   * JobPosting JSON-LD included, in a same-origin iframe
+   * (`#icims_content_iframe`, `in_iframe=1`). Frame 0 then answers with its
+   * own navigation as `body` text, and saving that stored a job with no title
+   * and no skills (careers-gmr.icims.com, 2026-09-30).
+   *
+   * A SUBFRAME'S ANSWER WINS ONLY WHEN IT IS A JOB DESCRIPTION, and the richest
+   * one wins: `landPosting`'s own order, provenance then size. An ad or chat
+   * iframe with more text than the top document is not a posting, so frame 0's
+   * answer stands over it. Frame 0 is asked first and alone wherever it has
+   * the posting, which is every page that worked before this. The fan-out
+   * reads page text only and carries nothing from the user. The answer is null
+   * only when frame 0 was silent and no subframe had a posting, which is what
+   * sends `askPostingPrepared` to inject. */
   async function askPosting() {
+    let top = null;
     try {
-      return await ask("panel_frame0", {
+      top = await ask("panel_frame0", {
         tabId: card.tabId, message: { type: "extract_job_posting" },
       });
     } catch (_) {
-      return null;
+      top = null;
     }
+    if (describesJob(top)) return top;
+    let frames = [];
+    try {
+      frames = await ask("page_broadcast", {
+        tabId: card.tabId, message: { type: "extract_job_posting" },
+      });
+    } catch (_) {
+      frames = [];
+    }
+    return (Array.isArray(frames) ? frames : [])
+      .filter((one) => one?.frameId !== 0 && describesJob(one?.result))
+      .map((one) => one.result)
+      .reduce((best, one) => (best === null || richerPosting(one, best) ? one : best), null)
+      ?? top;
+  }
+
+  /** Whether extraction `a` outranks `b`: better provenance, or the same
+   * provenance and more of it — `landPosting`'s order, on raw answers. */
+  function richerPosting(a, b) {
+    const [left, right] = [previewFrom(a), previewFrom(b)];
+    const rank = sourceRank(left) - sourceRank(right);
+    return rank > 0 || (rank === 0 && postingWeight(left) > postingWeight(right));
   }
 
   /** Ask the page for its posting, and if it does not answer, put our scripts

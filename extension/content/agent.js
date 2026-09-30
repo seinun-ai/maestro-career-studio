@@ -530,8 +530,10 @@
    * next type added here would have two precedents to choose between.
    *
    * `extract_job_posting` and `detect_page` are ungated: each READS the page it
-   * already runs on and returns nothing derived from the user. Neither is
-   * broadcastable — the side panel reaches both at frame 0. */
+   * already runs on and returns nothing derived from the user. The side panel
+   * asks both of frame 0 first (`panel_frame0`) and of every frame
+   * (`page_broadcast`) only when frame 0 has no answer: a posting in an iframe
+   * (iCIMS), a form in an embed (Greenhouse). */
   const PAGE_HANDLERS = {
     extract_job_posting: () => extractJobPosting(),
     /** The page's own detection verdict, for the side panel — which runs in no
