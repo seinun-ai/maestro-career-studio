@@ -129,8 +129,8 @@ def _match(kind: str, values: set[str], facts: dict[str, Fact], taken: set[int])
 
 class Placement(NamedTuple):
     """Per page entry, the profile entry it holds or is given (None: a second
-    holding of one, past the profile, or every entry of a section holding a
-    foreign one); the profile entries no entry holds or is given, left for
+    holding of one, past the profile, a Websites entry holding the applicant's
+    LinkedIn, or every entry of a section holding a foreign one); the profile entries no entry holds or is given, left for
     entries to add; whether every entry holding data holds a different
     profile entry; and whether one holds something the profile does not have."""
 
@@ -140,17 +140,29 @@ class Placement(NamedTuple):
     foreign: bool
 
 
+def _held_elsewhere(kind: str, keys: set[str], facts: dict[str, Fact]) -> bool:
+    """A Websites entry holding the applicant's own LinkedIn (resume-parsed
+    Workday puts it there): theirs, so not foreign, and no Websites entry's."""
+    linkedin = facts.get("personal.linkedin")
+    return kind == "websites" and linkedin is not None and url_key(str(linkedin.value)) in keys
+
+
 def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> Placement:
     held: dict[int, int | None] = {}
     taken: set[int] = set()
-    foreign = False
+    foreign = twice = False
     for j in range(section.entries):
         values = section.held[j] if j < len(section.held) else []
         if not ((section.filled[j] if j < len(section.filled) else False) or values):
             continue
         # A value that normalizes to nothing ("Inc.") names nothing.
-        i = _match(kind, {_key(kind, v) for v in values} - {""}, facts, taken)
+        keys = {_key(kind, v) for v in values} - {""}
+        if _held_elsewhere(kind, keys, facts):
+            held[j] = None
+            continue
+        i = _match(kind, keys, facts, taken)
         foreign = foreign or i is None
+        twice = twice or i in taken
         if i is None or i in taken:
             held[j] = None
         else:
@@ -168,7 +180,7 @@ def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> Placement:
             free = free[1:]
         else:
             order.append(None)
-    return Placement(order, free, None not in held.values(), False)
+    return Placement(order, free, not twice, False)
 
 
 def _shares_employer(j: int, facts: dict[str, Fact]) -> bool:

@@ -348,7 +348,9 @@ def _answerable(fields: list[MapField], session: Session, budget: Budget) -> set
 
 _PHONE = re.compile(r"phone", re.IGNORECASE)
 _MONEY = re.compile(r"(^|[._])(desired_)?(salary|compensation|pay)([._]|$)", re.IGNORECASE)
-_ENTRY = re.compile(rf"({'|'.join(get_args(EntryKind))})\.(\d+)\.(.+)")
+# The kinds whose facts are numbered (`experience.2.title`): a Websites entry is
+# placed by URL (personal.website / personal.github, `_placed_key`) instead.
+_ENTRY = re.compile(rf"({'|'.join(k for k in get_args(EntryKind) if k != 'websites')})\.(\d+)\.(.+)")
 # The entry kinds that are the applicant's HISTORY (autofill_reasoned reads
 # exactly these); a language is placed like them but is no history.
 _HISTORY_KINDS = ("experience", "education")
@@ -374,11 +376,18 @@ def _placed_key(field: MapField, key: str, facts: dict[str, Fact]) -> str | None
     """Where an entry sits in the profile is code's (/sections matched what the
     entries hold), never the model's. In a placed Websites entry a URL is the
     profile's `profile_entry`-th URL, whichever one the model chose (None past
-    the profile's); any other fact is placed by `_placed_entry_key`."""
+    the profile's, and for any other personal fact); any other fact is placed
+    by `_placed_entry_key`."""
     urls = websites(facts)
-    if key in urls and field.entry_kind == "websites" and field.profile_entry is not None:
-        return urls[field.profile_entry] if field.profile_entry < len(urls) else None
+    if field.entry_kind == "websites" and field.profile_entry is not None and key.startswith("personal."):
+        return _nth_url(urls, key, field.profile_entry)
     return _placed_entry_key(field, key)
+
+
+def _nth_url(urls: list[str], key: str, k: int) -> str | None:
+    """A placed Websites entry's URL: the profile's k-th, when the model named
+    one of them; any other personal fact (the LinkedIn has its own box) is none."""
+    return urls[k] if key in urls and k < len(urls) else None
 
 
 def _placed_entry_key(field: MapField, key: str) -> str | None:

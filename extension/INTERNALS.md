@@ -516,14 +516,19 @@ know, and each one was learned from a live failure.
   language, or the URL, ignoring case and punctuation, for an employer its
   company suffix such as Inc, LLC, Ltd, Corp, Co and GmbH, and for a URL its
   scheme, `www.`, trailing slash and #fragment); a Websites entry's profile
-  entries are your website, then your GitHub, whichever you have; empty entries,
+  entries are your website, then your GitHub, whichever you have (an entry
+  holding your own LinkedIn, as a parsed resume often leaves one, is yours
+  and is left as it is, placed at nothing and not foreign; a LinkedIn the
+  model names for a Websites entry is never written there); empty entries,
   then added ones, take the profile entries no entry holds, in order. /map
   is told each field's place (`profile_entry`) and writes that profile
   entry's facts there, whatever order the page's entries are in — so
   an empty entry above a pre-filled job #1 gets job #2, never job #1 again,
   a job the resume parser dropped is added in its own place, and Websites 2
   gets your GitHub even when the model reads both entries' "URL" as your
-  website (live Workday left that entry empty and required, 2026-09-30). An entry
+  website (live Workday left that entry empty and required, 2026-09-30).
+  Websites placement needs a backend from this release: an older one sends
+  no `order` for a Websites section, so the Companion leaves it to you. An entry
   holding something the profile does not have may be a profile job spelled
   another way, so its whole section is left to you: nothing placed, nothing
   added, and the report says so. Two entries holding the same one add

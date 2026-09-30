@@ -137,6 +137,9 @@ def url_key(text: str) -> str:
     if m is None:
         return name_key(text)
     port = f":{m[2]}" if m[2] and m[2] not in ("80", "443") else ""
+    # Only the host is case-folded: a path is case-sensitive ("/Ada" and "/ada"
+    # may be two pages), as in `asUrl`. Text that is no URL takes `name_key`,
+    # which folds case.
     return f"{m[1].lower()}{port}{(m[3] or '').rstrip('/')}"
 
 

@@ -510,7 +510,8 @@ def test_an_entry_fact_of_another_kind_than_its_section_is_none(db_session, monk
         field("a", "Q", profile_entry=0, entry_kind="certifications")
 
 
-SITES = autofill_catalog.build({"personal": {"website": "https://ada.dev", "github": "https://github.com/ada"}},
+SITES = autofill_catalog.build({"personal": {"website": "https://ada.dev", "github": "https://github.com/ada",
+                                             "linkedin": "https://linkedin.com/in/ada"}},
                                [{"employer": "Acme", "title": "Analyst"}], [])
 
 
@@ -538,6 +539,16 @@ def test_a_websites_entry_is_placed_at_the_url_its_profile_entry_names(db_sessio
     # A job's fact is no website's; a website outside a placed Websites entry keeps its own slot.
     assert site(db_session, monkeypatch, "experience.0.title", profile_entry=0, entry_kind="websites").route == "none"
     assert site(db_session, monkeypatch, "personal.github").slot == "personal.github"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_placed_websites_entry_never_takes_the_linkedin(db_session, monkeypatch):
+    """LinkedIn has its own box and is no Websites entry's: a model reading a
+    placed entry's "URL" as the LinkedIn writes nothing there (never the
+    LinkedIn, never a URL the model did not name)."""
+    for k in (0, 1):
+        assert site(db_session, monkeypatch, "personal.linkedin", profile_entry=k,
+                    entry_kind="websites").route == "none"
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -611,9 +622,11 @@ def test_entry_kinds_are_defined_once():
 
     from app.schemas.autofill_fill import EntryKind
 
-    for kind in get_args(EntryKind):
+    numbered = [kind for kind in get_args(EntryKind) if kind != "websites"]
+    for kind in numbered:
         assert autofill_map._ENTRY.fullmatch(f"{kind}.3.title")
-    assert "websites" in get_args(EntryKind)
+    # A Websites entry is placed by URL (personal.website / personal.github), never a numbered fact.
+    assert "websites" in get_args(EntryKind) and not autofill_map._ENTRY.fullmatch("websites.0.url")
 
 
 @pytest.mark.usefixtures("jev_on")

@@ -478,5 +478,18 @@ def test_a_websites_entry_holding_a_profile_url_is_that_url(db_session, monkeypa
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_websites_entry_holding_another_url_is_foreign(db_session, monkeypatch):
-    assert planned(db_session, monkeypatch, FACTS, ["https://linkedin.com/in/ada"], **WEB) == {
+    assert planned(db_session, monkeypatch, FACTS, ["https://example.org/someone-else"], **WEB) == {
         "kind": "websites", "wanted": 1, "reason": "held_unmatched", "order": [None]}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("linkedin", ["https://linkedin.com/in/ada", "www.LinkedIn.com/in/ada/"])
+def test_a_websites_entry_holding_the_profiles_own_linkedin_is_left_but_not_foreign(db_session, monkeypatch,
+                                                                                    linkedin):
+    """A resume-parsed Workday page often puts the applicant's LinkedIn in a
+    Websites entry. It is theirs, so the section is not foreign: that entry is
+    placed nowhere (left as it is) and the website and GitHub still go in."""
+    assert planned(db_session, monkeypatch, FACTS, [linkedin], **WEB) == {
+        "kind": "websites", "wanted": 3, "reason": None, "order": [None, 0, 1]}
+    assert planned(db_session, monkeypatch, FACTS, [], [linkedin], **WEB) == {
+        "kind": "websites", "wanted": 3, "reason": None, "order": [0, None, 1]}
