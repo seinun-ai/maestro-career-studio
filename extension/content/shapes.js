@@ -226,7 +226,8 @@
     return { display: v, proof: v };
   };
 
-  // Radio/checkbox members: same name in the same form (or root), else the
+  // Radio/checkbox members: same name in the same form (or root; a checkbox's
+  // nearest grouping container first), else the
   // nearest grouping container. A nameless RADIO outside any container (Gem)
   // belongs with the nameless radios of the nearest ancestor holding others
   // and no other kind of control — only its own run of them, cut at any
@@ -249,7 +250,12 @@
   };
   const members = (el) => memo("members", el, () => {
     if (el.name) {
-      return [...(el.form ?? el.getRootNode()).querySelectorAll(`input[type="${el.type}"][name="${CSS.escape(el.name)}"]`)];
+      // A named CHECKBOX looks no further than its nearest grouping container:
+      // live Workday names every entry's "I currently work here" box alike
+      // (`currentlyWorkHere`, CarMax 2026-09-30), and a set spanning entries
+      // asked the entry's title. Radios keep the form (a native radio set).
+      const scope = (el.type === "checkbox" && el.closest(GROUPER)) || el.form || el.getRootNode();
+      return [...scope.querySelectorAll(`input[type="${el.type}"][name="${CSS.escape(el.name)}"]`)];
     }
     const c = el.closest(GROUPER);
     if (c) return [...c.querySelectorAll(`input[type="${el.type}"]`)];

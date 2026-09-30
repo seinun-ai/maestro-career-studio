@@ -595,3 +595,22 @@ def test_a_group_deep_under_an_intro_paragraph_asks_nothing(page, load):
 def test_a_group_asked_by_the_text_before_it_reports_the_preceding_source(page, load):
     load(page, fixture_html("gem_form.html"))
     assert {f["source"] for f in fields(page) if f["shape"] == "group"} == {"preceding"}
+
+
+def _work_entry(n, hidden=False):
+    return (f"<div role=group aria-labelledby=we{n}{' hidden' if hidden else ''}><h4 id=we{n}>Work Experience {n}</h4>"
+            f"<label for=t{n}>Job Title</label><input id=t{n}>"
+            f"<div><input type=checkbox name=currentlyWorkHere id=c{n}><label for=c{n}>I currently work here</label>"
+            "</div></div>")
+
+
+@pytest.mark.parametrize("prototype", [False, True], ids=["two-entries", "hidden-prototype"])
+def test_same_name_checkboxes_in_separate_entries_are_each_their_own_box(page, load, prototype):
+    """Live Workday (CarMax, 2026-09-30) names every entry's "I currently work
+    here" box `currentlyWorkHere`: a checkbox's same-name members are its own
+    group's, never a set spanning entries asked by the entry's title."""
+    load(page, "<div role=group aria-label='Work Experience'>" + (_work_entry(0, hidden=True) if prototype else "")
+         + _work_entry(1) + _work_entry(2) + "</div>")
+    boxes = [f for f in fields(page) if f["shape"] == "group"]
+    assert [(f["question"], [o["text"] for o in f["options"]], f["multi"], f["repeatIndex"]) for f in boxes] == [
+        ("I currently work here", ["Yes", "No"], False, 0), ("I currently work here", ["Yes", "No"], False, 1)]

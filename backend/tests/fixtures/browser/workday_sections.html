@@ -71,7 +71,8 @@
     const id = `${slug(entry)}-current`;
     const box = document.createElement("div");
     box.setAttribute("data-automation-id", "formField-currentlyWorkHere");
-    box.innerHTML = `<input type="checkbox" id="${id}"><label for="${id}">I currently work here</label>`;
+    // Every entry's box has the SAME name (live CarMax, 2026-09-30).
+    box.innerHTML = `<input type="checkbox" name="currentlyWorkHere" id="${id}"><label for="${id}">I currently work here</label>`;
     const tick = box.querySelector("input");
     let to = null;
     tick.addEventListener("change", () => {

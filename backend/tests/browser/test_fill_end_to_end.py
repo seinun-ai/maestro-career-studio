@@ -86,7 +86,11 @@ DRIVER = """(spec) => {
     }
     return frames;
   };
-  const factOf = (question, item) => item ?? spec.map[question]?.value;
+  // The fact a /pick or /step names: its set item, else the value scripted
+  // for its question, else the value /map gave its slot (two entries asking
+  // one question are scripted by "<section>/<question>", each its own slot).
+  const factOf = (body) => body.item ?? spec.map[body.question]?.value
+    ?? Object.values(spec.map).find((m) => body.slot && m.slot === body.slot)?.value;
   const named = (candidates, text) => candidates.find((c) => c.mid.startsWith("click:")
     && typeof text === "string" && c.describe.includes(JSON.stringify(text)));
   const click = (c) => ({ mid: c.mid, reason: c.describe.startsWith("Open the group") ? "progress" : "matched" });
@@ -109,14 +113,14 @@ DRIVER = """(spec) => {
       return { picks: Object.fromEntries(body.fields.map((f) => {
         // `picks[question]`: { text, reason } for a field with no fact (a low-stakes one).
         const scripted = spec.picks?.[f.question];
-        const fact = scripted ? scripted.text : factOf(f.question, f.item);
+        const fact = scripted ? scripted.text : factOf(f);
         const o = f.options.find((one) => one.text === fact);
         return [f.fid, o ? { oids: [o.oid], reason: scripted?.reason ?? "matched" } : { oids: [], reason: "abstained" }];
       })) };
     }
     if (path === "/api/autofill/step") {
       const c = body.candidates;
-      const hit = named(c, factOf(body.question, body.item))
+      const hit = named(c, factOf(body))
         ?? (c.some((one) => one.mid === "search:value") ? null : named(c, spec.categories[body.question]));
       if (hit) return click(hit);
       for (const mid of ["search:value", "open"]) {
@@ -416,6 +420,24 @@ def test_currently_employed_is_ticked_before_the_dates(e2e_page):
     assert not any(r["status"] == "stale" or r["lastOutcome"] == "stale" for r in out["report"]["fields"])
     for question in ("I currently work here", "Job Title", "Company", "From"):
         assert out["by_question"][question]["status"] == "verified", out["by_question"][question]
+
+
+def test_only_the_current_jobs_entry_has_currently_work_here_ticked(e2e_page):
+    """Live Workday names every entry's box `currentlyWorkHere` (CarMax,
+    2026-09-30): each entry's box is still its own question, so job #1 (the
+    current one) is ticked and job #2 is not."""
+    page = e2e_page
+    slot = lambda s, v: {"route": "slot", "slot": s, "value": v}  # noqa: E731
+    out = _run(page, fixtures=["workday_sections.html"],
+               kinds={"Work Experience": {"kind": "experience", "wanted": 2, "order": [0, 1]}},
+               map={"Work Experience 1/I currently work here": slot("experience.0.current", "Yes"),
+                    "Work Experience 2/I currently work here": slot("experience.1.current", "No")})
+    assert oracle(page, "entries")["Work Experience"] == 2
+    assert oracle(page, "Work Experience 1/I currently work here") is True
+    assert page.evaluate("window.__oracle['Work Experience 2/I currently work here'] ?? false") is False
+    assert not page.locator("#Work-Experience-2-current").is_checked()
+    ticks = {r["section"]: r["status"] for r in out["report"]["fields"] if r["question"] == "I currently work here"}
+    assert ticks["Work Experience 1"] == "verified", ticks
 
 
 def test_the_loop_adds_the_entries_the_profile_can_fill_and_fills_them(e2e_page):
