@@ -542,7 +542,11 @@ def test_the_map_cases_hold_the_live_wrong_writes():
     # Service questions are not the protected-veteran self-identification.
     for case in ("military-served", "military-spouse", "military-guard-reserve"):
         assert by_id[case]["expected"] == ["none"], case
-    assert by_id["terms-and-conditions"]["expected"] == ["derived.agrees_to_terms"]
+    for case in ("terms-and-conditions", "background-check-consent", "certify-true"):
+        assert by_id[case]["expected"] == ["derived.agrees_to_terms"], case
+    # Not an agreement: a willingness question, and optional opt-ins (the low-stakes setting's).
+    for case in ("agree-to-relocate", "sms-opt-in", "talent-community"):
+        assert "derived.agrees_to_terms" not in by_id[case]["expected"], case
     facts = ev.map_case_facts(MAPS)
     assert "personal.address_2" not in facts   # line 2 has nowhere to go but none
     assert facts["personal.phone"].describe == describe_of("personal.phone")

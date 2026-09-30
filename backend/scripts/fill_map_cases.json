@@ -29,6 +29,14 @@
     {"id": "military-guard-reserve", "question": "Are you currently a member of the National Guard or Reserves?",
      "shape": "group", "expected": ["none"]},
     {"id": "terms-and-conditions", "question": "Yes, I have read and consent to all the terms and conditions",
-     "shape": "group", "expected": ["derived.agrees_to_terms"]}
+     "shape": "group", "expected": ["derived.agrees_to_terms"]},
+    {"id": "background-check-consent", "question": "I consent to a background check", "shape": "group",
+     "expected": ["derived.agrees_to_terms"]},
+    {"id": "certify-true", "question": "I certify the information is true", "shape": "group",
+     "expected": ["derived.agrees_to_terms"]},
+    {"id": "agree-to-relocate", "question": "Do you agree to relocate?", "shape": "group", "expected": ["none"]},
+    {"id": "sms-opt-in", "question": "I agree to receive text messages about my application", "shape": "group",
+     "expected": ["none"]},
+    {"id": "talent-community", "question": "Join our talent community", "shape": "group", "expected": ["none"]}
   ]
 }

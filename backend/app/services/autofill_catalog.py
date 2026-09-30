@@ -95,9 +95,14 @@ _DESCRIBES: dict[str, str] = {
     "derived.earliest_start_date": "the earliest date you can start, as a calendar date",
     "derived.previously_employed_here": ("works, or has worked, for this company (from the work history: "
                                          "currently or previously)"),
-    "derived.agrees_to_terms": ("agrees to the application's terms and conditions, privacy notice, "
-                                "acknowledgements and similar agreements (yes/no; only when the applicant "
-                                "allowed the Companion to fill agreements)"),
+    # Owner rules (2026-09-30): a background-check authorization is a consent
+    # the agreement permission covers; optional opt-ins belong to the separate
+    # low-stakes setting, which this fact must not widen.
+    "derived.agrees_to_terms": ("agrees to the application's own terms and conditions, privacy notice, "
+                                "certification, acknowledgement and background-check authorization statements "
+                                "(yes/no; never an optional opt-in to texts, marketing, job alerts or a talent "
+                                "community, and never a question about the applicant's willingness or "
+                                "circumstances)"),
     "skills": "applicant skills (a list)",
 }
 # "Are you a US citizen?", from every status the profile can store: only a
@@ -375,7 +380,8 @@ def with_agreement(facts: dict[str, Fact], agrees: bool) -> dict[str, Fact]:
     Companion's to fill). Without it there is no such fact at all."""
     if agrees is not True:
         return facts
-    return dict(list({**facts, AGREES_TO_TERMS: make_fact(AGREES_TO_TERMS, "Yes")}.items())[:MAX_SLOTS])
+    # Inside the cap: a full catalog gives up its last fact, never this one.
+    return dict(list(facts.items())[:MAX_SLOTS - 1]) | {AGREES_TO_TERMS: make_fact(AGREES_TO_TERMS, "Yes")}
 
 
 def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str], *,

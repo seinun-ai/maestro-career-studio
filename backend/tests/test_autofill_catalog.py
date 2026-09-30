@@ -478,5 +478,22 @@ def test_agreeing_to_terms_is_a_fact_only_with_the_agreement_permission():
     assert AGREES not in derived({}) and AGREES not in cat.with_agreement(derived({}), False)
     fact = cat.with_agreement(derived({}), True)[AGREES]
     assert (fact.value, fact.yes_no, fact.policy) == ("Yes", True, "exact")
-    assert fact.describe.startswith("agrees to the application's terms")
     assert not re.search(r"\b(status|type|kind)\b", fact.describe, re.IGNORECASE)
+
+
+def test_agreeing_to_terms_covers_the_applications_own_statements_and_no_optional_opt_in():
+    """Owner rules (2026-09-30): background-check authorization is a consent
+    the permission covers; texts, marketing, job alerts and a talent
+    community are the low-stakes setting's, never this fact's."""
+    described = cat.with_agreement(derived({}), True)[AGREES].describe
+    assert described.startswith("agrees to the application's own terms and conditions")
+    for covered in ("privacy notice", "certification", "acknowledgement", "background-check authorization"):
+        assert covered in described, covered
+    for never in ("texts", "marketing", "job alerts", "talent community", "willingness or circumstances"):
+        assert never in described.split("never", 1)[1], never
+
+
+def test_the_agreement_fact_survives_a_catalog_at_its_cap():
+    full = {f"custom.{i}": cat.make_fact(f"custom.{i}", "x", "saved answer") for i in range(cat.MAX_SLOTS)}
+    got = cat.with_agreement(full, True)
+    assert len(got) == cat.MAX_SLOTS and AGREES in got

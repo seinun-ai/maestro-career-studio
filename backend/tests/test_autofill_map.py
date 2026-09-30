@@ -472,6 +472,21 @@ def test_a_terms_checkbox_maps_to_agreeing_to_terms(db_session, monkeypatch):
                                    eeo_consented=False, low_stakes=False)["t"].route == "none"
 
 
+@pytest.mark.usefixtures("jev_on")
+def test_a_background_check_consent_is_the_agreement_fact_or_nobodys(db_session, monkeypatch):
+    """With the permission on, a background-check authorization box has a fact
+    that answers it, so the protected sentinel ("…that none of the listed
+    facts answers") no longer fits. If the model still names the sentinel, the
+    box stays the user's: never a low-stakes guess, whatever the setting."""
+    box = "I authorize a background check"
+    facts = autofill_catalog.with_agreement(autofill_catalog.build({}, [], []), True)
+    for picked, route in (("derived.agrees_to_terms", "slot"), (autofill_map.PROTECTED_UNANSWERED, "none")):
+        fake_jev(monkeypatch, {"b": (picked, 0.95)}, noul={"b": 0.99})
+        got = autofill_map.map_fields([field("b", box, "group", options=["Yes", "No"])], facts, db_session,
+                                      eeo_consented=False, low_stakes=True)["b"]
+        assert got.route == route, picked
+
+
 # ---------- entry placement: the model reads entries in page order, code places them
 
 
