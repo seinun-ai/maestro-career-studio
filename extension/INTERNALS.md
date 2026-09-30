@@ -483,19 +483,23 @@ know, and each one was learned from a live failure.
   anything whose words, name or automation id say delete, remove or trash
   (a button with no type counts outside a form; inside one it would submit).
   Entries are PLACED before anything is added: an entry already holding data
-  is matched to the profile job, school or language it holds (on the
-  employer, and the title when two jobs share an employer, the school, or
-  the language, ignoring case and punctuation, and for an employer its
-  company suffix such as Inc, LLC, Ltd, Corp, Co and GmbH); empty entries,
+  is matched to the profile job, school, language or website it holds (on the
+  employer, and the title when two jobs share an employer, the school, the
+  language, or the URL, ignoring case and punctuation, for an employer its
+  company suffix such as Inc, LLC, Ltd, Corp, Co and GmbH, and for a URL its
+  scheme, `www.`, trailing slash and #fragment); a Websites entry's profile
+  entries are your website, then your GitHub, whichever you have; empty entries,
   then added ones, take the profile entries no entry holds, in order. /map
   is told each field's place (`profile_entry`) and writes that profile
   entry's facts there, whatever order the page's entries are in — so
   an empty entry above a pre-filled job #1 gets job #2, never job #1 again,
-  and a job the resume parser dropped is added in its own place. An entry
+  a job the resume parser dropped is added in its own place, and Websites 2
+  gets your GitHub even when the model reads both entries' "URL" as your
+  website (live Workday left that entry empty and required, 2026-09-30). An entry
   holding something the profile does not have may be a profile job spelled
   another way, so its whole section is left to you: nothing placed, nothing
   added, and the report says so. Two entries holding the same one add
-  nothing. When two sections read as one job, school or language list (a
+  nothing. When two sections read as one job, school, language or website list (a
   "Volunteer Experience" misread above the real Work Experience), which one
   is misread cannot be told, so neither is placed and neither grows: both
   are left to you, and the report says so for each, naming the other

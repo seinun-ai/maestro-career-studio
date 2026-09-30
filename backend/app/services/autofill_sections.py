@@ -16,9 +16,10 @@ fact catalog here, so no value leaves the machine.
 
 PLACED BY WHAT THE ENTRIES HOLD. An entry already holding data keeps it, and
 is matched to the profile entry it holds — on the employer (a job; and its
-title, when two jobs share an employer), the school or the language,
-normalized by `name_key` (case and punctuation; the company suffixes it drops,
-Inc or LLC, matter only for an employer). Empty entries (and entries to add)
+title, when two jobs share an employer), the school, the language or the
+URL (a website: the profile's website, then its GitHub), normalized by
+`name_key` (case and punctuation; the company suffixes it drops, Inc or LLC,
+matter only for an employer) or, for a URL, `url_key`. Empty entries (and entries to add)
 take the profile entries no entry holds, lowest first, in page order. `order`
 says so per entry, and /map writes each entry's facts from ITS profile entry
 (`MapField.profile_entry`), so an entry pre-filled out of profile order is
@@ -45,7 +46,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import PageSection, SectionKind, SectionPlan
 from app.services import jev, llm, model_settings
-from app.services.autofill_catalog import Fact, name_key
+from app.services.autofill_catalog import Fact, name_key, url_key, websites
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, SLOT_FLOOR
 from app.services.autofill_map import fast_json
 
@@ -67,9 +68,6 @@ KINDS: dict[SectionKind, str] = {
 # "I am fluent in this language." box is not.
 _NEEDS: dict[str, tuple[str, ...]] = {"experience": ("employer", "title"), "education": ("school",),
                                       "languages": ("language", "read", "speak", "write")}
-# One entry each, when the profile holds it. LinkedIn is not here: it has its
-# own box (Social Network URLs), never a Websites entry.
-_WEBSITES = ("personal.website", "personal.github")
 _LLM_PROMPT = """You classify the repeating sections of a job-application form. {rule}
 Return JSON {{"sections": {{"<section id>": {{"key": "<key>", "confidence": <0..1>}}}}}} using ONLY these keys:
 {kinds}
@@ -78,26 +76,35 @@ Sections:
 """
 
 
-def wanted(kind: str, facts: dict[str, Fact]) -> int:
-    """How many entries of a kind NOT placed by profile entry the profile can
-    fill (jobs, schools and languages are counted by `plan`, from their
-    placement). Certifications have no facts yet, so none is ever added."""
-    if kind == "websites":
-        return sum(slot in facts for slot in _WEBSITES)
-    return 0
-
-
 # What names a profile entry, per kind: the value an entry holding it must show.
+# A Websites entry is named by its URL: profile entry k is the k-th URL the
+# profile holds (`autofill_catalog.websites`), so the kinds placed by profile
+# entry are these and websites. Certifications have no facts yet: none is added.
 _NAMED_BY = {"experience": "employer", "education": "school", "languages": "language"}
+PLACED = (*_NAMED_BY, "websites")
 
 
 def _entries(kind: str, facts: dict[str, Fact]) -> list[int]:
     """The profile's entries of `kind`, by catalog index."""
+    if kind == "websites":
+        return list(range(len(websites(facts))))
     return sorted({int(m[1]) for slot in facts if (m := re.fullmatch(rf"{kind}\.(\d+)\..+", slot))})
 
 
+def _names(kind: str, facts: dict[str, Fact]) -> list[tuple[int, str]]:
+    """Each profile entry of `kind` that has a name, with its name."""
+    if kind == "websites":
+        return [(k, str(facts[slot].value)) for k, slot in enumerate(websites(facts))]
+    return [(i, str(name.value)) for i in _entries(kind, facts)
+            if (name := facts.get(f"{kind}.{i}.{_NAMED_BY[kind]}")) is not None]
+
+
+def _key(kind: str, text: str) -> str:
+    return url_key(text) if kind == "websites" else name_key(text)
+
+
 def _complete(kind: str, i: int, facts: dict[str, Fact]) -> bool:
-    return all(f"{kind}.{i}.{need}" in facts for need in _NEEDS[kind])
+    return all(f"{kind}.{i}.{need}" in facts for need in _NEEDS.get(kind, ()))
 
 
 def _match(kind: str, values: set[str], facts: dict[str, Fact], taken: set[int]) -> int | None:
@@ -106,11 +113,9 @@ def _match(kind: str, values: set[str], facts: dict[str, Fact], taken: set[int])
     every hit is taken, a TAKEN one is returned — not None — so the caller
     sees a second holding of one entry (a duplicate) rather than a foreign
     entry. None: the profile has no such entry."""
-    key = _NAMED_BY[kind]
     hits = []
-    for i in _entries(kind, facts):
-        name = facts.get(f"{kind}.{i}.{key}")
-        if name is None or name_key(str(name.value)) not in values:
+    for i, name in _names(kind, facts):
+        if _key(kind, name) not in values:
             continue
         # Two profile jobs at one employer: the employer cannot say which one
         # the entry holds, so its title must match too.
@@ -144,7 +149,7 @@ def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> Placement:
         if not ((section.filled[j] if j < len(section.filled) else False) or values):
             continue
         # A value that normalizes to nothing ("Inc.") names nothing.
-        i = _match(kind, {name_key(v) for v in values} - {""}, facts, taken)
+        i = _match(kind, {_key(kind, v) for v in values} - {""}, facts, taken)
         foreign = foreign or i is None
         if i is None or i in taken:
             held[j] = None
@@ -220,15 +225,15 @@ def plan(sections: list[PageSection], facts: dict[str, Fact], session: Session) 
         picked = _with_llm(sections, session)
     kinds = {s.sid: kind if p >= SLOT_FLOOR else NONE for s in sections
              for kind, p in [picked.get(s.sid, (NONE, 0.0))]}
-    twice = {k for k in _NAMED_BY if sum(kind == k for kind in kinds.values()) > 1}
+    twice = {k for k in PLACED if sum(kind == k for kind in kinds.values()) > 1}
     out = {}
     for s in sections:
         kind = kinds[s.sid]
         if kind in twice:
             out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="ambiguous_kind", order=[None] * s.entries)
             continue
-        if kind not in _NAMED_BY:
-            out[s.sid] = SectionPlan(kind=kind, wanted=wanted(kind, facts))
+        if kind not in PLACED:
+            out[s.sid] = SectionPlan(kind=kind, wanted=0)
             continue
         placed = place(s, kind, facts)
         # Added entries take the free profile entries that hold every fact an

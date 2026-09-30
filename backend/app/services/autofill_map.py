@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import EntryKind, Format, MapField, Mapped
 from app.services import jev, llm, model_settings
-from app.services.autofill_catalog import Fact
+from app.services.autofill_catalog import Fact, websites
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_FLOOR
 from app.services.autofill_slots import FREE_TEXT, NO_SLOT
 
@@ -370,12 +370,21 @@ def _foreign(field: MapField) -> bool:
     return "profile_entry" in field.model_fields_set and field.profile_entry is None
 
 
-def _placed_key(field: MapField, key: str) -> str | None:
+def _placed_key(field: MapField, key: str, facts: dict[str, Fact]) -> str | None:
     """Where an entry sits in the profile is code's (/sections matched what the
-    entries hold), never the model's: an entry fact's number becomes the
-    entry's `profile_entry`, whatever number the model chose. None: a fact of
-    another kind than the section holds, or a language fact outside a placed
-    Languages entry."""
+    entries hold), never the model's. In a placed Websites entry a URL is the
+    profile's `profile_entry`-th URL, whichever one the model chose (None past
+    the profile's); any other fact is placed by `_placed_entry_key`."""
+    urls = websites(facts)
+    if key in urls and field.entry_kind == "websites" and field.profile_entry is not None:
+        return urls[field.profile_entry] if field.profile_entry < len(urls) else None
+    return _placed_entry_key(field, key)
+
+
+def _placed_entry_key(field: MapField, key: str) -> str | None:
+    """An entry fact's number becomes the entry's `profile_entry`, whatever
+    number the model chose. None: a fact of another kind than the section
+    holds, or a language fact outside a placed Languages entry."""
     m = _ENTRY.fullmatch(key)
     # A language fact means nothing without its language: only a placed Languages entry's field gets one.
     if m is not None and m[1] == "languages" and field.entry_kind != "languages":
@@ -394,7 +403,7 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
         return Mapped(route="none")
     key, p = picked
     if key in facts and p >= _floor(facts[key]):
-        key = _placed_key(field, key)
+        key = _placed_key(field, key, facts)
         if key is None or key not in facts:
             return Mapped(route="none")
         value = facts[key].value

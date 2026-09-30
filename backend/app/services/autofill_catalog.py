@@ -115,6 +115,30 @@ def name_key(text: str) -> str:
     return key[4:] if key.startswith("the ") else key
 
 
+# The URLs a Websites entry holds, one entry each, in this order: profile
+# entry k of a Websites section is the k-th of them the profile holds
+# (`websites`). LinkedIn is not here: it has its own box, never an entry.
+WEBSITES = ("personal.website", "personal.github")
+_URLISH = re.compile(r"(?:https?://)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?::(\d+))?(/[^\s#]*)?(?:#\S*)?",
+                     re.IGNORECASE)
+
+
+def url_key(text: str) -> str:
+    """A URL as one key: no scheme, leading `www.`, host case, default port,
+    trailing slash or #fragment (the Companion's `asUrl`, shared/fill-loop.js).
+    Anything else is its `name_key`."""
+    m = _URLISH.fullmatch(text.strip())
+    if m is None:
+        return name_key(text)
+    port = f":{m[2]}" if m[2] and m[2] not in ("80", "443") else ""
+    return f"{m[1].lower()}{port}{(m[3] or '').rstrip('/')}"
+
+
+def websites(facts: dict[str, "Fact"]) -> list[str]:
+    """The Websites slots the profile holds, in entry order."""
+    return [slot for slot in WEBSITES if slot in facts]
+
+
 @dataclass(frozen=True)
 class Fact:
     slot: str

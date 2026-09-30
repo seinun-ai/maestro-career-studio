@@ -476,7 +476,37 @@ def test_an_entry_fact_of_another_kind_than_its_section_is_none(db_session, monk
                                   eeo_consented=True, low_stakes=False)["a"]
     assert got.slot == "personal.city"
     with pytest.raises(ValueError):
-        field("a", "Q", profile_entry=0, entry_kind="websites")
+        field("a", "Q", profile_entry=0, entry_kind="certifications")
+
+
+SITES = autofill_catalog.build({"personal": {"website": "https://ada.dev", "github": "https://github.com/ada"}},
+                               [{"employer": "Acme", "title": "Analyst"}], [])
+
+
+def site(db_session, monkeypatch, picked, facts=SITES, **kw):
+    fake_jev(monkeypatch, {"a": (picked, 0.9)})
+    return autofill_map.map_fields([field("a", "URL", section="Websites 2", repeat_index=1, **kw)], facts,
+                                   db_session, eeo_consented=True, low_stakes=False)["a"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_websites_entry_is_placed_at_the_url_its_profile_entry_names(db_session, monkeypatch):
+    """Live CarMax (2026-09-30): /map read both Websites entries' "URL" as the
+    website, and the second was left empty. Websites entry k takes the k-th URL
+    the profile holds (website, then GitHub), whichever URL the model chose."""
+    got = site(db_session, monkeypatch, "personal.website", profile_entry=1, entry_kind="websites")
+    assert (got.route, got.slot, got.value) == ("slot", "personal.github", "https://github.com/ada")
+    got = site(db_session, monkeypatch, "personal.github", profile_entry=0, entry_kind="websites")
+    assert (got.slot, got.value) == ("personal.website", "https://ada.dev")
+    # Only a GitHub: it is entry 0, and there is no entry 1.
+    github_only = autofill_catalog.build({"personal": {"github": "https://github.com/ada"}}, [], [])
+    got = site(db_session, monkeypatch, "personal.github", github_only, profile_entry=0, entry_kind="websites")
+    assert (got.slot, got.value) == ("personal.github", "https://github.com/ada")
+    assert site(db_session, monkeypatch, "personal.github", github_only, profile_entry=1,
+                entry_kind="websites").route == "none"
+    # A job's fact is no website's; a website outside a placed Websites entry keeps its own slot.
+    assert site(db_session, monkeypatch, "experience.0.title", profile_entry=0, entry_kind="websites").route == "none"
+    assert site(db_session, monkeypatch, "personal.github").slot == "personal.github"
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -552,7 +582,7 @@ def test_entry_kinds_are_defined_once():
 
     for kind in get_args(EntryKind):
         assert autofill_map._ENTRY.fullmatch(f"{kind}.3.title")
-    assert not autofill_map._ENTRY.fullmatch("websites.0.url")
+    assert "websites" in get_args(EntryKind)
 
 
 @pytest.mark.usefixtures("jev_on")

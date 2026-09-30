@@ -97,6 +97,11 @@ DRIVER = """(spec) => {
   const api = async (path, init) => {
     const body = init?.body ? JSON.parse(init.body) : null;
     posts.push({ path: path.split("?")[0], body });
+    // `backend`: /sections and /map are the REAL services (`real_backend`),
+    // with only their model calls scripted.
+    if (spec.backend && ["/api/autofill/map", "/api/autofill/sections"].includes(path)) {
+      return window.__backend(path, body);
+    }
     if (path.startsWith("/api/autofill/context")) return { eeo_consent: { consent_forms: spec.consentForms === true } };
     if (path === "/api/autofill/map") {
       if (spec.holdMap && !window.__mapHeld) {
@@ -145,6 +150,31 @@ DRIVER = """(spec) => {
     .then((report) => ({ report, sent, posts, ms: Date.now() - t0, book: book.current }));
   return true;
 }"""
+
+
+def real_backend(page, monkeypatch, facts, kinds, keys):
+    """Serve /sections and /map from the real services over `facts` (run with
+    `backend=True`): code places entries and routes facts as production does,
+    and only the model is scripted — `kinds` by heading, `keys` (the fact a
+    field's label names, or none) by question."""
+    from app.schemas.autofill_fill import MapResponse, SectionsResponse
+    from app.services import autofill_map, autofill_sections, model_settings
+
+    monkeypatch.setattr(model_settings, "get_autofill_engine", lambda session: "fast")
+    monkeypatch.setattr(autofill_sections, "_with_llm", lambda sections, session: {
+        s.sid: (kinds.get(s.heading, "none"), 0.95) for s in sections})
+    monkeypatch.setattr(autofill_map, "_with_llm", lambda fields, criteria, session, *a, **kw: {
+        f.fid: (keys.get(f.question, "none"), 0.95) for f in fields})
+
+    def serve(path, body):
+        if path == "/api/autofill/sections":
+            req = MODELS[path].model_validate(body)
+            return SectionsResponse(sections=autofill_sections.plan(req.sections, facts, None)).model_dump(mode="json")
+        req = MODELS[path].model_validate(body)
+        return MapResponse(fields=autofill_map.map_fields(req.fields, facts, None, eeo_consented=False,
+                                                          low_stakes=False)).model_dump(mode="json")
+
+    page.expose_function("__backend", serve)
 
 
 def _page_of(fixtures) -> str:
@@ -452,7 +482,7 @@ def test_the_loop_adds_the_entries_the_profile_can_fill_and_fills_them(e2e_page)
     out = _run(page, fixtures=["workday_sections.html"],
                kinds={"Work Experience": {"kind": "experience", "wanted": 2, "order": [0, 1]},
                       "Education": {"kind": "education", "wanted": 1, "order": [0]},
-                      "Websites": {"kind": "websites", "wanted": 1}},
+                      "Websites": {"kind": "websites", "wanted": 1, "order": [0]}},
                map={"Work Experience 1/Job Title": text("experience.0.title", "Analyst"),
                     "Work Experience 1/Company": text("experience.0.employer", "Acme"),
                     "Work Experience 2/Job Title": text("experience.1.title", "Intern"),

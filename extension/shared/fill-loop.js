@@ -67,15 +67,15 @@
  *   (/sections `order`, matched on what the entries hold): /map is told it
  *   per field (`profile_entry`, with the section's `entry_kind`; null places
  *   nothing there), so an empty entry before a pre-filled one is never given
- *   the job the page already shows. Two sections of one job, school or
- *   language kind are BOTH left alone (`ambiguous_kind`): which one is
+ *   the job the page already shows. Two sections of one job, school,
+ *   language or website kind are BOTH left alone (`ambiguous_kind`): which one is
  *   misread cannot be told. An order that cannot be read, or a section whose entry titles do
  *   not run 1..N in page order (the backend places by place, the loop finds
  *   an entry by its title's number), leaves the section alone (`unplaced`:
  *   nothing written, nothing added, a report line) — never page order. A
  *   section with no placement at all (/sections failed, the heading read as
  *   none) keeps page order only while every entry is empty; one holding data
- *   leaves the section alone too, as does a job, school or language section
+ *   leaves the section alone too, as does a job, school, language or website section
  *   with no order at all. Only a kind's placed first section adds entries; one left
  *   alone still spends its kind. One holding data keeps it (`already`).
  *   Each press is a deliberate write, not a trial: once per wanted entry,
@@ -167,8 +167,9 @@
   const SECTION_KINDS = new Set(["experience", "education", "languages", "websites", "certifications"]);
   // Mirrors of app/schemas/autofill_fill.py's EntryKind and MAX_ENTRY_INDEX
   // (pinned by test_the_loops_entry_limits_mirror_the_backends): the kinds
-  // whose entries are placed by profile entry, and the highest entry index.
-  const PLACED_KINDS = new Set(["experience", "education", "languages"]);
+  // whose entries are placed by profile entry (a Websites entry k is the
+  // profile's k-th URL: website, then GitHub), and the highest entry index.
+  const PLACED_KINDS = new Set(["experience", "education", "languages", "websites"]);
   const MAX_ENTRY_INDEX = 20;
   const entryIndex = (n) => Math.min(Math.max(Number(n) || 0, 0), MAX_ENTRY_INDEX);
   const MAX_HELD = 10;
@@ -1281,7 +1282,7 @@
     const plans = new Map(); // sectionKey -> { kind, wanted, reason, order }
     // sectionKey -> { kind, order }: the profile entry each entry holds or is
     // given (/sections `order`; null: place nothing there). Decided once per
-    // section. Two sections read as one job, school or language kind (a
+    // section. Two sections read as one job, school, language or website kind (a
     // misread "Volunteer Experience") are both left alone (`ambiguous_kind`);
     // otherwise a later section of a kind already placed is placed nowhere.
     // { kind: null, order: null }: the section is LEFT ALONE — nothing written
@@ -1289,7 +1290,7 @@
     // order cannot be read, when its entry titles do not run 1..N in page
     // order (the backend places entries by their place on the page, the loop
     // finds a field's entry by its title's number: "1, 3" would give an empty
-    // entry the next one's job), when it is a job, school or language section
+    // entry the next one's job), when it is a job, school, language or website section
     // the response gave no order, or when it has no placement at all (/sections
     // failed or hung, the heading read as none) and an entry held data. With
     // no placement and every entry empty, page order is safe and stands.
@@ -1364,7 +1365,7 @@
       const seen = await readSections();
       if (!seen.length) return false;
       await planSections(seen);
-      // Two sections of one job, school or language kind (a "Volunteer
+      // Two sections of one job, school, language or website kind (a "Volunteer
       // Experience" misread above the real Work Experience): which one is
       // misread cannot be told, so NEITHER is placed or grows — both are left
       // to the user (`ambiguous_kind`), as is one that appears after its kind
@@ -1400,7 +1401,7 @@
         if (placed) placedKinds.add(plan.kind);
         if (placed && first) kindHeading.set(plan.kind, s.heading);
         const unreadable = placed && (plan.order === null || !numberedInStep(s));
-        // A job, school or language section with no order is never page order,
+        // A job, school, language or website section with no order is never page order,
         // held data or not (an Add by page order could pair a new entry with a
         // profile entry missing a required fact); any other unplaced section
         // is, while every entry is empty.

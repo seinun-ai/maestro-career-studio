@@ -14,10 +14,11 @@ decisions of 2026-09-27, and their tests pass as written.
 
 import pytest
 
+from app.services import autofill_catalog
 from tests.browser.conftest import fixture_html
 from tests.browser.pages import list_shown, oracle
 from tests.browser.test_fill_core import apply, explore, inv
-from tests.browser.test_fill_end_to_end import _run
+from tests.browser.test_fill_end_to_end import _run, real_backend
 from tests.browser.test_fill_loop import JOBS, actions, adds, bodies, f, opt, row, run, section, site, statuses, work
 
 
@@ -341,16 +342,18 @@ def test_a_second_section_of_a_kind_placed_in_an_earlier_round_is_left_alone(pag
 # ---------- two Websites entries
 
 
-def test_two_website_entries_are_added_and_each_gets_its_own_fact(e2e_page):
-    """workday_sections.html through the real handlers: the profile has a
-    website and a GitHub; Websites shows no entry. Two presses of its own Add,
-    one fact in each entry."""
+SITES = autofill_catalog.build({"personal": {"website": "https://ada.dev", "github": "https://github.com/ada"}}, [], [])
+
+
+def test_two_website_entries_are_added_and_each_gets_its_own_fact(e2e_page, monkeypatch):
+    """workday_sections.html through the real handlers and the real /sections
+    and /map: the profile has a website and a GitHub; Websites shows no entry.
+    Two presses of its own Add, one URL in each entry — although the model
+    reads both entries' "URL" as the website (live CarMax, 2026-09-30: entry 2
+    was left empty and required)."""
     page = e2e_page
-    text = lambda slot, value: {"route": "slot", "slot": slot, "value": value}  # noqa: E731
-    out = _run(page, fixtures=["workday_sections.html"],
-               kinds={"Websites": {"kind": "websites", "wanted": 2}},
-               map={"Websites 1/URL": text("personal.website", "https://ada.dev"),
-                    "Websites 2/URL": text("personal.github", "https://github.com/ada")})
+    real_backend(page, monkeypatch, SITES, kinds={"Websites": "websites"}, keys={"URL": "personal.website"})
+    out = _run(page, fixtures=["workday_sections.html"], backend=True)
     assert oracle(page, "entries")["Websites"] == 2 and oracle(page, "deleted") == 0
     assert (oracle(page, "Websites 1/URL"), oracle(page, "Websites 2/URL")) == ("https://ada.dev", "https://github.com/ada")
     assert [(m["heading"], m["entries"]) for m in out["sent"] if m["type"] == "fill_add"] == [
@@ -365,7 +368,7 @@ def test_one_website_fact_mapped_to_both_entries_is_written_once(e2e_page):
     page = e2e_page
     same = {"route": "slot", "slot": "personal.website", "value": "https://ada.dev"}
     out = _run(page, fixtures=["workday_sections.html"],
-               kinds={"Websites": {"kind": "websites", "wanted": 2}},
+               kinds={"Websites": {"kind": "websites", "wanted": 2, "order": [0, 1]}},
                map={"Websites 1/URL": same, "Websites 2/URL": same})
     assert oracle(page, "Websites 1/URL") == "https://ada.dev"
     assert page.evaluate("'Websites 2/URL' in window.__oracle") is False   # never committed
@@ -375,7 +378,7 @@ def test_one_website_fact_mapped_to_both_entries_is_written_once(e2e_page):
 
 def test_two_websites_entries_scripted_take_one_fact_each(page, load):
     out = run(page, load, frames=[[site(1), site(2)]], sections=[[section("f-s2", "Websites", 2)]],
-              kinds={"f-s2": {"kind": "websites", "wanted": 2}},
+              kinds={"f-s2": {"kind": "websites", "wanted": 2, "order": [0, 1]}},
               map={"u1": {"route": "slot", "slot": "personal.website", "value": "https://ada.dev"},
                    "u2": {"route": "slot", "slot": "personal.github", "value": "https://github.com/ada"}})
     assert adds(out) == [] and statuses(out) == {"u1": "verified", "u2": "verified"}

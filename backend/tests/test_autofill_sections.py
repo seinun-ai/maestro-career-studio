@@ -82,10 +82,10 @@ def test_sections_maps_headings_to_profile_lists(db_session, monkeypatch):
         "l": ("languages", 1), "c": ("certifications", 0),
         "x": ("none", 0),
     }
-    # Jobs, schools and languages are placed entry by entry (the page's one
-    # entry, then the one to add); other lists name no entry, so nothing is placed.
+    # Jobs, schools, languages and websites are placed entry by entry (the
+    # page's one entry, then the one to add); other lists name no entry.
     assert {sid: p.order for sid, p in got.items()} == {
-        "w": [0, 1], "e": [0, 2], "s": None, "l": [0], "c": None, "x": None}
+        "w": [0, 1], "e": [0, 2], "s": [0, 1], "l": [0], "c": None, "x": None}
     [call] = calls
     assert set(call["questions"]) == set(HEADINGS)
     q = call["questions"]["w"]
@@ -365,9 +365,13 @@ def test_unreadable_fast_json_is_every_section_none(db_session, monkeypatch):
     assert (got["w"].kind, got["w"].wanted) == ("none", 0)
 
 
-def test_no_profile_entries_want_nothing():
+@pytest.mark.usefixtures("jev_on")
+def test_no_profile_entries_want_nothing(db_session, monkeypatch):
     facts = autofill_catalog.build({"personal": {"linkedin": "https://linkedin.com/in/ada"}}, [], [])
-    assert [autofill_sections.wanted(k, facts) for k in autofill_sections.KINDS] == [0] * 6
+    fake_jev(monkeypatch, {kind: (kind, 0.9) for kind in autofill_sections.KINDS})
+    got = autofill_sections.plan([PageSection(sid=kind, heading=kind, entries=0) for kind in autofill_sections.KINDS],
+                                 facts, db_session)
+    assert [p.wanted for p in got.values()] == [0] * 6
 
 
 def test_the_request_carries_headings_and_counts_only():
@@ -435,8 +439,44 @@ def test_two_sections_of_one_placed_kind_are_both_left_to_the_user(db_session, m
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_two_websites_sections_are_not_an_ambiguous_kind(db_session, monkeypatch):
-    """Only the kinds placed by profile entry: a second Websites section is the loop's one-per-kind rule."""
+def test_two_websites_sections_are_an_ambiguous_kind(db_session, monkeypatch):
+    """Websites are placed by profile entry too: two sections read as websites
+    are both left to the user, like two job lists."""
     fake_jev(monkeypatch, {"s": ("websites", 0.9), "t": ("websites", 0.9)})
     got = autofill_sections.plan([held_section("s", "Websites", []), held_section("t", "Links", [])], FACTS, db_session)
-    assert {sid: p.reason for sid, p in got.items()} == {"s": None, "t": None}
+    assert {sid: p.reason for sid, p in got.items()} == {"s": "ambiguous_kind", "t": "ambiguous_kind"}
+
+
+# ---------- websites: profile entry k is the k-th URL the profile holds
+# (personal.website, then personal.github), placed like a job (live CarMax,
+# 2026-09-30: an unplaced second entry was mapped the website again and left empty).
+
+WEB = {"sid": "s", "heading": "Websites", "kind": "websites"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_websites_are_placed_in_profile_order_and_added_only_for_urls_the_profile_holds(db_session, monkeypatch):
+    assert planned(db_session, monkeypatch, FACTS, **WEB) == {
+        "kind": "websites", "wanted": 2, "reason": None, "order": [0, 1]}
+    github_only = autofill_catalog.build({"personal": {"github": "https://github.com/ada"}}, [], [])
+    assert planned(db_session, monkeypatch, github_only, [], [], **WEB) == {
+        "kind": "websites", "wanted": 2, "reason": None, "order": [0, None]}
+    none = autofill_catalog.build({"personal": {"linkedin": "https://linkedin.com/in/ada"}}, [], [])
+    assert planned(db_session, monkeypatch, none, [], **WEB) == {
+        "kind": "websites", "wanted": 1, "reason": None, "order": [None]}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("held", ["https://github.com/ada", "GitHub.com/ada/", "http://www.github.com/ada#top"])
+def test_a_websites_entry_holding_a_profile_url_is_that_url(db_session, monkeypatch, held):
+    """An entry already holding the GitHub is the GitHub (a URL is the same
+    whatever its scheme, `www.`, host case, trailing slash or #fragment): the
+    website goes into the entry added after it, never doubled."""
+    assert planned(db_session, monkeypatch, FACTS, [held], **WEB) == {
+        "kind": "websites", "wanted": 2, "reason": None, "order": [1, 0]}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_websites_entry_holding_another_url_is_foreign(db_session, monkeypatch):
+    assert planned(db_session, monkeypatch, FACTS, ["https://linkedin.com/in/ada"], **WEB) == {
+        "kind": "websites", "wanted": 1, "reason": "held_unmatched", "order": [None]}
