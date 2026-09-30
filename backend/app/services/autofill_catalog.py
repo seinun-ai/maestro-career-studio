@@ -68,7 +68,8 @@ _DESCRIBES: dict[str, str] = {
     # A Yes/No answer's description is a proposition WITH a direction: polarity
     # (autofill_polarity) judges a question against it, and "disability status"
     # cannot say whether "are you free of any disability?" asks it or its opposite.
-    "eeo.veteran_status": "is a protected veteran (voluntary self-identification)",
+    # "Military Status:" (live Workday) asks it too, and found no fact without the word.
+    "eeo.veteran_status": "is a protected veteran (answers a military or veteran question; voluntary self-identification)",
     "eeo.disability_status": "has a disability (voluntary self-identification)",
     # A form asks for it as "salary requirements" or "compensation" as often
     # as "desired salary": one fact, described in each wording.

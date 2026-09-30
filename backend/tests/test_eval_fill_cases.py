@@ -538,6 +538,7 @@ def test_the_map_cases_hold_the_live_wrong_writes():
     assert "personal.phone" not in by_id["country-phone-code"]["expected"]
     assert by_id["phone-number"]["expected"] == ["personal.phone"]
     assert by_id["address-line-1"]["expected"] == ["personal.address"]
+    assert by_id["military-status"]["expected"] == ["eeo.veteran_status"]   # live CarMax, 2026-09-30
     facts = ev.map_case_facts(MAPS)
     assert "personal.address_2" not in facts   # line 2 has nowhere to go but none
     assert facts["personal.phone"].describe == describe_of("personal.phone")

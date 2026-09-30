@@ -150,6 +150,7 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   box, not one step later.
 - The "I currently work here" box is ticked for your current job on Workday.
 - Fill no longer adds an empty second website entry.
+- Military status is answered from your veteran answer.
 
 ## [0.6.0] — 2026-09-24
 

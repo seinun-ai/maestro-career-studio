@@ -1069,6 +1069,31 @@ def test_a_wordy_value_asked_the_opposite_way_abstains(db_session, monkeypatch):
     assert json.dumps("No, I do not have a disability") in calls[0]["questions"]["d"]["instructions"]
 
 
+MILITARY = ("I identify as one or more of the classifications of protected veteran",
+            "I am a veteran, but not a protected veteran", "I am not a protected veteran")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_military_status_dropdown_is_picked_by_the_statement_of_the_veteran_answer(db_session, monkeypatch):
+    """"Military Status:" (live CarMax Workday, 2026-09-30) reads as the same
+    question as "is a protected veteran", so nothing is flipped: the literal
+    pick is asked for the whole wordy answer over the page's statements, and
+    the one stating it is matched under EEO's exact policy."""
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "not_veteran"}}, [], [])
+    calls = fake_jev(monkeypatch, {"v": ("o3", 0.95)}, ways={"v": ("same", 0.95)})
+    got = autofill_pick.pick([pf("v", question="Military Status:", slot="eeo.veteran_status",
+                                 options=opts(*MILITARY))], facts, db_session, None)
+    text = calls[0]["questions"]["v"]["instructions"]
+    assert f'is {json.dumps("No, I am not a protected veteran")}' in text and "Which option states that answer?" in text
+    assert facts["eeo.veteran_status"].policy == "exact"
+    assert got["v"].model_dump() == {"oids": ["o3"], "reason": "matched"}
+    # A near miss is never taken for an EEO answer.
+    fake_jev(monkeypatch, {"v": ("o2", 0.7)}, ways={"v": ("same", 0.95)})
+    got = autofill_pick.pick([pf("v", question="Military Status:", slot="eeo.veteran_status",
+                                 options=opts(*MILITARY))], facts, db_session, None)
+    assert got["v"].reason == "abstained"
+
+
 @pytest.mark.usefixtures("jev_on")
 def test_a_status_or_list_fact_keeps_its_description_and_is_never_a_yes_or_no(db_session, monkeypatch):
     """No polarity for a fact that is not a Yes or a No: its description and
