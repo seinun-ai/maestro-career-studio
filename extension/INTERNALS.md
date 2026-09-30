@@ -642,13 +642,15 @@ know, and each one was learned from a live failure.
   Code" and line 1 into "Address Line 2", and verification passed them
   (2026-09-27). `backend/scripts/fill_map_cases.json` holds these labels for
   the evaluation.
-- **The veteran answer says it answers a military question.** Described
-  only as "is a protected veteran", Workday's "Military Status:" dropdown
-  found no fact (2026-09-30); it is offered as "is a protected veteran
-  (answers a military or veteran question; …)", still a proposition with a
-  direction. Nothing is flipped for such a label, so the dropdown is picked
-  for the whole answer ("No, I am not a protected veteran") among its
-  statements, exact or nothing.
+- **The veteran answer says it answers a military self-identification.**
+  Described only as "is a protected veteran", Workday's "Military Status:"
+  dropdown found no fact (2026-09-30); it is offered as also answering a
+  military self-identification question whose options are protected-veteran
+  classifications, and never whether you ever served or serve now, a branch,
+  a discharge or a relative's service (a non-protected veteran's No to "Have
+  you served?" would be false). Still a proposition with a direction. Nothing
+  is flipped for such a label, so the dropdown is picked for the whole answer
+  ("No, I am not a protected veteran") among its statements, exact or nothing.
 - **Some answers are derived, never stored.** The backend adds facts computed
   from the profile (`derived.*`, described to the model as derived): your
   full legal name (first and last, for name and signature boxes), today's

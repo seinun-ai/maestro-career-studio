@@ -436,7 +436,9 @@ def test_every_description_a_yes_or_no_fact_carries_has_a_direction():
         assert not re.search(r"\b(status|type|kind)\b", fact.describe, re.IGNORECASE), (slot, fact.describe)
     assert built["eeo.disability_status"].describe == "has a disability (voluntary self-identification)"
     assert built["eeo.veteran_status"].describe == (
-        "is a protected veteran (answers a military or veteran question; voluntary self-identification)")
+        "is a protected veteran (also answers a military self-identification question whose options are "
+        "protected-veteran classifications; never whether the applicant ever served or serves now, a branch, a "
+        "discharge, or a relative's service; voluntary self-identification)")
     assert built["experience.0.current"].describe == "experience entry 1: is the applicant's current job (yes/no)"
 
 

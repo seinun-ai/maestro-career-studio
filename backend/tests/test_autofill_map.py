@@ -440,14 +440,18 @@ def test_the_phone_and_address_facts_are_offered_as_what_they_are_not(db_session
 @pytest.mark.usefixtures("jev_on")
 def test_the_veteran_fact_is_offered_for_a_military_question(db_session, monkeypatch):
     """Live CarMax Workday (2026-09-30) asked "Military Status:" and /map tied
-    it to no fact: the veteran fact says it answers a military question too,
-    and stays a proposition with a direction."""
+    it to no fact: the veteran fact says it answers a military
+    SELF-IDENTIFICATION question too, and never a service question (a
+    non-protected veteran's No to "Have you served?" would be false). It
+    stays a proposition with a direction."""
     facts = autofill_catalog.build({"eeo": {"veteran_status": "not_veteran"}}, [], [])
     calls = fake_jev(monkeypatch)
     autofill_map.map_fields([field("v", "Military Status:", "popup")], facts, db_session,
                             eeo_consented=True, low_stakes=False)
     described = calls[0]["questions"]["v"]["criteria"]["eeo.veteran_status"]
-    assert described.startswith("is a protected veteran") and "military" in described
+    assert described.startswith("is a protected veteran") and "military self-identification" in described
+    for never in ("ever served or serves now", "a branch", "a discharge", "a relative's service"):
+        assert never in described, never
     assert "not" not in described
 
 

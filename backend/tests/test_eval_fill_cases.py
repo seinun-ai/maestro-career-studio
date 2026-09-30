@@ -539,6 +539,9 @@ def test_the_map_cases_hold_the_live_wrong_writes():
     assert by_id["phone-number"]["expected"] == ["personal.phone"]
     assert by_id["address-line-1"]["expected"] == ["personal.address"]
     assert by_id["military-status"]["expected"] == ["eeo.veteran_status"]   # live CarMax, 2026-09-30
+    # Service questions are not the protected-veteran self-identification.
+    for case in ("military-served", "military-spouse", "military-guard-reserve"):
+        assert by_id[case]["expected"] == ["none"], case
     assert by_id["terms-and-conditions"]["expected"] == ["derived.agrees_to_terms"]
     facts = ev.map_case_facts(MAPS)
     assert "personal.address_2" not in facts   # line 2 has nowhere to go but none

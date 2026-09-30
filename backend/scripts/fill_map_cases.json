@@ -23,6 +23,11 @@
     {"id": "fax", "question": "Fax Number", "shape": "text", "expected": ["none"]},
     {"id": "county", "question": "County", "shape": "text", "expected": ["none"]},
     {"id": "military-status", "question": "Military Status:", "shape": "popup", "expected": ["eeo.veteran_status"]},
+    {"id": "military-served", "question": "Have you served in the military?", "shape": "group", "expected": ["none"]},
+    {"id": "military-spouse", "question": "Are you the spouse of a military member?", "shape": "group",
+     "expected": ["none"]},
+    {"id": "military-guard-reserve", "question": "Are you currently a member of the National Guard or Reserves?",
+     "shape": "group", "expected": ["none"]},
     {"id": "terms-and-conditions", "question": "Yes, I have read and consent to all the terms and conditions",
      "shape": "group", "expected": ["derived.agrees_to_terms"]}
   ]
