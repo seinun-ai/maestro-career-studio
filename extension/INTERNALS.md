@@ -65,8 +65,9 @@ debounced, while no form is known and nothing is running, at most five times
 per page binding (a tab switch or Refresh starts over); Refresh covers it by
 hand. A url change inside the bound tab (`tabs.onUpdated` with a url, which
 an SPA's pushState also fires) rebinds at once, while an SPA still shows the
-step being left, so after one the ladder runs every rung even over a yes and
-re-reads the upload count on each: a Workday step change otherwise kept the
+step being left, so after one that first count is not shown (zero until the
+ladder's first rung answers) and the ladder runs every rung even over a yes,
+re-reading the count on each: a Workday step change otherwise kept the
 previous step's count, and the attach offer came one step late (CarMax). It reads,
 scores and returns five keys: the tier, whether a form's evidence held, the
 score behind it, how many upload boxes a resume could go into (frame 0's
@@ -354,10 +355,16 @@ asking permission of itself.
   listed." — because a page can take the file without either proof, and a
   second press there is a second copy. There is no second press.
 - **Autofill attaches the resume too** (owner, 2026-09-30), in both fill
-  modes (the file is the user's own, not an AI answer), once per run and
-  AFTER the fields: Workday re-renders the upload section after an upload, so
-  the attach is the run's last page write, inside its `busy` span and not
-  after a Stop or a tab change. Narrower than the button: the button's own
+  modes (the file is the user's own, not an AI answer), once per run, AFTER
+  the fields and inside the run's `busy` span. "Saved answers + AI" attaches
+  through the loop's `beforeSweep` hook, before its final sweep: Lever and
+  Ashby parse an upload into the form's fields, and Workday re-renders the
+  upload section, so the sweep re-reads every field the engine verified and a
+  changed one gets its one re-commit per run (a page that takes it back again
+  is reported unconfirmed, never filled). A later parse is not seen. "Saved
+  answers only" attaches last. Never after a Stop, a tab change or the run's
+  clock running out; Stop and the tab are asked again right before the write,
+  after the PDF read. Narrower than the button: the button's own
   source only (the application's tailored PDF; a base used as is has none, so
   nothing is attached and nothing said), a fresh detect, exactly one box
   reading as a resume box, holding no file, and only that box is written
@@ -366,11 +373,17 @@ asking permission of itself.
   left it."), a cover-letter or other document box is never attached, boxes
   that cannot be told apart are left to the button, and nothing is tried twice
   on one page (not after an attach here, nor after one it could not confirm).
-  The write re-checks all of it in each frame (`resumeOnly`, beside `expect`). The run's
-  note ends with the outcome ("Resume attached: <file>. …", the hedged
-  "Couldn't confirm the upload…", or why it left the box), and the Fill body
-  carries it as its own row (`autoAttach`) with the button still under it
-  when the press is the user's again.
+  The write re-checks all of it in each frame (`resumeOnly`, beside `expect`)
+  and answers `{written, proven}`; its proof is stricter than the button's: a
+  box with an upload widget counts only by the page's own new row, and a held
+  `files` proves only a bare input with no widget. Outcomes: attached; written
+  and not proven (the hedged "Couldn't confirm the upload…", which blocks
+  another automatic try on the page); nothing written (a refusal at write
+  time, no PDF, no frame: "The Companion left the upload box for you.",
+  which blocks nothing); or skipped with its reason. The run's note ends with
+  it, the Fill body carries it as its own row (`autoAttach`, stamped with the
+  application the attach used) with the button still under it, reading
+  "Attach anyway" over a box that already holds a file.
 - **Mark applied** — the Draft/Applied segment lives in the footer permanently,
   so there is no nudge to hunt for. It is withheld for a status outside that pair,
   because pressing Draft on an `interviewing` application would silently walk the
@@ -421,9 +434,15 @@ know, and each one was learned from a live failure.
   own label (field reader question, aria labels on it and its uploader, name,
   id, automation id), then the uploader's text, then its section heading; a
   word for another document (cover letter, transcript, "additional"…) beats
-  "resume"/"CV" at the same level. `occupied` is files in the input or a file
-  row (a filename, or `file-upload-item`) in the uploader. `detect_page` returns
-  one `{kind, occupied}` per counted box (`uploads`): a word and a boolean.
+  "resume"/"CV" at the same level, and words end at letters and digits, not
+  `\b` (which ends at an accent: "Résumé"). The section heading is the
+  uploader's own, h2–h6 inside its form (or a few levels up), never the page's
+  h1: a posting titled "Computer Vision (CV) Engineer" names no box.
+  `occupied` is files in the input, a file row in the uploader (a filename,
+  brackets and all: "Resume (1).pdf", or `file-upload-item`), or a remove,
+  delete or replace control in it; help text listing types ("(.pdf, .docx)")
+  is not a file. `detect_page` returns one `{kind, occupied}` per counted box
+  (`uploads`): a word and a boolean.
 - **Posting identity is one table in two languages.** `shared/decisions.js`
   `postingId` mirrors the backend's `job_url_match.posting_id` (query keys
   `currentJobId`, `jk`, `vjk`, `gh_jid`; LinkedIn's `/jobs/view/<id>` path). The

@@ -336,13 +336,17 @@
     let auto = null;
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
-      const loop = await ns.fillLoop.runFill({
+      return ns.fillLoop.runFill({
         broadcast: (message) => (live() ? store.broadcast(message) : Promise.resolve([])),
         api: store.api,
         // Which of the engine's own moves worked, per kind of control: tried
         // first next time, value-free (`recipeDoor` in panel.js).
         recipes: store.recipes(),
         cancelled: stopped,
+        // The resume, BEFORE the loop's final sweep and once (`runFill`'s
+        // `beforeSweep`): Lever and Ashby parse an upload into the form's
+        // fields, and the sweep then re-reads every field the engine verified.
+        beforeSweep: async () => { auto = await autoAttachResume(store, token, stopped); },
         onProgress: (update) => {
           if (update.phase !== "round" || !live()) return;
           store.write({ fillRound: update.round });
@@ -353,9 +357,6 @@
         base: facts.application ? null : facts.baseSlug,
         sourceHint: ns.fillLoop.sourceHintOf(facts.url),
       });
-      // The resume last, and not after a Stop (`autoAttachResume`).
-      if (!loop.stopped) auto = await autoAttachResume(store, token, stopped);
-      return loop;
     }, "Couldn't fill this form.");
     if (!done) {
       if (live()) {
@@ -367,7 +368,7 @@
     const loop = done.out;
     // Value-free: labels, shapes and outcomes, never an answer (fill-loop.js).
     store.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(loop));
-    const attachLine = landAutoAttach(store, auto, facts.application?.id ?? null);
+    const attachLine = landAutoAttach(store, auto);
     const after = store.read();
     const finished = fillFinished({ loop, attached: attachedHere(after) });
     store.write({
@@ -533,7 +534,7 @@
     }, "Couldn't fill this form.");
     if (!done) return;
     const { out } = done;
-    const attachLine = landAutoAttach(store, auto, facts.application?.id ?? null);
+    const attachLine = landAutoAttach(store, auto);
     // RE-READ for the rule pass's own result: it landed in the store from
     // inside the run, which is where the progress rows want it.
     const after = store.read();
@@ -623,7 +624,7 @@
       await store.prepare();
       return sendResume(store, applicationId, facts.fileInputs, token);
     }, "Couldn't attach your resume.");
-    if (!done) return;
+    if (!done?.out) return;
     const attached = done.out;
     const after = store.read();
     // A RUN HAS TO HAVE HAPPENED, and this clause belongs here rather than in
@@ -664,10 +665,14 @@
    *
    * `expect` is the box count the caller's decision was made on, and every
    * frame refuses the whole write unless its own list still says the same
-   * (see below). `resumeOnly` is Autofill's: each frame also refuses unless
-   * its one box reads as an empty resume box (`attachResumePdf`). Called
-   * INSIDE a `duringAction` span, whose token it is handed. */
-  async function sendResume(store, applicationId, expect, token, resumeOnly = false) {
+   * (see below). `resumeOnly` is Autofill's: each frame writes only its one
+   * empty resume box (`attachResumePdf`), answers `{written, proven}`, and a
+   * zero where nothing was written throws `LEFT_FOR_YOU` rather than the
+   * hedge. Called INSIDE a `duringAction` span, whose token it is handed;
+   * `wanted` is asked again right before the write, after the PDF read, and
+   * a no returns null with nothing sent (a tab left, a Stop). */
+  async function sendResume(store, applicationId, expect, token,
+                            { resumeOnly = false, wanted = () => store.current(token) } = {}) {
     const detail = await store.api(`/api/applications/${applicationId}`);
     if (!detail.pdf_path) {
       // The store is corrected on the way past: `pdfReady` is what put this
@@ -699,12 +704,16 @@
     // résumé section expands moved from one box to two in between, and the
     // résumé went into both — the report said so honestly afterwards, which
     // is not the same as the refusal having held.
+    if (!wanted()) return null;
     const frames = await store.attachPdf(
       `/api/applications/${applicationId}/pdf`, filename, expect, resumeOnly);
-    const count = frames.reduce((total, frame) => total + (frame.result ?? 0), 0);
+    const count = frames.reduce((total, frame) => total + provenOf(frame.result), 0);
     if (!count) {
       if (!frames.some((frame) => frame.result !== undefined)) {
         throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
+      }
+      if (resumeOnly && !frames.some((frame) => (frame.result?.written ?? 0) > 0)) {
+        throw ns.guidedRun.shown(LEFT_FOR_YOU);
       }
       // ZERO HAS TWO CAUSES and they are different news, so the panel asks
       // rather than guessing: the boxes refused the file, or the page grew
@@ -722,22 +731,30 @@
       // copies, so the sentence sends them to look first.
       const now = await store.detectFileInputs();
       if (store.current(token)) store.write({ fileInputs: now });
-      throw ns.guidedRun.shown(now === expect
+      // `written`: the file reached a box, so a second automatic copy is out.
+      throw Object.assign(ns.guidedRun.shown(now === expect
         ? "Couldn't confirm the upload. Check the upload box, and attach your "
           + "resume only if it isn't listed."
         : "Couldn't attach your resume. The page's upload boxes changed, so "
-          + "check them and try again.");
+          + "check them and try again."), { written: true });
     }
     // STAMPED with its application, so a Refresh that binds another one
     // cannot show this PDF as that one's (`sameApplication`).
     return { filename, count, applicationId };
   }
 
+  /** A frame's attach answer as a proven count: the button's write answers a
+   * number, Autofill's `{written, proven}`. */
+  const provenOf = (result) => (typeof result === "number" ? result : result?.proven ?? 0);
+  const LEFT_FOR_YOU = "The Companion left the upload box for you.";
+
   /** Autofill's own attach: the owner's request (2026-09-30) that a run
    * also put the resume in the page's upload box, which until then only the
-   * Attach resume press did. Called at the END of a run, inside its `busy`
-   * span: Workday re-renders the upload section after an upload, so the
-   * fields are written first and the attach is the run's last page write.
+   * Attach resume press did. Called inside the run's `busy` span, after the
+   * fields: "Saved answers + AI" calls it through the loop's `beforeSweep`,
+   * so the final sweep re-reads every field the engine verified (an ATS that
+   * parses the upload into the form, as Lever and Ashby do, or Workday
+   * re-rendering the upload section); "Saved answers only" calls it last.
    *
    * THE PRESS IS AUTOFILL'S, AND THE RULES ARE NARROWER THAN THE BUTTON'S:
    * - the button's own source only, the application's tailored PDF (a base
@@ -761,19 +778,22 @@
     const facts = store.read();
     if (!facts.application || facts.pdfReady !== true) return null;
     if (attachedHere(facts)) return null;
+    const applicationId = facts.application.id;
+    // Once written here, never again: "attached" and "unconfirmed" block the
+    // page's later runs; "skipped" and "left" (nothing reached the page) do not.
     const before = sameApplication(facts.autoAttach?.applicationId, facts.application)
       ? facts.autoAttach : null;
-    if (before && before.outcome !== "skipped") return null;
+    if (before && (before.outcome === "attached" || before.outcome === "unconfirmed")) return null;
     const page = await store.detectUploads().catch(() => null);
     if (!page || !store.current(token) || stopped()) return null;
     store.write({ fileInputs: page.fileInputs });
     const { uploads, fileInputs } = page;
     if (!uploads || !fileInputs || uploads.length !== fileInputs) return null;
     const resumes = uploads.filter((box) => box.kind === "resume");
-    const skipped = (text) => ({ outcome: "skipped", text });
+    const skipped = (text, reason = null) => ({ outcome: "skipped", text, reason, applicationId });
     const one = fileInputs === 1;
     if (resumes.length === 1 && resumes[0].occupied) {
-      return skipped("A file is already attached; the Companion left it.");
+      return skipped("A file is already attached. The Companion left it.", "occupied");
     }
     if (!resumes.length && uploads.every((box) => box.kind === "other")) {
       return skipped(one ? "The upload box isn't for a resume, so the Companion left it."
@@ -785,12 +805,17 @@
         : "Couldn't tell which upload box is for a resume. Attach it yourself.");
     }
     try {
-      const sent = await sendResume(store, facts.application.id, fileInputs, token, true);
+      const sent = await sendResume(store, applicationId, fileInputs, token, {
+        resumeOnly: true, wanted: () => store.current(token) && !stopped() });
+      if (!sent) return null;
       return { outcome: "attached", ...sent,
                text: `Resume attached: ${sent.filename}. Check the upload before you submit.` };
     } catch (err) {
-      return { outcome: "unconfirmed",
-               text: err?.shown === true ? err.message : "Couldn't attach your resume." };
+      // Written and not proven is the hedge; anything else (a refusal at
+      // write time, no PDF, no frame, a failed round trip) wrote nothing.
+      return err?.written === true
+        ? { outcome: "unconfirmed", text: err.message, applicationId }
+        : { outcome: "left", text: LEFT_FOR_YOU, applicationId };
     }
   }
 
@@ -798,10 +823,12 @@
    * `autoAttach` for the Fill body's row, `attached` when it landed (which is
    * what `fillFinished` counts and what takes the button away), and the
    * sentence that follows the run's own. */
-  function landAutoAttach(store, auto, applicationId) {
+  function landAutoAttach(store, auto) {
     if (!auto) return null;
-    const { outcome, text, filename, count } = auto;
-    store.write({ autoAttach: { applicationId, outcome, text, filename: filename ?? null } });
+    // Stamped with the application the attach itself used (`sendResume`).
+    const { outcome, text, filename, count, applicationId, reason } = auto;
+    store.write({ autoAttach: { applicationId, outcome, text, reason: reason ?? null,
+                                filename: filename ?? null } });
     if (outcome === "attached") store.write({ attached: { filename, count, applicationId } });
     return text;
   }

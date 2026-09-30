@@ -1136,10 +1136,24 @@
     // only if nothing reverted. `finalSwept`: the last call's sweep reached a
     // frame (the recipe book learns nothing from a run whose end was not
     // swept), and `held` is then what that sweep re-checked.
+    // `deps.beforeSweep` (optional; the panel's resume attach): run ONCE, before
+    // the first final sweep's quiet period, so that sweep re-reads what an ATS
+    // parsing the upload wrote over verified fields. Its failure is its own.
+    let beforeSweep = typeof deps.beforeSweep === "function" ? deps.beforeSweep : null;
     let finalSwept = false;
     const settledDone = async () => {
       finalSwept = false;
       if (halt()) return true;
+      if (beforeSweep) {
+        const hook = beforeSweep;
+        beforeSweep = null;
+        try {
+          await hook();
+        } catch {
+          // The attach's loss, never the fill's.
+        }
+        if (halt()) return true;
+      }
       if (L.QUIET_MS > 0) await wait(Math.min(L.QUIET_MS, runDeadline - Date.now()));
       if (halt()) return true;
       const clean = (await sweep()) === 0;

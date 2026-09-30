@@ -1398,7 +1398,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "fileInputs": 2, "attached": {"filename": "tailored.pdf", "count": 1},
         # Autofill's own attach report is the same page's claim.
         "autoAttach": {"applicationId": "app-1", "outcome": "skipped",
-                       "text": "A file is already attached; the Companion left it."},
+                       "text": "A file is already attached. The Companion left it."},
         "baseSelected": True, "baseFromApplication": True, "baseArmed": True,
         "scores": [{"composite": 72}],
         "busy": "tailor", "note": {"text": "Tailored — 84"},

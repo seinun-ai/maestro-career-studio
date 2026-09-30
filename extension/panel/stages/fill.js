@@ -228,7 +228,7 @@
                          `${facts.attached.filename} · ${boxes(facts.attached.count)}`);
     }
     const auto = facts.autoAttach;
-    const said = auto?.outcome === "skipped"
+    const said = auto?.outcome === "skipped" || auto?.outcome === "left"
       ? progressRow(ctx, SKIPPED, "Resume not attached", auto.text)
       : auto?.outcome === "unconfirmed" ? progressRow(ctx, OPEN, "Resume upload", auto.text) : null;
     const offer = attachOffer(ctx);
@@ -247,7 +247,10 @@
       : facts.attachName
         ? `Put ${facts.attachName} in this page's upload box.`
         : "Put your tailored resume in this page's upload box.");
-    const button = build.node("button", "save", "Attach resume");
+    // The box already lists a file (Autofill's read): the press would add
+    // another, so it says so. Visible words only, so the name is the label.
+    const occupied = facts.autoAttach?.reason === "occupied";
+    const button = build.node("button", "save", occupied ? "Attach anyway" : "Attach resume");
     button.type = "button";
     // `actingLimb`'s rule, and the ambiguity refusal in the same flag: a
     // control that stayed live during a fill would send a document into a page

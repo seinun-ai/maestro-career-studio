@@ -60,11 +60,27 @@ def test_a_step_with_no_uploader_counts_none(blank):
 # its section heading. `occupied` is any file row already in the uploader.
 
 WORKDAY = fixture_html("workday_upload.html")
-# A Greenhouse-shaped form: one section, two boxes, each labelled.
+# A Greenhouse-shaped form: one section, two boxes, each labelled, each
+# printing the chosen file's name beside it as the live board does.
 GREENHOUSE = """<h2>Apply for this job</h2><form>
   <div><label for="resume">Resume/CV</label><input type="file" id="resume" name="resume"></div>
   <div><label for="cover_letter">Cover Letter</label>
-       <input type="file" id="cover_letter" name="cover_letter"></div></form>"""
+       <input type="file" id="cover_letter" name="cover_letter"></div></form>
+<script>
+for (const input of document.querySelectorAll("input[type=file]")) {
+  input.addEventListener("change", () => {
+    const row = document.createElement("span");
+    row.textContent = [...input.files].map((f) => f.name).join(", ");
+    input.parentElement.append(row);
+  });
+}
+</script>"""
+# An uploader that keeps the file in its input and never prints a row: the
+# page has not shown that it took anything.
+SILENT = """<h4>Resume</h4><div class="uploader"><p>Drop a file here</p>
+  <input type="file" name="resume"></div>"""
+# A bare input straight in a form: holding the file IS the upload.
+BARE = """<form><input type="file" name="resume"></form>"""
 PDF = "JVBERi0xLjQKJSVFT0YK"  # %PDF-1.4 %%EOF
 
 
@@ -79,6 +95,12 @@ def _attach(page, resume_only=True, expect=1):
     })""", [PDF, expect, resume_only])
     assert reply["ok"] is True, reply
     return reply["data"]
+
+
+def _proven(reply):
+    """How many boxes the resume-only write proved: it answers
+    `{written, proven}`, the button's write a bare count."""
+    return reply["proven"] if isinstance(reply, dict) else reply
 
 
 def test_workdays_resume_cv_box_is_a_resume_box_and_empty(blank):
@@ -137,14 +159,14 @@ def _held(page, selector):
 
 def test_beside_a_cover_letter_box_only_the_resume_box_is_written(blank):
     _load(blank, GREENHOUSE)
-    assert _attach(blank, expect=2) == 1
+    assert _attach(blank, expect=2) == {"written": 1, "proven": 1}
     assert _held(blank, "#resume") == ["Jane_Doe_Resume.pdf"]
     assert _held(blank, "#cover_letter") == []
 
 
 def test_two_boxes_neither_named_a_resume_box_take_nothing(blank):
     _load(blank, GREENHOUSE.replace("Resume/CV", "Portfolio"))
-    assert _attach(blank, expect=2) == 0
+    assert _attach(blank, expect=2) == {"written": 0, "proven": 0}
     assert _held(blank, "#resume") == []
 
 
@@ -155,7 +177,7 @@ def test_a_box_named_only_by_its_attributes_is_read_by_them(blank):
 
 def test_the_resume_only_write_attaches_to_an_empty_resume_box(blank):
     _load(blank, WORKDAY)
-    assert _attach(blank) == 1
+    assert _attach(blank) == {"written": 1, "proven": 1}
     assert oracle(blank, "files") == ["Jane_Doe_Resume.pdf"]
 
 
@@ -165,13 +187,13 @@ def test_the_resume_only_write_never_replaces_a_listed_file(blank):
                           {"name": "Old_Resume.pdf", "mimeType": "application/pdf",
                            "buffer": b"%PDF-1.4"})
     blank.wait_for_selector("[data-automation-id=file-upload-item]")
-    assert _attach(blank) == 0
+    assert _attach(blank) == {"written": 0, "proven": 0}
     assert oracle(blank, "files") == ["Old_Resume.pdf"]
 
 
 def test_the_resume_only_write_never_touches_a_cover_letter_box(blank):
     _load(blank, WORKDAY.replace("Resume/CV", "Cover Letter"))
-    assert _attach(blank) == 0
+    assert _attach(blank) == {"written": 0, "proven": 0}
     assert oracle(blank, "files") == []
 
 
@@ -179,3 +201,64 @@ def test_the_button_write_is_unchanged_by_the_kind(blank):
     """The press is the user's decision: the button's write reads no kind."""
     _load(blank, WORKDAY.replace("Resume/CV", "Cover Letter"))
     assert _attach(blank, resume_only=False) == 1
+
+
+# ---------- review round: what counts as a file, a proof, a word ----------
+
+@pytest.mark.parametrize("name", ["Resume (1).pdf", "Resume_(final).pdf", "résumé(1).pdf"])
+def test_a_listed_file_whose_name_has_brackets_is_a_file(blank, name):
+    """"Resume (1).pdf" is the browser's own name for a second download."""
+    _load(blank, WORKDAY)
+    blank.set_input_files("[data-automation-id=file-upload-input-ref]",
+                          {"name": name, "mimeType": "application/pdf", "buffer": b"%PDF-1.4"})
+    blank.wait_for_selector("[data-automation-id=file-upload-item]")
+    assert _uploads(blank) == [{"kind": "resume", "occupied": True}]
+    assert _attach(blank) == {"written": 0, "proven": 0}
+    assert oracle(blank, "files") == [name]
+
+
+@pytest.mark.parametrize("control", [
+    '<button type="button">Remove</button>',
+    '<span role="button" aria-label="Delete file">×</span>',
+    '<button type="button">Replace</button>',
+])
+def test_a_row_holding_only_a_remove_control_is_a_file(blank, control):
+    _load(blank, WORKDAY.replace('<div id="uploaded"></div>', f'<div id="uploaded">{control}</div>'))
+    assert _uploads(blank) == [{"kind": "resume", "occupied": True}]
+
+
+def test_a_file_held_but_never_shown_is_not_proof_for_autofill(blank):
+    """An uploader with its own widget must SHOW the file: holding it in the
+    input says nothing about whether the page took it."""
+    _load(blank, SILENT)
+    assert _attach(blank) == {"written": 1, "proven": 0}
+
+
+def test_the_button_write_still_counts_a_held_file(blank):
+    _load(blank, SILENT)
+    assert _attach(blank, resume_only=False) == 1
+
+
+def test_a_bare_input_holding_the_file_is_the_upload(blank):
+    _load(blank, BARE)
+    assert _attach(blank) == {"written": 1, "proven": 1}
+
+
+@pytest.mark.parametrize("heading", ["Résumé", "resumé", "Upload your Résumé"])
+def test_accented_resume_words_name_a_resume_box(blank, heading):
+    # The wrapper's automation id would name it on its own: renamed away.
+    _load(blank, WORKDAY.replace("Resume/CV", heading).replace("formField-resume", "formField-x"))
+    assert _uploads(blank)[0]["kind"] == "resume"
+
+
+def test_the_postings_title_never_names_a_box(blank):
+    """A posting's h1 is the page's title, not the uploader's section."""
+    _load(blank, """<h1>Computer Vision (CV) Engineer</h1><main><form>
+      <div class="field"><input type="file" name="upload_1"></div></form></main>""")
+    assert _uploads(blank)[0]["kind"] == "unknown"
+
+
+def test_a_heading_outside_the_uploaders_form_never_names_it(blank):
+    _load(blank, """<h2>Resume tips</h2><form>
+      <div class="field"><input type="file" name="upload_1"></div></form>""")
+    assert _uploads(blank)[0]["kind"] == "unknown"

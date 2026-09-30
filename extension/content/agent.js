@@ -217,33 +217,33 @@
     return widget;
   }
 
-  /** What an upload box is FOR, and whether it already holds a file:
-   * `{kind, occupied}`, the facts Autofill's own attach decides with
-   * (`attachResumePdf`'s `resumeOnly`, and `detect_page`'s `uploads`).
-   *
-   * A NARROW RULE ON THE BOX'S OWN WORDS, not the fill's AI mapping: the
-   * inventory skips file inputs, a file slot is not a fact the profile holds,
-   * and what the rule decides is only whether an automatic attach may go
-   * ahead, so a miss costs a press of Attach resume. `kind` is "resume",
-   * "other" (a cover letter, a transcript, "additional documents"…) or
-   * "unknown", read nearest first: the box's own label (the field reader's
-   * question, aria labels on it and its uploader, its name, id and automation
-   * id), then the uploader's visible text, then its section heading. The first
-   * level with a word decides, and a level naming another document wins over
-   * one naming a resume ("Resume or cover letter" is not a resume box).
-   *
-   * `occupied` is any file already there: files in the input, or a file row
-   * in its uploader (a filename, or a `file-upload-item`). A parent that holds
-   * another box leaves only the input's own parent to look in. */
-  const RESUME_WORDS = /\b(?:r[eé]sum[eé]s?|cv|curriculum\s+vitae)\b/i;
-  const OTHER_DOC_WORDS = new RegExp(String.raw`\b(?:${[
+  /** What an upload box is FOR, and whether it holds a file: `{kind,
+   * occupied}`, what Autofill's own attach decides with (`resumeOnly`,
+   * `detect_page`'s `uploads`). A narrow rule on the box's own words, not the
+   * AI mapping (the inventory skips file inputs); a miss costs a press of
+   * Attach resume. `kind` ("resume", "other", "unknown"): the nearest level
+   * with a word decides, the box's own label (field reader, aria labels, name,
+   * id, automation id), then its uploader's text, then its section heading
+   * (the uploader's own: h2–h6 in its form, never the page's h1). Another
+   * document's word beats "resume" at a level. Words end at letters and
+   * digits, not `\b`, which ends at an accent ("Résumé"). `occupied`: files in
+   * the input, a file row in the uploader ("Resume (1).pdf" included), or a
+   * remove, delete or replace control there. INTERNALS.md has the reasons. */
+  const WORD = (body) => new RegExp(String.raw`(?<![\p{L}\p{N}])(?:${body})(?![\p{L}\p{N}])`, "iu");
+  const RESUME_WORDS = WORD(String.raw`r[eé]sum[eé]s?|cv|curriculum\s+vitae`);
+  const OTHER_DOC_WORDS = WORD([
     String.raw`cover\s*letters?`, String.raw`motivation(?:al)?\s+letters?`,
     "transcripts?", "portfolios?", String.raw`writing\s+samples?`, "references?",
     "certificat(?:e|es|ion|ions)", "diplomas?", "licen[cs]es?", "photos?", "headshots?",
     "additional", "supporting",
     String.raw`other\s+(?:documents?|files?|attachments?)`,
-  ].join("|")})\b`, "i");
-  const FILE_ROW = /[\p{L}\p{N}][^\s/\\:*?"<>|,()]*\.(?:pdf|docx?|rtf|odt|txt|pages)\b/iu;
+  ].join("|"));
+  // A name before the extension, however it is spelled; help text listing
+  // types ("(.pdf, .docx)") has a bracket, comma or space there instead.
+  const FILE_ROW = /[^\s/\\:*?"<>|(,]\.(?:pdf|docx?|rtf|odt|txt|pages)(?![\p{L}\p{N}])/iu;
+  const REMOVE_CONTROL = /(?<![\p{L}\p{N}])(?:remove|delete|replace)(?![\p{L}\p{N}])/iu;
+  const SECTION_HEADING = 'h2, h3, h4, h5, h6, [role="heading"]:not([aria-level="1"])';
+  const SECTION_CLIMB = 6;
   // "candidate_cv", "resumeUpload" → "candidate cv", "resume Upload".
   const words = (value) => String(value ?? "")
     .replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_\-.]+/g, " ");
@@ -254,10 +254,32 @@
     return RESUME_WORDS.test(text) ? "resume" : null;
   }
 
+  /** The uploader's own section heading: see `uploadBoxOf`. */
+  function sectionOf(input) {
+    let el = input.parentElement;
+    for (let level = 0; el && level < SECTION_CLIMB; level += 1, el = el.parentElement) {
+      if (el === document.body || el === document.documentElement) break;
+      const precedes = (h) => h.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING;
+      const before = [...el.querySelectorAll(SECTION_HEADING)]
+        .filter((h) => !h.contains(input) && precedes(h));
+      if (before.length) return before.at(-1).textContent;
+      if (el.tagName === "FORM") break;
+    }
+    return "";
+  }
+
+  function hasFile(input, box) {
+    if ((input.files?.length ?? 0) > 0) return true;
+    if (!box) return false;
+    if (FILE_ROW.test(String(box.innerText ?? ""))) return true;
+    if (box.querySelector('[data-automation-id="file-upload-item"]')) return true;
+    return [...box.querySelectorAll('button, [role="button"]')].some((control) =>
+      REMOVE_CONTROL.test(`${control.textContent} ${control.getAttribute("aria-label") ?? ""}`));
+  }
+
   function uploadBoxOf(input) {
     const box = uploadWidgetOf(input) ?? input.parentElement;
-    const read = typeof ns.readField === "function"
-      ? ns.readField(input) : { question: "", section: "" };
+    const read = typeof ns.readField === "function" ? ns.readField(input) : { question: "" };
     const own = [read.question, words(input.id), words(input.name)];
     for (let el = input; el; el = el === box ? null : el.parentElement) {
       own.push(el.getAttribute("aria-label"), words(el.getAttribute("data-automation-id")));
@@ -265,18 +287,12 @@
         own.push(document.getElementById(id)?.textContent);
       }
     }
-    const shown = String(box?.innerText ?? "");
-    const kind = kindOf(own) ?? kindOf([shown]) ?? kindOf([read.section]) ?? "unknown";
-    const occupied = (input.files?.length ?? 0) > 0 || FILE_ROW.test(shown)
-      || Boolean(box?.querySelector('[data-automation-id="file-upload-item"]'));
-    return { kind, occupied };
+    const kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([sectionOf(input)]) ?? "unknown";
+    return { kind, occupied: hasFile(input, box) };
   }
 
-  /** AUTOFILL'S OWN ATTACH writes to ONE box: the page's only box reading as
-   * a resume box, and only while it holds no file. Checked here at write time
-   * for `expect`'s reason. Never a replacement, never a cover-letter box, and
-   * no box at all when two read as resume boxes. The button's write reads no
-   * kind. */
+  /** Autofill's one target, re-checked at write time for `expect`'s reason:
+   * the page's only resume box, while it holds no file; else none. */
   function theResumeBox(inputs) {
     const resumes = inputs.filter((input) => {
       try {
@@ -402,12 +418,18 @@
    * about a count it showed the user.
    * `Number.isInteger` rather than a truthiness test — `expect: 0` is a real
    * claim ("this page had no box"), and it must refuse rather than fall through
-   * to unchecked. */
+   * to unchecked.
+   *
+   * `resumeOnly` IS AUTOFILL'S WRITE (`theResumeBox`): it answers `{written,
+   * proven}`, so "nothing written" differs from "not proven", and a box with
+   * an upload widget counts only by its row (a held `files` proves only a bare
+   * input, where holding the file IS the upload). The button keeps both. */
   async function attachResumePdf(b64, filename, expect, resumeOnly = false) {
+    const reply = (written, proven) => (resumeOnly ? { written, proven } : proven);
     const all = attachableFileInputs();
-    if (Number.isInteger(expect) && all.length !== expect) return 0;
+    if (Number.isInteger(expect) && all.length !== expect) return reply(0, 0);
     const inputs = resumeOnly ? theResumeBox(all) : all;
-    if (!inputs.length) return 0;
+    if (!inputs.length) return reply(0, 0);
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const file = new File([bytes], filename, { type: "application/pdf" });
     // THE BEFORE PICTURE, taken ahead of every write: the row proof is a
@@ -432,10 +454,11 @@
       input.files = dt.files;
       input.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    const proven = (t) => (t.input.isConnected && t.input.files?.length === 1)
-      || (t.widget !== null && t.widget.isConnected
-        && rowsNaming(t.widget, filename) > t.rows
-        && uploadErrors(t.widget, filename) <= t.errors);
+    const rowProof = (t) => t.widget !== null && t.widget.isConnected
+      && rowsNaming(t.widget, filename) > t.rows
+      && uploadErrors(t.widget, filename) <= t.errors;
+    const proven = (t) => ((t.input.isConnected && t.input.files?.length === 1)
+      && !(resumeOnly && t.widget !== null)) || rowProof(t);
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     // THE SETTLE, and it is `valueHolds`' banner applied to the one writer that
     // did not have it. Reading `input.files` on the tick that assigned it reads
@@ -462,7 +485,7 @@
     // settle's.
     const held = targets.map(proven);
     await sleep(ATTACH_HOLD_MS);
-    return targets.filter((t, i) => held[i] && proven(t)).length;
+    return reply(targets.length, targets.filter((t, i) => held[i] && proven(t)).length);
   }
 
   function isOnScreen(el) {

@@ -448,8 +448,10 @@
     attached: null,
     /** What Autofill's own attach did on this page, or null when it did not
      * look (no PDF, no box, a stopped run): `{applicationId, outcome, text,
-     * filename}`, `outcome` "attached", "skipped" or "unconfirmed". Page-shaped
-     * like `attached`, and read beside the application it was made for. */
+     * reason, filename}`, `outcome` "attached", "unconfirmed" (written, not
+     * proven), "left" (nothing was written) or "skipped" (`reason`
+     * "occupied" when the box already held a file). Page-shaped like
+     * `attached`, and read beside the application it was made for. */
     autoAttach: null,
     baseSlug: null,
     baseSelected: false,
@@ -3154,7 +3156,9 @@
     const verdict = await askDetectPrepared(token);
     if (!current(token)) return;
     card.hasForm = verdict?.form === true;
-    card.fileInputs = countFileInputs(verdict);
+    // After an in-place url change this read is the step being left, so its
+    // count is not shown: the ladder's first rung (a second on) says.
+    card.fileInputs = inPlace ? 0 : countFileInputs(verdict);
     // AN IMMEDIATE YES IS THE WHOLE ANSWER on a page the panel was opened or
     // switched onto: a Greenhouse-class page whose form is in the first paint
     // costs exactly the one round trip it always did.

@@ -24,10 +24,9 @@ from tests.extension_panel_harness import (
     _reply,
 )
 from tests.test_extension_panel_fill import (
-    _LOOP_DRIVER_JS,
     _TAILORED_DETAIL,
-    ATTACH_NONE,
     ATTACH_ONE,
+    ATTACH_UNREACHED,
     COLLECT_FRAMES,
     LOOP_REPORT,
     PROFILE_FRAMES,
@@ -51,6 +50,14 @@ from tests.test_extension_panel_fill import (
 _STEP_DRIVER_JS = _PANEL_FAKES_JS + r"""
 loadModules();
 const attachBox = () => withClass(REGIONS.rail, "attach")[0] ?? null;
+// Whether the offer is on screen as each detect is ASKED: the ask after a url
+// change's first answer is the ladder's first rung.
+const atAsk = [];
+const innerSend = chrome.runtime.sendMessage;
+chrome.runtime.sendMessage = async (msg) => {
+  if (msg.type === "panel_frame0" && msg.message?.type === "detect_page") atAsk.push(attachBox() !== null);
+  return innerSend(msg);
+};
 main(async () => {
   await settle();
   const offered = [attachBox() !== null];
@@ -59,7 +66,7 @@ main(async () => {
     await settle();
     offered.push(attachBox() !== null);
   }
-  emit({ offered, settled: regions(), sent, delays });
+  emit({ offered, atAsk, settled: regions(), sent, delays });
 });
 """
 
@@ -91,6 +98,15 @@ def test_the_offer_goes_once_the_step_without_one_has_rendered(tmp_path):
     out = _attach(tmp_path, driver=_STEP_DRIVER_JS, steps=[STEP_2],
                   page={"detect_page": [_detect(1), _detect(1), _detect(0)]})
     assert out["offered"] == [True, False]
+
+
+def test_the_old_steps_offer_is_gone_before_the_first_rung_answers(tmp_path):
+    """The url change's first read is the step being left: its count is not
+    shown for the second it takes the first rung to answer."""
+    out = _attach(tmp_path, driver=_STEP_DRIVER_JS, steps=[STEP_2],
+                  page={"detect_page": [_detect(1), _detect(1), _detect(0)]})
+    # Asks: boot, the url change, then rung 1 (the offer as it stood before it).
+    assert out["atAsk"][2] is False
 
 
 def test_a_step_change_looks_again_on_the_ladders_schedule_and_then_stops(tmp_path):
@@ -137,6 +153,10 @@ const autofill = async () => {
   withClass(REGIONS.foot, "cta")[0].click();
   await settle();
   const during = regions();
+  if (spec.switchTo !== undefined) {
+    await onActivated({ tabId: spec.switchTo });
+    await settle();
+  }
   release();
   await settle();
   return during;
@@ -206,8 +226,14 @@ def test_the_attach_comes_after_the_fields(tmp_path):
     assert order.count("page_broadcast") >= 2
 
 
-def test_saved_answers_and_ai_attaches_too(tmp_path):
+def test_saved_answers_and_ai_attaches_before_the_final_sweep(tmp_path):
+    """Lever and Ashby parse an uploaded resume into the form's fields after
+    the engine verified them, so the loop attaches through its `beforeSweep`
+    hook: the final sweep then re-reads every verified field."""
     out = _loop_with_pdf(tmp_path)
+    [run] = out["runs"]
+    assert run["hooked"] is True
+    assert run["attachesAtSweep"] == 1
     [ask] = _attach_asks(out)
     assert ask["resumeOnly"] is True
     assert _note(out["settled"]).endswith(ATTACHED)
@@ -217,9 +243,9 @@ def test_a_box_that_already_lists_a_file_is_left_alone(tmp_path):
     out = _autofill(tmp_path, {"kind": "resume", "occupied": True})
     assert _attach_asks(out) == []
     assert _note(out["settled"]).endswith(
-        "A file is already attached; the Companion left it.")
+        "A file is already attached. The Companion left it.")
     rows = dict(_rows_of(out["settled"]["rail"]))
-    assert rows["Resume not attached"] == "A file is already attached; the Companion left it."
+    assert rows["Resume not attached"] == "A file is already attached. The Companion left it."
     # The button stays: the user may still want theirs replaced by hand.
     assert out["button"] == {"disabled": False}
 
@@ -260,7 +286,7 @@ def test_beside_a_cover_letter_box_the_resume_box_is_attached(tmp_path):
     ([COVER_LETTER_BOX, COVER_LETTER_BOX],
      "None of the upload boxes is for a resume, so the Companion left them."),
     ([{"kind": "resume", "occupied": True}, COVER_LETTER_BOX],
-     "A file is already attached; the Companion left it."),
+     "A file is already attached. The Companion left it."),
 ])
 def test_several_boxes_without_one_empty_resume_box_are_left(tmp_path, boxes, said):
     out = _autofill(tmp_path, *boxes)
@@ -291,8 +317,15 @@ def test_a_page_whose_scripts_predate_the_kinds_is_left_alone(tmp_path):
     assert out["button"] == {"disabled": False}
 
 
+# The resume-only write answers `{written, proven}`: written, and not shown.
+ATTACH_UNPROVEN = _reply([{"frameId": 0, "result": {"written": 1, "proven": 0}}])
+# The frame refused at write time: nothing was written.
+ATTACH_REFUSED = _reply([{"frameId": 0, "result": {"written": 0, "proven": 0}}])
+LEFT = "The Companion left the upload box for you."
+
+
 def test_an_attach_it_could_not_confirm_is_hedged_and_keeps_the_button(tmp_path):
-    out = _autofill(tmp_path, EMPTY_RESUME_BOX, attach_reply=ATTACH_NONE)
+    out = _autofill(tmp_path, EMPTY_RESUME_BOX, attach_reply=ATTACH_UNPROVEN)
     hedged = ("Couldn't confirm the upload. Check the upload box, and attach "
               "your resume only if it isn't listed.")
     assert _note(out["settled"]).endswith(hedged)
@@ -311,8 +344,55 @@ def test_a_second_autofill_never_attaches_a_second_copy(tmp_path):
 def test_a_second_autofill_after_an_unconfirmed_attach_does_not_retry_it(tmp_path):
     """The hedged zero may be a file the page took without either proof: a
     second automatic copy is the thing the hedge exists to prevent."""
-    out = _autofill(tmp_path, EMPTY_RESUME_BOX, attach_reply=ATTACH_NONE, again=True)
+    out = _autofill(tmp_path, EMPTY_RESUME_BOX, attach_reply=ATTACH_UNPROVEN, again=True)
     assert len(_attach_asks(out)) == 1
+
+
+GONE_DETAIL = {"id": "app-remembered", "status": "draft", "applied_at": None, "pdf_path": None}
+
+
+@pytest.mark.parametrize("why", ["refused", "pdf_gone", "unreached"])
+def test_nothing_written_is_its_own_outcome_and_blocks_nothing(tmp_path, why):
+    """A frame that refused at write time, a PDF gone by the press, a page
+    nobody answered: nothing reached the page, so no "Couldn't confirm", and
+    the next Autofill on the page may try again."""
+    spec = {"refused": {"attach_reply": ATTACH_REFUSED},
+            "pdf_gone": {"detail": [_reply(_TAILORED_DETAIL), _reply(GONE_DETAIL)]},
+            "unreached": {"attach_reply": ATTACH_UNREACHED}}[why]
+    out = _autofill(tmp_path, EMPTY_RESUME_BOX, **spec)
+    assert _note(out["settled"]).endswith(LEFT)
+    assert "Couldn't confirm" not in _note(out["settled"])
+    if why == "pdf_gone":
+        # No PDF: the rail goes back to Resume for Create PDF, and nothing
+        # was sent.
+        assert _attach_asks(out) == []
+        return
+    assert dict(_rows_of(out["settled"]["rail"]))["Resume not attached"] == LEFT
+    # The next Autofill on the page tries again.
+    again = _autofill(tmp_path, EMPTY_RESUME_BOX, again=True, **spec)
+    assert len(_attach_asks(again)) == 2
+
+
+def test_a_box_that_holds_a_file_offers_attach_anyway(tmp_path):
+    """The press is still the user's, and says what it would do."""
+    out = _autofill(tmp_path, {"kind": "resume", "occupied": True})
+    [button] = _by_class(_by_class(out["settled"]["rail"], "attach")[0], "save")
+    assert button["text"] == "Attach anyway"
+    assert "aria-label" not in button["attrs"]
+
+
+def test_stop_while_the_pdf_is_read_attaches_nothing(tmp_path):
+    """Stop pressed between the PDF read and the write: nothing is sent."""
+    out = _loop_with_pdf(tmp_path, pressStopInHook=True,
+                         hold=["/api/applications/app-remembered"], holdSkip=1)
+    assert _attach_asks(out) == []
+
+
+def test_a_tab_left_while_the_pdf_is_read_attaches_nothing(tmp_path):
+    """…and the same for the generation: the write would name the new tab."""
+    out = _autofill(tmp_path, EMPTY_RESUME_BOX, switchTo=9, tabUrls={"9": STEP_2},
+                    hold=["/api/applications/app-remembered"], holdSkip=1)
+    assert _attach_asks(out) == []
 
 
 def test_the_attach_holds_the_run_busy(tmp_path):
@@ -354,6 +434,47 @@ def _loop_with_pdf(tmp_path, **spec):
            "GET /api/applications/app-remembered": _reply(_TAILORED_DETAIL)}
     frames = {"fill_inventory": [], "fill_focus": [{"frameId": 0, "result": True}],
               "fill_cancel": [{"frameId": 0, "result": True}]}
-    return run_node(_LOOP_DRIVER_JS, {**spec, "report": LOOP_REPORT, "api": api,
-                                      "replies": replies, "frames": frames},
+    return run_node(_HOOK_LOOP_DRIVER_JS, {**spec, "report": LOOP_REPORT, "api": api,
+                                           "replies": replies, "frames": frames},
                     tmp_path, source=PANEL_SOURCE)
+
+
+# The loop stubbed the way `runFill` behaves around its hook: rounds, then
+# `beforeSweep` once (not after a Stop), then the final sweep. `holdRun` holds
+# it before the hook; `pressStopInHook` presses Stop while the hook's PDF read
+# is held.
+_HOOK_LOOP_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+const runs = [];
+let open = null;
+const gate = () => new Promise((resolve) => { open = resolve; });
+const attachAsks = () => sent.filter((m) => m.type === "attach_pdf").length;
+ns.fillLoop.runFill = async (deps) => {
+  const run = { hooked: typeof deps.beforeSweep === "function", attachesAtSweep: null };
+  runs.push(run);
+  deps.onProgress({ phase: "round", round: 1 });
+  if (spec.holdRun) await gate();
+  if (!deps.cancelled() && run.hooked) await deps.beforeSweep();
+  run.attachesAtSweep = attachAsks();
+  return { runId: "r", host: spec.report.host, fields: spec.report.fields,
+           aiFailure: null, stopped: deps.cancelled() && !spec.switchTo, timedOut: false };
+};
+const stopButton = () => withClass(REGIONS.foot, "stop")[0] ?? null;
+main(async () => {
+  await settle();
+  withClass(REGIONS.foot, "cta")[0].click();
+  await settle();
+  if (spec.pressStop || spec.pressStopInHook) {
+    stopButton().click();
+    await settle();
+  }
+  if (spec.switchTo !== undefined) {
+    await onActivated({ tabId: spec.switchTo });
+    await settle();
+  }
+  if (open) open();
+  release();
+  await settle();
+  emit({ settled: regions(), runs, sent, broadcasts, writes });
+});
+"""
