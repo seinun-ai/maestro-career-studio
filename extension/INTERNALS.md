@@ -900,10 +900,12 @@ know, and each one was learned from a live failure.
   read the box's "— Make a Selection —" and "Please select a country" as
   answers and skipped Degree, School, Country and four more. A select is a
   box's backing only when the page ties it to the box — the select right
-  before an ancestor of the box (select2's layout), or one the box's
-  aria-labelledby / aria-controls names, itself or by its label — and hides
-  ITSELF inside a shown parent (not displayed, aria-hidden, or select2's 1px
-  clip); a hidden select that is merely nearby (a follow-up question's) is
+  before the box's own container (select2's layout: a wrapper holding no
+  label, no heading and no control but the box, so never the next
+  question's), or one the box's aria-labelledby / aria-controls names,
+  itself or by its label — and hides ITSELF inside a shown parent (not
+  displayed, or select2's 1px clip; aria-hidden alone hides nothing on
+  screen, so such a select is still a field); a hidden select that is merely nearby (a follow-up question's) is
   not, and a box with a backing input (Workday) never looks for one. Over
   its backing select a box is answered only while the select holds a value
   that is not empty, a disabled option or a placeholder row (whatever that
@@ -933,7 +935,9 @@ know, and each one was learned from a live failure.
   this date." A job's end date goes into an entry not placed by /sections
   only when that entry's other job picks in the same /map request (start,
   employer, title…) all name the same job; an end with nothing to anchor it,
-  or beside another job's picks, is left. A page entry is its section and
+  or beside another job's picks, is left, and the report says so ("Left for
+  you: it isn't clear which of your jobs this entry is."; /map's `why`
+  `unclear_job`, never "no fact" when the profile has the date). A page entry is its section and
   page position, which need not be the profile's order (an oldest-first
   page), so the picks decide. Known limit: an entry split across two /map
   requests (40 fields each) has no anchor in the second, and its end is

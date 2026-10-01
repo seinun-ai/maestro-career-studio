@@ -75,7 +75,8 @@ def run(fields, db_session, *, eeo_consented=True, low_stakes=False):
 def test_a_confident_slot_returns_its_value_for_code_to_type(db_session, monkeypatch):
     fake_jev(monkeypatch, {"a": ("personal.city", 0.9)})
     got = run([field("a", "City")], db_session)
-    assert got["a"].model_dump() == {"route": "slot", "slot": "personal.city", "value": "Springfield", "format": None}
+    assert got["a"].model_dump() == {"route": "slot", "slot": "personal.city", "value": "Springfield", "format": None,
+                                     "why": None}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -808,7 +809,8 @@ HISTORY_WORDINGS = [
 def test_a_choice_no_fact_answers_is_reasoned_when_the_history_can_answer_it(db_session, monkeypatch):
     prompts = fake_llm(monkeypatch, {"g": {"key": "none", "confidence": 0.95}}, reasoned={"g": 0.9})
     got = run([field("g", HISTORY_WORDINGS[0], "popup", options=["Yes", "No"])], db_session)
-    assert got["g"].model_dump() == {"route": "reasoned", "slot": None, "value": None, "format": None}
+    assert got["g"].model_dump() == {"route": "reasoned", "slot": None, "value": None, "format": None,
+                                     "why": None}
     [asked] = [p for p in prompts if p["trace_name"] == "autofill-reasoned"]
     assert HISTORY_WORDINGS[0] in asked["prompt"]
 
@@ -1342,7 +1344,8 @@ def entry_map(db_session, monkeypatch, picks, **kw):
 def test_the_current_jobs_entry_never_takes_another_jobs_end(db_session, monkeypatch):
     got = entry_map(db_session, monkeypatch, {"s": ("Start Date: Year", "experience.0.start", 0),
                                               "e": (END_YEAR, "experience.1.end", 0)})
-    assert got["e"].route == "none"
+    # Left, and said why: the profile HAS an end date, it is unclear whose this entry is.
+    assert (got["e"].route, got["e"].why, got["e"].slot) == ("none", "unclear_job", None)
     assert (got["s"].slot, got["s"].value, got["s"].format) == ("experience.0.start", "2026-06", "date")
 
 
@@ -1375,7 +1378,8 @@ def test_a_single_past_job_page_gets_the_end_its_own_picks_agree_on(db_session, 
     {"e": ("End Date", "experience.1.end", 0)},
 ], ids=["another-job", "entry-names-two-jobs", "nothing-to-anchor-it"])
 def test_an_end_its_entry_does_not_vouch_for_is_refused(db_session, monkeypatch, picks):
-    assert entry_map(db_session, monkeypatch, picks)["e"].route == "none"
+    got = entry_map(db_session, monkeypatch, picks)["e"]
+    assert (got.route, got.why) == ("none", "unclear_job")
 
 
 @pytest.mark.usefixtures("jev_on")

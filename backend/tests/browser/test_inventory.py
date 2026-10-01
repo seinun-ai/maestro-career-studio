@@ -413,6 +413,27 @@ def test_a_popup_showing_an_answer_beside_an_unrelated_hidden_select_is_answered
     assert [(f["committed"], f["answered"]) for f in fields(page)] == [("Bachelor's", True)]
 
 
+def test_the_previous_questions_hidden_select_never_backs_the_next_questions_box(page, load):
+    """Re-review probe: a select right before the NEXT question's wrapper is
+    not that wrapper's widget (it holds its own label): its box keeps its answer."""
+    opts = "<option value=''></option><option value='x'>Other</option>"
+    load(page, f"""<div class='form'>
+      <label>Visa type</label><select id='v' style='display:none'>{opts}</select>
+      <div class='q2'><label id='l'>Degree</label><div><button aria-haspopup='listbox' aria-labelledby='l'>Bachelor's</button></div></div>
+      </div>""")
+    assert [(f["question"], f["committed"], f["answered"]) for f in fields(page)] == [("Degree", "Bachelor's", True)]
+
+
+def test_a_visible_select_marked_aria_hidden_is_still_a_field(page, load):
+    """aria-hidden alone hides nothing on screen: a usable select beside a
+    popup stays a field of its own, and the popup's answer stands."""
+    load(page, """<div><label for='s'>Country</label><select id='s' aria-hidden='true'>
+      <option value=''></option><option value='x'>Other</option></select>
+      <span><button aria-haspopup='listbox' aria-label='State'>Texas</button></span></div>""")
+    assert [(f["shape"], f["question"], f["committed"], f["answered"]) for f in fields(page)] == [
+        ("select", "Country", "", False), ("popup", "State", "Texas", True)]
+
+
 def test_real_select2_hiding_is_one_field_not_two(page, load):
     """select2 hides its select with a 1px clip (`select2-hidden-accessible`),
     which counts as visible: tied to the box, it is the box's backing, never a

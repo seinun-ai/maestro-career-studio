@@ -2261,3 +2261,18 @@ def test_only_a_date_slot_on_a_part_control_is_narrowed(page, load):
               map={"w": dated(), "n": {"route": "slot", "slot": "personal.phone", "value": "555-0100", "format": "phone"},
                    "y": {"route": "slot", "slot": "custom.1", "value": "2026-06"}})
     assert {a["fid"]: a["value"] for a in actions(out, "write")} == {"w": "2026-06", "n": "555-0100", "y": "2026-06"}
+
+
+def test_an_end_date_whose_job_is_unclear_is_left_with_its_own_note(page, load):
+    """/map left an end date because the entry's job could not be told (its
+    `why`): the profile has the date, so the row never says "no fact"."""
+    out = run(page, load, frames=[[f("e", question="End Date: Year", part="year"), f("n", question="Nickname")]],
+              map={"e": {"route": "none", "why": "unclear_job"}, "n": {"route": "none"}})
+    assert statuses(out) == {"e": "needs_answer", "n": "needs_answer"}
+    assert (row(out, "e")["lastOutcome"], row(out, "e")["answer"]) == (
+        "unclear_job", "Left for you: it isn't clear which of your jobs this entry is.")
+    assert row(out, "n")["lastOutcome"] == "no_fact"
+    assert actions(out) == []
+    # Telemetry keeps its outcome vocabulary: the reason stays in the report.
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert {o["outcome"] for o in obs} == {"needs_answer"}

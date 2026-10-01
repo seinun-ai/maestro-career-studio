@@ -1030,6 +1030,9 @@
     // slot, server-side — autofill_map.format_of is the one reading); the
     // loop takes only a format it knows, and never guesses one.
     const FORMATS = new Set(["phone", "money"]);
+    // Why /map left a field the profile could answer (`why`, a known word
+    // only), said in the report: never "no fact" when the profile has one.
+    const WHY = { unclear_job: "Left for you: it isn't clear which of your jobs this entry is." };
     const fillText = async (f, value, format) => {
       // An empty write is no answer: refused here, never sent (and never retried).
       if (!String(value ?? "").trim()) return finish(f, "needs_answer", { lastOutcome: "no_value" });
@@ -1131,7 +1134,7 @@
           const datePart = narrowed(f, m);
           if (m) {
             set(f.fid, { route: m.route, slot: m.slot ?? null, value: datePart ? datePart.value : m.value ?? null,
-              format, part: datePart?.part ?? null });
+              format, part: datePart?.part ?? null, why: WHY[m.why] ? m.why : null });
           }
         }
       }
@@ -1220,6 +1223,8 @@
         const row = rows.get(f.fid);
         if (row.part && !row.value) {
           finish(f, "needs_answer", { lastOutcome: "no_date_part", answer: `Your profile has no ${row.part} for this date.` });
+        } else if (row.route === "none" && row.why) {
+          finish(f, "needs_answer", { lastOutcome: row.why, answer: WHY[row.why] });
         } else if (!row.route || row.route === "none") finish(f, "needs_answer", { lastOutcome: row.route ? "no_fact" : "not_mapped" });
         else if (row.route === "blocked") finish(f, "blocked", { lastOutcome: "blocked" });
         else if (row.route === "free_text") {

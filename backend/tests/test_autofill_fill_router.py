@@ -70,7 +70,8 @@ def test_map_builds_facts_from_the_consent_gated_profile(db_session, monkeypatch
     seen = _spy_map(monkeypatch)
     r = _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]})
     assert r.status_code == 200
-    assert r.json() == {"fields": {"a": {"route": "none", "slot": None, "value": None, "format": None}}}
+    assert r.json() == {"fields": {"a": {"route": "none", "slot": None, "value": None, "format": None,
+                                                   "why": None}}}
     assert "personal.city" in seen["facts"]
     assert not [slot for slot in seen["facts"] if slot.startswith("eeo")]
     assert seen["kw"] == {"eeo_consented": False, "low_stakes": False}
@@ -204,7 +205,8 @@ def test_the_real_map_returns_the_value_but_never_sends_it(db_session, monkeypat
 
     monkeypatch.setattr(autofill_map.llm, "call_openai", call_openai)
     r = _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]})
-    assert r.json() == {"fields": {"a": {"route": "slot", "slot": "personal.city", "value": "Springfield", "format": None}}}
+    assert r.json() == {"fields": {"a": {"route": "slot", "slot": "personal.city", "value": "Springfield",
+                                                   "format": None, "why": None}}}
     assert "Springfield" not in prompts[0] and "female" not in prompts[0].lower()
 
 

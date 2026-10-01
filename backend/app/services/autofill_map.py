@@ -380,8 +380,9 @@ def format_of(slot: str | None) -> Format | None:
 def _one_job_per_entry(fields: list[MapField], out: dict[str, Mapped]) -> None:
     """An UNPLACED entry's end date is kept only when the entry's other job
     picks in this request (its start, employer, title…) all name that same
-    job; anything else routes it to none, an end with nothing to anchor it
-    included. Live iCIMS (2026-10-01): the current job has no end fact, so a
+    job; anything else routes it to none (`why` unclear_job: the profile has
+    the date, the entry's job is what is unknown), an end with nothing to
+    anchor it included. Live iCIMS (2026-10-01): the current job has no end fact, so a
     model asked for its End Date took the earlier job's, beside the current
     job's start. A page entry is its section and page position, which are
     not the profile's order (an oldest-first page), so the picks decide, not
@@ -396,7 +397,7 @@ def _one_job_per_entry(fields: list[MapField], out: dict[str, Mapped]) -> None:
             anchors.setdefault((f.section, f.repeat_index), set()).add(picks[f.fid][0])
     for f in fields:
         if f.fid in picks and picks[f.fid][1] == "end" and anchors.get((f.section, f.repeat_index)) != {picks[f.fid][0]}:
-            out[f.fid] = Mapped(route="none")
+            out[f.fid] = Mapped(route="none", why="unclear_job")
 
 
 def _job_pick(field: MapField, mapped: Mapped) -> tuple[str, str] | None:

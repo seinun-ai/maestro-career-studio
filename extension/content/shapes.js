@@ -215,19 +215,22 @@
   // submits (iCIMS, live 2026-10-01: a box showing "— Make a Selection —" over
   // an empty one was read as answered). Only a select the page TIES to the box
   // counts, never one that is merely nearby (a hidden follow-up question's):
-  // the select right before an ancestor of the box (select2's layout), or one
-  // the box's aria-labelledby / aria-controls names, itself or by its label.
-  // It must hide ITSELF (not displayed, aria-hidden, or select2's 1px clip)
-  // inside a shown parent. Two candidates: none.
+  // the select right before the box's own container (select2's layout: a
+  // wrapper holding no label, no heading and no control but the box, so never
+  // the NEXT question's wrapper), or one the box's aria-labelledby /
+  // aria-controls names, itself or by its label. It must hide ITSELF inside a
+  // shown parent: not displayed, or select2's 1px clip (aria-hidden alone
+  // hides nothing on screen). Two candidates: none.
   const clipped = (s) => {
     const r = s.getBoundingClientRect();
     return r.width <= 1 && r.height <= 1;
   };
-  const hidesItself = (s) => ns.fillBase.visible(s.parentElement)
-    && (!ns.fillBase.visible(s) || s.getAttribute("aria-hidden") === "true" || clipped(s));
+  const hidesItself = (s) => ns.fillBase.visible(s.parentElement) && (!ns.fillBase.visible(s) || clipped(s));
+  const widgetOnly = (n, el) => !n.matches(`label, ${ns.ANY_HEADING}`) && !n.querySelector(`label, ${ns.ANY_HEADING}`)
+    && [...n.querySelectorAll(ns.fieldControls.CONTROL)].every((c) => c === el || el.contains(c));
   const backingSelect = (el) => {
     const tied = new Set();
-    for (let n = el, d = 0; n && d < 4 && !edge(n); n = n.parentElement, d += 1) {
+    for (let n = el, d = 0; n && d < 4 && !edge(n) && widgetOnly(n, el); n = n.parentElement, d += 1) {
       if (n.previousElementSibling instanceof HTMLSelectElement) tied.add(n.previousElementSibling);
     }
     for (const attr of ["aria-labelledby", "aria-controls"]) {

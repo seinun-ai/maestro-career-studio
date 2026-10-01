@@ -69,11 +69,17 @@ class MapRequest(Selector):
     fields: list[MapField] = Field(min_length=1, max_length=MAX_FIELDS)
 
 
+# Why a field the profile could answer was left (route "none"): `unclear_job`,
+# an end date /map could not tie to the entry's job (autofill_map._one_job_per_entry).
+Why = Literal["unclear_job"]
+
+
 class Mapped(BaseModel):
     route: Route
     slot: str | None = None
     value: str | list[str] | None = None  # to the LOCAL extension only
     format: Format | None = None
+    why: Why | None = None
 
 
 class MapResponse(BaseModel):

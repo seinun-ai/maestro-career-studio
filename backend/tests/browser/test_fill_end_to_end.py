@@ -704,7 +704,8 @@ def test_icims_date_parts_get_their_own_part_and_a_current_job_no_end(e2e_page, 
     assert status[f"{START}: Day"] == ("needs_answer", "no_date_part")
     assert out["by_question"][f"{START}: Day"]["answer"] == "Your profile has no day for this date."
     for part in ("Month", "Day", "Year"):
-        assert status[f"{END}: {part}"] == ("needs_answer", "no_fact"), part
+        assert status[f"{END}: {part}"] == ("needs_answer", "unclear_job"), part
+    assert out["by_question"][f"{END}: Year"]["answer"] == "Left for you: it isn't clear which of your jobs this entry is."
     # Nothing was ever sent to the End Date's controls, and no whole date anywhere.
     end_fids = {r["fid"] for r in out["report"]["fields"] if r["question"].startswith(END)}
     applies = [a for m in out["sent"] if m["type"] == "fill_apply" for a in m["actions"]]
