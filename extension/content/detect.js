@@ -261,6 +261,36 @@ function detectPage() {
 }
 // ---- end detectPage ----
 
+/** How many on-screen fields this frame has that a fill could answer.
+ *
+ * NOT PART OF `detectPage`, and never on its miss path: the panel asks for it
+ * (`detect_page`, content/agent.js) to decide one thing, whether a later step
+ * of an application already confirmed on this host is a form (`askDetect`'s
+ * flow rule, panel.js). Those steps, iCIMS's EEO and Candidate Questions, are
+ * a few selects and a Submit and score nothing above. Search boxes do not
+ * count, so a careers search page reached after the last step does not offer
+ * Autofill over its keyword box. Capped: the answer only has to be "more than
+ * none". */
+function fillableControls() {
+  const CAP = 20;
+  const SEARCH_NAME = /^(q|query|keywords?|search\w*)$/i;
+  const SKIPPED_TYPES = ["hidden", "submit", "button", "reset", "image", "search", "password"];
+  let count = 0;
+  for (const el of document.querySelectorAll(
+    'input, select, textarea, [role="combobox"], [role="radio"], [role="checkbox"]')) {
+    const type = (el.getAttribute("type") || "text").toLowerCase();
+    if (el.tagName === "INPUT" && SKIPPED_TYPES.includes(type)) continue;
+    if (SEARCH_NAME.test(el.getAttribute("name") || "")
+        || el.getAttribute("role") === "searchbox"
+        || el.closest?.('[role="search"]')) continue;
+    const onScreen = el.offsetWidth || el.offsetHeight || el.getClientRects?.().length;
+    if (el.disabled || !onScreen) continue;
+    count += 1;
+    if (count >= CAP) break;
+  }
+  return count;
+}
+
 
 // ============================================================
 // WHAT THIS FILE PUBLISHES
@@ -292,4 +322,5 @@ function detectPage() {
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   ns.detectPage = detectPage;
+  ns.fillableControls = fillableControls;
 })();

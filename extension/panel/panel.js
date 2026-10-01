@@ -862,7 +862,7 @@
    * reasons. `undefined` there is "we do not know", which is exactly what the
    * bridge's offline tolerance is built on. */
   async function ask(type, payload = {}) {
-    const reply = await chrome.runtime.sendMessage({ type, ...payload });
+    const reply = await chrome.runtime.sendMessage({ type, ...withFlowHost(type, payload) });
     if (reply?.ok) return reply.data;
     const err = new Error(reply?.error ?? `no answer to ${type}`);
     if (Number.isInteger(reply?.status)) err.status = reply.status;
@@ -2738,6 +2738,10 @@
     const token = generation;
     // A new page binding: the late re-detect's cap starts again.
     frameDetects = 0;
+    // Only a step reached INSIDE the tab opens the Fill row by itself
+    // (`noteForm`): a panel opened on, or a tab switched back to, a page
+    // already filled is not a new step.
+    boundInPlace = inPlace;
     // A settings tab, a new tab, a PDF viewer, `about:blank`. The panel is open
     // across all of them and the user tabs through them constantly, so asking
     // the backend about a `chrome://` url would be a round trip per glance for
@@ -3156,6 +3160,7 @@
     const verdict = await askDetectPrepared(token);
     if (!current(token)) return;
     card.hasForm = verdict?.form === true;
+    if (card.hasForm) noteForm(verdict);
     // After an in-place url change this read is the step being left, so its
     // count is not shown: the ladder's first rung (a second on) says.
     card.fileInputs = inPlace ? 0 : countFileInputs(verdict);
@@ -3249,7 +3254,7 @@
     } catch (_) {
       top = null;
     }
-    if (top?.form === true) return top;
+    if (top?.form === true) return { ...top, formHost: top.host || hostOf(card.url) };
     let frames = [];
     try {
       frames = await ask("page_broadcast", {
@@ -3261,10 +3266,127 @@
     const answered = (Array.isArray(frames) ? frames : [])
       .filter((one) => one?.result !== undefined && one.result !== null);
     if (top === null && answered.length === 0) return null;
-    return { ...(top ?? { tier: "none", form: false, score: 0, fileInputs: 0 }),
-             form: answered.some((one) => one.result?.form === true
-               && (one.frameId === 0 || sameSite(one.url, card.url)
-                 || Number(one.result?.score) >= SUBFRAME_FORM_SCORE)) };
+    const base = top ?? { tier: "none", form: false, score: 0, fileInputs: 0 };
+    const frameHost = (one) => one.result?.host
+      || hostOf(one.url ?? (one.frameId === 0 ? card.url : ""));
+    const formFrame = answered.find((one) => one.result?.form === true
+      && (one.frameId === 0 || sameSite(one.url, card.url)
+        || Number(one.result?.score) >= SUBFRAME_FORM_SCORE));
+    if (formFrame) return { ...base, form: true, formHost: frameHost(formFrame) };
+    // A LATER STEP of an application already confirmed on this host (owner
+    // decision 2026-10-01). iCIMS's Candidate Questions and EEO steps, and
+    // every wizard's review page, are a few selects and a Submit: nothing the
+    // detector can score, so each one said "No application form here" after
+    // the first step filled. A frame on the confirmed host with at least one
+    // fillable field is the form. Search boxes never count, and the hour
+    // (`FLOW_TTL_MS`) runs from the last step found, so an abandoned
+    // application does not keep a site claimed.
+    const flowHost = flowHostFor(card.tabId);
+    if (flowHost) {
+      const candidates = [
+        ...(top ? [{ frameId: 0, url: card.url, result: top }] : []), ...answered];
+      if (candidates.some((one) => Number(one.result?.controls) > 0
+          && frameHost(one) === flowHost)) {
+        return { ...base, form: true, formHost: flowHost, flow: true };
+      }
+    }
+    return { ...base, form: false };
+  }
+
+  /** WHERE AN APPLICATION IS UNDER WAY, per tab: the host of the frame whose
+   * form was last confirmed, and when. It does two things:
+   *
+   * - `askDetect` counts a later step on that host as a form (above);
+   * - `ask` VOUCHES for the host on every page message (`withFlowHost`), and
+   *   `frameMayReceiveUserData` (content/agent.js) lets a frame on exactly
+   *   that host take the fill. That is what lets an iCIMS iframe on its EEO
+   *   step be written to at all: its own detect says no.
+   *
+   * WHAT IS VOUCHED FOR is one exact hostname that already held a confirmed
+   * application form in this tab, so the data goes nowhere it has not
+   * already gone. Every other frame keeps its own verdict.
+   *
+   * IN `chrome.storage.session`, so closing and reopening the panel mid-
+   * application keeps it, and a browser restart forgets it. Total: a failed
+   * read or write is "no flow", which is today's behaviour, never an error. */
+  const FLOW_TTL_MS = 60 * 60 * 1000;
+  const FLOW_KEY = "applicationFlows";
+  const flows = new Map();
+
+  function flowHostFor(tabId) {
+    const entry = flows.get(tabId);
+    if (!entry) return null;
+    if (Date.now() - entry.at > FLOW_TTL_MS) {
+      flows.delete(tabId);
+      return null;
+    }
+    return entry.host;
+  }
+
+  function rememberFlow(tabId, host) {
+    if (tabId === null || tabId === undefined || !host) return;
+    flows.set(tabId, { host, at: Date.now() });
+    try {
+      chrome.storage.session?.set({ [FLOW_KEY]: Object.fromEntries(flows) })
+        ?.catch?.((err) => console.warn("[maestro-cs] could not keep the application flow:", err));
+    } catch (err) {
+      console.warn("[maestro-cs] could not keep the application flow:", err);
+    }
+  }
+
+  async function loadFlows() {
+    try {
+      const stored = (await chrome.storage.session?.get(FLOW_KEY))?.[FLOW_KEY] ?? {};
+      for (const [tabId, entry] of Object.entries(stored)) {
+        if (typeof entry?.host === "string" && Number.isFinite(entry?.at)) {
+          flows.set(Number(tabId), entry);
+        }
+      }
+    } catch (_) {
+      // Nothing remembered: a later step then needs its own evidence.
+    }
+  }
+
+  /** The vouch, on the two message types that reach a page's frames, and only
+   * for the inner types the gate reads: an ungated read or a Stop needs none.
+   * Added here, at the panel's one door to the service worker, so no caller
+   * can forget it and none has to know about it. */
+  const UNGATED_PAGE_TYPES = ["detect_page", "extract_job_posting", "fill_cancel"];
+
+  function withFlowHost(type, payload) {
+    if (type !== "page_broadcast" && type !== "attach_pdf") return payload;
+    if (UNGATED_PAGE_TYPES.includes(payload.message?.type)) return payload;
+    const host = flowHostFor(payload.tabId);
+    if (!host) return payload;
+    return type === "attach_pdf"
+      ? { ...payload, flowHost: host }
+      : { ...payload, message: { ...payload.message, flowHost: host } };
+  }
+
+  /** A form was confirmed on this page: keep the flow alive for the next
+   * step, and on a later step of an application the panel already filled,
+   * open the Fill row so Autofill is in front of the user.
+   *
+   * WHY THE ROW HAS TO BE OPENED: the session bridge keeps `touched` across
+   * a wizard's page loads (see `revisit`'s note), so the rail stands at Track
+   * from step two on and the Fill body was a door the user had to find. This
+   * is that door opened for them, as a VIEW (`revisit`), never a stage: no
+   * tick moves. Only where nothing has run on THIS page (`fill`, `loop`), only
+   * on a draft (an applied application is finished), only on a page reached
+   * by navigating inside the tab (`boundInPlace`), and once per page url, so a
+   * Refresh or a re-detect never reopens a row the user closed. */
+  let fillOpenedFor = null;
+  let boundInPlace = false;
+
+  function noteForm(verdict) {
+    if (verdict?.formHost) rememberFlow(card.tabId, verdict.formHost);
+    const pageKey = `${card.tabId} ${card.url}`;
+    if (!boundInPlace || fillOpenedFor === pageKey) return;
+    if (card.revisit || card.fill !== null || card.loop != null || card.busy !== null) return;
+    const decision = stageFor(cardFacts(card));
+    if (decision.stage !== "track" || decision.done.fill !== true || decision.done.track) return;
+    fillOpenedFor = pageKey;
+    card.revisit = { row: "fill", over: decision.stage };
   }
 
   /** A subframe of the bound tab finished loading: ask again, once per burst.
@@ -3303,6 +3425,7 @@
     if (verdict?.form !== true) return;
     card.hasForm = true;
     card.fileInputs = countFileInputs(verdict);
+    noteForm(verdict);
     render();
   }
 
@@ -3388,6 +3511,7 @@
       // A yes already known is the in-place ladder settling only the count.
       if (verdict?.form !== true || card.hasForm) continue;
       card.hasForm = true;
+      noteForm(verdict);
       // A REPAINT IS THE WHOLE OF IT, and that is a shrink rather than an
       // oversight. A late yes MOVES NO STAGE any more — `stageFor` stopped
       // reading the form when the shortcut's gate went to the button — so what
@@ -4202,6 +4326,7 @@
     // Whether there is a recipe book to offer to forget (`readStore` never throws).
     card.learnedMoves = ns.recipeBook.size((await readStore())[KEY.recipes]);
     render();
+    await loadFlows();
     await bindActiveTab();
   }
 

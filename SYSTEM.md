@@ -345,12 +345,12 @@ file to open.
   the sender, but `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat
   iframes, and the ISOLATED world protects the message in transit, NOT the DOM written into: a frame
   owns its DOM, so a profile value in a third-party frame's input is readable by that frame's
-  script. `agent.js` gates all four fan-out handlers (`profile_fill`, `collect_open_questions`,
-  `fill_answers`, `attach_resume_pdf`) on `frameMayReceiveUserData()`: the TOP frame always passes,
-  a SUBFRAME must show `detectPage().form`, and a frame whose detection throws is refused. A refused
-  frame returns the handler's EMPTY shape, never a throw (a throw reads as "didn't stick" in the
-  reconciliation strip). Attach additionally requires a VISIBLE input — `input.files` is readable
-  with no submit and no gesture, so an off-screen input is a resume collector. Pinned by
+  script. `agent.js` gates every fan-out write (`profile_fill`, the `fill_*` ops, attach…) on
+  `frameMayReceiveUserData(msg)`: the TOP frame passes; a SUBFRAME must show `detectPage().form`, OR
+  sit on exactly the `flowHost` the panel vouches for — the host whose frame held a confirmed form in
+  this tab within the hour (panel.js `withFlowHost`; a later wizard step such as iCIMS EEO scores 0).
+  Detection throwing refuses. A refused frame returns the handler's EMPTY shape, never a throw.
+  Attach also requires a VISIBLE input (`input.files` is readable with no gesture). Pinned by
   `tests/test_extension_frame_gate.py`.
 - **The policy deny-list is single-source, and it is TWO lists.**
   `{#inv-policy-deny-list-single-source}` `extension/shared/policy.js` (in `shared/`, not
