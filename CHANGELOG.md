@@ -22,14 +22,25 @@ with the qualification that version 0 actually carries:
 - **Patch releases (`0.1.1`) never change the schema or the `.env` contract.**
   They are safe to take without reading anything.
 
-Version numbers appear in seven places that must agree — the git tag (`v0.2.0`)
-and six files listed in [`docs/RELEASING.md`](docs/RELEASING.md). The published
+Version numbers appear in eight places that must agree — the git tag (`v0.2.0`)
+and seven files listed in [`docs/RELEASING.md`](docs/RELEASING.md). The published
 image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-10-01
+
+### Breaking changes
+
+- None. No migrations and no `.env` changes. MCP list tools return fewer rows
+  by default (see Changed); every one of them still takes `limit` and `offset`.
+
 ### Added
 
+- **A listing on the official MCP Registry.** `server.json` describes the
+  server as `io.github.seinun-ai/maestro-career-studio`, and the Claude Desktop
+  extension is attached to each GitHub Release so the registry, and the
+  directories that copy from it, can point at a checked download.
 - **A privacy policy.** [`PRIVACY.md`](PRIVACY.md) says what the app stores,
   every place your data can go (the AI provider you configure, optional
   Langfuse tracing, the assistant you connect over MCP), and how to delete it.
@@ -54,6 +65,10 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   may still have finished, and capturing career notes gets the same long wait
   as other AI calls.
 - **Next.js telemetry is off** in the images built from this release.
+- **The plugin and extension descriptions no longer say a local model keeps
+  everything on your machine.** Local models can be configured but are
+  untested ([`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)), so the descriptions now say
+  only that AI features use the provider you configure.
 
 ### Fixed
 

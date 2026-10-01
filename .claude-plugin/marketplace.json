@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "maestro-career-studio",
-      "description": "Drive Maestro Career Studio from your assistant: capture and score jobs, tailor resumes against a JD, render PDFs, and track applications. Requires the stack running locally (docker compose up -d). The server talks only to your own local backend; AI features send content to the model provider you configure, and with a local model nothing leaves your machine.",
+      "description": "Drive Maestro Career Studio from your assistant: capture and score jobs, tailor resumes against a JD, render PDFs, and track applications. Requires the stack running locally (docker compose up -d). The server talks only to your own local backend; AI features send content to the model provider you configure.",
       "author": {
         "name": "Ajey Dhayashanker Loganathan"
       },
