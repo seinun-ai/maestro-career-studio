@@ -57,33 +57,34 @@
       };
     }
 
-    const described = [...document.querySelectorAll(
+    const describedNodes = [...document.querySelectorAll(
       '[class*="job-description" i], [class*="jobDescription" i], [id*="job-description" i], '
       + '[class*="description" i][class*="job" i], [data-testid*="description" i]'
     )];
     const candidates = [
-      ...described,
       document.querySelector("main"),
       document.querySelector("article"),
     ].filter(Boolean);
     const usable = (node) => (node.innerText?.trim() ?? "").length > 300;
-    let best = null;
-    for (const node of candidates) {
-      const text = node.innerText?.trim() ?? "";
-      if (usable(node) && (!best || text.length > best.length)) best = text;
-    }
-    const text = (best ?? document.body.innerText ?? "").trim().slice(0, 60000);
+    const longest = (nodes) => nodes.filter(usable).map((node) => node.innerText.trim())
+      .reduce((best, text) => (best === null || text.length > best.length ? text : best), null);
     // WHERE the text came from, which is what the panel may claim about it:
-    // `content` only when a job-description container on this page held a
-    // usable description, `page` for a long <main>/<article> with none (a
-    // blog, a recipe), `body` for the whole page. The TEXT is chosen exactly
-    // as before (the longest usable candidate), so what a save sends has not
-    // changed; only "Job description found" is now said about a job signal.
+    // `content` when a job-description container on this page held a usable
+    // description, `page` for a long <main>/<article> with none (a blog, a
+    // recipe), `body` for the whole page.
+    //
+    // A `content` answer is the CONTAINER'S OWN TEXT, never a longer <main> or
+    // <article> around it: a frame can hold the description AND an application
+    // form, and a custom widget there shows the user's own value as plain text
+    // (a name, an email), which would then ride into the preview and a save.
+    const described = longest(describedNodes);
+    const page = described === null ? longest(candidates) : null;
+    const best = described ?? page;
     return {
       url: location.href,
       title: document.title,
-      text,
-      source: !best ? "body" : described.some(usable) ? "content" : "page",
+      text: (best ?? document.body.innerText ?? "").trim().slice(0, 60000),
+      source: described !== null ? "content" : page !== null ? "page" : "body",
     };
   }
 

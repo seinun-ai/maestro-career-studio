@@ -182,14 +182,17 @@ global.unwrapPageReply = extract(
 // silenced: the warning is the diagnostic that tells three different failures
 // apart during a browser check, so it is part of what this file pins.
 let warnings = [];
-global.console = { ...console, warn: (...args) => warnings.push(args.map(String).join(" ")) };
+let debugs = [];
+global.console = { ...console,
+  warn: (...args) => warnings.push(args.map(String).join(" ")),
+  debug: (...args) => debugs.push(args.map(String).join(" ")) };
 
 let addressed = [];
 global.chrome = {
   webNavigation: {
     getAllFrames: async ({ tabId }) => (spec.frames === null
       ? null
-      : spec.frames.map((f) => ({ frameId: f.frameId, tabId }))),
+      : spec.frames.map((f) => ({ frameId: f.frameId, tabId, url: f.url }))),
   },
   tabs: {
     // One reply per frame, declared by the spec. `throws` models a frame with
@@ -205,7 +208,7 @@ global.chrome = {
 };
 
 main(async () => {
-  const frames = await broadcastToFrames(spec.tabId, { type: "profile_fill" });
+  const frames = await broadcastToFrames(spec.tabId, { type: spec.messageType });
 
   // The aggregation the widget actually performs, run here rather than
   // asserted in Python: the point is that THIS expression still works against
@@ -220,7 +223,7 @@ main(async () => {
     { data: f.result === undefined ? null : f.result, error: f.error ?? null },
   ]));
 
-  emit({ frames, filled, hosts, perFrame, addressed, warnings });
+  emit({ frames, filled, hosts, perFrame, addressed, warnings, debugs });
 });
 """
 
@@ -240,10 +243,10 @@ main(async () => {
 """
 
 
-def run_fanout(tmp_path, frames, tab_id=7) -> dict:
+def run_fanout(tmp_path, frames, tab_id=7, message_type="profile_fill") -> dict:
     out = run_node(
         _FANOUT_DRIVER_JS,
-        {"tabId": tab_id, "frames": frames},
+        {"tabId": tab_id, "frames": frames, "messageType": message_type},
         tmp_path,
         source=_FANOUT_SOURCE,
     )
@@ -361,6 +364,36 @@ def test_the_reason_a_frame_failed_is_kept_and_logged(tmp_path):
     # The frames that worked stay clean — an `error` key on every record would
     # make the field useless as a signal.
     assert "error" not in out["frames"][0]
+
+
+@pytest.mark.parametrize("message_type", ["extract_job_posting", "detect_page"])
+def test_a_silent_frame_on_a_read_only_fan_out_logs_no_warning(tmp_path, message_type):
+    """The two READ fan-outs run on most pages the panel is bound to (and on
+    every retry rung), and nearly every page carries a frame with no content
+    script. A warning per silent frame filled chrome://extensions → Errors,
+    which Chrome shows every extension warning in. The reason is still kept on
+    the frame's record, and still logged at debug level."""
+    out = run_fanout(tmp_path, _GREENHOUSE, message_type=message_type)
+
+    assert out["warnings"] == []
+    assert out["frames"][2]["error"] == (
+        "Could not establish connection. Receiving end does not exist.")
+    assert len(out["debugs"]) == 1
+
+
+def test_each_frames_url_travels_with_its_result(tmp_path):
+    """The posting read takes a subframe's answer only from the top
+    document's own site, so the frame's url (from `getAllFrames`) rides on its
+    record — including the record of a frame that did not answer."""
+    out = run_fanout(tmp_path, [
+        {"frameId": 0, "url": "https://careers.acme.com/jobs/1",
+         "reply": {"ok": True, "data": {"filled": []}}},
+        {"frameId": 4, "url": "https://ads.example.test/slot",
+         "throws": "Could not establish connection."},
+    ], message_type="extract_job_posting")
+
+    assert [(f["frameId"], f["url"]) for f in out["frames"]] == [
+        (0, "https://careers.acme.com/jobs/1"), (4, "https://ads.example.test/slot")]
 
 
 def test_reaching_nobody_is_distinguishable_from_a_page_with_nothing_on_it(tmp_path):

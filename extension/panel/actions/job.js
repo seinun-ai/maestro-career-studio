@@ -78,9 +78,11 @@
       store.render();
       return;
     }
-    // Text, but not a posting: no title to name it and nothing the extractor
-    // found by a job signal. A title the user typed is enough to go on.
-    if (!String(facts.preview?.title ?? "").trim() && !describesJob(facts.preview)) {
+    // Text, but not a posting: no title to name it, nothing the extractor
+    // found by a job signal, and nothing the user typed into the preview (a
+    // description pasted into a box is theirs to save).
+    if (!String(facts.preview?.title ?? "").trim() && !describesJob(facts.preview)
+        && facts.previewTyped !== true) {
       store.write({ note: { text: UNREAD_POSTING } });
       store.render();
       return;

@@ -166,13 +166,18 @@ asking permission of itself.
   from every frame** (`askPosting`, `page_broadcast`) when frame 0's answer is
   not a job description: iCIMS serves the careers site's chrome in the top
   document and the posting in a same-origin iframe (`#icims_content_iframe`). A
-  subframe's answer is taken only when it is a job description, the richest by
-  `landPosting`'s order (provenance, then size), so an ad iframe's text never
-  replaces the top document's; the first read, every retry rung and the
-  reload heal all go through it. **Save job refuses a blank job**: with no title
-  and no job description it posts nothing and says "The Companion couldn't read
-  this job's description from the page. Open the job post on its own page, or
-  add the job in Maestro CS." (a typed title is enough to save page text). The backend
+  subframe's answer is taken only when it is a job description from the tab's
+  own site (`decisions.sameSite`: the registrable domain, approximated as the
+  host's last two labels, on the frame url `broadcastToFrames` attaches), the
+  richest by `landPosting`'s order (provenance, then size); a vendor's
+  "similar jobs" widget or an ad frame never supplies it. The first read, every
+  retry rung and the reload heal all go through it. A `content` answer is the
+  job-description container's own text, never a longer `<main>` around it,
+  which can carry a form's values shown as text. **Save job refuses a blank
+  job**: with no title, no job description and nothing typed into the preview
+  it posts nothing and says "The Companion couldn't read this job's description
+  from the page. Open the job post on its own page, or add the job in Maestro
+  CS." The backend
   extracts the JD immediately, so the job lands parsed and ready for ATS
   scoring, and a duplicate save says "Already saved in Maestro CS" rather than
   pretending it saved something new. A job the scorer cannot read yet (422: no
@@ -437,7 +442,10 @@ know, and each one was learned from a live failure.
   NAMES its bound tab, so sw.js's `sender.id !== chrome.runtime.id` is the WHOLE
   of provenance for a tab-less sender; `detect_page` joins `extract_job_posting`
   as a frame-0 read because the panel runs in no page, and both are also
-  broadcastable, asked of every frame only when frame 0 has no answer. Content scripts are the
+  broadcastable, asked of every frame only when frame 0 has no answer. A frame
+  that does not answer one of these two reads is logged at debug level, not
+  warned: they run on most pages, and a warning lands in chrome://extensions →
+  Errors. Content scripts are the
   fill engine and the field work and NOTHING else since R-C deleted the floating
   card, so `fanoutTab`'s content-script branch is a written rule with no caller.
 - **The COMMIT GESTURE.** `visitControl`/`leaveControl` (plus the

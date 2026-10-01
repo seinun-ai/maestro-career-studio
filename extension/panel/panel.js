@@ -106,7 +106,7 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const { stageFor, rankBaseResumes, restorableSession, sessionTenant,
-          sameApplication, describesJob } = ns.decisions;
+          sameApplication, describesJob, sameSite } = ns.decisions;
 
   // `chrome.storage.local` holds TWO keys, and they hold different kinds of
   // thing: `widget.session`, the session pick (everything down to the
@@ -3451,11 +3451,14 @@
    * own navigation as `body` text, and saving that stored a job with no title
    * and no skills (careers-gmr.icims.com, 2026-09-30).
    *
-   * A SUBFRAME'S ANSWER WINS ONLY WHEN IT IS A JOB DESCRIPTION, and the richest
-   * one wins: `landPosting`'s own order, provenance then size. An ad or chat
-   * iframe with more text than the top document is not a posting, so frame 0's
-   * answer stands over it. Frame 0 is asked first and alone wherever it has
-   * the posting, which is every page that worked before this. The fan-out
+   * A SUBFRAME'S ANSWER WINS ONLY WHEN IT IS A JOB DESCRIPTION FROM THE TAB'S
+   * OWN SITE (`sameSite`, on the frame url `broadcastToFrames` attaches), and
+   * the richest one wins: `landPosting`'s own order, provenance then size. A
+   * vendor's "similar jobs" widget carries its own JobPosting JSON-LD, and an
+   * ad frame can hold a description-like container; neither is this tab's
+   * posting, so frame 0's answer stands over them. Frame 0 is asked first and
+   * alone wherever it has the posting, which is every page that worked before
+   * this. The fan-out
    * reads page text only and carries nothing from the user. The answer is null
    * only when frame 0 was silent and no subframe had a posting, which is what
    * sends `askPostingPrepared` to inject. */
@@ -3478,7 +3481,8 @@
       frames = [];
     }
     return (Array.isArray(frames) ? frames : [])
-      .filter((one) => one?.frameId !== 0 && describesJob(one?.result))
+      .filter((one) => one?.frameId !== 0 && sameSite(one?.url, card.url)
+        && describesJob(one?.result))
       .map((one) => one.result)
       .reduce((best, one) => (best === null || richerPosting(one, best) ? one : best), null)
       ?? top;

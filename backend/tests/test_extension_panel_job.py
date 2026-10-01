@@ -2828,7 +2828,9 @@ EMBEDDED_TEXT = "\n".join([
     "",
     "Build machine learning systems in Python and PyTorch.",
 ])
-EMBEDDED_POSTING = {"url": f"{POSTING_URL}?in_iframe=1", "title": "AI Engineer | Careers",
+# The frame's own url, as `getAllFrames` reports it: the same origin as the tab.
+EMBEDDED_URL = f"{POSTING_URL}?in_iframe=1"
+EMBEDDED_POSTING = {"url": EMBEDDED_URL, "title": "AI Engineer | Careers",
                     "text": EMBEDDED_TEXT, "source": "json-ld"}
 # An ad or chat iframe: more text than the top document, and no job signal.
 AD_FRAME = {"url": "https://ads.example.test/slot", "title": "Ad",
@@ -2852,7 +2854,7 @@ def _embedded(tmp_path, frames, **spec):
 
 def test_a_posting_inside_an_embedded_frame_fills_the_preview(tmp_path):
     out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
-                               {"frameId": 4, "result": EMBEDDED_POSTING}])
+                               {"frameId": 4, "url": EMBEDDED_URL, "result": EMBEDDED_POSTING}])
     assert _posting_broadcasts(out), "no frame but frame 0 was asked for the posting"
     assert _preview_inputs(out["loaded"]["rail"]) == {
         "title": "AI Engineer",
@@ -2865,7 +2867,7 @@ def test_a_posting_inside_an_embedded_frame_fills_the_preview(tmp_path):
 
 def test_save_job_sends_the_embedded_frames_posting(tmp_path):
     out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
-                               {"frameId": 4, "result": EMBEDDED_POSTING}],
+                               {"frameId": 4, "url": EMBEDDED_URL, "result": EMBEDDED_POSTING}],
                     click=True, api={
                         "job-boards": _reply({"match": "none", "job": None,
                                               "application": None}),
@@ -2885,10 +2887,46 @@ def test_the_richest_frame_wins_and_a_frame_with_no_job_signal_never_does(tmp_pa
     only a frame whose own answer is a job description can replace frame 0's."""
     out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
                                {"frameId": 3, "result": AD_FRAME},
-                               {"frameId": 4, "result": EMBEDDED_POSTING},
-                               {"frameId": 5, "result": {**EMBEDDED_POSTING,
-                                                         "text": "Short.",
-                                                         "source": "content"}}])
+                               {"frameId": 4, "url": EMBEDDED_URL, "result": EMBEDDED_POSTING},
+                               {"frameId": 5, "url": EMBEDDED_URL,
+                                "result": {**EMBEDDED_POSTING, "text": "Short.",
+                                           "source": "content"}}])
+    assert _preview_inputs(out["loaded"]["rail"])["title"] == "AI Engineer"
+
+
+# A vendor's "similar jobs" widget: another site's frame carrying its own
+# JobPosting JSON-LD, which would outrank everything on provenance.
+VENDOR_URL = "https://widgets.jobvendor.test/similar?company=acme"
+VENDOR_POSTING = {**EMBEDDED_POSTING, "url": VENDOR_URL,
+                  "text": "Title: Senior Something Else\nCompany: Other Co\n\n" + "Words. " * 200}
+
+
+def test_another_sites_frame_never_supplies_the_posting(tmp_path):
+    """A subframe's posting is taken only from the top document's own site.
+    Neither a cross-site JSON-LD widget nor a cross-site frame whose
+    description-like container counts as `content` (an ad's
+    `data-testid="description"`), nor a frame whose url is unknown."""
+    out = _embedded(tmp_path, [
+        {"frameId": 0, "result": TOP_CHROME},
+        {"frameId": 3, "url": VENDOR_URL, "result": VENDOR_POSTING},
+        {"frameId": 5, "url": "https://ads.example.test/slot",
+         "result": {**AD_FRAME, "source": "content"}},
+        {"frameId": 6, "result": VENDOR_POSTING},
+    ])
+    assert _preview_inputs(out["loaded"]["rail"])["title"] == ""
+    assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
+        "No job description found on this page.")
+
+
+def test_a_frame_on_the_same_site_under_another_subdomain_supplies_the_posting(tmp_path):
+    """Same site is the registrable domain, not the origin: a careers page on
+    one subdomain may frame its posting from another."""
+    out = _embedded(tmp_path, [
+        {"frameId": 0, "result": TOP_CHROME},
+        {"frameId": 3, "url": VENDOR_URL, "result": VENDOR_POSTING},
+        {"frameId": 4, "url": "https://boards.greenhouse.io/embed/job_app?for=lightningai",
+         "result": EMBEDDED_POSTING},
+    ])
     assert _preview_inputs(out["loaded"]["rail"])["title"] == "AI Engineer"
 
 
@@ -2896,7 +2934,7 @@ def test_a_posting_frame_0_answers_is_never_asked_of_the_other_frames(tmp_path):
     """Today's behaviour where it works: a described posting in the top
     document is the whole answer, and no frame beside it is read."""
     out = _job_stage(tmp_path, frames={"extract_job_posting": [
-        {"frameId": 4, "result": EMBEDDED_POSTING}]})
+        {"frameId": 4, "url": EMBEDDED_URL, "result": EMBEDDED_POSTING}]})
     assert _posting_broadcasts(out) == []
     assert _preview_inputs(out["loaded"]["rail"])["title"] == "Machine Learning Engineer"
 
@@ -2930,6 +2968,23 @@ def test_a_title_typed_over_page_text_is_still_saved(tmp_path):
                         "POST /api/ats-scores": _reply(SCORES[:2]),
                     })
     assert [post["path"] for post in _posts(out)] == ["/api/jobs", "/api/ats-scores"]
+
+
+def test_anything_typed_into_the_preview_is_saved_over_page_text(tmp_path):
+    """A user who pasted the description into a preview box over page text,
+    with the title left empty, has told the extraction what to read: the save
+    goes ahead."""
+    pasted = "We are hiring an AI engineer to build ML systems in Python."
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME}],
+                    click=True, type={"location": pasted}, api={
+                        "job-boards": _reply({"match": "none", "job": None,
+                                              "application": None}),
+                        "POST /api/jobs": _reply(SAVED_JOB),
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "POST /api/ats-scores": _reply(SCORES[:2]),
+                    })
+    [post, _score] = _posts(out)
+    assert pasted in json.loads(post["init"]["body"])["raw_text"]
 
 
 NO_SKILLS = ("No skills were found in this job's description. Check the description, "

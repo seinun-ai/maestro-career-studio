@@ -14,7 +14,7 @@
  *
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
  * postingId, sessionTenant, restorableSession, reconcileFill, sanitizeAnswer,
- * sameApplication, describesJob }.
+ * sameApplication, describesJob, sameSite }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -505,8 +505,37 @@
     return Boolean(String(posting?.text ?? "").trim()) && JOB_SIGNALS.has(posting?.source);
   }
 
+  /** The site a url belongs to: its registrable domain, APPROXIMATED as the
+   * last two labels of the host ("careers-gmr.icims.com" → "icims.com"). There
+   * is no public-suffix list in this extension, so a two-label suffix
+   * ("co.uk") makes its whole registry one site; the approximation errs toward
+   * SAME, and its one reader (`sameSite`) also requires the frame to answer
+   * with a job description. An IP literal or a one-label host is its own site;
+   * a url with no host (about:blank, about:srcdoc, data:) has none. */
+  function siteOf(url) {
+    let host;
+    try {
+      host = new URL(String(url)).hostname;
+    } catch (_) {
+      return null;
+    }
+    if (!host) return null;
+    if (/^[\d.]+$/.test(host) || host.includes(":")) return host;
+    return host.split(".").slice(-2).join(".");
+  }
+
+  /** Whether two urls are on the same site (`siteOf`). The panel takes a
+   * subframe's posting only from the tab's own site: a vendor's "similar
+   * jobs" widget carries its own JobPosting JSON-LD, and an ad frame can hold
+   * a description-like container, and neither is the posting the tab shows.
+   * A frame whose url is unknown is never the same site. */
+  function sameSite(a, b) {
+    const site = siteOf(a);
+    return site !== null && site === siteOf(b);
+  }
+
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession,
-    reconcileFill, sanitizeAnswer, sameApplication, describesJob,
+    reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
   };
 })();

@@ -255,7 +255,7 @@ function unwrapPageReply(reply) {
 }
 // ---- end unwrapPageReply ----
 
-/** Ask EVERY frame of one tab, and return `[{frameId, result, error?}]`.
+/** Ask EVERY frame of one tab, and return `[{frameId, url, result, error?}]`.
  *
  * The array shape is the FIRST side panel's `callAllFrames`, deliberately, and
  * it has now outlived two consumers: that panel (deleted at Task 19, this
@@ -279,16 +279,25 @@ function unwrapPageReply(reply) {
  * failure a "nobody answered" rather than a TypeError. */
 async function broadcastToFrames(tabId, message) {
   const frames = (await chrome.webNavigation.getAllFrames({ tabId })) ?? [];
+  // A READ asked of every frame on most pages the panel is bound to, and on
+  // every retry rung. Nearly every page has a frame with no content script, so
+  // a warning per silent frame filled chrome://extensions → Errors (Chrome
+  // lists every extension warning there). The reason stays on the record.
+  const readOnly = ["detect_page", "extract_job_posting"].includes(message?.type);
+  const log = readOnly ? console.debug : console.warn;
   return Promise.all(frames.map(async (frame) => {
+    // `url` is the frame's own address from `getAllFrames`: the panel's
+    // posting read takes a subframe's answer only from the tab's own site.
+    const { frameId, url } = frame;
     try {
-      const reply = await chrome.tabs.sendMessage(tabId, message, { frameId: frame.frameId });
+      const reply = await chrome.tabs.sendMessage(tabId, message, { frameId });
       // Swallowed below rather than allowed to abort the fan-out: an ATS page
       // carries ad and analytics iframes that will never answer.
-      return { frameId: frame.frameId, result: unwrapPageReply(reply) };
+      return { frameId, url, result: unwrapPageReply(reply) };
     } catch (err) {
       const error = String(err?.message ?? err);
-      console.warn(`frame ${frame.frameId} did not answer ${message?.type}:`, error);
-      return { frameId: frame.frameId, result: undefined, error };
+      log(`frame ${frameId} did not answer ${message?.type}:`, error);
+      return { frameId, url, result: undefined, error };
     }
   }));
 }
