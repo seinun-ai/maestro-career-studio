@@ -38,7 +38,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=9.1.1",
-    "pytest-asyncio>=0.24",
+    "pytest-asyncio>=1.4.0",
     "httpx>=0.27",
     # Upper bound for the same reason as `mcp` below: unbounded, this resolved
     # to 0.16.2 in CI against 0.12.0 locally and reported 449 errors on a tree
