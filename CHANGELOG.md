@@ -28,6 +28,12 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Fixed
+
+- A page of screening questions with nothing else on it (iCIMS's Candidate
+  Questions step: age, work authorization, sponsorship) is recognised as an
+  application form, so Autofill is offered there and can fill it.
+
 ## [0.7.1] — 2026-10-01
 
 ### Breaking changes
