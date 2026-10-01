@@ -137,6 +137,48 @@
     return "";
   };
   ns.precedingLabel = precedingLabel;
+
+  // A label naming only a PART of a field — a date part, or a word that asks
+  // nothing without its group ("Type", "Number") — is SHAPE, not meaning: the
+  // word is kept and its group's question goes before it ("Start Date (Month
+  // / Day / Year): Year", iCIMS live 2026-10-01, where bare "Year" sent both
+  // years to a start date and "Type" to the phone number). /map decides what
+  // the whole asks.
+  const PART_LABEL = /^(?:month|day|year|mm|dd|yyyy|type|number)$/i;
+  const DATE_PARTS = { month: "month", mm: "month", day: "day", dd: "day", year: "year", yyyy: "year" };
+  // An id or name ending in a date part (iCIMS's `icims_0_startdate_year`).
+  const ID_PART = /[_\-.](month|day|year)$/i;
+  const datePartOf = (el, label) => DATE_PARTS[label.toLowerCase()]
+    ?? (ID_PART.exec(el.id || "") ?? ID_PART.exec(el.getAttribute("name") ?? ""))?.[1].toLowerCase() ?? null;
+  // The group a part belongs to: the nearest ancestor (MAX_CLIMB, never past a
+  // table row or a form) holding another VISIBLE field (a select a widget
+  // hides is its own field's). Its question: its legend or own aria name, a
+  // heading in it before its fields, else the text before it, read as a
+  // group's (precedingLabel). An entry counter ("(1)") is dropped; "" when
+  // nothing names the group.
+  const groupQuestion = (el) => {
+    for (let n = el.parentElement, d = 0; n && d < MAX_CLIMB && !edge(n) && !n.matches("tr, table");
+      d += 1, n = n.parentElement) {
+      const own = [...n.querySelectorAll(CONTROL)].filter((c) => c === el || (otherControl(c, el) && ns.fillBase.visible(c)));
+      if (own.length < 2) continue;
+      const head = [...n.querySelectorAll(ANY_HEADING)].find((h) => precedes(h, own[0]));
+      const named = (n.matches("fieldset") ? text(n.querySelector(":scope > legend")) : "")
+        || fromIds(n, "aria-labelledby") || clean(n.getAttribute("aria-label")) || (head ? text(head) : "")
+        || precedingLabel(n, own, { group: true });
+      return clean(named.replace(STAR, "").replace(/\s*\(\d+\)$/, ""));
+    }
+    return "";
+  };
+  // { question, part }: a part label prefixed with its group's question, and
+  // which date part the control holds (by its label, else its id or name).
+  const withGroup = (el, question) => {
+    if (isChoice(el)) return { question, part: null };
+    const bare = clean(question.replace(STAR, ""));
+    const part = datePartOf(el, bare);
+    if (!PART_LABEL.test(bare)) return { question, part };
+    const group = groupQuestion(el);
+    return { question: group && !PART_LABEL.test(group) ? `${group}: ${question}` : question, part };
+  };
   const SOURCES = [
     ["label-for", (el) => {
       const lab = el.id && rootOf(el).querySelector?.(`label[for="${CSS.escape(el.id)}"]`);
@@ -212,6 +254,8 @@
         break;
       }
     }
+    let part;
+    ({ question, part } = withGroup(el, question));
     const starred = STAR.test(question);
     const section = sectionOf(el);
     return {
@@ -222,6 +266,7 @@
       repeatIndex: repeatIndex(section),
       required: Boolean(el.required) || el.getAttribute("aria-required") === "true" || starred
         || popupLabel(el).required,
+      part,
     };
   };
 })();

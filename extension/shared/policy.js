@@ -76,12 +76,15 @@
     CONSENT_FORMS.map((pattern) => pattern.source).join("|"), "i");
   ns.salaryExpectationRe = SALARY_EXPECTATION;
   // A popup's "choose something" text ("Select One", "Select…", "-- Select --",
-  // "Please choose an option"): never a question and never a value. ONE
-  // definition, read by the field reader and shapes (a popup showing it holds
-  // nothing), fill-core (it is never chosen as an answer) and the fill loop
-  // (it is never reported filled).
-  const PLACEHOLDER = new RegExp("^[-–—\\s]*(?:(?:please\\s+)?(?:select|choose|pick)"
-    + "(?:\\s+(?:an?\\s+option|one(?:\\s+or\\s+more)?|an?\\s+answer|an?\\s+item|a\\s+value|all\\s+that\\s+apply))?"
-    + "\\s*(?:\\.{2,}|…)?)?[-–—\\s]*$", "i");
+  // "Please choose an option", iCIMS's "— Make a Selection —" and "Please
+  // select a country"): never a question and never a value. ONE definition,
+  // read by the field reader and shapes (a popup showing it holds nothing),
+  // fill-core (it is never chosen as an answer) and the fill loop (it is never
+  // reported filled). Shape only: an article or "your" and one or two words
+  // after the verb, so "Select Medical" or "Choose Health" (an answer) never
+  // reads as one.
+  const PLACEHOLDER = new RegExp("^[-–—\\s]*(?:(?:\\.{2,}|…)\\s*)?(?:(?:please\\s+)?(?:make\\s+a\\s+selection"
+    + "|(?:select|choose|pick)(?:\\s+(?:one(?:\\s+or\\s+more)?|all\\s+that\\s+apply"
+    + "|(?:an?|your)\\s+\\p{L}+(?:[\\s/]\\p{L}+)?))?))?\\s*(?:\\.{2,}|…)?[-–—\\s]*$", "iu");
   ns.isPlaceholderText = (s) => PLACEHOLDER.test(String(s ?? ""));
 })();

@@ -356,14 +356,37 @@ _ENTRY = re.compile(rf"({'|'.join(k for k in get_args(EntryKind) if k != 'websit
 _HISTORY_KINDS = ("experience", "education")
 
 
+# A date fact ("2026-06", "2026", "2026-10-01"): a job's or a school's ends,
+# and the derived dates.
+_DATE = re.compile(r"(?:experience|education)\.\d+\.(?:start|end)(?:_year)?|derived\.(?:today|earliest_start_date)")
+# A job's end date, which a current job does not have.
+_JOB_END = re.compile(r"experience\.\d+\.end")
+
+
 def format_of(slot: str | None) -> Format | None:
     """How a value written for `slot` compares with what the page shows: a
-    page re-punctuates a phone number, and writes "$80,000" for 80000."""
+    page re-punctuates a phone number, and writes "$80,000" for 80000. A date
+    is narrowed by the Companion to the one part a Month, Day or Year control
+    holds."""
     if not slot:
         return None
     if _PHONE.search(slot):
         return "phone"
+    if _DATE.fullmatch(slot):
+        return "date"
     return "money" if _MONEY.search(slot) else None
+
+
+def _ends_a_current_job(field: MapField, key: str, facts: dict[str, Fact]) -> bool:
+    """An end date for an entry whose own job is current (its profile entry
+    when placed, else its page entry). That job has no end, so a model asked
+    for its End Date reaches for another job's: live iCIMS (2026-10-01) wrote
+    the earlier job's end into the current job's End Date Year."""
+    if not _JOB_END.fullmatch(key):
+        return False
+    entry = field.repeat_index if field.profile_entry is None else field.profile_entry
+    current = facts.get(f"experience.{entry}.current")
+    return current is not None and current.value == "Yes"
 
 
 def _foreign(field: MapField) -> bool:
@@ -413,7 +436,7 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     key, p = picked
     if key in facts and p >= _floor(facts[key]):
         key = _placed_key(field, key, facts)
-        if key is None or key not in facts:
+        if key is None or key not in facts or _ends_a_current_job(field, key, facts):
             return Mapped(route="none")
         value = facts[key].value
         return Mapped(route="slot", slot=key, value=list(value) if isinstance(value, tuple) else value,

@@ -174,6 +174,9 @@
         // Value-free keys for the widget's family (content/recipes.js), or
         // null: what the loop's recipe book is looked up by.
         recipe: ns.recipes?.signature(el, shape) ?? null,
+        // The one part of a date this control holds ("month" | "day" |
+        // "year", the field reader's), or null: the loop writes only that part.
+        part: d.part ?? null,
       });
     }
     // A fid not listed now whose node left the page is dead: never reacquired

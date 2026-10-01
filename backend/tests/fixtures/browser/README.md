@@ -55,6 +55,7 @@ missing key, so a typo never reads as "nothing committed".
 | `react_select.html` | a React-Select combobox (not a Workday reproduction); commits on the option click, `window.rejectClicks` refuses them | `country` |
 | `popup_with_search.html` | a popup button whose dialog holds its own search box (generic, not Workday) | `fos` |
 | `gem_form.html` | jobs.gem.com, live 2026-09-27 — bare text boxes labelled only by a hashed-class span above their wrappers; Yes/No radios with no name and no container, asked five ancestors up | `gem_first_name`, `gem_last_name`, `gem_email`, `gem_linkedin`, `gem_graduating`, `gem_cs_degree` |
+| `icims_profile.html` | iCIMS candidate profile, live 2026-10-01 — select2-style boxes over a hidden native select showing "— Make a Selection —"; Month / Day / Year controls with bare labels under one row label; phone and address "Type" selects | `icims_degree`, `icims_country`, `icims_state` |
 
 `native.html` keeps no oracle: a native control's own value (`input_value`,
 `checked`) is what the page submits, so tests read that.

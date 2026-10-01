@@ -272,6 +272,36 @@
   // Every answer the list offers is a never-fill one (a placeholder row does not count either way).
   const allBlocked = (opts) => answerOptions(opts).length > 0 && !usable(opts).length;
 
+  // ---- a date written into ONE part of a date (iCIMS, live 2026-10-01: a
+  // Year box was given "2026-06"). /map says a slot is a date (`format`
+  // "date", the slot's); the field reader says a control holds one part
+  // (`part`). A Year box gets "2026" of "2026-06", a Month box "06"; a Month
+  // or Year LIST is chosen here by the part's own spellings, never by a model.
+  // A part the fact lacks (a day; the month of a year-only fact) is no value.
+  const PARTS = new Set(["year", "month", "day"]);
+  const MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september",
+    "october", "november", "december"];
+  const DATE_FACT = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/;
+  // { part, value } for a date slot on a part control (value "": the fact
+  // lacks it), else null: the value stays whole.
+  const narrowed = (f, m) => {
+    if (m?.route !== "slot" || m.format !== "date" || f.shape === "date" || !PARTS.has(f.part)) return null;
+    const d = DATE_FACT.exec(String(m.value ?? "").trim());
+    return { part: f.part, value: (d && { year: d[1], month: d[2], day: d[3] }[f.part]) || "" };
+  };
+  // The texts that state a part's value: month "06" is 6, 06, June or Jun.
+  const spellings = (part, value) => {
+    const n = Number(value);
+    const name = part === "month" ? MONTH_NAMES[n - 1] ?? "" : "";
+    return new Set([String(n), value, ...(name ? [name, name.slice(0, 3), ...(n === 9 ? ["sept"] : [])] : [])]);
+  };
+  // The ONE option stating the part ({ text, reason }), else an abstain.
+  const partPick = (row, opts) => {
+    const want = spellings(row.part, row.value);
+    const hits = usable(opts).filter((o) => want.has(o.text.trim().toLowerCase().replace(/\.$/, "")));
+    return hits.length === 1 ? { text: hits[0].text, reason: "matched" } : { abstained: true };
+  };
+
   async function runFill(deps, options = {}) {
     const { broadcast, api } = deps ?? {};
     for (const [name, dep] of [["broadcast", broadcast], ["api", api]]) {
@@ -441,7 +471,8 @@
     const routeOf = (row) => (NO_SLOT_ROUTES.has(row.route) ? row.route : "slot");
     // Whether the adaptive step may take a field over: a popup or search, on a
     // route /step answers (the reasoning route is /pick's alone).
-    const adapts = (f, row) => CAN_ADAPT.has(f.shape) && routeOf(row) !== "reasoned";
+    // A date part's abstain is final: its list holds no option stating the part.
+    const adapts = (f, row) => CAN_ADAPT.has(f.shape) && routeOf(row) !== "reasoned" && !row.part;
     const policyBlocks = (text) => Boolean(ns.isPolicyBlocked?.(text, { consentForms }));
 
     // ---- the page: one operation at a time, each awaited
@@ -620,6 +651,7 @@
       return { text: o.text, reason: got.reason, ...(typeof o.where === "string" ? { where: o.where } : {}) };
     };
     const pick = async (f, row, opts, complete, item) => {
+      if (row.part) return partPick(row, opts);
       const { offered, field } = pickAsk(f, row, opts, complete, item);
       if (!offered.length || halt() || fieldLate(f)) return null;
       const res = await post("/api/autofill/pick", { ...asked, fields: [field] }, rows.get(f.fid).deadline);
@@ -636,7 +668,8 @@
       && (NO_SLOT_ROUTES.has(row.route) || (typeof row.value === "string" && row.value) || itemOf(f, row) !== undefined);
     const pickBatch = async (fields) => {
       const out = new Map();
-      const asks = fields.map((f) => {
+      for (const f of fields) if (rows.get(f.fid).part) out.set(f.fid, partPick(rows.get(f.fid), f.options));
+      const asks = fields.filter((f) => !rows.get(f.fid).part).map((f) => {
         const row = rows.get(f.fid);
         return [f, pickAsk(f, row, f.options, f.optionsComplete, itemOf(f, row))];
       });
@@ -1095,7 +1128,11 @@
         for (const f of part) {
           const m = res?.fields?.[f.fid];
           const format = FORMATS.has(m?.format) ? m.format : undefined;
-          if (m) set(f.fid, { route: m.route, slot: m.slot ?? null, value: m.value ?? null, format });
+          const part = narrowed(f, m);
+          if (m) {
+            set(f.fid, { route: m.route, slot: m.slot ?? null, value: part ? part.value : m.value ?? null, format,
+              part: part?.part ?? null });
+          }
         }
       }
     };
@@ -1181,7 +1218,9 @@
       const prose = [];
       for (const f of open) {
         const row = rows.get(f.fid);
-        if (!row.route || row.route === "none") finish(f, "needs_answer", { lastOutcome: row.route ? "no_fact" : "not_mapped" });
+        if (row.part && !row.value) {
+          finish(f, "needs_answer", { lastOutcome: "no_date_part", answer: `Your profile has no ${row.part} for this date.` });
+        } else if (!row.route || row.route === "none") finish(f, "needs_answer", { lastOutcome: row.route ? "no_fact" : "not_mapped" });
         else if (row.route === "blocked") finish(f, "blocked", { lastOutcome: "blocked" });
         else if (row.route === "free_text") {
           if (f.kind === "text") prose.push(f);

@@ -162,6 +162,9 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   (iCIMS), and no longer saves a blank job when it can't read one.
 - An application form inside the page's own embedded frame (iCIMS) is found,
   so Autofill is offered.
+- Dropdowns showing "Make a Selection" (iCIMS) are treated as empty and filled.
+- Month, Day and Year boxes get only their own part, and a current job never
+  gets an end date.
 
 ## [0.6.0] — 2026-09-24
 

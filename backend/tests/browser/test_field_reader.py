@@ -236,3 +236,47 @@ def test_a_label_under_a_heading_is_still_the_label(page, load):
     """A heading BEFORE the candidate ends the look-back, not the answer."""
     load(page, f"<section><h3>Contact</h3><span class='b-47'>Phone</span>{wrapped('<input id=a>')}</section>")
     assert page.evaluate(READ, "#a")["question"] == "Phone"
+
+
+# A label that names only a PART of a field ("Month", "Type") asks nothing on
+# its own (iCIMS, live 2026-10-01 — fixtures/browser/icims_profile.html): the
+# group's question goes before it, so /map can tell a start from an end and a
+# phone type from a phone number. The part a date control holds is reported.
+def test_icims_bare_part_labels_carry_their_groups_question(page, load):
+    from tests.browser.conftest import fixture_html
+
+    load(page, fixture_html("icims_profile.html"))
+    ids = ["icims_0_startdate_month", "icims_0_startdate_date", "icims_0_startdate_year", "icims_0_enddate_year",
+           "icims_0_phonetype", "icims_0_phonenumber", "icims_0_addresstype", "icims_0_addressstreet1"]
+    got = [page.evaluate(READ, f"#{i}") for i in ids]
+    assert [(g["question"], g["part"]) for g in got] == [
+        ("Start Date (Month / Day / Year): Month", "month"), ("Start Date (Month / Day / Year): Day", "day"),
+        ("Start Date (Month / Day / Year): Year", "year"), ("End Date (if applicable) (Month / Day / Year): Year", "year"),
+        ("Enter in your mobile number: Type", None), ("Enter in your mobile number: Number", None),
+        ("Enter your full address: Type", None), ("Address", None)]
+    assert got[0]["source"] == "label-for"
+
+
+@pytest.mark.parametrize("html, question, part", [
+    # a fieldset's legend is the group's question
+    ("<fieldset><legend>Date of birth</legend><label for=a>Year</label><input id=a>"
+     "<label for=m>Month</label><input id=m></fieldset>", "Date of birth: Year", "year"),
+    # a group no text names keeps the bare word
+    ("<div><label for=a>Year</label><input id=a><label for=m>Month</label><input id=m></div>", "Year", "year"),
+    # a field alone keeps it too, and an id naming the part still says which
+    ("<p>Intro to the application</p><div><label for=a>Year</label><input id=a></div>", "Year", "year"),
+    ("<label for=a>Start year</label><input id=a name=edu_startdate_year>", "Start year", "year"),
+    # a word that is a question on its own is never prefixed
+    ("<div><span>Contact</span><div><label for=a>City</label><input id=a><label for=b>Zip</label>"
+     "<input id=b></div></div>", "City", None),
+], ids=["legend", "no-group-text", "alone", "id-part", "not-a-part"])
+def test_a_part_label_takes_its_group_question_only_where_one_is_named(page, load, html, question, part):
+    load(page, html)
+    got = page.evaluate(READ, "#a")
+    assert (got["question"], got["part"]) == (question, part)
+
+
+def test_a_radio_option_named_like_a_part_is_never_prefixed(page, load):
+    load(page, "<span>Preferred contact</span><div><label><input type=radio name=q id=a>Type</label>"
+               "<label><input type=radio name=q id=b>Number</label></div>")
+    assert [page.evaluate(READ, s)["question"] for s in ("#a", "#b")] == ["Type", "Number"]

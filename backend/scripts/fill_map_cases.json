@@ -1,5 +1,5 @@
 {
-  "about": "Labelled /map cases: which fact (or none) each label asks for, over this file's synthetic personal facts. `expected` lists every acceptable answer: a slot, or \"none\" (nothing is written). Any other slot is a WRONG WRITE. The first three are live Workday wrong writes (2026-09-27); \"County\" is the eval's old telemetry label that mapped to the street address; \"Military Status:\" and the terms box found no fact on live Workday (2026-09-30).",
+  "about": "Labelled /map cases: which fact (or none) each label asks for, over this file's synthetic personal facts. `expected` lists every acceptable answer: a slot, or \"none\" (nothing is written). Any other slot is a WRONG WRITE. The first three are live Workday wrong writes (2026-09-27); \"County\" is the eval's old telemetry label that mapped to the street address; \"Military Status:\" and the terms box found no fact on live Workday (2026-09-30). The phone type and the two date parts are live iCIMS (2026-10-01): bare \"Type\" got the phone and the current job's End Date \"Year\" got the earlier job's end; each now carries its group's question.",
   "facts": {
     "personal.first_name": "Sample",
     "personal.last_name": "Person",
@@ -11,6 +11,11 @@
     "personal.postal_code": "62701",
     "personal.country": "United States",
     "eeo.veteran_status": "No, I am not a protected veteran",
+    "experience.0.start": "2026-06",
+    "experience.0.current": "Yes",
+    "experience.1.start": "2022-07",
+    "experience.1.end": "2024-06",
+    "experience.1.current": "No",
     "derived.agrees_to_terms": "Yes"
   },
   "cases": [
@@ -19,6 +24,11 @@
     {"id": "country-phone-code", "question": "Country Phone Code", "shape": "search",
      "expected": ["none", "personal.country"]},
     {"id": "phone-number", "question": "Phone Number", "shape": "text", "expected": ["personal.phone"]},
+    {"id": "phone-type", "question": "Enter in your mobile number: Type", "shape": "select", "expected": ["none"]},
+    {"id": "start-date-year", "question": "Start Date (Month / Day / Year): Year", "shape": "text",
+     "expected": ["experience.0.start"]},
+    {"id": "current-job-end-year", "question": "End Date (if applicable) (Month / Day / Year): Year", "shape": "text",
+     "expected": ["none"]},
     {"id": "address-line-1", "question": "Address Line 1", "shape": "text", "expected": ["personal.address"]},
     {"id": "fax", "question": "Fax Number", "shape": "text", "expected": ["none"]},
     {"id": "county", "question": "County", "shape": "text", "expected": ["none"]},

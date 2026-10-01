@@ -640,6 +640,53 @@ def test_gem_text_is_held_as_typed_and_a_question_holds_one_answer(page, load):
     checked = "() => [...document.querySelectorAll('#gem-form input[type=radio]:checked')].map((r) => r.id)"
     assert page.evaluate(checked) == ["r7c1f0-yes"]
 
+
+# --- icims_profile.html (careers-gmr.icims.com, live 2026-10-01)
+DEGREE_BOX = "#icims-form [aria-labelledby=icims-degree-l]"
+
+
+def test_icims_dropdowns_show_their_placeholder_over_an_empty_hidden_select(page, load):
+    load(page, fixture_html("icims_profile.html"), sources=[])
+    shown = page.evaluate("""() => [...document.querySelectorAll('#icims-form [role=combobox]')]
+        .map((b) => [b.innerText.trim(), b.closest('.iRow').querySelector('select').value])""")
+    assert shown == [["— Make a Selection —", ""], ["— Make a Selection —", ""], ["Please select a country", ""]]
+    assert page.is_hidden("#icims_0_degree")
+    assert (oracle(page, "icims_degree"), oracle(page, "icims_state")) == ("", "")
+
+
+def test_icims_dropdown_commits_a_row_to_its_hidden_select(page, load):
+    load(page, fixture_html("icims_profile.html"), sources=[])
+    page.click(DEGREE_BOX)
+    rows = page.locator("#portal [role=option]").all_inner_texts()
+    assert rows[:3] == ["— Make a Selection —", "None", "High School Diploma"]
+    assert page.get_attribute("#portal input[type=search]", "placeholder") == "— Type to Search —"
+    page.fill("#portal input[type=search]", "B")
+    assert page.locator("#portal [role=option]").all_inner_texts() == ["BS"]
+    page.click("#portal [role=option]:has-text('BS')")
+    assert page.inner_text(DEGREE_BOX) == "BS" and oracle(page, "icims_degree") == "bs"
+    assert page.input_value("#icims_0_degree") == "bs" and page.locator("#portal [role=option]").count() == 0
+    # Picking the placeholder row empties it again; an outside press closes unpicked.
+    page.click(DEGREE_BOX)
+    page.click("#portal [role=option]:has-text('Make a Selection')")
+    assert oracle(page, "icims_degree") == ""
+    page.click(DEGREE_BOX)
+    page.mouse.click(5, 5)
+    assert page.locator("#portal [role=option]").count() == 0 and oracle(page, "icims_degree") == ""
+
+
+def test_icims_dates_are_three_bare_parts_under_one_row_label(page, load):
+    load(page, fixture_html("icims_profile.html"), sources=[])
+    parts = page.evaluate("""() => [...document.querySelectorAll('#icims-form .iRow')].slice(-2).map((r) =>
+        [r.querySelector('.iRowLabel').textContent, ...[...r.querySelectorAll('label')].map((l) => l.textContent)])""")
+    assert parts == [["Start Date (Month / Day / Year)", "Month", "Day", "Year"],
+                     ["End Date (if applicable) (Month / Day / Year)", "Month", "Day", "Year"]]
+    months = page.evaluate("[...document.getElementById('icims_0_startdate_month').options].map((o) => o.text)")
+    days = page.evaluate("[...document.getElementById('icims_0_startdate_date').options].map((o) => o.text)")
+    assert months[:3] == ["", "Jan", "Feb"] and len(months) == 13 and days[0] == "" and days[-1] == "31"
+    assert page.evaluate("document.getElementById('icims_0_startdate_year').type") == "text"
+    phone_type = page.evaluate("[...document.getElementById('icims_0_phonetype').options].map((o) => o.text)")
+    assert phone_type == ["", "Mobile", "Home"]
+
 # --- unfocused-window mode (conftest.UNFOCUSED_WINDOW; §1, §6): programmatic
 # focus()/blur() move focus but fire no events, as on the live page.
 LEAVE = """(el) => { el.blur(); el.dispatchEvent(new FocusEvent('blur'));

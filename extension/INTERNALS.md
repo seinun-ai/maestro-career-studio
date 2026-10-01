@@ -23,7 +23,7 @@ worker:
 | `shared/policy.js` | every frame **and** the panel document | the shared never-fill policy — read by the fill engine and by the panel's pause row, whose render AND action are the half that is easy to miss |
 | `shared/recipe-book.js` | the panel document | the recipe book: which of the engine's own moves worked per widget family, its lifecycle and bounds; the loop's `deps.recipes` |
 | `shared/profile-fields.js` | every frame **and** the panel document | the label patterns naming a TYPED home in the autofill profile: one table read by the rule that FILLS the field and by the pause row that decides where an answer is LEARNED |
-| `content/field-reader.js` | every frame | the new fill engine's one answer to "what is this field asking" (label-for → … → nearby → preceding: the visible text right before the field, when nothing names it — never a radio's or checkbox's, and only text that passes the label test: short, no sentence, no error, no heading before it, no other text or trailing label beside it), with its source. `readField(container)` runs it too, so a nameless group container or date wrapper can take its question from it; `ns.precedingLabel` is also a group's question with no container |
+| `content/field-reader.js` | every frame | the new fill engine's one answer to "what is this field asking" (label-for → … → nearby → preceding: the visible text right before the field, when nothing names it — never a radio's or checkbox's, and only text that passes the label test: short, no sentence, no error, no heading before it, no other text or trailing label beside it), with its source. `readField(container)` runs it too, so a nameless group container or date wrapper can take its question from it; `ns.precedingLabel` is also a group's question with no container. A label that names only a part ("Month", "Day", "Year", "Type", "Number") is prefixed with its group's question, and a control holding one part of a date says which (`part`) |
 | `content/fill-base.js` | every frame | the engine's page primitives: budgets with real cancellation and a latched Stop, validation state, popup ownership, human typing, closing only popups the engine opened |
 | `content/shapes.js` | every frame | widget shapes: recognise, group (a nameless radio outside any container joins its own run of nameless radios under the nearest ancestor holding no other kind of control — cut at visible text that is no option's label, never two options reading the same; a nameless checkbox stays alone; a named checkbox's same-name set stops at its nearest grouping container, since live Workday names every work entry's "I currently work here" box alike), read what is COMMITTED, how a choice widget opens |
 | `content/recipes.js` | every frame | a popup or search widget's recipe keys: value-free hashes of its STRUCTURE (its family) and of that family on this host |
@@ -895,6 +895,34 @@ know, and each one was learned from a live failure.
   one you are looking at) always qualifies; a subframe must show application-form
   evidence. Attach also skips inputs that are not on screen, because a file
   input's contents are readable the moment they are set, with no submit.
+- **A dropdown that shows "— Make a Selection —" is empty.** iCIMS draws a
+  select2-style box over a native `<select>` it hides; live on 2026-10-01, Fill
+  read the box's "— Make a Selection —" and "Please select a country" as
+  answers and skipped Degree, School, Country and four more. Over such a
+  hidden select (the one in the box's field, no other visible field beside
+  it) a box is answered only while the select holds a value that is neither
+  empty nor a disabled option, whatever its words, and that select is the
+  pick's proof. The placeholder test (`ns.isPlaceholderText`) also knows
+  "make a selection" and "select / choose / pick a, an or your" and one or
+  two words, wrapped in dashes or dots, by shape only: "Select Medical" or
+  "Choose Health" is an answer. Such a row is never offered as an option.
+- **A part of a date gets only its part, and a current job never gets an
+  end.** iCIMS writes a date as a Month list, a Day list and a Year box, each
+  labelled only "Month", "Day" or "Year", under "Start Date (Month / Day /
+  Year)"; live, both Year boxes were read as "Year", the start got "2026-06"
+  and the current job's End Date Year got the earlier job's end (the model,
+  offered no end for that job, took another's). A label that is only a part
+  word ("Month", "Day", "Year", "Type", "Number") now carries its group's
+  question ("Start Date (Month / Day / Year): Year", "Enter in your mobile
+  number: Type"): the group's legend or name, a heading in it, or the text
+  before it, its "(1)" dropped. Shape, not meaning: /map still decides. When
+  /map's slot is a date (`format: "date"`, by the slot) and the control holds
+  one part (its label, or an id ending `_month`, `_day`, `_year`), only that
+  part is written: a Year box "2026", a Month box "06", a Month or Year list
+  the option spelling it (6, 06, Jun or June), chosen without a model. A part
+  the profile does not have (a day) is left, "Your profile has no day for
+  this date." And /map never routes a job's end date into an entry whose own
+  job is current, placed or not.
 - Native `<select>`s get their best-matching option by length-aware scoring
   ("United States" picks "United States of America", not "…Minor Outlying
   Islands"). Custom comboboxes are typed into and the matching option clicked.

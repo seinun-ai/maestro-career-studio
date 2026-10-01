@@ -10,9 +10,10 @@ Shape = Literal["text", "date", "select", "group", "search", "popup"]
 # `reasoned`: a choice answered from the work and education history only
 # (autofill_map._answerable, autofill_pick._reason), marked `assumed`.
 Route = Literal["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]
-# How a written value compares with what the page shows: decided by the fact's
-# SLOT (autofill_map.format_of), never by what the value looks like.
-Format = Literal["phone", "money"]
+# How a written value compares with what the page shows (`date`: a date the
+# Companion narrows to the part a Month, Day or Year control holds): decided by
+# the fact's SLOT (autofill_map.format_of), never by what the value looks like.
+Format = Literal["phone", "money", "date"]
 # The profile lists whose entries /sections places (by what the page's entries
 # hold) and /map writes by profile entry. The loop's PLACED_KINDS mirrors it.
 # A Websites entry's profile entry k is the k-th URL the profile holds

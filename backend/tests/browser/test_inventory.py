@@ -34,9 +34,21 @@ def test_a_field_record_carries_every_key_later_tasks_read(page, load):
     f = fields(page)[0]
     assert set(f) == {"fid", "fp", "shape", "kind", "multi", "question", "source", "section", "repeatIndex",
                       "required", "help", "committed", "answered", "options", "optionsComplete", "invalid",
-                      "touched", "policyBlocked", "recipe"}
+                      "touched", "policyBlocked", "recipe", "part"}
     assert (f["kind"], f["source"], f["required"], f["help"]) == ("text", "label-for", True, "As on your ID")
     assert f["recipe"] is None   # a text box has no move to learn (content/recipes.js)
+    assert f["part"] is None     # no date part: the field reader's `part`
+
+
+def test_a_date_part_control_says_which_part_it_holds(page, load):
+    """iCIMS (live 2026-10-01): a Month list, a Day list and a Year box are
+    three fields of one date; each says its part so the loop writes only that."""
+    load(page, fixture_html("icims_profile.html"))
+    got = {f["question"]: (f["shape"], f["part"]) for f in fields(page)}
+    start = "Start Date (Month / Day / Year)"
+    assert [got[f"{start}: {p}"] for p in ("Month", "Day", "Year")] == [
+        ("select", "month"), ("select", "day"), ("text", "year")]
+    assert got["Enter in your mobile number: Type"] == ("select", None)
 
 
 def test_a_fid_survives_repeat_calls_and_a_rerender(page, load):
@@ -330,6 +342,39 @@ def test_popup_placeholders_are_not_committed_values(page, load):
                        for i, t in enumerate(texts)) + "<label id='v'>Q9</label><button aria-haspopup='listbox' aria-labelledby='v'>Texas ▾</button>")
     got = [(f["committed"], f["answered"]) for f in fields(page)]
     assert got == [("", False)] * len(texts) + [("Texas", True)]
+
+
+@pytest.mark.parametrize("text, placeholder", [
+    # Live iCIMS, 2026-10-01: these showed in boxes Fill read as answered.
+    ("— Make a Selection —", True), ("Make a selection", True), ("Please make a selection...", True),
+    ("Please select a country", True), ("Select your state", True), ("Choose an option", True),
+    ("Select a State/Province", True), ("-- Choose your country --", True), ("… Select …", True),
+    ("Select One", True), ("Select...", True), ("", True), ("—", True),
+    # Real answers that happen to begin with the words.
+    ("Select Medical", False), ("Choose Health", False), ("Selective Service", False),
+    ("Make a Wish Foundation", False), ("Select Medical Holdings Corporation", False),
+    ("Selection committee", False), ("Pick n Save", False), ("Select a career in nursing today", False),
+])
+def test_the_placeholder_test_knows_a_choose_something_prompt_from_an_answer(page, load, text, placeholder):
+    load(page, "<p></p>", sources=["shared/policy.js"])
+    assert page.evaluate(f"(t) => {NS}.isPlaceholderText(t)", text) is placeholder
+
+
+def test_a_select2_box_over_an_empty_hidden_select_is_unanswered_whatever_it_shows(page, load):
+    """iCIMS (live 2026-10-01): the shown text is the widget's, the hidden
+    select is the app's. A box that shows any words while its select holds
+    nothing (or a disabled or valueless option) is not answered."""
+    def widget(i, shown, options):
+        return (f"<div><label id='l{i}' for='s{i}'>Q{i}</label><select id='s{i}' style='display:none'>{options}</select>"
+                f"<span><span role='combobox' aria-haspopup='true' aria-labelledby='l{i}' tabindex='0'>"
+                f"<span>{shown}</span></span></span></div>")
+    load(page, widget(0, "— Make a Selection —", "<option value=''>— Make a Selection —</option><option value='b'>BS</option>")
+         + widget(1, "Nothing yet", "<option value=''>Nothing yet</option><option value='b'>BS</option>")
+         + widget(2, "Pick later", "<option value='x' disabled selected>Pick later</option><option value='b'>BS</option>")
+         + widget(3, "BS", "<option value=''>—</option><option value='b' selected>BS</option>"))
+    got = [(f["shape"], f["question"], f["committed"], f["answered"]) for f in fields(page)]
+    assert got == [("popup", "Q0", "", False), ("popup", "Q1", "Nothing yet", False),
+                   ("popup", "Q2", "Pick later", False), ("popup", "Q3", "BS", True)]
 
 
 def test_a_rerendered_field_never_takes_a_deleted_fields_fid(page, load):

@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 550,
-    "total_loc": 167010,
-    "src_loc": 47489,
-    "test_loc": 119521,
+    "modules": 553,
+    "total_loc": 169347,
+    "src_loc": 47621,
+    "test_loc": 121726,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -19,7 +19,7 @@
       },
       {
         "file": "tests/browser/test_fill_end_to_end.py",
-        "line": 228,
+        "line": 262,
         "name": "test_the_engine_fills_every_fixture_on_one_page",
         "complexity": 40,
         "params": 1,
@@ -32,6 +32,14 @@
         "complexity": 39,
         "params": 3,
         "lines": 98
+      },
+      {
+        "file": "app/services/bullet_classify.py",
+        "line": 51,
+        "name": "_validate",
+        "complexity": 39,
+        "params": 3,
+        "lines": 59
       },
       {
         "file": "app/services/career_kb.py",
@@ -48,14 +56,6 @@
         "complexity": 39,
         "params": 2,
         "lines": 107
-      },
-      {
-        "file": "app/services/bullet_classify.py",
-        "line": 44,
-        "name": "_validate",
-        "complexity": 38,
-        "params": 3,
-        "lines": 57
       },
       {
         "file": "app/services/role_categories.py",
@@ -218,8 +218,16 @@
         "lines": 133
       },
       {
+        "file": "tests/test_eval_fill_cases.py",
+        "line": 531,
+        "name": "test_the_map_cases_hold_the_live_wrong_writes",
+        "complexity": 24,
+        "params": 0,
+        "lines": 32
+      },
+      {
         "file": "tests/test_extension_panel.py",
-        "line": 685,
+        "line": 689,
         "name": "test_the_panel_document_is_self_contained_and_joins_the_namespace",
         "complexity": 24,
         "params": 0,
@@ -400,17 +408,9 @@
         "complexity": 21,
         "params": 0,
         "lines": 28
-      },
-      {
-        "file": "tests/test_tailoring_sessions_router.py",
-        "line": 2160,
-        "name": "test_tailor_happy_path",
-        "complexity": 21,
-        "params": 3,
-        "lines": 53
       }
     ],
-    "hotspot_count": 569,
+    "hotspot_count": 571,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -469,8 +469,8 @@
       }
     ],
     "error_masking_count": 11,
-    "internal_import_edges": 2291,
-    "imports_per_module": 4.17,
+    "internal_import_edges": 2310,
+    "imports_per_module": 4.18,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -599,7 +599,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "569 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
+      "detail": "571 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -612,16 +612,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 167010,
-    "src_loc": 47489,
-    "test_loc": 119521,
-    "modules": 550,
+    "total_loc": 169347,
+    "src_loc": 47621,
+    "test_loc": 121726,
+    "modules": 553,
     "orphan_loc": 0,
     "duplication_pct": 0.7,
     "duplicated_lines": 397,
     "clone_count": 43,
-    "complexity_hotspots": 569,
+    "complexity_hotspots": 571,
     "error_masking": 11,
-    "imports_per_module": 4.17
+    "imports_per_module": 4.18
   }
 }

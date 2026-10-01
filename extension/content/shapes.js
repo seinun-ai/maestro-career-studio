@@ -211,6 +211,27 @@
       && !i.closest('[role="listbox"], [role="menu"]') && !(list && i.closest(`[id="${CSS.escape(list)}"]`)));
     return hidden.length === 1 ? hidden[0] : null;
   };
+  // A select2-style widget's native <select>, which the page hides and the app
+  // submits (iCIMS, live 2026-10-01: a box showing "— Make a Selection —" over
+  // an empty one was read as answered). The ONE non-visible select in the
+  // widget's field box: the nearest ancestor (4 levels, never <body>, <html>
+  // or a <form>) holding one, with no other visible field in it. Two: none.
+  const backingSelect = (el) => {
+    const { CONTROL, otherControl } = ns.fieldControls;
+    const { visible } = ns.fillBase;
+    for (let n = el.parentElement, d = 0; n && d < 4 && !edge(n); n = n.parentElement, d += 1) {
+      if ([...n.querySelectorAll(CONTROL)].some((c) => otherControl(c, el) && visible(c))) return null;
+      const hidden = [...n.querySelectorAll("select")].filter((s) => !visible(s));
+      if (hidden.length) return hidden.length === 1 ? hidden[0] : null;
+    }
+    return null;
+  };
+  // What a backing select holds: its value, or "" while it holds nothing (an
+  // empty value, or a disabled option), whatever the box shows.
+  const selectHeld = (s) => {
+    const o = s.options[s.selectedIndex];
+    return o && !o.disabled && o.value !== "" ? s.value : "";
+  };
   // A popup's text (placeholder: nothing), else a read-only input's value or
   // the single-value node beside it.
   const readPopup = (el) => {
@@ -422,10 +443,21 @@
         return buttonLike(el) && HASPOPUP.test(el.getAttribute("aria-haspopup") ?? "");
       },
       read: readPopup,
+      // Over a backing select, answered is what the select holds, never the
+      // box's words.
+      answered: (el) => {
+        const s = backingSelect(el);
+        return s ? selectHeld(s) !== "" : Boolean(readPopup(el));
+      },
       // The button shows the pick at once; the app has it only when the
       // backing input beside it holds a value (notes §8a: picks that showed,
-      // then reverted, never filled it). No backing input found: display only.
-      evidence: (el) => ({ display: readPopup(el), proof: popupBacking(el)?.value ?? null }),
+      // then reverted, never filled it), or the backing select does. Neither
+      // found: display only.
+      evidence: (el) => {
+        const input = popupBacking(el);
+        const s = input ? null : backingSelect(el);
+        return { display: readPopup(el), proof: input ? input.value : s ? selectHeld(s) : null };
+      },
     },
   ];
   // Every other shape shows what it holds: display and proof are its value.

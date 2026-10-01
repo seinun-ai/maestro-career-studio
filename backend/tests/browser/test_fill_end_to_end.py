@@ -639,3 +639,101 @@ def test_two_nameless_questions_under_one_wrapper_are_both_filled(e2e_page):
     assert _checked(page) == ["b", "c"]
     assert {q: r["status"] for q, r in out["by_question"].items()} == {
         "Need sponsorship?": "verified", "Over 18?": "verified"}
+
+
+# --- icims_profile.html (careers-gmr.icims.com, live 2026-10-01)
+# The profile behind it: a current job (no end) and an earlier one that ended.
+ICIMS_JOBS = [
+    {"employer": "Acme", "title": "Data Scientist", "start_date": "Jun 2026", "end_date": None, "current": True},
+    {"employer": "Initech", "title": "Analyst", "start_date": "Jul 2022", "end_date": "Jun 2024", "current": False},
+]
+START = "Start Date (Month / Day / Year)"
+END = "End Date (if applicable) (Month / Day / Year)"
+
+
+def _icims_facts():
+    from app.services import autofill_catalog
+
+    return autofill_catalog.build({"personal": {"phone": "555-0100", "country": "United States"},
+                                   "education": [{"school": "State University", "degree": "BS"}]},
+                                  ICIMS_JOBS, [])
+
+
+def test_an_icims_dropdown_showing_make_a_selection_is_filled(e2e_page):
+    """Live iCIMS read "— Make a Selection —" as an answer and skipped the
+    box. It is empty, so it is filled: the hidden select (the app) holds the
+    pick, and the placeholder row is never offered as an answer."""
+    page = e2e_page
+    out = _run(page, fixtures=["icims_profile.html"],
+               map={"Degree": {"route": "slot", "slot": "education.0.degree", "value": "BS"},
+                    "Country": {"route": "slot", "slot": "personal.country", "value": "United States"}})
+    assert (oracle(page, "icims_degree"), oracle(page, "icims_country")) == ("bs", "us")
+    assert out["by_question"]["Degree"]["status"] == "verified", out["by_question"]["Degree"]
+    assert out["by_question"]["Country"]["status"] == "verified", out["by_question"]["Country"]
+    offered = [o["text"] for p in out["posts"] if p["path"] == "/api/autofill/pick"
+               for fld in p["body"]["fields"] for o in fld["options"]]
+    assert "BS" in offered and not [t for t in offered if "Make a Selection" in t]
+    assert out["by_question"]["State/Province"]["status"] == "needs_answer"   # unanswered, not "already"
+
+
+def test_icims_date_parts_get_their_own_part_and_a_current_job_no_end(e2e_page, monkeypatch):
+    """Live iCIMS read the date controls as bare "Month", "Day" and "Year":
+    both Year boxes were mapped to a start date and given "2026-06", and the
+    current job's End Date Year got the earlier job's end. Each part now asks
+    its row's question, a Year box gets the year, a Month list the month in
+    its own spelling, a Day list (no day in the profile) is left, and a
+    current job's End Date gets nothing — even when the model reaches for
+    another job's end, as it did live."""
+    page = e2e_page
+    keys = {f"{START}: Month": "experience.0.start", f"{START}: Day": "experience.0.start",
+            f"{START}: Year": "experience.0.start",
+            f"{END}: Month": "experience.1.end", f"{END}: Day": "experience.1.end", f"{END}: Year": "experience.1.end"}
+    real_backend(page, monkeypatch, _icims_facts(), kinds={}, keys=keys)
+    out = _run(page, fixtures=["icims_profile.html"], backend=True)
+    assert page.input_value("#icims_0_startdate_year") == "2026"
+    assert page.evaluate("document.getElementById('icims_0_startdate_month').selectedOptions[0].text") == "Jun"
+    assert page.input_value("#icims_0_startdate_date") == ""
+    for part in ("month", "date", "year"):
+        assert page.input_value(f"#icims_0_enddate_{part}") == "", part
+    status = {q: (r["status"], r["lastOutcome"]) for q, r in out["by_question"].items()}
+    assert status[f"{START}: Year"][0] == "verified" and status[f"{START}: Month"][0] == "verified"
+    assert status[f"{START}: Day"] == ("needs_answer", "no_date_part")
+    assert out["by_question"][f"{START}: Day"]["answer"] == "Your profile has no day for this date."
+    for part in ("Month", "Day", "Year"):
+        assert status[f"{END}: {part}"] == ("needs_answer", "no_fact"), part
+    # Nothing was ever sent to the End Date's controls, and no whole date anywhere.
+    end_fids = {r["fid"] for r in out["report"]["fields"] if r["question"].startswith(END)}
+    applies = [a for m in out["sent"] if m["type"] == "fill_apply" for a in m["actions"]]
+    assert not [a for a in applies if a["fid"] in end_fids]
+    assert not [a for a in applies if "-" in str(a.get("value", "")) + str(a.get("text", ""))]
+
+
+def test_an_ended_jobs_end_date_parts_are_written(e2e_page, monkeypatch):
+    """The guard is the current job's alone: an entry whose job ended gets its end."""
+    page = e2e_page
+    keys = {f"{END}: Month": "experience.0.end", f"{END}: Year": "experience.0.end"}
+    jobs = [{**ICIMS_JOBS[1]}]
+    from app.services import autofill_catalog
+
+    real_backend(page, monkeypatch, autofill_catalog.build({}, jobs, []), kinds={}, keys=keys)
+    _run(page, fixtures=["icims_profile.html"], backend=True)
+    assert page.input_value("#icims_0_enddate_year") == "2024"
+    assert page.evaluate("document.getElementById('icims_0_enddate_month').selectedOptions[0].text") == "Jun"
+
+
+def test_icims_type_boxes_ask_their_group_and_never_get_the_phone_number(e2e_page, monkeypatch):
+    """Live, the phone's and the address's "Type" lists were both mapped to
+    the phone number. Each now asks its group's question; even mapped to the
+    phone (the model's mistake), a list offering Mobile / Home holds no phone
+    number, so nothing is chosen and the number goes only to its own box."""
+    page = e2e_page
+    phone_type, address_type = "Enter in your mobile number: Type", "Enter your full address: Type"
+    keys = {phone_type: "personal.phone", address_type: "personal.phone",
+            "Enter in your mobile number: Number": "personal.phone"}
+    real_backend(page, monkeypatch, _icims_facts(), kinds={}, keys=keys)
+    out = _run(page, fixtures=["icims_profile.html"], backend=True)
+    assert page.input_value("#icims_0_phonenumber") == "555-0100"
+    assert (page.input_value("#icims_0_phonetype"), page.input_value("#icims_0_addresstype")) == ("", "")
+    for q in (phone_type, address_type):
+        assert out["by_question"][q]["status"] == "needs_answer", out["by_question"][q]
+    assert out["by_question"]["Enter in your mobile number: Number"]["status"] == "verified"

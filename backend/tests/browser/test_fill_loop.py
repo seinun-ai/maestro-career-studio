@@ -2186,3 +2186,78 @@ def test_without_a_recipe_store_no_order_is_sent(page, load):
     out = popup_run(page, load, apply={"Yes": {"outcome": "verified", "variant": {"open": "keys"}}})
     assert statuses(out) == {"d": "verified"}
     assert variants(out) == {"explore": [None], "choose": [None], "set": [], "write": []}
+
+
+# ---------- a date written into ONE part of a date (iCIMS, live 2026-10-01)
+# /map says a slot is a date (`format: "date"`, the slot's); the inventory says
+# a control holds one part (`part`, the field reader's). The loop writes only
+# that part: live, a Year box was given "2026-06".
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def dated(value="2026-06", slot="experience.0.start"):
+    return {"route": "slot", "slot": slot, "value": value, "format": "date"}
+
+
+def test_a_year_box_gets_the_year_and_a_month_box_the_month(page, load):
+    out = run(page, load, frames=[[f("y", question="Start: Year", part="year"),
+                                   f("m", question="Start: Month", part="month")]],
+              map={"y": dated(), "m": dated()})
+    assert statuses(out) == {"y": "verified", "m": "verified"}
+    assert {a["fid"]: a["value"] for a in actions(out, "write")} == {"y": "2026", "m": "06"}
+    assert all("format" not in a for a in actions(out, "write"))
+
+
+@pytest.mark.parametrize("texts, chosen", [
+    (MONTHS, "Jun"), ([f"{i:02d}" for i in range(1, 13)], "06"), ([str(i) for i in range(1, 13)], "6"),
+    (["January", "February", "March", "April", "May", "June", "July"], "June"),
+], ids=["short", "two-digit", "number", "long"])
+def test_a_month_list_is_chosen_in_its_own_spelling_without_a_model(page, load, texts, chosen):
+    options = [opt(f"o{i + 1}", t) for i, t in enumerate(texts)]
+    out = run(page, load, frames=[[f("m", "select", "Start: Month", part="month", options=options, optionsComplete=True)]],
+              map={"m": dated()})
+    assert statuses(out) == {"m": "verified"}
+    assert [a["text"] for a in actions(out, "choose")] == [chosen]
+    assert "/api/autofill/pick" not in out["calls"]
+
+
+def test_a_year_list_and_an_explored_month_popup_are_chosen_by_their_part(page, load):
+    years = [opt(f"o{i}", str(2020 + i)) for i in range(8)]
+    out = run(page, load, frames=[[f("y", "select", "Start: Year", part="year", options=years, optionsComplete=True),
+                                   f("m", "popup", "Start: Month", part="month")]],
+              map={"y": dated(), "m": dated()},
+              explore={"m": {"options": [opt(f"o{i + 1}", t) for i, t in enumerate(MONTHS)], "complete": True}})
+    assert statuses(out) == {"y": "verified", "m": "verified"}
+    assert [a["text"] for a in actions(out, "choose")] == ["2026", "Jun"]
+    assert "/api/autofill/pick" not in out["calls"] and "/api/autofill/step" not in out["calls"]
+
+
+def test_a_part_the_date_does_not_have_is_left_calmly(page, load):
+    """No day in a YYYY-MM fact, no month in a year-only one: nothing is
+    written, nothing is asked, and the row says why."""
+    days = [opt(f"o{i}", str(i)) for i in range(1, 32)]
+    out = run(page, load, frames=[[f("d", "select", "Start: Day", part="day", options=days, optionsComplete=True),
+                                   f("m", question="Graduated: Month", part="month")]],
+              map={"d": dated(), "m": dated("2019", "education.0.end_year")})
+    assert statuses(out) == {"d": "needs_answer", "m": "needs_answer"}
+    assert [row(out, x)["lastOutcome"] for x in ("d", "m")] == ["no_date_part", "no_date_part"]
+    assert row(out, "d")["answer"] == "Your profile has no day for this date."
+    assert row(out, "m")["answer"] == "Your profile has no month for this date."
+    assert actions(out) == [] and "/api/autofill/pick" not in out["calls"]
+
+
+def test_a_month_list_with_no_option_for_the_month_is_left(page, load):
+    out = run(page, load, frames=[[f("m", "select", "Start: Month", part="month",
+                                     options=[opt("o1", "Spring"), opt("o2", "Fall")], optionsComplete=True)]],
+              map={"m": dated()})
+    assert statuses(out) == {"m": "needs_answer"} and actions(out) == []
+
+
+def test_only_a_date_slot_on_a_part_control_is_narrowed(page, load):
+    """A whole date box, a part control mapped to a slot that is no date, and
+    a backend that does not say `date` keep the value whole."""
+    out = run(page, load, frames=[[f("w", question="Start date"), f("n", question="Phone: Number", part=None),
+                                   f("y", question="Year", part="year")]],
+              map={"w": dated(), "n": {"route": "slot", "slot": "personal.phone", "value": "555-0100", "format": "phone"},
+                   "y": {"route": "slot", "slot": "custom.1", "value": "2026-06"}})
+    assert {a["fid"]: a["value"] for a in actions(out, "write")} == {"w": "2026-06", "n": "555-0100", "y": "2026-06"}

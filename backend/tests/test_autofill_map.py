@@ -393,6 +393,10 @@ def test_page_text_is_quoted_as_data(db_session, monkeypatch):
     ("preferences.expected_compensation", "money"), ("custom.pay", "money"),
     ("personal.payroll_id", None), ("personal.paypal_email", None), ("custom.display_name", None),
     ("personal.city", None), ("experience.0.title", None), (None, None),
+    # A date slot: the loop writes only the part a Month or Year control holds.
+    ("experience.0.start", "date"), ("experience.12.end", "date"), ("education.1.end_year", "date"),
+    ("education.0.start_year", "date"), ("derived.today", "date"), ("derived.earliest_start_date", "date"),
+    ("experience.0.current", None), ("preferences.start_date_note", None), ("custom.end", None),
 ])
 def test_the_format_follows_the_slot_never_the_value(slot, fmt):
     assert autofill_map.format_of(slot) == fmt
@@ -1310,3 +1314,44 @@ def test_now_or_in_the_future_is_offered_as_its_own_derived_fact(db_session, mon
         "will need visa sponsorship now or in the future (yes/no; from the applicant's now and later answers)")
     assert (got["q"].slot, got["q"].value) == ("derived.sponsorship_now_or_future", "Yes")
     assert '"Yes"' not in json.dumps(calls[0]["questions"]) and '"No"' not in json.dumps(calls[0]["questions"])
+
+
+# ---------- a current job never gets an end date (iCIMS, live 2026-10-01)
+# The current job's entry has no end fact, so a model asked for its End Date
+# reaches for another job's: live, the current job's End Date Year got the
+# earlier job's end. An end date is never written into an entry whose own job
+# is current, placed or not.
+JOBS = [{"employer": "Acme", "title": "Data Scientist", "start_date": "Jun 2026", "current": True},
+        {"employer": "Initech", "title": "Analyst", "start_date": "Jul 2022", "end_date": "Jun 2024", "current": False}]
+END_YEAR = "End Date (if applicable) (Month / Day / Year): Year"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("placement", [{}, {"profile_entry": 0, "entry_kind": "experience"}], ids=["unplaced", "placed"])
+def test_an_end_date_is_never_written_into_the_current_jobs_entry(db_session, monkeypatch, placement):
+    facts = autofill_catalog.build({}, JOBS, [])
+    assert "experience.0.end" not in facts and facts["experience.1.end"].value == "2024-06"
+    fake_jev(monkeypatch, {"e": ("experience.1.end", 0.95), "s": ("experience.0.start", 0.95)})
+    got = autofill_map.map_fields([field("e", END_YEAR, **placement),
+                                   field("s", "Start Date (Month / Day / Year): Year", **placement)],
+                                  facts, db_session, eeo_consented=True, low_stakes=False)
+    assert got["e"].route == "none"
+    assert (got["s"].slot, got["s"].value, got["s"].format) == ("experience.0.start", "2026-06", "date")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_an_ended_jobs_entry_still_gets_its_end_date(db_session, monkeypatch):
+    facts = autofill_catalog.build({}, JOBS, [])
+    fake_jev(monkeypatch, {"e": ("experience.1.end", 0.95)})
+    got = autofill_map.map_fields([field("e", END_YEAR, repeat_index=1)], facts, db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert (got["e"].route, got["e"].slot, got["e"].value, got["e"].format) == ("slot", "experience.1.end", "2024-06", "date")
+
+
+def test_the_phone_is_offered_as_never_a_phone_type():
+    """iCIMS's "Type" list under its phone number (Mobile / Home) was mapped
+    to the phone; its question now names its group ("Enter in your mobile
+    number: Type"), and the phone's own description refuses it."""
+    facts = autofill_catalog.build({"personal": {"phone": "555-0100"}}, [], [])
+    assert "never a phone extension, a fax number, a country calling code or a phone type" in \
+        autofill_map._criteria(facts)["personal.phone"]
