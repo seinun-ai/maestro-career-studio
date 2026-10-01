@@ -347,8 +347,8 @@ file to open.
   owns its DOM, so a profile value in a third-party frame's input is readable by that frame's
   script. `agent.js` gates every fan-out write (`profile_fill`, the `fill_*` ops, attach…) on
   `frameMayReceiveUserData(msg)`: the TOP frame passes; a SUBFRAME must show `detectPage().form`, OR
-  sit on exactly the `flowHost` the panel vouches for — the host whose frame held a confirmed form in
-  this tab within the hour (panel.js `withFlowHost`; a later wizard step such as iCIMS EEO scores 0).
+  sit on exactly the http(s) `flowOrigin` the panel vouches for — whose frame held a confirmed form in
+  this tab, same employer, within the hour (panel.js `withFlowOrigin`; iCIMS EEO steps score 0).
   Detection throwing refuses. A refused frame returns the handler's EMPTY shape, never a throw.
   Attach also requires a VISIBLE input (`input.files` is readable with no gesture). Pinned by
   `tests/test_extension_frame_gate.py`.

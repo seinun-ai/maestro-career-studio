@@ -77,21 +77,25 @@ previous step's count, and the attach offer came one step late (CarMax). It read
 scores and returns seven keys: the tier, whether a form's evidence held, the
 score behind it, how many upload boxes a resume could go into (frame 0's
 count only, so the attach offer is unchanged), per box its kind and whether it
-holds a file, the frame's own hostname, and a capped count of fillable fields
+holds a file, the frame's own origin, and a capped count of fillable fields
 (search boxes excluded). It holds no state, registers no observer and touches nothing on the page.
 
 **An application under way.** The later steps of a multi-step ATS (iCIMS's
 Candidate Questions and EEO, a review page) are a few selects and a Submit, and
 score 0. So once a form is confirmed in a tab, the panel remembers its frame's
-host (`chrome.storage.session`, an hour from the last step found), and a later
-page with a frame on that exact host and at least one fillable field is the
-form. Every gated page message then carries that host (`withFlowHost`), and
-`frameMayReceiveUserData` admits a subframe on exactly it, which is what lets
-iCIMS's own iframe take the fill on those steps. Only a host whose frame
-already held a confirmed form is vouched for; every other frame keeps its own
-verdict. When such a step is reached by navigating inside the tab after the
-first step filled (the rail at Track), the Fill row opens by itself, as a
-view: no tick moves.
+origin and the employer it was confirmed under, the top page's origin plus
+first path segment (`flowScope`), because Greenhouse, Lever and Ashby serve
+every employer from one host. It is kept in `chrome.storage.session` for an
+hour from the last step found. While the tab stays on that employer, a later
+page with a frame on that exact origin and at least one fillable field is the
+form, and every gated page message carries the origin (`withFlowOrigin`), which
+`frameMayReceiveUserData` reads to admit a subframe on exactly it. That is what
+lets iCIMS's own iframe take the fill on those steps. A form frame 0 answers
+never replaces a live flow's origin, since the top frame needs no vouch. Every
+other frame keeps its own verdict. When the ladder's read of a step reached by
+navigating inside the tab finds the form, after the first step filled (the
+rail at Track), the Fill row opens by itself, as a view: no tick moves, and the
+first read after the url change (the step being left) never opens it.
 Tier A is a JobPosting **verdict** (a page either declares one or it does not),
 Tier B is form evidence over a threshold, the two do not combine into one number,
 and an ATS host is worth zero points on its own. On a miss the panel offers

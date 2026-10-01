@@ -73,7 +73,10 @@ const fileInputs = (spec.fileInputs ?? []).map((f) => {
 const controls = (spec.controls ?? []).map((c) => ({
   tagName: c.tag.toUpperCase(),
   disabled: c.disabled === true,
-  getAttribute: (name) => ({ type: c.type, name: c.name, role: c.role })[name] ?? null,
+  readOnly: c.readOnly === true,
+  getAttribute: (name) => ({ type: c.type, name: c.name, role: c.role, id: c.id,
+                             "aria-label": c.label, placeholder: c.placeholder,
+                             "aria-disabled": c.ariaDisabled })[name] ?? null,
   offsetWidth: c.visible ? 120 : 0,
   offsetHeight: c.visible ? 24 : 0,
   getClientRects: () => (c.visible ? [{}] : []),
@@ -98,7 +101,7 @@ global.DataTransfer = class {
   constructor() { this.files = []; this.items = { add: (file) => this.files.push(file) }; }
 };
 global.location = { ...global.location, href: "https://jobs.example.test/x",
-                    hostname: spec.hostname ?? "jobs.example.test" };
+                    origin: spec.origin ?? "https://jobs.example.test" };
 global.window.top = spec.topFrame ? global.window : { other: true };
 global.window.self = global.window;
 
@@ -144,8 +147,8 @@ main(async () => {
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
     ...(spec.peek ? { peek: true } : {}),
-    // The host the panel vouches for (`withFlowHost`), only when stated.
-    ...(spec.flowHost === undefined ? {} : { flowHost: spec.flowHost }),
+    // The origin the panel vouches for (`withFlowOrigin`), only when stated.
+    ...(spec.flowOrigin === undefined ? {} : { flowOrigin: spec.flowOrigin }),
   });
   emit({ calls, data });
 });
@@ -153,14 +156,14 @@ main(async () => {
 
 
 def _run(tmp_path, *, type_, top_frame, form=False, detect_throws=False, file_inputs=(),
-         expect=None, peek=False, flow_host=None, hostname=None, controls=None):
+         expect=None, peek=False, flow_origin=None, origin=None, controls=None):
     extra = {}
     if controls is not None:
         extra["controls"] = list(controls)
-    if flow_host is not None:
-        extra["flowHost"] = flow_host
-    if hostname is not None:
-        extra["hostname"] = hostname
+    if flow_origin is not None:
+        extra["flowOrigin"] = flow_origin
+    if origin is not None:
+        extra["origin"] = origin
     return run_node(
         _GATE_DRIVER_JS,
         {
@@ -209,30 +212,36 @@ def test_a_subframe_holding_an_application_form_is_allowed(tmp_path, type_):
 #
 # iCIMS, live 2026-10-01: Candidate Questions and EEO are a few selects and a
 # Submit in the page's own iframe, so the frame's own detect says no and every
-# write was refused after step one. The panel vouches for the one exact host
-# whose frame already held a confirmed form in this tab (`withFlowHost`).
+# write was refused after step one. The panel vouches for the one exact origin
+# whose frame already held a confirmed form in this tab (`withFlowOrigin`).
 
 VOUCHED_TYPES = FAN_OUT_TYPES + ["fill_inventory", "fill_apply", "fill_sweep", "fill_sections"]
+ICIMS = "https://careers-acme.icims.com"
 
 
 @pytest.mark.parametrize("type_", VOUCHED_TYPES)
-def test_a_subframe_on_the_vouched_host_takes_the_fill(tmp_path, type_):
+def test_a_subframe_on_the_vouched_origin_takes_the_fill(tmp_path, type_):
     out = _run(tmp_path, type_=type_, top_frame=False, form=False,
-               flow_host="careers-acme.icims.com", hostname="careers-acme.icims.com")
+               flow_origin=ICIMS, origin=ICIMS)
 
-    assert out["calls"] != [], f"{type_} was refused on the host the panel vouched for"
+    assert out["calls"] != [], f"{type_} was refused on the origin the panel vouched for"
 
 
-@pytest.mark.parametrize("flow_host", [
-    "careers-other.icims.com",   # a sibling subdomain is another party
-    "icims.com",                 # a parent domain is not the host
-    "",                          # an empty vouch is no vouch
+@pytest.mark.parametrize("flow_origin, origin", [
+    ("https://careers-other.icims.com", ICIMS),   # a sibling subdomain is another party
+    ("https://icims.com", ICIMS),                 # a parent domain is not the origin
+    ("http://careers-acme.icims.com", ICIMS),     # another scheme is another origin
+    ("https://careers-acme.icims.com:8443", ICIMS),
+    ("", ICIMS),                                  # an empty vouch is no vouch
+    # A sandboxed or opaque frame's origin is the string "null": a vouch for it
+    # would admit every such frame, so only an http(s) origin can be vouched.
+    ("null", "null"),
 ])
-def test_a_vouch_for_another_host_is_refused(tmp_path, flow_host):
-    """Exact hostname or nothing. An ad or chat frame beside the form is on
-    another host, and it still has to earn the data with its own detect."""
+def test_a_vouch_for_any_other_origin_is_refused(tmp_path, flow_origin, origin):
+    """Exact origin or nothing. An ad or chat frame beside the form is on
+    another origin, and it still has to earn the data with its own detect."""
     out = _run(tmp_path, type_="profile_fill", top_frame=False, form=False,
-               flow_host=flow_host, hostname="careers-acme.icims.com")
+               flow_origin=flow_origin, origin=origin)
 
     assert out["calls"] == []
 
@@ -404,8 +413,8 @@ def test_detect_page_answers_the_verdict_and_nothing_of_the_page(tmp_path):
     (`uploadBoxOf`): what Autofill's own attach decides with, never a label
     or a filename.
 
-    `host` and `controls` are the sixth and seventh (2026-10-01), for the
-    application-flow rule: the frame's own hostname, which the service worker
+    `origin` and `controls` are the sixth and seventh (2026-10-01), for the
+    application-flow rule: the frame's own origin, which the service worker
     already holds as the frame's url, and a COUNT of fillable fields, capped.
     Neither carries a label, a value or anything the user typed.
 
@@ -415,13 +424,13 @@ def test_detect_page_answers_the_verdict_and_nothing_of_the_page(tmp_path):
     out = _run(tmp_path, type_="detect_page", top_frame=False, form=True)
 
     assert set(out["data"]) == {
-        "tier", "form", "score", "fileInputs", "uploads", "host", "controls"}
+        "tier", "form", "score", "fileInputs", "uploads", "origin", "controls"}
     assert out["data"]["form"] is True
     # …and the verdict is the page's own, not re-derived from `score` here.
     top = _run(tmp_path, type_="detect_page", top_frame=True, form=False)["data"]
     assert {key: top[key] for key in ("tier", "form", "score", "fileInputs", "uploads")} == {
         "tier": "none", "form": False, "score": 0, "fileInputs": 0, "uploads": []}
-    assert isinstance(top["host"], str)
+    assert isinstance(top["origin"], str)
     assert isinstance(top["controls"], int) and top["controls"] >= 0
 
 
@@ -446,7 +455,19 @@ def test_detect_page_counts_the_fields_a_fill_could_answer_and_no_search_box(tmp
                   {"tag": "input", "type": "password", "visible": True},
                   {"tag": "input", "type": "submit", "visible": True},
                   {"tag": "select", "visible": False},
-                  {"tag": "select", "visible": True, "disabled": True}]) == 0
+                  {"tag": "select", "visible": True, "disabled": True},
+                  # Named any other way, a search box is still one.
+                  {"tag": "input", "id": "keywordSearchInput", "visible": True},
+                  {"tag": "input", "label": "Search jobs", "visible": True},
+                  {"tag": "input", "placeholder": "Search by keyword", "visible": True},
+                  {"tag": "input", "role": "searchbox", "visible": True},
+                  {"tag": "input", "readOnly": True, "visible": True},
+                  {"tag": "div", "role": "combobox", "ariaDisabled": "true",
+                   "visible": True}]) == 0
+    # The widgets a fill answers by role count; the count stops at its cap.
+    assert count([{"tag": "div", "role": "combobox", "visible": True},
+                  {"tag": "div", "role": "checkbox", "visible": True}]) == 2
+    assert count([{"tag": "select", "visible": True}] * 25) == 20
 
 
 def test_the_offer_counts_exactly_the_boxes_the_attach_would_write_to(tmp_path):

@@ -862,7 +862,7 @@
    * reasons. `undefined` there is "we do not know", which is exactly what the
    * bridge's offline tolerance is built on. */
   async function ask(type, payload = {}) {
-    const reply = await chrome.runtime.sendMessage({ type, ...withFlowHost(type, payload) });
+    const reply = await chrome.runtime.sendMessage({ type, ...withFlowOrigin(type, payload) });
     if (reply?.ok) return reply.data;
     const err = new Error(reply?.error ?? `no answer to ${type}`);
     if (Number.isInteger(reply?.status)) err.status = reply.status;
@@ -3160,7 +3160,7 @@
     const verdict = await askDetectPrepared(token);
     if (!current(token)) return;
     card.hasForm = verdict?.form === true;
-    if (card.hasForm) noteForm(verdict);
+    if (card.hasForm && !inPlace) noteForm(verdict);
     // After an in-place url change this read is the step being left, so its
     // count is not shown: the ladder's first rung (a second on) says.
     card.fileInputs = inPlace ? 0 : countFileInputs(verdict);
@@ -3254,7 +3254,9 @@
     } catch (_) {
       top = null;
     }
-    if (top?.form === true) return { ...top, formHost: top.host || hostOf(card.url) };
+    if (top?.form === true) {
+      return { ...top, formOrigin: top.origin || originOf(card.url), formAtTop: true };
+    }
     let frames = [];
     try {
       frames = await ask("page_broadcast", {
@@ -3267,78 +3269,117 @@
       .filter((one) => one?.result !== undefined && one.result !== null);
     if (top === null && answered.length === 0) return null;
     const base = top ?? { tier: "none", form: false, score: 0, fileInputs: 0 };
-    const frameHost = (one) => one.result?.host
-      || hostOf(one.url ?? (one.frameId === 0 ? card.url : ""));
+    const frameOrigin = (one) => one.result?.origin
+      || originOf(one.url ?? (one.frameId === 0 ? card.url : ""));
     const formFrame = answered.find((one) => one.result?.form === true
       && (one.frameId === 0 || sameSite(one.url, card.url)
         || Number(one.result?.score) >= SUBFRAME_FORM_SCORE));
-    if (formFrame) return { ...base, form: true, formHost: frameHost(formFrame) };
+    if (formFrame) {
+      return { ...base, form: true, formOrigin: frameOrigin(formFrame),
+               formAtTop: formFrame.frameId === 0 };
+    }
     // A LATER STEP of an application already confirmed on this host (owner
     // decision 2026-10-01). iCIMS's Candidate Questions and EEO steps, and
     // every wizard's review page, are a few selects and a Submit: nothing the
     // detector can score, so each one said "No application form here" after
-    // the first step filled. A frame on the confirmed host with at least one
-    // fillable field is the form. Search boxes never count, and the hour
+    // the first step filled. A frame on the confirmed origin with at least one
+    // fillable field is the form, while the tab stays on the employer the flow
+    // began on (`flowFor`). Search boxes never count, and the hour
     // (`FLOW_TTL_MS`) runs from the last step found, so an abandoned
     // application does not keep a site claimed.
-    const flowHost = flowHostFor(card.tabId);
-    if (flowHost) {
+    const flowOrigin = flowFor(card.tabId)?.origin;
+    if (flowOrigin) {
       const candidates = [
         ...(top ? [{ frameId: 0, url: card.url, result: top }] : []), ...answered];
       if (candidates.some((one) => Number(one.result?.controls) > 0
-          && frameHost(one) === flowHost)) {
-        return { ...base, form: true, formHost: flowHost, flow: true };
+          && frameOrigin(one) === flowOrigin)) {
+        return { ...base, form: true, formOrigin: flowOrigin, flow: true };
       }
     }
     return { ...base, form: false };
   }
 
-  /** WHERE AN APPLICATION IS UNDER WAY, per tab: the host of the frame whose
-   * form was last confirmed, and when. It does two things:
+  /** WHERE AN APPLICATION IS UNDER WAY, per tab: the origin of the frame
+   * whose form was confirmed, the EMPLOYER it was confirmed under (the top
+   * page's `flowScope`), and when. It does two things:
    *
-   * - `askDetect` counts a later step on that host as a form (above);
-   * - `ask` VOUCHES for the host on every page message (`withFlowHost`), and
-   *   `frameMayReceiveUserData` (content/agent.js) lets a frame on exactly
-   *   that host take the fill. That is what lets an iCIMS iframe on its EEO
-   *   step be written to at all: its own detect says no.
+   * - `askDetect` counts a later step on that origin as a form (above);
+   * - `ask` VOUCHES for the origin on every gated page message
+   *   (`withFlowOrigin`), and `frameMayReceiveUserData` (content/agent.js)
+   *   lets a subframe on exactly that origin take the fill. That is what lets
+   *   an iCIMS iframe on its EEO step be written to at all: its own detect
+   *   says no.
    *
-   * WHAT IS VOUCHED FOR is one exact hostname that already held a confirmed
-   * application form in this tab, so the data goes nowhere it has not
-   * already gone. Every other frame keeps its own verdict.
+   * SCOPED TO THE EMPLOYER, not the origin alone: Greenhouse, Lever and Ashby
+   * serve every employer from one host, so a flow begun on one company's
+   * board must not vouch for that host's frame on another company's page in
+   * the same tab. `flowScope` is the top page's origin and first path segment
+   * (`sessionTenant`'s tenant without the posting): one employer across an
+   * iCIMS, Workday or Greenhouse wizard, a different one on the next company.
    *
    * IN `chrome.storage.session`, so closing and reopening the panel mid-
-   * application keeps it, and a browser restart forgets it. Total: a failed
-   * read or write is "no flow", which is today's behaviour, never an error. */
+   * application keeps it, and a browser restart forgets it. Written per tab
+   * (read, merge, prune the lapsed, write), because every window's panel
+   * shares the key. Total: a failed read or write is "no flow", which is the
+   * behaviour without one, never an error. */
   const FLOW_TTL_MS = 60 * 60 * 1000;
   const FLOW_KEY = "applicationFlows";
   const flows = new Map();
+  const isWebOrigin = (origin) => /^https?:\/\//.test(origin ?? "");
+  const fresh = (entry, now) => now - Number(entry?.at) <= FLOW_TTL_MS;
 
-  function flowHostFor(tabId) {
+  function flowScope(url) {
+    try {
+      const u = new URL(url);
+      return `${u.origin}/${u.pathname.split("/")[1] ?? ""}`;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The tab's flow while it is fresh and the tab is still on the employer it
+   * began on, or null. Only the bound tab has a page to compare. */
+  function flowFor(tabId) {
     const entry = flows.get(tabId);
-    if (!entry) return null;
-    if (Date.now() - entry.at > FLOW_TTL_MS) {
+    if (!entry || tabId !== card.tabId) return null;
+    if (!fresh(entry, Date.now())) {
       flows.delete(tabId);
       return null;
     }
-    return entry.host;
+    return entry.scope === flowScope(card.url) ? entry : null;
   }
 
-  function rememberFlow(tabId, host) {
-    if (tabId === null || tabId === undefined || !host) return;
-    flows.set(tabId, { host, at: Date.now() });
-    try {
-      chrome.storage.session?.set({ [FLOW_KEY]: Object.fromEntries(flows) })
-        ?.catch?.((err) => console.warn("[maestro-cs] could not keep the application flow:", err));
-    } catch (err) {
-      console.warn("[maestro-cs] could not keep the application flow:", err);
-    }
+  /** Confirm (or renew) the bound tab's flow. A form frame 0 answered never
+   * REPLACES a live flow's origin under the same employer: the top frame
+   * passes the gate without a vouch, and the subframe the vouch exists for
+   * (iCIMS's own iframe) would lose it to a careers page's sign-up form. */
+  function rememberFlow(verdict) {
+    const tabId = card.tabId;
+    const scope = flowScope(card.url);
+    if (tabId === null || !scope || !isWebOrigin(verdict?.formOrigin)) return;
+    const live = flowFor(tabId);
+    const origin = live && verdict.formAtTop ? live.origin : verdict.formOrigin;
+    const entry = { origin, scope, at: Date.now() };
+    flows.set(tabId, entry);
+    persistFlow(tabId, entry).catch(
+      (err) => console.warn("[maestro-cs] could not keep the application flow:", err));
+  }
+
+  async function persistFlow(tabId, entry) {
+    const area = chrome.storage.session;
+    if (!area) return;
+    const now = Date.now();
+    const kept = Object.fromEntries(Object.entries(
+      (await area.get(FLOW_KEY))?.[FLOW_KEY] ?? {}).filter(([, one]) => fresh(one, now)));
+    await area.set({ [FLOW_KEY]: { ...kept, [tabId]: entry } });
   }
 
   async function loadFlows() {
     try {
       const stored = (await chrome.storage.session?.get(FLOW_KEY))?.[FLOW_KEY] ?? {};
+      const now = Date.now();
       for (const [tabId, entry] of Object.entries(stored)) {
-        if (typeof entry?.host === "string" && Number.isFinite(entry?.at)) {
+        if (isWebOrigin(entry?.origin) && typeof entry?.scope === "string" && fresh(entry, now)) {
           flows.set(Number(tabId), entry);
         }
       }
@@ -3353,14 +3394,14 @@
    * can forget it and none has to know about it. */
   const UNGATED_PAGE_TYPES = ["detect_page", "extract_job_posting", "fill_cancel"];
 
-  function withFlowHost(type, payload) {
+  function withFlowOrigin(type, payload) {
     if (type !== "page_broadcast" && type !== "attach_pdf") return payload;
     if (UNGATED_PAGE_TYPES.includes(payload.message?.type)) return payload;
-    const host = flowHostFor(payload.tabId);
-    if (!host) return payload;
+    const origin = flowFor(payload.tabId)?.origin;
+    if (!origin) return payload;
     return type === "attach_pdf"
-      ? { ...payload, flowHost: host }
-      : { ...payload, message: { ...payload.message, flowHost: host } };
+      ? { ...payload, flowOrigin: origin }
+      : { ...payload, message: { ...payload.message, flowOrigin: origin } };
   }
 
   /** A form was confirmed on this page: keep the flow alive for the next
@@ -3374,19 +3415,23 @@
    * tick moves. Only where nothing has run on THIS page (`fill`, `loop`), only
    * on a draft (an applied application is finished), only on a page reached
    * by navigating inside the tab (`boundInPlace`), and once per page url, so a
-   * Refresh or a re-detect never reopens a row the user closed. */
+   * Refresh or a re-detect never reopens a row the user closed. NEVER ON THE
+   * FIRST READ after an in-place url change, which is the step being LEFT
+   * (`loadHasForm`): a Workday Submit would otherwise open Fill over the
+   * confirmation page. The ladder's rungs read the new step and call this. */
   let fillOpenedFor = null;
   let boundInPlace = false;
 
   function noteForm(verdict) {
-    if (verdict?.formHost) rememberFlow(card.tabId, verdict.formHost);
+    rememberFlow(verdict);
     const pageKey = `${card.tabId} ${card.url}`;
-    if (!boundInPlace || fillOpenedFor === pageKey) return;
-    if (card.revisit || card.fill !== null || card.loop != null || card.busy !== null) return;
+    if (!boundInPlace || fillOpenedFor === pageKey) return false;
+    if (card.revisit || card.fill !== null || card.loop != null || card.busy !== null) return false;
     const decision = stageFor(cardFacts(card));
-    if (decision.stage !== "track" || decision.done.fill !== true || decision.done.track) return;
+    if (decision.stage !== "track" || decision.done.fill !== true || decision.done.track) return false;
     fillOpenedFor = pageKey;
     card.revisit = { row: "fill", over: decision.stage };
+    return true;
   }
 
   /** A subframe of the bound tab finished loading: ask again, once per burst.
@@ -3508,8 +3553,13 @@
         // the offer would then wait for some unrelated render.
         if (card.fileInputs !== before) render();
       }
-      // A yes already known is the in-place ladder settling only the count.
-      if (verdict?.form !== true || card.hasForm) continue;
+      if (verdict?.form !== true) continue;
+      // A yes already known is the in-place ladder settling the count — and
+      // the first read of the NEW step, which is the one `noteForm` may act on.
+      if (card.hasForm) {
+        if (allRungs && noteForm(verdict)) render();
+        continue;
+      }
       card.hasForm = true;
       noteForm(verdict);
       // A REPAINT IS THE WHOLE OF IT, and that is a shrink rather than an

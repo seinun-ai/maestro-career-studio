@@ -112,11 +112,11 @@
    * 0, because the identity cluster wants three DIFFERENT fields.
    *
    * Fails CLOSED: a frame whose detection throws does not get the data. A
-   * subframe on exactly the host the panel vouches for (`msg.flowHost`: one
-   * whose frame held a confirmed form in this tab, panel.js) also passes. */
+   * subframe on exactly the http(s) origin the panel vouches for (`flowOrigin`:
+   * its form was confirmed in this tab, panel.js) also passes. */
   function frameMayReceiveUserData(msg) {
     if (window.top === window.self) return true;
-    if (msg?.flowHost && msg.flowHost === location.hostname) return true;
+    if (/^https?:\/\//.test(msg?.flowOrigin) && msg.flowOrigin === location.origin) return true;
     try {
       return ns.detectPage().form === true;
     } catch (_) {
@@ -579,7 +579,7 @@
       const { tier, form, score } = ns.detectPage();
       const uploads = uploadBoxes();
       return { tier, form, score, fileInputs: uploads.length, uploads,
-               host: location.hostname, controls: ns.fillableControls() };
+               origin: location.origin, controls: ns.fillableControls() };
     },
     profile_fill: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillFormFromProfile(msg.profile, msg.employment, msg.eeoEnabled === true,
