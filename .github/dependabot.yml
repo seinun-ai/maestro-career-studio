@@ -27,6 +27,16 @@ updates:
       js-dependencies:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # Tracks the Node major the app runs on (node:24-alpine in both
+      # Dockerfiles, node-version "24" in CI), not the newest one: newer types
+      # type-check APIs that don't exist at runtime. Raise it with the runtime.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # eslint-config-next pulls in eslint-plugin-react, which caps its eslint
+      # peer at ^9.7. Lift this once that plugin supports ESLint 10.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
 
   # Actions are pinned to commit SHAs (a tag is mutable, a SHA is not), which
   # means nothing updates them without this entry.
