@@ -273,18 +273,20 @@ function detectPage() {
  * none". */
 function fillableControls() {
   const CAP = 20;
-  const SEARCH_NAME = /^(q|query|keywords?|search\w*)$/i;
+  const SEARCH_NAME = /^(q|query)$|search|keyword/i;
   const SKIPPED_TYPES = ["hidden", "submit", "button", "reset", "image", "search", "password"];
   let count = 0;
   for (const el of document.querySelectorAll(
     'input, select, textarea, [role="combobox"], [role="radio"], [role="checkbox"]')) {
     const type = (el.getAttribute("type") || "text").toLowerCase();
     if (el.tagName === "INPUT" && SKIPPED_TYPES.includes(type)) continue;
-    if (SEARCH_NAME.test(el.getAttribute("name") || "")
+    const words = ["name", "id", "aria-label", "placeholder"].map((key) => el.getAttribute(key) || "");
+    if (words.some((word) => SEARCH_NAME.test(word))
         || el.getAttribute("role") === "searchbox"
         || el.closest?.('[role="search"]')) continue;
     const onScreen = el.offsetWidth || el.offsetHeight || el.getClientRects?.().length;
-    if (el.disabled || !onScreen) continue;
+    if (el.disabled || el.readOnly || el.getAttribute("aria-disabled") === "true"
+        || !onScreen) continue;
     count += 1;
     if (count >= CAP) break;
   }

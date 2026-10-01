@@ -624,9 +624,11 @@ def test_a_form_that_arrives_late_gives_the_stage_its_primary_back(tmp_path):
 # `frameMayReceiveUserData` admits a frame whose own detect says `form`), so
 # the offer has to be asked of every frame too.
 
-# The host every fill message vouches for once the apply page's form is
-# confirmed (`withFlowHost`, panel.js): the apply page's own.
-FLOW_HOST = "job-boards.greenhouse.io"
+# The origin every gated fill message vouches for once the apply page's form
+# is confirmed (`withFlowOrigin`, panel.js): the apply page's own.
+FLOW_ORIGIN = "https://job-boards.greenhouse.io"
+# …under the employer it was confirmed on (`flowScope`).
+FLOW_SCOPE = "https://job-boards.greenhouse.io/lightningai"
 
 TOP_NO_FORM = {"tier": "none", "form": False, "score": 1, "fileInputs": 0}
 EMBED_FORM = {"tier": "B", "form": True, "score": 3, "fileInputs": 1}
@@ -774,6 +776,7 @@ const realNow = Date.now;
 main(async () => {
   await settle();
   const pages = [regions()];
+  const bootWrites = sessionWrites.length;
   for (const step of spec.steps) {
     if (step.laterMs) {
       Date.now = () => realNow() + step.laterMs;
@@ -782,7 +785,7 @@ main(async () => {
       const pick = (spec.stored ?? {})["widget.session"];
       if (pick) pick.at = Date.now();
     }
-    spec.page.detect_page = [step.top];
+    spec.page.detect_page = step.tops ?? [step.top];
     spec.frames.detect_page = step.frames ?? [];
     const before = broadcasts.length;
     await onUpdated(7, { url: step.url });
@@ -791,11 +794,14 @@ main(async () => {
       withClass(REGIONS.foot, "cta")[0].click();
       await settle();
     }
-    pages.push({ regions: regions(), vouched: broadcasts.slice(before)
-      .filter((one) => one.message.type !== "detect_page")
-      .map((one) => one.message.flowHost ?? null) });
+    const after = broadcasts.slice(before);
+    pages.push({ regions: regions(), flowWrites: sessionWrites.length,
+      vouched: after.filter((one) => one.message.type !== "detect_page")
+        .map((one) => one.message.flowOrigin ?? null),
+      detects: after.filter((one) => one.message.type === "detect_page")
+        .map((one) => one.message.flowOrigin ?? null) });
   }
-  emit({ pages, sessionWrites });
+  emit({ pages, sessionWrites, bootWrites });
 });
 """
 
@@ -803,10 +809,10 @@ FLOW_PROFILE = _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 0})
 EEO_STEP = f"{LIGHTNING_APPLY_URL}/eeo"
 
 
-def _step(controls, host=FLOW_HOST, url=EEO_STEP, frames=None, **extra):
+def _step(controls, origin=FLOW_ORIGIN, url=EEO_STEP, frames=None, **extra):
     return {"url": url, "frames": frames or [], **extra,
             "top": _reply({"tier": "none", "form": False, "score": 0, "fileInputs": 0,
-                           "host": host, "controls": controls})}
+                           "origin": origin, "controls": controls})}
 
 
 def _flow(tmp_path, steps, **spec):
@@ -826,12 +832,13 @@ def test_a_later_step_on_the_confirmed_host_is_the_form(tmp_path):
     assert _offered(later)
     assert "No application form here" not in _text(later["rail"])
     # The flow is kept for a reopened panel, under the host the form was on.
-    assert any(write.get("applicationFlows", {}).get("7", {}).get("host") == FLOW_HOST
+    assert any(write.get("applicationFlows", {}).get("7", {}).get("origin") == FLOW_ORIGIN
+               and write["applicationFlows"]["7"]["scope"] == FLOW_SCOPE
                for write in out["sessionWrites"])
 
 
 def test_a_later_step_on_another_host_needs_its_own_evidence(tmp_path):
-    out = _flow(tmp_path, [_step(controls=2, host="offers.example.net",
+    out = _flow(tmp_path, [_step(controls=2, origin="https://offers.example.net",
                                  url="https://offers.example.net/apply")])
     assert not _offered(out["pages"][1]["regions"])
 
@@ -867,7 +874,8 @@ def test_a_flow_kept_from_an_earlier_panel_counts_at_boot(tmp_path):
     import time
     out = _flow(tmp_path, [], page={"detect_page": [_step(controls=3)["top"]]},
                 sessionStored={"applicationFlows": {
-                    "7": {"host": FLOW_HOST, "at": int(time.time() * 1000)}}})
+                    "7": {"origin": FLOW_ORIGIN, "scope": FLOW_SCOPE,
+                          "at": int(time.time() * 1000)}}})
     assert _offered(out["pages"][0])
 
 
@@ -877,21 +885,79 @@ def test_the_pages_own_frame_on_the_confirmed_host_is_the_form_and_is_vouched_fo
     nothing to fill, the frame on the confirmed host has the selects. Every
     fill message then carries the host, which is what lets that frame take
     the writes its own detect would refuse."""
-    frame = {"frameId": 4, "url": f"https://{FLOW_HOST}/x?in_iframe=1",
+    frame = {"frameId": 4, "url": f"{FLOW_ORIGIN}/x?in_iframe=1",
              "result": {"tier": "none", "form": False, "score": 0, "fileInputs": 0,
-                        "host": FLOW_HOST, "controls": 3}}
+                        "origin": FLOW_ORIGIN, "controls": 3}}
     out = _flow(tmp_path, [_step(controls=0, frames=[frame], press=True)])
     vouched = out["pages"][1]["vouched"]
     # The run went out (the rule pass and the rest), and every gated page
-    # message carried the confirmed host and nothing else.
+    # message carried the confirmed origin; the ungated detect carried none.
     assert vouched, "Autofill sent nothing to the page"
-    assert set(vouched) == {FLOW_HOST}
+    assert set(vouched) == {FLOW_ORIGIN}
+    assert set(out["pages"][1]["detects"]) == {None}
 
 
 def _filled_before():
     """The pick as the first step's fill leaves it: `touched`, carried across
     the wizard's page loads by the session bridge."""
     return {"widget.session": {**_armed_entry(), "touched": True}}
+
+
+def test_another_employer_on_the_same_ats_host_is_not_the_flow(tmp_path):
+    """Greenhouse, Lever and Ashby serve every employer from one host. A flow
+    begun on one company's board does not follow the tab to another
+    company's page there: no form is claimed and nothing is vouched for."""
+    out = _flow(tmp_path, [_step(
+        controls=3, url="https://job-boards.greenhouse.io/otherco/jobs/5/apply")])
+    later = out["pages"][1]
+    assert not _offered(later["regions"])
+    # Not renewed, not re-recorded: the flow rule did not fire there.
+    assert out["bootWrites"] >= 1
+    assert later["flowWrites"] == out["bootWrites"]
+
+
+def test_a_frame_0_form_never_replaces_the_iframes_vouched_origin(tmp_path):
+    """iCIMS's form is its own iframe; a later careers page whose top frame
+    scores 2 (a talent-community sign-up) must not move the vouch off the
+    iframe, or its next step's writes are refused again. The top frame needs
+    no vouch."""
+    icims = "https://careers-acme.icims.com"
+    embed = {"frameId": 4, "url": f"{icims}/jobs/1/candidate?in_iframe=1",
+             "result": {"tier": "B", "form": True, "score": 3, "fileInputs": 0,
+                        "origin": icims, "controls": 5}}
+    out = _flow(tmp_path, [{"url": f"{LIGHTNING_APPLY_URL}/talent",
+                            "top": FLOW_PROFILE}],
+                page={"detect_page": [_reply(TOP_NO_FORM)]},
+                frames={"detect_page": [{"frameId": 0, "result": TOP_NO_FORM}, embed]})
+    origins = [w["applicationFlows"]["7"]["origin"] for w in out["sessionWrites"]]
+    assert origins[0] == icims
+    assert set(origins) == {icims}
+
+
+def test_lapsed_flows_of_other_tabs_are_pruned_when_one_is_written(tmp_path):
+    import time
+    now = int(time.time() * 1000)
+    out = _flow(tmp_path, [], sessionStored={"applicationFlows": {
+        "9": {"origin": "https://old.example", "scope": "https://old.example/x",
+              "at": now - 2 * 3600_000},
+        "8": {"origin": "https://live.example", "scope": "https://live.example/x",
+              "at": now}}})
+    written = out["sessionWrites"][-1]["applicationFlows"]
+    assert set(written) == {"7", "8"}
+
+
+def test_the_step_being_left_does_not_open_the_fill_row(tmp_path):
+    """After an in-place url change the first read is the step being LEFT
+    (a Workday Submit lands on the confirmation page while the review step is
+    still drawn). Only the ladder's read of the new step may open Fill."""
+    stale = FLOW_PROFILE
+    confirmation = _step(controls=0)["top"]
+    left = _flow(tmp_path / "left", [{**_step(controls=0), "tops": [stale, confirmation]}],
+                 stored=_filled_before())
+    real = _flow(tmp_path / "real", [{**_step(controls=0), "tops": [stale, stale]}],
+                 stored=_filled_before())
+    assert not _offered(left["pages"][1]["regions"])
+    assert _offered(real["pages"][1]["regions"])
 
 
 def test_the_next_step_opens_the_fill_row_with_autofill_in_front(tmp_path):
@@ -1175,10 +1241,10 @@ def test_a_residue_row_jumps_to_its_field_and_carries_only_the_qid(tmp_path):
     """
     out = _fill(tmp_path, start=True, scrollRow=0)
     jump = _page_message(out, "scroll_to_field")
-    # The qid and the host the panel vouches for (`withFlowHost`): a hostname
-    # the service worker already knows, never a label, a value or an answer.
+    # The qid and the origin the panel vouches for (`withFlowOrigin`): one the
+    # service worker already knows, never a label, a value or an answer.
     assert jump["message"] == {"type": "scroll_to_field", "qid": "q1",
-                               "flowHost": FLOW_HOST}
+                               "flowOrigin": FLOW_ORIGIN}
     assert jump["tabId"] == 7
 
 
@@ -3751,7 +3817,7 @@ def test_unconfirmed_and_unsupported_rows_are_listed_never_counted_filled(tmp_pa
     assert note["text"] == "3 fields need your answer."
     assert out["writes"] == []
     [jump] = [msg for msg in out["broadcasts"] if msg["message"]["type"] == "fill_focus"]
-    assert jump["message"] == {"type": "fill_focus", "fid": "u1", "flowHost": FLOW_HOST}
+    assert jump["message"] == {"type": "fill_focus", "fid": "u1", "flowOrigin": FLOW_ORIGIN}
     [batch] = [msg for msg in out["sent"] if msg["type"] == "telemetry"]
     assert [o["outcome"] for o in batch["observations"]] == [
         "verified", "prefilled", "unconfirmed", "unsupported", "cannot_operate"]
@@ -3763,7 +3829,7 @@ def test_a_report_row_scrolls_to_and_focuses_its_field(tmp_path):
     answers false."""
     out = _loop(tmp_path, jump="Skills")
     [jump] = [msg for msg in out["broadcasts"] if msg["message"]["type"] == "fill_focus"]
-    assert jump["message"] == {"type": "fill_focus", "fid": "p1", "flowHost": FLOW_HOST}
+    assert jump["message"] == {"type": "fill_focus", "fid": "p1", "flowOrigin": FLOW_ORIGIN}
     assert jump["tabId"] == 7
 
 
