@@ -11,11 +11,15 @@ COPY . .
 # setting this in the runner stage would compile to undefined.
 ARG APP_VERSION=dev
 ENV NEXT_PUBLIC_APP_VERSION=${APP_VERSION}
+# Next.js sends anonymous usage telemetry to Vercel by default; PRIVACY.md says
+# this project has it off, in the build and (below) at runtime.
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 # `node` (uid 1000) ships with the base image. Running the server as root buys
 # nothing — it serves a prebuilt bundle and owns no persistent state — and costs
 # the usual root-in-container blast radius. --chown so `next start` can still
