@@ -58,7 +58,7 @@ their MCP server with `scripts/setup-mcp.sh` rather than the plugin.
   backwards for every user who has not pinned. If you must publish a fix for an
   older line, give it a higher number.
 
-### 2. Bump the seven places a version lives
+### 2. Bump the eight places a version lives
 
 They must agree, and most of them will keep lying silently if you forget:
 
@@ -70,6 +70,7 @@ They must agree, and most of them will keep lying silently if you forget:
 | `mcpb/manifest.json` | `"version": "X.Y.Z"` — what Claude Desktop shows for the installed extension. Re-pack the bundle after editing (`scripts/check_mcpb_bundle.py` fails otherwise) |
 | `plugins/maestro-career-studio/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` — what `/plugins` shows for the marketplace install |
 | `plugins/maestro-career-studio/.codex-plugin/plugin.json` | `"version": "X.Y.Z"` — its Codex twin; the two must not diverge |
+| `server.json` | `"version"` and the package's `"version"`, plus `vX.Y.Z` inside its `identifier` URL. Its `fileSha256` is re-set after the re-pack: `shasum -a 256 mcpb/maestro-career-studio.mcpb` |
 | the git tag (step 4) | `vX.Y.Z` |
 
 The published image tag is the version **without** the `v` (`X.Y.Z`) — the
@@ -123,6 +124,24 @@ Release objects and ignores tags entirely, so a tag-only release is invisible to
 anything that asks GitHub what the newest version is — including the update
 check this project has designed but not yet shipped. Creating the Release every
 time is what keeps that option open.
+
+### 6b. Attach the extension and update the MCP Registry
+
+The registry entry in `server.json` points at the `.mcpb` attached to this
+Release and pins its SHA-256, so upload **the committed bundle**: a re-pack
+changes the hash (the zip carries timestamps) and every install would fail its
+integrity check.
+
+```bash
+gh release upload vX.Y.Z mcpb/maestro-career-studio.mcpb
+shasum -a 256 mcpb/maestro-career-studio.mcpb   # must equal server.json's fileSha256
+mcp-publisher login github                       # org Owner of seinun-ai; device-code login
+mcp-publisher publish
+curl -s "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.seinun-ai/maestro-career-studio"
+```
+
+Glama, PulseMCP and Smithery copy from the registry on their own schedule; the
+listing text is the `description` in `server.json` (100 characters at most).
 
 ### 7. Package visibility, and an unauthenticated pull
 
