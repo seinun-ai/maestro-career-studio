@@ -55,9 +55,10 @@ server (`python -m mcp_server.server`) inside it. The command is in
   generate text (tailoring, cover letters, screening answers, building your
   career history, health checks) make the backend send resume and job content
   to OpenAI or an OpenAI-compatible endpoint, Google Gemini, or, for the
-  Companion's form filling, OpenRouter. With a model running on your own
-  computer, or with no key at all, nothing leaves your machine. Scoring, PDF
-  rendering and application tracking never call an AI service.
+  Companion's form filling, OpenRouter. With no key at all, the backend calls
+  no AI service. A model running on your own computer can be configured but is
+  untested. Scoring, PDF rendering and application tracking never call an AI
+  service.
 
 The full data-flow detail is in the
 [privacy policy](https://github.com/seinun-ai/maestro-career-studio/blob/main/PRIVACY.md).
