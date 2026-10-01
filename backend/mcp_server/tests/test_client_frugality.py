@@ -332,10 +332,13 @@ def test_connect_error_names_the_real_backend_url_not_a_hardcoded_port():
     respx.get("http://backend.internal:9999/api/jobs").mock(side_effect=httpx.ConnectError("refused"))
     with pytest.raises(BackendError) as exc:
         BackendClient("http://backend.internal:9999").list_jobs()
-    message = str(exc.value)
-    assert "http://backend.internal:9999" in message
-    assert "BACKEND_URL" in message
-    assert ":8000" not in message
+    # Exact match rather than a URL substring check (CodeQL reads `"http://…" in s`
+    # as URL sanitization).
+    assert str(exc.value) == (
+        "Could not reach the maestro-career-studio backend at http://backend.internal:9999. "
+        "Check that it is running; the BACKEND_URL environment variable sets the address "
+        "this server uses."
+    )
 
 
 @respx.mock
