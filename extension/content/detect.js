@@ -181,6 +181,26 @@ function detectPage() {
   if (SELF_ID_TEXT.test(text)) evidence.push(["self-identification", 2]);
   else if (EEO_BOILERPLATE.test(text)) evidence.push(["eeo-boilerplate", 0]);
 
+  // The knockout questions — age, work authorization, sponsorship — decisive
+  // on their own for the self-identification block's reason: they are asked of
+  // an applicant and nobody else. iCIMS's Candidate Questions step is three of
+  // them and a Submit button in the page's own iframe, and every other signal
+  // here is blind to it, so it scored 0 and the frame refused its own writes
+  // (live, Global Medical Response, 2026-10-01).
+  //
+  // ASKED, not mentioned. A job description's requirements carry every one of
+  // these words as statements ("must be authorized to work", "unable to offer
+  // sponsorship"), so the match is a question to "you" — opened by are / will /
+  // do / would / can you, with the subject reached before the sentence ends,
+  // and closed by a question mark. The tail may cross a period, because
+  // "(e.g., H-1B visa status)?" sits between the subject and the mark. No new
+  // read: this is the string the self-identification test already took.
+  const SCREENING_QUESTION = new RegExp(
+    String.raw`\b(?:are|will|do|would|can)\s+you\b[^.?!]{0,160}?`
+    + String.raw`\b(?:(?:eligible|authori[sz]ed|permitted)\s+(?:for\s+employment|to\s+work)`
+    + String.raw`|sponsorship|1[68]\s+years)\b[^?]{0,120}\?`, "i");
+  if (SCREENING_QUESTION.test(text)) evidence.push(["screening-question", 2]);
+
   if (present('#application_form, [data-ui="job-post"], [data-automation-id]')) {
     evidence.push(["ats-dom-marker", 1]);
   }
