@@ -28,6 +28,41 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Added
+
+- **A privacy policy.** [`PRIVACY.md`](PRIVACY.md) says what the app stores,
+  every place your data can go (the AI provider you configure, optional
+  Langfuse tracing, the assistant you connect over MCP), and how to delete it.
+  The README, the Claude plugin and the Claude Desktop extension link to it.
+- **The Claude plugin has its own README and license**, with example prompts,
+  what it runs and what it sends. The Claude Desktop extension gains an icon.
+- **Every MCP tool has a title and read-only / destructive hints**, so Claude
+  can show a readable name and ask before a tool changes your data.
+
+### Changed
+
+- **MCP tool descriptions say what a tool does instead of telling the agent
+  what to do**, and the `next` hints after a tool describe the available next
+  steps. Consent still works the same: approving points, consenting to an
+  application and marking it submitted record your own decision.
+- **MCP lists return less at once.** `list_jobs` returns 50 rows by default,
+  `kb_list_points` 50 (at most 100, without the per-resume usage history),
+  `list_proposals` 20 (new `limit`/`offset`), and `export_jobs` 10 (new
+  `limit`/`offset`, without the raw posting text). `list_tailoring_sessions`
+  returns a summary per session; `get_tailoring_session` has the detail.
+- **MCP errors are shorter and readable**, a timeout on a write says the write
+  may still have finished, and capturing career notes gets the same long wait
+  as other AI calls.
+- **Next.js telemetry is off** in the images built from this release.
+
+### Fixed
+
+- **`attach_evidence_file` finds screenshots saved on your computer** when the
+  MCP server runs inside Docker (the Claude plugin and Desktop extension).
+- **A tool whose change was saved no longer reports an error** when only its
+  follow-up hint could not be loaded.
+- **Hints no longer suggest tools the active tool profile does not have.**
+
 ## [0.7.0] — 2026-10-01
 
 ### Breaking changes

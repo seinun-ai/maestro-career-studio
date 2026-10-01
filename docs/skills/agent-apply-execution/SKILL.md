@@ -15,7 +15,8 @@ The user's Maestro CS profile is the source of truth; distrust values an applica
 
 - Start/resume: call `get_proposal`; verify job/application identity.
 - **Batch/scheduled apply runs execute `list_proposals(status="accepted")`
-  ONLY** — `pending_review` is staging inventory, never auto-executed. Triage
+  ONLY** (paged: compare `items` to `total`, page with `offset`) —
+  `pending_review` is staging inventory, never auto-executed. Triage
   reaches `accepted` via the /proposals page or `record_triage(ids, action)`
   (only after the user stated the decision/criteria). Triage accept ≠ submit
   consent: final per-application `record_consent(approved)` still happens at

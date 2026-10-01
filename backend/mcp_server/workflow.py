@@ -122,10 +122,17 @@ def _lead_layers(top: dict[str, Any], runner: dict[str, Any] | None) -> list[dic
 #
 # Every wrapped tool response gets a "next" key shaped like:
 #   {state, blocking, offer, ask_user, options, call}
-# `offer` is non-blocking prose the agent may ignore; `ask_user` is a real
-# question that belongs mid-arc, after the user has already committed to
-# tailoring; `call` names the single next tool when there is no choice to
-# make.
+# `offer` is non-blocking prose describing the next steps that exist;
+# `ask_user` is the pending decision, phrased as a question, which belongs
+# mid-arc after the user has already committed to tailoring; `call` names the
+# single next tool when there is no choice to make.
+#
+# The prose DESCRIBES state and what each available tool does or records. It
+# does not address the calling model: no "tell the user", "never", "check
+# before", "safe to ignore". Tool results are data, and the client decides what
+# to do with them. Every tool name in the prose is derived from the options (or
+# the allowlist) that survived profile filtering, so prose cannot name a tool
+# the active profile did not register.
 
 
 def _suppressed(hints_enabled: bool, brief: bool = False) -> bool:
@@ -144,6 +151,16 @@ def _visible(options: list[dict[str, Any]], allowed_tools: "frozenset[str] | Non
     return [o for o in options if o["tool"] in allowed_tools]
 
 
+def _registered(tool: str, allowed_tools: "frozenset[str] | None") -> bool:
+    """Whether prose may name `tool` — the same test `_visible` applies to
+    options, for sentences that mention a tool without offering it."""
+    return allowed_tools is None or tool in allowed_tools
+
+
+def _listed(parts: list[str]) -> str:
+    return parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])}, or {parts[-1]}"
+
+
 def _offer_from_options(
     options: list[dict[str, Any]],
     phrases: dict[str, str],
@@ -154,13 +171,14 @@ def _offer_from_options(
     """Prose assembled from the options that actually survived `_visible`.
 
     A hand-written offer string drifts the moment a profile filters an option
-    out, or a branch suppresses one — the hint then tells the agent to do
-    something this session cannot do. None when nothing survived."""
+    out, or a branch suppresses one — the hint then names a tool this session
+    does not have. None when nothing survived."""
     parts = [phrases[o["tool"]] for o in options if o["tool"] in phrases]
     if not parts:
         return None
-    listed = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])}, or {parts[-1]}"
-    return " ".join(x for x in (prefix, f"Optional: {listed}.", suffix) if x)
+    return " ".join(
+        x for x in (prefix, f"Available next steps: {_listed(parts)}.", suffix) if x
+    )
 
 
 def next_after_scores(
@@ -176,8 +194,8 @@ def next_after_scores(
 
     NON-BLOCKING by construction: mass JD capture scores twenty postings in a
     triage loop, and a question on every one of them would derail the batch.
-    So this is the one hint that never sets `ask_user` — only `offer`, worded
-    to say explicitly that ignoring it is fine.
+    So this is the one hint that never sets `ask_user` — only a non-blocking
+    `offer` that lists what is available.
 
     The quick-tailor option embeds the caller's resolved profile as `detail`
     (D3 in the design doc) rather than making the agent round-trip for it —
@@ -208,15 +226,14 @@ def next_after_scores(
         ],
         allowed_tools,
     )
-    offer = None
-    if options:
-        offer = (
-            f"Optional next step for this one job: {recommended} is the top-ranked "
-            "base — tailor it with quick_tailor (uses your saved profile) or "
-            "create_tailoring_session (walk the gaps yourself). This is safe to "
-            "ignore if you are triaging several postings; nothing here requires "
-            "a response."
-        )
+    offer = _offer_from_options(
+        options,
+        {
+            "quick_tailor": "quick_tailor (applies the saved profile)",
+            "create_tailoring_session": "create_tailoring_session (gap walkthrough)",
+        },
+        prefix=f"Top-ranked base for this job: {recommended}.",
+    )
     return {
         "state": "bases_scored",
         "blocking": False,
@@ -281,15 +298,15 @@ def next_after_session(
         tailor_args["user_prompt"] = instruction
 
     tailor_option = {
-        "label": "Author edit ops from the saved resolutions and tailor",
+        "label": "Tailor from the saved resolutions with caller-authored edit ops",
         "tool": "tailor_session",
         "args": tailor_args,
         "detail": {
             "resolutions_json": session.get("resolutions_json") or [],
             "note": (
-                "Read resolutions_json (including any system-planned "
-                "provenance-carrying entries), author ops implementing each "
-                "one, then call with ops=[...]."
+                "resolutions_json holds the saved decisions (including any "
+                "system-planned provenance-carrying entries); tailor_session "
+                "takes ops=[...] that implement them."
             ),
         },
     }
@@ -317,8 +334,8 @@ def next_after_session(
         "blocking": True,
         "offer": None,
         "ask_user": (
-            f"{len(unresolved)} gap(s) still need a resolution — resolve them "
-            "now with resolve_gaps, or tailor with what's already decided?"
+            f"{len(unresolved)} gap(s) have no saved resolution. Resolve them "
+            "first, or tailor with the decisions already saved?"
         ),
         "options": options,
         "call": None,
@@ -332,9 +349,9 @@ def next_after_tailor(
     hints_enabled: bool,
     brief: bool = False,
 ) -> dict[str, Any] | None:
-    """Compose the hint that follows tailor_session. There is no choice here —
-    the tailored application exists and needs a PDF — so this is a `call`,
-    not an `ask_user`."""
+    """Compose the hint that follows tailor_session. There is no choice to
+    present — the tailored application exists and has no PDF yet — so this is a
+    `call`, not an `ask_user`."""
     if _suppressed(hints_enabled, brief):
         return None
     options = _visible(
@@ -375,11 +392,13 @@ def next_after_render(
 
     There is no cross-server introspection: this process cannot see whether
     the calling MCP client also holds Playwright/browser tools, so the offer
-    is worded conditionally ("if this session also holds browser tools") and
-    names prepare_application_pdf_upload plus the consent rules on
-    record_consent / mark_submitted rather than asserting a capability we
-    cannot confirm. No tool `options` are emitted for the handoff itself —
-    the browser tools are not ours to name or filter through `allowed_tools`.
+    states that the handoff needs browser tools and that this server cannot
+    detect them, rather than asserting a capability we cannot confirm. No tool
+    `options` are emitted for the handoff itself — the browser tools are not
+    ours to name. The upload/consent tools ARE ours, and are named only when the
+    active profile registered them (templates and career do not), so the offer is
+    None there. record_consent / mark_submitted are described as recording the
+    USER's decisions: the consent semantics are statements of what they mean.
     """
     if _suppressed(hints_enabled, brief):
         return None
@@ -395,18 +414,25 @@ def next_after_render(
         "incomplete_groups": incomplete_groups,
         "blocking_groups": list(autofill.get("blocking") or []),
     }
+    handoff = [
+        text
+        for tool, text in (
+            ("prepare_application_pdf_upload", "prepare_application_pdf_upload stages the PDF for upload"),
+            ("record_consent", "record_consent records the user's consent"),
+            ("mark_submitted", "mark_submitted records the user's submission"),
+        )
+        if _registered(tool, allowed_tools)
+    ]
+    offer = (
+        "Apply handoff (needs browser tools, which this server cannot "
+        f"detect): {'; '.join(handoff)}."
+        if handoff
+        else None
+    )
     return {
         "state": "rendered",
         "blocking": False,
-        "offer": (
-            "If — and only if — this session also holds browser tools, it may "
-            "offer to walk the apply handoff: stage the PDF with "
-            "prepare_application_pdf_upload, then record_consent / "
-            "mark_submitted per those tools' consent rules. Never headless, "
-            "stealth, or CAPTCHA bypass. There is no way to confirm browser "
-            "tools are present from here, so check before offering rather "
-            "than assuming."
-        ),
+        "offer": offer,
         "ask_user": None,
         "options": [],
         "call": None,
@@ -444,9 +470,9 @@ def next_after_kb_ingest(
             # Verbatim-callable: these are the ids this very report returned.
             "args": {"point_ids": point_ids},
             "detail": (
-                "Show the user what was transcribed first — approving is what "
-                "puts these on composed resumes. Pass state='retired' instead "
-                "to drop ones they reject."
+                "Points from this report are drafts; the user's approval is "
+                "what puts them on composed resumes. state='retired' discards "
+                "drafts the user rejects."
             ),
         })
     options.extend([
@@ -477,14 +503,18 @@ def next_after_kb_ingest(
             options,
             {
                 "kb_approve_points": (
-                    f"review the {len(point_ids)} new draft point(s) with the user "
-                    "and approve them with kb_approve_points"
+                    f"kb_approve_points records the user's approval of the "
+                    f"{len(point_ids)} new draft point(s)"
                 ),
-                "kb_ingest_resume": "ingest another resume",
-                "kb_list_entities": "list what landed with kb_list_entities",
-                "kb_list_points": "read the drafts with kb_list_points",
+                "kb_ingest_resume": "kb_ingest_resume (another resume)",
+                "kb_list_entities": "kb_list_entities (what landed)",
+                "kb_list_points": "kb_list_points (the drafts)",
             },
-            suffix="Safe to ignore if you are still ingesting.",
+            suffix=(
+                "Drafts stay off composed resumes until approved."
+                if point_ids
+                else ""
+            ),
         ),
         "ask_user": None,
         "options": options,
@@ -518,9 +548,10 @@ def next_after_bulk_state(
         )
         offer = (
             f"No point changed state: {len(failed)} of {len(results)} id(s) failed "
-            f"({first}). Tell the user; re-read the ids with kb_list_points rather "
-            "than retrying the same batch."
+            f"({first})."
         )
+        if _registered("kb_list_points", allowed_tools):
+            offer += " kb_list_points returns the current ids and states."
     elif requested_state == "approved":
         options = _visible(
             [{
@@ -530,8 +561,8 @@ def next_after_bulk_state(
                 # wants on the base nor the role, and entity_ids=[] is a
                 # documented 422.
                 "detail": (
-                    "Supply entity_ids (from kb_list_entities) for what belongs "
-                    "on this base, plus a role_category or role_label."
+                    "Takes entity_ids for what belongs on this base, plus a "
+                    "role_category or role_label."
                 ),
             }],
             allowed_tools,
@@ -539,16 +570,16 @@ def next_after_bulk_state(
         offer = _offer_from_options(
             options,
             {"create_base_resume_from_kb": (
-                "create a base resume with create_base_resume_from_kb — pass the "
-                "entity ids you want on it"
+                "create_base_resume_from_kb (builds a base resume from chosen "
+                "entity_ids)"
             )},
             prefix=f"{len(ok)} point(s) approved.",
         ) or f"{len(ok)} point(s) approved."
     else:
-        offer = f"{len(ok)} point(s) retired. Nothing else required."
+        offer = f"{len(ok)} point(s) retired."
 
     if ok and failed:
-        offer = f"{offer} {len(failed)} id(s) failed — report them to the user."
+        offer = f"{offer} {len(failed)} id(s) failed."
     return {
         "state": "kb_points_updated",
         "blocking": False,
@@ -569,7 +600,8 @@ def next_after_base_from_kb(
 
     Scoring is named in prose only — score_ats needs a job_id this composer
     cannot know, and an option whose args are incomplete is a 422 waiting to
-    happen (the whole point of `args` is that they are callable verbatim).
+    happen (the whole point of `args` is that they are callable verbatim). It
+    is named only where the profile registered it (career does not).
     """
     if _suppressed(hints_enabled):
         return None
@@ -590,16 +622,16 @@ def next_after_base_from_kb(
         ],
         allowed_tools,
     )
+    steps = []
     if options:
-        offer = (
-            f"Base {slug} is ready. Optional: render_pdf to preview it, or score "
-            "it against a captured job with score_ats to start the tailoring arc."
-        )
-    else:
-        offer = (
-            f"Base {slug} is ready. This profile registers no render tool; "
-            "switch to apply or full to render and tailor it."
-        )
+        steps.append("render_pdf (preview)")
+    if _registered("score_ats", allowed_tools):
+        steps.append("score_ats (against a captured job)")
+    offer = f"Base {slug} is ready."
+    if steps:
+        offer += f" Available next steps: {_listed(steps)}."
+    if not options:
+        offer += " This profile registers no render tool (apply and full do)."
     return {
         "state": "base_from_kb",
         "blocking": False,

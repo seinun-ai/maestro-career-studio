@@ -23,6 +23,7 @@ SRC = ROOT / "mcpb"
 BUNDLE = SRC / "maestro-career-studio.mcpb"
 # Every path the bundle is expected to carry, mapped to its source file.
 TRACKED = {"manifest.json": SRC / "manifest.json",
+           "icon.png": SRC / "icon.png",
            "server/index.js": SRC / "server" / "index.js"}
 
 

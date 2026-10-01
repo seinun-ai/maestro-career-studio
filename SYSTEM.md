@@ -438,42 +438,44 @@ file to open.
 ## 7. Agent surfaces
 
 - **MCP server** (`backend/mcp_server/`; its clients are **connected agents** on screen, Settings › Connected agents):
-  thin wrappers (`@_guard` → `ToolError`) over REST via httpx (`BACKEND_URL`, default localhost:8000; compose maps
-  host 8001). **The docstring is the API** — per-tool parameter traps live in the tools' own docstrings, not here. A
-  fact an agent needs must survive ~2048-dedented-char client truncation or live in a param `Field(description=…)`
-  (`_EDIT_OPS_FIELD` precedent); ratchet `test_registered_tool_docstrings_fit_client_truncation_budget`. Coverage:
-  jobs (ingest/list/get/export; `get_job_search_brief` with verbatim work-auth, typed `job_preferences` and the
-  `auto_apply` guardrail block; `find_job_by_url` posting-equality lookup; `store_extracted_jd` takes
-  `source="agent"`; playbook in docs/agentic-job-search.md, capture-and-score only), the proposal-ledger family
-  (consent-gated propose/decide/triage/resume/final-review/evidence/mark_submitted/report_failure; `record_consent` is
-  called ONLY after the user actually said yes/no; `propose_application` stamps `proposed_by` from the client's
-  `clientInfo.name`, sent on the KB writes' origin headers, percent-encoded so any name files, and an agent can never
-  file as "you"; a create takes SQLite's write lock, `db.begin_write`, so a job keeps one open proposal.
-  `app/services/agent_names.py` is the server twin of `lib/agent-name.ts`, pinned by `tests/test_agent_names.py`: add
-  a known client to BOTH), base resumes (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind
-  is REST `base`|`application`, a restore is a new version; `archive_base_resume`/`unarchive_base_resume` hide from
-  `list_base_resumes` without deleting; those five are **full-profile only** this round), health (run/get + waivers; a
-  finding carries its bullet's own `question`, `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a
-  report `next_grade`; disputes and the word bank are web-only), the full tailoring workflow (session tools take
-  **`tailoring_session_id`** — breaking rename, no legacy alias; `resolve_gaps`' evidence-carrying actions are gated
-  server-side — §4; `quick_tailor` is the profile-driven fast path), render + slim PDF inspection (`get_rendered_pdf`
-  has **no** `page_images_b64`; `get_rendered_pdf_page_image` is the opt-in one-page visual, `max_dimension_px`
-  default 1024 with a ~1MB encoded cap; `prepare_application_pdf_upload` stages a disposable Playwright copy under
-  `.playwright-mcp/uploads/`), application tracking, the apply package, templates (draft/validate only; Typst
-  constraints in `create_template_draft`'s docstring, `fmt.*` knobs on `get_template`), explore analytics,
-  `get_autofill_profile` (`profile.eeo` consent-gated), and `get_career_context` (read-only; anti-fabrication rule in
-  the docstring). The Career KB is writable via MCP: reads carry IDs the context prose does not; entity/profile writes
-  land directly, but POINTS go through the user's gate — ingest lands drafts, `kb_sync_base` drafts new/drifted
-  base-resume items (no LLM, no auto-approve), and `kb_approve_points` is the ONE approval path (`approved|retired`),
-  its gate a DOCSTRING convention, not server enforcement — call ONLY after the user explicitly approved the listed
-  points (`record_consent` precedent). `kb_edit_point` has no `state` param; a text change forces `state="draft"`. No
-  delete tool; document upload stays web-only. **Scoped profiles** (`MAESTRO_CS_MCP_PROFILE`, default `full`): one
-  binary, filtered tool sets — `hunt` / `apply` / `explore` / `templates` / `career`; allowlists in
-  `mcp_server/profiles.py`; enable ONE profile per chat (`full` already carries the KB writes). Config examples for
-  both stdio clients live in `mcp_server/` (`claude_desktop_config.example.json`, `codex_config.example.toml`);
-  ChatGPT.com cannot be a client — `mcp.run()` is stdio only. **Apply executor:** Playwright MCP with headed real
-  Chrome — prefer `--extension` so the Companion can autofill/attach; direct MCP + browser fill/upload is the
-  supported fallback. Never headless / stealth / CAPTCHA bypass.
+  thin wrappers (`@_guard` → `ToolError`) over REST via httpx (`BACKEND_URL`, default localhost:8000; compose maps host
+  8001). **The docstring is the API**: it describes what a tool does, records and requires, never instructs (directory
+  policy), and every tool carries `title` + four `ToolAnnotations` hints (`_read`/`_write`); both ratcheted in
+  `test_server.py`. Lists page with bounded defaults; a failed `next` lookup after a landed write is `next: null`
+  (`_best_effort_hint`). A fact an agent needs must survive ~2048-dedented-char client truncation or live in a param
+  `Field(description=…)` (`_EDIT_OPS_FIELD` precedent); ratchet
+  `test_registered_tool_docstrings_fit_client_truncation_budget`. Coverage: jobs (ingest/list/get/export;
+  `get_job_search_brief` with verbatim work-auth, typed `job_preferences` and the `auto_apply` guardrail block;
+  `find_job_by_url` posting-equality lookup; `store_extracted_jd` takes `source="agent"`; playbook in
+  docs/agentic-job-search.md, capture-and-score only), the proposal-ledger family (consent-gated
+  propose/decide/triage/resume/final-review/evidence/mark_submitted/report_failure; `record_consent` stores the user's
+  own yes/no; `propose_application` stamps `proposed_by` from the client's `clientInfo.name`, sent on the KB writes'
+  origin headers, percent-encoded so any name files, and an agent can never file as "you"; a create takes SQLite's
+  write lock, `db.begin_write`, so a job keeps one open proposal. `app/services/agent_names.py` is the server twin of
+  `lib/agent-name.ts`, pinned by `tests/test_agent_names.py`: add a known client to BOTH), base resumes
+  (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, a restore
+  is a new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those
+  five are **full-profile only** this round), health (run/get + waivers; a finding carries its bullet's own `question`,
+  `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a report `next_grade`; disputes and the word bank
+  are web-only), the full tailoring workflow (session tools take **`tailoring_session_id`** — breaking rename, no
+  legacy alias; `resolve_gaps`' evidence-carrying actions are gated server-side — §4; `quick_tailor` is the
+  profile-driven fast path), render + slim PDF inspection (`get_rendered_pdf` has **no** `page_images_b64`;
+  `get_rendered_pdf_page_image` is the opt-in one-page visual, `max_dimension_px` default 1024 with a ~1MB encoded cap;
+  `prepare_application_pdf_upload` stages a disposable Playwright copy under `.playwright-mcp/uploads/`), application
+  tracking, the apply package, templates (draft/validate only; Typst constraints in `create_template_draft`'s
+  docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile` (`profile.eeo` consent-gated),
+  and `get_career_context` (read-only; anti-fabrication framing in the docstring). The Career KB is writable via MCP:
+  reads carry IDs the context prose does not; entity/profile writes land directly, but POINTS go through the user's
+  gate — ingest lands drafts, `kb_sync_base` drafts new/drifted base-resume items (no LLM, no auto-approve), and
+  `kb_approve_points` is the ONE approval path (`approved|retired`), its gate a convention the docstring states (the
+  value is the user's decision), not server enforcement (`record_consent` precedent). `kb_edit_point` has no `state`
+  param; a text change forces `state="draft"`. No delete tool; document upload stays web-only. **Scoped profiles**
+  (`MAESTRO_CS_MCP_PROFILE`, default `full`): one binary, filtered tool sets — `hunt` / `apply` / `explore` /
+  `templates` / `career`; allowlists in `mcp_server/profiles.py`; enable ONE profile per chat (`full` already carries
+  the KB writes). Stdio config examples live in `mcp_server/`; ChatGPT.com cannot be a client — `mcp.run()` is stdio
+  only. **Apply executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
+  autofill/attach; direct MCP + browser fill/upload is the supported fallback. Never headless / stealth / CAPTCHA
+  bypass. **Directory listing** = plugin bundle `plugins/maestro-career-studio/`, not `.mcpb`; policy `PRIVACY.md`.
 - **Guided tailoring workflow** (`mcp_server/workflow.py`): wrapped tools carry a `next` envelope
   (`state`/`blocking`/`offer`/`ask_user`/`options`/`call`) that walks §5's arc — score all bases → recommend →
   quick|custom → tailor → render → apply readiness — unnarrated. `workflow.py` is PURE (no httpx/DB/LLM), a
@@ -488,8 +490,8 @@ file to open.
     `extracted_count == 0` is uniform.
   - **`offer` ≠ `ask_user`.** `score_ats` emits only a non-blocking `offer` — mass JD capture scores twenty
     postings in a loop and a question on each would derail it; `ask_user` appears only mid-arc, after the user
-    commits. **A hint never names a tool the active profile did not register** (`hunt` has `score_ats`, no
-    tailoring tools) — options filter through `profiles.allowed_tools()`.
+    commits. **A hint never names a tool the active profile did not register** (`hunt` has no tailoring tools):
+    options AND prose filter via `profiles.allowed_tools()`; prose states facts, never commands (`test_workflow.py`).
   - **Two controls.** `mcp_workflow` `{hints: bool}` (`GET/PUT /api/settings/mcp-workflow` + its card in
     Settings › Connected agents) is the USER's master switch; `brief=true` on `score_ats` is the AGENT's, for
     triage loops, checked FIRST so a loop pays no settings read. Tools **always wrap** (`next: null` when
@@ -503,9 +505,8 @@ file to open.
     **The caller-ops honesty rule is enforced by DOCSTRING, not the server**: `apply_edits` has no honesty
     gate, keyword-survival is LLM-path only. The server-side evidence gates (`save_resolutions` re-running
     `enable_entry`/`port_kb_point`) still hold.
-  - **Apply readiness** reads `setup/status`'s `autofill` block. With no cross-server introspection the server
-    cannot know whether the client holds Playwright, so the offer is conditional and points at the playbook
-    rather than asserting a capability.
+  - **Apply readiness** reads `setup/status`'s `autofill` block; the server cannot see whether the client holds
+    browser tools, so the render offer says the handoff needs them rather than asserting the capability.
 - **Onboarding workflow** (`workflow.py`): `kb_ingest_resume` (drafts) → `kb_approve_points` (the user's gate)
   → `create_base_resume_from_kb` → `render_pdf` walks ingest-several → KB → role-targeted bases with zero
   in-house LLM (the client agent parses/authors; ingest the CURRENT resume first — over single-source MCP

@@ -102,7 +102,8 @@ via `record_triage(proposal_ids, action, note)` — only ever after the user
 actually stated the decision or criteria. Rules:
 
 - **A batch or scheduled apply run executes `list_proposals(status="accepted")`
-  ONLY.** It never auto-executes `pending_review`. In a live attended session
+  ONLY** (the result is paged: compare `items` to `total`, page with
+  `offset`). It never auto-executes `pending_review`. In a live attended session
   where the user is present and directing a specific posting, the direct
   `pending_review → approved` path remains valid.
 - Triage accept is NOT submit consent: every accepted proposal still gets its

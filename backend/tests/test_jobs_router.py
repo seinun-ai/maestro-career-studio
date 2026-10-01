@@ -550,6 +550,29 @@ def test_export_returns_jobs_with_skills_and_filters(db_session):
         app.dependency_overrides.clear()
 
 
+def test_export_pages_with_limit_and_offset(db_session):
+    """Unbounded export was ~1.7M chars on a real library; the MCP tool pages it.
+    No limit keeps the old unbounded behaviour for existing callers."""
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        for n in range(3):
+            client.post(
+                "/api/jobs/ingest",
+                json={"extracted_json": _valid_extraction(), "raw_text": f"role {n}"},
+            )
+        everything = client.get("/api/jobs/export").json()
+        assert len(everything) == 3
+        first = client.get("/api/jobs/export", params={"limit": 2}).json()
+        rest = client.get("/api/jobs/export", params={"limit": 2, "offset": 2}).json()
+        assert [r["id"] for r in first + rest] == [r["id"] for r in everything]
+        assert len(first) == 2 and len(rest) == 1
+        assert client.get("/api/jobs/export", params={"limit": 0}).status_code == 422
+        assert client.get("/api/jobs/export", params={"offset": -1}).status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_export_since_and_skill_negative_filters(db_session):
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:

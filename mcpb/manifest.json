@@ -4,7 +4,7 @@
   "display_name": "Maestro Career Studio",
   "version": "0.7.0",
   "description": "Tailor resumes and track applications, from your own machine",
-  "long_description": "Drive Maestro Career Studio from Claude: capture and score jobs, tailor resumes against a job description, render PDFs, and track applications. Requires the Maestro CS stack running locally (docker compose up -d) — this extension talks to your own backend over Docker, and nothing leaves the machine.",
+  "long_description": "Drive Maestro Career Studio from Claude: capture and score jobs, tailor resumes against a job description, render PDFs, and track applications. Requires the Maestro CS stack running locally (docker compose up -d) — this extension talks only to your own local backend over Docker. AI features send content to the model provider you configure in the app, and with a local model nothing leaves your machine.",
   "author": {
     "name": "Ajey Dhayashanker Loganathan"
   },
@@ -16,6 +16,8 @@
   "documentation": "https://github.com/seinun-ai/maestro-career-studio/blob/main/backend/mcp_server/README.md",
   "support": "https://github.com/seinun-ai/maestro-career-studio/issues",
   "license": "Apache-2.0",
+  "icon": "icon.png",
+  "privacy_policies": ["https://github.com/seinun-ai/maestro-career-studio/blob/main/PRIVACY.md"],
   "keywords": ["resume", "job-search", "ats", "career", "mcp"],
   "server": {
     "type": "node",

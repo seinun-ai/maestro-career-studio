@@ -429,6 +429,16 @@ prints a ready-to-paste config for each one (needs **Python 3.12+**):
 Or open Claude Code or the Codex CLI in this folder and ask it to run the
 script for you.
 
+**Things to ask once it's connected:**
+
+- "Here's a job posting: `<paste>`. Save it, score it against my base resumes,
+  and tell me what it asks for that my resume doesn't show."
+- "Tailor my Data Scientist resume to that job, show me what changed, then make
+  the PDF."
+- "Mark the Acme application as applied, and list everything still waiting on a
+  reply."
+- "Across the jobs I've saved, which skills keep showing up as gaps?"
+
 **Tool sets.** All 83 tools are on by default (`full`). Smaller sets — `hunt`,
 `apply`, `explore`, `templates`, `career` — keep a chat focused; pick one in the
 Claude extension's **Tool profile** setting or with
@@ -650,8 +660,19 @@ report is one of the most valuable contributions right now.
 - **Glossary:** [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — the project's vocabulary, worth ten minutes before your first contribution.
 - **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — what changed in each release; read any **Breaking changes** heading before [updating](#updating).
 - **Releasing (maintainers):** [`docs/RELEASING.md`](docs/RELEASING.md).
-- **Security & privacy:** [`SECURITY.md`](SECURITY.md) — the local-only rule and how to report a vulnerability.
+- **Security & privacy:** [`SECURITY.md`](SECURITY.md) — the local-only rule and how to report a vulnerability. [`PRIVACY.md`](PRIVACY.md) — what is stored, and what leaves your computer.
 - **License:** [`LICENSE`](LICENSE) — Apache License 2.0, plus [`NOTICE`](NOTICE).
+
+---
+
+## Privacy Policy
+
+There is no Maestro CS server or account, and the author never receives your
+data. Your career record stays in files on your computer; it goes to an AI
+service only when you add a key and use an AI feature, and to the assistant you
+connect over MCP when it calls a tool. With a model on your own computer, the
+app sends nothing out. [`PRIVACY.md`](PRIVACY.md) has the full policy: what is stored, every
+place data can go, retention, and how to ask a question.
 
 ---
 
