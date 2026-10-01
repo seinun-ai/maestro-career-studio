@@ -18,11 +18,22 @@
      test-count badge are refreshed from the release checklist in
      docs/RELEASING.md; edit them there, not here. -->
 
-**Maestro Career Studio helps you adapt your existing resumes to each job you
-want to apply for.** Save a job posting, compare its requirements with your
-experience, review suggested changes, and download a resume PDF. Your career
-record and application tracker are stored on your computer. When you use AI
-features, resume and job information is sent to the AI service you choose.
+### Tailor your resume to every job, without the AI making things up.
+
+Maestro Career Studio is a free, open-source job application studio that runs on
+your computer. Every resume is built from things you actually did, every AI edit
+is a change you accept or undo, and the result is a real LaTeX or Typst PDF.
+
+- **Same score, every time.** The match score uses fixed rules and runs on your
+  computer with no AI service involved, so the same resume and job always get
+  the same score.
+- **Every AI edit is a diff.** Suggested changes arrive as a before/after you
+  accept or undo, one by one.
+- **Fills job applications for you.** The browser Companion fills Workday-style
+  forms from your saved answers and attaches your resume. You review and submit.
+
+Your career record and application tracker are stored on your computer. When you
+use AI features, resume and job information is sent to the AI service you choose.
 
 **Get started:** [install it](#quickstart) → add your resumes → save a job and
 get your tailored resume. New to this? The
