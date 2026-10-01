@@ -55,11 +55,16 @@ reference, never a value) so the engine never overwrites it.
 `detect.js` is the decision point and it answers only when asked — the panel
 sends `detect_page` to frame 0 of the tab it is bound to, because a panel runs in
 no page, and, when frame 0 has no form, to every frame (`page_broadcast`). An
-application form can be an embedded cross-origin iframe (Greenhouse's embed on
-block.xyz, inserted when the Apply tab opens), so a subframe's `form` counts —
-at a stricter bar, score 3 or more, because an ad or offer iframe with identity
-fields and an "Apply now" button can score 2. Only the offer reads that bar;
-`frameMayReceiveUserData` still admits each frame by its own verdict. A subframe
+application form can be a subframe, so a subframe's `form` counts. One on the
+tab's own site (`decisions.sameSite`, on the frame url `broadcastToFrames`
+attaches) is the page itself and counts at frame 0's bar, score 2: iCIMS
+renders its candidate profile in a same-origin iframe (`#icims_content_iframe`).
+One from another site (Greenhouse's embed on block.xyz, inserted when the Apply
+tab opens) counts only at a stricter bar, score 3 or more, because an ad or
+offer iframe with identity fields and an "Apply now" button can score 2. Only
+the offer reads that bar; `frameMayReceiveUserData` still admits each frame by
+its own verdict (score 2), so every frame the offer counts is one the fill can
+reach. A subframe
 of the bound tab that finishes loading (`webNavigation.onCompleted`) asks again,
 debounced, while no form is known and nothing is running, at most five times
 per page binding (a tab switch or Refresh starts over); Refresh covers it by

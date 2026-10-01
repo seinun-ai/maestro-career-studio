@@ -690,8 +690,9 @@ def test_a_form_frame_added_after_the_page_loaded_brings_the_primary(tmp_path):
 
 
 def test_a_subframe_alone_needs_a_score_of_three_to_count_as_the_form(tmp_path):
-    """A stricter bar when frame 0 has no form: an ad or offer iframe with
-    identity fields and an "Apply now" button can score 2; the block.xyz
+    """A stricter bar when frame 0 has no form and the frame is not on the
+    tab's own site (no url here, which is never the same site): an ad or
+    offer iframe with identity fields and an "Apply now" button can score 2; the block.xyz
     Greenhouse embed scores 3. Only the OFFER reads this bar — the write gate
     (`frameMayReceiveUserData`) is each frame's own verdict, unchanged."""
     (tmp_path / "ad").mkdir()
@@ -707,6 +708,50 @@ def test_a_subframe_alone_needs_a_score_of_three_to_count_as_the_form(tmp_path):
     assert _by_class(ad["loaded"]["foot"], "cta") == []
     assert "No application form here" in _text(ad["loaded"]["rail"])
     assert _text(_by_class(embed["loaded"]["foot"], "cta")[0]) == "Autofill"
+
+
+# careers-gmr.icims.com, live 2026-09-30: the candidate profile form lives in
+# the page's own same-origin iframe (`#icims_content_iframe`, `in_iframe=1`),
+# and the panel said "No application form here" over it.
+SAME_SITE_FRAME = "https://job-boards.greenhouse.io/embed/job_app?in_iframe=1"
+CROSS_SITE_FRAME = "https://offers.example.net/apply-now"
+
+
+def test_a_form_in_the_pages_own_frame_needs_only_the_ordinary_score(tmp_path):
+    """A subframe on the tab's own site is the page itself, so its `form`
+    verdict counts at frame 0's threshold (score 2). Only a frame from another
+    site, an ad or offer iframe, needs the stricter score of 3."""
+    (tmp_path / "own").mkdir()
+    (tmp_path / "other").mkdir()
+    own = _fill(tmp_path / "own", replies={"panel_frame0": _reply(TOP_NO_FORM)},
+                frames={"detect_page": [
+                    {"frameId": 0, "url": LIGHTNING_APPLY_URL, "result": TOP_NO_FORM},
+                    {"frameId": 4, "url": SAME_SITE_FRAME,
+                     "result": {**EMBED_FORM, "score": 2}}]})
+    other = _fill(tmp_path / "other", replies={"panel_frame0": _reply(TOP_NO_FORM)},
+                  frames={"detect_page": [
+                      {"frameId": 0, "url": LIGHTNING_APPLY_URL, "result": TOP_NO_FORM},
+                      {"frameId": 6, "url": CROSS_SITE_FRAME,
+                       "result": {**EMBED_FORM, "score": 2}}]})
+    [cta] = _by_class(own["loaded"]["foot"], "cta")
+    assert (cta["text"], cta["disabled"]) == ("Autofill", False)
+    assert "No application form here" not in _text(own["loaded"]["rail"])
+    assert _by_class(other["loaded"]["foot"], "cta") == []
+    assert "No application form here" in _text(other["loaded"]["rail"])
+
+
+def test_a_late_form_in_the_pages_own_frame_needs_only_the_ordinary_score(tmp_path):
+    """The late re-detect reads the same rule: a same-site frame that finishes
+    loading with a score-2 form brings the primary."""
+    out = _fill(tmp_path, driver=_LATE_FRAME_DRIVER_JS,
+                replies={"panel_frame0": _reply(TOP_NO_FORM)},
+                frames={"detect_page": [{"frameId": 0, "result": TOP_NO_FORM}]},
+                lateFrames=[{"frameId": 0, "url": LIGHTNING_APPLY_URL, "result": TOP_NO_FORM},
+                            {"frameId": 3, "url": SAME_SITE_FRAME,
+                             "result": {**EMBED_FORM, "score": 2}}])
+    assert _by_class(out["loaded"]["foot"], "cta") == []
+    [cta] = _by_class(out["settled"]["foot"], "cta")
+    assert (cta["text"], cta["disabled"]) == ("Autofill", False)
 
 
 _LATE_STEPS_DRIVER_JS = _PANEL_FAKES_JS + r"""

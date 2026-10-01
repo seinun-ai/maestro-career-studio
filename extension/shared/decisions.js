@@ -509,9 +509,11 @@
    * last two labels of the host ("careers-gmr.icims.com" → "icims.com"). There
    * is no public-suffix list in this extension, so a two-label suffix
    * ("co.uk") makes its whole registry one site; the approximation errs toward
-   * SAME, and its one reader (`sameSite`) also requires the frame to answer
-   * with a job description. An IP literal or a one-label host is its own site;
-   * a url with no host (about:blank, about:srcdoc, data:) has none. */
+   * SAME, and each reader of `sameSite` holds a second bar: the posting read
+   * also requires a job description, and the form offer the frame's own
+   * Tier B verdict, which is the write gate too. An IP literal or a one-label
+   * host is its own site; a url with no host (about:blank, about:srcdoc,
+   * data:) has none. */
   function siteOf(url) {
     let host;
     try {
@@ -524,11 +526,13 @@
     return host.split(".").slice(-2).join(".");
   }
 
-  /** Whether two urls are on the same site (`siteOf`). The panel takes a
-   * subframe's posting only from the tab's own site: a vendor's "similar
-   * jobs" widget carries its own JobPosting JSON-LD, and an ad frame can hold
-   * a description-like container, and neither is the posting the tab shows.
-   * A frame whose url is unknown is never the same site. */
+  /** Whether two urls are on the same site (`siteOf`). TWO READERS. The
+   * panel takes a subframe's posting only from the tab's own site: a vendor's
+   * "similar jobs" widget carries its own JobPosting JSON-LD, and an ad frame
+   * can hold a description-like container, and neither is the posting the tab
+   * shows. And a same-site subframe's form verdict counts at frame 0's score
+   * (iCIMS's own iframe), where another site's needs a higher one. A frame
+   * whose url is unknown is never the same site. */
   function sameSite(a, b) {
     const site = siteOf(a);
     return site !== null && site === siteOf(b);

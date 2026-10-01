@@ -3225,8 +3225,11 @@
    *
    * FRAME 0 FIRST, then EVERY FRAME when frame 0 has no form. An application
    * form can live in a subframe — Greenhouse's cross-origin embed on block.xyz,
-   * inserted when the Apply tab opens — where frame 0 scores below the bar and
-   * the embed above it. `form` is then true when a SUBFRAME says so with a
+   * inserted when the Apply tab opens, or iCIMS's candidate profile in the
+   * page's own iframe (`#icims_content_iframe`) — where frame 0 scores below
+   * the bar. A subframe on the tab's OWN SITE (`sameSite`, on the frame url
+   * `broadcastToFrames` attaches) is the page itself, so its `form` counts as
+   * frame 0's would (score 2). A frame from ANOTHER site counts only at a
    * score of at least `SUBFRAME_FORM_SCORE`: the embed scores 3, and an ad or
    * offer iframe with identity fields and an "Apply now" button can reach 2.
    * Only this offer reads the stricter bar; the write gate
@@ -3260,7 +3263,8 @@
     if (top === null && answered.length === 0) return null;
     return { ...(top ?? { tier: "none", form: false, score: 0, fileInputs: 0 }),
              form: answered.some((one) => one.result?.form === true
-               && (one.frameId === 0 || Number(one.result?.score) >= SUBFRAME_FORM_SCORE)) };
+               && (one.frameId === 0 || sameSite(one.url, card.url)
+                 || Number(one.result?.score) >= SUBFRAME_FORM_SCORE)) };
   }
 
   /** A subframe of the bound tab finished loading: ask again, once per burst.

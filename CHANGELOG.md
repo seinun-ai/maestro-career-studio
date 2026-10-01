@@ -160,6 +160,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 - With Agreements on, terms and consent boxes are ticked.
 - The Companion reads a job description shown inside an embedded frame
   (iCIMS), and no longer saves a blank job when it can't read one.
+- An application form inside the page's own embedded frame (iCIMS) is found,
+  so Autofill is offered.
 
 ## [0.6.0] — 2026-09-24
 
