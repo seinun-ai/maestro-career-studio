@@ -111,9 +111,12 @@
    * fan-out exists at all. A newsletter iframe holding one email field scores
    * 0, because the identity cluster wants three DIFFERENT fields.
    *
-   * Fails CLOSED: a frame whose detection throws does not get the data. */
-  function frameMayReceiveUserData() {
+   * Fails CLOSED: a frame whose detection throws does not get the data. A
+   * subframe on exactly the host the panel vouches for (`msg.flowHost`: one
+   * whose frame held a confirmed form in this tab, panel.js) also passes. */
+  function frameMayReceiveUserData(msg) {
     if (window.top === window.self) return true;
+    if (msg?.flowHost && msg.flowHost === location.hostname) return true;
     try {
       return ns.detectPage().form === true;
     } catch (_) {
@@ -575,25 +578,26 @@
     detect_page: () => {
       const { tier, form, score } = ns.detectPage();
       const uploads = uploadBoxes();
-      return { tier, form, score, fileInputs: uploads.length, uploads };
+      return { tier, form, score, fileInputs: uploads.length, uploads,
+               host: location.hostname, controls: ns.fillableControls() };
     },
-    profile_fill: (msg) => (frameMayReceiveUserData()
+    profile_fill: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillFormFromProfile(msg.profile, msg.employment, msg.eeoEnabled === true,
         msg.skills, msg.consentForms === true)
       : { filled: [], eeoFilled: [], corrected: [], already: [], seen: 0, observations: [] }),
-    collect_open_questions: () => (frameMayReceiveUserData()
+    collect_open_questions: (msg) => (frameMayReceiveUserData(msg)
       ? ns.collectOpenQuestions()
       : { questions: [], excluded: [], retryables: [], host: location.hostname }),
-    fill_answers: (msg) => (frameMayReceiveUserData()
+    fill_answers: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillAnswersByQid(msg.pairs)
       : []),
-    guided_write: (msg) => (frameMayReceiveUserData()
+    guided_write: (msg) => (frameMayReceiveUserData(msg)
       ? ns.applyGuidedChoices(msg.pairs)
       : []),
-    scroll_to_field: (msg) => (frameMayReceiveUserData()
+    scroll_to_field: (msg) => (frameMayReceiveUserData(msg)
       ? scrollToField(msg.qid)
       : false),
-    attach_resume_pdf: (msg) => (frameMayReceiveUserData()
+    attach_resume_pdf: (msg) => (frameMayReceiveUserData(msg)
       ? attachResumePdf(msg.b64, msg.filename, msg.expect, msg.resumeOnly === true)
       : 0),
     /* The fill engine's page operations (content/fill-ops.js). Gated like
@@ -604,34 +608,34 @@
      * `peek` (the fids only, after a commit that may add or remove fields).
      * `fill_cancel` is ungated on purpose: it carries nothing and only stops
      * work in flight, and a Stop that could miss a frame would be no Stop. */
-    fill_inventory: (msg) => (frameMayReceiveUserData()
+    fill_inventory: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.inventory({ consentForms: msg.consentForms === true, runId: msg.runId, peek: msg.peek === true })
       : { frame: null, host: location.hostname, fields: [] }),
-    fill_explore: (msg) => (frameMayReceiveUserData()
+    fill_explore: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.explore(msg.requests)
       : {}),
-    fill_apply: (msg) => (frameMayReceiveUserData()
+    fill_apply: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.apply(msg.actions)
       : []),
     // The adaptive step's state of ONE field. Broadcast like the rest: only
     // the frame that minted the fid answers, every other frame says null.
-    fill_step_state: (msg) => (frameMayReceiveUserData()
+    fill_step_state: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.stepState({ fid: msg.fid, fp: msg.fp, value: msg.value })
       : null),
-    fill_sweep: () => (frameMayReceiveUserData()
+    fill_sweep: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.sweep()
       : []),
-    fill_focus: (msg) => (frameMayReceiveUserData()
+    fill_focus: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.focus(msg.fid)
       : false),
     // Repeating sections (content/sections.js): the frame's sections, and one
     // press of ONE section's own Add — the sid, plus the heading and entry
     // count the loop decided from, so a changed view presses nothing. Only
     // the frame that minted the sid answers the add; every other says null.
-    fill_sections: () => (frameMayReceiveUserData()
+    fill_sections: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.sections()
       : []),
-    fill_add: (msg) => (frameMayReceiveUserData()
+    fill_add: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.add({ sid: msg.sid, heading: msg.heading, entries: msg.entries })
       : null),
     fill_cancel: () => {

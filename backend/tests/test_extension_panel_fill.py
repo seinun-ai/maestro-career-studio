@@ -624,6 +624,10 @@ def test_a_form_that_arrives_late_gives_the_stage_its_primary_back(tmp_path):
 # `frameMayReceiveUserData` admits a frame whose own detect says `form`), so
 # the offer has to be asked of every frame too.
 
+# The host every fill message vouches for once the apply page's form is
+# confirmed (`withFlowHost`, panel.js): the apply page's own.
+FLOW_HOST = "job-boards.greenhouse.io"
+
 TOP_NO_FORM = {"tier": "none", "form": False, "score": 1, "fileInputs": 0}
 EMBED_FORM = {"tier": "B", "form": True, "score": 3, "fileInputs": 1}
 
@@ -752,6 +756,164 @@ def test_a_late_form_in_the_pages_own_frame_needs_only_the_ordinary_score(tmp_pa
     assert _by_class(out["loaded"]["foot"], "cta") == []
     [cta] = _by_class(out["settled"]["foot"], "cta")
     assert (cta["text"], cta["disabled"]) == ("Autofill", False)
+
+
+# ---------- the later steps of an application already confirmed ----------
+#
+# careers-gmr.icims.com, live 2026-10-01: the profile step filled, then
+# Candidate Questions and EEO — a few selects and a Submit — each said "No
+# application form here". Every multi-step ATS has such steps, so the rule is
+# general (owner decision): once a form is confirmed on a host in this tab, a
+# later page there with a fillable field is the form, for an hour from the
+# last step found. A frame on that exact host also takes the fill
+# (`withFlowHost` vouches; `frameMayReceiveUserData` reads it).
+
+_FLOW_DRIVER_JS = _PANEL_FAKES_JS + r"""
+loadModules();
+const realNow = Date.now;
+main(async () => {
+  await settle();
+  const pages = [regions()];
+  for (const step of spec.steps) {
+    if (step.laterMs) {
+      Date.now = () => realNow() + step.laterMs;
+      // The remembered pick kept fresh, so its own 30 minutes are not what a
+      // step in the future measures: only the flow's hour is.
+      const pick = (spec.stored ?? {})["widget.session"];
+      if (pick) pick.at = Date.now();
+    }
+    spec.page.detect_page = [step.top];
+    spec.frames.detect_page = step.frames ?? [];
+    const before = broadcasts.length;
+    await onUpdated(7, { url: step.url });
+    await settle();
+    if (step.press) {
+      withClass(REGIONS.foot, "cta")[0].click();
+      await settle();
+    }
+    pages.push({ regions: regions(), vouched: broadcasts.slice(before)
+      .filter((one) => one.message.type !== "detect_page")
+      .map((one) => one.message.flowHost ?? null) });
+  }
+  emit({ pages, sessionWrites });
+});
+"""
+
+FLOW_PROFILE = _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 0})
+EEO_STEP = f"{LIGHTNING_APPLY_URL}/eeo"
+
+
+def _step(controls, host=FLOW_HOST, url=EEO_STEP, frames=None, **extra):
+    return {"url": url, "frames": frames or [], **extra,
+            "top": _reply({"tier": "none", "form": False, "score": 0, "fileInputs": 0,
+                           "host": host, "controls": controls})}
+
+
+def _flow(tmp_path, steps, **spec):
+    tmp_path.mkdir(exist_ok=True)
+    spec.setdefault("page", {"detect_page": [FLOW_PROFILE]})
+    return _fill(tmp_path, driver=_FLOW_DRIVER_JS, steps=steps, **spec)
+
+
+def _offered(regions):
+    ctas = _by_class(regions["foot"], "cta")
+    return bool(ctas) and ctas[0]["text"] == "Autofill" and ctas[0]["disabled"] is False
+
+
+def test_a_later_step_on_the_confirmed_host_is_the_form(tmp_path):
+    out = _flow(tmp_path, [_step(controls=2)])
+    later = out["pages"][1]["regions"]
+    assert _offered(later)
+    assert "No application form here" not in _text(later["rail"])
+    # The flow is kept for a reopened panel, under the host the form was on.
+    assert any(write.get("applicationFlows", {}).get("7", {}).get("host") == FLOW_HOST
+               for write in out["sessionWrites"])
+
+
+def test_a_later_step_on_another_host_needs_its_own_evidence(tmp_path):
+    out = _flow(tmp_path, [_step(controls=2, host="offers.example.net",
+                                 url="https://offers.example.net/apply")])
+    assert not _offered(out["pages"][1]["regions"])
+
+
+def test_a_later_step_with_nothing_to_fill_is_not_the_form(tmp_path):
+    """A review page, or a careers search page reached after the last step
+    (search boxes are not counted, `fillableControls`)."""
+    out = _flow(tmp_path, [_step(controls=0)])
+    later = out["pages"][1]["regions"]
+    assert not _offered(later)
+    assert "No application form here" in _text(later["rail"])
+
+
+def test_the_flow_lapses_an_hour_after_the_last_step_found(tmp_path):
+    """Each step found renews it; an abandoned application does not keep the
+    site claimed. Fifty minutes then fifty more is still one flow.
+
+    The lapsed page still stands at Fill and says it has no form, so the
+    refusal is the flow's and not a lost pick's."""
+    kept = _flow(tmp_path / "kept", [_step(controls=2, laterMs=50 * 60_000),
+                                     _step(controls=2, url=f"{EEO_STEP}/2",
+                                           laterMs=100 * 60_000)])
+    lapsed = _flow(tmp_path / "lapsed", [_step(controls=2, laterMs=61 * 60_000)])
+    assert _offered(kept["pages"][2]["regions"])
+    lapsed_page = lapsed["pages"][1]["regions"]
+    assert not _offered(lapsed_page)
+    assert "No application form here" in _text(lapsed_page["rail"])
+
+
+def test_a_flow_kept_from_an_earlier_panel_counts_at_boot(tmp_path):
+    """The panel closed and reopened mid-application: the flow comes back
+    from the session store, and the step in front of the user is the form."""
+    import time
+    out = _flow(tmp_path, [], page={"detect_page": [_step(controls=3)["top"]]},
+                sessionStored={"applicationFlows": {
+                    "7": {"host": FLOW_HOST, "at": int(time.time() * 1000)}}})
+    assert _offered(out["pages"][0])
+
+
+def test_the_pages_own_frame_on_the_confirmed_host_is_the_form_and_is_vouched_for(
+        tmp_path):
+    """iCIMS's own iframe on a later step: frame 0 is the careers chrome with
+    nothing to fill, the frame on the confirmed host has the selects. Every
+    fill message then carries the host, which is what lets that frame take
+    the writes its own detect would refuse."""
+    frame = {"frameId": 4, "url": f"https://{FLOW_HOST}/x?in_iframe=1",
+             "result": {"tier": "none", "form": False, "score": 0, "fileInputs": 0,
+                        "host": FLOW_HOST, "controls": 3}}
+    out = _flow(tmp_path, [_step(controls=0, frames=[frame], press=True)])
+    vouched = out["pages"][1]["vouched"]
+    # The run went out (the rule pass and the rest), and every gated page
+    # message carried the confirmed host and nothing else.
+    assert vouched, "Autofill sent nothing to the page"
+    assert set(vouched) == {FLOW_HOST}
+
+
+def _filled_before():
+    """The pick as the first step's fill leaves it: `touched`, carried across
+    the wizard's page loads by the session bridge."""
+    return {"widget.session": {**_armed_entry(), "touched": True}}
+
+
+def test_the_next_step_opens_the_fill_row_with_autofill_in_front(tmp_path):
+    """After step one fills, the rail stands at Track (the session bridge keeps
+    `touched`), and the Fill body was a door the user had to find. On the next
+    step it is opened for them, as a view: Track is still the stage, and Fill
+    keeps its tick."""
+    out = _flow(tmp_path, [_step(controls=3)], stored=_filled_before())
+    first, later = out["pages"][0], out["pages"][1]["regions"]
+    # The page the panel was opened on is not a new step: nothing opened.
+    assert not _offered(first)
+    rows = _rows(_rail_rows({"regions": later}))
+    assert rows["track"]["state"] == "active"
+    assert rows["fill"]["state"] == "done"
+    assert _offered(later)
+
+
+def test_a_next_page_with_nothing_to_fill_leaves_the_rail_at_track(tmp_path):
+    out = _flow(tmp_path, [_step(controls=0)], stored=_filled_before())
+    later = out["pages"][1]["regions"]
+    assert not _offered(later)
+    assert "No application form here" not in _text(later["rail"])
 
 
 _LATE_STEPS_DRIVER_JS = _PANEL_FAKES_JS + r"""
@@ -1013,7 +1175,10 @@ def test_a_residue_row_jumps_to_its_field_and_carries_only_the_qid(tmp_path):
     """
     out = _fill(tmp_path, start=True, scrollRow=0)
     jump = _page_message(out, "scroll_to_field")
-    assert jump["message"] == {"type": "scroll_to_field", "qid": "q1"}
+    # The qid and the host the panel vouches for (`withFlowHost`): a hostname
+    # the service worker already knows, never a label, a value or an answer.
+    assert jump["message"] == {"type": "scroll_to_field", "qid": "q1",
+                               "flowHost": FLOW_HOST}
     assert jump["tabId"] == 7
 
 
@@ -3586,7 +3751,7 @@ def test_unconfirmed_and_unsupported_rows_are_listed_never_counted_filled(tmp_pa
     assert note["text"] == "3 fields need your answer."
     assert out["writes"] == []
     [jump] = [msg for msg in out["broadcasts"] if msg["message"]["type"] == "fill_focus"]
-    assert jump["message"] == {"type": "fill_focus", "fid": "u1"}
+    assert jump["message"] == {"type": "fill_focus", "fid": "u1", "flowHost": FLOW_HOST}
     [batch] = [msg for msg in out["sent"] if msg["type"] == "telemetry"]
     assert [o["outcome"] for o in batch["observations"]] == [
         "verified", "prefilled", "unconfirmed", "unsupported", "cannot_operate"]
@@ -3598,7 +3763,7 @@ def test_a_report_row_scrolls_to_and_focuses_its_field(tmp_path):
     answers false."""
     out = _loop(tmp_path, jump="Skills")
     [jump] = [msg for msg in out["broadcasts"] if msg["message"]["type"] == "fill_focus"]
-    assert jump["message"] == {"type": "fill_focus", "fid": "p1"}
+    assert jump["message"] == {"type": "fill_focus", "fid": "p1", "flowHost": FLOW_HOST}
     assert jump["tabId"] == 7
 
 

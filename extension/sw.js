@@ -602,6 +602,10 @@ const HANDLERS = {
       expect: Number.isInteger(msg.expect) ? msg.expect : undefined,
       // Autofill's own attach (`attachResumePdf`): only a literal true.
       resumeOnly: msg.resumeOnly === true,
+      // The host the panel vouches for (`frameMayReceiveUserData`): a later
+      // step's iCIMS frame takes the attach like every other write. A string
+      // or nothing, never a coerced value.
+      ...(typeof msg.flowHost === "string" ? { flowHost: msg.flowHost } : {}),
     });
   },
 

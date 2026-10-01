@@ -535,6 +535,20 @@ def test_autofills_resume_only_attach_reaches_the_frames(tmp_path, extra, forwar
     assert message["type"] == "attach_resume_pdf"
     assert message["resumeOnly"] is forwarded
 
+@pytest.mark.parametrize("extra, forwarded", [
+    ({"flowHost": "careers-acme.icims.com"}, "careers-acme.icims.com"),
+    ({}, None),
+    # A string or nothing: a coerced value is not a vouch.
+    ({"flowHost": 1}, None),
+])
+def test_the_vouched_host_rides_the_attach_to_the_frames(tmp_path, extra, forwarded):
+    """The panel's vouch (`withFlowHost`) reaches an iCIMS frame on a later
+    step through this route too, or the attach alone would be refused there."""
+    out = run_node(_ATTACH_FORWARD_DRIVER_JS, {"extra": extra}, tmp_path, source=SW_JS)
+    [message] = out["delivered"]
+    assert message.get("flowHost") == forwarded
+
+
 # ---------- what the widget's test file used to be the only home for --------
 #
 # THREE PINS THAT WERE ORPHANED BY THE DELETION, not three new ideas. R-C

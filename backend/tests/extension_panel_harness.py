@@ -119,6 +119,7 @@ const sent = [];
 const writes = [];
 const removals = [];
 const syncWrites = [];
+const sessionWrites = [];
 const broadcasts = [];
 // Every `console.warn` the panel wrote. A warning is not private: Chrome lists
 // an extension page's warnings under chrome://extensions → Errors, so a
@@ -287,6 +288,15 @@ global.chrome = {
     // the wrong one and never say so.
     sync: {
       set: async (patch) => { syncWrites.push(patch); },
+    },
+    // The SESSION store: the application flow (`FLOW_KEY`, panel.js) lives
+    // here, so a browser restart forgets it. `spec.sessionStored` seeds it.
+    session: {
+      get: async (key) => {
+        const stored = spec.sessionStored ?? {};
+        return Object.hasOwn(stored, key) ? { [key]: stored[key] } : {};
+      },
+      set: async (patch) => { sessionWrites.push(patch); },
     },
   },
   runtime: {

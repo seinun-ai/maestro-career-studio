@@ -68,10 +68,22 @@ const fileInputs = (spec.fileInputs ?? []).map((f) => {
   });
   return input;
 });
+// Fillable-field fakes for `detect_page`'s `controls` count: {tag, type?,
+// name?, role?, visible, disabled?, inSearch?}.
+const controls = (spec.controls ?? []).map((c) => ({
+  tagName: c.tag.toUpperCase(),
+  disabled: c.disabled === true,
+  getAttribute: (name) => ({ type: c.type, name: c.name, role: c.role })[name] ?? null,
+  offsetWidth: c.visible ? 120 : 0,
+  offsetHeight: c.visible ? 24 : 0,
+  getClientRects: () => (c.visible ? [{}] : []),
+  closest: (sel) => (c.inSearch && sel === '[role="search"]' ? {} : null),
+}));
 global.document = {
   title: "",
   body: { innerText: "" },
-  querySelectorAll: (sel) => (String(sel).includes("file") ? fileInputs : []),
+  querySelectorAll: (sel) => (String(sel).includes("file") ? fileInputs
+    : String(sel).includes("textarea") ? controls : []),
   querySelector: () => null,
   createElement: () => ({ set innerHTML(_v) {}, get innerText() { return ""; } }),
 };
@@ -85,7 +97,8 @@ global.document = {
 global.DataTransfer = class {
   constructor() { this.files = []; this.items = { add: (file) => this.files.push(file) }; }
 };
-global.location = { ...global.location, href: "https://jobs.example.test/x" };
+global.location = { ...global.location, href: "https://jobs.example.test/x",
+                    hostname: spec.hostname ?? "jobs.example.test" };
 global.window.top = spec.topFrame ? global.window : { other: true };
 global.window.self = global.window;
 
@@ -131,6 +144,8 @@ main(async () => {
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
     ...(spec.peek ? { peek: true } : {}),
+    // The host the panel vouches for (`withFlowHost`), only when stated.
+    ...(spec.flowHost === undefined ? {} : { flowHost: spec.flowHost }),
   });
   emit({ calls, data });
 });
@@ -138,13 +153,20 @@ main(async () => {
 
 
 def _run(tmp_path, *, type_, top_frame, form=False, detect_throws=False, file_inputs=(),
-         expect=None, peek=False):
+         expect=None, peek=False, flow_host=None, hostname=None, controls=None):
+    extra = {}
+    if controls is not None:
+        extra["controls"] = list(controls)
+    if flow_host is not None:
+        extra["flowHost"] = flow_host
+    if hostname is not None:
+        extra["hostname"] = hostname
     return run_node(
         _GATE_DRIVER_JS,
         {
             "type": type_, "topFrame": top_frame, "form": form,
             "detectThrows": detect_throws, "fileInputs": list(file_inputs),
-            "expect": expect, "peek": peek,
+            "expect": expect, "peek": peek, **extra,
         },
         tmp_path,
         source=page_runtime_source(),
@@ -181,6 +203,38 @@ def test_a_subframe_holding_an_application_form_is_allowed(tmp_path, type_):
     out = _run(tmp_path, type_=type_, top_frame=False, form=True)
 
     assert out["calls"] != [], f"{type_} was refused in a real application subframe"
+
+
+# ---------- a later step of an application the panel already confirmed ----------
+#
+# iCIMS, live 2026-10-01: Candidate Questions and EEO are a few selects and a
+# Submit in the page's own iframe, so the frame's own detect says no and every
+# write was refused after step one. The panel vouches for the one exact host
+# whose frame already held a confirmed form in this tab (`withFlowHost`).
+
+VOUCHED_TYPES = FAN_OUT_TYPES + ["fill_inventory", "fill_apply", "fill_sweep", "fill_sections"]
+
+
+@pytest.mark.parametrize("type_", VOUCHED_TYPES)
+def test_a_subframe_on_the_vouched_host_takes_the_fill(tmp_path, type_):
+    out = _run(tmp_path, type_=type_, top_frame=False, form=False,
+               flow_host="careers-acme.icims.com", hostname="careers-acme.icims.com")
+
+    assert out["calls"] != [], f"{type_} was refused on the host the panel vouched for"
+
+
+@pytest.mark.parametrize("flow_host", [
+    "careers-other.icims.com",   # a sibling subdomain is another party
+    "icims.com",                 # a parent domain is not the host
+    "",                          # an empty vouch is no vouch
+])
+def test_a_vouch_for_another_host_is_refused(tmp_path, flow_host):
+    """Exact hostname or nothing. An ad or chat frame beside the form is on
+    another host, and it still has to earn the data with its own detect."""
+    out = _run(tmp_path, type_="profile_fill", top_frame=False, form=False,
+               flow_host=flow_host, hostname="careers-acme.icims.com")
+
+    assert out["calls"] == []
 
 
 def test_a_refused_frame_returns_an_empty_result_not_an_error(tmp_path):
@@ -350,16 +404,49 @@ def test_detect_page_answers_the_verdict_and_nothing_of_the_page(tmp_path):
     (`uploadBoxOf`): what Autofill's own attach decides with, never a label
     or a filename.
 
+    `host` and `controls` are the sixth and seventh (2026-10-01), for the
+    application-flow rule: the frame's own hostname, which the service worker
+    already holds as the frame's url, and a COUNT of fillable fields, capped.
+    Neither carries a label, a value or anything the user typed.
+
     Ungated for `extract_job_posting`'s reason and no other: it reads the frame
     it already runs in and returns nothing derived from the user.
     """
     out = _run(tmp_path, type_="detect_page", top_frame=False, form=True)
 
-    assert set(out["data"]) == {"tier", "form", "score", "fileInputs", "uploads"}
+    assert set(out["data"]) == {
+        "tier", "form", "score", "fileInputs", "uploads", "host", "controls"}
     assert out["data"]["form"] is True
     # …and the verdict is the page's own, not re-derived from `score` here.
-    assert _run(tmp_path, type_="detect_page", top_frame=True, form=False)["data"] == {
+    top = _run(tmp_path, type_="detect_page", top_frame=True, form=False)["data"]
+    assert {key: top[key] for key in ("tier", "form", "score", "fileInputs", "uploads")} == {
         "tier": "none", "form": False, "score": 0, "fileInputs": 0, "uploads": []}
+    assert isinstance(top["host"], str)
+    assert isinstance(top["controls"], int) and top["controls"] >= 0
+
+
+def test_detect_page_counts_the_fields_a_fill_could_answer_and_no_search_box(tmp_path):
+    """`controls` decides one thing: whether a later step of an application
+    already confirmed on this host is a form. So a careers search page reached
+    after the last step must count nothing: a search-typed input, one named
+    like a query, one inside a search landmark. Hidden, disabled, password and
+    button inputs are not fields a fill answers either."""
+    def count(controls):
+        return _run(tmp_path, type_="detect_page", top_frame=True,
+                    controls=controls)["data"]["controls"]
+
+    assert count([{"tag": "select", "visible": True},
+                  {"tag": "input", "type": "radio", "visible": True},
+                  {"tag": "textarea", "visible": True}]) == 3
+    assert count([{"tag": "input", "type": "search", "visible": True},
+                  {"tag": "input", "name": "keywords", "visible": True},
+                  {"tag": "input", "name": "q", "visible": True},
+                  {"tag": "input", "visible": True, "inSearch": True},
+                  {"tag": "input", "type": "hidden", "visible": True},
+                  {"tag": "input", "type": "password", "visible": True},
+                  {"tag": "input", "type": "submit", "visible": True},
+                  {"tag": "select", "visible": False},
+                  {"tag": "select", "visible": True, "disabled": True}]) == 0
 
 
 def test_the_offer_counts_exactly_the_boxes_the_attach_would_write_to(tmp_path):

@@ -33,6 +33,12 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 - A page of screening questions with nothing else on it (iCIMS's Candidate
   Questions step: age, work authorization, sponsorship) is recognised as an
   application form, so Autofill is offered there and can fill it.
+- The later steps of a multi-step application (iCIMS's EEO and questions
+  pages, any wizard's short steps) no longer say "No application form here".
+  Once a form is confirmed on a site in a tab, a later page there with a field
+  to fill counts as the form for the next hour, and the employer's own embedded
+  form frame on that site accepts the fill. On the next step after a fill, the
+  Fill step opens by itself with Autofill.
 
 ## [0.7.1] — 2026-10-01
 
