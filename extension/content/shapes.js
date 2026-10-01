@@ -213,24 +213,53 @@
   };
   // A select2-style widget's native <select>, which the page hides and the app
   // submits (iCIMS, live 2026-10-01: a box showing "— Make a Selection —" over
-  // an empty one was read as answered). The ONE non-visible select in the
-  // widget's field box: the nearest ancestor (4 levels, never <body>, <html>
-  // or a <form>) holding one, with no other visible field in it. Two: none.
+  // an empty one was read as answered). Only a select the page TIES to the box
+  // counts, never one that is merely nearby (a hidden follow-up question's):
+  // the select right before an ancestor of the box (select2's layout), or one
+  // the box's aria-labelledby / aria-controls names, itself or by its label.
+  // It must hide ITSELF (not displayed, aria-hidden, or select2's 1px clip)
+  // inside a shown parent. Two candidates: none.
+  const clipped = (s) => {
+    const r = s.getBoundingClientRect();
+    return r.width <= 1 && r.height <= 1;
+  };
+  const hidesItself = (s) => ns.fillBase.visible(s.parentElement)
+    && (!ns.fillBase.visible(s) || s.getAttribute("aria-hidden") === "true" || clipped(s));
   const backingSelect = (el) => {
-    const { CONTROL, otherControl } = ns.fieldControls;
-    const { visible } = ns.fillBase;
-    for (let n = el.parentElement, d = 0; n && d < 4 && !edge(n); n = n.parentElement, d += 1) {
-      if ([...n.querySelectorAll(CONTROL)].some((c) => otherControl(c, el) && visible(c))) return null;
-      const hidden = [...n.querySelectorAll("select")].filter((s) => !visible(s));
-      if (hidden.length) return hidden.length === 1 ? hidden[0] : null;
+    const tied = new Set();
+    for (let n = el, d = 0; n && d < 4 && !edge(n); n = n.parentElement, d += 1) {
+      if (n.previousElementSibling instanceof HTMLSelectElement) tied.add(n.previousElementSibling);
     }
-    return null;
+    for (const attr of ["aria-labelledby", "aria-controls"]) {
+      for (const id of (el.getAttribute(attr) ?? "").split(/\s+/).filter(Boolean)) {
+        const t = ns.byIdIn(el, id);
+        const s = t instanceof HTMLLabelElement ? t.control : t;
+        if (s instanceof HTMLSelectElement) tied.add(s);
+      }
+    }
+    const own = [...tied].filter(hidesItself);
+    return own.length === 1 ? own[0] : null;
   };
   // What a backing select holds: its value, or "" while it holds nothing (an
-  // empty value, or a disabled option), whatever the box shows.
+  // empty value, a disabled option, or a placeholder row whatever its value:
+  // "-1", "0", its own text), whatever the box shows.
   const selectHeld = (s) => {
     const o = s.options[s.selectedIndex];
-    return o && !o.disabled && o.value !== "" ? s.value : "";
+    return o && !o.disabled && o.value !== "" && !ns.isPlaceholderText(o.text) ? s.value : "";
+  };
+  // A select that is a popup box's backing (above) is the box's, never a
+  // field of its own: select2's 1px clip counts as visible, and two fields
+  // would be two writes.
+  const POPUPISH = '[role="combobox"], [aria-haspopup]:not([aria-haspopup="false"])';
+  const backsABox = (s) => {
+    if (!hidesItself(s)) return false;
+    const boxes = [...(s.nextElementSibling?.matches(POPUPISH) ? [s.nextElementSibling] : []),
+      ...(s.nextElementSibling?.querySelectorAll(POPUPISH) ?? [])];
+    for (const id of [s.id, ...[...(s.labels ?? [])].map((l) => l.id)].filter(Boolean)) {
+      boxes.push(...s.getRootNode().querySelectorAll(
+        `[aria-labelledby~="${CSS.escape(id)}"], [aria-controls~="${CSS.escape(id)}"]`));
+    }
+    return boxes.some((b) => b !== s && ns.shapes.of(b)?.name === "popup" && backingSelect(b) === s);
   };
   // A popup's text (placeholder: nothing), else a read-only input's value or
   // the single-value node beside it.
@@ -446,7 +475,7 @@
       // Over a backing select, answered is what the select holds, never the
       // box's words.
       answered: (el) => {
-        const s = backingSelect(el);
+        const s = popupBacking(el) ? null : backingSelect(el);
         return s ? selectHeld(s) !== "" : Boolean(readPopup(el));
       },
       // The button shows the pick at once; the app has it only when the
@@ -491,8 +520,10 @@
     unknown: UNKNOWN,
     of: (el) => SHAPES.find((s) => s.match(el)) ?? null,
     byName: (n) => (n === "unknown" ? UNKNOWN : SHAPES.find((s) => s.name === n)),
-    // For the inventory: a toggle that belongs to a search input is not a field.
+    // For the inventory: a toggle that belongs to a search input is not a
+    // field, nor a select that backs a popup box.
     companionSearch,
+    backsABox,
     readField,
     pass,
     // For fill-core: a search widget's boundary (its leave), what the rows

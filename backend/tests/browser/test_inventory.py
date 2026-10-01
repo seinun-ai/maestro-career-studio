@@ -350,6 +350,10 @@ def test_popup_placeholders_are_not_committed_values(page, load):
     ("Please select a country", True), ("Select your state", True), ("Choose an option", True),
     ("Select a State/Province", True), ("-- Choose your country --", True), ("… Select …", True),
     ("Select One", True), ("Select...", True), ("", True), ("—", True),
+    # A deliberate trade-off: "an article or your, then one or two words" is
+    # shape, so these real-sounding answers read as prompts too (rare as an
+    # option, and a prompt read as an answer is the worse mistake).
+    ("Choose your own adventure", True), ("Select a Plan", True),
     # Real answers that happen to begin with the words.
     ("Select Medical", False), ("Choose Health", False), ("Selective Service", False),
     ("Make a Wish Foundation", False), ("Select Medical Holdings Corporation", False),
@@ -375,6 +379,61 @@ def test_a_select2_box_over_an_empty_hidden_select_is_unanswered_whatever_it_sho
     got = [(f["shape"], f["question"], f["committed"], f["answered"]) for f in fields(page)]
     assert got == [("popup", "Q0", "", False), ("popup", "Q1", "Nothing yet", False),
                    ("popup", "Q2", "Pick later", False), ("popup", "Q3", "BS", True)]
+
+
+@pytest.mark.parametrize("value", ["value='-1'", "value='0'", ""], ids=["minus-one", "zero", "no-value-attribute"])
+def test_a_backing_select_on_its_placeholder_row_holds_nothing_whatever_its_value(page, load, value):
+    """A placeholder row whose value is not empty ("-1", "0", or its text when
+    it has no value attribute) is still no answer."""
+    load(page, f"<div><label id='l' for='s'>Degree</label><select id='s' style='display:none'>"
+               f"<option {value}>Select a degree</option><option value='b'>BS</option></select>"
+               "<span><span role='combobox' aria-haspopup='true' aria-labelledby='l' tabindex='0'>"
+               "<span>Make your pick</span></span></span></div>")
+    assert [(f["committed"], f["answered"]) for f in fields(page)] == [("Make your pick", False)]
+
+
+# Review of the first cut (2026-10-01): a hidden select counts as a box's
+# backing ONLY when the page ties it to the box, never because it is nearby.
+def test_a_workday_popup_with_a_backing_input_ignores_a_hidden_follow_up_select(page, load):
+    load(page, """<div class='q'><label id='l'>Authorized to work?</label>
+      <div><button aria-haspopup='listbox' aria-labelledby='l'>Yes</button><input style='display:none' value='yes-id'></div>
+      <div style='display:none'><label>Which visa?</label><select><option value=''>Choose</option>
+        <option value='h1'>H1B</option></select></div></div>""")
+    assert [(f["committed"], f["answered"]) for f in fields(page)] == [("Yes", True)]
+
+
+@pytest.mark.parametrize("hidden", ["<div style='display:none'><select>{opts}</select></div>",
+                                    "<select style='display:none'>{opts}</select>"],
+                         ids=["inside-a-hidden-block", "hidden-itself-but-not-tied"])
+def test_a_popup_showing_an_answer_beside_an_unrelated_hidden_select_is_answered(page, load, hidden):
+    opts = "<option value=''></option><option value='x'>Other</option>"
+    load(page, f"<div class='q'><label id='l'>Degree</label>"
+               f"<div><button aria-haspopup='listbox' aria-labelledby='l'>Bachelor's</button></div>"
+               f"{hidden.format(opts=opts)}</div>")
+    assert [(f["committed"], f["answered"]) for f in fields(page)] == [("Bachelor's", True)]
+
+
+def test_real_select2_hiding_is_one_field_not_two(page, load):
+    """select2 hides its select with a 1px clip (`select2-hidden-accessible`),
+    which counts as visible: tied to the box, it is the box's backing, never a
+    field of its own (two fields would be two writes)."""
+    load(page, """<div><label id='l' for='s'>Degree</label>
+      <select id='s' class='select2-hidden-accessible' aria-hidden='true' tabindex='-1'
+        style='border:0;clip:rect(0 0 0 0);height:1px;margin:-1px;overflow:hidden;padding:0;position:absolute;width:1px'>
+        <option value=''>— Make a Selection —</option><option value='b'>BS</option></select>
+      <span class='select2-container'><span role='combobox' aria-haspopup='true' aria-labelledby='l' tabindex='0'>
+        <span>— Make a Selection —</span></span></span></div>""")
+    assert [(f["shape"], f["question"], f["committed"], f["answered"]) for f in fields(page)] == [
+        ("popup", "Degree", "", False)]
+    page.evaluate("() => { document.getElementById('s').value = 'b'; }")
+    assert [f["answered"] for f in fields(page)] == [True]
+
+
+def test_a_clipped_select_no_box_names_is_still_a_field(page, load):
+    load(page, """<label for='s'>Degree</label><select id='s' aria-hidden='true'
+        style='clip:rect(0 0 0 0);height:1px;overflow:hidden;position:absolute;width:1px'>
+        <option value=''></option><option value='b'>BS</option></select>""")
+    assert [(f["shape"], f["question"]) for f in fields(page)] == [("select", "Degree")]
 
 
 def test_a_rerendered_field_never_takes_a_deleted_fields_fid(page, load):

@@ -265,11 +265,29 @@ def test_icims_bare_part_labels_carry_their_groups_question(page, load):
     ("<div><label for=a>Year</label><input id=a><label for=m>Month</label><input id=m></div>", "Year", "year"),
     # a field alone keeps it too, and an id naming the part still says which
     ("<p>Intro to the application</p><div><label for=a>Year</label><input id=a></div>", "Year", "year"),
-    ("<label for=a>Start year</label><input id=a name=edu_startdate_year>", "Start year", "year"),
+    # an id names a part only with structural evidence: a 4-character box, or
+    # sibling controls sharing its stem with other part endings
+    ("<label for=a>Start year</label><input id=a name=edu_startdate_year maxlength=4>", "Start year", "year"),
+    ("<label for=m>Start month</label><select id=m name=edu_startdate_month><option>Jan</option></select>"
+     "<label for=a>Start year</label><input id=a name=edu_startdate_year>", "Start year", "year"),
+    # a whole date box whose id merely ends in a part word is no part
+    ("<label for=a>Earliest available start day</label><input id=a name=earliest_start_day>",
+     "Earliest available start day", None),
+    ("<label for=a>Birth year</label><input id=a name=birth_year>", "Birth year", None),
     # a word that is a question on its own is never prefixed
     ("<div><span>Contact</span><div><label for=a>City</label><input id=a><label for=b>Zip</label>"
      "<input id=b></div></div>", "City", None),
-], ids=["legend", "no-group-text", "alone", "id-part", "not-a-part"])
+    # a section heading names the group only as its first child
+    ("<section><h3>Contact Information</h3><div><label for=e>Email</label><input id=e></div>"
+     "<div><label for=a>Number</label><input id=a></div></section>", "Contact Information: Number", None),
+    ("<section><p>Tell us how to reach you about this application.</p><h3>Contact</h3><div><label for=e>Email</label>"
+     "<input id=e></div><div><label for=a>Number</label><input id=a></div></section>", "Number", None),
+    # a table cell is the climb's limit: the row's label cell is the group's
+    ("<table><tr><td>Start Date (Month / Day / Year)</td><td><label for=m>Month</label><select id=m>"
+     "<option>Jan</option></select><label for=a>Year</label><input id=a></td></tr></table>",
+     "Start Date (Month / Day / Year): Year", "year"),
+], ids=["legend", "no-group-text", "alone", "id-part-maxlength", "id-part-siblings", "id-day-whole-date",
+        "id-year-whole-date", "not-a-part", "first-child-heading", "heading-not-first", "table-row"])
 def test_a_part_label_takes_its_group_question_only_where_one_is_named(page, load, html, question, part):
     load(page, html)
     got = page.evaluate(READ, "#a")

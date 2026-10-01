@@ -147,13 +147,32 @@
   const PART_LABEL = /^(?:month|day|year|mm|dd|yyyy|type|number)$/i;
   const DATE_PARTS = { month: "month", mm: "month", day: "day", dd: "day", year: "year", yyyy: "year" };
   // An id or name ending in a date part (iCIMS's `icims_0_startdate_year`).
+  // Trusted only with structural evidence, since a whole-date box may be
+  // named so (`earliest_start_day`, `birth_year`) and a part written into it
+  // is a wrong write: a list, a box of at most 4 characters, or a sibling
+  // control sharing the stem with another part ending.
   const ID_PART = /[_\-.](month|day|year)$/i;
-  const datePartOf = (el, label) => DATE_PARTS[label.toLowerCase()]
-    ?? (ID_PART.exec(el.id || "") ?? ID_PART.exec(el.getAttribute("name") ?? ""))?.[1].toLowerCase() ?? null;
+  const keysOf = (c) => [c.id, c.getAttribute("name")].filter(Boolean);
+  const idPart = (el) => {
+    for (const key of keysOf(el)) {
+      const m = ID_PART.exec(key);
+      if (!m) continue;
+      const part = m[1].toLowerCase();
+      const stem = key.slice(0, m.index);
+      const sibling = () => [...el.getRootNode().querySelectorAll(CONTROL)].some((c) => c !== el
+        && keysOf(c).some((k) => {
+          const n = ID_PART.exec(k);
+          return n && k.slice(0, n.index) === stem && n[1].toLowerCase() !== part;
+        }));
+      if (el instanceof HTMLSelectElement || (el.maxLength > 0 && el.maxLength <= 4) || sibling()) return part;
+    }
+    return null;
+  };
+  const datePartOf = (el, label) => DATE_PARTS[label.toLowerCase()] ?? idPart(el);
   // The group a part belongs to: the nearest ancestor (MAX_CLIMB, never past a
   // table row or a form) holding another VISIBLE field (a select a widget
-  // hides is its own field's). Its question: its legend or own aria name, a
-  // heading in it before its fields, else the text before it, read as a
+  // hides is its own field's). Its question: its legend or own aria name, its
+  // first child when that is a heading, else the text before it, read as a
   // group's (precedingLabel). An entry counter ("(1)") is dropped; "" when
   // nothing names the group.
   const groupQuestion = (el) => {
@@ -161,7 +180,10 @@
       d += 1, n = n.parentElement) {
       const own = [...n.querySelectorAll(CONTROL)].filter((c) => c === el || (otherControl(c, el) && ns.fillBase.visible(c)));
       if (own.length < 2) continue;
-      const head = [...n.querySelectorAll(ANY_HEADING)].find((h) => precedes(h, own[0]));
+      // A heading names the group only as its first child: one further in
+      // belongs to something inside it.
+      const first = n.firstElementChild;
+      const head = first?.matches(ANY_HEADING) && precedes(first, own[0]) ? first : null;
       const named = (n.matches("fieldset") ? text(n.querySelector(":scope > legend")) : "")
         || fromIds(n, "aria-labelledby") || clean(n.getAttribute("aria-label")) || (head ? text(head) : "")
         || precedingLabel(n, own, { group: true });

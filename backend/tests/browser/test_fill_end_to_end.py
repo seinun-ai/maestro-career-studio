@@ -666,10 +666,14 @@ def test_an_icims_dropdown_showing_make_a_selection_is_filled(e2e_page):
     page = e2e_page
     out = _run(page, fixtures=["icims_profile.html"],
                map={"Degree": {"route": "slot", "slot": "education.0.degree", "value": "BS"},
+                    "School": {"route": "slot", "slot": "education.0.school", "value": "State University"},
                     "Country": {"route": "slot", "slot": "personal.country", "value": "United States"}})
-    assert (oracle(page, "icims_degree"), oracle(page, "icims_country")) == ("bs", "us")
-    assert out["by_question"]["Degree"]["status"] == "verified", out["by_question"]["Degree"]
-    assert out["by_question"]["Country"]["status"] == "verified", out["by_question"]["Country"]
+    assert (oracle(page, "icims_degree"), oracle(page, "icims_school"), oracle(page, "icims_country")) == (
+        "bs", "su", "us")
+    for question in ("Degree", "School", "Country"):
+        assert out["by_question"][question]["status"] == "verified", out["by_question"][question]
+    # select2's own 1px-clipped select is the School box's backing, not a second School field.
+    assert [r["question"] for r in out["report"]["fields"]].count("School") == 1
     offered = [o["text"] for p in out["posts"] if p["path"] == "/api/autofill/pick"
                for fld in p["body"]["fields"] for o in fld["options"]]
     assert "BS" in offered and not [t for t in offered if "Make a Selection" in t]
@@ -709,15 +713,18 @@ def test_icims_date_parts_get_their_own_part_and_a_current_job_no_end(e2e_page, 
 
 
 def test_an_ended_jobs_end_date_parts_are_written(e2e_page, monkeypatch):
-    """The guard is the current job's alone: an entry whose job ended gets its end."""
+    """An entry whose own picks name a job that ended gets that job's end."""
     page = e2e_page
-    keys = {f"{END}: Month": "experience.0.end", f"{END}: Year": "experience.0.end"}
+    keys = {f"{START}: Year": "experience.0.start", f"{END}: Month": "experience.0.end",
+            f"{END}: Year": "experience.0.end"}
     jobs = [{**ICIMS_JOBS[1]}]
     from app.services import autofill_catalog
 
     real_backend(page, monkeypatch, autofill_catalog.build({}, jobs, []), kinds={}, keys=keys)
-    _run(page, fixtures=["icims_profile.html"], backend=True)
+    out = _run(page, fixtures=["icims_profile.html"], backend=True)
+    assert page.input_value("#icims_0_startdate_year") == "2022"
     assert page.input_value("#icims_0_enddate_year") == "2024"
+    assert out["by_question"][f"{END}: Year"]["status"] == "verified"
     assert page.evaluate("document.getElementById('icims_0_enddate_month').selectedOptions[0].text") == "Jun"
 
 

@@ -1,8 +1,9 @@
 <!--
   iCIMS candidate profile (careers-gmr.icims.com, inside the same-origin
   #icims_content_iframe), live 2026-10-01: value-free fill telemetry and the
-  owner's screenshots. A hand-written copy of the STRUCTURE only; ids follow
-  the names the older rule-pass telemetry logged (icims_0_startdate_month,
+  owner's screenshots. A hand-written copy of the STRUCTURE only, and
+  MODELLED: no DOM was captured, so the select2 markup below is select2's
+  own layout, not iCIMS's. Ids follow the names the older rule-pass telemetry logged (icims_0_startdate_month,
   icims_0_startdate_date, icims_0_startdate_year, icims_0_addresstype,
   icims_f_receivetextv2), the class names are made up.
   - A dropdown is select2-style: a native <select> the page hides (live
@@ -12,7 +13,10 @@
     "— Type to Search —" search box above its rows, the first row being
     "— Make a Selection —". Live, Fill read these boxes as already answered
     (`prefilled`) and skipped them: Degree, School, Country, State/Province,
-    the SMS consent and the dismissal question.
+    the SMS consent and the dismissal question. School's select is hidden
+    the way select2 itself hides one (`select2-hidden-accessible`:
+    aria-hidden and a 1px clip, which the engine's visibility test counts as
+    visible); the others are not displayed.
   - A plain native select (Phone "Type", the date parts) has an EMPTY first
     option.
   - A date is three controls under one row label, "Start Date (Month / Day /
@@ -29,7 +33,7 @@
   what select2 does: a row's click sets the hidden select's value, fires its
   `change`, shows the row's text in the box and closes the list; an outside
   mousedown or Escape closes it unpicked. The search box filters the rows.
-  __oracle keys: icims_degree, icims_country, icims_state — the hidden
+  __oracle keys: icims_degree, icims_school, icims_country, icims_state — the hidden
   select's value ("" while it shows its placeholder). The native controls
   keep no oracle: their own value is what the page submits.
 -->
@@ -41,6 +45,14 @@
       <option value="">— Make a Selection —</option><option value="none">None</option>
       <option value="hs">High School Diploma</option><option value="ged">GED</option><option value="as">AS</option>
       <option value="bs">BS</option><option value="ms">MS</option><option value="phd">PhD</option>
+    </select>
+  </div>
+  <div class="iRow">
+    <label id="icims-school-l" for="icims_0_school">School</label>
+    <select id="icims_0_school" name="icims_0_school" class="s2-hidden-accessible" tabindex="-1" aria-hidden="true"
+      data-oracle="icims_school">
+      <option value="">— Make a Selection —</option><option value="cc">City College</option>
+      <option value="su">State University</option>
     </select>
   </div>
   <div class="iRow">
@@ -107,6 +119,8 @@
 <div id="portal"></div>
 <style>
   .s2-hidden { display: none; }
+  .s2-hidden-accessible { border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0;
+    position: absolute; width: 1px; }
   .s2-box { display: inline-block; min-width: 220px; border: 1px solid #aaa; padding: 4px; cursor: pointer; }
   .s2-drop { display: block; border: 1px solid #aaa; background: #fff; width: 240px; }
   .s2-drop li { padding: 2px 4px; }
@@ -154,7 +168,7 @@
       list.append(li);
     }
   };
-  for (const select of document.querySelectorAll("#icims-form select.s2-hidden")) {
+  for (const select of document.querySelectorAll("#icims-form select.s2-hidden, #icims-form select.s2-hidden-accessible")) {
     window.__oracle[select.dataset.oracle] = select.value;
     const container = document.createElement("span");
     container.className = "s2-container";

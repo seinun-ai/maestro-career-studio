@@ -649,9 +649,14 @@ def test_icims_dropdowns_show_their_placeholder_over_an_empty_hidden_select(page
     load(page, fixture_html("icims_profile.html"), sources=[])
     shown = page.evaluate("""() => [...document.querySelectorAll('#icims-form [role=combobox]')]
         .map((b) => [b.innerText.trim(), b.closest('.iRow').querySelector('select').value])""")
-    assert shown == [["— Make a Selection —", ""], ["— Make a Selection —", ""], ["Please select a country", ""]]
+    assert shown == [["— Make a Selection —", ""], ["— Make a Selection —", ""], ["— Make a Selection —", ""],
+                     ["Please select a country", ""]]
     assert page.is_hidden("#icims_0_degree")
-    assert (oracle(page, "icims_degree"), oracle(page, "icims_state")) == ("", "")
+    # School's select is hidden the way select2 hides one: shown, 1px, clipped, aria-hidden.
+    school = page.evaluate("""() => { const s = document.getElementById('icims_0_school');
+        const r = s.getBoundingClientRect(); return [r.width, r.height, s.getAttribute('aria-hidden')]; }""")
+    assert school == [1, 1, "true"] and page.is_visible("#icims_0_school")
+    assert (oracle(page, "icims_degree"), oracle(page, "icims_school"), oracle(page, "icims_state")) == ("", "", "")
 
 
 def test_icims_dropdown_commits_a_row_to_its_hidden_select(page, load):

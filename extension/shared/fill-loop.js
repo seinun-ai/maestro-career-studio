@@ -1128,10 +1128,10 @@
         for (const f of part) {
           const m = res?.fields?.[f.fid];
           const format = FORMATS.has(m?.format) ? m.format : undefined;
-          const part = narrowed(f, m);
+          const datePart = narrowed(f, m);
           if (m) {
-            set(f.fid, { route: m.route, slot: m.slot ?? null, value: part ? part.value : m.value ?? null, format,
-              part: part?.part ?? null });
+            set(f.fid, { route: m.route, slot: m.slot ?? null, value: datePart ? datePart.value : m.value ?? null,
+              format, part: datePart?.part ?? null });
           }
         }
       }

@@ -898,11 +898,18 @@ know, and each one was learned from a live failure.
 - **A dropdown that shows "— Make a Selection —" is empty.** iCIMS draws a
   select2-style box over a native `<select>` it hides; live on 2026-10-01, Fill
   read the box's "— Make a Selection —" and "Please select a country" as
-  answers and skipped Degree, School, Country and four more. Over such a
-  hidden select (the one in the box's field, no other visible field beside
-  it) a box is answered only while the select holds a value that is neither
-  empty nor a disabled option, whatever its words, and that select is the
-  pick's proof. The placeholder test (`ns.isPlaceholderText`) also knows
+  answers and skipped Degree, School, Country and four more. A select is a
+  box's backing only when the page ties it to the box — the select right
+  before an ancestor of the box (select2's layout), or one the box's
+  aria-labelledby / aria-controls names, itself or by its label — and hides
+  ITSELF inside a shown parent (not displayed, aria-hidden, or select2's 1px
+  clip); a hidden select that is merely nearby (a follow-up question's) is
+  not, and a box with a backing input (Workday) never looks for one. Over
+  its backing select a box is answered only while the select holds a value
+  that is not empty, a disabled option or a placeholder row (whatever that
+  row's value: "-1", "0"), whatever the box's words; that select is the
+  pick's proof, and it is never a field of its own (two fields would be two
+  writes). The placeholder test (`ns.isPlaceholderText`) also knows
   "make a selection" and "select / choose / pick a, an or your" and one or
   two words, wrapped in dashes or dots, by shape only: "Select Medical" or
   "Choose Health" is an answer. Such a row is never offered as an option.
@@ -914,15 +921,24 @@ know, and each one was learned from a live failure.
   offered no end for that job, took another's). A label that is only a part
   word ("Month", "Day", "Year", "Type", "Number") now carries its group's
   question ("Start Date (Month / Day / Year): Year", "Enter in your mobile
-  number: Type"): the group's legend or name, a heading in it, or the text
-  before it, its "(1)" dropped. Shape, not meaning: /map still decides. When
+  number: Type"): the group's legend or name, its first child when that is
+  a heading, or the text before it, its "(1)" dropped. Shape, not meaning: /map still decides. When
   /map's slot is a date (`format: "date"`, by the slot) and the control holds
-  one part (its label, or an id ending `_month`, `_day`, `_year`), only that
-  part is written: a Year box "2026", a Month box "06", a Month or Year list
+  one part (its label; or an id ending `_month`, `_day`, `_year` on a list,
+  a box of at most 4 characters, or beside a control whose id shares the
+  stem with another part — never a whole-date box named `birth_year`), only
+  that part is written: a Year box "2026", a Month box "06", a Month or Year list
   the option spelling it (6, 06, Jun or June), chosen without a model. A part
   the profile does not have (a day) is left, "Your profile has no day for
-  this date." And /map never routes a job's end date into an entry whose own
-  job is current, placed or not.
+  this date." A job's end date goes into an entry not placed by /sections
+  only when that entry's other job picks in the same /map request (start,
+  employer, title…) all name the same job; an end with nothing to anchor it,
+  or beside another job's picks, is left. A page entry is its section and
+  page position, which need not be the profile's order (an oldest-first
+  page), so the picks decide. Known limit: an entry split across two /map
+  requests (40 fields each) has no anchor in the second, and its end is
+  left. A placed entry needs no check: its entry number is code's, and a
+  current job has no end fact to place.
 - Native `<select>`s get their best-matching option by length-aware scoring
   ("United States" picks "United States of America", not "…Minor Outlying
   Islands"). Custom comboboxes are typed into and the matching option clicked.

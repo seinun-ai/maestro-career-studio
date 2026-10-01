@@ -1316,36 +1316,77 @@ def test_now_or_in_the_future_is_offered_as_its_own_derived_fact(db_session, mon
     assert '"Yes"' not in json.dumps(calls[0]["questions"]) and '"No"' not in json.dumps(calls[0]["questions"])
 
 
-# ---------- a current job never gets an end date (iCIMS, live 2026-10-01)
-# The current job's entry has no end fact, so a model asked for its End Date
-# reaches for another job's: live, the current job's End Date Year got the
-# earlier job's end. An end date is never written into an entry whose own job
-# is current, placed or not.
+# ---------- one job per page entry: an end date is written only beside its own job
+# Live iCIMS (2026-10-01): the current job has no end fact, so the model, asked
+# for its End Date, took the earlier job's (experience.1.end beside
+# experience.0.start). An UNPLACED entry's end date is written only when the
+# entry's other job picks in the same request (start, employer, title…) all
+# name the same job; with none to anchor it, it is not written. A PLACED
+# entry is already safe: its entry number is code's, and a current job has no
+# end fact to place.
 JOBS = [{"employer": "Acme", "title": "Data Scientist", "start_date": "Jun 2026", "current": True},
-        {"employer": "Initech", "title": "Analyst", "start_date": "Jul 2022", "end_date": "Jun 2024", "current": False}]
+        {"employer": "Initech", "title": "Analyst", "start_date": "Jul 2022", "end_date": "Jun 2024", "current": False},
+        {"employer": "Globex", "title": "Intern", "start_date": "Jan 2020", "end_date": "Jun 2021", "current": False}]
 END_YEAR = "End Date (if applicable) (Month / Day / Year): Year"
 
 
-@pytest.mark.usefixtures("jev_on")
-@pytest.mark.parametrize("placement", [{}, {"profile_entry": 0, "entry_kind": "experience"}], ids=["unplaced", "placed"])
-def test_an_end_date_is_never_written_into_the_current_jobs_entry(db_session, monkeypatch, placement):
+def entry_map(db_session, monkeypatch, picks, **kw):
+    """`picks`: fid -> (question, fact, repeat_index); every field unplaced."""
     facts = autofill_catalog.build({}, JOBS, [])
-    assert "experience.0.end" not in facts and facts["experience.1.end"].value == "2024-06"
-    fake_jev(monkeypatch, {"e": ("experience.1.end", 0.95), "s": ("experience.0.start", 0.95)})
-    got = autofill_map.map_fields([field("e", END_YEAR, **placement),
-                                   field("s", "Start Date (Month / Day / Year): Year", **placement)],
-                                  facts, db_session, eeo_consented=True, low_stakes=False)
+    fake_jev(monkeypatch, {fid: (fact, 0.95) for fid, (_q, fact, _r) in picks.items()})
+    return autofill_map.map_fields([field(fid, q, repeat_index=r, **kw) for fid, (q, _f, r) in picks.items()],
+                                   facts, db_session, eeo_consented=True, low_stakes=False)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_current_jobs_entry_never_takes_another_jobs_end(db_session, monkeypatch):
+    got = entry_map(db_session, monkeypatch, {"s": ("Start Date: Year", "experience.0.start", 0),
+                                              "e": (END_YEAR, "experience.1.end", 0)})
     assert got["e"].route == "none"
     assert (got["s"].slot, got["s"].value, got["s"].format) == ("experience.0.start", "2026-06", "date")
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_an_ended_jobs_entry_still_gets_its_end_date(db_session, monkeypatch):
-    facts = autofill_catalog.build({}, JOBS, [])
-    fake_jev(monkeypatch, {"e": ("experience.1.end", 0.95)})
-    got = autofill_map.map_fields([field("e", END_YEAR, repeat_index=1)], facts, db_session,
-                                  eeo_consented=True, low_stakes=False)
-    assert (got["e"].route, got["e"].slot, got["e"].value, got["e"].format) == ("slot", "experience.1.end", "2024-06", "date")
+def test_an_oldest_first_page_never_takes_another_jobs_end(db_session, monkeypatch):
+    """The current job listed second (page entry 1): page position is not the
+    profile's order, so the entry's own picks decide, not its number."""
+    got = entry_map(db_session, monkeypatch, {"c": ("Company", "experience.0.employer", 1),
+                                              "s": ("Start Date", "experience.0.start", 1),
+                                              "e": ("End Date", "experience.1.end", 1)})
+    assert (got["c"].route, got["s"].route, got["e"].route) == ("slot", "slot", "none")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_single_past_job_page_gets_the_end_its_own_picks_agree_on(db_session, monkeypatch):
+    """One "add a job" entry (page entry 0) holding a past job: its end is
+    written, though the profile's first job is current."""
+    got = entry_map(db_session, monkeypatch, {"c": ("Company", "experience.1.employer", 0),
+                                              "s": ("Start Date", "experience.1.start", 0),
+                                              "e": ("End Date", "experience.1.end", 0)})
+    assert (got["e"].route, got["e"].slot, got["e"].value, got["e"].format) == (
+        "slot", "experience.1.end", "2024-06", "date")
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("picks", [
+    {"c": ("Company", "experience.1.employer", 0), "e": ("End Date", "experience.2.end", 0)},
+    {"c": ("Company", "experience.1.employer", 0), "t": ("Title", "experience.2.title", 0),
+     "e": ("End Date", "experience.2.end", 0)},
+    {"e": ("End Date", "experience.1.end", 0)},
+], ids=["another-job", "entry-names-two-jobs", "nothing-to-anchor-it"])
+def test_an_end_its_entry_does_not_vouch_for_is_refused(db_session, monkeypatch, picks):
+    assert entry_map(db_session, monkeypatch, picks)["e"].route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_another_entrys_picks_never_anchor_an_end(db_session, monkeypatch):
+    """Entries are told apart by section and page entry: entry 0's current job
+    neither blocks nor vouches for entry 1's end."""
+    got = entry_map(db_session, monkeypatch, {"s0": ("Start Date", "experience.0.start", 0),
+                                              "s1": ("Start Date", "experience.1.start", 1),
+                                              "e1": ("End Date", "experience.1.end", 1),
+                                              "e2": ("End Date", "experience.1.end", 2)})
+    assert (got["e1"].route, got["e2"].route) == ("slot", "none")
 
 
 def test_the_phone_is_offered_as_never_a_phone_type():

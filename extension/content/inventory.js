@@ -92,8 +92,10 @@
     // A modal application form (a dialog the page opened) is walked; a popup
     // the ENGINE opened is not.
     if (el.closest(NOT_A_FIELD) || ns.fillBase.insideEnginePopup(el)) return false;
-    // A toggle beside a search input is part of the input's field.
+    // A toggle beside a search input is part of the input's field; a select
+    // that backs a popup box is part of the box's.
     if (ns.shapes.companionSearch(el)) return false;
+    if (el instanceof HTMLSelectElement && ns.shapes.backsABox(el)) return false;
     // An unrecognised wrapper around a real control: the control is the field.
     if (!shape && el.querySelector(ns.fieldControls.CONTROL)) return false;
     return shown(el);

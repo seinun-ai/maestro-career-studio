@@ -359,8 +359,8 @@ _HISTORY_KINDS = ("experience", "education")
 # A date fact ("2026-06", "2026", "2026-10-01"): a job's or a school's ends,
 # and the derived dates.
 _DATE = re.compile(r"(?:experience|education)\.\d+\.(?:start|end)(?:_year)?|derived\.(?:today|earliest_start_date)")
-# A job's end date, which a current job does not have.
-_JOB_END = re.compile(r"experience\.\d+\.end")
+# A job's entry fact, and its end date (which a current job does not have).
+_JOB_FACT = re.compile(r"experience\.(\d+)\.(\w+)")
 
 
 def format_of(slot: str | None) -> Format | None:
@@ -377,16 +377,34 @@ def format_of(slot: str | None) -> Format | None:
     return "money" if _MONEY.search(slot) else None
 
 
-def _ends_a_current_job(field: MapField, key: str, facts: dict[str, Fact]) -> bool:
-    """An end date for an entry whose own job is current (its profile entry
-    when placed, else its page entry). That job has no end, so a model asked
-    for its End Date reaches for another job's: live iCIMS (2026-10-01) wrote
-    the earlier job's end into the current job's End Date Year."""
-    if not _JOB_END.fullmatch(key):
-        return False
-    entry = field.repeat_index if field.profile_entry is None else field.profile_entry
-    current = facts.get(f"experience.{entry}.current")
-    return current is not None and current.value == "Yes"
+def _one_job_per_entry(fields: list[MapField], out: dict[str, Mapped]) -> None:
+    """An UNPLACED entry's end date is kept only when the entry's other job
+    picks in this request (its start, employer, title…) all name that same
+    job; anything else routes it to none, an end with nothing to anchor it
+    included. Live iCIMS (2026-10-01): the current job has no end fact, so a
+    model asked for its End Date took the earlier job's, beside the current
+    job's start. A page entry is its section and page position, which are
+    not the profile's order (an oldest-first page), so the picks decide, not
+    the number. Known limit: an entry split across two /map requests (40
+    fields each) has no anchor there, and its end is left. A PLACED entry
+    needs none of this: its entry number is code's, and a current job has no
+    end fact to place."""
+    picks = {f.fid: pick for f in fields if (pick := _job_pick(f, out[f.fid]))}
+    anchors: dict[tuple[str | None, int], set[str]] = {}
+    for f in fields:
+        if f.fid in picks and picks[f.fid][1] != "end":
+            anchors.setdefault((f.section, f.repeat_index), set()).add(picks[f.fid][0])
+    for f in fields:
+        if f.fid in picks and picks[f.fid][1] == "end" and anchors.get((f.section, f.repeat_index)) != {picks[f.fid][0]}:
+            out[f.fid] = Mapped(route="none")
+
+
+def _job_pick(field: MapField, mapped: Mapped) -> tuple[str, str] | None:
+    """(job number, fact) when an unplaced entry's field is routed to a job fact."""
+    if field.profile_entry is not None or _foreign(field) or mapped.route != "slot":
+        return None
+    m = _JOB_FACT.fullmatch(mapped.slot or "")
+    return (m[1], m[2]) if m else None
 
 
 def _foreign(field: MapField) -> bool:
@@ -436,7 +454,7 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     key, p = picked
     if key in facts and p >= _floor(facts[key]):
         key = _placed_key(field, key, facts)
-        if key is None or key not in facts or _ends_a_current_job(field, key, facts):
+        if key is None or key not in facts:
             return Mapped(route="none")
         value = facts[key].value
         return Mapped(route="slot", slot=key, value=list(value) if isinstance(value, tuple) else value,
@@ -521,6 +539,7 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
     if decided:
         logger.info("map: the fast model decided %d of %d fields Jev was unsure of", len(decided), len(second))
     out |= decided
+    _one_job_per_entry(fields, out)
 
     def leftovers(*, history: bool) -> list[MapField]:
         return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
