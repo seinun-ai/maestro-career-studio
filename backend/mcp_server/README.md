@@ -308,10 +308,10 @@ Contributing and running the tests: see [../../CONTRIBUTING.md](../../CONTRIBUTI
 
 ## Troubleshooting
 
-- **"Could not reach the backend… Is it running on :8000?"**: the app isn't
-  running, or `BACKEND_URL` points at the wrong port. Check with
-  `docker compose ps` and `curl http://localhost:8001/health`. The message
-  always says `:8000`, even when your `BACKEND_URL` is `:8001`.
+- **"Could not reach the maestro-career-studio backend at …"**: the app isn't
+  running, or `BACKEND_URL` points at the wrong address. The message names the
+  address the server tried. Check with `docker compose ps` and
+  `curl http://localhost:8001/health`.
 - **A tool fails with a `422`**: the data your assistant sent didn't match what
   the app expects. The error says what's wrong, so your assistant can fix it and
   retry.

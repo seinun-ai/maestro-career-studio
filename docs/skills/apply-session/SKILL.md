@@ -14,7 +14,8 @@ app, and one explicit yes per application before the final submit. Decide
 everything else yourself.
 
 1. **Queue.** `list_proposals(status="accepted")` and work it in order, one
-   application at a time, in this session. Say which one you are starting.
+   application at a time, in this session. Results are paged: compare `items`
+   to `total` and page with `offset`. Say which one you are starting.
 2. **Prepare.** Tailor or render only when the linked application or its PDF is
    missing or stale — a current draft, including one the user tailored, stays
    as is. Stage the PDF with `prepare_application_pdf_upload` and upload the

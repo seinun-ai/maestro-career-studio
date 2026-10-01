@@ -144,7 +144,7 @@ def test_tool_is_registered():
 def test_get_autofill_profile_docstring_names_profile_as_identity_source():
     doc = srv.get_autofill_profile.__doc__ or ""
     assert "canonical_identity" in doc
-    assert "never prefer ATS-parsed" in doc.lower() or "never prefer ats-parsed" in doc.lower()
+    assert "takes precedence over ats-parsed" in doc.lower()
 
 
 def test_get_autofill_profile_docstring_consent_gates_eeo_for_playwright():

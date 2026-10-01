@@ -406,6 +406,10 @@ def export_jobs(
     level: str | None = None,
     since: date | None = None,
     skill: str | None = None,
+    # Paging is opt-in: no limit is the whole export, as before. The MCP tool
+    # always passes one (a full library is ~1.7M chars).
+    limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     stmt = select(Job)
     if role_category:
@@ -422,7 +426,11 @@ def export_jobs(
                 select(JobSkill.job_id).where(JobSkill.skill_name.ilike(f"%{skill}%"))
             )
         )
-    jobs = db.scalars(stmt.order_by(Job.created_at.desc())).all()
+    # id is a deterministic tiebreak so pages never overlap or skip.
+    stmt = stmt.order_by(Job.created_at.desc(), Job.id.desc()).offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    jobs = db.scalars(stmt).all()
 
     skills_by_job: dict = defaultdict(list)
     job_ids = [j.id for j in jobs]
