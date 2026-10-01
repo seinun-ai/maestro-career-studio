@@ -28,7 +28,7 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
-## [0.7.0] — 2026-09-27
+## [0.7.0] — 2026-10-01
 
 ### Breaking changes
 
@@ -165,6 +165,11 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 - Dropdowns showing "Make a Selection" (iCIMS) are treated as empty and filled.
 - Month, Day and Year boxes get only their own part, and a current job never
   gets an end date.
+
+### Security
+
+- Dependency bumps for published advisories: PyJWT 2.15.1 and urllib3 2.8.0
+  (backend); brace-expansion, DOMPurify and ip-address (frontend lockfile).
 
 ## [0.6.0] — 2026-09-24
 
