@@ -848,3 +848,42 @@ def test_bare_text_is_read_only_beside_a_choice(page, load, html):
     load(page, html)
     got = page.evaluate("sel => window.careerStudioCompanion.readField(document.querySelector(sel))", "#a")
     assert got["question"] == ""
+
+
+# iCIMS's disability form (CC-305, live 2026-10-02): a one-column layout table
+# whose question, "Please check one of the boxes below:", is the ROW ABOVE the
+# radios' row. A layout row's question may be the nearest earlier one-cell row
+# with text and no field; a grid's header row never is.
+DISABILITY_OPTIONS = ["Yes, I have a disability, or have had one in the past",
+                      "No, I do not have a disability and have not had one in the past",
+                      "I do not want to answer"]
+ICIMS_CC305 = f"""<form><table style='width: 100%' cellspacing='0' cellpadding='5'><tbody>
+  <tr><td colspan='3'><b>How do you know if you have a disability?</b></td></tr>
+  <tr><td colspan='3'>A disability is a condition that substantially limits one or more major life activities.
+    <ul><li>Diabetes</li><li>Epilepsy</li></ul></td></tr>
+  <tr><td colspan='3'><hr></td></tr>
+  <tr><td colspan='3'><b>Please check one of the boxes below:</b></td></tr>
+  <tr><td colspan='3' valign='top' width='100%'>
+    <span style='font-size: 13px'><span class='iCIMS_Forms_RadioGroup'><input type='radio' name='d' value='1'></span>
+      {DISABILITY_OPTIONS[0]}<br></span>
+    <span style='font-size: 13px'><span class='iCIMS_Forms_RadioGroup'><input type='radio' name='d' value='2'></span>
+      {DISABILITY_OPTIONS[1]}<br></span>
+    <span style='font-size: 13px'><span class='iCIMS_Forms_RadioGroup'><input type='radio' name='d' value='3'></span>
+      {DISABILITY_OPTIONS[2]}<br><br>PUBLIC BURDEN STATEMENT: According to the Paperwork Reduction Act of 1995 no
+      persons are required to respond.<br></span>
+  </td></tr>
+</tbody></table></form>"""
+
+
+def test_icims_cc305_group_takes_the_layout_row_above(page, load):
+    load(page, ICIMS_CC305)
+    [group] = fields(page)
+    assert (group["shape"], group["question"]) == ("group", "Please check one of the boxes below:")
+    assert [o["text"] if isinstance(o, dict) else o for o in group["options"]] == DISABILITY_OPTIONS
+
+
+def test_a_grid_header_row_is_never_a_groups_question(page, load):
+    load(page, """<table><tr><th>Shift</th><th>Choice</th></tr>
+      <tr><td colspan='2'><label><input type='radio' name='s'>Yes</label>
+      <label><input type='radio' name='s'>No</label></td></tr></table>""")
+    assert [f["question"] for f in fields(page)] == [""]

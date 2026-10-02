@@ -170,10 +170,27 @@
   const skippable = (n) => (n.nodeType === Node.TEXT_NODE && !clean(n.data)) || n.nodeType === Node.COMMENT_NODE;
   // An option's label: the bare text right after its box, to the next <br>,
   // block or control (an inline <a> or <b> inside it is part of it).
+  // Innermost first: the text may sit inside the control's own wrapper
+  // (CC-305: `<span><span class="RadioGroup"><input></span> No, I…<br></span>`)
+  // or beside it (VEVRAA).
+  const boxes = (el) => {
+    const out = [];
+    for (let n = el, top = ownBox(el); n; n = n === top ? null : n.parentElement) out.push(n);
+    return out;
+  };
+  const firstBare = (el, step) => {
+    for (const box of boxes(el)) {
+      let n = box[step];
+      while (n && (skippable(n) || (step === "previousSibling" && n.nodeType === Node.ELEMENT_NODE
+        && n.matches("br")))) n = n[step];
+      if (n && bare(n) && shownIn(n.parentElement, n.parentElement)) return n;
+      if (n) return null;
+    }
+    return null;
+  };
   const trailingText = (el) => {
-    let n = ownBox(el).nextSibling;
-    while (n && skippable(n)) n = n.nextSibling;
-    if (!n || !bare(n) || !shownIn(n.parentElement, n.parentElement)) return "";
+    let n = firstBare(el, "nextSibling");
+    if (!n) return "";
     let out = "";
     for (; n; n = n.nextSibling) {
       if (n.nodeType === Node.TEXT_NODE) out += n.data;
@@ -189,13 +206,30 @@
   // past any <br>. A label as it stands, else the paragraph's sentence that
   // asks for a choice (`askingSentence`).
   const textBefore = (el) => {
-    let n = ownBox(el).previousSibling;
-    while (n && (skippable(n) || (n.nodeType === Node.ELEMENT_NODE && n.matches("br")))) n = n.previousSibling;
-    if (!n || !bare(n) || !shownIn(n.parentElement, n.parentElement)) return "";
+    const n = firstBare(el, "previousSibling");
+    if (!n) return "";
     const t = clean(n.data);
     return labelish(t) ? t : askingSentence(t);
   };
   ns.textBefore = textBefore;
+  // A LAYOUT TABLE's question row: the radios' row is one cell, and the
+  // nearest earlier row holding text is one cell with no field (iCIMS's
+  // CC-305: "Please check one of the boxes below:" is the row above). A row of
+  // several cells is a grid, whose header names columns: never read.
+  const cellsOf = (row) => [...row.children].filter((c) => c.matches("td, th"));
+  const rowAbove = (el) => {
+    const cell = el.closest("td, th");
+    const row = cell?.parentElement;
+    if (!row?.matches("tr") || cellsOf(row).length !== 1) return "";
+    for (let r = row.previousElementSibling; r; r = r.previousElementSibling) {
+      const t = shownText(r);
+      if (!t) continue;
+      if (cellsOf(r).length !== 1 || r.querySelector(CONTROL)) return "";
+      return labelish(t) ? clean(t) : askingSentence(t);
+    }
+    return "";
+  };
+  ns.rowAbove = rowAbove;
 
   // A label naming only a PART of a field — a date part, or a word that asks
   // nothing without its group ("Type", "Number") — is SHAPE, not meaning: the

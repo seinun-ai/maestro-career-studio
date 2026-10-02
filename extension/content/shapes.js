@@ -328,7 +328,8 @@
   // or, for a set of options, the paragraph sentence that asks for one.
   const precedingQuestion = (ms) => {
     const t = (ms.length > 1 ? ns.textBefore(ms[0]) : "")
-      || ns.precedingLabel(ms[0].closest("label") ?? ms[0], ms, { group: true, prose: ms.length > 1 });
+      || ns.precedingLabel(ms[0].closest("label") ?? ms[0], ms, { group: true, prose: ms.length > 1 })
+      || (ms.length > 1 && ms.every((m) => m.closest("tr") === ms[0].closest("tr")) ? ns.rowAbove(ms[0]) : "");
     return t ? { question: clean(t.replace(STAR, "")), source: "preceding", required: STAR.test(t) } : null;
   };
   // Never a member's own option label ("Yes"): no question beats a wrong one.
