@@ -327,7 +327,8 @@
   // member (ns.precedingLabel, field-reader.js: the same stops as a field's),
   // or, for a set of options, the paragraph sentence that asks for one.
   const precedingQuestion = (ms) => {
-    const t = ns.precedingLabel(ms[0].closest("label") ?? ms[0], ms, { group: true, prose: ms.length > 1 });
+    const t = (ms.length > 1 ? ns.textBefore(ms[0]) : "")
+      || ns.precedingLabel(ms[0].closest("label") ?? ms[0], ms, { group: true, prose: ms.length > 1 });
     return t ? { question: clean(t.replace(STAR, "")), source: "preceding", required: STAR.test(t) } : null;
   };
   // Never a member's own option label ("Yes"): no question beats a wrong one.
