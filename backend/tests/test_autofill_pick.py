@@ -1327,7 +1327,11 @@ def test_a_wordy_same_value_states_itself(db_session, monkeypatch):
     calls = fake_jev(monkeypatch, {"d": ("o2", 0.99)}, ways={"d": ("same", 0.99)})
     autofill_pick.pick([pf("d", question="Disability status", slot="eeo.disability_status",
                            options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
-    assert "that_is" not in calls[0]["state"]["fields"][0]
+    # The worded value is its own statement: it is never turned into a "… is
+    # (not) true"; it says only which fact it answers (an undirected CC-305
+    # question needs that, 2026-10-02).
+    that_is = calls[0]["state"]["fields"][0]["that_is"]
+    assert that_is.startswith('it answers "has a disability') and "true" not in that_is
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1368,3 +1372,51 @@ def test_a_saved_answer_carries_no_statement(db_session, monkeypatch):
     assert state == {"id": "c", "question": "Do you have a clearance?", "answer": "No"}
     assert "that is" not in calls[0]["questions"]["c"]["instructions"]
     assert got["c"].reason == "matched"
+
+
+CC305 = ("Yes, I have a disability, or have had one in the past",
+         "No, I do not have a disability and have not had one in the past", "I do not want to answer")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_statement_options_go_with_an_undirected_question_to_polarity(db_session, monkeypatch):
+    """iCIMS's CC-305 (live, 2026-10-02) asks "Please check one of the boxes
+    below:", which names no direction: polarity said unsure and the field was
+    left. Options that STATE the answer say what is asked, so they go with the
+    question. Plain Yes / No options say nothing and are not added."""
+    seen = []
+
+    def decide(asks, session, budget):
+        seen.extend(asks)
+        return {a.fid: autofill_pick.autofill_polarity.Polarity(autofill_pick.autofill_polarity.SAME, "jev")
+                for a in asks}
+
+    monkeypatch.setattr(autofill_pick.autofill_polarity, "decide", decide)
+    fake_jev(monkeypatch, {"d": ("o2", 0.99), "y": ("o2", 0.99)})
+    autofill_pick.pick([pf("d", question="Please check one of the boxes below:", slot="eeo.disability_status",
+                           options=opts(*CC305)),
+                        pf("y", question="Do you have a disability?", slot="eeo.disability_status",
+                           options=opts("Yes", "No"))], STATUS_FACTS, db_session, None)
+    autofill_pick.pick([pf("e", question="Employment with this company", slot="eeo.disability_status",
+                           options=opts("Current Associate", "Former Associate", "Not Applicable"))],
+                       STATUS_FACTS, db_session, None)
+    asked = {a.fid: a.question for a in seen}
+    assert asked["d"] == f"Please check one of the boxes below: (options: {'; '.join(CC305)})"
+    assert asked["y"] == "Do you have a disability?"
+    assert asked["e"] == "Employment with this company"   # short labels state nothing
+
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_worded_answer_to_an_undirected_question_says_what_it_answers(db_session, monkeypatch):
+    """Jev picked the right CC-305 box at 0.82, under the exact floor: beside
+    "Please check one of the boxes below:", the bare "No, I do not have a
+    disability" says nothing about what is asked. A SAME answer that is not a
+    plain Yes or No now says which fact it answers (value-free)."""
+    monkeypatch.setattr(autofill_pick.autofill_polarity, "decide", lambda asks, session, budget: {
+        a.fid: autofill_pick.autofill_polarity.Polarity(autofill_pick.autofill_polarity.SAME, "jev") for a in asks})
+    calls = fake_jev(monkeypatch, {"d": ("o2", 0.99)})
+    autofill_pick.pick([pf("d", question="Please check one of the boxes below:", slot="eeo.disability_status",
+                           options=opts(*CC305))], STATUS_FACTS, db_session, None)
+    text = calls[0]["questions"]["d"]["instructions"]
+    assert 'is "No, I do not have a disability"; that is, it answers "has a disability' in text
