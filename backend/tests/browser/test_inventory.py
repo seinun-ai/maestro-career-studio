@@ -809,3 +809,42 @@ def test_a_follow_up_box_carries_the_question_it_follows(page, load, html, quest
     load(page, html)
     got = page.evaluate("sel => window.careerStudioCompanion.readField(document.querySelector(sel))", "#a")
     assert got["question"] == question
+
+
+# iCIMS's VEVRAA form as it is really built (live, 2026-10-02): text and <br>
+# straight in a table cell. The question and every option's label are BARE
+# TEXT NODES beside the controls, so the group read as no question with three
+# blank options.
+ICIMS_VEVRAA = f"""<form><table><tbody><tr><td><span style='font-size: 13px'>
+  <span style='font-size: 13px'>Protected veterans may have additional rights under USERRA. For more
+  information, call the U.S. Department of Labor.</span>
+  <span style='font-size: 13px'><br>2. {VEVRAA_ASK} As a Government contractor subject to VEVRAA, we request this
+  information in order to measure the effectiveness of the outreach.<br><br>
+  <span class='iCIMS_Forms_RadioGroup form-control'><input type='radio' name='v' value='1'></span>
+  I IDENTIFY AS ONE OR MORE OF THE CLASSIFICATIONS OF PROTECTED VETERAN LISTED ABOVE<br><br>
+  <span class='iCIMS_Forms_RadioGroup form-control'><input type='radio' name='v' value='2'></span>
+  I AM NOT A PROTECTED VETERAN<br><br>
+  <span class='iCIMS_Forms_RadioGroup form-control'><input type='radio' name='v' value='3'></span>
+  I DON'T WISH TO ANSWER<br><br></span>
+</span></td></tr></tbody></table></form>"""
+
+
+def test_icims_vevraa_bare_text_question_and_options_are_read(page, load):
+    load(page, ICIMS_VEVRAA)
+    [group] = fields(page)
+    assert (group["shape"], group["question"]) == ("group", VEVRAA_ASK)
+    assert [o["text"] if isinstance(o, dict) else o for o in group["options"]] == [
+        "I IDENTIFY AS ONE OR MORE OF THE CLASSIFICATIONS OF PROTECTED VETERAN LISTED ABOVE",
+        "I AM NOT A PROTECTED VETERAN", "I DON'T WISH TO ANSWER"]
+
+
+@pytest.mark.parametrize("html", [
+    # an element after the box is not bare text: nothing new is read
+    "<p>Intro to the application</p><input type=radio name=q id=a><span>Yes</span>",
+    # bare text after a box that is not a choice is no option label
+    "<div><input id=a> per hour</div>",
+], ids=["element-after", "not-a-choice"])
+def test_bare_text_is_read_only_beside_a_choice(page, load, html):
+    load(page, html)
+    got = page.evaluate("sel => window.careerStudioCompanion.readField(document.querySelector(sel))", "#a")
+    assert got["question"] == ""

@@ -151,6 +151,52 @@
   };
   ns.precedingLabel = precedingLabel;
 
+  // LEGACY MARKUP: text and <br> straight in a cell (iCIMS forms, live
+  // 2026-10-02) put a group's question and each option's label in BARE TEXT
+  // NODES beside the controls, which the element walks above never see. Read
+  // only when the neighbour really is bare text, so element markup reads as
+  // it always did. `ownBox`: the control's widest wrapper holding no other
+  // visible control (iCIMS's `<span class="… RadioGroup"><input></span>`).
+  const ownBox = (el) => {
+    let box = el;
+    while (box.parentElement && !edge(box.parentElement) && !box.parentElement.matches("td, th, li, label")
+      && ![...box.parentElement.querySelectorAll(CONTROL)].some((c) => c !== el && ns.fillBase.visible(c))) {
+      box = box.parentElement;
+    }
+    return box;
+  };
+  const BARE_STOP = "br, p, div, li, tr, td, table, ul, ol, h1, h2, h3, h4, h5, h6";
+  const bare = (n) => n.nodeType === Node.TEXT_NODE && clean(n.data);
+  const skippable = (n) => (n.nodeType === Node.TEXT_NODE && !clean(n.data)) || n.nodeType === Node.COMMENT_NODE;
+  // An option's label: the bare text right after its box, to the next <br>,
+  // block or control (an inline <a> or <b> inside it is part of it).
+  const trailingText = (el) => {
+    let n = ownBox(el).nextSibling;
+    while (n && skippable(n)) n = n.nextSibling;
+    if (!n || !bare(n) || !shownIn(n.parentElement, n.parentElement)) return "";
+    let out = "";
+    for (; n; n = n.nextSibling) {
+      if (n.nodeType === Node.TEXT_NODE) out += n.data;
+      else if (n.nodeType === Node.ELEMENT_NODE) {
+        if (n.matches(BARE_STOP) || n.matches(CONTROL) || n.querySelector(CONTROL)) break;
+        out += n.textContent;
+      }
+    }
+    const t = clean(out);
+    return t.length <= 160 ? t : "";
+  };
+  // A group's question: the bare text right before its first member's box,
+  // past any <br>. A label as it stands, else the paragraph's sentence that
+  // asks for a choice (`askingSentence`).
+  const textBefore = (el) => {
+    let n = ownBox(el).previousSibling;
+    while (n && (skippable(n) || (n.nodeType === Node.ELEMENT_NODE && n.matches("br")))) n = n.previousSibling;
+    if (!n || !bare(n) || !shownIn(n.parentElement, n.parentElement)) return "";
+    const t = clean(n.data);
+    return labelish(t) ? t : askingSentence(t);
+  };
+  ns.textBefore = textBefore;
+
   // A label naming only a PART of a field — a date part, or a word that asks
   // nothing without its group ("Type", "Number") — is SHAPE, not meaning: the
   // word is kept and its group's question goes before it ("Start Date (Month
@@ -241,6 +287,8 @@
       }
       return "";
     }],
+    // A choice's own label as bare text after its box (legacy markup, above).
+    ["trailing-text", (el) => (isChoice(el) ? trailingText(el) : "")],
     // LAST: the text before a box nothing names (Gem). A radio's or
     // checkbox's own label FOLLOWS it; the text before it is a neighbour's.
     ["preceding", (el) => (isChoice(el) ? "" : precedingLabel(el, [el]))],
