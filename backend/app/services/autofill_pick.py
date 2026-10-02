@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.autofill_fill import Picked, PickField
 from app.services import autofill_polarity, jev, llm, model_settings
-from app.services.autofill_catalog import Fact
+from app.services.autofill_catalog import Fact, yes_no_word
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
 from app.services.autofill_map import (
     MIN_CALL_S,
@@ -110,11 +110,11 @@ def verdict(field, oid: str | None, p: float, policy: str, *, complete: bool) ->
 @dataclass(frozen=True)
 class Computed:
     """A Yes/No fact's answer to its question as worded. `statement`: for a
-    SAME question and a plain Yes or No only (nothing was flipped), what the
-    answer says, in the fact's value-free words — an undirected label over
-    statement options ("Visa sponsorship": "I will not require sponsorship")
-    needs to know what "No" is about. Never for an OPPOSITE one: a description
-    beside a flipped answer could flip it back."""
+    SAME question only (nothing was flipped), what the answer says, in the
+    fact's value-free words — an undirected label over statement options
+    ("Visa sponsorship": "I will not require sponsorship") needs to know what
+    "No" is about; a worded answer, which fact it answers. Never for an
+    OPPOSITE one: a description beside a flipped answer could flip it back."""
 
     answer: str
     statement: str | None = None
@@ -141,13 +141,29 @@ def asked_against(field, facts: dict[str, Fact], answers: dict[str, Computed]) -
         "applicant_values": values}
 
 
+def polarity_question(field) -> str:
+    """The question polarity is asked about. Options that STATE an answer go
+    with it: an undirected question ("Please check one of the boxes below:",
+    iCIMS CC-305, live 2026-10-02) names no direction and was judged unsure,
+    while "No, I do not have a disability…" says what is asked. Only options
+    that are SENTENCES (two or more of four words or more): plain Yes / No say
+    nothing, so a reversed knockout question is judged as worded, and short
+    labels ("Current Associate", "Not Applicable") made a label judged same
+    read as unsure."""
+    texts = [o.text.strip() for o in getattr(field, "options", None) or [] if o.text.strip()]
+    stated = [t for t in texts if yes_no_word(t) not in ("Yes", "No") and len(t.split()) >= 4]
+    if len(stated) < 2:   # also a /step, which has no options
+        return field.question
+    return f"{field.question} (options: {'; '.join(texts)})"
+
+
 def polarity_answers(fields, facts: dict[str, Fact], session: Session, budget: Budget) -> dict[str, Computed | None]:
     """Per slot field holding a Yes/No fact, the applicant's answer to its
     question as worded: its polarity decided (autofill_polarity), then the value
     flipped by code. None: unsure, neither, or a wordy value asked the other way."""
     yes_no = {f.fid: facts[f.slot] for f in fields
               if f.route == "slot" and f.slot in facts and facts[f.slot].yes_no}
-    ways = autofill_polarity.decide([autofill_polarity.Ask(f.fid, f.question, facts[f.slot].describe,
+    ways = autofill_polarity.decide([autofill_polarity.Ask(f.fid, polarity_question(f), facts[f.slot].describe,
                                                            facts[f.slot].policy)
                                      for f in fields if f.fid in yes_no], session, budget)
     out: dict[str, Computed | None] = {}
@@ -155,9 +171,13 @@ def polarity_answers(fields, facts: dict[str, Fact], session: Session, budget: B
         answer = autofill_polarity.answer_for(str(fact.value), ways[fid].way)
         # A saved answer is described by its own question ("saved answer to:
         # …"): a statement would read as that answer being false. Literal only.
-        stated = (ways[fid].way == autofill_polarity.SAME and answer in ("Yes", "No")
-                  and not fact.slot.startswith("custom."))
-        out[fid] = Computed(answer, statement_of(fact, answer) if stated else None) if answer is not None else None
+        same = ways[fid].way == autofill_polarity.SAME and not fact.slot.startswith("custom.")
+        # A worded answer ("No, I do not have a disability") says which fact
+        # it answers: beside an undirected question ("Please check one of the
+        # boxes below:", iCIMS CC-305) Jev picked the right box under the floor.
+        statement = (statement_of(fact, answer) if answer in ("Yes", "No")
+                     else f"it answers {json.dumps(fact.describe)}") if same else None
+        out[fid] = Computed(answer, statement) if answer is not None else None
     return out
 
 
