@@ -17,7 +17,8 @@ STEPS = ev.load_cases(ev.STEP_CASES)
 
 
 def test_the_case_files_hold_the_plans_counts():
-    assert 38 <= len(PICKS["cases"]) <= 80
+    # 80 was the plan's; live iCIMS cases (2026-10-01) are added as they are found.
+    assert 38 <= len(PICKS["cases"]) <= 90
     assert 18 <= len(STEPS["cases"]) <= 45
     assert STEPS["today"] == PICKS["today"]
     for cases in (PICKS["cases"], STEPS["cases"]):

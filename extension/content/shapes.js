@@ -324,9 +324,10 @@
   const lone = (el) => el.type === "checkbox" && members(el).length < 2;
   const labelOf = (input) => readField(input).question;
   // A group with no container question asks the text BEFORE its first
-  // member (ns.precedingLabel, field-reader.js: the same stops as a field's).
+  // member (ns.precedingLabel, field-reader.js: the same stops as a field's),
+  // or, for a set of options, the paragraph sentence that asks for one.
   const precedingQuestion = (ms) => {
-    const t = ns.precedingLabel(ms[0].closest("label") ?? ms[0], ms, { group: true });
+    const t = ns.precedingLabel(ms[0].closest("label") ?? ms[0], ms, { group: true, prose: ms.length > 1 });
     return t ? { question: clean(t.replace(STAR, "")), source: "preceding", required: STAR.test(t) } : null;
   };
   // Never a member's own option label ("Yes"): no question beats a wrong one.

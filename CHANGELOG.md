@@ -39,6 +39,16 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   to fill counts as the form for the next hour, and the employer's own embedded
   form frame on that site accepts the fill. On the next step after a fill, the
   Fill step opens by itself with Autofill.
+- Autofill answers more of iCIMS's later steps:
+  - a veteran self-identification asked in a paragraph ("please indicate by
+    checking the appropriate box below");
+  - a follow-up box such as "If applicable, please provide info." (it now
+    reads the question it follows);
+  - "Are you able to work on-site at our … location?", from your relocation
+    answer;
+  - with Agreements on, a "Signature" box that signs the form.
+
+  A "please specify referral name" box no longer takes your how-heard answer.
 
 ## [0.7.1] — 2026-10-01
 

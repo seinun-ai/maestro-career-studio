@@ -78,6 +78,18 @@
   const MAX_CLIMB = 6;
   // A label is short and is no sentence ("Phone", "Are you over 18?", "City:").
   const labelish = (t) => t.length <= 80 && t.split(" ").length <= 12 && !/[.!]$/.test(t.replace(STAR, ""));
+  // A CHOICE GROUP may be asked by a paragraph (iCIMS VEVRAA: "2. If you
+  // believe you belong to … please indicate by checking the appropriate box
+  // below. As a Government contractor …"). Its question is the one sentence
+  // that asks for the choice below; a paragraph that asks for none ("Please
+  // answer every question honestly.") names nothing. Groups only: the options
+  // bound what a wrong reading could write.
+  const ASKS_FOR_A_CHOICE = /\?|\bplease (indicate|select|choose|check|mark|tick)\b|\bcheck(ing)? the (appropriate|applicable)? ?box|\bselect (one|all|the)\b|\bwhich of the following\b/i;
+  const askingSentence = (t) => {
+    const sentences = t.replace(/^\s*\(?\d+[.)]\s+/, "").match(/[^.?!]+[.?!]*/g) ?? [];
+    const ask = sentences.map(clean).find((one) => ASKS_FOR_A_CHOICE.test(one));
+    return ask && ask.length <= 280 ? ask : "";
+  };
   const shownIn = (e, top) => {
     for (let n = e; n; n = n === top ? null : n.parentElement) {
       if (!ns.fillBase.visible(n) || n.matches(NOT_LABEL)) return false;
@@ -104,7 +116,7 @@
   // own, not ours) — unless `own` is labelled (the page labels its options,
   // so text after a labelled control is not a trailing label). A single
   // field with any text after it at a level has its label there: abstain.
-  const precedingLabel = (start, own, { group = false } = {}) => {
+  const precedingLabel = (start, own, { group = false, prose = false } = {}) => {
     const mine = (c) => own.some((o) => o === c || o.contains(c));
     const ownLabels = new Set(own.flatMap((o) => [...(o.labels ?? [])]));
     const attached = ownLabels.size > 0;
@@ -126,6 +138,7 @@
         const t = blocks ? "" : shownText(s);
         if (!blocks && !t) continue;
         if (cand === null) {
+          if (!blocks && !labelish(t) && prose) return askingSentence(t);
           if (blocks || !labelish(t)) return "";
           cand = t;
         } else {
@@ -258,6 +271,49 @@
     return "";
   };
 
+  // A FOLLOW-UP asks nothing alone ("If applicable, please provide info.",
+  // "If other, please specify") — iCIMS, 2026-10-01, where /map sent it to
+  // free text and it was left. The question it follows goes in front: the
+  // text between the previous field and this one when it holds a question
+  // (with the answer the page shows for it), else the previous field's own
+  // question. Read only for such a label, never for one that asks.
+  const FOLLOW_UP = /^(if (applicable|yes|no|so|other|selected|referred|any)\b|please (specify|explain|provide|describe|list|elaborate)\b|(other|explain|details?|specify|comments?)\b)/i;
+  const CONTEXT_MAX = 160;
+  const followed = (el, own) => {
+    const root = el.closest("form") ?? el.getRootNode().body ?? document.body;
+    const anchor = own ?? el;
+    const prev = [...root.querySelectorAll(CONTROL)].filter((c) => c !== el && otherControl(c, el)
+      && precedes(c, anchor) && ns.fillBase.visible(c)).at(-1) ?? null;
+    let between = "";
+    const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+      if (!precedes(t, anchor) || (prev && !precedes(prev, t)) || anchor.contains(t)) continue;
+      if (prev?.contains(t) || t.parentElement?.closest("label, script, style, option, select")) continue;
+      if (clean(t.data) && shownIn(t.parentElement, root)) between += ` ${t.data}`;
+    }
+    const asked = clean(between).lastIndexOf("?");
+    if (asked >= 0) {
+      const text = clean(between);
+      const start = Math.max(text.slice(0, asked).search(/[^.?!]*$/), 0);
+      return clean(text.slice(start)).slice(0, CONTEXT_MAX);
+    }
+    if (!prev) return "";
+    for (const [, read] of SOURCES) {
+      try {
+        const q = clean(read(prev).replace(STAR, ""));
+        if (q) return q.slice(0, CONTEXT_MAX);
+      } catch { /* the next source */ }
+    }
+    return "";
+  };
+  const withFollowed = (el, question, source) => {
+    const bare = clean(question.replace(STAR, ""));
+    if (!FOLLOW_UP.test(bare) || isChoice(el)) return question;
+    const own = source === "label-for" ? rootOf(el).querySelector?.(`label[for="${CSS.escape(el.id)}"]`) : null;
+    const before = followed(el, own ?? el.closest("label") ?? null);
+    return before ? `${before} — ${question}` : question;
+  };
+
   ns.readFieldText = clean;
   ns.repeatOf = repeatOf;
   ns.ANY_HEADING = ANY_HEADING;
@@ -278,6 +334,7 @@
     }
     let part;
     ({ question, part } = withGroup(el, question));
+    if (question) question = withFollowed(el, question, source);
     const starred = STAR.test(question);
     const section = sectionOf(el);
     return {

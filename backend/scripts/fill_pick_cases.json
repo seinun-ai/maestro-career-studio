@@ -81,6 +81,8 @@
     {"id": "neutral-age-requirement", "tag": "neutral", "question": "Age requirement", "options": ["I am 18 years of age or older", "I am under 18"], "slot": "eligibility.over_18", "fact": "Yes", "expected": "I am 18 years of age or older"},
     {"id": "reversed-label-unrestricted-authorization", "tag": "reversed", "question": "Unrestricted work authorization (no sponsorship required)", "options": ["Yes", "No"], "slot": "work_auth.sponsorship_future", "fact": "Yes", "expected": "No"},
     {"id": "neutral-visa-sponsorship", "tag": "neutral", "question": "Visa sponsorship", "options": ["I will require sponsorship", "I will not require sponsorship"], "slot": "work_auth.sponsorship_future", "fact": "No", "expected": "I will not require sponsorship"},
-    {"id": "sponsor-now-yes-later-no", "question": "Will you now or in the future require visa sponsorship to work in the United States?", "options": ["Yes", "No"], "slot": "derived.sponsorship_now_or_future", "fact": "Yes", "expected": "Yes"}
+    {"id": "sponsor-now-yes-later-no", "question": "Will you now or in the future require visa sponsorship to work in the United States?", "options": ["Yes", "No"], "slot": "derived.sponsorship_now_or_future", "fact": "Yes", "expected": "Yes"},
+    {"id": "onsite-from-relocate", "question": "Are you able to work on-site at our Lewisville, Texas location?", "options": ["Yes", "No"], "slot": "preferences.willing_to_relocate", "fact": "Yes", "expected": "Yes"},
+    {"id": "vevraa-paragraph-not-veteran", "question": "If you believe you belong to any of the categories of protected veterans listed above, please indicate by checking the appropriate box below.", "options": ["I IDENTIFY AS ONE OR MORE OF THE CLASSIFICATIONS OF PROTECTED VETERAN LISTED ABOVE", "I AM NOT A PROTECTED VETERAN", "I DON'T WISH TO ANSWER"], "slot": "eeo.veteran_status", "fact": "No, I am not a protected veteran", "expected": "I AM NOT A PROTECTED VETERAN"}
   ]
 }
