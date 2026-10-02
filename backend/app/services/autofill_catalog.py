@@ -81,6 +81,16 @@ _DESCRIBES: dict[str, str] = {
     # A form asks for it as "salary requirements" or "compensation" as often
     # as "desired salary": one fact, described in each wording.
     "preferences.desired_salary": "desired salary, compensation or salary requirements (expected pay)",
+    # iCIMS asked "Are you able to work on-site at our Lewisville, Texas
+    # location?" and found no fact (live, 2026-10-01): a Yes to relocating is a
+    # Yes to working at the job's site. Not remote work, travel or a shift.
+    "preferences.willing_to_relocate": ("willing to relocate for the job, and so able to work on-site at the job's "
+                                        "location (yes/no; never remote work, travel, a commute, a shift or "
+                                        "where the applicant lives now)"),
+    # The SOURCE. A follow-up box asking for a referrer's name took it (live
+    # iCIMS, 2026-10-01): a name is not a source.
+    "preferences.how_heard": ("how the applicant heard about the job: the source, such as a job board or a "
+                              "website (never a referrer's or employee's name, a recruiter, or a reason)"),
     # Said with the boxes beside them that they never answer: offered as
     # "personal: phone" / "personal: address", /map sent the phone number to
     # "Phone Extension" and line 1 to "Address Line 2" (live Workday, 2026-09-27).
@@ -99,7 +109,9 @@ _DESCRIBES: dict[str, str] = {
     # the agreement permission covers; optional opt-ins belong to the separate
     # low-stakes setting, which this fact must not widen.
     "derived.agrees_to_terms": ("agrees to the application's own terms and conditions, privacy notice, "
-                                "certification, acknowledgement and background-check authorization statements "
+                                "certification, acknowledgement and background-check authorization statements, "
+                                "and a box that signs the form electronically (\"Signature\": checking it equals "
+                                "a handwritten signature) "
                                 "(yes/no; never an optional opt-in to texts, marketing, job alerts or a talent "
                                 "community, never a question about the applicant's willingness or "
                                 "circumstances, and never a question about criminal history, convictions or "

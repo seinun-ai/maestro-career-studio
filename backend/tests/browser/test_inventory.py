@@ -751,3 +751,61 @@ def test_a_named_set_whose_boxes_each_sit_in_their_own_group_splits_into_lone_bo
         for d in ("Monday", "Tuesday")) + "</fieldset>")
     assert [(f["question"], f["multi"], [o["text"] for o in f["options"]]) for f in fields(page)] == [
         ("Monday", False, ["Yes", "No"]), ("Tuesday", False, ["Yes", "No"])]
+
+
+# ---------- a group asked by the paragraph before it (iCIMS VEVRAA, 2026-10-01) ----------
+#
+# The veteran self-identification block asks in a numbered paragraph ("2. If
+# you believe you belong to … please indicate by checking the appropriate box
+# below. As a Government contractor …") and then lists three radios. A
+# paragraph is no label, so the group read as "A field with no label" and was
+# left. The paragraph's sentence that ASKS for the choice below is the
+# question; an intro that asks nothing is still none.
+
+VEVRAA_ASK = ("If you believe you belong to any of the categories of protected veterans listed above, "
+              "please indicate by checking the appropriate box below.")
+
+
+def test_a_radio_group_asked_by_the_paragraph_before_it_takes_that_sentence(page, load):
+    load(page, f"""<p>Protected veterans may have additional rights under USERRA.</p>
+      <p>2. {VEVRAA_ASK} As a Government contractor subject to VEVRAA, we request this information.</p>
+      <input type='radio' name='v' id='v1'><label for='v1'>I IDENTIFY AS ONE OR MORE OF THE CLASSIFICATIONS</label>
+      <input type='radio' name='v' id='v2'><label for='v2'>I AM NOT A PROTECTED VETERAN</label>
+      <input type='radio' name='v' id='v3'><label for='v3'>I DON'T WISH TO ANSWER</label>""")
+    assert [(f["shape"], f["question"]) for f in fields(page)] == [("group", VEVRAA_ASK)]
+
+
+@pytest.mark.parametrize("paragraph", [
+    "Please answer every question below honestly.",
+    "Submission of this information is voluntary and refusal will not subject you to adverse treatment.",
+])
+def test_a_paragraph_that_asks_for_no_choice_is_still_no_question(page, load, paragraph):
+    load(page, f"""<p>{paragraph}</p>
+      <label><input type='radio' name='a'>Yes</label><label><input type='radio' name='a'>No</label>""")
+    assert [f["question"] for f in fields(page)] == [""]
+
+
+# ---------- a follow-up box carries the question it follows ----------
+#
+# "If applicable, please provide info." under "How did you hear about this
+# opportunity?" (iCIMS, 2026-10-01) asks nothing alone, so /map sent it to
+# free text and it was left. The question before it, and the answer the page
+# shows for it, go in front.
+
+@pytest.mark.parametrize("html, question", [
+    # the question and its shown answer are text, not a control
+    ("<p>How did you hear about this opportunity?</p><p>Job Board (Indeed/Glassdoor)</p>"
+     "<label for=a>If applicable, please provide info.</label><input id=a>",
+     "How did you hear about this opportunity? Job Board (Indeed/Glassdoor) — If applicable, please provide info."),
+    # the question is the previous field's
+    ("<label for=h>How did you hear about us?</label><select id=h><option>Other</option></select>"
+     "<label for=a>If other, please specify</label><input id=a>",
+     "How did you hear about us? — If other, please specify"),
+    # a label that asks on its own is left as it is
+    ("<p>How did you hear about this opportunity?</p><label for=a>Referrer's name</label><input id=a>",
+     "Referrer's name"),
+], ids=["shown-answer", "previous-field", "not-a-follow-up"])
+def test_a_follow_up_box_carries_the_question_it_follows(page, load, html, question):
+    load(page, html)
+    got = page.evaluate("sel => window.careerStudioCompanion.readField(document.querySelector(sel))", "#a")
+    assert got["question"] == question
