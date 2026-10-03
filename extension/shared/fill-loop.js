@@ -325,6 +325,9 @@
   const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
   const MOVE_ID = /^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$/;
   const TRACE_MOVE_MAX = 40;
+  // A cut inside an emoji leaves half a surrogate pair, which the schema's
+  // string refuses (the sw strips the same way, and also cleans a page's own).
+  const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
   const TRACE_ROUTES = new Set(["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]);
   const TRACE_REASONS = new Set(["matched", "closest", "assumed", "progress", "abstained"]);
   const TRACE_ENGINES = new Set(["jev", "fast"]);
@@ -1922,7 +1925,7 @@
   const traceField = (status, row, others) => {
     const f = row.field ?? {};
     const own = denyRegex(rowKeys(row));
-    const clipped = (text) => String(text).slice(0, TRACE_TEXT);
+    const clipped = (text) => String(text).slice(0, TRACE_TEXT).replace(LONE_SURROGATE, "");
     const shown = (text) => (others?.test(text) || own?.test(text) ? "" : clipped(text));
     const options = Array.isArray(f.options) ? f.options : null;
     return {

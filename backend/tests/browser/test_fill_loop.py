@@ -2464,6 +2464,17 @@ def test_a_field_trace_keeps_to_the_schemas_caps_and_patterns(page, load):
     assert (traced(out, "s")["label_source"], traced(out, "s")["family"]) == ("aria-label", "f:abc12")
 
 
+def test_a_trace_cut_through_an_emoji_keeps_whole_characters(page, load):
+    """The 200th UTF-16 unit of "L"*199 + an emoji is half of it; a lone surrogate would 422 the run."""
+    split = "L" * 199 + "\U0001F600"
+    out = run(page, load, frames=[[f("s", "select", split, options=[opt("o1", split), opt("o2", "No")],
+                                    optionsComplete=True, section=split)]],
+              map={"s": {"route": "low_stakes"}}, pick={"s": {"oids": [], "reason": "abstained"}})
+    t = traced(out, "s")
+    assert (t["label"], t["section"], t["options"]) == ("L" * 199, "L" * 199, ["L" * 199, "No"])
+    json.dumps(t, ensure_ascii=False).encode("utf-8")
+
+
 def test_a_fields_trace_path_keeps_its_first_and_last_twenty_steps(page, load):
     """A popup scrolled 30 times: 62 steps happen. The first 20 show how the field began and the
     last 20 how it ended; each /step answer is marked by its p so the two ends can be told apart."""

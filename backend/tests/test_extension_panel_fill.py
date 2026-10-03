@@ -3939,6 +3939,7 @@ def test_a_trace_the_worker_refuses_never_surfaces_in_the_panel(tmp_path):
     out = _loop(tmp_path, replies={"fill_trace": {"ok": False, "error": "boom"}})
     assert [m["type"] for m in out["sent"]].count("fill_trace") == 1
     assert _loop_groups(out["settled"]["rail"])
+    assert "boom" not in json.dumps(out["settled"])
 
 
 def test_a_loop_that_filled_everything_ticks_the_step_and_names_what_to_check(tmp_path):

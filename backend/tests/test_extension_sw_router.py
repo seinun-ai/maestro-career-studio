@@ -801,12 +801,19 @@ def test_a_trace_with_a_bad_run_key_posts_nothing(tmp_path, over):
     assert out["posted"] == []
 
 
-def test_a_run_missing_a_required_key_posts_nothing(tmp_path):
-    for key in ("run_id", "host", "started_at", "ended_at"):
-        trace = _run_trace()
-        del trace[key]
-        out = _post_trace(tmp_path, trace)
-        assert out["posted"] == [], key
+@pytest.mark.parametrize("key", ["run_id", "host", "started_at", "ended_at", "fields"])
+def test_a_run_missing_a_required_key_posts_nothing(tmp_path, key):
+    trace = _run_trace()
+    del trace[key]
+    assert _post_trace(tmp_path, trace)["posted"] == []
+
+
+def test_a_run_that_found_no_fields_is_still_a_run(tmp_path):
+    """Deliberate: an empty `fields` list is a run that found nothing, and that
+    is a fact the counters want, not a trace to refuse."""
+    out = _post_trace(tmp_path, _run_trace(fields=[]))
+    assert out["reply"]["data"] == {"posted": 1}
+    assert out["posted"][0]["body"]["fields"] == []
 
 
 def test_the_run_level_keys_are_coerced_not_forwarded(tmp_path):
@@ -814,9 +821,15 @@ def test_the_run_level_keys_are_coerced_not_forwarded(tmp_path):
         host="Boards.Greenhouse.IO:8443", mode="other", halted="crashed", rounds=99))
     assert body["host"] == "boards.greenhouse.io:8443"
     assert "mode" not in body and "halted" not in body
-    assert body["rounds"] == 10
+    assert "rounds" not in body
     assert "halted" not in _posted_trace(tmp_path, _run_trace(halted=None))
     assert _posted_trace(tmp_path, _run_trace(halted="stopped"))["halted"] == "stopped"
+
+
+def test_a_run_rounds_out_of_range_is_dropped_not_clamped(tmp_path):
+    """A clamped round would record a pass that never ran."""
+    assert [_posted_trace(tmp_path, _run_trace(rounds=r))["rounds"] for r in (0, 10)] == [0, 10]
+    assert all("rounds" not in _posted_trace(tmp_path, _run_trace(rounds=r)) for r in (-1, 11, 1.5, "2"))
 
 
 def test_a_trace_is_bounded_rather_than_rejected(tmp_path):
@@ -841,13 +854,14 @@ def test_the_pages_own_option_texts_are_kept(tmp_path):
     assert body["fields"][0]["steps"][0]["option"] == 0
 
 
-def test_step_numbers_are_coerced_and_odd_ones_dropped(tmp_path):
+def test_step_numbers_are_rounded_and_odd_ones_dropped(tmp_path):
     steps = [
-        {"op": "set", "ms": 12.6, "option": 249, "p": "0.5", "floor": 1.5, "first_p": -0.1},
+        {"op": "set", "ms": 12.6, "option": 249, "p": 0.5, "floor": 1.5, "first_p": -0.1},
         {"op": "set", "ms": -4, "option": 250},
         {"op": "set", "ms": 9_999_999, "option": -1},
         {"op": "set", "ms": "abc", "option": 1.5, "p": None},
-        {"op": "set", "ms": None, "option": "2", "p": True, "first_same": "yes", "chose_none": 0},
+        {"op": "set", "ms": None, "option": 2, "p": True, "first_same": "yes", "chose_none": 0},
+        {"op": "set", "ms": "7", "option": "2", "p": "0.5", "floor": "1"},  # a numeric string is not a number
         {"op": "set", "ms": "", "word": ""},
     ]
     got = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=steps)]))["fields"][0]["steps"]
@@ -857,6 +871,7 @@ def test_step_numbers_are_coerced_and_odd_ones_dropped(tmp_path):
         {"op": "set", "ms": 600000},
         {"op": "set"},
         {"op": "set", "option": 2},
+        {"op": "set"},
         {"op": "set"},
     ]
 
@@ -877,6 +892,14 @@ def test_a_step_with_an_unknown_op_is_dropped_and_odd_words_are_not_forwarded(tm
     ]
 
 
+def test_a_count_or_round_out_of_range_is_dropped_not_clamped(tmp_path):
+    kept = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(option_count=5000, round=10)]))["fields"][0]
+    assert (kept["option_count"], kept["round"]) == (5000, 10)
+    for odd in (5001, -1, 2.5, "3", True):
+        got = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(option_count=odd, round=odd)]))["fields"][0]
+        assert "option_count" not in got and "round" not in got, odd
+
+
 def test_odd_field_level_strings_are_not_forwarded(tmp_path):
     field = _trace_field(label_source="Aria Label", family="F:XYZ", shape="carousel", section=None,
                          options=None, required="yes", option_count=-3, round=99)
@@ -885,7 +908,7 @@ def test_odd_field_level_strings_are_not_forwarded(tmp_path):
     assert got["shape"] == "unknown"
     assert "section" not in got and "options" not in got and "required" not in got
     assert "option_count" not in got
-    assert got["round"] == 10
+    assert "round" not in got
 
 
 def test_a_messy_trace_is_scrubbed_into_one_the_backend_accepts(tmp_path):
@@ -975,6 +998,26 @@ def test_the_trace_whitelist_limits_and_patterns_mirror_the_backends_schema():
         _meta(T.TraceField, "round", "le"), _meta(T.TraceStep, "ms", "le"), F.MAX_PICK_OPTIONS,
         _meta(T.TraceStep, "slot", "max_length")]
     assert _meta(T.RunTrace, "rounds", "le") == int(_sw_const("TRACE_ROUNDS"))
+    assert _meta(T.TraceField, "option_count", "le") == T.MAX_OPTION_COUNT == int(_sw_const("TRACE_COUNT_MAX")) == 5000
+    assert _meta(T.TraceStep, "option", "lt") == int(_sw_const("TRACE_PICKS")) == F.MAX_PICK_OPTIONS
+
+
+def test_the_trace_whitelist_ranges_mirror_the_backends_schema():
+    """The bounds the sw writes as bare numbers: the lower edges, and the 0..1 of a probability."""
+    from app.schemas import autofill_trace as T
+
+    for model, field in [(T.TraceStep, "ms"), (T.TraceStep, "option"), (T.TraceField, "option_count"),
+                         (T.TraceField, "round"), (T.RunTrace, "rounds"), (T.TraceStep, "p"),
+                         (T.TraceStep, "floor"), (T.TraceStep, "first_p")]:
+        assert _meta(model, field, "ge") == 0, field
+    unit = (int(_sw_const("TRACE_UNIT_MIN")), int(_sw_const("TRACE_UNIT_MAX")))
+    assert {(_meta(T.TraceStep, f, "ge"), _meta(T.TraceStep, f, "le")) for f in ("p", "floor", "first_p")} == {unit}
+
+
+def test_the_sw_and_the_loop_strip_lone_surrogates_the_same_way():
+    loop = (EXTENSION / "shared" / "fill-loop.js").read_text(encoding="utf-8")
+    ours = re.search(r"const LONE_SURROGATE = (/.*?/g);", SW_CODE).group(1)
+    assert re.search(r"const LONE_SURROGATE = (/.*?/g);", loop).group(1) == ours
 
 
 def _literal_args(model, field):
@@ -1024,6 +1067,44 @@ def test_a_time_pydantic_accepts_is_kept(tmp_path, stamp):
     body = _posted_trace(tmp_path, _run_trace(started_at=stamp))
     assert body["started_at"] == stamp
     RunTrace.model_validate(body)
+
+
+SPLIT = "L" * 199 + "\U0001F600"  # 201 UTF-16 units: a cut at 200 lands inside the emoji
+
+
+def test_a_cut_through_an_emoji_leaves_whole_characters(tmp_path):
+    """`.slice` counts UTF-16 units, so the 200th lands between an emoji's halves, and a
+    lone surrogate 422s the whole run. The cut is followed by stripping unpaired halves."""
+    from app.schemas.autofill_trace import RunTrace
+
+    field = _trace_field(label=SPLIT, section=SPLIT, options=[SPLIT, "ok"])
+    body = _posted_trace(tmp_path, _run_trace(fields=[field]))
+    RunTrace.model_validate(body)
+    got = body["fields"][0]
+    assert (got["label"], got["section"], got["options"]) == ("L" * 199, "L" * 199, ["L" * 199, "ok"])
+    json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+
+def test_a_lone_surrogate_in_the_pages_own_text_is_removed(tmp_path):
+    from app.schemas.autofill_trace import RunTrace
+
+    field = _trace_field(label="a\ud83dz", section="\ude00b", options=["x\ud83d", "ok \U0001F600"])
+    body = _posted_trace(tmp_path, _run_trace(fields=[field]))
+    RunTrace.model_validate(body)
+    got = body["fields"][0]
+    assert (got["label"], got["section"], got["options"]) == ("az", "b", ["x", "ok \U0001F600"])
+
+
+def test_a_telemetry_observation_cut_through_an_emoji_is_valid(tmp_path):
+    """The same split at telemetry's 160 characters."""
+    from app.schemas.autofill_telemetry import TelemetryObservation
+
+    split = "L" * 159 + "\U0001F600"
+    out = _telemetry(tmp_path, [{"label": split, "kind": "text", "host": "example.com", "outcome": "filled",
+                                 "options": [split, "a\ud83d"]}])
+    [observation] = out["posted"][0]["body"]["observations"]
+    TelemetryObservation.model_validate(observation)
+    assert (observation["label"], observation["options"]) == ("L" * 159, ["L" * 159, "a"])
 
 
 def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():

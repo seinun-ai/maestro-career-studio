@@ -31,7 +31,7 @@ Op = Literal["map", "polarity", "pick", "step",  # decisions
 Effect = Literal["progress", "no_effect", "unexpected", "reverted", "unconfirmed", "refused", "late", "error"]
 WORD = r"^[a-z_]{1,40}$"  # a page word or a status: lowercase only, so a value cannot hide in it
 SLOT = r"^[a-z_]+(\.[a-z0-9_]+)*$"  # a fact NAME (autofill_catalog), never its value
-MAX_RUN_FIELDS, MAX_FIELD_STEPS, LABEL_MAX = 200, 40, 200
+MAX_RUN_FIELDS, MAX_FIELD_STEPS, LABEL_MAX, MAX_OPTION_COUNT = 200, 40, 200, 5000
 
 
 class TraceStep(BaseModel):
@@ -73,7 +73,7 @@ class TraceField(BaseModel):
     section: str | None = Field(default=None, max_length=LABEL_MAX)
     required: bool = False
     options: list[Annotated[str, Field(max_length=LABEL_MAX)]] | None = Field(default=None, max_length=30)
-    option_count: int = Field(default=0, ge=0)
+    option_count: int = Field(default=0, ge=0, le=MAX_OPTION_COUNT)
     family: str | None = Field(default=None, max_length=32, pattern=r"^f:[0-9a-z]{1,24}$")
     steps: list[TraceStep] = Field(default_factory=list, max_length=MAX_FIELD_STEPS)
     outcome: str = Field(pattern=WORD)

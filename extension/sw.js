@@ -303,6 +303,13 @@ async function broadcastToFrames(tabId, message) {
 }
 // ---- end broadcastToFrames ----
 
+// A cut can land inside an emoji's surrogate pair, and a lone surrogate is not
+// text: pydantic refuses it and the whole batch or run is lost. So the cut is
+// followed by stripping every unpaired half (which also cleans a page's own
+// broken text). The regex, not `toWellFormed`, so nothing depends on the runtime.
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const cutText = (text, max) => String(text).slice(0, max).replace(LONE_SURROGATE, "");
+
 /** Defense in depth, at the only place an observation can leave the browser.
  *
  * Whatever future code puts on an observation, only the contract keys are
@@ -315,9 +322,9 @@ function scrubObservation(observation) {
   for (const key of TELEMETRY_KEYS) {
     if (observation?.[key] !== undefined) out[key] = observation[key];
   }
-  out.label = String(out.label ?? "").slice(0, 160);
+  out.label = cutText(out.label ?? "", 160);
   if (Array.isArray(out.options)) {
-    out.options = out.options.slice(0, 30).map((text) => String(text).slice(0, 160));
+    out.options = out.options.slice(0, 30).map((text) => cutText(text, 160));
   } else {
     delete out.options;
   }
@@ -327,10 +334,9 @@ function scrubObservation(observation) {
 
 // ---- the run trace's gate: a whitelist at run, field and step level ----
 //
-// Every name, pattern, cap and vocabulary below is `app/schemas/
-// autofill_trace.py`'s (and `autofill_fill.py`'s), and `test_the_trace_
-// whitelist_mirrors_the_backends_schema` fails when either side moves. The
-// schema is `extra="forbid"` and range-checked, so ONE odd key or word would
+// Every name, pattern, cap and vocabulary below is `app/schemas/autofill_trace.py`'s
+// (and `autofill_fill.py`'s), and `test_the_trace_whitelist_mirrors_the_backends_schema`
+// fails when either side moves. The schema is `extra="forbid"` and range-checked, so ONE odd key or word would
 // 422 the whole run and lose it silently: a value that does not fit is
 // dropped here, not forwarded. The page's own texts (label, section, options)
 // are kept, cut to length; the loop is what keeps a typed answer out of them.
@@ -341,6 +347,9 @@ const TRACE_TEXT = 200;
 const TRACE_ROUNDS = 10;
 const TRACE_MS = 600000;
 const TRACE_PICKS = 250;
+const TRACE_COUNT_MAX = 5000;
+const TRACE_UNIT_MIN = 0;
+const TRACE_UNIT_MAX = 1;
 const TRACE_SLOT_MAX = 120;
 const TRACE_MOVE_MAX = 40;
 const TRACE_SOURCE_MAX = 40;
@@ -369,23 +378,27 @@ const TRACE_MODES = new Set(["assist"]);
 const TRACE_HALTS = new Set(["stopped", "timeout"]);
 
 // A coercer answers the value to post, or undefined to drop the key.
-const traceText = (max) => (v) => (typeof v === "string" ? v.slice(0, max) : undefined);
+const traceText = (max) => (v) => (typeof v === "string" ? cutText(v, max) : undefined);
 const traceMatch = (re, max = Infinity) => (v) => (typeof v === "string" && v.length <= max && re.test(v) ? v : undefined);
 const traceOneOf = (set) => (v) => (typeof v === "string" && set.has(v) ? v : undefined);
 const traceBool = (v) => (typeof v === "boolean" ? v : undefined);
-// A number, or a numeric string; anything else (null, "", true) is NaN, not zero.
-const traceNumber = (v) => ((typeof v === "number" || (typeof v === "string" && v.trim() !== "")) ? Number(v) : NaN);
+// A number and nothing else: a typed value is a string, so a numeric string is
+// the likeliest shape for one to ride in a number slot.
+const traceNumber = (v) => (typeof v === "number" ? v : NaN);
+// An integer inside the schema's range, else dropped: a clamped round or count
+// would record something that never happened.
 const traceInt = (max) => (v) => {
   const n = traceNumber(v);
   return Number.isInteger(n) && n >= 0 && n <= max ? n : undefined;
 };
+// `ms` alone is clamped: a slow call is still a fact, just capped.
 const traceClamped = (max) => (v) => {
   const n = traceNumber(v);
   return Number.isFinite(n) ? Math.min(max, Math.max(0, Math.round(n))) : undefined;
 };
 const traceUnit = (v) => {
   const n = traceNumber(v);
-  return n >= 0 && n <= 1 ? n : undefined;
+  return n >= TRACE_UNIT_MIN && n <= TRACE_UNIT_MAX ? n : undefined;
 };
 // Strict as pydantic's AwareDatetime is: the fields must survive a round trip
 // through a Date, so 2026-02-30 and T24:00:00 (which a Date rolls over) drop.
@@ -438,16 +451,16 @@ const TRACE_FIELD = {
   section: traceText(TRACE_TEXT),
   required: traceBool,
   options: (v) => (Array.isArray(v)
-    ? v.slice(0, TRACE_OPTIONS).map((text) => (typeof text === "string" ? text.slice(0, TRACE_TEXT) : ""))
+    ? v.slice(0, TRACE_OPTIONS).map((text) => (typeof text === "string" ? cutText(text, TRACE_TEXT) : ""))
     : undefined),
-  option_count: traceInt(Number.MAX_SAFE_INTEGER),
+  option_count: traceInt(TRACE_COUNT_MAX),
   family: traceMatch(TRACE_FAMILY, TRACE_FAMILY_MAX),
   steps: traceList((step) => {
     const kept = traceKeep(TRACE_STEP, step);
     return kept.op ? kept : null;
   }, TRACE_STEPS),
   outcome: traceMatch(TRACE_WORD),
-  round: traceClamped(TRACE_ROUNDS),
+  round: traceInt(TRACE_ROUNDS),
 };
 const TRACE_RUN = {
   run_id: traceMatch(TRACE_RUN_ID),
@@ -456,7 +469,7 @@ const TRACE_RUN = {
   ended_at: traceTime,
   mode: traceOneOf(TRACE_MODES),
   halted: traceOneOf(TRACE_HALTS),
-  rounds: traceClamped(TRACE_ROUNDS),
+  rounds: traceInt(TRACE_ROUNDS),
   fields: traceList((field) => {
     const kept = traceKeep(TRACE_FIELD, field);
     return kept.fid && kept.outcome ? kept : null;

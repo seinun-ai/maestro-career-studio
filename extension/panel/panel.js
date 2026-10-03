@@ -4203,7 +4203,9 @@
    *   rule (the actions files get the one door this file uses and never a
    *   `fetch` of its own); `broadcast` and `prepare` are the fill's fan-out and
    *   its one sanctioned injection; `telemetry` is fire-and-forget and stamps
-   *   the page host from the same bound url.
+   *   the page host from the same bound url. `trace` is `telemetry`'s sibling
+   *   (one value-free record per fill run) and rides in this group, but it
+   *   carries its OWN host, the run's, so it is the one door not stamped here.
    * - THE FLOWS an action ends with — `remember` writes the session entry,
    *   `loadContext`/`loadBaseScores` are the two re-reads that CONFIRM what an
    *   action just claimed. They take the action's own token, which is why they
