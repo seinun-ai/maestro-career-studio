@@ -57,6 +57,13 @@ One record per Autofill run:
 
 The trace never holds an answer value, typed text, a prompt, or the profile's own words.
 
+**Revision (2026-10-02, plan review).** The plan (`2026-10-02-fill-trace.md`, revision 2) is
+authoritative for the step vocabulary. Each step has an `op`: a decision (`map`, `polarity`,
+`pick` or `step`), a page action (`explore`, `choose`, `set`, `write` or `move`), or `sweep` or
+`recipe`. Each page action has an `effect`: progress, no_effect, unexpected, reverted,
+unconfirmed, refused, late or error. Decisions also carry their own model-call ms and, when the
+second opinion decided, the first engine's `first_p`.
+
 ## Learning from many runs
 
 `autofill_mechanism_stats` holds running counters, with no host and no label:
