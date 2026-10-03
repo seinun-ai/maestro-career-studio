@@ -43,7 +43,7 @@ export default function ApplicationDetailRedirect({
       return (
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <FileX2 className="text-muted-foreground/50 size-8" />
-          <p className="text-sm font-medium">
+          <p className="text-title-small">
             This application no longer exists.
           </p>
           <Button

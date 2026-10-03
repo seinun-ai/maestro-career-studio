@@ -29,18 +29,18 @@ export function SkillsEditor({
           {...entryEditingProps(i)}
           read={
             <div className="grid grid-cols-[10rem_1fr] items-baseline gap-4 pr-16">
-              <span className="text-muted-foreground text-sm font-medium">
+              <span className="text-muted-foreground text-label-large">
                 {group.category || (
                   <span className="italic opacity-60">Untitled group</span>
                 )}
               </span>
-              <span className="text-foreground/90 text-sm">
+              <span className="text-foreground/90 text-body-medium">
                 {group.items.length ? (
                   <span className="flex flex-wrap gap-1.5">
                     {group.items.map((item, idx) => (
                       <span
                         key={`${item}-${idx}`}
-                        className="bg-muted text-foreground/90 inline-flex items-center rounded-md px-2 py-0.5 text-xs"
+                        className="bg-muted text-foreground/90 inline-flex items-center rounded-full px-2 py-0.5 text-body-small"
                       >
                         {item}
                       </span>

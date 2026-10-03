@@ -119,19 +119,19 @@ export function DocumentsPanel({
   };
 
   return (
-    <Card className="rounded-2xl">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileText className="size-4" aria-hidden="true" /> Documents
-          <Badge className="rounded-full" variant="secondary">
+          <Badge variant="secondary">
             {documents.length}
           </Badge>
         </CardTitle>
-        <p className="text-muted-foreground text-sm">We read these to suggest bullets for you to review.</p>
+        <p className="text-muted-foreground text-body-medium">We read these to suggest bullets for you to review.</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <div
-          className="rounded-2xl bg-muted/45 p-5 text-center transition-colors duration-150 ease-out hover:bg-muted/70"
+          className="rounded-corner-md bg-surface-container-low p-5 text-center transition-colors duration-150 ease-out hover:bg-surface-container-high"
           onDragOver={(event) => event.preventDefault()}
           onDrop={onDrop}
         >
@@ -147,12 +147,12 @@ export function DocumentsPanel({
           <span className="mx-auto flex size-9 items-center justify-center rounded-full bg-background/80">
             <Upload className="text-muted-foreground size-4" aria-hidden="true" />
           </span>
-          <p className="mt-2 text-sm font-medium">Drop a file here</p>
-          <p className="text-muted-foreground mt-1 text-xs">PDF, Word, image or text, up to 10 MB</p>
+          <p className="mt-2 text-title-small">Drop a file here</p>
+          <p className="text-muted-foreground mt-1 text-body-small">PDF, Word, image or text, up to 10 MB</p>
           <Button
-            className="mt-3 rounded-full"
+            className="mt-3"
             size="sm"
-            variant="secondary"
+            variant="tonal"
             onClick={() => inputRef.current?.click()}
             disabled={upload.isPending}
           >
@@ -162,7 +162,7 @@ export function DocumentsPanel({
 
         {documents.length === 0 ? (
           <div className="py-3 text-center">
-            <p className="text-sm font-medium">No documents yet</p>
+            <p className="text-title-small">No documents yet</p>
           </div>
         ) : (
           <ul className="divide-y divide-foreground/10">
@@ -177,17 +177,17 @@ export function DocumentsPanel({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium" title={document.filename}>
+                          <p className="truncate text-title-small" title={document.filename}>
                             {document.filename}
                           </p>
-                          <p className="text-muted-foreground text-xs">
+                          <p className="text-muted-foreground text-body-small">
                             {formatBytes(document.size_bytes)} · {formatAbsoluteDateTime(document.created_at)}
                           </p>
                         </div>
                         <DocumentStatus document={document} />
                       </div>
                       {document.ingest_summary ? (
-                        <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+                        <p className="text-muted-foreground mt-2 text-body-small">
                           {document.ingest_summary}
                         </p>
                       ) : null}
@@ -197,7 +197,6 @@ export function DocumentsPanel({
                     {canRemint ? (
                       <Button
                         size="sm"
-                        className="rounded-full"
                         variant="ghost"
                         onClick={() => remint.mutate(document.id)}
                         disabled={remint.isPending || remove.isPending}
@@ -234,9 +233,9 @@ function DocumentStatus({ document }: { document: KBDocumentOut }) {
   return (
     <span
       className={cn(
-        "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium",
+        "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-label-medium",
         failed && "bg-destructive/10 text-destructive",
-        minted && "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
+        minted && "bg-success-container text-on-success-container",
         !failed && !minted && "bg-muted text-muted-foreground",
       )}
     >
@@ -244,7 +243,7 @@ function DocumentStatus({ document }: { document: KBDocumentOut }) {
         className={cn(
           "size-1.5 rounded-full",
           failed && "bg-destructive",
-          minted && "bg-emerald-600 dark:bg-emerald-400",
+          minted && "bg-success",
           !failed && !minted && "bg-muted-foreground/50",
         )}
       />

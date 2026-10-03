@@ -136,7 +136,7 @@ export function FormFillingSection() {
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor={engineId}>Form filling decisions</Label>
-            <p id={engineHintId} className="text-muted-foreground text-xs">
+            <p id={engineHintId} className="text-muted-foreground text-body-small">
               {data.api_key_configured
                 ? "Used when the Companion fills a form with saved answers and AI."
                 : "Save a Jev API key to choose Jev."}

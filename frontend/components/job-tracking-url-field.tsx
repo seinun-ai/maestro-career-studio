@@ -67,7 +67,7 @@ export function JobTrackingUrlField({
   return (
     <div className="grid gap-1.5">
       <div className="flex items-center justify-between gap-2">
-        <Label htmlFor={id} className="text-xs">
+        <Label htmlFor={id} className="text-label-medium">
           {label}
         </Label>
         {href ? (
@@ -75,7 +75,7 @@ export function JobTrackingUrlField({
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-body-small"
           >
             Open
             <ExternalLink className="size-3" />
@@ -83,14 +83,14 @@ export function JobTrackingUrlField({
         ) : null}
       </div>
       {description ? (
-        <p id={`${id}-hint`} className="text-muted-foreground text-xs">
+        <p id={`${id}-hint`} className="text-muted-foreground text-body-small">
           {description}
         </p>
       ) : null}
       <Input
         id={id}
         type="url"
-        className="h-8 text-sm"
+        className="h-8 text-body-medium"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={save}

@@ -50,19 +50,19 @@ export function TailoringLiftChart({ filters }: { filters: TopSkillsFilters }) {
 
   if (isLoading) return <Skeleton className="h-80 w-full" />;
   if (!data || data.length === 0) {
-    return <p className="text-muted-foreground text-sm">No data yet.</p>;
+    return <p className="text-muted-foreground text-body-medium">No data yet.</p>;
   }
 
   return (
     <div>
       {overall ? (
-        <p className="text-muted-foreground mb-2 text-xs">
+        <p className="text-muted-foreground mb-2 text-body-small">
           Overall (all roles): {overall.avg_base.toFixed(1)} →{" "}
           {overall.avg_tailored.toFixed(1)}{" "}
           <span
             className={
               overall.avg_lift >= 0
-                ? "text-emerald-700 dark:text-emerald-400"
+                ? "text-success"
                 : "text-destructive"
             }
           >
@@ -74,13 +74,13 @@ export function TailoringLiftChart({ filters }: { filters: TopSkillsFilters }) {
         </p>
       ) : null}
       {chartData.some((r) => r.low_sample) && !overall?.low_sample ? (
-        <p className="text-muted-foreground mb-2 text-xs">
+        <p className="text-muted-foreground mb-2 text-body-small">
           Some roles have fewer than 5 applications, so treat those bars as
           rough.
         </p>
       ) : null}
       {chartData.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body-medium">
           No tailored resumes to compare yet.
         </p>
       ) : (

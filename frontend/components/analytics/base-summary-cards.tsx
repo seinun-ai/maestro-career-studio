@@ -16,11 +16,11 @@ import type { BaseSummaryRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const GRADE_STYLES: Record<string, string> = {
-  A: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
-  B: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
-  C: "bg-amber-500/15 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200",
-  D: "bg-destructive/10 text-destructive",
-  F: "bg-destructive/10 text-destructive",
+  A: "bg-success-container text-on-success-container",
+  B: "bg-success-container text-on-success-container",
+  C: "bg-warning-container text-on-warning-container",
+  D: "bg-attention-container text-on-attention-container",
+  F: "bg-error-container text-on-error-container",
 };
 
 export function BaseSummaryCards() {
@@ -54,13 +54,13 @@ export function BaseSummaryCards() {
     );
   }
   if ((data ?? []).length === 0) {
-    return <p className="text-muted-foreground text-sm">No base resumes yet.</p>;
+    return <p className="text-muted-foreground text-body-medium">No base resumes yet.</p>;
   }
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {(data ?? []).map((row) => (
-        <Card key={row.slug} className="rounded-2xl">
+        <Card key={row.slug}>
           <CardHeader className="flex flex-row items-start justify-between gap-2">
             <CardTitle>
               <Link
@@ -73,7 +73,7 @@ export function BaseSummaryCards() {
             {row.health_grade ? (
               <span
                 className={cn(
-                  "inline-flex h-6 shrink-0 items-center rounded-full px-2 text-xs font-medium",
+                  "inline-flex h-6 shrink-0 items-center rounded-full px-2 text-label-medium",
                   GRADE_STYLES[row.health_grade] ?? "bg-muted text-muted-foreground",
                 )}
                 title={
@@ -85,7 +85,7 @@ export function BaseSummaryCards() {
                 Health {row.health_grade}
               </span>
             ) : (
-              <span className="text-muted-foreground inline-flex h-6 shrink-0 items-center rounded-full bg-muted px-2 text-xs">
+              <span className="text-muted-foreground inline-flex h-6 shrink-0 items-center rounded-full bg-muted px-2 text-body-small">
                 Health not checked yet
               </span>
             )}
@@ -115,7 +115,7 @@ export function BaseSummaryCards() {
               <InlineStat label="In progress" value={String(row.in_flight)} />
             </div>
             {row.last_activity ? (
-              <p className="text-muted-foreground mt-3 text-xs">
+              <p className="text-muted-foreground mt-3 text-body-small">
                 Active {formatTimeAgo(row.last_activity)}
               </p>
             ) : null}

@@ -318,32 +318,32 @@ export function SendToResumeDialog({
                 </SelectContent>
               </Select>
               {resumes.error && (
-                <p role="alert" className="text-destructive text-xs">
+                <p role="alert" className="text-destructive text-body-small">
                   {couldnt("load your resumes", resumes.error)}
                 </p>
               )}
               {!resumes.isLoading && !resumes.error && targets.length === 0 && (
-                <p className="text-muted-foreground text-xs">
+                <p className="text-muted-foreground text-body-small">
                   You have no base resumes yet.
                 </p>
               )}
             </div>
 
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Approved bullets</legend>
+              <legend className="text-title-small">Approved bullets</legend>
               {approved.length === 0 ? (
-                <p className="text-muted-foreground rounded-xl bg-muted/45 p-3 text-xs">
+                <p className="text-muted-foreground rounded-corner-md bg-surface-container-low p-3 text-body-small">
                   No approved bullets. Its title and dates can still be added.
                 </p>
               ) : (
-                <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl bg-muted/45 p-3">
+                <div className="max-h-72 space-y-2 overflow-y-auto rounded-corner-md bg-surface-container-low p-3">
                   {approved.map((point) => (
                     <label
                       key={point.id}
-                      className="flex cursor-pointer items-start gap-3 text-sm"
+                      className="flex cursor-pointer items-start gap-3 text-body-medium"
                     >
-                      <Checkbox checked={selected.has(point.id)} onCheckedChange={() => toggle(point.id)} disabled={pending} className="mt-1" />
-                      <span className="leading-relaxed">{point.text}</span>
+                      <Checkbox checked={selected.has(point.id)} onCheckedChange={() => toggle(point.id)} disabled={pending} className="mt-0.5" />
+                      <span>{point.text}</span>
                     </label>
                   ))}
                 </div>
@@ -354,7 +354,7 @@ export function SendToResumeDialog({
           <div className="max-h-96 space-y-4 overflow-y-auto">
             <ul className="space-y-2">
               {rows.map((row) => (
-                <li key={row.key} className="rounded-xl bg-muted/45 p-3">
+                <li key={row.key} className="rounded-corner-md bg-surface-container-low p-3">
                   {editingKey === row.key ? (
                     <div className="space-y-2">
                       <Textarea
@@ -374,7 +374,6 @@ export function SendToResumeDialog({
                       />
                       <div className="flex justify-end gap-2">
                         <Button
-                          className="rounded-full"
                           size="sm"
                           variant="ghost"
                           onClick={() => setEditingKey(null)}
@@ -382,7 +381,7 @@ export function SendToResumeDialog({
                           <X aria-hidden="true" /> Cancel
                         </Button>
                         <Button
-                          className="rounded-full px-4"
+                          className="px-4"
                           size="sm"
                           onClick={saveEdit}
                           disabled={!editText.trim()}
@@ -393,11 +392,11 @@ export function SendToResumeDialog({
                     </div>
                   ) : (
                     <div className="flex items-start gap-3">
-                      <Checkbox checked={row.included} onCheckedChange={() => toggleRow(row.key)} disabled={pending} className="mt-1" />
+                      <Checkbox checked={row.included} onCheckedChange={() => toggleRow(row.key)} disabled={pending} className="mt-0.5" />
                       <div className="min-w-0 flex-1">
                         <p
                           className={cn(
-                            "text-sm leading-relaxed",
+                            "text-body-medium",
                             !row.included && "text-muted-foreground line-through",
                           )}
                         >
@@ -405,7 +404,7 @@ export function SendToResumeDialog({
                         </p>
                         {row.replaces !== null &&
                         existingBullets[row.replaces] !== undefined ? (
-                          <p className="text-muted-foreground mt-1 text-xs line-through">
+                          <p className="text-muted-foreground mt-1 text-body-small line-through">
                             {existingBullets[row.replaces]}
                           </p>
                         ) : null}
@@ -413,7 +412,7 @@ export function SendToResumeDialog({
                           ? row.sourcePointIds.map((id) => {
                               const source = pointText.get(id);
                               return source ? (
-                                <p key={id} className="text-muted-foreground mt-1 text-xs">
+                                <p key={id} className="text-muted-foreground mt-1 text-body-small">
                                   <span className="font-medium">From bullet:</span> {source}
                                 </p>
                               ) : null;
@@ -422,7 +421,7 @@ export function SendToResumeDialog({
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <span
                             className={cn(
-                              "inline-flex h-6 items-center rounded-full px-2 text-xs font-medium",
+                              "inline-flex h-6 items-center rounded-full px-2 text-label-medium",
                               ACTION_CHIPS[row.action].chip,
                             )}
                           >
@@ -432,7 +431,7 @@ export function SendToResumeDialog({
                               : ""}
                           </span>
                           {row.reason ? (
-                            <span className="text-muted-foreground text-xs">
+                            <span className="text-muted-foreground text-body-small">
                               {row.reason}
                             </span>
                           ) : null}
@@ -456,27 +455,27 @@ export function SendToResumeDialog({
 
             {dropped.length > 0 ? (
               <div className="space-y-2">
-                <p className="text-muted-foreground text-xs font-medium">
+                <p className="text-muted-foreground text-label-medium">
                   Already on this resume
                 </p>
                 <ul className="space-y-2">
                   {dropped.map((item) => (
                     <li
                       key={item.point_id}
-                      className="flex items-start gap-3 rounded-xl bg-muted/30 p-3"
+                      className="flex items-start gap-3 rounded-corner-md p-3"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-muted-foreground text-sm leading-relaxed">
+                        <p className="text-muted-foreground text-body-medium">
                           {pointText.get(item.point_id) ?? "Unknown bullet"}
                         </p>
                         {item.reason ? (
-                          <p className="text-muted-foreground mt-1 text-xs">
+                          <p className="text-muted-foreground mt-1 text-body-small">
                             {item.reason}
                           </p>
                         ) : null}
                       </div>
                       <Button
-                        className="rounded-full shrink-0"
+                        className="shrink-0"
                         size="sm"
                         variant="ghost"
                         onClick={() => restoreDropped(item)}
@@ -496,7 +495,6 @@ export function SendToResumeDialog({
           {step === "select" ? (
             <>
               <Button
-                className="rounded-full"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
                 disabled={pending}
@@ -504,7 +502,7 @@ export function SendToResumeDialog({
                 Close
               </Button>
               <Button
-                className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 variant={adaptable ? "outline" : "default"}
                 onClick={() => portOnce()}
                 disabled={!targetSlug || nothingSelected || pending}
@@ -520,7 +518,7 @@ export function SendToResumeDialog({
               </Button>
               {adaptable ? (
                 <Button
-                  className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+                  className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                   onClick={() => adaptOnce()}
                   disabled={!targetSlug || selected.size === 0 || pending}
                   focusableWhenDisabled
@@ -533,7 +531,6 @@ export function SendToResumeDialog({
           ) : (
             <>
               <Button
-                className="rounded-full"
                 variant="ghost"
                 onClick={() => setStep("select")}
                 disabled={pending}
@@ -542,7 +539,7 @@ export function SendToResumeDialog({
               </Button>
               <Button
                 ref={applyRef}
-                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+                className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => applyOnce()}
                 // Also disabled mid-edit: the pending textarea text is not in
                 // `rows` yet, so applying would silently use the old text.

@@ -14,7 +14,7 @@ export function LatexEditor({
   readOnly?: boolean;
 }) {
   return (
-    <div className="h-full overflow-hidden rounded-md border">
+    <div className="h-full overflow-hidden rounded-corner-md border">
       <Editor
         height={height}
         language="latex"

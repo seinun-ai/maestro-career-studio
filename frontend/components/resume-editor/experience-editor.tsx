@@ -39,7 +39,7 @@ export function ExperienceEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 text-body-medium">
         <ActiveArchivedCount items={value} />
       </div>
 
@@ -57,7 +57,7 @@ export function ExperienceEditor({
             read={
               <div className="flex flex-col gap-2 pr-16">
                 <div className="flex items-baseline justify-between gap-4">
-                  <div className="text-foreground flex items-center gap-2 text-sm font-semibold">
+                  <div className="text-foreground flex items-center gap-2 text-title-small">
                     <span>
                       {entry.role || (
                         <em className="opacity-60">Untitled role</em>
@@ -71,14 +71,14 @@ export function ExperienceEditor({
                     </span>
                     <HiddenBadge enabled={enabled} />
                   </div>
-                  <div className="text-muted-foreground text-xs whitespace-nowrap">
+                  <div className="text-muted-foreground text-body-small whitespace-nowrap">
                     {[entry.start_date, entry.end_date || "Present"]
                       .filter(Boolean)
                       .join(" – ") || "—"}
                   </div>
                 </div>
                 {entry.location && (
-                  <div className="text-muted-foreground text-xs">
+                  <div className="text-muted-foreground text-body-small">
                     {entry.location}
                   </div>
                 )}

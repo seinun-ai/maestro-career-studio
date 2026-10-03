@@ -39,7 +39,7 @@ export function Field({
         {label}
       </Label>
       {hint ? (
-        <p id={hintId} className="text-muted-foreground text-xs">
+        <p id={hintId} className="text-muted-foreground text-body-small">
           {hint}
         </p>
       ) : null}

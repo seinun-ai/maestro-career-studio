@@ -26,12 +26,12 @@ import { useSingleFlight } from "@/hooks/use-single-flight";
  *  and never reflows vertically when the query resolves or the count drops to
  *  zero. Width still varies with the label — a count pill and a "KB synced"
  *  chip are not the same words — so the min-width only keeps the pre-fetch placeholder
- *  from collapsing to a sliver. The `text-[0.8rem]` against HealthBadges'
- *  `text-sm` beside it is deliberate: the two chips match in height, and the
+ *  from collapsing to a sliver. The `text-body-small` against HealthBadges'
+ *  `text-body-medium` beside it is deliberate: the two chips match in height, and the
  *  smaller type keeps a secondary status from competing with the health grade. */
 const CHIP =
-  "inline-flex h-7 min-w-16 shrink-0 items-center gap-1.5 rounded-md border " +
-  "border-transparent bg-muted/40 px-2 text-[0.8rem]";
+  "inline-flex h-7 min-w-16 shrink-0 items-center gap-1.5 rounded-full border " +
+  "border-transparent bg-surface-container-low px-2 text-body-small";
 
 /*
  * The number on the pill (`syncActionableCount`) is what the career history does
@@ -106,7 +106,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
   if (isLoadFailure(query)) {
     return (
       <RetryChip
-        className={`${CHIP} text-muted-foreground hover:text-foreground hover:bg-muted/60 hover:border-border cursor-pointer transition-colors`}
+        className={`${CHIP} text-muted-foreground hover:text-foreground hover:bg-surface-container hover:border-border cursor-pointer transition-colors`}
         title="Couldn't check your career history. Try again."
         icon={<RefreshCw className="size-3.5" />}
         label="Career history unavailable"
@@ -179,11 +179,11 @@ export function KbSyncPill({ slug }: { slug: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-0.5">
             {/* Names the popup for screen readers via aria-labelledby. */}
-            <PopoverTitle className="text-muted-foreground text-xs font-medium">
+            <PopoverTitle className="text-muted-foreground text-label-medium">
               Ready to add to your career history
             </PopoverTitle>
             {syncBreakdownLines(status).map((line) => (
-              <p key={line} className="text-sm">
+              <p key={line} className="text-body-medium">
                 {line}
               </p>
             ))}
@@ -193,7 +193,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
             // add to your career history" is work about to be done, and this is the
             // opposite — already filed, and never added to the count. Listing
             // it there said the title was wrong about its own contents.
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground text-body-small">
               {recorded} wording {recorded === 1 ? "change" : "changes"} already noted
             </p>
           )}
@@ -210,7 +210,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
             </Button>
             <Link
               href="/career"
-              className="text-muted-foreground hover:text-foreground text-xs"
+              className="text-muted-foreground hover:text-foreground text-body-small"
             >
               Open career history
             </Link>

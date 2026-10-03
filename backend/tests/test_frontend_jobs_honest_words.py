@@ -279,7 +279,7 @@ def test_locked_tabs_say_why_and_show_a_panel():
 
 def test_the_job_header_keeps_its_title_and_drops_empty_facts():
     page = _read(_JOB_PAGE)
-    assert '<h1 className="text-[22px] font-medium tracking-tight break-words">' in page
+    assert '<h1 className="text-title-large font-medium tracking-tight break-words">' in page
     assert "jobMetaLine([" in page
     meta = _read("lib/job-meta.ts")
     assert 'if (!part || part === "Not stated") continue;' in meta and "if (seen.has(key)) continue;" in meta
@@ -420,9 +420,9 @@ def test_the_score_tab_says_why_undated_jobs_score_low():
     ]) == [True, False]
     panel = _read("components/ats-score-panel.tsx")
     assert "{datesUnreadable(score.subscores_json.format_flags) && (" in panel
-    assert "<p className=\"text-muted-foreground text-xs\">{UNREADABLE_DATES_NOTE}</p>" in panel
+    assert "<p className=\"text-muted-foreground text-body-small\">{UNREADABLE_DATES_NOTE}</p>" in panel
     # "11 of 100", not a bare 11.
-    assert '<span className="text-muted-foreground font-normal"> of 100</span>' in panel
+    assert '<span className="text-body-small text-muted-foreground"> of 100</span>' in panel
 
 
 def test_a_skill_with_no_example_never_contradicts_mentioned_in():
@@ -433,4 +433,4 @@ def test_a_skill_with_no_example_never_contradicts_mentioned_in():
     assert "These don't count as examples yet because we can't read a date on them." in words
     card = _read("components/gap-analysis/gap-card.tsx")
     assert "const undated = undatedEvidence(diagnostic.placement, entries);" in card
-    assert "{undated ? <p className=\"text-muted-foreground basis-full text-xs\">{UNDATED_EVIDENCE_NOTE}</p> : null}" in card
+    assert "{undated ? <p className=\"text-muted-foreground basis-full text-body-small\">{UNDATED_EVIDENCE_NOTE}</p> : null}" in card

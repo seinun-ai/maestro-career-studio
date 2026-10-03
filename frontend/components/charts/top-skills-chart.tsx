@@ -47,12 +47,12 @@ function SkillPill({
         render={
           <span
             className={cn(
-              "inline-flex cursor-default items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-colors",
+              "inline-flex cursor-default items-center gap-1.5 rounded-full border px-3 py-1 text-label-large transition-colors",
               pillClass,
             )}
             title={tooltip}
           >
-            <span className="text-on-secondary-container/80 text-[10px] font-semibold tabular-nums">
+            <span className="text-on-secondary-container/80 text-label-small tabular-nums">
               #{skill.rank}
             </span>
             {skillName(skill.skill_name)}
@@ -84,15 +84,15 @@ function SkillTileSection({
     <section className={cn(bandClass)}>
       <div className="flex gap-4 sm:gap-6">
         <div className="w-20 shrink-0 pt-1 text-right sm:w-24">
-          <p className="text-sm leading-tight font-semibold">{label}</p>
-          <p className="text-muted-foreground mt-0.5 text-xs tabular-nums">({count})</p>
+          <p className="text-title-small">{label}</p>
+          <p className="text-muted-foreground mt-0.5 text-body-small tabular-nums">({count})</p>
           {subtitle ? (
-            <p className="text-muted-foreground mt-0.5 text-xs">{subtitle}</p>
+            <p className="text-muted-foreground mt-0.5 text-body-small">{subtitle}</p>
           ) : null}
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap gap-2">
           {skills.length === 0 ? (
-            <p className="text-muted-foreground py-1 text-sm">No skills here.</p>
+            <p className="text-muted-foreground py-1 text-body-medium">No skills here.</p>
           ) : (
             skills.map((skill) => (
               <SkillPill
@@ -136,7 +136,7 @@ export function TopSkillsChart({
   }
   if (isLoading) return <Skeleton className="h-48 w-full" />;
   if (!data || (data.top.length === 0 && data.rest.length === 0)) {
-    return <p className="text-muted-foreground text-sm">No data yet.</p>;
+    return <p className="text-muted-foreground text-body-medium">No data yet.</p>;
   }
 
   return (
@@ -147,7 +147,7 @@ export function TopSkillsChart({
         count={data.meta.top_count}
         skills={data.top}
         pillClass="border-transparent bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
-        bandClass="bg-muted/30 rounded-lg p-3"
+        bandClass="bg-surface-container-low rounded-corner-md p-3"
       />
 
       <div className="border-border my-5 border-t" />
@@ -156,7 +156,7 @@ export function TopSkillsChart({
         label="Others"
         count={data.meta.total_skills - data.meta.top_count}
         skills={data.rest}
-        pillClass="border-border bg-background text-foreground hover:bg-muted/60 text-xs"
+        pillClass="border-border bg-background text-foreground hover:bg-surface-container-low text-body-small"
       />
     </div>
   );

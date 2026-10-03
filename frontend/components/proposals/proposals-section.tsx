@@ -19,6 +19,7 @@ import { CompanyMonogram } from "@/components/company-monogram";
 import { EmptyState } from "@/components/empty-state";
 import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
+import { FilterChips } from "@/components/filter-chips";
 import { ListToolbar } from "@/components/list-toolbar";
 import { useRoleLabel } from "@/components/role-category-picker";
 import {
@@ -30,7 +31,7 @@ import { IconButton } from "@/components/icon-button";
 import { humanizeEnum } from "@/components/job-extracted-fields";
 import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -187,9 +188,8 @@ export function ProposalsSection() {
   const [minScore, setMinScore] = useState<ScoreFloor | null>(null);
   const roleLabel = useRoleLabel();
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyStatus, setHistoryStatus] = useState<"all" | ProposalStatus>(
-    "all",
-  );
+  // The History statuses that are on; none on shows them all (FilterChips has no "All").
+  const [historyStatus, setHistoryStatus] = useState<ReadonlySet<ProposalStatus>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string> | null>(null);
   const [declineTarget, setDeclineTarget] = useState<
     { mode: "single"; id: string } | { mode: "bulk" } | null
@@ -273,9 +273,9 @@ export function ProposalsSection() {
   const historyAll = useMemo(() => inLane(filtered, "history"), [filtered]);
   const history = useMemo(() => {
     const scoped =
-      historyStatus === "all"
+      historyStatus.size === 0
         ? historyAll
-        : historyAll.filter((p) => p.status === historyStatus);
+        : historyAll.filter((p) => historyStatus.has(p.status));
     return sortProposals(scoped, sort);
   }, [historyAll, historyStatus, sort]);
 
@@ -456,7 +456,7 @@ export function ProposalsSection() {
             value={sort}
             onValueChange={(v) => setSort((v as SortKey) ?? "score")}
           >
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Sort">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Sort">
               <SelectValue>{SORT_LABELS[sort]}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -468,7 +468,7 @@ export function ProposalsSection() {
             </SelectContent>
           </Select>
           <Select value={role} onValueChange={(v) => setRole(v ?? "all")}>
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
               <SelectValue>{role === "all" ? "All roles" : roleLabel(role)}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -481,7 +481,7 @@ export function ProposalsSection() {
             </SelectContent>
           </Select>
           <Select value={board} onValueChange={(v) => setBoard(v ?? "all")}>
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Job board">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Job board">
               <SelectValue>{board === "all" ? "All boards" : board}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -499,7 +499,7 @@ export function ProposalsSection() {
               setMinScore(v && v !== "any" ? (Number(v) as ScoreFloor) : null)
             }
           >
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[8rem]" aria-label="Minimum score">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[8rem]" aria-label="Minimum score">
               <SelectValue>{scoreLabel(minScore)}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[10rem]">
@@ -539,7 +539,7 @@ export function ProposalsSection() {
 
           <Lane ref={toReview} title={`To review · ${triage.length}`}>
             {dayBatches.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Nothing to review.</p>
+              <p className="text-muted-foreground text-body-medium">Nothing to review.</p>
             ) : (
               dayBatches.map(({ day, items: dayItems }) => {
                 const open = effectiveExpandedDays.has(day);
@@ -550,7 +550,7 @@ export function ProposalsSection() {
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        className="text-muted-foreground inline-flex items-center gap-1 text-xs font-medium"
+                        className="text-muted-foreground inline-flex items-center gap-1 text-label-medium"
                         onClick={() => {
                           setExpandedDays((prev) => {
                             const base =
@@ -573,7 +573,7 @@ export function ProposalsSection() {
                         {dayItems.length === 1 ? "proposal" : "proposals"}
                       </button>
                       {open ? (
-                        <label className="text-muted-foreground ml-auto inline-flex items-center gap-1.5 text-xs">
+                        <label className="text-muted-foreground ml-auto inline-flex items-center gap-1.5 text-body-small">
                           <Checkbox checked={allSelected && ids.length > 0} onCheckedChange={(next) =>
                               selectAllShown(ids, next)} />
                           Select all shown
@@ -624,7 +624,7 @@ export function ProposalsSection() {
             <button
               id={historyId}
               type="button"
-              className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide"
+              className="text-muted-foreground inline-flex items-center gap-1.5 text-title-small"
               onClick={() => setHistoryOpen((v) => !v)}
             >
               <ChevronDown
@@ -638,32 +638,20 @@ export function ProposalsSection() {
             </button>
             {historyOpen ? (
               <>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="History status">
-                  {(
-                    [
-                      "all", ...INBOX_LANES.history,
-                    ] as const
-                  ).map((status) => {
-                    const active = historyStatus === status;
-                    const label =
-                      status === "all" ? "All" : STATUS_LABELS[status];
-                    return (
-                      <Button
-                        key={status}
-                        size="xs"
-                        variant={active ? "tonal" : "outline"}
-                        aria-pressed={active}
-                        className="rounded-full"
-                        onClick={() => setHistoryStatus(status)}
-                      >
-                        {active && <Check />}
-                        {label}
-                      </Button>
-                    );
-                  })}
-                </div>
+                <FilterChips
+                  label="History status"
+                  value={historyStatus}
+                  onChange={setHistoryStatus}
+                  options={INBOX_LANES.history.map((status) => ({
+                    value: status,
+                    label: STATUS_LABELS[status],
+                    count: historyAll.filter((p) => p.status === status).length,
+                  }))}
+                />
                 {history.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No history yet.</p>
+                  <p className="text-muted-foreground text-body-medium">
+                    {historyAll.length > 0 ? "No history with these statuses." : "No history yet."}
+                  </p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {history.map((p) => (
@@ -745,11 +733,11 @@ function Lane({
     // tabIndex={-1}: named by its heading, it takes focus when the last row acted on, or the bulk
     // bar, leaves it. Its rows sit in their own list, so a row's neighbours are rows.
     <section ref={ref} tabIndex={-1} aria-labelledby={headingId} className="flex flex-col gap-2 overflow-x-auto outline-none">
-      <h2 id={headingId} className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+      <h2 id={headingId} className="text-muted-foreground text-title-small">
         {title}
       </h2>
       {help.map((line) => (
-        <p key={line} className="text-muted-foreground max-w-[65ch] text-sm">
+        <p key={line} className="text-muted-foreground max-w-[65ch] text-body-medium">
           {line}
         </p>
       ))}
@@ -825,17 +813,17 @@ function ProposalRow({
             // and squeezed the title to a few letters at 768 and to nothing at
             // 375. Narrow, the chips wrap under the text and the decorative
             // monogram steps aside.
-            className="hover:bg-muted/40 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl p-3 text-left transition-colors sm:p-4"
+            className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-corner-md p-3 text-left transition-colors sm:p-4"
           >
             <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
             <div className="min-w-0 grow basis-[10rem]">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-sm font-medium">
+                <span className="truncate text-title-small">
                   {job.title ?? "Untitled role"}
                 </span>
                 {job.disqualifying_for_opt ? (
                   <span
-                    className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"
+                    className="text-warning inline-flex items-center gap-1 text-body-small"
                     title="OPT is the US student work permit"
                   >
                     <AlertTriangle className="size-3.5" aria-hidden="true" />
@@ -843,21 +831,21 @@ function ProposalRow({
                   </span>
                 ) : null}
                 {isDup ? (
-                  <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-400">
+                  <span className="inline-flex items-center rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
                     Possible duplicate
                   </span>
                 ) : null}
               </div>
-              <div className="text-muted-foreground truncate text-xs">
+              <div className="text-muted-foreground truncate text-body-small">
                 {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
               </div>
-              <div className="text-muted-foreground truncate text-xs" title={meta}>
+              <div className="text-muted-foreground truncate text-body-small" title={meta}>
                 {meta}
               </div>
-              {needs ? <p className="mt-1 text-xs break-words">{needs}</p> : null}
+              {needs ? <p className="mt-1 text-body-small break-words">{needs}</p> : null}
             </div>
             {base ? (
-              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-muted/70 px-2 py-0.5 text-xs sm:inline-flex">
+              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-body-small dark:bg-surface-container-highest sm:inline-flex">
                 {baseName}
                 {score != null ? ` · ATS score ${score}` : ""}
               </span>

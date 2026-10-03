@@ -56,14 +56,14 @@ const STATUSES: { value: KBEntityStatus; label: string; chip: string; dot: strin
   {
     value: "ongoing",
     label: KB_STATUS_LABELS.ongoing,
-    chip: "bg-blue-600/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
-    dot: "bg-blue-600 dark:bg-blue-400",
+    chip: "bg-primary-container text-on-primary-container",
+    dot: "bg-primary",
   },
   {
     value: "completed",
     label: KB_STATUS_LABELS.completed,
-    chip: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
-    dot: "bg-emerald-600 dark:bg-emerald-400",
+    chip: "bg-success-container text-on-success-container",
+    dot: "bg-success",
   },
   {
     value: "archived",
@@ -116,17 +116,16 @@ export function EntityDetail({ entityId }: { entityId: string }) {
   if (loadError != null) {
     return (
       <PageShell>
-        <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
+        <div role="alert" className="rounded-corner-md bg-destructive/10 p-5">
           <p className="font-medium">Couldn&apos;t load this career item.</p>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="text-muted-foreground mt-1 text-body-medium">
             {loadErrorDetail(loadError, "career item")}
           </p>
           <div className="mt-4 flex gap-2">
-            <Button className="rounded-full" variant="secondary" onClick={() => void entity.refetch()}>
+            <Button variant="outline" onClick={() => void entity.refetch()}>
               Try again
             </Button>
             <Button
-              className="rounded-full"
               variant="ghost"
               nativeButton={false}
               render={<Link href="/career">Back to career history</Link>}
@@ -141,10 +140,10 @@ export function EntityDetail({ entityId }: { entityId: string }) {
     return (
       <PageShell>
         <Skeleton className="h-8 w-36" />
-        <Skeleton className="h-44 w-full rounded-2xl" />
+        <Skeleton className="h-44 w-full rounded-corner-md" />
         <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
-          <Skeleton className="h-96 w-full rounded-2xl" />
-          <Skeleton className="h-96 w-full rounded-2xl" />
+          <Skeleton className="h-96 w-full rounded-corner-md" />
+          <Skeleton className="h-96 w-full rounded-corner-md" />
         </div>
       </PageShell>
     );
@@ -155,7 +154,6 @@ export function EntityDetail({ entityId }: { entityId: string }) {
       <PageShell>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button
-            className="rounded-full"
             variant="ghost"
             size="sm"
             nativeButton={false}
@@ -166,11 +164,10 @@ export function EntityDetail({ entityId }: { entityId: string }) {
             }
           />
           <div className="flex items-center gap-2">
-            <Button className="rounded-full px-4" onClick={() => setSendOpen(true)}>
+            <Button className="px-4" onClick={() => setSendOpen(true)}>
               <Send aria-hidden="true" /> Add to a resume
             </Button>
             <Button
-              className="rounded-full"
               variant="ghost"
               onClick={() => void requestDelete()}
               disabled={remove.isPending}
@@ -267,7 +264,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
 
   if (editing) {
     return (
-      <section className="animate-fade-rise rounded-2xl bg-muted/45 p-5 sm:p-6">
+      <section className="animate-fade-rise rounded-corner-md bg-surface-container-low p-5 sm:p-6">
         <form
           // The start date carries a hint the end date lacks: inputs align on
           // their bottom edge, not their labels.
@@ -300,7 +297,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
             <Label htmlFor="kb-entity-start" optional>
               Start date
             </Label>
-            <p id="kb-entity-start-hint" className="text-muted-foreground text-xs">
+            <p id="kb-entity-start-hint" className="text-muted-foreground text-body-small">
               Month and year, like Jan 2025.
             </p>
             <Input
@@ -342,10 +339,10 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
             </Select>
           </div>
           <div className="flex items-end justify-end gap-2">
-            <Button className="rounded-full" type="button" variant="ghost" onClick={reset} disabled={save.isPending}>
+            <Button type="button" variant="ghost" onClick={reset} disabled={save.isPending}>
               <X aria-hidden="true" /> Cancel
             </Button>
-            <Button className="rounded-full px-4" type="submit" disabled={!title.trim() || save.isPending}>
+            <Button className="px-4" type="submit" disabled={!title.trim() || save.isPending}>
               {save.isPending ? "Saving…" : "Save details"}
             </Button>
           </div>
@@ -355,11 +352,11 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
   }
 
   return (
-    <section className="animate-fade-rise rounded-2xl bg-muted/45 px-5 py-6 sm:px-6">
+    <section className="animate-fade-rise rounded-corner-md bg-surface-container-low px-5 py-6 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="bg-background/80 text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium">
+            <span className="bg-background/80 text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-label-medium">
               {entity.kind === "extra" && entity.section_title
                 ? entity.section_title
                 : KB_KIND_LABELS[entity.kind]}
@@ -375,8 +372,8 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
               }
             />
           </div>
-          <h1 className="mt-3 text-[22px] font-medium tracking-tight">{entity.title}</h1>
-          <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <h1 className="mt-3 text-title-large font-medium tracking-tight">{entity.title}</h1>
+          <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-body-medium">
             {entity.org ? <span>{entity.org}</span> : null}
             {dateRange ? (
               <span className="inline-flex items-center gap-1.5">
@@ -388,7 +385,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
         </div>
         <Button
           // Always shown: a hover-only Edit read as details you couldn't change.
-          className="text-muted-foreground rounded-full"
+          className="text-muted-foreground"
           size="sm"
           variant="ghost"
           onClick={() => setEditing(true)}
@@ -420,7 +417,7 @@ function EntityStatusChip({
             aria-label={`Status: ${current.label}. Change status`}
             disabled={pending}
             className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
+              "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-label-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
               current.chip,
             )}
           >

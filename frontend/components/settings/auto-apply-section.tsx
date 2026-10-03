@@ -160,7 +160,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
                 read it before you type, not after. A field whose label
                 already says it carries no hint at all. */}
             {f.hint && (
-              <p id={`aa-${f.key}-hint`} className="text-muted-foreground text-xs">
+              <p id={`aa-${f.key}-hint`} className="text-muted-foreground text-body-small">
                 {f.hint}
               </p>
             )}
@@ -182,7 +182,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="aa-blocklist">Companies to skip</Label>
-        <p id="aa-blocklist-hint" className="text-muted-foreground text-xs">
+        <p id="aa-blocklist-hint" className="text-muted-foreground text-body-small">
           {/* The server refuses only a proposal here (routers/proposals.py):
               an agent can still save a job at one of these companies. */}
           Connected agents can&apos;t propose jobs at these companies.
@@ -195,7 +195,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
                 key={name}
                 // min-h, not h: on a coarse pointer the × is 44px, and a
                 // fixed 28px chip let it overlap the row below.
-                className="bg-muted inline-flex min-h-7 items-center gap-1 rounded-full pr-0.5 pl-3 text-xs"
+                className="bg-muted inline-flex min-h-7 items-center gap-1 rounded-full pr-0.5 pl-3 text-body-small"
               >
                 {name}
                 <IconButton

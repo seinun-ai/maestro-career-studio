@@ -56,7 +56,7 @@ export function EducationEditor({
             read={
               <div className="flex flex-col gap-2 pr-16">
                 <div className="flex items-baseline justify-between gap-4">
-                  <div className="text-foreground text-sm font-semibold">
+                  <div className="text-foreground text-title-small">
                     {title || (
                       <em className="opacity-60">Untitled degree</em>
                     )}
@@ -67,21 +67,21 @@ export function EducationEditor({
                       </>
                     )}
                   </div>
-                  <div className="text-muted-foreground text-xs whitespace-nowrap">
+                  <div className="text-muted-foreground text-body-small whitespace-nowrap">
                     {dateLine || "—"}
                   </div>
                 </div>
                 {subLine && (
-                  <div className="text-muted-foreground text-xs">{subLine}</div>
+                  <div className="text-muted-foreground text-body-small">{subLine}</div>
                 )}
                 {entry.coursework.length > 0 && (
-                  <div className="text-foreground/90 text-sm">
+                  <div className="text-foreground/90 text-body-medium">
                     <span className="text-muted-foreground">Coursework: </span>
                     {entry.coursework.join(" · ")}
                   </div>
                 )}
                 {entry.bullets.length > 0 && (
-                  <ul className="text-foreground/90 ml-4 list-disc space-y-1 text-sm">
+                  <ul className="text-foreground/90 ml-4 list-disc space-y-1 text-body-medium">
                     {entry.bullets.map((b, bi) => (
                       <li key={bi}>{b}</li>
                     ))}

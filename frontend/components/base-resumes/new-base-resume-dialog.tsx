@@ -495,7 +495,7 @@ function NewBaseResumeForm({
                   Name
                 </Label>
                 {mode === "file" ? (
-                  <p id={ids.nameHint} className="text-muted-foreground text-xs">
+                  <p id={ids.nameHint} className="text-muted-foreground text-body-small">
                     Defaults to the file name.
                   </p>
                 ) : null}
@@ -549,7 +549,7 @@ function NewBaseResumeForm({
                 <Label htmlFor={ids.instruction} optional>
                   Focus
                 </Label>
-                <p id={ids.instructionHint} className="text-muted-foreground text-xs">
+                <p id={ids.instructionHint} className="text-muted-foreground text-body-small">
                   Guides which items are picked and the tone of the summary.
                   Your bullets are never rewritten.
                 </p>
@@ -582,30 +582,30 @@ function NewBaseResumeForm({
                   {plan ? "Suggest again" : "Suggest items"}
                 </Button>
                 {!tag && (
-                  <span className="text-muted-foreground ml-2 text-xs">
+                  <span className="text-muted-foreground ml-2 text-body-small">
                     Choose a target role first.
                   </span>
                 )}
               </div>
 
               {entities.isLoading ? (
-                <p className="text-muted-foreground text-sm">Loading your career history…</p>
+                <p className="text-muted-foreground text-body-medium">Loading your career history…</p>
               ) : selectable.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
+                <p className="text-muted-foreground text-body-medium">
                   Nothing to pick yet. Import a resume into your career history
                   first.
                 </p>
               ) : (
-                <ul className="max-h-64 divide-y overflow-y-auto rounded-lg border px-3">
+                <ul className="max-h-64 divide-y overflow-y-auto rounded-corner-md border px-3">
                   {selectable.map((entity) => (
                     <li key={entity.id} className="py-2.5">
                       <label className="flex cursor-pointer items-start gap-3">
                         <Checkbox checked={selected.has(entity.id)} onCheckedChange={() => toggle(entity.id)} disabled={busy} className="mt-0.5" />
                         <span className="min-w-0">
-                          <span className="block text-sm font-medium">
+                          <span className="block text-title-small">
                             {entity.title}
                           </span>
-                          <span className="text-muted-foreground block text-xs">
+                          <span className="text-muted-foreground block text-body-small">
                             {KB_KIND_LABELS[entity.kind]}
                             {entity.org ? ` · ${entity.org}` : ""}
                             {/* A bullet count is only meaningful where the
@@ -624,15 +624,15 @@ function NewBaseResumeForm({
 
               {plan && plan.exclude.length > 0 && (
                 <div className="grid gap-1">
-                  <p className="text-sm font-medium">Not included</p>
-                  <ul className="text-muted-foreground space-y-0.5 text-xs">
+                  <p className="text-title-small">Not included</p>
+                  <ul className="text-muted-foreground space-y-0.5 text-body-small">
                     {plan.exclude.map((x) => (
                       <li key={x.id}>
                         <span className="font-medium">{x.title}</span>: {x.reason}
                       </li>
                     ))}
                   </ul>
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground text-body-small">
                     Select any above to include it.
                   </p>
                 </div>
@@ -646,7 +646,7 @@ function NewBaseResumeForm({
                   {/* The plan drafts this summary (base_from_kb_plan), so the
                       field arrives filled: the hint asks for a check. It sits
                       between label and field, where it survives typing. */}
-                  <p id={ids.summaryHint} className="text-muted-foreground text-xs">
+                  <p id={ids.summaryHint} className="text-muted-foreground text-body-small">
                     Check this summary, or clear it.
                   </p>
                   <Textarea
@@ -685,7 +685,7 @@ function NewBaseResumeForm({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-muted-foreground text-xs">
+                <p className="text-muted-foreground text-body-small">
                   Copies the whole document, including its template and formatting.
                 </p>
               </div>
@@ -715,7 +715,7 @@ function NewBaseResumeForm({
                     }}
                     roleCategories={roleCategories}
                   />
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground text-body-small">
                     Copied from the original. Typing a name may suggest a new
                     role.
                   </p>
@@ -736,13 +736,13 @@ function NewBaseResumeForm({
                 }}
               />
               {file && (
-                <p className="text-sm">
+                <p className="text-body-medium">
                   <span className="text-muted-foreground">Selected: </span>
                   <span className="font-medium">{file.name}</span>
                 </p>
               )}
               {fileRejected.length > 0 && (
-                <ul className="space-y-1 text-xs">
+                <ul className="space-y-1 text-body-small">
                   {fileRejected.map((r) => (
                     <li key={r.file.name} className="text-muted-foreground truncate">
                       <span className="font-medium">{r.file.name}</span>: {r.reason}
@@ -750,7 +750,7 @@ function NewBaseResumeForm({
                   ))}
                 </ul>
               )}
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-body-small">
                 We&apos;ll turn the file into a resume you can edit. It won&apos;t be
                 added to your career history. You can add it later from the
                 resume.
@@ -758,7 +758,7 @@ function NewBaseResumeForm({
             </TabsContent>
 
             <TabsContent value="blank">
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-body-medium">
                 An empty document you fill in yourself.
               </p>
             </TabsContent>
@@ -782,7 +782,7 @@ function NewBaseResumeForm({
             Close
           </Button>
           {blocked ? (
-            <p id={ids.blocked} className="text-muted-foreground self-center text-xs">
+            <p id={ids.blocked} className="text-muted-foreground self-center text-body-small">
               {blocked}
             </p>
           ) : null}

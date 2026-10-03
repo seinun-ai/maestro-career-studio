@@ -3,9 +3,9 @@ import { cn } from "@/lib/utils";
 /**
  * The one KPI tile.
  *
- * There were three: `StatTile` in analytics-overview (`rounded-xl p-4`),
- * `MetricCard` in explore-overview (`rounded-md p-3`), and `Stat` in
- * base-summary-cards (no box, `text-sm` value) — so the four Analytics tabs
+ * There were three: `StatTile` in analytics-overview (a 14px corner and `p-4`),
+ * `MetricCard` in explore-overview (an 8px corner and `p-3`), and `Stat` in
+ * base-summary-cards (no box, `text-title-small` value) — so the four Analytics tabs
  * showed the same kind of number three different ways.
  *
  * The first two were the same component with a different radius and padding,
@@ -26,19 +26,21 @@ export function StatTile({
   className?: string;
 }) {
   return (
-    <div className={cn("bg-muted/40 rounded-xl p-4", className)}>
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="text-foreground mt-0.5 text-xl font-medium">{value}</p>
+    <div className={cn("bg-surface-container-low rounded-corner-md p-4", className)}>
+      <p className="text-body-small text-muted-foreground">{label}</p>
+      <p className="text-title-large text-foreground mt-0.5 font-medium">
+        {value}
+      </p>
       {sub ? (
-        <p className="text-muted-foreground mt-0.5 text-xs">{sub}</p>
+        <p className="text-body-small text-muted-foreground mt-0.5">{sub}</p>
       ) : null}
     </div>
   );
 }
 
 /**
- * A stat rendered inside an existing card — no box of its own, and a body-sized
- * value rather than the tile's display size, because it sits in a row of peers
+ * A stat rendered inside an existing card — no box of its own, and a title-small
+ * value rather than the tile's title-large size, because it sits in a row of peers
  * rather than standing alone on the page.
  */
 export function InlineStat({
@@ -50,8 +52,8 @@ export function InlineStat({
 }) {
   return (
     <div>
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="text-sm font-medium">{value}</p>
+      <p className="text-muted-foreground text-body-small">{label}</p>
+      <p className="text-title-small">{value}</p>
     </div>
   );
 }

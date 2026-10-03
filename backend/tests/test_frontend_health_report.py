@@ -572,7 +572,7 @@ def test_slip_fix_reads_the_backend_issue_sentence():
 def test_wording_rows_hand_focus_on_when_they_leave():
     src = _wording()
     group = _checklist()
-    assert '<div tabIndex={-1} className="rounded-md border outline-none">' in group
+    assert '<div tabIndex={-1} className="rounded-corner-md border outline-none">' in group
     leave = _fn(src, "function useSuccessorOnLeave(")
     assert "useLayoutEffect(" in leave and "row.contains(document.activeElement)" in leave
     assert 'focusSuccessor(row, "[data-wording-action]")' in leave
@@ -670,7 +670,7 @@ def test_one_filled_button_per_view():
 
 def test_no_numbers_anywhere_is_a_highlighted_callout_not_a_note():
     assert "noNumbers &&" in _BAND
-    assert "bg-amber-50" in _BAND and "dark:bg-amber-950" in _BAND
+    assert "bg-warning-container" in _BAND and "text-on-warning-container" in _BAND
     for part in ("{noNumbers.label}", "{noNumbers.issue}", "{noNumbers.why}", "{noNumbers.how}"):
         assert part in _BAND
     # It links to the Needs a number tab only when that tab has something in it.
@@ -701,7 +701,7 @@ def test_findings_are_grouped_by_action_in_six_tabs():
     for tab in ("shorten", "notes", "done"):
         assert f'<TabsContent value="{tab}" keepMounted data-health-tab="{tab}"' in _PAGE
     # Plain counts on the tabs, said in one phrase in the name.
-    assert '<span className="tabular-nums">{countOf(t.id)}</span>' in _PAGE
+    assert '<span className="tabular-nums text-muted-foreground">{countOf(t.id)}</span>' in _PAGE
     assert "aria-label={`${t.label} ${countOf(t.id)}`}" in _PAGE
 
 

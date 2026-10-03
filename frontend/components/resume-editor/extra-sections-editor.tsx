@@ -92,12 +92,12 @@ export function ExtraSectionsEditor({
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-body-small">
         Dates here don&apos;t count as work history.
       </p>
 
       {value.length === 0 ? (
-        <p className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-sm italic">
+        <p className="text-muted-foreground rounded-corner-md border border-dashed px-3 py-6 text-center text-body-medium italic">
           No other sections yet.
         </p>
       ) : (
@@ -198,18 +198,18 @@ function SectionCard({
         <div
           ref={cardRef}
           className={cn(
-            "rounded-lg border p-3",
-            !enabled && "bg-muted/20 opacity-70",
-            editing && "bg-muted/20",
+            "rounded-corner-md border p-3",
+            !enabled && "opacity-70",
+            editing && "bg-surface-container-low",
           )}
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-1.5">
               <DragHandle {...handle} label={`Drag ${sectionName} to move it`} />
-              <span className="truncate text-sm font-semibold">
+              <span className="truncate text-title-small">
                 {section.title || <em className="opacity-60">Untitled section</em>}
               </span>
-              <Badge variant="secondary" className="shrink-0 text-xs font-normal">
+              <Badge variant="secondary" className="shrink-0 text-body-small">
                 {SECTION_TYPE_LABELS[section.type]}
               </Badge>
               <HiddenBadge enabled={enabled} />
@@ -309,7 +309,7 @@ function SectionCard({
                   className="max-w-sm"
                 />
                 {titleCollides && (
-                  <span id={`section-name-${section.key}-error`} className="text-destructive text-xs">
+                  <span id={`section-name-${section.key}-error`} className="text-destructive text-body-small">
                     {TITLE_COLLISION_MESSAGE}
                   </span>
                 )}
@@ -381,26 +381,26 @@ function EntriesEditor({
               <div className="flex flex-col gap-2 pr-16">
                 <div className="flex items-baseline justify-between gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-foreground text-sm font-semibold">
+                    <span className="text-foreground text-title-small">
                       {entry.heading || (
                         <em className="opacity-60">Untitled item</em>
                       )}
                     </span>
                     <HiddenBadge enabled={enabled} />
                   </div>
-                  <div className="text-muted-foreground text-xs whitespace-nowrap">
+                  <div className="text-muted-foreground text-body-small whitespace-nowrap">
                     {entry.date || "—"}
                   </div>
                 </div>
                 {(entry.subheading || entry.location) && (
-                  <div className="text-muted-foreground text-xs">
+                  <div className="text-muted-foreground text-body-small">
                     {[entry.subheading, entry.location]
                       .filter(Boolean)
                       .join(" · ")}
                   </div>
                 )}
                 {entry.link && (
-                  <div className="text-muted-foreground truncate text-xs">
+                  <div className="text-muted-foreground truncate text-body-small">
                     {entry.link}
                   </div>
                 )}
@@ -532,7 +532,7 @@ function AddSectionDialog({
               }}
             />
             {nameCollides && (
-              <span className="text-destructive text-xs">
+              <span className="text-destructive text-body-small">
                 {TITLE_COLLISION_MESSAGE}
               </span>
             )}
@@ -587,14 +587,14 @@ function TypeChoice({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex flex-1 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+        "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
         active
           ? "border-primary bg-primary/5"
           : "border-input hover:border-border",
       )}
     >
-      <span className="text-sm font-medium">{title}</span>
-      <span className="text-muted-foreground text-xs">{hint}</span>
+      <span className="text-title-small">{title}</span>
+      <span className="text-muted-foreground text-body-small">{hint}</span>
     </button>
   );
 }

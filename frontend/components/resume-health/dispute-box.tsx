@@ -154,7 +154,7 @@ export function DisputeBox({
           {offered && (
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground text-sm underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-50"
+              className="text-muted-foreground hover:text-foreground text-body-medium underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-50"
               aria-expanded={open}
               aria-controls={open ? panelId : undefined}
               disabled={send.isPending || rerunning}
@@ -181,9 +181,9 @@ export function DisputeBox({
             maxLength={1000}
             aria-describedby={hintId}
             onChange={(e) => setNote(e.target.value)}
-            className="text-sm"
+            className="text-body-medium"
           />
-          <p id={hintId} className="text-muted-foreground text-xs">
+          <p id={hintId} className="text-muted-foreground text-body-small">
             For example: there&apos;s no number for this, it&apos;s confidential, or you misread it.
           </p>
           <div className="flex justify-end">
@@ -202,7 +202,7 @@ export function DisputeBox({
         </div>
       )}
       {failure && (
-        <p role="alert" className="text-destructive mt-2 max-w-[65ch] text-xs">
+        <p role="alert" className="text-destructive mt-2 max-w-[65ch] text-body-small">
           {failure.kind === "changed" ? (
             <>
               This bullet changed since the check.{" "}
@@ -229,7 +229,7 @@ export function DisputeBox({
             ref={replyRef}
             role="status"
             tabIndex={-1}
-            className="text-foreground mt-2 max-w-[65ch] text-sm outline-none"
+            className="text-foreground mt-2 max-w-[65ch] text-body-medium outline-none"
           >
             {result.reply}
           </p>

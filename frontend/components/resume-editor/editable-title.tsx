@@ -98,7 +98,7 @@ export function EditableTitle({
             focusNext(pencilRef);
           }
         }}
-        className="h-9 max-w-md text-[22px] font-medium tracking-tight"
+        className="h-9 max-w-md text-title-large font-medium tracking-tight"
       />
     );
   }

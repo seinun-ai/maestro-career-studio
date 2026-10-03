@@ -89,8 +89,8 @@ export function GettingStartedCard() {
         <CardContent className="pt-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-medium">Getting started</p>
-              <p className="text-muted-foreground mt-0.5 text-sm">
+              <p className="text-title-small">Getting started</p>
+              <p className="text-muted-foreground mt-0.5 text-body-medium">
                 Do the required steps first.
               </p>
             </div>
@@ -124,16 +124,16 @@ export function GettingStartedCard() {
                     }
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                    <p className="flex flex-wrap items-center gap-2 text-title-small">
                       {row.title}
                       {row.required && !row.done ? (
-                        <Badge variant="outline" className="font-normal">
+                        <Badge variant="outline" className="text-body-small">
                           Required
                         </Badge>
                       ) : null}
                     </p>
                     {row.detail ? (
-                      <p className="text-muted-foreground mt-0.5 text-xs">
+                      <p className="text-muted-foreground mt-0.5 text-body-small">
                         {row.detail}
                       </p>
                     ) : null}
@@ -168,7 +168,7 @@ export function GettingStartedCard() {
 
           {status.suggested_bases.length > 0 ? (
             <div className="mt-5 border-t pt-4">
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-body-small">
                 You want these roles but have no base resume for them yet.
               </p>
               <ul className="mt-3 space-y-2">
@@ -177,7 +177,7 @@ export function GettingStartedCard() {
                     key={suggestion.role_category}
                     className="flex items-center justify-between gap-3"
                   >
-                    <span className="text-sm font-medium">{suggestion.label}</span>
+                    <span className="text-title-small">{suggestion.label}</span>
                     <Button
                       type="button"
                       size="sm"

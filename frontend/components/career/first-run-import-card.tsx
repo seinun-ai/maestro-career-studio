@@ -61,8 +61,8 @@ export function FirstRunImportCard() {
           <div className="flex gap-3">
             <Sparkles className="text-primary mt-0.5 size-5 shrink-0" />
             <div className="space-y-1">
-              <p className="text-sm font-medium">Start with the resumes you already have</p>
-              <p className="text-muted-foreground text-sm">
+              <p className="text-title-small">Start with the resumes you already have</p>
+              <p className="text-muted-foreground text-body-medium">
                 Each becomes a base resume, and your career history is built
                 from them.
               </p>

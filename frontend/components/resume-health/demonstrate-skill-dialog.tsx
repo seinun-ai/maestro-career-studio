@@ -154,17 +154,17 @@ export function DemonstrateSkillDialog({
         <DialogHeader>
           <DialogTitle>Show where you used {skill}</DialogTitle>
         </DialogHeader>
-        <p className="text-muted-foreground -mt-2 text-xs">
+        <p className="text-muted-foreground -mt-2 text-body-small">
           Pick a bullet, then say in one line how you used {skill} there.
         </p>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           {groups.map((group) => (
             <div key={group.section}>
-              <p className="text-sm font-medium">{group.title}</p>
+              <p className="text-title-small">{group.title}</p>
               <ul className="mt-1 space-y-1">
                 {group.entries.map((entry) => (
-                  <li key={`${group.section}:${entry.index}`} className="rounded-md border px-2 py-1">
-                    <p className="truncate text-sm">{entry.label}</p>
+                  <li key={`${group.section}:${entry.index}`} className="rounded-corner-md border px-2 py-1">
+                    <p className="truncate text-body-medium">{entry.label}</p>
                     <ul className="mt-1 space-y-1">
                       {entry.bullets.map((bullet, bulletIndex) => {
                         const selected =
@@ -175,8 +175,8 @@ export function DemonstrateSkillDialog({
                           <li key={bulletIndex}>
                             <button
                               type="button"
-                              className={`w-full rounded px-1 py-1 text-left text-xs ${
-                                selected ? "bg-muted" : "hover:bg-muted/60"
+                              className={`w-full rounded-corner-sm px-1 py-1 text-left text-body-small ${
+                                selected ? "bg-muted" : "hover:bg-surface-container-low dark:hover:bg-surface-container-high"
                               }`}
                               onClick={() => {
                                 setPicked({
@@ -203,8 +203,8 @@ export function DemonstrateSkillDialog({
         </div>
         {picked && (
           <div className="space-y-2 border-t pt-3">
-            <p className="text-muted-foreground text-xs">{picked.label}</p>
-            <blockquote className="border-l-2 border-border pl-3 text-foreground max-w-[65ch] text-sm">
+            <p className="text-muted-foreground text-body-small">{picked.label}</p>
+            <blockquote className="border-l-2 border-border pl-3 text-foreground max-w-[65ch] text-body-medium">
               {picked.text}
             </blockquote>
             <Label htmlFor={rewriteId}>How you used {skill} in this bullet</Label>
@@ -214,10 +214,10 @@ export function DemonstrateSkillDialog({
               value={prose}
               onChange={(e) => setProse(e.target.value)}
               disabled={locked}
-              className="text-sm"
+              className="text-body-medium"
             />
             {draft && (
-              <p className="max-w-[65ch] text-sm leading-relaxed">
+              <p className="max-w-[65ch] text-body-medium leading-6">
                 {wordDiff(picked.text, draft.suggestion).map((token, i) => (
                   <span
                     key={i}
@@ -225,7 +225,7 @@ export function DemonstrateSkillDialog({
                       token.kind === "removed"
                         ? "bg-destructive/10 text-destructive line-through"
                         : token.kind === "added"
-                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                          ? "bg-success-container text-on-success-container"
                           : undefined
                     }
                   >

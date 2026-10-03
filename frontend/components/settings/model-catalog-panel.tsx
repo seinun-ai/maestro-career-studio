@@ -194,7 +194,7 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
 
       {discovery ? (
         <CardSection className="grid min-w-0 gap-3">
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-body-small">
             Select + to add a model, then choose it above.
           </p>
           <ul
@@ -202,7 +202,7 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
             className="max-h-72 min-w-0 divide-y overflow-y-auto"
           >
             {discovery.models.map((model) => (
-              <li key={model.id} className="flex min-h-10 items-center gap-2 py-1 text-xs">
+              <li key={model.id} className="flex min-h-10 items-center gap-2 py-1 text-body-small">
                 <span className="min-w-0 flex-1 truncate font-mono" title={model.id}>
                   {model.id}
                 </span>
@@ -244,14 +244,14 @@ function CatalogRow({
       <div className="min-w-0 flex-1">
         {/* A cut-off name or id stays whole on hover (`title`) and to a screen reader (the text is
             all in the DOM; only its paint is clipped). */}
-        <p className="truncate text-sm font-medium" title={option.label}>{option.label}</p>
+        <p className="truncate text-title-small" title={option.label}>{option.label}</p>
         {showsModelId(option) ? (
-          <p className="text-muted-foreground truncate font-mono text-xs" title={option.id}>
+          <p className="text-muted-foreground truncate font-mono text-body-small" title={option.id}>
             {option.id}
           </p>
         ) : null}
       </div>
-      <span className="text-muted-foreground shrink-0 text-xs">
+      <span className="text-muted-foreground shrink-0 text-body-small">
         {providerLabel(option.provider)} · {sourceLabel(option.source)}
       </span>
       {option.source === "extra" ? (

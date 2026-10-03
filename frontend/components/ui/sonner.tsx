@@ -33,12 +33,17 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
+          "--border-radius": "var(--radius-corner-md)",
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
+          // M3 snackbar elevation. Sonner's own box-shadow is unlayered CSS, which
+          // beats `@layer utilities` as well as the specificity of one class, so
+          // the level needs `!`. Sonner's keyboard focus indicator is that same
+          // box-shadow, so the ring is restated: the important shadow reads
+          // --tw-ring-shadow and the two compose.
+          toast: "cn-toast shadow-level3! focus-visible:ring-2 focus-visible:ring-ring",
         },
       }}
       {...props}

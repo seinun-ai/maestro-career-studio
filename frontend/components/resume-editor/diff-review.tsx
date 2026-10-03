@@ -31,9 +31,9 @@ const PROVENANCE_LABELS: Record<ResumeDiffHunk["provenance"], string> = {
 };
 
 const PROVENANCE_STYLES: Record<ResumeDiffHunk["provenance"], string> = {
-  kb_auto: "border-primary/40 text-primary bg-primary/10",
-  user: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  llm: "border-border bg-muted text-muted-foreground",
+  kb_auto: "border-transparent bg-primary-container text-on-primary-container",
+  user: "border-transparent bg-success-container text-on-success-container",
+  llm: "border-transparent bg-surface-container text-muted-foreground",
 };
 
 /**
@@ -396,7 +396,7 @@ function ProvenanceChip({ value }: { value: ResumeDiffHunk["provenance"] }) {
   return (
     <Badge
       variant="outline"
-      className={cn("shrink-0 font-normal", PROVENANCE_STYLES[value])}
+      className={cn("shrink-0 text-body-small", PROVENANCE_STYLES[value])}
       title={
         value === "kb_auto"
           ? "Taken from your career history"
@@ -425,18 +425,18 @@ function HunkRow({
     <li className="flex flex-wrap items-start gap-2 py-1.5">
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-medium">{KIND_LABELS[hunk.kind]}</span>
+          <span className="text-label-medium">{KIND_LABELS[hunk.kind]}</span>
           <ProvenanceChip value={hunk.provenance} />
           {reverted && (
-            <span className="text-muted-foreground text-[10px]">
+            <span className="text-muted-foreground text-body-small">
               Undone. Not saved yet.
             </span>
           )}
         </div>
         {before && (
-          <p className="text-muted-foreground text-xs line-through">{before}</p>
+          <p className="text-muted-foreground text-body-small line-through">{before}</p>
         )}
-        {after && <p className="text-foreground/90 text-xs">{after}</p>}
+        {after && <p className="text-foreground/90 text-body-small">{after}</p>}
       </div>
       <Button
         variant="ghost"
@@ -495,13 +495,13 @@ function CoherenceFlags({
         const key = coherenceFlagKey(flag, position);
         const applied = coherence.appliedKeys.has(key);
         return (
-          <li key={key} className="flex items-start gap-2 p-2 text-sm">
+          <li key={key} className="flex items-start gap-2 p-2 text-body-medium">
             <Badge variant="outline" className="shrink-0">
               {ISSUE_LABELS[flag.issue]}
             </Badge>
             <div className="min-w-0 flex-1 space-y-0.5">
               {flag.locus.after && (
-                <p className="text-muted-foreground truncate text-xs line-through">
+                <p className="text-muted-foreground truncate text-body-small line-through">
                   {flag.locus.after}
                 </p>
               )}
@@ -529,24 +529,24 @@ function CoherenceFlags({
 function GateRow({ gate }: { gate: HealthGate }) {
   const notAssessed = gate.status === "not_assessed";
   const accent = notAssessed
-    ? "border-border bg-muted/40"
+    ? "border-border bg-surface-container-low"
     : gate.tier === "fatal"
       ? "border-destructive/50 bg-destructive/5"
-      : "border-amber-500/50 bg-amber-500/5";
+      : "border-border";
   const badgeStyle = notAssessed
     ? "bg-muted text-muted-foreground"
     : gate.tier === "fatal"
       ? "bg-destructive/10 text-destructive"
-      : "bg-amber-500/10 text-amber-800 dark:text-amber-400";
+      : "bg-warning-container text-on-warning-container";
   const badgeLabel = notAssessed
     ? "Not checked"
     : gate.tier === "fatal"
       ? "Must fix"
       : "Serious";
   return (
-    <div className={cn("rounded-md border px-3 py-2 text-sm", accent)}>
+    <div className={cn("rounded-corner-md border px-3 py-2 text-body-medium", accent)}>
       <div className="flex items-center gap-2">
-        <Badge variant="secondary" className={cn("shrink-0 text-xs", badgeStyle)}>
+        <Badge variant="secondary" className={cn("shrink-0", badgeStyle)}>
           {badgeLabel}
         </Badge>
         <span className="font-medium">{gate.label}</span>
@@ -565,7 +565,7 @@ function GatesGroup({ gates }: { gates: HealthGate[] }) {
     <div className="space-y-1.5">
       {/* "Checks", not "Must fix": the rows are serious and unchecked ones
           too. "Must fix" is the fatal tier's badge only. */}
-      <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+      <p className="text-muted-foreground text-title-small">
         Checks
       </p>
       <div className="space-y-1.5">
@@ -589,7 +589,7 @@ function HygieneGroup({
   if (hygiene.length === 0) return null;
   return (
     <div className="space-y-1.5">
-      <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+      <p className="text-muted-foreground text-title-small">
         Clean-up
       </p>
       <ul className="divide-y">
@@ -597,10 +597,10 @@ function HygieneGroup({
           const key = hygieneFlagKey(flag, position);
           const applied = appliedKeys.has(key);
           return (
-            <li key={key} className="flex items-start gap-2 p-2 text-sm">
+            <li key={key} className="flex items-start gap-2 p-2 text-body-medium">
               <div className="min-w-0 flex-1 space-y-0.5">
                 <p className="break-words">{flag.issue}</p>
-                <p className="text-muted-foreground text-xs">{flag.how}</p>
+                <p className="text-muted-foreground text-body-small">{flag.how}</p>
               </div>
               {flag.proposal !== null && onApply && (
                 <Button
@@ -643,7 +643,7 @@ function CoherenceResults({
     hygiene.length > 0 ||
     coherence.flags.length > 0;
   if (!hasAny) {
-    return <p className="text-muted-foreground text-xs">No issues found.</p>;
+    return <p className="text-muted-foreground text-body-small">No issues found.</p>;
   }
   return (
     <div className="space-y-3">
@@ -655,7 +655,7 @@ function CoherenceResults({
       />
       {coherence.flags.length > 0 && onApply && (
         <div className="space-y-1.5">
-          <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          <p className="text-muted-foreground text-title-small">
             Flow and consistency
           </p>
           <CoherenceFlags coherence={coherence} onApply={onApply} />
@@ -688,7 +688,7 @@ export function DiffReviewPanel({
 }) {
   if (hunks.length === 0) {
     return (
-      <div className="text-muted-foreground rounded-md border border-dashed p-3 text-sm">
+      <div className="text-muted-foreground rounded-corner-md border border-dashed p-3 text-body-medium">
         No changes from your base resume.
       </div>
     );
@@ -702,9 +702,9 @@ export function DiffReviewPanel({
   })).filter((group) => group.items.length > 0);
 
   return (
-    <section className="space-y-2 rounded-lg border bg-muted/20 p-3">
+    <section className="space-y-2 rounded-corner-md border p-3">
       <header className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-medium">
+        <h2 className="text-title-small">
           {hunks.length} {hunks.length === 1 ? "change" : "changes"} from your
           base resume
         </h2>
@@ -730,7 +730,7 @@ export function DiffReviewPanel({
         </div>
       </header>
       {dirty && (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-body-small">
           This list describes the last saved version. Save to refresh it.
         </p>
       )}
@@ -743,7 +743,7 @@ export function DiffReviewPanel({
       )}
       {groups.map((group) => (
         <div key={group.section}>
-          <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          <p className="text-muted-foreground text-title-small">
             {group.label}
           </p>
           <ul className="divide-y">

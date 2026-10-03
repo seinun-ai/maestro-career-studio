@@ -86,7 +86,7 @@ def test_every_table_with_a_min_width_gets_it():
     widths, and it is what a sticky table measures its fit against."""
     table = _body(_TABLE, "function Table(")
     assert "const width = minWidth ? MIN_WIDTH[minWidth] : undefined" in table
-    assert 'className={cn("w-full caption-bottom text-sm", width?.table, className)}' in table
+    assert 'className={cn("w-full caption-bottom text-body-medium", width?.table, className)}' in table
 
 
 def test_only_a_table_that_asks_for_it_sticks():
@@ -119,7 +119,7 @@ def test_a_sticky_header_is_opaque_ruled_stacked_and_placed_under_the_toolbar():
 
 def test_the_table_frame_clips_without_becoming_a_scroller():
     frame = _body(_read("components/empty-state.tsx"), "export function TableFrame(")
-    assert '"animate-fade-rise overflow-clip rounded-xl border"' in frame
+    assert '"animate-fade-rise overflow-clip rounded-corner-md border"' in frame
     assert "overflow-hidden" not in frame
 
 

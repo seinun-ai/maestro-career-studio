@@ -225,7 +225,7 @@ export function DeclineDialog({
           {DECLINE_REASONS.map((reason) => (
             <label
               key={reason}
-              className="flex items-center gap-2 text-sm"
+              className="flex items-center gap-2 text-body-medium"
             >
               <input
                 type="radio"
@@ -300,13 +300,13 @@ export function BulkBar({
       className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3"
     >
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-2">
-        <span className="text-sm font-medium tabular-nums">
+        <span className="text-title-small tabular-nums">
           {selectedCount} selected
         </span>
         <Button
           type="button"
           size="sm"
-          className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onQueue}
           disabled={pending}
           focusableWhenDisabled
@@ -317,7 +317,7 @@ export function BulkBar({
           type="button"
           size="sm"
           variant="outline"
-          className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onDecline}
           disabled={pending}
           focusableWhenDisabled
@@ -328,7 +328,7 @@ export function BulkBar({
           type="button"
           size="sm"
           variant="ghost"
-          className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onClear}
           disabled={pending}
           focusableWhenDisabled

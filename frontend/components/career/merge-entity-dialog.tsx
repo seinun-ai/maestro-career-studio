@@ -197,32 +197,32 @@ export function MergeEntityDialog({
             </div>
 
             {entities.isLoading ? (
-              <p className="text-muted-foreground rounded-xl bg-muted/45 p-3 text-xs">
+              <p className="text-muted-foreground rounded-corner-md bg-surface-container-low p-3 text-body-small">
                 Loading…
               </p>
             ) : entities.error ? (
-              <p role="alert" className="text-destructive text-xs">
+              <p role="alert" className="text-destructive text-body-small">
                 {couldnt("load your items", entities.error)}
               </p>
             ) : shown.length === 0 ? (
-              <p className="text-muted-foreground rounded-xl bg-muted/45 p-3 text-xs">
+              <p className="text-muted-foreground rounded-corner-md bg-surface-container-low p-3 text-body-small">
                 {candidates.length === 0
                   ? `Nothing to combine with. You need another ${kindLabel} item that isn't archived.`
                   : "No match for that title."}
               </p>
             ) : (
-              <ul className="max-h-72 space-y-1.5 overflow-y-auto rounded-xl bg-muted/45 p-2">
+              <ul className="max-h-72 space-y-1.5 overflow-y-auto rounded-corner-md bg-surface-container-low p-2">
                 {shown.map((entity) => (
                   <li key={entity.id}>
                     <button
                       type="button"
-                      className="hover:bg-background/80 focus-visible:ring-ring w-full rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:ring-3 focus-visible:outline-none"
+                      className="hover:bg-background/80 focus-visible:ring-ring w-full rounded-corner-md px-2.5 py-2 text-left transition-colors focus-visible:ring-3 focus-visible:outline-none"
                       onClick={() => setPicked(entity)}
                     >
-                      <span className="block truncate text-sm font-medium">
+                      <span className="block truncate text-title-small">
                         {entity.title}
                       </span>
-                      <span className="text-muted-foreground block truncate text-xs">
+                      <span className="text-muted-foreground block truncate text-body-small">
                         {[
                           entity.org,
                           [entity.start_date, entity.end_date].filter(Boolean).join(" – "),
@@ -238,7 +238,7 @@ export function MergeEntityDialog({
             )}
 
             {/* Typing narrows a list a screen reader cannot watch scroll by. */}
-            <p aria-live="polite" className="text-muted-foreground text-xs">
+            <p aria-live="polite" className="text-muted-foreground text-body-small">
               {entities.isLoading || entities.error
                 ? ""
                 : plural(shown.length, "result", "results")}
@@ -250,7 +250,6 @@ export function MergeEntityDialog({
           {picked ? (
             <>
               <Button
-                className="rounded-full"
                 variant="ghost"
                 onClick={() => setPicked(null)}
                 disabled={merge.isPending}
@@ -259,7 +258,6 @@ export function MergeEntityDialog({
               </Button>
               <Button
                 ref={cancelRef}
-                className="rounded-full"
                 variant="outline"
                 onClick={close}
                 disabled={merge.isPending}
@@ -267,7 +265,7 @@ export function MergeEntityDialog({
                 Cancel
               </Button>
               <Button
-                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+                className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 variant="destructive"
                 onClick={() => mergeOnce(picked)}
                 disabled={merge.isPending}
@@ -278,7 +276,7 @@ export function MergeEntityDialog({
               </Button>
             </>
           ) : (
-            <Button className="rounded-full" variant="outline" onClick={close}>
+            <Button variant="outline" onClick={close}>
               Cancel
             </Button>
           )}

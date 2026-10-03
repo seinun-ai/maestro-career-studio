@@ -75,10 +75,10 @@ const ACCOUNT_ITEMS: NavItem[] = [
 ];
 
 // The Needs-you count wears the Needs you chip's orange (status-chip.tsx).
-// Dark text is orange-300, one step lighter than the chip's orange-400: on the
-// current row under the pointer the chip's shade reads 3.88:1, and this one
-// holds 4.5:1 on all four row states (test_frontend_color_roles.py).
-const NEEDS_YOU_BADGE = "bg-orange-500/10 text-orange-800 dark:text-orange-300";
+// The attention role's container pair, the same as the Needs you chip. It is
+// a solid fill, so it holds 4.5:1 on all four row states
+// (test_frontend_color_roles.py).
+const NEEDS_YOU_BADGE = "bg-attention-container text-on-attention-container";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -89,7 +89,7 @@ export function AppSidebar() {
       <SidebarHeader className="flex flex-row items-center justify-between gap-2">
         <div className="flex items-center gap-2 px-2 py-1.5">
           <MaestroMark aria-hidden="true" className="h-5 w-auto shrink-0" />
-          <span className="text-sm font-semibold">Maestro CS</span>
+          <span className="text-title-small">Maestro CS</span>
         </div>
         <SidebarTrigger
           className="shrink-0"
@@ -142,7 +142,7 @@ function MainNav({ pathname, from }: { pathname: string; from: string | null | u
             // container-coloured control; the container fill is ~1.05:1 from
             // the active row. Geometry stays the extended FAB either way.
             buttonVariants({ variant: fabCurrent ? "default" : "fab", size: "lg" }),
-            "h-10 gap-2.5 rounded-[16px] px-4",
+            "h-10 gap-2.5 rounded-corner-lg px-4",
           )}
         >
           <FilePlus2 className="size-4" aria-hidden="true" />
@@ -206,7 +206,7 @@ function NavMenu({
                     <span
                       aria-hidden="true"
                       className={cn(
-                        "ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums",
+                        "ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-label-medium tabular-nums",
                         NEEDS_YOU_BADGE,
                       )}
                     >

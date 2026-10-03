@@ -129,11 +129,11 @@ export function NotesEditor({
   );
 
   return (
-    <Card className="rounded-2xl">
+    <Card>
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <div>
           <CardTitle>Notes</CardTitle>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="text-muted-foreground mt-1 text-body-medium">
             Private details that help AI write about this. Never shown on a resume.
           </p>
         </div>
@@ -143,7 +143,7 @@ export function NotesEditor({
             size="sm"
             variant="ghost"
             // Always shown: a hover-only Edit read as notes you couldn't change.
-            className="text-muted-foreground rounded-full"
+            className="text-muted-foreground"
             onClick={startEditing}
           >
             <Pencil aria-hidden="true" /> {hasNotes ? "Edit" : "Add notes"}
@@ -156,7 +156,7 @@ export function NotesEditor({
             <Label htmlFor={`kb-notes-${entityId}`} className="sr-only">
               Notes
             </Label>
-            <p id={`kb-notes-${entityId}-hint`} className="text-muted-foreground text-xs">
+            <p id={`kb-notes-${entityId}-hint`} className="text-muted-foreground text-body-small">
               Tools, team size, limits, who you worked with, and what you owned.
             </p>
             <Textarea
@@ -171,7 +171,6 @@ export function NotesEditor({
             />
             <div className="flex items-center justify-end gap-2">
               <Button
-                className="rounded-full"
                 size="sm"
                 variant="ghost"
                 onClick={() => void onCancel()}
@@ -180,7 +179,7 @@ export function NotesEditor({
                 <X aria-hidden="true" /> Cancel
               </Button>
               <Button
-                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+                className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 size="sm"
                 onClick={() => onSave(() => save.mutate(value))}
                 disabled={save.isPending || value === notes}
@@ -191,23 +190,23 @@ export function NotesEditor({
             </div>
           </>
         ) : notes.trim() ? (
-          <div className="text-sm leading-7 whitespace-pre-wrap">{withoutStaleMarks(notes)}</div>
+          <div className="text-body-medium leading-7 whitespace-pre-wrap">{withoutStaleMarks(notes)}</div>
         ) : (
-          <div className="rounded-xl bg-muted/45 px-5 py-7 text-center">
-            <p className="text-sm font-medium">No notes yet</p>
-            <p className="text-muted-foreground mt-1 text-xs">
+          <div className="rounded-corner-md bg-surface-container-low px-5 py-7 text-center">
+            <p className="text-title-small">No notes yet</p>
+            <p className="text-muted-foreground mt-1 text-body-small">
               Add details that don&apos;t belong on a resume.
             </p>
           </div>
         )}
 
         {staleLines.length > 0 ? (
-          <div role="alert" className="rounded-xl bg-amber-500/15 p-3 text-amber-900 dark:text-amber-100">
-            <p className="flex items-center gap-2 text-xs font-semibold">
+          <div role="alert" className="rounded-corner-md bg-warning-container p-3 text-on-warning-container">
+            <p className="flex items-center gap-2 text-label-medium">
               <TriangleAlert className="size-4" aria-hidden="true" />
               Check these: they may be out of date
             </p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-body-small">
               {staleLines.map((line, index) => (
                 <li key={`${line}-${index}`}>{line}</li>
               ))}

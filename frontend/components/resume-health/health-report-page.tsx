@@ -362,9 +362,9 @@ export function HealthReportPage({
       />
     );
 
-  const nothingHere = <p className="text-muted-foreground text-sm">Nothing to do here.</p>;
+  const nothingHere = <p className="text-muted-foreground text-body-medium">Nothing to do here.</p>;
   const noResumeText = (
-    <p className="text-muted-foreground max-w-[65ch] text-sm">
+    <p className="text-muted-foreground max-w-[65ch] text-body-medium">
       Couldn&apos;t load your resume text. Open the resume to fix these.
     </p>
   );
@@ -476,7 +476,7 @@ export function HealthReportPage({
             onOpenNumberTab={() => openTab("number")}
           >
             {stale && (
-              <FocusHandoff to={checkRef} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
+              <FocusHandoff to={checkRef} className="flex flex-wrap items-center justify-between gap-2 rounded-corner-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container">
                 <p>Your resume changed since this check. Check again to update it.</p>
                 {analyzeButton()}
               </FocusHandoff>
@@ -491,7 +491,7 @@ export function HealthReportPage({
             templateId={templateId}
           />
 
-          {!hasAnything && <p className="text-sm">No issues found.</p>}
+          {!hasAnything && <p className="text-body-medium">No issues found.</p>}
 
           <Tabs value={tab} onValueChange={(value) => selectTab(value as HealthTab)} className="gap-4">
             <TabsList aria-label="Health report sections">
@@ -502,9 +502,9 @@ export function HealthReportPage({
                   key={t.id}
                   value={t.id}
                   aria-label={`${t.label} ${countOf(t.id)}`}
-                  className="gap-1.5 px-2.5"
+                  className="gap-1.5"
                 >
-                  {t.label} <span className="tabular-nums">{countOf(t.id)}</span>
+                  {t.label} <span className="tabular-nums text-muted-foreground">{countOf(t.id)}</span>
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -572,7 +572,7 @@ export function HealthReportPage({
         // (showing "Checking…") until the report replaces it.
         noReportYet && (
           <FocusHandoff to={checkRef} className="flex flex-col items-start gap-3">
-            <p className="text-muted-foreground max-w-[65ch] text-sm">
+            <p className="text-muted-foreground max-w-[65ch] text-body-medium">
               No health report yet. This checks your resume on its own, without a
               job description.
             </p>
@@ -582,7 +582,7 @@ export function HealthReportPage({
       )}
 
       {appliedCount > 0 && (
-        <FocusHandoff to={checkRef} className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm">
+        <FocusHandoff to={checkRef} className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-corner-md border px-3 py-2 text-body-medium shadow-level2">
           <p>
             {appliedCount} {appliedCount === 1 ? "change" : "changes"} applied.
             Check again to update your grade.

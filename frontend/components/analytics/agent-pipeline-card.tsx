@@ -48,10 +48,10 @@ export function AgentPipelineCard() {
             return (
               <div key={stage.key} className="grid gap-1">
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-muted-foreground text-xs">{stage.label}</span>
-                  <span className="text-sm font-medium tabular-nums">{count}</span>
+                  <span className="text-muted-foreground text-body-small">{stage.label}</span>
+                  <span className="text-title-small tabular-nums">{count}</span>
                 </div>
-                <div className="bg-muted/50 h-1.5 overflow-hidden rounded-full">
+                <div className="bg-surface-container-low h-1.5 overflow-hidden rounded-full">
                   <div
                     className="bg-primary/10 h-full rounded-full"
                     style={{ width: `${widthPct}%` }}

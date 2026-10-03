@@ -32,15 +32,15 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center",
+        "flex flex-col items-center gap-3 rounded-corner-md border border-dashed py-16 text-center",
         className,
       )}
     >
       {Icon ? <Icon className="text-muted-foreground/50 size-8" /> : null}
       <div>
-        <p className="text-sm font-medium">{title}</p>
+        <p className="text-title-small">{title}</p>
         {description ? (
-          <p className="text-muted-foreground mt-0.5 text-sm">{description}</p>
+          <p className="text-muted-foreground mt-0.5 text-body-medium">{description}</p>
         ) : null}
       </div>
       {action}
@@ -51,7 +51,7 @@ export function EmptyState({
 /**
  * The container a data table sits in on a list page.
  *
- * Jobs wrapped its table in a bare `rounded-xl border` div while
+ * Jobs wrapped its table in a bare `rounded-corner-md border` div while
  * Referrals wrapped an identical table in a full Card with its own title —
  * so the same content had a heading on one page and not the other, and two
  * different containment treatments. This is the Jobs page's shape, which is
@@ -71,7 +71,7 @@ export function TableFrame({
         // clip, not hidden: both round the corners, but `hidden` makes a
         // scroll container, and a sticky header inside one sticks to it and
         // never moves. `clip` makes none, so the header sticks to the window.
-        "animate-fade-rise overflow-clip rounded-xl border",
+        "animate-fade-rise overflow-clip rounded-corner-md border",
         className,
       )}
     >

@@ -25,7 +25,7 @@ export function CapToday({ className }: { className?: string }) {
   if (isLoadFailure(query)) {
     return (
       <RetryChip
-        className="text-muted-foreground mt-0.5 inline-flex items-center gap-1 text-xs underline-offset-4 hover:underline"
+        className="text-muted-foreground mt-0.5 inline-flex items-center gap-1 text-body-small underline-offset-4 hover:underline"
         title="Load Applications per day again"
         icon={<RotateCw className="size-3" aria-hidden="true" />}
         // The line's own name (the setting's), not "daily cap"; the window is 24 hours, not "today".
@@ -38,7 +38,7 @@ export function CapToday({ className }: { className?: string }) {
   const cap = query.data?.cap;
   if (!cap) return null;
   return (
-    <p className={cn("mt-0.5 text-xs tabular-nums", className)}>
+    <p className={cn("mt-0.5 text-body-small tabular-nums", className)}>
       Applications per day: {cap.reserved_last_24h} of {cap.max_per_day} used in the last 24 hours
     </p>
   );

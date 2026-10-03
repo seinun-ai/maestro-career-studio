@@ -228,7 +228,7 @@ export function NewEntityDialog({
           </div>
 
           {kind === "extra" && (
-            <div className="space-y-4 rounded-xl border p-3.5 bg-muted/20">
+            <div className="space-y-4 rounded-corner-md border p-3.5">
               <div className="grid gap-1.5">
                 <Label id={presetsLabelId}>Common sections</Label>
                 <div role="group" aria-labelledby={presetsLabelId} className="flex flex-wrap gap-1.5">
@@ -239,7 +239,6 @@ export function NewEntityDialog({
                         key={preset.id}
                         type="button"
                         size="sm"
-                        className="text-xs"
                         variant={on ? "tonal" : "outline"} aria-pressed={on}
                         onClick={() => {
                           setSectionTitle(preset.title);
@@ -274,7 +273,7 @@ export function NewEntityDialog({
                   readOnly={create.isPending}
                 />
                 {titleCollides && (
-                  <span className="text-destructive text-xs">
+                  <span className="text-destructive text-body-small">
                     {TITLE_COLLISION_MESSAGE}
                   </span>
                 )}
@@ -288,14 +287,14 @@ export function NewEntityDialog({
                     aria-pressed={sectionType === "entries"}
                     onClick={() => setSectionType("entries")}
                     className={cn(
-                      "flex flex-1 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+                      "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
                       sectionType === "entries"
-                        ? "border-primary bg-primary/5 font-medium"
+                        ? "border-primary bg-primary/5"
                         : "border-input hover:border-border text-muted-foreground",
                     )}
                   >
-                    <span className="text-xs font-semibold text-foreground">{SECTION_TYPE_LABELS.entries}</span>
-                    <span className="text-[11px] text-muted-foreground">Each with a title and details</span>
+                    <span className="text-label-medium text-foreground">{SECTION_TYPE_LABELS.entries}</span>
+                    <span className="text-body-small text-muted-foreground">Each with a title and details</span>
                   </button>
                   <button
                     type="button"
@@ -307,14 +306,14 @@ export function NewEntityDialog({
                       }
                     }}
                     className={cn(
-                      "flex flex-1 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+                      "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
                       sectionType === "bullets"
-                        ? "border-primary bg-primary/5 font-medium"
+                        ? "border-primary bg-primary/5"
                         : "border-input hover:border-border text-muted-foreground",
                     )}
                   >
-                    <span className="text-xs font-semibold text-foreground">{SECTION_TYPE_LABELS.bullets}</span>
-                    <span className="text-[11px] text-muted-foreground">A simple list</span>
+                    <span className="text-label-medium text-foreground">{SECTION_TYPE_LABELS.bullets}</span>
+                    <span className="text-body-small text-muted-foreground">A simple list</span>
                   </button>
                 </div>
               </div>
@@ -354,7 +353,7 @@ export function NewEntityDialog({
                   <Label htmlFor="career-entity-start" optional>
                     Start date
                   </Label>
-                  <p id="career-entity-start-hint" className="text-muted-foreground text-xs">
+                  <p id="career-entity-start-hint" className="text-muted-foreground text-body-small">
                     Month and year, like Jan 2025.
                   </p>
                   <Input
@@ -401,7 +400,7 @@ export function NewEntityDialog({
               </div>
             </>
           ) : (
-            <p className="text-xs text-muted-foreground italic">
+            <p className="text-body-small text-muted-foreground italic">
               You can add bullets after you create it.
             </p>
           )}
@@ -410,7 +409,6 @@ export function NewEntityDialog({
           <Button
             variant="outline"
             type="button"
-            className="rounded-full"
             onClick={() => onOpenChange(false)}
             disabled={create.isPending}
           >
@@ -420,7 +418,7 @@ export function NewEntityDialog({
             type="submit"
             form="new-career-entity"
             // Focusable while it adds: a disabled button drops focus.
-            className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+            className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
             disabled={!isValid || create.isPending}
             focusableWhenDisabled
           >

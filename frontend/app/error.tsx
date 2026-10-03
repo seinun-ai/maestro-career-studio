@@ -32,17 +32,17 @@ export default function RouteError({
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
       <TriangleAlert className="text-muted-foreground/50 size-8" aria-hidden />
-      <h1 className="text-lg font-medium">Something went wrong</h1>
-      <p className="text-muted-foreground text-sm">
+      <h1 className="text-title-large font-medium">Something went wrong</h1>
+      <p className="text-muted-foreground text-body-medium">
         This page didn&apos;t load. Anything you saved is safe.
       </p>
       {process.env.NODE_ENV === "development" && error.message && (
-        <pre className="bg-muted/40 text-muted-foreground max-w-full overflow-x-auto rounded-md px-3 py-2 text-left text-xs">
+        <pre className="bg-surface-container-low text-muted-foreground max-w-full overflow-x-auto rounded-corner-md px-3 py-2 text-left text-body-small">
           {error.message}
         </pre>
       )}
       {error.digest && (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-body-small">
           Error code: <span className="font-mono">{error.digest}</span>
         </p>
       )}
