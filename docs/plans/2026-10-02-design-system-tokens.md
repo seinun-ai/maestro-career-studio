@@ -59,7 +59,7 @@ step 3.
    uses in 12 files) become sentence-case `text-title-small text-muted-foreground`.
 5. **Health-report rows use the outline-variant edge**, not a tinted violet border, and the "Answer"
    action stays the one text button per row.
-6. **Stat tiles are filled cards** on `surface-container-low`, corner-md, label in `text-label-medium`,
+6. **Stat tiles are filled cards** on `surface-container-low`, corner-md, label in `text-body-small`,
    value in `text-title-large`.
 
 ## Ledger row to add when SYSTEM.md has room
