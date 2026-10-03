@@ -140,14 +140,20 @@
  *                  buildLoopObservations, value-free.
  *
  * THE RUN TRACE (`report.trace`, app/schemas/autofill_trace.py) records each
- * field's decision path: the model calls it made (map, polarity, pick, step)
- * and the page actions it sent, each with its ms and, for an action, its
- * effect (effectOf, exploreEffect: the vocabularies above, folded to eight
- * words). It is built from an ALLOWLIST (buildRunTrace names every source) and
- * is value-free (SYSTEM.md inv-autofill-telemetry-no-values): never a typed
- * value, an answer, `ignored`, a field's `committed` or `help`, or any explore
- * result, which echoes what a search typed. Recording is additive: it changes
- * no status, request or page action.
+ * field's decision path: the model calls it made (map, polarity, pick, step;
+ * the prose /choose call is not recorded, and a call that failed or timed out
+ * is a bare {op, ms}) and the page actions it sent, each with its ms and, for
+ * an action, its effect (effectOf, exploreEffect: the vocabularies above,
+ * folded to eight words). It is built from an ALLOWLIST (buildRunTrace names
+ * every source). THE RULE (SYSTEM.md inv-autofill-telemetry-no-values): the
+ * trace records which page option was chosen (an index into the options
+ * offered) and the page's own option texts (the inventory's passive lists
+ * only, never an explore's rows, which echo what a search typed); it never
+ * holds a typed or profile string in a free-text slot. Labels and sections
+ * are blanked RUN-WIDE when they hold any row's answer, value, write,
+ * leftover or committed value (`committed` is a deny key only, never
+ * emitted); `ignored`, `help` and every explore result are never read.
+ * Recording is additive: it changes no status, request or page action.
  *
  * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, limits,
  * buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines }.
@@ -314,13 +320,21 @@
 
   // ---- the run trace's pieces: pure, and value-free by what they read.
   // The recorder inside runFill notes a step per model call and per page action.
-  const TRACE_STEPS = 40; // the schema's per-field cap
+  const TRACE_STEPS = 40; // the schema's per-field cap: the first half and the last half are kept
   const TRACE_WORD = /^[a-z_]{1,40}$/;
   const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
   const MOVE_ID = /^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$/;
   const TRACE_ROUTES = new Set(["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]);
-  const TRACE_REASONS = new Set([...STEP_REASONS, "abstained"]);
-  const DECISION_KEYS = ["engine", "p", "floor", "second", "first_p", "first_same", "chose_none"];
+  const TRACE_REASONS = new Set(["matched", "closest", "assumed", "progress", "abstained"]);
+  const TRACE_ENGINES = new Set(["jev", "fast"]);
+  const TRACE_SECONDS = new Set(["asked", "decided"]);
+  const TRACE_WAYS = new Set(["same", "opposite", "neither", "unsure"]);
+  const unit = (x) => typeof x === "number" && x >= 0 && x <= 1;
+  // What a model's trace may carry, each value checked as the schema checks it.
+  const DECISION_CHECKS = {
+    engine: (x) => TRACE_ENGINES.has(x), p: unit, floor: unit, second: (x) => TRACE_SECONDS.has(x), first_p: unit,
+    first_same: (x) => typeof x === "boolean", chose_none: (x) => typeof x === "boolean",
+  };
   // A page word is sent only when the schema's pattern holds (a lowercase
   // word cannot carry a typed value); anything else is null, never "".
   const traceWord = (s) => (typeof s === "string" && TRACE_WORD.test(s) ? s : null);
@@ -350,18 +364,23 @@
     const outcome = page?.outcome;
     return Object.hasOwn(OUTCOME_EFFECT, outcome) ? OUTCOME_EFFECT[outcome] : "error";
   };
-  // An explore reports an error word, not an outcome: any failure it has no
-  // word of its own for (no_popup, unsettled: the OUTRIGHT set) opened nothing.
+  // An explore reports an error word, not an outcome. Those with a row of
+  // their own: no_effect (the OUTRIGHT set's gesture), committed_while_exploring
+  // (its other member that explore can raise), a refusal, stale, timeout and
+  // cancelled. Any other error (no_popup, unsettled) opened nothing.
   const exploreEffect = (got) => {
     const error = got?.error;
     if (!error) return got?.options?.length ? "progress" : "no_effect";
     if (error === "cancelled") return null;
     if (Object.hasOwn(REFUSED, error)) return "refused";
     if (error === "committed_while_exploring") return "unexpected";
+    if (error === "timeout") return "late";
     return error === "stale" ? "error" : "no_effect";
   };
-  // A model's trace, copied by name: engine, p, floor, second, first_p, first_same, chose_none.
-  const decision = (t) => Object.fromEntries(DECISION_KEYS.filter((k) => t?.[k] != null).map((k) => [k, t[k]]));
+  // A model's trace, copied by name and checked: engine, p, floor, second,
+  // first_p, first_same, chose_none; a value that is absent or invalid is left out.
+  const decisionOf = (t) => Object.fromEntries(Object.entries(DECISION_CHECKS)
+    .filter(([k, ok]) => t?.[k] != null && ok(t[k])).map(([k]) => [k, t[k]]));
 
   async function runFill(deps, options = {}) {
     const { broadcast, api } = deps ?? {};
@@ -424,17 +443,26 @@
       return row;
     };
     // A step on the field's path. Rows are copied by `set`, but `steps` is one
-    // array shared by every copy, so a push is seen by all of them.
+    // array shared by every copy, so a push is seen by all of them. Past the
+    // cap the first half stays (how the field began) and the second half is a
+    // ring of the latest (how it ended): a field that looped keeps both ends.
     const note = (fid, step) => {
       const steps = rows.get(fid)?.steps;
-      if (steps && steps.length < TRACE_STEPS) steps.push(step);
+      if (!steps) return;
+      if (steps.length >= TRACE_STEPS) steps.splice(TRACE_STEPS / 2, 1);
+      steps.push(step);
     };
-    // A model's answer on a field: its polarity when it read one, then the decision.
-    const noteAnswer = (fid, op, got, ms, extra) => {
-      if (got.polarity?.way) {
-        note(fid, { op: "polarity", way: got.polarity.way, engine: got.polarity.engine ?? null, p: got.polarity.p ?? null });
+    // A model's answer on a field: its polarity when it read one, then the
+    // decision. A call that failed or ran out of time (no `res`) is a bare
+    // {op, ms}: slow failures show up, with nothing else to say.
+    const noteAnswer = (fid, op, res, got, ms, extra) => {
+      if (!res) return note(fid, { op, ms: wholeMs(ms) });
+      if (!got) return undefined;
+      const pol = got.polarity;
+      if (TRACE_WAYS.has(pol?.way)) {
+        note(fid, { op: "polarity", way: pol.way, engine: TRACE_ENGINES.has(pol.engine) ? pol.engine : null, p: unit(pol.p) ? pol.p : null });
       }
-      note(fid, { op, ms: wholeMs(ms), ...extra, ...decision(got.trace) });
+      return note(fid, { op, ms: wholeMs(ms), ...extra, ...decisionOf(got.trace) });
     };
     // Re-committing a value the engine wrote that the page took back.
     const recommitting = (row) => Boolean(row?.recommits && row.wrote && (row.status === "open" || row.status === "retry"));
@@ -564,7 +592,7 @@
     // `closing` (give_up) may still run out of time — it only closes a popup.
     // `overtime` (a set committing what it already picked) may run past the field's clock.
     // `seen.got`: the page's own result, for the trace when act() answers with a word of its own.
-    const actOnce = async (f, action, { closing = false, overtime = false } = {}, seen = {}) => {
+    const actUntraced = async (f, action, { closing = false, overtime = false } = {}, seen = {}) => {
       if (cancelled() || (!closing && timedOut())) return { outcome: "halted" };
       if (!closing && !overtime && fieldLate(f)) return { outcome: "late" };
       if (!closing) pageActions += 1;
@@ -590,12 +618,12 @@
       }
       return got;
     };
-    // Every way out of actOnce is one step on the field's path (Stop and a
+    // Every way out of actUntraced is one step on the field's path (Stop and a
     // closing give_up are not attempts, and note nothing).
     const act = async (f, action, opts = {}) => {
       const t0 = Date.now();
       const seen = {};
-      const result = await actOnce(f, action, opts, seen);
+      const result = await actUntraced(f, action, opts, seen);
       const effect = opts.closing ? null : effectOf(result, seen.got);
       if (effect) {
         note(f.fid, { op: action.op, effect, word: traceWord(seen.got?.reason ?? seen.got?.outcome ?? result.outcome),
@@ -754,11 +782,11 @@
     };
     // The option /pick chose, as its 0-based place among those it was OFFERED
     // (never the page's own list, which may be longer), or null.
-    const notePick = (f, got, offered, ms) => {
-      if (!got) return;
-      const at = got.oids?.length ? offered.slice(0, PICK_OPTIONS).findIndex((o) => o.oid === got.oids[0]) : -1;
-      noteAnswer(f.fid, "pick", got, ms, {
-        reason: TRACE_REASONS.has(got.reason) ? got.reason : null, option: at >= 0 ? at : null,
+    const notePick = (f, res, offered, ms) => {
+      const got = res?.picks?.[f.fid];
+      const at = got?.oids?.length ? offered.slice(0, PICK_OPTIONS).findIndex((o) => o.oid === got.oids[0]) : -1;
+      noteAnswer(f.fid, "pick", res, got, ms, {
+        reason: TRACE_REASONS.has(got?.reason) ? got.reason : null, option: at >= 0 ? at : null,
       });
     };
     const pick = async (f, row, opts, complete, item) => {
@@ -766,7 +794,7 @@
       const { offered, field } = pickAsk(f, row, opts, complete, item);
       if (!offered.length || halt() || fieldLate(f)) return null;
       const { res, ms } = await post("/api/autofill/pick", { ...asked, fields: [field] }, rows.get(f.fid).deadline);
-      notePick(f, res?.picks?.[f.fid], offered, ms);
+      notePick(f, res, offered, ms);
       return pickOf(res?.picks?.[f.fid], offered);
     };
     // The one item of a one-item list fact on a one-answer field (the slot is a
@@ -791,7 +819,7 @@
         const { res, ms } = await post("/api/autofill/pick", { ...asked, fields: part.map(([, a]) => a.field) });
         for (const [f, a] of part) {
           // One call served the chunk: each field is charged its even share.
-          notePick(f, res?.picks?.[f.fid], a.offered, ms / part.length);
+          notePick(f, res, a.offered, ms / part.length);
           out.set(f.fid, pickOf(res?.picks?.[f.fid], a.offered));
         }
       }
@@ -857,11 +885,10 @@
         }, rows.get(f.fid).deadline);
         const chosen = res?.mid && res.mid !== "give_up" && STEP_REASONS.has(res.reason)
           ? state.candidates.find((c) => c.mid === res.mid) : null;
-        if (res) {
-          noteAnswer(f.fid, "step", res, ms, {
-            move: traceMove(chosen?.mid), reason: TRACE_REASONS.has(res.reason) ? res.reason : null,
-          });
-        }
+        // The model's own word: a give_up it chose is as visible as a click.
+        noteAnswer(f.fid, "step", res, res, ms, {
+          move: traceMove(res?.mid), reason: TRACE_REASONS.has(res?.reason) ? res.reason : null,
+        });
         if (halt()) return halted(f);
         if (fieldLate(f)) return giveUp(f, "late");
         if (!chosen) return giveUp(f, res ? "gave_up" : "no_answer");
@@ -1190,6 +1217,7 @@
           // holds what the engine wrote for the old question, that is not an
           // answer to the new one: it is mapped again, and if nothing answers
           // it the leftover is named for the user to check.
+          // Its steps start over with it: they were the old question's path.
           const mine = had.wrote && same(f.committed, had.wrote);
           rows.set(f.fid, { fid: f.fid, attempts: 0, status: "new", steps: [], ...(mine ? { leftover: had.wrote } : {}) });
         }
@@ -1259,8 +1287,10 @@
             // The slot is a fact NAME, never its value; one call served the chunk.
             note(f.fid, {
               op: "map", ms: wholeMs(ms / part.length), route: TRACE_ROUTES.has(m.route) ? m.route : null,
-              slot: traceSlot(m.slot), why: WHY[m.why] ? m.why : null, ...decision(m.trace),
+              slot: traceSlot(m.slot), why: WHY[m.why] ? m.why : null, ...decisionOf(m.trace),
             });
+          } else if (!res) {
+            note(f.fid, { op: "map", ms: wholeMs(ms / part.length) }); // the call failed or timed out
           }
         }
       }
@@ -1289,7 +1319,7 @@
           set(r.fid, { status: REFUSED[r.outcome], lastOutcome: r.outcome });
           continue;
         }
-        note(r.fid, { op: "sweep", effect: "reverted" }); // a revert caught, re-committed or not
+        note(r.fid, { op: "sweep", effect: "reverted", word: traceWord(r.outcome) }); // a revert caught, re-committed or not
         if ((row.recommits ?? 0) >= 1) {
           unconfirmed({ fid: r.fid }, row.wrote, "unstable");
           continue;
@@ -1820,11 +1850,17 @@
   // the question, a leftover note's quoted text) is sent blank: the label is
   // the one free-text key, so it must not become a way for a value to leave.
   // Whole words, any case: "No" is not in "Phone number".
-  const holdsValue = (label, answer) => {
-    const values = [answer, ...[...String(answer ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1])]
-      .map((v) => String(v ?? "").trim()).filter(Boolean);
-    return values.some((v) => new RegExp(`(^|[^\\p{L}\\p{N}])${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "iu").test(label));
-  };
+  // The strings a value could hide behind: each value itself and the text
+  // quoted inside it (a note's `Searching picked "X"`).
+  const denyKeys = (values) => values.flat(2).filter((v) => typeof v === "string" || typeof v === "number")
+    .flatMap((v) => {
+      const s = String(v).trim();
+      return s ? [s, ...[...s.matchAll(/"([^"]+)"/g)].map((m) => m[1].trim()).filter(Boolean)] : [];
+    });
+  // ONE pattern for a list of keys, compiled once: a key as a whole word, any case.
+  const denyRegex = (keys) => (keys.length ? new RegExp(
+    `(^|[^\\p{L}\\p{N}])(?:${keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})($|[^\\p{L}\\p{N}])`, "iu") : null);
+  const holdsValue = (label, answer) => denyRegex(denyKeys([answer]))?.test(label) ?? false;
   const buildLoopObservations = (report) => (report?.fields ?? []).flatMap((r) => {
     const outcome = r.status === "needs_answer" && LANDED.has(r.lastOutcome) ? "filled_unverified"
       : TELEMETRY_OUTCOME[r.status];
@@ -1843,24 +1879,32 @@
   // app/schemas/autofill_trace.py). ONE field the schema rejects loses the whole
   // run, so every string is checked against its pattern here, and the trace is
   // built from NAMED sources only: never a spread of a row, which holds
-  // `ignored` ("type:<typed value>"), `field.committed` (the page's current
-  // value), `field.help` and the explore results. `label`, `section` and the
-  // option texts are the page's own words; each is sent blank when the row's
-  // answer, value, write or leftover appears in it (holdsValue, as a label is
-  // for the telemetry), because the schema cannot check those three.
+  // `ignored` ("type:<typed value>"), `field.help` and the explore results.
+  // THE RULE: the trace records which page option was chosen and the page's own
+  // option texts; it never holds a typed or profile string in a free-text slot.
+  // The slots the schema cannot check are `label` and `section`, and they are
+  // blanked RUN-WIDE: by any row's answer, value, write or leftover, and by any
+  // row's `field.committed` (the page's current value: a deny key, never
+  // emitted). A sibling's key counts only from a text, date, search or popup
+  // field, or when it is 3+ characters, so a "No" on one select does not
+  // blank every label that says it; a row's own keys always count.
   const MAX_RUN_FIELDS = 200;
   const TRACE_FIELD_OPTIONS = 30;
   const TRACE_TEXT = 200;
   const TRACE_SHAPES = new Set(["text", "date", "select", "group", "search", "popup"]);
+  const TYPED_SHAPES = new Set(["text", "date", "search", "popup"]);
+  const MIN_SIBLING_KEY = 3;
   const TRACE_HOST = /^[a-z0-9.-]{1,253}(:\d{1,5})?$/;
   const TRACE_FAMILY = /^f:[0-9a-z]{1,24}$/;
   const TRACE_SOURCE = /^[a-z-]+$/;
   const MAX_TRACE_ROUNDS = 10;
-  const holdsAnyValue = (text, row) => [row.answer, row.value, row.wrote, row.leftover].flat()
-    .some((v) => holdsValue(text, v));
-  const traceField = (status, row) => {
+  const rowKeys = (row) => denyKeys([row.answer, row.value, row.wrote, row.leftover, row.field?.committed]);
+  const siblingKeys = (row) => rowKeys(row).filter((k) => TYPED_SHAPES.has(row.field?.shape) || k.length >= MIN_SIBLING_KEY);
+  const traceField = (status, row, others) => {
     const f = row.field ?? {};
-    const shown = (text) => (holdsAnyValue(String(text), row) ? "" : String(text).slice(0, TRACE_TEXT));
+    const own = denyRegex(rowKeys(row));
+    const clipped = (text) => String(text).slice(0, TRACE_TEXT);
+    const shown = (text) => (others?.test(text) || own?.test(text) ? "" : clipped(text));
     const options = Array.isArray(f.options) ? f.options : null;
     return {
       fid: row.fid,
@@ -1869,8 +1913,9 @@
       shape: TRACE_SHAPES.has(f.shape) ? f.shape : "unknown",
       section: f.section ? shown(f.section) : null,
       required: Boolean(f.required),
-      // The inventory's passive list only: an explore's rows echo what a search typed.
-      options: options && options.slice(0, TRACE_FIELD_OPTIONS).map((o) => shown(o?.text ?? "")),
+      // The inventory's passive list only (a static list, read before anything
+      // was typed): an explore's rows echo what a search typed.
+      options: options && options.slice(0, TRACE_FIELD_OPTIONS).map((o) => clipped(o?.text ?? "")),
       option_count: options?.length ?? 0,
       ...(TRACE_FAMILY.test(f.recipe?.family) ? { family: f.recipe.family } : {}),
       steps: row.steps ?? [],
@@ -1878,11 +1923,10 @@
       round: Math.min(row.round ?? 0, MAX_TRACE_ROUNDS),
     };
   };
-  // null when the page's host cannot be said in the schema's pattern (no frame
-  // ever named one): such a run listed no field worth keeping.
-  const buildRunTrace = (report, rows, meta) => {
+  const runTrace = (report, rows, meta) => {
     const host = String(report.host ?? "").toLowerCase();
     if (!TRACE_HOST.test(host)) return null;
+    const others = denyRegex([...new Set([...rows.values()].flatMap(siblingKeys))]);
     return {
       run_id: String(report.runId).toLowerCase(),
       host,
@@ -1891,8 +1935,19 @@
       halted: report.stopped ? "stopped" : report.timedOut ? "timeout" : null,
       rounds: Math.min(report.rounds ?? 0, MAX_TRACE_ROUNDS),
       fields: report.fields.filter((r) => FID.test(r.fid) && rows.has(r.fid)).slice(0, MAX_RUN_FIELDS)
-        .map((r) => traceField(r.status, rows.get(r.fid))),
+        .map((r) => traceField(r.status, rows.get(r.fid), others)),
     };
+  };
+  // null when the page's host cannot be said in the schema's pattern (no frame
+  // ever named one: such a run listed no field worth keeping), or when
+  // anything throws. The warning is fixed text: an error could echo a value.
+  const buildRunTrace = (report, rows, meta) => {
+    try {
+      return runTrace(report, rows, meta);
+    } catch {
+      console.warn("[maestro-cs] the run trace could not be built");
+      return null;
+    }
   };
 
   // ---- the report's repeating sections, as the panel says them: one line per

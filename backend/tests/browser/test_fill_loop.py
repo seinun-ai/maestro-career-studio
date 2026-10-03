@@ -2401,7 +2401,7 @@ def test_a_timed_out_runs_trace_says_timeout(page, load):
 
 
 SENTINELS = ["SENTINEL-TYPED-77", "SENTINEL-COMMITTED-91", "SENTINEL-HELP-33", "SENTINEL-EXPLORE-55",
-             "555-0100", "No, I do not have a disability", "Acme Corp", "Springfield"]
+             "555-0100", "Acme Corp", "Springfield"]
 
 
 def sentinel_run(page, load):
@@ -2437,11 +2437,13 @@ def test_no_value_reaches_the_trace(page, load):
     assert [s for s in SENTINELS if s in wire] == []
 
 
-def test_what_the_trace_keeps_of_the_page_is_its_labels_and_options_minus_the_answer(page, load):
+def test_what_the_trace_keeps_of_the_page_is_its_labels_and_options(page, load):
     out = sentinel_run(page, load)
     assert traced(out, "p")["label"] == ""  # a label that holds the written value is blank
     assert (traced(out, "c")["label"], traced(out, "h")["label"]) == ("Nickname", "City")
-    assert (traced(out, "d")["options"], traced(out, "d")["option_count"]) == (["", "Yes, I have a disability"], 2)
+    # The page's own option texts are kept, the chosen one included (owner decision, 2026-10-03).
+    assert (traced(out, "d")["options"], traced(out, "d")["option_count"]) == (
+        ["No, I do not have a disability", "Yes, I have a disability"], 2)
     assert (traced(out, "e")["options"], "explore" in ops(out, "e")) == (None, True)  # a search lists rows only on explore
 
 
@@ -2462,18 +2464,23 @@ def test_a_field_trace_keeps_to_the_schemas_caps_and_patterns(page, load):
     assert (traced(out, "s")["label_source"], traced(out, "s")["family"]) == ("aria-label", "f:abc12")
 
 
-def test_a_fields_trace_path_stops_at_forty_steps(page, load):
-    """A popup scrolled 30 times: 30 /step decisions and 30 moves, 40 kept."""
+def test_a_fields_trace_path_keeps_its_first_and_last_twenty_steps(page, load):
+    """A popup scrolled 30 times: 62 steps happen. The first 20 show how the field began and the
+    last 20 how it ended; each /step answer is marked by its p so the two ends can be told apart."""
     state = {"candidates": [{"mid": "scroll", "describe": "Scroll the list"}, GIVE_UP]}
+    moves = [{"mid": "scroll", "reason": "progress", "trace": {"p": i / 100}} for i in range(30)]
     out = run(page, load, frames=[[f("d", "popup", "Company")]] * 2, limits={"MAX_STEPS": 30},
               map={"d": {"route": "slot", "slot": "experience.0.company", "value": "Acme"}},
               explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
               apply={"scroll": {"outcome": "progressed"}},
-              step={"states": [dict(state) for _ in range(30)], "moves": [{"mid": "scroll", "reason": "progress"}] * 30})
-    assert len([a for a in actions(out, "move") if a["mid"] == "scroll"]) == 30
+              step={"states": [state] * 30, "moves": moves})
+    assert len(actions(out, "move")) == 31  # 30 scrolls and the closing give_up
     steps = traced(out, "d")["steps"]
     assert len(steps) == 40
     assert [s["op"] for s in steps[:4]] == ["map", "explore", "step", "move"]
+    assert steps[-1]["op"] == "move"
+    asked = [round(s["p"] * 100) for s in steps if s["op"] == "step"]
+    assert asked == [*range(0, 9), *range(20, 30)]
 
 
 def test_a_trace_notes_a_recipe_hit_and_a_sweep_revert(page, load):
@@ -2485,7 +2492,7 @@ def test_a_trace_notes_a_recipe_hit_and_a_sweep_revert(page, load):
               sweep=[[{"fid": "d", "outcome": "reverted"}], []])
     steps = traced(out, "d")["steps"]
     assert steps[1]["op"] == "recipe" and set(steps[1]) == {"op"}
-    assert {"op": "sweep", "effect": "reverted"} in steps
+    assert {"op": "sweep", "effect": "reverted", "word": "reverted"} in steps
     assert traced(out, "d")["family"] == "f:fam1"
 
 
@@ -2499,9 +2506,14 @@ EFFECTS_OF_PAGE_WORDS = {
 
 def _header_words():
     """The page outcomes and act() words the fill-loop.js header lists (its vocabularies block)."""
-    block = re.search(r"THE OUTCOME VOCABULARIES.*?\n \*   row status", HEADER, re.S).group(0)
-    page = re.search(r"page outcome\s+(.*?);\s+reason", block, re.S).group(1)
-    acts = re.search(r"act\(\)\s+(.*?)\s+→ the caller", block, re.S).group(1)
+    def found(pattern, text, what):
+        hit = re.search(pattern, text, re.S)
+        assert hit, f"the fill-loop.js header's {what} moved: update _header_words"
+        return hit.group(0 if what == "vocabularies block" else 1)
+
+    block = found(r"THE OUTCOME VOCABULARIES.*?\n \*   row status", HEADER, "vocabularies block")
+    page = found(r"page outcome\s+(.*?);\s+reason", block, "page outcome list")
+    acts = found(r"act\(\)\s+(.*?)\s+→ the caller", block, "act() list")
     words = set()
     for chunk in (page, acts):
         chunk = re.sub(r"\([^()]*\)", " ", re.sub(r"\n \*\s+", " ", chunk))
@@ -2550,6 +2562,221 @@ def test_a_trace_explore_effect_is_read_by_error_word_and_option_count(page, loa
         ({"options": [], "error": "blocked"}, "refused"), ({"options": [], "error": "unsupported"}, "refused"),
         ({"options": [], "error": "committed_while_exploring"}, "unexpected"),
         ({"options": [], "error": "stale"}, "error"), ({"options": [], "error": "cancelled"}, None),
+        ({"options": [], "error": "timeout"}, "late"),
         ({"options": [], "error": "no_popup"}, "no_effect"), ({"options": [], "error": "unsettled"}, "no_effect"),
     ]:
         assert page.evaluate(explore, got) == want, got
+
+
+# ---------- blanking, run-wide, on rows built by hand (buildRunTrace takes the report and the rows)
+
+
+def build_trace(page, load, rows):
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    trace = page.evaluate("""(rows) => {
+      const report = {runId: "abcdefgh-1", host: "X.Test", stopped: false, timedOut: false, rounds: 1,
+                      fields: rows.map((r) => ({fid: r.fid, status: r.status ?? "verified"}))};
+      return window.careerStudioCompanion.fillLoop.buildRunTrace(report, new Map(rows.map((r) => [r.fid, r])),
+                                                                 {startedAt: new Date(), endedAt: new Date()});
+    }""", rows)
+    RunTrace.model_validate(trace)
+    return trace
+
+
+def brow(fid, question="Q", shape="text", **kw):
+    field = {"question": question, "shape": shape, "section": kw.pop("section", ""), "options": kw.pop("options", None),
+             "committed": kw.pop("committed", ""), "required": False}
+    return {"fid": fid, "field": field, "steps": [], "round": 1} | kw
+
+
+def labels(trace):
+    return {t["fid"]: (t["label"], t["section"]) for t in trace["fields"]}
+
+
+def test_a_row_blanks_its_own_label_and_section_by_its_answer_write_value_or_leftover(page, load):
+    trace = build_trace(page, load, [
+        brow("a", "Employer Acme Corp", answer='Searching picked "Acme Corp". Check it.'),
+        brow("b", "Phone", section="Reach me at 555-0100", value="555-0100"),
+        brow("c", "Old Zed Corp entry", leftover="Zed Corp"),
+        brow("d", "Where is Hooli", wrote="Hooli"),
+        brow("e", "Nickname", value="Joe", committed="Springfield"),
+        brow("f", "City Springfield", committed="Springfield")])
+    assert labels(trace) == {"a": ("", None), "b": ("Phone", ""), "c": ("", None), "d": ("", None),
+                             "e": ("Nickname", None), "f": ("", None)}
+
+
+def test_a_siblings_value_blanks_another_rows_label_and_section(page, load):
+    trace = build_trace(page, load, [
+        brow("a", "Company", value="Hooli"),
+        brow("b", "Hooli details", section="About Hooli"),
+        brow("c", "Years", "select", value="Maybe"),
+        brow("d", "Maybe later")])
+    assert labels(trace) == {"a": ("Company", None), "b": ("", ""), "c": ("Years", None), "d": ("", None)}
+
+
+def test_a_short_value_on_a_choice_does_not_blank_every_label_that_says_it(page, load):
+    trace = build_trace(page, load, [
+        brow("a", "Employed?", "select", value="No"),
+        brow("b", "No longer employed?", section="No section"),
+        brow("c", "Own answer: No", "select", value="No")])
+    assert labels(trace) == {"a": ("Employed?", None), "b": ("No longer employed?", "No section"), "c": ("", None)}
+
+
+def test_an_already_filled_rows_committed_value_blanks_a_sibling_label_and_is_never_emitted(page, load):
+    trace = build_trace(page, load, [
+        brow("a", "Phone", status="already", committed="555-0100"),
+        brow("b", "Call 555-0100 after five")])
+    assert labels(trace) == {"a": ("Phone", None), "b": ("", None)}
+    assert "555-0100" not in json.dumps(trace)
+
+
+def test_a_trace_that_cannot_be_built_is_null_and_warns_with_fixed_text(page, load):
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    got = page.evaluate("""() => {
+      const warned = [];
+      console.warn = (...a) => warned.push(a);
+      const bad = {runId: "abcdefgh-1", host: "x.test", fields: [{fid: "a", status: "verified"}]};
+      const rows = new Map([["a", {fid: "a", get field() { throw new Error("secret-value"); }}]]);
+      const trace = window.careerStudioCompanion.fillLoop.buildRunTrace(bad, rows, {startedAt: new Date(), endedAt: new Date()});
+      return {trace, warned};
+    }""")
+    assert got == {"trace": None, "warned": [["[maestro-cs] the run trace could not be built"]]}
+
+
+# ---------- measured and failed calls
+
+
+def test_a_trace_times_the_calls_and_page_actions_it_made(page, load):
+    out = run(page, load, frames=[[f("t", question="City")]],
+              map={"t": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
+              apiDelay={"/api/autofill/map": 80}, pageDelay={"Springfield": 80})
+    mapped, written = traced(out, "t")["steps"]
+    assert mapped["ms"] >= 70 and written["ms"] >= 70
+
+
+def _pick_ms(out, fid):
+    return next(s["ms"] for s in traced(out, fid)["steps"] if s["op"] == "pick")
+
+
+def _selects(*fids):
+    return [f(fid, "select", "Pick " + fid, options=[opt("o1", "Yes"), opt("o2", "No")], optionsComplete=True) for fid in fids]
+
+
+def test_a_batch_pick_charges_each_field_its_even_share_of_the_call(page, load):
+    out = run(page, load, frames=[_selects("a", "b")], apiDelay={"/api/autofill/pick": 100},
+              map={"a": {"route": "low_stakes"}, "b": {"route": "low_stakes"}},
+              pick={"a": {"oids": ["o1"], "reason": "assumed"}, "b": {"oids": ["o1"], "reason": "assumed"}})
+    assert 40 <= _pick_ms(out, "a") <= 80 and 40 <= _pick_ms(out, "b") <= 80  # half of ~100 each
+
+
+def test_a_single_picks_ms_is_the_whole_call(page, load):
+    out = run(page, load, frames=[_selects("a")], apiDelay={"/api/autofill/pick": 100},
+              map={"a": {"route": "low_stakes"}}, pick={"a": {"oids": ["o1"], "reason": "assumed"}})
+    assert _pick_ms(out, "a") >= 90
+
+
+def test_a_failed_pick_still_notes_its_time(page, load):
+    out = run(page, load, frames=[[f("s", "select", "Pick", options=[opt("o1", "Yes")], optionsComplete=True)]],
+              limits={"API_MS": 60}, apiHang=["/api/autofill/pick"], map={"s": {"route": "low_stakes"}})
+    [pick] = [s for s in traced(out, "s")["steps"] if s["op"] == "pick"]
+    assert set(pick) == {"op", "ms"} and pick["ms"] >= 50
+
+
+def test_a_failed_map_notes_its_time_on_each_field(page, load):
+    out = run(page, load, frames=[[f("a", question="City"), f("b", question="State")]],
+              limits={"API_MS": 60}, apiHang=["/api/autofill/map"])
+    maps = [s for fid in ("a", "b") for s in traced(out, fid)["steps"]]
+    assert {frozenset(s) for s in maps} == {frozenset({"op", "ms"})} and {s["op"] for s in maps} == {"map"}
+
+
+def test_a_failed_step_notes_its_time(page, load):
+    state = {"candidates": [{"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?")]] * 2, limits={"API_MS": 60}, apiHang=["/api/autofill/step"],
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_popup"}}, step={"states": [state], "moves": []})
+    [step] = [s for s in traced(out, "d")["steps"] if s["op"] == "step"]
+    assert set(step) == {"op", "ms"} and step["ms"] >= 50
+
+
+def test_a_step_that_chose_give_up_records_the_move(page, load):
+    state = {"candidates": [{"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?")]] * 2,
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
+              step={"states": [state], "moves": [{"mid": "give_up", "reason": "abstained"}]})
+    [step] = [s for s in traced(out, "d")["steps"] if s["op"] == "step"]
+    assert (step["move"], step["reason"]) == ("give_up", "abstained")
+
+
+# ---------- what a pick's index means, and a set's picks
+
+
+def test_a_picks_option_index_counts_the_offered_options_not_the_pages(page, load):
+    """A placeholder row and a never-fill option are never offered, so the chosen option's index is
+    among the two that were; the page's own list (kept whole, option_count 4) still shows all four."""
+    options = [opt("o0", "Select One"), opt("o1", "Never fill", blocked=True), opt("o2", "Yes"), opt("o3", "No")]
+    out = run(page, load, frames=[[f("s", "select", "Pick", options=options, optionsComplete=True)]],
+              map={"s": {"route": "low_stakes"}}, pick={"s": {"oids": ["o3"], "reason": "assumed"}})
+    t = traced(out, "s")
+    assert [s["option"] for s in t["steps"] if s["op"] == "pick"] == [1]
+    assert (t["options"], t["option_count"]) == (["Select One", "Never fill", "Yes", "No"], 4)
+
+
+def test_a_set_notes_a_pick_per_item_and_one_set_action(page, load):
+    options = [opt("o1", "SQL"), opt("o2", "Python")]
+    out = run(page, load, frames=[[f("k", "select", "Skills", multi=True, options=options, optionsComplete=True)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o2"], "reason": "matched"}},
+              apply={"SQL+Python": {"outcome": "verified", "added": ["SQL", "Python"], "missing": []}})
+    steps = traced(out, "k")["steps"]
+    assert [s["op"] for s in steps] == ["map", "pick", "pick", "set"]
+    assert ([s["option"] for s in steps[1:3]], steps[3]["effect"]) == ([0, 1], "progress")
+
+
+# ---------- the loop's trace limits mirror the backend schema's
+
+
+def _const(name, text=HEADER):
+    hit = re.search(rf"const {name} = ([^\n]*?);(?: *//[^\n]*)?\n", text)
+    assert hit, f"fill-loop.js no longer defines {name}"
+    return hit.group(1)
+
+
+def _set_of(name):
+    return set(re.findall(r'"([^"]+)"', re.search(rf"const {name} = new Set\(\[(.*?)\]\);", HEADER, re.S).group(1)))
+
+
+def _meta(model, field, attr):
+    return next(getattr(m, attr) for m in model.model_fields[field].metadata if getattr(m, attr, None) is not None)
+
+
+def test_the_loops_trace_limits_and_patterns_mirror_the_backends():
+    from app.schemas import autofill_fill as F
+    from app.schemas import autofill_trace as T
+
+    regex = lambda name: re.fullmatch(r"/(.*)/", _const(name)).group(1)  # noqa: E731
+    assert [int(_const(n)) for n in ("TRACE_STEPS", "MAX_RUN_FIELDS", "TRACE_FIELD_OPTIONS", "TRACE_TEXT", "MAX_TRACE_ROUNDS")] == [
+        T.MAX_FIELD_STEPS, T.MAX_RUN_FIELDS, _meta(T.TraceField, "options", "max_length"), T.LABEL_MAX,
+        _meta(T.TraceField, "round", "le")] == [40, 200, 30, 200, 10]
+    assert _meta(T.RunTrace, "rounds", "le") == int(_const("MAX_TRACE_ROUNDS"))
+    assert [regex(n) for n in ("TRACE_WORD", "TRACE_SLOT", "MOVE_ID", "TRACE_HOST", "TRACE_FAMILY", "TRACE_SOURCE", "FID")] == [
+        T.WORD, T.SLOT, F.MOVE_ID, _meta(T.RunTrace, "host", "pattern"), _meta(T.TraceField, "family", "pattern"),
+        _meta(T.TraceField, "label_source", "pattern"), F.FID]
+    assert re.search(r"s\.length <= (\d+) && TRACE_SLOT", HEADER).group(1) == str(_meta(T.TraceStep, "slot", "max_length"))
+    assert re.search(r"Math\.min\((\d+), Math\.max\(0, Math\.round", HEADER).group(1) == str(_meta(T.TraceStep, "ms", "le"))
+
+
+def test_the_loops_trace_vocabularies_mirror_the_backends():
+    from typing import get_args
+
+    from app.schemas import autofill_fill as F
+    from app.schemas import autofill_trace as T
+
+    for name, literal in [("TRACE_SHAPES", F.Shape), ("TRACE_ROUTES", F.Route), ("TRACE_ENGINES", F.Engine),
+                          ("TRACE_SECONDS", F.Second), ("TRACE_WAYS", F.PolarityWay), ("TRACE_REASONS", F.StepReason)]:
+        assert _set_of(name) == set(get_args(literal)), name
+    checks = re.search(r"const DECISION_CHECKS = \{(.*?)\n  \};", HEADER, re.S).group(1)
+    assert set(re.findall(r"(?:^|,)\s*([a-z_]+):", checks)) == set(F.DecisionTrace.model_fields)
+    outcome_effects = re.search(r"const OUTCOME_EFFECT = \{(.*?)\};", HEADER, re.S).group(1)
+    returned = " ".join(re.search(rf"const {fn} = .*?\n  \}};", HEADER, re.S).group(0) for fn in ("effectOf", "exploreEffect"))
+    assert set(re.findall(r':\s*"([a-z_]+)"', outcome_effects)) | set(re.findall(r'(?:return|\?|:) "([a-z_]+)"', returned)) <= set(get_args(T.Effect))
