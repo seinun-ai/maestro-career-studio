@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 553,
-    "total_loc": 169347,
-    "src_loc": 47621,
-    "test_loc": 121726,
+    "modules": 565,
+    "total_loc": 175626,
+    "src_loc": 49198,
+    "test_loc": 126428,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -186,14 +186,6 @@
         "lines": 89
       },
       {
-        "file": "app/services/autofill_pick.py",
-        "line": 250,
-        "name": "pick",
-        "complexity": 25,
-        "params": 4,
-        "lines": 42
-      },
-      {
         "file": "app/services/kb_consolidation.py",
         "line": 1072,
         "name": "_merge_skills",
@@ -219,7 +211,7 @@
       },
       {
         "file": "tests/test_eval_fill_cases.py",
-        "line": 531,
+        "line": 567,
         "name": "test_the_map_cases_hold_the_live_wrong_writes",
         "complexity": 24,
         "params": 0,
@@ -235,7 +227,7 @@
       },
       {
         "file": "scripts/eval_fill_decisions.py",
-        "line": 258,
+        "line": 171,
         "name": "check_pick_case",
         "complexity": 24,
         "params": 1,
@@ -243,7 +235,7 @@
       },
       {
         "file": "scripts/eval_fill_decisions.py",
-        "line": 621,
+        "line": 549,
         "name": "run_map",
         "complexity": 24,
         "params": 3,
@@ -256,6 +248,14 @@
         "complexity": 24,
         "params": 5,
         "lines": 96
+      },
+      {
+        "file": "app/services/autofill_pick.py",
+        "line": 350,
+        "name": "pick",
+        "complexity": 24,
+        "params": 4,
+        "lines": 42
       },
       {
         "file": "app/services/career_kb.py",
@@ -291,7 +291,7 @@
       },
       {
         "file": "tests/test_eval_fill_cases.py",
-        "line": 46,
+        "line": 48,
         "name": "test_the_plans_labelled_cases_are_there",
         "complexity": 23,
         "params": 0,
@@ -320,6 +320,14 @@
         "complexity": 23,
         "params": 3,
         "lines": 63
+      },
+      {
+        "file": "app/services/autofill_pick.py",
+        "line": 275,
+        "name": "_with_llm",
+        "complexity": 23,
+        "params": 7,
+        "lines": 27
       },
       {
         "file": "app/services/kb_consolidation.py",
@@ -400,17 +408,9 @@
         "complexity": 21,
         "params": 4,
         "lines": 53
-      },
-      {
-        "file": "tests/test_frontend_health_report.py",
-        "line": 210,
-        "name": "test_dispute_reply_is_a_status_line_that_takes_focus",
-        "complexity": 21,
-        "params": 0,
-        "lines": 28
       }
     ],
-    "hotspot_count": 571,
+    "hotspot_count": 578,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -423,8 +423,8 @@
         "kind": "swallowed_exception"
       },
       {
-        "file": "scripts/eval_fill_decisions.py",
-        "line": 141,
+        "file": "scripts/db_copy.py",
+        "line": 35,
         "kind": "swallowed_exception"
       },
       {
@@ -469,8 +469,8 @@
       }
     ],
     "error_masking_count": 11,
-    "internal_import_edges": 2310,
-    "imports_per_module": 4.18,
+    "internal_import_edges": 2367,
+    "imports_per_module": 4.19,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -480,6 +480,7 @@
       "scripts.ats_snapshot",
       "scripts.backfill_work_auth",
       "scripts.eval_fill_decisions",
+      "scripts.fill_trace",
       "scripts.health_golden",
       "scripts.template_parity"
     ]
@@ -490,18 +491,14 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.7,
-    "duplicated_lines": 397,
+    "percentage": 0.65,
+    "duplicated_lines": 381,
     "clones": 43,
     "allowlisted_clones": 0,
     "worst_files": [
       [
         "app/models/application.py",
-        9
-      ],
-      [
-        "mcp_server/client.py",
-        7
+        10
       ],
       [
         "app/models/application_proposal.py",
@@ -513,6 +510,10 @@
       ],
       [
         "app/services/kb_consolidation.py",
+        5
+      ],
+      [
+        "mcp_server/client.py",
         5
       ],
       [
@@ -574,6 +575,7 @@
       "scripts.ats_snapshot",
       "scripts.backfill_work_auth",
       "scripts.eval_fill_decisions",
+      "scripts.fill_trace",
       "scripts.health_golden",
       "scripts.template_parity",
       "migrations.env",
@@ -599,7 +601,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "571 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
+      "detail": "578 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -612,16 +614,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 169347,
-    "src_loc": 47621,
-    "test_loc": 121726,
-    "modules": 553,
+    "total_loc": 175626,
+    "src_loc": 49198,
+    "test_loc": 126428,
+    "modules": 565,
     "orphan_loc": 0,
-    "duplication_pct": 0.7,
-    "duplicated_lines": 397,
+    "duplication_pct": 0.65,
+    "duplicated_lines": 381,
     "clone_count": 43,
-    "complexity_hotspots": 571,
+    "complexity_hotspots": 578,
     "error_masking": 11,
-    "imports_per_module": 4.18
+    "imports_per_module": 4.19
   }
 }
