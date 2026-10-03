@@ -503,12 +503,14 @@ def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
             engine: Engine, *, eeo_consented: bool) -> Mapped:
     """`_route`, with the decision it came from: which engine answered, how
     sure, against what floor. A field the model omitted keeps the engine with
-    `p` None and `floor` SLOT_FLOOR. A foreign entry is code's none, no model's call."""
+    `p` None, `floor` SLOT_FLOOR and `chose_none` None. A foreign entry is code's
+    none, no model's call: no trace."""
     mapped, floor = _route(field, picked, facts, eeo_consented=eeo_consented)
     if _foreign(field):
-        return mapped.model_copy(update={"trace": DecisionTrace()})
+        return mapped
     return mapped.model_copy(update={"trace": DecisionTrace(
-        engine=engine, p=picked[1] if picked else None, floor=floor)})
+        engine=engine, p=picked[1] if picked else None, floor=floor,
+        chose_none=None if picked is None else picked[0] in (NO_SLOT, HISTORY_UNANSWERED))})
 
 
 def _said_no_fact(picked: tuple[str, float] | None, *, history: bool = False) -> bool:

@@ -119,13 +119,15 @@ def verdict(field, oid: str | None, p: float | None, policy: str, *, engine: Eng
     A `closest` near miss needs a flag slot AND a complete view of the options
     (`field.complete`): the nearest of a partial list is a guess. `p` None is a
     confidence the model gave unreadably: routed as 0.0, but never traced as a 0.0
-    it did not say."""
+    it did not say. `chose_none`: the model's top choice was no option (None when it gave
+    neither an option nor a readable confidence)."""
     chance = p or 0.0
     named = bool(oid) and oid != NO_OPTION
+    chose_none = None if oid is None and p is None else not named
     floor, reason = _bar(field, chance, policy, closest_ok=named and field.complete)
     stands = named and chance >= floor
     return Picked(oids=[oid] if stands else [], reason=reason if stands else "abstained",
-                  trace=DecisionTrace(engine=engine, p=p, floor=floor))
+                  trace=DecisionTrace(engine=engine, p=p, floor=floor, chose_none=chose_none))
 
 
 @dataclass(frozen=True)

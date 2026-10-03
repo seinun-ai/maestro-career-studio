@@ -85,15 +85,24 @@ def abstained(r: StepResponse) -> bool:
 def _decide(req: StepRequest, mid: str | None, p: float | None, policy: str, *,
             engine: Engine) -> StepResponse:
     """The move as a StepResponse, with how it was decided. `p` None: the model's
-    confidence was unreadable; it routes as 0.0 and is never traced as a 0.0 it did not say."""
-    if mid and mid != GIVE_UP and _is_answer(req, mid):
+    confidence was unreadable (or Jev gave no readable answer); it routes as 0.0 and is
+    never traced as a 0.0 it did not say."""
+    mid = None if mid == GIVE_UP else mid
+    if mid and _is_answer(req, mid):
         picked = verdict(req, mid, p, policy, engine=engine)
         return StepResponse(mid=picked.oids[0] if picked.oids else None, reason=picked.reason,
                             trace=picked.trace)
-    # A progress move needs PROGRESS_FLOOR. A give-up (or no move) has no floor of its own; it
-    # carries the same one, so every step trace reads against one bar.
-    trace = DecisionTrace(engine=engine, p=p, floor=PROGRESS_FLOOR)
-    if mid and mid != GIVE_UP and (p or 0.0) >= PROGRESS_FLOOR:
+    return _progress(mid, p, engine)
+
+
+def _progress(mid: str | None, p: float | None, engine: Engine) -> StepResponse:
+    """A move that is not an answer click, or none: a give-up or no move. A progress move needs
+    PROGRESS_FLOOR. A give-up (or no move) has no floor of its own; it carries the same one, so
+    every non-answer step trace reads against one bar. `chose_none`: the top choice was give_up
+    or no move (None when neither a move nor a confidence was readable)."""
+    trace = DecisionTrace(engine=engine, p=p, floor=PROGRESS_FLOOR,
+                          chose_none=None if not mid and p is None else not mid)
+    if mid and (p or 0.0) >= PROGRESS_FLOOR:
         return StepResponse(mid=mid, reason="progress", trace=trace)
     return StepResponse(mid=None, reason="abstained", trace=trace)
 
@@ -152,9 +161,9 @@ def _second_opinion(req: StepRequest, instructions: str, state: dict, criteria: 
     return second
 
 
-def _with_second_opinion(jev_says: StepResponse, second: StepResponse | None, top: Top | None) -> StepResponse:
-    """The second opinion's move, traced against Jev's top choice, if it decided; else Jev's
-    abstain, marked asked if the second opinion ran. `second` None: it never ran."""
+def _with_second_opinion(jev_says: StepResponse, top: Top | None, second: StepResponse | None) -> StepResponse:
+    """The second opinion's move, traced against Jev's top choice `top`, if it decided; else
+    Jev's abstain, marked asked if the second opinion ran. `second` None: it never ran."""
     if second is None:
         return jev_says
     if abstained(second):
@@ -182,7 +191,7 @@ def _move(req: StepRequest, instructions: str, state: dict, criteria: dict[str, 
     if not abstained(decided) or req.route != "slot":
         return decided
     second = _second_opinion(req, instructions, state, criteria, policy, session, budget)
-    return _with_second_opinion(decided, second, (got.choice, got.probability) if got else None)
+    return _with_second_opinion(decided, (got.choice, got.probability) if got else None, second)
 
 
 def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None) -> StepResponse:
@@ -211,4 +220,4 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     instructions = _instructions(req, values, hint, facts, answer)
     state = {"job": asdict(hint) if hint else None, "history": req.history}
     moved = _move(req, instructions, state, criteria, policy, session, budget)
-    return moved.model_copy(update={"polarity": polarity}) if polarity else moved
+    return moved.model_copy(update={"polarity": polarity})

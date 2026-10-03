@@ -312,7 +312,25 @@ def test_verdict_never_answers_without_an_option():
 ])
 def test_verdict_traces_the_floor_the_answer_was_judged_against(field, oid, p, policy, floor):
     got = autofill_pick.verdict(field, oid, p, policy, engine="fast")
-    assert got.trace == DecisionTrace(engine="fast", p=p, floor=floor)
+    assert got.trace == DecisionTrace(engine="fast", p=p, floor=floor, chose_none=oid == "none")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_confident_none_and_an_underfloor_option_trace_differently(db_session, monkeypatch):
+    """Both abstain; only the trace says whether the model was sure there is no answer."""
+    fake_jev(monkeypatch, {"s": ("none", 0.95)})
+    fake_llm(monkeypatch, {"s": {"oids": [], "confidence": 0.9}})
+    none = pick_status([status_field()], db_session)["s"]
+    fake_jev(monkeypatch, {"s": ("o1", 0.6)})
+    fake_llm(monkeypatch, {"s": {"oids": ["o1"], "confidence": 0.6}})
+    under = pick_status([status_field()], db_session)["s"]
+    assert autofill_pick.abstained(none) and autofill_pick.abstained(under)
+    assert (none.trace.p, none.trace.chose_none) == (0.95, True)
+    assert (under.trace.p, under.trace.chose_none) == (0.6, False)
+
+
+def test_a_verdict_with_nothing_readable_has_no_chose_none():
+    assert autofill_pick.verdict(SLOT, None, None, "any", engine="jev").trace.chose_none is None
 
 
 def test_an_abstain_is_decided_by_content_not_by_equality():
@@ -1489,7 +1507,7 @@ def test_a_jev_match_carries_its_probability_and_the_floor_it_cleared(db_session
     fake_jev(monkeypatch, {"s": ("o1", 0.95)})
     got = pick_status([status_field()], db_session)["s"]
     assert (got.oids, got.reason) == (["o1"], "matched")
-    assert got.trace == DecisionTrace(engine="jev", p=0.95, floor=0.9)
+    assert got.trace == DecisionTrace(engine="jev", p=0.95, floor=0.9, chose_none=False)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1503,7 +1521,7 @@ def test_a_second_opinion_that_decides_is_traced_against_jevs_top_choice(db_sess
     assert [p["trace_name"] for p in prompts] == [SECOND]
     assert (got.oids, got.reason) == (["o1"], "matched")
     assert got.trace == DecisionTrace(engine="fast", p=0.97, floor=0.9, second="decided", first_p=0.82,
-                                      first_same=first_same)
+                                      first_same=first_same, chose_none=False)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1512,7 +1530,7 @@ def test_a_second_opinion_that_also_abstains_is_asked_and_the_answer_is_still_ab
     fake_llm(monkeypatch, {"s": {"oids": [], "confidence": 0.9}})
     got = pick_status([status_field()], db_session)["s"]
     assert autofill_pick.abstained(got) and got.reason == "abstained"
-    assert got.trace == DecisionTrace(engine="jev", p=0.8, floor=0.9, second="asked")
+    assert got.trace == DecisionTrace(engine="jev", p=0.8, floor=0.9, second="asked", chose_none=True)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1522,7 +1540,7 @@ def test_a_second_opinion_that_never_ran_leaves_second_unset(db_session, monkeyp
     prompts = fake_llm(monkeypatch, {"s": {"oids": ["o1"], "confidence": 0.99}})
     got = pick_status([status_field()], db_session)["s"]
     assert prompts == [] and autofill_pick.abstained(got)
-    assert got.trace == DecisionTrace(engine="jev", p=0.8, floor=0.9)
+    assert got.trace == DecisionTrace(engine="jev", p=0.8, floor=0.9, chose_none=True)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1541,7 +1559,7 @@ def test_an_unreadable_confidence_is_routed_as_zero_but_traced_as_none(db_sessio
     fake_llm(monkeypatch, {"s": {"oids": ["o1"], "confidence": "very"}})
     got = pick_status([status_field()], db_session)["s"]
     assert autofill_pick.abstained(got)   # as before: 0.0 clears no floor
-    assert got.trace == DecisionTrace(engine="fast", p=None, floor=0.9)
+    assert got.trace == DecisionTrace(engine="fast", p=None, floor=0.9, chose_none=False)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1551,7 +1569,7 @@ def test_a_jev_answer_it_could_not_read_has_no_probability_and_no_first_choice(d
     fake_llm(monkeypatch, {"s": {"oids": ["o1"], "confidence": 0.97}})
     got = pick_status([status_field()], db_session)["s"]
     assert got.trace == DecisionTrace(engine="fast", p=0.97, floor=0.9, second="decided", first_p=None,
-                                      first_same=None)
+                                      first_same=None, chose_none=False)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1571,7 +1589,7 @@ def test_a_mixed_batch_traces_each_field_by_what_decided_it(db_session, monkeypa
     fake_jev(monkeypatch, {"a": ("o1", 0.95), "m": ("none", 0.9), "n": ("none", 0.9)})
     fake_llm(monkeypatch, {"m": {"oids": ["o1"], "confidence": 0.97}, "n": {"oids": [], "confidence": 0.9}})
     got = pick_status([status_field("a"), status_field("m"), status_field("n")], db_session)
-    assert got["a"].trace == DecisionTrace(engine="jev", p=0.95, floor=0.9)
+    assert got["a"].trace == DecisionTrace(engine="jev", p=0.95, floor=0.9, chose_none=False)
     assert got["m"].trace.second == "decided" and got["m"].trace.engine == "fast"
     assert got["n"].trace.second == "asked" and autofill_pick.abstained(got["n"])
 
@@ -1599,7 +1617,7 @@ def test_a_decided_polarity_is_traced_with_its_engine_and_probability(db_session
     fake_jev(monkeypatch, {"s": ("o2", 0.95)}, ways={"s": ("same", 0.97)})
     got = pick([sponsor_field()], db_session)["s"]
     assert got.polarity == PolarityTrace(way="same", engine="jev", p=0.97)
-    assert got.trace == DecisionTrace(engine="jev", p=0.95, floor=0.9)
+    assert got.trace == DecisionTrace(engine="jev", p=0.95, floor=0.9, chose_none=False)
 
 
 @pytest.mark.usefixtures("jev_on")

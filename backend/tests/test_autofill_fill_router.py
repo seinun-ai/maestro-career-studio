@@ -232,7 +232,7 @@ def test_the_map_response_carries_the_decision_trace(db_session, monkeypatch):
     assert r.status_code == 200
     trace = r.json()["fields"]["a"]["trace"]
     assert trace["engine"] == "jev" and trace["p"] == 0.97
-    assert set(trace) == {"engine", "p", "floor", "second", "first_p", "first_same"}
+    assert set(trace) == {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none"}
 
 
 @pytest.mark.usefixtures("profile")
@@ -251,7 +251,7 @@ def test_the_pick_response_carries_the_decision_trace_and_the_polarity(db_sessio
     got = r.json()["picks"]["g"]
     assert (got["oids"], got["reason"]) == (["o1"], "matched")
     assert got["trace"]["engine"] == "jev" and got["trace"]["p"] == 0.97
-    assert set(got["trace"]) == {"engine", "p", "floor", "second", "first_p", "first_same"}
+    assert set(got["trace"]) == {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none"}
     assert got["polarity"] == {"way": "same", "engine": "jev", "p": 0.97}
 
 
@@ -341,7 +341,7 @@ def test_the_step_response_carries_the_decision_trace_and_the_polarity(db_sessio
     got = r.json()
     assert (got["mid"], got["reason"]) == ("click:o1", "matched")
     assert got["trace"]["engine"] == "jev" and got["trace"]["p"] == 0.97
-    assert set(got["trace"]) == {"engine", "p", "floor", "second", "first_p", "first_same"}
+    assert set(got["trace"]) == {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none"}
     assert got["polarity"] == {"way": "same", "engine": "jev", "p": 0.97}
 
 

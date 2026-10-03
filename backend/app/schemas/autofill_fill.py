@@ -47,6 +47,11 @@ class DecisionTrace(BaseModel):
     # calibration goal).
     first_p: float | None = Field(default=None, ge=0.0, le=1.0)
     first_same: bool | None = None
+    # Whether the model's top choice was the no-answer key (map none / history_unanswered, pick
+    # `none` or no oid, step give_up or no move), so "sure there is nothing" reads differently
+    # from "its option fell under the floor". False: it chose a real slot, option or move. None:
+    # nothing readable came back, or no model was asked.
+    chose_none: bool | None = None
 
 
 class PolarityTrace(BaseModel):
