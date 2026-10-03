@@ -283,6 +283,17 @@ PASS. Then run `tests/test_autofill_map.py tests/test_autofill_fill_router.py` a
   `pf` L72 and `pick` L78), `tests/test_autofill_polarity.py`, and
   `tests/test_eval_fill_cases.py` if it covers `engine_of`.
 
+**Shared with Task 2 (as built).** Use `autofill_map.second_decided(trace, first, decided)` and
+`autofill_map.second_asked(trace)` for all second-opinion bookkeeping. Don't build those traces by
+hand. `first_same` is None when the first engine gave no readable answer.
+- Assemble the trace in one pass over the unsure fields.
+- A field whose confidence was unreadable is recorded as `p=None` in the trace. Routing keeps
+  treating it as 0.0, but a trace never shows a fake 0.0 (`autofill_pick.py` ~L249,
+  `autofill_step.py` ~L99).
+- Include a mixed-batch assertion: a confident field keeps `second is None` while another field
+  in the same request was decided by the second opinion.
+- Include a router test that the trace and polarity reach the JSON response.
+
 **Blocker fixed here.** `==` on a Pydantic model compares every field, so a `Picked` carrying a
 trace never equals `ABSTAIN`. The comparison sites are:
 - `autofill_pick.py:301` (`picked[f.fid] == ABSTAIN`): `unsure` goes empty, so the second opinion
@@ -361,6 +372,17 @@ and expect PASS.
   (L92-99), `_second_opinion` (L102-118, comparison at L116), `step` (L121-160, comparison at L158).
 - Modify `backend/scripts/eval_fill_decisions.py` L483-484 and L505.
 - Test: `backend/tests/test_autofill_step.py`.
+
+**Shared with Task 2 (as built).** Use `autofill_map.second_decided(trace, first, decided)` and
+`autofill_map.second_asked(trace)` for all second-opinion bookkeeping. Don't build those traces by
+hand. `first_same` is None when the first engine gave no readable answer.
+- Assemble the trace in one pass over the unsure fields.
+- A field whose confidence was unreadable is recorded as `p=None` in the trace. Routing keeps
+  treating it as 0.0, but a trace never shows a fake 0.0 (`autofill_pick.py` ~L249,
+  `autofill_step.py` ~L99).
+- Include a mixed-batch assertion: a confident field keeps `second is None` while another field
+  in the same request was decided by the second opinion.
+- Include a router test that the trace and polarity reach the /step JSON response.
 
 **Blocker fixed here** (same as Task 3). `second != ABSTAIN` (L116) and `decided != ABSTAIN`
 (L158) break once a trace is attached.
