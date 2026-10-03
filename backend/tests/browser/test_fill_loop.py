@@ -2286,7 +2286,7 @@ def test_an_end_date_whose_job_is_unclear_is_left_with_its_own_note(page, load):
 
 # ---------- the run trace: each field's decision path (value-free)
 
-HEADER = (EXTENSION / "shared" / "fill-loop.js").read_text(encoding="utf-8")
+SOURCE = (EXTENSION / "shared" / "fill-loop.js").read_text(encoding="utf-8")
 
 
 def trace_of(out):
@@ -2511,7 +2511,7 @@ def _header_words():
         assert hit, f"the fill-loop.js header's {what} moved: update _header_words"
         return hit.group(0 if what == "vocabularies block" else 1)
 
-    block = found(r"THE OUTCOME VOCABULARIES.*?\n \*   row status", HEADER, "vocabularies block")
+    block = found(r"THE OUTCOME VOCABULARIES.*?\n \*   row status", SOURCE, "vocabularies block")
     page = found(r"page outcome\s+(.*?);\s+reason", block, "page outcome list")
     acts = found(r"act\(\)\s+(.*?)\s+→ the caller", block, "act() list")
     words = set()
@@ -2584,7 +2584,8 @@ def build_trace(page, load, rows):
 
 
 def brow(fid, question="Q", shape="text", **kw):
-    field = {"question": question, "shape": shape, "section": kw.pop("section", ""), "options": kw.pop("options", None),
+    options = [o if isinstance(o, dict) else {"oid": f"o{i}", "text": o} for i, o in enumerate(kw.pop("options", None) or [])] or None
+    field = {"question": question, "shape": shape, "section": kw.pop("section", ""), "options": options,
              "committed": kw.pop("committed", ""), "required": False}
     return {"fid": fid, "field": field, "steps": [], "round": 1} | kw
 
@@ -2639,6 +2640,26 @@ def test_a_four_character_choice_answer_blanks_a_sibling_label(page, load):
     assert labels(trace) == {"a": ("Pick", None), "b": ("", None)}
 
 
+def test_an_answer_equal_to_the_rows_own_option_is_not_a_deny_key(page, load):
+    """A country select answered "United States" would blank "authorized to work in the United
+    States?" on every US form; typed into a text box the same value still does."""
+    label = "Authorized to work in the United States?"
+    chosen = build_trace(page, load, [
+        brow("a", "Country", "select", value="United States", options=["united states ", "Canada"]), brow("b", label)])
+    typed = build_trace(page, load, [brow("a", "Country", value="United States"), brow("b", label)])
+    assert labels(chosen) == {"a": ("Country", None), "b": (label, None)}
+    assert labels(typed) == {"a": ("Country", None), "b": ("", None)}
+
+
+def test_a_lone_checkboxs_yes_or_no_is_not_a_deny_key(page, load):
+    """A lone checkbox reads "Yes" or "No" (oids yes and no): its own label keeps the word. The
+    option texts here are another language's, so only the lone-checkbox rule can keep it."""
+    lone = [{"oid": "yes", "text": "Oui"}, {"oid": "no", "text": "Non"}]
+    trace = build_trace(page, load, [brow("a", "Yes, email me offers", "group", options=lone, committed="Yes"),
+                                     brow("b", "Say yes to updates")])
+    assert labels(trace) == {"a": ("Yes, email me offers", None), "b": ("Say yes to updates", None)}
+
+
 def test_an_already_filled_rows_committed_value_blanks_a_sibling_label_and_is_never_emitted(page, load):
     trace = build_trace(page, load, [
         brow("a", "Phone", status="already", committed="555-0100"),
@@ -2683,7 +2704,11 @@ def test_a_batch_pick_charges_each_field_its_even_share_of_the_call(page, load):
     out = run(page, load, frames=[_selects("a", "b")], apiDelay={"/api/autofill/pick": 100},
               map={"a": {"route": "low_stakes"}, "b": {"route": "low_stakes"}},
               pick={"a": {"oids": ["o1"], "reason": "assumed"}, "b": {"oids": ["o1"], "reason": "assumed"}})
-    assert 40 <= _pick_ms(out, "a") <= 80 and 40 <= _pick_ms(out, "b") <= 80  # half of ~100 each
+    one = run(page, load, frames=[_selects("a")], apiDelay={"/api/autofill/pick": 100},
+              map={"a": {"route": "low_stakes"}}, pick={"a": {"oids": ["o1"], "reason": "assumed"}})
+    # Half of the call each: equal shares, at least half the delay, and less than one field alone is charged.
+    assert _pick_ms(out, "a") == _pick_ms(out, "b")
+    assert 40 <= _pick_ms(out, "a") < _pick_ms(one, "a")
 
 
 def test_a_single_picks_ms_is_the_whole_call(page, load):
@@ -2753,14 +2778,14 @@ def test_a_set_notes_a_pick_per_item_and_one_set_action(page, load):
 # ---------- the loop's trace limits mirror the backend schema's
 
 
-def _const(name, text=HEADER):
+def _const(name, text=SOURCE):
     hit = re.search(rf"const {name} = ([^\n]*?);(?: *//[^\n]*)?\n", text)
     assert hit, f"fill-loop.js no longer defines {name}"
     return hit.group(1)
 
 
 def _set_of(name):
-    return set(re.findall(r'"([^"]+)"', re.search(rf"const {name} = new Set\(\[(.*?)\]\);", HEADER, re.S).group(1)))
+    return set(re.findall(r'"([^"]+)"', re.search(rf"const {name} = new Set\(\[(.*?)\]\);", SOURCE, re.S).group(1)))
 
 
 def _meta(model, field, attr):
@@ -2779,8 +2804,8 @@ def test_the_loops_trace_limits_and_patterns_mirror_the_backends():
     assert [regex(n) for n in ("TRACE_WORD", "TRACE_SLOT", "MOVE_ID", "TRACE_HOST", "TRACE_FAMILY", "TRACE_SOURCE", "FID")] == [
         T.WORD, T.SLOT, F.MOVE_ID, _meta(T.RunTrace, "host", "pattern"), _meta(T.TraceField, "family", "pattern"),
         _meta(T.TraceField, "label_source", "pattern"), F.FID]
-    assert re.search(r"s\.length <= (\d+) && TRACE_SLOT", HEADER).group(1) == str(_meta(T.TraceStep, "slot", "max_length"))
-    assert re.search(r"Math\.min\((\d+), Math\.max\(0, Math\.round", HEADER).group(1) == str(_meta(T.TraceStep, "ms", "le"))
+    assert re.search(r"s\.length <= (\d+) && TRACE_SLOT", SOURCE).group(1) == str(_meta(T.TraceStep, "slot", "max_length"))
+    assert re.search(r"Math\.min\((\d+), Math\.max\(0, Math\.round", SOURCE).group(1) == str(_meta(T.TraceStep, "ms", "le"))
 
 
 def test_the_loops_trace_vocabularies_mirror_the_backends():
@@ -2792,8 +2817,8 @@ def test_the_loops_trace_vocabularies_mirror_the_backends():
     for name, literal in [("TRACE_SHAPES", F.Shape), ("TRACE_ROUTES", F.Route), ("TRACE_ENGINES", F.Engine),
                           ("TRACE_SECONDS", F.Second), ("TRACE_WAYS", F.PolarityWay), ("TRACE_REASONS", F.StepReason)]:
         assert _set_of(name) == set(get_args(literal)), name
-    checks = re.search(r"const DECISION_CHECKS = \{(.*?)\n  \};", HEADER, re.S).group(1)
+    checks = re.search(r"const DECISION_CHECKS = \{(.*?)\n  \};", SOURCE, re.S).group(1)
     assert set(re.findall(r"(?:^|,)\s*([a-z_]+):", checks)) == set(F.DecisionTrace.model_fields)
-    outcome_effects = re.search(r"const OUTCOME_EFFECT = \{(.*?)\};", HEADER, re.S).group(1)
-    returned = " ".join(re.search(rf"const {fn} = .*?\n  \}};", HEADER, re.S).group(0) for fn in ("effectOf", "exploreEffect"))
+    outcome_effects = re.search(r"const OUTCOME_EFFECT = \{(.*?)\};", SOURCE, re.S).group(1)
+    returned = " ".join(re.search(rf"const {fn} = .*?\n  \}};", SOURCE, re.S).group(0) for fn in ("effectOf", "exploreEffect"))
     assert set(re.findall(r':\s*"([a-z_]+)"', outcome_effects)) | set(re.findall(r'(?:return|\?|:) "([a-z_]+)"', returned)) <= set(get_args(T.Effect))

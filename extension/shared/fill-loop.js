@@ -1900,7 +1900,22 @@
   const TRACE_FAMILY = /^f:[0-9a-z]{1,24}$/;
   const TRACE_SOURCE = /^[a-z-]+$/;
   const MAX_TRACE_ROUNDS = 10;
-  const rowKeys = (row) => denyKeys([row.answer, row.value, row.wrote, row.leftover, row.field?.committed]);
+  // A key that is the row's own passive option (a country select answered
+  // "United States" would blank "authorized to work in the United States?"
+  // everywhere; the option texts are recorded anyway) or a lone checkbox's
+  // yes/no word (its oids are yes and no) says nothing a label could leak.
+  const BOOLEAN_WORDS = new Set(["yes", "no", "true", "false", "on", "off"]);
+  const isLoneCheckbox = (f) => f?.shape === "group" && f.options?.length === 2 && f.options[0]?.oid === "yes"
+    && f.options[1]?.oid === "no";
+  const plainKey = (row) => {
+    const own = new Set((row.field?.options ?? []).map((o) => String(o?.text ?? "").trim().toLowerCase()));
+    const lone = isLoneCheckbox(row.field);
+    return (key) => own.has(key.trim().toLowerCase()) || (lone && BOOLEAN_WORDS.has(key.trim().toLowerCase()));
+  };
+  const rowKeys = (row) => {
+    const plain = plainKey(row);
+    return denyKeys([row.answer, row.value, row.wrote, row.leftover, row.field?.committed]).filter((key) => !plain(key));
+  };
   const siblingKeys = (row) => rowKeys(row).filter((k) => k.length >= (TYPED_SHAPES.has(row.field?.shape)
     ? MIN_TYPED_SIBLING_KEY : MIN_SIBLING_KEY));
   const traceField = (status, row, others) => {
