@@ -399,8 +399,9 @@ def _one_job_per_entry(fields: list[MapField], out: dict[str, Mapped]) -> None:
             anchors.setdefault((f.section, f.repeat_index), set()).add(picks[f.fid][0])
     for f in fields:
         if f.fid in picks and picks[f.fid][1] == "end" and anchors.get((f.section, f.repeat_index)) != {picks[f.fid][0]}:
-            # Code's refusal of the model's job fact: no model's call stands here.
-            out[f.fid] = Mapped(route="none", why="unclear_job", trace=DecisionTrace())
+            # Code refuses the model's job fact (`why` says so), but the model did decide:
+            # its trace stays, so calibration still counts the call.
+            out[f.fid] = Mapped(route="none", why="unclear_job", trace=out[f.fid].trace)
 
 
 def _job_pick(field: MapField, mapped: Mapped) -> tuple[str, str] | None:

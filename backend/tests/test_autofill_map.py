@@ -1512,9 +1512,11 @@ def test_trace_a_foreign_entry_records_no_model_decision(db_session, monkeypatch
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_trace_a_job_end_code_refuses_records_no_model_decision(db_session, monkeypatch):
+def test_trace_a_job_end_code_refuses_keeps_the_models_trace(db_session, monkeypatch):
+    """`why` records code's override; the model's own decision stays in the trace."""
     got = entry_map(db_session, monkeypatch, {"e": ("End Date", "experience.1.end", 0)})["e"]
-    assert (got.why, got.trace) == ("unclear_job", DecisionTrace())
+    assert (got.route, got.why) == ("none", "unclear_job")
+    assert got.trace == DecisionTrace(engine="jev", p=0.95, floor=autofill_map.SLOT_FLOOR)
 
 
 @pytest.mark.usefixtures("jev_on")
