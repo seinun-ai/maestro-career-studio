@@ -6,7 +6,15 @@
 - `action|<family>|<kind>`: tries, one count per effect, `effect_unknown`, `ms`, `timed`.
 - `decision|<op>|<engine>|<by first|second>|<floor>|<band>|<choice>`. `choice` is answer, none
   or unknown; for polarity it is the `way`.
-- `first|<op>|<floor>|<band(first_p)>`, only when second is "decided" and `first_same` is true.
+- `first|<op>|<floor>|<band(first_p)>|<agree same|other|unknown>`, for every step the second
+  opinion decided (Task 9 review: the denominator needs the disagreements too).
+- `AutofillMechanismStat.created_at` gives the report's "counters since" date. It was added to the
+  unreleased migration in place.
+- **The report's suggestion rule (Task 9 review):** for each band B below the floor,
+  D = all `first` n + Jev's undecided below-floor `answer` decisions, and K = the `same`-kept count.
+  A band qualifies when D ≥ 20 and the Wilson 95% lower bound of K/D is ≥ 0.85. The candidate is
+  the lowest band reached by walking down from the floor with every band qualifying. The output
+  is key=value, with a legend (kept is an outcome proxy) and a data-window line.
 - `second|<op>`: asked (ran, unchanged), decided, decided_kept.
 
 `autofill_trace.py` owns the key builders, `KEY_PARTS`, `parse_key`, `NONE_PART` and the frozen
