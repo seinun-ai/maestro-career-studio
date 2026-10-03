@@ -740,8 +740,10 @@ Commit: `refactor(scripts): one copy-only database guard, shared by the eval and
 
 **Sections.** Plain text, from `AutofillMechanismStat` and the stored runs.
 
-1. **Wasted actions.** Per family × kind: `tries`, the share that was not `progress` (the
-   `REJECTED` set plus `effect_unknown`, shown apart), and average ms (`ms / timed`). Sort by wasted ms, which is (`no_effect + unexpected + reverted + refused` tries) × average
+1. **Wasted actions.** Per family × kind: `tries`, the share that was not `progress`
+   (`1 − progress/tries`; `effect_unknown` shown apart), and average ms (`ms / timed`). Sort by
+   wasted ms, which is (the counts of the imported `REJECTED` set) × average ms. Don't list the
+   effects again. Sort by wasted ms, which is (`no_effect + unexpected + reverted + refused` tries) × average
    ms. Show the top 15.
 2. **Calibration.** Per decision op × engine × by × floor × band, with `answer`, `none` and
    `unknown` rows kept apart (polarity rows by `way`): `n`, then the `kept`, `left`, `failed` and
@@ -751,7 +753,9 @@ Commit: `refactor(scripts): one copy-only database guard, shared by the eval and
    the second opinion's value per op: `asked`, `decided`, and the share of `decided_kept`.
 4. **Slowest fields.** From the stored runs, the 10 fields with the most steps and the most total
    ms: host, label, steps, ms, outcome.
-5. **Suggestions.** From section 3 only: a `first|<op>|<band>` with at least 20 decisions and a
+5. **Suggestions.** Caveat (Task 6 review): a `first|pick|<CLOSEST_FLOOR>|…` row's floor is the
+   one the second opinion's "closest" pick cleared, not the match floor Jev faced. Skip those
+   rows in suggestions. From section 3 only: a `first|<op>|<band>` with at least 20 decisions and a
    kept share of at least 0.95, below the floor recorded on those steps. For example:
    `pick: jev 0.8–0.9 was confirmed and kept 41/42 — the jev floor 0.90 could be 0.80`.
    - If none qualifies, say so.
