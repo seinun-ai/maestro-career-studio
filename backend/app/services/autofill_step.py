@@ -24,12 +24,31 @@ from dataclasses import asdict
 
 from sqlalchemy.orm import Session
 
-from app.schemas.autofill_fill import StepRequest, StepResponse
+from app.schemas.autofill_fill import DecisionTrace, Engine, StepRequest, StepResponse
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
-from app.services.autofill_map import SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule, main_call
-from app.services.autofill_pick import NEVER_YES_NO, Computed, JobHint, polarity_answers, polarity_ways, values_for, verdict
+from app.services.autofill_map import (
+    SECOND_OPINION_MAX_S,
+    Budget,
+    Top,
+    fast_json,
+    keen,
+    low_stakes_rule,
+    main_call,
+    second_asked,
+    second_decided,
+)
+from app.services.autofill_pick import (
+    NEVER_YES_NO,
+    Computed,
+    JobHint,
+    polarity_answers,
+    polarity_trace,
+    polarity_ways,
+    values_for,
+    verdict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +61,8 @@ CLICK_RULE = ("Click an option if it is the goal's answer to the question as wor
               "category whose sub-options will contain that answer; open a group only if its sub-options will "
               "contain it. Never click an option that neither is that answer nor leads to it.")
 _GIVE_UP_TEXT = "Stop: no move will select the goal's answer to the question"
+# For a return that carries no trace (a request no model was asked about). An abstain that has
+# a trace is a fresh StepResponse, so it never equals this one: ask `abstained`, never compare with it.
 ABSTAIN = StepResponse(mid=None, reason="abstained")
 _LLM_PROMPT = """{instructions}
 State: {state}
@@ -55,14 +76,26 @@ def _is_answer(req: StepRequest, mid: str) -> bool:
     return mid.startswith("click:") and not describe.startswith(GROUP_CLICK)
 
 
-def _decide(req: StepRequest, mid: str | None, p: float, policy: str) -> StepResponse:
-    if not mid or mid == GIVE_UP:
-        return ABSTAIN
-    if _is_answer(req, mid):
-        # engine=None until the step records its trace (the fill-trace plan, Task 4).
-        picked = verdict(req, mid, p, policy, engine=None)
-        return StepResponse(mid=mid, reason=picked.reason) if picked.oids else ABSTAIN
-    return StepResponse(mid=mid, reason="progress") if p >= PROGRESS_FLOOR else ABSTAIN
+def abstained(r: StepResponse) -> bool:
+    """No move was chosen. Tested by content: `==` compares the trace too, so a
+    response carrying one never equals ABSTAIN."""
+    return r.mid is None
+
+
+def _decide(req: StepRequest, mid: str | None, p: float | None, policy: str, *,
+            engine: Engine) -> StepResponse:
+    """The move as a StepResponse, with how it was decided. `p` None: the model's
+    confidence was unreadable; it routes as 0.0 and is never traced as a 0.0 it did not say."""
+    if mid and mid != GIVE_UP and _is_answer(req, mid):
+        picked = verdict(req, mid, p, policy, engine=engine)
+        return StepResponse(mid=picked.oids[0] if picked.oids else None, reason=picked.reason,
+                            trace=picked.trace)
+    # A progress move needs PROGRESS_FLOOR. A give-up (or no move) has no floor of its own; it
+    # carries the same one, so every step trace reads against one bar.
+    trace = DecisionTrace(engine=engine, p=p, floor=PROGRESS_FLOOR)
+    if mid and mid != GIVE_UP and (p or 0.0) >= PROGRESS_FLOOR:
+        return StepResponse(mid=mid, reason="progress", trace=trace)
+    return StepResponse(mid=None, reason="abstained", trace=trace)
 
 
 def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
@@ -97,26 +130,59 @@ def _with_llm(req: StepRequest, instructions: str, state: dict, criteria: dict[s
     raw = raw if isinstance(raw, dict) else {}
     mid = raw.get("move") if isinstance(raw.get("move"), str) and raw.get("move") in criteria else None
     conf = raw.get("confidence")
-    return _decide(req, mid, float(conf) if jev._unit(conf) else 0.0, policy)
+    return _decide(req, mid, float(conf) if jev._unit(conf) else None, policy, engine="fast")
 
 
 def _second_opinion(req: StepRequest, instructions: str, state: dict, criteria: dict[str, str], policy: str,
-                    session: Session, budget: Budget) -> StepResponse:
+                    session: Session, budget: Budget) -> StepResponse | None:
     """ONE fast-model move for a slot field Jev gave up on, on what is left of
     the request's budget, capped (a give-up step costs at most Jev's 2 s plus
-    this against the field's clock), at the same floors. Out of time or
-    failed, Jev's give-up stands."""
+    this against the field's clock), at the same floors. None: it never ran
+    (out of time, or it failed), and Jev's give-up stands."""
     if (timeout := budget.left(SECOND_OPINION_MAX_S)) is None:
-        return ABSTAIN
+        return None
     try:
         second = _with_llm(req, instructions, state, criteria, policy, session, "autofill-step-second",
                            timeout=timeout)
     except llm.LLMProviderError:
         logger.warning("fast model second opinion failed; Jev's give-up stands")
-        return ABSTAIN
-    if second != ABSTAIN:
+        return None
+    if not abstained(second):
         logger.info("step: the fast model decided a move Jev gave up on")
     return second
+
+
+def _with_second_opinion(jev_says: StepResponse, second: StepResponse | None, top: Top | None) -> StepResponse:
+    """The second opinion's move, traced against Jev's top choice, if it decided; else Jev's
+    abstain, marked asked if the second opinion ran. `second` None: it never ran."""
+    if second is None:
+        return jev_says
+    if abstained(second):
+        return jev_says.model_copy(update={"trace": second_asked(jev_says.trace)})
+    return second.model_copy(update={"trace": second_decided(second.trace, top, second.mid)})
+
+
+def _move(req: StepRequest, instructions: str, state: dict, criteria: dict[str, str], policy: str,
+          session: Session, budget: Budget) -> StepResponse:
+    """The next move, by the engine the setting names."""
+    # The fast step (its engine, or Jev's failure fallback) is one request of
+    # what is left of the budget, no retries.
+    if model_settings.get_autofill_engine(session) != "jev":
+        return main_call(budget, lambda timeout: _with_llm(req, instructions, state, criteria, policy, session,
+                                                         timeout=timeout), "fast step")
+    try:
+        answer = jev.decide({req.fid: jev.choice_question(instructions, criteria)}, state, session)
+    except llm.LLMProviderError:
+        logger.warning("jev step failed; the fast model decides this move")
+        return main_call(budget, lambda timeout: _with_llm(req, instructions, state, criteria, policy, session,
+                                                         timeout=timeout), "fast step")
+    got = jev.choice_of(answer.get(req.fid), criteria)
+    decided = _decide(req, got.choice if got else None, got.probability if got else None, policy, engine="jev")
+    # A low-stakes step keeps its engine.
+    if not abstained(decided) or req.route != "slot":
+        return decided
+    second = _second_opinion(req, instructions, state, criteria, policy, session, budget)
+    return _with_second_opinion(decided, second, (got.choice, got.probability) if got else None)
 
 
 def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None) -> StepResponse:
@@ -134,29 +200,15 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         return ABSTAIN
     policy = fact.policy if fact else "any"
     # A Yes/No fact: this request decides its question's polarity itself; unsure, the step gives up.
-    answer = None
+    answer = polarity = None
     if req.route == "slot" and fact.yes_no:
         ways = polarity_ways([req], facts, session, budget)
+        polarity = polarity_trace(ways[req.fid])
         answer = polarity_answers([req], facts, ways).get(req.fid)
         if answer is None:
-            return ABSTAIN
+            return StepResponse(mid=None, reason="abstained", polarity=polarity)
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
     instructions = _instructions(req, values, hint, facts, answer)
     state = {"job": asdict(hint) if hint else None, "history": req.history}
-    # The fast step (its engine, or Jev's failure fallback) is one request of
-    # what is left of the budget, no retries.
-    if model_settings.get_autofill_engine(session) != "jev":
-        return main_call(budget, lambda timeout: _with_llm(req, instructions, state, criteria, policy, session,
-                                                         timeout=timeout), "fast step")
-    try:
-        answer = jev.decide({req.fid: jev.choice_question(instructions, criteria)}, state, session)
-    except llm.LLMProviderError:
-        logger.warning("jev step failed; the fast model decides this move")
-        return main_call(budget, lambda timeout: _with_llm(req, instructions, state, criteria, policy, session,
-                                                         timeout=timeout), "fast step")
-    got = jev.choice_of(answer.get(req.fid), criteria)
-    decided = _decide(req, got.choice if got else None, got.probability if got else 0.0, policy)
-    # A low-stakes step keeps its engine.
-    if decided != ABSTAIN or req.route != "slot":
-        return decided
-    return _second_opinion(req, instructions, state, criteria, policy, session, budget)
+    moved = _move(req, instructions, state, criteria, policy, session, budget)
+    return moved.model_copy(update={"polarity": polarity}) if polarity else moved

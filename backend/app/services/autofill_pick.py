@@ -31,11 +31,11 @@ from app.services.autofill_map import (
     MIN_CALL_S,
     SECOND_OPINION_MAX_S,
     Budget,
+    Top,
     fast_json,
     keen,
     low_stakes_rule,
     main_call,
-    Top,
     second_asked,
     second_decided,
 )
@@ -54,7 +54,7 @@ ASSUMED_FLOOR = 0.4
 NEVER_YES_NO = ("A status, list or name value is never turned into a Yes or No: only an option naming that same "
                 "status, item or name answers it, else none.")
 # For a return that carries no trace (a field no pick was asked for). An abstain that has
-# a trace is a fresh Picked, so it never equals this one: ask `abstained`, never `== ABSTAIN`.
+# a trace is a fresh Picked, so it never equals this one: ask `abstained`, never compare with it.
 ABSTAIN = Picked(oids=[], reason="abstained")
 _NO_OPTION_TEXT = "No option means the same as the fact"
 _NO_ANSWER_TEXT = "No option states this answer"
@@ -195,6 +195,7 @@ def polarity_ways(fields, facts: dict[str, Fact], session: Session,
 
 
 def polarity_trace(w: autofill_polarity.Polarity) -> PolarityTrace:
+    """How polarity went, value-free; UNSURE reads as 'unsure'."""
     return PolarityTrace(way=w.way or "unsure", engine=w.engine, p=w.p)
 
 

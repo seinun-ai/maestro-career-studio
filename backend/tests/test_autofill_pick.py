@@ -1649,6 +1649,5 @@ def test_neither_the_trace_nor_the_polarity_holds_the_fact_value(db_session, mon
                                  options=opts(*CC305))], STATUS_FACTS, db_session, None)["d"]
     trace, polarity = got.trace.model_dump(), got.polarity.model_dump()
     assert trace["engine"] == "jev" and polarity["way"] == "same"
-    assert set(trace) == set(DecisionTrace.model_fields) and set(polarity) == set(PolarityTrace.model_fields)
     assert value not in got.model_dump_json(include={"trace", "polarity"})
     assert all(v is None or isinstance(v, (str, float, bool)) for v in (*trace.values(), *polarity.values()))

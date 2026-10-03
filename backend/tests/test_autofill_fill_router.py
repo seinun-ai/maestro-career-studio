@@ -325,6 +325,27 @@ def test_step_builds_facts_from_the_consent_gated_profile_and_passes_the_hint(db
 
 
 @pytest.mark.usefixtures("profile")
+def test_the_step_response_carries_the_decision_trace_and_the_polarity(db_session, monkeypatch):
+    """Both are part of the wire shape, and neither holds the answer's value."""
+    from tests.test_autofill_step import fake_jev
+
+    autofill_profile.set_profile({"eligibility": {"over_18": True}}, db_session)
+    model_settings.set_jev_api_key(db_session, "sk-or-test")
+    model_settings.set_autofill_engine(db_session, "jev")
+    fake_jev(monkeypatch, ("click:o1", 0.97), way=("same", 0.97))
+    step = {"fid": "g", "question": "Are you over 18?", "route": "slot", "slot": "eligibility.over_18",
+            "candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'},
+                           {"mid": "give_up", "describe": "Stop"}]}
+    r = _post(db_session, "/api/autofill/step", step)
+    assert r.status_code == 200
+    got = r.json()
+    assert (got["mid"], got["reason"]) == ("click:o1", "matched")
+    assert got["trace"]["engine"] == "jev" and got["trace"]["p"] == 0.97
+    assert set(got["trace"]) == {"engine", "p", "floor", "second", "first_p", "first_same"}
+    assert got["polarity"] == {"way": "same", "engine": "jev", "p": 0.97}
+
+
+@pytest.mark.usefixtures("profile")
 def test_an_eeo_step_without_consent_reaches_no_model(db_session, monkeypatch):
     asked = []
     monkeypatch.setattr(autofill_step.llm, "call_openai", lambda **kw: asked.append(kw) or {})

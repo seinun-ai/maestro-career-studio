@@ -1,13 +1,15 @@
 """/step — Jev picks the next move from the moves the page's code generated."""
 
 import json
+import re
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.autofill_fill import StepRequest
+from app.schemas.autofill_fill import DecisionTrace, PolarityTrace, StepRequest
 from app.services import autofill_catalog, autofill_map, autofill_step, llm, model_settings
-from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
+from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR
 from app.services.autofill_map import _NEVER_LOW_STAKES
 from app.services.autofill_pick import JobHint
 from tests.test_autofill_choose_jev import _answer, jev_on  # noqa: F401  (fixture)
@@ -575,3 +577,182 @@ def test_only_a_same_step_goal_states_the_fact_it_answers(db_session, monkeypatc
     step(req(question="Visa sponsorship", slot="work_auth.sponsorship_now"), db_session)
     text = calls[0]["questions"]["f"]["instructions"]
     assert ('that is, for the applicant, "needs employer visa sponsorship now" is not true' in text) is stated
+
+
+# ---------- the decision trace and the polarity (the fill-trace plan, Task 4)
+
+
+def stepped(r, db_session, hint=None):
+    """The whole StepResponse, trace and polarity included."""
+    return autofill_step.step(r, FACTS, db_session, hint)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_progress_move_traces_its_engine_p_and_the_progress_floor(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("search:value", 0.6))
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert (got.mid, got.reason) == ("search:value", "progress")
+    assert got.trace == DecisionTrace(engine="jev", p=0.6, floor=0.5) and got.polarity is None
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_an_answer_click_traces_the_verdicts_own_floor(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("click:o1", 0.95))
+    got = stepped(req(slot="work_auth.sponsorship_now"), db_session)
+    assert (got.mid, got.reason) == ("click:o1", "matched")
+    assert got.trace == DecisionTrace(engine="jev", p=0.95, floor=MATCH_FLOOR["exact"])
+    fake_jev(monkeypatch, ("click:o1", 0.85))   # under its floor: the abstain says which one
+    got = stepped(req(slot="work_auth.sponsorship_now"), db_session)
+    assert got.mid is None
+    assert (got.trace.engine, got.trace.p, got.trace.floor) == ("jev", 0.85, MATCH_FLOOR["exact"])
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("choice", [(GIVE_UP, 0.7), ("open", 0.4)])
+def test_an_abstain_still_carries_the_engine_and_p(db_session, monkeypatch, choice):
+    """A give-up's p is calibration evidence; its floor is PROGRESS_FLOOR (it has none of its own)."""
+    fake_jev(monkeypatch, choice)
+    model_settings.set_autofill_low_stakes(db_session, True)   # no second opinion: Jev's abstain is the answer
+    got = stepped(req(route="low_stakes"), db_session)
+    assert got.mid is None and got.reason == "abstained"
+    assert got.trace == DecisionTrace(engine="jev", p=choice[1], floor=autofill_step.PROGRESS_FLOOR)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_second_opinion_that_decides_is_traced_against_jevs_top_choice(db_session, monkeypatch):
+    fake_jev(monkeypatch, (GIVE_UP, 0.7))
+    fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.95})
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert (got.mid, got.reason) == ("click:o1", "matched")
+    assert got.trace == DecisionTrace(engine="fast", p=0.95, floor=MATCH_FLOOR["flag"], second="decided",
+                                      first_p=0.7, first_same=False)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_second_opinion_that_agrees_with_jevs_underfloor_move_says_so(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("open", 0.4))
+    fake_llm(monkeypatch, {"move": "open", "confidence": 0.9})
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert (got.mid, got.reason) == ("open", "progress")
+    assert (got.trace.engine, got.trace.second, got.trace.first_p, got.trace.first_same) == ("fast", "decided", 0.4, True)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_second_opinion_still_runs_after_a_jev_abstain_that_carries_a_trace(db_session, monkeypatch):
+    """Regression: `decided != ABSTAIN` was true for every traced abstain, so it never ran."""
+    fake_jev(monkeypatch, (GIVE_UP, 0.9))
+    prompts = fake_llm(monkeypatch, {"move": "open", "confidence": 0.9})
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert [p["trace_name"] for p in prompts] == [SECOND] and got.mid == "open"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_second_opinion_that_ran_and_abstained_is_marked_asked(db_session, monkeypatch):
+    fake_jev(monkeypatch, (GIVE_UP, 0.9))
+    fake_llm(monkeypatch, {"move": GIVE_UP, "confidence": 0.99})
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert got.mid is None and got.reason == "abstained"
+    assert got.trace == DecisionTrace(engine="jev", p=0.9, floor=autofill_step.PROGRESS_FLOOR, second="asked")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_second_opinion_that_never_ran_leaves_second_unset(db_session, monkeypatch):
+    fake_jev(monkeypatch, (GIVE_UP, 0.9))
+
+    def down(**kw):
+        raise llm.LLMProviderError("down")
+
+    monkeypatch.setattr(autofill_step.llm, "call_openai", down)   # it ran and failed
+    assert stepped(req(slot="education.0.discipline"), db_session).trace.second is None
+
+    ticks = iter([0.0] + [autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1] * 10)   # no time left to ask
+    monkeypatch.setattr(autofill_map, "_clock", lambda: next(ticks))
+    prompts = fake_llm(monkeypatch, {"move": "open", "confidence": 0.99})
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert prompts == [] and got.trace.second is None and got.trace.engine == "jev"
+
+
+def test_an_unreadable_fast_confidence_is_traced_as_none_and_routed_as_zero(db_session, monkeypatch):
+    for answer in ({"move": "open"}, {"move": "open", "confidence": True}, {"move": "open", "confidence": "high"}):
+        fake_llm(monkeypatch, answer)
+        got = stepped(req(slot="education.0.discipline"), db_session)
+        assert got.mid is None and got.reason == "abstained", answer
+        assert got.trace == DecisionTrace(engine="fast", p=None, floor=autofill_step.PROGRESS_FLOOR), answer
+    fake_llm(monkeypatch, {"move": "click:o1"})   # an answer click with no confidence is not one either
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert got.mid is None and got.trace.p is None and got.trace.floor == MATCH_FLOOR["flag"]
+
+
+def test_the_fast_engine_traces_itself(db_session, monkeypatch):
+    fake_llm(monkeypatch, {"move": "open", "confidence": 0.7})
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert got.trace == DecisionTrace(engine="fast", p=0.7, floor=autofill_step.PROGRESS_FLOOR)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_failure_fallback_traces_the_fast_engine(db_session, monkeypatch):
+    def down(*a, **k):
+        raise llm.LLMProviderError("Jev couldn't answer (error 529).")
+
+    monkeypatch.setattr(autofill_step.jev, "decide", down)
+    fake_llm(monkeypatch, {"move": "open", "confidence": 0.7})
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert (got.trace.engine, got.trace.second) == ("fast", None)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_early_abstains_carry_no_trace_and_no_polarity(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("click:o1", 0.99))
+    for r in (req(slot="personal.nope"), req(slot="skills"), req(route="low_stakes", slot="education.0.discipline")):
+        got = stepped(r, db_session)
+        assert got.mid is None and got.trace is None and got.polarity is None
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_yes_no_step_carries_how_its_polarity_went(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("click:o1", 0.99), way=("same", 0.95))
+    got = stepped(req(question="Do you need sponsorship?", slot="work_auth.sponsorship_now"), db_session)
+    assert (got.mid, got.reason) == ("click:o1", "matched")
+    assert got.polarity == PolarityTrace(way="same", engine="jev", p=0.95)
+    assert got.trace.engine == "jev" and got.trace.p == 0.99
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_an_unsure_polarity_is_traced_and_the_step_has_no_trace(db_session, monkeypatch):
+    fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.99}, way=("opposite", 0.6))
+    fake_jev(monkeypatch, ("click:o1", 0.99), way=("opposite", 0.6))   # under the polarity floor, twice
+    got = stepped(req(slot="work_auth.sponsorship_now"), db_session)
+    assert (got.mid, got.reason, got.trace) == (None, "abstained", None)
+    assert got.polarity.way == "unsure"
+    fake_jev(monkeypatch, ("click:o1", 0.99), way=("neither", 0.99))
+    got = stepped(req(slot="work_auth.sponsorship_now"), db_session)
+    assert got.trace is None and got.polarity.way == "neither"
+
+
+def test_the_fast_engine_traces_the_polarity_and_the_step(db_session, monkeypatch):
+    fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.99}, way=("same", 0.95))
+    got = stepped(req(slot="work_auth.sponsorship_now"), db_session)
+    assert got.trace.engine == "fast" and got.polarity == PolarityTrace(way="same", engine="fast", p=0.95)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_neither_the_trace_nor_the_polarity_holds_a_fact_value(db_session, monkeypatch):
+    fake_jev(monkeypatch, (GIVE_UP, 0.9))
+    fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.95})
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert got.trace.second == "decided" and "Business Analytics" not in got.model_dump_json(include=TRACE_KEYS)
+    fake_jev(monkeypatch, ("click:o1", 0.99))
+    got = stepped(req(slot="work_auth.sponsorship_now"), db_session)
+    dumped = got.model_dump(include=TRACE_KEYS)
+    assert all(v is None or isinstance(v, (str, float, bool)) for part in dumped.values() for v in part.values())
+    assert "False" not in got.model_dump_json(include=TRACE_KEYS)
+
+
+def test_no_decision_site_compares_a_response_with_abstain():
+    """`==` compares the trace too, so a response that carries one never equals ABSTAIN: ask
+    `abstained`. (A `!=` read every traced abstain as an answer, and the second opinion never ran.)"""
+    root = Path(__file__).resolve().parents[1]
+    files = [*(root / "app/services").glob("autofill_*.py"), root / "scripts/eval_fill_decisions.py"]
+    found = [f"{f.name}:{n}" for f in files for n, line in enumerate(f.read_text().splitlines(), 1)
+             if re.search(r"[!=]=\s*(\w+\.)?ABSTAIN\b", line)]
+    assert files and found == []

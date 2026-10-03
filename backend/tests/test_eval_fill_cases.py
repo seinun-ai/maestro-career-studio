@@ -353,6 +353,15 @@ def test_a_second_opinion_that_abstained_or_never_ran_is_not_scored_as_deciding(
     assert (result["outcome"], result["decided_by"]) == ("abstained", "jev")
 
 
+def test_a_step_response_that_abstained_with_a_trace_is_not_a_decision():
+    from app.schemas.autofill_fill import DecisionTrace, StepResponse
+
+    trace = DecisionTrace(engine="jev", p=0.9, floor=0.5, second="asked")
+    assert not ev._fast_decided(StepResponse(mid=None, reason="abstained", trace=trace))
+    assert not ev._fast_decided(None)   # it never ran
+    assert ev._fast_decided(StepResponse(mid="open", reason="progress", trace=trace))
+
+
 def test_a_jev_pass_never_runs_the_second_opinion(monkeypatch):
     from app.services import autofill_pick
 

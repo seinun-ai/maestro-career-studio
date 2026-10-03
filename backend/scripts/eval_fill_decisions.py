@@ -417,13 +417,13 @@ class Run:
 def _fast_decided(got) -> bool:
     """Whether a second opinion answered where Jev did not: None is "never ran". By content: an
     abstain that carries a trace is not equal to ABSTAIN, so `!=` would call every one decided."""
-    from app.services import autofill_pick
+    from app.services import autofill_pick, autofill_step
 
     if got is None:
         return False
     if isinstance(got, dict):
         return any(not autofill_pick.abstained(p) for p in got.values())
-    return got.mid is not None
+    return not autofill_step.abstained(got)
 
 
 @contextmanager
@@ -517,7 +517,7 @@ def engine_of(run: Run, low_stakes: bool = False):
     if run.engine == "jev":   # Jev alone: its unsure answers stand
         autofill_map._second_opinion = lambda *_a, **_k: None   # never ran
         autofill_pick._second_opinion = lambda *_a, **_k: None   # never ran
-        autofill_step._second_opinion = lambda *_a, **_k: autofill_step.ABSTAIN
+        autofill_step._second_opinion = lambda *_a, **_k: None   # never ran
         autofill_polarity._second_opinion = lambda *_a, **_k: {}
     elif run.engine == "routed":
         for module in (autofill_map, autofill_pick, autofill_step, autofill_polarity):
