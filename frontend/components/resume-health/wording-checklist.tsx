@@ -109,7 +109,7 @@ function WordingRow({
 
   return (
     <li ref={rowRef} className="space-y-1.5 px-3 py-2">
-      <p className="text-muted-foreground text-xs break-words">{note.label}</p>
+      <p className="text-muted-foreground text-body-small break-words">{note.label}</p>
       {currentText && <SourceQuote text={currentText} clamp />}
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1 basis-48">
@@ -122,14 +122,14 @@ function WordingRow({
               <p className="sr-only">{note.issue}</p>
             </>
           ) : (
-            <p className="text-foreground max-w-[65ch] text-sm">{note.issue}</p>
+            <p className="text-foreground max-w-[65ch] text-body-medium">{note.issue}</p>
           )}
         </div>
         {/* Nothing to act on until the resume text has loaded. */}
         {data && (
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {applied ? (
-              <p ref={appliedRef} tabIndex={-1} className="text-muted-foreground px-2 text-xs outline-none">
+              <p ref={appliedRef} tabIndex={-1} className="text-muted-foreground px-2 text-body-small outline-none">
                 {slip ? "Applied" : "Removed"}
               </p>
             ) : (
@@ -171,10 +171,10 @@ function WordingRow({
           <SuggestionCopyOnly currentText={currentText} suggestion={note.suggestion} />
         ) : note.rule === "language.cliche" ? (
           // A cliché is rewritten by hand, by design (no suggestion): its own advice, not a limit.
-          <p className="text-muted-foreground max-w-[65ch] text-xs">{note.how}</p>
+          <p className="text-muted-foreground max-w-[65ch] text-body-small">{note.how}</p>
         ) : (
           // A fix the rewrite guards refused is left to the user.
-          <p className="text-muted-foreground max-w-[65ch] text-xs">
+          <p className="text-muted-foreground max-w-[65ch] text-body-small">
             {slip ? (
               <>Can&apos;t apply this fix here. Correct it in the resume.</>
             ) : (
@@ -183,7 +183,7 @@ function WordingRow({
           </p>
         ))}
       {changed && (
-        <p role="alert" className="text-destructive max-w-[65ch] text-xs">
+        <p role="alert" className="text-destructive max-w-[65ch] text-body-small">
           This {thing} changed since the check.{" "}
           {onReanalyze ? (
             <button type="button" className="underline underline-offset-2" onClick={() => onReanalyze()}>
@@ -252,18 +252,18 @@ export function WordingChecklist({
 
   return (
     // The rows' landmark: a row leaving with no neighbour that can take focus lands on the group.
-    <div tabIndex={-1} className="rounded-md border outline-none">
+    <div tabIndex={-1} className="rounded-corner-md border outline-none">
       <div className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2">
         <div className="min-w-0">
-          <h3 className="text-sm font-medium">Wording ({notes.length})</h3>
-          <p className="text-muted-foreground text-xs">These never change your score.</p>
+          <h3 className="text-title-small">Wording ({notes.length})</h3>
+          <p className="text-muted-foreground text-body-small">These never change your score.</p>
         </div>
         <Button size="xs" variant="link" onClick={() => setEditOpen(true)}>
           Edit word list
         </Button>
       </div>
       {notes.length === 0 ? (
-        <p className="text-muted-foreground px-3 py-2 text-sm">No wording issues.</p>
+        <p className="text-muted-foreground px-3 py-2 text-body-medium">No wording issues.</p>
       ) : (
         <ul className="divide-y">
           {/* Keyed by the text too: a re-run on changed text keeps a note's id, and its row must not

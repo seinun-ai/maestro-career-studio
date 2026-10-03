@@ -266,63 +266,47 @@ def test_the_section_poll_gives_up_and_is_cancelled():
 # ------------------------------------------------------------------------ Tab row
 
 
-def test_a_tab_row_scrolls_inside_itself_instead_of_widening_the_page():
-    """A `w-fit` row of `whitespace-nowrap` triggers was as wide as its labels: at 375px the
-    job page's Q&A tab ran off-screen and the five Settings tabs (~480px) widened the page."""
+def _list_class() -> str:
     tabs = _read("components/ui/tabs.tsx")
-    section = tabs[tabs.index("const tabsListVariants") : tabs.index("function TabsList")]
-    base = re.search(r'^\s*"(group/tabs-list [^"]*)"', section, re.M).group(1)  # the class string, not comments
+    return re.search(r'const TABS_LIST = cn\(\s*"([^"]+)"', tabs).group(1)  # the class string, not the comments
+
+
+def test_a_tab_row_scrolls_inside_itself_instead_of_widening_the_page():
+    """A row of `whitespace-nowrap` triggers is as wide as its labels: at 375px the job page's Q&A
+    tab ran off-screen, the five Settings tabs (~480px) widened the page, and the resume studios'
+    seven (~590px) do not fit a fractional pane."""
+    base = _list_class()
     for cls in (
         "max-w-full",
-        "justify-center-safe",
-        "group-data-horizontal/tabs:not-[.flex-wrap]:overflow-x-auto",
+        "group-data-horizontal/tabs:overflow-x-auto",
         "group-data-horizontal/tabs:[scrollbar-width:none]",
         "group-data-horizontal/tabs:[&::-webkit-scrollbar]:hidden",
         # Base UI's scroll-into-view walks offsetParents to the row: without `relative` a
         # dialog's padding was counted and Home left the first tab 16px under the edge.
         "group/tabs-list relative ",
-        # A tab scrolled to an end keeps the row's 3px padding, room for its focus ring
-        # (4px: at 3px the scroll stopped a rounding pixel short and clipped 1px of it).
-        "group-data-horizontal/tabs:scroll-px-1",
     ):
         assert cls in base, cls
-    # Centred overflow clips the first tab out of reach.
-    assert re.search(r"\bjustify-center\b(?!-)", base) is None
+    # Start-aligned: centred overflow clips the first tab out of reach.
+    assert "group-data-horizontal/tabs:justify-start" in base
+    assert re.search(r"\bjustify-center\b", base) is None and "justify-center-safe" not in base
     # A Tabs that is a grid item (the New base resume dialog) took the row's full label width
     # as its minimum, so the row widened the dialog instead of scrolling.
-    root = tabs[tabs.index("function Tabs(") : tabs.index("const tabsListVariants")]
+    tabs = _read("components/ui/tabs.tsx")
+    root = tabs[tabs.index("function Tabs(") : tabs.index("const TABS_LIST")]
     assert '\n        "group/tabs flex min-w-0 gap-2 data-horizontal:flex-col",\n        className\n' in root
 
 
-_WRAPPING_ROWS = (
-    "app/analytics/page.tsx",
-    "app/career/page.tsx",
-    "components/resume-editor/tailored-resume-studio.tsx",
-    "components/resume-editor/editor-body.tsx",
-    "components/resume-editor/kb-import-drawer.tsx",
-)
-
-
-def test_a_wrapping_tab_row_shows_every_tab_and_grows_to_fit():
-    """`overflow-x: auto` computes `overflow-y` to auto too, so a wrapped row (Analytics' "Gaps &
-    growth" at 375px, Career history's item tabs at 375 and 768) clipped its own second line; and
-    each trigger's `h-[calc(100%-1px)]` had no definite height to resolve against in a wrapped row,
-    so triggers grew taller than their line and spilled over the filter bar and the next card."""
+def test_a_click_brings_a_partly_hidden_tab_into_view():
+    """A mouse click does not scroll a focused button into view; the trigger does it itself."""
     tabs = _read("components/ui/tabs.tsx")
-    section = tabs[tabs.index("const tabsListVariants") : tabs.index("function TabsList")]
-    base = re.search(r'^\s*"(group/tabs-list [^"]*)"', section, re.M).group(1)
-    # Every overflow on the row is scoped to rows that do not wrap.
-    assert re.findall(r"\S*overflow-x-auto", base) == ["group-data-horizontal/tabs:not-[.flex-wrap]:overflow-x-auto"]
-    assert "overflow-auto" not in base and "overflow-y" not in base and "overflow-hidden" not in base
     trigger = tabs[tabs.index("function TabsTrigger") : tabs.index("function TabsContent")]
-    code = re.sub(r"^\s*//[^\n]*", "", trigger, flags=re.M)
-    assert '"group-[.flex-wrap]/tabs-list:h-auto",' in code
-    assert "h-[calc(100%-1px)]" in code  # a one-line row still fills its 32px
+    assert 'event.currentTarget.scrollIntoView({ inline: "nearest", block: "nearest" })' in trigger
 
 
-def test_every_wrapping_tab_row_carries_the_class_the_scopes_key_on():
-    assert "never overflow sideways" not in _read("components/ui/tabs.tsx")  # the old comment said so
-    for rel in _WRAPPING_ROWS:
-        row = re.search(r"<TabsList\b[^>]*>", _read(rel)).group(0)
-        assert re.search(r"\bflex-wrap\b", row), rel  # the class both scopes key on
-
+def test_no_tab_row_wraps():
+    """`overflow-x: auto` computes `overflow-y` to auto too, so a wrapped row clips its own second
+    line. Every row is one scrolling line (docs/design-system/components/Tabs)."""
+    assert "flex-wrap" not in _list_class() and "h-auto" not in _list_class()
+    for path in sorted(_FRONTEND.joinpath("app").rglob("*.tsx")) + sorted(_FRONTEND.joinpath("components").rglob("*.tsx")):
+        for tag in re.findall(r"<TabsList\b[^>]*>", path.read_text()):
+            assert not re.search(r"\b(?:flex-wrap|h-auto)\b", tag), f"{path.name}: a tab row never wraps"

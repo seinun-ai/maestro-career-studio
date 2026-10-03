@@ -52,7 +52,7 @@ function RateTooltip({
   const row = active ? payload?.[0]?.payload : undefined;
   if (!row) return null;
   return (
-    <div className="bg-background rounded-md border p-2 text-xs shadow-sm">
+    <div className="bg-background rounded-corner-xs border p-2 text-body-small shadow-level2">
       <p className="font-medium">{row.kind}</p>
       <p className="text-muted-foreground">
         {row.rate.toFixed(0)}% · {row.success} filled, {row.failure} missed
@@ -179,14 +179,14 @@ export function AutofillCoverageCard() {
 
           {data.top_failures.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-body-medium">
                 <thead>
-                  <tr className="text-muted-foreground text-left text-xs">
-                    <th className="py-1.5 pr-3 font-normal">Field</th>
-                    <th className="py-1.5 pr-3 font-normal">Type</th>
-                    <th className="py-1.5 pr-3 font-normal">Site</th>
-                    <th className="py-1.5 pr-3 text-right font-normal">Seen</th>
-                    <th className="py-1.5 text-right font-normal">Missed</th>
+                  <tr className="text-muted-foreground text-left text-body-small">
+                    <th className="py-1.5 pr-3 text-body-small">Field</th>
+                    <th className="py-1.5 pr-3 text-body-small">Type</th>
+                    <th className="py-1.5 pr-3 text-body-small">Site</th>
+                    <th className="py-1.5 pr-3 text-right text-body-small">Seen</th>
+                    <th className="py-1.5 text-right text-body-small">Missed</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -227,7 +227,7 @@ export function AutofillCoverageCard() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-body-small">
                 New questions, last {data.novelty.length} forms.{" "}
                 {data.recommendation}
               </p>

@@ -44,7 +44,7 @@ function BaseResumeCardBody({
               by its display name (or the slug's words), and the card links to
               /base-resumes/<slug> whenever you actually need it. */}
           <CardTitle
-            className="min-w-0 truncate text-base"
+            className="min-w-0 truncate"
             title={[name, roleLabel(resume.role_category)].join("\n")}
           >
             {name}
@@ -52,7 +52,7 @@ function BaseResumeCardBody({
           {/* Timestamp and menu share this row, so the menu costs no extra
               height and lands at the card's bottom-right. */}
           <div className="flex items-end gap-2">
-            <div className="text-muted-foreground flex min-w-0 flex-wrap items-center gap-1.5 text-xs">
+            <div className="text-muted-foreground flex min-w-0 flex-wrap items-center gap-1.5 text-body-small">
               <span title={formatAbsoluteDateTime(resume.updated_at)}>
                 {formatLabeledAgo(resume.updated_at, "Updated")}
               </span>

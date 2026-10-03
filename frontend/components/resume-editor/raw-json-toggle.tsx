@@ -154,7 +154,7 @@ export function RawJsonToggle({
       {error && (
         <pre
           role="alert"
-          className="text-destructive rounded-md bg-destructive/10 p-2 text-xs whitespace-pre-wrap"
+          className="text-destructive rounded-corner-md bg-destructive/10 p-2 text-body-small whitespace-pre-wrap"
         >
           {error}
         </pre>

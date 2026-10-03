@@ -133,23 +133,23 @@ export function PointsList({
   );
 
   return (
-    <Card className="rounded-2xl">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           Bullets
-          <Badge className="rounded-full" variant="secondary">
+          <Badge variant="secondary">
             {points.length}
           </Badge>
         </CardTitle>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body-medium">
           Approved bullets are ready to add to a resume.
         </p>
       </CardHeader>
       <CardContent className="px-0">
         {ordered.length === 0 ? (
-          <div className="mx-4 rounded-xl bg-surface-container-low px-5 py-8 text-center">
-            <p className="text-sm font-medium">No bullets yet</p>
-            <p className="text-muted-foreground mt-1 text-xs">
+          <div className="mx-4 rounded-corner-md bg-surface-container-low px-5 py-8 text-center">
+            <p className="text-title-small">No bullets yet</p>
+            <p className="text-muted-foreground mt-1 text-body-small">
               Add an update or a document to start.
             </p>
           </div>
@@ -270,7 +270,6 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
           />
           <div className="flex justify-end gap-2">
             <Button
-              className="rounded-full"
               size="sm"
               variant="ghost"
               onClick={() => void onCancel()}
@@ -279,7 +278,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
               <X aria-hidden="true" /> Cancel
             </Button>
             <Button
-              className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+              className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
               onClick={() =>
                 onSave(() => updateOnce({ payload: { text: text.trim() }, message: "Bullet updated" }))
@@ -294,7 +293,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
         </div>
       ) : (
         <div className="flex items-start gap-3">
-          <p className="min-w-0 flex-1 text-sm leading-relaxed whitespace-pre-wrap">
+          <p className="min-w-0 flex-1 text-body-medium whitespace-pre-wrap">
             {point.text}
           </p>
           <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/point:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
@@ -344,14 +343,14 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <PointStateChip state={point.state} pending={pending} onSelect={changeState} />
         <span
-          className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-xs dark:bg-surface-container-highest"
+          className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-body-small dark:bg-surface-container-highest"
           title={point.origin_detail ? `Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}` : undefined}
         >
           {originLabel(point)}
         </span>
         {point.usage.length > 0 ? (
           <span
-            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-primary/10 px-2 text-xs"
+            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-primary/10 px-2 text-body-small"
             title={`Used in: ${usageKeys.map(resumeName).join(", ")}`}
           >
             {/* A bullet no longer offered can still sit on resumes it was
@@ -362,21 +361,21 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
         ) : null}
         {hasDrift ? (
           <span
-            className="inline-flex h-6 items-center gap-1 rounded-full bg-warning-container px-2 text-xs text-on-warning-container"
+            className="inline-flex h-6 items-center gap-1 rounded-full bg-warning-container px-2 text-body-small text-on-warning-container"
             title="A resume still uses older wording."
           >
             <TriangleAlert className="size-3" aria-hidden="true" /> Wording differs
           </span>
         ) : null}
         {point.tags.map((tag) => (
-          <Badge key={tag} variant="secondary" className="rounded-full font-normal">
+          <Badge key={tag} variant="secondary" className="text-body-small">
             {tag}
           </Badge>
         ))}
         {/* "You · You said it" said one thing twice. */}
         {point.origin === "manual" && point.provenance === "user_stated" ? null : (
           <span
-            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-xs dark:bg-surface-container-highest"
+            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-body-small dark:bg-surface-container-highest"
             title={
               point.provenance
                 ? undefined
@@ -415,7 +414,7 @@ function PointStateChip({
             aria-disabled={pending}
             aria-label={`Status: ${current.label}. Change status`}
             className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring aria-disabled:opacity-50",
+              "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-label-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring aria-disabled:opacity-50",
               current.chip,
             )}
           >

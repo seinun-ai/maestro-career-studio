@@ -277,7 +277,7 @@ def test_job_market_bars_and_filters_print_words():
     for field in ("o.work_mode", "o.level_breakdown", "o.work_auth.opt", "o.work_auth.sponsorship"):
         assert f"toEnumBars({field})" in market, field
     page = _read("app/analytics/page.tsx")
-    assert '{filterSelect("level", "Level", level, setLevel, options.levels, enumLabel)}' in page
+    assert '{filterSelect(`${panel}-level`, "Level", level, setLevel, options.levels, enumLabel)}' in page
     assert '"Employment type",' in page and "options.employment,\n        enumLabel," in page
 
 
@@ -353,7 +353,7 @@ def test_longer_words_wrap_instead_of_squeezing():
     word per line beside Update score."""
     page = _read(_GAP_PAGE)
     assert 'className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2"' in page
-    assert "shrink-0 text-sm whitespace-nowrap tabular-nums" in page
+    assert "shrink-0 text-body-medium whitespace-nowrap tabular-nums" in page
     compare = _read("components/ats-compare-panel.tsx")
     assert 'CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2"' in compare
 

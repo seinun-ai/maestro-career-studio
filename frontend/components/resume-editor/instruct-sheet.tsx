@@ -120,7 +120,7 @@ export function InstructSheet({
       <SheetContent side="right" className="w-full sm:max-w-2xl" finalFocus={finalFocus}>
         <SheetHeader>
           <SheetTitle>Ask for changes</SheetTitle>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             Describe a change or ask a question. Nothing changes until you apply
             it. AI won&apos;t add facts that aren&apos;t on your resume.
           </p>
@@ -143,7 +143,7 @@ export function InstructSheet({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-7 rounded-full text-xs"
+                  className="h-7"
                   disabled={busy}
                   onClick={() => setInstruction(text)}
                 >
@@ -175,9 +175,9 @@ export function InstructSheet({
           </div>
 
           {proposal && (
-            <div className="rounded-xl border border-dashed px-3 py-2.5">
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <Badge variant="outline" className="gap-1 text-xs">
+            <div className="rounded-corner-md border border-dashed px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2 text-body-medium">
+                <Badge variant="outline" className="gap-1">
                   <Sparkles className="size-3" aria-hidden="true" />
                   {hasOps ? `Suggested ${proposal.ops_count === 1 ? "edit" : "edits"}` : "Answer"}
                 </Badge>
@@ -186,10 +186,10 @@ export function InstructSheet({
                 ) : null}
               </div>
               {proposal.notes ? (
-                <p className="mt-2 text-sm whitespace-pre-wrap">{proposal.notes}</p>
+                <p className="mt-2 text-body-medium whitespace-pre-wrap">{proposal.notes}</p>
               ) : null}
               {stale ? (
-                <p className="text-muted-foreground mt-2 text-xs">
+                <p className="text-muted-foreground mt-2 text-body-small">
                   The resume changed since these edits were suggested. Suggest
                   again to get edits for this version.
                 </p>
@@ -199,7 +199,7 @@ export function InstructSheet({
                 // point into a copy the resume no longer is.
                 <EditWordsList edits={describeEdits(proposal.ops, stale ? null : resume)} />
               ) : (
-                <p className="text-muted-foreground mt-2 text-xs">
+                <p className="text-muted-foreground mt-2 text-body-small">
                   No edits suggested. Ask for a change in those words if you
                   want one made.
                 </p>

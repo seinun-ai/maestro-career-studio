@@ -53,10 +53,10 @@ function DoneRow({
   // One undo per gesture: a double click reopened twice and ran the check twice.
   const actOnce = useSingleFlight(act.mutate);
   return (
-    <li ref={ref} className="min-w-0 rounded-md border px-3 py-2">
+    <li ref={ref} className="min-w-0 rounded-corner-md border px-3 py-2">
       <div className="flex min-w-0 flex-wrap items-start gap-2">
         <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
-          <span className="text-muted-foreground text-xs break-words">{label}</span>
+          <span className="text-muted-foreground text-body-small break-words">{label}</span>
           {quote && <SourceQuote text={quote} clamp />}
           {children}
         </div>
@@ -107,18 +107,18 @@ export function DoneTab({
   return (
     <section tabIndex={-1} className="space-y-6 outline-none">
       {empty && !disputesFailed && (
-        <p className="text-muted-foreground text-sm">Nothing here yet.</p>
+        <p className="text-muted-foreground text-body-medium">Nothing here yet.</p>
       )}
       {resolved.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium">Fixed this session ({resolved.length})</h3>
+          <h3 className="text-title-small">Fixed this session ({resolved.length})</h3>
           {resolved.map((finding) => (
             <ResolvedFinding key={finding.id} finding={finding} />
           ))}
         </div>
       )}
       {disputesFailed ? (
-        <p className="text-sm">
+        <p className="text-body-medium">
           Couldn&apos;t load what you marked not right.{" "}
           <Button size="xs" variant="link" className="h-auto px-0" onClick={onRetryDisputes}>
             Try again
@@ -127,7 +127,7 @@ export function DoneTab({
       ) : (
         disputes.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-sm font-medium">Marked not right ({disputes.length})</h3>
+            <h3 className="text-title-small">Marked not right ({disputes.length})</h3>
             <ul className="space-y-2">
               {disputes.map((d) => (
                 <DoneRow
@@ -139,8 +139,8 @@ export function DoneTab({
                   failure="reopen it"
                   onAct={() => onReopen(d.content_hash)}
                 >
-                  <p className="max-w-[65ch] text-sm">You said: {d.note}</p>
-                  <p className="text-muted-foreground max-w-[65ch] text-sm">{d.reply}</p>
+                  <p className="max-w-[65ch] text-body-medium">You said: {d.note}</p>
+                  <p className="text-muted-foreground max-w-[65ch] text-body-medium">{d.reply}</p>
                 </DoneRow>
               ))}
             </ul>
@@ -149,7 +149,7 @@ export function DoneTab({
       )}
       {overrides.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium">Corrected ratings ({overrides.length})</h3>
+          <h3 className="text-title-small">Corrected ratings ({overrides.length})</h3>
           <ul className="space-y-2">
             {overrides.map((f) => (
               <DoneRow
@@ -161,7 +161,7 @@ export function DoneTab({
                 failure="set the rating back to automatic"
                 onAct={() => onBackToAutomatic(f.content_hash!)}
               >
-                <p className="max-w-[65ch] text-sm">
+                <p className="max-w-[65ch] text-body-medium">
                   You rated it: {f.classification_level ? EVIDENCE_LABELS[f.classification_level] : "—"}
                   {f.classification_reason ? `. ${f.classification_reason}` : ""}
                 </p>

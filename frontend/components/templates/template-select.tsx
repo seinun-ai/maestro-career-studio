@@ -156,7 +156,7 @@ export function TemplateSelect({
         size="sm"
         aria-label={`Template: ${label}. Choose a different one`}
         onClick={() => setBrowseOpen(true)}
-        className={cn("max-w-64 justify-start font-normal", className)}
+        className={cn("max-w-64 justify-start text-body-small", className)}
       >
         <LayoutGrid className="size-3.5 shrink-0 opacity-70" />
         <span className="text-muted-foreground shrink-0">Template:</span>
@@ -186,23 +186,23 @@ export function TemplateSelect({
             }}
             aria-pressed={value === DEFAULT_TEMPLATE}
             className={cn(
-              "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
+              "flex w-full items-center justify-between gap-3 rounded-corner-sm border px-3 py-2 text-left transition-colors",
               value === DEFAULT_TEMPLATE
                 ? "border-primary bg-primary/5"
                 : "hover:bg-surface-container-low dark:hover:bg-surface-container-high",
             )}
           >
-            <span className="flex items-center gap-2 text-sm font-medium">
+            <span className="flex items-center gap-2 text-title-small">
               {value === DEFAULT_TEMPLATE && <Check className="text-primary size-4 shrink-0" aria-hidden="true" />}
               Use the default template
             </span>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-body-small">
               {defaultTemplate?.display_name ?? "Default"}
             </span>
           </button>
           <div className="min-h-0 flex-1 overflow-y-auto p-1">
             {selectable.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-body-medium">
                 {ready.length === 0
                   ? "No templates ready yet."
                   : "All ready templates are archived. Restore one on the Templates page."}

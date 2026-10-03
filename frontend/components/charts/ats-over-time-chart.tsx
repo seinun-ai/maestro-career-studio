@@ -102,12 +102,12 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
 
   if (isLoading) return <Skeleton className="h-80 w-full" />;
   if (chartData.length === 0) {
-    return <p className="text-muted-foreground text-sm">No data yet.</p>;
+    return <p className="text-muted-foreground text-body-medium">No data yet.</p>;
   }
 
   return (
     <div>
-      <p className="text-muted-foreground mb-2 text-xs">
+      <p className="text-muted-foreground mb-2 text-body-small">
         Solid lines: tailored. Dashed: base.
         {anyLow
           ? " Weeks with fewer than 5 scores are rough."

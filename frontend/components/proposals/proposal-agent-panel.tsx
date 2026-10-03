@@ -82,11 +82,11 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
         {/* Who filed it and the verb: "Proposed by Claude", "Queued by you". */}
         <CardTitle>{proposalByLine(data.proposed_by, data.status) ?? "Agent inbox"}</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5 text-sm">
-        {/* Meta labels match JobExtractedFields StatLine (uppercase 11px). */}
+      <CardContent className="flex flex-col gap-5 text-body-medium">
+        {/* Meta labels match JobExtractedFields StatLine (label-small). */}
         {/* "Proposed Sep 24 · expires Oct 1": the day in words, the exact time on hover. */}
         <p
-          className="text-muted-foreground text-xs"
+          className="text-muted-foreground text-body-small"
           title={formatAbsoluteDateTime(data.created_at)}
         >
           Proposed {formatShortDate(data.created_at)}
@@ -94,9 +94,9 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
         </p>
         {needs ? (
           <div className="flex flex-col gap-1">
-            <p className="text-sm break-words">{needs}</p>
+            <p className="text-body-medium break-words">{needs}</p>
             {needsYouHelp([data.status]).map((line) => (
-              <p key={line} className="text-muted-foreground text-xs">
+              <p key={line} className="text-muted-foreground text-body-small">
                 {line}
               </p>
             ))}
@@ -112,7 +112,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
             <SectionHeading icon={<Building2 />}>
               About the company
             </SectionHeading>
-            <p className="text-muted-foreground text-sm leading-relaxed">
+            <p className="text-muted-foreground text-body-medium">
               {companyNote}
             </p>
           </section>
@@ -123,7 +123,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
             <SectionHeading icon={<ListChecks />}>
               Tailoring plan
             </SectionHeading>
-            <p className="text-muted-foreground text-sm leading-relaxed">
+            <p className="text-muted-foreground text-body-medium">
               {planSummary}
             </p>
           </section>
@@ -136,9 +136,9 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
             </SectionHeading>
             <ul className="flex flex-col gap-2">
               {data.qa_entries.map((q) => (
-                <li key={q.id} className="rounded-md border p-2.5">
-                  <div className="text-xs font-medium">{q.prompt}</div>
-                  <div className="text-muted-foreground mt-1 whitespace-pre-wrap text-xs">
+                <li key={q.id} className="rounded-corner-md border p-2.5">
+                  <div className="text-label-medium">{q.prompt}</div>
+                  <div className="text-muted-foreground mt-1 whitespace-pre-wrap text-body-small">
                     {q.answer}
                   </div>
                 </li>
@@ -167,7 +167,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
                     <img
                       src={src}
                       alt={`Step ${e.step}: ${e.label}`}
-                      className="h-24 rounded-md border object-cover"
+                      className="h-24 rounded-corner-md border object-cover"
                     />
                   </a>
                 );
@@ -182,7 +182,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
               href={`/api/applications/${data.application.id}/pdf`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs underline"
+              className="inline-flex items-center gap-1.5 text-body-small underline"
             >
               <FileText className="size-3.5" aria-hidden="true" />
               Tailored resume PDF
@@ -190,7 +190,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
           ) : null}
           <Link
             href="/proposals"
-            className="text-muted-foreground inline-flex items-center gap-1.5 text-xs underline"
+            className="text-muted-foreground inline-flex items-center gap-1.5 text-body-small underline"
           >
             <Briefcase className="size-3.5" aria-hidden="true" />
             Open Agent inbox
@@ -209,7 +209,7 @@ function SectionHeading({
   children: ReactNode;
 }) {
   return (
-    <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold [&>svg]:size-4">
+    <h4 className="mb-2 flex items-center gap-2 text-title-small [&>svg]:size-4">
       {icon}
       {children}
     </h4>
@@ -225,7 +225,7 @@ function Fact({
 }) {
   return (
     <div className="flex flex-col">
-      <dt className="text-muted-foreground text-[11px] tracking-wide uppercase">
+      <dt className="text-muted-foreground text-label-small">
         {label}
       </dt>
       <dd>{children}</dd>

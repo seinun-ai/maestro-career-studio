@@ -54,7 +54,7 @@ export function PreviewThumbnail({
         // card's radius, and keep a single bottom rule as the separator from
         // the card body. A full box border here would double up with the
         // card's own ring along the left, right and top edges.
-        "bg-surface-container-low relative aspect-[17/22] w-full overflow-hidden rounded-t-xl border-b",
+        "bg-surface-container-low relative aspect-[17/22] w-full overflow-hidden rounded-t-corner-md border-b",
         className,
       )}
     >
@@ -68,7 +68,7 @@ export function PreviewThumbnail({
           className="h-full w-full bg-white object-cover object-top"
         />
       ) : (
-        <div className="text-muted-foreground flex h-full w-full flex-col items-center justify-center gap-2 text-xs">
+        <div className="text-muted-foreground flex h-full w-full flex-col items-center justify-center gap-2 text-body-small">
           <FileText className="size-6 opacity-40" aria-hidden />
           {placeholder}
         </div>
@@ -76,7 +76,7 @@ export function PreviewThumbnail({
       {showImage && chip && (
         <span
           className={cn(
-            "bg-background/90 text-muted-foreground absolute bottom-1.5 left-1.5 rounded px-1.5 py-0.5 text-[10px] backdrop-blur",
+            "bg-background/90 text-muted-foreground absolute bottom-1.5 left-1.5 rounded-corner-xs px-1.5 py-0.5 text-label-small backdrop-blur",
             chip.className,
           )}
           title={chip.title}
@@ -87,7 +87,7 @@ export function PreviewThumbnail({
       {showImage && mark && (
         <span
           aria-hidden="true"
-          className="bg-background/90 text-muted-foreground absolute top-1.5 right-1.5 rounded px-1.5 py-0.5 text-[10px] font-medium backdrop-blur"
+          className="bg-background/90 text-muted-foreground absolute top-1.5 right-1.5 rounded-corner-xs px-1.5 py-0.5 text-label-small backdrop-blur"
         >
           {mark}
         </span>

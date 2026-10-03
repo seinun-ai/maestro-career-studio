@@ -568,7 +568,7 @@ export function ChatPage() {
       : (resumes.data?.find((r) => r.slug === target)?.display_name ?? target);
 
   const composer = (
-    <div className="bg-card focus-within:border-ring rounded-3xl border p-2 shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:shadow-md">
+    <div className="bg-card focus-within:border-ring rounded-corner-md border p-2 transition-[border-color] duration-150">
       {(selections.length > 0 || attachments.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 px-2 pt-1.5">
           {selections.map((s, i) => (
@@ -581,7 +581,7 @@ export function ChatPage() {
             />
           ))}
           {attachments.map((a) => (
-            <Badge key={a.id} variant="secondary" className="gap-1 font-normal">
+            <Badge key={a.id} variant="secondary" className="gap-1 text-body-small">
               <Paperclip className="size-3" />
               <span className="max-w-40 truncate">{a.filename}</span>
             </Badge>
@@ -600,7 +600,7 @@ export function ChatPage() {
             void send();
           }
         }}
-        className="min-h-0 resize-none border-0 bg-transparent px-3 py-2 shadow-none focus-visible:ring-0 dark:bg-transparent"
+        className="min-h-0 resize-none border-0 bg-transparent px-3 py-2 focus-visible:ring-0 dark:bg-transparent"
       />
       <input
         ref={fileInputRef}
@@ -618,7 +618,7 @@ export function ChatPage() {
           variant="ghost"
           size="icon-sm"
           aria-label="Attach file"
-          className="text-muted-foreground rounded-full"
+          className="text-muted-foreground"
           onClick={() => fileInputRef.current?.click()}
         >
           <Paperclip className="size-4" />
@@ -634,7 +634,7 @@ export function ChatPage() {
             size="sm"
             aria-label="Resume to edit"
             title={pinnedName}
-            className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-xs shadow-none hover:bg-muted"
+            className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 border-0 bg-transparent px-2.5 text-body-small hover:bg-muted"
           >
             <FileText className="size-3.5" />
             <SelectValue className="min-w-0">
@@ -653,7 +653,7 @@ export function ChatPage() {
         <Button
           variant="ghost"
           size="sm"
-          className="text-muted-foreground h-8 rounded-full px-2.5 text-xs"
+          className="text-muted-foreground h-8 px-2.5"
           onClick={() => setScopeOpen(true)}
         >
           <Plus className="size-3.5" />
@@ -664,7 +664,6 @@ export function ChatPage() {
           size="icon"
           aria-label="Send"
           disabled={!input.trim() || !!streaming}
-          className="rounded-full"
           onClick={() => void send()}
         >
           {streaming ? (
@@ -699,7 +698,7 @@ export function ChatPage() {
               variant="tonal"
               onClick={() => newSessionOnce()}
               disabled={newSession.isPending}
-              className="h-10 flex-1 justify-start gap-2 rounded-full px-4"
+              className="h-10 flex-1 justify-start gap-2 px-4"
             >
               <Plus className="size-4" /> New chat
             </Button>
@@ -733,7 +732,7 @@ export function ChatPage() {
             setHistoryCollapsed(false);
             focusNext(hideRailRef);
           }}
-          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-md border border-l-0 shadow-md transition-colors @2xl/chat:flex"
+          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-corner-sm border border-l-0 transition-colors @2xl/chat:flex"
         >
           <ChevronRight className="size-4" />
         </button>
@@ -788,7 +787,7 @@ export function ChatPage() {
                     {toolPhrases(streaming.tools).map((phrase) => (
                       <div
                         key={phrase}
-                        className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                        className="text-muted-foreground flex items-center gap-1.5 text-body-small"
                       >
                         <Wrench className="size-3" aria-hidden="true" /> {phrase}
                       </div>
@@ -832,10 +831,10 @@ export function ChatPage() {
           // centred.
           <div className="flex flex-1 flex-col items-center justify-end px-4 pb-8">
             <div className="animate-fade-rise text-center">
-              <h1 className="text-foreground text-3xl font-medium tracking-tight">
+              <h1 className="text-foreground text-headline-medium tracking-tight">
                 What are we working on?
               </h1>
-              <p className="text-muted-foreground mt-2 text-sm">
+              <p className="text-muted-foreground mt-2 text-body-medium">
                 Edit a resume, draft project bullets or work on a template. You can undo any resume edit.
               </p>
             </div>
@@ -847,7 +846,7 @@ export function ChatPage() {
         {!threadFailed && (
           <div className={cn("mx-auto w-full max-w-3xl", hasThread && "mt-3")}>
             {setupProblem ? (
-              <p role="alert" className="text-destructive mb-2 px-3 text-sm">
+              <p role="alert" className="text-destructive mb-2 px-3 text-body-medium">
                 {setupProblem}{" "}
                 <Link href={anchorHref("/settings", "api-keys")} className="underline underline-offset-4">
                   Open Settings
@@ -904,7 +903,7 @@ export function ChatPage() {
                 setHistorySheetOpen(false);
               }}
               disabled={newSession.isPending}
-              className="h-10 justify-start gap-2 rounded-full px-4"
+              className="h-10 justify-start gap-2 px-4"
             >
               <Plus className="size-4" /> New chat
             </Button>
@@ -948,7 +947,7 @@ function SessionList({
   return (
     <div className="flex-1 space-y-0.5 overflow-y-auto">
       {(sessions?.length ?? 0) > 0 && (
-        <p className="text-muted-foreground px-3 pb-1 text-xs font-medium">
+        <p className="text-muted-foreground px-3 pb-1 text-label-medium">
           Recent
         </p>
       )}
@@ -960,12 +959,15 @@ function SessionList({
             key={s.id}
             className={cn(
               "group flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150",
-              activeId === s.id ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover font-semibold" : "hover:bg-muted",
+              activeId === s.id ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover" : "hover:bg-muted",
             )}
           >
             <button
               type="button"
-              className="min-w-0 flex-1 truncate text-left text-sm"
+              className={cn(
+                "min-w-0 flex-1 truncate text-left text-body-medium",
+                activeId === s.id && "font-semibold",
+              )}
               aria-current={activeId === s.id ? "true" : undefined}
               onClick={() => onSelect(s)}
             >
@@ -1049,7 +1051,7 @@ function UserBubble({
 }) {
   return (
     <div className="ml-auto max-w-[85%]">
-      <div className="bg-muted rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap">
+      <div className="bg-muted rounded-corner-md rounded-br-corner-xs px-4 py-2.5 text-body-medium whitespace-pre-wrap">
         {content}
       </div>
       {selections.length > 0 && (

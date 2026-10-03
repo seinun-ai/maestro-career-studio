@@ -75,7 +75,7 @@ export function MarketSection() {
               <Label htmlFor="market-select" id="market-select-label">
                 Country
               </Label>
-              <p id="market-select-hint" className="text-muted-foreground text-xs">
+              <p id="market-select-hint" className="text-muted-foreground text-body-small">
                 Sets the default currency for jobs you save and which diversity questions apply.
               </p>
               <Select
@@ -101,7 +101,7 @@ export function MarketSection() {
             </div>
 
             {current && !current.offers_eeo && (
-              <p className="text-muted-foreground max-w-prose text-xs">
+              <p className="text-muted-foreground max-w-prose text-body-small">
                 Maestro CS has no verified diversity questions for {current.label},
                 so it won&apos;t ask them. Another country&apos;s questions could
                 put wrong information under your name.

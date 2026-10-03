@@ -139,15 +139,15 @@ export function JobKnockoutCard({
   return (
     <div
       role="status"
-      className={cn("rounded-lg px-4 py-3 text-sm", copy.tone)}
+      className={cn("rounded-corner-md px-4 py-3 text-body-medium", copy.tone)}
     >
       <div className="flex items-center gap-2 font-medium [&>svg]:size-4">
         {copy.icon}
         {copy.label}
       </div>
-      <p className={cn("mt-1 text-xs", quiet)}>{copy.detail}</p>
+      <p className={cn("mt-1 text-body-small", quiet)}>{copy.detail}</p>
       {rows.length > 0 && (
-        <ul className="mt-2 space-y-1 text-xs">
+        <ul className="mt-2 space-y-1 text-body-small">
           {rows.map((c) => (
             <li key={c.kind} className="flex items-start gap-1.5">
               <AlertTriangle className="mt-0.5 size-3 shrink-0" />
@@ -156,12 +156,12 @@ export function JobKnockoutCard({
           ))}
         </ul>
       )}
-      {missing && !notChecked ? <p className={cn("mt-1 text-xs", quiet)}>{missing}</p> : null}
+      {missing && !notChecked ? <p className={cn("mt-1 text-body-small", quiet)}>{missing}</p> : null}
       {unchecked.map((item) => (
         <Link
           key={item.what}
           href={item.href}
-          className="mt-2 mr-3 inline-block text-xs underline underline-offset-2"
+          className="mt-2 mr-3 inline-block text-body-small underline underline-offset-2"
         >
           {item.link}
         </Link>
@@ -169,7 +169,7 @@ export function JobKnockoutCard({
       {scan.status === "incomplete_profile" && (
         <Link
           href={autofillHref(scan)}
-          className="mt-2 inline-block text-xs underline underline-offset-2"
+          className="mt-2 inline-block text-body-small underline underline-offset-2"
         >
           Complete your profile
         </Link>

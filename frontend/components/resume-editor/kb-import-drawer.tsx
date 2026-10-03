@@ -172,23 +172,23 @@ export function KbImportDrawer({
       <SheetContent side="right" className="w-full sm:max-w-2xl" finalFocus={finalFocus}>
         <SheetHeader>
           <SheetTitle>Add from career history</SheetTitle>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             Choose the bullets to add. You can undo this from Version history.
           </p>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
           {entities.isLoading ? (
-            <p className="text-muted-foreground flex items-center gap-2 text-sm">
+            <p className="text-muted-foreground flex items-center gap-2 text-body-medium">
               <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Loading your career history…
             </p>
           ) : entities.error ? (
-            <p role="alert" className="text-destructive text-sm">
+            <p role="alert" className="text-destructive text-body-medium">
               {couldnt("load your career history", entities.error)}
             </p>
           ) : (
             <Tabs defaultValue="experience">
-              <TabsList className="flex h-auto flex-wrap">
+              <TabsList>
                 {KINDS.map((kind) => (
                   <TabsTrigger key={kind.value} value={kind.value}>
                     {kind.label}
@@ -202,7 +202,7 @@ export function KbImportDrawer({
                 return (
                   <TabsContent key={kind.value} value={kind.value}>
                     {items.length === 0 ? (
-                      <p className="text-muted-foreground py-6 text-center text-sm">
+                      <p className="text-muted-foreground py-6 text-center text-body-medium">
                         No {kind.label.toLowerCase()} in your career history yet.
                       </p>
                     ) : (
@@ -226,26 +226,26 @@ export function KbImportDrawer({
 
               <TabsContent value="basics" className="space-y-5 py-3">
                 {profile.isLoading ? (
-                  <p className="text-muted-foreground text-sm">Loading basics…</p>
+                  <p className="text-muted-foreground text-body-medium">Loading basics…</p>
                 ) : profile.error ? (
-                  <p role="alert" className="text-destructive text-sm">
+                  <p role="alert" className="text-destructive text-body-medium">
                     {couldnt("load your summary and skills", profile.error)}
                   </p>
                 ) : (
                   <>
                     <fieldset className="space-y-2">
-                      <legend className="text-sm font-semibold">Summary</legend>
-                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3">
-                        <Checkbox checked={includeSummary} onCheckedChange={() => setIncludeSummary((current) => !current)} disabled={!profile.data?.summary || importMutation.isPending} className="mt-1" />
-                        <span className="text-sm leading-relaxed">
+                      <legend className="text-title-small">Summary</legend>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-corner-md border p-3">
+                        <Checkbox checked={includeSummary} onCheckedChange={() => setIncludeSummary((current) => !current)} disabled={!profile.data?.summary || importMutation.isPending} className="mt-0.5" />
+                        <span className="text-body-medium">
                           {profile.data?.summary || "Your career history has no summary."}
                         </span>
                       </label>
                     </fieldset>
                     <fieldset className="space-y-2">
-                      <legend className="text-sm font-semibold">Skill groups</legend>
+                      <legend className="text-title-small">Skill groups</legend>
                       {(profile.data?.skills.length ?? 0) === 0 ? (
-                        <p className="text-muted-foreground text-sm">No skill groups.</p>
+                        <p className="text-muted-foreground text-body-medium">No skill groups.</p>
                       ) : (
                         <div className="space-y-2">
                           {profile.data?.skills.map((group) => {
@@ -255,16 +255,16 @@ export function KbImportDrawer({
                             return (
                               <label
                                 key={group.category}
-                                className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+                                className="flex cursor-pointer items-start gap-3 rounded-corner-md border p-3"
                               >
                                 <Checkbox checked={skillCategories.has(group.category)} onCheckedChange={() => toggleSkill(group.category)} disabled={duplicate || importMutation.isPending} className="mt-1" />
                                 <span className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium">{group.category}</span>
-                                  <span className="text-muted-foreground mt-1 block text-xs">
+                                  <span className="text-title-small">{group.category}</span>
+                                  <span className="text-muted-foreground mt-1 block text-body-small">
                                     {group.items.join(" · ")}
                                   </span>
                                   {duplicate && (
-                                    <Badge variant="secondary" className="mt-2 text-xs">
+                                    <Badge variant="secondary" className="mt-2">
                                       Already added
                                     </Badge>
                                   )}
@@ -283,7 +283,7 @@ export function KbImportDrawer({
         </div>
 
         <SheetFooter className="border-t px-4 py-3">
-          <div className="text-muted-foreground mr-auto text-xs">
+          <div className="text-muted-foreground mr-auto text-body-small">
             {selectedEntityCount} {selectedEntityCount === 1 ? "item" : "items"} ·{" "}
             {selectedPointCount} {selectedPointCount === 1 ? "bullet" : "bullets"} ·{" "}
             {skillCategories.size} skill {skillCategories.size === 1 ? "group" : "groups"}
@@ -336,7 +336,7 @@ function EntityPickerRow({
         <Checkbox checked={allSelected} onCheckedChange={() => onToggleEntity(entity.id, approved.map((point) => point.id))} disabled={disabled || detail.isLoading || detail.isError} className="mt-1" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold">{entity.title}</p>
+            <p className="text-title-small">{entity.title}</p>
             <Badge variant="outline">{kbStatusLabel(entity.status)}</Badge>
             {entity.draft_count > 0 && (
               <Badge variant="secondary">
@@ -345,14 +345,14 @@ function EntityPickerRow({
               </Badge>
             )}
           </div>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-body-small">
             {entity.org || "No organization"}
           </p>
           {disabled ? (
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <Badge variant="secondary" className="mt-2 text-xs">
+                  <Badge variant="secondary" className="mt-2">
                     Already added
                   </Badge>
                 }
@@ -360,21 +360,21 @@ function EntityPickerRow({
               <TooltipContent>This is already on your resume.</TooltipContent>
             </Tooltip>
           ) : detail.isLoading ? (
-            <p className="text-muted-foreground mt-2 text-xs">Loading bullets…</p>
+            <p className="text-muted-foreground mt-2 text-body-small">Loading bullets…</p>
           ) : detail.error ? (
-            <p role="alert" className="text-destructive mt-2 text-xs">
+            <p role="alert" className="text-destructive mt-2 text-body-small">
               {couldnt("load its bullets", detail.error)}
             </p>
           ) : approved.length === 0 ? (
-            <p className="text-muted-foreground mt-2 text-xs">
+            <p className="text-muted-foreground mt-2 text-body-small">
               No approved bullets. Only the title and dates will be added.
             </p>
           ) : (
             <div className="mt-3 space-y-2 border-l pl-3">
               {approved.map((point) => (
-                <label key={point.id} className="flex cursor-pointer items-start gap-2 text-xs">
-                  <Checkbox checked={selected.has(point.id)} onCheckedChange={() => onTogglePoint(entity.id, point.id)} className="mt-0.5" />
-                  <span className="leading-relaxed">{point.text}</span>
+                <label key={point.id} className="flex cursor-pointer items-start gap-2 text-body-small">
+                  <Checkbox checked={selected.has(point.id)} onCheckedChange={() => onTogglePoint(entity.id, point.id)} />
+                  <span>{point.text}</span>
                 </label>
               ))}
             </div>

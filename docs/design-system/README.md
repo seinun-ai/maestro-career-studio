@@ -51,7 +51,7 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 - Separate surfaces by tone first. In light: `card` is the lightest, the page (`background`) sits just under it, then `surface-container-low`, `surface-container`, `surface-container-high`, `surface-container-highest`. Dark runs the same names from darkest up.
 - Use `surface-container-low` for stat tiles, hovered rows and quiet panels; `surface-container` for a neutral chip or a progress track. Never write `bg-muted` with an opacity.
 - `canvas` is only the ground behind a rendered resume page.
-- Shadows are for what floats: `shadow-level1` a hovered FAB or chip, `shadow-level2` menus and popovers, `shadow-level3` dialogs. Cards, tiles and tables have none.
+- Shadows are for what floats: `shadow-level1` a hovered FAB or chip, a focused skip link, a modal sheet; `shadow-level2` menus, popovers, rich (chart) tooltips, sticky bars, the PDF page pill and a dragged row; `shadow-level3` dialogs and toasts. Cards, tiles, tables, plain tooltips and controls at rest have none.
 
 ## Typography
 
@@ -76,7 +76,7 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 
 ## Shape
 
-One corner per kind of thing: `radius-corner-xs` (4px) menus, tooltips, the checkbox; `radius-corner-sm` (8px) buttons, inputs, selects; `radius-corner-md` (12px) cards, tiles, tables, callouts; `radius-corner-lg` (16px) the FAB and sheets; `radius-corner-xl` (28px) dialogs; `radius-full` chips, badges, the search field, the current sidebar row.
+One corner per kind of thing: `radius-corner-xs` (4px) menus, tooltips, the checkbox; `radius-corner-sm` (8px) buttons, inputs, selects; `radius-corner-md` (12px) cards, tiles, tables, callouts; `radius-corner-lg` (16px) the FAB and a sheet's open edge; `radius-corner-xl` (28px) dialogs; `radius-full` chips, badges, segmented toggles (the outline and its segments), the search field, every sidebar row (hover and current share the shape).
 
 ## Selection and state
 
@@ -128,4 +128,4 @@ Each component page has a live preview in light and dark, what you provide, and 
 
 ## Not synced
 
-Built from the local checkout on branch `design-system-tokens` (from `main` at `220950ce`). Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Components: previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open. Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.
+Matches the app after all eight token steps and the six approved interface changes in `docs/plans/2026-10-02-design-system-tokens.md` (branch `claude/ds-steps`, on `main` at `5baf568c`); the repo's tests pin each rule. Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Components: previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open. Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.

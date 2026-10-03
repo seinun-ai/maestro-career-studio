@@ -63,12 +63,12 @@ export function ShortenList({
         const current = textAtLocation(data, note) ?? note.subject ?? "";
         const draft = drafts[note.id];
         return (
-          <li key={note.id} className="min-w-0 rounded-md border px-3 py-2">
+          <li key={note.id} className="min-w-0 rounded-corner-md border px-3 py-2">
             <div className="flex min-w-0 flex-wrap items-start gap-2">
               <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
-                <span className="text-muted-foreground text-xs break-words">{note.label}</span>
+                <span className="text-muted-foreground text-body-small break-words">{note.label}</span>
                 <SourceQuote text={current || note.issue} clamp />
-                <p className="text-muted-foreground max-w-[65ch] text-xs">{note.issue}</p>
+                <p className="text-muted-foreground max-w-[65ch] text-body-small">{note.issue}</p>
               </div>
               {!applied.has(note.id) && (
                 <Button

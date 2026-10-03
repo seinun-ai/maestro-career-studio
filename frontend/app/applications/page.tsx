@@ -480,7 +480,7 @@ function ApplicationsContent() {
       >
         {label}
         {active && (
-          <span className="text-muted-foreground ml-1 text-[10px]">
+          <span className="text-muted-foreground ml-1 text-label-small">
             {sortDir === "asc" ? "▲" : "▼"}
           </span>
         )}
@@ -526,7 +526,7 @@ function ApplicationsContent() {
             }}
           >
             <SelectTrigger
-              className="h-8 min-w-[11rem] rounded-full"
+              className="h-8 min-w-[11rem]"
               aria-label="Filter by status"
             >
               {/* "Status:" on screen: the toolbar has no captions, and "All · 21" alone named nothing. */}
@@ -699,7 +699,7 @@ function ApplicationsContent() {
                       <div className="flex min-w-0 items-center gap-3">
                         <CompanyMonogram name={company} className="shrink-0" />
                         <div className="min-w-0 flex-1 overflow-hidden">
-                          <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                          <p className="flex min-w-0 items-center gap-1.5 text-title-small">
                             <span className="truncate">{company}</span>
                             {(r.kind === "saved" ? r.job.source : r.app.source) ===
                             "agent" ? (
@@ -712,7 +712,7 @@ function ApplicationsContent() {
                               </span>
                             ) : null}
                           </p>
-                          <p className="text-muted-foreground truncate text-xs">
+                          <p className="text-muted-foreground truncate text-body-small">
                             {title}
                             {r.kind === "application" && r.app.job_location
                               ? ` · ${r.app.job_location}`
@@ -721,7 +721,7 @@ function ApplicationsContent() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-w-0 truncate text-xs">
+                    <TableCell className="text-muted-foreground max-w-0 truncate text-body-small">
                       {r.kind === "saved" ? "—" : r.app.base_resume_name || baseName(r.app.base_resume)}
                     </TableCell>
                     <TableCell>
@@ -748,10 +748,10 @@ function ApplicationsContent() {
                         />
                       )}
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-xs tabular-nums">
+                    <TableCell className="text-muted-foreground text-body-small tabular-nums">
                       {r.kind === "saved" ? "—" : formatDate(r.app.applied_at)}
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-xs tabular-nums">
+                    <TableCell className="text-muted-foreground text-body-small tabular-nums">
                       {formatDate(
                         r.kind === "saved" ? r.job.created_at : r.app.created_at,
                       )}

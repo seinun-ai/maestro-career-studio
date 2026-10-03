@@ -182,7 +182,7 @@ export function ModelsSection() {
               />
             ))}
           </div>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-body-small">
             Test a model to see what it can do. A model that fails the Assistant
             test still works everywhere else.
           </p>
@@ -270,7 +270,7 @@ function ModelCapability({
   onProbe: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-small">
       {report ? (
         CAPABILITY_LABELS.map(({ key, label, gates }) => (
           <CapabilityMark
@@ -345,7 +345,7 @@ function CapabilityMark({
 function ModelProfileNote() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="grid gap-2 text-xs">
+    <div className="grid gap-2 text-body-small">
       <button
         type="button"
         className="text-muted-foreground hover:text-foreground justify-self-start underline underline-offset-4"
@@ -516,7 +516,7 @@ export function KeyField({
   const problemId = useId();
   return (
     <div className="grid gap-1.5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-body-small">
         <Label id={labelId}>{label}</Label>
         {configured ? (
           // Saying WHERE the key lives matters: one saved here beats .env, so
@@ -531,7 +531,7 @@ export function KeyField({
       </div>
       {/* The key's format while none is saved, and how to replace one once
           it is: a hint, never an example in the blank field. */}
-      <p id={hintId} className="text-muted-foreground text-xs">
+      <p id={hintId} className="text-muted-foreground text-body-small">
         {configured ? "Type a new key to replace the saved one." : hintUnset}
       </p>
       <Input
@@ -548,7 +548,7 @@ export function KeyField({
         readOnly={saving}
       />
       {problem ? (
-        <p id={problemId} className="text-destructive text-xs">
+        <p id={problemId} className="text-destructive text-body-small">
           {problem}
         </p>
       ) : null}
@@ -626,7 +626,7 @@ function FreeTextModel({
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <p id={hintId} className="text-muted-foreground text-xs">
+      <p id={hintId} className="text-muted-foreground text-body-small">
         {hint} Type the model name your server uses.
       </p>
       <Input
@@ -681,7 +681,7 @@ function ModelSelect({
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <p id={hintId} className="text-muted-foreground text-xs">{hint}</p>
+      <p id={hintId} className="text-muted-foreground text-body-small">{hint}</p>
       {/* readOnly, not disabled, while a pick saves: the list closes onto its trigger, and a
           disabled trigger dropped focus to <body> after every pick (RolePicker's rule). */}
       <Select value={value} onValueChange={onChange} readOnly={saving}>
@@ -704,7 +704,7 @@ function ModelSelect({
                   <span className="grid">
                     <span>{option.label}</span>
                     {showsModelId(option) ? (
-                      <span className="text-muted-foreground font-mono text-xs">
+                      <span className="text-muted-foreground font-mono text-body-small">
                         {option.id}
                       </span>
                     ) : null}

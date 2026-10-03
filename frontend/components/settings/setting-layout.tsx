@@ -14,16 +14,14 @@ import { Label } from "@/components/ui/label";
  * the last block is the actions row.
  */
 
-/** Group headings: the career history read view's uppercase tracked style. Autofill's legends use it. */
-export const GROUP_HEADING =
-  "text-muted-foreground text-xs font-semibold tracking-[0.12em] uppercase";
+/** Group headings: the career history read view's `title-small` style. Autofill's legends use it. */
+export const GROUP_HEADING = "text-muted-foreground text-title-small";
 
 /** The last row of a card body: Save and its siblings, right-aligned, secondary first. */
 export const ACTION_ROW = "flex flex-wrap items-center justify-end gap-2";
 
 /** A labelled switch, at least 44px tall. The label (which toggles it) fills the row, height, width
- *  and the gap before the switch, so a tap anywhere on the row toggles. It keeps its default size;
- *  `leading-snug` only spaces its lines when it wraps at 375. */
+ *  and the gap before the switch, so a tap anywhere on the row toggles. It keeps its default size. */
 export function SwitchRow({
   htmlFor,
   label,
@@ -35,7 +33,7 @@ export function SwitchRow({
 }) {
   return (
     <div className="flex min-h-11 items-center justify-between">
-      <Label htmlFor={htmlFor} className="flex-1 self-stretch py-1.5 pr-4 leading-snug">
+      <Label htmlFor={htmlFor} className="flex-1 self-stretch py-1.5 pr-4">
         {label}
       </Label>
       {children}

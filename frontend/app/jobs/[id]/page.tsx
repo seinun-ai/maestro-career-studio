@@ -71,7 +71,15 @@ const JOB_TABS = ["jd", "fit", "output", "qa"] as const;
 const LOCKED_REASON =
   "Resume and Q&A open once this job has its own resume: tailor one, use yours as is, or mark the job applied.";
 
-function JobTabsList({ hasApp, reasonId }: { hasApp: boolean; reasonId: string }) {
+function JobTabsList({
+  hasApp,
+  reasonId,
+  className,
+}: {
+  hasApp: boolean;
+  reasonId: string;
+  className?: string;
+}) {
   // A greyed tab with no stated reason is a dead end for a first-time user: the
   // reason is visible beside the tabs (below) and each locked tab points at it.
   // The base trigger styles set pointer-events-none while disabled, which
@@ -87,7 +95,7 @@ function JobTabsList({ hasApp, reasonId }: { hasApp: boolean; reasonId: string }
           "disabled:pointer-events-auto aria-disabled:pointer-events-auto",
       };
   return (
-    <TabsList>
+    <TabsList className={className}>
       <TabsTrigger value="jd">Overview</TabsTrigger>
       <TabsTrigger value="fit">Score and tailor</TabsTrigger>
       <TabsTrigger value="output" {...lockedProps}>
@@ -102,7 +110,7 @@ function JobTabsList({ hasApp, reasonId }: { hasApp: boolean; reasonId: string }
 
 function NoDraftYet({ onOpenFit }: { onOpenFit: () => void }) {
   return (
-    <div className="text-muted-foreground flex flex-col items-center gap-3 rounded-md border border-dashed p-8 text-center text-sm">
+    <div className="text-muted-foreground flex flex-col items-center gap-3 rounded-corner-md border border-dashed p-8 text-center text-body-medium">
       <p>{"Your resume and answers appear here once you start a draft."}</p>
       <Button size="sm" variant="outline" onClick={onOpenFit}>
         Go to Score and tailor
@@ -405,14 +413,14 @@ export default function JobDetailPage({
           />
           <CompanyMonogram
             name={job.company}
-            className="mt-0.5 size-10 text-base"
+            className="mt-0.5 size-10 text-body-large"
           />
           <div className="min-w-0 grow basis-[16rem]">
             {/* Wraps, never truncates: at 375 a long title lost its end, and this is the one place it shows. */}
-            <h1 className="text-[22px] font-medium tracking-tight break-words">
+            <h1 className="text-title-large font-medium tracking-tight break-words">
               {job.title ?? "Untitled role"}
             </h1>
-            <p className="text-muted-foreground truncate text-sm" title={metaLine}>
+            <p className="text-muted-foreground truncate text-body-medium" title={metaLine}>
               {metaLine}
             </p>
           </div>
@@ -578,25 +586,28 @@ export default function JobDetailPage({
               not outlined: promoting a control to every tab and then styling
               it like the row's furniture buries it again — this is what you
               came to the job for once a draft exists. */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <JobTabsList hasApp={hasApp} reasonId={lockedReasonId} />
+          <div className="space-y-2">
+            {/* The hairline is the row's, so it runs under the button too. */}
+            <div className="flex items-center gap-2 border-b">
+              <JobTabsList hasApp={hasApp} reasonId={lockedReasonId} className="flex-1 group-data-horizontal/tabs:border-b-0" />
+              {application?.customized_json ? (
+                <Button
+                  size="sm"
+                  nativeButton={false}
+                  render={
+                    <Link href={`/applications/${application.id}/resume`}>
+                      <Pencil className="size-4" />
+                      Edit resume
+                    </Link>
+                  }
+                />
+              ) : null}
+            </div>
             {hasApp ? null : (
-              <p id={lockedReasonId} className="text-muted-foreground basis-full text-xs">
+              <p id={lockedReasonId} className="text-muted-foreground text-body-small">
                 {LOCKED_REASON}
               </p>
             )}
-            {application?.customized_json ? (
-              <Button
-                size="sm"
-                nativeButton={false}
-                render={
-                  <Link href={`/applications/${application.id}/resume`}>
-                    <Pencil className="size-4" />
-                    Edit resume
-                  </Link>
-                }
-              />
-            ) : null}
           </div>
 
           <TabsContent value="jd" className="mt-0 space-y-4">
@@ -618,7 +629,7 @@ export default function JobDetailPage({
               <button
                 type="button"
                 onClick={() => setTab("output")}
-                className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
+                className="text-primary inline-flex items-center gap-1 text-body-medium hover:underline"
               >
                 Compare with your base resume on the Resume tab
                 <ArrowRight className="size-3.5" />

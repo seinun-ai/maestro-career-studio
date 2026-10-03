@@ -68,7 +68,7 @@ export function ConnectedAgentsCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="@container/setting">
-        <div className="grid gap-6 text-sm">
+        <div className="grid gap-6 text-body-medium">
           <div className="grid gap-4 @lg/setting:grid-cols-2">
             <div className="grid content-start gap-1.5">
               <h3 id={canId} className="font-medium">

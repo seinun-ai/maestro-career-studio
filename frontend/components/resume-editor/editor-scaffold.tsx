@@ -117,7 +117,7 @@ export function ActiveArchivedCount({
 export function HiddenBadge({ enabled }: { enabled: boolean }) {
   if (enabled) return null;
   return (
-    <Badge variant="secondary" className="text-xs">
+    <Badge variant="secondary">
       Hidden
     </Badge>
   );
@@ -126,12 +126,12 @@ export function HiddenBadge({ enabled }: { enabled: boolean }) {
 /** A row's bullets in read mode, or the empty state that invites adding one. */
 export function BulletsRead({ bullets }: { bullets: string[] }) {
   if (bullets.length === 0) {
-    return <p className="text-muted-foreground text-xs italic">No bullets yet</p>;
+    return <p className="text-muted-foreground text-body-small italic">No bullets yet</p>;
   }
   return (
-    <ul className="text-foreground/90 ml-4 list-disc space-y-1 text-sm">
+    <ul className="text-foreground/90 ml-4 list-disc space-y-1 text-body-medium">
       {bullets.map((b, bi) => (
-        <li key={bi} className="rounded-sm">
+        <li key={bi}>
           {b}
         </li>
       ))}

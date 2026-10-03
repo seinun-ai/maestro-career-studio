@@ -66,7 +66,7 @@ export function BulletList({
 
   return (
     <div className="space-y-2" role="group" aria-labelledby={labelId}>
-      <span id={labelId} className="text-sm font-medium">
+      <span id={labelId} className="text-label-large">
         {label}
       </span>
       <div ref={listRef} className="space-y-2">

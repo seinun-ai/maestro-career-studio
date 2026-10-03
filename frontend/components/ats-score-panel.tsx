@@ -59,7 +59,7 @@ import {
 /** "ATS score" spelled out once, where the tab first shows one (conventions: Canonical terms). */
 function AtsScoreLead() {
   return (
-    <p className="text-muted-foreground max-w-[60ch] text-sm">
+    <p className="text-muted-foreground max-w-[60ch] text-body-medium">
       {ATS_SCORE_LEAD}
     </p>
   );
@@ -75,11 +75,11 @@ function SubscoreBar({ label, value }: { label: string; value: number }) {
   return (
     <div className="space-y-0.5">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-muted-foreground text-xs">{label}</span>
+        <span className="text-muted-foreground text-body-small">{label}</span>
         {/* "11 of 100": a bare 11 read as a count, not a score out of 100. */}
-        <span className="text-xs font-medium tabular-nums">
+        <span className="text-label-medium tabular-nums">
           {pct}
-          <span className="text-muted-foreground font-normal"> of 100</span>
+          <span className="text-body-small text-muted-foreground"> of 100</span>
         </span>
       </div>
       <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
@@ -215,7 +215,7 @@ function AtsScoreCard({
       style={{ animationDelay: `${Math.min(index, 8) * 50}ms` }}
     >
       <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-        <CardTitle className="min-w-0 text-sm leading-tight font-medium">
+        <CardTitle className="min-w-0 text-title-small">
           {baseName(score.target_id)}
         </CardTitle>
         {/* h-5: the badge's height. ⋯ (bigger on touch) overflows it, centered, so a card with ⋯ and
@@ -238,9 +238,9 @@ function AtsScoreCard({
       </CardHeader>
       {/* flex-1 and mt-auto: every card's button sits on the same line, whatever notes a card has. */}
       <CardContent className="flex flex-1 flex-col gap-3">
-        <div className="text-2xl font-semibold tabular-nums">
+        <div className="text-headline-small tabular-nums">
           {score.composite.toFixed(1)}
-          <span className="text-muted-foreground text-sm font-normal"> / 100</span>
+          <span className="text-muted-foreground text-body-medium"> / 100</span>
         </div>
         <div className="space-y-1.5">
           {SUBSCORE_LABELS.map(({ key, label }) => (
@@ -252,10 +252,10 @@ function AtsScoreCard({
           ))}
         </div>
         {datesUnreadable(score.subscores_json.format_flags) && (
-          <p className="text-muted-foreground text-xs">{UNREADABLE_DATES_NOTE}</p>
+          <p className="text-muted-foreground text-body-small">{UNREADABLE_DATES_NOTE}</p>
         )}
         {(gateWarnings.length > 0 || coverage) && (
-          <ul className="space-y-1 text-xs">
+          <ul className="space-y-1 text-body-small">
             {gateWarnings.map((warning) => (
               <li key={warning} className="text-destructive flex gap-1.5">
                 <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
@@ -524,8 +524,8 @@ export function AtsScorePanel({
       if (!unscorable && (noBases || importOpen)) {
         return (
           <div className="flex flex-col items-center gap-3 py-8 text-center">
-            <p className="text-sm font-medium">No base resumes to score against.</p>
-            <p className="text-muted-foreground max-w-[50ch] text-sm">
+            <p className="text-title-small">No base resumes to score against.</p>
+            <p className="text-muted-foreground max-w-[50ch] text-body-medium">
               Import your resumes to score this job against each one.
             </p>
             <Button ref={importButtonRef} size="sm" onClick={() => setImportOpen(true)}>
@@ -537,7 +537,7 @@ export function AtsScorePanel({
       return (
         <div className="flex flex-col items-center gap-3 py-8 text-center">
           {!unscorable && <AtsScoreLead />}
-          <p className="text-muted-foreground text-sm">{unscorable ?? "No ATS scores yet."}</p>
+          <p className="text-muted-foreground text-body-medium">{unscorable ?? "No ATS scores yet."}</p>
           {!unscorable && (
             <Button
               size="sm"
@@ -577,7 +577,7 @@ export function AtsScorePanel({
           </Button>
         </div>
         {lowCoverageEverywhere && (
-          <div className="flex gap-2 rounded-md bg-warning-container p-2 text-sm text-on-warning-container">
+          <div className="flex gap-2 rounded-corner-md bg-warning-container p-2 text-body-medium text-on-warning-container">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <p>{LOW_COVERAGE_ON_EVERY_RESUME}</p>
           </div>

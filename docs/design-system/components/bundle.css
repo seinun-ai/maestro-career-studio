@@ -1250,13 +1250,8 @@ button, input:where([type="button"], [type="reset"], [type="submit"]), ::file-se
         background-color: color-mix(in oklab, var(--input) 50%, transparent);
       }
     }
-    .dark\:hover\:bg-muted\/50:is([data-theme="dark"] *):hover {
-      background-color: var(--muted);
-    }
-    @supports (color: color-mix(in lab, red, red)) {
-      .dark\:hover\:bg-muted\/50:is([data-theme="dark"] *):hover {
-        background-color: color-mix(in oklab, var(--muted) 50%, transparent);
-      }
+    .dark\:hover\:bg-surface-container-high:is([data-theme="dark"] *):hover {
+      background-color: var(--surface-container-high);
     }
   }
 .dark\:focus-visible\:border-ring:is([data-theme="dark"] *):focus-visible {

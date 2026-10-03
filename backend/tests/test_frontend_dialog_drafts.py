@@ -187,7 +187,7 @@ def test_a_stale_proposal_says_so_and_cannot_apply():
     note = _flat(_between(_SHEET, "{stale ? (", ") : null}"))
     # The whole note: the second sentence says what to do about it.
     assert note.endswith(
-        '<p className="text-muted-foreground mt-2 text-xs"> The resume changed since these edits'
+        '<p className="text-muted-foreground mt-2 text-body-small"> The resume changed since these edits'
         " were suggested. Suggest again to get edits for this version. </p>"
     ), note
 

@@ -85,7 +85,7 @@ export function MetricAskInput({
           value={value.freeText}
           onChange={(e) => set({ freeText: e.target.value })}
           disabled={disabled}
-          className="max-w-[65ch] text-sm"
+          className="max-w-[65ch] text-body-medium"
         />
         <Button
           type="button"

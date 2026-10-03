@@ -8,4 +8,4 @@ A card groups one subject: a setting, a chart, a resume.
 - No shadow at rest. A card never nests in a card; use a `surface-container-low` panel inside.
 - Every settings card renders through `SettingCard`, which adds the save model and spacing rhythm.
 
-Source: `frontend/components/ui/card.tsx`. Changed from source: corner 14px to 12px, footer `bg-muted/50` to `surface-container-low`.
+Source: `frontend/components/ui/card.tsx`. Changed from source: footer `bg-muted/50` to `surface-container-low`.

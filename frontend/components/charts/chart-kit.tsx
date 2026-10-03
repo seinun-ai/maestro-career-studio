@@ -35,9 +35,10 @@ export const CHART_COLORS = [
 export const TOOLTIP_CONTENT_STYLE: CSSProperties = {
   backgroundColor: "var(--popover)",
   border: "1px solid var(--border)",
-  borderRadius: 8,
+  borderRadius: "var(--radius-corner-xs)",
   fontSize: 12,
   color: "var(--popover-foreground)",
+  boxShadow: "var(--shadow-level2)",
 };
 export const TOOLTIP_LABEL_STYLE: CSSProperties = {
   color: "var(--popover-foreground)",
@@ -100,7 +101,7 @@ export function ChartCard({
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         {description ? (
-          <p className="text-muted-foreground text-sm font-normal">{description}</p>
+          <p className="text-muted-foreground text-body-medium">{description}</p>
         ) : null}
         {action ? <CardAction>{action}</CardAction> : null}
       </CardHeader>
@@ -108,11 +109,11 @@ export function ChartCard({
         {isLoading ? (
           <Skeleton className="h-48 w-full" />
         ) : error ? (
-          <p role="alert" className="text-destructive text-sm">
+          <p role="alert" className="text-destructive text-body-medium">
             {couldnt("load this chart", error)}
           </p>
         ) : empty ? (
-          <p className="text-muted-foreground text-sm">{emptyText}</p>
+          <p className="text-muted-foreground text-body-medium">{emptyText}</p>
         ) : (
           children
         )}

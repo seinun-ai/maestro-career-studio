@@ -1,7 +1,6 @@
 "use client"
 
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
-import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
@@ -27,81 +26,64 @@ function Tabs({
   )
 }
 
-const tabsListVariants = cva(
-  // min-h-8, not h-8. A fixed height cannot contain a wrapped list: the three
-  // call sites that wrap (both resume studios' section tabs, the KB import
-  // drawer) add `h-auto flex-wrap`, but a plain `h-auto` does not override a
-  // variant-prefixed `group-data-horizontal/tabs:h-8` — so the pill stayed 32px
-  // while rows two and three spilled out below it and painted over the content
-  // underneath. A minimum keeps single-row lists at exactly the same 32px and
-  // lets a wrapped one grow to fit its own rows.
-  //
-  // max-w-full + overflow-x-auto: a row wider than its container scrolls INSIDE
-  // itself instead of widening the page (the job page's Q&A tab ran off-screen at
-  // 375px, and the five Settings tabs need ~480px). A scroll container's
-  // min-width:auto is 0, so it also shrinks as a flex item. `justify-center-safe`,
-  // not plain centring: centred content that overflows clips its START, which no
-  // scroll can reach. Base UI scrolls the focused tab into view on arrow keys
-  // (composite `scrollIntoViewIfNeeded`). The scrollbar is hidden: the cut-off
-  // last label is the cue, and keys and swipes reach it.
-  // Wrapping rows (`h-auto flex-wrap`: Analytics, Career history, both studios,
-  // the KB import drawer) are NOT scrollers: `overflow-x: auto` computes
-  // `overflow-y` to auto as well, so a wrapped row became a box clipping its own
-  // second line. The scroll is scoped to `not-[.flex-wrap]`; scroll padding,
-  // overscroll and the hidden scrollbar do nothing on a box that does not scroll.
-  // `relative` makes the row its triggers' offsetParent: Base UI measures a
-  // tab's offsetLeft up the offsetParent chain and stops at the scroller only
-  // if it is on that chain, so without it a dialog's padding was counted in
-  // and Home left the first tab 16px under the row's left edge.
-  // `scroll-px-1` (4px, one more than the padding): a tab scrolled to an end
-  // keeps the row's 3px around it, so its 3px focus ring is not cut off. At 3px
-  // the scroll-into-view stopped a rounding pixel short of the end (1px of the
-  // last Settings tab's ring was clipped at 375px).
-  "group/tabs-list relative inline-flex w-fit max-w-full items-center justify-center-safe rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:min-h-8 group-data-horizontal/tabs:not-[.flex-wrap]:overflow-x-auto group-data-horizontal/tabs:scroll-px-1 group-data-horizontal/tabs:overscroll-x-contain group-data-horizontal/tabs:[scrollbar-width:none] group-data-horizontal/tabs:[&::-webkit-scrollbar]:hidden group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
-  {
-    variants: {
-      variant: {
-        default: "bg-muted",
-        // No call site uses `line`: its indicator (`after:bottom-[-5px]` on the
-        // trigger) would be clipped by 2px by the scrolling row above.
-        line: "gap-1 bg-transparent",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  }
+// Tabs are one style: the line tabs of docs/design-system/components/Tabs. A 40px
+// row with a hairline under it, labels in title-small, a 2px `primary` underline
+// on the current tab. A two- or three-way view switch is a SegmentedToggle, not
+// tabs; the filled pill strip that used to be the default is gone.
+//
+// The row is full width so the hairline spans its container, start-aligned
+// (a section row is not a centred control), and has `p-0` and a definite height
+// so each trigger fills it, and `shrink-0` so a tab row in a column that overflows
+// (the chat scope picker, the template editor) is never squeezed under its panel. The row's horizontal bits are scoped to the
+// horizontal orientation (`group-data-horizontal/tabs`).
+//
+// max-w-full + overflow-x-auto: a row wider than its container scrolls INSIDE
+// itself instead of widening the page (the job page's Q&A tab ran off-screen at
+// 375px, the five Settings tabs need ~480px, and the resume studios' seven tabs
+// are ~590px in a fractional pane). A scroll container's min-width:auto is 0, so
+// it also shrinks as a flex item. Base UI scrolls the focused tab into view on
+// arrow keys (composite `scrollIntoViewIfNeeded`) and a click does the same
+// (TabsTrigger below). The scrollbar is hidden: the cut-off last label is the
+// cue, and keys and swipes reach it. A row never wraps: `overflow-x: auto`
+// computes `overflow-y` to auto as well, so a wrapped row would clip its own
+// second line.
+// `relative` makes the row its triggers' offsetParent: Base UI measures a tab's
+// offsetLeft up the offsetParent chain and stops at the scroller only if it is
+// on that chain, so without it a dialog's padding was counted in and Home left
+// the first tab 16px under the row's left edge.
+// The underline sits INSIDE each trigger (`after:bottom-0`), not below it: the
+// row scrolls, and `overflow-x: auto` clips whatever hangs outside its padding
+// box. The trigger has no border of its own, so the underline lies directly on
+// the row's hairline. For the same reason the focus ring is a 2px outline drawn
+// inside the trigger (`-outline-offset-2`), not an outer halo.
+// (`cn`, not a bare string: the vocabulary scan reads a class list as a class list only inside it.)
+const TABS_LIST = cn(
+  "group/tabs-list relative flex max-w-full items-center gap-1 bg-transparent p-0 text-muted-foreground group-data-horizontal/tabs:h-10 group-data-horizontal/tabs:w-full group-data-horizontal/tabs:shrink-0 group-data-horizontal/tabs:justify-start group-data-horizontal/tabs:overflow-x-auto group-data-horizontal/tabs:overscroll-x-contain group-data-horizontal/tabs:border-b group-data-horizontal/tabs:[scrollbar-width:none] group-data-horizontal/tabs:[&::-webkit-scrollbar]:hidden group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col"
 )
 
-function TabsList({
-  className,
-  variant = "default",
-  ...props
-}: TabsPrimitive.List.Props & VariantProps<typeof tabsListVariants>) {
+function TabsList({ className, ...props }: TabsPrimitive.List.Props) {
   return (
     <TabsPrimitive.List
       data-slot="tabs-list"
-      data-variant={variant}
-      className={cn(tabsListVariants({ variant }), className)}
+      className={cn(TABS_LIST, className)}
       {...props}
     />
   )
 }
 
-function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
+function TabsTrigger({ className, onClick, ...props }: TabsPrimitive.Tab.Props) {
   return (
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
+      onClick={(event) => {
+        // A click on a partly hidden tab brings it into view (the row scrolls, 7 tabs in a
+        // narrow pane). `nearest` on both axes: no scroll at all when it is already visible.
+        event.currentTarget.scrollIntoView({ inline: "nearest", block: "nearest" })
+        onClick?.(event)
+      }}
       className={cn(
-        // `h-[calc(100%-1px)]` fills a one-line row. In a wrapping row (`flex-wrap`)
-        // the percentage has no definite height to resolve against, and triggers
-        // grew taller than their line and spilled over the content below; there
-        // each trigger is its own height and the row grows to fit its lines.
-        "group-[.flex-wrap]/tabs-list:h-auto",
-        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
-        "data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground",
-        "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
+        "relative inline-flex h-full flex-none items-center justify-center gap-1.5 rounded-corner-xs bg-transparent px-3 text-title-small whitespace-nowrap text-muted-foreground transition-colors group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "after:absolute after:rounded-full after:bg-primary after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-3 group-data-horizontal/tabs:after:bottom-0 group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 data-active:after:opacity-100",
         className
       )}
       {...props}
@@ -109,10 +91,13 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   )
 }
 
-function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
+function TabsContent({ className, keepMounted = true, ...props }: TabsPrimitive.Panel.Props) {
   return (
     <TabsPrimitive.Panel
       data-slot="tabs-content"
+      // Every panel stays mounted (the Tabs README): a draft survives a switch, a deep link has
+      // its target, and a leave guard registered inside a hidden panel keeps asking.
+      keepMounted={keepMounted}
       className={cn(
         // Base UI makes the open panel a tab stop (APG). Its indicator is an
         // OVERLAY, not the panel's own outline: an element paints its outline
@@ -125,8 +110,8 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
         // the panel's edge; every call site has that room (browser-measured).
         // The panel's own outline is hidden, and never beside an outline-N:
         // outline-hidden zeroes --tw-outline-style, which outline-N reads.
-        "relative isolate flex-1 text-sm focus-visible:outline-hidden",
-        "focus-visible:after:pointer-events-none focus-visible:after:absolute focus-visible:after:-inset-1 focus-visible:after:z-50 focus-visible:after:rounded-md focus-visible:after:border-2 focus-visible:after:border-ring",
+        "relative isolate flex-1 text-body-medium focus-visible:outline-hidden",
+        "focus-visible:after:pointer-events-none focus-visible:after:absolute focus-visible:after:-inset-1 focus-visible:after:z-50 focus-visible:after:rounded-corner-md focus-visible:after:border-2 focus-visible:after:border-ring",
         // A panel that scrolls ITSELF (the chat scope picker's) would carry an
         // absolute overlay away with its content, so it keeps a solid inset
         // outline instead; nothing positioned sits in those lists.
@@ -153,4 +138,4 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   )
 }
 
-export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants }
+export { Tabs, TabsList, TabsTrigger, TabsContent }

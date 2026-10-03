@@ -61,18 +61,18 @@ export function SummaryBand({
     <section
       data-summary-band
       aria-label="Summary"
-      className="flex min-w-0 flex-col gap-3 rounded-lg border p-4"
+      className="flex min-w-0 flex-col gap-3 rounded-corner-md border p-4"
     >
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
         <div className="flex items-center gap-3">
           {insufficient ? (
-            <span className="text-muted-foreground flex size-14 items-center justify-center rounded-lg text-center text-[10px] leading-tight font-medium">
+            <span className="text-muted-foreground flex size-14 items-center justify-center rounded-corner-sm text-center text-label-small">
               Too little to grade
             </span>
           ) : (
             <span
               className={cn(
-                "flex size-14 items-center justify-center rounded-lg text-3xl font-bold",
+                "flex size-14 items-center justify-center rounded-corner-sm text-headline-small font-semibold",
                 GRADE_STYLES[body.grade] ?? GRADE_STYLES.C,
               )}
             >
@@ -80,12 +80,12 @@ export function SummaryBand({
             </span>
           )}
           <div className="flex min-w-0 flex-col gap-1">
-            <span className={cn("text-sm font-medium", insufficient && "text-muted-foreground")}>
+            <span className={cn("text-title-small", insufficient && "text-muted-foreground")}>
               {body.score}/100
             </span>
             {scoreDelta && (
               <div className="space-y-0.5">
-                <p className="text-xs">
+                <p className="text-body-small">
                   {scoreDelta.fromGrade} {scoreDelta.fromScore} →{" "}
                   {scoreDelta.toGrade} {scoreDelta.toScore}
                   {scoreDelta.toScore - scoreDelta.fromScore !== 0 && (
@@ -97,14 +97,14 @@ export function SummaryBand({
                   )}
                 </p>
                 {scoreDelta.explanation && (
-                  <p className="text-muted-foreground max-w-[40ch] text-xs">
+                  <p className="text-muted-foreground max-w-[40ch] text-body-small">
                     {scoreDelta.explanation}
                   </p>
                 )}
               </div>
             )}
             {body.tier && TIER_LABELS[body.tier] && (
-              <Badge variant="secondary" className="w-fit text-xs">
+              <Badge variant="secondary" className="w-fit">
                 {TIER_LABELS[body.tier]}
               </Badge>
             )}
@@ -121,10 +121,10 @@ export function SummaryBand({
             </div>
           )}
           {!insufficient && nextGradeLine(body) && (
-            <p className="text-muted-foreground text-xs">{nextGradeLine(body)}</p>
+            <p className="text-muted-foreground text-body-small">{nextGradeLine(body)}</p>
           )}
-          {composition && <p className="text-muted-foreground text-xs">{composition}</p>}
-          <p className="text-muted-foreground text-xs">
+          {composition && <p className="text-muted-foreground text-body-small">{composition}</p>}
+          <p className="text-muted-foreground text-body-small">
             {remaining} left to fix
             {marked > 0 && <> · {marked} marked not right</>}
           </p>
@@ -141,7 +141,7 @@ export function SummaryBand({
       {noNumbers && (
         <div
           role="note"
-          className="rounded-md bg-warning-container px-3 py-2 text-sm text-on-warning-container"
+          className="rounded-corner-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container"
         >
           <p className="font-medium">{noNumbers.label}</p>
           <p className="mt-0.5 max-w-[65ch]">

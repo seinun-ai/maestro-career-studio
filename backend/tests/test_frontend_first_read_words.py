@@ -52,7 +52,7 @@ def test_analytics_says_each_thing_once_in_one_format():
     quick = overview[overview.index("Quick wins from your career history") :]
     assert "In your career history" not in quick
     market = _read("components/explore/explore-overview.tsx")
-    assert "<p className=\"text-foreground text-sm font-medium\">{signalTitle(s.title, o)}</p>" in market
+    assert "<p className=\"text-foreground text-title-small\">{signalTitle(s.title, o)}</p>" in market
     assert "return title.replace(`: ${place} (`, `: ${placeName(place)} (`);" in market
     assert "return title.replace(`: ${skill} (`, `: ${skillName(skill)} (`);" in market
     assert "accept OPT or STEM OPT (24 more months for science and tech degrees)" in market

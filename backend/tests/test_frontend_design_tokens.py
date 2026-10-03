@@ -197,24 +197,178 @@ _PALETTE_UTILITY = re.compile(
     r"(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|"
     r"fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d{2,3}(?![\w-])"
 )
-# CompanyMonogram's six hash tints go with step 8 of the design-system plan
-# (docs/plans/2026-10-02-design-system-tokens.md). Delete this entry then.
-_PALETTE_STILL_ALLOWED = {"components/company-monogram.tsx"}
 
 
-def test_no_palette_class_is_written_outside_the_monogram():
+def test_no_palette_class_is_written():
     """A status is `success` / `warning` / `attention` / `tertiary` / `primary` /
-    `destructive` or a container pair, never `text-amber-700 dark:text-amber-400`."""
+    `destructive` or a container pair, never `text-amber-700 dark:text-amber-400`.
+    No file is exempt: CompanyMonogram's tones are role containers too."""
     hits = []
     for folder in ("app", "components", "lib", "hooks"):
         for path in sorted((_FRONTEND / folder).rglob("*")):
-            rel = path.relative_to(_FRONTEND).as_posix()
-            if path.suffix not in (".ts", ".tsx") or rel in _PALETTE_STILL_ALLOWED:
+            if path.suffix not in (".ts", ".tsx"):
                 continue
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
                 if _PALETTE_UTILITY.search(line):
-                    hits.append(f"{rel}:{number}")
+                    hits.append(f"{path.relative_to(_FRONTEND).as_posix()}:{number}")
     assert not hits, "a palette utility is left at:\n" + "\n".join(hits)
+
+
+def test_company_monogram_tones_are_not_statuses():
+    """The monogram's tint is identity, not state. StatusChip is the only place a state is
+    coloured, so no success / warning / attention / error container may be a tone. Four
+    tones, picked by the same hash modulo, each AA on its own fill (the container pairs and
+    `foreground` on the ladder are pinned for both modes elsewhere)."""
+    source = _read("components/company-monogram.tsx")
+    block = re.search(r"const TONES = \[(.*?)\];", source, re.S)
+    assert block, "CompanyMonogram's TONES is no longer an array literal"
+    tones = re.findall(r'"([^"]*)"', block.group(1))
+    assert tones == [
+        "bg-primary-container text-on-primary-container",
+        "bg-tertiary-container text-on-tertiary-container",
+        "bg-secondary-container text-on-secondary-container",
+        "bg-surface-container-highest text-foreground",
+    ], tones
+    for status in ("success", "warning", "attention", "error"):
+        assert f"{status}-container" not in block.group(1), f"a monogram is tinted as a {status}"
+    assert "TONES[Math.abs(hash) % TONES.length]" in source
+    assert "identity, not state" in source, "say in the comment that a tint is never a status"
+
+
+def _class_strings(rel: str):
+    """Every quoted or template string in a source file, with its line number.
+
+    A class list is a string literal, so "the same class string" is the same
+    literal. A literal that is not a class list simply never matches.
+    """
+    text = (_FRONTEND / rel).read_text(encoding="utf-8")
+    for match in _STRING_LITERAL.finditer(text):
+        yield text.count("\n", 0, match.start()) + 1, match.group(0)
+
+
+def _cn_calls(rel: str):
+    """Each `cn(...)` call's string literals joined, with the call's line number.
+
+    `cn("text-body-medium", active && "font-semibold")` is one class list written
+    in two literals, so a weight in the second is still beside the scale utility.
+    """
+    text = (_FRONTEND / rel).read_text(encoding="utf-8")
+    for call in re.finditer(r"(?<![\w.])cn\(", text):
+        depth, position = 1, call.end()
+        parts = []
+        while depth and position < len(text):
+            literal = _STRING_LITERAL.match(text, position)
+            if literal:
+                parts.append(literal.group(0))
+                position = literal.end()
+                continue
+            depth += {"(": 1, ")": -1}.get(text[position], 0)
+            position += 1
+        yield text.count("\n", 0, call.start()) + 1, "\n".join(parts)
+
+
+def _frontend_sources():
+    for folder in ("app", "components", "lib", "hooks"):
+        for path in sorted((_FRONTEND / folder).rglob("*")):
+            if path.suffix in (".ts", ".tsx"):
+                yield path.relative_to(_FRONTEND).as_posix()
+
+
+def _lines_matching(pattern):
+    """`path:line` for every line of the frontend source that matches (comments too)."""
+    hits = []
+    for rel in _frontend_sources():
+        text = (_FRONTEND / rel).read_text(encoding="utf-8")
+        for number, line in enumerate(text.splitlines(), 1):
+            if pattern.search(line):
+                hits.append(f"{rel}:{number}")
+    return hits
+
+
+_STRING_LITERAL = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`")
+# Tailwind's stock sizes and an arbitrary pixel or rem size: the scale has a name for each.
+_RAW_SIZE = re.compile(
+    r"(?<![\w-])text-(?:xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)(?![\w-])"
+    r"|(?<![\w-])text-\[[0-9.]+(?:px|rem)\]"
+)
+_SCALE_SIZE = re.compile(r"(?<![\w-])text-(?:display|headline|title|body|label)-(?:large|medium|small)(?![\w-])")
+_HAND_WEIGHT = re.compile(r"(?<![\w-])font-(?:medium|semibold|bold)(?![\w-])")
+_UPPERCASE = re.compile(r"(?<![\w-])uppercase(?![\w-])")
+
+
+def test_no_raw_text_size_is_written():
+    """Size, line height and weight travel together: `text-sm` is `text-body-medium`
+    (or `title-small` / `label-large` when it carried a weight), `text-[11px]` is
+    `text-label-small`. docs/design-system/migration.md has the whole table."""
+    hits = _lines_matching(_RAW_SIZE)
+    assert not hits, "a raw text size is left at:\n" + "\n".join(hits)
+
+
+def test_no_class_is_uppercase():
+    """Group headings and meta labels are sentence case; the caps were the style, not the text."""
+    hits = _lines_matching(_UPPERCASE)
+    assert not hits, "uppercase is left at:\n" + "\n".join(hits)
+
+
+# A scale utility carries its own weight, so a hand-paired font-medium/semibold/bold
+# in the same class string (or the same cn(...) call) overrides the scale. The
+# sanctioned overrides are listed by file and by the class text they may carry, so
+# a second weight written elsewhere in the same file still fails:
+#   - the page title is `text-title-large font-medium`: PageHeader, the same title
+#     in the studios (tailored resume, tailor session, job page, entity heading,
+#     the editable title) and the h1 of a full-page state (error, not found, a
+#     missing gap analysis), which is that page's title;
+#   - StatTile's value is the same title-large at 500;
+#   - the current sidebar row is weight 600 under `data-active` (`aria-current`),
+#     and so is the open chat row (the weight sits on its button, which has its
+#     own scale class);
+#   - the health grade letter is headline-small at 600.
+_PAGE_TITLE = r"text-title-large font-medium"
+_WEIGHT_OVERRIDE_ALLOWED = [
+    ("app/error.tsx", _PAGE_TITLE),
+    ("app/not-found.tsx", _PAGE_TITLE),
+    ("app/jobs/[id]/page.tsx", _PAGE_TITLE),
+    ("app/jobs/[id]/tailor/[sessionId]/page.tsx", _PAGE_TITLE),
+    ("components/page-shell.tsx", _PAGE_TITLE),
+    ("components/career/entity-detail.tsx", _PAGE_TITLE),
+    ("components/resume-editor/editable-title.tsx", _PAGE_TITLE),
+    ("components/resume-editor/tailored-resume-studio.tsx", _PAGE_TITLE),
+    ("components/analytics/stat-tile.tsx", r"text-title-large text-foreground mt-0\.5 font-medium"),
+    ("components/ui/sidebar.tsx", r"data-active:font-semibold"),
+    ("components/chat/chat-page.tsx", r'text-body-medium"\n"font-semibold"'),
+    ("components/resume-health/summary-band.tsx", r"text-headline-small font-semibold"),
+]
+
+
+def _weight_pairs():
+    """`path:line` and text of every class string or cn() call with a scale size and a weight."""
+    for rel in _frontend_sources():
+        for number, text in (*_class_strings(rel), *_cn_calls(rel)):
+            if _SCALE_SIZE.search(text) and _HAND_WEIGHT.search(text):
+                yield rel, number, text
+
+
+def test_no_weight_is_paired_with_a_scale_utility_by_hand():
+    """Blind spot: a parent's `font-semibold` that a child's own scale class
+    overrides (`<div class="font-semibold"><span class="text-body-medium">`) is
+    not seen here, because the two never share a class string. Put the weight on
+    the element that carries the scale class."""
+    hits = []
+    for rel, number, text in _weight_pairs():
+        if not any(rel == file and re.search(pattern, text) for file, pattern in _WEIGHT_OVERRIDE_ALLOWED):
+            hits.append(f"{rel}:{number}")
+    assert not hits, "a weight is paired with a scale utility at:\n" + "\n".join(sorted(set(hits)))
+
+
+def test_every_weight_override_entry_still_matches():
+    """A stale entry would let the next hand-paired weight in that file through."""
+    pairs = list(_weight_pairs())
+    stale = [
+        f"{file}: {pattern}"
+        for file, pattern in _WEIGHT_OVERRIDE_ALLOWED
+        if not any(rel == file and re.search(pattern, text) for rel, _, text in pairs)
+    ]
+    assert not stale, "allow-list entries that match nothing:\n" + "\n".join(stale)
 
 
 def test_stat_tile_is_a_filled_card():
@@ -250,3 +404,515 @@ def test_header_rows_that_skip_the_hover_skip_it_in_dark_too():
                     if "dark:hover:bg-transparent" not in line:
                         bare.append(f"{path.relative_to(_FRONTEND)}:{number}")
     assert not bare, "dark hover still lights the header at:\n" + "\n".join(bare)
+
+
+# One corner per kind of thing: `rounded-corner-xs|sm|md|lg|xl`, `rounded-full` or
+# `rounded-none`, in any side form (`rounded-t-corner-md`, `rounded-r-corner-sm`).
+# Tailwind's own ladder (`rounded`, `rounded-md`, `rounded-xl`) is built on the
+# shadcn `--radius` and names no kind, and a bracketed value is a corner by hand.
+# Only string literals are scanned (a className, a cn() or cva() argument, a
+# template literal), so the word "rounded" in prose does not trip it.
+_RADIUS_BY_HAND = re.compile(
+    r"(?<![\w-])rounded(?:-(?:t|b|l|r|tl|tr|bl|br|s|e|ss|se|es|ee))?"
+    r"(?:-(?:xs|sm|md|lg|xl|2xl|3xl|4xl|\[[^\]]+\]))?(?![\w-])"
+)
+_CORNER_NAME = re.compile(r"(?<![\w-])rounded(?:-[a-z]{1,2})?-corner-([a-z0-9]+)(?![\w-])")
+# The only exception, by file and literal: the tooltip's arrow is a 10px square
+# turned 45 degrees, and a 4px corner would blunt its point into a bump.
+_RADIUS_BY_HAND_ALLOWED: list[tuple[str, str]] = [
+    ("components/ui/tooltip.tsx", "rounded-[2px]"),
+]
+
+
+def _literal_matches(pattern):
+    """`(path, line, match)` for every match of `pattern` inside a string literal."""
+    for rel in _frontend_sources():
+        text = (_FRONTEND / rel).read_text(encoding="utf-8")
+        for literal in _STRING_LITERAL.finditer(text):
+            for match in pattern.finditer(literal.group(0)):
+                yield rel, text.count("\n", 0, literal.start() + match.start()) + 1, match
+
+
+def _radius_hits():
+    for rel, number, match in _literal_matches(_RADIUS_BY_HAND):
+        yield rel, number, match.group(0)
+
+
+def test_no_corner_is_written_by_hand():
+    """A card's corner is `rounded-corner-md`, a control's `-sm`, a menu's `-xs`, a
+    dialog's `-xl`, a pill's `rounded-full`. docs/design-system/migration.md maps
+    each old `rounded-*`. Arbitrary radii and `var(--radius…)` are not written."""
+    hits = [
+        f"{rel}:{number}: {literal}"
+        for rel, number, literal in _radius_hits()
+        if (rel, literal) not in _RADIUS_BY_HAND_ALLOWED
+    ]
+    assert not hits, "a hand-written corner is left at:\n" + "\n".join(hits)
+
+
+def test_every_corner_name_is_on_the_scale():
+    """`rounded-corner-2xl` or a typo would compile to nothing and leave a square corner."""
+    hits = [
+        f"{rel}:{number}: {match.group(0)}"
+        for rel, number, match in _literal_matches(_CORNER_NAME)
+        if match.group(1) not in ("xs", "sm", "md", "lg", "xl")
+    ]
+    assert not hits, "a corner name is not on the scale at:\n" + "\n".join(hits)
+
+
+def test_no_class_reads_the_radius_variable():
+    """`--radius-md` and its siblings are the shadcn ladder; a class that reads one is a corner by hand."""
+    hits = _lines_matching(re.compile(r"var\(--radius(?!-corner)"))
+    assert not hits, "a class reads the --radius ladder at:\n" + "\n".join(hits)
+
+
+def test_every_corner_exception_still_matches():
+    found = {(rel, literal) for rel, _, literal in _radius_hits()}
+    stale = [entry for entry in _RADIUS_BY_HAND_ALLOWED if entry not in found]
+    assert not stale, f"allow-list entries that match nothing: {stale}"
+
+
+def _jsx_tags(rel: str, names: tuple[str, ...]):
+    """`(line, name, tag source)` of each `<Name ...>` opening tag, comments skipped.
+
+    Walks to the tag's closing `>` past quotes, `{...}` expressions and comments,
+    so a `cn(...)` argument and a `render={<Button className=... />}` are inside it.
+    """
+    text = (_FRONTEND / rel).read_text(encoding="utf-8")
+    for opening in re.finditer(r"<(%s)(?=[\s/>])" % "|".join(names), text):
+        i, depth, quote = opening.end(), 0, None
+        while i < len(text):
+            c = text[i]
+            if quote:
+                if c == "\\":
+                    i += 1
+                elif c == quote:
+                    quote = None
+            elif text.startswith("//", i):
+                i = text.index("\n", i)
+            elif text.startswith("/*", i):
+                i = text.index("*/", i) + 1
+            elif c in "\"'`":
+                quote = c
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+            elif c == ">" and depth == 0 and text[i - 1] != "=":
+                break
+            i += 1
+        yield text.count("\n", 0, opening.start()) + 1, opening.group(1), text[opening.start() : i + 1]
+
+
+# A control keeps its kind's corner: buttons, select triggers and tabs are 8px
+# (docs/design-system/components/Button, TextField, Tabs). The READMEs sanction no round
+# icon button and no pill tab strip; a segmented toggle is its own component
+# (source-toggle.tsx) and writes its pill by hand. Allow-list a sanctioned case
+# by (file, tag name) with a reason.
+_CONTROLS = ("Button", "SelectTrigger", "TabsList", "TabsTrigger")
+_PILL_CONTROL_ALLOWED: list[tuple[str, str]] = []
+
+
+def test_a_control_call_site_does_not_pass_a_pill():
+    hits = []
+    for rel in _frontend_sources():
+        if rel.startswith("components/ui/") or not rel.endswith(".tsx"):
+            continue
+        for number, name, tag in _jsx_tags(rel, _CONTROLS):
+            if re.search(r"(?<![\w-])rounded-full(?![\w-])", tag) and (rel, name) not in _PILL_CONTROL_ALLOWED:
+                hits.append(f"{rel}:{number}: <{name}>")
+    assert not hits, "a control is overridden to a pill at:\n" + "\n".join(hits)
+
+
+def _slot_classes(rel: str, slot: str) -> str:
+    """The class literals of the element that carries `data-slot="<slot>"`, up to the next component."""
+    text = _read(rel)
+    start = text.index(f'data-slot="{slot}"')
+    end = text.find("\nfunction ", start)
+    end = len(text) if end < 0 else end
+    return "\n".join(literal[1:-1] for literal in _STRING_LITERAL.findall(text[start:end]))
+
+
+def test_the_primitives_carry_their_kind_of_corner():
+    button = re.search(r"const buttonVariants = cva\(\s*\"([^\"]+)\"", _read("components/ui/button.tsx"))
+    assert button and "rounded-corner-sm" in button.group(1).split()
+    assert "rounded-corner-md" in _slot_classes("components/ui/card.tsx", "card").split()
+    assert "rounded-corner-xl" in _slot_classes("components/ui/dialog.tsx", "dialog-content").split()
+    assert "rounded-corner-sm" in _read("components/ui/input.tsx").split()
+    assert "rounded-corner-xs" in _slot_classes("components/ui/checkbox.tsx", "checkbox").split()
+
+
+def test_a_menu_is_the_small_corner_and_a_popover_panel_the_medium_one():
+    """POPUP_SURFACE owns no corner: a menu is a list of rows, a popover a panel."""
+    popover = _read("components/ui/popover.tsx")
+    surface = re.search(r"export const POPUP_SURFACE =\s*\"([^\"]+)\"", popover)
+    assert surface and "rounded" not in surface.group(1)
+    assert "rounded-corner-md" in _slot_classes("components/ui/popover.tsx", "popover-content").split()
+    for slot in ("dropdown-menu-content", "dropdown-menu-sub-content", "dropdown-menu-item"):
+        assert "rounded-corner-xs" in _slot_classes("components/ui/dropdown-menu.tsx", slot).split(), slot
+    assert "rounded-corner-xs" in _slot_classes("components/ui/select.tsx", "select-content").split()
+
+
+def test_sidebar_menu_rows_are_pills():
+    """The hover and the current row share one shape (owner decision, UX change 1)."""
+    sidebar = _read("components/ui/sidebar.tsx")
+    variants = re.search(r"const sidebarMenuButtonVariants = cva\(\s*\"([^\"]+)\"", sidebar)
+    assert variants, "sidebarMenuButtonVariants is no longer a cva( literal"
+    assert "rounded-full" in variants.group(1).split()
+    action = sidebar[sidebar.index("function SidebarMenuAction(") :].split("\nfunction ")[0]
+    assert "rounded-full" in action.split(), "SidebarMenuAction nests in a pill row"
+
+
+def test_a_sheet_rounds_the_edge_it_opens_on():
+    """16px on the two corners that face the page, whichever side the sheet is on."""
+    classes = _slot_classes("components/ui/sheet.tsx", "sheet-content").split()
+    for side, edge in (("right", "l"), ("left", "r"), ("bottom", "t"), ("top", "b")):
+        assert f"data-[side={side}]:rounded-{edge}-corner-lg" in classes, side
+
+
+def test_a_tab_is_the_4px_corner_in_a_row_with_no_corner_of_its_own():
+    """The line row is square (a hairline under it); its trigger's corner is the 4px that shapes the
+    inset focus outline."""
+    tabs = _read("components/ui/tabs.tsx")
+    assert "rounded-corner-xs" in _trigger(tabs)
+    assert "rounded" not in _list_class(tabs)
+
+
+# Tabs are one style: the line tabs of docs/design-system/components/Tabs, a `primary` underline
+# under the current tab. The filled strip is gone; a 2 or 3 way view switch is a SegmentedToggle.
+
+
+def _list_class(tabs: str) -> str:
+    return re.search(r'const TABS_LIST = cn\(\s*"([^"]+)"', tabs).group(1)
+
+
+def _trigger(tabs: str) -> str:
+    return tabs[tabs.index("function TabsTrigger") : tabs.index("function TabsContent")]
+
+
+def _tab_sources():
+    for rel in _frontend_sources():
+        if rel.endswith(".tsx") and not rel.startswith("components/ui/"):
+            yield rel
+
+
+def test_every_tab_list_is_the_line_style():
+    """There is no variant to pass and no fill, padding, corner or wrap to override."""
+    tabs = _read("components/ui/tabs.tsx")
+    assert "cva(" not in tabs and "variant" not in tabs, "tabs.tsx has one style"
+    seen = 0
+    for rel in _tab_sources():
+        for number, _, tag in _jsx_tags(rel, ("TabsList",)):
+            seen += 1
+            assert "variant=" not in tag, f"{rel}:{number}: TabsList has no variant"
+            assert not re.search(r"(?<![\w-])(?:flex-wrap|h-auto|rounded[\w-]*|bg-[\w/-]+|p-\d[\w.]*)(?![\w-])", tag), (
+                f"{rel}:{number}: the line row takes no fill, padding, corner or wrap"
+            )
+    assert seen >= 12, seen  # the scan found the call sites
+
+
+def test_every_tab_panel_stays_mounted():
+    """A draft survives a switch (the Tabs README). The primitive defaults it, so no call site can forget."""
+    tabs = _read("components/ui/tabs.tsx")
+    panel = tabs[tabs.index("function TabsContent") :]
+    assert "keepMounted = true" in panel and "keepMounted={keepMounted}" in panel
+    for rel in _tab_sources():
+        for number, _, tag in _jsx_tags(rel, ("TabsContent",)):
+            assert "keepMounted={false}" not in tag, f"{rel}:{number}: a panel opts out of staying mounted"
+
+
+def test_a_page_with_tab_panels_never_repeats_a_literal_control_id():
+    """Every panel stays mounted, so a control id written as a literal in two places is two elements
+    with one id, and a `<Label htmlFor>` resolves to the first (a hidden panel's) and leaves the
+    visible control unnamed. Analytics' filter row, shown in three panels, prefixes each id with its tab.
+    Only literal ids are seen: an id passed as an argument, built in a template, or set by a shared
+    component rendered in two panels is not, so the Analytics asserts below guard that case by name."""
+    hits = []
+    for rel in _tab_sources():
+        text = _read(rel)
+        if "<TabsContent" not in text:
+            continue
+        seen: dict[str, int] = {}
+        for match in re.finditer(r"""(?<![\w-])id="([\w-]+)\"""", text):
+            seen[match.group(1)] = seen.get(match.group(1), 0) + 1
+        hits += [f"{rel}: id=\"{name}\" x{n}" for name, n in seen.items() if n > 1]
+    assert not hits, "a literal id repeats where several panels are mounted:\n" + "\n".join(hits)
+    analytics = _read("app/analytics/page.tsx")
+    assert "const filterRow = (panel: TabValue) =>" in analytics
+    assert 'filterSelect(`${panel}-level`' in analytics and '"role_category",' not in analytics
+    assert [m for m in re.findall(r"\{filterRow\(\"(\w+)\"\)\}", analytics)] == ["market", "fit", "gaps"]
+
+
+def test_a_section_tab_count_is_a_plain_number_not_a_badge():
+    for rel in _tab_sources():
+        text = _read(rel)
+        for tab in re.findall(r"<TabsTrigger\b.*?</TabsTrigger>", text, re.S):
+            assert "<Badge" not in tab, f"{rel}: a tab's count is a muted number, not a Badge"
+    health = _read("components/resume-health/health-report-page.tsx")
+    assert 'className="tabular-nums text-muted-foreground">{countOf(t.id)}' in health
+    career = _read("app/career/page.tsx")
+    assert 'className="tabular-nums text-muted-foreground">{countFor(tab.kind)}' in career
+    assert "aria-label={countFor(tab.kind) > 0 ? `${tab.title} ${countFor(tab.kind)}` : undefined}" in career
+    studio = _read("components/resume-editor/tailored-resume-studio.tsx")
+    assert 'className="tabular-nums text-muted-foreground">{changeCounts[tab]}' in studio
+    assert studio.count("aria-label={changeLabel(") == 7
+
+
+def test_the_line_tab_is_a_primary_underline_on_a_hairline():
+    tabs = _read("components/ui/tabs.tsx")
+    row = _list_class(tabs).split()
+    # 40px, full width and the hairline, scoped to the horizontal orientation; start-aligned, scrolling.
+    for cls in (
+        "group-data-horizontal/tabs:h-10",
+        "group-data-horizontal/tabs:w-full",
+        "group-data-horizontal/tabs:border-b",
+        "group-data-horizontal/tabs:justify-start",
+        "group-data-horizontal/tabs:overflow-x-auto",
+        "p-0",
+    ):
+        assert cls in row, cls
+    trigger = _trigger(tabs)
+    words = re.split(r"[\s\"]+", trigger)
+    # The 2px indicator is the trigger's ::after: `primary`, inside the trigger (the row scrolls),
+    # lying on the hairline (the trigger has no border of its own) and spanning the label.
+    assert "after:bg-primary" in words and "after:bg-foreground" not in words
+    for cls in (
+        "group-data-horizontal/tabs:after:bottom-0",
+        "group-data-horizontal/tabs:after:h-0.5",
+        "group-data-horizontal/tabs:after:inset-x-3",
+        "px-3",
+        "data-active:after:opacity-100",
+    ):
+        assert cls in words, cls
+    assert "border" not in words and "border-transparent" not in words
+    # As tall as the row, sized to its label, title-small, muted until current.
+    for cls in ("h-full", "flex-none", "text-title-small", "text-muted-foreground", "data-active:text-foreground"):
+        assert cls in words, cls
+    # Focus is the solid 2px ring outline drawn inside the trigger (an outer halo would be clipped by
+    # the row's overflow): no translucent halo, no border, the Tabs preview's classes.
+    for cls in (
+        "focus-visible:ring-0",
+        "focus-visible:border-transparent",
+        "focus-visible:outline-2",
+        "focus-visible:-outline-offset-2",
+        "focus-visible:outline-ring",
+    ):
+        assert cls in words, cls
+    assert "focus-visible:ring-ring/50" not in words
+
+
+# ── Filter chips (docs/design-system/components/FilterChips) ──────────────────
+
+_FILTER_CHIPS = _read("components/filter-chips.tsx")
+
+
+def test_filter_chips_are_toggle_buttons_in_a_named_group_with_a_check_on_the_selected():
+    assert 'role="group"' in _FILTER_CHIPS and "aria-label={label}" in _FILTER_CHIPS
+    button = _FILTER_CHIPS[_FILTER_CHIPS.index("<button") : _FILTER_CHIPS.index("</button>")]
+    assert 'type="button"' in button and "aria-pressed={on}" in button
+    # The count is said in the chip's name (a count beside the label can drop out of it).
+    assert "aria-label={`${o.label} ${o.count}`}" in button
+    # On: tonal plus a leading Check (the tonal fill alone is too faint). Off: outline and muted text.
+    assert "{on && <Check" in button and 'aria-hidden="true"' in button
+    on, off = re.search(r'on\s*\? "([^"]+)"\s*: "([^"]+)"', button).groups()
+    assert "bg-secondary-container" in on and "text-on-secondary-container" in on
+    assert "border-border" in off and "text-muted-foreground" in off
+    # 28px, a pill, label-medium, tabular numerals, the solid 2px ring outline.
+    for cls in ("h-7", "rounded-full", "text-label-medium", "gap-1", "focus-visible:outline-2", "focus-visible:outline-ring"):
+        assert cls in re.split(r"[\s\"]+", button), cls
+    assert 'className="tabular-nums"' in button
+    assert "gap-2" in _FILTER_CHIPS  # 8px between chips
+    # Several can be on together: a set, toggled one value at a time.
+    assert "value: ReadonlySet<T>" in _FILTER_CHIPS and "next.delete(v)" in _FILTER_CHIPS
+
+
+def test_no_filter_chip_group_has_an_all_chip():
+    """None on means no filter. Every call site's options come from the field's own values."""
+    hits = []
+    for rel in _frontend_sources():
+        if not rel.endswith(".tsx") or rel == "components/filter-chips.tsx":
+            continue
+        text = _read(rel)
+        for opening in re.finditer(r"<FilterChips\b", text):
+            block = text[opening.start() : text.index("/>", opening.start())]
+            if re.search(r"""["']all["']|\bAll\b""", block):
+                hits.append(rel)
+    assert not hits, f'a FilterChips has an "All" option at: {hits}'
+    assert not re.search(r"""["']all["']|>\s*All\s*<""", _FILTER_CHIPS), "the component adds no All chip"
+
+
+def test_the_jobs_status_filter_stays_a_select_because_its_values_do_not_fit_one_line():
+    """Measured 2026-10-03 in Geist 12px, label-medium, px-3: eight application values (Saved to
+    Withdrawn) with a two-digit count are 773px of chips and gaps, plus a Check on each chip that is
+    on; the Jobs toolbar's second row is 720px at 1024 and 976px at 1280, and the Tracked / Yours /
+    Agents toggle takes 209px of it. The filter also has four agent-lane values. FilterChips says a
+    filter with more values than fit on one line stays a Select."""
+    tracker = _read("app/applications/page.tsx")
+    assert 'aria-label="Filter by status"' in tracker and "<FilterChips" not in tracker
+
+
+def test_the_focus_ring_only_removes_what_it_added():
+    """RING carries `rounded-corner-md`, which a Card already has; stripping it after the
+    flash would square the card."""
+    source = _read("lib/use-focus-section.ts")
+    assert 'const RING = ["ring-2", "ring-primary/60", "rounded-corner-md"];' in source
+    assert "const added = RING.filter((cls) => !el.classList.contains(cls));" in source
+    assert "el.classList.add(...added);" in source
+    assert "el.classList.remove(...added)" in source
+    assert "classList.remove(...RING)" not in source
+
+
+# Only what floats casts a shadow: `shadow-level1` a hovered FAB or interactive chip, a
+# focused skip link, a modal sheet; `shadow-level2` a menu, popover, rich (chart)
+# tooltip, sticky bar, the PDF page pill or a dragged row; `shadow-level3` a dialog or
+# toast. Cards, tiles, tables, plain tooltips, inputs, buttons and tabs rest flat. Any
+# variant prefix is fine (`hover:`, `data-dragging:`), and a trailing `!` (an
+# important utility that must beat a third party's own rule). `drop-shadow-*`,
+# `inset-shadow-*` and `text-shadow-*` are shadows by hand too.
+_SHADOW_UTILITY = re.compile(r"(?<![\w-])(?:(?:drop|inset|text)-)?shadow(?:-[^\s\"'`!]+)?!?(?=[\s\"'`]|$)")
+_SHADOW_LEVEL = re.compile(r"shadow-level[123]!?")
+# A 1px hairline that has to live in a box-shadow. The sticky table header's rule
+# stays one: a border on a sticky <th> under border-collapse stays with the grid
+# and scrolls away from the header it should underline.
+_SHADOW_BY_HAND_ALLOWED: list[tuple[str, str]] = [
+    ("components/ui/table.tsx", "shadow-[inset_0_-1px_0_var(--color-border)]"),
+]
+
+
+def _shadow_hits():
+    for rel, number, match in _literal_matches(_SHADOW_UTILITY):
+        yield rel, number, match.group(0)
+
+
+def test_no_shadow_is_written_but_the_three_levels():
+    """`shadow-sm`, `shadow-md`, `shadow-lg`, `shadow-none` and a bracketed
+    `shadow-[...]` are the stock ladder or a shadow by hand. docs/design-system/migration.md
+    maps each; a flat element writes none."""
+    hits = [
+        f"{rel}:{number}: {literal}"
+        for rel, number, literal in _shadow_hits()
+        if not _SHADOW_LEVEL.fullmatch(literal) and (rel, literal) not in _SHADOW_BY_HAND_ALLOWED
+    ]
+    assert not hits, "a shadow utility off the level scale is left at:\n" + "\n".join(hits)
+
+
+def test_the_stylesheet_applies_no_shadow_off_the_scale():
+    """`@apply shadow-sm` in globals.css is a shadow by hand the literal scan never sees."""
+    hits = []
+    for number, line in enumerate(_CSS.splitlines(), 1):
+        if "@apply" not in line:
+            continue
+        for match in _SHADOW_UTILITY.finditer(line):
+            if not _SHADOW_LEVEL.fullmatch(match.group(0)):
+                hits.append(f"app/globals.css:{number}: {match.group(0)}")
+    assert not hits, "an @apply shadow is off the scale at:\n" + "\n".join(hits)
+
+
+# Container primitives: a call site passes no shadow of any level. Cards, tiles, galleries,
+# table frames and empty-state boxes are separated by tone; a hover lifts them by moving.
+_CONTAINERS = ("Card", "GalleryCard", "StatTile", "TableFrame", "EmptyState")
+
+
+def test_a_container_call_site_passes_no_shadow():
+    hits = []
+    for rel in _frontend_sources():
+        if not rel.endswith(".tsx"):
+            continue
+        for number, name, tag in _jsx_tags(rel, _CONTAINERS):
+            if _CASTS_SHADOW.search(tag):
+                hits.append(f"{rel}:{number}: <{name}>")
+    assert not hits, "a container is given a shadow at:\n" + "\n".join(hits)
+
+
+def test_every_shadow_exception_still_matches():
+    found = {(rel, literal) for rel, _, literal in _shadow_hits()}
+    stale = [entry for entry in _SHADOW_BY_HAND_ALLOWED if entry not in found]
+    assert not stale, f"allow-list entries that match nothing: {stale}"
+
+
+def test_an_inline_box_shadow_reads_a_level():
+    """A chart tooltip is styled inline, so its shadow is `var(--shadow-level2)`."""
+    bad = [
+        hit
+        for hit in _lines_matching(re.compile(r"boxShadow\s*:|box-shadow\s*:"))
+        if not re.search(r"var\(--shadow-level[123]\)", _line_at(hit))
+    ]
+    assert not bad, "an inline box-shadow is not a level at:\n" + "\n".join(bad)
+    assert 'boxShadow: "var(--shadow-level2)"' in _read("components/charts/chart-kit.tsx")
+
+
+def _line_at(hit: str) -> str:
+    rel, number = hit.rsplit(":", 1)
+    return _read(rel).splitlines()[int(number) - 1]
+
+
+# `transition-[color,box-shadow]` names a property; only a `shadow` utility casts one.
+_CASTS_SHADOW = re.compile(r"(?<![\w-])shadow(?![\w])")
+
+
+def _class_list(rel: str, slot: str) -> list[str]:
+    return _slot_classes(rel, slot).split()
+
+
+def test_a_card_and_a_flat_control_cast_no_shadow():
+    for rel, slot in (
+        ("components/ui/card.tsx", "card"),
+        ("components/ui/input.tsx", "input"),
+        ("components/ui/textarea.tsx", "textarea"),
+        ("components/ui/checkbox.tsx", "checkbox"),
+        ("components/ui/switch.tsx", "switch"),
+        ("components/ui/slider.tsx", "slider-thumb"),
+        ("components/ui/tooltip.tsx", "tooltip-content"),
+    ):
+        text = _read(rel)
+        assert 'data-slot="%s"' % slot in text, f"{rel} lost its {slot} slot"
+        assert not _CASTS_SHADOW.search(_slot_classes(rel, slot)), f"{rel}: {slot} casts a shadow"
+    button = re.search(r"const buttonVariants = cva\(\s*\"([^\"]+)\"", _read("components/ui/button.tsx"))
+    assert button and not _CASTS_SHADOW.search(button.group(1)), "a button rests flat"
+    assert not _CASTS_SHADOW.search(_read("components/ui/tabs.tsx")), "a tab rests flat"
+
+
+def test_a_toast_is_level3_and_keeps_its_focus_ring():
+    """Sonner's keyboard focus indicator is a box-shadow; the important level3 would replace
+    it. The important shadow reads --tw-ring-shadow, so a ring utility composes with it."""
+    toast = re.search(r'toast: "([^"]+)"', _read("components/ui/sonner.tsx"))
+    assert toast, "the toast class list moved"
+    classes = toast.group(1).split()
+    assert "shadow-level3!" in classes
+    assert "focus-visible:ring-2" in classes and "focus-visible:ring-ring" in classes
+
+
+def test_what_floats_carries_its_level():
+    popover = _read("components/ui/popover.tsx")
+    surface = re.search(r"export const POPUP_SURFACE =\s*\"([^\"]+)\"", popover)
+    assert surface and "shadow-level2" in surface.group(1).split()  # popover and menu
+    assert "shadow-level2" in _class_list("components/ui/dropdown-menu.tsx", "dropdown-menu-sub-content")
+    assert "shadow-level2" in _class_list("components/ui/select.tsx", "select-content")
+    # A plain tooltip is a dark label and rests flat; a chart tooltip is a rich popover-surface
+    # panel (asserted above in chart-kit), so it is level2.
+    assert "shadow-level3" in _class_list("components/ui/dialog.tsx", "dialog-content")
+    # M3's modal sheet sits under a scrim, one level up from the page.
+    assert "shadow-level1" in _class_list("components/ui/sheet.tsx", "sheet-content")
+    fab = re.search(r"fab:\s*\"([^\"]+)\"", _read("components/ui/button.tsx"))
+    assert fab and "hover:shadow-level1" in fab.group(1).split()
+    assert "hover:shadow-level1" in _read("components/status-chip.tsx")
+
+
+def test_there_is_one_low_emphasis_filled_button():
+    """The grey `secondary` variant is folded into `tonal`. Badge keeps its own
+    `secondary` (plain metadata, sanctioned by the Badge README), so only Buttons are walked."""
+    variants = re.search(r"const buttonVariants = cva\(.*?\n  \{\n    variants: \{\n      variant: \{(.*?)\n      \},", _read("components/ui/button.tsx"), re.S)
+    assert variants, "buttonVariants' variant map is not where this pin looks"
+    names = re.findall(r"^        ([a-z]+):", variants.group(1), re.M)
+    assert "tonal" in names and "secondary" not in names, names
+    hits = []
+    for rel in _frontend_sources():
+        if not rel.endswith(".tsx"):
+            continue
+        for number, name, tag in _jsx_tags(rel, ("Button", "IconButton")):
+            if re.search(r"(?<![\w-])variant=(?:\"secondary\"|\{[^}]*[\"']secondary[\"'])", tag):
+                hits.append(f"{rel}:{number}: <{name}>")
+    assert not hits, "a Button still passes variant=\"secondary\" at:\n" + "\n".join(hits)
+    # buttonVariants({ variant: "secondary" }) styles a link as a button.
+    called = _lines_matching(re.compile(r"buttonVariants\([^)]*[\"']secondary[\"']"))
+    assert not called, "buttonVariants asks for secondary at:\n" + "\n".join(called)

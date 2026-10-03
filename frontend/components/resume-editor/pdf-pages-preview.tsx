@@ -72,7 +72,7 @@ export function PdfPagesPreview({
 
   if (isError || !data) {
     return (
-      <div className="bg-canvas text-muted-foreground flex h-full items-center justify-center p-6 text-center text-sm">
+      <div className="bg-canvas text-muted-foreground flex h-full items-center justify-center p-6 text-center text-body-medium">
         {emptyMessage}
       </div>
     );
@@ -92,7 +92,7 @@ export function PdfPagesPreview({
         <div
           role="group"
           aria-label="Zoom"
-          className="bg-background flex flex-wrap justify-end gap-0.5 self-end rounded-md border p-0.5"
+          className="bg-background flex flex-wrap justify-end gap-0.5 self-end rounded-full border p-0.5"
         >
           {PREVIEW_ZOOMS.map((option) => (
             <button
@@ -101,9 +101,9 @@ export function PdfPagesPreview({
               aria-pressed={zoom === option.value}
               onClick={() => chooseZoom(option.value)}
               className={cn(
-                "inline-flex h-6 items-center gap-1 rounded px-2 text-xs transition-colors pointer-coarse:min-h-11",
+                "inline-flex h-6 items-center gap-1 rounded-full px-2 text-body-small transition-colors pointer-coarse:min-h-11",
                 zoom === option.value
-                  ? "bg-secondary-container text-on-secondary-container font-medium"
+                  ? "bg-secondary-container text-on-secondary-container text-label-medium"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -113,7 +113,7 @@ export function PdfPagesPreview({
           ))}
         </div>
         {data.render_error && (
-          <div className="bg-destructive/10 text-destructive flex items-start gap-2 rounded-md px-3 py-2 text-xs">
+          <div className="bg-destructive/10 text-destructive flex items-start gap-2 rounded-corner-md px-3 py-2 text-body-small">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>
               This preview is out of date because the PDF couldn&apos;t be updated. Check your last change, then update the PDF.
@@ -161,7 +161,7 @@ export function PdfPagesPreview({
                   : undefined
               }
               className={cn(
-                "mx-auto mb-4 block rounded-[2px] bg-white shadow-lg ring-1 ring-black/5",
+                "mx-auto mb-4 block rounded-corner-xs bg-white ring-1 ring-black/5",
                 PAGE_CLASS[zoom],
                 // Until page 1 reports its size, 100% has no width to set, and
                 // the 150-DPI PNG would paint at 1275px before snapping to 816.
@@ -171,7 +171,7 @@ export function PdfPagesPreview({
           ))}
           <span
             className={cn(
-              "text-background sticky bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center rounded-full px-3 py-1 text-xs font-medium shadow",
+              "text-background sticky bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center rounded-full px-3 py-1 text-label-medium shadow-level2",
               data.page_count > 1 ? "bg-warning" : "bg-foreground",
             )}
           >

@@ -145,7 +145,7 @@ function PersonaEditor({
         </Button>
       </SettingCardAction>
       {draftDisabledReason ? (
-        <p id={reasonId} className="text-muted-foreground text-xs">
+        <p id={reasonId} className="text-muted-foreground text-body-small">
           {draftDisabledReason}
         </p>
       ) : null}

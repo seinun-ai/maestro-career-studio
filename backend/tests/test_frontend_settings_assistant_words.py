@@ -444,7 +444,7 @@ def test_errors_and_setup_speak_plainly():
     # A PDF step with nothing to do is not a step.
     assert '!(row.id === "engines" && row.done && status.engines.pdflatex.available)' in card
     strip = _flat(_read("components/setup/setup-status-strip.tsx"))
-    assert '<span className="text-muted-foreground text-xs font-medium">Setup steps:</span>' in strip
+    assert '<span className="text-muted-foreground text-label-medium">Setup steps:</span>' in strip
     assert '<Check aria-hidden="true" className="size-3" />' in strip
     assert "<DialogTitle>Import resumes and documents</DialogTitle>" in _read("components/setup/upload-dialog.tsx")
 

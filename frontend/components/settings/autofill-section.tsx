@@ -374,7 +374,7 @@ function FieldControl({
   ) : (
     <Input
       id={id}
-      className="h-8 text-sm"
+      className="h-8 text-body-medium"
       value={value}
       aria-describedby={hintId}
       onChange={(e) => onChange(e.target.value)}
@@ -915,12 +915,12 @@ function AutofillEditor({
           </legend>
           {/* A disabled button's reason is text, not a hover. */}
           {group.key === "personal" && !contactReady ? (
-            <p id={fillHintId} className="text-muted-foreground text-xs">
+            <p id={fillHintId} className="text-muted-foreground text-body-small">
               {resumeDisabledReason}
             </p>
           ) : null}
           {group.key === "eeo" ? (
-            <p id={declineHintId} className="text-muted-foreground text-xs">
+            <p id={declineHintId} className="text-muted-foreground text-body-small">
               Fills your blank diversity questions with “Decline to answer”. Select Save answers to keep it.
             </p>
           ) : null}
@@ -931,7 +931,7 @@ function AutofillEditor({
             // different KIND of act from typing one in, and a row that looks
             // like every other row does not say so.
             <CardSection className="border-primary/40 grid gap-3 border-l-2 px-3 py-2.5">
-              <p className="text-xs font-medium tracking-wide uppercase">
+              <p className="text-title-small">
                 Permission
               </p>
               <div className="flex items-center justify-between gap-4">
@@ -939,7 +939,7 @@ function AutofillEditor({
                   <Label htmlFor="eeo-standing-consent">
                     Let the Companion fill these answers
                   </Label>
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground text-body-small">
                     Uses only your exact answers below. Off by default. Tax-credit
                     questions are always yours to fill.
                   </p>
@@ -971,7 +971,7 @@ function AutofillEditor({
                     {field.label}
                   </Label>
                   {field.hint ? (
-                    <p id={hintId} className="text-muted-foreground text-xs">
+                    <p id={hintId} className="text-muted-foreground text-body-small">
                       {field.hint}
                     </p>
                   ) : null}
@@ -992,7 +992,7 @@ function AutofillEditor({
 
       <fieldset className="space-y-4">
         <legend className={LEGEND}>Education</legend>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-body-small">
           Most recent first.
         </p>
         {education.map((entry, i) => (
@@ -1005,7 +1005,7 @@ function AutofillEditor({
                     <Label htmlFor={id}>{field.label}</Label>
                     <Input
                       id={id}
-                      className="h-8 text-sm"
+                      className="h-8 text-body-medium"
                       value={entry[field.key] ?? ""}
                       onChange={(e) =>
                         setEducation(
@@ -1041,7 +1041,7 @@ function AutofillEditor({
 
       <fieldset className="space-y-4">
         <legend className={LEGEND}>Languages</legend>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-body-small">
           Most important first. The first four are used, and the Companion adds a
           language to a form only when its reading, speaking and writing levels are all set.
         </p>
@@ -1091,7 +1091,7 @@ function AutofillEditor({
 
       <fieldset className="space-y-4">
         <legend className={LEGEND}>Your own questions</legend>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-body-small">
           Questions you get often, with your usual answers.
         </p>
         {custom.map((qa, i) => (
@@ -1101,7 +1101,7 @@ function AutofillEditor({
                 <Label htmlFor={`af-custom-${i}-question`}>Question</Label>
                 <Input
                   id={`af-custom-${i}-question`}
-                  className="h-8 text-sm"
+                  className="h-8 text-body-medium"
                   aria-label={`Custom question ${i + 1}`}
                   value={qa.question}
                   onChange={(e) =>
@@ -1117,7 +1117,7 @@ function AutofillEditor({
                 <Label htmlFor={`af-custom-${i}-answer`}>Answer</Label>
                 <Textarea
                   id={`af-custom-${i}-answer`}
-                  className="text-sm"
+                  className="text-body-medium"
                   rows={2}
                   aria-label={`Answer to custom question ${i + 1}`}
                   value={qa.answer}
@@ -1171,7 +1171,7 @@ function AutofillEditor({
 function AgreedOn({ consent }: { consent: EeoConsent }) {
   if (!consent.acknowledged_at) return null;
   return (
-    <p className="text-muted-foreground text-[11px]">
+    <p className="text-muted-foreground text-body-small">
       You agreed on {formatAbsoluteDateTime(consent.acknowledged_at)}
       {consent.policy_version ? ` (policy ${consent.policy_version})` : ""}
     </p>
@@ -1197,7 +1197,7 @@ function CompanionPermissions({
   const lapsedId = useId();
   return (
     <CardSection className="border-primary/40 grid gap-3 border-l-2 px-3 py-2.5">
-      <p className="text-xs font-medium tracking-wide uppercase">
+      <p className="text-title-small">
         Companion permissions
       </p>
       <div className="flex items-center justify-between gap-4">
@@ -1205,7 +1205,7 @@ function CompanionPermissions({
           <Label htmlFor="consent-forms">
             Let the Companion fill agreements and signatures
           </Label>
-          <p id={hintId} className="text-muted-foreground text-xs">
+          <p id={hintId} className="text-muted-foreground text-body-small">
             The Companion can fill every field, including terms boxes,
             certifications, signatures and typed-name attestations. It never
             moves to the next page or submits.
@@ -1213,7 +1213,7 @@ function CompanionPermissions({
           {/* An agreement given under an older, narrower policy is served
               off (consent_forms_lapsed); a yes now records the current one. */}
           {consent.consent_forms_lapsed ? (
-            <p id={lapsedId} className="text-xs font-medium">
+            <p id={lapsedId} className="text-label-medium">
               This now covers more than when you agreed. Turn it on again to
               allow it.
             </p>
@@ -1270,7 +1270,7 @@ function LowStakesSwitch() {
     <div className="flex items-center justify-between gap-4">
       <div className="grid gap-1">
         <Label htmlFor="low-stakes">Answer low-stakes questions for me</Label>
-        <div id={hintId} className="text-muted-foreground grid gap-1 text-xs">
+        <div id={hintId} className="text-muted-foreground grid gap-1 text-body-small">
           <p>
             When none of your answers covers it, the Companion answers in the
             job&apos;s favor: how you heard about the job, how to contact you,
@@ -1295,7 +1295,7 @@ function LowStakesSwitch() {
           </p>
         </div>
         {options.isError ? (
-          <p className="text-xs font-medium">Couldn&apos;t load this setting.</p>
+          <p className="text-label-medium">Couldn&apos;t load this setting.</p>
         ) : null}
       </div>
       <Switch

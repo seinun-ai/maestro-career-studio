@@ -65,14 +65,14 @@ export function HealthBadges({
   // the header row rather than loose chips floating between the buttons — it
   // was easy to miss entirely at a glance.
   const shell =
-    "hover:bg-surface-container hover:border-border flex items-center gap-1.5 rounded-md " +
+    "hover:bg-surface-container hover:border-border flex items-center gap-1.5 rounded-full " +
     "border border-transparent bg-surface-container-low px-2 py-1 transition-colors";
 
   const missing = failure instanceof ApiError && failure.status === 404;
   if (failure != null && !missing) {
     return (
       <RetryChip
-        className={`${shell} text-muted-foreground hover:text-foreground text-sm`}
+        className={`${shell} text-muted-foreground hover:text-foreground text-body-medium`}
         title="Couldn't check this resume's health. Try again."
         icon={<HeartPulse className="size-4" />}
         label="Couldn't check health"
@@ -86,7 +86,7 @@ export function HealthBadges({
     return (
       <Link
         href={reportHref}
-        className={`${shell} text-muted-foreground hover:text-foreground text-sm`}
+        className={`${shell} text-muted-foreground hover:text-foreground text-body-medium`}
         title="Check this resume's health"
       >
         <HeartPulse className="size-4" /> Check health
@@ -110,11 +110,11 @@ export function HealthBadges({
       <HeartPulse className="text-muted-foreground size-3.5" />
       {/* The word makes the grade legible: a bare letter beside the KB pill
           read as noise, and only hover/AT channels said "health". */}
-      <span className="text-muted-foreground text-sm">Health</span>
+      <span className="text-muted-foreground text-body-medium">Health</span>
       {/* Same grade palette as the report page: the chip is the header's only
           severity signal now, so an F must not read like an A. */}
       <span
-        className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+        className={`rounded-corner-xs px-1.5 py-0.5 text-label-medium ${
           GRADE_STYLES[data.grade] ?? GRADE_STYLES.C
         }`}
       >
@@ -149,7 +149,7 @@ export function HealthListChip({ slug }: { slug: string }) {
     <Link
       href={`/base-resumes/${slug}/health`}
       className={cn(
-        "relative z-20 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold",
+        "relative z-20 shrink-0 rounded-corner-xs px-1.5 py-0.5 text-label-small",
         blocked
           ? "bg-destructive/10 text-destructive"
           : (GRADE_STYLES[data.grade] ?? GRADE_STYLES.C),

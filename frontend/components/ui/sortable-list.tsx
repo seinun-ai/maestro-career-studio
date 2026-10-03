@@ -128,7 +128,7 @@ export function SortableItem({
       // Translate only: a scale would stretch a row dragged over a taller one.
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "relative rounded-md data-dragging:z-10 data-dragging:bg-background data-dragging:shadow-md",
+        "relative rounded-corner-md data-dragging:z-10 data-dragging:bg-background data-dragging:shadow-level2",
         className,
       )}
       {...rest}
@@ -155,7 +155,7 @@ export function DragHandle({
       aria-label={label}
       className={cn(
         // touch-none: the browser would take a touch drag on the handle as a page scroll.
-        "text-muted-foreground hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-md outline-none focus-visible:ring-2 active:cursor-grabbing aria-disabled:cursor-default aria-disabled:opacity-40",
+        "text-muted-foreground hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-corner-sm outline-none focus-visible:ring-2 active:cursor-grabbing aria-disabled:cursor-default aria-disabled:opacity-40",
         className,
       )}
     >

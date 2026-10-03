@@ -140,7 +140,7 @@ export function AnalyticsOverview({
           (status) => (
             <span
               key={status}
-              className="text-muted-foreground inline-flex h-7 items-center gap-1.5 rounded-full bg-surface-container px-3 text-xs"
+              className="text-muted-foreground inline-flex h-7 items-center gap-1.5 rounded-full bg-surface-container px-3 text-body-small"
             >
               {statusLabel(status)}
               <span className="text-foreground font-medium">
@@ -168,14 +168,14 @@ export function AnalyticsOverview({
             ) : gaps.isLoading ? (
               <Skeleton className="h-20 w-full" />
             ) : (gaps.data ?? []).length === 0 ? (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-body-medium">
                 Score a few jobs to see which skills come up most.
               </p>
             ) : (
               (gaps.data ?? []).map((row) => (
                 <div key={row.skill} className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate text-sm">{skillName(row.skill)}</span>
-                  <span className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs">
+                  <span className="min-w-0 truncate text-body-medium">{skillName(row.skill)}</span>
+                  <span className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-body-small">
                     {row.n_jobs} {row.n_jobs === 1 ? "job" : "jobs"}
                     <LowSampleBadge
                       n={row.n_jobs}
@@ -187,9 +187,9 @@ export function AnalyticsOverview({
               ))
             )}
             <Button
-              className="mt-1 w-fit rounded-full"
+              className="mt-1 w-fit"
               size="sm"
-              variant="secondary"
+              variant="tonal"
               onClick={() => onOpenTab("gaps")}
             >
               See all skill gaps <ArrowRight aria-hidden="true" />
@@ -213,21 +213,21 @@ export function AnalyticsOverview({
             ) : buildAreas.isLoading ? (
               <Skeleton className="h-20 w-full" />
             ) : quickWins.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-body-medium">
                 No unused skills in your career history match what jobs ask for.
               </p>
             ) : (
               quickWins.map((row) => (
                 // The card's title says where each comes from; a tag on every row said it again.
                 <div key={row.skill} className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate text-sm">{skillName(row.skill)}</span>
+                  <span className="min-w-0 truncate text-body-medium">{skillName(row.skill)}</span>
                 </div>
               ))
             )}
             <Button
-              className="mt-1 w-fit rounded-full"
+              className="mt-1 w-fit"
               size="sm"
-              variant="secondary"
+              variant="tonal"
               onClick={() => onOpenTab("gaps")}
             >
               See all skill gaps <ArrowRight aria-hidden="true" />

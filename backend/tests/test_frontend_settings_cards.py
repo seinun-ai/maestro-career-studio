@@ -110,7 +110,7 @@ def test_a_role_hint_sits_between_its_label_and_its_picker():
     # Mutant: the hint packed into the label again ("Chat model · needs streaming tool calls").
     for fn in ("function FreeTextModel(", "function ModelSelect("):
         body = _slice(_MODELS, fn, "\nfunction ")
-        hint = body.index('<p id={hintId} className="text-muted-foreground text-xs">')
+        hint = body.index('<p id={hintId} className="text-muted-foreground text-body-small">')
         assert body.index("<Label htmlFor={id}>") < hint < body.index("aria-describedby={hintId}"), fn
 
 
@@ -121,7 +121,7 @@ def test_the_catalog_reads_words_not_keys():
     assert "providerLabel(option.provider)} · {sourceLabel(option.source)}" in _CATALOG
     for src in (_CATALOG, _MODELS):
         assert "showsModelId(option) ?" in src
-    assert "rounded-lg border p-3" not in _CATALOG  # second containment level is tonal
+    assert "rounded-corner-md border p-3" not in _CATALOG  # second containment level is tonal
     assert "discovery —" not in _CATALOG
 
 
@@ -186,10 +186,10 @@ def test_a_long_model_id_truncates_inside_the_card():
     assert '<ul ref={listRef} tabIndex={-1} aria-label="Available models" className="min-w-0 divide-y' in _CATALOG
     row = _slice(_CATALOG, "function CatalogRow(", "\n}\n")
     assert '<div className="min-w-0 flex-1">' in row
-    assert '<p className="truncate text-sm font-medium" title={option.label}>' in row
-    assert 'className="text-muted-foreground truncate font-mono text-xs" title={option.id}>' in row
+    assert '<p className="truncate text-title-small" title={option.label}>' in row
+    assert 'className="text-muted-foreground truncate font-mono text-body-small" title={option.id}>' in row
     # The provider label and Remove never shrink; the name column does.
-    assert '<span className="text-muted-foreground shrink-0 text-xs">' in row
+    assert '<span className="text-muted-foreground shrink-0 text-body-small">' in row
     # The discovered list is a grid child too.
     assert '<CardSection className="grid min-w-0 gap-3">' in _CATALOG
     assert 'className="min-w-0 flex-1 truncate font-mono" title={model.id}>' in _CATALOG
@@ -359,10 +359,10 @@ def test_an_advanced_prompt_key_wraps_inside_its_row():
     # Wave-1 browser pass, 375 with Advanced prompts open: a key is one unbreakable word
     # (`resume_finding_verify`), so its row ran 262px in a 239px body and Expand left the card.
     src = _read("components/settings/prompts-section.tsx")
-    assert '<p className="font-mono text-sm wrap-anywhere">{prompt.key}</p>' in src
+    assert '<p className="font-mono text-body-medium wrap-anywhere">{prompt.key}</p>' in src
     # Only a key PROMPT_TITLES lacks is shown at all (appendix D6.1); a titled one hides it.
-    assert '<p className="text-muted-foreground font-mono text-xs wrap-anywhere">{prompt.key}</p>' not in src
-    assert '<span className="text-muted-foreground shrink-0 text-xs">' in src  # Expand keeps its width
+    assert '<p className="text-muted-foreground font-mono text-body-small wrap-anywhere">{prompt.key}</p>' not in src
+    assert '<span className="text-muted-foreground shrink-0 text-body-small">' in src  # Expand keeps its width
 
 
 def test_switch_rows_and_about_rows_share_their_geometry():
@@ -370,7 +370,7 @@ def test_switch_rows_and_about_rows_share_their_geometry():
     row = _slice(layout, "export function SwitchRow(", "\n}\n")
     assert '<div className="flex min-h-11 items-center justify-between">' in row
     # The label fills the row (height, width and the gap), so a tap anywhere on it toggles.
-    assert '<Label htmlFor={htmlFor} className="flex-1 self-stretch py-1.5 pr-4 leading-snug">' in row
+    assert '<Label htmlFor={htmlFor} className="flex-1 self-stretch py-1.5 pr-4">' in row
     for rel in ("quick-tailor-section.tsx", "mcp-workflow-section.tsx", "appearance-section.tsx"):
         assert "<SwitchRow" in _read(f"components/settings/{rel}"), rel
     about = _read("components/settings/about-section.tsx")

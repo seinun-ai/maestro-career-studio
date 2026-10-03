@@ -112,7 +112,7 @@ export function CaptureBox() {
   return (
     <Card
       className={cn(
-        "border-0 bg-primary/5 py-3 shadow-none ring-0 transition-shadow duration-150",
+        "border-0 bg-primary/5 py-3 ring-0 transition-shadow duration-150",
         dragging && "ring-2 ring-primary/50",
       )}
       onDragOver={(event) => {
@@ -139,7 +139,7 @@ export function CaptureBox() {
             if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
           }}
         >
-          <Label htmlFor="career-capture" className="col-start-1 row-start-1 flex items-center gap-2 text-sm font-medium whitespace-nowrap">
+          <Label htmlFor="career-capture" className="col-start-1 row-start-1 flex items-center gap-2 text-label-large whitespace-nowrap">
             <span className="flex size-7 items-center justify-center rounded-full bg-primary/10">
               <Sparkles className="text-primary size-3.5" aria-hidden="true" />
             </span>
@@ -153,7 +153,7 @@ export function CaptureBox() {
             readOnly={capture.isPending}
             aria-describedby="career-capture-help"
             className={cn(
-              "col-span-2 row-start-2 rounded-2xl border-0 bg-background/90 px-4 shadow-sm ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring",
+              "col-span-2 row-start-2 border-0 bg-background/90 px-4 ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring",
               open
                 ? "min-h-24 py-3 sm:col-span-3"
                 : "min-h-9 resize-none py-1.5 sm:col-span-1 sm:col-start-2 sm:row-start-1",
@@ -174,7 +174,7 @@ export function CaptureBox() {
             variant="ghost"
             size="sm"
             // Focusable while it reads, as Add to drafts is while it captures.
-            className="text-muted-foreground col-start-2 row-start-1 justify-self-end rounded-full data-disabled:pointer-events-none data-disabled:opacity-50 sm:col-start-3"
+            className="text-muted-foreground col-start-2 row-start-1 justify-self-end data-disabled:pointer-events-none data-disabled:opacity-50 sm:col-start-3"
             disabled={ingest.isPending}
             focusableWhenDisabled
             // One picker per gesture: a double click's second click
@@ -198,14 +198,14 @@ export function CaptureBox() {
               !open && "sr-only",
             )}
           >
-            <p id="career-capture-help" className="text-muted-foreground text-xs">
+            <p id="career-capture-help" className="text-muted-foreground text-body-small">
               Type a recent win or add a document. Nothing goes on a resume until you approve it.
             </p>
             {open ? (
               <Button
                 // Stays focusable while it captures: a disabled button that
                 // has focus drops it to the page.
-                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+                className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 type="submit"
                 disabled={!text.trim() || capture.isPending}
                 focusableWhenDisabled

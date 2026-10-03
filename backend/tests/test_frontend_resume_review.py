@@ -213,7 +213,7 @@ def test_must_fix_counts_only_failed_fatal_checks():
     line = _block(report, "export function scoreCompositionLine(", "\n}")
     assert "one must-fix problem" not in line
     cards = _read("components/resume-health/finding-cards.tsx")
-    assert '<h2 className="text-sm font-medium">Checks</h2>' in cards
+    assert '<h2 className="text-title-small">Checks</h2>' in cards
     assert '{ key: "serious", one: "serious problem", many: "serious problems",' in _flat(cards)
     group = _block(_read("components/resume-editor/diff-review.tsx"), "function GatesGroup(", "\n}")
     assert ">\n        Checks\n      </p>" in group and ">\n        Must fix\n" not in group
@@ -504,7 +504,7 @@ def test_finding_rows_wrap_inside_their_cards():
     cards = _read("components/resume-health/finding-cards.tsx")
     row = _block(cards, "function CollapsedRow(", "\nexport function FindingGroupHeader(")
     assert '<div className="flex min-w-0 flex-wrap items-start gap-2">' in row
-    assert '<span className="text-muted-foreground min-w-0 text-xs break-words">' in row
+    assert '<span className="text-muted-foreground min-w-0 text-body-small break-words">' in row
     chrome = _block(cards, "export function ExpandedFindingChrome(", "\nfunction ClassificationOverrideDialog(")
     assert "break-words" in chrome and "flex-wrap" in chrome
 
