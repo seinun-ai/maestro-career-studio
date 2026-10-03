@@ -197,7 +197,7 @@ export function MergeEntityDialog({
             </div>
 
             {entities.isLoading ? (
-              <p className="text-muted-foreground rounded-xl bg-muted/45 p-3 text-xs">
+              <p className="text-muted-foreground rounded-xl bg-surface-container-low p-3 text-xs">
                 Loading…
               </p>
             ) : entities.error ? (
@@ -205,13 +205,13 @@ export function MergeEntityDialog({
                 {couldnt("load your items", entities.error)}
               </p>
             ) : shown.length === 0 ? (
-              <p className="text-muted-foreground rounded-xl bg-muted/45 p-3 text-xs">
+              <p className="text-muted-foreground rounded-xl bg-surface-container-low p-3 text-xs">
                 {candidates.length === 0
                   ? `Nothing to combine with. You need another ${kindLabel} item that isn't archived.`
                   : "No match for that title."}
               </p>
             ) : (
-              <ul className="max-h-72 space-y-1.5 overflow-y-auto rounded-xl bg-muted/45 p-2">
+              <ul className="max-h-72 space-y-1.5 overflow-y-auto rounded-xl bg-surface-container-low p-2">
                 {shown.map((entity) => (
                   <li key={entity.id}>
                     <button

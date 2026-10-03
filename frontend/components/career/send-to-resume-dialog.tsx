@@ -332,11 +332,11 @@ export function SendToResumeDialog({
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium">Approved bullets</legend>
               {approved.length === 0 ? (
-                <p className="text-muted-foreground rounded-xl bg-muted/45 p-3 text-xs">
+                <p className="text-muted-foreground rounded-xl bg-surface-container-low p-3 text-xs">
                   No approved bullets. Its title and dates can still be added.
                 </p>
               ) : (
-                <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl bg-muted/45 p-3">
+                <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl bg-surface-container-low p-3">
                   {approved.map((point) => (
                     <label
                       key={point.id}
@@ -354,7 +354,7 @@ export function SendToResumeDialog({
           <div className="max-h-96 space-y-4 overflow-y-auto">
             <ul className="space-y-2">
               {rows.map((row) => (
-                <li key={row.key} className="rounded-xl bg-muted/45 p-3">
+                <li key={row.key} className="rounded-xl bg-surface-container-low p-3">
                   {editingKey === row.key ? (
                     <div className="space-y-2">
                       <Textarea
@@ -463,7 +463,7 @@ export function SendToResumeDialog({
                   {dropped.map((item) => (
                     <li
                       key={item.point_id}
-                      className="flex items-start gap-3 rounded-xl bg-muted/30 p-3"
+                      className="flex items-start gap-3 rounded-xl p-3"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-muted-foreground text-sm leading-relaxed">

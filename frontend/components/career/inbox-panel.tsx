@@ -202,7 +202,7 @@ export function InboxPanel({
   // Loading takes the same line, so the page doesn't open with a tall skeleton and then jump up.
   if (isLoading || (!error && groups.length === 0)) {
     return (
-      <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-muted/45 py-3 shadow-none ring-0 outline-none">
+      <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-surface-container-low py-3 shadow-none ring-0 outline-none">
         <CardContent className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           <Inbox className="text-primary size-4 shrink-0" aria-hidden="true" />
           <span className="font-medium">Drafts to review</span>
@@ -219,7 +219,7 @@ export function InboxPanel({
   }
 
   return (
-    <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-muted/45 shadow-none ring-0 outline-none">
+    <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-surface-container-low shadow-none ring-0 outline-none">
       <CardHeader className="pb-1">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle className="flex items-center gap-2">
@@ -453,7 +453,7 @@ function DraftRow({
       )}
 
       {point.merge_sources && point.merge_sources.length > 0 && (
-        <div className="mt-3 rounded-xl bg-muted/55 p-3">
+        <div className="mt-3 rounded-xl bg-surface-container p-3">
           <p className="mb-2 text-xs font-medium">Wording from your resumes</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {point.merge_sources.map((source, index) => (

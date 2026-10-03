@@ -176,7 +176,7 @@ export function DemonstrateSkillDialog({
                             <button
                               type="button"
                               className={`w-full rounded px-1 py-1 text-left text-xs ${
-                                selected ? "bg-muted" : "hover:bg-muted/60"
+                                selected ? "bg-muted" : "hover:bg-surface-container-low dark:hover:bg-surface-container-high"
                               }`}
                               onClick={() => {
                                 setPicked({

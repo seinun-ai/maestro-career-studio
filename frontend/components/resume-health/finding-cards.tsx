@@ -513,7 +513,7 @@ export function SuggestionEditor({
 
   return (
     <div className="mt-2 space-y-2 border-t pt-2">
-      <div className="bg-muted/40 rounded-md p-2">
+      <div className="bg-surface-container-low rounded-md p-2">
         <DiffText oldText={currentText} newText={draft || suggestion} />
       </div>
       <Textarea
@@ -1351,7 +1351,7 @@ function WaivedGate({
   const unwaiveOnce = useSingleFlight(unwaive.mutate);
 
   return (
-    <div className="text-muted-foreground bg-muted/40 min-w-0 rounded-md border px-3 py-2">
+    <div className="text-muted-foreground bg-surface-container-low min-w-0 rounded-md border px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0 truncate text-sm">{gate.label} (marked OK)</span>
         <Button
@@ -1401,7 +1401,7 @@ function NotAssessedGate({
   });
 
   return (
-    <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
+    <div className="rounded-md border border-border bg-surface-container-low px-3 py-2">
       <div className="flex items-center gap-2">
         <Badge variant="secondary" className="bg-muted text-muted-foreground shrink-0 text-xs">
           Not checked

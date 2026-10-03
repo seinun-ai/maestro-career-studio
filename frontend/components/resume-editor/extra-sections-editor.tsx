@@ -199,8 +199,8 @@ function SectionCard({
           ref={cardRef}
           className={cn(
             "rounded-lg border p-3",
-            !enabled && "bg-muted/20 opacity-70",
-            editing && "bg-muted/20",
+            !enabled && "opacity-70",
+            editing && "bg-surface-container-low",
           )}
         >
           <div className="flex items-center justify-between gap-2">

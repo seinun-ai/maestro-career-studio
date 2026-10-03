@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { StatTile } from "@/components/analytics/stat-tile";
 import {
   CHART_COLORS as COLORS,
   ChartCard,
@@ -37,24 +38,6 @@ const KIND_LABEL: Record<string, string> = {
 
 function kindLabel(kind: string): string {
   return KIND_LABEL[kind] ?? "Other";
-}
-
-function Tile({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-xl bg-muted/40 p-4">
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="text-foreground mt-0.5 text-xl font-medium">{value}</p>
-      {sub ? <p className="text-muted-foreground mt-0.5 text-xs">{sub}</p> : null}
-    </div>
-  );
 }
 
 function RateTooltip({
@@ -157,9 +140,9 @@ export function AutofillCoverageCard() {
       {!data ? null : (
         <div className="grid gap-4">
           <div className="grid grid-cols-3 gap-3">
-            <Tile label="Unique fields" value={String(data.totals.signatures)} />
-            <Tile label="Times seen" value={String(data.totals.observations)} />
-            <Tile label="Sites" value={String(data.totals.hosts)} />
+            <StatTile label="Unique fields" value={String(data.totals.signatures)} />
+            <StatTile label="Times seen" value={String(data.totals.observations)} />
+            <StatTile label="Sites" value={String(data.totals.hosts)} />
           </div>
 
           {rates.length > 0 ? (

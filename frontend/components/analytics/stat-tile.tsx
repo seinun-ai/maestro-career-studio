@@ -26,11 +26,13 @@ export function StatTile({
   className?: string;
 }) {
   return (
-    <div className={cn("bg-muted/40 rounded-xl p-4", className)}>
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="text-foreground mt-0.5 text-xl font-medium">{value}</p>
+    <div className={cn("bg-surface-container-low rounded-corner-md p-4", className)}>
+      <p className="text-body-small text-muted-foreground">{label}</p>
+      <p className="text-title-large text-foreground mt-0.5 font-medium">
+        {value}
+      </p>
       {sub ? (
-        <p className="text-muted-foreground mt-0.5 text-xs">{sub}</p>
+        <p className="text-body-small text-muted-foreground mt-0.5">{sub}</p>
       ) : null}
     </div>
   );

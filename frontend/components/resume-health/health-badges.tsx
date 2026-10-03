@@ -65,8 +65,8 @@ export function HealthBadges({
   // the header row rather than loose chips floating between the buttons — it
   // was easy to miss entirely at a glance.
   const shell =
-    "hover:bg-muted/60 hover:border-border flex items-center gap-1.5 rounded-md " +
-    "border border-transparent bg-muted/40 px-2 py-1 transition-colors";
+    "hover:bg-surface-container hover:border-border flex items-center gap-1.5 rounded-md " +
+    "border border-transparent bg-surface-container-low px-2 py-1 transition-colors";
 
   const missing = failure instanceof ApiError && failure.status === 404;
   if (failure != null && !missing) {
