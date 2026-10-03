@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.application import Application
 from app.models.autofill_field_observation import AutofillFieldObservation
+from app.models.autofill_run import AutofillRun
 from app.models.job import Job
 from app.schemas.autofill_choose import ChooseRequest, ChooseResponse
 from app.schemas.autofill_fill import (
@@ -37,6 +38,7 @@ from app.schemas.autofill_fill import (
     StepResponse,
 )
 from app.schemas.autofill_telemetry import TelemetryBatch, TelemetryObservation
+from app.schemas.autofill_trace import RunTrace
 from app.services import (
     autofill_catalog,
     autofill_choose,
@@ -46,6 +48,7 @@ from app.services import (
     autofill_sections,
     autofill_step,
     autofill_telemetry,
+    autofill_trace,
     base_resume_data,
     eeo_consent,
     model_settings,
@@ -144,6 +147,13 @@ def post_telemetry(
     return Response(status_code=204)
 
 
+@router.post("/runs", status_code=204)
+def post_run(payload: RunTrace, db: Annotated[Session, Depends(get_db)]):
+    """Store one Companion run's value-free trace and fold it into the mechanism counters."""
+    autofill_trace.store_run(db, payload)
+    return Response(status_code=204)
+
+
 @router.get("/telemetry/summary")
 def get_telemetry_summary(db: Annotated[Session, Depends(get_db)]):
     return autofill_telemetry.build_summary(db)
@@ -151,7 +161,7 @@ def get_telemetry_summary(db: Annotated[Session, Depends(get_db)]):
 
 @router.delete("/telemetry")
 def clear_telemetry(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
-    """Delete every stored observation. Returns how many rows went.
+    """Delete every stored observation and every stored run trace. Returns how many rows went.
 
     The privacy argument for this table has always been that it has no value
     column — true, and not the whole picture. Each row carries `host` and
@@ -165,12 +175,16 @@ def clear_telemetry(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
     first is the kind of helpfulness nobody consents to. The toggle stays where
     it is (extension card → `⋯`), and the next batch stores normally.
 
+    The run traces carry `host` and a start time too, so they go with it. The mechanism counters
+    stay: their keys hold no host and no label (SYSTEM.md {#inv-autofill-telemetry-no-values}).
+
     Returns a count rather than 204 because a destructive control that cannot
     say what it destroyed is one the user has to take on faith.
     """
     deleted = db.execute(delete(AutofillFieldObservation)).rowcount
+    runs_deleted = db.execute(delete(AutofillRun)).rowcount
     db.commit()
-    return {"deleted": deleted}
+    return {"deleted": deleted, "runs_deleted": runs_deleted}
 
 
 def _selected_resume(

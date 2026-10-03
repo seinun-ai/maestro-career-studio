@@ -53,7 +53,8 @@ class TraceStep(BaseModel):
     first_same: bool | None = None
     chose_none: bool | None = None  # the model's top choice was the no-answer key (see DecisionTrace)
     way: PolarityWay | None = None  # polarity
-    option: int | None = Field(default=None, ge=0, lt=MAX_PICK_OPTIONS)  # index into the options offered to /pick (not TraceField.options, which is capped)
+    # index into the options offered to /pick (not TraceField.options, which is capped)
+    option: int | None = Field(default=None, ge=0, lt=MAX_PICK_OPTIONS)
     reason: StepReason | None = None  # pick / step
     move: str | None = Field(default=None, max_length=40, pattern=MOVE_ID)  # op step / move
 
@@ -84,7 +85,7 @@ class RunTrace(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     run_id: str = Field(min_length=8, max_length=64, pattern=r"^[0-9a-z-]{8,64}$")
-    host: str = Field(pattern=r"^[a-z0-9.-]{1,253}(:\d{1,5})?$")  # location.hostname: lowercase / punycode
+    host: str = Field(pattern=r"^[a-z0-9.-]{1,253}(:\d{1,5})?$")  # a hostname, optionally with a port: lowercase / punycode
     started_at: AwareDatetime
     ended_at: AwareDatetime
     mode: Literal["assist"] = "assist"  # only "Saved answers + AI" runs the loop (panel/actions/fill.js:458)

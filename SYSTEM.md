@@ -338,9 +338,9 @@ file to open.
   typed, what was there before, or any AI answer. Structural: no value column,
   `extra="forbid"` (an extra key 422s the batch), sw re-filters to six keys.
   `host` + `first_seen_at` still make the TABLE a record of where you applied
-  and when, so `DELETE /telemetry` clears it (count in body) and deliberately
-  does NOT touch the capture toggle. Field list/toggle/default-on decision:
-  `extension/INTERNALS.md`; `…/telemetry/summary` ranks failures + saturation.
+  and when, so `DELETE /telemetry` clears it (count in body), never the capture toggle (see
+  `extension/INTERNALS.md`; `…/telemetry/summary` ranks failures + saturation). `POST /runs` keeps
+  the last 50 value-free `RunTrace`s, folded into host/label-free `autofill_mechanism_stats`; DELETE clears runs, not counters.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at
   the sender, but `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat
   iframes, and the ISOLATED world protects the message in transit, NOT the DOM written into: a frame

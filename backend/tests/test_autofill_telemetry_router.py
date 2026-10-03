@@ -777,7 +777,7 @@ def test_clear_deletes_every_row_and_reports_the_count(db_session):
     assert resp.status_code == 200
     # The count is the point of the body: a destructive control that cannot say
     # what it destroyed is one the user has to take on faith.
-    assert resp.json() == {"deleted": 3}
+    assert resp.json() == {"deleted": 3, "runs_deleted": 0}
     assert _rows(db_session) == []
 
 
@@ -809,7 +809,7 @@ def test_clear_on_an_empty_table_is_a_no_op_not_an_error(db_session):
         app.dependency_overrides.clear()
 
     assert resp.status_code == 200
-    assert resp.json() == {"deleted": 0}
+    assert resp.json() == {"deleted": 0, "runs_deleted": 0}
 
 
 def test_clear_does_not_disable_capture(db_session):
