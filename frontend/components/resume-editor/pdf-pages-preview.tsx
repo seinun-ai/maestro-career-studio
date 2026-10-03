@@ -170,9 +170,10 @@ export function PdfPagesPreview({
             />
           ))}
           <span
-            className={`bg-foreground text-background sticky bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center rounded-full px-3 py-1 text-xs font-medium shadow ${
-              data.page_count > 1 ? "bg-amber-600" : ""
-            }`}
+            className={cn(
+              "text-background sticky bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center rounded-full px-3 py-1 text-xs font-medium shadow",
+              data.page_count > 1 ? "bg-warning" : "bg-foreground",
+            )}
           >
             {data.page_count} page{data.page_count > 1 ? "s" : ""}
           </span>

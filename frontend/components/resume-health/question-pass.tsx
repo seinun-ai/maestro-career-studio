@@ -646,7 +646,7 @@ function PassRowView({
         <p
           ref={setLand}
           tabIndex={-1}
-          className="text-xs text-amber-700 outline-none dark:text-amber-400"
+          className="text-warning text-xs outline-none"
         >
           This bullet changed.{" "}
           <button

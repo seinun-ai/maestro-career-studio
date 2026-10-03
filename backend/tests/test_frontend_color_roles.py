@@ -631,21 +631,18 @@ def test_theme_exposes_role_utilities():
 
 # Tailwind v4's palette is OKLCH (frontend/node_modules/tailwindcss/theme.css).
 # CI's backend job installs no node_modules, so the shades these pins use are
-# copied here and checked against the installed theme wherever it exists.
+# copied here and checked against the installed theme wherever it exists. Only
+# CompanyMonogram's six tones still write palette shades (step 8 of the
+# design-system plan moves them to roles); every other status colour is a role,
+# whose contrast test_frontend_design_tokens.py pins on every surface.
 _TAILWIND = {
-    "orange-300": (0.837, 0.128, 66.29),
-    "orange-400": (0.75, 0.183, 55.934),
-    "orange-500": (0.705, 0.213, 47.604),
-    "orange-800": (0.47, 0.157, 37.304),
     "blue-300": (0.809, 0.105, 251.813),
     "blue-400": (0.707, 0.165, 254.624),
-    "blue-500": (0.623, 0.214, 259.815),
     "blue-600": (0.546, 0.245, 262.881),
     "blue-700": (0.488, 0.243, 264.376),
     "amber-300": (0.879, 0.169, 91.605),
     "amber-400": (0.828, 0.189, 84.429),
     "amber-500": (0.769, 0.188, 70.08),
-    "amber-700": (0.555, 0.163, 48.998),
     "amber-800": (0.473, 0.137, 46.201),
     "violet-300": (0.811, 0.111, 293.571),
     "violet-400": (0.702, 0.183, 293.541),
@@ -654,7 +651,6 @@ _TAILWIND = {
     "green-300": (0.871, 0.15, 154.449),
     "green-400": (0.792, 0.209, 151.711),
     "green-600": (0.627, 0.194, 149.214),
-    "green-700": (0.527, 0.154, 150.069),
     "green-800": (0.448, 0.119, 151.328),
     "rose-300": (0.81, 0.117, 11.638),
     "rose-400": (0.712, 0.194, 13.428),
@@ -664,32 +660,6 @@ _TAILWIND = {
     "cyan-400": (0.789, 0.154, 211.53),
     "cyan-600": (0.609, 0.126, 221.723),
     "cyan-800": (0.45, 0.085, 224.283),
-    "red-300": (0.808, 0.114, 19.571),
-    "red-400": (0.704, 0.191, 22.216),
-    "red-600": (0.577, 0.245, 27.325),
-    "red-700": (0.505, 0.213, 27.518),
-    "sky-400": (0.746, 0.16, 232.661),
-    "sky-500": (0.685, 0.169, 237.323),
-    "sky-700": (0.5, 0.134, 242.749),
-    "sky-800": (0.443, 0.11, 240.79),
-    "emerald-300": (0.845, 0.143, 164.978),
-    "emerald-400": (0.765, 0.177, 163.223),
-    "emerald-500": (0.696, 0.17, 162.48),
-    "emerald-600": (0.596, 0.145, 163.225),
-    "emerald-700": (0.508, 0.118, 165.612),
-    "emerald-800": (0.432, 0.095, 166.913),
-    "amber-100": (0.962, 0.059, 95.617),
-    "amber-200": (0.924, 0.12, 95.746),
-    "amber-900": (0.414, 0.112, 45.904),
-    "amber-950": (0.279, 0.077, 45.635),
-    "blue-100": (0.932, 0.032, 255.585),
-    "blue-800": (0.424, 0.199, 265.638),
-    "blue-900": (0.379, 0.146, 265.522),
-    "slate-400": (0.704, 0.04, 256.788),
-    "slate-500": (0.554, 0.046, 257.417),
-    "slate-600": (0.446, 0.043, 257.281),
-    "violet-500": (0.606, 0.25, 292.717),
-    "violet-800": (0.432, 0.232, 292.759),
 }
 _TAILWIND_THEME = _FRONTEND / "node_modules" / "tailwindcss" / "theme.css"
 
@@ -707,7 +677,9 @@ def test_copied_tailwind_shades_match_the_installed_theme():
 # Every tinted chip in the status vocabulary (and the KB entity chips, which
 # copy its shape): text on its own tint, over the page, a card and --muted
 # (a selected tracker row), both modes. A chip's dark text and tint fall back
-# to the light ones when it declares none, as the browser does.
+# to the light ones when it declares none, as the browser does. The status and
+# entity chips are role pairs now (read from globals.css); the monogram's six
+# tones are the palette shades left, read from the copied _TAILWIND table.
 _CHIP_SOURCES = (
     "components/status-chip.tsx",
     "components/career/entity-card.tsx",
@@ -725,7 +697,8 @@ _CHIPS = [(rel, cls) for rel in _CHIP_SOURCES for cls in _CHIP_CLASS.findall(_re
 
 def test_every_tinted_chip_is_found():
     found = {rel: sum(1 for r, _ in _CHIPS if r == rel) for rel in _CHIP_SOURCES}
-    # 7 application statuses + Needs you + 7 proposal entries; 3 KB states + fallback.
+    # 7 application statuses + Needs you + 7 proposal entries; 3 KB states + fallback;
+    # the monogram's 6 hash tones (the only palette chips left).
     assert found == {
         "components/status-chip.tsx": 15,
         "components/career/entity-card.tsx": 4,
@@ -774,53 +747,58 @@ def test_chip_text_meets_aa_on_its_tint(rel, chip, mode):
         assert ratio >= 4.5, f"{mode}: {rel} {chip!r} over {surface} is {ratio:.2f}:1"
 
 
-# Decision 16: the three amber template labels, as text on the surfaces they
-# sit on (the gallery's cards, the picker's popover, the editor's page).
-_AMBER_LABELS = {
-    "Needs setup": ("components/templates/requires-tex-badge.tsx", "Needs setup"),
-    # The warning is a sentence on the card now, not a hover (lane 8 review).
-    "ATS may read words as joined": ("components/templates/template-gallery.tsx", "may read some words as joined together"),
-    "Unsaved changes": ("app/templates/[id]/page.tsx", ">Unsaved changes<"),
-}
+# Decision 16's three template warning labels, the tailoring-lift figure, the
+# placed status text and the chips that once sat in a palette: each is a ROLE
+# now. The role's contrast is pinned on every surface by
+# test_frontend_design_tokens.py (a text role on the page, a card, a popover,
+# the canvas and the ladder; a container pair on its own fill), so these pins
+# only keep each site on its role. The one surface a role is not pinned on, the
+# thumbnail chip over the rendered page, is measured below.
+_ROLE_SITES = [
+    ("components/templates/requires-tex-badge.tsx", 'className="border-transparent bg-warning-container text-on-warning-container"'),
+    ("components/templates/template-gallery.tsx", '<p className="text-warning basis-full text-xs">'),
+    ("app/templates/[id]/page.tsx", '<span className="text-warning text-xs">Unsaved changes</span>'),
+    ("components/charts/tailoring-lift-chart.tsx", '? "text-success"\n                : "text-destructive"'),
+    ("components/ats-compare-panel.tsx", 'positive ? "text-success" : "text-destructive"'),
+    ("components/ats-compare-panel.tsx", 'className="border-transparent bg-success-container text-on-success-container"'),
+    ("components/settings/models-section.tsx", '"text-success font-medium"'),
+    ("components/proposals/proposals-section.tsx", 'className="text-warning inline-flex items-center gap-1 text-xs"'),
+    ("components/proposals/proposals-section.tsx", "rounded-full bg-warning-container px-2 py-0.5 text-[10px] font-medium text-on-warning-container"),
+    ("components/base-resumes/base-resume-thumbnail.tsx", 'className: "text-warning"'),
+    ("components/resume-versions/version-history-sheet.tsx", 'chat: "bg-tertiary-container text-on-tertiary-container"'),
+    ("components/resume-versions/version-history-sheet.tsx", 'tailor: "bg-primary-container text-on-primary-container"'),
+    ("components/resume-versions/version-history-sheet.tsx", 'restore: "bg-warning-container text-on-warning-container"'),
+    ("components/resume-versions/version-diff-view.tsx", 'added: "bg-success-container text-on-success-container"'),
+    ("components/resume-versions/version-diff-view.tsx", 'modified: "bg-warning-container text-on-warning-container"'),
+]
 
 
-def _class_before(rel: str, marker: str) -> str:
-    source = _read(rel)
-    return re.findall(r'className="([^"]*)"', source[: source.index(marker)])[-1]
+@pytest.mark.parametrize(
+    "rel,literal", _ROLE_SITES, ids=[f"{r.rsplit('/', 1)[-1]}:{i}" for i, (r, _) in enumerate(_ROLE_SITES)]
+)
+def test_status_sites_take_their_role(rel, literal):
+    assert literal in _read(rel), f"{rel}: {literal} moved or went back to a palette shade"
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
-@pytest.mark.parametrize("label", list(_AMBER_LABELS))
-def test_template_warning_labels_meet_aa(label, mode):
-    utils = {(bool(d), k): c for d, k, c, _ in _CHIP_UTIL.findall(_class_before(*_AMBER_LABELS[label]))}
-    text = _chip_colour(mode, utils.get((mode == "dark", "text")) or utils[(False, "text")])
-    for surface in ("background", "card", "popover"):
-        ratio = _contrast(text, _rgb(_MODES[mode], surface))
-        assert ratio >= 4.5, f"{mode}: {label} on --{surface} is {ratio:.2f}:1"
-
-
-@pytest.mark.parametrize("mode", list(_MODES))
-def test_tailoring_lift_sign_colours_meet_aa_on_the_card(mode):
-    """The overall lift's +/- figure is text on the chart's card, in both modes."""
-    lift = _read("components/charts/tailoring-lift-chart.tsx")
-    assert '? "text-emerald-700 dark:text-emerald-400"\n                : "text-destructive"' in lift
+def test_the_thumbnail_warning_chip_meets_aa_over_the_rendered_page(mode):
+    """`text-warning` on the thumbnail chip's background/90 over the white page."""
+    # The surface this measures; if the chip's fill changes, re-measure.
+    assert "bg-background/90" in _read("components/gallery/preview-thumbnail.tsx")
     t = _MODES[mode]
-    gain = _srgb(_oklab(_TAILWIND["emerald-700" if mode == "light" else "emerald-400"]))
-    for name, fg in (("gain", gain), ("loss", _rgb(t, "destructive"))):
-        ratio = _contrast(fg, _rgb(t, "card"))
-        assert ratio >= 4.5, f"{mode}: lift {name} on --card is {ratio:.2f}:1"
+    under = _over(_rgb(t, "background"), (1.0, 1.0, 1.0), 0.9)
+    ratio = _contrast(_rgb(t, "warning"), under)
+    assert ratio >= 4.5, f"{mode}: the PDF-out-of-date chip is {ratio:.2f}:1"
 
 
 # Raw palette TEXT is measured wherever it is written, ternary branches
 # included: every class string that sets a light palette text colour, over its
 # own tint if it has one, on the page, a card and a popover, in both modes (a
 # class with no dark text keeps its light one, as the browser does). An icon or
-# an icon holder (a class with `size-N`) is non-text: 3:1. The -600 shades read
-# 3.0 to 3.7:1 as text on the light page (emerald-600 3.42, amber-600 2.98), and
-# a tint darkens the page under a -700 (amber-700 on amber-500/10: 4.67 on a
-# card, 4.38 on the page). Plain text is -700 / dark -400, as the lift figure
-# above; text on its own tint is -800 where -700 falls short, as the status
-# chips are.
+# an icon holder (a class with `size-N`) is non-text: 3:1. Only CompanyMonogram
+# writes palette text now (test_no_palette_class_is_written_outside_the_monogram
+# in test_frontend_design_tokens.py holds every other file to roles), so this
+# measures its six tones and goes with them at step 8 of the design-system plan.
 _CLASS_LITERALS = re.compile(r'"([^"\n]*)"')
 _LIGHT_TEXT = re.compile(rf"(?<![\w:/-])text-(?:{_PALETTE})-\d+(?![\w/-])")
 _ICON = re.compile(r"(?<![\w-])size-\d")
@@ -838,17 +816,6 @@ def _palette_texts():
 _PALETTE_TEXTS = list(_palette_texts())
 
 
-def _surface(t, name):
-    """A token, or a stacked surface: a hovered row's muted/N on a card, or
-    the thumbnail chip's background/90 over the white rendered page."""
-    m = re.fullmatch(r"muted/(\d+) on card", name)
-    if m:
-        return _over(_rgb(t, "muted"), _rgb(t, "card"), int(m.group(1)) / 100)
-    if name == "background/90 on white":
-        return _over(_rgb(t, "background"), (1.0, 1.0, 1.0), 0.9)
-    return _rgb(t, name)
-
-
 def _palette_ratio(mode, classes, under):
     """Text over its own tint (if any) over `under`; dark falls back to light."""
     utils = {(bool(d), k): (c, int(p) / 100 if p else 1.0) for d, k, c, p in _CHIP_UTIL.findall(classes)}
@@ -860,9 +827,11 @@ def _palette_ratio(mode, classes, under):
 
 
 def test_every_palette_text_is_found():
-    # A floor that the scan still works, not a target: it steps down as call
-    # sites move to the status roles (61 after the status and grade chips).
-    assert len(_PALETTE_TEXTS) >= 55, len(_PALETTE_TEXTS)
+    # The scan still works and the monogram is the only place it finds anything:
+    # a palette text anywhere else is a regression to the roles.
+    files = {where.split(":")[0] for where, _ in _PALETTE_TEXTS}
+    assert files == {"components/company-monogram.tsx"}, files
+    assert len(_PALETTE_TEXTS) == 6, _PALETTE_TEXTS
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
@@ -876,32 +845,6 @@ def test_every_palette_text_meets_aa_on_page_card_and_popover(mode):
             if ratio < floor:
                 failures.append(f"{where} {cls!r} on --{surface}: {ratio:.2f}:1")
     assert failures == [], failures
-
-
-# Palette text whose surface is not just the page, a card or a popover: a
-# hovered table or proposal row, a selected version in the history sheet
-# (--accent), the thumbnail's chip over the rendered page.
-_PLACED_TEXT = [
-    ("components/ats-compare-panel.tsx", '"text-emerald-700 dark:text-emerald-400"', ("card",)),
-    ("components/ats-compare-panel.tsx", '"border-emerald-600/40 text-emerald-700 dark:text-emerald-400"', ("card", "muted/50 on card")),
-    ("components/settings/models-section.tsx", '"font-medium text-emerald-700 dark:text-emerald-400"', ("card",)),
-    ("components/proposals/proposals-section.tsx", '"inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"', ("card", "muted/40 on card")),
-    ("components/proposals/proposals-section.tsx", '"inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-400"', ("card", "muted/40 on card")),
-    ("components/base-resumes/base-resume-thumbnail.tsx", '"text-amber-700 dark:text-amber-400"', ("background/90 on white",)),
-    ("components/resume-versions/version-history-sheet.tsx", '"bg-violet-500/10 text-violet-800 dark:text-violet-400"', ("popover", "accent")),
-    ("components/resume-versions/version-history-sheet.tsx", '"bg-blue-500/10 text-blue-800 dark:text-blue-400"', ("popover", "accent")),
-    ("components/resume-versions/version-history-sheet.tsx", '"bg-amber-500/10 text-amber-800 dark:text-amber-400"', ("popover", "accent")),
-]
-
-
-@pytest.mark.parametrize("mode", list(_MODES))
-@pytest.mark.parametrize("rel,literal,surfaces", _PLACED_TEXT, ids=[f"{r.rsplit('/', 1)[-1]}:{i}" for i, (r, _, _) in enumerate(_PLACED_TEXT)])
-def test_placed_palette_text_meets_aa_where_it_sits(rel, literal, surfaces, mode):
-    assert literal in _read(rel), f"{rel}: {literal} moved; re-measure it"
-    t = _MODES[mode]
-    for surface in surfaces:
-        ratio = _palette_ratio(mode, literal.strip('"'), _surface(t, surface))
-        assert ratio >= 4.5, f"{mode}: {rel} {literal} on {surface} is {ratio:.2f}:1"
 
 
 _SIDEBAR_BADGE = "bg-attention-container text-on-attention-container"

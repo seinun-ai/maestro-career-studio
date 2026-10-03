@@ -31,9 +31,9 @@ const PROVENANCE_LABELS: Record<ResumeDiffHunk["provenance"], string> = {
 };
 
 const PROVENANCE_STYLES: Record<ResumeDiffHunk["provenance"], string> = {
-  kb_auto: "border-primary/40 text-primary bg-primary/10",
-  user: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  llm: "border-border bg-muted text-muted-foreground",
+  kb_auto: "border-transparent bg-primary-container text-on-primary-container",
+  user: "border-transparent bg-success-container text-on-success-container",
+  llm: "border-transparent bg-surface-container text-muted-foreground",
 };
 
 /**
@@ -532,12 +532,12 @@ function GateRow({ gate }: { gate: HealthGate }) {
     ? "border-border bg-surface-container-low"
     : gate.tier === "fatal"
       ? "border-destructive/50 bg-destructive/5"
-      : "border-amber-500/50 bg-amber-500/5";
+      : "border-border";
   const badgeStyle = notAssessed
     ? "bg-muted text-muted-foreground"
     : gate.tier === "fatal"
       ? "bg-destructive/10 text-destructive"
-      : "bg-amber-500/10 text-amber-800 dark:text-amber-400";
+      : "bg-warning-container text-on-warning-container";
   const badgeLabel = notAssessed
     ? "Not checked"
     : gate.tier === "fatal"

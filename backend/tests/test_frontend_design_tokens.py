@@ -62,6 +62,21 @@ def test_status_container_text_meets_aa(mode, container, on):
     assert ratio >= 4.5, f"{mode}: --{on} on --{container} is {ratio:.2f}:1"
 
 
+# A text role that code puts on a container: the health summary's "Go to Needs a
+# number" link button is `text-primary` inside the warning callout. Add a pair
+# here when a call site does the same; muted-foreground is NOT one (it measures
+# 3.7 to 3.9:1 on the success and warning containers in dark).
+_ROLE_ON_CONTAINER = [("primary", "warning-container")]
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+@pytest.mark.parametrize("role,container", _ROLE_ON_CONTAINER)
+def test_text_roles_used_on_a_container_meet_aa(mode, role, container):
+    t = _MODES[mode]
+    ratio = _contrast(_rgb(t, role), _rgb(t, container))
+    assert ratio >= 4.5, f"{mode}: --{role} on --{container} is {ratio:.2f}:1"
+
+
 @pytest.mark.parametrize("mode", list(_MODES))
 @pytest.mark.parametrize("role", _TEXT_ROLES)
 def test_text_roles_meet_aa_on_every_surface(mode, role):
@@ -174,6 +189,32 @@ def test_no_surface_is_a_muted_with_opacity():
                 if re.search(r"bg-muted/\d+", line):
                     hits.append(f"{path.relative_to(_FRONTEND)}:{number}")
     assert not hits, "bg-muted/N is left at:\n" + "\n".join(hits)
+
+
+# The utilities Tailwind's palette would write: a status is a role, never a shade.
+_PALETTE_UTILITY = re.compile(
+    r"(?<![\w-])(?:text|bg|border|ring|fill|stroke|from|to|via|outline|decoration|divide|shadow)-"
+    r"(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|"
+    r"fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d{2,3}(?![\w-])"
+)
+# CompanyMonogram's six hash tints go with step 8 of the design-system plan
+# (docs/plans/2026-10-02-design-system-tokens.md). Delete this entry then.
+_PALETTE_STILL_ALLOWED = {"components/company-monogram.tsx"}
+
+
+def test_no_palette_class_is_written_outside_the_monogram():
+    """A status is `success` / `warning` / `attention` / `tertiary` / `primary` /
+    `destructive` or a container pair, never `text-amber-700 dark:text-amber-400`."""
+    hits = []
+    for folder in ("app", "components", "lib", "hooks"):
+        for path in sorted((_FRONTEND / folder).rglob("*")):
+            rel = path.relative_to(_FRONTEND).as_posix()
+            if path.suffix not in (".ts", ".tsx") or rel in _PALETTE_STILL_ALLOWED:
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if _PALETTE_UTILITY.search(line):
+                    hits.append(f"{rel}:{number}")
+    assert not hits, "a palette utility is left at:\n" + "\n".join(hits)
 
 
 def test_stat_tile_is_a_filled_card():

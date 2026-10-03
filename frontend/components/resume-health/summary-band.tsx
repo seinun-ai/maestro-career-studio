@@ -141,7 +141,7 @@ export function SummaryBand({
       {noNumbers && (
         <div
           role="note"
-          className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800 dark:bg-amber-950/40"
+          className="rounded-md bg-warning-container px-3 py-2 text-sm text-on-warning-container"
         >
           <p className="font-medium">{noNumbers.label}</p>
           <p className="mt-0.5 max-w-[65ch]">

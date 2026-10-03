@@ -476,7 +476,7 @@ export function HealthReportPage({
             onOpenNumberTab={() => openTab("number")}
           >
             {stale && (
-              <FocusHandoff to={checkRef} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
+              <FocusHandoff to={checkRef} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-warning-container px-3 py-2 text-sm text-on-warning-container">
                 <p>Your resume changed since this check. Check again to update it.</p>
                 {analyzeButton()}
               </FocusHandoff>

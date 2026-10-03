@@ -263,7 +263,7 @@ function AtsScoreCard({
               </li>
             ))}
             {coverage && (
-              <li className="flex gap-1.5 text-amber-800 dark:text-amber-300">
+              <li className="text-warning flex gap-1.5">
                 <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
                 {/* The server's sentence already gives the counts ("Your resume shows only 1 of this job's 8 skills (13%)."). */}
                 {coverage}
@@ -577,7 +577,7 @@ export function AtsScorePanel({
           </Button>
         </div>
         {lowCoverageEverywhere && (
-          <div className="flex gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-sm text-amber-800 dark:text-amber-300">
+          <div className="flex gap-2 rounded-md bg-warning-container p-2 text-sm text-on-warning-container">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <p>{LOW_COVERAGE_ON_EVERY_RESUME}</p>
           </div>

@@ -25,6 +25,12 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
   take `surface-container-low`, chips and tracks `surface-container`; five barely-there tints on bordered or
   dimmed boxes were dropped. `StatTile` is a filled card (`surface-container-low`, `rounded-corner-md`,
   `text-title-large` value at weight 500). `test_frontend_design_tokens.py` fails on any `bg-muted/N` left.
+- Step 2, palette classes: the 205 `text-/bg-/border-<palette>-N` uses in 36 files outside the monogram are roles. Chips and small
+  labels are container pairs, dots are `bg-success` / `bg-warning` / `bg-primary`, text on a surface is
+  `text-success` / `text-warning`. Caution, pass and info boxes are container callouts without a tinted
+  border; tinted card edges (the health report's Fix and Question cards, the Serious gate) are `border-border`
+  (UX change 5). The Chat greeting's blue-to-rose gradient is plain `text-foreground`. Only
+  `CompanyMonogram` (step 8) still writes palette shades; `test_frontend_design_tokens.py` fails on any other.
 
 ## What is left, in order
 
@@ -33,7 +39,7 @@ branch point.
 
 | # | Step | From | To | Size |
 |---|---|---|---|---|
-| 2 | Remaining palette classes | the `text-/bg-/border-<palette>-N` uses left after step 1 (302 in 39 files before it; amber and emerald lead) | `success` / `warning` / `attention` / `tertiary` / primary container | largest step; split by folder |
+| 2 | ~~Remaining palette classes~~ done | the `text-/bg-/border-<palette>-N` uses left after step 1 (302 in 39 files before it; amber and emerald lead) | `success` / `warning` / `attention` / `tertiary` / primary container | largest step; split by folder |
 | 3 | ~~Surfaces~~ done | 74 `bg-muted/N` uses in 45 files, 11 opacities | `/10`–`/30` → page (drop the fill) or `surface-container-low`; `/35`–`/60` → `surface-container-low`; `/70` and solid → `surface-container` | mechanical |
 | 4 | Type | `text-[22px]` page titles, `text-[10px]`/`[11px]`/`[0.8rem]` (33 uses), size + weight pairs | `text-title-large`, `text-label-small`, `text-title-medium` and the rest | start with `PageHeader`, `CardTitle`, `Badge` |
 | 5 | Corners | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |

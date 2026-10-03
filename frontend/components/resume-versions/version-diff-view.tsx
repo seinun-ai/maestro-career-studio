@@ -9,9 +9,9 @@ import { cn } from "@/lib/utils";
 import type { ResumeDiffChange } from "@/lib/types";
 
 const KIND_STYLES: Record<ResumeDiffChange["kind"], string> = {
-  added: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400",
+  added: "bg-success-container text-on-success-container",
   removed: "bg-destructive/10 text-destructive",
-  modified: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
+  modified: "bg-warning-container text-on-warning-container",
 };
 
 const KIND_LABELS: Record<ResumeDiffChange["kind"], string> = {

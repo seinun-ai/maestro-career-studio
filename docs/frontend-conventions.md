@@ -40,17 +40,17 @@
   the referral careers URL's `text-blue-600` had no dark variant and read
   3.77:1 on the dark page. `test_underlined_links_take_a_colour_role` refuses a
   palette `text-*` in any underlined class, and the referral link is measured on
-  the page, a card and a hovered or selected row in both modes. **Palette
-  text is measured wherever it is written.** A -600 shade is not text in light
-  mode (emerald-600 read 3.42:1 and amber-600 2.98:1 on the page): plain text
-  is -700 with a `dark:` -400, and text on its own palette tint is -800 where
-  -700 falls short (amber-700 on `amber-500/10` read 4.38:1 on the page, and
-  the grade chips, version-source chips and diff rows sat under it too).
-  `test_every_palette_text_meets_aa_on_page_card_and_popover` computes every
-  class string that sets a palette `text-*`, over its tint, on the page, a card
-  and a popover in both modes (an icon, a class with `size-N`, at 3:1); text
-  that sits on a hovered row, a selected history row or the thumbnail's chip
-  is measured there too (`test_placed_palette_text_meets_aa_where_it_sits`).
+  the page, a card and a hovered or selected row in both modes. **No palette
+  shade is written outside the monogram.** A status colour is a role, so it
+  needs no `dark:` twin: the -600 shades it replaced read 2.98 to 3.42:1 on
+  the light page, and -700 on its own tint read 4.38:1.
+  `test_no_palette_class_is_written_outside_the_monogram` lists file:line for
+  any `text-`, `bg-`, `border-`, `ring-`, `from-` or similar utility with a
+  palette hue and a shade. The monogram's six tones are the exception until
+  step 8 of `docs/plans/2026-10-02-design-system-tokens.md`;
+  `test_every_palette_text_meets_aa_on_page_card_and_popover` still measures
+  them, and `test_status_sites_take_their_role` keeps the formerly palette
+  sites on their role.
   **Selected
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
   `Check` plus `aria-pressed` (Review changes,
@@ -959,14 +959,13 @@
   and Proposed primary, Interviewing warning, Offer tertiary, Offer accepted
   success, Rejected error, Queued secondary; grades A and B success, C
   warning, D attention, F error), so no chip carries a `dark:` twin. The KB
-  entity chips and the monogram still use palette tints: light-mode text is
+  entity chips are role pairs too (ongoing primary container, completed
+  success). Only the monogram still uses palette tints: light-mode text is
   800 on amber, green, rose and cyan and 700 on blue and violet.
   `test_frontend_color_roles.py` finds every chip literal in `status-chip.tsx`,
   `career/entity-card.tsx` and `company-monogram.tsx` and computes it over the
-  page, a card, `--muted` and a hovered row in both modes; the three amber
-  template labels (Needs setup, the ATS warning line, Unsaved changes) are computed over the
-  page, a card and the popover. A new shade must be copied into its
-  `_TAILWIND` table.
+  page, a card, `--muted` and a hovered row in both modes. A new palette shade
+  must be copied into its `_TAILWIND` table.
 - **Card galleries**: Templates and Base resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and

@@ -77,7 +77,7 @@ function TemplateBadgeStrip({
       {isReady && template.parse_certified === false && (
         // The words say it on the card, not only in a hover: ATS is spelled
         // out once here, where it first appears.
-        <p className="basis-full text-xs text-amber-700 dark:text-amber-400">
+        <p className="text-warning basis-full text-xs">
           <span aria-hidden="true">⚠</span> Applicant tracking systems (ATS)
           may read some words as joined together. Pick another template to be
           safe.

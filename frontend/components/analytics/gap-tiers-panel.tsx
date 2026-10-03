@@ -33,7 +33,7 @@ const STATUS_META: Record<
   missing: {
     label: "Not in your career history",
     hint: "Not in your career history.",
-    chip: "bg-amber-500/15 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200",
+    chip: "bg-warning-container text-on-warning-container",
   },
   in_kb: {
     label: "In your career history",

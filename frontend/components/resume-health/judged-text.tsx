@@ -21,7 +21,7 @@ export function DiffText({ oldText, newText }: { oldText: string; newText: strin
             token.kind === "removed" &&
               "bg-destructive/10 text-destructive line-through",
             token.kind === "added" &&
-              "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+              "bg-success-container text-on-success-container",
           )}
         >
           {token.text}{" "}

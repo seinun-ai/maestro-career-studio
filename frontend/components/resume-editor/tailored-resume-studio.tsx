@@ -778,8 +778,8 @@ function StudioEditor({
         editor={
           <div className="flex flex-col gap-4">
             {serverChanged && dirty && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-sm dark:border-amber-400/40 dark:bg-amber-400/[0.08]">
-                <span className="text-amber-700 dark:text-amber-300">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-warning-container px-3 py-2 text-sm text-on-warning-container">
+                <span>
                   This tailored resume was changed somewhere else.
                 </span>
                 <Button

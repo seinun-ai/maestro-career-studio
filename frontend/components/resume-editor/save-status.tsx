@@ -17,7 +17,7 @@ export function SaveStatusText({ status }: { status: SaveStatus }) {
       role="status"
       className={cn(
         "inline-flex items-center gap-1.5 whitespace-nowrap",
-        status.tone === "dirty" && "text-amber-800 dark:text-amber-300",
+        status.tone === "dirty" && "text-warning",
       )}
     >
       {status.tone === "busy" ? (
@@ -27,7 +27,7 @@ export function SaveStatusText({ status }: { status: SaveStatus }) {
           aria-hidden="true"
           className={cn(
             "size-1.5 rounded-full",
-            status.tone === "dirty" ? "bg-amber-500" : "bg-emerald-500",
+            status.tone === "dirty" ? "bg-warning" : "bg-success",
           )}
         />
       )}
