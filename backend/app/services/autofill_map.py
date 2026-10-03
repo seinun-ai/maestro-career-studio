@@ -499,6 +499,12 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     return Mapped(route="none"), floor
 
 
+def _no_fact_key(key: str, eeo_consented: bool) -> bool:
+    """A key that means "no fact answers it". blocked_eeo only with consent: without it, it is
+    the `blocked` route, a real decision."""
+    return key in (NO_SLOT, HISTORY_UNANSWERED, PROTECTED_UNANSWERED) or (key == BLOCKED_EEO and eeo_consented)
+
+
 def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact],
             engine: Engine, *, eeo_consented: bool) -> Mapped:
     """`_route`, with the decision it came from: which engine answered, how
@@ -510,7 +516,7 @@ def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
         return mapped
     return mapped.model_copy(update={"trace": DecisionTrace(
         engine=engine, p=picked[1] if picked else None, floor=floor,
-        chose_none=None if picked is None else picked[0] in (NO_SLOT, HISTORY_UNANSWERED))})
+        chose_none=None if picked is None else _no_fact_key(picked[0], eeo_consented))})
 
 
 def _said_no_fact(picked: tuple[str, float] | None, *, history: bool = False) -> bool:

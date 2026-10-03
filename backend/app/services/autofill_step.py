@@ -137,9 +137,12 @@ def _with_llm(req: StepRequest, instructions: str, state: dict, criteria: dict[s
     raw = fast_json(session, _LLM_PROMPT.format(
         instructions=instructions, state=json.dumps(state), moves=json.dumps(criteria)), trace_name, timeout=timeout)
     raw = raw if isinstance(raw, dict) else {}
-    mid = raw.get("move") if isinstance(raw.get("move"), str) and raw.get("move") in criteria else None
+    move = raw.get("move")
+    mid = move if isinstance(move, str) and move in criteria else None
     conf = raw.get("confidence")
-    return _decide(req, mid, float(conf) if jev._unit(conf) else None, policy, engine="fast")
+    # A move that was not offered is unknown, not a give-up: no p, so `chose_none` stays None.
+    p = float(conf) if jev._unit(conf) and not (move and mid is None) else None
+    return _decide(req, mid, p, policy, engine="fast")
 
 
 def _second_opinion(req: StepRequest, instructions: str, state: dict, criteria: dict[str, str], policy: str,

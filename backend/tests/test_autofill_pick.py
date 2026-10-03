@@ -329,6 +329,15 @@ def test_a_confident_none_and_an_underfloor_option_trace_differently(db_session,
     assert (under.trace.p, under.trace.chose_none) == (0.6, False)
 
 
+def test_an_option_the_model_made_up_is_unknown_not_none(db_session, monkeypatch):
+    fake_llm(monkeypatch, {"s": {"oids": ["o99"], "confidence": 0.9}})
+    got = pick_status([status_field()], db_session)["s"]
+    assert autofill_pick.abstained(got)   # as before: nothing it named was offered
+    assert got.trace == DecisionTrace(engine="fast", p=None, floor=0.9, chose_none=None)
+    fake_llm(monkeypatch, {"s": {"oids": [], "confidence": 0.9}})   # naming nothing is a none
+    assert pick_status([status_field()], db_session)["s"].trace.chose_none is True
+
+
 def test_a_verdict_with_nothing_readable_has_no_chose_none():
     assert autofill_pick.verdict(SLOT, None, None, "any", engine="jev").trace.chose_none is None
 

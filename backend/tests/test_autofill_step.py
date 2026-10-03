@@ -785,3 +785,12 @@ def test_a_second_opinion_that_abstains_after_an_unreadable_jev_traces_no_probab
     assert got.mid is None
     assert got.trace == DecisionTrace(engine="jev", p=None, floor=autofill_step.PROGRESS_FLOOR, second="asked",
                                       chose_none=None)
+
+
+def test_a_move_the_model_made_up_is_unknown_not_a_give_up(db_session, monkeypatch):
+    fake_llm(monkeypatch, {"move": "click:o9", "confidence": 0.99})   # not among the candidates
+    got = stepped(req(slot="education.0.discipline"), db_session)
+    assert got.mid is None and got.reason == "abstained"   # as before
+    assert got.trace == DecisionTrace(engine="fast", p=None, floor=autofill_step.PROGRESS_FLOOR, chose_none=None)
+    fake_llm(monkeypatch, {"move": GIVE_UP, "confidence": 0.99})   # an offered give-up is a none
+    assert stepped(req(slot="education.0.discipline"), db_session).trace.chose_none is True

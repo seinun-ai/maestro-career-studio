@@ -295,6 +295,8 @@ def _with_llm(fields, facts, hint, session, answers: dict[str, Computed], trace_
         oids = [o for o in oids if isinstance(o, str) and o in offered] if isinstance(oids, list) else []
         conf = entry.get("confidence")
         conf = float(conf) if jev._unit(conf) else None   # unreadable: routed as 0.0, traced as None
+        if oids == [] and entry.get("oids"):   # it named only options that were not offered: unknown, not none
+            conf = None
         out[f.fid] = verdict(f, oids[0] if oids else None, conf, _policy(f, facts), engine="fast")
     return out
 

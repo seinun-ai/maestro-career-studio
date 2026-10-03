@@ -1573,7 +1573,7 @@ def test_trace_holds_only_numbers_and_enums_never_a_fact_value(db_session, monke
     assert (got["p"].trace.second, got["c"].trace.second) == (None, "decided")
     assert got["n"].trace.second == "asked"
     assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="jev"))
-    keys = set(DecisionTrace.model_fields)
+    keys = {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none"}
     for fid, mapped in got.items():
         assert set(mapped.trace.model_dump()) == keys, fid
         assert not [v for v in ("555-0100", "Springfield") if v in mapped.trace.model_dump_json()], fid
@@ -1588,6 +1588,21 @@ def test_trace_a_confident_none_and_an_underfloor_fact_trace_differently(db_sess
     assert (got["n"].route, got["u"].route) == ("none", "none")
     assert (got["n"].trace.p, got["n"].trace.chose_none) == (0.95, True)
     assert (got["u"].trace.p, got["u"].trace.chose_none) == (0.6, False)
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("key, consented, expected", [
+    (autofill_map.PROTECTED_UNANSWERED, True, ("none", True)),
+    (autofill_map.PROTECTED_UNANSWERED, False, ("none", True)),
+    (autofill_map.BLOCKED_EEO, True, ("none", True)),     # with consent, choosing it means no fact answers
+    (autofill_map.BLOCKED_EEO, False, ("blocked", False)),   # without it, the blocked route: a real decision
+    (autofill_map.HISTORY_UNANSWERED, True, ("none", True)),
+])
+def test_trace_every_no_fact_key_reads_as_chose_none(db_session, monkeypatch, key, consented, expected):
+    fake_jev(monkeypatch, {"g": (key, 0.95)})
+    fake_llm(monkeypatch)
+    got = run([field("g", "Gender", "select")], db_session, eeo_consented=consented)["g"]
+    assert (got.route, got.trace.p, got.trace.chose_none) == (expected[0], 0.95, expected[1])
 
 
 @pytest.mark.usefixtures("jev_on")
