@@ -95,7 +95,7 @@ backend/
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
   migrations/          alembic: the SQLite chain, baseline 871d0425b64c + revisions (ids: §9; §12 has the revision-id gotcha)
   tests/               pytest on a throwaway SQLite file, no service; mcp_server/tests/ uses respx (no DB)
-  scripts/             calibration + parity tooling (ats_*, template_parity, health_golden), run from backend/
+  scripts/             calibration + parity tooling (ats_*, template_parity, health_golden, fill_trace), run from backend/
 frontend/              Next.js 16 (App Router) + React 19 + Tailwind v4 + Base UI-flavored
                        shadcn. AGENTS.md: read node_modules/next/dist/docs before writing code.
 data/                  the database: maestro_cs.sqlite3 + its -wal/-shm sidecars (bind-mounted, PII)
@@ -310,13 +310,11 @@ file to open.
   disposable copy via MCP `prepare_application_pdf_upload` under
   `.playwright-mcp/uploads/` (or `$MAESTRO_CS_UPLOAD_DIR`), pair Playwright
   `--output-dir` with the parent `.playwright-mcp` tree, and pass the returned
-  `upload_path` to the file chooser — never copy/move with shell or filesystem
-  tools. Details: `docs/playbooks/agent-apply.md`,
-  `backend/mcp_server/README.md`.
-- **Honesty invariant** `{#inv-honesty}`: an `add_keyword` on a skill the engine found NO
-  evidence of (`fix_hint == "absent"`) may only land in the skills section —
-  never as a fabricated experience/project bullet. Enforced server-side in
-  `save_resolutions` (guards MCP/API callers, not just the UI).
+  `upload_path` to the file chooser — never copy/move with shell tools.
+  Details: `docs/playbooks/agent-apply.md`, `backend/mcp_server/README.md`.
+- **Honesty invariant** `{#inv-honesty}`: an `add_keyword` on a skill the engine found NO evidence of
+  (`fix_hint == "absent"`) may only land in the skills section, never as a fabricated experience/project
+  bullet. Enforced server-side in `save_resolutions` (guards MCP/API callers, not just the UI).
 - **Placement validation twins** `{#inv-placement-validation-twins}`: `_validate_placement_target`
   (tailoring_session, raises) and `placement_targets.coerce` (scrubs LLM
   output) both call the pure `placement_targets.canonicalize` —
@@ -325,22 +323,24 @@ file to open.
   `section_key`, and either an enabled entry's original index or, for a flat
   bullets section, the same stable key as `index_or_category`.
 - **MCP control invariants** `{#inv-mcp-controls}`: no MCP tool name contains "delete"; no
-  set-default-template tool. Registration is pinned by a subset assert in
-  `mcp_server/tests/test_server.py` — add new tools there.
+  set-default-template tool. Registration is pinned by a subset assert in `mcp_server/tests/test_server.py`.
 - **`tailor_application` vs `edit_application`** `{#inv-tailor-vs-edit}` (MCP): the former REPLACES
   `customized_json` wholesale from the BASE resume; the latter applies ops to the
   CURRENT draft — docstrings lead with this; keep them unmistakable. Edit indices are
   **0-based into the full JSON section array**, including `enabled: false` rows (PDF
   render omits those — never display ordinals). Successful PATCH `/edits` responses
   echo `applied[]`.
-- **Autofill telemetry carries no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry`
-  stores label, kind, rule id, option texts, outcome, host — never what was
-  typed, what was there before, or any AI answer. Structural: no value column,
-  `extra="forbid"` (an extra key 422s the batch), sw re-filters to six keys.
-  `host` + `first_seen_at` still make the TABLE a record of where you applied
-  and when, so `DELETE /telemetry` clears it (counts in body), deliberately never the capture toggle
-  (see `extension/INTERNALS.md`; `…/telemetry/summary` ranks failures + saturation). `POST /runs`
-  keeps the last 50 value-free `RunTrace`s, folded into host/label-free counters; DELETE clears runs only.
+- **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry`
+  stores label, kind, rule id, option texts, outcome, host — never what was typed, what was there before, or
+  any AI answer: no value column, `extra="forbid"` (an extra key 422s), sw re-filters to six keys. `POST /runs`
+  stores one strict `RunTrace` (newest 50 kept): a label or section holding any written, answered, leftover or
+  committed value is blanked; the page's option texts and the chosen index are kept on every field, EEO included
+  (owner decision); the rest is ops, ms, effect and decision enums and numbers, never a typed or profile string
+  in a free-text slot. `sw.js` `scrubTrace` whitelists against the schema; telemetry and traces post nothing when
+  `telemetryEnabled` is `false`. Runs fold into host/label-free `autofill_mechanism_stats`. `host` + `first_seen_at`
+  record where and when you applied, so `DELETE /telemetry` clears rows and runs (counts in body), keeps counters,
+  never the capture toggle (`extension/INTERNALS.md`; `…/telemetry/summary` ranks failures + saturation).
+  `backend/scripts/fill_trace.py last|report` reads a DB copy only.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at
   the sender, but `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat
   iframes, and the ISOLATED world protects the message in transit, NOT the DOM written into: a frame

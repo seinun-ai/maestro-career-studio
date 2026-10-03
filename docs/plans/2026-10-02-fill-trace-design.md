@@ -28,6 +28,7 @@ have pointed at the failing step (label source, map, polarity, pick) in one read
   it gives. Rejected: (B) both sides write halves joined by a run id, which needs two
   writers, a join and partial-run cleanup; (C) logs only, which keeps no per-run record and
   merges observations across runs.
+- **Option texts.** Option texts and the chosen index are recorded on all fields (2026-10-03).
 
 ## The record
 
@@ -92,7 +93,7 @@ through monkeypatching); they are now returned.
 **Backend: storage.**
 
 - `POST /api/autofill/runs` takes one run. The schema is strict (`extra="forbid"`), with
-  caps of 200 fields, 40 steps per field and 160-character labels.
+  caps of 200 fields, 40 steps per field and 200-character labels.
 - Table `autofill_runs` holds one row per run, pruned to the newest 50 on each write.
 - Table `autofill_mechanism_stats` holds the counters, updated in the same write.
 - The existing Clear (`DELETE /api/autofill/telemetry`) also deletes the runs; the counters

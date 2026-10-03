@@ -56,6 +56,13 @@
       {"path": "backend/tests/test_autofill_choose_jev.py", "symbol": "test_eeo_values_never_reach_jev_without_consent"},
       {"path": "backend/tests/test_autofill_fill_router.py", "symbol": "test_agreeing_to_terms_is_a_fact_only_while_the_agreement_permission_is_on"}
     ],
+    "inv-autofill-telemetry-no-values": [
+      {"path": "backend/tests/test_extension_sw_router.py", "symbol": "test_a_trace_carries_none_of_the_keys_injected_at_any_level"},
+      {"path": "backend/tests/test_extension_sw_router.py", "symbol": "test_a_trace_is_not_posted_when_the_user_turned_telemetry_off"},
+      {"path": "backend/tests/test_autofill_trace_router.py", "symbol": "test_an_unknown_key_in_the_body_is_a_422"},
+      {"path": "backend/tests/test_autofill_trace_router.py", "symbol": "test_no_counter_key_or_count_holds_a_host_or_label"},
+      {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_no_value_reaches_the_trace"}
+    ],
     "inv-single-dialect": [
       {"path": "backend/tests/test_db_portability.py", "symbol": "test_no_dialect_imports_outside_types_module"},
       {"path": "backend/app/models/types.py", "symbol": "UTCDateTime"}
@@ -66,7 +73,6 @@
     "ids": [
       "inv-honesty",
       "inv-tailor-vs-edit",
-      "inv-autofill-telemetry-no-values",
       "inv-pdf-word-spacing"
     ]
   }
