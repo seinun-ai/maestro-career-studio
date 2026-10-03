@@ -8,6 +8,8 @@ def test_all_planned_tables_are_registered():
         "applications",
         "ats_scores",
         "autofill_field_observations",
+        "autofill_mechanism_stats",
+        "autofill_runs",
         "base_resumes",
         "bullet_classifications",
         "bullet_disputes",
