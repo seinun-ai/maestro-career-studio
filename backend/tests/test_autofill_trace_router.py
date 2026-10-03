@@ -193,9 +193,17 @@ def test_two_decisions_before_a_rejected_action_are_both_rejected():
     assert got["decision|pick|jev|first|0.8|0.9|answer"] == {"n": 1, "left": 1, "rejected": 1}
 
 
-def test_fold_counts_first_opinions_only_when_first_same_is_true(folded):
-    assert folded["first|pick|0.9|0.8"] == {"n": 1, "kept": 1}
-    assert [k for k in folded if k.startswith("first|")] == ["first|pick|0.9|0.8"]
+def test_fold_counts_every_decided_step_by_whether_the_first_engine_agreed(folded):
+    assert folded["first|pick|0.9|0.8|same"] == {"n": 1, "kept": 1}
+    assert folded["first|pick|0.9|0.6|unknown"] == {"n": 1, "failed": 1}
+    assert sorted(k for k in folded if k.startswith("first|")) == [
+        "first|pick|0.9|0.6|unknown", "first|pick|0.9|0.8|same"]   # the asked step is not counted
+
+
+def test_a_decided_step_whose_first_engine_disagreed_is_counted_as_other():
+    got = fold(_trace(fields=[_field("0-1", "left", [
+        _decision("pick", p=0.95, floor=0.9, second="decided", first_p=0.4, first_same=False)])]))
+    assert got["first|pick|0.9|0.4|other"] == {"n": 1, "left": 1}
 
 
 def test_fold_counts_second_opinions(folded):
@@ -234,6 +242,17 @@ def test_two_stores_of_different_runs_both_land_in_the_counters(db_session):
     store_run(db_session, _trace(run_id="run-00000001", fields=[_field("0-1", "verified", [_decision()])]))
     store_run(db_session, _trace(run_id="run-00000002", fields=[_field("0-1", "verified", [_decision()])]))
     assert _stats(db_session)["decision|pick|jev|first|0.8|0.9|answer"] == {"n": 2, "kept": 2}
+
+
+def test_a_counter_row_keeps_the_created_at_it_was_inserted_with(db_session):
+    store_run(db_session, _trace(run_id="run-00000001", fields=[_field("0-1", "verified", [_decision()])]))
+    row = db_session.get(AutofillMechanismStat, "decision|pick|jev|first|0.8|0.9|answer")
+    row.created_at = T0
+    db_session.commit()
+    store_run(db_session, _trace(run_id="run-00000002", fields=[_field("0-1", "verified", [_decision()])]))
+    db_session.expire_all()
+    row = db_session.get(AutofillMechanismStat, "decision|pick|jev|first|0.8|0.9|answer")
+    assert row.counts["n"] == 2 and row.created_at == T0
 
 
 def test_store_run_takes_the_write_lock_before_it_looks_the_run_up(db_session, monkeypatch):

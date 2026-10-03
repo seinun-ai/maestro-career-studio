@@ -28,6 +28,7 @@ def upgrade() -> None:
         "autofill_mechanism_stats",
         sa.Column("key", sa.Text(), nullable=False),
         sa.Column("counts", sa.JSON(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
         sa.PrimaryKeyConstraint("key"),
     )

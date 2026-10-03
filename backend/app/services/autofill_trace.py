@@ -30,7 +30,7 @@ NONE_PART = "-"  # a key part with no value (no family, no floor, no band)
 KEY_PARTS = {
     "action": ("family", "kind"),
     "decision": ("op", "engine", "by", "floor", "band", "choice"),
-    "first": ("op", "floor", "band"),
+    "first": ("op", "floor", "band", "agree"),
     "second": ("op",),
 }
 
@@ -70,9 +70,12 @@ def decision_key(step: TraceStep) -> str:
 
 
 def first_key(step: TraceStep) -> str:
-    """The first engine is always Jev today (the second opinion only runs on Jev). `first_same`
-    means it named the same choice, so it faced this step's floor."""
-    return f"first|{step.op}|{_floor_part(step.floor)}|{_band_part(step.first_p)}"
+    """One counter per step the second opinion decided, by the first engine's band: how often its
+    answer was kept. The first engine is always Jev today (the second opinion only runs on Jev).
+    `agree`: `same` (the first engine named the same choice), `other` (it named another) or
+    `unknown` (not known). Only `same` rows are evidence the first engine was right."""
+    agree = "unknown" if step.first_same is None else "same" if step.first_same else "other"
+    return f"first|{step.op}|{_floor_part(step.floor)}|{_band_part(step.first_p)}|{agree}"
 
 
 def second_key(op: str) -> str:
@@ -132,10 +135,9 @@ def _fold_second(out: Counters, step: TraceStep, status: str) -> None:
         return
     if status == "kept":
         _bump(out, key, "decided_kept")
-    if step.first_same is True:
-        first = first_key(step)
-        _bump(out, first, "n")
-        _bump(out, first, status)
+    first = first_key(step)
+    _bump(out, first, "n")
+    _bump(out, first, status)
 
 
 def fold(trace: RunTrace) -> Counters:

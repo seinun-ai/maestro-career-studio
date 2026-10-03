@@ -6,10 +6,21 @@ Run from backend/ against a COPY of the database (the same guard as the fill eva
 
     python -m scripts.fill_trace --db <copy> report
 
-`report` prints the never-expiring counters and the stored runs as five `== Section ==` blocks (wasted
-actions, calibration, first-engine and second-opinion value, slowest fields, threshold suggestions);
-a block with nothing to show prints `(no data)`. Every line is `key=value` pairs, so `grep` finds a
-family, an op or a floor.
+`report` prints the never-expiring counters and the stored runs: a `window:` line (how far back the
+counters and the runs reach), a `legend:` line (what kept and rejected mean), then five `== Section ==`
+blocks: wasted actions, calibration, first-engine and second-opinion value, slowest fields, threshold
+suggestions. A block with nothing to show prints `(no data)`. Headers, `window:`, `legend:` and
+`note:` lines are prose; every other line is `key=value` pairs separated by two spaces, so `grep`
+finds a family, an op or a floor. A count prints as `kept=41/42(98%)`: the count first, never only
+a rounded percent. `kept` is an outcome proxy (the field ended filled), not proof the answer was
+right.
+
+A suggestion lowers a floor only on evidence: the contiguous bands just under the floor, each with at
+least 20 decisions, where the second opinion decided, the first engine agreed and the field was kept,
+with a Wilson 95% lower bound of at least 0.85. The first engine's other below-floor answers count in
+the denominator as not confirmed. A band must END at or below the floor (band + 0.1 <= floor), so a
+flag-policy floor of 0.85 is only ever suggested from the 0.7 band down. The `first|pick` rows at the
+closest floor are skipped (see `_suggests`).
 
 `last` prints the N newest runs. Per run one header line, then per field one line and one
 indented line per step, so `grep` finds a field, an op or a floor:
@@ -32,9 +43,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
+from collections import defaultdict
 from collections.abc import Callable
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -183,18 +196,33 @@ def render_run(run: AutofillRun) -> list[str]:
 # ---------- report: counters and stored runs, aggregated
 
 Row = tuple[dict[str, str], dict[str, int]]   # one counter row: (key parts, counts)
+SlowField = tuple[str, str, int, int, str]    # (host, label, steps, total ms, outcome)
 NO_DATA = "(no data)"
 WASTED_SHOWN = 15
 SLOWEST_SHOWN = 10
 SUGGEST_MIN_N = 20
-SUGGEST_MIN_KEPT = 0.95
-NO_SUGGESTION = "no suggestion: no band has ≥20 confirmed decisions kept ≥95% below its floor"
-SUGGESTION_NOTE = ("note: a decision under its floor with no second opinion abstains, so real runs cannot show "
+SUGGEST_MIN_LO = 0.85   # the Wilson lower bound the kept share of a band must reach
+NO_SUGGESTION = ("no suggestion: no band just under a floor has ≥20 decisions with a 95% Wilson lower "
+                 "bound ≥0.85 on being confirmed and kept")
+SUGGESTION_NOTE = ("note: kept_same counts only decisions where the second opinion decided and the first engine "
+                   "agreed; the first engine's other below-floor answers are in `of` as not confirmed; a "
+                   "decision under its floor with no second opinion abstains, so real runs cannot show "
                    "whether it would have been kept; use the eval (scripts.eval_fill_decisions) for those")
 
 
-def _pct(part: int, whole: int) -> str:
-    return f"{100 * part / whole:.0f}%" if whole else "—"
+def wilson95_lo(k: int, n: int) -> float:
+    """The lower end of the Wilson 95% interval for k successes in n trials (0.0 when n is 0)."""
+    if n <= 0:
+        return 0.0
+    z, p = 1.96, k / n
+    centre = p + z * z / (2 * n)
+    margin = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return max(0.0, (centre - margin) / (1 + z * z / n))
+
+
+def _frac(part: int, whole: int) -> str:
+    """`41/42(98%)`: the count first, so a rounded percent never hides a small number."""
+    return f"{part}/{whole}({100 * part / whole:.0f}%)" if whole else f"{part}/{whole}(—)"
 
 
 def _pairs(**fields: object) -> str:
@@ -202,7 +230,7 @@ def _pairs(**fields: object) -> str:
 
 
 def _order(value: str) -> float:
-    """A floor or band part as a number, for sorting; NONE_PART and the like sort first."""
+    """A floor or band part as a number, for sorting; NONE_PART sorts first."""
     try:
         return float(value)
     except ValueError:
@@ -219,126 +247,185 @@ def _wasted(counts: dict[str, int]) -> tuple[float | None, float | None]:
     return average, sum(counts.get(effect, 0) for effect in REJECTED) * average
 
 
+def _whole(x: float | None) -> int | str:
+    return "—" if x is None else round(x)
+
+
 def render_wasted(rows: list[Row]) -> list[str]:
     """Family x kind, most wasted ms first: tries, share that was not progress (effect_unknown counts
-    as not progress and is shown apart), average ms, and ms spent on tries the page rejected."""
+    as not progress and is shown apart), timed tries, average ms, and ms spent on tries the page rejected."""
     ranked = []
     for parts, counts in rows:
         average, wasted = _wasted(counts)
         tries = counts.get("tries", 0)
         ranked.append((wasted or 0, tries, _pairs(
             family=parts["family"], kind=parts["kind"], tries=tries,
-            not_progress=_pct(tries - counts.get("progress", 0), tries),
-            unknown=counts.get("effect_unknown", 0),
-            avg=_ms(None if average is None else round(average)) or "—",
-            wasted=_ms(None if wasted is None else round(wasted)) or "—")))
+            not_progress=_frac(tries - counts.get("progress", 0), tries),
+            unknown=counts.get("effect_unknown", 0), timed=counts.get("timed", 0),
+            avg_ms=_whole(average), wasted_ms=_whole(wasted))))
     ranked.sort(key=lambda r: (-r[0], -r[1], r[2]))
     return [line for *_, line in ranked[:WASTED_SHOWN]] or [NO_DATA]
 
 
 def render_calibration(rows: list[Row]) -> list[str]:
-    """One line per op x engine x by x floor x band x choice, with the shares of its n that were kept,
+    """One line per op x engine x by x floor x band x choice, with the counts of its n that were kept,
     left, failed, or followed by a rejected page action."""
     def order(row: Row) -> tuple:
         p = row[0]
         return p["op"], p["engine"], p["by"], _order(p["floor"]), _order(p["band"]), p["choice"]
 
     return [_pairs(**parts, n=counts.get("n", 0),
-                   **{name: _pct(counts.get(name, 0), counts.get("n", 0))
+                   **{name: _frac(counts.get(name, 0), counts.get("n", 0))
                       for name in ("kept", "left", "failed", "rejected")})
             for parts, counts in sorted(rows, key=order)] or [NO_DATA]
 
 
+def _first_order(row: Row) -> tuple:
+    p = row[0]
+    return p["op"], _order(p["floor"]), _order(p["band"]), p["agree"]
+
+
 def render_second(first: list[Row], second: list[Row]) -> list[str]:
-    """`first|`: per op x floor x band, how often the first engine's same-choice decisions were kept.
-    `second|`: per op, how often the second opinion was asked or decided, and kept when it decided."""
-    lines = [_pairs(first=parts["op"], floor=parts["floor"], band=parts["band"], n=counts.get("n", 0),
-                    kept=_pct(counts.get("kept", 0), counts.get("n", 0)))
-             for parts, counts in sorted(first, key=lambda r: (r[0]["op"], _order(r[0]["floor"]), _order(r[0]["band"])))]
+    """`first|`: every step the second opinion decided, per op x floor x band x agreement of the first
+    engine, with how often it was kept. `second|`: per op, how often the second opinion was asked or
+    decided, and kept when it decided."""
+    lines = [_pairs(first=parts["op"], floor=parts["floor"], band=parts["band"], agree=parts["agree"],
+                    n=counts.get("n", 0), kept=_frac(counts.get("kept", 0), counts.get("n", 0)),
+                    wilson95_lo=f"{wilson95_lo(counts.get('kept', 0), counts.get('n', 0)):.2f}")
+             for parts, counts in sorted(first, key=_first_order)]
     lines += [_pairs(second=parts["op"], asked=counts.get("asked", 0), decided=counts.get("decided", 0),
-                     decided_kept=_pct(counts.get("decided_kept", 0), counts.get("decided", 0)))
+                     decided_kept=_frac(counts.get("decided_kept", 0), counts.get("decided", 0)))
               for parts, counts in sorted(second, key=lambda r: r[0]["op"])]
     return lines or [NO_DATA]
 
 
-def render_slowest(fields: list[tuple[str, str, int, int, str]]) -> list[str]:
-    """The fields with the most steps, ties broken by total ms: (host, label, steps, total ms, outcome)."""
+def render_slowest(fields: list[SlowField]) -> list[str]:
+    """The fields with the most steps, ties broken by total ms."""
     top = sorted(fields, key=lambda f: (-f[2], -f[3]))[:SLOWEST_SHOWN]
-    return [_pairs(host=host, label=_label(label), steps=steps, ms=_ms(ms) or "0ms", outcome=outcome)
+    return [_pairs(host=host, label=_label(label), steps=steps, total_ms=ms, outcome=outcome)
             for host, label, steps, ms, outcome in top] or [NO_DATA]
 
 
-def _suggests(parts: dict[str, str], counts: dict[str, int]) -> bool:
-    """A `first|` row proves its floor too high: enough confirmed decisions, nearly all kept, and the
-    whole band below the floor. A `pick` row at the closest floor is the second opinion's "closest" pick
-    clearing it, not the match floor the first engine faced. Only `pick` rows: /step's progress floor is
-    also 0.5. MATCH_FLOOR["any"] is 0.5 too, so a genuine any-policy pick row at 0.5 is skipped as well;
-    that is conservative and accepted, since suggestions are advice."""
-    from app.services.autofill_choose import CLOSEST_FLOOR
+def _band_evidence(first: list[Row], decision: list[Row]) -> dict[tuple[str, str], dict[str, list[int]]]:
+    """{(op, floor): {band: [kept_same, of]}}. `of` is every step the second opinion decided in the band
+    (any agreement) plus jev's own answers in it that the second opinion did not decide; `kept_same` is
+    the kept count of the decided steps where jev agreed."""
     from app.services.autofill_trace import NONE_PART
 
-    if NONE_PART in (parts["floor"], parts["band"]):
-        return False
-    floor, band = float(parts["floor"]), float(parts["band"])
-    n = counts.get("n", 0)
-    return (n >= SUGGEST_MIN_N and counts.get("kept", 0) / n >= SUGGEST_MIN_KEPT
-            and round(band + 0.1, 2) <= floor and not (parts["op"] == "pick" and abs(floor - CLOSEST_FLOOR) < 1e-9))
-
-
-def render_suggestions(first: list[Row]) -> list[str]:
-    """Evidence-backed floor suggestions from the `first|` rows only, then the one standing note."""
-    lines = [f"{parts['op']}: jev at {float(parts['band']):.1f}–{float(parts['band']) + 0.1:.1f} was confirmed "
-             f"and kept {counts['kept']}/{counts['n']} — its floor {float(parts['floor']):.2f} "
-             f"could be {float(parts['band']):.2f}"
-             for parts, counts in sorted(first, key=lambda r: (r[0]["op"], _order(r[0]["floor"]), _order(r[0]["band"])))
-             if _suggests(parts, counts)]
-    if not lines:
-        lines = [NO_SUGGESTION if first else NO_DATA]
-    return [*lines, SUGGESTION_NOTE]
-
-
-def _counter_rows(session: Session) -> dict[str, list[Row]]:
-    """The stored counters by key family. A key this reader does not know is skipped."""
-    from sqlalchemy import select
-
-    from app.models.autofill_mechanism_stat import AutofillMechanismStat
-    from app.services.autofill_trace import KEY_PARTS, parse_key
-
-    out: dict[str, list[Row]] = {family: [] for family in KEY_PARTS}
-    for stat in session.scalars(select(AutofillMechanismStat)):
-        try:
-            family, parts = parse_key(stat.key)
-        except (KeyError, ValueError):
-            continue
-        out[family].append((parts, stat.counts))
+    out: dict[tuple[str, str], dict[str, list[int]]] = defaultdict(lambda: defaultdict(lambda: [0, 0]))
+    for parts, counts in first:
+        if NONE_PART not in (parts["floor"], parts["band"]):
+            cell = out[parts["op"], parts["floor"]][parts["band"]]
+            cell[1] += counts.get("n", 0)
+            cell[0] += counts.get("kept", 0) if parts["agree"] == "same" else 0
+    for parts, counts in decision:
+        if ((parts["engine"], parts["by"], parts["choice"]) == ("jev", "first", "answer")
+                and NONE_PART not in (parts["floor"], parts["band"])):
+            out[parts["op"], parts["floor"]][parts["band"]][1] += counts.get("n", 0)
     return out
 
 
-def _slowest_rows(session: Session) -> list[tuple[str, str, int, int, str]]:
-    """Every field with at least one step in the stored runs; a run that no longer parses is skipped."""
+def _suggestion(op: str, floor: str, cells: dict[str, list[int]]) -> str | None:
+    """Walk the bands down from just under the floor while each one qualifies; the lowest is the
+    candidate. A missing band, one with too few decisions, or a weak Wilson bound stops the walk."""
+    bands = []
+    for tenth in range(int(float(floor) * 10 + 1e-9) - 1, -1, -1):
+        kept, of = cells.get(str(tenth / 10), (0, 0))
+        if of < SUGGEST_MIN_N or wilson95_lo(kept, of) < SUGGEST_MIN_LO:
+            break
+        bands.append((tenth, kept, of))
+    if not bands:
+        return None
+    kept, of = sum(b[1] for b in bands), sum(b[2] for b in bands)
+    return "suggest " + _pairs(
+        op=op, floor=f"{float(floor):.2f}", candidate=f"{bands[-1][0] / 10:.2f}",
+        bands=",".join(str(t / 10) for t, *_ in reversed(bands)), kept_same=kept, of=of,
+        wilson95_lo=f"{wilson95_lo(kept, of):.2f}", note="check_with_the_eval_before_changing")
+
+
+def render_suggestions(first: list[Row], decision: list[Row]) -> list[str]:
+    """Evidence-backed floor suggestions, then the one standing note. A `first|pick` row at the closest
+    floor is the second opinion's "closest" pick clearing it, not the match floor jev faced, so that
+    group is skipped. Only `pick`: /step's progress floor is also 0.5. MATCH_FLOOR["any"] is 0.5 too,
+    so a genuine any-policy pick at 0.5 is skipped as well; conservative and accepted, since
+    suggestions are advice."""
+    from app.services.autofill_choose import CLOSEST_FLOOR
+
+    evidence = _band_evidence(first, decision)
+    found = (_suggestion(op, floor, evidence[op, floor])
+             for op, floor in sorted(evidence, key=lambda k: (k[0], _order(k[1])))
+             if not (op == "pick" and abs(float(floor) - CLOSEST_FLOOR) < 1e-9))
+    lines = [line for line in found if line] or [NO_SUGGESTION if first else NO_DATA]
+    return [*lines, SUGGESTION_NOTE]
+
+
+def render_legend() -> str:
+    """What kept and rejected mean, from the key module's own sets."""
+    from app.services.autofill_trace import KEPT, REJECTED
+
+    return (f"legend: kept=field ended {'|'.join(sorted(KEPT))} (an outcome proxy, not correctness); "
+            f"rejected=next page action {'|'.join(sorted(REJECTED))}; "
+            "first=second opinion decided, by agreement with jev")
+
+
+def render_window(since: datetime | None, runs: list[datetime]) -> str:
+    """How far back the counters (all-time since their first row) and the stored runs reach."""
+    counters = f"all-time since {since.astimezone(UTC):%Y-%m-%d %H:%MZ}" if since else "none"
+    stored = f"last {len(runs)} (oldest {min(runs).astimezone(UTC):%Y-%m-%d})" if runs else "none"
+    return f"window: counters={counters}  runs={stored}"
+
+
+def _counter_rows(session: Session) -> tuple[dict[str, list[Row]], datetime | None]:
+    """The stored counters by key family, and when the oldest was first counted. A key this reader
+    does not know (an unknown family, a wrong part count, a floor or band that is not a number) is skipped."""
+    from sqlalchemy import select
+
+    from app.models.autofill_mechanism_stat import AutofillMechanismStat
+    from app.services.autofill_trace import KEY_PARTS, NONE_PART, parse_key
+
+    out: dict[str, list[Row]] = {family: [] for family in KEY_PARTS}
+    stats = session.scalars(select(AutofillMechanismStat)).all()
+    for stat in stats:
+        try:
+            family, parts = parse_key(stat.key)
+            for name in ("floor", "band"):
+                if parts.get(name, NONE_PART) != NONE_PART:
+                    float(parts[name])
+        except (KeyError, ValueError):
+            continue
+        out[family].append((parts, stat.counts))
+    return out, min((stat.created_at for stat in stats), default=None)
+
+
+def _stored_runs(session: Session) -> tuple[list[datetime], list[SlowField]]:
+    """When each stored run started, and every field with at least one step in the runs that still
+    match the schema (an unreadable one is skipped)."""
     from sqlalchemy import select
 
     from app.models.autofill_run import AutofillRun
 
-    out = []
-    for run in session.scalars(select(AutofillRun)):
+    runs = session.scalars(select(AutofillRun)).all()
+    fields = []
+    for run in runs:
         trace = _trace(run)
         for field in trace.fields if trace else ():
             if field.steps:
-                out.append((trace.host, field.label, len(field.steps), sum(s.ms or 0 for s in field.steps),
-                            field.outcome))
-    return out
+                fields.append((trace.host, field.label, len(field.steps), sum(s.ms or 0 for s in field.steps),
+                               field.outcome))
+    return [run.started_at for run in runs], fields
 
 
 def run_report(session: Session, args: argparse.Namespace) -> int:
-    counters = _counter_rows(session)
+    counters, since = _counter_rows(session)
+    started, slow = _stored_runs(session)
     sections = [
         ("Wasted actions", render_wasted(counters["action"])),
         ("Calibration", render_calibration(counters["decision"])),
         ("First engine and second opinion", render_second(counters["first"], counters["second"])),
-        ("Slowest fields", render_slowest(_slowest_rows(session))),
-        ("Suggestions", render_suggestions(counters["first"])),
+        ("Slowest fields", render_slowest(slow)),
+        ("Suggestions", render_suggestions(counters["first"], counters["decision"])),
     ]
+    print(render_window(since, started), render_legend(), sep="\n", end="\n\n")
     print("\n\n".join("\n".join([f"== {title} ==", *lines]) for title, lines in sections))
     return 0
 
