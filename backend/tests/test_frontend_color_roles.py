@@ -631,85 +631,37 @@ def test_theme_exposes_role_utilities():
         assert f"--color-{role}: var(--{role});" in _CSS
 
 
-# Tailwind v4's palette is OKLCH (frontend/node_modules/tailwindcss/theme.css).
-# CI's backend job installs no node_modules, so the shades these pins use are
-# copied here and checked against the installed theme wherever it exists. Only
-# CompanyMonogram's six tones still write palette shades (step 8 of the
-# design-system plan moves them to roles); every other status colour is a role,
-# whose contrast test_frontend_design_tokens.py pins on every surface.
-_TAILWIND = {
-    "blue-300": (0.809, 0.105, 251.813),
-    "blue-400": (0.707, 0.165, 254.624),
-    "blue-600": (0.546, 0.245, 262.881),
-    "blue-700": (0.488, 0.243, 264.376),
-    "amber-300": (0.879, 0.169, 91.605),
-    "amber-400": (0.828, 0.189, 84.429),
-    "amber-500": (0.769, 0.188, 70.08),
-    "amber-800": (0.473, 0.137, 46.201),
-    "violet-300": (0.811, 0.111, 293.571),
-    "violet-400": (0.702, 0.183, 293.541),
-    "violet-600": (0.541, 0.281, 293.009),
-    "violet-700": (0.491, 0.27, 292.581),
-    "green-300": (0.871, 0.15, 154.449),
-    "green-400": (0.792, 0.209, 151.711),
-    "green-600": (0.627, 0.194, 149.214),
-    "green-800": (0.448, 0.119, 151.328),
-    "rose-300": (0.81, 0.117, 11.638),
-    "rose-400": (0.712, 0.194, 13.428),
-    "rose-600": (0.586, 0.253, 17.585),
-    "rose-800": (0.455, 0.188, 13.697),
-    "cyan-300": (0.865, 0.127, 207.078),
-    "cyan-400": (0.789, 0.154, 211.53),
-    "cyan-600": (0.609, 0.126, 221.723),
-    "cyan-800": (0.45, 0.085, 224.283),
-}
-_TAILWIND_THEME = _FRONTEND / "node_modules" / "tailwindcss" / "theme.css"
-
-
-@pytest.mark.skipif(not _TAILWIND_THEME.exists(), reason="frontend/node_modules not installed")
-def test_copied_tailwind_shades_match_the_installed_theme():
-    theme = _TAILWIND_THEME.read_text(encoding="utf-8")
-    for name, lch in _TAILWIND.items():
-        m = re.search(rf"--color-{name}:\s*oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)\)", theme)
-        assert m, name
-        read = (float(m.group(1)) / 100, float(m.group(2)), float(m.group(3)))
-        assert read == pytest.approx(lch), name
-
-
 # Every tinted chip in the status vocabulary (and the KB entity chips, which
 # copy its shape): text on its own tint, over the page, a card and --muted
 # (a selected tracker row), both modes. A chip's dark text and tint fall back
-# to the light ones when it declares none, as the browser does. The status and
-# entity chips are role pairs now (read from globals.css); the monogram's six
-# tones are the palette shades left, read from the copied _TAILWIND table.
+# to the light ones when it declares none, as the browser does. Both are role
+# pairs, read from globals.css. (CompanyMonogram's tones are role containers too;
+# test_company_monogram_tones_are_role_container_pairs pins them, and each pair's
+# contrast is pinned above and in test_frontend_design_tokens.py.)
 _CHIP_SOURCES = (
     "components/status-chip.tsx",
     "components/career/entity-card.tsx",
-    "components/company-monogram.tsx",
 )
-# `chip: "..."` / `className: "..."` entries, or a bare string in a list
-# (the monogram's TONES).
-_CHIP_CLASS = re.compile(r'(?:(?:chip|className):\s*|^\s*)"([^"]*\bbg-[^"]*)"', re.M)
+# `chip: "..."` / `className: "..."` entries.
+_CHIP_CLASS = re.compile(r'(?:chip|className):\s*"([^"]*\bbg-[^"]*)"')
 _CHIP_UTIL = re.compile(
     r"(?<![\w:/-])(dark:)?(bg|text)-"
-    r"([a-z]+-\d+|muted(?:-foreground)?|(?:on-)?[a-z]+-container)(?:/(\d+))?(?![\w/-])"
+    r"(muted(?:-foreground)?|(?:on-)?[a-z]+-container)(?:/(\d+))?(?![\w/-])"
 )
 _CHIPS = [(rel, cls) for rel in _CHIP_SOURCES for cls in _CHIP_CLASS.findall(_read(rel))]
 
 
 def test_every_tinted_chip_is_found():
     found = {rel: sum(1 for r, _ in _CHIPS if r == rel) for rel in _CHIP_SOURCES}
-    # 7 application statuses + Needs you + 7 proposal entries; 3 KB states + fallback;
-    # the monogram's 6 hash tones (the only palette chips left).
+    # 7 application statuses + Needs you + 7 proposal entries; 3 KB states + fallback.
     assert found == {
         "components/status-chip.tsx": 15,
         "components/career/entity-card.tsx": 4,
-        "components/company-monogram.tsx": 6,
     }, found
 
 
 def _chip_surfaces(t):
-    """Where chips and monograms sit: the page, a card, a selected row
+    """Where chips sit: the page, a card, a selected row
     (--muted), and a hovered row (Table's muted/50 on the page, the Proposals
     row's muted/40 on its card)."""
     muted = _rgb(t, "muted")
@@ -723,12 +675,8 @@ def _chip_surfaces(t):
 
 
 def _chip_colour(mode, name):
-    # A role (muted, a status container pair) is read from globals.css and
-    # carries its own dark value; only a palette shade needs the copied table.
-    if name in _MODES[mode]:
-        return _rgb(_MODES[mode], name)
-    assert name in _TAILWIND, f"copy --color-{name} from tailwindcss/theme.css into _TAILWIND"
-    return _srgb(_oklab(_TAILWIND[name]))
+    # A role (muted, a container pair) is read from globals.css and carries its own dark value.
+    return _rgb(_MODES[mode], name)
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
@@ -793,32 +741,7 @@ def test_the_thumbnail_warning_chip_meets_aa_over_the_rendered_page(mode):
     assert ratio >= 4.5, f"{mode}: the PDF-out-of-date chip is {ratio:.2f}:1"
 
 
-# Raw palette TEXT is measured wherever it is written, ternary branches
-# included: every class string that sets a light palette text colour, over its
-# own tint if it has one, on the page, a card and a popover, in both modes (a
-# class with no dark text keeps its light one, as the browser does). An icon or
-# an icon holder (a class with `size-N`) is non-text: 3:1. Only CompanyMonogram
-# writes palette text now (test_no_palette_class_is_written_outside_the_monogram
-# in test_frontend_design_tokens.py holds every other file to roles), so this
-# measures its six tones and goes with them at step 8 of the design-system plan.
-_CLASS_LITERALS = re.compile(r'"([^"\n]*)"')
-_LIGHT_TEXT = re.compile(rf"(?<![\w:/-])text-(?:{_PALETTE})-\d+(?![\w/-])")
-_ICON = re.compile(r"(?<![\w-])size-\d")
-
-
-def _palette_texts():
-    for root in ("app", "components"):
-        for path in sorted((_FRONTEND / root).rglob("*.tsx")):
-            for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                for cls in _CLASS_LITERALS.findall(line):
-                    if _LIGHT_TEXT.search(cls):
-                        yield f"{path.relative_to(_FRONTEND)}:{i}", cls
-
-
-_PALETTE_TEXTS = list(_palette_texts())
-
-
-def _palette_ratio(mode, classes, under):
+def _text_on_tint_ratio(mode, classes, under):
     """Text over its own tint (if any) over `under`; dark falls back to light."""
     utils = {(bool(d), k): (c, int(p) / 100 if p else 1.0) for d, k, c, p in _CHIP_UTIL.findall(classes)}
     dark = mode == "dark"
@@ -826,27 +749,6 @@ def _palette_ratio(mode, classes, under):
     tint = utils.get((dark, "bg")) or utils.get((False, "bg"))
     fill = _over(_chip_colour(mode, tint[0]), under, tint[1]) if tint else under
     return _contrast(_chip_colour(mode, text[0]), fill)
-
-
-def test_every_palette_text_is_found():
-    # The scan still works and the monogram is the only place it finds anything:
-    # a palette text anywhere else is a regression to the roles.
-    files = {where.split(":")[0] for where, _ in _PALETTE_TEXTS}
-    assert files == {"components/company-monogram.tsx"}, files
-    assert len(_PALETTE_TEXTS) == 6, _PALETTE_TEXTS
-
-
-@pytest.mark.parametrize("mode", list(_MODES))
-def test_every_palette_text_meets_aa_on_page_card_and_popover(mode):
-    t = _MODES[mode]
-    failures = []
-    for where, cls in _PALETTE_TEXTS:
-        floor = 3.0 if _ICON.search(cls) else 4.5
-        for surface in ("background", "card", "popover"):
-            ratio = _palette_ratio(mode, cls, _rgb(t, surface))
-            if ratio < floor:
-                failures.append(f"{where} {cls!r} on --{surface}: {ratio:.2f}:1")
-    assert failures == [], failures
 
 
 _SIDEBAR_BADGE = "bg-attention-container text-on-attention-container"
@@ -868,5 +770,5 @@ def test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state(mode):
         "secondary-container-hover": _hover(t, "secondary-container", "on-secondary-container", mix[2]),
     }
     for name, under in surfaces.items():
-        ratio = _palette_ratio(mode, _SIDEBAR_BADGE, under)
+        ratio = _text_on_tint_ratio(mode, _SIDEBAR_BADGE, under)
         assert ratio >= 4.5, f"{mode}: needs-you badge on {name} is {ratio:.2f}:1"

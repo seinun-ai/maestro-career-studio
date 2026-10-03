@@ -2,17 +2,20 @@
 
 import { cn } from "@/lib/utils";
 
-/** Deterministic tonal hue per company so rows stay recognizable at a glance.
- *  Light text is -800 where -700 missed AA on its own tint (green, amber, rose,
- *  cyan measured 3.7 to 4.5:1); `test_frontend_color_roles.py` computes every
- *  tone over the page, a card, --muted and a hovered row in both modes. */
+/** A company's tint is identity, not state: the name hashes to one of six
+ *  role containers so a row stays recognisable at a glance. The same hue
+ *  carries a status elsewhere (a green monogram is not "accepted"), so a
+ *  monogram's tint is never read as one; the initial and the row's own chip say
+ *  the state. Every tone is a container pair, which holds AA on its own solid
+ *  fill (pinned in test_frontend_color_roles.py and test_frontend_design_tokens.py),
+ *  and the order is fixed because it is the hash's modulo: a company keeps its tone. */
 const TONES = [
-  "bg-blue-600/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
-  "bg-violet-600/10 text-violet-700 dark:bg-violet-400/15 dark:text-violet-300",
-  "bg-green-600/10 text-green-800 dark:bg-green-400/15 dark:text-green-300",
-  "bg-amber-500/15 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300",
-  "bg-rose-600/10 text-rose-800 dark:bg-rose-400/15 dark:text-rose-300",
-  "bg-cyan-600/10 text-cyan-800 dark:bg-cyan-400/15 dark:text-cyan-300",
+  "bg-primary-container text-on-primary-container",
+  "bg-tertiary-container text-on-tertiary-container",
+  "bg-success-container text-on-success-container",
+  "bg-warning-container text-on-warning-container",
+  "bg-attention-container text-on-attention-container",
+  "bg-secondary-container text-on-secondary-container",
 ];
 
 export function CompanyMonogram({

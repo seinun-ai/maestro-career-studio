@@ -197,24 +197,39 @@ _PALETTE_UTILITY = re.compile(
     r"(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|"
     r"fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d{2,3}(?![\w-])"
 )
-# CompanyMonogram's six hash tints go with step 8 of the design-system plan
-# (docs/plans/2026-10-02-design-system-tokens.md). Delete this entry then.
-_PALETTE_STILL_ALLOWED = {"components/company-monogram.tsx"}
 
 
-def test_no_palette_class_is_written_outside_the_monogram():
+def test_no_palette_class_is_written():
     """A status is `success` / `warning` / `attention` / `tertiary` / `primary` /
-    `destructive` or a container pair, never `text-amber-700 dark:text-amber-400`."""
+    `destructive` or a container pair, never `text-amber-700 dark:text-amber-400`.
+    No file is exempt: CompanyMonogram's tones are role containers too."""
     hits = []
     for folder in ("app", "components", "lib", "hooks"):
         for path in sorted((_FRONTEND / folder).rglob("*")):
-            rel = path.relative_to(_FRONTEND).as_posix()
-            if path.suffix not in (".ts", ".tsx") or rel in _PALETTE_STILL_ALLOWED:
+            if path.suffix not in (".ts", ".tsx"):
                 continue
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
                 if _PALETTE_UTILITY.search(line):
-                    hits.append(f"{rel}:{number}")
+                    hits.append(f"{path.relative_to(_FRONTEND).as_posix()}:{number}")
     assert not hits, "a palette utility is left at:\n" + "\n".join(hits)
+
+
+def test_company_monogram_tones_are_role_container_pairs():
+    """The monogram's tint is identity, not state: six distinct role containers,
+    each with its own `on-` partner, picked by the same hash modulo so a company
+    keeps its tone. (Each pair's contrast is pinned for both modes elsewhere.)"""
+    source = _read("components/company-monogram.tsx")
+    block = re.search(r"const TONES = \[(.*?)\];", source, re.S)
+    assert block, "CompanyMonogram's TONES is no longer an array literal"
+    tones = re.findall(r'"([^"]*)"', block.group(1))
+    roles = []
+    for tone in tones:
+        pair = re.fullmatch(r"bg-([a-z]+)-container text-on-\1-container", tone)
+        assert pair, f"a monogram tone is not a container pair: {tone!r}"
+        roles.append(pair.group(1))
+    assert roles == ["primary", "tertiary", "success", "warning", "attention", "secondary"], roles
+    assert "TONES[Math.abs(hash) % TONES.length]" in source
+    assert "identity, not state" in source, "say in the comment that a tint is never a status"
 
 
 def _class_strings(rel: str):

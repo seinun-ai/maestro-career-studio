@@ -41,16 +41,13 @@
   3.77:1 on the dark page. `test_underlined_links_take_a_colour_role` refuses a
   palette `text-*` in any underlined class, and the referral link is measured on
   the page, a card and a hovered or selected row in both modes. **No palette
-  shade is written outside the monogram.** A status colour is a role, so it
+  shade is written anywhere.** A status colour is a role, so it
   needs no `dark:` twin: the -600 shades it replaced read 2.98 to 3.42:1 on
   the light page, and -700 on its own tint read 4.38:1.
-  `test_no_palette_class_is_written_outside_the_monogram` lists file:line for
-  any `text-`, `bg-`, `border-`, `ring-`, `from-` or similar utility with a
-  palette hue and a shade. The monogram's six tones are the exception until
-  step 8 of `docs/plans/2026-10-02-design-system-tokens.md`;
-  `test_every_palette_text_meets_aa_on_page_card_and_popover` still measures
-  them, and `test_status_sites_take_their_role` keeps the formerly palette
-  sites on their role.
+  `test_no_palette_class_is_written` lists file:line for any `text-`, `bg-`,
+  `border-`, `ring-`, `from-` or similar utility with a palette hue and a
+  shade, with no exemption. `test_status_sites_take_their_role` keeps the
+  formerly palette sites on their role.
   **Selected
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
   `Check` plus `aria-pressed` (Review changes,
@@ -979,7 +976,10 @@
   `["tailoring-session", id]`, `["referrals"]`, `["qa", appId]`, … —
   invalidate job-detail alongside applications when status changes.
 - Shared components: `StatusChip`/`SavedChip` (`components/status-chip.tsx` —
-  the ONLY status vocabulary/color source in the UI), `CompanyMonogram`,
+  the ONLY status vocabulary/color source in the UI), `CompanyMonogram` (a hash of the company name
+  picks one of six role containers: primary, tertiary, success, warning,
+  attention, secondary; the tint is identity, never a status, and
+  `test_company_monogram_tones_are_role_container_pairs` pins it),
   `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
   you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object, the
   `attention` container pair; "Submission uncertain" is its own entry with the
@@ -988,12 +988,9 @@
   success, Rejected error, Queued secondary; grades A and B success, C
   warning, D attention, F error), so no chip carries a `dark:` twin. The KB
   entity chips are role pairs too (ongoing primary container, completed
-  success). Only the monogram still uses palette tints: light-mode text is
-  800 on amber, green, rose and cyan and 700 on blue and violet.
-  `test_frontend_color_roles.py` finds every chip literal in `status-chip.tsx`,
-  `career/entity-card.tsx` and `company-monogram.tsx` and computes it over the
-  page, a card, `--muted` and a hovered row in both modes. A new palette shade
-  must be copied into its `_TAILWIND` table.
+  success). `test_frontend_color_roles.py` finds every chip literal in
+  `status-chip.tsx` and `career/entity-card.tsx` and computes it over the
+  page, a card, `--muted` and a hovered row in both modes.
 - **Card galleries**: Templates and Base resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and

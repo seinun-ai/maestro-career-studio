@@ -29,8 +29,8 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
   labels are container pairs, dots are `bg-success` / `bg-warning` / `bg-primary`, text on a surface is
   `text-success` / `text-warning`. Caution, pass and info boxes are container callouts without a tinted
   border; tinted card edges (the health report's Fix and Question cards, the Serious gate) are `border-border`
-  (UX change 5). The Chat greeting's blue-to-rose gradient is plain `text-foreground`. Only
-  `CompanyMonogram` (step 8) still writes palette shades; `test_frontend_design_tokens.py` fails on any other.
+  (UX change 5). The Chat greeting's blue-to-rose gradient is plain `text-foreground`. `CompanyMonogram`
+  was the one exception until step 8; `test_frontend_design_tokens.py` now fails on any palette utility.
 - Step 4, type, and UX change 4: every raw size (826 `text-xs`/`sm`/`base`/`lg`/`2xl`/`3xl` and 33 bracketed
   `text-[Npx]`/`[Nrem]` uses) is a scale utility, and the hand-paired `font-medium`/`font-semibold`/`font-bold` beside
   them is gone, except the page title (`text-title-large font-medium`), the current nav row (600) and the health
@@ -58,8 +58,13 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
   gaps twice, Choose file, Try again twice, Add group) and 27 were Badges. The 8 are `tonal` and the Button's
   `secondary` variant is deleted; Badge keeps its own for plain metadata. `test_frontend_design_tokens.py` fails on a
   Button, IconButton or `buttonVariants` call that asks for `secondary`.
+- Step 8, CompanyMonogram: its six palette pairs are the role containers in the same order (blue to primary, violet to
+  tertiary, green to success, amber to warning, rose to attention, cyan to secondary), so the hash and each company's
+  slot are unchanged and only the tints move. Its comment says the tint is identity, not state. The palette pin has no
+  allow-list now, a new pin holds the six tones to container pairs, and `test_frontend_color_roles.py` lost the copied
+  Tailwind shades, the theme-match test and the palette-text scan, which measured only the monogram.
 
-## What is left, in order
+## What is left, in order (all eight steps are done)
 
 Each step is one reviewable change. Counts are from `frontend/app` and `frontend/components` at the
 branch point.
@@ -72,7 +77,7 @@ branch point.
 | 5 | ~~Corners~~ done | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |
 | 6 | ~~Shadows~~ done | 54 `shadow`/`shadow-sm`/`-md`/`-lg` uses | `shadow-level1..3` on menus, popovers, dialogs, the hovered FAB; none elsewhere | visible change: resting cards, inputs, switches and tabs lose their shadow |
 | 7 | ~~Buttons~~ done | `variant="secondary"` (35 uses) beside `tonal` (6) | one low-emphasis filled variant: `tonal` | drop `secondary` when its last caller moves |
-| 8 | CompanyMonogram | six palette pairs | the four status containers plus primary and secondary container | keeps the hash, changes the tints |
+| 8 | ~~CompanyMonogram~~ done | six palette pairs | the four status containers plus primary and secondary container | keeps the hash, changes the tints |
 
 ## UX changes that go with it
 
@@ -96,6 +101,10 @@ step 3.
    value in `text-title-large` (amended 2026-10-03: label in `text-body-small`, to match the StatTile README).
 
 ## Ledger row to add when SYSTEM.md has room
+
+With step 8 landed, the grep below finds only a comment in `globals.css` (checked 2026-10-03), so the row's delete
+condition is already met; the pins in `test_frontend_design_tokens.py` now hold the line, and the row is worth adding
+only if the owner wants the ledger to name the migration.
 
 `SYSTEM.md` is at its 1,000-line cap, so the §13 row was not added on this branch. When a line frees up:
 
