@@ -1,15 +1,16 @@
-"""The stored fill trace of one Companion run: value-free by construction.
+"""The stored fill trace of one Companion run, shaped to keep answers out.
 
 SYSTEM.md {#inv-autofill-telemetry-no-values}: no answer value, typed text, prompt or profile
-word enters a trace. Every free-ish string is a closed enum, a lowercase-only word, a dotted
-fact NAME, a move id or a hash, so an answer cannot hide in one. The page's own question
-(`label`, `section`, `options`) is page text, the same the field observations already keep.
+word enters a trace. Every string is a closed enum, a lowercase-only word, a dotted fact NAME,
+a move id, a hash, a hostname pattern or a run id, except the page's own question text:
+`label`, `section` and `options` hold what the page shows (the same text the field
+observations already keep), length-capped but not pattern-checked. The extension is what keeps
+a typed answer out of those three; the schema bounds everything else.
 """
 
-from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.schemas.autofill_fill import (
     FID,
@@ -34,6 +35,8 @@ MAX_RUN_FIELDS, MAX_FIELD_STEPS, LABEL_MAX = 200, 40, 200
 
 
 class TraceStep(BaseModel):
+    """One decision (a model call or code path) or one page action on a field."""
+
     model_config = ConfigDict(extra="forbid")
     op: Op
     ms: int | None = Field(default=None, ge=0, le=600_000)  # page action OR model-call latency
@@ -50,12 +53,17 @@ class TraceStep(BaseModel):
     first_same: bool | None = None
     chose_none: bool | None = None  # the model's top choice was the no-answer key (see DecisionTrace)
     way: PolarityWay | None = None  # polarity
-    option: int | None = Field(default=None, ge=0, le=MAX_PICK_OPTIONS)  # index into the field's options
+    option: int | None = Field(default=None, ge=0, lt=MAX_PICK_OPTIONS)  # index into the options offered to /pick (not TraceField.options, which is capped)
     reason: StepReason | None = None  # pick / step
     move: str | None = Field(default=None, max_length=40, pattern=MOVE_ID)  # op step / move
 
 
 class TraceField(BaseModel):
+    """One form field's journey through a run: what it was, each step taken and how it ended.
+
+    `options` is capped at 30 entries; `option_count` is the page's FULL option count.
+    """
+
     model_config = ConfigDict(extra="forbid")
     fid: str = Field(max_length=64, pattern=FID)
     label: str = Field(default="", max_length=LABEL_MAX)
@@ -72,11 +80,13 @@ class TraceField(BaseModel):
 
 
 class RunTrace(BaseModel):
+    """A whole run, built by the extension and stored whole (`AutofillRun.trace`)."""
+
     model_config = ConfigDict(extra="forbid")
-    run_id: str = Field(min_length=8, max_length=64, pattern=r"^[0-9A-Za-z-]+$")
-    host: str = Field(max_length=255)
-    started_at: datetime
-    ended_at: datetime
+    run_id: str = Field(min_length=8, max_length=64, pattern=r"^[0-9a-z-]{8,64}$")
+    host: str = Field(pattern=r"^[a-z0-9.-]{1,253}(:\d{1,5})?$")  # location.hostname: lowercase / punycode
+    started_at: AwareDatetime
+    ended_at: AwareDatetime
     mode: Literal["assist"] = "assist"  # only "Saved answers + AI" runs the loop (panel/actions/fill.js:458)
     halted: Literal["stopped", "timeout"] | None = None
     rounds: int = Field(default=0, ge=0, le=10)

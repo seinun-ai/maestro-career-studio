@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from app.models.autofill_mechanism_stat import AutofillMechanismStat
 from app.models.autofill_run import AutofillRun
@@ -53,9 +54,9 @@ def test_the_size_caps_hold():
     TraceField.model_validate(_field(steps=[_step()] * 40))
     with pytest.raises(ValidationError):
         RunTrace.model_validate(_run(fields=[_field()] * 201))
+    TraceStep.model_validate(_step(option=249))
     with pytest.raises(ValidationError):
-        TraceStep.model_validate(_step(option=251))
-    TraceStep.model_validate(_step(option=250))
+        TraceStep.model_validate(_step(option=250))
 
 
 def test_word_and_outcome_are_lowercase_words_only():
@@ -106,6 +107,35 @@ def test_move_rejects_free_text(move):
         TraceStep.model_validate({"op": "move", "move": move})
 
 
+def test_a_naive_timestamp_raises():
+    with pytest.raises(ValidationError):
+        RunTrace.model_validate(_run(started_at=datetime(2026, 10, 3, 12, 0)))
+    with pytest.raises(ValidationError):
+        RunTrace.model_validate(_run(ended_at="2026-10-03T12:00:00"))
+
+
+@pytest.mark.parametrize("host", ("Jane Doe 555-0100", "Jobs.Example.com", "a b.com", "", "x.com/path"))
+def test_host_is_a_hostname(host):
+    with pytest.raises(ValidationError):
+        RunTrace.model_validate(_run(host=host))
+
+
+def test_host_may_carry_a_port():
+    assert RunTrace.model_validate(_run(host="localhost:8080")).host == "localhost:8080"
+
+
+@pytest.mark.parametrize("run_id", ("RUN-12345678", "run 12345678", "short", "run_12345678", "x" * 65))
+def test_run_id_is_lowercase_and_dashed(run_id):
+    with pytest.raises(ValidationError):
+        RunTrace.model_validate(_run(run_id=run_id))
+
+
+@pytest.mark.parametrize("source", ("Jane Doe", "LABEL", "aria label", "label_1"))
+def test_label_source_rejects_anything_but_a_lowercase_word(source):
+    with pytest.raises(ValidationError):
+        TraceField.model_validate(_field(label_source=source))
+
+
 def test_family_is_a_hash():
     with pytest.raises(ValidationError):
         TraceField.model_validate(_field(family="Acme Corp"))
@@ -119,3 +149,10 @@ def test_the_two_tables_exist_after_migration(db_session):
     run = db_session.query(AutofillRun).one()
     assert run.trace["fields"][0]["fid"] == "0-12" and run.created_at is not None
     assert db_session.get(AutofillMechanismStat, "pick|jev|matched").counts == {"n": 1}
+
+
+def test_a_run_id_is_stored_once(db_session):
+    for _ in range(2):
+        db_session.add(AutofillRun(run_id="run-12345678", host="jobs.example.com", started_at=NOW, trace={}))
+    with pytest.raises(IntegrityError):
+        db_session.flush()
