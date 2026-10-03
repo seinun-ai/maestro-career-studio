@@ -92,9 +92,15 @@ extension. The AI step of form filling is done by the backend, as above.
 
 It also keeps a usage log in your local database: which kinds of fields it met
 (label, field type, outcome, site hostname), never what you typed. It is on by
-default. **Analytics → Autofill coverage → Clear data** deletes it, and the
-extension README explains how to turn it off. Extension preferences (not career
-data) use Chrome's own settings sync.
+default. A fill that uses AI also keeps a run trace of how each field was
+decided: the page's own option texts and which option was chosen, demographic
+(EEO) questions included, never anything you typed or any text from your
+profile. The last 50 runs are kept. The same opt-out turns both off, and the
+extension README explains how. **Analytics → Autofill coverage → Clear data**
+deletes the usage log and the run traces, and leaves only counters that hold
+no sites, labels or answers. Withdrawing your EEO consent does not remove
+traces already kept; Clear data does. Extension preferences (not career data)
+use Chrome's own settings sync.
 
 ### Connecting an AI assistant (MCP)
 
