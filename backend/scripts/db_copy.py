@@ -2,8 +2,8 @@
 live database (the fill evaluation, the fill-trace reader).
 
 A script here never touches the live database: `refusal` turns away any path
-that is, or lives beside, a live data directory (compared by file identity, not
-spelling); `open_copy` points the app's settings at the copy before app code is
+inside a live data directory, or that is the same file as one there (a hard
+link), compared by file identity, not spelling; `open_copy` points the app's settings at the copy before app code is
 imported; `bind_read_only` binds every session to a read-only connection and
 proves a write fails. Nothing the app lazily seeds or writes can reach the live
 file.
@@ -16,6 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# Duplicates app.config.DB_FILENAME on purpose: importing app.config would freeze the settings before the env is set.
 DB_FILENAME = "maestro_cs.sqlite3"
 
 
@@ -87,7 +88,7 @@ def bind_read_only(db: Path) -> None:
     # pre-create (and chmod) the file its URL names.
     @event.listens_for(app_db.engine, "do_connect", insert=True)
     def _never(*_args):
-        raise RuntimeError("the evaluation reads the database only through its read-only session")
+        raise RuntimeError("this script reads the database only through its read-only session")
 
     app_db.SessionLocal.configure(bind=read_only)
     with app_db.SessionLocal() as session:
@@ -97,7 +98,7 @@ def bind_read_only(db: Path) -> None:
         except OperationalError:
             session.rollback()
         else:
-            raise RuntimeError(f"{db} opened writable: stopping before any model call")
+            raise RuntimeError(f"{db} opened writable: stopping")
 
 
 def open_copy(db: Path, *, bind: Callable[[Path], None] | None = None) -> None:
@@ -107,5 +108,5 @@ def open_copy(db: Path, *, bind: Callable[[Path], None] | None = None) -> None:
     os.environ["DATABASE_URL"] = f"sqlite:///{db.resolve()}"
     os.environ.pop("TEST_DATABASE_URL", None)
     for name in ("SETTINGS_DIR", "LOGS_DIR"):
-        os.environ.setdefault(name, tempfile.mkdtemp(prefix=f"eval-{name.lower()}-"))
+        os.environ.setdefault(name, tempfile.mkdtemp(prefix=f"dbcopy-{name.lower()}-"))
     (bind or bind_read_only)(db)

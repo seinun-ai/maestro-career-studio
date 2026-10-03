@@ -3,6 +3,7 @@ model is called). scripts/eval_fill_decisions.py runs them against the models.""
 
 import os
 import subprocess
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -626,15 +627,19 @@ def test_open_copy_points_the_app_at_the_copy_and_binds_it(tmp_path, monkeypatch
     from scripts import db_copy
 
     copy = tmp_path / db_copy.DB_FILENAME
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))   # the temp dirs open_copy makes land here
     monkeypatch.setenv("DATABASE_URL", "sqlite:///elsewhere")
     monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///a-test-db")
     monkeypatch.setenv("SETTINGS_DIR", str(tmp_path / "settings"))
     monkeypatch.setenv("LOGS_DIR", "placeholder")   # so monkeypatch restores whatever open_copy leaves
     monkeypatch.delenv("LOGS_DIR")
     bound = []
-    db_copy.open_copy(copy, bind=bound.append)
-    assert bound == [copy]
+    db_copy.open_copy(copy, bind=lambda db: bound.append((db, os.environ["DATABASE_URL"],
+                                                          "TEST_DATABASE_URL" in os.environ)))
+    # the env was already set when the bind ran: the app is imported only after open_copy
+    assert bound == [(copy, f"sqlite:///{copy.resolve()}", False)]
     assert os.environ["DATABASE_URL"] == f"sqlite:///{copy.resolve()}"
     assert "TEST_DATABASE_URL" not in os.environ
     assert os.environ["SETTINGS_DIR"] == str(tmp_path / "settings")   # a set dir is kept
-    assert Path(os.environ["LOGS_DIR"]).is_dir()                       # an unset one gets a fresh temp dir
+    logs = Path(os.environ["LOGS_DIR"])                                # an unset one gets a fresh temp dir
+    assert logs.is_dir() and logs.parent == tmp_path and logs.name.startswith("dbcopy-logs_dir-")
