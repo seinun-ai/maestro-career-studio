@@ -623,6 +623,16 @@ Read the field statuses for `KEPT` and `FAILED` from the fill-loop header's repo
 Write counters by read-modify-write, reassigning `counts` and never mutating the JSON (see the
 telemetry route's comment).
 
+**Concurrency and storage (Task 5 review):**
+- `store_run` calls `app.db.begin_write(db)` (`BEGIN IMMEDIATE`; precedent: `routers/proposals.py`,
+  `services/health_disputes.py`) **first**, before the `run_id` lookup. Routes run in the
+  threadpool, so two posts close together would otherwise lose counter increments or 500 on a
+  duplicate insert. Add a test that two stores of different runs both land in the counters.
+- Store the trace as `model_dump(mode="json", exclude_none=True)`. A step has 18 mostly-null keys.
+- Prune by `started_at DESC, created_at DESC`, so ties are deterministic.
+- A comment notes that a re-post of a run already pruned looks new and is folded again.
+  That is accepted, because it is rare.
+
 **Routes:**
 - `POST /api/autofill/runs` takes a `RunTrace` body and returns 204.
 - `DELETE /api/autofill/telemetry` also deletes every `AutofillRun`. It returns
@@ -780,6 +790,13 @@ whole run is lost silently.
 
 - `decision(t)` copies only `engine`, `p`, `floor`, `second`, `first_p`, `first_same` and
   `chose_none`, and only those present.
+- **Shape rules the backend schema enforces** (Task 5 review). One rejected trace loses the whole
+  run silently.
+  - `ms` is a whole number: use `Math.round`, including for a batch's ms divided across its fields.
+  - `option` is the 0-based index into the options offered to /pick, or `null`, never `-1`.
+  - `word` is `null`, never `""`.
+  - `option_count` is the page's **full** option count; `options` is capped at 30.
+  - `run_id` and `host` are lowercase.
 - `effectOf` and `exploreEffect` implement the two tables above. A test pins `effectOf` against the
   header's page-outcome list (L109-114): every word listed there must have a row.
 
@@ -866,7 +883,8 @@ page's current value, `inventory.js:166`), `row.field.help`, or any explore opti
 **`scrubTrace`:**
 - A whitelist at three levels (run, field, step), using exactly Task 5's names.
 - Cut strings: labels and sections to 160; options to 30 × 160.
-- Coerce numbers, and drop non-finite ones.
+- Coerce numbers, and drop non-finite ones. Round `ms` to an integer. Drop an `option` outside
+  0..249, and drop an empty `word`. Lowercase `host`.
 - Drop a step whose `op` is not in the Op list.
 - Drop a `slot`, `move`, `word`, `label_source` or `family` that does not match its Task 5
   pattern, rather than forwarding it. One odd profile key would otherwise 422 the whole run, and
