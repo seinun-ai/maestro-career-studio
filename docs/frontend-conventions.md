@@ -951,11 +951,14 @@
 - Shared components: `StatusChip`/`SavedChip` (`components/status-chip.tsx` —
   the ONLY status vocabulary/color source in the UI), `CompanyMonogram`,
   `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
-  you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object:
-  `text-orange-800` on `bg-orange-500/10`, `dark:text-orange-400`; "Submission
-  uncertain" is its own entry with the same classes. Light-mode chip text is
-  800 on amber, green, sky, emerald and orange tints (the monogram's green,
-  amber, rose and cyan too) and 700 on blue, violet and red.
+  you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object, the
+  `attention` container pair; "Submission uncertain" is its own entry with the
+  same pair. Every status and grade chip is a role container pair (Applied
+  and Proposed primary, Interviewing warning, Offer tertiary, Offer accepted
+  success, Rejected error, Queued secondary; grades A and B success, C
+  warning, D attention, F error), so no chip carries a `dark:` twin. The KB
+  entity chips and the monogram still use palette tints: light-mode text is
+  800 on amber, green, rose and cyan and 700 on blue and violet.
   `test_frontend_color_roles.py` finds every chip literal in `status-chip.tsx`,
   `career/entity-card.tsx` and `company-monogram.tsx` and computes it over the
   page, a card, `--muted` and a hovered row in both modes; the three amber
@@ -1030,7 +1033,7 @@
   is `aria-hidden` and the link's `aria-label` reads "Agent inbox, N need you"
   (an sr-only span, out of flow, made Chrome's name "Agent inbox , N…"); it
   polls every 60 s (a connected agent changes proposals outside the tab), and
-  its orange is measured on all four row states
+  its `attention` pair is measured on all four row states
   (`test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state`). Add new routes to the right group in
   `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list. Pinned by
   `test_frontend_sidebar_nav.py` and `test_frontend_first_run.py`.

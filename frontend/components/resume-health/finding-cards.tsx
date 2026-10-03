@@ -382,11 +382,11 @@ const TYPE_CHIP: Record<"fix" | "ask", { label: string; chip: string; card: stri
 };
 
 export const GRADE_STYLES: Record<string, string> = {
-  A: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-400",
-  B: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-500",
-  C: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
-  D: "bg-orange-500/15 text-orange-800 dark:text-orange-400",
-  F: "bg-destructive/10 text-destructive",
+  A: "bg-success-container text-on-success-container",
+  B: "bg-success-container text-on-success-container",
+  C: "bg-warning-container text-on-warning-container",
+  D: "bg-attention-container text-on-attention-container",
+  F: "bg-error-container text-on-error-container",
 };
 
 function SuggestionBlock({
