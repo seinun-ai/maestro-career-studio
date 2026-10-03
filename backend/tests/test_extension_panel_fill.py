@@ -364,7 +364,8 @@ def _fill(tmp_path, driver=_FILL_STAGE_DRIVER_JS, stored_mode="rules", **spec):
     replies = {"read_settings": settings,
                "panel_frame0": _reply({"tier": "B", "form": True, "score": 2}),
                "panel_prepare": _reply({"injected": True}),
-               "telemetry": _reply({"posted": 0})}
+               "telemetry": _reply({"posted": 0}),
+               "fill_trace": _reply({"posted": 1})}
     replies.update(spec.pop("replies", {}))
     api = {"lightningai": _reply({"match": "none", "job": None, "application": None}),
            "/api/autofill/context": _reply(FILL_CONTEXT),
@@ -3631,7 +3632,8 @@ ns.fillLoop.runFill = async (deps, options) => {
   return { runId: "r", host: spec.report.host, fields: spec.report.fields,
            aiFailure: failure, stopped: run.cancelledAtEnd && !spec.switchTo,
            timedOut: spec.report.timedOut === true,
-           ...(spec.report.sections ? { sections: spec.report.sections } : {}) };
+           ...(spec.report.sections ? { sections: spec.report.sections } : {}),
+           ...(spec.report.trace !== undefined ? { trace: spec.report.trace } : {}) };
 };
 const stopButton = () => withClass(REGIONS.foot, "stop")[0] ?? null;
 main(async () => {
@@ -3702,7 +3704,12 @@ LOOP_REPORT = {"host": LOOP_HOST, "fields": [
     _field("al", "Phone", "already", route=None),
     _field("b1", "Signature", "blocked", lastOutcome="blocked"),
     _field("y1", "City", "yours", lastOutcome="yours"),
-]}
+], "trace": {
+    "run_id": "trace-run-0001", "host": LOOP_HOST,
+    "started_at": "2026-10-03T10:00:00.000Z", "ended_at": "2026-10-03T10:00:09.000Z",
+    "halted": None, "rounds": 1,
+    "fields": [{"fid": "v1", "label": "First name", "shape": "text", "outcome": "verified",
+                "steps": [{"op": "map", "ms": 12, "route": "slot", "slot": "personal.first_name"}]}]}}
 # Everything verified: the loop finished the page.
 DONE_REPORT = {"host": LOOP_HOST, "fields": [
     _field("v1", "First name", "verified", answer="Ada"),
@@ -3906,6 +3913,32 @@ def test_loop_telemetry_is_one_value_free_observation_per_field(tmp_path):
     wire = json.dumps(batch)
     for value in ("Ada", "ada@example.test", "Master's", "LinkedIn", "3 of 5", "Next week"):
         assert value not in wire.replace("How did you hear about us?", ""), value
+
+
+def test_a_loop_run_sends_its_trace_once_and_unread(tmp_path):
+    """The panel hands the report's trace to the service worker, which owns the
+    telemetry switch and the scrub. One message per run, the trace as built."""
+    out = _loop(tmp_path)
+    [msg] = [m for m in out["sent"] if m["type"] == "fill_trace"]
+    assert msg == {"type": "fill_trace", "trace": LOOP_REPORT["trace"]}
+
+
+@pytest.mark.parametrize("report", [
+    {**LOOP_REPORT, "trace": None},
+    {k: v for k, v in LOOP_REPORT.items() if k != "trace"},
+], ids=["null", "missing"])
+def test_a_loop_without_a_trace_sends_none(tmp_path, report):
+    """`buildRunTrace` answers null when it cannot build one; nothing is sent."""
+    out = _loop(tmp_path, report=report)
+    assert [m for m in out["sent"] if m["type"] == "fill_trace"] == []
+
+
+def test_a_trace_the_worker_refuses_never_surfaces_in_the_panel(tmp_path):
+    """Fire-and-forget like telemetry: a failed post is a console warning, and
+    the report still paints."""
+    out = _loop(tmp_path, replies={"fill_trace": {"ok": False, "error": "boom"}})
+    assert [m["type"] for m in out["sent"]].count("fill_trace") == 1
+    assert _loop_groups(out["settled"]["rail"])
 
 
 def test_a_loop_that_filled_everything_ticks_the_step_and_names_what_to_check(tmp_path):

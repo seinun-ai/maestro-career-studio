@@ -325,6 +325,140 @@ function scrubObservation(observation) {
 }
 // ---- end scrubObservation ----
 
+// ---- the run trace's gate: a whitelist at run, field and step level ----
+//
+// Every name, pattern, cap and vocabulary below is `app/schemas/
+// autofill_trace.py`'s (and `autofill_fill.py`'s), and `test_the_trace_
+// whitelist_mirrors_the_backends_schema` fails when either side moves. The
+// schema is `extra="forbid"` and range-checked, so ONE odd key or word would
+// 422 the whole run and lose it silently: a value that does not fit is
+// dropped here, not forwarded. The page's own texts (label, section, options)
+// are kept, cut to length; the loop is what keeps a typed answer out of them.
+const TRACE_FIELDS = 200;
+const TRACE_STEPS = 40;
+const TRACE_OPTIONS = 30;
+const TRACE_TEXT = 200;
+const TRACE_ROUNDS = 10;
+const TRACE_MS = 600000;
+const TRACE_PICKS = 250;
+const TRACE_SLOT_MAX = 120;
+const TRACE_WORD = /^[a-z_]{1,40}$/;
+const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
+const TRACE_MOVE = /^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$/;
+const TRACE_FID = /^[A-Za-z0-9_-]{1,64}$/;
+const TRACE_HOST = /^[a-z0-9.-]{1,253}(:\d{1,5})?$/;
+const TRACE_FAMILY = /^f:[0-9a-z]{1,24}$/;
+const TRACE_SOURCE = /^[a-z-]+$/;
+const TRACE_RUN_ID = /^[0-9a-z-]{8,64}$/;
+const TRACE_TIME = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,9})?(Z|[+-]\d\d:\d\d)$/;
+const TRACE_OPS = new Set(["map", "polarity", "pick", "step", "explore", "choose", "set", "write", "move",
+  "sweep", "recipe"]);
+const TRACE_EFFECTS = new Set(["progress", "no_effect", "unexpected", "reverted", "unconfirmed", "refused",
+  "late", "error"]);
+const TRACE_SHAPES = new Set(["text", "date", "select", "group", "search", "popup"]);
+const TRACE_ROUTES = new Set(["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]);
+const TRACE_WHYS = new Set(["unclear_job"]);
+const TRACE_ENGINES = new Set(["jev", "fast"]);
+const TRACE_SECONDS = new Set(["asked", "decided"]);
+const TRACE_WAYS = new Set(["same", "opposite", "neither", "unsure"]);
+const TRACE_REASONS = new Set(["matched", "closest", "assumed", "progress", "abstained"]);
+
+// A coercer answers the value to post, or undefined to drop the key.
+const traceText = (max) => (v) => (typeof v === "string" ? v.slice(0, max) : undefined);
+const traceMatch = (re, max = Infinity) => (v) => (typeof v === "string" && v.length <= max && re.test(v) ? v : undefined);
+const traceOneOf = (set) => (v) => (typeof v === "string" && set.has(v) ? v : undefined);
+const traceBool = (v) => (typeof v === "boolean" ? v : undefined);
+// A number, or a numeric string; anything else (null, "", true) is NaN, not zero.
+const traceNumber = (v) => ((typeof v === "number" || (typeof v === "string" && v.trim() !== "")) ? Number(v) : NaN);
+const traceInt = (max) => (v) => {
+  const n = traceNumber(v);
+  return Number.isInteger(n) && n >= 0 && n <= max ? n : undefined;
+};
+const traceClamped = (max) => (v) => {
+  const n = traceNumber(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(0, Math.round(n))) : undefined;
+};
+const traceUnit = (v) => {
+  const n = traceNumber(v);
+  return n >= 0 && n <= 1 ? n : undefined;
+};
+const traceTime = (v) => (typeof v === "string" && TRACE_TIME.test(v) && Number.isFinite(Date.parse(v)) ? v : undefined);
+const traceList = (scrub, max) => (v) => (Array.isArray(v) ? v.map(scrub).filter(Boolean).slice(0, max) : undefined);
+const traceKeep = (spec, source) => {
+  const out = {};
+  for (const [key, coerce] of Object.entries(spec)) {
+    const value = coerce(source?.[key]);
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+};
+
+const TRACE_STEP = {
+  op: traceOneOf(TRACE_OPS),
+  ms: traceClamped(TRACE_MS),
+  effect: traceOneOf(TRACE_EFFECTS),
+  word: traceMatch(TRACE_WORD),
+  route: traceOneOf(TRACE_ROUTES),
+  slot: traceMatch(TRACE_SLOT, TRACE_SLOT_MAX),
+  why: traceOneOf(TRACE_WHYS),
+  engine: traceOneOf(TRACE_ENGINES),
+  p: traceUnit,
+  floor: traceUnit,
+  second: traceOneOf(TRACE_SECONDS),
+  first_p: traceUnit,
+  first_same: traceBool,
+  chose_none: traceBool,
+  way: traceOneOf(TRACE_WAYS),
+  option: traceInt(TRACE_PICKS - 1),
+  reason: traceOneOf(TRACE_REASONS),
+  move: traceMatch(TRACE_MOVE),
+};
+const TRACE_FIELD = {
+  fid: traceMatch(TRACE_FID),
+  label: traceText(TRACE_TEXT),
+  label_source: traceMatch(TRACE_SOURCE, 40),
+  shape: (v) => (TRACE_SHAPES.has(v) ? v : "unknown"),
+  section: traceText(TRACE_TEXT),
+  required: traceBool,
+  options: (v) => (Array.isArray(v)
+    ? v.slice(0, TRACE_OPTIONS).map((text) => (typeof text === "string" ? text.slice(0, TRACE_TEXT) : ""))
+    : undefined),
+  option_count: traceInt(Number.MAX_SAFE_INTEGER),
+  family: traceMatch(TRACE_FAMILY, 32),
+  steps: traceList((step) => {
+    const kept = traceKeep(TRACE_STEP, step);
+    return kept.op ? kept : null;
+  }, TRACE_STEPS),
+  outcome: traceMatch(TRACE_WORD),
+  round: traceClamped(TRACE_ROUNDS),
+};
+const TRACE_RUN = {
+  run_id: traceMatch(TRACE_RUN_ID),
+  host: (v) => traceMatch(TRACE_HOST)(typeof v === "string" ? v.toLowerCase() : v),
+  started_at: traceTime,
+  ended_at: traceTime,
+  mode: (v) => (v === "assist" ? v : undefined),
+  halted: (v) => (v === "stopped" || v === "timeout" ? v : undefined),
+  rounds: traceClamped(TRACE_ROUNDS),
+  fields: traceList((field) => {
+    const kept = traceKeep(TRACE_FIELD, field);
+    return kept.fid && kept.outcome ? kept : null;
+  }, TRACE_FIELDS),
+};
+
+/** The trace to post, or null when there is nothing the schema would take.
+ *
+ * Null for `trace: null` (the loop could not build one) and for a run whose own
+ * identity is unusable (`run_id`, `host`, either time, or no `fields` list):
+ * forwarding half a run would only 422. A bad FIELD is dropped alone, and a
+ * step needs only its `op`. */
+function scrubTrace(trace) {
+  if (!trace || typeof trace !== "object" || Array.isArray(trace)) return null;
+  const out = traceKeep(TRACE_RUN, trace);
+  return ["run_id", "host", "started_at", "ended_at", "fields"].every((key) => out[key] !== undefined) ? out : null;
+}
+// ---- end scrubTrace ----
+
 // ---------- reaching the UI ----------
 //
 // ONE surface, two routes to it: the toolbar icon (via `setPanelBehavior` at
@@ -556,6 +690,21 @@ const HANDLERS = {
       }),
     });
     return { posted: observations.length };
+  },
+
+  /** One run's value-free trace, gated and scrubbed in one place.
+   *
+   * `telemetry`'s switch, read the same way and for the same reason (this is
+   * the only context that can fetch), and `scrubTrace` is the whitelist. The
+   * panel sends it fire-and-forget after the loop reports; a run that built no
+   * trace posts nothing. */
+  async fill_trace(msg) {
+    const { telemetryEnabled } = await getSettings();
+    if (telemetryEnabled === false) return { posted: 0 };
+    const trace = scrubTrace(msg.trace);
+    if (!trace) return { posted: 0 };
+    await api("/api/autofill/runs", { method: "POST", body: JSON.stringify(trace) });
+    return { posted: 1 };
   },
 
   /** Fetch a resume PDF and hand it to every frame of the sender's tab.

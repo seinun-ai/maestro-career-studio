@@ -4281,6 +4281,11 @@
         ask("telemetry", { action, observations, page_host: hostOf(card.url) })
           .catch((err) => console.warn("[maestro-cs] telemetry failed:", err));
       },
+      // The run's value-free trace, with telemetry's rules: swallowed, and the
+      // opt-in check and the scrub are the service worker's.
+      trace: (trace) => {
+        ask("fill_trace", { trace }).catch((err) => console.warn("[maestro-cs] trace failed:", err));
+      },
       remember: rememberSession,
       // Record that the scorer was asked about this job (`autoScored`).
       scored: (jobId) => autoScored.add(jobId),

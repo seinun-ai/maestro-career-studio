@@ -678,6 +678,305 @@ def test_an_empty_batch_is_not_a_round_trip(tmp_path):
     assert out["posted"] == []
 
 
+# ---------- the run trace: gated, scrubbed to the schema's keys, then posted ----
+#
+# `fill_trace` is telemetry's sibling (one value-free record per RUN rather than
+# per field), so it gets the same three pins: the switch, the whitelist, and the
+# bounds. A fourth ties the whitelist to the backend's schema, since an odd key
+# the schema forbids would 422 a whole run and lose it silently.
+
+_TRACE_DRIVER_JS = _TELEMETRY_DRIVER_JS.replace(
+    '{ type: "telemetry", action: spec.action, page_host: spec.pageHost,\n        observations: spec.observations }',
+    'spec.message')
+assert _TRACE_DRIVER_JS != _TELEMETRY_DRIVER_JS, "the telemetry driver's message moved"
+
+
+def _post_trace(tmp_path, trace, settings=None, missing=False):
+    message = {"type": "fill_trace"} if missing else {"type": "fill_trace", "trace": trace}
+    out = run_node(_TRACE_DRIVER_JS, {"message": message, "settings": settings or {}},
+                   tmp_path, source=SW_JS)
+    return out
+
+
+def _step(**over):
+    return {"op": "map", "ms": 12, "route": "slot", "slot": "personal.first_name", **over}
+
+
+def _trace_field(fid="f1", **over):
+    return {"fid": fid, "label": "First name", "label_source": "aria-label", "shape": "text",
+            "section": "About you", "required": True, "options": ["Yes", "No"], "option_count": 2,
+            "family": "f:ab12", "steps": [_step()], "outcome": "verified", "round": 1, **over}
+
+
+def _run_trace(**over):
+    return {"run_id": "run-0001-abcd", "host": "boards.greenhouse.io",
+            "started_at": "2026-10-03T10:00:00.000Z", "ended_at": "2026-10-03T10:00:09.000Z",
+            "mode": "assist", "halted": "timeout", "rounds": 2, "fields": [_trace_field()], **over}
+
+
+def _posted_trace(tmp_path, trace, **kw):
+    out = _post_trace(tmp_path, trace, **kw)
+    [posted] = out["posted"]
+    assert posted["url"].endswith("/api/autofill/runs")
+    return posted["body"]
+
+
+def test_a_trace_is_not_posted_when_the_user_turned_telemetry_off(tmp_path):
+    """The same switch as telemetry's, read the same way. A gate, not a filter."""
+    out = _post_trace(tmp_path, _run_trace(), settings={"telemetryEnabled": False})
+    assert out["reply"]["data"] == {"posted": 0}
+    assert out["posted"] == [], "an opted-out user's run reached the network"
+
+
+@pytest.mark.parametrize("trace, missing", [(None, False), (None, True), ([], False), ("x", False)],
+                         ids=["null", "missing", "array", "string"])
+def test_no_trace_posts_nothing(tmp_path, trace, missing):
+    """The loop answers null when it could not build one."""
+    out = _post_trace(tmp_path, trace, missing=missing)
+    assert out["reply"]["data"] == {"posted": 0}
+    assert out["posted"] == []
+
+
+def test_a_posted_trace_reports_one_run(tmp_path):
+    out = _post_trace(tmp_path, _run_trace())
+    assert out["reply"]["data"] == {"posted": 1}
+
+
+def test_a_trace_carries_none_of_the_keys_injected_at_any_level(tmp_path):
+    """The whitelist, driven at run, field and step level with the shapes that
+    would carry a value: a typed value, an AI answer, what a write landed and a
+    prompt. The sentinels are made up; none may be on the wire."""
+    sentinels = {"value": "SENTINEL-VALUE-1", "answer": "SENTINEL-ANSWER-2",
+                 "wrote": "SENTINEL-WROTE-3", "prompt": "SENTINEL-PROMPT-4"}
+    trace = _run_trace(**sentinels, fields=[_trace_field(
+        **{k: v + "-F" for k, v in sentinels.items()},
+        steps=[_step(**{k: v + "-S" for k, v in sentinels.items()})])])
+    body = _posted_trace(tmp_path, trace)
+    wire = json.dumps(body)
+    assert "SENTINEL" not in wire
+    [field] = body["fields"]
+    assert not set(sentinels) & (set(body) | set(field) | set(field["steps"][0]))
+
+
+def test_a_trace_keeps_exactly_the_schemas_keys_at_each_level(tmp_path):
+    from app.schemas.autofill_trace import RunTrace, TraceField, TraceStep
+
+    full_step = {"op": "step", "ms": 5, "effect": "progress", "word": "ok", "route": "slot",
+                 "slot": "a.b", "why": "unclear_job", "engine": "jev", "p": 0.9, "floor": 0.5,
+                 "second": "decided", "first_p": 0.4, "first_same": True, "chose_none": False,
+                 "way": "same", "option": 3, "reason": "matched", "move": "click:o3"}
+    body = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=[full_step])]))
+    [field] = body["fields"]
+    assert set(body) == set(RunTrace.model_fields)
+    assert set(field) == set(TraceField.model_fields)
+    assert set(field["steps"][0]) == set(TraceStep.model_fields)
+    assert field["steps"][0] == full_step
+    RunTrace.model_validate(body)
+
+
+def test_a_bare_op_and_ms_step_is_kept(tmp_path):
+    """A /map, /pick or /step call that failed or timed out leaves only these."""
+    body = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=[{"op": "pick", "ms": 8000}])]))
+    assert body["fields"][0]["steps"] == [{"op": "pick", "ms": 8000}]
+
+
+def test_a_field_with_a_bad_fid_is_dropped_and_the_rest_post(tmp_path):
+    fields = [_trace_field("ok-1"), _trace_field("bad fid!"), _trace_field(""),
+              _trace_field(None), _trace_field("x" * 65), "junk", _trace_field("ok_2", outcome="Bad Outcome"),
+              _trace_field("ok-3")]
+    body = _posted_trace(tmp_path, _run_trace(fields=fields))
+    assert [f["fid"] for f in body["fields"]] == ["ok-1", "ok-3"]
+
+
+@pytest.mark.parametrize("over", [
+    {"run_id": "short"}, {"run_id": "UPPER-CASE-RUN-ID"}, {"run_id": "bad id!"}, {"run_id": None}, {"run_id": 12345678},
+    {"host": "not a host"}, {"host": ""}, {"started_at": "yesterday"}, {"started_at": None},
+    {"ended_at": "2026-10-03T10:00:09"},  # no zone: the schema wants an aware time
+    {"fields": None}, {"fields": "x"},
+])
+def test_a_trace_with_a_bad_run_key_posts_nothing(tmp_path, over):
+    """One bad required key would 422 the run, so nothing goes."""
+    out = _post_trace(tmp_path, _run_trace(**over))
+    assert out["reply"]["data"] == {"posted": 0}
+    assert out["posted"] == []
+
+
+def test_a_run_missing_a_required_key_posts_nothing(tmp_path):
+    for key in ("run_id", "host", "started_at", "ended_at"):
+        trace = _run_trace()
+        del trace[key]
+        out = _post_trace(tmp_path, trace)
+        assert out["posted"] == [], key
+
+
+def test_the_run_level_keys_are_coerced_not_forwarded(tmp_path):
+    body = _posted_trace(tmp_path, _run_trace(
+        host="Boards.Greenhouse.IO:8443", mode="other", halted="crashed", rounds=99))
+    assert body["host"] == "boards.greenhouse.io:8443"
+    assert "mode" not in body and "halted" not in body
+    assert body["rounds"] == 10
+    assert "halted" not in _posted_trace(tmp_path, _run_trace(halted=None))
+    assert _posted_trace(tmp_path, _run_trace(halted="stopped"))["halted"] == "stopped"
+
+
+def test_a_trace_is_bounded_rather_than_rejected(tmp_path):
+    """More than 200 fields, 40 steps, 30 options or 200 characters is cut here."""
+    long_field = _trace_field("big", label="L" * 400, section="S" * 400,
+                              options=["O" * 400] * 50, option_count=50, steps=[_step()] * 60)
+    fields = [long_field] + [_trace_field(f"f{n}") for n in range(250)]
+    body = _posted_trace(tmp_path, _run_trace(fields=fields))
+    assert len(body["fields"]) == 200
+    big = body["fields"][0]
+    assert (len(big["label"]), len(big["section"])) == (200, 200)
+    assert len(big["options"]) == 30 and {len(o) for o in big["options"]} == {200}
+    assert big["option_count"] == 50
+    assert len(big["steps"]) == 40
+
+
+def test_the_pages_own_option_texts_are_kept(tmp_path):
+    """Owner decision, 2026-10-03: option texts and the chosen index, EEO included."""
+    field = _trace_field(options=["Decline to self-identify", "Yes", "No"], steps=[{"op": "pick", "ms": 3, "option": 0}])
+    body = _posted_trace(tmp_path, _run_trace(fields=[field]))
+    assert body["fields"][0]["options"] == ["Decline to self-identify", "Yes", "No"]
+    assert body["fields"][0]["steps"][0]["option"] == 0
+
+
+def test_step_numbers_are_coerced_and_odd_ones_dropped(tmp_path):
+    steps = [
+        {"op": "set", "ms": 12.6, "option": 249, "p": "0.5", "floor": 1.5, "first_p": -0.1},
+        {"op": "set", "ms": -4, "option": 250},
+        {"op": "set", "ms": 9_999_999, "option": -1},
+        {"op": "set", "ms": "abc", "option": 1.5, "p": None},
+        {"op": "set", "ms": None, "option": "2", "p": True, "first_same": "yes", "chose_none": 0},
+        {"op": "set", "ms": "", "word": ""},
+    ]
+    got = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=steps)]))["fields"][0]["steps"]
+    assert got == [
+        {"op": "set", "ms": 13, "option": 249, "p": 0.5},
+        {"op": "set", "ms": 0},
+        {"op": "set", "ms": 600000},
+        {"op": "set"},
+        {"op": "set", "option": 2},
+        {"op": "set"},
+    ]
+
+
+def test_a_step_with_an_unknown_op_is_dropped_and_odd_words_are_not_forwarded(tmp_path):
+    steps = [
+        {"op": "teleport", "ms": 1}, {"ms": 1}, "junk", None,
+        _step(slot="Personal.First Name", move="click:ox", word="Has Caps", effect="exploded",
+              route="made_up", why="other", engine="gpt", second="maybe", way="sideways", reason="vibes"),
+        {"op": "move", "move": "click:o12", "word": "no_effect", "slot": "work_auth.us"},
+        {"op": "write", "slot": "x" * 121},
+    ]
+    got = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=steps)]))["fields"][0]["steps"]
+    assert got == [
+        {"op": "map", "ms": 12},
+        {"op": "move", "move": "click:o12", "word": "no_effect", "slot": "work_auth.us"},
+        {"op": "write"},
+    ]
+
+
+def test_odd_field_level_strings_are_not_forwarded(tmp_path):
+    field = _trace_field(label_source="Aria Label", family="F:XYZ", shape="carousel", section=None,
+                         options=None, required="yes", option_count=-3, round=99)
+    got = _posted_trace(tmp_path, _run_trace(fields=[field]))["fields"][0]
+    assert "label_source" not in got and "family" not in got
+    assert got["shape"] == "unknown"
+    assert "section" not in got and "options" not in got and "required" not in got
+    assert "option_count" not in got
+    assert got["round"] == 10
+
+
+def test_a_messy_trace_is_scrubbed_into_one_the_backend_accepts(tmp_path):
+    """The scrub's whole job: whatever the loop (or a bug in it) hands over, the
+    body that leaves validates against `RunTrace`, or nothing leaves."""
+    from app.schemas.autofill_trace import RunTrace
+
+    messy_steps = [
+        {"op": "map", "ms": 1.5e9, "route": "slot", "slot": "UPPER.case", "p": 3, "value": "SENTINEL"},
+        {"op": "pick", "ms": "7", "option": 9999, "reason": "nope"},
+        {"op": "nope"}, {"op": "write", "word": "Has Caps"}, {"op": "move", "move": "click:o"},
+    ] * 20
+    fields = [
+        _trace_field("a", label=None, options=[1, None, "x" * 999] * 20, steps=messy_steps, round="3"),
+        _trace_field("b d"), {"label": "no fid"},
+        _trace_field("c", shape={"x": 1}, outcome="verified", label_source="-", family=7),
+    ]
+    trace = _run_trace(run_id="run-messy-0001", host="Example.COM", rounds="2", mode="assist",
+                       halted="stopped", fields=fields, extra={"answer": "SENTINEL"})
+    body = _posted_trace(tmp_path, trace)
+    RunTrace.model_validate(body)
+    assert "SENTINEL" not in json.dumps(body)
+    assert [f["fid"] for f in body["fields"]] == ["a", "c"]
+
+
+def _sw_block(name, shape):
+    block = re.search(shape.format(name=name), SW_CODE, re.S)
+    assert block, f"sw.js no longer defines {name}"
+    return block.group(1)
+
+
+def _sw_keys(name):
+    return set(re.findall(r"^  ([a-z_]+):", _sw_block(name, r"const {name} = \{{(.*?)\n\}};"), re.M))
+
+
+def _sw_vocab(name):
+    return set(re.findall(r'"([^"]+)"', _sw_block(name, r"const {name} = new Set\(\[(.*?)\]\);")))
+
+
+def _sw_const(name):
+    return _sw_block(name, r"const {name} = ([^\n]*?);(?: *//[^\n]*)?\n")
+
+
+def _sw_regex(name):
+    return re.fullmatch(r"/(.*)/", _sw_const(name)).group(1)
+
+
+def _meta(model, field, attr):
+    return next(getattr(m, attr) for m in model.model_fields[field].metadata
+                if getattr(m, attr, None) is not None)
+
+
+def test_the_trace_whitelist_mirrors_the_backends_schema():
+    """The sw's keys, caps, patterns and vocabularies ARE the schema's (the
+    schema is the contract; this file's whitelist only narrows what is sent).
+    A name that drifts here is a key dropped or a run that 422s, silently."""
+    from typing import get_args
+
+    from app.schemas import autofill_fill as F
+    from app.schemas import autofill_trace as T
+
+    assert _sw_keys("TRACE_RUN") == set(T.RunTrace.model_fields)
+    assert _sw_keys("TRACE_FIELD") == set(T.TraceField.model_fields)
+    assert _sw_keys("TRACE_STEP") == set(T.TraceStep.model_fields)
+    # A step also carries what the decision models say (/map, /pick, /step, polarity).
+    assert set(F.DecisionTrace.model_fields) | set(F.PolarityTrace.model_fields) <= _sw_keys("TRACE_STEP")
+    for name, literal in [("TRACE_OPS", T.Op), ("TRACE_EFFECTS", T.Effect), ("TRACE_SHAPES", F.Shape),
+                          ("TRACE_ROUTES", F.Route), ("TRACE_WHYS", F.Why), ("TRACE_ENGINES", F.Engine),
+                          ("TRACE_SECONDS", F.Second), ("TRACE_WAYS", F.PolarityWay),
+                          ("TRACE_REASONS", F.StepReason)]:
+        assert _sw_vocab(name) == set(get_args(literal)), name
+
+
+def test_the_trace_whitelist_limits_and_patterns_mirror_the_backends_schema():
+    from app.schemas import autofill_fill as F
+    from app.schemas import autofill_trace as T
+
+    assert [_sw_regex(n) for n in ("TRACE_WORD", "TRACE_SLOT", "TRACE_MOVE", "TRACE_FID", "TRACE_HOST",
+                                   "TRACE_FAMILY", "TRACE_SOURCE", "TRACE_RUN_ID")] == [
+        T.WORD, T.SLOT, F.MOVE_ID, F.FID, _meta(T.RunTrace, "host", "pattern"),
+        _meta(T.TraceField, "family", "pattern"), _meta(T.TraceField, "label_source", "pattern"),
+        _meta(T.RunTrace, "run_id", "pattern")]
+    names = ("TRACE_FIELDS", "TRACE_STEPS", "TRACE_OPTIONS", "TRACE_TEXT", "TRACE_ROUNDS", "TRACE_MS",
+             "TRACE_PICKS", "TRACE_SLOT_MAX")
+    assert [int(_sw_const(n)) for n in names] == [
+        T.MAX_RUN_FIELDS, T.MAX_FIELD_STEPS, _meta(T.TraceField, "options", "max_length"), T.LABEL_MAX,
+        _meta(T.TraceField, "round", "le"), _meta(T.TraceStep, "ms", "le"), F.MAX_PICK_OPTIONS,
+        _meta(T.TraceStep, "slot", "max_length")]
+    assert _meta(T.RunTrace, "rounds", "le") == int(_sw_const("TRACE_ROUNDS"))
+
+
 def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
     """`page_broadcast`'s allow-list, beside the `panel_frame0` one it is
     deliberately NOT merged with (see that handler's own note: this list may

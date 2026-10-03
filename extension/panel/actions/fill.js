@@ -372,6 +372,7 @@
     const loop = done.out;
     // Value-free: labels, shapes and outcomes, never an answer (fill-loop.js).
     store.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(loop));
+    if (loop?.trace) store.trace(loop.trace);
     // A Stop or the run's clock after the attach skipped the sweep that would
     // have re-read the fields verified before it: the report does not vouch
     // for them. A note rather than demoting each one, since nothing SEEN
