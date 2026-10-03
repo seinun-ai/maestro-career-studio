@@ -618,3 +618,23 @@ def test_a_map_case_is_scored_against_the_slot_it_routes(monkeypatch):
                         lambda fields, *_a, **_k: {f.fid: routed[fid_of[f.fid]] for f in fields})
     got = {r["id"]: r["outcome"] for r in ev.run_map_cases(cases, ev.map_case_facts(MAPS), ev.Run("fast"), None)}
     assert got == {"phone-extension": "wrong_write", "phone-number": "missed", "country-phone-code": "right"}
+
+
+def test_open_copy_points_the_app_at_the_copy_and_binds_it(tmp_path, monkeypatch):
+    """open_copy sets DATABASE_URL, drops TEST_DATABASE_URL, defaults the settings
+    and log dirs, then binds the copy by the function it is given."""
+    from scripts import db_copy
+
+    copy = tmp_path / db_copy.DB_FILENAME
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///elsewhere")
+    monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///a-test-db")
+    monkeypatch.setenv("SETTINGS_DIR", str(tmp_path / "settings"))
+    monkeypatch.setenv("LOGS_DIR", "placeholder")   # so monkeypatch restores whatever open_copy leaves
+    monkeypatch.delenv("LOGS_DIR")
+    bound = []
+    db_copy.open_copy(copy, bind=bound.append)
+    assert bound == [copy]
+    assert os.environ["DATABASE_URL"] == f"sqlite:///{copy.resolve()}"
+    assert "TEST_DATABASE_URL" not in os.environ
+    assert os.environ["SETTINGS_DIR"] == str(tmp_path / "settings")   # a set dir is kept
+    assert Path(os.environ["LOGS_DIR"]).is_dir()                       # an unset one gets a fresh temp dir
