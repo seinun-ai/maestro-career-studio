@@ -28,12 +28,12 @@ import { cn } from "@/lib/utils";
 // Colours only: the words come from career-labels (one table for every surface).
 const STATUS_STYLES: Record<KBEntityStatus, { chip: string; dot: string }> = {
   ongoing: {
-    chip: "bg-blue-600/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
-    dot: "bg-blue-600 dark:bg-blue-400",
+    chip: "bg-primary-container text-on-primary-container",
+    dot: "bg-primary",
   },
   completed: {
-    chip: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
-    dot: "bg-emerald-600 dark:bg-emerald-400",
+    chip: "bg-success-container text-on-success-container",
+    dot: "bg-success",
   },
   archived: {
     chip: "bg-muted text-muted-foreground",

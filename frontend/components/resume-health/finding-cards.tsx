@@ -333,31 +333,27 @@ function FindingOverflow({
  *  failed must-fix checks only, `serious` the failed serious ones). Shared by
  *  the report page and the studio's health link; `one`/`many` keep "1 note",
  *  "3 notes". */
-export const COUNT_META: { key: string; one: string; many: string; chip: string }[] = [
-  { key: "gate", one: "must fix", many: "must fix", chip: "bg-destructive/10 text-destructive" },
+export const COUNT_META: { key: string; one: string; many: string }[] = [
+  { key: "gate", one: "must fix", many: "must fix" },
   {
     key: "serious",
     one: "serious problem",
     many: "serious problems",
-    chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
   },
   {
     key: "critical",
     one: "critical",
     many: "critical",
-    chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
   },
   {
     key: "ask",
     one: "question",
     many: "questions",
-    chip: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
   },
   {
     key: "note",
     one: "note",
     many: "notes",
-    chip: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
   },
 ];
 
@@ -368,17 +364,11 @@ export function countWords(key: string, count: number): string {
   return `${count} ${noun}`;
 }
 
-const TYPE_CHIP: Record<"fix" | "ask", { label: string; chip: string; card: string }> = {
-  fix: {
-    label: "Fix",
-    chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
-    card: "border-amber-500/40",
-  },
-  ask: {
-    label: "Question",
-    chip: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
-    card: "border-violet-500/30",
-  },
+/** A Fix or Question card's edge. Its kind is said by the action (Review, Answer)
+ *  and the question line, so the edge is the neutral one (owner-approved UX change 5). */
+const TYPE_CARD: Record<"fix" | "ask", { card: string }> = {
+  fix: { card: "border-border" },
+  ask: { card: "border-border" },
 };
 
 export const GRADE_STYLES: Record<string, string> = {
@@ -670,7 +660,7 @@ export function FixCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
-  const meta = TYPE_CHIP.fix;
+  const meta = TYPE_CARD.fix;
   const renderSuggestion = (s: string) => (
     <CardSuggestion
       finding={finding}
@@ -782,7 +772,7 @@ export function AskCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
-  const meta = TYPE_CHIP.ask;
+  const meta = TYPE_CARD.ask;
   const metricAsk = isMetricAsk(finding);
   const [useAlternative, setUseAlternative] = useState(false);
   const storedFresh = answerMatchesFinding(storedAnswer, finding.content_hash);
@@ -891,7 +881,7 @@ export function AskCard({
         </p>
       )}
       {staleDraft && (
-        <p className="text-amber-700 dark:text-amber-400 mt-1 text-xs">
+        <p className="text-warning mt-1 text-xs">
           This bullet changed after you answered. Write the new wording again.
         </p>
       )}
@@ -1243,7 +1233,7 @@ function FailedGate({
   const accent =
     gate.tier === "fatal"
       ? "border-destructive/50 bg-destructive/5"
-      : "border-amber-500/50 bg-amber-500/5";
+      : "border-border";
 
   return (
     <div className={cn("min-w-0 rounded-md border px-3 py-2", accent)}>
@@ -1254,7 +1244,7 @@ function FailedGate({
             "shrink-0 text-xs",
             gate.tier === "fatal"
               ? "bg-destructive/10 text-destructive"
-              : "bg-amber-500/10 text-amber-800 dark:text-amber-400",
+              : "bg-warning-container text-on-warning-container",
           )}
         >
           {gate.tier === "fatal" ? "Must fix" : "Serious"}

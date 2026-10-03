@@ -43,7 +43,7 @@ export function BaseResumeThumbnail({
               // The engine log stays in the studio, never on a card.
               label: "PDF out of date",
               title: "The last PDF update failed. This is the previous version. Open the resume to see why.",
-              className: "text-amber-700 dark:text-amber-400",
+              className: "text-warning",
             }
           : undefined
       }

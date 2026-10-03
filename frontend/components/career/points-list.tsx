@@ -40,14 +40,14 @@ const STATES: { value: KBPointState; label: string; chip: string; dot: string }[
   {
     value: "draft",
     label: "Draft",
-    chip: "bg-amber-500/15 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200",
-    dot: "bg-amber-500 dark:bg-amber-400",
+    chip: "bg-warning-container text-on-warning-container",
+    dot: "bg-warning",
   },
   {
     value: "approved",
     label: "Approved",
-    chip: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
-    dot: "bg-emerald-600 dark:bg-emerald-400",
+    chip: "bg-success-container text-on-success-container",
+    dot: "bg-success",
   },
   {
     value: "retired",
@@ -251,7 +251,6 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
     <article
       className={cn(
         "group/point px-4 py-3.5 transition-colors duration-150 ease-out hover:bg-surface-container-low dark:hover:bg-surface-container-high",
-        point.state === "draft" && "bg-amber-500/5",
         point.state === "retired" && "opacity-70",
       )}
     >
@@ -363,7 +362,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
         ) : null}
         {hasDrift ? (
           <span
-            className="inline-flex h-6 items-center gap-1 rounded-full bg-amber-500/15 px-2 text-xs text-amber-800 dark:text-amber-200"
+            className="inline-flex h-6 items-center gap-1 rounded-full bg-warning-container px-2 text-xs text-on-warning-container"
             title="A resume still uses older wording."
           >
             <TriangleAlert className="size-3" aria-hidden="true" /> Wording differs

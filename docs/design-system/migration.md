@@ -14,6 +14,12 @@ Use this table when touching a file that still carries the old classes. The toke
 | `bg-red-*/N text-red-*`, `bg-destructive/10 text-destructive` on a chip | `bg-error-container text-on-error-container` |
 | A palette dot (`bg-amber-500`, `bg-emerald-600`) | `bg-warning`, `bg-success`, `bg-attention`, `bg-tertiary`, `bg-primary`, `bg-destructive` |
 | Palette text on a surface (`text-emerald-700 dark:text-emerald-400`) | `text-success`, `text-warning`, `text-attention`, `text-tertiary` |
+| `bg-slate-500/10 text-slate-600 dark:text-slate-400` (a neutral chip) | `bg-surface-container text-muted-foreground` |
+| A caution, pass or info box: `border-amber-500/30 bg-amber-500/10 text-amber-900`, `border-amber-300 bg-amber-50 dark:...` | `bg-warning-container text-on-warning-container` (pass: success pair; info: primary pair). Drop the tinted border and the palette class on its icon and spans: they inherit the pair's text |
+| A tinted card or row edge (`border-amber-500/40`, `border-violet-500/30`) | `border-border`: the card's own label or action already says its kind (a Serious badge, Review or Answer, the question line) |
+| A faint whole-row tint (`bg-amber-500/5`, `bg-emerald-500/5`) | drop it when a chip, dot or icon on the row states the state; otherwise the container fill |
+| An outline badge with a tinted border and palette text (`border-amber-500/40 text-amber-700`) | `border-transparent bg-warning-container text-on-warning-container` |
+| A gradient on text (`from-primary via-violet-500 to-rose-400 bg-clip-text`) | `text-foreground` |
 
 The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (`border-primary/25 bg-primary/[0.04]`) stay as they are.
 

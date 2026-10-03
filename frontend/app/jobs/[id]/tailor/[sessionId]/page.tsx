@@ -696,9 +696,9 @@ export default function TailorSessionPage({
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 p-6 pb-0">
       {staleReason ? (
-        <div className="animate-fade-rise flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+        <div className="animate-fade-rise flex flex-wrap items-center justify-between gap-3 rounded-xl bg-warning-container px-4 py-3 text-on-warning-container">
           <div className="flex min-w-0 items-center gap-2.5">
-            <TriangleAlert className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+            <TriangleAlert className="size-4 shrink-0" />
             <p className="text-sm">
               This gap analysis is out of date because {staleReason}.{" "}
               Your changes here won&apos;t be saved. Start a new one to keep going.
@@ -743,8 +743,8 @@ export default function TailorSessionPage({
       >
         <GapLocked value={tailorBusy}>
         {gapsJson.coverage_warning && (
-          <div className="border-amber-500/30 bg-amber-500/10 animate-fade-rise flex items-start gap-3 rounded-xl border p-4 text-amber-900 dark:text-amber-200">
-            <TriangleAlert className="size-5 shrink-0 text-amber-700 dark:text-amber-400 mt-0.5" />
+          <div className="bg-warning-container text-on-warning-container animate-fade-rise flex items-start gap-3 rounded-xl p-4">
+            <TriangleAlert className="size-5 shrink-0 mt-0.5" />
             <div className="space-y-1 text-sm">
               {/* The server's sentence already gives the counts. */}
               <p className="font-medium">{gapsJson.coverage_warning}</p>

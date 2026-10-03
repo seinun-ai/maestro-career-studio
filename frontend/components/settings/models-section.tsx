@@ -324,7 +324,7 @@ function CapabilityMark({
   return (
     <span className="flex items-center gap-1" title={reason}>
       {ok ? (
-        <Check className="size-3 text-emerald-600" aria-hidden="true" />
+        <Check className="text-success size-3" aria-hidden="true" />
       ) : (
         <X className="text-destructive size-3" aria-hidden="true" />
       )}
@@ -522,7 +522,7 @@ export function KeyField({
           // Saying WHERE the key lives matters: one saved here beats .env, so
           // a stale in-app key with a blank .env still reads as set while
           // every call 401s. "Set outside the app" is the .env key.
-          <span className="font-medium text-emerald-700 dark:text-emerald-400">
+          <span className="text-success font-medium">
             {source === "env" ? "Set outside the app" : "Saved"}
           </span>
         ) : (

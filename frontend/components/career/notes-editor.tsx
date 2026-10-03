@@ -202,7 +202,7 @@ export function NotesEditor({
         )}
 
         {staleLines.length > 0 ? (
-          <div role="alert" className="rounded-xl bg-amber-500/15 p-3 text-amber-900 dark:text-amber-100">
+          <div role="alert" className="rounded-xl bg-warning-container p-3 text-on-warning-container">
             <p className="flex items-center gap-2 text-xs font-semibold">
               <TriangleAlert className="size-4" aria-hidden="true" />
               Check these: they may be out of date

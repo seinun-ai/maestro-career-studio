@@ -74,7 +74,7 @@ _CONSEQUENCES = [
     ("components/resume-editor/tailored-resume-studio.tsx",
      "Your unsaved edits will be lost. You can't undo this."),
     # M25: the fatal tier is the only "must fix".
-    ("components/resume-health/finding-cards.tsx", '{ key: "gate", one: "must fix", many: "must fix",'),
+    ("components/resume-health/finding-cards.tsx", '{ key: "gate", one: "must fix", many: "must fix" }'),
     # M20: the pill's toast counts what it added from every count the server returns.
     ("components/kb-sync-pill.tsx", "{syncResultSentence(result)}"),
 ]

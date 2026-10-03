@@ -832,7 +832,7 @@ export function ChatPage() {
           // centred.
           <div className="flex flex-1 flex-col items-center justify-end px-4 pb-8">
             <div className="animate-fade-rise text-center">
-              <h1 className="from-primary bg-gradient-to-r via-violet-500 to-rose-400 bg-clip-text text-3xl font-medium tracking-tight text-transparent">
+              <h1 className="text-foreground text-3xl font-medium tracking-tight">
                 What are we working on?
               </h1>
               <p className="text-muted-foreground mt-2 text-sm">

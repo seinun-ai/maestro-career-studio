@@ -34,7 +34,7 @@ function DeltaBar({ label, value }: { label: string; value: number }) {
         <span
           className={cn(
             "text-xs font-medium tabular-nums",
-            positive ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+            positive ? "text-success" : "text-destructive",
           )}
         >
           {positive ? "+" : ""}
@@ -45,7 +45,7 @@ function DeltaBar({ label, value }: { label: string; value: number }) {
         <div
           className={cn(
             "h-full rounded-full transition-[width]",
-            positive ? "bg-emerald-500" : "bg-destructive",
+            positive ? "bg-success" : "bg-destructive",
           )}
           style={{ width: `${width}%` }}
         />
@@ -65,7 +65,7 @@ function SkillStateCell({ row }: { row: AtsSkillRow | null }) {
       {row.matched ? (
         <Badge
           variant="outline"
-          className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
+          className="border-transparent bg-success-container text-on-success-container"
         >
           Matched
         </Badge>
@@ -197,7 +197,7 @@ export function AtsComparePanel({
           <span
             className={cn(
               "text-sm font-medium",
-              deltaPositive ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+              deltaPositive ? "text-success" : "text-destructive",
             )}
           >
             ({deltaPositive ? "+" : ""}
@@ -226,20 +226,8 @@ export function AtsComparePanel({
             </TableHeader>
             <TableBody>
               {data.skill_diff.map((row) => {
-                const gained =
-                  !(row.before?.matched ?? false) &&
-                  (row.after?.matched ?? false);
-                const lost =
-                  (row.before?.matched ?? false) &&
-                  !(row.after?.matched ?? false);
                 return (
-                  <TableRow
-                    key={row.jd_skill}
-                    className={cn(
-                      gained && "bg-emerald-500/5",
-                      lost && "bg-destructive/5",
-                    )}
-                  >
+                  <TableRow key={row.jd_skill}>
                     <TableCell className="font-medium whitespace-normal">
                       {row.jd_skill}
                     </TableCell>

@@ -93,8 +93,8 @@ export default function NewApplicationPage() {
       />
 
       {needsKey ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-sm dark:border-amber-400/40 dark:bg-amber-400/[0.08]">
-          <span id={keyNoticeId} className="text-amber-800 dark:text-amber-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-warning-container px-3 py-2 text-sm text-on-warning-container">
+          <span id={keyNoticeId}>
             Saving a job reads its description with AI, so it needs an API key.
           </span>
           <Button

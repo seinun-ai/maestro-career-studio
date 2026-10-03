@@ -241,7 +241,7 @@ export function EditorShell({
           // announces "Unsaved changes". This is the visual half. The copy
           // does not say "your last save": after a failed render the pages
           // are older than that.
-          <div className="flex items-center gap-2 border-b bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+          <div className="flex items-center gap-2 border-b bg-warning-container px-3 py-1.5 text-xs text-on-warning-container">
             <History aria-hidden="true" className="size-3.5 shrink-0" />
             {"Preview doesn't include your unsaved edits. Save to update it."}
           </div>

@@ -156,7 +156,7 @@ function EndpointControls({ info, draft, onDraft, saving, onSave }: EndpointProp
           </Button>
         </div>
         {isRemoteEndpoint(value) && (
-          <p className="text-xs text-amber-700 dark:text-amber-500">
+          <p className="text-warning text-xs">
             Your API key and resume will be sent to this server. Use one you
             trust.
           </p>

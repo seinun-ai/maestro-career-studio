@@ -236,7 +236,7 @@ function DocumentStatus({ document }: { document: KBDocumentOut }) {
       className={cn(
         "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium",
         failed && "bg-destructive/10 text-destructive",
-        minted && "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
+        minted && "bg-success-container text-on-success-container",
         !failed && !minted && "bg-muted text-muted-foreground",
       )}
     >
@@ -244,7 +244,7 @@ function DocumentStatus({ document }: { document: KBDocumentOut }) {
         className={cn(
           "size-1.5 rounded-full",
           failed && "bg-destructive",
-          minted && "bg-emerald-600 dark:bg-emerald-400",
+          minted && "bg-success",
           !failed && !minted && "bg-muted-foreground/50",
         )}
       />
