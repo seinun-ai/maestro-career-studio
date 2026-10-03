@@ -1,8 +1,8 @@
 # Design system tokens and the move to them
 
 **Branch:** `design-system-tokens` (from `main` at `220950ce`).
-**Reference:** the Maestro Career Studio design system artifact (tokens, component previews in light
-and dark, usage rules). `docs/frontend-conventions.md` carries the rule; this file carries the order of work.
+**Reference:** `docs/design-system/` (brand book, tokens, component guidelines and previews, the old
+class → token table). `docs/frontend-conventions.md` carries the rule; this file carries the order of work.
 
 ## Goal
 
@@ -18,6 +18,9 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
 - `frontend/lib/utils.ts`: the new scale names registered with tailwind-merge.
 - `backend/tests/test_frontend_design_tokens.py`: contrast, ladder order and registration pins.
 - `docs/frontend-conventions.md`: the token rule.
+- `docs/design-system/`: the design system as files.
+- Step 1, the status vocabulary: `STATUS_STYLES`, `NEEDS_YOU` and `PROPOSAL_STATUS_CHIP` in
+  `status-chip.tsx`, both `GRADE_STYLES` maps and the sidebar's Needs you badge are role container pairs.
 
 ## What is left, in order
 
@@ -26,8 +29,7 @@ branch point.
 
 | # | Step | From | To | Size |
 |---|---|---|---|---|
-| 1 | Status vocabulary | `STATUS_STYLES` and `NEEDS_YOU` in `status-chip.tsx`, `health-badges.tsx`, the grade chips | role container pairs | 3 files; the chips every list shows |
-| 2 | Remaining palette classes | 302 `text-/bg-/border-<palette>-N` uses in 39 files (amber 132, emerald 76, blue 32, violet 20, orange 12) | `success` / `warning` / `attention` / `tertiary` / primary container | largest step; split by folder |
+| 2 | Remaining palette classes | the `text-/bg-/border-<palette>-N` uses left after step 1 (302 in 39 files before it; amber and emerald lead) | `success` / `warning` / `attention` / `tertiary` / primary container | largest step; split by folder |
 | 3 | Surfaces | 74 `bg-muted/N` uses in 45 files, 11 opacities | `/10`–`/30` → page (drop the fill) or `surface-container-low`; `/35`–`/60` → `surface-container-low`; `/70` and solid → `surface-container` | mechanical |
 | 4 | Type | `text-[22px]` page titles, `text-[10px]`/`[11px]`/`[0.8rem]` (33 uses), size + weight pairs | `text-title-large`, `text-label-small`, `text-title-medium` and the rest | start with `PageHeader`, `CardTitle`, `Badge` |
 | 5 | Corners | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |

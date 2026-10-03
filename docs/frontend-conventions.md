@@ -79,8 +79,10 @@
   containers (`border-primary/25 bg-primary/5` with foreground text) are not
   component states and stay.
 - **Shared tokens name every repeated choice** (`app/globals.css`; the
-  browsable reference with live previews is the Maestro Career Studio design
-  system artifact). New code takes a token, never a raw value.
+  reference is `docs/design-system/`: its `README.md` is the brand book, each
+  `components/<Name>/` holds a component's guidelines and a static preview,
+  and `migration.md` maps every old class to its token). New code takes a
+  token, never a raw value.
   **Status** is a role with a container pair, cut at M3's tones from the hue
   the app already used, with chroma held near the primary container's: `success` (accepted, passed, added text), `warning`
   (interviewing, a caution), `attention` (Needs you), `tertiary` (an offer,
