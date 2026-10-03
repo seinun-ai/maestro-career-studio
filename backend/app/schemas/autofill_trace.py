@@ -14,12 +14,11 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.schemas.autofill_fill import (
     FID,
+    DecisionFields,
     MAX_PICK_OPTIONS,
     MOVE_ID,
-    Engine,
     PolarityWay,
     Route,
-    Second,
     Shape,
     StepReason,
     Why,
@@ -34,10 +33,10 @@ SLOT = r"^[a-z_]+(\.[a-z0-9_]+)*$"  # a fact NAME (autofill_catalog), never its 
 MAX_RUN_FIELDS, MAX_FIELD_STEPS, LABEL_MAX, MAX_OPTION_COUNT = 200, 40, 200, 5000
 
 
-class TraceStep(BaseModel):
-    """One decision (a model call or code path) or one page action on a field."""
+class TraceStep(DecisionFields):
+    """One decision (a model call or code path) or one page action on a field. The model-decision
+    fields (engine, p, floor, second, first_p, first_same, chose_none) come from `DecisionFields`."""
 
-    model_config = ConfigDict(extra="forbid")
     op: Op
     ms: int | None = Field(default=None, ge=0, le=600_000)  # page action OR model-call latency
     effect: Effect | None = None  # page actions
@@ -45,13 +44,6 @@ class TraceStep(BaseModel):
     route: Route | None = None  # map
     slot: str | None = Field(default=None, max_length=120, pattern=SLOT)  # a fact NAME
     why: Why | None = None
-    engine: Engine | None = None
-    p: float | None = Field(default=None, ge=0.0, le=1.0)
-    floor: float | None = Field(default=None, ge=0.0, le=1.0)
-    second: Second | None = None
-    first_p: float | None = Field(default=None, ge=0.0, le=1.0)
-    first_same: bool | None = None
-    chose_none: bool | None = None  # the model's top choice was the no-answer key (see DecisionTrace)
     way: PolarityWay | None = None  # polarity
     # index into the options offered to /pick (not TraceField.options, which is capped)
     option: int | None = Field(default=None, ge=0, lt=MAX_PICK_OPTIONS)

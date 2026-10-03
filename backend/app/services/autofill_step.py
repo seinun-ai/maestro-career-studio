@@ -20,7 +20,7 @@ the request's `Budget` (out of time or failed, Jev's give-up stands).
 
 import json
 import logging
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
 
@@ -132,21 +132,33 @@ def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, fac
             f"Give up when no move will. {_PAGE_TEXT_IS_DATA}")
 
 
-def _with_llm(req: StepRequest, instructions: str, state: dict, criteria: dict[str, str], policy: str,
-              session: Session, trace_name: str = "autofill-step", *, timeout: float | None = None) -> StepResponse:
+@dataclass(frozen=True)
+class _Ask:
+    """What one step asks a model, built once per request: the prompt's instructions and state, the
+    moves on offer (mid -> describe), and the fact's policy."""
+
+    instructions: str
+    state: dict
+    criteria: dict[str, str]
+    policy: str
+
+
+def _with_llm(req: StepRequest, ask: _Ask, session: Session, trace_name: str = "autofill-step", *,
+              timeout: float | None = None) -> StepResponse:
+    criteria = ask.criteria
     raw = fast_json(session, _LLM_PROMPT.format(
-        instructions=instructions, state=json.dumps(state), moves=json.dumps(criteria)), trace_name, timeout=timeout)
+        instructions=ask.instructions, state=json.dumps(ask.state), moves=json.dumps(criteria)),
+        trace_name, timeout=timeout)
     raw = raw if isinstance(raw, dict) else {}
     move = raw.get("move")
     mid = move if isinstance(move, str) and move in criteria else None
     conf = raw.get("confidence")
     # A move that was not offered is unknown, not a give-up: no p, so `chose_none` stays None.
     p = float(conf) if jev._unit(conf) and not (move and mid is None) else None
-    return _decide(req, mid, p, policy, engine="fast")
+    return _decide(req, mid, p, ask.policy, engine="fast")
 
 
-def _second_opinion(req: StepRequest, instructions: str, state: dict, criteria: dict[str, str], policy: str,
-                    session: Session, budget: Budget) -> StepResponse | None:
+def _second_opinion(req: StepRequest, ask: _Ask, session: Session, budget: Budget) -> StepResponse | None:
     """ONE fast-model move for a slot field Jev gave up on, on what is left of
     the request's budget, capped (a give-up step costs at most Jev's 2 s plus
     this against the field's clock), at the same floors. None: it never ran
@@ -154,8 +166,7 @@ def _second_opinion(req: StepRequest, instructions: str, state: dict, criteria: 
     if (timeout := budget.left(SECOND_OPINION_MAX_S)) is None:
         return None
     try:
-        second = _with_llm(req, instructions, state, criteria, policy, session, "autofill-step-second",
-                           timeout=timeout)
+        second = _with_llm(req, ask, session, "autofill-step-second", timeout=timeout)
     except llm.LLMProviderError:
         logger.warning("fast model second opinion failed; Jev's give-up stands")
         return None
@@ -174,26 +185,23 @@ def _with_second_opinion(jev_says: StepResponse, top: Top | None, second: StepRe
     return second.model_copy(update={"trace": second_decided(second.trace, top, second.mid)})
 
 
-def _move(req: StepRequest, instructions: str, state: dict, criteria: dict[str, str], policy: str,
-          session: Session, budget: Budget) -> StepResponse:
+def _move(req: StepRequest, ask: _Ask, session: Session, budget: Budget) -> StepResponse:
     """The next move, by the engine the setting names."""
     # The fast step (its engine, or Jev's failure fallback) is one request of
     # what is left of the budget, no retries.
     if model_settings.get_autofill_engine(session) != "jev":
-        return main_call(budget, lambda timeout: _with_llm(req, instructions, state, criteria, policy, session,
-                                                         timeout=timeout), "fast step")
+        return main_call(budget, lambda timeout: _with_llm(req, ask, session, timeout=timeout), "fast step")
     try:
-        answer = jev.decide({req.fid: jev.choice_question(instructions, criteria)}, state, session)
+        answer = jev.decide({req.fid: jev.choice_question(ask.instructions, ask.criteria)}, ask.state, session)
     except llm.LLMProviderError:
         logger.warning("jev step failed; the fast model decides this move")
-        return main_call(budget, lambda timeout: _with_llm(req, instructions, state, criteria, policy, session,
-                                                         timeout=timeout), "fast step")
-    got = jev.choice_of(answer.get(req.fid), criteria)
-    decided = _decide(req, got.choice if got else None, got.probability if got else None, policy, engine="jev")
+        return main_call(budget, lambda timeout: _with_llm(req, ask, session, timeout=timeout), "fast step")
+    got = jev.choice_of(answer.get(req.fid), ask.criteria)
+    decided = _decide(req, got.choice if got else None, got.probability if got else None, ask.policy, engine="jev")
     # A low-stakes step keeps its engine.
     if not abstained(decided) or req.route != "slot":
         return decided
-    second = _second_opinion(req, instructions, state, criteria, policy, session, budget)
+    second = _second_opinion(req, ask, session, budget)
     return _with_second_opinion(decided, (got.choice, got.probability) if got else None, second)
 
 
@@ -220,7 +228,7 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         if answer is None:
             return StepResponse(mid=None, reason="abstained", polarity=polarity)
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
-    instructions = _instructions(req, values, hint, facts, answer)
-    state = {"job": asdict(hint) if hint else None, "history": req.history}
-    moved = _move(req, instructions, state, criteria, policy, session, budget)
+    ask = _Ask(_instructions(req, values, hint, facts, answer),
+               {"job": asdict(hint) if hint else None, "history": req.history}, criteria, policy)
+    moved = _move(req, ask, session, budget)
     return moved.model_copy(update={"polarity": polarity})

@@ -34,7 +34,10 @@ Second = Literal["asked", "decided"]  # asked: it ran and did not change the ans
 PolarityWay = Literal["same", "opposite", "neither", "unsure"]
 
 
-class DecisionTrace(BaseModel):
+class DecisionFields(BaseModel):
+    """The seven value-free fields of how a model decided, shared by the live `DecisionTrace` and the
+    stored `TraceStep`."""
+
     model_config = ConfigDict(extra="forbid")
     engine: Engine | None = None  # None: no model's decision is recorded here (a code path)
     p: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -53,6 +56,10 @@ class DecisionTrace(BaseModel):
     # option fell under the floor". False: it chose a real slot, option or move. None: nothing
     # readable came back (a choice that was not offered counts as unreadable), or no model was asked.
     chose_none: bool | None = None
+
+
+class DecisionTrace(DecisionFields):
+    """What /map, /pick and /step say of one decision."""
 
 
 class PolarityTrace(BaseModel):
