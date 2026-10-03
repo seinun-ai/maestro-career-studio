@@ -4,6 +4,13 @@ Run from backend/ against a COPY of the database (the same guard as the fill eva
 
     python -m scripts.fill_trace --db <copy> last [--host H] [--n 1]
 
+    python -m scripts.fill_trace --db <copy> report
+
+`report` prints the never-expiring counters and the stored runs as five `== Section ==` blocks (wasted
+actions, calibration, first-engine and second-opinion value, slowest fields, threshold suggestions);
+a block with nothing to show prints `(no data)`. Every line is `key=value` pairs, so `grep` finds a
+family, an op or a floor.
+
 `last` prints the N newest runs. Per run one header line, then per field one line and one
 indented line per step, so `grep` finds a field, an op or a floor:
 
@@ -40,9 +47,13 @@ if TYPE_CHECKING:  # the app is imported only after open_copy sets its environme
     from app.schemas.autofill_trace import RunTrace, TraceField, TraceStep
 
 
+# json leaves these raw with ensure_ascii=False, yet str.splitlines() splits on them.
+_LINE_BREAKS = str.maketrans({"\u2028": "\\u2028", "\u2029": "\\u2029", "\x85": "\\u0085"})
+
+
 def _label(s: str) -> str:
-    """A page's text as one JSON string: quotes and newlines escaped, so it cannot fake a line."""
-    return json.dumps(s, ensure_ascii=False)
+    """A page's text as one JSON string: quotes and line breaks escaped, so it cannot fake a line."""
+    return json.dumps(s, ensure_ascii=False).translate(_LINE_BREAKS)
 
 
 def _ms(ms: int | None) -> str | None:
@@ -154,7 +165,8 @@ def _check(run: AutofillRun) -> tuple[RunTrace | None, str]:
     try:
         return RunTrace.model_validate(run.trace), ""
     except ValidationError as e:
-        return None, ".".join(str(part) for part in e.errors(include_input=False)[0]["loc"])
+        loc = ".".join(str(part) for part in e.errors(include_input=False)[0]["loc"])
+        return None, loc or "<root>"
 
 
 def _trace(run: AutofillRun) -> RunTrace | None:
@@ -166,6 +178,166 @@ def render_run(run: AutofillRun) -> list[str]:
     if trace is None:
         return [f"RUN {run.run_id}  {run.host}  unreadable trace at {loc} (it does not match the current schema)"]
     return [render_header(trace), *(line for field in trace.fields for line in render_field(field))]
+
+
+# ---------- report: counters and stored runs, aggregated
+
+Row = tuple[dict[str, str], dict[str, int]]   # one counter row: (key parts, counts)
+NO_DATA = "(no data)"
+WASTED_SHOWN = 15
+SLOWEST_SHOWN = 10
+SUGGEST_MIN_N = 20
+SUGGEST_MIN_KEPT = 0.95
+NO_SUGGESTION = "no suggestion: no band has ≥20 confirmed decisions kept ≥95% below its floor"
+SUGGESTION_NOTE = ("note: a decision under its floor with no second opinion abstains, so real runs cannot show "
+                   "whether it would have been kept; use the eval (scripts.eval_fill_decisions) for those")
+
+
+def _pct(part: int, whole: int) -> str:
+    return f"{100 * part / whole:.0f}%" if whole else "—"
+
+
+def _pairs(**fields: object) -> str:
+    return "  ".join(f"{name}={value}" for name, value in fields.items())
+
+
+def _order(value: str) -> float:
+    """A floor or band part as a number, for sorting; NONE_PART and the like sort first."""
+    try:
+        return float(value)
+    except ValueError:
+        return -1.0
+
+
+def _wasted(counts: dict[str, int]) -> tuple[float | None, float | None]:
+    """(average ms, wasted ms) of one action row; None when no try of it was timed."""
+    from app.services.autofill_trace import REJECTED
+
+    if not counts.get("timed"):
+        return None, None
+    average = counts.get("ms", 0) / counts["timed"]
+    return average, sum(counts.get(effect, 0) for effect in REJECTED) * average
+
+
+def render_wasted(rows: list[Row]) -> list[str]:
+    """Family x kind, most wasted ms first: tries, share that was not progress (effect_unknown counts
+    as not progress and is shown apart), average ms, and ms spent on tries the page rejected."""
+    ranked = []
+    for parts, counts in rows:
+        average, wasted = _wasted(counts)
+        tries = counts.get("tries", 0)
+        ranked.append((wasted or 0, tries, _pairs(
+            family=parts["family"], kind=parts["kind"], tries=tries,
+            not_progress=_pct(tries - counts.get("progress", 0), tries),
+            unknown=counts.get("effect_unknown", 0),
+            avg=_ms(None if average is None else round(average)) or "—",
+            wasted=_ms(None if wasted is None else round(wasted)) or "—")))
+    ranked.sort(key=lambda r: (-r[0], -r[1], r[2]))
+    return [line for *_, line in ranked[:WASTED_SHOWN]] or [NO_DATA]
+
+
+def render_calibration(rows: list[Row]) -> list[str]:
+    """One line per op x engine x by x floor x band x choice, with the shares of its n that were kept,
+    left, failed, or followed by a rejected page action."""
+    def order(row: Row) -> tuple:
+        p = row[0]
+        return p["op"], p["engine"], p["by"], _order(p["floor"]), _order(p["band"]), p["choice"]
+
+    return [_pairs(**parts, n=counts.get("n", 0),
+                   **{name: _pct(counts.get(name, 0), counts.get("n", 0))
+                      for name in ("kept", "left", "failed", "rejected")})
+            for parts, counts in sorted(rows, key=order)] or [NO_DATA]
+
+
+def render_second(first: list[Row], second: list[Row]) -> list[str]:
+    """`first|`: per op x floor x band, how often the first engine's same-choice decisions were kept.
+    `second|`: per op, how often the second opinion was asked or decided, and kept when it decided."""
+    lines = [_pairs(first=parts["op"], floor=parts["floor"], band=parts["band"], n=counts.get("n", 0),
+                    kept=_pct(counts.get("kept", 0), counts.get("n", 0)))
+             for parts, counts in sorted(first, key=lambda r: (r[0]["op"], _order(r[0]["floor"]), _order(r[0]["band"])))]
+    lines += [_pairs(second=parts["op"], asked=counts.get("asked", 0), decided=counts.get("decided", 0),
+                     decided_kept=_pct(counts.get("decided_kept", 0), counts.get("decided", 0)))
+              for parts, counts in sorted(second, key=lambda r: r[0]["op"])]
+    return lines or [NO_DATA]
+
+
+def render_slowest(fields: list[tuple[str, str, int, int, str]]) -> list[str]:
+    """The fields with the most steps, ties broken by total ms: (host, label, steps, total ms, outcome)."""
+    top = sorted(fields, key=lambda f: (-f[2], -f[3]))[:SLOWEST_SHOWN]
+    return [_pairs(host=host, label=_label(label), steps=steps, ms=_ms(ms) or "0ms", outcome=outcome)
+            for host, label, steps, ms, outcome in top] or [NO_DATA]
+
+
+def _suggests(parts: dict[str, str], counts: dict[str, int]) -> bool:
+    """A `first|` row proves its floor too high: enough confirmed decisions, nearly all kept, and the
+    whole band below the floor. The closest-pick floor is not the match floor the first engine faced."""
+    from app.services.autofill_choose import CLOSEST_FLOOR
+    from app.services.autofill_trace import NONE_PART
+
+    if NONE_PART in (parts["floor"], parts["band"]):
+        return False
+    floor, band = float(parts["floor"]), float(parts["band"])
+    n = counts.get("n", 0)
+    return (n >= SUGGEST_MIN_N and counts.get("kept", 0) / n >= SUGGEST_MIN_KEPT
+            and round(band + 0.1, 2) <= floor and floor != CLOSEST_FLOOR)
+
+
+def render_suggestions(first: list[Row]) -> list[str]:
+    """Evidence-backed floor suggestions from the `first|` rows only, then the one standing note."""
+    lines = [f"{parts['op']}: jev at {float(parts['band']):.1f}–{float(parts['band']) + 0.1:.1f} was confirmed "
+             f"and kept {counts['kept']}/{counts['n']} — its floor {float(parts['floor']):.2f} "
+             f"could be {float(parts['band']):.2f}"
+             for parts, counts in sorted(first, key=lambda r: (r[0]["op"], _order(r[0]["floor"]), _order(r[0]["band"])))
+             if _suggests(parts, counts)]
+    if not lines:
+        lines = [NO_SUGGESTION if first else NO_DATA]
+    return [*lines, SUGGESTION_NOTE]
+
+
+def _counter_rows(session: Session) -> dict[str, list[Row]]:
+    """The stored counters by key family. A key this reader does not know is skipped."""
+    from sqlalchemy import select
+
+    from app.models.autofill_mechanism_stat import AutofillMechanismStat
+    from app.services.autofill_trace import KEY_PARTS, parse_key
+
+    out: dict[str, list[Row]] = {family: [] for family in KEY_PARTS}
+    for stat in session.scalars(select(AutofillMechanismStat)):
+        try:
+            family, parts = parse_key(stat.key)
+        except (KeyError, ValueError):
+            continue
+        out[family].append((parts, stat.counts))
+    return out
+
+
+def _slowest_rows(session: Session) -> list[tuple[str, str, int, int, str]]:
+    """Every field with at least one step in the stored runs; a run that no longer parses is skipped."""
+    from sqlalchemy import select
+
+    from app.models.autofill_run import AutofillRun
+
+    out = []
+    for run in session.scalars(select(AutofillRun)):
+        trace = _trace(run)
+        for field in trace.fields if trace else ():
+            if field.steps:
+                out.append((trace.host, field.label, len(field.steps), sum(s.ms or 0 for s in field.steps),
+                            field.outcome))
+    return out
+
+
+def run_report(session: Session, args: argparse.Namespace) -> int:
+    counters = _counter_rows(session)
+    sections = [
+        ("Wasted actions", render_wasted(counters["action"])),
+        ("Calibration", render_calibration(counters["decision"])),
+        ("First engine and second opinion", render_second(counters["first"], counters["second"])),
+        ("Slowest fields", render_slowest(_slowest_rows(session))),
+        ("Suggestions", render_suggestions(counters["first"])),
+    ]
+    print("\n\n".join("\n".join([f"== {title} ==", *lines]) for title, lines in sections))
+    return 0
 
 
 # ---------- subcommands: each is `run(session, args) -> exit code`
@@ -207,6 +379,8 @@ def _parser() -> argparse.ArgumentParser:
     p_last.add_argument("--host", default=None, help="only runs on this host")
     p_last.add_argument("--n", type=_positive, default=1, help="how many runs, newest first (default 1)")
     p_last.set_defaults(run=run_last)
+    sub.add_parser("report", parents=[common], help="counters and stored runs: wasted actions, calibration, "
+                   "second-opinion value, slowest fields, floor suggestions").set_defaults(run=run_report)
     return ap
 
 
