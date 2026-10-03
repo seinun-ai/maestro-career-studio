@@ -977,6 +977,55 @@ def test_the_trace_whitelist_limits_and_patterns_mirror_the_backends_schema():
     assert _meta(T.RunTrace, "rounds", "le") == int(_sw_const("TRACE_ROUNDS"))
 
 
+def _literal_args(model, field):
+    from typing import get_args
+
+    return {arg for part in get_args(model.model_fields[field].annotation) if part is not type(None)
+            for arg in (get_args(part) or (part,))}
+
+
+def test_the_trace_whitelists_remaining_literals_mirror_the_backends_schema():
+    """The caps and enums written inline in the schema's Field() calls and not
+    reachable from a pattern: each is a 422 if the sw's copy runs wider."""
+    from app.schemas import autofill_fill as F
+    from app.schemas import autofill_trace as T
+
+    assert [int(_sw_const(n)) for n in ("TRACE_SOURCE_MAX", "TRACE_FAMILY_MAX", "TRACE_MOVE_MAX")] == [
+        _meta(T.TraceField, "label_source", "max_length"), _meta(T.TraceField, "family", "max_length"),
+        _meta(T.TraceStep, "move", "max_length")] == [40, 32, 40]
+    assert _meta(F.StepCandidate, "mid", "max_length") == int(_sw_const("TRACE_MOVE_MAX"))
+    assert _sw_vocab("TRACE_MODES") == _literal_args(T.RunTrace, "mode") == {"assist"}
+    assert _sw_vocab("TRACE_HALTS") == _literal_args(T.RunTrace, "halted") == {"stopped", "timeout"}
+
+
+def test_a_move_longer_than_the_schema_allows_is_dropped(tmp_path):
+    """`click:o` plus digits matches the pattern at any length; the schema caps it at 40."""
+    steps = [{"op": "move", "move": "click:o" + "1" * 33}, {"op": "move", "move": "click:o" + "1" * 34}]
+    got = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=steps)]))["fields"][0]["steps"]
+    assert got == [{"op": "move", "move": "click:o" + "1" * 33}, {"op": "move"}]
+
+
+@pytest.mark.parametrize("stamp", [
+    "2026-02-30T10:00:00Z", "2026-13-01T10:00:00Z", "2026-10-03T24:00:00Z", "2026-10-03T10:60:00Z",
+    "2026-10-03T10:00:60Z", "2026-10-03T10:00:00+24:00", "2026-10-03T10:00:00+05:60", "0000-01-01T00:00:00Z",
+    "2026-10-03 10:00:00Z", "2026-10-03T10:00:00",
+])
+def test_a_time_pydantic_would_refuse_posts_nothing(tmp_path, stamp):
+    """A Date rolls 02-30 into March and 24:00 into tomorrow, so `Date.parse` alone
+    would pass what an AwareDatetime refuses; the whole run would 422 and be lost."""
+    assert _post_trace(tmp_path, _run_trace(started_at=stamp))["posted"] == []
+
+
+@pytest.mark.parametrize("stamp", ["2026-02-28T23:59:59Z", "2024-02-29T00:00:00.123456Z",
+                                   "2026-10-03T10:00:00+05:30", "2026-10-03T10:00:00-23:59"])
+def test_a_time_pydantic_accepts_is_kept(tmp_path, stamp):
+    from app.schemas.autofill_trace import RunTrace
+
+    body = _posted_trace(tmp_path, _run_trace(started_at=stamp))
+    assert body["started_at"] == stamp
+    RunTrace.model_validate(body)
+
+
 def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
     """`page_broadcast`'s allow-list, beside the `panel_frame0` one it is
     deliberately NOT merged with (see that handler's own note: this list may

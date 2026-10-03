@@ -324,6 +324,7 @@
   const TRACE_WORD = /^[a-z_]{1,40}$/;
   const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
   const MOVE_ID = /^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$/;
+  const TRACE_MOVE_MAX = 40;
   const TRACE_ROUTES = new Set(["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]);
   const TRACE_REASONS = new Set(["matched", "closest", "assumed", "progress", "abstained"]);
   const TRACE_ENGINES = new Set(["jev", "fast"]);
@@ -339,7 +340,7 @@
   // word cannot carry a typed value); anything else is null, never "".
   const traceWord = (s) => (typeof s === "string" && TRACE_WORD.test(s) ? s : null);
   const traceSlot = (s) => (typeof s === "string" && s.length <= 120 && TRACE_SLOT.test(s) ? s : null);
-  const traceMove = (mid) => (typeof mid === "string" && MOVE_ID.test(mid) ? mid : null);
+  const traceMove = (mid) => (typeof mid === "string" && mid.length <= TRACE_MOVE_MAX && MOVE_ID.test(mid) ? mid : null);
   const wholeMs = (ms) => Math.min(600000, Math.max(0, Math.round(Number(ms) || 0)));
   // The page's outcome (or act()'s own word) as the effect of an action; null
   // is no attempt at all: Stop (halted) and the page's cancel.

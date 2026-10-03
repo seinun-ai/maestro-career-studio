@@ -342,6 +342,9 @@ const TRACE_ROUNDS = 10;
 const TRACE_MS = 600000;
 const TRACE_PICKS = 250;
 const TRACE_SLOT_MAX = 120;
+const TRACE_MOVE_MAX = 40;
+const TRACE_SOURCE_MAX = 40;
+const TRACE_FAMILY_MAX = 32;
 const TRACE_WORD = /^[a-z_]{1,40}$/;
 const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
 const TRACE_MOVE = /^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$/;
@@ -350,7 +353,7 @@ const TRACE_HOST = /^[a-z0-9.-]{1,253}(:\d{1,5})?$/;
 const TRACE_FAMILY = /^f:[0-9a-z]{1,24}$/;
 const TRACE_SOURCE = /^[a-z-]+$/;
 const TRACE_RUN_ID = /^[0-9a-z-]{8,64}$/;
-const TRACE_TIME = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,9})?(Z|[+-]\d\d:\d\d)$/;
+const TRACE_TIME = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d{1,9})?(?:Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
 const TRACE_OPS = new Set(["map", "polarity", "pick", "step", "explore", "choose", "set", "write", "move",
   "sweep", "recipe"]);
 const TRACE_EFFECTS = new Set(["progress", "no_effect", "unexpected", "reverted", "unconfirmed", "refused",
@@ -362,6 +365,8 @@ const TRACE_ENGINES = new Set(["jev", "fast"]);
 const TRACE_SECONDS = new Set(["asked", "decided"]);
 const TRACE_WAYS = new Set(["same", "opposite", "neither", "unsure"]);
 const TRACE_REASONS = new Set(["matched", "closest", "assumed", "progress", "abstained"]);
+const TRACE_MODES = new Set(["assist"]);
+const TRACE_HALTS = new Set(["stopped", "timeout"]);
 
 // A coercer answers the value to post, or undefined to drop the key.
 const traceText = (max) => (v) => (typeof v === "string" ? v.slice(0, max) : undefined);
@@ -382,7 +387,19 @@ const traceUnit = (v) => {
   const n = traceNumber(v);
   return n >= 0 && n <= 1 ? n : undefined;
 };
-const traceTime = (v) => (typeof v === "string" && TRACE_TIME.test(v) && Number.isFinite(Date.parse(v)) ? v : undefined);
+// Strict as pydantic's AwareDatetime is: the fields must survive a round trip
+// through a Date, so 2026-02-30 and T24:00:00 (which a Date rolls over) drop.
+const traceTime = (v) => {
+  const parts = typeof v === "string" ? TRACE_TIME.exec(v) : null;
+  if (!parts) return undefined;
+  const [year, month, day, hour, minute, second] = parts.slice(1, 7).map(Number);
+  const at = new Date(0);
+  at.setUTCFullYear(year, month - 1, day);
+  at.setUTCHours(hour, minute, second);
+  const same = [at.getUTCFullYear(), at.getUTCMonth() + 1, at.getUTCDate(), at.getUTCHours(), at.getUTCMinutes(),
+    at.getUTCSeconds()].every((part, i) => part === [year, month, day, hour, minute, second][i]);
+  return same && year >= 1 ? v : undefined;
+};
 const traceList = (scrub, max) => (v) => (Array.isArray(v) ? v.map(scrub).filter(Boolean).slice(0, max) : undefined);
 const traceKeep = (spec, source) => {
   const out = {};
@@ -411,12 +428,12 @@ const TRACE_STEP = {
   way: traceOneOf(TRACE_WAYS),
   option: traceInt(TRACE_PICKS - 1),
   reason: traceOneOf(TRACE_REASONS),
-  move: traceMatch(TRACE_MOVE),
+  move: traceMatch(TRACE_MOVE, TRACE_MOVE_MAX),
 };
 const TRACE_FIELD = {
   fid: traceMatch(TRACE_FID),
   label: traceText(TRACE_TEXT),
-  label_source: traceMatch(TRACE_SOURCE, 40),
+  label_source: traceMatch(TRACE_SOURCE, TRACE_SOURCE_MAX),
   shape: (v) => (TRACE_SHAPES.has(v) ? v : "unknown"),
   section: traceText(TRACE_TEXT),
   required: traceBool,
@@ -424,7 +441,7 @@ const TRACE_FIELD = {
     ? v.slice(0, TRACE_OPTIONS).map((text) => (typeof text === "string" ? text.slice(0, TRACE_TEXT) : ""))
     : undefined),
   option_count: traceInt(Number.MAX_SAFE_INTEGER),
-  family: traceMatch(TRACE_FAMILY, 32),
+  family: traceMatch(TRACE_FAMILY, TRACE_FAMILY_MAX),
   steps: traceList((step) => {
     const kept = traceKeep(TRACE_STEP, step);
     return kept.op ? kept : null;
@@ -437,8 +454,8 @@ const TRACE_RUN = {
   host: (v) => traceMatch(TRACE_HOST)(typeof v === "string" ? v.toLowerCase() : v),
   started_at: traceTime,
   ended_at: traceTime,
-  mode: (v) => (v === "assist" ? v : undefined),
-  halted: (v) => (v === "stopped" || v === "timeout" ? v : undefined),
+  mode: traceOneOf(TRACE_MODES),
+  halted: traceOneOf(TRACE_HALTS),
   rounds: traceClamped(TRACE_ROUNDS),
   fields: traceList((field) => {
     const kept = traceKeep(TRACE_FIELD, field);

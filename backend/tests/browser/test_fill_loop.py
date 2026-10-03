@@ -2804,6 +2804,7 @@ def test_the_loops_trace_limits_and_patterns_mirror_the_backends():
     assert [regex(n) for n in ("TRACE_WORD", "TRACE_SLOT", "MOVE_ID", "TRACE_HOST", "TRACE_FAMILY", "TRACE_SOURCE", "FID")] == [
         T.WORD, T.SLOT, F.MOVE_ID, _meta(T.RunTrace, "host", "pattern"), _meta(T.TraceField, "family", "pattern"),
         _meta(T.TraceField, "label_source", "pattern"), F.FID]
+    assert int(_const("TRACE_MOVE_MAX")) == _meta(T.TraceStep, "move", "max_length") == _meta(F.StepCandidate, "mid", "max_length")
     assert re.search(r"s\.length <= (\d+) && TRACE_SLOT", SOURCE).group(1) == str(_meta(T.TraceStep, "slot", "max_length"))
     assert re.search(r"Math\.min\((\d+), Math\.max\(0, Math\.round", SOURCE).group(1) == str(_meta(T.TraceStep, "ms", "le"))
 
