@@ -9,4 +9,4 @@ Tabs divide one page into sections; they are the line style, with a `primary` in
 - A tab panel draws its focus ring as an overlay above its content.
 - Do not use the filled pill strip for page sections: it looks like the SegmentedToggle beside it.
 
-Source: `frontend/components/ui/tabs.tsx` (`line` variant). There is one style: the filled pill strip is gone, and a two- or three-way view switch of one list or chart is a SegmentedToggle. A row never wraps; with more labels than fit it scrolls sideways inside itself, and a click on a partly hidden tab scrolls it into view.
+Source: `frontend/components/ui/tabs.tsx`. There is one style: the filled pill strip is gone, and a two- or three-way view switch of one list or chart is a SegmentedToggle. A row never wraps; with more labels than fit it scrolls sideways inside itself, and a click on a partly hidden tab scrolls it into view.

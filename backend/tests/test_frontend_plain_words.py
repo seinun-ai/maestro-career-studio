@@ -277,7 +277,7 @@ def test_job_market_bars_and_filters_print_words():
     for field in ("o.work_mode", "o.level_breakdown", "o.work_auth.opt", "o.work_auth.sponsorship"):
         assert f"toEnumBars({field})" in market, field
     page = _read("app/analytics/page.tsx")
-    assert '{filterSelect("level", "Level", level, setLevel, options.levels, enumLabel)}' in page
+    assert '{filterSelect(`${panel}-level`, "Level", level, setLevel, options.levels, enumLabel)}' in page
     assert '"Employment type",' in page and "options.employment,\n        enumLabel," in page
 
 

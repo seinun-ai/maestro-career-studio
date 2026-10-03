@@ -621,6 +621,28 @@ def test_every_tab_panel_stays_mounted():
             assert "keepMounted={false}" not in tag, f"{rel}:{number}: a panel opts out of staying mounted"
 
 
+def test_a_page_with_tab_panels_never_repeats_a_literal_control_id():
+    """Every panel stays mounted, so a control id written as a literal in two places is two elements
+    with one id, and a `<Label htmlFor>` resolves to the first (a hidden panel's) and leaves the
+    visible control unnamed. Analytics' filter row, shown in three panels, prefixes each id with its tab.
+    Only literal ids are seen: an id passed as an argument, built in a template, or set by a shared
+    component rendered in two panels is not, so the Analytics asserts below guard that case by name."""
+    hits = []
+    for rel in _tab_sources():
+        text = _read(rel)
+        if "<TabsContent" not in text:
+            continue
+        seen: dict[str, int] = {}
+        for match in re.finditer(r"""(?<![\w-])id="([\w-]+)\"""", text):
+            seen[match.group(1)] = seen.get(match.group(1), 0) + 1
+        hits += [f"{rel}: id=\"{name}\" x{n}" for name, n in seen.items() if n > 1]
+    assert not hits, "a literal id repeats where several panels are mounted:\n" + "\n".join(hits)
+    analytics = _read("app/analytics/page.tsx")
+    assert "const filterRow = (panel: TabValue) =>" in analytics
+    assert 'filterSelect(`${panel}-level`' in analytics and '"role_category",' not in analytics
+    assert [m for m in re.findall(r"\{filterRow\(\"(\w+)\"\)\}", analytics)] == ["market", "fit", "gaps"]
+
+
 def test_a_section_tab_count_is_a_plain_number_not_a_badge():
     for rel in _tab_sources():
         text = _read(rel)

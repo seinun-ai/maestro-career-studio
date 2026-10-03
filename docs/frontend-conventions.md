@@ -874,7 +874,10 @@
   never passes `outline-*`, `after:hidden` or another `overflow-*` to a panel
   (pinned). Every panel stays mounted: `TabsContent` defaults `keepMounted`, so a
   panel mounts at load and none unmounts on a switch (unsaved text and leave-guard
-  registrations survive a hidden tab, a deep link has its target; pinned).
+  registrations survive a hidden tab, a deep link has its target; pinned). The accepted cost is that
+  hidden panels load up front (Analytics' queries, the template editor's Monaco, the chat scope
+  picker's career history), and that anything repeated across panels exists once per panel: give a
+  shared control's id a per-panel prefix (Analytics' filter row), or its label names the wrong one.
   **Tabs are one style, the line tabs** (`docs/design-system/components/Tabs`): a 40px
   full-width row with a hairline under it, `title-small` labels, `foreground` when current and
   `muted-foreground` otherwise, and a 2px `primary` underline inside the current tab (inside it,
