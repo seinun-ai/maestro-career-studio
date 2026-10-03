@@ -44,8 +44,8 @@ def _post(db_session, path, payload):
 
 
 def _answer(got):
-    """An answer without its decision trace and polarity, which serialize as None unless a
-    model decided; the decision-trace tests pin those."""
+    """An answer without its decision trace and polarity: both serialize as None until a
+    model decides, and these pins are about what the route answered, not how it was decided."""
     return {k: v for k, v in got.items() if k not in ("trace", "polarity")}
 
 
@@ -76,6 +76,7 @@ def test_map_builds_facts_from_the_consent_gated_profile(db_session, monkeypatch
     seen = _spy_map(monkeypatch)
     r = _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]})
     assert r.status_code == 200
+    assert set(r.json()) == {"fields"}
     assert {k: _answer(v) for k, v in r.json()["fields"].items()} == {
         "a": {"route": "none", "slot": None, "value": None, "format": None, "why": None}}
     assert "personal.city" in seen["facts"]
@@ -164,7 +165,8 @@ def test_pick_passes_the_source_hint_and_the_job(db_session, monkeypatch, tmp_pa
     r = _post(db_session, "/api/autofill/pick", {"application_id": str(application.id),
                                                  "source_hint": "REC_LinkedIn", "fields": [PICK_FIELD]})
     assert r.status_code == 200
-    assert _answer(r.json()["picks"]["g"]) == {"oids": [], "reason": "abstained"}
+    assert set(r.json()) == {"picks"}
+    assert {k: _answer(v) for k, v in r.json()["picks"].items()} == {"g": {"oids": [], "reason": "abstained"}}
     assert seen["hint"] == autofill_pick.JobHint(title="Data Scientist", company="Acme", source="rec_linkedin")
 
 
@@ -197,7 +199,8 @@ def test_an_eeo_pick_without_consent_reaches_no_model(db_session, monkeypatch):
     monkeypatch.setattr(autofill_pick.llm, "call_openai", lambda **kw: asked.append(kw) or {})
     monkeypatch.setattr(autofill_pick.jev, "decide", lambda *a, **k: asked.append(a) or {})
     r = _post(db_session, "/api/autofill/pick", {"fields": [PICK_FIELD]})
-    assert _answer(r.json()["picks"]["g"]) == {"oids": [], "reason": "abstained"}
+    assert set(r.json()) == {"picks"}
+    assert {k: _answer(v) for k, v in r.json()["picks"].items()} == {"g": {"oids": [], "reason": "abstained"}}
     assert asked == []
 
 
@@ -211,6 +214,7 @@ def test_the_real_map_returns_the_value_but_never_sends_it(db_session, monkeypat
 
     monkeypatch.setattr(autofill_map.llm, "call_openai", call_openai)
     r = _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]})
+    assert set(r.json()) == {"fields"}
     assert {k: _answer(v) for k, v in r.json()["fields"].items()} == {
         "a": {"route": "slot", "slot": "personal.city", "value": "Springfield", "format": None, "why": None}}
     assert "Springfield" not in prompts[0] and "female" not in prompts[0].lower()

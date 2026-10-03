@@ -12,6 +12,16 @@ from app.services.autofill_map import _NEVER_LOW_STAKES
 from app.services.autofill_pick import JobHint
 from tests.test_autofill_choose_jev import _answer, jev_on  # noqa: F401  (fixture)
 
+
+# The decision trace is pinned by the trace tests; these pins are about the answer itself.
+# (Named sans_trace because `answer` is a parameter name in several tests here.)
+TRACE_KEYS = {"trace", "polarity"}
+
+
+def sans_trace(m):
+    return m.model_dump(exclude=TRACE_KEYS)
+
+
 FACTS = autofill_catalog.build(
     {"education": [{"discipline": "Business Analytics"}], "work_auth": {"sponsorship_now": False}},
     [], ["Python", "SQL"])
@@ -82,7 +92,7 @@ def fake_llm(monkeypatch, answer=None, way=("same", 0.95)):
 
 
 def step(r, db_session, hint=None):
-    return autofill_step.step(r, FACTS, db_session, hint).model_dump(exclude={"trace", "polarity"})
+    return sans_trace(autofill_step.step(r, FACTS, db_session, hint))
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -325,7 +335,7 @@ def test_a_plain_click_is_an_answer_only_and_only_a_group_click_is_progress(db_s
     fake_jev(monkeypatch, ("click:o1", 0.55))
     how_heard = autofill_catalog.build({"preferences": {"how_heard": "LinkedIn"}}, [], [])
     anyslot = req(slot="preferences.how_heard", candidates=plain)
-    assert autofill_step.step(anyslot, how_heard, db_session, None).model_dump(exclude={"trace", "polarity"}) == {
+    assert sans_trace(autofill_step.step(anyslot, how_heard, db_session, None)) == {
         "mid": "click:o1", "reason": "matched"}
     group = [{"mid": "click:o1", "describe": 'Open the group "Degrees"'}]
     assert step(req(slot="education.0.discipline", candidates=group), db_session) == {

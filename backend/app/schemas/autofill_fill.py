@@ -25,6 +25,8 @@ MAX_ENTRY_INDEX = 20
 Reason = Literal["matched", "closest", "assumed", "abstained"]
 
 
+# ---------- decision traces (value-free)
+
 # How a model decided an answer: value-free by construction (enums and numbers), returned
 # beside /map, /pick and /step answers for the run trace (docs/plans/2026-10-02-fill-trace-design.md).
 Engine = Literal["jev", "fast"]
@@ -34,14 +36,17 @@ PolarityWay = Literal["same", "opposite", "neither", "unsure"]
 
 class DecisionTrace(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    engine: Engine | None = None  # None: no model was asked (a code path)
+    engine: Engine | None = None  # None: no model's decision is recorded here (a code path)
     p: float | None = Field(default=None, ge=0.0, le=1.0)
     floor: float | None = Field(default=None, ge=0.0, le=1.0)
     second: Second | None = None
-    # With second == "decided": the FIRST engine's probability for the answer that now
-    # stands, or its top choice when it abstained — the evidence for whether a lower floor
-    # would have been safe (the calibration goal).
+    # With second == "decided": `first_p` is the FIRST engine's probability for its own top
+    # choice (the second opinion runs only when it abstained, so that choice is often "none"
+    # or give_up), and `first_same` is whether that top choice was the answer that now
+    # stands. Only agreeing cases are evidence that a lower floor would have been safe (the
+    # calibration goal).
     first_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    first_same: bool | None = None
 
 
 class PolarityTrace(BaseModel):
@@ -49,6 +54,7 @@ class PolarityTrace(BaseModel):
     way: PolarityWay
     engine: Engine | None = None
     p: float | None = Field(default=None, ge=0.0, le=1.0)
+
 
 MAX_FIELDS = 40
 MAX_MAP_OPTIONS = 30

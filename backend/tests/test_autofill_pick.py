@@ -7,6 +7,16 @@ from app.services import autofill_catalog, autofill_map, autofill_pick, autofill
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from tests.test_autofill_choose_jev import _answer, jev_on  # noqa: F401  (fixture)
 
+
+# The decision trace is pinned by the trace tests; these pins are about the answer itself.
+# (Named sans_trace because `answer` is a parameter name in several tests here.)
+TRACE_KEYS = {"trace", "polarity"}
+
+
+def sans_trace(m):
+    return m.model_dump(exclude=TRACE_KEYS)
+
+
 FACTS = autofill_catalog.build(
     {"education": [{"discipline": "Business Analytics"}], "work_auth": {"sponsorship_now": False},
      "preferences": {"how_heard": "Referral"}},
@@ -84,14 +94,14 @@ def test_a_confident_option_is_matched(db_session, monkeypatch):
     fake_jev(monkeypatch, {"m": ("o2", 0.9)})
     got = pick([pf("m", slot="education.0.discipline", options=opts("Accounting", "Business Analytics"))],
                db_session)
-    assert got["m"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o2"], "reason": "matched"}
+    assert sans_trace(got["m"]) == {"oids": ["o2"], "reason": "matched"}
 
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_flag_near_miss_is_closest_only_on_a_complete_list(db_session, monkeypatch):
     fake_jev(monkeypatch, {"m": ("o2", 0.6)})
     field = {"slot": "education.0.discipline", "options": opts("Accounting", "Information Systems")}
-    assert pick([pf("m", **field)], db_session)["m"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o2"], "reason": "closest"}
+    assert sans_trace(pick([pf("m", **field)], db_session)["m"]) == {"oids": ["o2"], "reason": "closest"}
     assert pick([pf("m", complete=False, **field)], db_session)["m"].reason == "abstained"
 
 
@@ -108,7 +118,7 @@ def test_an_exact_slot_never_takes_a_near_miss(db_session, monkeypatch):
     field = {"slot": "work_auth.sponsorship_now", "options": opts("Yes", "No")}
     assert pick([pf("s", **field)], db_session)["s"].reason == "abstained"
     fake_jev(monkeypatch, {"s": ("o2", 0.95)})
-    assert pick([pf("s", **field)], db_session)["s"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o2"], "reason": "matched"}
+    assert sans_trace(pick([pf("s", **field)], db_session)["s"]) == {"oids": ["o2"], "reason": "matched"}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -121,7 +131,7 @@ def test_a_near_miss_language_is_refused_and_a_near_miss_level_is_flagged(db_ses
                               pf("r", slot="languages.0.read", options=opts("Basic", "Intermediate"))],
                              facts, db_session, None)
     assert got["l"].reason == "abstained"
-    assert got["r"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o2"], "reason": "closest"}
+    assert sans_trace(got["r"]) == {"oids": ["o2"], "reason": "closest"}
     assert autofill_catalog.build({"languages": [{"language": "Norwegian", "native": True}]}, [], [])[
         "languages.0.native"].policy == "flag"
 
@@ -147,7 +157,7 @@ def test_options_are_offered_under_their_oids_plus_none(db_session, monkeypatch)
 def test_a_set_item_is_picked_against_that_item_only(db_session, monkeypatch):
     calls = fake_jev(monkeypatch, {"k": ("o2", 0.95)})
     got = pick([pf("k", slot="skills", item="SQL", options=opts("Python", "SQL"))], db_session)
-    assert got["k"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o2"], "reason": "matched"}
+    assert sans_trace(got["k"]) == {"oids": ["o2"], "reason": "matched"}
     assert calls[0]["state"]["fields"][0]["applicant_values"] == ["SQL"]
     assert '"SQL"' in calls[0]["questions"]["k"]["instructions"]
     assert "Tableau" not in repr(calls) and '"Python"' not in calls[0]["questions"]["k"]["instructions"]
@@ -176,7 +186,7 @@ def test_low_stakes_is_assumed_and_carries_job_and_source(db_session, monkeypatc
     calls = fake_jev(monkeypatch, {"h": ("o1", 0.5)})
     hint = autofill_pick.JobHint(title="Data Scientist", company="Acme", source="rec_linkedin")
     got = pick([pf("h", route="low_stakes", options=opts("LinkedIn", "Indeed"))], db_session, hint)
-    assert got["h"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o1"], "reason": "assumed"}
+    assert sans_trace(got["h"]) == {"oids": ["o1"], "reason": "assumed"}
     assert calls[0]["state"]["job"] == {"title": "Data Scientist", "company": "Acme", "source": "rec_linkedin"}
     assert "rec_linkedin" in calls[0]["questions"]["h"]["instructions"]
     assert calls[0]["state"]["fields"][0]["applicant_values"] == []
@@ -402,7 +412,7 @@ def test_private_employers_answer_the_government_question_no_and_it_is_assumed(d
     prompts = fake_reasoner(monkeypatch, {"g": {"oid": "o2", "confidence": 0.9, "shown_by": ["j1", "j2"],
                                                 "since": "2021-09"}})
     got = pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session)
-    assert got["g"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o2"], "reason": "assumed"}
+    assert sans_trace(got["g"]) == {"oids": ["o2"], "reason": "assumed"}
     [asked] = prompts
     for shown in ("Seinun Technologies", "Tata Consultancy Services", "2018-06", "2022-07", "2024-01",
                   "Maintained ETL pipelines", "State University", "Business Analytics", "2026-09-26"):
@@ -431,14 +441,14 @@ def test_no_clearance_in_the_history_abstains_never_no(db_session, monkeypatch, 
     """Silence is not "No": an answer nothing in the history shows is no answer."""
     fake_reasoner(monkeypatch, {"c": answer})
     got = pick_from_history([reasoned("c", CLEARANCE, "Yes", "No")], db_session)
-    assert got["c"].model_dump(exclude={"trace", "polarity"}) == {"oids": [], "reason": "abstained"}
+    assert sans_trace(got["c"]) == {"oids": [], "reason": "abstained"}
 
 
 def test_years_of_experience_come_from_the_dated_jobs(db_session, monkeypatch):
     prompts = fake_reasoner(monkeypatch, {"y": {"oid": "o3", "confidence": 0.9, "shown_by": ["j1", "j2"]}})
     got = pick_from_history([reasoned("y", YEARS, "Less than 1 year", "1-3 years", "3-5 years", "5+ years")],
                             db_session)
-    assert got["y"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o3"], "reason": "assumed"}
+    assert sans_trace(got["y"]) == {"oids": ["o3"], "reason": "assumed"}
     history = autofill_reasoned.history(HISTORY_FACTS)
     assert history["today"] == "2026-09-26"
     assert history["jobs"] == [
@@ -889,7 +899,7 @@ def test_the_second_opinion_never_takes_an_exact_near_miss(db_session, monkeypat
     fake_llm(monkeypatch, {"s": {"oids": ["o2"], "confidence": 0.8}})
     assert pick([pf("s", **field)], db_session)["s"].reason == "abstained"
     fake_llm(monkeypatch, {"s": {"oids": ["o2"], "confidence": 0.95}})
-    assert pick([pf("s", **field)], db_session)["s"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o2"], "reason": "matched"}
+    assert sans_trace(pick([pf("s", **field)], db_session)["s"]) == {"oids": ["o2"], "reason": "matched"}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1043,7 +1053,7 @@ def test_the_pick_is_asked_for_the_answer_code_computed(db_session, monkeypatch,
     else:   # nothing flipped: the answer says what it is about
         said = 'that is, for the applicant, "needs employer visa sponsorship now" is not true'
         assert said in text and state["that_is"] in said
-    assert got["s"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o1" if answer == "Yes" else "o2"], "reason": "matched"}
+    assert sans_trace(got["s"]) == {"oids": ["o1" if answer == "Yes" else "o2"], "reason": "matched"}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1086,7 +1096,7 @@ def test_a_military_status_dropdown_is_picked_by_the_statement_of_the_veteran_an
     text = calls[0]["questions"]["v"]["instructions"]
     assert f'is {json.dumps("No, I am not a protected veteran")}' in text and "Which option states that answer?" in text
     assert facts["eeo.veteran_status"].policy == "exact"
-    assert got["v"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o3"], "reason": "matched"}
+    assert sans_trace(got["v"]) == {"oids": ["o3"], "reason": "matched"}
     # A near miss is never taken for an EEO answer.
     fake_jev(monkeypatch, {"v": ("o2", 0.7)}, ways={"v": ("same", 0.95)})
     got = autofill_pick.pick([pf("v", question="Military Status:", slot="eeo.veteran_status",
@@ -1128,7 +1138,7 @@ def test_the_second_opinion_picks_the_literal_answer(db_session, monkeypatch):
     [asked] = prompts
     assert asked["trace_name"] == SECOND
     assert json.loads(asked["prompt"].split("Fields: ", 1)[1])[0]["answer"] == "Yes"
-    assert got["s"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o1"], "reason": "matched"}
+    assert sans_trace(got["s"]) == {"oids": ["o1"], "reason": "matched"}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1163,7 +1173,7 @@ def test_a_lower_case_stored_yes_is_flipped_and_still_matched(db_session, monkey
     got = autofill_pick.pick([pf("u", question="Are you under 18 years of age?", slot="eligibility.over_18",
                                  options=opts("Yes", "No"))], facts, db_session, None)
     assert calls[0]["state"]["fields"][0]["answer"] == "No"
-    assert got["u"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o2"], "reason": "matched"}
+    assert sans_trace(got["u"]) == {"oids": ["o2"], "reason": "matched"}
 
 
 # ---------- review of 6cd77787: the polarity step never crowds out the rest of the request
@@ -1344,7 +1354,7 @@ def test_now_or_in_the_future_judged_same_picks_the_combined_answer(db_session, 
                                  slot="derived.sponsorship_now_or_future", options=opts("Yes", "No"))],
                              facts, db_session, None)
     assert calls[0]["state"]["fields"][0]["answer"] == "Yes"
-    assert got["q"].model_dump(exclude={"trace", "polarity"}) == {"oids": ["o1"], "reason": "matched"}
+    assert sans_trace(got["q"]) == {"oids": ["o1"], "reason": "matched"}
 
 
 # ---------- the statement's wording (review of 521b4651 / 71a1f4fb)
