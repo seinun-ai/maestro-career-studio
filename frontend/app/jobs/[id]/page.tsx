@@ -71,7 +71,15 @@ const JOB_TABS = ["jd", "fit", "output", "qa"] as const;
 const LOCKED_REASON =
   "Resume and Q&A open once this job has its own resume: tailor one, use yours as is, or mark the job applied.";
 
-function JobTabsList({ hasApp, reasonId }: { hasApp: boolean; reasonId: string }) {
+function JobTabsList({
+  hasApp,
+  reasonId,
+  className,
+}: {
+  hasApp: boolean;
+  reasonId: string;
+  className?: string;
+}) {
   // A greyed tab with no stated reason is a dead end for a first-time user: the
   // reason is visible beside the tabs (below) and each locked tab points at it.
   // The base trigger styles set pointer-events-none while disabled, which
@@ -87,7 +95,7 @@ function JobTabsList({ hasApp, reasonId }: { hasApp: boolean; reasonId: string }
           "disabled:pointer-events-auto aria-disabled:pointer-events-auto",
       };
   return (
-    <TabsList>
+    <TabsList variant="line" className={className}>
       <TabsTrigger value="jd">Overview</TabsTrigger>
       <TabsTrigger value="fit">Score and tailor</TabsTrigger>
       <TabsTrigger value="output" {...lockedProps}>
@@ -578,25 +586,28 @@ export default function JobDetailPage({
               not outlined: promoting a control to every tab and then styling
               it like the row's furniture buries it again — this is what you
               came to the job for once a draft exists. */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <JobTabsList hasApp={hasApp} reasonId={lockedReasonId} />
+          <div className="space-y-2">
+            {/* The hairline is the row's, so it runs under the button too. */}
+            <div className="flex items-center gap-2 border-b">
+              <JobTabsList hasApp={hasApp} reasonId={lockedReasonId} className="flex-1 border-b-0" />
+              {application?.customized_json ? (
+                <Button
+                  size="sm"
+                  nativeButton={false}
+                  render={
+                    <Link href={`/applications/${application.id}/resume`}>
+                      <Pencil className="size-4" />
+                      Edit resume
+                    </Link>
+                  }
+                />
+              ) : null}
+            </div>
             {hasApp ? null : (
-              <p id={lockedReasonId} className="text-muted-foreground basis-full text-body-small">
+              <p id={lockedReasonId} className="text-muted-foreground text-body-small">
                 {LOCKED_REASON}
               </p>
             )}
-            {application?.customized_json ? (
-              <Button
-                size="sm"
-                nativeButton={false}
-                render={
-                  <Link href={`/applications/${application.id}/resume`}>
-                    <Pencil className="size-4" />
-                    Edit resume
-                  </Link>
-                }
-              />
-            ) : null}
           </div>
 
           <TabsContent value="jd" className="mt-0 space-y-4">

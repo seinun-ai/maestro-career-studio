@@ -876,7 +876,13 @@
   UI's arrow-key scroll-into-view measures from the row, `scroll-px-1`
   so an end tab keeps room for its focus ring); the `Tabs` root is
   `min-w-0`, or a Tabs that is a grid item (a dialog body) takes the row's
-  full label width as its minimum. A row that wraps (`h-auto flex-wrap`)
+  full label width as its minimum. **A page's sections are the `line` variant**
+  (Analytics, Career history, the job page, Settings and Profile, the health report): a 40px
+  full-width row with a hairline under it, `title-small` labels, a 2px `primary` underline inside
+  the current tab (inside it, because the row scrolls and `overflow-x: auto` clips what hangs
+  below), a count as a plain muted number and never a Badge (pinned in
+  `test_frontend_design_tokens.py`). The default filled strip is for the editors' own section
+  tabs and the dialogs'; it is not for a page. A row that wraps (`h-auto flex-wrap`)
   never scrolls: the overflow is scoped to `not-[.flex-wrap]` (`overflow-x:
   auto` makes `overflow-y` auto too, which clipped the second line) and its
   triggers are `h-auto` (a percentage height spilled over the next card), so

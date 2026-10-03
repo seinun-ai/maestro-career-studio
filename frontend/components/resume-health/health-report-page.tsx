@@ -494,7 +494,7 @@ export function HealthReportPage({
           {!hasAnything && <p className="text-body-medium">No issues found.</p>}
 
           <Tabs value={tab} onValueChange={(value) => selectTab(value as HealthTab)} className="gap-4">
-            <TabsList aria-label="Health report sections">
+            <TabsList variant="line" aria-label="Health report sections">
               {/* The name says the count in one phrase (SYSTEM.md §12: a count beside a flex item
                   can drop out of the accessible name). */}
               {HEALTH_TABS.map((t) => (
@@ -502,9 +502,9 @@ export function HealthReportPage({
                   key={t.id}
                   value={t.id}
                   aria-label={`${t.label} ${countOf(t.id)}`}
-                  className="gap-1.5 px-2.5"
+                  className="gap-1.5"
                 >
-                  {t.label} <span className="tabular-nums">{countOf(t.id)}</span>
+                  {t.label} <span className="tabular-nums text-muted-foreground">{countOf(t.id)}</span>
                 </TabsTrigger>
               ))}
             </TabsList>

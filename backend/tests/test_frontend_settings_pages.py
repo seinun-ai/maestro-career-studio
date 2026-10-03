@@ -294,9 +294,9 @@ def test_a_tab_row_scrolls_inside_itself_instead_of_widening_the_page():
     assert '\n        "group/tabs flex min-w-0 gap-2 data-horizontal:flex-col",\n        className\n' in root
 
 
+# Analytics and Career history left this list when their page-section tabs became the line variant
+# (one 40px row that scrolls sideways, never wraps).
 _WRAPPING_ROWS = (
-    "app/analytics/page.tsx",
-    "app/career/page.tsx",
     "components/resume-editor/tailored-resume-studio.tsx",
     "components/resume-editor/editor-body.tsx",
     "components/resume-editor/kb-import-drawer.tsx",

@@ -106,15 +106,13 @@ export default function CareerPage() {
 
       {/* Anchor: the "Import resumes" setup step links here. */}
       <Tabs id="kb-entities" value={activeTab} onValueChange={setActiveTab} className="gap-5">
-        <TabsList className="h-auto flex-wrap bg-surface-container p-1">
+        <TabsList variant="line">
           <TabsTrigger value="basics">Basics</TabsTrigger>
           {ENTITY_TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
               {tab.title}
               {countFor(tab.kind) > 0 ? (
-                <Badge variant="secondary" className="px-1.5">
-                  {countFor(tab.kind)}
-                </Badge>
+                <span className="tabular-nums text-muted-foreground">{countFor(tab.kind)}</span>
               ) : null}
             </TabsTrigger>
           ))}

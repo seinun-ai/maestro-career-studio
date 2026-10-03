@@ -97,9 +97,12 @@ step 3.
 
 1. **Sidebar current row is a full pill** (`rounded-full`), as in M3's navigation drawer. It already
    uses the secondary container, semibold and `aria-current`.
-2. **Page sections use line tabs** (`TabsList variant="line"`, already in `ui/tabs.tsx`): Analytics,
-   Settings, Career history, the job page, the health report. The filled segmented look stays for view
-   switches only (Tracked / Yours / Agents, Day / Week). Today both look alike.
+2. ~~**Page sections use line tabs**~~ done (`TabsList variant="line"` in `ui/tabs.tsx`; the indicator is `primary`): Analytics,
+   Settings and Profile, Career history, the job page, the health report. The filled segmented look stays for view
+   switches only (Tracked / Yours / Agents, Day / Week). The row is full width with a hairline under it; a count is a
+   plain muted number. Not converted, owner to decide: the filled strip remains in the resume studios' section tabs
+   (they wrap in a narrow pane), the template editor (Formatting / Code), the chat scope picker, the import and New
+   base resume dialogs and the career-history import drawer.
 3. **The Jobs status filter becomes filter chips**: one chip per status with its count, selected =
    tonal + Check + `aria-pressed` (the existing "selected in a set" rule). Same for the Agent inbox's
    four dropdowns where a filter has five or fewer values.

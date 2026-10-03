@@ -701,7 +701,7 @@ def test_findings_are_grouped_by_action_in_six_tabs():
     for tab in ("shorten", "notes", "done"):
         assert f'<TabsContent value="{tab}" keepMounted data-health-tab="{tab}"' in _PAGE
     # Plain counts on the tabs, said in one phrase in the name.
-    assert '<span className="tabular-nums">{countOf(t.id)}</span>' in _PAGE
+    assert '<span className="tabular-nums text-muted-foreground">{countOf(t.id)}</span>' in _PAGE
     assert "aria-label={`${t.label} ${countOf(t.id)}`}" in _PAGE
 
 

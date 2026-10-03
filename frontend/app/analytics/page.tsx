@@ -178,7 +178,7 @@ function AnalyticsContent() {
       />
 
       <Tabs value={tab} onValueChange={changeTab} className="gap-5">
-        <TabsList className="h-auto flex-wrap bg-surface-container p-1">
+        <TabsList variant="line">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="market">Job market</TabsTrigger>
           <TabsTrigger value="fit">Resume fit</TabsTrigger>

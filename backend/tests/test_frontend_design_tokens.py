@@ -577,6 +577,63 @@ def test_a_tab_nests_in_the_list_that_holds_it():
     assert re.search(r"gap-1\.5 rounded-corner-xs border border-transparent", tabs)
 
 
+# Tabs divide a page into sections: the line style, a `primary` underline under the current tab
+# (docs/design-system/components/Tabs). The filled strip is for nothing a page is divided by.
+_SECTION_TAB_PAGES = (
+    "app/analytics/page.tsx",
+    "app/career/page.tsx",
+    "app/jobs/[id]/page.tsx",
+    "components/settings/settings-tabs.tsx",
+    "components/resume-health/health-report-page.tsx",
+)
+
+
+def test_a_page_section_list_is_the_line_variant():
+    for rel in _SECTION_TAB_PAGES:
+        tags = list(_jsx_tags(rel, ("TabsList",)))
+        assert tags, rel
+        for number, _, tag in tags:
+            assert 'variant="line"' in tag, f"{rel}:{number}: a page's section tabs are TabsList variant=\"line\""
+            assert not re.search(r"\b(?:flex-wrap|bg-surface-container\S*|p-1)\b", tag), (
+                f"{rel}:{number}: the line row neither wraps nor carries the strip's fill and padding"
+            )
+
+
+def test_a_section_tab_count_is_a_plain_number_not_a_badge():
+    for rel in _SECTION_TAB_PAGES:
+        text = _read(rel)
+        for tab in re.findall(r"<TabsTrigger\b.*?</TabsTrigger>", text, re.S):
+            assert "<Badge" not in tab, f"{rel}: a tab's count is a muted number, not a Badge"
+    health = _read("components/resume-health/health-report-page.tsx")
+    assert 'className="tabular-nums text-muted-foreground">{countOf(t.id)}' in health
+    career = _read("app/career/page.tsx")
+    assert 'className="tabular-nums text-muted-foreground">{countFor(tab.kind)}' in career
+
+
+def test_the_line_tab_is_a_primary_underline_under_a_hairline():
+    tabs = _read("components/ui/tabs.tsx")
+    line = re.search(r"\n\s*line: \"([^\"]+)\"", tabs)
+    assert line, "tabsListVariants has no line variant"
+    classes = line.group(1).split()
+    for cls in ("h-10", "w-full", "border-b", "p-0"):
+        assert cls in classes, f"the line row is 40px, full width, with a hairline under it: {cls}"
+    trigger = tabs[tabs.index("function TabsTrigger") : tabs.index("function TabsContent")]
+    # The 2px indicator is the trigger's ::after: `primary`, inside the trigger (the row scrolls).
+    assert "after:bg-primary" in trigger and "after:bg-foreground" not in trigger
+    assert "group-data-horizontal/tabs:after:bottom-0 group-data-horizontal/tabs:after:h-0.5" in trigger
+    # It spans the label, not the trigger's padding: `inset-x-3` matches the line trigger's `px-3`.
+    assert "group-data-horizontal/tabs:after:inset-x-3" in trigger
+    assert "group-data-[variant=line]/tabs-list:px-3" in trigger
+    assert "group-data-[variant=line]/tabs-list:data-active:after:opacity-100" in trigger
+    # Title-small labels: foreground when current, muted-foreground otherwise.
+    for cls in (
+        "group-data-[variant=line]/tabs-list:text-title-small",
+        "group-data-[variant=line]/tabs-list:text-muted-foreground",
+        "group-data-[variant=line]/tabs-list:data-active:text-foreground",
+    ):
+        assert cls in trigger, cls
+
+
 def test_the_focus_ring_only_removes_what_it_added():
     """RING carries `rounded-corner-md`, which a Card already has; stripping it after the
     flash would square the card."""

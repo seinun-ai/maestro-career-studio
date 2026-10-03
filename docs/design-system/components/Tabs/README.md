@@ -9,4 +9,4 @@ Tabs divide one page into sections; they are the line style, with a `primary` in
 - A tab panel draws its focus ring as an overlay above its content.
 - Do not use the filled pill strip for page sections: it looks like the SegmentedToggle beside it.
 
-Source: `frontend/components/ui/tabs.tsx` (`line` variant). Changed from source: page sections move from the default filled strip to `line`, and the indicator is `primary`.
+Source: `frontend/components/ui/tabs.tsx` (`line` variant). The default filled variant is still used by the resume studios' section tabs, the template editor and four dialogs and drawers, which are not page sections; whether they follow is an open owner decision.
