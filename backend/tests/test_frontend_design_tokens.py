@@ -214,20 +214,23 @@ def test_no_palette_class_is_written():
     assert not hits, "a palette utility is left at:\n" + "\n".join(hits)
 
 
-def test_company_monogram_tones_are_role_container_pairs():
-    """The monogram's tint is identity, not state: six distinct role containers,
-    each with its own `on-` partner, picked by the same hash modulo so a company
-    keeps its tone. (Each pair's contrast is pinned for both modes elsewhere.)"""
+def test_company_monogram_tones_are_not_statuses():
+    """The monogram's tint is identity, not state. StatusChip is the only place a state is
+    coloured, so no success / warning / attention / error container may be a tone. Four
+    tones, picked by the same hash modulo, each AA on its own fill (the container pairs and
+    `foreground` on the ladder are pinned for both modes elsewhere)."""
     source = _read("components/company-monogram.tsx")
     block = re.search(r"const TONES = \[(.*?)\];", source, re.S)
     assert block, "CompanyMonogram's TONES is no longer an array literal"
     tones = re.findall(r'"([^"]*)"', block.group(1))
-    roles = []
-    for tone in tones:
-        pair = re.fullmatch(r"bg-([a-z]+)-container text-on-\1-container", tone)
-        assert pair, f"a monogram tone is not a container pair: {tone!r}"
-        roles.append(pair.group(1))
-    assert roles == ["primary", "tertiary", "success", "warning", "attention", "secondary"], roles
+    assert tones == [
+        "bg-primary-container text-on-primary-container",
+        "bg-tertiary-container text-on-tertiary-container",
+        "bg-secondary-container text-on-secondary-container",
+        "bg-surface-container-highest text-foreground",
+    ], tones
+    for status in ("success", "warning", "attention", "error"):
+        assert f"{status}-container" not in block.group(1), f"a monogram is tinted as a {status}"
     assert "TONES[Math.abs(hash) % TONES.length]" in source
     assert "identity, not state" in source, "say in the comment that a tint is never a status"
 
@@ -585,12 +588,14 @@ def test_the_focus_ring_only_removes_what_it_added():
     assert "classList.remove(...RING)" not in source
 
 
-# Only what floats casts a shadow: `shadow-level1` a hovered FAB or interactive chip,
-# `shadow-level2` a menu, popover, tooltip, toast, dragged row or sticky bar over
-# content, `shadow-level3` a dialog or sheet. Cards, tiles, inputs, buttons, tabs and
-# tables rest flat. Any variant prefix is fine (`hover:`, `data-dragging:`), and a
-# trailing `!` (an important utility that must beat a third party's own rule).
-_SHADOW_UTILITY = re.compile(r"(?<![\w-])shadow(?:-[^\s\"'`!]+)?!?(?=[\s\"'`]|$)")
+# Only what floats casts a shadow: `shadow-level1` a hovered FAB or interactive chip, a
+# focused skip link, a modal sheet; `shadow-level2` a menu, popover, rich (chart)
+# tooltip, sticky bar, the PDF page pill or a dragged row; `shadow-level3` a dialog or
+# toast. Cards, tiles, tables, plain tooltips, inputs, buttons and tabs rest flat. Any
+# variant prefix is fine (`hover:`, `data-dragging:`), and a trailing `!` (an
+# important utility that must beat a third party's own rule). `drop-shadow-*`,
+# `inset-shadow-*` and `text-shadow-*` are shadows by hand too.
+_SHADOW_UTILITY = re.compile(r"(?<![\w-])(?:(?:drop|inset|text)-)?shadow(?:-[^\s\"'`!]+)?!?(?=[\s\"'`]|$)")
 _SHADOW_LEVEL = re.compile(r"shadow-level[123]!?")
 # A 1px hairline that has to live in a box-shadow. The sticky table header's rule
 # stays one: a border on a sticky <th> under border-collapse stays with the grid
@@ -615,6 +620,34 @@ def test_no_shadow_is_written_but_the_three_levels():
         if not _SHADOW_LEVEL.fullmatch(literal) and (rel, literal) not in _SHADOW_BY_HAND_ALLOWED
     ]
     assert not hits, "a shadow utility off the level scale is left at:\n" + "\n".join(hits)
+
+
+def test_the_stylesheet_applies_no_shadow_off_the_scale():
+    """`@apply shadow-sm` in globals.css is a shadow by hand the literal scan never sees."""
+    hits = []
+    for number, line in enumerate(_CSS.splitlines(), 1):
+        if "@apply" not in line:
+            continue
+        for match in _SHADOW_UTILITY.finditer(line):
+            if not _SHADOW_LEVEL.fullmatch(match.group(0)):
+                hits.append(f"app/globals.css:{number}: {match.group(0)}")
+    assert not hits, "an @apply shadow is off the scale at:\n" + "\n".join(hits)
+
+
+# Container primitives: a call site passes no shadow of any level. Cards, tiles, galleries,
+# table frames and empty-state boxes are separated by tone; a hover lifts them by moving.
+_CONTAINERS = ("Card", "GalleryCard", "StatTile", "TableFrame", "EmptyState")
+
+
+def test_a_container_call_site_passes_no_shadow():
+    hits = []
+    for rel in _frontend_sources():
+        if not rel.endswith(".tsx"):
+            continue
+        for number, name, tag in _jsx_tags(rel, _CONTAINERS):
+            if _CASTS_SHADOW.search(tag):
+                hits.append(f"{rel}:{number}: <{name}>")
+    assert not hits, "a container is given a shadow at:\n" + "\n".join(hits)
 
 
 def test_every_shadow_exception_still_matches():
@@ -655,6 +688,7 @@ def test_a_card_and_a_flat_control_cast_no_shadow():
         ("components/ui/checkbox.tsx", "checkbox"),
         ("components/ui/switch.tsx", "switch"),
         ("components/ui/slider.tsx", "slider-thumb"),
+        ("components/ui/tooltip.tsx", "tooltip-content"),
     ):
         text = _read(rel)
         assert 'data-slot="%s"' % slot in text, f"{rel} lost its {slot} slot"
@@ -664,16 +698,27 @@ def test_a_card_and_a_flat_control_cast_no_shadow():
     assert not _CASTS_SHADOW.search(_read("components/ui/tabs.tsx")), "a tab rests flat"
 
 
+def test_a_toast_is_level3_and_keeps_its_focus_ring():
+    """Sonner's keyboard focus indicator is a box-shadow; the important level3 would replace
+    it. The important shadow reads --tw-ring-shadow, so a ring utility composes with it."""
+    toast = re.search(r'toast: "([^"]+)"', _read("components/ui/sonner.tsx"))
+    assert toast, "the toast class list moved"
+    classes = toast.group(1).split()
+    assert "shadow-level3!" in classes
+    assert "focus-visible:ring-2" in classes and "focus-visible:ring-ring" in classes
+
+
 def test_what_floats_carries_its_level():
     popover = _read("components/ui/popover.tsx")
     surface = re.search(r"export const POPUP_SURFACE =\s*\"([^\"]+)\"", popover)
     assert surface and "shadow-level2" in surface.group(1).split()  # popover and menu
     assert "shadow-level2" in _class_list("components/ui/dropdown-menu.tsx", "dropdown-menu-sub-content")
     assert "shadow-level2" in _class_list("components/ui/select.tsx", "select-content")
-    assert "shadow-level2" in _class_list("components/ui/tooltip.tsx", "tooltip-content")
-    assert 'toast: "cn-toast shadow-level2!"' in _read("components/ui/sonner.tsx")
+    # A plain tooltip is a dark label and rests flat; a chart tooltip is a rich popover-surface
+    # panel (asserted above in chart-kit), so it is level2.
     assert "shadow-level3" in _class_list("components/ui/dialog.tsx", "dialog-content")
-    assert "shadow-level3" in _class_list("components/ui/sheet.tsx", "sheet-content")
+    # M3's modal sheet sits under a scrim, one level up from the page.
+    assert "shadow-level1" in _class_list("components/ui/sheet.tsx", "sheet-content")
     fab = re.search(r"fab:\s*\"([^\"]+)\"", _read("components/ui/button.tsx"))
     assert fab and "hover:shadow-level1" in fab.group(1).split()
     assert "hover:shadow-level1" in _read("components/status-chip.tsx")

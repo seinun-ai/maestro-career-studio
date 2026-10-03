@@ -51,7 +51,7 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 - Separate surfaces by tone first. In light: `card` is the lightest, the page (`background`) sits just under it, then `surface-container-low`, `surface-container`, `surface-container-high`, `surface-container-highest`. Dark runs the same names from darkest up.
 - Use `surface-container-low` for stat tiles, hovered rows and quiet panels; `surface-container` for a neutral chip or a progress track. Never write `bg-muted` with an opacity.
 - `canvas` is only the ground behind a rendered resume page.
-- Shadows are for what floats: `shadow-level1` a hovered FAB or chip, `shadow-level2` menus and popovers, `shadow-level3` dialogs. Cards, tiles and tables have none.
+- Shadows are for what floats: `shadow-level1` a hovered FAB or chip, a focused skip link, a modal sheet; `shadow-level2` menus, popovers, rich (chart) tooltips, sticky bars, the PDF page pill and a dragged row; `shadow-level3` dialogs and toasts. Cards, tiles, tables, plain tooltips and controls at rest have none.
 
 ## Typography
 

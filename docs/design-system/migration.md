@@ -19,7 +19,7 @@ Use this table when touching a file that still carries the old classes. The toke
 | A tinted card or row edge (`border-amber-500/40`, `border-violet-500/30`) | `border-border`: the card's own label or action already says its kind (a Serious badge, Review or Answer, the question line) |
 | A faint whole-row tint (`bg-amber-500/5`, `bg-emerald-500/5`) | drop it when a chip, dot or icon on the row states the state; otherwise the container fill |
 | An outline badge with a tinted border and palette text (`border-amber-500/40 text-amber-700`) | `border-transparent bg-warning-container text-on-warning-container` |
-| `bg-blue-600/10 text-blue-700`, `bg-violet-*`, `bg-green-*`, `bg-amber-*`, `bg-rose-*`, `bg-cyan-*` on a `CompanyMonogram` | `bg-primary-container`, `bg-tertiary-container`, `bg-success-container`, `bg-warning-container`, `bg-attention-container`, `bg-secondary-container` with their `text-on-*` partners, in that order (the tint is decoration, not a status) |
+| `bg-blue-600/10 text-blue-700`, `bg-violet-*`, `bg-green-*`, `bg-amber-*`, `bg-rose-*`, `bg-cyan-*` on a `CompanyMonogram` | one of four non-status tones: `bg-primary-container`, `bg-tertiary-container`, `bg-secondary-container` with their `text-on-*` partners, or `bg-surface-container-highest text-foreground`. Never a success, warning, attention or error container: StatusChip is the only place a state is coloured, and the monogram's tint is identity |
 | A gradient on text (`from-primary via-violet-500 to-rose-400 bg-clip-text`) | `text-foreground` |
 
 The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (`border-primary/25 bg-primary/[0.04]`) stay as they are.
@@ -61,7 +61,7 @@ The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (
 
 | Today | Write instead |
 | --- | --- |
-| `<Button variant="secondary">`, `buttonVariants({ variant: "secondary" })` (grey fill) | `variant="tonal"` (`secondary-container`, the one low-emphasis filled button); `outline` on a `secondary-container` surface |
+| `<Button variant="secondary">`, `buttonVariants({ variant: "secondary" })` (grey fill) | `variant="tonal"` for a create or secondary action (`secondary-container`, the one low-emphasis filled button); `outline` for a retry or other neutral action, and on a `secondary-container` surface |
 | `<Badge variant="secondary">` | stays: Badge's grey fill is for plain metadata |
 
 ## Shape, shadow, motion
@@ -94,9 +94,12 @@ The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (
 | `--radius`, `var(--radius-md)` in a class or a style | `--radius-corner-*`; the `--radius-sm` to `-4xl` ladder is only for third-party components |
 | `shadow-sm`, `shadow`, `shadow-xs`, `shadow-none` on a card, tile, panel, input, button, tab, switch, slider, rendered PDF page or a selected segment | none: delete it, and delete a `shadow-none` that only cancelled a primitive's shadow (no primitive has one now). A card that lifts on hover moves and tints instead: no `hover:shadow-sm` |
 | `hover:shadow-sm` on a clickable chip (`StatusChip`, a removable tag) or the FAB | `hover:shadow-level1` |
-| `shadow-md`, `shadow-lg` on a menu, select, popover or tooltip surface; `shadow-sm` on a chart tooltip; a toast | `shadow-level2` (a chart tooltip's inline style is `boxShadow: "var(--shadow-level2)"`) |
+| `shadow-md`, `shadow-lg` on a menu, select or popover surface; `shadow-sm` on a chart tooltip | `shadow-level2` (a chart tooltip's inline style is `boxShadow: "var(--shadow-level2)"`) |
 | `shadow-md` on a dragged row; `shadow-sm` or `shadow` on a sticky bar or pill that floats over scrolling content | `shadow-level2` |
-| `shadow-lg` on a sheet; none on a dialog | `shadow-level3` |
+| `shadow-lg` on a sheet | `shadow-level1`: M3's modal sheet sits under a scrim |
+| `shadow-sm` on a skip link that appears on focus | `focus-visible:shadow-level1` |
+| a dialog (it had none); Sonner's own `0 4px 12px` on a toast | `shadow-level3`; a toast is `shadow-level3! focus-visible:ring-2 focus-visible:ring-ring` (Sonner's CSS is unlayered, so `!`, and its focus indicator is a box-shadow the ring restates) |
+| a plain tooltip (a dark label) | none |
 | `shadow-[0_0_0_1px_hsl(var(--sidebar-border))]` (a hairline in a shadow) | a real `border border-sidebar-border`; `hsl(var(--x))` around an oklch token paints nothing |
 | `shadow-[inset_0_-1px_0_var(--color-border)]` on a sticky table header cell | stays: a border on a sticky `<th>` under `border-collapse` scrolls away from the header (the one allow-listed literal) |
 | `duration-150 ease-out` | `duration-(--duration-short3) ease-standard` |
@@ -104,5 +107,5 @@ The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (
 ## Rules while moving
 
 - Add a new `@theme` scale name to the tailwind-merge list in `frontend/lib/utils.ts` in the same change, or `cn()` drops it.
-- There is no Button `variant="secondary"` any more: every grey secondary button is `tonal`, or `outline` when it sits on a `secondary-container` surface. A Badge's `variant="secondary"` stays (plain metadata).
+- There is no Button `variant="secondary"` any more: a grey secondary button is `tonal` when it is a create or secondary action, and `outline` when it is a retry or neutral action or sits on a `secondary-container` surface (every Try again is outline). A Badge's `variant="secondary"` stays (plain metadata).
 - Do not mix old and new in one component: move the whole file.

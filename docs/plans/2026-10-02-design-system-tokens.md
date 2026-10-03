@@ -48,23 +48,33 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
   `rounded-*` or a bracketed radius (one allow-listed literal: the tooltip arrow) and pins the primitives.
 - Step 6, shadows: of the 39 stock shadow utilities, 5 became `shadow-level1` (the hovered FAB, status chip and
   two interactive chips, the focused skip link), 9 `shadow-level2` (menus, selects, popovers, a dragged row, the sticky
-  bars and the PDF page pill over scrolling content, a chart tooltip) and 1 `shadow-level3` (the sheet); the other 24
-  are gone, 8 of them `shadow-none` that only cancelled a card's or input's shadow. The dialog gains `shadow-level3`
-  and the tooltip, toasts and the chart-kit tooltip `shadow-level2`, none of which had one. The sidebar outline
+  bars and the PDF page pill over scrolling content, an inline chart tooltip) and 1 `shadow-level3` (the sheet, since moved to `shadow-level1`); the other 24 are gone,
+  8 of them `shadow-none` that only cancelled a card's or input's shadow. Elevation follows M3: level1 a hovered FAB
+  or chip, a focused skip link and the modal sheet (under its scrim); level2 menus, popovers, rich (chart) tooltips,
+  sticky bars, the PDF page pill and a dragged row; level3 dialogs and toasts; none for cards, tiles, tables, plain
+  tooltips and controls at rest. The dialog gains `shadow-level3` and the chart-kit tooltip `shadow-level2`, neither of
+  which had one. Toasts had Sonner's own `0 4px 12px rgba(0,0,0,.1)`; it is replaced by `shadow-level3!` (Sonner's CSS
+  is unlayered, so the utility needs `!`) with a `focus-visible:ring-2 ring-ring` that restates Sonner's box-shadow
+  focus indicator. The plain tooltip stays flat. The sidebar outline
   variant's hairline is a real `border` (its `hsl(var(--sidebar-border))` wrapped an oklch token and painted nothing);
   the sticky table header's inset hairline is the one allow-listed literal. `test_frontend_design_tokens.py` fails on any
-  `shadow-*` that is not `shadow-level1|2|3` and pins which primitives carry which level.
-- Step 7, buttons: of the 35 `variant="secondary"` in the app, 8 were Buttons (Add section, Add item, See all skill
-  gaps twice, Choose file, Try again twice, Add group) and 27 were Badges. The 8 are `tonal` and the Button's
-  `secondary` variant is deleted; Badge keeps its own for plain metadata. `test_frontend_design_tokens.py` fails on a
-  Button, IconButton or `buttonVariants` call that asks for `secondary`.
-- Step 8, CompanyMonogram: its six palette pairs are the role containers in the same order (blue to primary, violet to
-  tertiary, green to success, amber to warning, rose to attention, cyan to secondary), so the hash and each company's
-  slot are unchanged and only the tints move. Its comment says the tint is identity, not state. The palette pin has no
-  allow-list now, a new pin holds the six tones to container pairs, and `test_frontend_color_roles.py` lost the copied
+  `shadow-*`, `drop-shadow-*`, `inset-shadow-*` or `text-shadow-*` that is not `shadow-level1|2|3`, on a stylesheet
+  `@apply` shadow, on a shadow passed to `Card`, `GalleryCard`, `StatTile`, `TableFrame` or `EmptyState`, and pins which
+  primitives carry which level.
+- Step 7, buttons: of the 35 `variant="secondary"` in the app, 8 were Buttons and 27 were Badges. Six (Add section,
+  Add item, See all skill gaps twice, Choose file, Add group) are `tonal`; the two Try again buttons are `outline`,
+  like every other retry in the app (tonal on a red-tinted alert is wrong). The Button's `secondary` variant is
+  deleted; Badge keeps its own for plain metadata. `test_frontend_design_tokens.py` fails on a Button, IconButton or
+  `buttonVariants` call that asks for `secondary`.
+- Step 8, CompanyMonogram: its six palette pairs are four tones that are not statuses (primary, tertiary and
+  secondary container, and `surface-container-highest` with `text-foreground`), not the six containers first planned:
+  StatusChip is the only place a state is named and coloured, so a success, warning or attention monogram would share
+  an exact fill with the status chip in the same Jobs row. The hash is kept and the modulo is 4, so each company
+  re-slots once; the tint is identity only, and its comment says so. The palette pin has no allow-list now, a new pin
+  holds the tones to that list and rejects any status container, and `test_frontend_color_roles.py` lost the copied
   Tailwind shades, the theme-match test and the palette-text scan, which measured only the monogram.
 
-## What is left, in order (all eight steps are done)
+## Steps, in order
 
 Each step is one reviewable change. Counts are from `frontend/app` and `frontend/components` at the
 branch point.
@@ -75,9 +85,9 @@ branch point.
 | 3 | ~~Surfaces~~ done | 74 `bg-muted/N` uses in 45 files, 11 opacities | `/10`–`/30` → page (drop the fill) or `surface-container-low`; `/35`–`/60` → `surface-container-low`; `/70` and solid → `surface-container` | mechanical |
 | 4 | ~~Type~~ done | `text-[22px]` page titles, `text-[10px]`/`[11px]`/`[0.8rem]` (33 uses), size + weight pairs | `text-title-large`, `text-label-small`, `text-title-medium` and the rest | start with `PageHeader`, `CardTitle`, `Badge` |
 | 5 | ~~Corners~~ done | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |
-| 6 | ~~Shadows~~ done | 54 `shadow`/`shadow-sm`/`-md`/`-lg` uses | `shadow-level1..3` on menus, popovers, dialogs, the hovered FAB; none elsewhere | visible change: resting cards, inputs, switches and tabs lose their shadow |
-| 7 | ~~Buttons~~ done | `variant="secondary"` (35 uses) beside `tonal` (6) | one low-emphasis filled variant: `tonal` | drop `secondary` when its last caller moves |
-| 8 | ~~CompanyMonogram~~ done | six palette pairs | the four status containers plus primary and secondary container | keeps the hash, changes the tints |
+| 6 | ~~Shadows~~ done | 54 `shadow`/`shadow-sm`/`-md`/`-lg` uses | `shadow-level1..3` on what floats (see Step 6 above); none elsewhere | visible change: resting cards, inputs, switches and tabs lose their shadow |
+| 7 | ~~Buttons~~ done | `variant="secondary"` (35 uses) beside `tonal` (6) | one low-emphasis filled variant: `tonal` (`outline` for a retry) | drop `secondary` when its last caller moves |
+| 8 | ~~CompanyMonogram~~ done | six palette pairs | four non-status tones: primary, tertiary and secondary container, `surface-container-highest` | keeps the hash (modulo 4), changes the tints |
 
 ## UX changes that go with it
 

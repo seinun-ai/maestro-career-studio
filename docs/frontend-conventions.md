@@ -122,11 +122,18 @@
   `className` (tailwind-merge knows `rounded-corner-*`), so a call site does not
   restate the default: `Card` takes no `rounded-*`.
   **Elevation** is `shadow-level1` to `shadow-level3`, for what floats
-  (level1 a hovered FAB or chip, level2 menus, popovers, tooltips, toasts and
-  chart tooltips, level3 dialogs and sheets); tone separates everything else, so
-  a card, tile, input, tab or table rests flat. `test_frontend_design_tokens.py`
-  fails on any other `shadow-*` utility and on a bracketed one (one allow-listed
-  literal: the sticky table header's inset hairline). **Motion** is `ease-standard`,
+  (level1 a hovered FAB or chip, a focused skip link, a modal sheet; level2
+  menus, popovers, rich (chart) tooltips, sticky bars, the PDF page pill and a
+  dragged row; level3 dialogs and toasts); tone separates everything else, so
+  a card, tile, table, plain tooltip, input or tab rests flat. A toast's level
+  is `shadow-level3!` with a `focus-visible:ring-2 ring-ring`: Sonner's CSS is
+  unlayered, so the utility needs `!`, and Sonner's focus indicator is a
+  box-shadow the important one would replace.
+  `test_frontend_design_tokens.py` fails on any other `shadow-*`, `drop-shadow-*`,
+  `inset-shadow-*` or `text-shadow-*` utility, on a bracketed one (one allow-listed
+  literal: the sticky table header's inset hairline), on a stylesheet `@apply`
+  shadow, and on any shadow passed to a `Card`, `GalleryCard`, `StatTile`,
+  `TableFrame` or `EmptyState`. **Motion** is `ease-standard`,
   `ease-emphasized-decelerate` and `ease-emphasized-accelerate` with the
   `--duration-*` variables. `test_frontend_design_tokens.py` pins every
   status pair and every text role at 4.5:1 on every surface in both modes,
@@ -977,9 +984,10 @@
   invalidate job-detail alongside applications when status changes.
 - Shared components: `StatusChip`/`SavedChip` (`components/status-chip.tsx` —
   the ONLY status vocabulary/color source in the UI), `CompanyMonogram` (a hash of the company name
-  picks one of six role containers: primary, tertiary, success, warning,
-  attention, secondary; the tint is identity, never a status, and
-  `test_company_monogram_tones_are_role_container_pairs` pins it),
+  picks one of four tones: primary, tertiary and secondary container, and
+  `surface-container-highest` with `text-foreground`; never a status container,
+  because StatusChip is the only place a state is coloured and the tint is
+  identity. `test_company_monogram_tones_are_not_statuses` pins it),
   `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
   you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object, the
   `attention` container pair; "Submission uncertain" is its own entry with the

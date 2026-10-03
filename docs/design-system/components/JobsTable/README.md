@@ -7,6 +7,6 @@ The jobs table lists one job per row: who and what, which resume, its status and
 - Company in `title-small`, role line and metadata in `body-small` `muted-foreground`. An empty cell is an em dash.
 - Status is always a StatusChip. Row actions are one ghost icon button that appears at the row's end.
 - A capped list says so at its end; a failed fetch is its own state, never the empty one.
-- CompanyMonogram: a 32px disc with the company's initial, tinted by a hash of the name across six container pairs (`primary`, `tertiary`, `success`, `warning`, `attention`, `secondary`). It is decoration (`aria-hidden`); the name beside it carries the meaning.
+- CompanyMonogram: a 32px disc with the company's initial, tinted by a hash of the name across four non-status tones (`primary-container`, `tertiary-container`, `secondary-container` and `surface-container-highest` with `foreground`). The status containers are not among them: StatusChip is the only place a state is coloured, and a monogram's tint is identity. It is decoration (`aria-hidden`); the name beside it carries the meaning.
 
-Source: `frontend/components/ui/table.tsx`, `company-monogram.tsx`, `empty-state.tsx` (`TableFrame`). Changed from source: row hover `bg-muted/50` to `surface-container-low`; monogram palette pairs become role containers.
+Source: `frontend/components/ui/table.tsx`, `company-monogram.tsx`, `empty-state.tsx` (`TableFrame`). Changed from source: row hover `bg-muted/50` to `surface-container-low`; monogram palette pairs become four non-status tones.

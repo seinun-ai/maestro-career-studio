@@ -2,20 +2,21 @@
 
 import { cn } from "@/lib/utils";
 
-/** A company's tint is identity, not state: the name hashes to one of six
- *  role containers so a row stays recognisable at a glance. The same hue
- *  carries a status elsewhere (a green monogram is not "accepted"), so a
- *  monogram's tint is never read as one; the initial and the row's own chip say
- *  the state. Every tone is a container pair, which holds AA on its own solid
- *  fill (pinned in test_frontend_color_roles.py and test_frontend_design_tokens.py),
- *  and the order is fixed because it is the hash's modulo: a company keeps its tone. */
+/** A company's tint is identity, not state: the name hashes to one of four
+ *  tones so a row stays recognisable at a glance. StatusChip is the only place
+ *  a state is named and coloured, so the status containers (success, warning,
+ *  attention, error) are not in this list: a monogram's tint is never read as a
+ *  state, and the initial and the row's own chip say the state. Each tone holds
+ *  AA on its own solid fill (the container pairs are pinned in
+ *  test_frontend_color_roles.py, foreground on the ladder in
+ *  test_frontend_design_tokens.py). The order is fixed because it is the
+ *  hash's modulo: a company keeps its tone. The neutral tone is the ladder's
+ *  highest step so it stays visible on a hovered row (dark rows hover to -high). */
 const TONES = [
   "bg-primary-container text-on-primary-container",
   "bg-tertiary-container text-on-tertiary-container",
-  "bg-success-container text-on-success-container",
-  "bg-warning-container text-on-warning-container",
-  "bg-attention-container text-on-attention-container",
   "bg-secondary-container text-on-secondary-container",
+  "bg-surface-container-highest text-foreground",
 ];
 
 export function CompanyMonogram({

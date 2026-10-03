@@ -5,9 +5,9 @@ Buttons run an action; the variant says how much it matters, and a view has exac
 | Variant | Colors | Use for |
 | --- | --- | --- |
 | `default` | `primary` / `primary-foreground` | The one main action in a view or a dialog (Save job, Start the questions) |
-| `tonal` | `secondary-container` / `on-secondary-container` | A create or secondary action (Add item); also "selected in a set" |
+| `tonal` | `secondary-container` / `on-secondary-container` | A create or secondary action (Add item, See all skill gaps); also "selected in a set" |
 | `fab` | `primary-container` / `on-primary-container` | Add job in the sidebar, and nothing else |
-| `outline` | `border` on `background` | Neutral actions beside a filled one |
+| `outline` | `border` on `background` | Neutral actions beside a filled one, a retry (Try again) |
 | `ghost` | no container | Row and toolbar actions |
 | `destructive` | `destructive` text on a 10% tint | Delete, remove |
 | `link` | `primary` text | An action that reads as a link inside prose |

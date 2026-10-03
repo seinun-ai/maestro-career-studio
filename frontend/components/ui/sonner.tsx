@@ -38,8 +38,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }
       toastOptions={{
         classNames: {
-          // Sonner paints its own box-shadow at higher specificity; `!` wins it.
-          toast: "cn-toast shadow-level2!",
+          // M3 snackbar elevation. Sonner's own box-shadow is unlayered CSS, which
+          // beats `@layer utilities` as well as the specificity of one class, so
+          // the level needs `!`. Sonner's keyboard focus indicator is that same
+          // box-shadow, so the ring is restated: the important shadow reads
+          // --tw-ring-shadow and the two compose.
+          toast: "cn-toast shadow-level3! focus-visible:ring-2 focus-visible:ring-ring",
         },
       }}
       {...props}

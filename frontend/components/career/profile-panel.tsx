@@ -45,7 +45,7 @@ export function ProfilePanel() {
         {errorDetail(profile.error) ? (
           <p className="text-muted-foreground mt-1 text-body-small">{errorDetail(profile.error)}</p>
         ) : null}
-        <Button className="mt-3" size="sm" variant="tonal" onClick={() => void profile.refetch()}>
+        <Button className="mt-3" size="sm" variant="outline" onClick={() => void profile.refetch()}>
           Try again
         </Button>
       </div>

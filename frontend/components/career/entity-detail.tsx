@@ -122,7 +122,7 @@ export function EntityDetail({ entityId }: { entityId: string }) {
             {loadErrorDetail(loadError, "career item")}
           </p>
           <div className="mt-4 flex gap-2">
-            <Button variant="tonal" onClick={() => void entity.refetch()}>
+            <Button variant="outline" onClick={() => void entity.refetch()}>
               Try again
             </Button>
             <Button
