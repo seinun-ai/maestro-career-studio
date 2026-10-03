@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
 
-from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace
+from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace, Reason
 from app.services import autofill_polarity, jev, llm, model_settings
 from app.services.autofill_catalog import Fact, yes_no_word
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
@@ -35,6 +35,7 @@ from app.services.autofill_map import (
     keen,
     low_stakes_rule,
     main_call,
+    Top,
     second_asked,
     second_decided,
 )
@@ -52,7 +53,7 @@ ASSUMED_FLOOR = 0.4
 # status must stay none, never become a confident No.
 NEVER_YES_NO = ("A status, list or name value is never turned into a Yes or No: only an option naming that same "
                 "status, item or name answers it, else none.")
-# For a return that carries no trace (a field nothing was asked about). An abstain that has
+# For a return that carries no trace (a field no pick was asked for). An abstain that has
 # a trace is a fresh Picked, so it never equals this one: ask `abstained`, never `== ABSTAIN`.
 ABSTAIN = Picked(oids=[], reason="abstained")
 _NO_OPTION_TEXT = "No option means the same as the fact"
@@ -101,31 +102,30 @@ def abstained(picked: Picked) -> bool:
     return not picked.oids
 
 
-def verdict(field, oid: str | None, p: float | None, policy: str, *, complete: bool,
-            engine: Engine | None) -> Picked:
+def _bar(field, chance: float, policy: str, *, closest_ok: bool) -> tuple[float, Reason]:
+    """The floor an answer is judged against and the reason it carries if it clears it. A
+    `closest` near miss is a flag slot's, within [CLOSEST_FLOOR, MATCH_FLOOR) only."""
+    if field.route == "low_stakes":
+        return ASSUMED_FLOOR, "assumed"
+    if closest_ok and policy == "flag" and CLOSEST_FLOOR <= chance < MATCH_FLOOR[policy]:
+        return CLOSEST_FLOOR, "closest"
+    return MATCH_FLOOR[policy], "matched"
+
+
+def verdict(field, oid: str | None, p: float | None, policy: str, *, engine: Engine | None) -> Picked:
     """One single-answer decision → Picked, shared by /pick and /step, with the
     trace of how it was decided (`engine`, `p` and the floor it was judged against).
 
-    A `closest` near miss needs a flag slot AND a complete view of the options:
-    the nearest of a partial list is a guess. `p` None is a confidence the model
-    gave unreadably: routed as 0.0, but never traced as a 0.0 it did not say."""
+    A `closest` near miss needs a flag slot AND a complete view of the options
+    (`field.complete`): the nearest of a partial list is a guess. `p` None is a
+    confidence the model gave unreadably: routed as 0.0, but never traced as a 0.0
+    it did not say."""
     chance = p or 0.0
-
-    def traced(picked_oids: list[str], reason: str, floor: float) -> Picked:
-        return Picked(oids=picked_oids, reason=reason, trace=DecisionTrace(engine=engine, p=p, floor=floor))
-
-    low_stakes = field.route == "low_stakes"
-    if not oid or oid == NO_OPTION:
-        return traced([], "abstained", ASSUMED_FLOOR if low_stakes else MATCH_FLOOR[policy])
-    if low_stakes:
-        if chance >= ASSUMED_FLOOR:
-            return traced([oid], "assumed", ASSUMED_FLOOR)
-        return traced([], "abstained", ASSUMED_FLOOR)
-    if chance >= MATCH_FLOOR[policy]:
-        return traced([oid], "matched", MATCH_FLOOR[policy])
-    if policy == "flag" and complete and chance >= CLOSEST_FLOOR:
-        return traced([oid], "closest", CLOSEST_FLOOR)
-    return traced([], "abstained", MATCH_FLOOR[policy])
+    named = bool(oid) and oid != NO_OPTION
+    floor, reason = _bar(field, chance, policy, closest_ok=named and field.complete)
+    stands = named and chance >= floor
+    return Picked(oids=[oid] if stands else [], reason=reason if stands else "abstained",
+                  trace=DecisionTrace(engine=engine, p=p, floor=floor))
 
 
 @dataclass(frozen=True)
@@ -178,25 +178,38 @@ def polarity_question(field) -> str:
     return f"{field.question} (options: {'; '.join(texts)})"
 
 
-def polarity_answers(fields, facts: dict[str, Fact], session: Session, budget: Budget,
-                     ways: dict[str, autofill_polarity.Polarity] | None = None) -> dict[str, Computed | None]:
+def _yes_no(fields, facts: dict[str, Fact]) -> dict[str, Fact]:
+    """The slot fields holding a Yes/No fact, with that fact."""
+    return {f.fid: facts[f.slot] for f in fields if f.route == "slot" and f.slot in facts and facts[f.slot].yes_no}
+
+
+def polarity_ways(fields, facts: dict[str, Fact], session: Session,
+                  budget: Budget) -> dict[str, autofill_polarity.Polarity]:
+    """Per slot field holding a Yes/No fact, which way its question reads against the
+    fact (autofill_polarity: same, opposite, neither or unsure) and how that was decided.
+    The model calls; `polarity_answers` turns the ways into answers."""
+    yes_no = _yes_no(fields, facts)
+    return autofill_polarity.decide([autofill_polarity.Ask(f.fid, polarity_question(f), facts[f.slot].describe,
+                                                           facts[f.slot].policy)
+                                     for f in fields if f.fid in yes_no], session, budget)
+
+
+def polarity_trace(w: autofill_polarity.Polarity) -> PolarityTrace:
+    return PolarityTrace(way=w.way or "unsure", engine=w.engine, p=w.p)
+
+
+def polarity_answers(fields, facts: dict[str, Fact],
+                     ways: dict[str, autofill_polarity.Polarity]) -> dict[str, Computed | None]:
     """Per slot field holding a Yes/No fact, the applicant's answer to its
-    question as worded: its polarity decided (autofill_polarity), then the value
-    flipped by code. None: unsure, neither, or a wordy value asked the other way.
-    `ways`, when given, is filled with each field's decided Polarity (the trace's)."""
-    yes_no = {f.fid: facts[f.slot] for f in fields
-              if f.route == "slot" and f.slot in facts and facts[f.slot].yes_no}
-    decided = autofill_polarity.decide([autofill_polarity.Ask(f.fid, polarity_question(f), facts[f.slot].describe,
-                                                              facts[f.slot].policy)
-                                        for f in fields if f.fid in yes_no], session, budget)
-    if ways is not None:
-        ways.update(decided)
+    question as worded: its polarity (`polarity_ways`), then the value flipped
+    by code. None: unsure, neither, or a wordy value asked the other way."""
     out: dict[str, Computed | None] = {}
-    for fid, fact in yes_no.items():
-        answer = autofill_polarity.answer_for(str(fact.value), decided[fid].way)
+    for fid, fact in _yes_no(fields, facts).items():
+        way = ways[fid].way
+        answer = autofill_polarity.answer_for(str(fact.value), way)
         # A saved answer is described by its own question ("saved answer to:
         # …"): a statement would read as that answer being false. Literal only.
-        same = decided[fid].way == autofill_polarity.SAME and not fact.slot.startswith("custom.")
+        same = way == autofill_polarity.SAME and not fact.slot.startswith("custom.")
         # A worded answer ("No, I do not have a disability") says which fact
         # it answers: beside an undirected question ("Please check one of the
         # boxes below:", iCIMS CC-305) Jev picked the right box under the floor.
@@ -230,7 +243,7 @@ def _instructions(field: PickField, values: list[str], hint: JobHint | None, fac
 
 
 def _with_jev(fields, facts, hint, session,
-              answers: dict[str, Computed]) -> tuple[dict[str, Picked], dict[str, tuple[str, float]]]:
+              answers: dict[str, Computed]) -> tuple[dict[str, Picked], dict[str, Top]]:
     """Each field's Picked, and Jev's top choice with its probability for every
     field it answered readably, even an abstained one: a second opinion that
     decides is traced against it (`autofill_map.second_decided`)."""
@@ -245,13 +258,14 @@ def _with_jev(fields, facts, hint, session,
         questions[f.fid] = jev.choice_question(_instructions(f, values, hint, facts, answers.get(f.fid)),
                                                criteria_by_fid[f.fid])
     replies = jev.decide(questions, state, session)
-    out, tops = {}, {}
+    out: dict[str, Picked] = {}
+    tops: dict[str, Top] = {}
     for f in fields:
         got = jev.choice_of(replies.get(f.fid), criteria_by_fid[f.fid])
         if got:
             tops[f.fid] = (got.choice, got.probability)
         out[f.fid] = verdict(f, got.choice if got else None, got.probability if got else None,
-                             _policy(f, facts), complete=f.complete, engine="jev")
+                             _policy(f, facts), engine="jev")
     return out, tops
 
 
@@ -278,8 +292,7 @@ def _with_llm(fields, facts, hint, session, answers: dict[str, Computed], trace_
         oids = [o for o in oids if isinstance(o, str) and o in offered] if isinstance(oids, list) else []
         conf = entry.get("confidence")
         conf = float(conf) if jev._unit(conf) else None   # unreadable: routed as 0.0, traced as None
-        out[f.fid] = verdict(f, oids[0] if oids else None, conf, _policy(f, facts), complete=f.complete,
-                             engine="fast")
+        out[f.fid] = verdict(f, oids[0] if oids else None, conf, _policy(f, facts), engine="fast")
     return out
 
 
@@ -301,6 +314,34 @@ def _second_opinion(fields: list[PickField], facts: dict[str, Fact], hint: JobHi
         return None
 
 
+def _with_second_opinion(picked: dict[str, Picked], tops: dict[str, Top], unsure: list[PickField],
+                         second: dict[str, Picked] | None) -> int:
+    """Fold the second opinion into Jev's `picked`: a field it decided takes its answer,
+    traced against Jev's top choice; one it was asked about and did not decide keeps
+    Jev's trace, marked asked. `second` None: it did not run, and every field keeps
+    Jev's trace as it was. How many it decided."""
+    if second is None:
+        return 0
+    n_decided = 0
+    for f in unsure:
+        got = second[f.fid]
+        if abstained(got):
+            picked[f.fid] = picked[f.fid].model_copy(update={"trace": second_asked(picked[f.fid].trace)})
+        else:
+            trace = second_decided(got.trace, tops.get(f.fid), got.oids[0])
+            picked[f.fid] = got.model_copy(update={"trace": trace})
+            n_decided += 1
+    return n_decided
+
+
+def _with_polarity(out: dict[str, Picked], ways: dict[str, autofill_polarity.Polarity]) -> None:
+    """How polarity went, on every field it judged, also the ones it left to the user: they
+    carry no trace (no pick was asked), and this is what explains them (iCIMS CC-305,
+    live 2026-10-02)."""
+    for fid, w in ways.items():
+        out[fid] = out[fid].model_copy(update={"polarity": polarity_trace(w)})
+
+
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None) -> dict[str, Picked]:
     budget = Budget()
     low_stakes_on = model_settings.get_autofill_low_stakes(session)  # re-checked, never trusted from the client
@@ -314,14 +355,14 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
     out = {f.fid: ABSTAIN for f in fields if f.fid not in asked}
     # A Yes/No fact's answer to the question as worded: polarity first, code
     # flips; unsure, it is left to the user and never picked.
-    ways: dict[str, autofill_polarity.Polarity] = {}
-    computed = polarity_answers(askable, facts, session, budget, ways)
+    ways = polarity_ways(askable, facts, session, budget)
+    computed = polarity_answers(askable, facts, ways)
     answers = {fid: a for fid, a in computed.items() if a is not None}
     out |= {fid: ABSTAIN for fid in computed if fid not in answers}
     askable = [f for f in askable if f.fid not in computed or f.fid in answers]
     # The fact picks first: a slow reasoning call must never cost them.
     if askable:
-        picked = None
+        picked, tops = None, {}
         if model_settings.get_autofill_engine(session) == "jev":
             try:
                 picked, tops = _with_jev(askable, facts, hint, session, answers)
@@ -336,26 +377,10 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
             unsure = [f for f in askable if f.route == "slot" and abstained(picked[f.fid])]
             second = _second_opinion(unsure, facts, hint, session, budget, answers,
                                      reasoning_next=bool(reasoned))
-            decided = 0
-            # None: it did not run, and each field keeps Jev's trace as it was.
-            if second is not None:
-                for f in unsure:
-                    got = second[f.fid]
-                    if abstained(got):
-                        picked[f.fid] = picked[f.fid].model_copy(
-                            update={"trace": second_asked(picked[f.fid].trace)})
-                    else:
-                        trace = second_decided(got.trace, tops.get(f.fid), got.oids[0])
-                        picked[f.fid] = got.model_copy(update={"trace": trace})
-                        decided += 1
-            if decided:
-                logger.info("pick: the fast model decided %d of %d fields Jev abstained on", decided, len(unsure))
+            if n_decided := _with_second_opinion(picked, tops, unsure, second):
+                logger.info("pick: the fast model decided %d of %d fields Jev abstained on", n_decided, len(unsure))
         out |= picked
     if reasoned:
         out |= reason(reasoned, facts, session, budget, hint.company if hint else None)
-    # Also the fields polarity left to the user: they carry no trace (no pick was asked), but
-    # how polarity went is exactly what explains them (iCIMS CC-305, live 2026-10-02).
-    for fid, w in ways.items():
-        out[fid] = out[fid].model_copy(update={"polarity": PolarityTrace(way=w.way or "unsure",
-                                                                         engine=w.engine, p=w.p)})
+    _with_polarity(out, ways)
     return out

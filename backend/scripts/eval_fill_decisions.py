@@ -414,6 +414,18 @@ class Run:
         return "fast" if self.fast_decided else ("jev" if self.engine == "routed" else self.engine)
 
 
+def _fast_decided(got) -> bool:
+    """Whether a second opinion answered where Jev did not: None is "never ran". By content: an
+    abstain that carries a trace is not equal to ABSTAIN, so `!=` would call every one decided."""
+    from app.services import autofill_pick
+
+    if got is None:
+        return False
+    if isinstance(got, dict):
+        return any(not autofill_pick.abstained(p) for p in got.values())
+    return got.mid is not None
+
+
 @contextmanager
 def engine_of(run: Run, low_stakes: bool = False):
     """Force the engine and the low-stakes setting; in a Jev pass, record
@@ -462,30 +474,29 @@ def engine_of(run: Run, low_stakes: bool = False):
     def refuse(*_args, **_kwargs):
         raise JevFellBack()
 
+    @contextmanager
+    def _fast_allowed():
+        """The fast model the failure fallback refuses, allowed for one second opinion."""
+        for (owner, name), fn in fast_calls.items():
+            setattr(owner, name, fn)
+        try:
+            yield
+        finally:
+            for owner, name in fast_calls:
+                setattr(owner, name, refuse)
+
     def second_opinion(module):
         """The production second opinion, allowed the fast model the failure
         fallback is refused."""
         ask = saved[(module, "_second_opinion")]
 
         def asked(*args, **kwargs):
-            for (owner, name), fn in fast_calls.items():
-                setattr(owner, name, fn)
-            try:
+            with _fast_allowed():
                 got = ask(*args, **kwargs)
-            finally:
-                for owner, name in fast_calls:
-                    setattr(owner, name, refuse)
-            if module is autofill_map:
-                if got is not None:   # it ran: None is "never ran", as in the trace's `second`
-                    run.second_asked.update(f.fid for f in args[0])
-            elif module is autofill_polarity:
-                pass   # recorded by `seen_polarity`, with its engine
-            else:
-                # None: it never ran. Else decided by content: an abstain that carries a trace is
-                # not equal to ABSTAIN, so `!=` would call every one decided.
-                run.fast_decided = got is not None and (
-                    any(not autofill_pick.abstained(p) for p in got.values()) if isinstance(got, dict)
-                    else got.mid is not None)
+            if module is autofill_map and got is not None:   # None: it never ran, as in the trace's `second`
+                run.second_asked.update(f.fid for f in args[0])
+            elif module in (autofill_pick, autofill_step):   # polarity's is recorded by `seen_polarity`
+                run.fast_decided = _fast_decided(got)
             return got
         return asked
 

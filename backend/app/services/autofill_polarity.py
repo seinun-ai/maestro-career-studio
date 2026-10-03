@@ -35,6 +35,7 @@ from typing import Literal
 
 from sqlalchemy.orm import Session
 
+from app.schemas.autofill_fill import Engine
 from app.services import jev, llm, model_settings
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR
 from app.services.autofill_map import MIN_CALL_S, Budget, fast_json
@@ -96,7 +97,7 @@ class Ask:
 @dataclass(frozen=True)
 class Polarity:
     way: Way | None   # None: unsure; neither: decided, but no answer — both leave the field to the user
-    engine: str | None   # "jev" | "fast": which engine decided
+    engine: Engine | None   # which engine decided
     # The deciding answer's probability (value-free: the fill trace reads it). A
     # remembered polarity keeps it. None: nothing decided.
     p: float | None = None

@@ -29,7 +29,7 @@ from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from app.services.autofill_map import SECOND_OPINION_MAX_S, Budget, fast_json, keen, low_stakes_rule, main_call
-from app.services.autofill_pick import NEVER_YES_NO, Computed, JobHint, polarity_answers, values_for, verdict
+from app.services.autofill_pick import NEVER_YES_NO, Computed, JobHint, polarity_answers, polarity_ways, values_for, verdict
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def _decide(req: StepRequest, mid: str | None, p: float, policy: str) -> StepRes
         return ABSTAIN
     if _is_answer(req, mid):
         # engine=None until the step records its trace (the fill-trace plan, Task 4).
-        picked = verdict(req, mid, p, policy, complete=req.complete, engine=None)
+        picked = verdict(req, mid, p, policy, engine=None)
         return StepResponse(mid=mid, reason=picked.reason) if picked.oids else ABSTAIN
     return StepResponse(mid=mid, reason="progress") if p >= PROGRESS_FLOOR else ABSTAIN
 
@@ -136,7 +136,8 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     # A Yes/No fact: this request decides its question's polarity itself; unsure, the step gives up.
     answer = None
     if req.route == "slot" and fact.yes_no:
-        answer = polarity_answers([req], facts, session, budget).get(req.fid)
+        ways = polarity_ways([req], facts, session, budget)
+        answer = polarity_answers([req], facts, ways).get(req.fid)
         if answer is None:
             return ABSTAIN
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}

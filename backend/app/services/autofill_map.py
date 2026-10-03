@@ -295,8 +295,11 @@ def main_call(budget: Budget, call: Callable[[float], "T"], what: str) -> "T":
         return call(budget.rest())
 
 
-def second_decided(trace: DecisionTrace, first: tuple[str, float] | None,
-                   decided: str) -> DecisionTrace:
+# A first engine's top choice and its probability, even under its floor.
+Top = tuple[str, float]
+
+
+def second_decided(trace: DecisionTrace, first: Top | None, decided: str) -> DecisionTrace:
     """`trace` (the second opinion's own: its engine, p and floor) marked as the
     answer that stands. `first`: the first engine's top choice and probability,
     even under its floor (None: it gave no readable answer); `decided`: the

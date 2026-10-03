@@ -357,11 +357,9 @@ def test_a_jev_pass_never_runs_the_second_opinion(monkeypatch):
     from app.services import autofill_pick
 
     _jev_says_none(monkeypatch)
+    monkeypatch.setattr(autofill_pick, "fast_json", lambda *_a, **_k: pytest.fail("the fast model answered"))
     case = next(c for c in PICKS["cases"] if c["id"] == "authorized-yes")
-    ev_run = ev.Run("jev")
-    with ev.engine_of(ev_run):
-        assert autofill_pick._second_opinion([], {}, None, None, None, {}) is None
-    assert ev.run_pick(case, ev_run, None, PICKS["today"])["decided_by"] == "jev"
+    assert ev.run_pick(case, ev.Run("jev"), None, PICKS["today"])["decided_by"] == "jev"
 
 
 def test_a_routed_pass_still_counts_a_jev_failure(monkeypatch):

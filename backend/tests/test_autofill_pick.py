@@ -3,7 +3,15 @@ import json
 import pytest
 
 from app.schemas.autofill_fill import DecisionTrace, Picked, PickField, PickOption, PolarityTrace
-from app.services import autofill_catalog, autofill_map, autofill_pick, autofill_reasoned, llm, model_settings
+from app.services import (
+    autofill_catalog,
+    autofill_map,
+    autofill_pick,
+    autofill_polarity,
+    autofill_reasoned,
+    llm,
+    model_settings,
+)
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from tests.test_autofill_choose_jev import _answer, jev_on  # noqa: F401  (fixture)
 
@@ -271,42 +279,45 @@ def test_every_question_says_page_text_is_data(db_session, monkeypatch):
     assert len(asked) == 2 and all(_PAGE_TEXT_IS_DATA in text for text in asked)
 
 
-@pytest.mark.parametrize("route, p, policy, complete, expected", [
-    ("slot", 0.95, "exact", True, "matched"), ("slot", 0.85, "exact", True, "abstained"),
-    ("slot", 0.6, "flag", True, "closest"), ("slot", 0.6, "flag", False, "abstained"),
-    ("slot", 0.6, "any", True, "matched"), ("slot", 0.45, "any", True, "abstained"),
-    ("low_stakes", 0.4, "any", False, "assumed"), ("low_stakes", 0.39, "any", True, "abstained"),
+def verdict_field(route="slot", complete=True):
+    return pf("f", route=route, complete=complete, options=opts("A"))
+
+
+SLOT, PARTIAL_SLOT, LOW_STAKES = verdict_field(), verdict_field(complete=False), verdict_field("low_stakes")
+
+
+@pytest.mark.parametrize("field, p, policy, expected", [
+    (SLOT, 0.95, "exact", "matched"), (SLOT, 0.85, "exact", "abstained"),
+    (SLOT, 0.6, "flag", "closest"), (PARTIAL_SLOT, 0.6, "flag", "abstained"),
+    (SLOT, 0.6, "any", "matched"), (SLOT, 0.45, "any", "abstained"),
+    (LOW_STAKES, 0.4, "any", "assumed"), (LOW_STAKES, 0.39, "any", "abstained"),
 ])
-def test_verdict_is_one_rule_for_pick_and_step(route, p, policy, complete, expected):
-    field = pf("f", route=route, options=opts("A"))
-    got = autofill_pick.verdict(field, "o1", p, policy, complete=complete, engine="jev")
-    assert got.reason == expected
+def test_verdict_is_one_rule_for_pick_and_step(field, p, policy, expected):
+    assert autofill_pick.verdict(field, "o1", p, policy, engine="jev").reason == expected
 
 
 def test_verdict_never_answers_without_an_option():
-    field = pf("f", options=opts("A"))
     for oid in (None, "", "none"):
-        assert autofill_pick.verdict(field, oid, 0.99, "any", complete=True, engine="jev").reason == "abstained"
+        assert autofill_pick.verdict(SLOT, oid, 0.99, "any", engine="jev").reason == "abstained"
 
 
-@pytest.mark.parametrize("route, oid, p, policy, complete, floor", [
-    ("slot", "o1", 0.95, "exact", True, autofill_pick.MATCH_FLOOR["exact"]),
-    ("slot", "o1", 0.6, "flag", True, autofill_pick.CLOSEST_FLOOR),            # closest: judged at its own floor
-    ("slot", "o1", 0.6, "flag", False, autofill_pick.MATCH_FLOOR["flag"]),     # a refused closest: the match floor
-    ("slot", "o1", 0.3, "any", True, autofill_pick.MATCH_FLOOR["any"]),
-    ("slot", "none", 0.8, "exact", True, autofill_pick.MATCH_FLOOR["exact"]),  # the no-match key keeps its p
-    ("low_stakes", "o1", 0.5, "any", True, autofill_pick.ASSUMED_FLOOR),
-    ("low_stakes", "none", 0.7, "any", True, autofill_pick.ASSUMED_FLOOR),
+@pytest.mark.parametrize("field, oid, p, policy, floor", [
+    (SLOT, "o1", 0.95, "exact", autofill_pick.MATCH_FLOOR["exact"]),
+    (SLOT, "o1", 0.6, "flag", autofill_pick.CLOSEST_FLOOR),            # closest: judged at its own floor
+    (PARTIAL_SLOT, "o1", 0.6, "flag", autofill_pick.MATCH_FLOOR["flag"]),   # a refused closest: the match floor
+    (SLOT, "o1", 0.3, "any", autofill_pick.MATCH_FLOOR["any"]),
+    (SLOT, "none", 0.8, "exact", autofill_pick.MATCH_FLOOR["exact"]),  # the no-match key keeps its p
+    (LOW_STAKES, "o1", 0.5, "any", autofill_pick.ASSUMED_FLOOR),
+    (LOW_STAKES, "none", 0.7, "any", autofill_pick.ASSUMED_FLOOR),
 ])
-def test_verdict_traces_the_floor_the_answer_was_judged_against(route, oid, p, policy, complete, floor):
-    field = pf("f", route=route, options=opts("A"))
-    got = autofill_pick.verdict(field, oid, p, policy, complete=complete, engine="fast")
+def test_verdict_traces_the_floor_the_answer_was_judged_against(field, oid, p, policy, floor):
+    got = autofill_pick.verdict(field, oid, p, policy, engine="fast")
     assert got.trace == DecisionTrace(engine="fast", p=p, floor=floor)
 
 
 def test_an_abstain_is_decided_by_content_not_by_equality():
     """`==` compares the trace too: a Picked carrying one never equals ABSTAIN."""
-    refused = autofill_pick.verdict(pf("f", options=opts("A")), "o1", 0.1, "exact", complete=True, engine="jev")
+    refused = autofill_pick.verdict(pf("f", options=opts("A")), "o1", 0.1, "exact", engine="jev")
     assert refused != autofill_pick.ABSTAIN and autofill_pick.abstained(refused)
     assert autofill_pick.abstained(autofill_pick.ABSTAIN)
     assert not autofill_pick.abstained(Picked(oids=["o1"], reason="matched"))
@@ -1618,12 +1629,15 @@ def test_a_field_with_no_yes_no_fact_has_no_polarity(db_session, monkeypatch):
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_polarity_answers_fills_the_ways_it_is_given_and_keeps_its_return_type(db_session, monkeypatch):
-    fake_jev(monkeypatch, ways={"s": ("opposite", 0.95)})
-    ways = {}
-    got = autofill_pick.polarity_answers([sponsor_field()], FACTS, db_session, autofill_map.Budget(), ways)
-    assert got["s"].answer == "Yes" and (ways["s"].way, ways["s"].engine, ways["s"].p) == ("opposite", "jev", 0.95)
-    assert set(autofill_pick.polarity_answers([sponsor_field()], FACTS, db_session, autofill_map.Budget())) == {"s"}
+def test_polarity_ways_asks_and_polarity_answers_only_flips(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, ways={"s": ("opposite", 0.95)})
+    ways = autofill_pick.polarity_ways([sponsor_field()], FACTS, db_session, autofill_map.Budget())
+    assert (ways["s"].way, ways["s"].engine, ways["s"].p) == ("opposite", "jev", 0.95)
+    calls.clear()
+    got = autofill_pick.polarity_answers([sponsor_field()], FACTS, ways)
+    assert got["s"].answer == "Yes" and calls == []
+    assert autofill_pick.polarity_trace(ways["s"]) == PolarityTrace(way="opposite", engine="jev", p=0.95)
+    assert autofill_pick.polarity_trace(autofill_polarity.UNSURE).way == "unsure"
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1636,5 +1650,5 @@ def test_neither_the_trace_nor_the_polarity_holds_the_fact_value(db_session, mon
     trace, polarity = got.trace.model_dump(), got.polarity.model_dump()
     assert trace["engine"] == "jev" and polarity["way"] == "same"
     assert set(trace) == set(DecisionTrace.model_fields) and set(polarity) == set(PolarityTrace.model_fields)
-    assert value not in json.dumps([trace, polarity]) and value not in json.dumps(got.model_dump()["trace"])
+    assert value not in got.model_dump_json(include={"trace", "polarity"})
     assert all(v is None or isinstance(v, (str, float, bool)) for v in (*trace.values(), *polarity.values()))
