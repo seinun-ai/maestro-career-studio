@@ -2,6 +2,7 @@
 scripted: every page message and every backend call is answered by the spec,
 and recorded so a test can pin what the loop SENT."""
 
+import json
 import re
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 
 from app.schemas.autofill_choose import ChooseRequest
 from app.schemas.autofill_fill import MapRequest, PickRequest, SectionsRequest, StepRequest
+from app.schemas.autofill_trace import RunTrace
 from tests.browser.conftest import EXTENSION
 
 # Every body the loop POSTs must be one the real endpoint accepts.
@@ -151,6 +153,10 @@ def run(page, load, **spec):
     for post in out["posts"]:
         if post["path"] in MODELS:
             MODELS[post["path"]].model_validate(post["body"])
+    # The trace the loop builds must be one POST /api/autofill/runs accepts: one field the
+    # schema rejects loses the whole run, so no live run may be the first to meet it.
+    if out["report"].get("trace"):
+        RunTrace.model_validate(out["report"]["trace"])
     return out
 
 
@@ -2276,3 +2282,274 @@ def test_an_end_date_whose_job_is_unclear_is_left_with_its_own_note(page, load):
     # Telemetry keeps its outcome vocabulary: the reason stays in the report.
     obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
     assert {o["outcome"] for o in obs} == {"needs_answer"}
+
+
+# ---------- the run trace: each field's decision path (value-free)
+
+HEADER = (EXTENSION / "shared" / "fill-loop.js").read_text(encoding="utf-8")
+
+
+def trace_of(out):
+    trace = out["report"]["trace"]
+    assert trace, "the loop built no trace"
+    return trace
+
+
+def traced(out, fid):
+    return next(t for t in trace_of(out)["fields"] if t["fid"] == fid)
+
+
+def ops(out, fid):
+    return [s["op"] for s in traced(out, fid)["steps"]]
+
+
+SELECT_AND_TEXT = dict(
+    frames=[[f("s", "select", "Authorized to work?", options=[opt("o1", "Yes"), opt("o2", "No")], optionsComplete=True),
+             f("t", question="City")]],
+    map={"s": {"route": "slot", "slot": "work_auth.authorized_now", "value": "Yes",
+               "trace": {"engine": "fast", "p": 0.97, "floor": 0.9}},
+         "t": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
+    pick={"s": {"oids": ["o1"], "reason": "matched", "trace": {"engine": "jev", "p": 0.95, "floor": 0.9,
+                                                               "second": "asked", "chose_none": False}}})
+
+
+def test_a_trace_lists_each_decision_and_page_action_in_order(page, load):
+    out = run(page, load, **SELECT_AND_TEXT)
+    assert statuses(out) == {"s": "verified", "t": "verified"}
+    assert ops(out, "s") == ["map", "pick", "choose"]
+    assert ops(out, "t") == ["map", "write"]
+    s_map, s_pick, _ = traced(out, "s")["steps"]
+    assert (s_map["route"], s_map["slot"], s_map["engine"], s_map["p"]) == ("slot", "work_auth.authorized_now", "fast", 0.97)
+    assert (s_pick["reason"], s_pick["option"], s_pick["engine"], s_pick["p"]) == ("matched", 0, "jev", 0.95)
+    assert (s_pick["second"], s_pick["chose_none"], "first_p" in s_pick) == ("asked", False, False)  # only what was sent
+
+
+def test_every_trace_step_is_timed_in_whole_milliseconds(page, load):
+    out = run(page, load, **SELECT_AND_TEXT)
+    steps = [step for fid in ("s", "t") for step in traced(out, fid)["steps"]]
+    assert {type(step["ms"]) for step in steps} == {int}
+    assert min(step["ms"] for step in steps) >= 0
+
+
+def test_a_verified_action_is_progress_in_the_round_it_ran(page, load):
+    out = run(page, load, **SELECT_AND_TEXT)
+    done = [traced(out, "s")["steps"][-1], traced(out, "t")["steps"][-1]]
+    assert [(step["op"], step["effect"], step["word"]) for step in done] == [
+        ("choose", "progress", "verified"), ("write", "progress", "verified")]
+    assert (traced(out, "t")["round"], traced(out, "s")["outcome"], traced(out, "s")["option_count"]) == (1, "verified", 2)
+    assert (trace_of(out)["host"], trace_of(out)["rounds"], trace_of(out)["halted"]) == ("x.test", 2, None)  # round 2 settles it
+
+
+def test_a_trace_notes_a_picks_polarity_before_the_pick(page, load):
+    out = run(page, load,
+              frames=[[f("s", "select", "Disability?", options=[opt("o1", "Yes"), opt("o2", "No")], optionsComplete=True)]],
+              map={"s": {"route": "slot", "slot": "eeo.disability", "value": "No"}},
+              pick={"s": {"oids": ["o2"], "reason": "matched", "polarity": {"way": "opposite", "engine": "jev", "p": 0.88}}})
+    assert ops(out, "s") == ["map", "polarity", "pick", "choose"]
+    polarity, pick = traced(out, "s")["steps"][1:3]
+    assert polarity == {"op": "polarity", "way": "opposite", "engine": "jev", "p": 0.88}
+    assert pick["option"] == 1
+
+
+def test_a_trace_marks_a_wasted_gesture_no_effect_and_the_second_kind_refused(page, load):
+    state = {"candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'},
+                            {"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?")]] * 3,
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
+              apply={"click:o1": {"outcome": "unexpected", "reason": "no_effect", "gestures": ["pointer"]},
+                     "open": {"outcome": "unexpected", "reason": "no_effect", "gestures": ["keyboard"]}},
+              step={"states": [state, dict(state)],
+                    "moves": [{"mid": "click:o1", "reason": "progress"}, {"mid": "open", "reason": "progress"}]})
+    assert statuses(out) == {"d": "unsupported"}
+    steps = traced(out, "d")["steps"]
+    assert [s["op"] for s in steps] == ["map", "explore", "step", "move", "step", "move"]
+    assert (steps[1]["effect"], steps[1]["word"]) == ("no_effect", "no_popup")
+    assert [(s["move"], s["effect"], s["word"]) for s in steps if s["op"] == "move"] == [
+        ("click:o1", "no_effect", "no_effect"), ("open", "refused", "no_effect")]
+    assert [s["move"] for s in steps if s["op"] == "step"] == ["click:o1", "open"]
+
+
+def test_a_trace_has_a_step_per_attempt_and_the_round_it_ended_in(page, load):
+    out = run(page, load, frames=[[f("n", question="Years")]] * 3,
+              map={"n": {"route": "slot", "slot": "custom.years", "value": "ten"}},
+              apply={"ten": [{"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]}, {"outcome": "verified"}]})
+    assert [(s["op"], s.get("effect")) for s in traced(out, "n")["steps"]] == [
+        ("map", None), ("write", "no_effect"), ("write", "progress")]
+    assert (traced(out, "n")["round"], trace_of(out)["rounds"]) == (2, 3)
+
+
+def test_a_stopped_runs_trace_says_so_and_a_cancelled_action_is_no_attempt(page, load):
+    out = run(page, load, frames=[[f("a", question="City"), f("b", question="State")]], stopAfterApply=True,
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
+                   "b": {"route": "slot", "slot": "personal.state", "value": "Ohio"}})
+    assert out["report"]["stopped"] is True
+    assert (trace_of(out)["halted"], trace_of(out)["rounds"]) == ("stopped", 1)
+    assert (traced(out, "a")["round"], ops(out, "a")) == (1, ["map", "write"])
+    assert ops(out, "b") == ["map"] and traced(out, "b")["round"] == 0  # never worked
+    cancelled = run(page, load, frames=[[f("a", question="City")]], stopAfterApply=True,
+                    map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
+                    apply={"Springfield": {"outcome": "cancelled"}})
+    assert ops(cancelled, "a") == ["map"]  # Stop is not an attempt
+
+
+def test_a_timed_out_runs_trace_says_timeout(page, load):
+    out = run(page, load, frames=[[f("a", question="City")]], limits={"RUN_MS": 100},
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
+              apiDelay={"/api/autofill/map": 300})  # the clock runs out inside /map, after the page was read
+    assert trace_of(out)["halted"] == "timeout"
+
+
+SENTINELS = ["SENTINEL-TYPED-77", "SENTINEL-COMMITTED-91", "SENTINEL-HELP-33", "SENTINEL-EXPLORE-55",
+             "555-0100", "No, I do not have a disability", "Acme Corp", "Springfield"]
+
+
+def sentinel_run(page, load):
+    """Every channel a value could take: the profile's answers, a typed value (which lands in
+    row.ignored), the page's current value (field.committed), its help text, a label that echoes
+    the written value, and a search explore's rows."""
+    out = run(page, load,
+              frames=[[f("p", question="Phone 555-0100"),
+                       f("y", question="Years"),
+                       f("c", question="Nickname", committed="SENTINEL-COMMITTED-91"),
+                       f("h", question="City", help="SENTINEL-HELP-33"),
+                       f("e", "search", "Employer"),
+                       f("d", "select", "Disability",
+                         options=[opt("o1", "No, I do not have a disability"), opt("o2", "Yes, I have a disability")],
+                         optionsComplete=True)]] * 3,
+              map={"p": {"route": "slot", "slot": "personal.phone", "value": "555-0100"},
+                   "y": {"route": "slot", "slot": "custom.years", "value": "SENTINEL-TYPED-77"},
+                   "c": {"route": "slot", "slot": "custom.nick", "value": "Joe"},
+                   "h": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
+                   "e": {"route": "slot", "slot": "experience.0.company", "value": "Acme Corp"},
+                   "d": {"route": "slot", "slot": "eeo.disability", "value": "No, I do not have a disability"}},
+              apply={"SENTINEL-TYPED-77": [{"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]},
+                                           {"outcome": "verified"}]},
+              explore={"Acme Corp": {"options": [opt("o9", "SENTINEL-EXPLORE-55 Inc")], "complete": True, "multi": False}},
+              pick={"e": {"oids": ["o9"], "reason": "matched"},
+                    "d": {"oids": ["o1"], "reason": "matched"}})
+    assert set(statuses(out).values()) == {"verified"}
+    return out
+
+
+def test_no_value_reaches_the_trace(page, load):
+    wire = json.dumps(trace_of(sentinel_run(page, load)))
+    assert [s for s in SENTINELS if s in wire] == []
+
+
+def test_what_the_trace_keeps_of_the_page_is_its_labels_and_options_minus_the_answer(page, load):
+    out = sentinel_run(page, load)
+    assert traced(out, "p")["label"] == ""  # a label that holds the written value is blank
+    assert (traced(out, "c")["label"], traced(out, "h")["label"]) == ("Nickname", "City")
+    assert (traced(out, "d")["options"], traced(out, "d")["option_count"]) == (["", "Yes, I have a disability"], 2)
+    assert (traced(out, "e")["options"], "explore" in ops(out, "e")) == (None, True)  # a search lists rows only on explore
+
+
+def test_a_field_trace_keeps_to_the_schemas_caps_and_patterns(page, load):
+    many = [opt(f"o{i}", f"Option {i}") for i in range(45)]
+    out = run(page, load,
+              frames=[[f("s", "select", "Pick one " + "x" * 300, options=many, optionsComplete=True, section="S" * 300,
+                         source="Weird_Source", recipe={"family": "f:ABC", "site": "s:x"}, required=True)]],
+              map={"s": {"route": "low_stakes"}}, pick={"s": {"oids": [], "reason": "abstained"}})
+    t = traced(out, "s")
+    assert len(t["label"]) == 200 and len(t["section"]) == 200
+    assert (len(t["options"]), t["option_count"]) == (30, 45)
+    assert (t["label_source"], t.get("family"), t["required"]) == (None, None, True)
+    assert [s["option"] for s in t["steps"] if s["op"] == "pick"] == [None]
+    out = run(page, load, frames=[[f("s", "select", "Pick", options=many[:2], optionsComplete=True, source="aria-label",
+                                     recipe={"family": "f:abc12", "site": "s:x"})]],
+              map={"s": {"route": "low_stakes"}}, pick={"s": {"oids": ["o1"], "reason": "assumed"}})
+    assert (traced(out, "s")["label_source"], traced(out, "s")["family"]) == ("aria-label", "f:abc12")
+
+
+def test_a_fields_trace_path_stops_at_forty_steps(page, load):
+    """A popup scrolled 30 times: 30 /step decisions and 30 moves, 40 kept."""
+    state = {"candidates": [{"mid": "scroll", "describe": "Scroll the list"}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Company")]] * 2, limits={"MAX_STEPS": 30},
+              map={"d": {"route": "slot", "slot": "experience.0.company", "value": "Acme"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
+              apply={"scroll": {"outcome": "progressed"}},
+              step={"states": [dict(state) for _ in range(30)], "moves": [{"mid": "scroll", "reason": "progress"}] * 30})
+    assert len([a for a in actions(out, "move") if a["mid"] == "scroll"]) == 30
+    steps = traced(out, "d")["steps"]
+    assert len(steps) == 40
+    assert [s["op"] for s in steps[:4]] == ["map", "explore", "step", "move"]
+
+
+def test_a_trace_notes_a_recipe_hit_and_a_sweep_revert(page, load):
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?", recipe=RECIPE)]] * 3,
+              recipes={"book": LEARNED},
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [opt("o1", "Yes")], "complete": True}},
+              pick={"d": {"oids": ["o1"], "reason": "matched"}},
+              sweep=[[{"fid": "d", "outcome": "reverted"}], []])
+    steps = traced(out, "d")["steps"]
+    assert steps[1]["op"] == "recipe" and set(steps[1]) == {"op"}
+    assert {"op": "sweep", "effect": "reverted"} in steps
+    assert traced(out, "d")["family"] == "f:fam1"
+
+
+EFFECTS_OF_PAGE_WORDS = {
+    "verified": "progress", "partial": "progress", "progressed": "progress", "closed": "progress",
+    "unexpected": "unexpected", "reverted": "reverted", "unconfirmed": "unconfirmed",
+    "yours": "refused", "blocked": "refused", "unsupported": "refused", "refused": "refused",
+    "timeout": "late", "late": "late", "stale": "error", "halted": None, "cancelled": None,
+}
+
+
+def _header_words():
+    """The page outcomes and act() words the fill-loop.js header lists (its vocabularies block)."""
+    block = re.search(r"THE OUTCOME VOCABULARIES.*?\n \*   row status", HEADER, re.S).group(0)
+    page = re.search(r"page outcome\s+(.*?);\s+reason", block, re.S).group(1)
+    acts = re.search(r"act\(\)\s+(.*?)\s+→ the caller", block, re.S).group(1)
+    words = set()
+    for chunk in (page, acts):
+        chunk = re.sub(r"\([^()]*\)", " ", re.sub(r"\n \*\s+", " ", chunk))
+        for alt in chunk.split("|"):
+            alt = alt.strip()
+            alt = re.sub(r"^the page's outcome, or ", "", alt)
+            words.add(re.match(r"[a-z_]+", alt).group(0))
+    return words
+
+
+def test_every_outcome_the_header_lists_has_a_trace_effect_row(page, load):
+    listed = _header_words()
+    assert {"verified", "unconfirmed", "progressed", "timeout", "halted", "late", "refused", "stale"} <= listed, listed
+    assert listed <= set(EFFECTS_OF_PAGE_WORDS), f"the header lists a word effectOf has no row for: {listed - set(EFFECTS_OF_PAGE_WORDS)}"
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    got = page.evaluate("(words) => Object.fromEntries(words.map((w) => [w, window.careerStudioCompanion.fillLoop.effectOf({outcome: w})]))",
+                        sorted(EFFECTS_OF_PAGE_WORDS))
+    assert got == EFFECTS_OF_PAGE_WORDS
+
+
+def test_a_trace_effect_is_read_reason_first_and_act_refusals_win(page, load):
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    effect = "([r, g]) => window.careerStudioCompanion.fillLoop.effectOf(r, g)"
+    for result, got, want in [
+        ({"outcome": "unexpected", "reason": "no_effect"}, None, "no_effect"),
+        ({"outcome": "reverted", "reason": "no_effect"}, None, "no_effect"),
+        ({"outcome": "unexpected", "reason": "group_committed"}, None, "progress"),
+        ({"outcome": "unexpected", "reason": "search_committed"}, None, "progress"),
+        ({"outcome": "unexpected", "reason": "unsettled"}, None, "unexpected"),
+        ({"outcome": "refused"}, {"outcome": "unexpected", "reason": "no_effect"}, "refused"),
+        ({"outcome": "refused"}, {"outcome": "unexpected", "reason": "committed_while_opening"}, "refused"),
+        ({"outcome": "halted"}, {"outcome": "cancelled"}, None),
+        ({"outcome": "late"}, None, "late"),
+        ({"outcome": "stale"}, None, "error"),
+        ({"outcome": "surprise"}, None, "error"),
+    ]:
+        assert page.evaluate(effect, [result, got]) == want, (result, got)
+
+
+def test_a_trace_explore_effect_is_read_by_error_word_and_option_count(page, load):
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    explore = "(g) => window.careerStudioCompanion.fillLoop.exploreEffect(g)"
+    for got, want in [
+        ({"options": [{"oid": "o1"}]}, "progress"), ({"options": []}, "no_effect"),
+        ({"options": [], "error": "no_effect"}, "no_effect"), ({"options": [], "error": "yours"}, "refused"),
+        ({"options": [], "error": "blocked"}, "refused"), ({"options": [], "error": "unsupported"}, "refused"),
+        ({"options": [], "error": "committed_while_exploring"}, "unexpected"),
+        ({"options": [], "error": "stale"}, "error"), ({"options": [], "error": "cancelled"}, None),
+        ({"options": [], "error": "no_popup"}, "no_effect"), ({"options": [], "error": "unsettled"}, "no_effect"),
+    ]:
+        assert page.evaluate(explore, got) == want, got

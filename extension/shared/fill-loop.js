@@ -139,8 +139,18 @@
  *                  committed, a search that picked while exploring) —
  *                  buildLoopObservations, value-free.
  *
+ * THE RUN TRACE (`report.trace`, app/schemas/autofill_trace.py) records each
+ * field's decision path: the model calls it made (map, polarity, pick, step)
+ * and the page actions it sent, each with its ms and, for an action, its
+ * effect (effectOf, exploreEffect: the vocabularies above, folded to eight
+ * words). It is built from an ALLOWLIST (buildRunTrace names every source) and
+ * is value-free (SYSTEM.md inv-autofill-telemetry-no-values): never a typed
+ * value, an answer, `ignored`, a field's `committed` or `help`, or any explore
+ * result, which echoes what a search typed. Recording is additive: it changes
+ * no status, request or page action.
+ *
  * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, limits,
- * buildLoopObservations, sectionLines }.
+ * buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -302,6 +312,57 @@
     return hits.length === 1 ? { text: hits[0].text, reason: "matched" } : { abstained: true };
   };
 
+  // ---- the run trace's pieces: pure, and value-free by what they read.
+  // The recorder inside runFill notes a step per model call and per page action.
+  const TRACE_STEPS = 40; // the schema's per-field cap
+  const TRACE_WORD = /^[a-z_]{1,40}$/;
+  const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
+  const MOVE_ID = /^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$/;
+  const TRACE_ROUTES = new Set(["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]);
+  const TRACE_REASONS = new Set([...STEP_REASONS, "abstained"]);
+  const DECISION_KEYS = ["engine", "p", "floor", "second", "first_p", "first_same", "chose_none"];
+  // A page word is sent only when the schema's pattern holds (a lowercase
+  // word cannot carry a typed value); anything else is null, never "".
+  const traceWord = (s) => (typeof s === "string" && TRACE_WORD.test(s) ? s : null);
+  const traceSlot = (s) => (typeof s === "string" && s.length <= 120 && TRACE_SLOT.test(s) ? s : null);
+  const traceMove = (mid) => (typeof mid === "string" && MOVE_ID.test(mid) ? mid : null);
+  const wholeMs = (ms) => Math.min(600000, Math.max(0, Math.round(Number(ms) || 0)));
+  // The page's outcome (or act()'s own word) as the effect of an action; null
+  // is no attempt at all: Stop (halted) and the page's cancel.
+  const OUTCOME_EFFECT = {
+    verified: "progress", partial: "progress", progressed: "progress", closed: "progress",
+    unexpected: "unexpected", reverted: "reverted", unconfirmed: "unconfirmed",
+    yours: "refused", blocked: "refused", unsupported: "refused", refused: "refused",
+    timeout: "late", late: "late", halted: null, cancelled: null,
+  };
+  // REASON FIRST, with one exception. The first ignored gesture arrives as
+  // outcome "unexpected" (a typed one as "reverted") with reason no_effect:
+  // the wasted-action signal, whatever the outcome says. The SECOND kind
+  // ignored ends the field and act() answers `refused`, which comes before
+  // the reason. group_committed and search_committed are `unexpected` to the
+  // page but a landed value to the loop: progress. `got`: the page's own
+  // result when act() answered with a word of its own (refused, halted).
+  const effectOf = (result, got) => {
+    const page = got ?? result;
+    if (result?.outcome === "refused") return "refused";
+    if (page?.reason === "no_effect") return "no_effect";
+    if (LANDS.has(page?.reason)) return "progress";
+    const outcome = page?.outcome;
+    return Object.hasOwn(OUTCOME_EFFECT, outcome) ? OUTCOME_EFFECT[outcome] : "error";
+  };
+  // An explore reports an error word, not an outcome: any failure it has no
+  // word of its own for (no_popup, unsettled: the OUTRIGHT set) opened nothing.
+  const exploreEffect = (got) => {
+    const error = got?.error;
+    if (!error) return got?.options?.length ? "progress" : "no_effect";
+    if (error === "cancelled") return null;
+    if (Object.hasOwn(REFUSED, error)) return "refused";
+    if (error === "committed_while_exploring") return "unexpected";
+    return error === "stale" ? "error" : "no_effect";
+  };
+  // A model's trace, copied by name: engine, p, floor, second, first_p, first_same, chose_none.
+  const decision = (t) => Object.fromEntries(DECISION_KEYS.filter((k) => t?.[k] != null).map((k) => [k, t[k]]));
+
   async function runFill(deps, options = {}) {
     const { broadcast, api } = deps ?? {};
     for (const [name, dep] of [["broadcast", broadcast], ["api", api]]) {
@@ -311,6 +372,7 @@
     const recipes = typeof deps.recipes?.get === "function" && typeof deps.recipes?.record === "function"
       ? deps.recipes : null;
     const L = { ...limits };
+    const startedAt = new Date();
     const runDeadline = Date.now() + L.RUN_MS;
     const runId = newRunId();
     const timedOut = () => Date.now() >= runDeadline;
@@ -333,7 +395,7 @@
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
     // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome,
     //   deadline, spent, started, recommits, failedMoves, ignored, wrote, wroteAs,
-    //   recipeKeys, recipe, moves, contradicted, mismatch }
+    //   recipeKeys, recipe, moves, contradicted, mismatch, round, steps }
     //
     // A ROW'S LIFE: new (observe) → open (work, when the loop starts on it)
     // → a final status (finish / done / unconfirmed / outOfTime), or retry
@@ -349,14 +411,30 @@
     let pageActions = 0;
     let aiFailure = null;
     let host = null;
+    let round = 0; // the round the loop is in; a row's `round` is the last one that changed its status
 
     // ---- rows and clocks
+    // Every status change stamps the round it happened in (finish, done and
+    // unconfirmed all end here; so do the sweep's and tookBack's direct sets).
     const set = (fid, patch) => {
       const was = rows.get(fid)?.status;
-      const row = { ...rows.get(fid), ...patch };
+      const row = { ...rows.get(fid), ...patch, ...(patch.status ? { round } : {}) };
       rows.set(fid, row);
       if (patch.status && patch.status !== was && FINAL.has(patch.status)) tell({ phase: "field", fid, status: patch.status });
       return row;
+    };
+    // A step on the field's path. Rows are copied by `set`, but `steps` is one
+    // array shared by every copy, so a push is seen by all of them.
+    const note = (fid, step) => {
+      const steps = rows.get(fid)?.steps;
+      if (steps && steps.length < TRACE_STEPS) steps.push(step);
+    };
+    // A model's answer on a field: its polarity when it read one, then the decision.
+    const noteAnswer = (fid, op, got, ms, extra) => {
+      if (got.polarity?.way) {
+        note(fid, { op: "polarity", way: got.polarity.way, engine: got.polarity.engine ?? null, p: got.polarity.p ?? null });
+      }
+      note(fid, { op, ms: wholeMs(ms), ...extra, ...decision(got.trace) });
     };
     // Re-committing a value the engine wrote that the page took back.
     const recommitting = (row) => Boolean(row?.recommits && row.wrote && (row.status === "open" || row.status === "retry"));
@@ -456,13 +534,15 @@
       });
       return Promise.race([Promise.resolve().then(call), clock]).finally(() => clearTimeout(timer));
     };
-    // null when the backend failed or ran out of time; a clock running out is not an AI failure.
+    // { res, ms }: res is null when the backend failed or ran out of time (a
+    // clock running out is not an AI failure); ms is how long the call took.
     const post = async (path, body, deadline) => {
+      const t0 = Date.now();
       try {
-        return await bounded(() => api(path, { method: "POST", body: JSON.stringify(body) }), deadline);
+        return { res: await bounded(() => api(path, { method: "POST", body: JSON.stringify(body) }), deadline), ms: Date.now() - t0 };
       } catch (err) {
         if (!err?.deadline) aiFailure ??= err;
-        return null;
+        return { res: null, ms: Date.now() - t0 };
       }
     };
     const question = (f) => String(f.question ?? "").slice(0, 300);
@@ -483,13 +563,15 @@
     // the run's end), late (the field's clock), refused (recorded as final here).
     // `closing` (give_up) may still run out of time — it only closes a popup.
     // `overtime` (a set committing what it already picked) may run past the field's clock.
-    const act = async (f, action, { closing = false, overtime = false } = {}) => {
+    // `seen.got`: the page's own result, for the trace when act() answers with a word of its own.
+    const actOnce = async (f, action, { closing = false, overtime = false } = {}, seen = {}) => {
       if (cancelled() || (!closing && timedOut())) return { outcome: "halted" };
       if (!closing && !overtime && fieldLate(f)) return { outcome: "late" };
       if (!closing) pageActions += 1;
       const [got] = rowsOf(await broadcast({ type: "fill_apply", actions: [{ fid: f.fid, fp: f.fp, ...action }] }))
         .filter((r) => r?.fid === f.fid);
       if (!got) return { outcome: "stale" }; // no frame owns the fid any more
+      seen.got = got;
       if (got.outcome === "cancelled") return { outcome: "halted" };
       heard(f, action.op, got);
       if (REFUSED[got.outcome]) {
@@ -508,6 +590,19 @@
       }
       return got;
     };
+    // Every way out of actOnce is one step on the field's path (Stop and a
+    // closing give_up are not attempts, and note nothing).
+    const act = async (f, action, opts = {}) => {
+      const t0 = Date.now();
+      const seen = {};
+      const result = await actOnce(f, action, opts, seen);
+      const effect = opts.closing ? null : effectOf(result, seen.got);
+      if (effect) {
+        note(f.fid, { op: action.op, effect, word: traceWord(seen.got?.reason ?? seen.got?.outcome ?? result.outcome),
+          ms: wholeMs(Date.now() - t0), ...(action.op === "move" ? { move: traceMove(action.mid) } : {}) });
+      }
+      return result;
+    };
     // True when the action did not happen and there is nothing more to do now.
     const notDone = (f, out) => {
       if (out.outcome === "halted" || out.outcome === "refused") return true;
@@ -521,13 +616,18 @@
       if (halt() || fieldLate(f)) return null;
       // The field's remaining time rides along: the page's explore never runs past it.
       const left = (rows.get(f.fid)?.deadline ?? Infinity) - Date.now();
+      const t0 = Date.now();
       const got = merged(await broadcast({
         type: "fill_explore", requests: [withOrder(f, {
           fid: f.fid, fp: f.fp, ...(term ? { term } : {}), ...(Number.isFinite(left) ? { ms: left } : {}),
         })],
       }))[f.fid];
       if (got) heard(f, "explore", got);
-      return got ?? { options: [], complete: false, error: "stale" };
+      const result = got ?? { options: [], complete: false, error: "stale" };
+      // Only the option count and the error word: an explore's rows echo what a search typed.
+      const effect = exploreEffect(result);
+      if (effect) note(f.fid, { op: "explore", ms: wholeMs(Date.now() - t0), effect, word: traceWord(result.error) });
+      return result;
     };
     // An explore that went wrong: true when it decided the field for now.
     // `term`: what the explore typed (a no_effect on typing is counted per value).
@@ -570,6 +670,8 @@
         }
       }
       set(f.fid, { recipeKeys: keys, recipe: found?.key && found.variant ? found : null });
+      // The order itself is a string of moves, not a move id: only that one was used.
+      if (rows.get(f.fid).recipe) note(f.fid, { op: "recipe" });
     };
     // The field's recipe order on an explore or a commit, when it has one.
     const withOrder = (f, action) => {
@@ -650,11 +752,21 @@
       if (!o?.text) return { abstained: true };
       return { text: o.text, reason: got.reason, ...(typeof o.where === "string" ? { where: o.where } : {}) };
     };
+    // The option /pick chose, as its 0-based place among those it was OFFERED
+    // (never the page's own list, which may be longer), or null.
+    const notePick = (f, got, offered, ms) => {
+      if (!got) return;
+      const at = got.oids?.length ? offered.slice(0, PICK_OPTIONS).findIndex((o) => o.oid === got.oids[0]) : -1;
+      noteAnswer(f.fid, "pick", got, ms, {
+        reason: TRACE_REASONS.has(got.reason) ? got.reason : null, option: at >= 0 ? at : null,
+      });
+    };
     const pick = async (f, row, opts, complete, item) => {
       if (row.part) return partPick(row, opts);
       const { offered, field } = pickAsk(f, row, opts, complete, item);
       if (!offered.length || halt() || fieldLate(f)) return null;
-      const res = await post("/api/autofill/pick", { ...asked, fields: [field] }, rows.get(f.fid).deadline);
+      const { res, ms } = await post("/api/autofill/pick", { ...asked, fields: [field] }, rows.get(f.fid).deadline);
+      notePick(f, res?.picks?.[f.fid], offered, ms);
       return pickOf(res?.picks?.[f.fid], offered);
     };
     // The one item of a one-item list fact on a one-answer field (the slot is a
@@ -676,8 +788,12 @@
       for (let i = 0; i < asks.length; i += CHUNK) {
         if (halt()) break;
         const part = asks.slice(i, i + CHUNK);
-        const res = await post("/api/autofill/pick", { ...asked, fields: part.map(([, a]) => a.field) });
-        for (const [f, a] of part) out.set(f.fid, pickOf(res?.picks?.[f.fid], a.offered));
+        const { res, ms } = await post("/api/autofill/pick", { ...asked, fields: part.map(([, a]) => a.field) });
+        for (const [f, a] of part) {
+          // One call served the chunk: each field is charged its even share.
+          notePick(f, res?.picks?.[f.fid], a.offered, ms / part.length);
+          out.set(f.fid, pickOf(res?.picks?.[f.fid], a.offered));
+        }
       }
       return out;
     };
@@ -732,17 +848,22 @@
         }
         // Nothing but give_up on offer: no model is asked.
         if (!state.candidates.some((c) => c?.mid && c.mid !== "give_up")) return giveUp(f, "gave_up");
-        const res = await post("/api/autofill/step", {
+        const { res, ms } = await post("/api/autofill/step", {
           ...asked, fid: f.fid, question: question(f), route: routeOf(row), slot: row.slot ?? null,
           ...(item !== undefined ? { item: String(item).slice(0, 300) } : {}),
           history: history.slice(-HISTORY_KEPT),
           candidates: state.candidates.slice(0, STEP_CANDIDATES),
           complete: Boolean(state.complete),
         }, rows.get(f.fid).deadline);
-        if (halt()) return halted(f);
-        if (fieldLate(f)) return giveUp(f, "late");
         const chosen = res?.mid && res.mid !== "give_up" && STEP_REASONS.has(res.reason)
           ? state.candidates.find((c) => c.mid === res.mid) : null;
+        if (res) {
+          noteAnswer(f.fid, "step", res, ms, {
+            move: traceMove(chosen?.mid), reason: TRACE_REASONS.has(res.reason) ? res.reason : null,
+          });
+        }
+        if (halt()) return halted(f);
+        if (fieldLate(f)) return giveUp(f, "late");
         if (!chosen) return giveUp(f, res ? "gave_up" : "no_answer");
         const tried = `${stateKey(state, value)}:${chosen.mid}`;
         if (failedMoves.has(tried)) {
@@ -1070,7 +1191,7 @@
           // answer to the new one: it is mapped again, and if nothing answers
           // it the leftover is named for the user to check.
           const mine = had.wrote && same(f.committed, had.wrote);
-          rows.set(f.fid, { fid: f.fid, attempts: 0, status: "new", ...(mine ? { leftover: had.wrote } : {}) });
+          rows.set(f.fid, { fid: f.fid, attempts: 0, status: "new", steps: [], ...(mine ? { leftover: had.wrote } : {}) });
         }
         if (!rows.has(f.fid)) {
           // A node re-inserted while the page was being listed comes back
@@ -1082,7 +1203,7 @@
           const carried = !old ? "new"
             : DONE.has(old.status) ? (f.answered ? old.status : "retry")
               : old.status === "open" ? "retry" : old.status;
-          rows.set(f.fid, { ...(old ?? { attempts: 0 }), fid: f.fid, status: carried });
+          rows.set(f.fid, { ...(old ?? { attempts: 0, steps: [] }), fid: f.fid, status: carried });
         }
         const row = set(f.fid, { field: f, frameId });
         listed.push(f.fid);
@@ -1119,7 +1240,7 @@
       for (let i = 0; i < unmapped.length; i += CHUNK) {
         if (halt()) return;
         const part = unmapped.slice(i, i + CHUNK);
-        const res = await post("/api/autofill/map", {
+        const { res, ms } = await post("/api/autofill/map", {
           ...selector,
           fields: part.map((f) => ({
             fid: f.fid, question: question(f), section: f.section ? String(f.section).slice(0, 200) : null,
@@ -1135,6 +1256,11 @@
           if (m) {
             set(f.fid, { route: m.route, slot: m.slot ?? null, value: datePart ? datePart.value : m.value ?? null,
               format, part: datePart?.part ?? null, why: WHY[m.why] ? m.why : null });
+            // The slot is a fact NAME, never its value; one call served the chunk.
+            note(f.fid, {
+              op: "map", ms: wholeMs(ms / part.length), route: TRACE_ROUTES.has(m.route) ? m.route : null,
+              slot: traceSlot(m.slot), why: WHY[m.why] ? m.why : null, ...decision(m.trace),
+            });
           }
         }
       }
@@ -1163,6 +1289,7 @@
           set(r.fid, { status: REFUSED[r.outcome], lastOutcome: r.outcome });
           continue;
         }
+        note(r.fid, { op: "sweep", effect: "reverted" }); // a revert caught, re-committed or not
         if ((row.recommits ?? 0) >= 1) {
           unconfirmed({ fid: r.fid }, row.wrote, "unstable");
           continue;
@@ -1390,7 +1517,7 @@
       const ask = [...new Map(seen.filter((s) => !plans.has(sectionKey(s))).map((s) => [sectionKey(s), s])).values()]
         .slice(0, MAX_SECTIONS);
       if (!ask.length || halt()) return;
-      const res = await post("/api/autofill/sections", {
+      const { res } = await post("/api/autofill/sections", {
         ...selector,
         // `held`: what each entry already holds, for the LOCAL backend to
         // match entries to profile entries (it never reaches a model).
@@ -1522,8 +1649,9 @@
     };
 
     let settled = false;
-    for (let round = 1; round <= L.MAX_ROUNDS; round += 1) {
+    while (round < L.MAX_ROUNDS) {
       if (halt()) break;
+      round += 1;
       const before = snapshot();
       const frames = await broadcast({ type: "fill_inventory", consentForms, runId });
       if (!(frames ?? []).some((fr) => fr?.result !== undefined)) {
@@ -1669,7 +1797,8 @@
     const sections = [...sectionLog.values()].map(({ heading, kind, wanted, entries, added, outcome, reason, other }) => ({
       heading, kind, wanted, entries, added, outcome, reason: reason ?? null, ...(other ? { other } : {}),
     }));
-    return { runId, fields, host, aiFailure, stopped, timedOut: over, sections };
+    const report = { runId, fields, host, aiFailure, stopped, timedOut: over, sections, rounds: round };
+    return { ...report, trace: buildRunTrace(report, rows, { startedAt, endedAt: new Date() }) };
   }
 
   // ---- telemetry: one observation per reported field, and never a value.
@@ -1710,6 +1839,62 @@
     }];
   }).slice(0, MAX_OBSERVATIONS);
 
+  // ---- the run trace: what the backend stores (POST /api/autofill/runs,
+  // app/schemas/autofill_trace.py). ONE field the schema rejects loses the whole
+  // run, so every string is checked against its pattern here, and the trace is
+  // built from NAMED sources only: never a spread of a row, which holds
+  // `ignored` ("type:<typed value>"), `field.committed` (the page's current
+  // value), `field.help` and the explore results. `label`, `section` and the
+  // option texts are the page's own words; each is sent blank when the row's
+  // answer, value, write or leftover appears in it (holdsValue, as a label is
+  // for the telemetry), because the schema cannot check those three.
+  const MAX_RUN_FIELDS = 200;
+  const TRACE_FIELD_OPTIONS = 30;
+  const TRACE_TEXT = 200;
+  const TRACE_SHAPES = new Set(["text", "date", "select", "group", "search", "popup"]);
+  const TRACE_HOST = /^[a-z0-9.-]{1,253}(:\d{1,5})?$/;
+  const TRACE_FAMILY = /^f:[0-9a-z]{1,24}$/;
+  const TRACE_SOURCE = /^[a-z-]+$/;
+  const MAX_TRACE_ROUNDS = 10;
+  const holdsAnyValue = (text, row) => [row.answer, row.value, row.wrote, row.leftover].flat()
+    .some((v) => holdsValue(text, v));
+  const traceField = (status, row) => {
+    const f = row.field ?? {};
+    const shown = (text) => (holdsAnyValue(String(text), row) ? "" : String(text).slice(0, TRACE_TEXT));
+    const options = Array.isArray(f.options) ? f.options : null;
+    return {
+      fid: row.fid,
+      label: shown(f.question ?? ""),
+      label_source: typeof f.source === "string" && TRACE_SOURCE.test(f.source) ? f.source : null,
+      shape: TRACE_SHAPES.has(f.shape) ? f.shape : "unknown",
+      section: f.section ? shown(f.section) : null,
+      required: Boolean(f.required),
+      // The inventory's passive list only: an explore's rows echo what a search typed.
+      options: options && options.slice(0, TRACE_FIELD_OPTIONS).map((o) => shown(o?.text ?? "")),
+      option_count: options?.length ?? 0,
+      ...(TRACE_FAMILY.test(f.recipe?.family) ? { family: f.recipe.family } : {}),
+      steps: row.steps ?? [],
+      outcome: status,
+      round: Math.min(row.round ?? 0, MAX_TRACE_ROUNDS),
+    };
+  };
+  // null when the page's host cannot be said in the schema's pattern (no frame
+  // ever named one): such a run listed no field worth keeping.
+  const buildRunTrace = (report, rows, meta) => {
+    const host = String(report.host ?? "").toLowerCase();
+    if (!TRACE_HOST.test(host)) return null;
+    return {
+      run_id: String(report.runId).toLowerCase(),
+      host,
+      started_at: meta.startedAt.toISOString(),
+      ended_at: meta.endedAt.toISOString(),
+      halted: report.stopped ? "stopped" : report.timedOut ? "timeout" : null,
+      rounds: Math.min(report.rounds ?? 0, MAX_TRACE_ROUNDS),
+      fields: report.fields.filter((r) => FID.test(r.fid) && rows.has(r.fid)).slice(0, MAX_RUN_FIELDS)
+        .map((r) => traceField(r.status, rows.get(r.fid))),
+    };
+  };
+
   // ---- the report's repeating sections, as the panel says them: one line per
   // section still short of what the profile can fill (a press that added
   // nothing, Stop, the clock), where the section was left alone because an
@@ -1736,5 +1921,5 @@
     return [`${s.heading}: ${s.added} of ${needed} added. Add the rest yourself.`];
   });
 
-  ns.fillLoop = { runFill, sourceHintOf, limits, buildLoopObservations, sectionLines };
+  ns.fillLoop = { runFill, sourceHintOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
 })();
