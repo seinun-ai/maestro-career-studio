@@ -131,7 +131,7 @@ export function DocumentsPanel({
       </CardHeader>
       <CardContent className="space-y-3">
         <div
-          className="rounded-2xl bg-surface-container-low p-5 text-center transition-colors duration-150 ease-out hover:bg-surface-container"
+          className="rounded-2xl bg-surface-container-low p-5 text-center transition-colors duration-150 ease-out hover:bg-surface-container-high"
           onDragOver={(event) => event.preventDefault()}
           onDrop={onDrop}
         >

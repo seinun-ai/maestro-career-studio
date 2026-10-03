@@ -178,6 +178,22 @@ def test_no_surface_is_a_muted_with_opacity():
 
 def test_stat_tile_is_a_filled_card():
     tile = _read("components/analytics/stat-tile.tsx")
-    for cls in ("bg-surface-container-low", "rounded-corner-md", "text-title-large"):
+    for cls in (
+        "bg-surface-container-low",
+        "rounded-corner-md",
+        "text-title-large",
+        "text-body-small",
+        "font-medium",
+    ):
         assert cls in tile, cls
     assert "bg-muted" not in tile
+    container = re.search(r'<div className=\{cn\("([^"]+)"', tile)
+    assert container, "StatTile's container is no longer a cn(...) literal"
+    assert not re.search(r"\b(border|shadow)", container.group(1)), container.group(1)
+
+
+def test_table_rows_lift_on_hover_in_dark_cards():
+    """Dark: the card is surface-container, so a -low hover would darken the row."""
+    table = _read("components/ui/table.tsx")
+    assert "dark:hover:bg-surface-container-high" in table
+    assert "dark:has-aria-expanded:bg-surface-container-high" in table

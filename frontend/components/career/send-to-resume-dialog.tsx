@@ -463,7 +463,7 @@ export function SendToResumeDialog({
                   {dropped.map((item) => (
                     <li
                       key={item.point_id}
-                      className="flex items-start gap-3 rounded-xl bg-surface-container-low p-3"
+                      className="flex items-start gap-3 rounded-xl p-3"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-muted-foreground text-sm leading-relaxed">

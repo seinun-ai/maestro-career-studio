@@ -189,7 +189,7 @@ export function TemplateSelect({
               "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
               value === DEFAULT_TEMPLATE
                 ? "border-primary bg-primary/5"
-                : "hover:bg-surface-container-low",
+                : "hover:bg-surface-container-low dark:hover:bg-surface-container-high",
             )}
           >
             <span className="flex items-center gap-2 text-sm font-medium">

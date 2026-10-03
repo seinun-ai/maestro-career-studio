@@ -66,7 +66,7 @@ export function ActivityChart({
       <div
         role="group"
         aria-label="Group by"
-        className="mb-3 inline-flex rounded-full bg-surface-container p-1"
+        className="mb-3 inline-flex rounded-full bg-surface-container-high p-1"
       >
         {GRANULARITIES.map((option) => (
           <button

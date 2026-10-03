@@ -24,6 +24,7 @@ The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (
 | `bg-muted/10` to `bg-muted/30` | no fill, or `bg-surface-container-low` |
 | `bg-muted/35` to `bg-muted/60` | `bg-surface-container-low` |
 | `bg-muted/70`, `bg-muted` | `bg-surface-container` |
+| `bg-muted/70` on a card, dialog or popover (a chip, a track) | `bg-surface-container-high` |
 | `hover:bg-muted/50` on a row | `hover:bg-surface-container-low` |
 
 ## Type

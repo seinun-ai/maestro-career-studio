@@ -106,7 +106,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
   if (isLoadFailure(query)) {
     return (
       <RetryChip
-        className={`${CHIP} text-muted-foreground hover:text-foreground hover:bg-surface-container-low hover:border-border cursor-pointer transition-colors`}
+        className={`${CHIP} text-muted-foreground hover:text-foreground hover:bg-surface-container hover:border-border cursor-pointer transition-colors`}
         title="Couldn't check your career history. Try again."
         icon={<RefreshCw className="size-3.5" />}
         label="Career history unavailable"

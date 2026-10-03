@@ -315,21 +315,12 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {o.salary_by_role.map((r) => (
-                  <div
+                  <StatTile
                     key={`${r.role_category}:${r.currency ?? "unknown"}`}
-                    className="bg-surface-container-low rounded-md p-3"
-                  >
-                    <p className="text-muted-foreground text-xs">
-                      {label(r.role_category)}
-                      {r.currency ? ` · ${r.currency}` : ""}
-                    </p>
-                    <p className="text-foreground text-base font-medium">
-                      {payRange(r.avg_min, r.avg_max, r.currency)}
-                    </p>
-                    <p className="text-muted-foreground mt-0.5 text-xs">
-                      {r.n} {r.n === 1 ? "job" : "jobs"} with pay listed
-                    </p>
-                  </div>
+                    label={`${label(r.role_category)}${r.currency ? ` · ${r.currency}` : ""}`}
+                    value={payRange(r.avg_min, r.avg_max, r.currency)}
+                    sub={`${r.n} ${r.n === 1 ? "job" : "jobs"} with pay listed`}
+                  />
                 ))}
               </div>
             )}

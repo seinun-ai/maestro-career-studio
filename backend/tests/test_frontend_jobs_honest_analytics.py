@@ -48,7 +48,7 @@ def test_job_market_captions_are_accurate():
     market = _read("components/explore/explore-overview.tsx")
     assert "Sorted from each job description into one of these levels." in market
     assert "As written in each job." not in market
-    assert '{r.n} {r.n === 1 ? "job" : "jobs"} with pay listed' in market
+    assert '`${r.n} ${r.n === 1 ? "job" : "jobs"} with pay listed`' in market
 
 
 def test_job_market_money_has_one_format():
