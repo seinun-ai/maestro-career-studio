@@ -270,7 +270,10 @@ def render_slowest(fields: list[tuple[str, str, int, int, str]]) -> list[str]:
 
 def _suggests(parts: dict[str, str], counts: dict[str, int]) -> bool:
     """A `first|` row proves its floor too high: enough confirmed decisions, nearly all kept, and the
-    whole band below the floor. The closest-pick floor is not the match floor the first engine faced."""
+    whole band below the floor. A `pick` row at the closest floor is the second opinion's "closest" pick
+    clearing it, not the match floor the first engine faced. Only `pick` rows: /step's progress floor is
+    also 0.5. MATCH_FLOOR["any"] is 0.5 too, so a genuine any-policy pick row at 0.5 is skipped as well;
+    that is conservative and accepted, since suggestions are advice."""
     from app.services.autofill_choose import CLOSEST_FLOOR
     from app.services.autofill_trace import NONE_PART
 
@@ -279,7 +282,7 @@ def _suggests(parts: dict[str, str], counts: dict[str, int]) -> bool:
     floor, band = float(parts["floor"]), float(parts["band"])
     n = counts.get("n", 0)
     return (n >= SUGGEST_MIN_N and counts.get("kept", 0) / n >= SUGGEST_MIN_KEPT
-            and round(band + 0.1, 2) <= floor and floor != CLOSEST_FLOOR)
+            and round(band + 0.1, 2) <= floor and not (parts["op"] == "pick" and abs(floor - CLOSEST_FLOOR) < 1e-9))
 
 
 def render_suggestions(first: list[Row]) -> list[str]:

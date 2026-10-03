@@ -35,10 +35,10 @@ def fields(tag: str) -> list[dict]:
         {"fid": "f1", "label": f"Disability status {tag}", "label_source": "aria-label", "shape": "select",
          "family": "f:ab12", "outcome": "verified", "round": 1,
          "steps": [{"op": "map", "route": "slot", "slot": "eeo.disability_status", "engine": "jev", "p": 0.97,
-                    "floor": 0.9, "ms": 1200},
+                    "floor": 0.9, "chose_none": False, "ms": 1200},
                    {"op": "pick", "option": 2, "engine": "fast", "p": 0.97, "floor": 0.9, "second": "decided",
-                    "first_p": 0.82, "first_same": True, "reason": "matched", "ms": 2100},
-                   {"op": "choose", "effect": "no_effect", "word": "no_effect", "ms": 412}]},
+                    "chose_none": False, "first_p": 0.82, "first_same": True, "reason": "matched", "ms": 2100},
+                   {"op": "choose", "effect": "progress", "word": "selected", "ms": 412}]},
         {"fid": "f2", "label": f"Authorized to work {tag}", "shape": "group", "outcome": "cannot_operate",
          "round": 2,
          "steps": [{"op": "polarity", "way": "unsure", "engine": "fast", "p": 0.61, "second": "asked"},
@@ -57,7 +57,7 @@ def expected(run_id: str, host: str, when: str, tag: str, halted: str = "none") 
         f'[verified]  "Disability status {tag}"  select  label←aria-label  f:ab12  round 1',
         "  map → eeo.disability_status  jev 0.97 ≥0.90  1.2s",
         "  pick opt[2] matched  fast 0.97 ≥0.90  (decided; jev was 0.82, same choice)  2.1s",
-        "  choose → no_effect (no_effect)  412ms",
+        "  choose → progress (selected)  412ms",
         f'[cannot_operate]  "Authorized to work {tag}"  group  round 2',
         "  polarity unsure  fast 0.61  (asked)",
         "  move click:o3 → progress  380ms",
@@ -336,6 +336,24 @@ def test_a_row_that_does_not_qualify_yields_no_suggestion(seeded):
                                         "below its floor")
 
 
+@pytest.mark.parametrize(("seeded", "suggested"), [
+    (row("first|pick|0.9|0.8", n=20, kept=19), True),     # exactly 20 and exactly 95%
+    (row("first|pick|0.9|0.8", n=20, kept=18), False),    # 90%
+    (row("first|pick|0.9|0.8", n=20, kept=20), True),     # band + 0.1 == floor
+    (row("first|pick|0.85|0.8", n=20, kept=20), False),   # band + 0.1 > floor
+    (row("first|pick|0.7|0.7", n=20, kept=20), False),    # the band is not below the floor
+])
+def test_suggestion_boundaries(seeded, suggested):
+    lines = fill_trace.render_suggestions([seeded])
+    assert (lines[0] != fill_trace.NO_SUGGESTION) is suggested
+
+
+def test_a_step_row_at_the_closest_floor_still_yields_a_suggestion():
+    """/step's progress floor is also 0.5; only `pick` rows at that floor are the closest pick's."""
+    lines = fill_trace.render_suggestions([row(f"first|step|{CLOSEST_FLOOR}|0.3", n=40, kept=40)])
+    assert lines[0] == "step: jev at 0.3–0.4 was confirmed and kept 40/40 — its floor 0.50 could be 0.30"
+
+
 def test_the_closest_floor_row_is_skipped_but_a_qualifying_one_beside_it_is_not():
     lines = fill_trace.render_suggestions([row(f"first|pick|{CLOSEST_FLOOR}|0.1", n=50, kept=50),
                                            row("first|pick|0.9|0.8", n=42, kept=41)])
@@ -353,9 +371,9 @@ SECTIONS = ["== Wasted actions ==", "== Calibration ==", "== First engine and se
 
 
 COUNTED_LINES = [   # one line from each section, for 21 runs of the fields() fixture
-    "family=f:ab12  kind=choose  tries=21  not_progress=100%  unknown=0  avg=412ms  wasted=8.7s",
-    "op=pick  engine=fast  by=second  floor=0.9  band=0.9  choice=unknown  n=21  kept=100%  left=0%  "
-    "failed=0%  rejected=100%",
+    "family=f:ab12  kind=choose  tries=21  not_progress=0%  unknown=0  avg=412ms  wasted=0ms",
+    "op=pick  engine=fast  by=second  floor=0.9  band=0.9  choice=answer  n=21  kept=100%  left=0%  "
+    "failed=0%  rejected=0%",
     "first=pick  floor=0.9  band=0.8  n=21  kept=100%",
     "second=pick  asked=0  decided=21  decided_kept=100%",
     'host=boards.example.com  label="Disability status same"  steps=3  ms=3.7s  outcome=verified',
