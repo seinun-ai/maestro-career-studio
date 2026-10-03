@@ -32,7 +32,7 @@ export function TimelinePanel({ events }: { events: KBTimelineEvent[] }) {
       </CardHeader>
       <CardContent>
         {ordered.length === 0 ? (
-          <div className="rounded-xl bg-muted/45 px-5 py-7 text-center">
+          <div className="rounded-xl bg-surface-container-low px-5 py-7 text-center">
             <p className="text-sm font-medium">No activity yet</p>
           </div>
         ) : (

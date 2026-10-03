@@ -106,7 +106,7 @@ export default function CareerPage() {
 
       {/* Anchor: the "Import resumes" setup step links here. */}
       <Tabs id="kb-entities" value={activeTab} onValueChange={setActiveTab} className="gap-5">
-        <TabsList className="h-auto flex-wrap rounded-full bg-muted/70 p-1">
+        <TabsList className="h-auto flex-wrap rounded-full bg-surface-container p-1">
           <TabsTrigger value="basics">Basics</TabsTrigger>
           {ENTITY_TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
@@ -221,7 +221,7 @@ function CustomSectionsTab({
           </Button>
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl bg-muted/45 p-10 text-center">
+        <div className="rounded-2xl bg-surface-container-low p-10 text-center">
           <p className="text-sm font-medium">No other sections yet</p>
           <p className="text-muted-foreground mx-auto mt-1 max-w-md text-xs">
             Add publications, awards, talks and more.
@@ -298,7 +298,7 @@ function EntityTab({
           </Button>
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl bg-muted/45 p-10 text-center">
+        <div className="rounded-2xl bg-surface-container-low p-10 text-center">
           <p className="text-sm font-medium">No {title.toLowerCase()} yet</p>
           <p className="text-muted-foreground mx-auto mt-1 max-w-md text-xs">
             Use Quick capture above, or add one yourself.

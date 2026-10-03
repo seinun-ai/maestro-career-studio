@@ -267,7 +267,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
 
   if (editing) {
     return (
-      <section className="animate-fade-rise rounded-2xl bg-muted/45 p-5 sm:p-6">
+      <section className="animate-fade-rise rounded-2xl bg-surface-container-low p-5 sm:p-6">
         <form
           // The start date carries a hint the end date lacks: inputs align on
           // their bottom edge, not their labels.
@@ -355,7 +355,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
   }
 
   return (
-    <section className="animate-fade-rise rounded-2xl bg-muted/45 px-5 py-6 sm:px-6">
+    <section className="animate-fade-rise rounded-2xl bg-surface-container-low px-5 py-6 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

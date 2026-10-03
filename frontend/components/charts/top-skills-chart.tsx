@@ -147,7 +147,7 @@ export function TopSkillsChart({
         count={data.meta.top_count}
         skills={data.top}
         pillClass="border-transparent bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
-        bandClass="bg-muted/30 rounded-lg p-3"
+        bandClass="bg-surface-container-low rounded-lg p-3"
       />
 
       <div className="border-border my-5 border-t" />
@@ -156,7 +156,7 @@ export function TopSkillsChart({
         label="Others"
         count={data.meta.total_skills - data.meta.top_count}
         skills={data.rest}
-        pillClass="border-border bg-background text-foreground hover:bg-muted/60 text-xs"
+        pillClass="border-border bg-background text-foreground hover:bg-surface-container-low text-xs"
       />
     </div>
   );

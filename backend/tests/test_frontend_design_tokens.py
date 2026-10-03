@@ -16,6 +16,7 @@ import pytest
 
 from tests.test_frontend_color_roles import (
     _CSS,
+    _FRONTEND,
     _MODES,
     _contrast,
     _oklab,
@@ -160,3 +161,17 @@ def test_scale_names_are_registered_with_tailwind_merge():
     assert sorted(_registered("ease")) == sorted(easings)
     for name in ("standard", "emphasized-decelerate", "emphasized-accelerate"):
         assert name in _registered("ease")
+
+
+def test_no_surface_is_a_muted_with_opacity():
+    """`bg-muted/N` is a different grey on every page, card and theme: use the ladder."""
+    hits = []
+    for folder in ("app", "components"):
+        for path in sorted((_FRONTEND / folder).rglob("*")):
+            if path.suffix not in (".ts", ".tsx"):
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if re.search(r"bg-muted/\d+", line):
+                    hits.append(f"{path.relative_to(_FRONTEND)}:{number}")
+    assert not hits, "bg-muted/N is left at:\n" + "\n".join(hits)
+

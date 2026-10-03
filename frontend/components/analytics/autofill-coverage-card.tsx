@@ -49,7 +49,7 @@ function Tile({
   sub?: string;
 }) {
   return (
-    <div className="rounded-xl bg-muted/40 p-4">
+    <div className="rounded-xl bg-surface-container-low p-4">
       <p className="text-muted-foreground text-xs">{label}</p>
       <p className="text-foreground mt-0.5 text-xl font-medium">{value}</p>
       {sub ? <p className="text-muted-foreground mt-0.5 text-xs">{sub}</p> : null}

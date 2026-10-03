@@ -196,7 +196,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
       {o.signals.length > 0 && (
         <div className="flex flex-col gap-2">
           {o.signals.map((s, i) => (
-            <div key={i} className="bg-muted/40 rounded-md px-3 py-2">
+            <div key={i} className="bg-surface-container-low rounded-md px-3 py-2">
               <p className="text-foreground text-sm font-medium">{signalTitle(s.title, o)}</p>
               <p className="text-muted-foreground mt-0.5 text-xs">{s.detail}</p>
             </div>
@@ -317,7 +317,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
                 {o.salary_by_role.map((r) => (
                   <div
                     key={`${r.role_category}:${r.currency ?? "unknown"}`}
-                    className="bg-muted/40 rounded-md p-3"
+                    className="bg-surface-container-low rounded-md p-3"
                   >
                     <p className="text-muted-foreground text-xs">
                       {label(r.role_category)}

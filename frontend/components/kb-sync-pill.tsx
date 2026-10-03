@@ -31,7 +31,7 @@ import { useSingleFlight } from "@/hooks/use-single-flight";
  *  smaller type keeps a secondary status from competing with the health grade. */
 const CHIP =
   "inline-flex h-7 min-w-16 shrink-0 items-center gap-1.5 rounded-md border " +
-  "border-transparent bg-muted/40 px-2 text-[0.8rem]";
+  "border-transparent bg-surface-container-low px-2 text-[0.8rem]";
 
 /*
  * The number on the pill (`syncActionableCount`) is what the career history does
@@ -106,7 +106,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
   if (isLoadFailure(query)) {
     return (
       <RetryChip
-        className={`${CHIP} text-muted-foreground hover:text-foreground hover:bg-muted/60 hover:border-border cursor-pointer transition-colors`}
+        className={`${CHIP} text-muted-foreground hover:text-foreground hover:bg-surface-container-low hover:border-border cursor-pointer transition-colors`}
         title="Couldn't check your career history. Try again."
         icon={<RefreshCw className="size-3.5" />}
         label="Career history unavailable"

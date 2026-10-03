@@ -228,7 +228,7 @@ export function NewEntityDialog({
           </div>
 
           {kind === "extra" && (
-            <div className="space-y-4 rounded-xl border p-3.5 bg-muted/20">
+            <div className="space-y-4 rounded-xl border p-3.5">
               <div className="grid gap-1.5">
                 <Label id={presetsLabelId}>Common sections</Label>
                 <div role="group" aria-labelledby={presetsLabelId} className="flex flex-wrap gap-1.5">

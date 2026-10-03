@@ -21,6 +21,10 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
 - `docs/design-system/`: the design system as files.
 - Step 1, the status vocabulary: `STATUS_STYLES`, `NEEDS_YOU` and `PROPOSAL_STATUS_CHIP` in
   `status-chip.tsx`, both `GRADE_STYLES` maps and the sidebar's Needs you badge are role container pairs.
+- Step 3, surfaces, and UX change 6: all 74 `bg-muted/N` uses are gone. Hovered rows, quiet panels and tiles
+  take `surface-container-low`, chips and tracks `surface-container`; five barely-there tints on bordered or
+  dimmed boxes were dropped. `StatTile` is a filled card (`surface-container-low`, `rounded-corner-md`,
+  `text-title-large` value at weight 500). `test_frontend_design_tokens.py` fails on any `bg-muted/N` left.
 
 ## What is left, in order
 
@@ -30,7 +34,7 @@ branch point.
 | # | Step | From | To | Size |
 |---|---|---|---|---|
 | 2 | Remaining palette classes | the `text-/bg-/border-<palette>-N` uses left after step 1 (302 in 39 files before it; amber and emerald lead) | `success` / `warning` / `attention` / `tertiary` / primary container | largest step; split by folder |
-| 3 | Surfaces | 74 `bg-muted/N` uses in 45 files, 11 opacities | `/10`–`/30` → page (drop the fill) or `surface-container-low`; `/35`–`/60` → `surface-container-low`; `/70` and solid → `surface-container` | mechanical |
+| 3 | ~~Surfaces~~ done | 74 `bg-muted/N` uses in 45 files, 11 opacities | `/10`–`/30` → page (drop the fill) or `surface-container-low`; `/35`–`/60` → `surface-container-low`; `/70` and solid → `surface-container` | mechanical |
 | 4 | Type | `text-[22px]` page titles, `text-[10px]`/`[11px]`/`[0.8rem]` (33 uses), size + weight pairs | `text-title-large`, `text-label-small`, `text-title-medium` and the rest | start with `PageHeader`, `CardTitle`, `Badge` |
 | 5 | Corners | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |
 | 6 | Shadows | 54 `shadow`/`shadow-sm`/`-md`/`-lg` uses | `shadow-level1..3` on menus, popovers, dialogs, the hovered FAB; none elsewhere | |

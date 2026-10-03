@@ -37,7 +37,7 @@ const STATUS_COPY: Record<
     label: "No requirements listed",
     detail: "Nothing here to check. That doesn't mean you qualify.",
     icon: <CircleHelp />,
-    tone: "border-border bg-muted/40 text-muted-foreground",
+    tone: "border-border bg-surface-container-low text-muted-foreground",
   },
 };
 

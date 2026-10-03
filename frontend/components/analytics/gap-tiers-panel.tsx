@@ -225,7 +225,7 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
 
 function WordingFootnote({ rows }: { rows: BuildAreaRow[] }) {
   return (
-    <details className="rounded-lg bg-muted/40 px-3 py-2.5">
+    <details className="rounded-lg bg-surface-container-low px-3 py-2.5">
       <summary className="text-muted-foreground cursor-pointer text-xs">
         <span className="text-foreground font-medium">Wording only:</span>{" "}
         {rows.length} {rows.length === 1 ? "skill" : "skills"} your resume
