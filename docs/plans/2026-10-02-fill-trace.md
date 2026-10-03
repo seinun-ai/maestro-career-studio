@@ -2,6 +2,12 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**Owner decision (2026-10-03, Task 10 review):** the trace may record the page's option texts and
+the chosen index on ALL fields, EEO included, since it stays in the local database. Options are
+not blanked; labels and sections are blanked run-wide. The invariant says the trace never holds a
+typed or profile string in a free-text slot, and that a chosen page option may be recorded.
+Task 12 rewrites SYSTEM.md's `inv-autofill-telemetry-no-values` to match.
+
 **Final counter keys (Task 6 review, 2026-10-03; authoritative over the Task 6 text below):**
 - `action|<family>|<kind>`: tries, one count per effect, `effect_unknown`, `ms`, `timed`.
 - `decision|<op>|<engine>|<by first|second>|<floor>|<band>|<choice>`. `choice` is answer, none
@@ -905,7 +911,10 @@ page's current value, `inventory.js:166`), `row.field.help`, or any explore opti
 
 **`scrubTrace`:**
 - A whitelist at three levels (run, field, step), using exactly Task 5's names.
-- Cut strings: labels and sections to 160; options to 30 × 160.
+- Cut strings to the schema's `LABEL_MAX` (200): labels and sections, and options to 30 × 200.
+  Options are the page's own texts and are kept (owner decision, 2026-10-03).
+- Accept `trace: null` (the loop could not build one): post nothing, and return `{posted: 0}`.
+- A step may be `{op, ms}` alone (a failed or timed-out /map, /pick or /step call). Keep it.
 - Coerce numbers, and drop non-finite ones. Round `ms` to an integer. Drop an `option` outside
   0..249, and drop an empty `word`. Lowercase `host`.
 - Drop a step whose `op` is not in the Op list.
@@ -939,7 +948,11 @@ Commit: `feat(companion): send each run's trace, scrubbed, behind the telemetry 
   - the allowlist and the scrub;
   - the 50-run retention;
   - counters with no host or label;
-  - that Clear deletes runs.
+  - that Clear deletes runs;
+  - that the trace may record which page option was chosen (option texts and index, EEO
+    included: owner decision 2026-10-03), but never a typed or profile string in a free-text slot.
+
+  Also fix the design doc's 160-character cap to 200 (the schema's `LABEL_MAX`).
 
   The file is at its 1000/1000 cap: integrate, and cut elsewhere if needed. Then run
   `/opt/anaconda3/bin/python scripts/check_system_md.py` from the repo root; it must pass.
