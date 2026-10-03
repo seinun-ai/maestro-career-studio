@@ -1202,14 +1202,19 @@
     colon, or cut the clause. The `—` CHARACTER stays correct for the
     empty-cell convention (`{value ?? "—"}`) and inside composed labels
     (`${company} — ${role}`); those are typography, not prose.
+  - *Sentence length*: no sentence a user reads runs past 25 words (the
+    ASD-STE100 cap for a description; an instruction aims for 20). Split it
+    or cut a clause. `backend/tests/test_frontend_sentence_length.py` reads
+    the same strings as the vocabulary ratchet. A long series reads as a
+    list (the low-stakes hint in Settings › Autofill), not a run-on.
   - *Canonical terms* (one word per thing, on every surface: the web app, the
-    Companion panel and the server messages the app shows;
-    `backend/tests/test_frontend_vocabulary.py` refuses most banned variants
-    in every string a user can read, including the Companion panel; Send to
-    resume, blocker, extra or custom sections, session, Submitted and
-    Accepted have no rule yet, so review catches those). This is the one
-    glossary: other bullets point here. Each canonical term, then what it
-    replaces:
+    Companion panel, the Companion manifest's name, description and titles,
+    and the server messages the app shows;
+    `backend/tests/test_frontend_vocabulary.py` refuses the banned variants
+    in every string a user can read on the first three. "submit" stays a
+    verb: only the label Submitted and a bare "Accepted" are refused).
+    This is the one glossary: other bullets point here. Each canonical term,
+    then what it replaces:
     **Career history** (the page; "your career history" in prose), never
     Career KB, KB, Knowledge Base, library, career record or career data; the
     sidebar group stays **Career library** and the file-size unit KB stays.

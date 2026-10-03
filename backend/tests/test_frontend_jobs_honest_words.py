@@ -330,7 +330,7 @@ def test_the_tracker_says_where_agent_jobs_are():
 def test_the_inbox_explains_mcp_and_the_skill_once():
     inbox = _read("components/proposals/proposals-section.tsx")
     # The agents first, then how they connect (first-read pass: the MCP clause led).
-    assert ("such as Claude, Codex or the ChatGPT desktop app, using MCP "
+    assert ("such as Claude, Codex or the ChatGPT desktop app. It connects through MCP "
             "(the standard way AI apps connect to tools).") in inbox
     assert "ready-made instructions for your agent" in inbox
     assert "May not accept OPT" in inbox

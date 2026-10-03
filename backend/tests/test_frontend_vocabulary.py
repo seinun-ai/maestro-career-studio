@@ -7,7 +7,9 @@ variants. It reads:
 - string literals ('…', "…") and the text chunks of template literals
   (outside `${…}`, whose expressions are scanned as code);
 - JSX text (between a tag's `>` and the next `<` or `{`);
-- text between tags in the Companion panel's HTML.
+- text between tags in the Companion panel's HTML;
+- the Companion manifest's name, description and titles (the toolbar,
+  chrome://extensions and the Chrome Web Store show them).
 
 It skips comments, `import`/`export … from` specifiers, `"use client"`,
 TypeScript type aliases (`type X = "a" | "b"`), `className=` values, the
@@ -28,6 +30,7 @@ tests/test_frontend_vocabulary.py` from backend/ prints the counts as they are.
 
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
 from collections.abc import Iterator
@@ -42,10 +45,13 @@ _ROOTS = (
     ("frontend/lib", (".ts", ".tsx")),
     ("extension/panel", (".js", ".html")),
 )
+_MANIFEST = "extension/manifest.json"
 _CLASS_CALLS = frozenset({"cn", "clsx", "cva", "twMerge"})
 # Developer output: never on screen.
 _SILENT_CALLS = frozenset({"console.log", "console.info", "console.warn", "console.error", "console.debug"})
 _CLASS_ATTRS = frozenset({"className", "class", "classNames"})
+# An SVG shape's geometry: drawn, never read.
+_DRAWING_ATTRS = frozenset({"d", "points"})
 _KEYWORDS_BEFORE_EXPR = frozenset(
     {"return", "typeof", "case", "in", "of", "delete", "void", "throw", "new", "else", "yield", "await", "do"}
 )
@@ -70,8 +76,10 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("in flight", re.compile(r"\bin flight\b", re.I), "Applying (inbox) or In progress (Analytics)"),
     ("triage", re.compile(r"\btriage\b", re.I), "To review"),
     ("tailoring session", re.compile(r"\btailoring session\b", re.I), "gap analysis, never session"),
+    ("session", re.compile(r"\bsessions?\b", re.I), "gap analysis (the Assistant's is a chat)"),
     ("waive", re.compile(r"\b(?:un)?waiv(?:e|ed|es|er|ing)\b", re.I), "Mark as OK, then Undo"),
     ("gate", re.compile(r"\bgates?\b", re.I), "Must fix"),
+    ("blocker", re.compile(r"\bblockers?\b", re.I), "Must fix"),
     ("certify", re.compile(r"\bcertif(?:y|ied|ies|ying)\b", re.I), "check, never certify"),
     ("mint", re.compile(r"\b(?:re-?)?mint(?:s|ed|ing)?\b", re.I), "read or add, never mint"),
     ("slug", re.compile(r"\bslugs?\b", re.I), "a resume is named, never slugged"),
@@ -84,6 +92,10 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("fast tailor", re.compile(r"\bfast tailor\b", re.I), "Quick tailor"),
     ("new application", re.compile(r"\bnew application\b", re.I), "Add job"),
     ("extract job", re.compile(r"\bextract job\b", re.I), "Save job"),
+    ("send to resume", re.compile(r"\bsend to (?:a )?resume\b", re.I), "Add to a resume"),
+    ("extra sections", re.compile(r"\b(?:extra|custom) sections?\b", re.I), "Other sections"),
+    ("Submitted", re.compile(r"\bSubmitted\b"), "Applied, never Submitted (submit stays a verb)"),
+    ("bare Accepted", re.compile(r"^Accepted$"), "Offer accepted (an application); a proposal is Approved"),
     ("dot optional", re.compile(r"·\s*optional\b"), "(optional)"),
     ("e.g.", re.compile(r"\be\.g\.", re.I), "no examples in UI copy; say 'such as' in a hint"),
     ("three dots", re.compile(r"\w\.\.\.(?:\s|$)"), "the ellipsis character …"),
@@ -124,6 +136,8 @@ _ALLOWED: frozenset[tuple[str, str]] = frozenset(
         ("frontend/components/settings/connected-agents-card.tsx", "browser extension"),
         # The sidebar group that holds Career history, Base resumes and Templates.
         ("frontend/components/app-sidebar.tsx", "library"),
+        # The health report's Fixed list: this visit's fixes, not a gap analysis.
+        ("frontend/components/resume-health/done-tab.tsx", "session"),
         # A COUNT of actual applications (linked to a referral; one base
         # resume's), not the page, which is Jobs.
         ("frontend/app/referrals/page.tsx", "Applications"),
@@ -152,7 +166,7 @@ def _silences(tag: str | None) -> bool:
     """A frame whose strings never reach the screen: a class list or a console call."""
     if tag is None:
         return False
-    return tag in _CLASS_ATTRS or tag.rsplit(".", 1)[-1] in _CLASS_CALLS or tag in _SILENT_CALLS
+    return tag in _CLASS_ATTRS or tag in _DRAWING_ATTRS or tag.rsplit(".", 1)[-1] in _CLASS_CALLS or tag in _SILENT_CALLS
 
 
 class _Scanner:
@@ -445,6 +459,14 @@ def _html_text(src: str) -> list[tuple[int, str]]:
     return [(m.start(1), m.group(1)) for m in re.finditer(r">([^<>]+)<", src)]
 
 
+def _manifest_text(src: str) -> list[tuple[int, str]]:
+    """The manifest fields Chrome shows: the name, the description, the toolbar title, each shortcut's label."""
+    manifest = json.loads(src)
+    shown = [manifest["name"], manifest["description"], manifest.get("action", {}).get("default_title", "")]
+    shown += [command.get("description", "") for command in manifest.get("commands", {}).values()]
+    return [(src.find(json.dumps(text)), text) for text in shown if text]
+
+
 def _read_prose(src: str) -> list[str]:
     """Prose a snippet puts on screen, whitespace collapsed (for the scanner's own cases)."""
     texts = (" ".join(t.split()) for _a, t in _Scanner(_strip_non_ui(src)).run())
@@ -453,10 +475,15 @@ def _read_prose(src: str) -> list[str]:
 
 def ui_strings() -> Iterator[tuple[str, int, str]]:
     """(repo-relative file, line, text) for every prose string a user can read."""
-    for path in _files():
+    for path in [*_files(), _REPO / _MANIFEST]:
         rel = path.relative_to(_REPO).as_posix()
         src = path.read_text(encoding="utf-8")
-        found = _html_text(src) if path.suffix == ".html" else _Scanner(_strip_non_ui(src)).run()
+        if rel == _MANIFEST:
+            found = _manifest_text(src)
+        elif path.suffix == ".html":
+            found = _html_text(src)
+        else:
+            found = _Scanner(_strip_non_ui(src)).run()
         for at, text in found:
             text = " ".join(text.split())
             if text and _is_prose(text):
@@ -538,6 +565,8 @@ def test_allowlist_is_current():
         ('const t = "The last try failed.\\n\\nOpen the report."', ["The last try failed. Open the report."], []),
         # Found at Task 16: a type alias's string union is never shown.
         ('export type Tone = "Plain words" | "Other words";\nconst a = "Shown words";', ["Shown words"], ["Plain words"]),
+        # An SVG path's geometry is drawn, never read.
+        ('<path d="M 7.95,106 H 22.93 V 66.53 c 0,-8.58 5.41,-13.19" /><p>Logo text</p>', ["Logo text"], ["M 7.95,106 H 22.93 V 66.53 c 0,-8.58 5.41,-13.19"]),
         # Found at Task 16: an unterminated comment or tag must end the scan, not loop.
         ('const a = "Shown words"; /* open comment', ["Shown words"], []),
     ],
@@ -548,6 +577,30 @@ def test_the_scanner_reads_ui_text_and_skips_code(src: str, seen: list[str], uns
         assert want.strip() in texts, (want, texts)
     for not_want in unseen:
         assert not_want not in texts, (not_want, texts)
+
+
+def test_the_manifest_is_read():
+    assert any(rel == _MANIFEST and "Maestro CS panel" in text for rel, _l, text in ui_strings())
+
+
+@pytest.mark.parametrize(
+    "text,rule",
+    [
+        ("Send to resume", "send to resume"),
+        ("Fix the blockers first", "blocker"),
+        ("Edit the custom sections", "extra sections"),
+        ("Open the session", "session"),
+        ("Submitted", "Submitted"),
+        ("Accepted", "bare Accepted"),
+    ],
+)
+def test_the_glossary_terms_have_rules(text: str, rule: str):
+    assert rule in {name for name, _p, _w in _matches(text)}
+
+
+def test_submit_and_accepted_stay_words():
+    for text in ("Review before you submit.", "Offer accepted", "Nothing is submitted without your yes."):
+        assert not list(_matches(text)), text
 
 
 def test_a_rule_names_what_to_say_instead():

@@ -1272,26 +1272,30 @@ function LowStakesSwitch() {
         <Label htmlFor="low-stakes">Answer low-stakes questions for me</Label>
         <div id={hintId} className="text-muted-foreground grid gap-1 text-body-small">
           <p>
-            When none of your answers covers it, the Companion answers in the
-            job&apos;s favor: how you heard about the job, how to contact you,
-            whether you&apos;d relocate, travel, work on site, work shifts or
-            overtime, or take a drug test, openness to other roles, whether
-            you&apos;re related to or used to work for the company, what you
-            would do if you become employed by the company, consent to text
-            and marketing messages, and whether you have the experience and
-            education the job description asks for. It lists them under
-            Answered for you, so you can check each one.
+            When none of your answers covers a question, the Companion answers
+            it in the job&apos;s favor. It does this for:
           </p>
+          <ul className="list-disc ps-4">
+            <li>how you heard about the job and how to contact you</li>
+            <li>whether you&apos;d relocate, travel, work on site, or work shifts or overtime</li>
+            <li>whether you&apos;d take a drug test</li>
+            <li>openness to other roles</li>
+            <li>whether you&apos;re related to or used to work for the company</li>
+            <li>what you would do if you become employed by the company</li>
+            <li>consent to text and marketing messages</li>
+            <li>whether you have the experience and education the job description asks for</li>
+          </ul>
+          <p>It lists them under Answered for you, so you can check each one.</p>
           <p>
             It never guesses your education and work history, work
             authorization, sponsorship, age, diversity questions, background
             checks, security clearance, salary, or signatures.
           </p>
           <p>
-            Whether this is on or off, Fill may also answer questions about
-            past employment by a kind of organization (such as a government
-            agency), a security clearance or years of experience from your
-            work history, and lists those to check too.
+            Whether this is on or off, Fill may also answer some questions
+            from your work history. These ask about past employment by a kind
+            of organization (such as a government agency), a security clearance
+            or years of experience. Fill lists those for you to check too.
           </p>
         </div>
         {options.isError ? (

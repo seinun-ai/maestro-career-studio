@@ -38,7 +38,7 @@ _WORDS = [
     ("components/settings/mcp-workflow-section.tsx", 'title="Agent workflow hints"',
      'title="Next-step hints for connected agents"'),
     ("components/settings/mcp-workflow-section.tsx", "Career Studio's MCP tool results",
-     "Adds a suggested next step to what the app tells a connected agent,"),
+     "Adds a suggested next step to what the app tells a connected agent."),
     ("components/settings/mcp-workflow-section.tsx", "Suggest the next step in MCP tool results",
      "Suggest the next step to connected agents"),
     ("components/settings/auto-apply-section.tsx", "Guardrails for the agent hunt-and-apply lane.",
@@ -186,7 +186,7 @@ def test_the_card_names_the_two_helpers_that_are_not_connected_agents():
     """The glossary's one sentence that says what Companion is (appendix D0)."""
     flat = " ".join(_card().split())
     assert "Companion, the Maestro CS browser extension," in flat
-    assert "the Assistant, which you talk to inside this app," in flat
+    assert "You talk to the Assistant inside this app." in flat
 
 
 def test_each_list_is_named_by_its_heading():
