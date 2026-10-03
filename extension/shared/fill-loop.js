@@ -464,13 +464,15 @@
     // way, recalled from memory, and would fill the field's step budget), then
     // the decision. A call that failed or ran out of time (no `res`) is a bare
     // {op, ms}: slow failures show up, with nothing else to say.
-    const polarityNoted = new Set();
+    // fid -> the way noted: an `unsure` one does not stop a later decided way from being noted.
+    const polarityNoted = new Map();
     const noteAnswer = (fid, op, res, got, ms, extra) => {
       if (!res) return note(fid, { op, ms: wholeMs(ms) });
       if (!got) return undefined;
       const pol = got.polarity;
-      if (TRACE_WAYS.has(pol?.way) && !polarityNoted.has(fid)) {
-        polarityNoted.add(fid);
+      const before = polarityNoted.get(fid);
+      if (TRACE_WAYS.has(pol?.way) && (before === undefined || (before === "unsure" && pol.way !== "unsure"))) {
+        polarityNoted.set(fid, pol.way);
         note(fid, {
           op: "polarity", way: pol.way, engine: TRACE_ENGINES.has(pol.engine) ? pol.engine : null, p: unit(pol.p) ? pol.p : null,
           ...(pol.remembered === true ? { remembered: true } : {}),
@@ -1241,6 +1243,7 @@
           // it the leftover is named for the user to check.
           // Its steps start over with it: they were the old question's path.
           const mine = had.wrote && same(f.committed, had.wrote);
+          polarityNoted.delete(f.fid);
           rows.set(f.fid, { fid: f.fid, attempts: 0, status: "new", steps: [], ...(mine ? { leftover: had.wrote } : {}) });
         }
         if (!rows.has(f.fid)) {
@@ -1249,7 +1252,11 @@
           // fingerprint), so it keeps its mapping, attempts and, while it
           // still holds an answer, what the engine did to it.
           const old = [...rows.values()].find((r) => r.frameId === frameId && r.field?.fp === f.fp && !seen.has(r.fid));
-          if (old) rows.delete(old.fid);
+          if (old) {
+            rows.delete(old.fid);
+            if (polarityNoted.has(old.fid)) polarityNoted.set(f.fid, polarityNoted.get(old.fid)); // its steps came along
+            polarityNoted.delete(old.fid);
+          }
           const carried = !old ? "new"
             : DONE.has(old.status) ? (f.answered ? old.status : "retry")
               : old.status === "open" ? "retry" : old.status;
@@ -1916,6 +1923,8 @@
   const TRACE_TEXT = 200;
   const TRACE_SHAPES = new Set(["text", "date", "select", "group", "search", "popup"]);
   const TYPED_SHAPES = new Set(["text", "date", "search", "popup"]);
+  const TYPED_OPTION_SHAPES = new Set(["text", "date", "search"]);
+  const MIN_OPTION_KEY = 4;
   const MIN_TYPED_SIBLING_KEY = 2;
   const MIN_SIBLING_KEY = 4;
   const TRACE_HOST = /^[a-z0-9.-]{1,253}(:\d{1,5})?$/;
@@ -1940,13 +1949,16 @@
   };
   const siblingKeys = (row) => rowKeys(row).filter((k) => k.length >= (TYPED_SHAPES.has(row.field?.shape)
     ? MIN_TYPED_SIBLING_KEY : MIN_SIBLING_KEY));
-  // Option texts are screened against TYPED siblings' keys only (a dependent
-  // select can list what was typed earlier: "which of your employers"). A
-  // choice answer's key is not one: a country chosen in one select would blank
-  // another select's country list. A row's own keys never screen its own list.
+  // Option texts are screened against TYPED siblings' keys only: text, date and
+  // search rows, 4+ characters (a dependent select can list what was typed
+  // earlier: "which of your employers"). A choice answer's key is not one: a
+  // country chosen in one select would blank another select's country list, and
+  // neither is a popup's (its value is a chosen option); a typed "Yes" is too
+  // short to blank every select's "Yes". A row's own keys never screen its own list.
   // Answers, per row, the pattern for that row's option texts (null: none).
   const optionScreen = (rows) => {
-    const typedKeys = new Map([...rows.values()].map((r) => [r, TYPED_SHAPES.has(r.field?.shape) ? siblingKeys(r) : []]));
+    const typedKeys = new Map([...rows.values()].map((r) => [r, TYPED_OPTION_SHAPES.has(r.field?.shape)
+      ? rowKeys(r).filter((k) => k.length >= MIN_OPTION_KEY) : []]));
     const every = [...new Set([...typedKeys.values()].flat())];
     const all = denyRegex(every);
     return (row) => {

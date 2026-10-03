@@ -1309,9 +1309,9 @@ read back. The index counts the field's own `options` list (the inventory's pass
 in `options`), not the options /pick was offered (those drop placeholder and never-fill rows); it is left out
 when the field has no passive list, when the pick was an explored row (explore oids restart at o1, so a row
 counts only when its oid and text are the passive option's), or at 250 and over (the schema's bound). An
-option text that contains another TYPED field's value (text, date, search, popup; 2+ characters) is blanked,
+option text that contains another TYPED field's value (text, date or search, 4+ characters) is blanked,
 since a dependent select can list what was typed earlier: only typed siblings screen it (a country chosen
-in one select must not blank another's list), and a row's own keys never do, so the index still lines up.
+in one select, or a popup's chosen option, must not blank another's list; a typed "Yes" is too short), and a row's own keys never do, so the index still lines up.
 No typed or profile string ever sits in a free-text slot. `sw.js` `scrubTrace` then
 rebuilds the trace from a whitelist mirroring `app/schemas/autofill_trace.py` (numbers only, anything
 the schema would reject dropped), and posts it to `POST /api/autofill/runs` only while

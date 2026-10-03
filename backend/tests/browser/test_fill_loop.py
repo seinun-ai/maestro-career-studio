@@ -2377,6 +2377,41 @@ def test_a_field_notes_its_polarity_once_however_many_steps_repeat_it(page, load
     assert [(s["way"], s.get("remembered")) for s in steps if s["op"] == "polarity"] == [("same", None)]
 
 
+def _polarity_steps(out, fid):
+    return [(s["way"], s.get("remembered")) for s in traced(out, fid)["steps"] if s["op"] == "polarity"]
+
+
+def _stepping(page, load, polarities, **extra):
+    states = [{"version": i, "candidates": [{"mid": "scroll", "describe": "Scroll"}, GIVE_UP]} for i in range(len(polarities))]
+    moves = [{"mid": "scroll", "reason": "progress", "polarity": p} for p in polarities]
+    return run(page, load, frames=extra.pop("frames", [[f("d", "popup", "Relocate?")]] * 3),
+               map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+               explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
+               apply={"scroll": {"outcome": "progressed"}}, step={"states": states, "moves": moves}, **extra)
+
+
+def test_an_unsure_polarity_does_not_stop_a_later_decided_one_being_noted(page, load):
+    unsure, same = {"way": "unsure"}, {"way": "same", "engine": "jev", "p": 0.9}
+    assert _polarity_steps(_stepping(page, load, [unsure, same, same]), "d") == [("unsure", None), ("same", None)]
+    assert _polarity_steps(_stepping(page, load, [unsure, unsure]), "d") == [("unsure", None)]
+    assert _polarity_steps(_stepping(page, load, [same, same]), "d") == [("same", None)]
+
+
+def test_a_question_change_notes_the_new_questions_polarity(page, load):
+    """The same element asking something else starts its steps over, and its polarity is noted again:
+    round 1 notes it and the pick is reverted; round 2 finds another question under the same fid."""
+    options = [opt("o1", "Yes"), opt("o2", "No")]
+    out = run(page, load,
+              frames=[[f("s", "select", "Disability?", options=options, optionsComplete=True, fp="a")],
+                      *[[f("s", "select", "Veteran?", options=options, optionsComplete=True, fp="b")]] * 3],
+              map={"s": {"route": "slot", "slot": "eeo.disability", "value": "No"}},
+              pick={"s": {"oids": ["o2"], "reason": "matched", "polarity": {"way": "same", "engine": "jev", "p": 0.9}}},
+              apply={"No": [{"outcome": "reverted", "reason": "no_effect", "gestures": ["pointer"]}, {"outcome": "verified"}]})
+    steps = traced(out, "s")["steps"]
+    assert traced(out, "s")["label"] == "Veteran?"
+    assert [s["op"] for s in steps].count("polarity") == 1 and steps[0]["op"] == "map"  # the old path is gone
+
+
 def test_a_trace_marks_a_wasted_gesture_no_effect_and_the_second_kind_refused(page, load):
     state = {"candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'},
                             {"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}
@@ -2504,11 +2539,29 @@ def test_an_answer_chosen_in_one_select_does_not_blank_another_selects_options(p
     assert traced(out, "c")["options"] == ["United States", "Canada"]
 
 
+def test_a_popups_answer_or_a_short_typed_value_does_not_blank_other_options(page, load):
+    """A popup's value is a chosen option, and a typed "Yes" is under 4 characters: neither screens a list."""
+    countries = [opt("o1", "United States"), opt("o2", "Canada")]
+    yes_no = [opt("o1", "Yes"), opt("o2", "No")]
+    out = run(page, load,
+              frames=[[f("p", "popup", "Country"), f("t", question="Answer"),
+                       f("s", "select", "Citizenship", options=countries, optionsComplete=True),
+                       f("y", "select", "Relocate?", options=yes_no, optionsComplete=True)]] * 2,
+              map={"p": {"route": "slot", "slot": "personal.country", "value": "United States"},
+                   "t": {"route": "slot", "slot": "custom.answer", "value": "Yes"},
+                   "s": {"route": "low_stakes"}, "y": {"route": "low_stakes"}},
+              explore={"United States": {"options": [opt("o1", "United States")], "complete": True}},
+              pick={"p": {"oids": ["o1"], "reason": "matched"}, "s": {"oids": ["o1"], "reason": "assumed"},
+                    "y": {"oids": ["o1"], "reason": "assumed"}})
+    assert traced(out, "s")["options"] == ["United States", "Canada"]
+    assert traced(out, "y")["options"] == ["Yes", "No"]
+
+
 def test_a_typed_fields_own_value_does_not_screen_its_own_option_list(page, load):
-    """A popup that lists "Acme Corp (current)" and was answered "Acme Corp" keeps its texts (the row's
+    """A search that lists "Acme Corp (current)" and was answered "Acme Corp" keeps its texts (the row's
     own keys never screen its own list; the label still goes blank)."""
     out = run(page, load,
-              frames=[[f("p", "popup", "Employer Acme Corp", options=[opt("o1", "Acme Corp (current)"), opt("o2", "Other")])]] * 2,
+              frames=[[f("p", "search", "Employer Acme Corp", options=[opt("o1", "Acme Corp (current)"), opt("o2", "Other")])]] * 2,
               map={"p": {"route": "slot", "slot": "experience.0.company", "value": "Acme Corp"}},
               explore={"Acme Corp": {"options": [opt("o1", "Acme Corp (current)")], "complete": True}},
               pick={"p": {"oids": ["o1"], "reason": "matched"}})
