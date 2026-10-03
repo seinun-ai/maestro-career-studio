@@ -2,6 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**Revision 2.1 (2026-10-02).** The re-check found five small fixes; they are applied: the eval
+and the merges accept a second opinion that didn't run (`None`); the router pins also drop
+`polarity`; the explore table gets a catch-all row; `act()` notes on every return path; the sw
+drops a pattern-breaking value.
+
 **Revision 2 (2026-10-02).** A Fable 5.1 review against the code found four blockers and several
 important gaps in revision 1; all are folded in here:
 
@@ -94,6 +99,7 @@ count when there is no error.
 | error `committed_while_exploring` | `unexpected` |
 | error `stale` | `error` |
 | error `cancelled` | **no step is noted** |
+| any other error (`no_popup`, `unsettled`, … the `OUTRIGHT` set at L588) | `no_effect` |
 
 ---
 
@@ -109,7 +115,9 @@ count when there is no error.
   - `tests/test_autofill_step.py`: the `step()` helper (L84-85) returns `.model_dump()`. Make it
     `.model_dump(exclude_none=True)`, and fix L328.
   - `tests/test_autofill_map.py` L78 and L812, and `tests/test_autofill_fill_router.py` L73, 161,
-    194, 208, 277, 288. Rewrite them as subset pins (`{k: v for k, v in got.items() if k != "trace"}`).
+    194, 208, 277, 288. Rewrite them as subset pins
+    (`{k: v for k, v in got.items() if k not in ("trace", "polarity")}`). `Picked` and
+    `StepResponse` serialize `"polarity": None` too.
     `exclude_none` would drop the `"format": None` that L78 pins on purpose.
 
 **Step 1: Write the failing test**
@@ -217,7 +225,8 @@ remap.
 
 `_second_opinion` returns `{}` both when it ran and found nothing and when it never ran (no
 budget, or a failure). Change it to return `None` when it did not run, and keep the `unsure` list
-it was given.
+it was given. `map_fields` merges `second or {}` (`second.items()` at L536) and remembers
+separately whether it ran.
 
 `first_p`: on `second == "decided"`, Jev's `p` for that fid (its top choice, even under the floor).
 
@@ -290,7 +299,13 @@ Fix:
     `first_p=<Jev's p>`;
   - when it ran and didn't decide: Jev's trace with `second="asked"`;
   - when it didn't run (`budget.left` is None, or a failure), `second` stays None. Make
-    `_second_opinion` return None when it didn't run, as in Task 2.
+    `_second_opinion` return None when it didn't run, as in Task 2. `pick` merges
+    `(second or {})` at L302-304.
+  - The eval's `asked()` wrapper (`eval_fill_decisions.py:477-484`) calls `got.values()` or
+    compares `got` against `ABSTAIN`, whatever `_second_opinion` returned. A `None` falls to the
+    step branch and raises. Make it
+    `run.fast_decided = got is not None and (any(not autofill_pick.abstained(p) for p in got.values()) if isinstance(got, dict) else not autofill_step.abstained(got))`.
+    Task 4 adds `autofill_step.abstained`; until then, use `got.mid is not None` in this line.
 - **Polarity.** Add a sibling `polarity_ways(fields, facts, session, budget) -> dict[str, Polarity]`.
   Keep `polarity_answers`' current return type, because `/step` (`autofill_step.py:138`) uses it.
   The simplest change is to have `polarity_answers` take an optional `ways` dict it fills in.
@@ -687,7 +702,7 @@ whole run is lost silently.
 |---|---|
 | `mapFields` apply (L1131-1138) | `{op:"map", ms, route, slot, why, ...decision(m.trace)}` |
 | `pick` (L653-659) / `pickBatch` (L669-683), per field | when `got.polarity`: `{op:"polarity", way, engine, p}`; then `{op:"pick", ms, reason, option: <index of the chosen oid in offered>, ...decision(got.trace)}`. A batch's ms is the batch's, divided evenly across its fields. |
-| `act` (L486-510), after `got` is known | `{op: action.op, effect: effectOf(got), word: got.reason ?? got.outcome, ms}`. `action.op` is choose, set, write or move; add `move: action.mid` when `op == "move"`. Note nothing for halted or cancelled. |
+| `act` (L486-510), on **every** return path | `act()` returns early at L492 (`stale`), L498-499 (REFUSED → `refused`), L502-503 (`committed_while_opening` → `refused`) and L505-506 (a second no_effect → `refused`). Rename the body `actOnce` and wrap it: `act` times the call and notes `{op: action.op, effect: effectOf(result, got), word, ms}` from what came back. `action.op` is choose, set, write or move; add `move: action.mid` when `op == "move"`. Note nothing for halted or cancelled. |
 | `explore` (L520-531) | `{op:"explore", ms, effect: exploreEffect(got), word: got.error ?? null}` |
 | `adapt` per /step (L735-744) | `{op:"step", ms, move: chosen.mid ?? null, reason, ...decision(res.trace)}`, plus a polarity step when `res.polarity`. The `act` that follows notes itself. |
 | `sweep` re-open (L1151-1174) | `{op:"sweep", effect:"reverted"}` |
@@ -782,6 +797,9 @@ page's current value, `inventory.js:166`), `row.field.help`, or any explore opti
 - Cut strings: labels and sections to 160; options to 30 × 160.
 - Coerce numbers, and drop non-finite ones.
 - Drop a step whose `op` is not in the Op list.
+- Drop a `slot`, `move`, `word`, `label_source` or `family` that does not match its Task 5
+  pattern, rather than forwarding it. One odd profile key would otherwise 422 the whole run, and
+  the run would be lost silently.
 - Cut more than 200 fields, or more than 40 steps, rather than rejecting.
 - Keep it near `scrubObservation`, in the same comment voice.
 
