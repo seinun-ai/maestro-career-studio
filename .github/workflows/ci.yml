@@ -74,7 +74,11 @@ jobs:
           # third-party download and fail on a partial cache. Its coverage (the
           # real-embedding ATS golden output) is therefore NOT enforced here --
           # run it locally before touching services/ats/.
-          pytest tests/ mcp_server/tests/ -q -rs --ignore=tests/ats/test_golden.py
+          #
+          # -n auto runs one worker per core, and --dist loadfile keeps a file on one
+          # worker, which tests/browser needs (one Chromium per package). Each worker
+          # migrates its own throwaway SQLite file (tests/conftest.py).
+          pytest tests/ mcp_server/tests/ -q -rs -n auto --dist loadfile --ignore=tests/ats/test_golden.py
 
   mcp-cold-install:
     name: MCP Server Cold Install (documented user command)
