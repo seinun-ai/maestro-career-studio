@@ -96,8 +96,9 @@ export function AutofillCoverageCard() {
       title: "Clear captured autofill data?",
       description:
         `This deletes what was recorded about ${signatures} form ${signatures === 1 ? "field" : "fields"}` +
-        ` on ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were on and when,` +
-        " and the stored records of how Autofill decided each field's answer. You can't undo this." +
+        ` on ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were on and when.` +
+        " It also deletes the stored records of how Autofill decided each field's answer." +
+        " You can't undo this." +
         // The Companion has no switch for capture (extension/README.md), so
         // the confirm names none.
         " Recording continues while the Companion runs.",
