@@ -20,7 +20,7 @@ least 20 decisions, where the second opinion decided, the first engine agreed an
 with a Wilson 95% lower bound of at least 0.85. The first engine's other below-floor answers count in
 the denominator as not confirmed. A band must END at or below the floor (band + 0.1 <= floor), so a
 flag-policy floor of 0.85 is only ever suggested from the 0.7 band down. The `first|pick` rows at the
-closest floor are skipped (see `_suggests`).
+closest floor are skipped (see `render_suggestions`).
 
 `last` prints the N newest runs. Per run one header line, then per field one line and one
 indented line per step, so `grep` finds a field, an op or a floor:
@@ -348,7 +348,10 @@ def render_suggestions(first: list[Row], decision: list[Row]) -> list[str]:
     floor is the second opinion's "closest" pick clearing it, not the match floor jev faced, so that
     group is skipped. Only `pick`: /step's progress floor is also 0.5. MATCH_FLOOR["any"] is 0.5 too,
     so a genuine any-policy pick at 0.5 is skipped as well; conservative and accepted, since
-    suggestions are advice."""
+    suggestions are advice. A pick the second opinion decided as "closest" is keyed at CLOSEST_FLOOR
+    (0.5), which is skipped, so for flag-policy floors those steps do not enter D. The effect is
+    limited to bands below 0.5, which the walk reaches only after 0.7 to 0.5 qualify; D is
+    therefore not complete for flag picks."""
     from app.services.autofill_choose import CLOSEST_FLOOR
 
     evidence = _band_evidence(first, decision)

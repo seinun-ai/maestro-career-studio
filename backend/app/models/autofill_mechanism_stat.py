@@ -11,8 +11,8 @@ class AutofillMechanismStat(Base):
     """Counters folded from run traces, one row per mechanism key.
 
     Privacy: the key and the counts name a mechanism (engine, route, outcome), never a host,
-    a label or a value, so the table outlives clearing the runs. `created_at` is when the key was first counted, so the
-oldest one says how far back the counters reach.
+    a label or a value, so the table outlives clearing the runs. `created_at` is when the key was
+    first counted, so the oldest one says how far back the counters reach.
     """
 
     __tablename__ = "autofill_mechanism_stats"
