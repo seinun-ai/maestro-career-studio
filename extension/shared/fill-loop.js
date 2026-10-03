@@ -325,6 +325,7 @@
   const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
   const MOVE_ID = /^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$/;
   const TRACE_MOVE_MAX = 40;
+  const TRACE_COUNT_MAX = 5000; // a capped count still reads true, as "at least this many"
   // A cut inside an emoji leaves half a surrogate pair, which the schema's
   // string refuses (the sw strips the same way, and also cleans a page's own).
   const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
@@ -1938,7 +1939,7 @@
       // The inventory's passive list only (a static list, read before anything
       // was typed): an explore's rows echo what a search typed.
       options: options && options.slice(0, TRACE_FIELD_OPTIONS).map((o) => clipped(o?.text ?? "")),
-      option_count: options?.length ?? 0,
+      option_count: Math.min(options?.length ?? 0, TRACE_COUNT_MAX),
       ...(TRACE_FAMILY.test(f.recipe?.family) ? { family: f.recipe.family } : {}),
       steps: row.steps ?? [],
       outcome: status,

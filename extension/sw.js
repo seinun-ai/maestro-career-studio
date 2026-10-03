@@ -336,9 +336,9 @@ function scrubObservation(observation) {
 //
 // Every name, pattern, cap and vocabulary below is `app/schemas/autofill_trace.py`'s
 // (and `autofill_fill.py`'s), and `test_the_trace_whitelist_mirrors_the_backends_schema`
-// fails when either side moves. The schema is `extra="forbid"` and range-checked, so ONE odd key or word would
-// 422 the whole run and lose it silently: a value that does not fit is
-// dropped here, not forwarded. The page's own texts (label, section, options)
+// fails when either side moves. The schema is `extra="forbid"` and range-checked,
+// so ONE odd key or word would 422 the whole run and lose it silently: a value
+// that does not fit is dropped here, not forwarded. The page's own texts (label, section, options)
 // are kept, cut to length; the loop is what keeps a typed answer out of them.
 const TRACE_FIELDS = 200;
 const TRACE_STEPS = 40;

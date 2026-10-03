@@ -2475,6 +2475,14 @@ def test_a_trace_cut_through_an_emoji_keeps_whole_characters(page, load):
     json.dumps(t, ensure_ascii=False).encode("utf-8")
 
 
+def test_a_huge_option_list_reports_a_count_the_schema_accepts(page, load):
+    many = [opt(f"o{i}", f"Option {i}") for i in range(5200)]
+    out = run(page, load, frames=[[f("s", "select", "Pick one", options=many, optionsComplete=True)]],
+              map={"s": {"route": "low_stakes"}}, pick={"s": {"oids": [], "reason": "abstained"}})
+    t = traced(out, "s")
+    assert (len(t["options"]), t["option_count"]) == (30, 5000)
+
+
 def test_a_fields_trace_path_keeps_its_first_and_last_twenty_steps(page, load):
     """A popup scrolled 30 times: 62 steps happen. The first 20 show how the field began and the
     last 20 how it ended; each /step answer is marked by its p so the two ends can be told apart."""
@@ -2815,6 +2823,7 @@ def test_the_loops_trace_limits_and_patterns_mirror_the_backends():
     assert [regex(n) for n in ("TRACE_WORD", "TRACE_SLOT", "MOVE_ID", "TRACE_HOST", "TRACE_FAMILY", "TRACE_SOURCE", "FID")] == [
         T.WORD, T.SLOT, F.MOVE_ID, _meta(T.RunTrace, "host", "pattern"), _meta(T.TraceField, "family", "pattern"),
         _meta(T.TraceField, "label_source", "pattern"), F.FID]
+    assert int(_const("TRACE_COUNT_MAX")) == T.MAX_OPTION_COUNT == _meta(T.TraceField, "option_count", "le")
     assert int(_const("TRACE_MOVE_MAX")) == _meta(T.TraceStep, "move", "max_length") == _meta(F.StepCandidate, "mid", "max_length")
     assert re.search(r"s\.length <= (\d+) && TRACE_SLOT", SOURCE).group(1) == str(_meta(T.TraceStep, "slot", "max_length"))
     assert re.search(r"Math\.min\((\d+), Math\.max\(0, Math\.round", SOURCE).group(1) == str(_meta(T.TraceStep, "ms", "le"))
