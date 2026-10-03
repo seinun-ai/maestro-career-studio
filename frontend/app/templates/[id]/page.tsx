@@ -247,7 +247,7 @@ export default function TemplateEditorPage() {
           onValueChange={(v) => setTab(v as string)}
           className="flex h-full min-h-0 flex-col gap-0"
         >
-          <div className="flex flex-wrap items-center gap-2 border-b p-2">
+          <div className="flex flex-wrap items-center gap-2 p-2">
             <div className="mr-auto flex min-w-0 items-center gap-2 text-title-small">
               {/* This page had NO heading and no way back: the template's name
                   was a bare <span>, so the route had no <h1> at all and the
@@ -276,10 +276,6 @@ export default function TemplateEditorPage() {
                 <span className="text-warning text-body-small">Unsaved changes</span>
               )}
             </div>
-            <TabsList>
-              <TabsTrigger value="knobs">Formatting</TabsTrigger>
-              <TabsTrigger value="code">Code</TabsTrigger>
-            </TabsList>
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
@@ -311,6 +307,13 @@ export default function TemplateEditorPage() {
               </Button>
             </div>
           </div>
+
+          {/* The editor's two sections sit under the toolbar, full width, so the tab row's
+              hairline is the toolbar's bottom edge. */}
+          <TabsList className="px-2">
+            <TabsTrigger value="knobs">Formatting</TabsTrigger>
+            <TabsTrigger value="code">Code</TabsTrigger>
+          </TabsList>
 
           <TabsContent
             value="knobs"

@@ -494,7 +494,7 @@ export function HealthReportPage({
           {!hasAnything && <p className="text-body-medium">No issues found.</p>}
 
           <Tabs value={tab} onValueChange={(value) => selectTab(value as HealthTab)} className="gap-4">
-            <TabsList variant="line" aria-label="Health report sections">
+            <TabsList aria-label="Health report sections">
               {/* The name says the count in one phrase (SYSTEM.md §12: a count beside a flex item
                   can drop out of the accessible name). */}
               {HEALTH_TABS.map((t) => (

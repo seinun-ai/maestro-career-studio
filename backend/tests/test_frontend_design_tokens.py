@@ -570,37 +570,59 @@ def test_a_sheet_rounds_the_edge_it_opens_on():
         assert f"data-[side={side}]:rounded-{edge}-corner-lg" in classes, side
 
 
-def test_a_tab_nests_in_the_list_that_holds_it():
-    """The list is 8px with 3px of padding; its trigger is the 4px corner inside it."""
+def test_a_tab_is_the_4px_corner_in_a_row_with_no_corner_of_its_own():
+    """The line row is square (a hairline under it); its trigger's corner is the 4px that shapes the
+    inset focus outline."""
     tabs = _read("components/ui/tabs.tsx")
-    assert re.search(r"justify-center-safe rounded-corner-sm p-\[3px\]", tabs)
-    assert re.search(r"gap-1\.5 rounded-corner-xs border border-transparent", tabs)
+    assert "rounded-corner-xs" in _trigger(tabs)
+    assert "rounded" not in _list_class(tabs)
 
 
-# Tabs divide a page into sections: the line style, a `primary` underline under the current tab
-# (docs/design-system/components/Tabs). The filled strip is for nothing a page is divided by.
-_SECTION_TAB_PAGES = (
-    "app/analytics/page.tsx",
-    "app/career/page.tsx",
-    "app/jobs/[id]/page.tsx",
-    "components/settings/settings-tabs.tsx",
-    "components/resume-health/health-report-page.tsx",
-)
+# Tabs are one style: the line tabs of docs/design-system/components/Tabs, a `primary` underline
+# under the current tab. The filled strip is gone; a 2 or 3 way view switch is a SegmentedToggle.
 
 
-def test_a_page_section_list_is_the_line_variant():
-    for rel in _SECTION_TAB_PAGES:
-        tags = list(_jsx_tags(rel, ("TabsList",)))
-        assert tags, rel
-        for number, _, tag in tags:
-            assert 'variant="line"' in tag, f"{rel}:{number}: a page's section tabs are TabsList variant=\"line\""
-            assert not re.search(r"\b(?:flex-wrap|bg-surface-container\S*|p-1)\b", tag), (
-                f"{rel}:{number}: the line row neither wraps nor carries the strip's fill and padding"
+def _list_class(tabs: str) -> str:
+    return re.search(r'const TABS_LIST = cn\(\s*"([^"]+)"', tabs).group(1)
+
+
+def _trigger(tabs: str) -> str:
+    return tabs[tabs.index("function TabsTrigger") : tabs.index("function TabsContent")]
+
+
+def _tab_sources():
+    for rel in _frontend_sources():
+        if rel.endswith(".tsx") and not rel.startswith("components/ui/"):
+            yield rel
+
+
+def test_every_tab_list_is_the_line_style():
+    """There is no variant to pass and no fill, padding, corner or wrap to override."""
+    tabs = _read("components/ui/tabs.tsx")
+    assert "cva(" not in tabs and "variant" not in tabs, "tabs.tsx has one style"
+    seen = 0
+    for rel in _tab_sources():
+        for number, _, tag in _jsx_tags(rel, ("TabsList",)):
+            seen += 1
+            assert "variant=" not in tag, f"{rel}:{number}: TabsList has no variant"
+            assert not re.search(r"(?<![\w-])(?:flex-wrap|h-auto|rounded[\w-]*|bg-[\w/-]+|p-\d[\w.]*)(?![\w-])", tag), (
+                f"{rel}:{number}: the line row takes no fill, padding, corner or wrap"
             )
+    assert seen >= 12, seen  # the scan found the call sites
+
+
+def test_every_tab_panel_stays_mounted():
+    """A draft survives a switch (the Tabs README). The primitive defaults it, so no call site can forget."""
+    tabs = _read("components/ui/tabs.tsx")
+    panel = tabs[tabs.index("function TabsContent") :]
+    assert "keepMounted = true" in panel and "keepMounted={keepMounted}" in panel
+    for rel in _tab_sources():
+        for number, _, tag in _jsx_tags(rel, ("TabsContent",)):
+            assert "keepMounted={false}" not in tag, f"{rel}:{number}: a panel opts out of staying mounted"
 
 
 def test_a_section_tab_count_is_a_plain_number_not_a_badge():
-    for rel in _SECTION_TAB_PAGES:
+    for rel in _tab_sources():
         text = _read(rel)
         for tab in re.findall(r"<TabsTrigger\b.*?</TabsTrigger>", text, re.S):
             assert "<Badge" not in tab, f"{rel}: a tab's count is a muted number, not a Badge"
@@ -608,30 +630,53 @@ def test_a_section_tab_count_is_a_plain_number_not_a_badge():
     assert 'className="tabular-nums text-muted-foreground">{countOf(t.id)}' in health
     career = _read("app/career/page.tsx")
     assert 'className="tabular-nums text-muted-foreground">{countFor(tab.kind)}' in career
+    assert "aria-label={countFor(tab.kind) > 0 ? `${tab.title} ${countFor(tab.kind)}` : undefined}" in career
+    studio = _read("components/resume-editor/tailored-resume-studio.tsx")
+    assert 'className="tabular-nums text-muted-foreground">{changeCounts[tab]}' in studio
+    assert studio.count("aria-label={changeLabel(") == 7
 
 
-def test_the_line_tab_is_a_primary_underline_under_a_hairline():
+def test_the_line_tab_is_a_primary_underline_on_a_hairline():
     tabs = _read("components/ui/tabs.tsx")
-    line = re.search(r"\n\s*line: \"([^\"]+)\"", tabs)
-    assert line, "tabsListVariants has no line variant"
-    classes = line.group(1).split()
-    for cls in ("h-10", "w-full", "border-b", "p-0"):
-        assert cls in classes, f"the line row is 40px, full width, with a hairline under it: {cls}"
-    trigger = tabs[tabs.index("function TabsTrigger") : tabs.index("function TabsContent")]
-    # The 2px indicator is the trigger's ::after: `primary`, inside the trigger (the row scrolls).
-    assert "after:bg-primary" in trigger and "after:bg-foreground" not in trigger
-    assert "group-data-horizontal/tabs:after:bottom-0 group-data-horizontal/tabs:after:h-0.5" in trigger
-    # It spans the label, not the trigger's padding: `inset-x-3` matches the line trigger's `px-3`.
-    assert "group-data-horizontal/tabs:after:inset-x-3" in trigger
-    assert "group-data-[variant=line]/tabs-list:px-3" in trigger
-    assert "group-data-[variant=line]/tabs-list:data-active:after:opacity-100" in trigger
-    # Title-small labels: foreground when current, muted-foreground otherwise.
+    row = _list_class(tabs).split()
+    # 40px, full width and the hairline, scoped to the horizontal orientation; start-aligned, scrolling.
     for cls in (
-        "group-data-[variant=line]/tabs-list:text-title-small",
-        "group-data-[variant=line]/tabs-list:text-muted-foreground",
-        "group-data-[variant=line]/tabs-list:data-active:text-foreground",
+        "group-data-horizontal/tabs:h-10",
+        "group-data-horizontal/tabs:w-full",
+        "group-data-horizontal/tabs:border-b",
+        "group-data-horizontal/tabs:justify-start",
+        "group-data-horizontal/tabs:overflow-x-auto",
+        "p-0",
     ):
-        assert cls in trigger, cls
+        assert cls in row, cls
+    trigger = _trigger(tabs)
+    words = re.split(r"[\s\"]+", trigger)
+    # The 2px indicator is the trigger's ::after: `primary`, inside the trigger (the row scrolls),
+    # lying on the hairline (the trigger has no border of its own) and spanning the label.
+    assert "after:bg-primary" in words and "after:bg-foreground" not in words
+    for cls in (
+        "group-data-horizontal/tabs:after:bottom-0",
+        "group-data-horizontal/tabs:after:h-0.5",
+        "group-data-horizontal/tabs:after:inset-x-3",
+        "px-3",
+        "data-active:after:opacity-100",
+    ):
+        assert cls in words, cls
+    assert "border" not in words and "border-transparent" not in words
+    # As tall as the row, sized to its label, title-small, muted until current.
+    for cls in ("h-full", "flex-none", "text-title-small", "text-muted-foreground", "data-active:text-foreground"):
+        assert cls in words, cls
+    # Focus is the solid 2px ring outline drawn inside the trigger (an outer halo would be clipped by
+    # the row's overflow): no translucent halo, no border, the Tabs preview's classes.
+    for cls in (
+        "focus-visible:ring-0",
+        "focus-visible:border-transparent",
+        "focus-visible:outline-2",
+        "focus-visible:-outline-offset-2",
+        "focus-visible:outline-ring",
+    ):
+        assert cls in words, cls
+    assert "focus-visible:ring-ring/50" not in words
 
 
 # ── Filter chips (docs/design-system/components/FilterChips) ──────────────────

@@ -649,7 +649,9 @@ export function ProposalsSection() {
                   }))}
                 />
                 {history.length === 0 ? (
-                  <p className="text-muted-foreground text-body-medium">No history yet.</p>
+                  <p className="text-muted-foreground text-body-medium">
+                    {historyAll.length > 0 ? "No history with these statuses." : "No history yet."}
+                  </p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {history.map((p) => (

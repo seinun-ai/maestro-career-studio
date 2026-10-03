@@ -176,7 +176,7 @@ export function ScopePickerDialog({
           give it background.
         </p>
         <Tabs defaultValue="resume" className="flex min-h-0 flex-1 flex-col gap-3">
-          <TabsList className="w-fit bg-surface-container-high p-1">
+          <TabsList>
             <TabsTrigger value="resume">Resume</TabsTrigger>
             <TabsTrigger value="kb">Career history</TabsTrigger>
           </TabsList>

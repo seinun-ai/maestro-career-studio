@@ -106,10 +106,15 @@ export default function CareerPage() {
 
       {/* Anchor: the "Import resumes" setup step links here. */}
       <Tabs id="kb-entities" value={activeTab} onValueChange={setActiveTab} className="gap-5">
-        <TabsList variant="line">
+        <TabsList>
           <TabsTrigger value="basics">Basics</TabsTrigger>
           {ENTITY_TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="gap-1.5"
+              aria-label={countFor(tab.kind) > 0 ? `${tab.title} ${countFor(tab.kind)}` : undefined}
+            >
               {tab.title}
               {countFor(tab.kind) > 0 ? (
                 <span className="tabular-nums text-muted-foreground">{countFor(tab.kind)}</span>

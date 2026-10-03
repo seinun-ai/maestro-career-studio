@@ -511,9 +511,9 @@ export function EditorBody({
                 />
 
                 <Tabs defaultValue="contact">
-                  {/* Wraps: seven section tabs do not fit a pane
-                      that is a fraction of the window. */}
-                  <TabsList className="h-auto flex-wrap">
+                  {/* Seven section tabs do not fit a pane that is a fraction of the
+                      window: the row scrolls sideways. */}
+                  <TabsList>
                     <TabsTrigger value="contact">Contact</TabsTrigger>
                     <TabsTrigger value="skills">Skills</TabsTrigger>
                     <TabsTrigger value="experience">Experience</TabsTrigger>

@@ -188,7 +188,7 @@ export function KbImportDrawer({
             </p>
           ) : (
             <Tabs defaultValue="experience">
-              <TabsList className="flex h-auto flex-wrap">
+              <TabsList>
                 {KINDS.map((kind) => (
                   <TabsTrigger key={kind.value} value={kind.value}>
                     {kind.label}

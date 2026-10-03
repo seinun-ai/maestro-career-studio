@@ -95,7 +95,7 @@ function JobTabsList({
           "disabled:pointer-events-auto aria-disabled:pointer-events-auto",
       };
   return (
-    <TabsList variant="line" className={className}>
+    <TabsList className={className}>
       <TabsTrigger value="jd">Overview</TabsTrigger>
       <TabsTrigger value="fit">Score and tailor</TabsTrigger>
       <TabsTrigger value="output" {...lockedProps}>
@@ -589,7 +589,7 @@ export default function JobDetailPage({
           <div className="space-y-2">
             {/* The hairline is the row's, so it runs under the button too. */}
             <div className="flex items-center gap-2 border-b">
-              <JobTabsList hasApp={hasApp} reasonId={lockedReasonId} className="flex-1 border-b-0" />
+              <JobTabsList hasApp={hasApp} reasonId={lockedReasonId} className="flex-1 group-data-horizontal/tabs:border-b-0" />
               {application?.customized_json ? (
                 <Button
                   size="sm"

@@ -101,7 +101,7 @@ export function SettingsTabs({
   const [tab, select] = useSettingsTab(page);
   return (
     <Tabs value={tab} onValueChange={(value) => select(String(value))} className="gap-4">
-      <TabsList variant="line" aria-label={LIST_LABEL[page]}>
+      <TabsList aria-label={LIST_LABEL[page]}>
         {tabsFor(page).map((t) => (
           <TabsTrigger key={t.value} value={t.value}>
             {t.label}

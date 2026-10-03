@@ -153,8 +153,8 @@
   `focus-visible:`, `focus-within:` or `has-[…:focus-visible]:` variant carries
   no alpha. The rule has one structural allowance and no per-file exemptions:
   a 3px `/50` halo beside a solid 1px `focus-visible:border-ring` on the same
-  element (the primitives: Button, Input, Select, Textarea, Checkbox, Tabs,
-  Badge), where the border carries the 3:1 and the halo decorates it. A
+  element (the primitives: Button, Input, Select, Textarea, Checkbox,
+  Badge; a tab draws a solid 2px inset outline instead), where the border carries the 3:1 and the halo decorates it. A
   translucent focus BORDER is never allowed (the destructive Button's was /40,
   about 2.1:1 in light mode). A variant that sets its own dark border (the
   outline Button's `dark:border-input`) also sets `dark:focus-visible:border-ring`:
@@ -620,8 +620,8 @@
 - **Studio panes need `min-w-0` and their toolbars need `flex-wrap`.** A flex
   item defaults to `min-width: auto`, so a pane refuses to shrink below its
   content's min-content width and pushes the page wider instead. The seven
-  section tabs are ~590px in a fractional pane, so their `TabsList` carries
-  `h-auto flex-wrap` too. **The SHELL needs it too**: `SidebarInset` and
+  section tabs are ~590px in a fractional pane, so their row scrolls sideways
+  inside itself. **The SHELL needs it too**: `SidebarInset` and
   `SidebarGutter` carry `min-w-0` — without it the same `min-width: auto` lets
   any wide descendant push the whole page past the viewport instead of
   scrolling inside its own container, and inner `overflow-x-auto` regions can
@@ -872,25 +872,23 @@
   (`overflow-y-auto`, the chat scope picker) keeps a solid inset outline
   instead, because an absolute overlay scrolls with the content. A call site
   never passes `outline-*`, `after:hidden` or another `overflow-*` to a panel
-  (pinned). Settings and Profile pass `keepMounted` (through `SettingsTabs`),
-  so every panel mounts at load and none unmounts on a switch: unsaved text
-  and leave-guard registrations survive a hidden tab. `TabsList` scrolls
-  sideways inside itself instead of widening the page (`max-w-full
-  overflow-x-auto justify-center-safe`, scrollbar hidden, `relative` so Base
-  UI's arrow-key scroll-into-view measures from the row, `scroll-px-1`
-  so an end tab keeps room for its focus ring); the `Tabs` root is
-  `min-w-0`, or a Tabs that is a grid item (a dialog body) takes the row's
-  full label width as its minimum. **A page's sections are the `line` variant**
-  (Analytics, Career history, the job page, Settings and Profile, the health report): a 40px
-  full-width row with a hairline under it, `title-small` labels, a 2px `primary` underline inside
-  the current tab (inside it, because the row scrolls and `overflow-x: auto` clips what hangs
-  below), a count as a plain muted number and never a Badge (pinned in
-  `test_frontend_design_tokens.py`). The default filled strip is for the editors' own section
-  tabs and the dialogs'; it is not for a page. A row that wraps (`h-auto flex-wrap`)
-  never scrolls: the overflow is scoped to `not-[.flex-wrap]` (`overflow-x:
-  auto` makes `overflow-y` auto too, which clipped the second line) and its
-  triggers are `h-auto` (a percentage height spilled over the next card), so
-  it grows to fit every line (pinned).
+  (pinned). Every panel stays mounted: `TabsContent` defaults `keepMounted`, so a
+  panel mounts at load and none unmounts on a switch (unsaved text and leave-guard
+  registrations survive a hidden tab, a deep link has its target; pinned).
+  **Tabs are one style, the line tabs** (`docs/design-system/components/Tabs`): a 40px
+  full-width row with a hairline under it, `title-small` labels, `foreground` when current and
+  `muted-foreground` otherwise, and a 2px `primary` underline inside the current tab (inside it,
+  because the row scrolls and `overflow-x: auto` clips what hangs below; the trigger has no border,
+  so the underline lies on the hairline). A count is a plain muted number, never a Badge, and the
+  trigger's `aria-label` says it in one phrase. The focus ring is a solid 2px outline drawn inside the
+  trigger. There is no variant and no filled strip: a call site passes no fill, padding, corner or
+  wrap, and a two- or three-way view switch is a SegmentedToggle (all pinned in
+  `test_frontend_design_tokens.py`). The row never wraps; it scrolls sideways inside itself instead
+  of widening the page (`max-w-full overflow-x-auto`, start-aligned, scrollbar hidden, `relative` so
+  Base UI's arrow-key scroll-into-view measures from the row), and a click on a partly hidden tab
+  scrolls it into view. The row is `shrink-0`, so a column that overflows never squeezes it under its
+  panel. The `Tabs` root is `min-w-0`, or a Tabs that is a grid item (a dialog body) takes the row's
+  full label width as its minimum.
 - **Landmarks: the PAGE owns `<main>`, the shell owns layout.**
   `SidebarInset` is a `<div>` (shadcn ships it as `<main>`, which nests a
   second main landmark). Every route must render exactly one `<main>` in EVERY
