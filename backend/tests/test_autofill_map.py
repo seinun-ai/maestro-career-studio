@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.schemas.autofill_fill import MapField
+from app.schemas.autofill_fill import DecisionTrace, MapField
 from app.services import autofill_catalog, autofill_map, llm
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
 from tests.test_autofill_choose_jev import _answer, jev_on  # noqa: F401  (fixture)
@@ -1401,3 +1401,169 @@ def test_the_phone_is_offered_as_never_a_phone_type():
     facts = autofill_catalog.build({"personal": {"phone": "555-0100"}}, [], [])
     assert "never a phone extension, a fax number, a country calling code or a phone type" in \
         autofill_map._criteria(facts)["personal.phone"]
+
+
+# ---------- the decision trace: which engine decided, how sure, against what floor (fill trace plan, Task 2)
+
+EXACT = autofill_map._floor(FACTS["work_auth.sponsorship_now"])
+SPONSORSHIP = "work_auth.sponsorship_now"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_jev_decides(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"s": (SPONSORSHIP, 0.97)})
+    got = run([field("s", "Sponsorship?", "select")], db_session)
+    assert got["s"].trace == DecisionTrace(engine="jev", p=0.97, floor=EXACT)
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("jev_says, same", [((SPONSORSHIP, 0.7), True), (("none", 0.95), False)],
+                         ids=["jev-named-the-same-fact", "jev-said-none"])
+def test_trace_fast_decides(db_session, monkeypatch, jev_says, same):
+    fake_jev(monkeypatch, {"s": jev_says})
+    fake_llm(monkeypatch, {"s": {"key": SPONSORSHIP, "confidence": 0.9}})
+    got = run([field("s", "Sponsorship?", "select")], db_session)
+    assert got["s"].route == "slot"
+    assert got["s"].trace == DecisionTrace(engine="fast", p=0.9, floor=EXACT, second="decided",
+                                           first_p=jev_says[1], first_same=same)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_fast_decides_a_field_jev_gave_no_readable_answer(db_session, monkeypatch):
+    monkeypatch.setattr(autofill_map.jev, "decide", lambda q, s, session=None: {})
+    fake_llm(monkeypatch, {"s": {"key": SPONSORSHIP, "confidence": 0.9}})
+    trace = run([field("s", "Sponsorship?", "select")], db_session)["s"].trace
+    assert (trace.engine, trace.second, trace.first_p, trace.first_same) == ("fast", "decided", None, False)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_fast_only_asked(db_session, monkeypatch):
+    """The second opinion ran and decided nothing: Jev's answer stands, and the trace says it was asked."""
+    fake_jev(monkeypatch, {"s": (SPONSORSHIP, 0.7)})
+    fake_llm(monkeypatch)
+    got = run([field("s", "Sponsorship?", "select")], db_session)
+    assert got["s"].route == "none"
+    assert got["s"].trace == DecisionTrace(engine="jev", p=0.7, floor=EXACT, second="asked")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_fast_never_ran(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"s": (SPONSORSHIP, 0.7)})
+    prompts = fake_llm(monkeypatch, {"s": {"key": SPONSORSHIP, "confidence": 0.99}})
+    monkeypatch.setattr(autofill_map.Budget, "left", lambda self, *a, **kw: None)
+    got = run([field("s", "Sponsorship?", "select")], db_session)
+    assert second_opinions(prompts) == []
+    assert got["s"].trace == DecisionTrace(engine="jev", p=0.7, floor=EXACT)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_fast_second_opinion_that_failed_never_ran(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"s": (SPONSORSHIP, 0.7)})
+
+    def down(**kw):
+        raise llm.LLMProviderError("down")
+
+    monkeypatch.setattr(autofill_map.llm, "call_openai", down)
+    assert run([field("s", "Sponsorship?", "select")], db_session)["s"].trace.second is None
+
+
+def test_trace_fast_engine(db_session, monkeypatch):
+    fake_llm(monkeypatch, {"s": {"key": SPONSORSHIP, "confidence": 0.95}})
+    got = run([field("s", "Sponsorship?", "select")], db_session)
+    assert got["s"].trace == DecisionTrace(engine="fast", p=0.95, floor=EXACT)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_jev_failure_falls_back_to_the_fast_engine(db_session, monkeypatch):
+    def down(*a, **kw):
+        raise llm.LLMProviderError("down")
+
+    monkeypatch.setattr(autofill_map.jev, "decide", down)
+    fake_llm(monkeypatch, {"a": {"key": "personal.city", "confidence": 0.9}})
+    trace = run([field("a", "City")], db_session)["a"].trace
+    assert (trace.engine, trace.p, trace.second) == ("fast", 0.9, None)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_floor_is_the_floor_of_the_key_the_model_chose_not_the_placed_one(db_session, monkeypatch):
+    """A Websites entry is placed at the profile's k-th URL, a different fact than the model named:
+    the floor is the named fact's, taken before the remap."""
+    floors = {id(SITES["personal.website"]): 0.9, id(SITES["personal.github"]): 0.5}
+    monkeypatch.setattr(autofill_map, "_floor", lambda fact: floors[id(fact)])
+    fake_jev(monkeypatch, {"a": ("personal.website", 0.95)})
+    got = autofill_map.map_fields([field("a", "URL", section="Websites 2", repeat_index=1,
+                                         profile_entry=1, entry_kind="websites")], SITES, db_session,
+                                  eeo_consented=True, low_stakes=False)["a"]
+    assert got.slot == "personal.github"
+    assert got.trace == DecisionTrace(engine="jev", p=0.95, floor=0.9)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_without_a_fact_the_floor_is_the_slot_floor(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"n": ("none", 0.95)})
+    assert run([field("n", "Anything else?")], db_session)["n"].trace.floor == autofill_map.SLOT_FLOOR
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_a_foreign_entry_records_no_model_decision(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"f": ("personal.city", 0.95)})
+    got = run([field("f", "City", profile_entry=None, entry_kind="experience")], db_session)
+    assert got["f"].trace == DecisionTrace()
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_a_job_end_code_refuses_records_no_model_decision(db_session, monkeypatch):
+    got = entry_map(db_session, monkeypatch, {"e": ("End Date", "experience.1.end", 0)})["e"]
+    assert (got.why, got.trace) == ("unclear_job", DecisionTrace())
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_low_stakes_judged_by_jev(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"t": ("none", 0.95)}, noul={"t": 0.99})
+    got = run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
+    # `p` stays None: the low-stakes and reasoning passes discard the probability.
+    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="jev"))
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_low_stakes_judged_by_the_fast_model_when_jevs_check_fails(db_session, monkeypatch):
+    def decide(questions, state, session=None):
+        if any(q["type"] == "noul" for q in questions.values()):
+            raise llm.LLMProviderError("down")
+        return {k: _answer(q["criteria"], "none", 0.95) for k, q in questions.items()}
+
+    monkeypatch.setattr(autofill_map.jev, "decide", decide)
+    fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.9}}, yes={"t": 0.9})
+    got = run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
+    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="fast"))
+
+
+def test_trace_low_stakes_judged_by_the_fast_engine(db_session, monkeypatch):
+    fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.95}}, yes={"t": 0.9})
+    got = run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
+    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="fast"))
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_reasoned_is_always_the_fast_model(db_session, monkeypatch):
+    """The reasoning route asks the fast model on every engine, Jev included."""
+    fake_jev(monkeypatch, {"g": ("none", 0.95)})
+    fake_llm(monkeypatch, reasoned={"g": 0.9})
+    got = run([field("g", HISTORY_WORDINGS[0], "popup", options=["Yes", "No"])], db_session)
+    assert (got["g"].route, got["g"].trace) == ("reasoned", DecisionTrace(engine="fast"))
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_trace_holds_only_numbers_and_enums_never_a_fact_value(db_session, monkeypatch):
+    facts = autofill_catalog.build({"personal": {"phone": "555-0100", "city": "Springfield"}}, [], [])
+    fake_jev(monkeypatch, {"p": ("personal.phone", 0.97), "c": ("personal.city", 0.7),
+                           "n": ("none", 0.95), "t": ("none", 0.95)}, noul={"t": 0.99})
+    fake_llm(monkeypatch, {"c": {"key": "personal.city", "confidence": 0.9}})
+    got = autofill_map.map_fields([field("p", "Phone"), field("c", "City"), field("n", "Anything else?"),
+                                   field("t", "Willing to travel?", "select")], facts, db_session,
+                                  eeo_consented=True, low_stakes=True)
+    assert got["p"].value == "555-0100"
+    keys = {"engine", "p", "floor", "second", "first_p", "first_same"}
+    for fid, mapped in got.items():
+        assert set(mapped.trace.model_dump()) == keys, fid
+        assert not [v for v in ("555-0100", "Springfield") if v in mapped.trace.model_dump_json()], fid

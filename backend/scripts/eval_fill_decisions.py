@@ -500,7 +500,7 @@ def engine_of(run: Run, low_stakes: bool = False):
         autofill_step.fast_json = refuse
         autofill_polarity._with_llm = refuse
     if run.engine == "jev":   # Jev alone: its unsure answers stand
-        autofill_map._second_opinion = lambda *_a, **_k: {}
+        autofill_map._second_opinion = lambda *_a, **_k: None   # never ran
         autofill_pick._second_opinion = lambda *_a, **_k: {}
         autofill_step._second_opinion = lambda *_a, **_k: autofill_step.ABSTAIN
         autofill_polarity._second_opinion = lambda *_a, **_k: {}

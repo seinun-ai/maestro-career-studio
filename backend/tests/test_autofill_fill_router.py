@@ -220,6 +220,21 @@ def test_the_real_map_returns_the_value_but_never_sends_it(db_session, monkeypat
     assert "Springfield" not in prompts[0] and "female" not in prompts[0].lower()
 
 
+@pytest.mark.usefixtures("profile")
+def test_the_map_response_carries_the_decision_trace(db_session, monkeypatch):
+    """The trace is part of the wire shape, not just of the service's return value."""
+    from tests.test_autofill_map import fake_jev
+
+    model_settings.set_jev_api_key(db_session, "sk-or-test")
+    model_settings.set_autofill_engine(db_session, "jev")
+    fake_jev(monkeypatch, {"a": ("personal.city", 0.97)})
+    r = _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]})
+    assert r.status_code == 200
+    trace = r.json()["fields"]["a"]["trace"]
+    assert trace["engine"] == "jev" and trace["p"] == 0.97
+    assert set(trace) == {"engine", "p", "floor", "second", "first_p", "first_same"}
+
+
 @pytest.mark.parametrize("path, field", [("/api/autofill/map", MAP_FIELD), ("/api/autofill/pick", PICK_FIELD)])
 def test_an_unknown_application_is_404(db_session, path, field):
     r = _post(db_session, path, {"application_id": str(uuid4()), "fields": [field]})

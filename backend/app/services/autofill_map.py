@@ -43,7 +43,7 @@ from typing import TypeVar, get_args
 
 from sqlalchemy.orm import Session
 
-from app.schemas.autofill_fill import EntryKind, Format, MapField, Mapped
+from app.schemas.autofill_fill import DecisionTrace, Engine, EntryKind, Format, MapField, Mapped
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact, websites
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_FLOOR
@@ -309,12 +309,14 @@ def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: s
             if fid in ask and jev._unit(p) and p >= floor}
 
 
-def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session, budget: Budget) -> set[str]:
-    """Which of these fields is a low-stakes question? The never-list is
-    stated in every question."""
+def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session,
+                budget: Budget) -> dict[str, Engine]:
+    """Which of these fields is a low-stakes question, and which engine judged
+    it (Jev, or the fast model when the engine is `fast` or Jev's call failed)?
+    The never-list is stated in every question."""
     timeout = budget.left()
     if not fields or timeout is None:
-        return set()
+        return {}
     scope, never = low_stakes_scope(facts)
     ask = {f.fid: (f"Is form field {f.fid} ({json.dumps(f.question)}) one of these low-stakes questions: "
                    f"{scope}? It is NOT if it is about anything on this never-list: {never}. {_PAGE_TEXT_IS_DATA}")
@@ -323,13 +325,13 @@ def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session
         try:
             answers = jev.decide({fid: jev.noul_question(q) for fid, q in ask.items()},
                                  {"form_fields": _payload(fields)}, session)
-            return {fid for fid in ask
+            return {fid: "jev" for fid in ask
                     if (p := jev.noul_of(answers.get(fid))) is not None and p >= LOW_STAKES_FLOOR}
         except llm.LLMProviderError:
             logger.warning("jev low-stakes check failed; the fast model decides")
         if (timeout := budget.left()) is None:
-            return set()
-    return _fast_yes(ask, LOW_STAKES_FLOOR, session, "autofill-low-stakes", timeout)
+            return {}
+    return dict.fromkeys(_fast_yes(ask, LOW_STAKES_FLOOR, session, "autofill-low-stakes", timeout), "fast")
 
 
 def _answerable(fields: list[MapField], session: Session, budget: Budget) -> set[str]:
@@ -397,7 +399,8 @@ def _one_job_per_entry(fields: list[MapField], out: dict[str, Mapped]) -> None:
             anchors.setdefault((f.section, f.repeat_index), set()).add(picks[f.fid][0])
     for f in fields:
         if f.fid in picks and picks[f.fid][1] == "end" and anchors.get((f.section, f.repeat_index)) != {picks[f.fid][0]}:
-            out[f.fid] = Mapped(route="none", why="unclear_job")
+            # Code's refusal of the model's job fact: no model's call stands here.
+            out[f.fid] = Mapped(route="none", why="unclear_job", trace=DecisionTrace())
 
 
 def _job_pick(field: MapField, mapped: Mapped) -> tuple[str, str] | None:
@@ -449,22 +452,37 @@ def _placed_entry_key(field: MapField, key: str) -> str | None:
 
 
 def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact], *,
-           eeo_consented: bool) -> Mapped:
+           eeo_consented: bool) -> tuple[Mapped, float]:
+    """The route, and the floor the model's answer was held to: that of the fact
+    it chose, taken BEFORE `_placed_key` remaps the key (a placed entry's fact is
+    another fact than the one the model named), else SLOT_FLOOR."""
     if picked is None or _foreign(field):
-        return Mapped(route="none")
+        return Mapped(route="none"), SLOT_FLOOR
     key, p = picked
-    if key in facts and p >= _floor(facts[key]):
+    floor = _floor(facts[key]) if key in facts else SLOT_FLOOR
+    if key in facts and p >= floor:
         key = _placed_key(field, key, facts)
         if key is None or key not in facts:
-            return Mapped(route="none")
+            return Mapped(route="none"), floor
         value = facts[key].value
         return Mapped(route="slot", slot=key, value=list(value) if isinstance(value, tuple) else value,
-                      format=format_of(key))
+                      format=format_of(key)), floor
     if key == FREE_TEXT and field.shape == "text" and p >= SLOT_FLOOR:
-        return Mapped(route="free_text")
+        return Mapped(route="free_text"), floor
     if key == BLOCKED_EEO and not eeo_consented and p >= SLOT_FLOOR:
-        return Mapped(route="blocked")
-    return Mapped(route="none")
+        return Mapped(route="blocked"), floor
+    return Mapped(route="none"), floor
+
+
+def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact], engine: Engine, *,
+            eeo_consented: bool) -> Mapped:
+    """`_route`, with the decision it came from: which engine answered, how
+    sure, against what floor. A foreign entry is code's none, no model's call."""
+    mapped, floor = _route(field, picked, facts, eeo_consented=eeo_consented)
+    if _foreign(field):
+        return mapped.model_copy(update={"trace": DecisionTrace()})
+    return mapped.model_copy(update={"trace": DecisionTrace(
+        engine=engine, p=picked[1] if picked else None, floor=floor)})
 
 
 def _said_no_fact(picked: tuple[str, float] | None, *, history: bool = False) -> bool:
@@ -490,18 +508,20 @@ def _unsure(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
 
 
 def _second_opinion(fields: list[MapField], criteria: dict[str, str], session: Session,
-                    budget: Budget) -> dict[str, tuple[str, float]]:
+                    budget: Budget) -> dict[str, tuple[str, float]] | None:
     """ONE fast-model map of the fields Jev was unsure of, on what is left of
     the request's budget (capped, leaving the optional passes time to start).
-    Out of time or failed, Jev's none stands."""
+    Out of time or failed, Jev's none stands. None: it never ran (no fields, no
+    budget, or a failure), as against {}: it ran and answered nothing readable,
+    which the trace tells apart (`second` "asked")."""
     timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S)
     if not fields or timeout is None:
-        return {}
+        return None
     try:
         return _with_llm(fields, criteria, session, "autofill-map-second", timeout=timeout)
     except llm.LLMProviderError:
         logger.warning("fast model second opinion failed; Jev's none stands")
-        return {}
+        return None
 
 
 def _agrees_no_fact(second: tuple[str, float] | None, *, history: bool) -> bool:
@@ -519,27 +539,43 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
                eeo_consented: bool, low_stakes: bool) -> dict[str, Mapped]:
     budget = Budget()
     criteria = _criteria(facts)
-    picked, second = None, {}
+    picked, second, unsure = None, None, []
+    engine: Engine = "jev"
     if model_settings.get_autofill_engine(session) == "jev":
         try:
             picked = _with_jev(fields, criteria, session)
         except llm.LLMProviderError:
             logger.warning("jev map failed; the fast model maps this batch")
     if picked is None:
+        engine = "fast"
         picked = main_call(budget, lambda timeout: _with_llm(fields, criteria, session, timeout=timeout), "fast map")
     else:
-        second = _second_opinion([f for f in fields if _unsure(f, picked.get(f.fid), facts)],
-                                 criteria, session, budget)
-    out = {f.fid: _route(f, picked.get(f.fid), facts, eeo_consented=eeo_consented) for f in fields}
+        unsure = [f for f in fields if _unsure(f, picked.get(f.fid), facts)]
+        second = _second_opinion(unsure, criteria, session, budget)
+    ran = second is not None
+    second = second or {}
+    out = {f.fid: _traced(f, picked.get(f.fid), facts, engine, eeo_consented=eeo_consented) for f in fields}
     # Only a fact or an EEO block is the second opinion's to decide: a field
     # Jev said no fact answers never becomes a model-drafted free-text answer.
     by_fid = {f.fid: f for f in fields}
-    decided = {fid: routed for fid, answer in second.items()
-               if (routed := _route(by_fid[fid], answer, facts, eeo_consented=eeo_consented)).route
-               in ("slot", "blocked")}
+    decided = {}
+    for fid, answer in second.items():
+        mapped, floor = _route(by_fid[fid], answer, facts, eeo_consented=eeo_consented)
+        if mapped.route in ("slot", "blocked"):
+            # Jev's top choice, even under its floor: where it names the same key the
+            # fast model decided on, that is evidence the floor was too high.
+            first = picked.get(fid)
+            decided[fid] = mapped.model_copy(update={"trace": DecisionTrace(
+                engine="fast", p=answer[1], floor=floor, second="decided",
+                first_p=first[1] if first else None, first_same=first is not None and first[0] == answer[0])})
     if decided:
         logger.info("map: the fast model decided %d of %d fields Jev was unsure of", len(decided), len(second))
     out |= decided
+    if ran:
+        for f in unsure:
+            if f.fid not in decided:
+                trace = out[f.fid].trace.model_copy(update={"second": "asked"})
+                out[f.fid] = out[f.fid].model_copy(update={"trace": trace})
     _one_job_per_entry(fields, out)
 
     def leftovers(*, history: bool) -> list[MapField]:
@@ -548,10 +584,11 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
                 and _agrees_no_fact(second.get(f.fid), history=history)]
 
     # Out of time (`budget.left()`), a pass asks nothing: the open questions stay the user's.
+    # Known gap: `_low_stakes` and `_answerable` discard the probability, so `p` stays None.
     if low_stakes:
-        for fid in _low_stakes(leftovers(history=False), facts, session, budget):
-            out[fid] = Mapped(route="low_stakes")
+        for fid, judge in _low_stakes(leftovers(history=False), facts, session, budget).items():
+            out[fid] = Mapped(route="low_stakes", trace=DecisionTrace(engine=judge))
     if _has_history(facts):
         for fid in _answerable(leftovers(history=True), session, budget):
-            out[fid] = Mapped(route="reasoned")
+            out[fid] = Mapped(route="reasoned", trace=DecisionTrace(engine="fast"))
     return out
