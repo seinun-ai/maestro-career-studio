@@ -14,7 +14,7 @@ export function JsonEditor({
   readOnly?: boolean;
 }) {
   return (
-    <div className="overflow-hidden rounded-md border">
+    <div className="overflow-hidden rounded-corner-md border">
       <Editor
         height={height}
         language="json"

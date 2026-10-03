@@ -53,7 +53,7 @@ function DoneRow({
   // One undo per gesture: a double click reopened twice and ran the check twice.
   const actOnce = useSingleFlight(act.mutate);
   return (
-    <li ref={ref} className="min-w-0 rounded-md border px-3 py-2">
+    <li ref={ref} className="min-w-0 rounded-corner-md border px-3 py-2">
       <div className="flex min-w-0 flex-wrap items-start gap-2">
         <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
           <span className="text-muted-foreground text-body-small break-words">{label}</span>

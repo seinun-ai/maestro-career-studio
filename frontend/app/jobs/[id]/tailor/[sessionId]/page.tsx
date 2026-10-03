@@ -696,7 +696,7 @@ export default function TailorSessionPage({
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 p-6 pb-0">
       {staleReason ? (
-        <div className="animate-fade-rise flex flex-wrap items-center justify-between gap-3 rounded-xl bg-warning-container px-4 py-3 text-on-warning-container">
+        <div className="animate-fade-rise flex flex-wrap items-center justify-between gap-3 rounded-corner-md bg-warning-container px-4 py-3 text-on-warning-container">
           <div className="flex min-w-0 items-center gap-2.5">
             <TriangleAlert className="size-4 shrink-0" />
             <p className="text-body-medium">
@@ -706,7 +706,6 @@ export default function TailorSessionPage({
           </div>
           <Button
             size="sm"
-            className="rounded-full"
             onClick={() => startOver.mutate()}
             disabled={startOver.isPending}
           >
@@ -743,7 +742,7 @@ export default function TailorSessionPage({
       >
         <GapLocked value={tailorBusy}>
         {gapsJson.coverage_warning && (
-          <div className="bg-warning-container text-on-warning-container animate-fade-rise flex items-start gap-3 rounded-xl p-4">
+          <div className="bg-warning-container text-on-warning-container animate-fade-rise flex items-start gap-3 rounded-corner-md p-4">
             <TriangleAlert className="size-5 shrink-0 mt-0.5" />
             <div className="space-y-1 text-body-medium">
               {/* The server's sentence already gives the counts. */}
@@ -752,7 +751,7 @@ export default function TailorSessionPage({
           </div>
         )}
         {strongMatch && !gapsJson.coverage_warning && (
-          <div className="border-primary/30 bg-primary/5 rounded-xl border p-4">
+          <div className="border-primary/30 bg-primary/5 rounded-corner-md border p-4">
             <p className="text-foreground text-title-small">Strong match</p>
             <p className="text-muted-foreground text-body-medium">
               {hasSummaryGap
@@ -762,7 +761,7 @@ export default function TailorSessionPage({
           </div>
         )}
         {autoResolved.length > 0 && (
-          <div className="border-primary/25 bg-primary/[0.04] animate-fade-rise flex items-center gap-2.5 rounded-xl border px-4 py-3">
+          <div className="border-primary/25 bg-primary/[0.04] animate-fade-rise flex items-center gap-2.5 rounded-corner-md border px-4 py-3">
             <Library className="text-primary size-4 shrink-0" />
             <p className="text-body-medium">
               <span className="font-medium">

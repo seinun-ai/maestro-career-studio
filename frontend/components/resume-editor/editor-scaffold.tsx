@@ -131,7 +131,7 @@ export function BulletsRead({ bullets }: { bullets: string[] }) {
   return (
     <ul className="text-foreground/90 ml-4 list-disc space-y-1 text-body-medium">
       {bullets.map((b, bi) => (
-        <li key={bi} className="rounded-sm">
+        <li key={bi}>
           {b}
         </li>
       ))}

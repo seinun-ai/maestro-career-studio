@@ -52,7 +52,7 @@ export function CareerExportsCard() {
             </Button>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-corner-md border p-3">
             <div>
               {/* The download keeps its file name, career.md. Connected agents read the same
                   text (MCP get_career_export), so the row says who it is for. */}

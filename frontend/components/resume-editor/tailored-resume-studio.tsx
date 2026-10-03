@@ -397,7 +397,7 @@ function BuildDraft({
           <p className="text-muted-foreground text-body-medium">{jobLabel}</p>
         </div>
       </header>
-      <div className="space-y-3 rounded-lg border p-6">
+      <div className="space-y-3 rounded-corner-md border p-6">
         {parseFailed ? (
           <p className="text-destructive text-body-medium">
             This tailored resume couldn&apos;t be opened. Choose Create draft to
@@ -778,7 +778,7 @@ function StudioEditor({
         editor={
           <div className="flex flex-col gap-4">
             {serverChanged && dirty && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-corner-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container">
                 <span>
                   This tailored resume was changed somewhere else.
                 </span>
@@ -987,7 +987,7 @@ function StudioEditor({
                     onApplyHygiene={handleApplyHygiene}
                   />
                 )}
-                <div className="grid gap-1.5 rounded-md">
+                <div className="grid gap-1.5">
                   <Label htmlFor="studio-summary">
                     Summary
                     {changeBadge("summary")}

@@ -187,7 +187,7 @@ export function AnalyticsOverview({
               ))
             )}
             <Button
-              className="mt-1 w-fit rounded-full"
+              className="mt-1 w-fit"
               size="sm"
               variant="secondary"
               onClick={() => onOpenTab("gaps")}
@@ -225,7 +225,7 @@ export function AnalyticsOverview({
               ))
             )}
             <Button
-              className="mt-1 w-fit rounded-full"
+              className="mt-1 w-fit"
               size="sm"
               variant="secondary"
               onClick={() => onOpenTab("gaps")}

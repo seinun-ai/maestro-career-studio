@@ -145,7 +145,7 @@ export function ExpandedFindingChrome({
   children,
 }: ExpandedFindingChromeProps) {
   return (
-    <div ref={ref} className={cn("min-w-0 rounded-md border px-3 py-2", cardClassName)}>
+    <div ref={ref} className={cn("min-w-0 rounded-corner-md border px-3 py-2", cardClassName)}>
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"
@@ -503,7 +503,7 @@ export function SuggestionEditor({
 
   return (
     <div className="mt-2 space-y-2 border-t pt-2">
-      <div className="bg-surface-container-low rounded-md p-2">
+      <div className="bg-surface-container-low rounded-corner-md p-2">
         <DiffText oldText={currentText} newText={draft || suggestion} />
       </div>
       <Textarea
@@ -684,7 +684,7 @@ export function FixCard({
 
   if (!expanded) {
     return (
-      <div className={cn("rounded-md border px-3 py-2", meta.card)}>
+      <div className={cn("rounded-corner-md border px-3 py-2", meta.card)}>
         <CollapsedRow
           finding={finding}
           quote={currentText}
@@ -839,7 +839,7 @@ export function AskCard({
 
   if (!expanded) {
     return (
-      <div className={cn("rounded-md border px-3 py-2", meta.card)}>
+      <div className={cn("rounded-corner-md border px-3 py-2", meta.card)}>
         <CollapsedRow
           finding={finding}
           quote={currentText}
@@ -1042,7 +1042,7 @@ export function NotesTable({
         onWordingChanged={onWordingChanged}
       />
       {groups.length > 0 && (
-        <div className="overflow-x-auto rounded-md border">
+        <div className="overflow-x-auto rounded-corner-md border">
           <table className="w-full table-fixed text-body-medium">
             <tbody>
               {groups.map((group) => {
@@ -1113,7 +1113,7 @@ export function NotesTable({
             {skills.title} ({skills.count})
           </h3>
           <p className="text-muted-foreground max-w-[65ch] text-body-medium">{skills.notes[0].how}</p>
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto rounded-corner-md border">
             <table className="w-full text-body-medium">
               <thead className="text-muted-foreground text-left text-body-small">
                 <tr className="border-b">
@@ -1236,7 +1236,7 @@ function FailedGate({
       : "border-border";
 
   return (
-    <div className={cn("min-w-0 rounded-md border px-3 py-2", accent)}>
+    <div className={cn("min-w-0 rounded-corner-md border px-3 py-2", accent)}>
       <div className="flex flex-wrap items-center gap-2">
         <Badge
           variant="secondary"
@@ -1341,7 +1341,7 @@ function WaivedGate({
   const unwaiveOnce = useSingleFlight(unwaive.mutate);
 
   return (
-    <div className="text-muted-foreground bg-surface-container-low min-w-0 rounded-md border px-3 py-2">
+    <div className="text-muted-foreground bg-surface-container-low min-w-0 rounded-corner-md border px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0 truncate text-body-medium">{gate.label} (marked OK)</span>
         <Button
@@ -1391,7 +1391,7 @@ function NotAssessedGate({
   });
 
   return (
-    <div className="rounded-md border border-border bg-surface-container-low px-3 py-2">
+    <div className="rounded-corner-md border border-border bg-surface-container-low px-3 py-2">
       <div className="flex items-center gap-2">
         <Badge variant="secondary" className="bg-muted text-muted-foreground shrink-0">
           Not checked
@@ -1511,7 +1511,7 @@ export function ResolvedFinding({
       ref={ref}
       tabIndex={dispute ? -1 : undefined}
       data-resolved-hash={dispute ? (finding.content_hash ?? undefined) : undefined}
-      className="rounded-md border border-dashed px-3 py-2 text-body-medium outline-none"
+      className="rounded-corner-md border border-dashed px-3 py-2 text-body-medium outline-none"
     >
       <p className="text-muted-foreground line-through">Fixed: {finding.label}</p>
       {dispute && (

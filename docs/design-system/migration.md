@@ -60,12 +60,30 @@ The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (
 
 | Today | Write instead |
 | --- | --- |
-| `rounded-lg` on a control | `rounded-corner-sm` |
-| `rounded-xl` on a card, tile, table or callout | `rounded-corner-md` |
+| `rounded-lg`, `rounded-md` on a control, a small icon button or an option tile (a selectable flex-1 or full-width tile) | `rounded-corner-sm` |
+| `rounded-full` passed to a `Button`, a `SelectTrigger`, a `TabsList` or a `TabsTrigger` | drop it: the Button, TextField and Tabs READMEs set 8px, and none sanctions a round icon button or a pill tab strip |
+| A segmented toggle (an outline holding option segments) | `rounded-full` on the outline and on each segment, as `source-toggle.tsx` |
+| A `TabsTrigger` inside its 3px-padded `TabsList` | the list stays `rounded-corner-sm`, the trigger is `rounded-corner-xs` so they nest |
+| `rounded-[min(var(--radius-md),10px)]` and its `in-data-[slot=button-group]:rounded-lg` twin on a Button or Select size | drop it: every size is `rounded-corner-sm` |
+| `rounded-xl`, `rounded-2xl`, `rounded-lg`, `rounded-md` on a card, tile, table frame, callout, panel, well, list box, dropzone, image frame or empty-state box | `rounded-corner-md` |
+| `rounded-2xl` in a `Card`'s `className` | drop it: the `Card` already is `rounded-corner-md` |
+| A container nested in a container (a well in a card, a row in a list box) | its own kind's corner: `rounded-corner-md` |
+| A sheet's open edge | `data-[side=right]:rounded-l-corner-lg` and its three siblings, set in `ui/sheet.tsx` |
+| A header or reveal control that reads as a pill (the sidebar reveal button, the health and sync chips) | `rounded-full` |
+| `rounded-t-xl`, `rounded-b-xl` on a card's header, footer or image | `rounded-t-corner-md`, `rounded-b-corner-md` |
+| `rounded-r-md` on a joined control | `rounded-r-corner-sm` |
 | `rounded-[16px]` (the FAB) | `rounded-corner-lg` |
-| `rounded-xl` on a dialog | `rounded-corner-xl` |
-| `rounded`, `rounded-[4px]` | `rounded-corner-xs` |
+| `rounded-xl`, `rounded-b-xl` on a dialog and its footer | `rounded-corner-xl`, `rounded-b-corner-xl` |
+| `rounded-md`, `rounded-lg` on a menu surface or a menu, select or listbox item | `rounded-corner-xs` |
+| A popover used as a panel (prose, a button, a link), not a menu | `rounded-corner-md` (`PopoverContent` sets it; `POPUP_SURFACE` carries no corner) |
+| `rounded`, `rounded-sm`, `rounded-[4px]` on a code chip, a `kbd`, a grade chip, an overlay label, the checkbox, a heatmap cell, a chart tooltip | `rounded-corner-xs` |
+| `rounded-md` on a removable tag or a chip, `rounded-sm` on the remove button inside it | `rounded-full` |
+| `rounded` on a progress track or its bar | `rounded-full` |
+| `rounded-md` on a `SidebarMenuButton` or its sub-menu row, its skeleton, its count badge and its row action | `rounded-full` (hover and current share the shape) |
 | `rounded-4xl` on a pill | `rounded-full` |
+| `rounded-2xl rounded-br-md` (a chat bubble with a tail) | `rounded-corner-md rounded-br-corner-xs` |
+| `rounded-[2px]` on a rendered PDF page | `rounded-corner-xs`; the tooltip arrow's `rounded-[2px]` stays, a 4px corner would blunt its point |
+| `--radius`, `var(--radius-md)` in a class or a style | `--radius-corner-*`; the `--radius-sm` to `-4xl` ladder is only for third-party components |
 | `shadow-sm`, `shadow` | `shadow-level1`, or none on a card |
 | `shadow-md` | `shadow-level2` |
 | `shadow-lg` | `shadow-level3` |

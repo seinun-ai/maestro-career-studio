@@ -102,7 +102,7 @@ function JobTabsList({ hasApp, reasonId }: { hasApp: boolean; reasonId: string }
 
 function NoDraftYet({ onOpenFit }: { onOpenFit: () => void }) {
   return (
-    <div className="text-muted-foreground flex flex-col items-center gap-3 rounded-md border border-dashed p-8 text-center text-body-medium">
+    <div className="text-muted-foreground flex flex-col items-center gap-3 rounded-corner-md border border-dashed p-8 text-center text-body-medium">
       <p>{"Your resume and answers appear here once you start a draft."}</p>
       <Button size="sm" variant="outline" onClick={onOpenFit}>
         Go to Score and tailor

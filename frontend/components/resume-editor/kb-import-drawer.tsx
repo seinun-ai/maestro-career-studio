@@ -235,7 +235,7 @@ export function KbImportDrawer({
                   <>
                     <fieldset className="space-y-2">
                       <legend className="text-title-small">Summary</legend>
-                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3">
+                      <label className="flex cursor-pointer items-start gap-3 rounded-corner-md border p-3">
                         <Checkbox checked={includeSummary} onCheckedChange={() => setIncludeSummary((current) => !current)} disabled={!profile.data?.summary || importMutation.isPending} className="mt-0.5" />
                         <span className="text-body-medium">
                           {profile.data?.summary || "Your career history has no summary."}
@@ -255,7 +255,7 @@ export function KbImportDrawer({
                             return (
                               <label
                                 key={group.category}
-                                className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+                                className="flex cursor-pointer items-start gap-3 rounded-corner-md border p-3"
                               >
                                 <Checkbox checked={skillCategories.has(group.category)} onCheckedChange={() => toggleSkill(group.category)} disabled={duplicate || importMutation.isPending} className="mt-1" />
                                 <span className="min-w-0 flex-1">

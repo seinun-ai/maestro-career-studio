@@ -35,7 +35,7 @@ export const CHART_COLORS = [
 export const TOOLTIP_CONTENT_STYLE: CSSProperties = {
   backgroundColor: "var(--popover)",
   border: "1px solid var(--border)",
-  borderRadius: 8,
+  borderRadius: "var(--radius-corner-xs)",
   fontSize: 12,
   color: "var(--popover-foreground)",
 };

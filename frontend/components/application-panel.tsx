@@ -162,7 +162,7 @@ export function ApplicationDetailsMenu({
           <Button
             variant="outline"
             size="sm"
-            className="text-muted-foreground h-8 gap-1.5 rounded-full px-3 text-body-small"
+            className="text-muted-foreground h-8 gap-1.5 px-3 text-body-small"
             aria-label="Application details"
           >
             <SlidersHorizontal className="size-3.5 opacity-60" />
@@ -361,7 +361,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
             />
           </div>
           {pdfReady ? (
-            <div className="h-[80vh] min-h-[520px] overflow-hidden rounded-md border">
+            <div className="h-[80vh] min-h-[520px] overflow-hidden rounded-corner-md border">
               <PdfPagesPreview
                 basePath={`/api/applications/${app.id}`}
                 version={`${app.updated_at}-${previewVersion}`}
@@ -369,7 +369,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
               />
             </div>
           ) : (
-            <div className="text-muted-foreground flex h-40 items-center justify-center rounded-md border border-dashed p-6 text-center text-body-medium">
+            <div className="text-muted-foreground flex h-40 items-center justify-center rounded-corner-md border border-dashed p-6 text-center text-body-medium">
               {hasDraft
                 ? "No PDF yet."
                 : "No tailored resume yet."}

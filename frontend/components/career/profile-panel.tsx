@@ -37,15 +37,15 @@ export function ProfilePanel() {
     queryFn: getKbProfile,
   });
 
-  if (profile.isLoading) return <Skeleton className="h-72 w-full rounded-2xl" />;
+  if (profile.isLoading) return <Skeleton className="h-72 w-full rounded-corner-md" />;
   if (profile.error) {
     return (
-      <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
+      <div role="alert" className="rounded-corner-md bg-destructive/10 p-5">
         <p className="text-title-small">Couldn&apos;t load your profile.</p>
         {errorDetail(profile.error) ? (
           <p className="text-muted-foreground mt-1 text-body-small">{errorDetail(profile.error)}</p>
         ) : null}
-        <Button className="mt-3 rounded-full" size="sm" variant="secondary" onClick={() => void profile.refetch()}>
+        <Button className="mt-3" size="sm" variant="secondary" onClick={() => void profile.refetch()}>
           Try again
         </Button>
       </div>
@@ -83,7 +83,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
   ].filter((item) => item.value);
 
   return (
-    <Card className="animate-fade-rise rounded-2xl">
+    <Card className="animate-fade-rise">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -190,7 +190,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                     <dt className="mb-1.5 text-title-small">{group.category}</dt>
                     <dd className="flex flex-wrap gap-1.5">
                       {group.items.map((item) => (
-                        <Badge key={item} variant="secondary" className="rounded-full text-body-small">
+                        <Badge key={item} variant="secondary" className="text-body-small">
                           {item}
                         </Badge>
                       ))}
@@ -210,17 +210,16 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  className="rounded-full"
                   onClick={() => setSkills([...skills, { category: "", items: [] }])}
                 >
                   <Plus aria-hidden="true" /> Add group
                 </Button>
               </div>
               {skills.length === 0 ? (
-                <p className="text-muted-foreground rounded-xl bg-surface-container-low p-4 text-center text-body-small">No skill groups yet.</p>
+                <p className="text-muted-foreground rounded-corner-md bg-surface-container-low p-4 text-center text-body-small">No skill groups yet.</p>
               ) : (
                 skills.map((group, index) => (
-                  <div key={index} className="grid gap-2 rounded-xl bg-surface-container-low p-3 sm:grid-cols-[12rem_1fr_auto] sm:items-start">
+                  <div key={index} className="grid gap-2 rounded-corner-md bg-surface-container-low p-3 sm:grid-cols-[12rem_1fr_auto] sm:items-start">
                     <div className="grid gap-1.5">
                       <Label htmlFor={`kb-skill-category-${index}`}>Group name</Label>
                       <Input
@@ -352,7 +351,7 @@ function ProfileSection<T>({
             ref={editRef}
             size="sm"
             variant="ghost"
-            className="text-muted-foreground rounded-full"
+            className="text-muted-foreground"
             aria-label={`Edit ${title.toLowerCase()}`}
             onClick={() => setDraft(initial())}
           >
@@ -375,7 +374,6 @@ function ProfileSection<T>({
               type="button"
               size="sm"
               variant="ghost"
-              className="rounded-full"
               onClick={() => void onCancel()}
               disabled={save.isPending}
             >
@@ -384,7 +382,7 @@ function ProfileSection<T>({
             <Button
               type="submit"
               size="sm"
-              className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+              className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               disabled={save.isPending}
               focusableWhenDisabled
             >

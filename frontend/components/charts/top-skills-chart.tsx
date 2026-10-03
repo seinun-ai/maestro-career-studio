@@ -147,7 +147,7 @@ export function TopSkillsChart({
         count={data.meta.top_count}
         skills={data.top}
         pillClass="border-transparent bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
-        bandClass="bg-surface-container-low rounded-lg p-3"
+        bandClass="bg-surface-container-low rounded-corner-md p-3"
       />
 
       <div className="border-border my-5 border-t" />

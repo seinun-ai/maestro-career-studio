@@ -97,7 +97,7 @@ export function ExtraSectionsEditor({
       </p>
 
       {value.length === 0 ? (
-        <p className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-body-medium italic">
+        <p className="text-muted-foreground rounded-corner-md border border-dashed px-3 py-6 text-center text-body-medium italic">
           No other sections yet.
         </p>
       ) : (
@@ -198,7 +198,7 @@ function SectionCard({
         <div
           ref={cardRef}
           className={cn(
-            "rounded-lg border p-3",
+            "rounded-corner-md border p-3",
             !enabled && "opacity-70",
             editing && "bg-surface-container-low",
           )}
@@ -587,7 +587,7 @@ function TypeChoice({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex flex-1 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+        "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
         active
           ? "border-primary bg-primary/5"
           : "border-input hover:border-border",

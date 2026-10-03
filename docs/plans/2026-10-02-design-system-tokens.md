@@ -37,6 +37,15 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
   grade letter (`text-headline-small` at 600). Group headings and meta labels are sentence case, with no
   `uppercase` and no tracking: 17 uses in 12 files. `test_frontend_design_tokens.py` fails on a raw size, on
   `uppercase`, and on a weight paired with a scale utility outside an allow-list.
+- Step 5, corners, and UX change 1: every `rounded-*` is `rounded-corner-xs|sm|md|lg|xl`, `rounded-full` or
+  `rounded-none` (about 230 uses in 107 files). Cards, tiles, callouts, wells and every other container are
+  12px (cards and `rounded-2xl` boxes were 14 to 18px, `rounded-md` boxes 8px), controls and toggle segments
+  8px (Button, Input, Select and Textarea were 10px; the 69 `rounded-full` overrides on Buttons and Select
+  triggers are gone, since the READMEs sanction no round icon button), segmented toggles and chips pills, menus, tooltips and their items 4px, dialogs 28px, the
+  FAB and sheets 16px. A popover is a panel, so it is 12px; `POPUP_SURFACE` carries no corner and the menu
+  adds its own. Every sidebar row is a `rounded-full` pill, so hover and the current row share a shape.
+  Chips and removable tags are `rounded-full`. `test_frontend_design_tokens.py` fails on a Tailwind
+  `rounded-*` or a bracketed radius (one allow-listed literal: the tooltip arrow) and pins the primitives.
 
 ## What is left, in order
 
@@ -48,7 +57,7 @@ branch point.
 | 2 | ~~Remaining palette classes~~ done | the `text-/bg-/border-<palette>-N` uses left after step 1 (302 in 39 files before it; amber and emerald lead) | `success` / `warning` / `attention` / `tertiary` / primary container | largest step; split by folder |
 | 3 | ~~Surfaces~~ done | 74 `bg-muted/N` uses in 45 files, 11 opacities | `/10`–`/30` → page (drop the fill) or `surface-container-low`; `/35`–`/60` → `surface-container-low`; `/70` and solid → `surface-container` | mechanical |
 | 4 | ~~Type~~ done | `text-[22px]` page titles, `text-[10px]`/`[11px]`/`[0.8rem]` (33 uses), size + weight pairs | `text-title-large`, `text-label-small`, `text-title-medium` and the rest | start with `PageHeader`, `CardTitle`, `Badge` |
-| 5 | Corners | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |
+| 5 | ~~Corners~~ done | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |
 | 6 | Shadows | 54 `shadow`/`shadow-sm`/`-md`/`-lg` uses | `shadow-level1..3` on menus, popovers, dialogs, the hovered FAB; none elsewhere | |
 | 7 | Buttons | `variant="secondary"` (35 uses) beside `tonal` (6) | one low-emphasis filled variant: `tonal` | drop `secondary` when its last caller moves |
 | 8 | CompanyMonogram | six palette pairs | the four status containers plus primary and secondary container | keeps the hash, changes the tints |

@@ -577,7 +577,7 @@ export function AtsScorePanel({
           </Button>
         </div>
         {lowCoverageEverywhere && (
-          <div className="flex gap-2 rounded-md bg-warning-container p-2 text-body-medium text-on-warning-container">
+          <div className="flex gap-2 rounded-corner-md bg-warning-container p-2 text-body-medium text-on-warning-container">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <p>{LOW_COVERAGE_ON_EVERY_RESUME}</p>
           </div>

@@ -476,7 +476,7 @@ export function HealthReportPage({
             onOpenNumberTab={() => openTab("number")}
           >
             {stale && (
-              <FocusHandoff to={checkRef} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container">
+              <FocusHandoff to={checkRef} className="flex flex-wrap items-center justify-between gap-2 rounded-corner-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container">
                 <p>Your resume changed since this check. Check again to update it.</p>
                 {analyzeButton()}
               </FocusHandoff>
@@ -582,7 +582,7 @@ export function HealthReportPage({
       )}
 
       {appliedCount > 0 && (
-        <FocusHandoff to={checkRef} className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-body-medium shadow-sm">
+        <FocusHandoff to={checkRef} className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-corner-md border px-3 py-2 text-body-medium shadow-sm">
           <p>
             {appliedCount} {appliedCount === 1 ? "change" : "changes"} applied.
             Check again to update your grade.

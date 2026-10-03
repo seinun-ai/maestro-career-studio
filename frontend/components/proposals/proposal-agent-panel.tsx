@@ -136,7 +136,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
             </SectionHeading>
             <ul className="flex flex-col gap-2">
               {data.qa_entries.map((q) => (
-                <li key={q.id} className="rounded-md border p-2.5">
+                <li key={q.id} className="rounded-corner-md border p-2.5">
                   <div className="text-label-medium">{q.prompt}</div>
                   <div className="text-muted-foreground mt-1 whitespace-pre-wrap text-body-small">
                     {q.answer}
@@ -167,7 +167,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
                     <img
                       src={src}
                       alt={`Step ${e.step}: ${e.label}`}
-                      className="h-24 rounded-md border object-cover"
+                      className="h-24 rounded-corner-md border object-cover"
                     />
                   </a>
                 );

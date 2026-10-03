@@ -263,7 +263,7 @@ export function ActionSegment({
     <div
       role="group"
       aria-label="How to handle this gap"
-      className="bg-muted inline-flex w-fit items-center gap-0.5 rounded-lg p-[3px]"
+      className="bg-muted inline-flex w-fit items-center gap-0.5 rounded-full p-[3px]"
     >
       {manual.map((action) => (
         <button
@@ -273,7 +273,7 @@ export function ActionSegment({
           aria-disabled={locked || undefined}
           onClick={locked ? undefined : () => onSelect(action)}
           className={cn(
-            "h-6 rounded-md px-2 text-label-medium transition-colors aria-disabled:opacity-50",
+            "h-6 rounded-full px-2 text-label-medium transition-colors aria-disabled:opacity-50",
             value === action
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",
@@ -335,7 +335,7 @@ export function Chip({
       {recent && (
         <span
           className={cn(
-            "shrink-0 rounded px-1 text-label-small",
+            "shrink-0 rounded-corner-xs px-1 text-label-small",
             selected
               ? "bg-primary-foreground/10 text-primary-foreground"
               : "bg-muted text-muted-foreground",
@@ -420,7 +420,7 @@ export function AddKeywordControls({
   return (
     <div className="space-y-2">
       {unverified && (
-        <div className="text-destructive bg-destructive/10 rounded-md p-2 text-body-small">
+        <div className="text-destructive bg-destructive/10 rounded-corner-md p-2 text-body-small">
           {UNVERIFIED_WARNING}
         </div>
       )}

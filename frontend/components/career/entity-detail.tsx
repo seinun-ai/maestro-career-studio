@@ -116,17 +116,16 @@ export function EntityDetail({ entityId }: { entityId: string }) {
   if (loadError != null) {
     return (
       <PageShell>
-        <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
+        <div role="alert" className="rounded-corner-md bg-destructive/10 p-5">
           <p className="font-medium">Couldn&apos;t load this career item.</p>
           <p className="text-muted-foreground mt-1 text-body-medium">
             {loadErrorDetail(loadError, "career item")}
           </p>
           <div className="mt-4 flex gap-2">
-            <Button className="rounded-full" variant="secondary" onClick={() => void entity.refetch()}>
+            <Button variant="secondary" onClick={() => void entity.refetch()}>
               Try again
             </Button>
             <Button
-              className="rounded-full"
               variant="ghost"
               nativeButton={false}
               render={<Link href="/career">Back to career history</Link>}
@@ -141,10 +140,10 @@ export function EntityDetail({ entityId }: { entityId: string }) {
     return (
       <PageShell>
         <Skeleton className="h-8 w-36" />
-        <Skeleton className="h-44 w-full rounded-2xl" />
+        <Skeleton className="h-44 w-full rounded-corner-md" />
         <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
-          <Skeleton className="h-96 w-full rounded-2xl" />
-          <Skeleton className="h-96 w-full rounded-2xl" />
+          <Skeleton className="h-96 w-full rounded-corner-md" />
+          <Skeleton className="h-96 w-full rounded-corner-md" />
         </div>
       </PageShell>
     );
@@ -155,7 +154,6 @@ export function EntityDetail({ entityId }: { entityId: string }) {
       <PageShell>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button
-            className="rounded-full"
             variant="ghost"
             size="sm"
             nativeButton={false}
@@ -166,11 +164,10 @@ export function EntityDetail({ entityId }: { entityId: string }) {
             }
           />
           <div className="flex items-center gap-2">
-            <Button className="rounded-full px-4" onClick={() => setSendOpen(true)}>
+            <Button className="px-4" onClick={() => setSendOpen(true)}>
               <Send aria-hidden="true" /> Add to a resume
             </Button>
             <Button
-              className="rounded-full"
               variant="ghost"
               onClick={() => void requestDelete()}
               disabled={remove.isPending}
@@ -267,7 +264,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
 
   if (editing) {
     return (
-      <section className="animate-fade-rise rounded-2xl bg-surface-container-low p-5 sm:p-6">
+      <section className="animate-fade-rise rounded-corner-md bg-surface-container-low p-5 sm:p-6">
         <form
           // The start date carries a hint the end date lacks: inputs align on
           // their bottom edge, not their labels.
@@ -342,10 +339,10 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
             </Select>
           </div>
           <div className="flex items-end justify-end gap-2">
-            <Button className="rounded-full" type="button" variant="ghost" onClick={reset} disabled={save.isPending}>
+            <Button type="button" variant="ghost" onClick={reset} disabled={save.isPending}>
               <X aria-hidden="true" /> Cancel
             </Button>
-            <Button className="rounded-full px-4" type="submit" disabled={!title.trim() || save.isPending}>
+            <Button className="px-4" type="submit" disabled={!title.trim() || save.isPending}>
               {save.isPending ? "Saving…" : "Save details"}
             </Button>
           </div>
@@ -355,7 +352,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
   }
 
   return (
-    <section className="animate-fade-rise rounded-2xl bg-surface-container-low px-5 py-6 sm:px-6">
+    <section className="animate-fade-rise rounded-corner-md bg-surface-container-low px-5 py-6 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -388,7 +385,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
         </div>
         <Button
           // Always shown: a hover-only Edit read as details you couldn't change.
-          className="text-muted-foreground rounded-full"
+          className="text-muted-foreground"
           size="sm"
           variant="ghost"
           onClick={() => setEditing(true)}

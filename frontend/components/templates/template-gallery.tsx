@@ -35,7 +35,7 @@ function formattingCoverage(template: TemplateSummary): string {
  *  image and the default star (z-20), so it never touches the focus ring's
  *  outside band. The card is `isolate`, so z-30 stays inside it. */
 const SELECTED_CARD_EDGE =
-  "after:pointer-events-none after:absolute after:inset-0 after:z-30 after:rounded-xl after:border-2 after:border-primary";
+  "after:pointer-events-none after:absolute after:inset-0 after:z-30 after:rounded-corner-md after:border-2 after:border-primary";
 
 /** A template's own name; its id never stands in for one. */
 export function templateName(template: Pick<TemplateSummary, "display_name">): string {
@@ -225,7 +225,7 @@ export function TemplateGallery({
               // the preview, plus a Check before the name. `--card` equals
               // `--popover`, so an outside selection ring and the offset focus
               // ring used to merge into one 4px blue band.
-              className="rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover focus-visible:outline-none"
+              className="rounded-corner-md text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover focus-visible:outline-none"
             >
               <GalleryCard
                 className={cn(

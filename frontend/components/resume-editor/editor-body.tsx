@@ -668,7 +668,7 @@ function SummaryBlock({
   return (
     <div
       className={cn(
-        "group/sum relative rounded-md border border-l-2 px-3 py-3",
+        "group/sum relative rounded-corner-md border border-l-2 px-3 py-3",
         "border-border/0 hover:border-border/60",
       )}
     >
@@ -721,7 +721,7 @@ function CertificationsBlock({
     );
   }
   return (
-    <div className="group/certs border-border/0 hover:border-border/60 relative rounded-md border px-3 py-3">
+    <div className="group/certs border-border/0 hover:border-border/60 relative rounded-corner-md border px-3 py-3">
       {value.length > 0 ? (
         <ul className="text-foreground/90 ml-4 list-disc space-y-1 pr-10 text-body-medium">
           {value.map((c, i) => (

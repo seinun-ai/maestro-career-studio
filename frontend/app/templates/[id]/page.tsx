@@ -374,7 +374,7 @@ export default function TemplateEditorPage() {
             <p className="text-muted-foreground text-body-small">
               The template has an error. Fix the code, then update the preview.
             </p>
-            <pre className="bg-destructive/10 text-destructive max-h-full overflow-auto rounded p-2 text-body-small">
+            <pre className="bg-destructive/10 text-destructive max-h-full overflow-auto rounded-corner-md p-2 text-body-small">
               {compileError}
             </pre>
           </div>

@@ -596,7 +596,7 @@ function NewBaseResumeForm({
                   first.
                 </p>
               ) : (
-                <ul className="max-h-64 divide-y overflow-y-auto rounded-lg border px-3">
+                <ul className="max-h-64 divide-y overflow-y-auto rounded-corner-md border px-3">
                   {selectable.map((entity) => (
                     <li key={entity.id} className="py-2.5">
                       <label className="flex cursor-pointer items-start gap-3">

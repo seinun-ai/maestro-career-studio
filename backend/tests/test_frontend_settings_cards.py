@@ -121,7 +121,7 @@ def test_the_catalog_reads_words_not_keys():
     assert "providerLabel(option.provider)} · {sourceLabel(option.source)}" in _CATALOG
     for src in (_CATALOG, _MODELS):
         assert "showsModelId(option) ?" in src
-    assert "rounded-lg border p-3" not in _CATALOG  # second containment level is tonal
+    assert "rounded-corner-md border p-3" not in _CATALOG  # second containment level is tonal
     assert "discovery —" not in _CATALOG
 
 

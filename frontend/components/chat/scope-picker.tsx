@@ -176,7 +176,7 @@ export function ScopePickerDialog({
           give it background.
         </p>
         <Tabs defaultValue="resume" className="flex min-h-0 flex-1 flex-col gap-3">
-          <TabsList className="w-fit rounded-full bg-surface-container-high p-1">
+          <TabsList className="w-fit bg-surface-container-high p-1">
             <TabsTrigger value="resume">Resume</TabsTrigger>
             <TabsTrigger value="kb">Career history</TabsTrigger>
           </TabsList>
@@ -203,7 +203,7 @@ export function ScopePickerDialog({
                 {(kbEntities.data ?? []).map((entity) => (
                   <li
                     key={entity.id}
-                    className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5"
+                    className="flex items-center justify-between gap-2 rounded-corner-md border px-2 py-1.5"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-body-medium">{entity.title}</p>
@@ -280,7 +280,7 @@ export function ScopePickerDialog({
                           };
                     const expandKey = `${spec.section}:${index}`;
                     return (
-                      <li key={index} className="rounded-md border px-2 py-1">
+                      <li key={index} className="rounded-corner-md border px-2 py-1">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-1">
                             {item.bullets.length > 0 ? (

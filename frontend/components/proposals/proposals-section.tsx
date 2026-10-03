@@ -456,7 +456,7 @@ export function ProposalsSection() {
             value={sort}
             onValueChange={(v) => setSort((v as SortKey) ?? "score")}
           >
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Sort">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Sort">
               <SelectValue>{SORT_LABELS[sort]}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -468,7 +468,7 @@ export function ProposalsSection() {
             </SelectContent>
           </Select>
           <Select value={role} onValueChange={(v) => setRole(v ?? "all")}>
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
               <SelectValue>{role === "all" ? "All roles" : roleLabel(role)}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -481,7 +481,7 @@ export function ProposalsSection() {
             </SelectContent>
           </Select>
           <Select value={board} onValueChange={(v) => setBoard(v ?? "all")}>
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Job board">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Job board">
               <SelectValue>{board === "all" ? "All boards" : board}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -499,7 +499,7 @@ export function ProposalsSection() {
               setMinScore(v && v !== "any" ? (Number(v) as ScoreFloor) : null)
             }
           >
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[8rem]" aria-label="Minimum score">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[8rem]" aria-label="Minimum score">
               <SelectValue>{scoreLabel(minScore)}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[10rem]">
@@ -653,7 +653,6 @@ export function ProposalsSection() {
                         size="xs"
                         variant={active ? "tonal" : "outline"}
                         aria-pressed={active}
-                        className="rounded-full"
                         onClick={() => setHistoryStatus(status)}
                       >
                         {active && <Check />}
@@ -825,7 +824,7 @@ function ProposalRow({
             // and squeezed the title to a few letters at 768 and to nothing at
             // 375. Narrow, the chips wrap under the text and the decorative
             // monogram steps aside.
-            className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl p-3 text-left transition-colors sm:p-4"
+            className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-corner-md p-3 text-left transition-colors sm:p-4"
           >
             <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
             <div className="min-w-0 grow basis-[10rem]">

@@ -228,7 +228,7 @@ export function NewEntityDialog({
           </div>
 
           {kind === "extra" && (
-            <div className="space-y-4 rounded-xl border p-3.5">
+            <div className="space-y-4 rounded-corner-md border p-3.5">
               <div className="grid gap-1.5">
                 <Label id={presetsLabelId}>Common sections</Label>
                 <div role="group" aria-labelledby={presetsLabelId} className="flex flex-wrap gap-1.5">
@@ -287,7 +287,7 @@ export function NewEntityDialog({
                     aria-pressed={sectionType === "entries"}
                     onClick={() => setSectionType("entries")}
                     className={cn(
-                      "flex flex-1 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+                      "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
                       sectionType === "entries"
                         ? "border-primary bg-primary/5"
                         : "border-input hover:border-border text-muted-foreground",
@@ -306,7 +306,7 @@ export function NewEntityDialog({
                       }
                     }}
                     className={cn(
-                      "flex flex-1 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+                      "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
                       sectionType === "bullets"
                         ? "border-primary bg-primary/5"
                         : "border-input hover:border-border text-muted-foreground",
@@ -409,7 +409,6 @@ export function NewEntityDialog({
           <Button
             variant="outline"
             type="button"
-            className="rounded-full"
             onClick={() => onOpenChange(false)}
             disabled={create.isPending}
           >
@@ -419,7 +418,7 @@ export function NewEntityDialog({
             type="submit"
             form="new-career-entity"
             // Focusable while it adds: a disabled button drops focus.
-            className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+            className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
             disabled={!isValid || create.isPending}
             focusableWhenDisabled
           >

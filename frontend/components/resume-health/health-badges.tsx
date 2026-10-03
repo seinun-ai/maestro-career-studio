@@ -65,7 +65,7 @@ export function HealthBadges({
   // the header row rather than loose chips floating between the buttons — it
   // was easy to miss entirely at a glance.
   const shell =
-    "hover:bg-surface-container hover:border-border flex items-center gap-1.5 rounded-md " +
+    "hover:bg-surface-container hover:border-border flex items-center gap-1.5 rounded-full " +
     "border border-transparent bg-surface-container-low px-2 py-1 transition-colors";
 
   const missing = failure instanceof ApiError && failure.status === 404;
@@ -114,7 +114,7 @@ export function HealthBadges({
       {/* Same grade palette as the report page: the chip is the header's only
           severity signal now, so an F must not read like an A. */}
       <span
-        className={`rounded px-1.5 py-0.5 text-label-medium ${
+        className={`rounded-corner-xs px-1.5 py-0.5 text-label-medium ${
           GRADE_STYLES[data.grade] ?? GRADE_STYLES.C
         }`}
       >
@@ -149,7 +149,7 @@ export function HealthListChip({ slug }: { slug: string }) {
     <Link
       href={`/base-resumes/${slug}/health`}
       className={cn(
-        "relative z-20 shrink-0 rounded px-1.5 py-0.5 text-label-small",
+        "relative z-20 shrink-0 rounded-corner-xs px-1.5 py-0.5 text-label-small",
         blocked
           ? "bg-destructive/10 text-destructive"
           : (GRADE_STYLES[data.grade] ?? GRADE_STYLES.C),

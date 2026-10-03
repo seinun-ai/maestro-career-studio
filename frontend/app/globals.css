@@ -84,10 +84,13 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  /* M3 corner scale, beside the --radius ladder above (which the shadcn
-     primitives still read). One corner per kind of thing: corner-xs menus
-     and tooltips, corner-sm controls, corner-md cards, corner-lg sheets,
-     corner-xl dialogs; pills stay rounded-full. */
+  /* M3 corner scale: the corners the app writes. One corner per kind of
+     thing: corner-xs menus and tooltips, corner-sm controls, corner-md
+     containers, corner-lg the FAB and sheets, corner-xl dialogs; pills are
+     rounded-full. The --radius ladder above is no longer read by any app
+     class (a test fails on a stock rounded-* or var(--radius…)); it stays
+     only so a stock Tailwind rounded-* or a third-party component still
+     resolves. */
   --radius-corner-xs: 0.25rem;
   --radius-corner-sm: 0.5rem;
   --radius-corner-md: 0.75rem;

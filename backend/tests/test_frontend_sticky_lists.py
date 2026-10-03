@@ -119,7 +119,7 @@ def test_a_sticky_header_is_opaque_ruled_stacked_and_placed_under_the_toolbar():
 
 def test_the_table_frame_clips_without_becoming_a_scroller():
     frame = _body(_read("components/empty-state.tsx"), "export function TableFrame(")
-    assert '"animate-fade-rise overflow-clip rounded-xl border"' in frame
+    assert '"animate-fade-rise overflow-clip rounded-corner-md border"' in frame
     assert "overflow-hidden" not in frame
 
 

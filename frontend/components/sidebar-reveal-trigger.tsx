@@ -52,7 +52,7 @@ export function SidebarRevealTrigger() {
     <div className="pointer-events-none fixed top-3 left-3 z-50">
       <SidebarTrigger
         ref={ref}
-        className="pointer-events-auto rounded-md border bg-background/90 shadow-sm backdrop-blur"
+        className="pointer-events-auto rounded-full border bg-background/90 shadow-sm backdrop-blur"
         // Only on screen while the sidebar is hidden, so a press always shows it.
         title={`Show sidebar (${shortcutLabel(mod, "B")})`}
         aria-keyshortcuts="Meta+B Control+B"

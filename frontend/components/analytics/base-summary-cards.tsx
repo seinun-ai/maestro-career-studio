@@ -60,7 +60,7 @@ export function BaseSummaryCards() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {(data ?? []).map((row) => (
-        <Card key={row.slug} className="rounded-2xl">
+        <Card key={row.slug}>
           <CardHeader className="flex flex-row items-start justify-between gap-2">
             <CardTitle>
               <Link

@@ -88,7 +88,7 @@ export function HeatmapChart({
                   <td
                     key={role}
                     title={`${skillName(skill)} · ${label(role)}: ${pct}%`}
-                    className="h-8 min-w-12 rounded text-center align-middle text-label-small"
+                    className="h-8 min-w-12 rounded-corner-xs text-center align-middle text-label-small"
                     style={{ backgroundColor: cellColor(pct) }}
                   >
                     {pct > 0 ? `${pct.toFixed(0)}%` : ""}

@@ -532,7 +532,7 @@ export function GapCard({
     return (
       <div
         ref={rootRef}
-        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border py-2 pr-1.5 pl-4 text-body-medium"
+        className="text-muted-foreground flex items-center justify-between gap-2 rounded-corner-md border py-2 pr-1.5 pl-4 text-body-medium"
       >
         <span className="flex min-w-0 items-start gap-2">
           <Ban className="mt-0.5 size-4 shrink-0" />
@@ -552,7 +552,7 @@ export function GapCard({
     return (
       <div
         ref={rootRef}
-        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border border-dashed py-1.5 pr-1.5 pl-4 text-body-medium"
+        className="text-muted-foreground flex items-center justify-between gap-2 rounded-corner-md border border-dashed py-1.5 pr-1.5 pl-4 text-body-medium"
       >
         <span className="min-w-0 break-words">
           Skipped <span className="text-foreground font-medium">{title}</span>
@@ -571,7 +571,7 @@ export function GapCard({
     return (
       <div
         ref={rootRef}
-        className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-body-medium"
+        className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-corner-md border px-4 py-2.5 text-body-medium"
       >
         <Library className="text-primary size-4 shrink-0" />
         <span className="min-w-0 flex-1">
@@ -614,7 +614,7 @@ export function GapCard({
           setEditing(true);
           handOff();
         }}
-        className="bg-card ring-foreground/10 hover:ring-primary/40 flex w-full items-center gap-2 rounded-xl px-4 py-2.5 text-left text-body-medium ring-1 transition-shadow"
+        className="bg-card ring-foreground/10 hover:ring-primary/40 flex w-full items-center gap-2 rounded-corner-md px-4 py-2.5 text-left text-body-medium ring-1 transition-shadow"
       >
         <Check className="text-primary size-4 shrink-0" />
         <span className="min-w-0 flex-1 truncate">

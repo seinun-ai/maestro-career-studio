@@ -5,19 +5,20 @@ import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { cn } from "@/lib/utils"
 
 /**
- * The floating-panel material: elevation, ring, radius, scroll behaviour and
+ * The floating-panel material: elevation, ring, scroll behaviour and
  * the open/close transitions. Shared with `dropdown-menu.tsx`, which imports it
  * from here — a menu is this surface plus menu semantics, so the surface is the
  * more primitive of the two and owns the definition.
  *
  * It lives in one place because both files claim to look identical, and two
  * hand-copied ~1000-character class strings drift the first time one is
- * touched. Width and padding are NOT here: those are the parts that legitimately
- * differ (a menu matches its trigger's width and pads for rows; a popover is
- * sized by its content), so each file adds its own.
+ * touched. Width, padding and corner are NOT here: those are the parts that
+ * legitimately differ (a menu matches its trigger's width, pads for rows and has
+ * a menu's 4px corner; a popover is sized by its content and is a panel with a
+ * 12px corner), so each file adds its own.
  */
 export const POPUP_SURFACE =
-  "z-50 max-h-(--available-height) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95"
+  "z-50 max-h-(--available-height) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95"
 
 /**
  * A non-modal popover surface.
@@ -66,7 +67,7 @@ function PopoverContent({
             sized by its content rather than by its trigger. */}
         <PopoverPrimitive.Popup
           data-slot="popover-content"
-          className={cn(POPUP_SURFACE, "p-3", className)}
+          className={cn(POPUP_SURFACE, "rounded-corner-md p-3", className)}
           {...props}
         />
       </PopoverPrimitive.Positioner>

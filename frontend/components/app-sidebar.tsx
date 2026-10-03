@@ -142,7 +142,7 @@ function MainNav({ pathname, from }: { pathname: string; from: string | null | u
             // container-coloured control; the container fill is ~1.05:1 from
             // the active row. Geometry stays the extended FAB either way.
             buttonVariants({ variant: fabCurrent ? "default" : "fab", size: "lg" }),
-            "h-10 gap-2.5 rounded-[16px] px-4",
+            "h-10 gap-2.5 rounded-corner-lg px-4",
           )}
         >
           <FilePlus2 className="size-4" aria-hidden="true" />

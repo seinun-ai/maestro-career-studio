@@ -77,7 +77,7 @@ export function EditableCard({
   return (
     <div
       className={cn(
-        "group/card border-border/0 hover:border-border/60 relative rounded-md border px-3 py-3 transition-colors",
+        "group/card border-border/0 hover:border-border/60 relative rounded-corner-md border px-3 py-3 transition-colors",
         muted && "opacity-70",
         editing && "border-border",
         className,

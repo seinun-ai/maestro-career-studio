@@ -10,4 +10,4 @@ The sidebar is the app's navigation drawer: the brand, one create action, three 
 - The Agent inbox count is an `attention-container` pill; its meaning is also in the link's `aria-label`.
 - The focus ring is the same `ring` as the rest of the app.
 
-Source: `frontend/components/app-sidebar.tsx`, `ui/sidebar.tsx`. Changed from source: the row corner goes from 8px to a full pill.
+Source: `frontend/components/app-sidebar.tsx`, `ui/sidebar.tsx`.

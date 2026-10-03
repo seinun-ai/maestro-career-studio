@@ -62,7 +62,7 @@ export function LoadErrorState({
       ref={rootRef}
       role="alert"
       className={cn(
-        "flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center",
+        "flex flex-col items-center gap-3 rounded-corner-md border border-dashed py-16 text-center",
         className,
       )}
     >

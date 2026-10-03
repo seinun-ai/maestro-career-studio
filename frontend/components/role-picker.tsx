@@ -20,7 +20,7 @@ type RoleGroup = { key: string; label: string; items: FavoredRole[] };
 export const MAX_ROLE_LABEL_CHARS = 80;
 
 const ROLE_ITEM_CLASS =
-  "flex cursor-default items-center justify-between gap-2 rounded-md px-2 py-1.5 text-body-medium outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground";
+  "flex cursor-default items-center justify-between gap-2 rounded-corner-xs px-2 py-1.5 text-body-medium outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground";
 
 /** The identity the server dedups on: the role key, else the folded label. */
 export function roleIdentity(entry: FavoredRole) {
@@ -354,7 +354,7 @@ export function RolePicker(props: RolePickerProps) {
 
   const chipsClassName =
     props.className ??
-    "border-input focus-within:ring-ring flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-body-medium focus-within:ring-2";
+    "border-input focus-within:ring-ring flex min-h-9 flex-wrap items-center gap-1.5 rounded-corner-sm border bg-transparent px-2 py-1.5 text-body-medium focus-within:ring-2";
 
   const list = (
     <>
@@ -363,7 +363,7 @@ export function RolePicker(props: RolePickerProps) {
         {selected.map((entry) => (
           <Combobox.Chip
             key={roleIdentity(entry)}
-            className="bg-muted text-foreground/90 inline-flex h-5 max-h-full items-center gap-1 rounded-md px-1.5 leading-none"
+            className="bg-muted text-foreground/90 inline-flex h-5 max-h-full items-center gap-1 rounded-full px-1.5 leading-none"
           >
             {entry.label}
             {/* Only for a custom entry the user has since mapped: without
@@ -385,7 +385,7 @@ export function RolePicker(props: RolePickerProps) {
             {props.mode === "multiple" && (
               <Combobox.ChipRemove
                 aria-label={`Remove ${entry.label}`}
-                className="text-muted-foreground hover:text-foreground relative -mr-0.5 rounded-sm after:absolute after:-inset-2 after:content-['']"
+                className="text-muted-foreground hover:text-foreground relative -mr-0.5 rounded-full after:absolute after:-inset-2 after:content-['']"
               >
                 <XIcon className="size-3" />
               </Combobox.ChipRemove>
@@ -469,7 +469,7 @@ export function RolePicker(props: RolePickerProps) {
                width of the word it holds. Sized to that, every role in the
                list truncated to two syllables and the list was unreadable,
                which matters more now that clearing a role is a row in it. */
-            className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) min-w-56 overflow-y-auto overscroll-contain rounded-lg p-1 shadow-md ring-1"
+            className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) min-w-56 overflow-y-auto overscroll-contain rounded-corner-xs p-1 shadow-md ring-1"
           >
             <Combobox.List>
               <Combobox.Collection>
@@ -616,7 +616,7 @@ export function RolePicker(props: RolePickerProps) {
         </Combobox.Root>
       )}
       {pendingSuggestion && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed px-2.5 py-2 text-body-small">
+        <div className="flex flex-wrap items-center gap-2 rounded-corner-md border border-dashed px-2.5 py-2 text-body-small">
           <span>
             Count &ldquo;{pendingSuggestion.label}&rdquo; as{" "}
             {catalogLabel(pendingSuggestion.match.category)}?

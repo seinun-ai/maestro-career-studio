@@ -112,7 +112,7 @@ export function ChipListInput({
         // min-w-0: a flex/grid item defaults to min-width:auto, so an editing
         // chip's definite width would push this container past its cell
         // instead of letting the chip's max-width cap it (SYSTEM.md §8).
-        "border-input focus-within:ring-ring flex min-h-9 min-w-0 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-body-medium focus-within:ring-2",
+        "border-input focus-within:ring-ring flex min-h-9 min-w-0 flex-wrap items-center gap-1.5 rounded-corner-sm border bg-transparent px-2 py-1.5 text-body-medium focus-within:ring-2",
         className,
       )}
     >
@@ -129,7 +129,7 @@ export function ChipListInput({
               if (dragFrom.current !== null) reorder(dragFrom.current, i);
               dragFrom.current = null;
             }}
-            className="bg-muted text-foreground/90 inline-flex cursor-grab items-center gap-1 rounded-md px-2 py-0.5 active:cursor-grabbing"
+            className="bg-muted text-foreground/90 inline-flex cursor-grab items-center gap-1 rounded-full px-2 py-0.5 active:cursor-grabbing"
             style={{ maxWidth: "100%" }}
           >
             {isEditing ? (
@@ -170,7 +170,7 @@ export function ChipListInput({
                 <button
                   type="button"
                   aria-label={`Remove ${item}`}
-                  className="text-muted-foreground hover:text-foreground relative -mr-0.5 rounded-sm after:absolute after:-inset-2 after:content-['']"
+                  className="text-muted-foreground hover:text-foreground relative -mr-0.5 rounded-full after:absolute after:-inset-2 after:content-['']"
                   onClick={() => removeAt(i)}
                 >
                   <X className="size-3" />

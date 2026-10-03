@@ -572,7 +572,7 @@ def test_slip_fix_reads_the_backend_issue_sentence():
 def test_wording_rows_hand_focus_on_when_they_leave():
     src = _wording()
     group = _checklist()
-    assert '<div tabIndex={-1} className="rounded-md border outline-none">' in group
+    assert '<div tabIndex={-1} className="rounded-corner-md border outline-none">' in group
     leave = _fn(src, "function useSuccessorOnLeave(")
     assert "useLayoutEffect(" in leave and "row.contains(document.activeElement)" in leave
     assert 'focusSuccessor(row, "[data-wording-action]")' in leave

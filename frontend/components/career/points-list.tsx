@@ -133,11 +133,11 @@ export function PointsList({
   );
 
   return (
-    <Card className="rounded-2xl">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           Bullets
-          <Badge className="rounded-full" variant="secondary">
+          <Badge variant="secondary">
             {points.length}
           </Badge>
         </CardTitle>
@@ -147,7 +147,7 @@ export function PointsList({
       </CardHeader>
       <CardContent className="px-0">
         {ordered.length === 0 ? (
-          <div className="mx-4 rounded-xl bg-surface-container-low px-5 py-8 text-center">
+          <div className="mx-4 rounded-corner-md bg-surface-container-low px-5 py-8 text-center">
             <p className="text-title-small">No bullets yet</p>
             <p className="text-muted-foreground mt-1 text-body-small">
               Add an update or a document to start.
@@ -270,7 +270,6 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
           />
           <div className="flex justify-end gap-2">
             <Button
-              className="rounded-full"
               size="sm"
               variant="ghost"
               onClick={() => void onCancel()}
@@ -279,7 +278,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
               <X aria-hidden="true" /> Cancel
             </Button>
             <Button
-              className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+              className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
               onClick={() =>
                 onSave(() => updateOnce({ payload: { text: text.trim() }, message: "Bullet updated" }))
@@ -369,7 +368,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
           </span>
         ) : null}
         {point.tags.map((tag) => (
-          <Badge key={tag} variant="secondary" className="rounded-full text-body-small">
+          <Badge key={tag} variant="secondary" className="text-body-small">
             {tag}
           </Badge>
         ))}

@@ -61,18 +61,18 @@ export function SummaryBand({
     <section
       data-summary-band
       aria-label="Summary"
-      className="flex min-w-0 flex-col gap-3 rounded-lg border p-4"
+      className="flex min-w-0 flex-col gap-3 rounded-corner-md border p-4"
     >
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
         <div className="flex items-center gap-3">
           {insufficient ? (
-            <span className="text-muted-foreground flex size-14 items-center justify-center rounded-lg text-center text-label-small">
+            <span className="text-muted-foreground flex size-14 items-center justify-center rounded-corner-sm text-center text-label-small">
               Too little to grade
             </span>
           ) : (
             <span
               className={cn(
-                "flex size-14 items-center justify-center rounded-lg text-headline-small font-semibold",
+                "flex size-14 items-center justify-center rounded-corner-sm text-headline-small font-semibold",
                 GRADE_STYLES[body.grade] ?? GRADE_STYLES.C,
               )}
             >
@@ -141,7 +141,7 @@ export function SummaryBand({
       {noNumbers && (
         <div
           role="note"
-          className="rounded-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container"
+          className="rounded-corner-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container"
         >
           <p className="font-medium">{noNumbers.label}</p>
           <p className="mt-0.5 max-w-[65ch]">

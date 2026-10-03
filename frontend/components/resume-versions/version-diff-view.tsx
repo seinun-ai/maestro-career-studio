@@ -34,7 +34,7 @@ export function DiffChangeList({ changes }: { changes: ResumeDiffChange[] }) {
         return (
         <li
           key={i}
-          className={cn("rounded-md px-3 py-2 text-body-medium", KIND_STYLES[c.kind])}
+          className={cn("rounded-corner-md px-3 py-2 text-body-medium", KIND_STYLES[c.kind])}
         >
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="bg-background/60">

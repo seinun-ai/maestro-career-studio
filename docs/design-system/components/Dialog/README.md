@@ -9,4 +9,4 @@ A dialog interrupts for one decision or one short task, and keeps what the perso
 - A dialog keeps what the user typed, or paid for, across close.
 - Leaving with unsaved work asks.
 
-Source: `frontend/components/ui/dialog.tsx`, `confirm-dialog.tsx`. Changed from source: corner 14px to 28px, padding 16px to 24px, `shadow-level3` added.
+Source: `frontend/components/ui/dialog.tsx`, `confirm-dialog.tsx`. Changed from source: padding 16px to 24px, `shadow-level3` added.

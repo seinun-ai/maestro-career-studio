@@ -374,7 +374,7 @@ export function JobExtractedFields({
           {showRaw ? "Hide full job description" : "Show full job description"}
         </Button>
         {showRaw && (
-          <pre className="bg-muted max-h-96 overflow-auto rounded-md p-3 text-body-small whitespace-pre-wrap">
+          <pre className="bg-muted max-h-96 overflow-auto rounded-corner-md p-3 text-body-small whitespace-pre-wrap">
             {job.raw_text}
           </pre>
         )}

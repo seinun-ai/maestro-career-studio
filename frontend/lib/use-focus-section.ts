@@ -4,15 +4,18 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { settingsPageAt, tabForAnchor, tabHref } from "@/lib/settings-tabs";
 
-const RING = ["ring-2", "ring-primary/60", "rounded-lg"];
+const RING = ["ring-2", "ring-primary/60", "rounded-corner-md"];
 /** How long a cross-page landing waits for its target to mount. */
 const WAIT_MS = 3000;
 /** How long after that to keep the target centred while the page settles. */
 const SETTLE_MS = 1200;
 
 function ring(el: HTMLElement) {
-  el.classList.add(...RING);
-  window.setTimeout(() => el.classList.remove(...RING), 1600);
+  // Only the classes the element lacks: a Card already carries its own corner,
+  // and taking it back off after the flash would square the card.
+  const added = RING.filter((cls) => !el.classList.contains(cls));
+  el.classList.add(...added);
+  window.setTimeout(() => el.classList.remove(...added), 1600);
 }
 
 /** Shown, not merely mounted: a card in a hidden tab panel is in the DOM with no box. */

@@ -143,7 +143,7 @@ export function InstructSheet({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-7 rounded-full"
+                  className="h-7"
                   disabled={busy}
                   onClick={() => setInstruction(text)}
                 >
@@ -175,7 +175,7 @@ export function InstructSheet({
           </div>
 
           {proposal && (
-            <div className="rounded-xl border border-dashed px-3 py-2.5">
+            <div className="rounded-corner-md border border-dashed px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-2 text-body-medium">
                 <Badge variant="outline" className="gap-1">
                   <Sparkles className="size-3" aria-hidden="true" />

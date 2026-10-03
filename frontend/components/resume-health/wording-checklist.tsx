@@ -252,7 +252,7 @@ export function WordingChecklist({
 
   return (
     // The rows' landmark: a row leaving with no neighbour that can take focus lands on the group.
-    <div tabIndex={-1} className="rounded-md border outline-none">
+    <div tabIndex={-1} className="rounded-corner-md border outline-none">
       <div className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2">
         <div className="min-w-0">
           <h3 className="text-title-small">Wording ({notes.length})</h3>

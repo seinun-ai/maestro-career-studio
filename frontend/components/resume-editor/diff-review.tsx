@@ -544,7 +544,7 @@ function GateRow({ gate }: { gate: HealthGate }) {
       ? "Must fix"
       : "Serious";
   return (
-    <div className={cn("rounded-md border px-3 py-2 text-body-medium", accent)}>
+    <div className={cn("rounded-corner-md border px-3 py-2 text-body-medium", accent)}>
       <div className="flex items-center gap-2">
         <Badge variant="secondary" className={cn("shrink-0", badgeStyle)}>
           {badgeLabel}
@@ -688,7 +688,7 @@ export function DiffReviewPanel({
 }) {
   if (hunks.length === 0) {
     return (
-      <div className="text-muted-foreground rounded-md border border-dashed p-3 text-body-medium">
+      <div className="text-muted-foreground rounded-corner-md border border-dashed p-3 text-body-medium">
         No changes from your base resume.
       </div>
     );
@@ -702,7 +702,7 @@ export function DiffReviewPanel({
   })).filter((group) => group.items.length > 0);
 
   return (
-    <section className="space-y-2 rounded-lg border p-3">
+    <section className="space-y-2 rounded-corner-md border p-3">
       <header className="flex flex-wrap items-center gap-2">
         <h2 className="text-title-small">
           {hunks.length} {hunks.length === 1 ? "change" : "changes"} from your

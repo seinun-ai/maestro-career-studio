@@ -76,7 +76,7 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 
 ## Shape
 
-One corner per kind of thing: `radius-corner-xs` (4px) menus, tooltips, the checkbox; `radius-corner-sm` (8px) buttons, inputs, selects; `radius-corner-md` (12px) cards, tiles, tables, callouts; `radius-corner-lg` (16px) the FAB and sheets; `radius-corner-xl` (28px) dialogs; `radius-full` chips, badges, the search field, the current sidebar row.
+One corner per kind of thing: `radius-corner-xs` (4px) menus, tooltips, the checkbox; `radius-corner-sm` (8px) buttons, inputs, selects; `radius-corner-md` (12px) cards, tiles, tables, callouts; `radius-corner-lg` (16px) the FAB and a sheet's open edge; `radius-corner-xl` (28px) dialogs; `radius-full` chips, badges, segmented toggles (the outline and its segments), the search field, every sidebar row (hover and current share the shape).
 
 ## Selection and state
 

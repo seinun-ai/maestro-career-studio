@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils";
 /**
  * The one KPI tile.
  *
- * There were three: `StatTile` in analytics-overview (`rounded-xl p-4`),
- * `MetricCard` in explore-overview (`rounded-md p-3`), and `Stat` in
+ * There were three: `StatTile` in analytics-overview (a 14px corner and `p-4`),
+ * `MetricCard` in explore-overview (an 8px corner and `p-3`), and `Stat` in
  * base-summary-cards (no box, `text-title-small` value) — so the four Analytics tabs
  * showed the same kind of number three different ways.
  *

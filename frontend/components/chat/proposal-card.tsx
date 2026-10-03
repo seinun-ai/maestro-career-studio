@@ -62,7 +62,7 @@ export function ProposalCard({
   const targetLabel = proposal.target_kind === "base" ? baseName : "the tailored resume";
 
   return (
-    <div className="rounded-md border border-dashed px-3 py-2">
+    <div className="rounded-corner-md border border-dashed px-3 py-2">
       <div className="flex items-center gap-2 text-body-medium">
         <Badge variant="outline">
           Suggested project

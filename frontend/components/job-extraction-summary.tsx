@@ -46,7 +46,7 @@ export function JobExtractionSummary({
         {job.already_existed ? (
           <div
             role="status"
-            className="mt-1 flex items-center gap-2 rounded-lg bg-primary-container p-3 text-body-medium text-on-primary-container"
+            className="mt-1 flex items-center gap-2 rounded-corner-md bg-primary-container p-3 text-body-medium text-on-primary-container"
           >
             <Info className="size-4 shrink-0" aria-hidden="true" />
             This job is already saved.

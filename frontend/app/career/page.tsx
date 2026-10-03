@@ -72,13 +72,13 @@ export default function CareerPage() {
                 later would have no path. */}
             <Button
               variant="outline"
-              className="rounded-full px-4"
+              className="px-4"
               onClick={() => setImportOpen(true)}
             >
               <Upload aria-hidden="true" /> Import resumes and documents
             </Button>
             <Button
-              className="rounded-full px-4"
+              className="px-4"
               onClick={() => openNewEntity(activeKind)}
             >
               <Plus aria-hidden="true" /> Add item
@@ -106,7 +106,7 @@ export default function CareerPage() {
 
       {/* Anchor: the "Import resumes" setup step links here. */}
       <Tabs id="kb-entities" value={activeTab} onValueChange={setActiveTab} className="gap-5">
-        <TabsList className="h-auto flex-wrap rounded-full bg-surface-container p-1">
+        <TabsList className="h-auto flex-wrap bg-surface-container p-1">
           <TabsTrigger value="basics">Basics</TabsTrigger>
           {ENTITY_TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
@@ -201,7 +201,7 @@ function CustomSectionsTab({
         <p className="text-muted-foreground text-body-medium">
           Publications, awards, volunteering and more.
         </p>
-        <Button className="rounded-full" size="sm" variant="secondary" onClick={onAdd}>
+        <Button size="sm" variant="secondary" onClick={onAdd}>
           <Plus aria-hidden="true" /> Add section
         </Button>
       </div>
@@ -213,7 +213,7 @@ function CustomSectionsTab({
           ))}
         </div>
       ) : error ? (
-        <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
+        <div role="alert" className="rounded-corner-md bg-destructive/10 p-5">
           <p className="text-title-small">Couldn&apos;t load other sections.</p>
           <LoadDetail error={error} />
           <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
@@ -221,12 +221,12 @@ function CustomSectionsTab({
           </Button>
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl bg-surface-container-low p-10 text-center">
+        <div className="rounded-corner-md bg-surface-container-low p-10 text-center">
           <p className="text-title-small">No other sections yet</p>
           <p className="text-muted-foreground mx-auto mt-1 max-w-md text-body-small">
             Add publications, awards, talks and more.
           </p>
-          <Button className="mt-4 rounded-full" size="sm" onClick={onAdd}>
+          <Button className="mt-4" size="sm" onClick={onAdd}>
             <Plus aria-hidden="true" /> Add section
           </Button>
         </div>
@@ -278,7 +278,7 @@ function EntityTab({
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-end gap-3">
-        <Button className="rounded-full" size="sm" variant="secondary" onClick={onAdd}>
+        <Button size="sm" variant="secondary" onClick={onAdd}>
           <Plus aria-hidden="true" /> Add {singular}
         </Button>
       </div>
@@ -290,7 +290,7 @@ function EntityTab({
           ))}
         </div>
       ) : error ? (
-        <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
+        <div role="alert" className="rounded-corner-md bg-destructive/10 p-5">
           <p className="text-title-small">Couldn&apos;t load {title.toLowerCase()}.</p>
           <LoadDetail error={error} />
           <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
@@ -298,12 +298,12 @@ function EntityTab({
           </Button>
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl bg-surface-container-low p-10 text-center">
+        <div className="rounded-corner-md bg-surface-container-low p-10 text-center">
           <p className="text-title-small">No {title.toLowerCase()} yet</p>
           <p className="text-muted-foreground mx-auto mt-1 max-w-md text-body-small">
             Use Quick capture above, or add one yourself.
           </p>
-          <Button className="mt-4 rounded-full" size="sm" onClick={onAdd}>
+          <Button className="mt-4" size="sm" onClick={onAdd}>
             <Plus aria-hidden="true" /> Add {singular}
           </Button>
         </div>

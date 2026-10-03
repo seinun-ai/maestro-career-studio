@@ -108,8 +108,20 @@
   parent does not reach a child that has its own scale class: put it on the child. Long
   reading text (the chat reply, notes, the profile summary, judged text) keeps
   `leading-6` or `leading-7`; no other `leading-*` sits beside a scale utility.
-  **Corners** are `rounded-corner-xs` (menus), `-sm` (controls), `-md`
-  (cards), `-lg` (sheets), `-xl` (dialogs), and `rounded-full` for pills.
+  **Corners** are `rounded-corner-xs` (menus, tooltips, the checkbox, code and
+  grade chips), `-sm` (controls: buttons, inputs, selects, option tiles), `-md` (any
+  container: cards, tiles, callouts, wells, list boxes, dropzones, a popover
+  that is a panel), `-lg` (the FAB, sheets), `-xl` (dialogs), and `rounded-full`
+  for pills (chips, badges, tracks, segmented toggles and their segments, every sidebar row); a Button, SelectTrigger or Tab never passes `rounded-full`, and a tab nests in its list at `-xs`. One corner per kind of
+  thing, picked by what the element is, never by its old size: a container
+  nested in a container keeps the container's corner, and a side form
+  (`rounded-t-corner-md`) takes the same kind. Tailwind's own `rounded`,
+  `rounded-md`, `rounded-xl` and a bracketed radius are not written
+  (`test_frontend_design_tokens.py` fails on each; the one allow-listed literal
+  is the tooltip arrow's `rounded-[2px]`). `docs/design-system/migration.md`
+  maps each old class. A primitive's corner is overridden by a caller's
+  `className` (tailwind-merge knows `rounded-corner-*`), so a call site does not
+  restate the default: `Card` takes no `rounded-*`.
   **Elevation** is `shadow-level1` to `shadow-level3`, for what floats;
   tone separates everything else. **Motion** is `ease-standard`,
   `ease-emphasized-decelerate` and `ease-emphasized-accelerate` with the
@@ -999,9 +1011,11 @@
   for the z-10-link/z-20-actions layering, overriding `pt-0` with `pt-4`. Reach
   for this shell whenever a card's whole face is a link AND it carries an
   actions menu — that pairing is the invariant, a preview image is not.
-- **Sidebar: one create action, and a current page you can see and hear.** Above
-  the nav groups, Add job is M3's extended FAB (`variant: "fab"`,
-  `rounded-[16px]`, since this theme's `rounded-2xl` is 18px). On `/new` it is
+- **Sidebar: one create action, and a current page you can see and hear.** Every
+  row (`SidebarMenuButton`, its sub-menu row, skeleton and count) is
+  `rounded-full`, so hover and the current row share one pill shape
+  (`test_frontend_design_tokens.py` pins it). Above the nav groups, Add job is M3's extended FAB (`variant: "fab"`,
+  `rounded-corner-lg`, 16px). On `/new` it is
   current and renders with the `default` (primary) variant, keeping that
   geometry; it stays `fab` on every other route. It rests flat
   and hover raises it one level: a resting shadow read as permanently hovered.

@@ -119,11 +119,11 @@ export function DocumentsPanel({
   };
 
   return (
-    <Card className="rounded-2xl">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileText className="size-4" aria-hidden="true" /> Documents
-          <Badge className="rounded-full" variant="secondary">
+          <Badge variant="secondary">
             {documents.length}
           </Badge>
         </CardTitle>
@@ -131,7 +131,7 @@ export function DocumentsPanel({
       </CardHeader>
       <CardContent className="space-y-3">
         <div
-          className="rounded-2xl bg-surface-container-low p-5 text-center transition-colors duration-150 ease-out hover:bg-surface-container-high"
+          className="rounded-corner-md bg-surface-container-low p-5 text-center transition-colors duration-150 ease-out hover:bg-surface-container-high"
           onDragOver={(event) => event.preventDefault()}
           onDrop={onDrop}
         >
@@ -150,7 +150,7 @@ export function DocumentsPanel({
           <p className="mt-2 text-title-small">Drop a file here</p>
           <p className="text-muted-foreground mt-1 text-body-small">PDF, Word, image or text, up to 10 MB</p>
           <Button
-            className="mt-3 rounded-full"
+            className="mt-3"
             size="sm"
             variant="secondary"
             onClick={() => inputRef.current?.click()}
@@ -197,7 +197,6 @@ export function DocumentsPanel({
                     {canRemint ? (
                       <Button
                         size="sm"
-                        className="rounded-full"
                         variant="ghost"
                         onClick={() => remint.mutate(document.id)}
                         disabled={remint.isPending || remove.isPending}

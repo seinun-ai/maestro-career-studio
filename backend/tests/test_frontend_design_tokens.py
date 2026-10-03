@@ -386,3 +386,185 @@ def test_header_rows_that_skip_the_hover_skip_it_in_dark_too():
                     if "dark:hover:bg-transparent" not in line:
                         bare.append(f"{path.relative_to(_FRONTEND)}:{number}")
     assert not bare, "dark hover still lights the header at:\n" + "\n".join(bare)
+
+
+# One corner per kind of thing: `rounded-corner-xs|sm|md|lg|xl`, `rounded-full` or
+# `rounded-none`, in any side form (`rounded-t-corner-md`, `rounded-r-corner-sm`).
+# Tailwind's own ladder (`rounded`, `rounded-md`, `rounded-xl`) is built on the
+# shadcn `--radius` and names no kind, and a bracketed value is a corner by hand.
+# Only string literals are scanned (a className, a cn() or cva() argument, a
+# template literal), so the word "rounded" in prose does not trip it.
+_RADIUS_BY_HAND = re.compile(
+    r"(?<![\w-])rounded(?:-(?:t|b|l|r|tl|tr|bl|br|s|e|ss|se|es|ee))?"
+    r"(?:-(?:xs|sm|md|lg|xl|2xl|3xl|4xl|\[[^\]]+\]))?(?![\w-])"
+)
+_CORNER_NAME = re.compile(r"(?<![\w-])rounded(?:-[a-z]{1,2})?-corner-([a-z0-9]+)(?![\w-])")
+# The only exception, by file and literal: the tooltip's arrow is a 10px square
+# turned 45 degrees, and a 4px corner would blunt its point into a bump.
+_RADIUS_BY_HAND_ALLOWED: list[tuple[str, str]] = [
+    ("components/ui/tooltip.tsx", "rounded-[2px]"),
+]
+
+
+def _literal_matches(pattern):
+    """`(path, line, match)` for every match of `pattern` inside a string literal."""
+    for rel in _frontend_sources():
+        text = (_FRONTEND / rel).read_text(encoding="utf-8")
+        for literal in _STRING_LITERAL.finditer(text):
+            for match in pattern.finditer(literal.group(0)):
+                yield rel, text.count("\n", 0, literal.start() + match.start()) + 1, match
+
+
+def _radius_hits():
+    for rel, number, match in _literal_matches(_RADIUS_BY_HAND):
+        yield rel, number, match.group(0)
+
+
+def test_no_corner_is_written_by_hand():
+    """A card's corner is `rounded-corner-md`, a control's `-sm`, a menu's `-xs`, a
+    dialog's `-xl`, a pill's `rounded-full`. docs/design-system/migration.md maps
+    each old `rounded-*`. Arbitrary radii and `var(--radius…)` are not written."""
+    hits = [
+        f"{rel}:{number}: {literal}"
+        for rel, number, literal in _radius_hits()
+        if (rel, literal) not in _RADIUS_BY_HAND_ALLOWED
+    ]
+    assert not hits, "a hand-written corner is left at:\n" + "\n".join(hits)
+
+
+def test_every_corner_name_is_on_the_scale():
+    """`rounded-corner-2xl` or a typo would compile to nothing and leave a square corner."""
+    hits = [
+        f"{rel}:{number}: {match.group(0)}"
+        for rel, number, match in _literal_matches(_CORNER_NAME)
+        if match.group(1) not in ("xs", "sm", "md", "lg", "xl")
+    ]
+    assert not hits, "a corner name is not on the scale at:\n" + "\n".join(hits)
+
+
+def test_no_class_reads_the_radius_variable():
+    """`--radius-md` and its siblings are the shadcn ladder; a class that reads one is a corner by hand."""
+    hits = _lines_matching(re.compile(r"var\(--radius(?!-corner)"))
+    assert not hits, "a class reads the --radius ladder at:\n" + "\n".join(hits)
+
+
+def test_every_corner_exception_still_matches():
+    found = {(rel, literal) for rel, _, literal in _radius_hits()}
+    stale = [entry for entry in _RADIUS_BY_HAND_ALLOWED if entry not in found]
+    assert not stale, f"allow-list entries that match nothing: {stale}"
+
+
+def _jsx_tags(rel: str, names: tuple[str, ...]):
+    """`(line, name, tag source)` of each `<Name ...>` opening tag, comments skipped.
+
+    Walks to the tag's closing `>` past quotes, `{...}` expressions and comments,
+    so a `cn(...)` argument and a `render={<Button className=... />}` are inside it.
+    """
+    text = (_FRONTEND / rel).read_text(encoding="utf-8")
+    for opening in re.finditer(r"<(%s)(?=[\s/>])" % "|".join(names), text):
+        i, depth, quote = opening.end(), 0, None
+        while i < len(text):
+            c = text[i]
+            if quote:
+                if c == "\\":
+                    i += 1
+                elif c == quote:
+                    quote = None
+            elif text.startswith("//", i):
+                i = text.index("\n", i)
+            elif text.startswith("/*", i):
+                i = text.index("*/", i) + 1
+            elif c in "\"'`":
+                quote = c
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+            elif c == ">" and depth == 0 and text[i - 1] != "=":
+                break
+            i += 1
+        yield text.count("\n", 0, opening.start()) + 1, opening.group(1), text[opening.start() : i + 1]
+
+
+# A control keeps its kind's corner: buttons, select triggers and tabs are 8px
+# (docs/design-system/components/Button, TextField, Tabs). The READMEs sanction no round
+# icon button and no pill tab strip; a segmented toggle is its own component
+# (source-toggle.tsx) and writes its pill by hand. Allow-list a sanctioned case
+# by (file, tag name) with a reason.
+_CONTROLS = ("Button", "SelectTrigger", "TabsList", "TabsTrigger")
+_PILL_CONTROL_ALLOWED: list[tuple[str, str]] = []
+
+
+def test_a_control_call_site_does_not_pass_a_pill():
+    hits = []
+    for rel in _frontend_sources():
+        if rel.startswith("components/ui/") or not rel.endswith(".tsx"):
+            continue
+        for number, name, tag in _jsx_tags(rel, _CONTROLS):
+            if re.search(r"(?<![\w-])rounded-full(?![\w-])", tag) and (rel, name) not in _PILL_CONTROL_ALLOWED:
+                hits.append(f"{rel}:{number}: <{name}>")
+    assert not hits, "a control is overridden to a pill at:\n" + "\n".join(hits)
+
+
+def _slot_classes(rel: str, slot: str) -> str:
+    """The class literals of the element that carries `data-slot="<slot>"`, up to the next component."""
+    text = _read(rel)
+    start = text.index(f'data-slot="{slot}"')
+    end = text.find("\nfunction ", start)
+    end = len(text) if end < 0 else end
+    return "\n".join(literal[1:-1] for literal in _STRING_LITERAL.findall(text[start:end]))
+
+
+def test_the_primitives_carry_their_kind_of_corner():
+    button = re.search(r"const buttonVariants = cva\(\s*\"([^\"]+)\"", _read("components/ui/button.tsx"))
+    assert button and "rounded-corner-sm" in button.group(1).split()
+    assert "rounded-corner-md" in _slot_classes("components/ui/card.tsx", "card").split()
+    assert "rounded-corner-xl" in _slot_classes("components/ui/dialog.tsx", "dialog-content").split()
+    assert "rounded-corner-sm" in _read("components/ui/input.tsx").split()
+    assert "rounded-corner-xs" in _slot_classes("components/ui/checkbox.tsx", "checkbox").split()
+
+
+def test_a_menu_is_the_small_corner_and_a_popover_panel_the_medium_one():
+    """POPUP_SURFACE owns no corner: a menu is a list of rows, a popover a panel."""
+    popover = _read("components/ui/popover.tsx")
+    surface = re.search(r"export const POPUP_SURFACE =\s*\"([^\"]+)\"", popover)
+    assert surface and "rounded" not in surface.group(1)
+    assert "rounded-corner-md" in _slot_classes("components/ui/popover.tsx", "popover-content").split()
+    for slot in ("dropdown-menu-content", "dropdown-menu-sub-content", "dropdown-menu-item"):
+        assert "rounded-corner-xs" in _slot_classes("components/ui/dropdown-menu.tsx", slot).split(), slot
+    assert "rounded-corner-xs" in _slot_classes("components/ui/select.tsx", "select-content").split()
+
+
+def test_sidebar_menu_rows_are_pills():
+    """The hover and the current row share one shape (owner decision, UX change 1)."""
+    sidebar = _read("components/ui/sidebar.tsx")
+    variants = re.search(r"const sidebarMenuButtonVariants = cva\(\s*\"([^\"]+)\"", sidebar)
+    assert variants, "sidebarMenuButtonVariants is no longer a cva( literal"
+    assert "rounded-full" in variants.group(1).split()
+    action = sidebar[sidebar.index("function SidebarMenuAction(") :].split("\nfunction ")[0]
+    assert "rounded-full" in action.split(), "SidebarMenuAction nests in a pill row"
+
+
+def test_a_sheet_rounds_the_edge_it_opens_on():
+    """16px on the two corners that face the page, whichever side the sheet is on."""
+    classes = _slot_classes("components/ui/sheet.tsx", "sheet-content").split()
+    for side, edge in (("right", "l"), ("left", "r"), ("bottom", "t"), ("top", "b")):
+        assert f"data-[side={side}]:rounded-{edge}-corner-lg" in classes, side
+
+
+def test_a_tab_nests_in_the_list_that_holds_it():
+    """The list is 8px with 3px of padding; its trigger is the 4px corner inside it."""
+    tabs = _read("components/ui/tabs.tsx")
+    assert re.search(r"justify-center-safe rounded-corner-sm p-\[3px\]", tabs)
+    assert re.search(r"gap-1\.5 rounded-corner-xs border border-transparent", tabs)
+
+
+def test_the_focus_ring_only_removes_what_it_added():
+    """RING carries `rounded-corner-md`, which a Card already has; stripping it after the
+    flash would square the card."""
+    source = _read("lib/use-focus-section.ts")
+    assert 'const RING = ["ring-2", "ring-primary/60", "rounded-corner-md"];' in source
+    assert "const added = RING.filter((cls) => !el.classList.contains(cls));" in source
+    assert "el.classList.add(...added);" in source
+    assert "el.classList.remove(...added)" in source
+    assert "classList.remove(...RING)" not in source

@@ -227,12 +227,12 @@ export function InboxPanel({
               <Inbox className="text-primary size-4" aria-hidden="true" />
             </span>
             Drafts to review
-            {!isLoading && <Badge className="rounded-full" variant="secondary">{drafts.length}</Badge>}
+            {!isLoading && <Badge variant="secondary">{drafts.length}</Badge>}
           </CardTitle>
           {drafts.length > 0 && !isLoading && !error && (
             <div className="flex flex-col items-end gap-1">
               <Button
-                className="rounded-full px-4"
+                className="px-4"
                 size="sm"
                 onClick={() => approveAll.mutate(approvableIds)}
                 disabled={pending || approvableIds.length === 0}
@@ -257,7 +257,7 @@ export function InboxPanel({
       </CardHeader>
       <CardContent className="space-y-5">
         {error ? (
-          <div role="alert" className="rounded-xl bg-destructive/10 p-4">
+          <div role="alert" className="rounded-corner-md bg-destructive/10 p-4">
             <p className="text-title-small">Couldn&apos;t load the drafts to review.</p>
             {errorDetail(error) ? (
               <p className="text-muted-foreground mt-1 text-body-small">{errorDetail(error)}</p>
@@ -275,7 +275,7 @@ export function InboxPanel({
                     {group.entityTitle}
                   </Link>
                 </h3>
-                <Badge className="rounded-full" variant="secondary">
+                <Badge variant="secondary">
                   {group.points.length} {group.points.length === 1 ? "draft" : "drafts"}
                 </Badge>
               </div>
@@ -394,7 +394,7 @@ function DraftRow({
     <article
       ref={articleRef}
       data-draft-row
-      className="group/draft rounded-xl bg-background/80 p-3 shadow-sm ring-1 ring-foreground/5"
+      className="group/draft rounded-corner-md bg-background/80 p-3 shadow-sm ring-1 ring-foreground/5"
     >
       {editing ? (
         <div className="space-y-2">
@@ -412,7 +412,7 @@ function DraftRow({
           />
           <div className="flex gap-2">
             <Button
-              className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+              className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
               onClick={() =>
                 onSave(() => updateOnce({ payload: { text: text.trim() }, success: "Draft updated" }))
@@ -426,7 +426,6 @@ function DraftRow({
             <Button
               size="sm"
               variant="ghost"
-              className="rounded-full"
               onClick={() => void onCancel()}
               disabled={pending}
             >
@@ -453,13 +452,13 @@ function DraftRow({
       )}
 
       {point.merge_sources && point.merge_sources.length > 0 && (
-        <div className="mt-3 rounded-xl bg-surface-container p-3">
+        <div className="mt-3 rounded-corner-md bg-surface-container p-3">
           <p className="mb-2 text-label-medium">Wording from your resumes</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {point.merge_sources.map((source, index) => (
               <div
                 key={`${source.resume_key}-${source.section}-${index}`}
-                className="rounded-lg bg-background/80 p-2"
+                className="rounded-corner-md bg-background/80 p-2"
               >
                 <p className="text-muted-foreground mb-1 text-label-small">
                   {resumeName(source.resume_key)} · {sectionWord(source.section)}
@@ -474,7 +473,7 @@ function DraftRow({
       <div className="mt-3 flex flex-wrap items-end gap-2 pt-1">
         <Button
           data-draft-action="approve"
-          className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+          className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
           size="sm"
           onClick={approve}
           disabled={!text.trim() || pending}
@@ -516,7 +515,7 @@ function DraftRow({
           data-draft-action="discard"
           size="sm"
           variant="destructive"
-          className="rounded-full opacity-0 transition-opacity duration-150 group-hover/draft:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 data-disabled:pointer-events-none data-disabled:opacity-50"
+          className="opacity-0 transition-opacity duration-150 group-hover/draft:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={() => discardOnce()}
           disabled={pending}
           // Disables itself while any draft saves: a native `disabled` drops focus.

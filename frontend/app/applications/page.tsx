@@ -526,7 +526,7 @@ function ApplicationsContent() {
             }}
           >
             <SelectTrigger
-              className="h-8 min-w-[11rem] rounded-full"
+              className="h-8 min-w-[11rem]"
               aria-label="Filter by status"
             >
               {/* "Status:" on screen: the toolbar has no captions, and "All · 21" alone named nothing. */}

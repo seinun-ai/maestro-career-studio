@@ -342,7 +342,7 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
               />
             ))}
           </ol>
-          <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-body-medium shadow-sm">
+          <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-corner-md border px-3 py-2 text-body-medium shadow-sm">
             <p aria-live="polite">{progress.words}</p>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -388,7 +388,7 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
 
 function ContextPane({ context }: { context: BulletContext }) {
   return (
-    <div className="sticky top-6 space-y-2 rounded-lg border p-4">
+    <div className="sticky top-6 space-y-2 rounded-corner-md border p-4">
       <p className="text-title-small">{context.heading}</p>
       {context.dates && <p className="text-muted-foreground text-body-small">{context.dates}</p>}
       <ul className="space-y-1">
@@ -468,7 +468,7 @@ function PassRowView({
 
   if (row.skipped) {
     return (
-      <li ref={rowRef} data-pass-row={row.key} onFocus={onFocus} className="rounded-md border px-3 py-2">
+      <li ref={rowRef} data-pass-row={row.key} onFocus={onFocus} className="rounded-corner-md border px-3 py-2">
         <p className="text-muted-foreground text-body-small">{row.finding.label}</p>
         <p className="text-foreground mt-1 line-clamp-2 max-w-[65ch] text-body-medium">{row.original ?? row.finding.issue}</p>
         <div className="mt-1 flex items-center gap-2">
@@ -494,7 +494,7 @@ function PassRowView({
       ref={rowRef}
       data-pass-row={row.key}
       onFocus={onFocus}
-      className="flex flex-col gap-2 rounded-md border px-3 py-3"
+      className="flex flex-col gap-2 rounded-corner-md border px-3 py-3"
     >
       {/* The label names the item. Below 1280 there is no context pane: its dates and the bullets
           around this one sit here. */}
@@ -567,7 +567,7 @@ function PassRowView({
             )
           ) : (
             <>
-              <div className="bg-surface-container-low rounded-md p-2">
+              <div className="bg-surface-container-low rounded-corner-md p-2">
                 <DiffText oldText={row.original} newText={text || row.suggestion} />
               </div>
               {row.edited != null && (

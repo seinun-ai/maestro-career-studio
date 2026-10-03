@@ -332,11 +332,11 @@ export function SendToResumeDialog({
             <fieldset className="space-y-2">
               <legend className="text-title-small">Approved bullets</legend>
               {approved.length === 0 ? (
-                <p className="text-muted-foreground rounded-xl bg-surface-container-low p-3 text-body-small">
+                <p className="text-muted-foreground rounded-corner-md bg-surface-container-low p-3 text-body-small">
                   No approved bullets. Its title and dates can still be added.
                 </p>
               ) : (
-                <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl bg-surface-container-low p-3">
+                <div className="max-h-72 space-y-2 overflow-y-auto rounded-corner-md bg-surface-container-low p-3">
                   {approved.map((point) => (
                     <label
                       key={point.id}
@@ -354,7 +354,7 @@ export function SendToResumeDialog({
           <div className="max-h-96 space-y-4 overflow-y-auto">
             <ul className="space-y-2">
               {rows.map((row) => (
-                <li key={row.key} className="rounded-xl bg-surface-container-low p-3">
+                <li key={row.key} className="rounded-corner-md bg-surface-container-low p-3">
                   {editingKey === row.key ? (
                     <div className="space-y-2">
                       <Textarea
@@ -374,7 +374,6 @@ export function SendToResumeDialog({
                       />
                       <div className="flex justify-end gap-2">
                         <Button
-                          className="rounded-full"
                           size="sm"
                           variant="ghost"
                           onClick={() => setEditingKey(null)}
@@ -382,7 +381,7 @@ export function SendToResumeDialog({
                           <X aria-hidden="true" /> Cancel
                         </Button>
                         <Button
-                          className="rounded-full px-4"
+                          className="px-4"
                           size="sm"
                           onClick={saveEdit}
                           disabled={!editText.trim()}
@@ -463,7 +462,7 @@ export function SendToResumeDialog({
                   {dropped.map((item) => (
                     <li
                       key={item.point_id}
-                      className="flex items-start gap-3 rounded-xl p-3"
+                      className="flex items-start gap-3 rounded-corner-md p-3"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-muted-foreground text-body-medium">
@@ -476,7 +475,7 @@ export function SendToResumeDialog({
                         ) : null}
                       </div>
                       <Button
-                        className="rounded-full shrink-0"
+                        className="shrink-0"
                         size="sm"
                         variant="ghost"
                         onClick={() => restoreDropped(item)}
@@ -496,7 +495,6 @@ export function SendToResumeDialog({
           {step === "select" ? (
             <>
               <Button
-                className="rounded-full"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
                 disabled={pending}
@@ -504,7 +502,7 @@ export function SendToResumeDialog({
                 Close
               </Button>
               <Button
-                className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 variant={adaptable ? "outline" : "default"}
                 onClick={() => portOnce()}
                 disabled={!targetSlug || nothingSelected || pending}
@@ -520,7 +518,7 @@ export function SendToResumeDialog({
               </Button>
               {adaptable ? (
                 <Button
-                  className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+                  className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                   onClick={() => adaptOnce()}
                   disabled={!targetSlug || selected.size === 0 || pending}
                   focusableWhenDisabled
@@ -533,7 +531,6 @@ export function SendToResumeDialog({
           ) : (
             <>
               <Button
-                className="rounded-full"
                 variant="ghost"
                 onClick={() => setStep("select")}
                 disabled={pending}
@@ -542,7 +539,7 @@ export function SendToResumeDialog({
               </Button>
               <Button
                 ref={applyRef}
-                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+                className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => applyOnce()}
                 // Also disabled mid-edit: the pending textarea text is not in
                 // `rows` yet, so applying would silently use the old text.

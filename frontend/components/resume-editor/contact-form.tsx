@@ -65,7 +65,7 @@ export function ContactForm({
   }
 
   return (
-    <div className="group/contact @container border-border/0 hover:border-border/60 relative rounded-md border px-3 py-3">
+    <div className="group/contact @container border-border/0 hover:border-border/60 relative rounded-corner-md border px-3 py-3">
       <dl className="grid gap-x-4 gap-y-1.5 pr-10 text-body-medium @xs:grid-cols-[8rem_minmax(0,1fr)]">
         {FIELDS.map(({ key, label }) => {
           const v = value[key];

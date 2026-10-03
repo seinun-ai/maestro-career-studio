@@ -25,4 +25,4 @@ Buttons run an action; the variant says how much it matters, and a view has exac
 - Do not use the grey `secondary` variant in new work; it is being folded into `tonal`.
 - Do not put two filled buttons in one view. A modal's confirm is filled because the modal is a view of its own.
 
-Source: `frontend/components/ui/button.tsx`. Changed from source: corner 10px to 8px, `sm` label 12.8px to 12px, type through the scale.
+Source: `frontend/components/ui/button.tsx`. Changed from source: `sm` label 12.8px to 12px, type through the scale.

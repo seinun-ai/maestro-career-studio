@@ -98,7 +98,7 @@ function WordList({
           {words.map((word, i) => (
             <li
               key={word}
-              className="bg-muted text-foreground inline-flex max-w-full items-center gap-1 rounded-md px-2 py-0.5 text-body-medium"
+              className="bg-muted text-foreground inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-body-medium"
             >
               <span className="min-w-0 break-words">{word}</span>
               <button
@@ -106,7 +106,7 @@ function WordList({
                 data-remove
                 aria-label={`Remove ${word}`}
                 disabled={disabled}
-                className="text-muted-foreground hover:text-foreground relative -mr-0.5 rounded-sm after:absolute after:-inset-2 after:content-['']"
+                className="text-muted-foreground hover:text-foreground relative -mr-0.5 rounded-full after:absolute after:-inset-2 after:content-['']"
                 onClick={() => remove(i)}
               >
                 <X className="size-3" />

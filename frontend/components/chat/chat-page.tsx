@@ -568,7 +568,7 @@ export function ChatPage() {
       : (resumes.data?.find((r) => r.slug === target)?.display_name ?? target);
 
   const composer = (
-    <div className="bg-card focus-within:border-ring rounded-3xl border p-2 shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:shadow-md">
+    <div className="bg-card focus-within:border-ring rounded-corner-md border p-2 shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:shadow-md">
       {(selections.length > 0 || attachments.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 px-2 pt-1.5">
           {selections.map((s, i) => (
@@ -618,7 +618,7 @@ export function ChatPage() {
           variant="ghost"
           size="icon-sm"
           aria-label="Attach file"
-          className="text-muted-foreground rounded-full"
+          className="text-muted-foreground"
           onClick={() => fileInputRef.current?.click()}
         >
           <Paperclip className="size-4" />
@@ -634,7 +634,7 @@ export function ChatPage() {
             size="sm"
             aria-label="Resume to edit"
             title={pinnedName}
-            className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-body-small shadow-none hover:bg-muted"
+            className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 border-0 bg-transparent px-2.5 text-body-small shadow-none hover:bg-muted"
           >
             <FileText className="size-3.5" />
             <SelectValue className="min-w-0">
@@ -653,7 +653,7 @@ export function ChatPage() {
         <Button
           variant="ghost"
           size="sm"
-          className="text-muted-foreground h-8 rounded-full px-2.5"
+          className="text-muted-foreground h-8 px-2.5"
           onClick={() => setScopeOpen(true)}
         >
           <Plus className="size-3.5" />
@@ -664,7 +664,6 @@ export function ChatPage() {
           size="icon"
           aria-label="Send"
           disabled={!input.trim() || !!streaming}
-          className="rounded-full"
           onClick={() => void send()}
         >
           {streaming ? (
@@ -699,7 +698,7 @@ export function ChatPage() {
               variant="tonal"
               onClick={() => newSessionOnce()}
               disabled={newSession.isPending}
-              className="h-10 flex-1 justify-start gap-2 rounded-full px-4"
+              className="h-10 flex-1 justify-start gap-2 px-4"
             >
               <Plus className="size-4" /> New chat
             </Button>
@@ -733,7 +732,7 @@ export function ChatPage() {
             setHistoryCollapsed(false);
             focusNext(hideRailRef);
           }}
-          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-md border border-l-0 shadow-md transition-colors @2xl/chat:flex"
+          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-corner-sm border border-l-0 shadow-md transition-colors @2xl/chat:flex"
         >
           <ChevronRight className="size-4" />
         </button>
@@ -904,7 +903,7 @@ export function ChatPage() {
                 setHistorySheetOpen(false);
               }}
               disabled={newSession.isPending}
-              className="h-10 justify-start gap-2 rounded-full px-4"
+              className="h-10 justify-start gap-2 px-4"
             >
               <Plus className="size-4" /> New chat
             </Button>
@@ -1052,7 +1051,7 @@ function UserBubble({
 }) {
   return (
     <div className="ml-auto max-w-[85%]">
-      <div className="bg-muted rounded-2xl rounded-br-md px-4 py-2.5 text-body-medium whitespace-pre-wrap">
+      <div className="bg-muted rounded-corner-md rounded-br-corner-xs px-4 py-2.5 text-body-medium whitespace-pre-wrap">
         {content}
       </div>
       {selections.length > 0 && (

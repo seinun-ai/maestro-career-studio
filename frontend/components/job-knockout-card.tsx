@@ -139,7 +139,7 @@ export function JobKnockoutCard({
   return (
     <div
       role="status"
-      className={cn("rounded-lg px-4 py-3 text-body-medium", copy.tone)}
+      className={cn("rounded-corner-md px-4 py-3 text-body-medium", copy.tone)}
     >
       <div className="flex items-center gap-2 font-medium [&>svg]:size-4">
         {copy.icon}

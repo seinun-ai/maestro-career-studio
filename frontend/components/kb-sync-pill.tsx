@@ -30,7 +30,7 @@ import { useSingleFlight } from "@/hooks/use-single-flight";
  *  `text-body-medium` beside it is deliberate: the two chips match in height, and the
  *  smaller type keeps a secondary status from competing with the health grade. */
 const CHIP =
-  "inline-flex h-7 min-w-16 shrink-0 items-center gap-1.5 rounded-md border " +
+  "inline-flex h-7 min-w-16 shrink-0 items-center gap-1.5 rounded-full border " +
   "border-transparent bg-surface-container-low px-2 text-body-small";
 
 /*

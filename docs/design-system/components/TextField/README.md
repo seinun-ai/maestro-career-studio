@@ -8,4 +8,4 @@ Text fields, selects and text areas share one outlined shape: a visible label ab
 - Delete a hint that only restates the label.
 - The list search is the same input at 40px and `radius-full` with a leading Search icon.
 
-Source: `frontend/components/ui/input.tsx`, `textarea.tsx`, `select.tsx`, `label.tsx`, `list-search.tsx`. Changed from source: corner 10px to 8px.
+Source: `frontend/components/ui/input.tsx`, `textarea.tsx`, `select.tsx`, `label.tsx`, `list-search.tsx`.

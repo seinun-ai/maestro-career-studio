@@ -26,13 +26,13 @@ export function TimelinePanel({ events }: { events: KBTimelineEvent[] }) {
   );
 
   return (
-    <Card className="rounded-2xl">
+    <Card>
       <CardHeader>
         <CardTitle>Activity</CardTitle>
       </CardHeader>
       <CardContent>
         {ordered.length === 0 ? (
-          <div className="rounded-xl bg-surface-container-low px-5 py-7 text-center">
+          <div className="rounded-corner-md bg-surface-container-low px-5 py-7 text-center">
             <p className="text-title-small">No activity yet</p>
           </div>
         ) : (

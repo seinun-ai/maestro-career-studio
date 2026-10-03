@@ -169,7 +169,7 @@ export function FormattingPanel({
         role="group"
         aria-labelledby={labelId}
         aria-describedby={hintId}
-        className="border-input inline-flex rounded-md border p-0.5"
+        className="border-input inline-flex rounded-full border p-0.5"
       >
         {options.map((o) => (
           <button
@@ -180,7 +180,7 @@ export function FormattingPanel({
             disabled={disabled}
             onClick={() => onSelect(o.value)}
             className={cn(
-              "rounded px-2 py-0.5 text-body-small transition-colors disabled:pointer-events-none disabled:opacity-50",
+              "rounded-full px-2 py-0.5 text-body-small transition-colors disabled:pointer-events-none disabled:opacity-50",
               current === o.value
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -252,7 +252,7 @@ export function FormattingPanel({
         </span>
         {withTooltip(
           key,
-          <div role="list" aria-labelledby={labelId} className="border-input grid gap-0.5 rounded-md border p-1">
+          <div role="list" aria-labelledby={labelId} className="border-input grid gap-0.5 rounded-corner-md border p-1">
             <SortableList
               ids={order}
               itemLabel={(i) => name(order[i])}
@@ -348,7 +348,7 @@ export function FormattingPanel({
             />
           )}
           {onRevertToBase && (
-            <div className="text-muted-foreground bg-surface-container-low flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-body-small">
+            <div className="text-muted-foreground bg-surface-container-low flex items-center justify-between gap-2 rounded-corner-md px-2 py-1.5 text-body-small">
               <span>
                 {inherited && !customized
                   ? "Same as base resume"

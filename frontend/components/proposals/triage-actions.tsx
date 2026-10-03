@@ -306,7 +306,7 @@ export function BulkBar({
         <Button
           type="button"
           size="sm"
-          className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onQueue}
           disabled={pending}
           focusableWhenDisabled
@@ -317,7 +317,7 @@ export function BulkBar({
           type="button"
           size="sm"
           variant="outline"
-          className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onDecline}
           disabled={pending}
           focusableWhenDisabled
@@ -328,7 +328,7 @@ export function BulkBar({
           type="button"
           size="sm"
           variant="ghost"
-          className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onClear}
           disabled={pending}
           focusableWhenDisabled

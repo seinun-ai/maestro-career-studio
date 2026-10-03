@@ -46,7 +46,7 @@ const COMPONENTS: ComponentProps<typeof ReactMarkdown>["components"] = {
       // Block code (has a language- class): rendered inside our pre below.
       <code className={className}>{children}</code>
     ) : (
-      <code className="bg-muted rounded px-1 py-0.5 font-mono text-[0.85em]">
+      <code className="bg-muted rounded-corner-xs px-1 py-0.5 font-mono text-[0.85em]">
         {children}
       </code>
     ),
@@ -54,7 +54,7 @@ const COMPONENTS: ComponentProps<typeof ReactMarkdown>["components"] = {
     // Neutralize the inline-code chip styling for any <code> inside: fences
     // without a language tag have no className, so the code component can't
     // tell them apart from inline code (react-markdown v9+ dropped `inline`).
-    <pre className="bg-muted overflow-x-auto rounded-xl p-3 font-mono text-body-small leading-5 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[1em]">
+    <pre className="bg-muted overflow-x-auto rounded-corner-md p-3 font-mono text-body-small leading-5 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[1em]">
       {children}
     </pre>
   ),

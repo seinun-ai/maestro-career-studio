@@ -163,7 +163,7 @@ export function DemonstrateSkillDialog({
               <p className="text-title-small">{group.title}</p>
               <ul className="mt-1 space-y-1">
                 {group.entries.map((entry) => (
-                  <li key={`${group.section}:${entry.index}`} className="rounded-md border px-2 py-1">
+                  <li key={`${group.section}:${entry.index}`} className="rounded-corner-md border px-2 py-1">
                     <p className="truncate text-body-medium">{entry.label}</p>
                     <ul className="mt-1 space-y-1">
                       {entry.bullets.map((bullet, bulletIndex) => {
@@ -175,7 +175,7 @@ export function DemonstrateSkillDialog({
                           <li key={bulletIndex}>
                             <button
                               type="button"
-                              className={`w-full rounded px-1 py-1 text-left text-body-small ${
+                              className={`w-full rounded-corner-sm px-1 py-1 text-left text-body-small ${
                                 selected ? "bg-muted" : "hover:bg-surface-container-low dark:hover:bg-surface-container-high"
                               }`}
                               onClick={() => {

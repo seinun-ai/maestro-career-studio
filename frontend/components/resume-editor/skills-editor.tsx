@@ -40,7 +40,7 @@ export function SkillsEditor({
                     {group.items.map((item, idx) => (
                       <span
                         key={`${item}-${idx}`}
-                        className="bg-muted text-foreground/90 inline-flex items-center rounded-md px-2 py-0.5 text-body-small"
+                        className="bg-muted text-foreground/90 inline-flex items-center rounded-full px-2 py-0.5 text-body-small"
                       >
                         {item}
                       </span>

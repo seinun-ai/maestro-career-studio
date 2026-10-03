@@ -83,9 +83,9 @@ function BarList({
           >
             {r.label}
           </span>
-          <span className="bg-muted h-2 flex-1 overflow-hidden rounded">
+          <span className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
             <span
-              className="bg-primary/70 block h-full rounded"
+              className="bg-primary/70 block h-full rounded-full"
               style={{ width: `${(r.count / max) * 100}%` }}
             />
           </span>
@@ -196,7 +196,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
       {o.signals.length > 0 && (
         <div className="flex flex-col gap-2">
           {o.signals.map((s, i) => (
-            <div key={i} className="bg-surface-container-low rounded-md px-3 py-2">
+            <div key={i} className="bg-surface-container-low rounded-corner-md px-3 py-2">
               <p className="text-foreground text-title-small">{signalTitle(s.title, o)}</p>
               <p className="text-muted-foreground mt-0.5 text-body-small">{s.detail}</p>
             </div>

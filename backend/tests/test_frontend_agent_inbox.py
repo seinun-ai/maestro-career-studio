@@ -120,7 +120,8 @@ def test_the_toolbar_is_one_row_like_applications():
         r'<SelectTrigger\s+className="([^"]*)"\s+aria-label="([^"]+)"', toolbar
     )
     assert [label for _, label in triggers] == ["Sort", "Role", "Job board", "Minimum score"]
-    assert all("h-8" in cls.split() and "rounded-full" in cls.split() for cls, _ in triggers)
+    # The same 32px select as Applications', at the select's own 8px corner (not a pill).
+    assert all("h-8" in cls.split() and "rounded-full" not in cls.split() for cls, _ in triggers)
     # No caption stacked over a control, and no free-number field.
     assert "grid gap-1" not in toolbar
     assert "<Input" not in toolbar

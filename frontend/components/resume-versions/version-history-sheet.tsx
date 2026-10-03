@@ -161,7 +161,7 @@ export function VersionHistorySheet({
         data-version={v.version_number}
         onClick={() => setSelected(selected === v.version_number ? null : v.version_number)}
         className={cn(
-          "hover:bg-accent w-full rounded-md border px-3 py-2 text-left text-body-medium transition-colors",
+          "hover:bg-accent w-full rounded-corner-md border px-3 py-2 text-left text-body-medium transition-colors",
           selected === v.version_number && "border-primary bg-accent",
         )}
       >
@@ -194,7 +194,7 @@ export function VersionHistorySheet({
         )}
       </button>
       {selected === v.version_number && (
-        <div className="bg-surface-container-low mt-1 rounded-md border p-3">
+        <div className="bg-surface-container-low mt-1 rounded-corner-md border p-3">
           <VersionDiffView kind={kind} resumeKey={resumeKey} version={v.version_number} />
           {v.version_number !== latestNumber && (
             <div className="mt-3 flex justify-end">
@@ -253,7 +253,7 @@ export function VersionHistorySheet({
                   <button
                     type="button"
                     aria-expanded={expanded}
-                    className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 rounded-md border border-dashed px-3 py-2 text-left text-body-small"
+                    className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 rounded-corner-sm border border-dashed px-3 py-2 text-left text-body-small"
                     onClick={() =>
                       setExpandedGroups((s) => {
                         const next = new Set(s);
