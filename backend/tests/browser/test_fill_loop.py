@@ -2614,12 +2614,29 @@ def test_a_siblings_value_blanks_another_rows_label_and_section(page, load):
     assert labels(trace) == {"a": ("Company", None), "b": ("", ""), "c": ("Years", None), "d": ("", None)}
 
 
-def test_a_short_value_on_a_choice_does_not_blank_every_label_that_says_it(page, load):
+def test_a_short_choice_answer_does_not_blank_every_label_that_says_it(page, load):
     trace = build_trace(page, load, [
         brow("a", "Employed?", "select", value="No"),
         brow("b", "No longer employed?", section="No section"),
-        brow("c", "Own answer: No", "select", value="No")])
-    assert labels(trace) == {"a": ("Employed?", None), "b": ("No longer employed?", "No section"), "c": ("", None)}
+        brow("c", "Authorized?", "select", value="Yes"),
+        brow("d", "Yes or maybe?"),
+        brow("e", "Own answer: No", "select", value="No")])
+    assert labels(trace) == {"a": ("Employed?", None), "b": ("No longer employed?", "No section"),
+                             "c": ("Authorized?", None), "d": ("Yes or maybe?", None), "e": ("", None)}
+
+
+def test_a_typed_siblings_key_counts_from_two_characters(page, load):
+    trace = build_trace(page, load, [
+        brow("a", "Years", value="2"),
+        brow("b", "Experience 2"),
+        brow("c", "State", value="OH"),
+        brow("d", "Lives in OH")])
+    assert labels(trace) == {"a": ("Years", None), "b": ("Experience 2", None), "c": ("State", None), "d": ("", None)}
+
+
+def test_a_four_character_choice_answer_blanks_a_sibling_label(page, load):
+    trace = build_trace(page, load, [brow("a", "Pick", "select", value="Maybe"), brow("b", "Maybe later")])
+    assert labels(trace) == {"a": ("Pick", None), "b": ("", None)}
 
 
 def test_an_already_filled_rows_committed_value_blanks_a_sibling_label_and_is_never_emitted(page, load):

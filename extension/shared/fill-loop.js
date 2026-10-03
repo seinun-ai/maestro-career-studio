@@ -1886,20 +1886,23 @@
   // blanked RUN-WIDE: by any row's answer, value, write or leftover, and by any
   // row's `field.committed` (the page's current value: a deny key, never
   // emitted). A sibling's key counts only from a text, date, search or popup
-  // field, or when it is 3+ characters, so a "No" on one select does not
-  // blank every label that says it; a row's own keys always count.
+  // field when it is 2+ characters, or from any field when it is 4+, so a
+  // "Yes" or "No" on a select never blanks the labels that say it and a typed
+  // "2" never blanks "Experience 2"; a row's own keys always count.
   const MAX_RUN_FIELDS = 200;
   const TRACE_FIELD_OPTIONS = 30;
   const TRACE_TEXT = 200;
   const TRACE_SHAPES = new Set(["text", "date", "select", "group", "search", "popup"]);
   const TYPED_SHAPES = new Set(["text", "date", "search", "popup"]);
-  const MIN_SIBLING_KEY = 3;
+  const MIN_TYPED_SIBLING_KEY = 2;
+  const MIN_SIBLING_KEY = 4;
   const TRACE_HOST = /^[a-z0-9.-]{1,253}(:\d{1,5})?$/;
   const TRACE_FAMILY = /^f:[0-9a-z]{1,24}$/;
   const TRACE_SOURCE = /^[a-z-]+$/;
   const MAX_TRACE_ROUNDS = 10;
   const rowKeys = (row) => denyKeys([row.answer, row.value, row.wrote, row.leftover, row.field?.committed]);
-  const siblingKeys = (row) => rowKeys(row).filter((k) => TYPED_SHAPES.has(row.field?.shape) || k.length >= MIN_SIBLING_KEY);
+  const siblingKeys = (row) => rowKeys(row).filter((k) => k.length >= (TYPED_SHAPES.has(row.field?.shape)
+    ? MIN_TYPED_SIBLING_KEY : MIN_SIBLING_KEY));
   const traceField = (status, row, others) => {
     const f = row.field ?? {};
     const own = denyRegex(rowKeys(row));
