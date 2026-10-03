@@ -2,6 +2,13 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**Execution notes (2026-10-03, from the Task 1-4 reviews).**
+- `DecisionTrace` gained `first_same` and `chose_none`.
+- Code decisions carry no trace on every endpoint.
+- Second-opinion bookkeeping lives in `autofill_map.second_decided` / `second_asked`.
+- An `ABSTAIN` equality pin covers all of backend/app and backend/scripts.
+- Tasks 5, 6, 9 and 10 below reflect this.
+
 **Revision 2.1 (2026-10-02).** The re-check found five small fixes; they are applied: the eval
 and the merges accept a second opinion that didn't run (`None`); the router pins also drop
 `polarity`; the explore table gets a catch-all row; `act()` notes on every return path; the sw
@@ -400,7 +407,8 @@ hand. `first_same` is None when the first engine gave no readable answer.
 (L158) break once a trace is attached.
 - Add `def abstained(r: StepResponse) -> bool: return r.mid is None` and use it at both sites, and
   in the eval at L484.
-- The eval's L505 stub returns `autofill_step.ABSTAIN`; keep it, since it carries no trace.
+- *As built:* the eval's Jev-only step stub returns `None` ("never ran"), not `ABSTAIN`; `ABSTAIN`
+  would now record `second="asked"` for a second opinion that never ran.
 
 **What to record:**
 - **`_decide`.** Its signature becomes `_decide(req, mid, p, policy, *, engine)`.
@@ -475,6 +483,7 @@ class TraceStep(BaseModel):
     second: Second | None = None
     first_p: float | None = Field(default=None, ge=0.0, le=1.0)
     first_same: bool | None = None
+    chose_none: bool | None = None   # the model's top choice was the no-answer key (none/no-match/give_up)
     way: PolarityWay | None = None                            # polarity
     option: int | None = Field(default=None, ge=0, le=MAX_PICK_OPTIONS)  # index into the field's options
     reason: StepReason | None = None                          # pick / step
@@ -589,8 +598,14 @@ Read the field statuses for `KEPT` and `FAILED` from the fill-loop header's repo
 - Counts: `tries`, one per effect (`progress`, `no_effect`, `unexpected`, `reverted`,
   `unconfirmed`, `refused`, `late`, `error`), and `ms`.
 
-`decision|<op>|<engine or "-">|<band or "-">`
+`decision|<op>|<engine or "-">|<floor>|<band or "-">|<answer or none>`
+- Count only steps that carry a decision trace with an `engine`. "No trace" means code decided
+  (Task 4 review), so code decisions are never counted.
 - `op` is `map`, `polarity`, `pick` or `step`.
+- `floor` is part of the key, so step answer clicks (floor 0.9/0.75/0.4) and progress moves (0.5)
+  are never mixed.
+- The last part is `none` when `chose_none` is true, else `answer`. That keeps "the model was sure
+  there is nothing" apart from "its option fell under the floor".
 - Counts:
   - `n`;
   - `kept`, `left` or `failed`, from the field's final status;
@@ -708,7 +723,7 @@ Commit: `refactor(scripts): one copy-only database guard, shared by the eval and
 1. **Wasted actions.** Per family × kind: `tries`, the share that was not `progress`, and average
    ms. Sort by wasted ms, which is (`no_effect + unexpected + reverted + refused` tries) × average
    ms. Show the top 15.
-2. **Calibration.** Per decision op × engine × band: `n`, then the `kept`, `left`, `failed` and
+2. **Calibration.** Per decision op × engine × floor × band, with `answer` and `none` rows kept apart: `n`, then the `kept`, `left`, `failed` and
    `rejected` shares.
 3. **First-engine evidence.** Per op × band of `first_p`, counting only the cases where the first
    engine's top choice was the answer that stood (`first_same`): `n` and the `kept` share. Pair it with
@@ -763,8 +778,8 @@ whole run is lost silently.
 | `sweep` re-open (L1151-1174) | `{op:"sweep", effect:"reverted"}` |
 | `lookUp` hit (L559-573) | `{op:"recipe"}`. A variant is an order string, never a move id; don't record it. |
 
-- `decision(t)` copies only `engine`, `p`, `floor`, `second`, `first_p` and `first_same`, and only
-  those present.
+- `decision(t)` copies only `engine`, `p`, `floor`, `second`, `first_p`, `first_same` and
+  `chose_none`, and only those present.
 - `effectOf` and `exploreEffect` implement the two tables above. A test pins `effectOf` against the
   header's page-outcome list (L109-114): every word listed there must have a row.
 
