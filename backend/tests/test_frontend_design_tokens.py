@@ -175,3 +175,9 @@ def test_no_surface_is_a_muted_with_opacity():
                     hits.append(f"{path.relative_to(_FRONTEND)}:{number}")
     assert not hits, "bg-muted/N is left at:\n" + "\n".join(hits)
 
+
+def test_stat_tile_is_a_filled_card():
+    tile = _read("components/analytics/stat-tile.tsx")
+    for cls in ("bg-surface-container-low", "rounded-corner-md", "text-title-large"):
+        assert cls in tile, cls
+    assert "bg-muted" not in tile

@@ -164,7 +164,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
   return (
     <div className="flex flex-col gap-4">
       <LowSampleCaption n={total} lowSample={total < 5} unit="jobs" />
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile
           label="Jobs"
           value={String(total)}
@@ -313,7 +313,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
                 No pay data yet. Most jobs don&apos;t list pay.
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {o.salary_by_role.map((r) => (
                   <div
                     key={`${r.role_category}:${r.currency ?? "unknown"}`}
