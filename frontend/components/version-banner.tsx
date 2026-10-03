@@ -29,7 +29,7 @@ export function VersionBanner() {
   return (
     <div
       role="status"
-      className="bg-warning-container text-on-warning-container border-b px-4 py-2.5 text-sm"
+      className="bg-warning-container text-on-warning-container border-b px-4 py-2.5 text-body-medium"
     >
       <p className="mx-auto flex max-w-6xl items-start gap-2">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />

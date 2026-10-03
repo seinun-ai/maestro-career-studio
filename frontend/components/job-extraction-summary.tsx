@@ -46,13 +46,13 @@ export function JobExtractionSummary({
         {job.already_existed ? (
           <div
             role="status"
-            className="mt-1 flex items-center gap-2 rounded-lg bg-primary-container p-3 text-sm text-on-primary-container"
+            className="mt-1 flex items-center gap-2 rounded-lg bg-primary-container p-3 text-body-medium text-on-primary-container"
           >
             <Info className="size-4 shrink-0" aria-hidden="true" />
             This job is already saved.
           </div>
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             Saved to{" "}
             <Link href="/applications?status=saved" className="underline">
               Jobs
@@ -85,7 +85,7 @@ export function JobExtractionSummary({
               </Badge>
             ))}
             {extra > 0 && (
-              <span className="text-muted-foreground self-center text-xs">
+              <span className="text-muted-foreground self-center text-body-small">
                 +{extra} more
               </span>
             )}

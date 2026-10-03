@@ -168,7 +168,7 @@ export function EditorShell({
             what stopped this row overflowing into a page-wide horizontal
             scrollbar, and the next control added here would bring it back. */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
-          <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          <span className="text-muted-foreground text-title-small">
             {previewTitle ?? "Preview"}
           </span>
           <div className="flex min-w-0 flex-wrap items-center gap-1">
@@ -178,7 +178,7 @@ export function EditorShell({
                 size="sm"
                 aria-expanded={fmtOpen}
                 onClick={() => setFmtOpen((o) => !o)}
-                className="gap-1.5 text-xs font-normal"
+                className="gap-1.5 text-body-small"
               >
                 <SlidersHorizontal className="size-3.5 opacity-70" />
                 Formatting
@@ -241,7 +241,7 @@ export function EditorShell({
           // announces "Unsaved changes". This is the visual half. The copy
           // does not say "your last save": after a failed render the pages
           // are older than that.
-          <div className="flex items-center gap-2 border-b bg-warning-container px-3 py-1.5 text-xs text-on-warning-container">
+          <div className="flex items-center gap-2 border-b bg-warning-container px-3 py-1.5 text-body-small text-on-warning-container">
             <History aria-hidden="true" className="size-3.5 shrink-0" />
             {"Preview doesn't include your unsaved edits. Save to update it."}
           </div>

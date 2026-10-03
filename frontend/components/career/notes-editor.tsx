@@ -133,7 +133,7 @@ export function NotesEditor({
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <div>
           <CardTitle>Notes</CardTitle>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="text-muted-foreground mt-1 text-body-medium">
             Private details that help AI write about this. Never shown on a resume.
           </p>
         </div>
@@ -156,7 +156,7 @@ export function NotesEditor({
             <Label htmlFor={`kb-notes-${entityId}`} className="sr-only">
               Notes
             </Label>
-            <p id={`kb-notes-${entityId}-hint`} className="text-muted-foreground text-xs">
+            <p id={`kb-notes-${entityId}-hint`} className="text-muted-foreground text-body-small">
               Tools, team size, limits, who you worked with, and what you owned.
             </p>
             <Textarea
@@ -191,11 +191,11 @@ export function NotesEditor({
             </div>
           </>
         ) : notes.trim() ? (
-          <div className="text-sm leading-7 whitespace-pre-wrap">{withoutStaleMarks(notes)}</div>
+          <div className="text-body-medium leading-7 whitespace-pre-wrap">{withoutStaleMarks(notes)}</div>
         ) : (
           <div className="rounded-xl bg-surface-container-low px-5 py-7 text-center">
-            <p className="text-sm font-medium">No notes yet</p>
-            <p className="text-muted-foreground mt-1 text-xs">
+            <p className="text-title-small">No notes yet</p>
+            <p className="text-muted-foreground mt-1 text-body-small">
               Add details that don&apos;t belong on a resume.
             </p>
           </div>
@@ -203,11 +203,11 @@ export function NotesEditor({
 
         {staleLines.length > 0 ? (
           <div role="alert" className="rounded-xl bg-warning-container p-3 text-on-warning-container">
-            <p className="flex items-center gap-2 text-xs font-semibold">
+            <p className="flex items-center gap-2 text-label-medium">
               <TriangleAlert className="size-4" aria-hidden="true" />
               Check these: they may be out of date
             </p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-body-small">
               {staleLines.map((line, index) => (
                 <li key={`${line}-${index}`}>{line}</li>
               ))}

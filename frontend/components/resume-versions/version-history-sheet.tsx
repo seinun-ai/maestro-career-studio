@@ -161,34 +161,34 @@ export function VersionHistorySheet({
         data-version={v.version_number}
         onClick={() => setSelected(selected === v.version_number ? null : v.version_number)}
         className={cn(
-          "hover:bg-accent w-full rounded-md border px-3 py-2 text-left text-sm transition-colors",
+          "hover:bg-accent w-full rounded-md border px-3 py-2 text-left text-body-medium transition-colors",
           selected === v.version_number && "border-primary bg-accent",
         )}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium">Version {v.version_number}</span>
+            <span className="text-label-medium">Version {v.version_number}</span>
             <Badge
               variant="secondary"
-              className={cn("text-xs", SOURCE_BADGE[v.source])}
+              className={SOURCE_BADGE[v.source]}
             >
               {SOURCE_LABELS[v.source] ?? v.source}
             </Badge>
             {v.label && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline">
                 {v.label}
               </Badge>
             )}
             {v.version_number === latestNumber && (
-              <span className="text-muted-foreground text-xs">Current</span>
+              <span className="text-muted-foreground text-body-small">Current</span>
             )}
           </div>
-          <span className="text-muted-foreground shrink-0 text-xs">
+          <span className="text-muted-foreground shrink-0 text-body-small">
             {formatAbsoluteDateTime(v.created_at)}
           </span>
         </div>
         {v.summary && (
-          <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
+          <p className="text-muted-foreground mt-1 line-clamp-2 text-body-small">
             {versionSummaryWords(v.summary)}
           </p>
         )}
@@ -229,7 +229,7 @@ export function VersionHistorySheet({
           {/* A retry refetches from "pending": the failure branch holds (and
               keeps Try again focused) until it answers. */}
           {versions.isLoading && !isLoadFailure(versions) && (
-            <p className="text-muted-foreground text-sm">Loading…</p>
+            <p className="text-muted-foreground text-body-medium">Loading…</p>
           )}
           {isLoadFailure(versions) && (
             <LoadErrorState
@@ -240,7 +240,7 @@ export function VersionHistorySheet({
             />
           )}
           {versions.data?.length === 0 && (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-body-medium">
               No versions yet. Save an edit to start the history.
             </p>
           )}
@@ -253,7 +253,7 @@ export function VersionHistorySheet({
                   <button
                     type="button"
                     aria-expanded={expanded}
-                    className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 rounded-md border border-dashed px-3 py-2 text-left text-xs"
+                    className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 rounded-md border border-dashed px-3 py-2 text-left text-body-small"
                     onClick={() =>
                       setExpandedGroups((s) => {
                         const next = new Set(s);

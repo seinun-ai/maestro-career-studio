@@ -77,7 +77,7 @@ def test_skill_names_are_cased_one_way(rel: str):
     shown = {
         "components/charts/top-skills-chart.tsx": "{skillName(skill.skill_name)}\n",
         "components/charts/heatmap-chart.tsx": "{skillName(skill)}\n",
-        "components/analytics/gap-tiers-panel.tsx": '<span className="text-sm font-medium">{skillName(row.skill)}</span>',
+        "components/analytics/gap-tiers-panel.tsx": '<span className="text-title-small">{skillName(row.skill)}</span>',
     }
     assert shown[rel] in _read(rel)
 

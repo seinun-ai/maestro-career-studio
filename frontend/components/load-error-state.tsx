@@ -68,8 +68,8 @@ export function LoadErrorState({
     >
       <TriangleAlert className="text-muted-foreground/50 size-8" />
       <div className="min-w-0 px-6">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="text-title-small">{title}</p>
+        <p className="text-muted-foreground mt-1 text-body-medium">
           {shownDetail ?? "Something went wrong. Try again."}
         </p>
       </div>

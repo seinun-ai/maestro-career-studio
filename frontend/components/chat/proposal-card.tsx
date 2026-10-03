@@ -63,26 +63,26 @@ export function ProposalCard({
 
   return (
     <div className="rounded-md border border-dashed px-3 py-2">
-      <div className="flex items-center gap-2 text-sm">
-        <Badge variant="outline" className="text-xs">
+      <div className="flex items-center gap-2 text-body-medium">
+        <Badge variant="outline">
           Suggested project
         </Badge>
         <span className="font-medium">{proposal.project.name}</span>
-        <span className="text-muted-foreground text-xs">For {targetLabel}</span>
+        <span className="text-muted-foreground text-body-small">For {targetLabel}</span>
       </div>
       {proposal.project.tech && (
-        <p className="text-muted-foreground mt-1 text-xs">
+        <p className="text-muted-foreground mt-1 text-body-small">
           {proposal.project.tech}
         </p>
       )}
-      <ul className="mt-2 ml-4 list-disc space-y-1 text-sm">
+      <ul className="mt-2 ml-4 list-disc space-y-1 text-body-medium">
         {proposal.project.bullets.map((b, i) => (
           <li key={i}>{b}</li>
         ))}
       </ul>
       <div className="mt-2 flex justify-end gap-2">
         {resolution ? (
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-body-small">
             {resolution === "merged" ? "Added" : "Discarded"}
           </span>
         ) : (

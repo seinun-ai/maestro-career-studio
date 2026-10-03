@@ -66,14 +66,14 @@ export function ContactForm({
 
   return (
     <div className="group/contact @container border-border/0 hover:border-border/60 relative rounded-md border px-3 py-3">
-      <dl className="grid gap-x-4 gap-y-1.5 pr-10 text-sm @xs:grid-cols-[8rem_minmax(0,1fr)]">
+      <dl className="grid gap-x-4 gap-y-1.5 pr-10 text-body-medium @xs:grid-cols-[8rem_minmax(0,1fr)]">
         {FIELDS.map(({ key, label }) => {
           const v = value[key];
           return (
             // Narrow pane: each pair stacks. From 20rem the wrapper dissolves
             // and dt/dd join the two-column grid.
             <div key={key} className="grid gap-0.5 @xs:contents">
-              <dt className="text-muted-foreground text-sm font-medium">
+              <dt className="text-muted-foreground text-label-large">
                 {label}
               </dt>
               <dd className="text-foreground/90 min-w-0 wrap-anywhere">

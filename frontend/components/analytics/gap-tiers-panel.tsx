@@ -85,7 +85,7 @@ export function GapTiersPanel({ filters }: { filters: TopSkillsFilters }) {
   const rows = areas.data ?? [];
   if (rows.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
+      <p className="text-muted-foreground text-body-medium">
         No frequent gaps yet. Score a few jobs first.
       </p>
     );
@@ -153,10 +153,10 @@ function TierSection({
 }) {
   return (
     <section>
-      <h2 className="text-sm font-medium">{title}</h2>
-      <p className="text-muted-foreground mt-0.5 text-xs">{blurb}</p>
+      <h2 className="text-title-small">{title}</h2>
+      <p className="text-muted-foreground mt-0.5 text-body-small">{blurb}</p>
       {rows.length === 0 ? (
-        <p className="text-muted-foreground mt-3 text-sm">{emptyText}</p>
+        <p className="text-muted-foreground mt-3 text-body-medium">{emptyText}</p>
       ) : (
         <div className="mt-2 divide-y divide-foreground/10">
           {rows.map((row) => (
@@ -179,16 +179,16 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
   return (
     <div className="py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium">{skillName(row.skill)}</span>
+        <span className="text-title-small">{skillName(row.skill)}</span>
         {requirementLabel(row.requirement_level) ? (
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-body-small">
             {requirementLabel(row.requirement_level)}
           </span>
         ) : null}
         {meta ? (
           <span
             className={cn(
-              "inline-flex h-6 items-center rounded-full px-2 text-xs font-medium",
+              "inline-flex h-6 items-center rounded-full px-2 text-label-medium",
               meta.chip,
             )}
             title={meta.hint}
@@ -197,7 +197,7 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
           </span>
         ) : null}
         {categoryLabel ? (
-          <span className="text-muted-foreground text-xs">{categoryLabel}</span>
+          <span className="text-muted-foreground text-body-small">{categoryLabel}</span>
         ) : null}
       </div>
       <div className="mt-2 h-1.5 w-full max-w-md overflow-hidden rounded-full bg-muted">
@@ -206,7 +206,7 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
           style={{ width: `${width}%`, backgroundColor: "var(--chart-1)" }}
         />
       </div>
-      <p className="text-muted-foreground mt-1.5 text-xs">
+      <p className="text-muted-foreground mt-1.5 text-body-small">
         {/* A surface row is on your resumes already: "missing" was false there. */}
         {isSurface ? "A gap in" : "Missing in"} {row.n_jobs} {row.n_jobs === 1 ? "job" : "jobs"} · about{" "}
         {row.avg_potential_points} points each
@@ -226,7 +226,7 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
 function WordingFootnote({ rows }: { rows: BuildAreaRow[] }) {
   return (
     <details className="rounded-lg bg-surface-container-low px-3 py-2.5">
-      <summary className="text-muted-foreground cursor-pointer text-xs">
+      <summary className="text-muted-foreground cursor-pointer text-body-small">
         <span className="text-foreground font-medium">Wording only:</span>{" "}
         {rows.length} {rows.length === 1 ? "skill" : "skills"} your resume
         already covers. Using the job&apos;s exact words won&apos;t change your
@@ -236,7 +236,7 @@ function WordingFootnote({ rows }: { rows: BuildAreaRow[] }) {
         {rows.map((row) => (
           <li
             key={row.skill}
-            className="flex items-center justify-between gap-3 text-xs"
+            className="flex items-center justify-between gap-3 text-body-small"
           >
             <span className="min-w-0 truncate">{skillName(row.skill)}</span>
             <span className="text-muted-foreground shrink-0">

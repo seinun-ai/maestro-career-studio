@@ -539,7 +539,7 @@ export function ProposalsSection() {
 
           <Lane ref={toReview} title={`To review · ${triage.length}`}>
             {dayBatches.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Nothing to review.</p>
+              <p className="text-muted-foreground text-body-medium">Nothing to review.</p>
             ) : (
               dayBatches.map(({ day, items: dayItems }) => {
                 const open = effectiveExpandedDays.has(day);
@@ -550,7 +550,7 @@ export function ProposalsSection() {
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        className="text-muted-foreground inline-flex items-center gap-1 text-xs font-medium"
+                        className="text-muted-foreground inline-flex items-center gap-1 text-label-medium"
                         onClick={() => {
                           setExpandedDays((prev) => {
                             const base =
@@ -573,7 +573,7 @@ export function ProposalsSection() {
                         {dayItems.length === 1 ? "proposal" : "proposals"}
                       </button>
                       {open ? (
-                        <label className="text-muted-foreground ml-auto inline-flex items-center gap-1.5 text-xs">
+                        <label className="text-muted-foreground ml-auto inline-flex items-center gap-1.5 text-body-small">
                           <Checkbox checked={allSelected && ids.length > 0} onCheckedChange={(next) =>
                               selectAllShown(ids, next)} />
                           Select all shown
@@ -624,7 +624,7 @@ export function ProposalsSection() {
             <button
               id={historyId}
               type="button"
-              className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide"
+              className="text-muted-foreground inline-flex items-center gap-1.5 text-title-small"
               onClick={() => setHistoryOpen((v) => !v)}
             >
               <ChevronDown
@@ -663,7 +663,7 @@ export function ProposalsSection() {
                   })}
                 </div>
                 {history.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No history yet.</p>
+                  <p className="text-muted-foreground text-body-medium">No history yet.</p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {history.map((p) => (
@@ -745,11 +745,11 @@ function Lane({
     // tabIndex={-1}: named by its heading, it takes focus when the last row acted on, or the bulk
     // bar, leaves it. Its rows sit in their own list, so a row's neighbours are rows.
     <section ref={ref} tabIndex={-1} aria-labelledby={headingId} className="flex flex-col gap-2 overflow-x-auto outline-none">
-      <h2 id={headingId} className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+      <h2 id={headingId} className="text-muted-foreground text-title-small">
         {title}
       </h2>
       {help.map((line) => (
-        <p key={line} className="text-muted-foreground max-w-[65ch] text-sm">
+        <p key={line} className="text-muted-foreground max-w-[65ch] text-body-medium">
           {line}
         </p>
       ))}
@@ -830,12 +830,12 @@ function ProposalRow({
             <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
             <div className="min-w-0 grow basis-[10rem]">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-sm font-medium">
+                <span className="truncate text-title-small">
                   {job.title ?? "Untitled role"}
                 </span>
                 {job.disqualifying_for_opt ? (
                   <span
-                    className="text-warning inline-flex items-center gap-1 text-xs"
+                    className="text-warning inline-flex items-center gap-1 text-body-small"
                     title="OPT is the US student work permit"
                   >
                     <AlertTriangle className="size-3.5" aria-hidden="true" />
@@ -843,21 +843,21 @@ function ProposalRow({
                   </span>
                 ) : null}
                 {isDup ? (
-                  <span className="inline-flex items-center rounded-full bg-warning-container px-2 py-0.5 text-[10px] font-medium text-on-warning-container">
+                  <span className="inline-flex items-center rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
                     Possible duplicate
                   </span>
                 ) : null}
               </div>
-              <div className="text-muted-foreground truncate text-xs">
+              <div className="text-muted-foreground truncate text-body-small">
                 {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
               </div>
-              <div className="text-muted-foreground truncate text-xs" title={meta}>
+              <div className="text-muted-foreground truncate text-body-small" title={meta}>
                 {meta}
               </div>
-              {needs ? <p className="mt-1 text-xs break-words">{needs}</p> : null}
+              {needs ? <p className="mt-1 text-body-small break-words">{needs}</p> : null}
             </div>
             {base ? (
-              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-xs dark:bg-surface-container-highest sm:inline-flex">
+              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-body-small dark:bg-surface-container-highest sm:inline-flex">
                 {baseName}
                 {score != null ? ` · ATS score ${score}` : ""}
               </span>

@@ -15,7 +15,7 @@ import { NewTabCue } from "@/components/new-tab-link";
  */
 export function ChatMarkdown({ children }: { children: string }) {
   return (
-    <div className="text-sm leading-relaxed [&>*+*]:mt-2">
+    <div className="text-body-medium leading-6 [&>*+*]:mt-2">
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={COMPONENTS}>
         {children}
       </ReactMarkdown>
@@ -24,10 +24,10 @@ export function ChatMarkdown({ children }: { children: string }) {
 }
 
 const COMPONENTS: ComponentProps<typeof ReactMarkdown>["components"] = {
-  h1: ({ children }) => <p className="text-base font-medium">{children}</p>,
-  h2: ({ children }) => <p className="text-base font-medium">{children}</p>,
-  h3: ({ children }) => <p className="text-sm font-medium">{children}</p>,
-  h4: ({ children }) => <p className="text-sm font-medium">{children}</p>,
+  h1: ({ children }) => <p className="text-title-medium">{children}</p>,
+  h2: ({ children }) => <p className="text-title-medium">{children}</p>,
+  h3: ({ children }) => <p className="text-title-small">{children}</p>,
+  h4: ({ children }) => <p className="text-title-small">{children}</p>,
   ul: ({ children }) => <ul className="ml-5 list-disc space-y-1">{children}</ul>,
   ol: ({ children }) => <ol className="ml-5 list-decimal space-y-1">{children}</ol>,
   a: ({ href, children }) => (
@@ -54,7 +54,7 @@ const COMPONENTS: ComponentProps<typeof ReactMarkdown>["components"] = {
     // Neutralize the inline-code chip styling for any <code> inside: fences
     // without a language tag have no className, so the code component can't
     // tell them apart from inline code (react-markdown v9+ dropped `inline`).
-    <pre className="bg-muted overflow-x-auto rounded-xl p-3 font-mono text-xs leading-relaxed [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[1em]">
+    <pre className="bg-muted overflow-x-auto rounded-xl p-3 font-mono text-body-small leading-5 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[1em]">
       {children}
     </pre>
   ),
@@ -65,11 +65,11 @@ const COMPONENTS: ComponentProps<typeof ReactMarkdown>["components"] = {
   ),
   table: ({ children }) => (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-left text-sm">{children}</table>
+      <table className="w-full border-collapse text-left text-body-medium">{children}</table>
     </div>
   ),
   th: ({ children }) => (
-    <th className="border-foreground/10 border-b px-2 py-1.5 text-xs font-medium">
+    <th className="border-foreground/10 border-b px-2 py-1.5 text-label-medium">
       {children}
     </th>
   ),

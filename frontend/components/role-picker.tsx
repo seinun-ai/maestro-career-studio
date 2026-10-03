@@ -20,7 +20,7 @@ type RoleGroup = { key: string; label: string; items: FavoredRole[] };
 export const MAX_ROLE_LABEL_CHARS = 80;
 
 const ROLE_ITEM_CLASS =
-  "flex cursor-default items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground";
+  "flex cursor-default items-center justify-between gap-2 rounded-md px-2 py-1.5 text-body-medium outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground";
 
 /** The identity the server dedups on: the role key, else the folded label. */
 export function roleIdentity(entry: FavoredRole) {
@@ -354,7 +354,7 @@ export function RolePicker(props: RolePickerProps) {
 
   const chipsClassName =
     props.className ??
-    "border-input focus-within:ring-ring flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2";
+    "border-input focus-within:ring-ring flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-body-medium focus-within:ring-2";
 
   const list = (
     <>
@@ -479,7 +479,7 @@ export function RolePicker(props: RolePickerProps) {
                     items={group.items}
                     className="scroll-my-1"
                   >
-                    <Combobox.GroupLabel className="text-muted-foreground px-2 py-1 text-xs">
+                    <Combobox.GroupLabel className="text-muted-foreground px-2 py-1 text-body-small">
                       {group.label}
                     </Combobox.GroupLabel>
                     <Combobox.Collection>
@@ -529,7 +529,7 @@ export function RolePicker(props: RolePickerProps) {
                 no catalog to show. */}
             <Combobox.Empty>
               {typed ? null : (
-                <div className="text-muted-foreground px-2 py-1.5 text-sm">
+                <div className="text-muted-foreground px-2 py-1.5 text-body-medium">
                   No roles to show.
                 </div>
               )}
@@ -616,7 +616,7 @@ export function RolePicker(props: RolePickerProps) {
         </Combobox.Root>
       )}
       {pendingSuggestion && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed px-2.5 py-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed px-2.5 py-2 text-body-small">
           <span>
             Count &ldquo;{pendingSuggestion.label}&rdquo; as{" "}
             {catalogLabel(pendingSuggestion.match.category)}?

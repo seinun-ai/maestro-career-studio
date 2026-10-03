@@ -267,7 +267,7 @@ def test_every_proposal_surface_names_who_filed_it():
     assert "const byLine = proposalByLine(proposal.proposed_by, proposal.status);" in row
     assert 'const meta = [byLine, formatTimeAgo(proposal.created_at)].filter(Boolean).join(" · ");' in row
     # It truncates in a narrow row: the whole of it on hover.
-    assert '<div className="text-muted-foreground truncate text-xs" title={meta}>' in row
+    assert '<div className="text-muted-foreground truncate text-body-small" title={meta}>' in row
     assert '<CardTitle>{proposalByLine(data.proposed_by, data.status) ?? "Agent inbox"}</CardTitle>' in _PANEL
     assert "Proposed {formatShortDate(data.created_at)}" in _PANEL and '<Fact label="Proposed">' not in _PANEL
     assert "? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;" in _JOB

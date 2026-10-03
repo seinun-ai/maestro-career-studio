@@ -248,7 +248,7 @@ export default function TemplateEditorPage() {
           className="flex h-full min-h-0 flex-col gap-0"
         >
           <div className="flex flex-wrap items-center gap-2 border-b p-2">
-            <div className="mr-auto flex min-w-0 items-center gap-2 text-sm font-medium">
+            <div className="mr-auto flex min-w-0 items-center gap-2 text-title-small">
               {/* This page had NO heading and no way back: the template's name
                   was a bare <span>, so the route had no <h1> at all and the
                   only exit was the browser button. Every other editor in the
@@ -263,7 +263,7 @@ export default function TemplateEditorPage() {
                   <Link href="/templates" className="text-muted-foreground" />
                 }
               />
-              <h1 className="truncate text-sm font-medium">
+              <h1 className="truncate text-title-small">
                 {templateName(tq.data)}
               </h1>
               <Badge variant={status === "ready" ? "secondary" : "outline"}>
@@ -273,7 +273,7 @@ export default function TemplateEditorPage() {
               <Badge variant="outline">{ENGINE_LABEL[tq.data.engine]}</Badge>
               {!tq.data.engine_available && <RequiresTexBadge />}
               {dirty && (
-                <span className="text-warning text-xs">Unsaved changes</span>
+                <span className="text-warning text-body-small">Unsaved changes</span>
               )}
             </div>
             <TabsList>
@@ -333,7 +333,7 @@ export default function TemplateEditorPage() {
               }}
               collapsible={false}
             />
-            <p className="text-muted-foreground px-3 py-2 text-xs">
+            <p className="text-muted-foreground px-3 py-2 text-body-small">
               Starting settings for resumes that use this template. Each resume
               can change them.
             </p>
@@ -358,7 +358,7 @@ export default function TemplateEditorPage() {
       }
       previewHeader={
         <a
-          className="text-muted-foreground hover:text-foreground text-xs underline"
+          className="text-muted-foreground hover:text-foreground text-body-small underline"
           href={apiUrlForBrowserPdf(`/api/templates/${id}/preview.pdf`)}
           target="_blank"
           rel="noopener noreferrer"
@@ -368,13 +368,13 @@ export default function TemplateEditorPage() {
       }
       preview={
         compileError === REQUIRES_TEX_REASON ? (
-          <p className="text-muted-foreground m-2 text-sm">{NEEDS_TEX_WORDS}</p>
+          <p className="text-muted-foreground m-2 text-body-medium">{NEEDS_TEX_WORDS}</p>
         ) : compileError ? (
           <div className="m-2 space-y-1">
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground text-body-small">
               The template has an error. Fix the code, then update the preview.
             </p>
-            <pre className="bg-destructive/10 text-destructive max-h-full overflow-auto rounded p-2 text-xs">
+            <pre className="bg-destructive/10 text-destructive max-h-full overflow-auto rounded p-2 text-body-small">
               {compileError}
             </pre>
           </div>
@@ -385,7 +385,7 @@ export default function TemplateEditorPage() {
             emptyMessage="Update the preview to see it."
           />
         ) : (
-          <div className="text-muted-foreground p-3 text-sm">
+          <div className="text-muted-foreground p-3 text-body-medium">
             Update the preview to see it.
           </div>
         )

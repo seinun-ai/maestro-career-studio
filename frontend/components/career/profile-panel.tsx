@@ -41,9 +41,9 @@ export function ProfilePanel() {
   if (profile.error) {
     return (
       <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
-        <p className="text-sm font-medium">Couldn&apos;t load your profile.</p>
+        <p className="text-title-small">Couldn&apos;t load your profile.</p>
         {errorDetail(profile.error) ? (
-          <p className="text-muted-foreground mt-1 text-xs">{errorDetail(profile.error)}</p>
+          <p className="text-muted-foreground mt-1 text-body-small">{errorDetail(profile.error)}</p>
         ) : null}
         <Button className="mt-3 rounded-full" size="sm" variant="secondary" onClick={() => void profile.refetch()}>
           Try again
@@ -57,7 +57,7 @@ export function ProfilePanel() {
   return <ProfileView profile={profile.data} />;
 }
 
-const SECTION_HEADING = "text-muted-foreground text-xs font-semibold uppercase tracking-[0.12em]";
+const SECTION_HEADING = "text-muted-foreground text-title-small";
 
 function contactDraft(profile: KBProfileOut): ContactInfo {
   return {
@@ -91,7 +91,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
           </span>
           Career profile
         </CardTitle>
-        <p className="text-muted-foreground mt-1 text-sm">Your contact details and skills. Resumes built from your career history start from these.</p>
+        <p className="text-muted-foreground mt-1 text-body-medium">Your contact details and skills. Resumes built from your career history start from these.</p>
       </CardHeader>
       {/* Each section edits on its own, as the resume editor's cards do: one Edit per section, always shown
           (a hover-only "Edit profile" read as a card you couldn't change). */}
@@ -117,14 +117,14 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                   <div key={label} className="flex min-w-0 items-start gap-2.5">
                     <Icon className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden="true" />
                     <div className="min-w-0">
-                      <dt className="text-muted-foreground text-xs">{label}</dt>
-                      <dd className="truncate text-sm" title={value ?? undefined}>{value}</dd>
+                      <dt className="text-muted-foreground text-body-small">{label}</dt>
+                      <dd className="truncate text-body-medium" title={value ?? undefined}>{value}</dd>
                     </div>
                   </div>
                 ))}
               </dl>
             ) : (
-              <p className="text-muted-foreground text-sm">No contact details added.</p>
+              <p className="text-muted-foreground text-body-medium">No contact details added.</p>
             )
           }
           edit={(contact, setContact) => {
@@ -153,9 +153,9 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
           toPatch={(summary) => ({ summary })}
           read={
             profile.summary.trim() ? (
-              <p className="max-w-4xl text-sm leading-7 whitespace-pre-wrap">{profile.summary}</p>
+              <p className="max-w-4xl text-body-medium leading-7 whitespace-pre-wrap">{profile.summary}</p>
             ) : (
-              <p className="text-muted-foreground text-sm">No summary added.</p>
+              <p className="text-muted-foreground text-body-medium">No summary added.</p>
             )
           }
           edit={(summary, setSummary) => (
@@ -187,10 +187,10 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
               <dl className="gap-x-8 sm:columns-2 xl:columns-3">
                 {profile.skills.map((group, index) => (
                   <div key={`${group.category}-${index}`} className="mb-4 break-inside-avoid">
-                    <dt className="mb-1.5 text-sm font-medium">{group.category}</dt>
+                    <dt className="mb-1.5 text-title-small">{group.category}</dt>
                     <dd className="flex flex-wrap gap-1.5">
                       {group.items.map((item) => (
-                        <Badge key={item} variant="secondary" className="rounded-full font-normal">
+                        <Badge key={item} variant="secondary" className="rounded-full text-body-small">
                           {item}
                         </Badge>
                       ))}
@@ -199,13 +199,13 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                 ))}
               </dl>
             ) : (
-              <p className="text-muted-foreground text-sm">No skill groups added.</p>
+              <p className="text-muted-foreground text-body-medium">No skill groups added.</p>
             )
           }
           edit={(skills, setSkills) => (
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-muted-foreground text-xs">Group your skills. You can add a group to any resume.</p>
+                <p className="text-muted-foreground text-body-small">Group your skills. You can add a group to any resume.</p>
                 <Button
                   type="button"
                   size="sm"
@@ -217,7 +217,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                 </Button>
               </div>
               {skills.length === 0 ? (
-                <p className="text-muted-foreground rounded-xl bg-surface-container-low p-4 text-center text-xs">No skill groups yet.</p>
+                <p className="text-muted-foreground rounded-xl bg-surface-container-low p-4 text-center text-body-small">No skill groups yet.</p>
               ) : (
                 skills.map((group, index) => (
                   <div key={index} className="grid gap-2 rounded-xl bg-surface-container-low p-3 sm:grid-cols-[12rem_1fr_auto] sm:items-start">
@@ -276,7 +276,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
               <Label htmlFor="kb-profile-notes" className="sr-only">
                 Notes for the AI
               </Label>
-              <p id="kb-profile-notes-hint" className="text-muted-foreground text-xs">
+              <p id="kb-profile-notes-hint" className="text-muted-foreground text-body-small">
                 Only you and the AI see these, such as visa timing or where you can work. Details about one job or project go in that item&apos;s own notes.
               </p>
               <Textarea
@@ -407,12 +407,12 @@ function FoldedNotes({ notes }: { notes: string }) {
   const [open, setOpen] = useState(false);
   // Blank lines between the notes' own lines are spacing, not content: they neither show nor count.
   const lines = notes.split("\n").filter((line) => line.trim());
-  if (lines.length === 0) return <p className="text-muted-foreground text-sm">No notes yet.</p>;
+  if (lines.length === 0) return <p className="text-muted-foreground text-body-medium">No notes yet.</p>;
   const folds = lines.length > FOLDED_LINES;
   const shown = open || !folds ? lines : lines.slice(0, FOLDED_LINES);
   return (
     <div className="max-w-4xl space-y-1.5">
-      <ul id="kb-profile-notes-read" className="space-y-1 text-sm leading-6">
+      <ul id="kb-profile-notes-read" className="space-y-1 text-body-medium">
         {shown.map((line, index) => (
           <li key={index}>{line}</li>
         ))}

@@ -87,10 +87,10 @@ function WordList({
 
   return (
     <fieldset className="space-y-2">
-      <legend className="text-sm font-medium">
+      <legend className="text-title-small">
         {title} ({words.length})
       </legend>
-      <p id={hintId} className="text-muted-foreground text-xs">
+      <p id={hintId} className="text-muted-foreground text-body-small">
         {hint}
       </p>
       {words.length > 0 ? (
@@ -98,7 +98,7 @@ function WordList({
           {words.map((word, i) => (
             <li
               key={word}
-              className="bg-muted text-foreground inline-flex max-w-full items-center gap-1 rounded-md px-2 py-0.5 text-sm"
+              className="bg-muted text-foreground inline-flex max-w-full items-center gap-1 rounded-md px-2 py-0.5 text-body-medium"
             >
               <span className="min-w-0 break-words">{word}</span>
               <button
@@ -115,7 +115,7 @@ function WordList({
           ))}
         </ul>
       ) : (
-        <p className="text-muted-foreground text-xs">No words yet.</p>
+        <p className="text-muted-foreground text-body-small">No words yet.</p>
       )}
       <div className="flex max-w-sm items-start gap-2">
         <Input
@@ -141,7 +141,7 @@ function WordList({
         </Button>
       </div>
       {error && (
-        <p id={errorId} role="alert" className="text-destructive text-xs">
+        <p id={errorId} role="alert" className="text-destructive text-body-small">
           {error}
         </p>
       )}
@@ -236,7 +236,7 @@ function WordListForm({
           >
             Reset to defaults
           </Button>
-          <p className="text-muted-foreground text-xs">Puts back the default clichés and filler words.</p>
+          <p className="text-muted-foreground text-body-small">Puts back the default clichés and filler words.</p>
         </div>
         <WordList
           title="Never flag"
@@ -245,7 +245,7 @@ function WordListForm({
         />
       </div>
       {failure && (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive text-body-medium">
           {failure}
         </p>
       )}
@@ -312,11 +312,11 @@ export function WordListDialog({
         ) : (
           <>
             {wording.isError && !wording.isFetching ? (
-              <p role="alert" className="text-destructive text-sm">
+              <p role="alert" className="text-destructive text-body-medium">
                 {couldnt("load your word list", wording.error)}
               </p>
             ) : (
-              <p className="text-muted-foreground text-sm">Loading…</p>
+              <p className="text-muted-foreground text-body-medium">Loading…</p>
             )}
             <DialogFooter>
               <Button size="sm" variant="ghost" onClick={close}>

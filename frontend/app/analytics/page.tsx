@@ -196,7 +196,7 @@ function AnalyticsContent() {
             <Card>
               <CardHeader>
                 <CardTitle>Top skills</CardTitle>
-                <p className="text-muted-foreground text-sm font-normal">
+                <p className="text-muted-foreground text-body-medium">
                   Skills ranked by how many jobs ask for them.
                 </p>
               </CardHeader>
@@ -225,14 +225,14 @@ function AnalyticsContent() {
 
         <TabsContent value="fit" className="grid gap-4">
           {/* "ATS score" spelled out once, above the tab's first card. */}
-          <p className="text-muted-foreground max-w-[60ch] text-sm">{ATS_SCORE_LEAD_ALL_JOBS}</p>
+          <p className="text-muted-foreground max-w-[60ch] text-body-medium">{ATS_SCORE_LEAD_ALL_JOBS}</p>
           <BaseSummaryCards />
           {filterRow}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>ATS score over time</CardTitle>
-                <p className="text-muted-foreground text-sm font-normal">
+                <p className="text-muted-foreground text-body-medium">
                   Weekly average ATS score.
                 </p>
               </CardHeader>
@@ -243,7 +243,7 @@ function AnalyticsContent() {
             <Card>
               <CardHeader>
                 <CardTitle>Score gain from tailoring</CardTitle>
-                <p className="text-muted-foreground text-sm font-normal">
+                <p className="text-muted-foreground text-body-medium">
                   Average ATS score before and after tailoring, by role.
                 </p>
               </CardHeader>
@@ -267,7 +267,7 @@ function AnalyticsContent() {
           <Card>
             <CardHeader>
               <CardTitle>Skill gaps</CardTitle>
-              <p className="text-muted-foreground text-sm font-normal">
+              <p className="text-muted-foreground text-body-medium">
                 Skills to learn, and skills to show better. Based on your
                 best-scoring resume for each job.
               </p>

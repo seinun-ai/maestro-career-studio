@@ -18,8 +18,8 @@ const UPDATE_GUIDE_URL = `${GUIDE}#7-keeping-it-up-to-date`;
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5">
-      <dt className="text-muted-foreground text-sm">{label}</dt>
-      <dd className="min-w-0 text-sm wrap-anywhere">{children}</dd>
+      <dt className="text-muted-foreground text-body-medium">{label}</dt>
+      <dd className="min-w-0 text-body-medium wrap-anywhere">{children}</dd>
     </div>
   );
 }
@@ -80,7 +80,7 @@ function TechnicalDetails({ rows }: { rows: [string, string][] }) {
     <div className="grid gap-1">
       <button
         type="button"
-        className="text-muted-foreground hover:text-foreground flex items-center gap-1 justify-self-start text-xs"
+        className="text-muted-foreground hover:text-foreground flex items-center gap-1 justify-self-start text-body-small"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}

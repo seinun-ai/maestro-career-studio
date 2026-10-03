@@ -97,7 +97,17 @@
   page, a card and the sidebar. **Type** is M3's scale as one utility
   (`text-title-large` for a page title, `text-title-medium` a card title,
   `text-body-medium` body, `text-label-medium` a chip or field label): size,
-  line height and weight travel together, tracking stays Geist's.
+  line height and weight travel together, tracking stays Geist's. A raw size
+  (`text-sm`, `text-[11px]`), an `uppercase` class, and a `font-medium` or
+  `font-semibold` beside a scale utility are not written: `test_frontend_design_tokens.py`
+  fails on each, and `docs/design-system/migration.md` maps the old class to the new one.
+  The sanctioned weight overrides are the page title and the stat tile's value
+  (`text-title-large font-medium`), the current nav row (600: the sidebar row and the open
+  chat row) and the health grade letter (`text-headline-small font-semibold`). A scale
+  utility sets its own weight on the element that carries it, so a weight written on a
+  parent does not reach a child that has its own scale class: put it on the child. Long
+  reading text (the chat reply, notes, the profile summary, judged text) keeps
+  `leading-6` or `leading-7`; no other `leading-*` sits beside a scale utility.
   **Corners** are `rounded-corner-xs` (menus), `-sm` (controls), `-md`
   (cards), `-lg` (sheets), `-xl` (dialogs), and `rounded-full` for pills.
   **Elevation** is `shadow-level1` to `shadow-level3`, for what floats;
@@ -161,7 +171,7 @@
   accessible name is only the template's name, so the default mark and the
   Needs setup badge and the ATS warning line are its `aria-describedby`.
 - **Judged resume text** (the text a check rates: a health row's bullet, a pass row, a wording row)
-  is upright `text-sm text-foreground`, wrapped within `max-w-[65ch]`, with a `border-l-2
+  is upright `text-body-medium text-foreground`, wrapped within `max-w-[65ch]`, with a `border-l-2
   border-border pl-3` quote rule (`judged-text.tsx`). A compact quote uses `line-clamp-3` and a
   visible Show all toggle with `aria-expanded`; it is never italic, grey or cut to one line. Metadata
   alone uses muted text; location, level and attention are plain text, never colour alone.
@@ -1072,11 +1082,15 @@
 - A panel with nothing to do is one line, not an empty-state card: Drafts to
   review with no drafts, and Quick capture at rest (it opens while focused,
   typed in, sending, reading a file or under a dragged file).
-- Type scale (canonical): page title `text-[22px] font-medium
-  tracking-tight`; page subtitle `text-sm text-muted-foreground` (one
+- Type scale (canonical): page title `text-title-large font-medium
+  tracking-tight`; page subtitle `text-body-medium text-muted-foreground` (one
   clause); section/card title = CardTitle default (don't override sizes);
-  centered state headings `text-lg font-medium`; body `text-sm`; meta/labels
-  `text-xs`. Never `text-2xl font-semibold` for page titles.
+  centered state headings are a page's `h1`, so `text-title-large font-medium`;
+  a name or row heading `text-title-small`; body `text-body-medium`; meta
+  `text-body-small`; a chip, badge or small control `text-label-medium`; a button
+  or field label `text-label-large`; a count or grade chip `text-label-small`.
+  Group headings are sentence case `text-title-small text-muted-foreground`,
+  never uppercase or tracked. Never `text-2xl font-semibold` for page titles.
 - Form conventions: optionality lives on the LABEL as a muted "(optional)"
   (`<Label optional>`, one definition in `components/ui/label.tsx`; GOV.UK's
   wording), never a placeholder, a hand-written span or a "· optional"
@@ -1105,7 +1119,7 @@
   768 and 295px at 375, so every card is one column at 768: a viewport
   `sm:grid-cols-2` gave each API key 208px, too narrow for its label and
   status. One field is `grid gap-1.5`: a `Label` at its default size (no
-  `text-xs` or colour override), then a hint, then the control. A list of
+  size or colour override), then a hint, then the control. A list of
   switches is a `divide-y` of `SwitchRow` (44px tall, the label toggles it).
   Save and its siblings are the body's last row, `ACTION_ROW`: right-aligned,
   secondary first (Discard, Reset to default, then Save). A second containment
@@ -1116,7 +1130,7 @@
 - **A long form is divided by group headings, not rules.** A group is a
   `<fieldset>` whose `<legend>` uses `GROUP_HEADING`
   (`components/settings/setting-layout.tsx`, the career history read view's
-  uppercase tracked style). Groups sit `gap-8` apart. The fieldset stays in
+  sentence-case `text-title-small text-muted-foreground`). Groups sit `gap-8` apart. The fieldset stays in
   block flow (`space-y-4`): a rendered legend is not a grid or flex item, so
   `gap` never separates it from the first field. If a rule is ever needed, it
   goes on the legend, because the browser clips a fieldset's block-start

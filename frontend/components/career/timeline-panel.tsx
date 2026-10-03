@@ -33,7 +33,7 @@ export function TimelinePanel({ events }: { events: KBTimelineEvent[] }) {
       <CardContent>
         {ordered.length === 0 ? (
           <div className="rounded-xl bg-surface-container-low px-5 py-7 text-center">
-            <p className="text-sm font-medium">No activity yet</p>
+            <p className="text-title-small">No activity yet</p>
           </div>
         ) : (
           <ol className="space-y-4">
@@ -45,9 +45,9 @@ export function TimelinePanel({ events }: { events: KBTimelineEvent[] }) {
                     <Icon className="size-3.5" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm leading-snug">{event.label}</p>
+                    <p className="text-body-medium">{event.label}</p>
                     <p
-                      className="text-muted-foreground mt-0.5 text-xs"
+                      className="text-muted-foreground mt-0.5 text-body-small"
                       title={formatAbsoluteDateTime(event.ts)}
                     >
                       {formatTimeAgo(event.ts)}

@@ -672,10 +672,10 @@ function SummaryBlock({
         "border-border/0 hover:border-border/60",
       )}
     >
-      <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium tracking-wide uppercase">
+      <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-title-small">
         Summary
       </div>
-      <p className="text-foreground/90 pr-10 text-sm whitespace-pre-wrap">
+      <p className="text-foreground/90 pr-10 text-body-medium whitespace-pre-wrap">
         {value || (
           <span className="text-muted-foreground italic">No summary yet</span>
         )}
@@ -723,13 +723,13 @@ function CertificationsBlock({
   return (
     <div className="group/certs border-border/0 hover:border-border/60 relative rounded-md border px-3 py-3">
       {value.length > 0 ? (
-        <ul className="text-foreground/90 ml-4 list-disc space-y-1 pr-10 text-sm">
+        <ul className="text-foreground/90 ml-4 list-disc space-y-1 pr-10 text-body-medium">
           {value.map((c, i) => (
             <li key={i}>{c}</li>
           ))}
         </ul>
       ) : (
-        <p className="text-muted-foreground pr-10 text-sm italic">
+        <p className="text-muted-foreground pr-10 text-body-medium italic">
           No certifications
         </p>
       )}

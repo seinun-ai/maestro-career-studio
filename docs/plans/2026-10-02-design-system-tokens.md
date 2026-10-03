@@ -31,6 +31,12 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
   border; tinted card edges (the health report's Fix and Question cards, the Serious gate) are `border-border`
   (UX change 5). The Chat greeting's blue-to-rose gradient is plain `text-foreground`. Only
   `CompanyMonogram` (step 8) still writes palette shades; `test_frontend_design_tokens.py` fails on any other.
+- Step 4, type, and UX change 4: every raw size (826 `text-xs`/`sm`/`base`/`lg`/`2xl`/`3xl` and 33 bracketed
+  `text-[Npx]`/`[Nrem]` uses) is a scale utility, and the hand-paired `font-medium`/`font-semibold`/`font-bold` beside
+  them is gone, except the page title (`text-title-large font-medium`), the current nav row (600) and the health
+  grade letter (`text-headline-small` at 600). Group headings and meta labels are sentence case, with no
+  `uppercase` and no tracking: 17 uses in 12 files. `test_frontend_design_tokens.py` fails on a raw size, on
+  `uppercase`, and on a weight paired with a scale utility outside an allow-list.
 
 ## What is left, in order
 
@@ -41,7 +47,7 @@ branch point.
 |---|---|---|---|---|
 | 2 | ~~Remaining palette classes~~ done | the `text-/bg-/border-<palette>-N` uses left after step 1 (302 in 39 files before it; amber and emerald lead) | `success` / `warning` / `attention` / `tertiary` / primary container | largest step; split by folder |
 | 3 | ~~Surfaces~~ done | 74 `bg-muted/N` uses in 45 files, 11 opacities | `/10`–`/30` → page (drop the fill) or `surface-container-low`; `/35`–`/60` → `surface-container-low`; `/70` and solid → `surface-container` | mechanical |
-| 4 | Type | `text-[22px]` page titles, `text-[10px]`/`[11px]`/`[0.8rem]` (33 uses), size + weight pairs | `text-title-large`, `text-label-small`, `text-title-medium` and the rest | start with `PageHeader`, `CardTitle`, `Badge` |
+| 4 | ~~Type~~ done | `text-[22px]` page titles, `text-[10px]`/`[11px]`/`[0.8rem]` (33 uses), size + weight pairs | `text-title-large`, `text-label-small`, `text-title-medium` and the rest | start with `PageHeader`, `CardTitle`, `Badge` |
 | 5 | Corners | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |
 | 6 | Shadows | 54 `shadow`/`shadow-sm`/`-md`/`-lg` uses | `shadow-level1..3` on menus, popovers, dialogs, the hovered FAB; none elsewhere | |
 | 7 | Buttons | `variant="secondary"` (35 uses) beside `tonal` (6) | one low-emphasis filled variant: `tonal` | drop `secondary` when its last caller moves |

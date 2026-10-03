@@ -47,7 +47,7 @@ export function ProjectEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 text-body-medium">
         <ActiveArchivedCount items={value} />
       </div>
 
@@ -75,19 +75,19 @@ export function ProjectEditor({
               <div className="flex flex-col gap-2 pr-16">
                 <div className="flex items-baseline justify-between gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-foreground text-sm font-semibold">
+                    <span className="text-foreground text-title-small">
                       {entry.name || (
                         <em className="opacity-60">Untitled project</em>
                       )}
                     </span>
                     <HiddenBadge enabled={enabled} />
                   </div>
-                  <div className="text-muted-foreground text-xs whitespace-nowrap">
+                  <div className="text-muted-foreground text-body-small whitespace-nowrap">
                     {entry.date || "—"}
                   </div>
                 </div>
                 {entry.tech && (
-                  <div className="text-muted-foreground text-xs">
+                  <div className="text-muted-foreground text-body-small">
                     {entry.tech}
                   </div>
                 )}

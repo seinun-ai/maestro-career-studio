@@ -391,20 +391,20 @@ function BuildDraft({
           }
         />
         <div>
-          <h1 className="text-[22px] font-medium tracking-tight">
+          <h1 className="text-title-large font-medium tracking-tight">
             Tailored resume
           </h1>
-          <p className="text-muted-foreground text-sm">{jobLabel}</p>
+          <p className="text-muted-foreground text-body-medium">{jobLabel}</p>
         </div>
       </header>
       <div className="space-y-3 rounded-lg border p-6">
         {parseFailed ? (
-          <p className="text-destructive text-sm">
+          <p className="text-destructive text-body-medium">
             This tailored resume couldn&apos;t be opened. Choose Create draft to
             start again from your base resume.
           </p>
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             No tailored resume yet. Start with a copy of your base resume.
           </p>
         )}
@@ -523,7 +523,7 @@ function StudioEditor({
   /** Count badge on a section tab, so review mode points at where to look. */
   const changeBadge = (tab: string) =>
     showReview && changeCounts[tab] ? (
-      <span className="bg-secondary-container text-on-secondary-container ml-1 rounded-full px-1.5 text-[10px] font-medium tabular-nums">
+      <span className="bg-secondary-container text-on-secondary-container ml-1 rounded-full px-1.5 text-label-small tabular-nums">
         {changeCounts[tab]}
       </span>
     ) : null;
@@ -778,7 +778,7 @@ function StudioEditor({
         editor={
           <div className="flex flex-col gap-4">
             {serverChanged && dirty && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-warning-container px-3 py-2 text-sm text-on-warning-container">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container">
                 <span>
                   This tailored resume was changed somewhere else.
                 </span>

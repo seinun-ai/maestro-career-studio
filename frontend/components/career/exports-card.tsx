@@ -35,7 +35,7 @@ export function CareerExportsCard() {
     <Card>
       <CardHeader>
         <CardTitle>Download</CardTitle>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body-medium">
           A text file of your whole career history.
         </p>
       </CardHeader>
@@ -44,7 +44,7 @@ export function CareerExportsCard() {
           <Skeleton className="h-12 w-full" />
         ) : query.error ? (
           <div role="alert" className="space-y-2">
-            <p className="text-destructive text-sm">
+            <p className="text-destructive text-body-medium">
               {couldnt("check the text copy", query.error)}
             </p>
             <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
@@ -56,8 +56,8 @@ export function CareerExportsCard() {
             <div>
               {/* The download keeps its file name, career.md. Connected agents read the same
                   text (MCP get_career_export), so the row says who it is for. */}
-              <p className="text-sm font-medium">A text copy for you and connected agents</p>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-title-small">A text copy for you and connected agents</p>
+              <p className="text-muted-foreground text-body-small">
                 {metadata
                   ? // Every read rebuilds it when the career history changed (exports.get_career_export).
                     `Updated ${formatAbsoluteDateTime(metadata.generated_at)}. It updates itself when your career history changes.`

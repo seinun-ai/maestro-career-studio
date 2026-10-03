@@ -239,7 +239,6 @@ export function NewEntityDialog({
                         key={preset.id}
                         type="button"
                         size="sm"
-                        className="text-xs"
                         variant={on ? "tonal" : "outline"} aria-pressed={on}
                         onClick={() => {
                           setSectionTitle(preset.title);
@@ -274,7 +273,7 @@ export function NewEntityDialog({
                   readOnly={create.isPending}
                 />
                 {titleCollides && (
-                  <span className="text-destructive text-xs">
+                  <span className="text-destructive text-body-small">
                     {TITLE_COLLISION_MESSAGE}
                   </span>
                 )}
@@ -290,12 +289,12 @@ export function NewEntityDialog({
                     className={cn(
                       "flex flex-1 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
                       sectionType === "entries"
-                        ? "border-primary bg-primary/5 font-medium"
+                        ? "border-primary bg-primary/5"
                         : "border-input hover:border-border text-muted-foreground",
                     )}
                   >
-                    <span className="text-xs font-semibold text-foreground">{SECTION_TYPE_LABELS.entries}</span>
-                    <span className="text-[11px] text-muted-foreground">Each with a title and details</span>
+                    <span className="text-label-medium text-foreground">{SECTION_TYPE_LABELS.entries}</span>
+                    <span className="text-body-small text-muted-foreground">Each with a title and details</span>
                   </button>
                   <button
                     type="button"
@@ -309,12 +308,12 @@ export function NewEntityDialog({
                     className={cn(
                       "flex flex-1 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
                       sectionType === "bullets"
-                        ? "border-primary bg-primary/5 font-medium"
+                        ? "border-primary bg-primary/5"
                         : "border-input hover:border-border text-muted-foreground",
                     )}
                   >
-                    <span className="text-xs font-semibold text-foreground">{SECTION_TYPE_LABELS.bullets}</span>
-                    <span className="text-[11px] text-muted-foreground">A simple list</span>
+                    <span className="text-label-medium text-foreground">{SECTION_TYPE_LABELS.bullets}</span>
+                    <span className="text-body-small text-muted-foreground">A simple list</span>
                   </button>
                 </div>
               </div>
@@ -354,7 +353,7 @@ export function NewEntityDialog({
                   <Label htmlFor="career-entity-start" optional>
                     Start date
                   </Label>
-                  <p id="career-entity-start-hint" className="text-muted-foreground text-xs">
+                  <p id="career-entity-start-hint" className="text-muted-foreground text-body-small">
                     Month and year, like Jan 2025.
                   </p>
                   <Input
@@ -401,7 +400,7 @@ export function NewEntityDialog({
               </div>
             </>
           ) : (
-            <p className="text-xs text-muted-foreground italic">
+            <p className="text-body-small text-muted-foreground italic">
               You can add bullets after you create it.
             </p>
           )}

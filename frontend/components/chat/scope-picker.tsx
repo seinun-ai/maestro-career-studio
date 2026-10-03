@@ -42,7 +42,7 @@ export function SelectionChip({
 }) {
   const label = selection.label ?? fallbackLabel(selection);
   return (
-    <Badge variant="secondary" className="gap-1 font-normal">
+    <Badge variant="secondary" className="gap-1 text-body-small">
       {selection.kind === "kb_entity" && (
         <BriefcaseBusiness className="size-3" aria-hidden="true" />
       )}
@@ -171,7 +171,7 @@ export function ScopePickerDialog({
         <DialogHeader>
           <DialogTitle>Add context</DialogTitle>
         </DialogHeader>
-        <p className="text-muted-foreground -mt-2 text-xs">
+        <p className="text-muted-foreground -mt-2 text-body-small">
           Resume parts limit what the Assistant edits. Career history items
           give it background.
         </p>
@@ -193,9 +193,9 @@ export function ScopePickerDialog({
                 onRetry={() => void kbEntities.refetch()}
               />
             ) : kbEntities.isLoading ? (
-              <p className="text-muted-foreground text-sm">Loading your career history…</p>
+              <p className="text-muted-foreground text-body-medium">Loading your career history…</p>
             ) : (kbEntities.data ?? []).length === 0 ? (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-body-medium">
                 Nothing in your career history yet.
               </p>
             ) : (
@@ -206,8 +206,8 @@ export function ScopePickerDialog({
                     className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm">{entity.title}</p>
-                      <p className="text-muted-foreground text-xs capitalize">
+                      <p className="truncate text-body-medium">{entity.title}</p>
+                      <p className="text-muted-foreground text-body-small capitalize">
                         {entity.kind}
                         {entity.org ? ` · ${entity.org}` : ""}
                       </p>
@@ -240,8 +240,8 @@ export function ScopePickerDialog({
               <p
                 className={
                   resumeState === "error"
-                    ? "text-destructive text-sm"
-                    : "text-muted-foreground text-sm"
+                    ? "text-destructive text-body-medium"
+                    : "text-muted-foreground text-body-medium"
                 }
                 role={resumeState === "error" ? "alert" : undefined}
               >
@@ -255,7 +255,7 @@ export function ScopePickerDialog({
               buildSections(data).map((spec) => (
             <div key={spec.section}>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{spec.title}</span>
+                <span className="text-title-small">{spec.title}</span>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -300,7 +300,7 @@ export function ScopePickerDialog({
                             ) : (
                               <span className="w-3.5 shrink-0" />
                             )}
-                            <span className="truncate text-sm">{item.label}</span>
+                            <span className="truncate text-body-medium">{item.label}</span>
                           </div>
                           <Button
                             variant="ghost"
@@ -318,7 +318,7 @@ export function ScopePickerDialog({
                                 key={bulletIndex}
                                 className="flex items-start justify-between gap-2"
                               >
-                                <span className="text-muted-foreground line-clamp-2 text-xs">
+                                <span className="text-muted-foreground line-clamp-2 text-body-small">
                                   {bullet}
                                 </span>
                                 <Button

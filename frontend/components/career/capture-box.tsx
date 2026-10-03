@@ -139,7 +139,7 @@ export function CaptureBox() {
             if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
           }}
         >
-          <Label htmlFor="career-capture" className="col-start-1 row-start-1 flex items-center gap-2 text-sm font-medium whitespace-nowrap">
+          <Label htmlFor="career-capture" className="col-start-1 row-start-1 flex items-center gap-2 text-label-large whitespace-nowrap">
             <span className="flex size-7 items-center justify-center rounded-full bg-primary/10">
               <Sparkles className="text-primary size-3.5" aria-hidden="true" />
             </span>
@@ -198,7 +198,7 @@ export function CaptureBox() {
               !open && "sr-only",
             )}
           >
-            <p id="career-capture-help" className="text-muted-foreground text-xs">
+            <p id="career-capture-help" className="text-muted-foreground text-body-small">
               Type a recent win or add a document. Nothing goes on a resume until you approve it.
             </p>
             {open ? (

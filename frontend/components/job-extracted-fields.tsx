@@ -141,10 +141,10 @@ function StatLine({
 }) {
   const empty = value == null || value === "";
   return (
-    <div className="flex items-start gap-2 text-sm">
+    <div className="flex items-start gap-2 text-body-medium">
       <span className="text-muted-foreground mt-0.5 [&>svg]:size-4">{icon}</span>
       <div className="min-w-0 flex-1">
-        <div className="text-muted-foreground text-[11px] tracking-wide uppercase">
+        <div className="text-muted-foreground text-label-small">
           {label}
         </div>
         <div className={empty ? "text-muted-foreground/60" : ""}>
@@ -167,7 +167,7 @@ function SkillGroup({
   if (skills.length === 0) return null;
   return (
     <div>
-      <div className="text-muted-foreground mb-1.5 text-xs font-medium">
+      <div className="text-muted-foreground mb-1.5 text-label-medium">
         {title} ({skills.length})
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -193,11 +193,11 @@ function BulletSection({
   if (items.length === 0) return null;
   return (
     <section>
-      <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold [&>svg]:size-4">
+      <h4 className="mb-2 flex items-center gap-2 text-title-small [&>svg]:size-4">
         {icon}
         {title}
       </h4>
-      <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
+      <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-body-medium">
         {items.map((item, i) => (
           <li key={i}>{item}</li>
         ))}
@@ -264,12 +264,12 @@ export function JobExtractedFields({
               <CardTitle>
                 {job.company ?? "—"} · {job.title ?? "—"}
               </CardTitle>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-body-small">
                 Job description
               </p>
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">Job details</p>
+            <p className="text-muted-foreground text-body-medium">Job details</p>
           )}
           {actionsSlot}
         </CardHeader>
@@ -329,7 +329,7 @@ export function JobExtractedFields({
 
           {skills.length > 0 && (
             <div className="space-y-3 border-t pt-4">
-              <h4 className="flex items-center gap-2 text-sm font-semibold [&>svg]:size-4">
+              <h4 className="flex items-center gap-2 text-title-small [&>svg]:size-4">
                 <Sparkles />
                 Skills ({skills.length})
               </h4>
@@ -374,7 +374,7 @@ export function JobExtractedFields({
           {showRaw ? "Hide full job description" : "Show full job description"}
         </Button>
         {showRaw && (
-          <pre className="bg-muted max-h-96 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+          <pre className="bg-muted max-h-96 overflow-auto rounded-md p-3 text-body-small whitespace-pre-wrap">
             {job.raw_text}
           </pre>
         )}

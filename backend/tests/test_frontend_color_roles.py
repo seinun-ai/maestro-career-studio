@@ -333,8 +333,10 @@ def test_selected_tonal_toggles_show_a_check():
 def test_active_chat_session_is_current():
     chat = _read("components/chat/chat-page.tsx")
     assert 'aria-current={activeId === s.id ? "true" : undefined}' in chat
-    # Current in a list is semibold, as the sidebar's active row is.
-    assert "hover:bg-secondary-container-hover font-semibold" in chat
+    # Current in a list is semibold, as the sidebar's active row is. The weight sits on
+    # the button, which has its own scale class: a wrapper's weight would lose to it.
+    assert 'activeId === s.id && "font-semibold"' in chat
+    assert "hover:bg-secondary-container-hover" in chat
 
 
 def test_segmented_controls_and_entity_cards_expose_pressed():
@@ -756,14 +758,14 @@ def test_chip_text_meets_aa_on_its_tint(rel, chip, mode):
 # thumbnail chip over the rendered page, is measured below.
 _ROLE_SITES = [
     ("components/templates/requires-tex-badge.tsx", 'className="border-transparent bg-warning-container text-on-warning-container"'),
-    ("components/templates/template-gallery.tsx", '<p className="text-warning basis-full text-xs">'),
-    ("app/templates/[id]/page.tsx", '<span className="text-warning text-xs">Unsaved changes</span>'),
+    ("components/templates/template-gallery.tsx", '<p className="text-warning basis-full text-body-small">'),
+    ("app/templates/[id]/page.tsx", '<span className="text-warning text-body-small">Unsaved changes</span>'),
     ("components/charts/tailoring-lift-chart.tsx", '? "text-success"\n                : "text-destructive"'),
     ("components/ats-compare-panel.tsx", 'positive ? "text-success" : "text-destructive"'),
     ("components/ats-compare-panel.tsx", 'className="border-transparent bg-success-container text-on-success-container"'),
     ("components/settings/models-section.tsx", '"text-success font-medium"'),
-    ("components/proposals/proposals-section.tsx", 'className="text-warning inline-flex items-center gap-1 text-xs"'),
-    ("components/proposals/proposals-section.tsx", "rounded-full bg-warning-container px-2 py-0.5 text-[10px] font-medium text-on-warning-container"),
+    ("components/proposals/proposals-section.tsx", 'className="text-warning inline-flex items-center gap-1 text-body-small"'),
+    ("components/proposals/proposals-section.tsx", "rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container"),
     ("components/base-resumes/base-resume-thumbnail.tsx", 'className: "text-warning"'),
     ("components/resume-versions/version-history-sheet.tsx", 'chat: "bg-tertiary-container text-on-tertiary-container"'),
     ("components/resume-versions/version-history-sheet.tsx", 'tailor: "bg-primary-container text-on-primary-container"'),

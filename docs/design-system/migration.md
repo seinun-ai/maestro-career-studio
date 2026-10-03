@@ -37,15 +37,24 @@ The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (
 
 | Today | Write instead |
 | --- | --- |
-| `text-[22px] font-medium` | `text-title-large font-medium` |
+| `text-[22px] font-medium` | `text-title-large font-medium` (the page title keeps its 500; so does the `h1` of a full-page state such as not found) |
 | `text-base font-medium` (card title) | `text-title-medium` |
-| `text-sm font-medium` | `text-title-small` for a heading or name, `text-label-large` for a button or field label |
+| `text-base` | `text-body-large` |
+| `text-sm font-medium` | `text-title-small` for a heading, name, row primary text or table header; `text-label-large` for a button, field label, tab or control text |
 | `text-sm` | `text-body-medium` |
 | `text-xs font-medium` | `text-label-medium` |
-| `text-xs` | `text-body-small` |
-| `text-[10px]`, `text-[11px]`, `text-[0.65rem]`, `text-[0.7rem]` | `text-label-small` |
+| `text-xs` | `text-body-small` (on a Badge or a small Button, which already set `text-label-medium`, drop it; on a Label write `text-label-medium`) |
+| `text-xs font-normal` on a Badge or Button | `text-body-small`: the weight comes from the scale |
+| `text-[10px]`, `text-[11px]`, `text-[0.65rem]`, `text-[0.7rem]` | `text-label-small`; drop any `font-medium` beside it. A sentence at that size is `text-body-small` |
 | `text-[0.8rem]` | `text-label-medium` |
-| `text-xs font-semibold uppercase tracking-[0.12em]` (group heading) | `text-title-small text-muted-foreground`, sentence case |
+| `text-lg font-medium` (a page-level state heading) | `text-title-large font-medium` |
+| `text-2xl font-semibold` (a large stat) | `text-headline-small` |
+| `text-3xl` (the chat greeting) | `text-headline-medium` |
+| `text-3xl font-bold` (the health grade letter) | `text-headline-small font-semibold` (the one 600 besides the current nav row) |
+| `text-xs font-semibold uppercase tracking-[0.12em]` (group heading) | `text-title-small text-muted-foreground`, sentence case: no `uppercase`, no tracking |
+| `text-[11px] uppercase tracking-wide` (a `dt` or stat label) | `text-label-small text-muted-foreground`, sentence case |
+| `leading-snug`, `leading-relaxed`, `leading-tight` beside a size | drop it: the scale sets the line height. Long reading text (the chat reply and its code blocks, notes, the profile summary, judged text) and inline diff highlights keep `leading-6` or `leading-7` |
+| `font-medium` or `font-semibold` beside a size | drop it: the scale sets the weight (a semibold name or heading is now 500) |
 
 ## Shape, shadow, motion
 

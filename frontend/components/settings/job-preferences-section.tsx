@@ -218,7 +218,7 @@ function JobPreferencesEditor({
           <Label htmlFor="job-preferences-locations" optional>
             Locations
           </Label>
-          <p id="job-preferences-locations-hint" className="text-muted-foreground text-xs">
+          <p id="job-preferences-locations-hint" className="text-muted-foreground text-body-small">
             One location per line.
           </p>
           <Textarea

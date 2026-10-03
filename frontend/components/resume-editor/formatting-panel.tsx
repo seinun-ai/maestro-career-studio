@@ -140,12 +140,12 @@ export function FormattingPanel({
         <span className="grid gap-0.5">
           <span
             id={labelId}
-            className={cn("text-sm", disabled && "text-muted-foreground/60")}
+            className={cn("text-body-medium", disabled && "text-muted-foreground/60")}
           >
             {label}
           </span>
           {hint ? (
-            <span id={hintId} className="text-muted-foreground text-xs">
+            <span id={hintId} className="text-muted-foreground text-body-small">
               {hint}
             </span>
           ) : null}
@@ -180,7 +180,7 @@ export function FormattingPanel({
             disabled={disabled}
             onClick={() => onSelect(o.value)}
             className={cn(
-              "rounded px-2 py-0.5 text-xs transition-colors disabled:pointer-events-none disabled:opacity-50",
+              "rounded px-2 py-0.5 text-body-small transition-colors disabled:pointer-events-none disabled:opacity-50",
               current === o.value
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -205,10 +205,10 @@ export function FormattingPanel({
     return (
       <div className={cn("grid gap-1", disabled && "opacity-50")}>
         <div className="flex items-center justify-between">
-          <span id={labelId} className="text-sm">
+          <span id={labelId} className="text-body-medium">
             {label}
           </span>
-          <span className="text-muted-foreground text-xs tabular-nums">
+          <span className="text-muted-foreground text-body-small tabular-nums">
             {display(current)}
           </span>
         </div>
@@ -247,7 +247,7 @@ export function FormattingPanel({
     const name = (section: SectionKey) => SECTION_ORDER_LABELS[section] ?? section;
     return (
       <div className={cn("grid gap-1", disabled && "opacity-50")}>
-        <span id={labelId} className="text-sm">
+        <span id={labelId} className="text-body-medium">
           Section order
         </span>
         {withTooltip(
@@ -264,7 +264,7 @@ export function FormattingPanel({
                   key={section}
                   id={section}
                   role="listitem"
-                  className="group/row flex items-center justify-between gap-2 px-0.5 text-xs"
+                  className="group/row flex items-center justify-between gap-2 px-0.5 text-body-small"
                 >
                   {(handle) => (
                     <>
@@ -314,13 +314,13 @@ export function FormattingPanel({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="hover:bg-surface-container-low flex w-full items-center justify-between px-3 py-2 text-sm font-medium transition-colors"
+          className="hover:bg-surface-container-low flex w-full items-center justify-between px-3 py-2 text-label-large transition-colors"
         >
           <span className="flex items-center gap-2">
             <SlidersHorizontal className="size-3.5" />
             Formatting
             {customized && (
-              <span className="bg-secondary-container text-on-secondary-container rounded-full px-1.5 py-0.5 text-[0.65rem] font-medium">
+              <span className="bg-secondary-container text-on-secondary-container rounded-full px-1.5 py-0.5 text-label-small">
                 Changed
               </span>
             )}
@@ -334,7 +334,7 @@ export function FormattingPanel({
       {showContent && (
         <div tabIndex={-1} className="space-y-4 px-3 pt-1 pb-3 outline-none">
           {baseline.status === "loading" && (
-            <p role="status" className="text-muted-foreground text-xs">
+            <p role="status" className="text-muted-foreground text-body-small">
               Loading {baseline.what}…
             </p>
           )}
@@ -348,7 +348,7 @@ export function FormattingPanel({
             />
           )}
           {onRevertToBase && (
-            <div className="text-muted-foreground bg-surface-container-low flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs">
+            <div className="text-muted-foreground bg-surface-container-low flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-body-small">
               <span>
                 {inherited && !customized
                   ? "Same as base resume"
@@ -527,7 +527,7 @@ export function FormattingPanel({
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="space-y-1">
-      <div className="text-muted-foreground text-[0.7rem] font-semibold tracking-wide uppercase">
+      <div className="text-muted-foreground text-title-small">
         {title}
       </div>
       {children}

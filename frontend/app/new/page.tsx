@@ -93,7 +93,7 @@ export default function NewApplicationPage() {
       />
 
       {needsKey ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-warning-container px-3 py-2 text-sm text-on-warning-container">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container">
           <span id={keyNoticeId}>
             Saving a job reads its description with AI, so it needs an API key.
           </span>
@@ -116,7 +116,7 @@ export default function NewApplicationPage() {
             value={rawText}
             onChange={(e) => onRawTextChange(e.target.value)}
             rows={14}
-            className="font-mono text-sm"
+            className="font-mono text-body-medium"
           />
         </div>
 
@@ -144,7 +144,7 @@ export default function NewApplicationPage() {
         </Button>
         {/* No key: the amber notice above already says why, and names the button. */}
         {needsKey ? null : (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             Saved jobs appear on the Jobs page, ready to score.
           </p>
         )}

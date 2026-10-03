@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
  *
  * There were three: `StatTile` in analytics-overview (`rounded-xl p-4`),
  * `MetricCard` in explore-overview (`rounded-md p-3`), and `Stat` in
- * base-summary-cards (no box, `text-sm` value) — so the four Analytics tabs
+ * base-summary-cards (no box, `text-title-small` value) — so the four Analytics tabs
  * showed the same kind of number three different ways.
  *
  * The first two were the same component with a different radius and padding,
@@ -39,8 +39,8 @@ export function StatTile({
 }
 
 /**
- * A stat rendered inside an existing card — no box of its own, and a body-sized
- * value rather than the tile's display size, because it sits in a row of peers
+ * A stat rendered inside an existing card — no box of its own, and a title-small
+ * value rather than the tile's title-large size, because it sits in a row of peers
  * rather than standing alone on the page.
  */
 export function InlineStat({
@@ -52,8 +52,8 @@ export function InlineStat({
 }) {
   return (
     <div>
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="text-sm font-medium">{value}</p>
+      <p className="text-muted-foreground text-body-small">{label}</p>
+      <p className="text-title-small">{value}</p>
     </div>
   );
 }

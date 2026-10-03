@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 export function DiffText({ oldText, newText }: { oldText: string; newText: string }) {
   return (
-    <p className="max-w-[65ch] text-sm leading-relaxed">
+    <p className="max-w-[65ch] text-body-medium leading-6">
       {wordDiff(oldText, newText).map((token, i) => (
         <span
           key={i}
@@ -44,7 +44,7 @@ export function SuggestionCopyOnly({
       <div className="bg-surface-container-low rounded-md p-2">
         <DiffText oldText={currentText} newText={suggestion} />
       </div>
-      <p className="text-muted-foreground max-w-[65ch] text-xs">
+      <p className="text-muted-foreground max-w-[65ch] text-body-small">
         Can&apos;t apply this here yet. Copy the new wording into the resume.
       </p>
     </div>
@@ -69,14 +69,14 @@ export function SourceQuote({ text, clamp }: { text: string; clamp?: boolean }) 
     <div className="border-l-2 border-border pl-3">
       <p
         ref={quoteRef}
-        className={cn("text-foreground max-w-[65ch] text-sm", clamp && !open && "line-clamp-3")}
+        className={cn("text-foreground max-w-[65ch] text-body-medium", clamp && !open && "line-clamp-3")}
       >
         {text}
       </p>
       {clamp && (open || cut) && (
         <button
           type="button"
-          className="text-primary mt-0.5 text-xs underline-offset-2 hover:underline"
+          className="text-primary mt-0.5 text-body-small underline-offset-2 hover:underline"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >

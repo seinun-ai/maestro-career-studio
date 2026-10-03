@@ -133,7 +133,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
             />
 
             {showQueue ? (
-              <ul className="space-y-1.5 text-sm">
+              <ul className="space-y-1.5 text-body-medium">
                 {rows.map((row, i) => (
                   <li key={`${row.file.name}-${i}`} className="flex items-start gap-2">
                     <RowIcon state={row.state} />
@@ -143,7 +143,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
                           min-w-0/truncate family. */}
                       <span className="block truncate">{row.file.name}</span>
                       {row.state === "failed" && (
-                        <span className="text-muted-foreground block text-xs">
+                        <span className="text-muted-foreground block text-body-small">
                           {row.reason}
                         </span>
                       )}
@@ -161,13 +161,13 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
                             : consolidate
                       }
                     />
-                    <span className="text-sm">Adding to your career history…</span>
+                    <span className="text-body-medium">Adding to your career history…</span>
                   </li>
                 )}
               </ul>
             ) : (
               files.length > 0 && (
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-1 text-body-medium">
                   {files.map((f) => (
                     <li key={f.name} className="text-muted-foreground truncate">
                       {f.name}
@@ -185,7 +185,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
             )}
 
             {rejected.length > 0 && (
-              <ul className="space-y-1 text-xs">
+              <ul className="space-y-1 text-body-small">
                 {rejected.map((r) => (
                   <li key={r.file.name} className="text-muted-foreground truncate">
                     <span className="font-medium">{r.file.name}</span>: {r.reason}
@@ -216,7 +216,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
           <div className="space-y-4">
             {/* The disclosure. Both effects, stated plainly, including that the
                 imported bullets are already approved and can be reviewed. */}
-            <p className="text-sm">
+            <p className="text-body-medium">
               Created <strong>{report.bases.length}</strong>{" "}
               {report.bases.length === 1 ? "base resume" : "base resumes"}
               {pointsAdded > 0 && (
@@ -231,13 +231,13 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
 
             {report.bases.length > 0 && (
               <div className="space-y-2">
-                <p className="text-muted-foreground text-xs">
+                <p className="text-muted-foreground text-body-small">
                   Check the role for each. These are our best guesses.
                 </p>
                 <ul className="space-y-2">
                   {report.bases.map((b) => (
                     <li key={b.slug} className="flex items-center justify-between gap-3">
-                      <span className="truncate text-sm">{b.display_name}</span>
+                      <span className="truncate text-body-medium">{b.display_name}</span>
                       <RoleCategoryPicker
                         slug={b.slug}
                         roleCategory={b.role_category}
@@ -254,8 +254,8 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
 
             {report.skipped.length > 0 && (
               <div className="space-y-1">
-                <p className="text-sm font-medium">Skipped</p>
-                <ul className="text-muted-foreground space-y-1 text-xs">
+                <p className="text-title-small">Skipped</p>
+                <ul className="text-muted-foreground space-y-1 text-body-small">
                   {report.skipped.map((s) => (
                     <li key={s.filename}>
                       <span className="font-medium">{s.filename}</span>: {s.reason}

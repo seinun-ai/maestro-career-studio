@@ -54,7 +54,7 @@ export function BaseSummaryCards() {
     );
   }
   if ((data ?? []).length === 0) {
-    return <p className="text-muted-foreground text-sm">No base resumes yet.</p>;
+    return <p className="text-muted-foreground text-body-medium">No base resumes yet.</p>;
   }
 
   return (
@@ -73,7 +73,7 @@ export function BaseSummaryCards() {
             {row.health_grade ? (
               <span
                 className={cn(
-                  "inline-flex h-6 shrink-0 items-center rounded-full px-2 text-xs font-medium",
+                  "inline-flex h-6 shrink-0 items-center rounded-full px-2 text-label-medium",
                   GRADE_STYLES[row.health_grade] ?? "bg-muted text-muted-foreground",
                 )}
                 title={
@@ -85,7 +85,7 @@ export function BaseSummaryCards() {
                 Health {row.health_grade}
               </span>
             ) : (
-              <span className="text-muted-foreground inline-flex h-6 shrink-0 items-center rounded-full bg-muted px-2 text-xs">
+              <span className="text-muted-foreground inline-flex h-6 shrink-0 items-center rounded-full bg-muted px-2 text-body-small">
                 Health not checked yet
               </span>
             )}
@@ -115,7 +115,7 @@ export function BaseSummaryCards() {
               <InlineStat label="In progress" value={String(row.in_flight)} />
             </div>
             {row.last_activity ? (
-              <p className="text-muted-foreground mt-3 text-xs">
+              <p className="text-muted-foreground mt-3 text-body-small">
                 Active {formatTimeAgo(row.last_activity)}
               </p>
             ) : null}

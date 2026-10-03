@@ -48,7 +48,7 @@ export function SourceToggle({
           onPointerEnter={() => onPreview?.(s)}
           onFocus={() => onPreview?.(s)}
           className={cn(
-            "inline-flex h-7 cursor-pointer items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors duration-150",
+            "inline-flex h-7 cursor-pointer items-center gap-1 rounded-full px-3 text-label-medium transition-colors duration-150",
             value === s
               ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
               : "text-muted-foreground hover:bg-muted",

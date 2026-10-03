@@ -54,7 +54,7 @@ function Table({ className, minWidth, stickyHeader, ...props }: TableProps) {
     >
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-sm", width?.table, className)}
+        className={cn("w-full caption-bottom text-body-medium", width?.table, className)}
         {...props}
       />
     </div>
@@ -152,7 +152,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
       scope="col"
       data-slot="table-head"
       className={cn(
-        "h-10 px-4 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 px-4 text-left align-middle text-title-small whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -180,7 +180,7 @@ function TableCaption({
   return (
     <caption
       data-slot="table-caption"
-      className={cn("mt-4 text-sm text-muted-foreground", className)}
+      className={cn("mt-4 text-body-medium text-muted-foreground", className)}
       {...props}
     />
   )

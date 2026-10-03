@@ -34,7 +34,7 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
       {/* State the outcome BEFORE the upload. These become drafts to review,
           not base resumes — conflating the two is the failure this lane split
           exists to prevent. */}
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-body-small">
         We add what we find to your career history as{" "}
         <strong>draft bullets for you to review</strong>. These don&apos;t
         become base resumes.
@@ -50,21 +50,21 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
       />
 
       {rows.length > 0 && (
-        <ul className="space-y-1.5 text-sm">
+        <ul className="space-y-1.5 text-body-medium">
           {rows.map((row, i) => (
             <li key={`${row.file.name}-${i}`} className="flex items-start gap-2">
               <RowIcon state={row.state} />
               <span className="min-w-0 flex-1">
                 <span className="truncate">{row.file.name}</span>
                 {row.state === "done" && (
-                  <span className="text-muted-foreground block text-xs">
+                  <span className="text-muted-foreground block text-body-small">
                     Added to {row.entity}
                     {row.created ? " (new)" : ""}: {row.points} draft{" "}
                     {row.points === 1 ? "bullet" : "bullets"}
                   </span>
                 )}
                 {row.state === "failed" && (
-                  <span className="text-muted-foreground block text-xs">
+                  <span className="text-muted-foreground block text-body-small">
                     {row.reason}
                   </span>
                 )}
@@ -75,7 +75,7 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
       )}
 
       {status === "halted" && summary.remaining > 0 && (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-body-small">
           Stopped with {summary.remaining}{" "}
           {summary.remaining === 1 ? "file" : "files"} left. What was added is
           saved.
@@ -83,7 +83,7 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
       )}
 
       {finished && (
-        <p className="text-sm">
+        <p className="text-body-medium">
           Added <strong>{summary.points}</strong> draft{" "}
           {summary.points === 1 ? "bullet" : "bullets"} to{" "}
           <strong>{summary.entitiesCreated + summary.entitiesMatched}</strong>{" "}
@@ -124,7 +124,7 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
       </div>
 
       {busy && (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-body-small">
           Files are read one at a time, a few seconds each.
         </p>
       )}

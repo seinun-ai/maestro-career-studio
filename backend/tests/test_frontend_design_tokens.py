@@ -217,6 +217,142 @@ def test_no_palette_class_is_written_outside_the_monogram():
     assert not hits, "a palette utility is left at:\n" + "\n".join(hits)
 
 
+def _class_strings(rel: str):
+    """Every quoted or template string in a source file, with its line number.
+
+    A class list is a string literal, so "the same class string" is the same
+    literal. A literal that is not a class list simply never matches.
+    """
+    text = (_FRONTEND / rel).read_text(encoding="utf-8")
+    for match in _STRING_LITERAL.finditer(text):
+        yield text.count("\n", 0, match.start()) + 1, match.group(0)
+
+
+def _cn_calls(rel: str):
+    """Each `cn(...)` call's string literals joined, with the call's line number.
+
+    `cn("text-body-medium", active && "font-semibold")` is one class list written
+    in two literals, so a weight in the second is still beside the scale utility.
+    """
+    text = (_FRONTEND / rel).read_text(encoding="utf-8")
+    for call in re.finditer(r"(?<![\w.])cn\(", text):
+        depth, position = 1, call.end()
+        parts = []
+        while depth and position < len(text):
+            literal = _STRING_LITERAL.match(text, position)
+            if literal:
+                parts.append(literal.group(0))
+                position = literal.end()
+                continue
+            depth += {"(": 1, ")": -1}.get(text[position], 0)
+            position += 1
+        yield text.count("\n", 0, call.start()) + 1, "\n".join(parts)
+
+
+def _frontend_sources():
+    for folder in ("app", "components", "lib", "hooks"):
+        for path in sorted((_FRONTEND / folder).rglob("*")):
+            if path.suffix in (".ts", ".tsx"):
+                yield path.relative_to(_FRONTEND).as_posix()
+
+
+def _lines_matching(pattern):
+    """`path:line` for every line of the frontend source that matches (comments too)."""
+    hits = []
+    for rel in _frontend_sources():
+        text = (_FRONTEND / rel).read_text(encoding="utf-8")
+        for number, line in enumerate(text.splitlines(), 1):
+            if pattern.search(line):
+                hits.append(f"{rel}:{number}")
+    return hits
+
+
+_STRING_LITERAL = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`")
+# Tailwind's stock sizes and an arbitrary pixel or rem size: the scale has a name for each.
+_RAW_SIZE = re.compile(
+    r"(?<![\w-])text-(?:xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)(?![\w-])"
+    r"|(?<![\w-])text-\[[0-9.]+(?:px|rem)\]"
+)
+_SCALE_SIZE = re.compile(r"(?<![\w-])text-(?:display|headline|title|body|label)-(?:large|medium|small)(?![\w-])")
+_HAND_WEIGHT = re.compile(r"(?<![\w-])font-(?:medium|semibold|bold)(?![\w-])")
+_UPPERCASE = re.compile(r"(?<![\w-])uppercase(?![\w-])")
+
+
+def test_no_raw_text_size_is_written():
+    """Size, line height and weight travel together: `text-sm` is `text-body-medium`
+    (or `title-small` / `label-large` when it carried a weight), `text-[11px]` is
+    `text-label-small`. docs/design-system/migration.md has the whole table."""
+    hits = _lines_matching(_RAW_SIZE)
+    assert not hits, "a raw text size is left at:\n" + "\n".join(hits)
+
+
+def test_no_class_is_uppercase():
+    """Group headings and meta labels are sentence case; the caps were the style, not the text."""
+    hits = _lines_matching(_UPPERCASE)
+    assert not hits, "uppercase is left at:\n" + "\n".join(hits)
+
+
+# A scale utility carries its own weight, so a hand-paired font-medium/semibold/bold
+# in the same class string (or the same cn(...) call) overrides the scale. The
+# sanctioned overrides are listed by file and by the class text they may carry, so
+# a second weight written elsewhere in the same file still fails:
+#   - the page title is `text-title-large font-medium`: PageHeader, the same title
+#     in the studios (tailored resume, tailor session, job page, entity heading,
+#     the editable title) and the h1 of a full-page state (error, not found, a
+#     missing gap analysis), which is that page's title;
+#   - StatTile's value is the same title-large at 500;
+#   - the current sidebar row is weight 600 under `data-active` (`aria-current`),
+#     and so is the open chat row (the weight sits on its button, which has its
+#     own scale class);
+#   - the health grade letter is headline-small at 600.
+_PAGE_TITLE = r"text-title-large font-medium"
+_WEIGHT_OVERRIDE_ALLOWED = [
+    ("app/error.tsx", _PAGE_TITLE),
+    ("app/not-found.tsx", _PAGE_TITLE),
+    ("app/jobs/[id]/page.tsx", _PAGE_TITLE),
+    ("app/jobs/[id]/tailor/[sessionId]/page.tsx", _PAGE_TITLE),
+    ("components/page-shell.tsx", _PAGE_TITLE),
+    ("components/career/entity-detail.tsx", _PAGE_TITLE),
+    ("components/resume-editor/editable-title.tsx", _PAGE_TITLE),
+    ("components/resume-editor/tailored-resume-studio.tsx", _PAGE_TITLE),
+    ("components/analytics/stat-tile.tsx", r"text-title-large text-foreground mt-0\.5 font-medium"),
+    ("components/ui/sidebar.tsx", r"data-active:font-semibold"),
+    ("components/chat/chat-page.tsx", r'text-body-medium"\n"font-semibold"'),
+    ("components/resume-health/summary-band.tsx", r"text-headline-small font-semibold"),
+]
+
+
+def _weight_pairs():
+    """`path:line` and text of every class string or cn() call with a scale size and a weight."""
+    for rel in _frontend_sources():
+        for number, text in (*_class_strings(rel), *_cn_calls(rel)):
+            if _SCALE_SIZE.search(text) and _HAND_WEIGHT.search(text):
+                yield rel, number, text
+
+
+def test_no_weight_is_paired_with_a_scale_utility_by_hand():
+    """Blind spot: a parent's `font-semibold` that a child's own scale class
+    overrides (`<div class="font-semibold"><span class="text-body-medium">`) is
+    not seen here, because the two never share a class string. Put the weight on
+    the element that carries the scale class."""
+    hits = []
+    for rel, number, text in _weight_pairs():
+        if not any(rel == file and re.search(pattern, text) for file, pattern in _WEIGHT_OVERRIDE_ALLOWED):
+            hits.append(f"{rel}:{number}")
+    assert not hits, "a weight is paired with a scale utility at:\n" + "\n".join(sorted(set(hits)))
+
+
+def test_every_weight_override_entry_still_matches():
+    """A stale entry would let the next hand-paired weight in that file through."""
+    pairs = list(_weight_pairs())
+    stale = [
+        f"{file}: {pattern}"
+        for file, pattern in _WEIGHT_OVERRIDE_ALLOWED
+        if not any(rel == file and re.search(pattern, text) for rel, _, text in pairs)
+    ]
+    assert not stale, "allow-list entries that match nothing:\n" + "\n".join(stale)
+
+
 def test_stat_tile_is_a_filled_card():
     tile = _read("components/analytics/stat-tile.tsx")
     for cls in (

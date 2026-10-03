@@ -118,7 +118,7 @@ export function EntityDetail({ entityId }: { entityId: string }) {
       <PageShell>
         <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
           <p className="font-medium">Couldn&apos;t load this career item.</p>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="text-muted-foreground mt-1 text-body-medium">
             {loadErrorDetail(loadError, "career item")}
           </p>
           <div className="mt-4 flex gap-2">
@@ -300,7 +300,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
             <Label htmlFor="kb-entity-start" optional>
               Start date
             </Label>
-            <p id="kb-entity-start-hint" className="text-muted-foreground text-xs">
+            <p id="kb-entity-start-hint" className="text-muted-foreground text-body-small">
               Month and year, like Jan 2025.
             </p>
             <Input
@@ -359,7 +359,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="bg-background/80 text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium">
+            <span className="bg-background/80 text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-label-medium">
               {entity.kind === "extra" && entity.section_title
                 ? entity.section_title
                 : KB_KIND_LABELS[entity.kind]}
@@ -375,8 +375,8 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
               }
             />
           </div>
-          <h1 className="mt-3 text-[22px] font-medium tracking-tight">{entity.title}</h1>
-          <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <h1 className="mt-3 text-title-large font-medium tracking-tight">{entity.title}</h1>
+          <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-body-medium">
             {entity.org ? <span>{entity.org}</span> : null}
             {dateRange ? (
               <span className="inline-flex items-center gap-1.5">
@@ -420,7 +420,7 @@ function EntityStatusChip({
             aria-label={`Status: ${current.label}. Change status`}
             disabled={pending}
             className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
+              "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-label-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
               current.chip,
             )}
           >

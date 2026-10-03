@@ -77,7 +77,7 @@ function TemplateBadgeStrip({
       {isReady && template.parse_certified === false && (
         // The words say it on the card, not only in a hover: ATS is spelled
         // out once here, where it first appears.
-        <p className="text-warning basis-full text-xs">
+        <p className="text-warning basis-full text-body-small">
           <span aria-hidden="true">⚠</span> Applicant tracking systems (ATS)
           may read some words as joined together. Pick another template to be
           safe.
@@ -130,7 +130,7 @@ function TemplateCardBody({
               you choose by, and the Edit link is /templates/<id> whenever you
               actually need to copy it. */}
           <CardTitle
-            className="flex min-w-0 items-center gap-1.5 text-base"
+            className="flex min-w-0 items-center gap-1.5"
             title={[templateName(template), formattingCoverage(template)].join("\n")}
           >
             {selected && <Check className="text-primary size-4 shrink-0" aria-hidden="true" />}
@@ -155,7 +155,7 @@ function TemplateCardBody({
           template on a computer without TeX has nothing to fix: the Needs
           setup badge says so, alone. */}
       {!isReady && templateHasErrors(template) && (
-        <CardContent className="pt-0 text-xs">
+        <CardContent className="pt-0 text-body-small">
           <p className="text-muted-foreground truncate">Has errors. Open to fix.</p>
         </CardContent>
       )}

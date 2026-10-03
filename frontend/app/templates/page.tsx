@@ -185,7 +185,7 @@ export default function TemplatesListPage() {
         subtitle="The look of the PDF."
         actions={
           <div className="flex items-center gap-3">
-            <label className="text-muted-foreground flex items-center gap-2 text-sm">
+            <label className="text-muted-foreground flex items-center gap-2 text-body-medium">
               <Switch
                 checked={showArchived}
                 onCheckedChange={setShowArchived}
@@ -268,7 +268,7 @@ export default function TemplatesListPage() {
           )}
         />
       ) : (
-        <p className="text-muted-foreground text-sm">No templates yet.</p>
+        <p className="text-muted-foreground text-body-medium">No templates yet.</p>
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -279,7 +279,7 @@ export default function TemplatesListPage() {
           <div className="grid gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="new_id">Short name</Label>
-              <p id="new_id_hint" className="text-muted-foreground text-xs">
+              <p id="new_id_hint" className="text-muted-foreground text-body-small">
                 Used in this template&apos;s web address and by connected agents.
                 Use only lowercase letters, numbers, hyphens, and underscores.
               </p>
@@ -291,7 +291,7 @@ export default function TemplatesListPage() {
                 aria-invalid={idError}
               />
               {idError && (
-                <p id="new_id_error" role="alert" className="text-destructive text-xs">
+                <p id="new_id_error" role="alert" className="text-destructive text-body-small">
                   That short name has a character that isn&apos;t allowed.
                 </p>
               )}

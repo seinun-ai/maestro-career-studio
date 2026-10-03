@@ -65,7 +65,7 @@ export function AcceptAllDialog({
                 className="mt-1"
               />
               <div className="min-w-0 flex-1 space-y-1">
-                <p id={`${listId}-${i}`} className="text-muted-foreground text-xs">
+                <p id={`${listId}-${i}`} className="text-muted-foreground text-body-small">
                   {row.finding.label}
                 </p>
                 <DiffText oldText={row.original ?? ""} newText={rowText(row)} />

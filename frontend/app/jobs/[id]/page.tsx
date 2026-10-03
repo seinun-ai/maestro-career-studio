@@ -102,7 +102,7 @@ function JobTabsList({ hasApp, reasonId }: { hasApp: boolean; reasonId: string }
 
 function NoDraftYet({ onOpenFit }: { onOpenFit: () => void }) {
   return (
-    <div className="text-muted-foreground flex flex-col items-center gap-3 rounded-md border border-dashed p-8 text-center text-sm">
+    <div className="text-muted-foreground flex flex-col items-center gap-3 rounded-md border border-dashed p-8 text-center text-body-medium">
       <p>{"Your resume and answers appear here once you start a draft."}</p>
       <Button size="sm" variant="outline" onClick={onOpenFit}>
         Go to Score and tailor
@@ -405,14 +405,14 @@ export default function JobDetailPage({
           />
           <CompanyMonogram
             name={job.company}
-            className="mt-0.5 size-10 text-base"
+            className="mt-0.5 size-10 text-body-large"
           />
           <div className="min-w-0 grow basis-[16rem]">
             {/* Wraps, never truncates: at 375 a long title lost its end, and this is the one place it shows. */}
-            <h1 className="text-[22px] font-medium tracking-tight break-words">
+            <h1 className="text-title-large font-medium tracking-tight break-words">
               {job.title ?? "Untitled role"}
             </h1>
-            <p className="text-muted-foreground truncate text-sm" title={metaLine}>
+            <p className="text-muted-foreground truncate text-body-medium" title={metaLine}>
               {metaLine}
             </p>
           </div>
@@ -581,7 +581,7 @@ export default function JobDetailPage({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <JobTabsList hasApp={hasApp} reasonId={lockedReasonId} />
             {hasApp ? null : (
-              <p id={lockedReasonId} className="text-muted-foreground basis-full text-xs">
+              <p id={lockedReasonId} className="text-muted-foreground basis-full text-body-small">
                 {LOCKED_REASON}
               </p>
             )}
@@ -618,7 +618,7 @@ export default function JobDetailPage({
               <button
                 type="button"
                 onClick={() => setTab("output")}
-                className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
+                className="text-primary inline-flex items-center gap-1 text-body-medium hover:underline"
               >
                 Compare with your base resume on the Resume tab
                 <ArrowRight className="size-3.5" />

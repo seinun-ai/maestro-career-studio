@@ -12,8 +12,8 @@ export default function NotFound() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
       <FileQuestion className="text-muted-foreground/50 size-8" aria-hidden />
-      <h1 className="text-lg font-medium">Page not found</h1>
-      <p className="text-muted-foreground text-sm">
+      <h1 className="text-title-large font-medium">Page not found</h1>
+      <p className="text-muted-foreground text-body-medium">
         It may have moved or been deleted.
       </p>
       <Button

@@ -162,7 +162,7 @@ export function ApplicationDetailsMenu({
           <Button
             variant="outline"
             size="sm"
-            className="text-muted-foreground h-8 gap-1.5 rounded-full px-3 text-xs font-normal"
+            className="text-muted-foreground h-8 gap-1.5 rounded-full px-3 text-body-small"
             aria-label="Application details"
           >
             <SlidersHorizontal className="size-3.5 opacity-60" />
@@ -176,16 +176,16 @@ export function ApplicationDetailsMenu({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="space-y-3">
-          <p className="text-sm font-medium">Application</p>
+          <p className="text-title-small">Application</p>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="menu-applied" className="text-xs">
+            <Label htmlFor="menu-applied" className="text-label-medium">
               Applied on
             </Label>
             <Input
               id="menu-applied"
               type="date"
-              className="h-8 text-sm"
+              className="h-8 text-body-medium"
               value={appliedAt}
               onChange={(e) => setAppliedAt(e.target.value)}
               onBlur={() => onPatch({ applied_at: toIsoDate(appliedAt) })}
@@ -199,12 +199,12 @@ export function ApplicationDetailsMenu({
           />
 
           <div className="grid gap-1">
-            <span className="text-muted-foreground text-xs">Base resume</span>
-            <span className="text-sm">{resumeName}</span>
+            <span className="text-muted-foreground text-body-small">Base resume</span>
+            <span className="text-body-medium">{resumeName}</span>
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="menu-referral" className="text-xs">
+            <Label htmlFor="menu-referral" className="text-label-medium">
               Referral
             </Label>
             <Select
@@ -236,12 +236,12 @@ export function ApplicationDetailsMenu({
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="menu-notes" className="text-xs">
+            <Label htmlFor="menu-notes" className="text-label-medium">
               Notes
             </Label>
             <Textarea
               id="menu-notes"
-              className="text-sm"
+              className="text-body-medium"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               onBlur={() => onPatch({ notes })}
@@ -311,7 +311,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
           <div className="space-y-1">
             {/* Not "Tailored": Use resume as is and Mark applied put the base resume here unchanged. */}
             <CardTitle>Resume for this job</CardTitle>
-            <p className="text-muted-foreground text-sm">{status}</p>
+            <p className="text-muted-foreground text-body-medium">{status}</p>
           </div>
           <Badge variant={pdfReady ? "default" : "outline"} className="shrink-0">
             {pdfReady ? "PDF ready" : hasDraft ? "Not yet a PDF" : "Not started"}
@@ -369,7 +369,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
               />
             </div>
           ) : (
-            <div className="text-muted-foreground flex h-40 items-center justify-center rounded-md border border-dashed p-6 text-center text-sm">
+            <div className="text-muted-foreground flex h-40 items-center justify-center rounded-md border border-dashed p-6 text-center text-body-medium">
               {hasDraft
                 ? "No PDF yet."
                 : "No tailored resume yet."}

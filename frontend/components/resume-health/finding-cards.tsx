@@ -155,7 +155,7 @@ export function ExpandedFindingChrome({
         >
           {/* A long label ("Harbor Loop Logistics · bullet 3") wraps inside
               the card: at 375 it pushed the page sideways. */}
-          <span className="text-muted-foreground min-w-0 text-xs break-words">
+          <span className="text-muted-foreground min-w-0 text-body-small break-words">
             {finding.label} ·
           </span>
           <LevelChip finding={finding} />
@@ -164,7 +164,7 @@ export function ExpandedFindingChrome({
       </div>
       {quote && <SourceQuote text={quote} />}
       {how && !hideHow && (
-        <p className="mt-1.5 max-w-[65ch] text-sm">{how}</p>
+        <p className="mt-1.5 max-w-[65ch] text-body-medium">{how}</p>
       )}
       {children}
     </div>
@@ -244,7 +244,7 @@ function ClassificationOverrideDialog({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-body-small">
             Now: {currentLabel}. Saving updates the report.
           </p>
           {level !== "automatic" && (
@@ -258,7 +258,7 @@ function ClassificationOverrideDialog({
                 value={reason}
                 maxLength={500}
                 onChange={(event) => setReason(event.target.value)}
-                className="text-sm"
+                className="text-body-medium"
                 disabled={save.isPending}
               />
             </div>
@@ -437,7 +437,7 @@ function CardSuggestion({
 }) {
   if (currentText == null) {
     return (
-      <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-xs">{suggestion}</p>
+      <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-body-small">{suggestion}</p>
     );
   }
   return <SuggestionBlock currentText={currentText} suggestion={suggestion} {...rest} />;
@@ -492,7 +492,7 @@ export function SuggestionEditor({
       <p
         ref={appliedRef}
         tabIndex={-1}
-        className="text-muted-foreground mt-2 border-t pt-2 text-xs outline-none"
+        className="text-muted-foreground mt-2 border-t pt-2 text-body-small outline-none"
       >
         Applied
       </p>
@@ -511,7 +511,7 @@ export function SuggestionEditor({
         aria-label="New wording"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        className="max-w-[65ch] text-sm"
+        className="max-w-[65ch] text-body-medium"
         disabled={locked}
       />
       <div className="flex justify-end">
@@ -541,7 +541,7 @@ function LevelChip({ finding }: { finding: LintFinding }) {
   if (!name) return null;
   const label = EVIDENCE_LABELS[name as EvidenceLevel] ?? name;
   return (
-    <span className="text-muted-foreground text-xs">{label}</span>
+    <span className="text-muted-foreground text-body-small">{label}</span>
   );
 }
 
@@ -565,7 +565,7 @@ function CollapsedRow({
     <div className="flex min-w-0 flex-wrap items-start gap-2">
       <div className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left">
         <button type="button" onClick={onExpand} aria-expanded={false} className="text-left">
-          <span className="text-muted-foreground min-w-0 text-xs break-words">
+          <span className="text-muted-foreground min-w-0 text-body-small break-words">
             {finding.label} · <LevelChip finding={finding} />
             {finding.zone === "hot" && <> · {ATTENTION_BADGE_LABEL}</>}
           </span>
@@ -575,12 +575,12 @@ function CollapsedRow({
             <SourceQuote text={quote} clamp />
           </span>
         ) : (
-          <span className="text-muted-foreground block w-full min-w-0 text-sm">
+          <span className="text-muted-foreground block w-full min-w-0 text-body-medium">
             {finding.issue}
           </span>
         )}
         {finding.question && (
-          <p className="text-foreground max-w-[65ch] text-sm">{finding.question}</p>
+          <p className="text-foreground max-w-[65ch] text-body-medium">{finding.question}</p>
         )}
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -617,12 +617,12 @@ export function FindingGroupHeader({
   const coaching = sharedCoaching(findings);
   return (
     <div className="space-y-1">
-      <h3 className="text-sm font-medium">
-        {title} <span className="text-muted-foreground font-normal">({findings.length})</span>
+      <h3 className="text-title-small">
+        {title} <span className="text-body-medium text-muted-foreground">({findings.length})</span>
       </h3>
-      {points > 0 && <p className="text-muted-foreground text-xs">Up to +{points} points</p>}
+      {points > 0 && <p className="text-muted-foreground text-body-small">Up to +{points} points</p>}
       {coaching && (
-        <p className="text-muted-foreground max-w-[65ch] text-sm">
+        <p className="text-muted-foreground max-w-[65ch] text-body-medium">
           {coaching.why} {coaching.how}
         </p>
       )}
@@ -876,12 +876,12 @@ export function AskCard({
       hideHow={hideHow}
     >
       {finding.question && (
-        <p className="text-foreground mt-1 max-w-[65ch] text-sm">
+        <p className="text-foreground mt-1 max-w-[65ch] text-body-medium">
           {useAlternative ? finding.alt_question : finding.question}
         </p>
       )}
       {staleDraft && (
-        <p className="text-warning mt-1 text-xs">
+        <p className="text-warning mt-1 text-body-small">
           This bullet changed after you answered. Write the new wording again.
         </p>
       )}
@@ -889,7 +889,7 @@ export function AskCard({
       {suggestion != null ? (
         disputeSuggestion == null && renderSuggestion(suggestion)
       ) : notRewritable ? (
-        <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-xs">
+        <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-body-small">
           There&apos;s no single bullet to rewrite here. Add this to your resume directly.
         </p>
       ) : (
@@ -897,7 +897,7 @@ export function AskCard({
           {metricAsk && finding.alt_question && (
             <button
               type="button"
-              className="text-primary text-sm underline-offset-2 hover:underline"
+              className="text-primary text-body-medium underline-offset-2 hover:underline"
               aria-expanded={useAlternative}
               onClick={() => { setUseAlternative((v) => !v); focusNext(cardRef); }}
               disabled={locked}
@@ -918,7 +918,7 @@ export function AskCard({
               aria-label="Your answer"
               value={answer}
               onChange={(e) => setAnswerDraft(e.target.value)}
-              className="max-w-[65ch] text-sm"
+              className="max-w-[65ch] text-body-medium"
               disabled={locked}
             />
           )}
@@ -1030,7 +1030,7 @@ export function NotesTable({
 
   return (
     <section ref={sectionRef} id="notes" tabIndex={-1} className="scroll-mt-6 space-y-3 outline-none">
-      <p className="text-muted-foreground text-sm">These don&apos;t change your score.</p>
+      <p className="text-muted-foreground text-body-medium">These don&apos;t change your score.</p>
       {/* Always, even with no hits: Edit word list lives in its header. */}
       <WordingChecklist
         notes={wording}
@@ -1043,7 +1043,7 @@ export function NotesTable({
       />
       {groups.length > 0 && (
         <div className="overflow-x-auto rounded-md border">
-          <table className="w-full table-fixed text-sm">
+          <table className="w-full table-fixed text-body-medium">
             <tbody>
               {groups.map((group) => {
                 const ops =
@@ -1063,7 +1063,7 @@ export function NotesTable({
                         {group.title} ({group.count})
                       </p>
                       {subjectLine && (
-                        <p className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs">
+                        <p className="text-muted-foreground mt-0.5 max-w-[65ch] text-body-small">
                           {subjectLine}
                         </p>
                       )}
@@ -1071,7 +1071,7 @@ export function NotesTable({
                         group.notes.map((note) => (
                           <p
                             key={note.id}
-                            className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs"
+                            className="text-muted-foreground mt-0.5 max-w-[65ch] text-body-small"
                           >
                             {note.issue} {note.how}
                           </p>
@@ -1109,17 +1109,17 @@ export function NotesTable({
       )}
       {skills && (
         <div className="space-y-1.5">
-          <h3 className="text-sm font-medium">
+          <h3 className="text-title-small">
             {skills.title} ({skills.count})
           </h3>
-          <p className="text-muted-foreground max-w-[65ch] text-sm">{skills.notes[0].how}</p>
+          <p className="text-muted-foreground max-w-[65ch] text-body-medium">{skills.notes[0].how}</p>
           <div className="overflow-x-auto rounded-md border">
-            <table className="w-full text-sm">
-              <thead className="text-muted-foreground text-left text-xs">
+            <table className="w-full text-body-medium">
+              <thead className="text-muted-foreground text-left text-body-small">
                 <tr className="border-b">
-                  <th scope="col" className="px-3 py-2 font-medium">Skill</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Listed in</th>
-                  <th scope="col" className="px-3 py-2 font-medium">
+                  <th scope="col" className="px-3 py-2 text-label-medium">Skill</th>
+                  <th scope="col" className="px-3 py-2 text-label-medium">Listed in</th>
+                  <th scope="col" className="px-3 py-2 text-label-medium">
                     <span className="sr-only">Action</span>
                   </th>
                 </tr>
@@ -1241,7 +1241,7 @@ function FailedGate({
         <Badge
           variant="secondary"
           className={cn(
-            "shrink-0 text-xs",
+            "shrink-0",
             gate.tier === "fatal"
               ? "bg-destructive/10 text-destructive"
               : "bg-warning-container text-on-warning-container",
@@ -1249,18 +1249,18 @@ function FailedGate({
         >
           {gate.tier === "fatal" ? "Must fix" : "Serious"}
         </Badge>
-        <span className="min-w-0 text-sm font-medium break-words">{gate.label}</span>
+        <span className="min-w-0 text-title-small break-words">{gate.label}</span>
       </div>
-      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm break-words">{gate.detail}</p>}
+      {gate.detail && <p className="mt-1 max-w-[65ch] text-body-medium break-words">{gate.detail}</p>}
       {gate.fix_hint && (
-        <p className="text-muted-foreground mt-1 max-w-[65ch] text-xs break-words">
+        <p className="text-muted-foreground mt-1 max-w-[65ch] text-body-small break-words">
           {gate.fix_hint}
         </p>
       )}
 
       {showReason ? (
         <div ref={editRef} className="mt-2 space-y-2">
-          <p className="text-muted-foreground max-w-[65ch] text-xs">
+          <p className="text-muted-foreground max-w-[65ch] text-body-small">
             Your score won&apos;t be limited by this any more. Your resume isn&apos;t
             changed. You can undo this here.
           </p>
@@ -1269,7 +1269,7 @@ function FailedGate({
             aria-label="Why is this OK?"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="max-w-[65ch] text-sm"
+            className="max-w-[65ch] text-body-medium"
           />
           <div className="flex justify-end gap-2">
             <Button
@@ -1343,7 +1343,7 @@ function WaivedGate({
   return (
     <div className="text-muted-foreground bg-surface-container-low min-w-0 rounded-md border px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-sm">{gate.label} (marked OK)</span>
+        <span className="min-w-0 truncate text-body-medium">{gate.label} (marked OK)</span>
         <Button
           ref={actionRef}
           size="sm"
@@ -1357,9 +1357,9 @@ function WaivedGate({
           {unwaive.isPending ? "Undoing…" : "Undo"}
         </Button>
       </div>
-      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm break-words">{gate.detail}</p>}
+      {gate.detail && <p className="mt-1 max-w-[65ch] text-body-medium break-words">{gate.detail}</p>}
       {gate.waiver_reason && (
-        <p className="mt-1 text-xs break-words">
+        <p className="mt-1 text-body-small break-words">
           <span className="text-foreground font-medium">Reason: </span>
           {gate.waiver_reason}
         </p>
@@ -1393,12 +1393,12 @@ function NotAssessedGate({
   return (
     <div className="rounded-md border border-border bg-surface-container-low px-3 py-2">
       <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="bg-muted text-muted-foreground shrink-0 text-xs">
+        <Badge variant="secondary" className="bg-muted text-muted-foreground shrink-0">
           Not checked
         </Badge>
-        <span className="text-sm font-medium">{gate.label}</span>
+        <span className="text-title-small">{gate.label}</span>
       </div>
-      <p className="text-muted-foreground mt-1 max-w-[65ch] text-sm">
+      <p className="text-muted-foreground mt-1 max-w-[65ch] text-body-medium">
         {gate.label} wasn&apos;t checked because this template hasn&apos;t been checked yet.
         {gate.detail ? ` ${gate.detail}` : ""}
       </p>
@@ -1453,7 +1453,7 @@ export function GateBanner({
   // checks too. "Must fix" is the fatal tier's badge only.
   return (
     <section id="gates" className="scroll-mt-6 space-y-2">
-      <h2 className="text-sm font-medium">Checks</h2>
+      <h2 className="text-title-small">Checks</h2>
       {failed.map((gate) => (
         <FailedGate
           key={gate.id}
@@ -1511,7 +1511,7 @@ export function ResolvedFinding({
       ref={ref}
       tabIndex={dispute ? -1 : undefined}
       data-resolved-hash={dispute ? (finding.content_hash ?? undefined) : undefined}
-      className="rounded-md border border-dashed px-3 py-2 text-sm outline-none"
+      className="rounded-md border border-dashed px-3 py-2 text-body-medium outline-none"
     >
       <p className="text-muted-foreground line-through">Fixed: {finding.label}</p>
       {dispute && (
@@ -1525,7 +1525,7 @@ export function ResolvedFinding({
             (currentText != null ? (
               <SuggestionCopyOnly currentText={currentText} suggestion={dispute.suggestion} />
             ) : (
-              <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-xs">
+              <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-body-small">
                 {dispute.suggestion}
               </p>
             ))}

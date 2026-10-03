@@ -86,7 +86,7 @@ def test_every_table_with_a_min_width_gets_it():
     widths, and it is what a sticky table measures its fit against."""
     table = _body(_TABLE, "function Table(")
     assert "const width = minWidth ? MIN_WIDTH[minWidth] : undefined" in table
-    assert 'className={cn("w-full caption-bottom text-sm", width?.table, className)}' in table
+    assert 'className={cn("w-full caption-bottom text-body-medium", width?.table, className)}' in table
 
 
 def test_only_a_table_that_asks_for_it_sticks():

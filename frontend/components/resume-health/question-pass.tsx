@@ -293,7 +293,7 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
       <PageShell>
         {header}
         <div className="flex flex-col items-start gap-3">
-          <p className="text-muted-foreground max-w-[65ch] text-sm">
+          <p className="text-muted-foreground max-w-[65ch] text-body-medium">
             {noReportYet
               ? "No health report yet. Check your resume first, then answer its questions here."
               : "No questions to answer. Every bullet the check read has what it asks for."}
@@ -319,7 +319,7 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
       {header}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,65ch)_minmax(0,1fr)]">
         <div className="flex min-w-0 max-w-[65ch] flex-col gap-4">
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             Answer what you can, then write the new wordings together. Blank rows wait for next time.
           </p>
           <ol aria-label="Questions" className="flex flex-col gap-4">
@@ -342,7 +342,7 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
               />
             ))}
           </ol>
-          <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm">
+          <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-body-medium shadow-sm">
             <p aria-live="polite">{progress.words}</p>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -389,15 +389,15 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
 function ContextPane({ context }: { context: BulletContext }) {
   return (
     <div className="sticky top-6 space-y-2 rounded-lg border p-4">
-      <p className="text-sm font-medium">{context.heading}</p>
-      {context.dates && <p className="text-muted-foreground text-xs">{context.dates}</p>}
+      <p className="text-title-small">{context.heading}</p>
+      {context.dates && <p className="text-muted-foreground text-body-small">{context.dates}</p>}
       <ul className="space-y-1">
         {context.bullets.map((bullet, i) => (
           <li
             key={i}
             aria-current={i === context.active ? "true" : undefined}
             className={cn(
-              "text-foreground border-l-2 border-transparent py-1 pl-3 text-sm",
+              "text-foreground border-l-2 border-transparent py-1 pl-3 text-body-medium",
               i === context.active && "bg-primary/10 border-l-2 border-primary",
             )}
           >
@@ -469,10 +469,10 @@ function PassRowView({
   if (row.skipped) {
     return (
       <li ref={rowRef} data-pass-row={row.key} onFocus={onFocus} className="rounded-md border px-3 py-2">
-        <p className="text-muted-foreground text-xs">{row.finding.label}</p>
-        <p className="text-foreground mt-1 line-clamp-2 max-w-[65ch] text-sm">{row.original ?? row.finding.issue}</p>
+        <p className="text-muted-foreground text-body-small">{row.finding.label}</p>
+        <p className="text-foreground mt-1 line-clamp-2 max-w-[65ch] text-body-medium">{row.original ?? row.finding.issue}</p>
         <div className="mt-1 flex items-center gap-2">
-          <p className="text-muted-foreground text-xs">Skipped for now.</p>
+          <p className="text-muted-foreground text-body-small">Skipped for now.</p>
           <Button
             ref={answerItRef}
             size="xs"
@@ -498,23 +498,23 @@ function PassRowView({
     >
       {/* The label names the item. Below 1280 there is no context pane: its dates and the bullets
           around this one sit here. */}
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-body-small">
         {row.finding.label}
         {context?.dates && <span className="xl:hidden"> · {context.dates}</span>}
       </p>
       {neighbours?.before && (
-        <p className="text-muted-foreground line-clamp-1 text-xs xl:hidden">Above: {neighbours.before}</p>
+        <p className="text-muted-foreground line-clamp-1 text-body-small xl:hidden">Above: {neighbours.before}</p>
       )}
       {row.original != null ? (
         <SourceQuote text={row.original} />
       ) : (
-        <p className="text-foreground max-w-[65ch] text-sm">{row.finding.issue}</p>
+        <p className="text-foreground max-w-[65ch] text-body-medium">{row.finding.issue}</p>
       )}
       {neighbours?.after && (
-        <p className="text-muted-foreground line-clamp-1 text-xs xl:hidden">Below: {neighbours.after}</p>
+        <p className="text-muted-foreground line-clamp-1 text-body-small xl:hidden">Below: {neighbours.after}</p>
       )}
       {row.finding.question && (
-        <p className="text-foreground max-w-[65ch] text-sm font-medium">
+        <p className="text-foreground max-w-[65ch] text-title-small">
           {row.useAlternative ? row.finding.alt_question : row.finding.question}
         </p>
       )}
@@ -524,7 +524,7 @@ function PassRowView({
           {metricAsk && row.finding.alt_question && (
             <button
               type="button"
-              className="text-primary text-sm underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-50"
+              className="text-primary text-body-medium underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-50"
               aria-expanded={row.useAlternative}
               disabled={!open}
               onClick={() => onChange({ useAlternative: !row.useAlternative })}
@@ -546,13 +546,13 @@ function PassRowView({
               value={row.answer}
               onChange={(e) => onChange({ answer: e.target.value })}
               disabled={!open}
-              className="max-w-[65ch] text-sm"
+              className="max-w-[65ch] text-body-medium"
             />
           )}
-          {row.status === "queued" && <p className="text-muted-foreground text-xs">Waiting to write…</p>}
-          {row.status === "drafting" && <p className="text-muted-foreground text-xs">Writing…</p>}
+          {row.status === "queued" && <p className="text-muted-foreground text-body-small">Waiting to write…</p>}
+          {row.status === "drafting" && <p className="text-muted-foreground text-body-small">Writing…</p>}
           {row.status === "failed" && (
-            <p className="text-destructive text-xs">Couldn&apos;t write new wording for this one. Try again.</p>
+            <p className="text-destructive text-body-small">Couldn&apos;t write new wording for this one. Try again.</p>
           )}
         </div>
       )}
@@ -561,7 +561,7 @@ function PassRowView({
         <div className="space-y-2 border-t pt-2">
           {copyOnly(row) || row.original == null ? (
             row.original == null ? (
-              <p className="text-foreground max-w-[65ch] text-sm">{row.suggestion}</p>
+              <p className="text-foreground max-w-[65ch] text-body-medium">{row.suggestion}</p>
             ) : (
               <SuggestionCopyOnly currentText={row.original} suggestion={row.suggestion} />
             )
@@ -577,7 +577,7 @@ function PassRowView({
                   aria-label="New wording"
                   value={row.edited}
                   onChange={(e) => onChange({ edited: e.target.value })}
-                  className="max-w-[65ch] text-sm"
+                  className="max-w-[65ch] text-body-medium"
                 />
               )}
             </>
@@ -599,7 +599,7 @@ function PassRowView({
             )}
             {!copyOnly(row) && row.original != null && row.status === "drafted" && !canSave(row) && (
               // The wording is the bullet as it stands: saving it would write no version.
-              <p className="text-muted-foreground text-xs">No change to save</p>
+              <p className="text-muted-foreground text-body-small">No change to save</p>
             )}
             {!copyOnly(row) && row.original != null && row.edited == null && (
               <Button
@@ -635,7 +635,7 @@ function PassRowView({
             ref={setLand}
             data-saved
             tabIndex={-1}
-            className="text-muted-foreground text-xs outline-none"
+            className="text-muted-foreground text-body-small outline-none"
           >
             Saved
           </p>
@@ -646,7 +646,7 @@ function PassRowView({
         <p
           ref={setLand}
           tabIndex={-1}
-          className="text-warning text-xs outline-none"
+          className="text-warning text-body-small outline-none"
         >
           This bullet changed.{" "}
           <button
@@ -664,7 +664,7 @@ function PassRowView({
         <p
           ref={setLand}
           tabIndex={-1}
-          className="text-muted-foreground text-xs outline-none"
+          className="text-muted-foreground text-body-small outline-none"
         >
           The check has no question for this bullet now.
         </p>
@@ -673,7 +673,7 @@ function PassRowView({
         <p
           ref={setLand}
           tabIndex={-1}
-          className="text-muted-foreground max-w-[65ch] text-xs outline-none"
+          className="text-muted-foreground max-w-[65ch] text-body-small outline-none"
         >
           Couldn&apos;t rewrite this one. Edit it yourself.
         </p>

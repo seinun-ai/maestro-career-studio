@@ -70,7 +70,7 @@ function BarList({
   empty: string;
 }) {
   if (rows.length === 0)
-    return <p className="text-muted-foreground text-sm">{empty}</p>;
+    return <p className="text-muted-foreground text-body-medium">{empty}</p>;
   const max = Math.max(...rows.map((r) => r.count), 1);
   return (
     <div className="flex flex-col gap-1.5">
@@ -78,7 +78,7 @@ function BarList({
         // Two stored keys can share a word ("unstated", "unknown": Not stated).
         <div key={`${i}:${r.label}`} className="flex items-center gap-2.5">
           <span
-            className="text-foreground min-w-0 flex-shrink-0 basis-40 truncate text-sm"
+            className="text-foreground min-w-0 flex-shrink-0 basis-40 truncate text-body-medium"
             title={r.label}
           >
             {r.label}
@@ -89,7 +89,7 @@ function BarList({
               style={{ width: `${(r.count / max) * 100}%` }}
             />
           </span>
-          <span className="text-muted-foreground w-7 text-right text-xs">
+          <span className="text-muted-foreground w-7 text-right text-body-small">
             {r.count}
           </span>
         </div>
@@ -138,7 +138,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
   const total = o.meta.total_jobs;
   if (total === 0)
     return (
-      <p className="text-muted-foreground text-sm">
+      <p className="text-muted-foreground text-body-medium">
         Add a few jobs to see this.
       </p>
     );
@@ -197,8 +197,8 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
         <div className="flex flex-col gap-2">
           {o.signals.map((s, i) => (
             <div key={i} className="bg-surface-container-low rounded-md px-3 py-2">
-              <p className="text-foreground text-sm font-medium">{signalTitle(s.title, o)}</p>
-              <p className="text-muted-foreground mt-0.5 text-xs">{s.detail}</p>
+              <p className="text-foreground text-title-small">{signalTitle(s.title, o)}</p>
+              <p className="text-muted-foreground mt-0.5 text-body-small">{s.detail}</p>
             </div>
           ))}
         </div>
@@ -247,7 +247,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
         <Card>
           <CardHeader>
             <CardTitle>Level</CardTitle>
-            <p className="text-muted-foreground text-xs font-normal">
+            <p className="text-muted-foreground text-body-small">
               Sorted from each job description into one of these levels.
             </p>
           </CardHeader>
@@ -286,11 +286,11 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div>
-              <p className="text-muted-foreground mb-1 text-xs">OPT accepted</p>
+              <p className="text-muted-foreground mb-1 text-body-small">OPT accepted</p>
               <BarList rows={toEnumBars(o.work_auth.opt)} empty="No data" />
             </div>
             <div>
-              <p className="text-muted-foreground mb-1 text-xs">
+              <p className="text-muted-foreground mb-1 text-body-small">
                 Work authorization
               </p>
               <BarList rows={toEnumBars(o.work_auth.sponsorship)} empty="No data" />
@@ -302,14 +302,14 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           <CardHeader>
             <CardTitle>Yearly pay by role</CardTitle>
             {o.meta.salary_mixed_currencies ? (
-              <p className="text-muted-foreground text-xs font-normal">
+              <p className="text-muted-foreground text-body-small">
                 Shown per currency, since jobs use more than one.
               </p>
             ) : null}
           </CardHeader>
           <CardContent>
             {o.salary_by_role.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-body-medium">
                 No pay data yet. Most jobs don&apos;t list pay.
               </p>
             ) : (

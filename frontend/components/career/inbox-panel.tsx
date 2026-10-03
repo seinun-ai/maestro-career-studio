@@ -203,7 +203,7 @@ export function InboxPanel({
   if (isLoading || (!error && groups.length === 0)) {
     return (
       <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-surface-container-low py-3 shadow-none ring-0 outline-none">
-        <CardContent className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+        <CardContent className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-medium">
           <Inbox className="text-primary size-4 shrink-0" aria-hidden="true" />
           <span className="font-medium">Drafts to review</span>
           {isLoading ? (
@@ -241,7 +241,7 @@ export function InboxPanel({
                 {approveAll.isPending ? "Approving…" : "Approve all shown"}
               </Button>
               {skipped > 0 && (
-                <p className="text-muted-foreground text-xs">
+                <p className="text-muted-foreground text-body-small">
                   {skipped} with unsaved edits were skipped. Save or discard them
                   first.
                 </p>
@@ -251,16 +251,16 @@ export function InboxPanel({
         </div>
         {/* Drafts come from Quick capture, documents, resumes and agents, not
             only from AI: the sentence says what the panel is for. */}
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body-medium">
           New bullets wait here as drafts until you approve them.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
         {error ? (
           <div role="alert" className="rounded-xl bg-destructive/10 p-4">
-            <p className="text-sm font-medium">Couldn&apos;t load the drafts to review.</p>
+            <p className="text-title-small">Couldn&apos;t load the drafts to review.</p>
             {errorDetail(error) ? (
-              <p className="text-muted-foreground mt-1 text-xs">{errorDetail(error)}</p>
+              <p className="text-muted-foreground mt-1 text-body-small">{errorDetail(error)}</p>
             ) : null}
             <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
               Try again
@@ -436,7 +436,7 @@ function DraftRow({
         </div>
       ) : (
         <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 text-sm leading-relaxed">{point.text}</p>
+          <p className="min-w-0 flex-1 text-body-medium">{point.text}</p>
           <Button
             ref={editRef}
             size="icon-sm"
@@ -454,17 +454,17 @@ function DraftRow({
 
       {point.merge_sources && point.merge_sources.length > 0 && (
         <div className="mt-3 rounded-xl bg-surface-container p-3">
-          <p className="mb-2 text-xs font-medium">Wording from your resumes</p>
+          <p className="mb-2 text-label-medium">Wording from your resumes</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {point.merge_sources.map((source, index) => (
               <div
                 key={`${source.resume_key}-${source.section}-${index}`}
                 className="rounded-lg bg-background/80 p-2"
               >
-                <p className="text-muted-foreground mb-1 text-[0.7rem] font-medium uppercase tracking-wide">
+                <p className="text-muted-foreground mb-1 text-label-small">
                   {resumeName(source.resume_key)} · {sectionWord(source.section)}
                 </p>
-                <p className="text-xs leading-relaxed">{source.text}</p>
+                <p className="text-body-small">{source.text}</p>
               </div>
             ))}
           </div>

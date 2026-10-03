@@ -272,19 +272,19 @@ function EvidenceLine({ gap }: { gap: Gap }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {bits.length > 0 && (
-        <span className="text-muted-foreground text-xs">{bits.join(" · ")}</span>
+        <span className="text-muted-foreground text-body-small">{bits.join(" · ")}</span>
       )}
       {/* The entries the engine found the skill in (ats/layers.py, `evidence_entries`), never
           suggestions. Their labels are "Company — Role"; the dash reads aloud, a comma does not. */}
       {entries.length > 0 ? (
-        <span className="text-muted-foreground text-xs">Mentioned in:</span>
+        <span className="text-muted-foreground text-body-small">Mentioned in:</span>
       ) : null}
       {entries.map((entry) => (
-        <Badge key={entry} variant="outline" className="h-auto font-normal whitespace-normal">
+        <Badge key={entry} variant="outline" className="h-auto text-body-small whitespace-normal">
           {entry.replace(" — ", ", ")}
         </Badge>
       ))}
-      {undated ? <p className="text-muted-foreground basis-full text-xs">{UNDATED_EVIDENCE_NOTE}</p> : null}
+      {undated ? <p className="text-muted-foreground basis-full text-body-small">{UNDATED_EVIDENCE_NOTE}</p> : null}
     </div>
   );
 }
@@ -532,7 +532,7 @@ export function GapCard({
     return (
       <div
         ref={rootRef}
-        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border py-2 pr-1.5 pl-4 text-sm"
+        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border py-2 pr-1.5 pl-4 text-body-medium"
       >
         <span className="flex min-w-0 items-start gap-2">
           <Ban className="mt-0.5 size-4 shrink-0" />
@@ -540,7 +540,7 @@ export function GapCard({
             <span className="block break-words">
               Can&apos;t confirm <span className="text-foreground font-medium">{title}</span>
             </span>
-            <span className="block text-xs">{CANNOT_CONFIRM_EXPLANATION}</span>
+            <span className="block text-body-small">{CANNOT_CONFIRM_EXPLANATION}</span>
           </span>
         </span>
         <UndoButton onClick={reopenGap} />
@@ -552,7 +552,7 @@ export function GapCard({
     return (
       <div
         ref={rootRef}
-        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border border-dashed py-1.5 pr-1.5 pl-4 text-sm"
+        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border border-dashed py-1.5 pr-1.5 pl-4 text-body-medium"
       >
         <span className="min-w-0 break-words">
           Skipped <span className="text-foreground font-medium">{title}</span>
@@ -571,7 +571,7 @@ export function GapCard({
     return (
       <div
         ref={rootRef}
-        className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-sm"
+        className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-body-medium"
       >
         <Library className="text-primary size-4 shrink-0" />
         <span className="min-w-0 flex-1">
@@ -580,7 +580,7 @@ export function GapCard({
             {" "}
             · {resolutionSummary(resolution, targets)}
           </span>
-          <span className="text-muted-foreground block text-xs">
+          <span className="text-muted-foreground block text-body-small">
             {provenanceLine(resolution)}
           </span>
         </span>
@@ -614,7 +614,7 @@ export function GapCard({
           setEditing(true);
           handOff();
         }}
-        className="bg-card ring-foreground/10 hover:ring-primary/40 flex w-full items-center gap-2 rounded-xl px-4 py-2.5 text-left text-sm ring-1 transition-shadow"
+        className="bg-card ring-foreground/10 hover:ring-primary/40 flex w-full items-center gap-2 rounded-xl px-4 py-2.5 text-left text-body-medium ring-1 transition-shadow"
       >
         <Check className="text-primary size-4 shrink-0" />
         <span className="min-w-0 flex-1 truncate">
@@ -624,7 +624,7 @@ export function GapCard({
             · {resolutionSummary(resolution, targets)}
           </span>
         </span>
-        <span className="text-muted-foreground shrink-0 text-xs">Edit</span>
+        <span className="text-muted-foreground shrink-0 text-body-small">Edit</span>
       </button>
     );
   }
@@ -636,7 +636,7 @@ export function GapCard({
           {resolution && resolution.action !== "skip" && (
             <Check className="text-primary size-4 shrink-0" />
           )}
-          <span className="text-sm font-medium">{title}</span>
+          <span className="text-title-small">{title}</span>
           {gap.kind === "skill" && requirementLabel(gap.requirement_level) && (
             <Badge variant={REQUIREMENT_VARIANTS[gap.requirement_level ?? ""] ?? "outline"}>
               {requirementLabel(gap.requirement_level)}
@@ -645,7 +645,7 @@ export function GapCard({
           {potentialPointsLabel && (
             <Badge
               variant="outline"
-              className="font-normal"
+              className="text-body-small"
               title="The most this fix could add on its own. An estimate."
             >
               {potentialPointsLabel}
@@ -665,12 +665,12 @@ export function GapCard({
             </Button>
           )}
         </div>
-        {gap.detail && <p className="text-muted-foreground text-xs">{gap.detail}</p>}
+        {gap.detail && <p className="text-muted-foreground text-body-small">{gap.detail}</p>}
         <EvidenceLine gap={gap} />
         {/* F6c — mirror_wording gaps split their note on score_effect: hygiene never
             moves the score; adds_credit gains real keyword credit. */}
         {gap.score_effect && (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-body-small">
             {gap.score_effect === "hygiene"
               ? "Uses the job's exact words. Helps recruiter searches, but won't change your ATS score."
               : "Your resume says this differently. Using the job's exact words raises your ATS score."}
@@ -694,7 +694,7 @@ export function GapCard({
             >
               <Ban /> I can&apos;t confirm this
             </Button>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-body-small">
               {CANNOT_CONFIRM_EXPLANATION}
             </span>
           </div>

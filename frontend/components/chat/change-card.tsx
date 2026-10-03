@@ -50,12 +50,12 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
   return (
     <div className="border-primary/30 bg-primary/5 rounded-md border px-3 py-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm">
-          <Badge variant="secondary" className="text-xs">
+        <div className="flex items-center gap-2 text-body-medium">
+          <Badge variant="secondary">
             Edited
           </Badge>
           <span className="font-medium">{targetLabel}</span>
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-body-small">
             Version {card.version_number}, {card.ops_count}{" "}
             {card.ops_count === 1 ? "change" : "changes"}
           </span>
@@ -76,7 +76,7 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
         </div>
       </div>
       {card.summary && (
-        <p className="text-muted-foreground mt-1 text-xs">{card.summary}</p>
+        <p className="text-muted-foreground mt-1 text-body-small">{card.summary}</p>
       )}
       <Dialog open={diffOpen} onOpenChange={setDiffOpen}>
         <DialogContent className="flex max-h-[80vh] w-[min(92vw,34rem)] max-w-[min(92vw,34rem)] flex-col overflow-hidden">

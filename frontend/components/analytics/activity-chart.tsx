@@ -75,7 +75,7 @@ export function ActivityChart({
             aria-pressed={granularity === option.value}
             onClick={() => setGranularity(option.value)}
             className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ease-out",
+              "rounded-full px-3 py-1 text-label-medium transition-colors duration-150 ease-out",
               granularity === option.value
                 ? "bg-background shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -86,7 +86,7 @@ export function ActivityChart({
         ))}
       </div>
       {!hasAny ? (
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body-medium">
           No activity in this period yet.
         </p>
       ) : (

@@ -38,9 +38,9 @@ export function EmptyState({
     >
       {Icon ? <Icon className="text-muted-foreground/50 size-8" /> : null}
       <div>
-        <p className="text-sm font-medium">{title}</p>
+        <p className="text-title-small">{title}</p>
         {description ? (
-          <p className="text-muted-foreground mt-0.5 text-sm">{description}</p>
+          <p className="text-muted-foreground mt-0.5 text-body-medium">{description}</p>
         ) : null}
       </div>
       {action}

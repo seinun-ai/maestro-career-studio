@@ -198,7 +198,7 @@ function CustomSectionsTab({
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body-medium">
           Publications, awards, volunteering and more.
         </p>
         <Button className="rounded-full" size="sm" variant="secondary" onClick={onAdd}>
@@ -214,7 +214,7 @@ function CustomSectionsTab({
         </div>
       ) : error ? (
         <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
-          <p className="text-sm font-medium">Couldn&apos;t load other sections.</p>
+          <p className="text-title-small">Couldn&apos;t load other sections.</p>
           <LoadDetail error={error} />
           <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
             Try again
@@ -222,8 +222,8 @@ function CustomSectionsTab({
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl bg-surface-container-low p-10 text-center">
-          <p className="text-sm font-medium">No other sections yet</p>
-          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-xs">
+          <p className="text-title-small">No other sections yet</p>
+          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-body-small">
             Add publications, awards, talks and more.
           </p>
           <Button className="mt-4 rounded-full" size="sm" onClick={onAdd}>
@@ -235,13 +235,13 @@ function CustomSectionsTab({
           {groups.map((group) => (
             <div key={group.key} className="space-y-3">
               <div className="flex items-center gap-2 border-b pb-1.5">
-                <h3 className="text-sm font-semibold tracking-tight text-foreground">
+                <h3 className="text-title-small tracking-tight text-foreground">
                   {group.title}
                 </h3>
-                <Badge variant="outline" className="text-[11px] font-normal">
+                <Badge variant="outline" className="text-label-small">
                   {SECTION_TYPE_LABELS[group.type] ?? SECTION_TYPE_LABELS.entries}
                 </Badge>
-                <span className="text-xs text-muted-foreground ml-auto">
+                <span className="text-body-small text-muted-foreground ml-auto">
                   {group.entities.length} {group.entities.length === 1 ? "item" : "items"}
                 </span>
               </div>
@@ -291,7 +291,7 @@ function EntityTab({
         </div>
       ) : error ? (
         <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
-          <p className="text-sm font-medium">Couldn&apos;t load {title.toLowerCase()}.</p>
+          <p className="text-title-small">Couldn&apos;t load {title.toLowerCase()}.</p>
           <LoadDetail error={error} />
           <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
             Try again
@@ -299,8 +299,8 @@ function EntityTab({
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl bg-surface-container-low p-10 text-center">
-          <p className="text-sm font-medium">No {title.toLowerCase()} yet</p>
-          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-xs">
+          <p className="text-title-small">No {title.toLowerCase()} yet</p>
+          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-body-small">
             Use Quick capture above, or add one yourself.
           </p>
           <Button className="mt-4 rounded-full" size="sm" onClick={onAdd}>
@@ -321,5 +321,5 @@ function EntityTab({
 /** A failed load's reason, only when the server wrote a plain sentence. */
 function LoadDetail({ error }: { error: Error }) {
   const detail = errorDetail(error);
-  return detail ? <p className="text-muted-foreground mt-1 text-xs">{detail}</p> : null;
+  return detail ? <p className="text-muted-foreground mt-1 text-body-small">{detail}</p> : null;
 }

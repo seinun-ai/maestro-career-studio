@@ -85,7 +85,7 @@ function SaveIndicator({
     focusIfDropped(statusRef.current);
   }, [state, retrying]);
   return (
-    <span className="flex items-center gap-2 text-xs">
+    <span className="flex items-center gap-2 text-body-small">
       <span
         ref={statusRef}
         tabIndex={-1}
@@ -169,11 +169,11 @@ function CategorySection({
             !open && "-rotate-90",
           )}
         />
-        <span className="text-sm font-medium">{category.title}</span>
+        <span className="text-title-small">{category.title}</span>
         <Badge variant={counts.open === 0 ? "default" : "secondary"}>
           {counts.open > 0 ? `${counts.open} open` : "Nothing open"}
         </Badge>
-        <span className="text-muted-foreground ml-auto hidden truncate text-xs sm:inline">
+        <span className="text-muted-foreground ml-auto hidden truncate text-body-small sm:inline">
           {category.description}
         </span>
       </button>
@@ -614,8 +614,8 @@ export default function TailorSessionPage({
     if (sessionMissing) {
       return (
         <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-          <h1 className="text-lg font-medium">This gap analysis no longer exists</h1>
-          <p className="text-muted-foreground text-sm">
+          <h1 className="text-title-large font-medium">This gap analysis no longer exists</h1>
+          <p className="text-muted-foreground text-body-medium">
             It may have been deleted along with its job.
           </p>
           <Button
@@ -670,8 +670,8 @@ export default function TailorSessionPage({
     return (
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <CheckCircle2 className="text-primary size-10" />
-        <h1 className="text-lg font-medium">{heading}</h1>
-        <p className="text-muted-foreground text-sm">{description}</p>
+        <h1 className="text-title-large font-medium">{heading}</h1>
+        <p className="text-muted-foreground text-body-medium">{description}</p>
         <div className="flex gap-2">
           <Button
             nativeButton={false}
@@ -699,7 +699,7 @@ export default function TailorSessionPage({
         <div className="animate-fade-rise flex flex-wrap items-center justify-between gap-3 rounded-xl bg-warning-container px-4 py-3 text-on-warning-container">
           <div className="flex min-w-0 items-center gap-2.5">
             <TriangleAlert className="size-4 shrink-0" />
-            <p className="text-sm">
+            <p className="text-body-medium">
               This gap analysis is out of date because {staleReason}.{" "}
               Your changes here won&apos;t be saved. Start a new one to keep going.
             </p>
@@ -724,8 +724,8 @@ export default function TailorSessionPage({
           render={<Link href={`/jobs/${jobId}`} className="text-muted-foreground" />}
         />
         <div className="min-w-0 flex-1">
-          <h1 className="text-[22px] font-medium tracking-tight">Gap analysis</h1>
-          <p className="text-muted-foreground text-sm">
+          <h1 className="text-title-large font-medium tracking-tight">Gap analysis</h1>
+          <p className="text-muted-foreground text-body-medium">
             {baseResume.data?.display_name?.trim() || baseResumeLabel(session.data.base_resume)} · ATS score before tailoring:{" "}
             <span className="text-foreground font-medium tabular-nums">
               {gapsJson.base_composite.toFixed(1)}
@@ -745,7 +745,7 @@ export default function TailorSessionPage({
         {gapsJson.coverage_warning && (
           <div className="bg-warning-container text-on-warning-container animate-fade-rise flex items-start gap-3 rounded-xl p-4">
             <TriangleAlert className="size-5 shrink-0 mt-0.5" />
-            <div className="space-y-1 text-sm">
+            <div className="space-y-1 text-body-medium">
               {/* The server's sentence already gives the counts. */}
               <p className="font-medium">{gapsJson.coverage_warning}</p>
             </div>
@@ -753,8 +753,8 @@ export default function TailorSessionPage({
         )}
         {strongMatch && !gapsJson.coverage_warning && (
           <div className="border-primary/30 bg-primary/5 rounded-xl border p-4">
-            <p className="text-foreground text-sm font-medium">Strong match</p>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-foreground text-title-small">Strong match</p>
+            <p className="text-muted-foreground text-body-medium">
               {hasSummaryGap
                 ? "This resume already fits the job well. Strengthen your summary below, then tailor."
                 : "This resume already fits the job well."}
@@ -764,7 +764,7 @@ export default function TailorSessionPage({
         {autoResolved.length > 0 && (
           <div className="border-primary/25 bg-primary/[0.04] animate-fade-rise flex items-center gap-2.5 rounded-xl border px-4 py-3">
             <Library className="text-primary size-4 shrink-0" />
-            <p className="text-sm">
+            <p className="text-body-medium">
               <span className="font-medium">
                 {autoResolved.length} {autoResolved.length === 1 ? "gap was" : "gaps were"}
               </span>{" "}
@@ -778,7 +778,7 @@ export default function TailorSessionPage({
           </div>
         )}
         {autoResolved.length === 0 && !strongMatch && open > 0 && (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             These gaps need your input. <span className="font-medium">Add keyword</span>{" "}
             uses the job&apos;s exact words, <span className="font-medium">Answer</span>{" "}
             adds your real experience, <span className="font-medium">Attach project</span>{" "}
@@ -802,10 +802,10 @@ export default function TailorSessionPage({
         </GapLocked>
 
         <section className="space-y-2">
-          <Label htmlFor="tailor-instructions" className="font-medium" optional>
+          <Label htmlFor="tailor-instructions" optional>
             Tailoring notes
           </Label>
-          <p id={notesHintId} className="text-muted-foreground text-xs">
+          <p id={notesHintId} className="text-muted-foreground text-body-small">
             What to stress, or limits like page count.
           </p>
           <Textarea
@@ -823,7 +823,7 @@ export default function TailorSessionPage({
         {/* Wraps at narrow widths: the counts keep one line, and the actions
             drop below them instead of squeezing the counts into a column. */}
         <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2">
-          <p className="text-muted-foreground shrink-0 text-sm whitespace-nowrap tabular-nums">
+          <p className="text-muted-foreground shrink-0 text-body-medium whitespace-nowrap tabular-nums">
             <span className="text-foreground font-medium">{addressed}</span> answered
             · <span className="text-foreground font-medium">{skipped}</span> skipped ·{" "}
             <span className="text-foreground font-medium">{open}</span> open

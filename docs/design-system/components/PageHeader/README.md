@@ -8,4 +8,4 @@ Every page opens with one PageHeader inside one PageShell: the title, a one-clau
 - The page owns `<main>`; `PageShell` gives it the 72rem measure, 24px padding and 24px between sections.
 - A page title is the page's canonical name (Jobs, Career history, Agent inbox), never a variant.
 
-Source: `frontend/components/page-shell.tsx`. Changed from source: `text-[22px]` becomes `title-large` (the same 22px).
+Source: `frontend/components/page-shell.tsx`.

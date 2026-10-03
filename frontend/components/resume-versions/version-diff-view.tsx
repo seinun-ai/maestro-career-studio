@@ -23,7 +23,7 @@ const KIND_LABELS: Record<ResumeDiffChange["kind"], string> = {
 export function DiffChangeList({ changes }: { changes: ResumeDiffChange[] }) {
   if (changes.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm italic">No changes to the text.</p>
+      <p className="text-muted-foreground text-body-medium italic">No changes to the text.</p>
     );
   }
   return (
@@ -34,10 +34,10 @@ export function DiffChangeList({ changes }: { changes: ResumeDiffChange[] }) {
         return (
         <li
           key={i}
-          className={cn("rounded-md px-3 py-2 text-sm", KIND_STYLES[c.kind])}
+          className={cn("rounded-md px-3 py-2 text-body-medium", KIND_STYLES[c.kind])}
         >
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="bg-background/60 text-xs">
+            <Badge variant="outline" className="bg-background/60">
               {KIND_LABELS[c.kind]}
             </Badge>
             <span className="font-medium">{words.section}</span>
@@ -49,7 +49,7 @@ export function DiffChangeList({ changes }: { changes: ResumeDiffChange[] }) {
             ) : null}
           </div>
           {c.details && c.details.length > 0 && (
-            <ul className="mt-1 ml-5 list-disc space-y-0.5 text-xs opacity-90">
+            <ul className="mt-1 ml-5 list-disc space-y-0.5 text-body-small opacity-90">
               {c.details.map((d, j) => (
                 <li key={j}>{d}</li>
               ))}
@@ -78,10 +78,10 @@ export function VersionDiffView({
   });
 
   if (detail.isLoading) {
-    return <p className="text-muted-foreground text-sm">Loading changes…</p>;
+    return <p className="text-muted-foreground text-body-medium">Loading changes…</p>;
   }
   if (detail.isError || !detail.data) {
-    return <p className="text-destructive text-sm">Couldn&apos;t load this version.</p>;
+    return <p className="text-destructive text-body-medium">Couldn&apos;t load this version.</p>;
   }
   return <DiffChangeList changes={detail.data.diff} />;
 }

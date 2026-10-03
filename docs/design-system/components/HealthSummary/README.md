@@ -9,4 +9,4 @@ The health summary band opens a resume's health report: the grade, the score, ho
 - **Start the questions** is the report's only filled button; every card action below is tonal or text-style.
 - Small grade chips (lists, headers) use the same four roles at `label-small`, `radius-corner-xs`. The letter is always shown, so the grade never depends on color.
 
-Source: `frontend/components/resume-health/summary-band.tsx`, `health-badges.tsx`, `finding-cards.tsx` (`GRADE_STYLES`). The grade colors match the source. Changed from source: the grade tile's corner (10px to 8px) and letter (30px bold to `headline-small` at 600), and the track from `muted` to `surface-container`.
+Source: `frontend/components/resume-health/summary-band.tsx`, `health-badges.tsx`, `finding-cards.tsx` (`GRADE_STYLES`). The grade colors match the source. Changed from source: the grade tile's corner (10px to 8px) and the track from `muted` to `surface-container`.

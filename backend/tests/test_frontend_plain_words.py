@@ -353,7 +353,7 @@ def test_longer_words_wrap_instead_of_squeezing():
     word per line beside Update score."""
     page = _read(_GAP_PAGE)
     assert 'className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2"' in page
-    assert "shrink-0 text-sm whitespace-nowrap tabular-nums" in page
+    assert "shrink-0 text-body-medium whitespace-nowrap tabular-nums" in page
     compare = _read("components/ats-compare-panel.tsx")
     assert 'CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2"' in compare
 

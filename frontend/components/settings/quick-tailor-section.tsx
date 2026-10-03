@@ -113,7 +113,7 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
         <Label htmlFor="quick-tailor-instruction" optional>
           Extra instruction
         </Label>
-        <p id="quick-tailor-instruction-hint" className="text-muted-foreground text-xs">
+        <p id="quick-tailor-instruction-hint" className="text-muted-foreground text-body-small">
           Used every time Quick tailor runs.
         </p>
         <Input
