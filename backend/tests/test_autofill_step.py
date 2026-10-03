@@ -82,7 +82,7 @@ def fake_llm(monkeypatch, answer=None, way=("same", 0.95)):
 
 
 def step(r, db_session, hint=None):
-    return autofill_step.step(r, FACTS, db_session, hint).model_dump()
+    return autofill_step.step(r, FACTS, db_session, hint).model_dump(exclude={"trace", "polarity"})
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -325,7 +325,7 @@ def test_a_plain_click_is_an_answer_only_and_only_a_group_click_is_progress(db_s
     fake_jev(monkeypatch, ("click:o1", 0.55))
     how_heard = autofill_catalog.build({"preferences": {"how_heard": "LinkedIn"}}, [], [])
     anyslot = req(slot="preferences.how_heard", candidates=plain)
-    assert autofill_step.step(anyslot, how_heard, db_session, None).model_dump() == {
+    assert autofill_step.step(anyslot, how_heard, db_session, None).model_dump(exclude={"trace", "polarity"}) == {
         "mid": "click:o1", "reason": "matched"}
     group = [{"mid": "click:o1", "describe": 'Open the group "Degrees"'}]
     assert step(req(slot="education.0.discipline", candidates=group), db_session) == {

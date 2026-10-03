@@ -23,6 +23,33 @@ EntryKind = Literal["experience", "education", "languages", "websites"]
 # entry). The loop's MAX_ENTRY_INDEX mirrors it.
 MAX_ENTRY_INDEX = 20
 Reason = Literal["matched", "closest", "assumed", "abstained"]
+
+
+# How a model decided an answer: value-free by construction (enums and numbers), returned
+# beside /map, /pick and /step answers for the run trace (docs/plans/2026-10-02-fill-trace-design.md).
+Engine = Literal["jev", "fast"]
+Second = Literal["asked", "decided"]  # asked: it ran and did not change the answer; decided: its answer stands
+PolarityWay = Literal["same", "opposite", "neither", "unsure"]
+
+
+class DecisionTrace(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    engine: Engine | None = None  # None: no model was asked (a code path)
+    p: float | None = Field(default=None, ge=0.0, le=1.0)
+    floor: float | None = Field(default=None, ge=0.0, le=1.0)
+    second: Second | None = None
+    # With second == "decided": the FIRST engine's probability for the answer that now
+    # stands, or its top choice when it abstained — the evidence for whether a lower floor
+    # would have been safe (the calibration goal).
+    first_p: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class PolarityTrace(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    way: PolarityWay
+    engine: Engine | None = None
+    p: float | None = Field(default=None, ge=0.0, le=1.0)
+
 MAX_FIELDS = 40
 MAX_MAP_OPTIONS = 30
 MAX_PICK_OPTIONS = 250  # Jev Choice ceiling 255 incl. `none`
@@ -80,6 +107,7 @@ class Mapped(BaseModel):
     value: str | list[str] | None = None  # to the LOCAL extension only
     format: Format | None = None
     why: Why | None = None
+    trace: DecisionTrace | None = None
 
 
 class MapResponse(BaseModel):
@@ -117,6 +145,8 @@ class PickRequest(Selector):
 class Picked(BaseModel):
     oids: list[str]
     reason: Reason
+    trace: DecisionTrace | None = None
+    polarity: PolarityTrace | None = None
 
 
 class PickResponse(BaseModel):
@@ -173,6 +203,8 @@ class StepResponse(BaseModel):
     # answer (open, search, scroll, open a group) and clears the progress
     # floor: progress. `abstained` (mid None) = give up.
     reason: StepReason
+    trace: DecisionTrace | None = None
+    polarity: PolarityTrace | None = None
 
 
 # ---------- /sections: what each repeating section lists, and how many entries the profile can fill
