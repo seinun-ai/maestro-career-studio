@@ -337,6 +337,33 @@ def test_a_routed_pass_scores_the_second_opinion_and_says_who_decided(monkeypatc
     assert (result["outcome"], result["decided_by"]) == ("right", "fast")
 
 
+def test_a_second_opinion_that_abstained_or_never_ran_is_not_scored_as_deciding(monkeypatch):
+    """An abstain carrying a trace is not equal to `ABSTAIN`: `fast_decided` is read by content."""
+    from app.services import autofill_pick
+
+    _jev_says_none(monkeypatch)
+    case = next(c for c in PICKS["cases"] if c["id"] == "authorized-yes")
+    monkeypatch.setattr(autofill_pick, "fast_json", lambda *_a, **_k: {
+        "picks": {"c1": {"oids": [], "confidence": 0.95}}})
+    result = ev.run_pick(case, ev.Run("routed"), None, PICKS["today"])
+    assert (result["outcome"], result["decided_by"]) == ("abstained", "jev")
+
+    monkeypatch.setattr(autofill_pick, "_second_opinion", lambda *_a, **_k: None)   # it never ran
+    result = ev.run_pick(case, ev.Run("routed"), None, PICKS["today"])
+    assert (result["outcome"], result["decided_by"]) == ("abstained", "jev")
+
+
+def test_a_jev_pass_never_runs_the_second_opinion(monkeypatch):
+    from app.services import autofill_pick
+
+    _jev_says_none(monkeypatch)
+    case = next(c for c in PICKS["cases"] if c["id"] == "authorized-yes")
+    ev_run = ev.Run("jev")
+    with ev.engine_of(ev_run):
+        assert autofill_pick._second_opinion([], {}, None, None, None, {}) is None
+    assert ev.run_pick(case, ev_run, None, PICKS["today"])["decided_by"] == "jev"
+
+
 def test_a_routed_pass_still_counts_a_jev_failure(monkeypatch):
     from app.services import autofill_pick, jev, llm
 

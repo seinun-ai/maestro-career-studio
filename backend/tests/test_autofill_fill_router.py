@@ -235,6 +235,26 @@ def test_the_map_response_carries_the_decision_trace(db_session, monkeypatch):
     assert set(trace) == {"engine", "p", "floor", "second", "first_p", "first_same"}
 
 
+@pytest.mark.usefixtures("profile")
+def test_the_pick_response_carries_the_decision_trace_and_the_polarity(db_session, monkeypatch):
+    """Both are part of the wire shape, and neither holds the answer's value."""
+    from tests.test_autofill_pick import fake_jev
+
+    autofill_profile.set_profile({"eligibility": {"over_18": True}}, db_session)
+    model_settings.set_jev_api_key(db_session, "sk-or-test")
+    model_settings.set_autofill_engine(db_session, "jev")
+    fake_jev(monkeypatch, {"g": ("o1", 0.97)}, ways={"g": ("same", 0.97)})
+    field = {"fid": "g", "question": "Are you over 18?", "route": "slot", "slot": "eligibility.over_18",
+             "options": [{"oid": "o1", "text": "Yes"}, {"oid": "o2", "text": "No"}]}
+    r = _post(db_session, "/api/autofill/pick", {"fields": [field]})
+    assert r.status_code == 200
+    got = r.json()["picks"]["g"]
+    assert (got["oids"], got["reason"]) == (["o1"], "matched")
+    assert got["trace"]["engine"] == "jev" and got["trace"]["p"] == 0.97
+    assert set(got["trace"]) == {"engine", "p", "floor", "second", "first_p", "first_same"}
+    assert got["polarity"] == {"way": "same", "engine": "jev", "p": 0.97}
+
+
 @pytest.mark.parametrize("path, field", [("/api/autofill/map", MAP_FIELD), ("/api/autofill/pick", PICK_FIELD)])
 def test_an_unknown_application_is_404(db_session, path, field):
     r = _post(db_session, path, {"application_id": str(uuid4()), "fields": [field]})

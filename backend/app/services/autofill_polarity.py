@@ -97,6 +97,9 @@ class Ask:
 class Polarity:
     way: Way | None   # None: unsure; neither: decided, but no answer — both leave the field to the user
     engine: str | None   # "jev" | "fast": which engine decided
+    # The deciding answer's probability (value-free: the fill trace reads it). A
+    # remembered polarity keeps it. None: nothing decided.
+    p: float | None = None
 
 
 UNSURE = Polarity(None, None)
@@ -234,14 +237,14 @@ def decide(asks: list[Ask], session: Session, budget: Budget) -> dict[str, Polar
         else:
             for a in todo:
                 if way := _accepted(got.get(a.fid), a.policy):
-                    decided[a.fid] = Polarity(way, "jev")
+                    decided[a.fid] = Polarity(way, "jev", got[a.fid][1])
             fast_asks = [a for a in todo if a.fid not in decided]
             fast = _second_opinion(fast_asks, session, budget)
     else:
         fast = _fast(todo, session, budget, "autofill-polarity")
     for a in fast_asks:
         if way := _accepted(fast.get(a.fid), a.policy):
-            decided[a.fid] = Polarity(way, "fast")
+            decided[a.fid] = Polarity(way, "fast", fast[a.fid][1])
     for a in todo:
         polarity = decided.get(a.fid, UNSURE)
         if polarity.way is not None:

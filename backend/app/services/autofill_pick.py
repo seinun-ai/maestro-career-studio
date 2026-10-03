@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
 
-from app.schemas.autofill_fill import Picked, PickField
+from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, PolarityTrace
 from app.services import autofill_polarity, jev, llm, model_settings
 from app.services.autofill_catalog import Fact, yes_no_word
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
@@ -35,6 +35,8 @@ from app.services.autofill_map import (
     keen,
     low_stakes_rule,
     main_call,
+    second_asked,
+    second_decided,
 )
 from app.services.autofill_reasoned import reason
 
@@ -50,6 +52,8 @@ ASSUMED_FLOOR = 0.4
 # status must stay none, never become a confident No.
 NEVER_YES_NO = ("A status, list or name value is never turned into a Yes or No: only an option naming that same "
                 "status, item or name answers it, else none.")
+# For a return that carries no trace (a field nothing was asked about). An abstain that has
+# a trace is a fresh Picked, so it never equals this one: ask `abstained`, never `== ABSTAIN`.
 ABSTAIN = Picked(oids=[], reason="abstained")
 _NO_OPTION_TEXT = "No option means the same as the fact"
 _NO_ANSWER_TEXT = "No option states this answer"
@@ -91,20 +95,37 @@ def values_for(field, fact: Fact | None) -> list[str]:
     return [] if item else [fact.value]
 
 
-def verdict(field, oid: str | None, p: float, policy: str, *, complete: bool) -> Picked:
-    """One single-answer decision → Picked, shared by /pick and /step.
+def abstained(picked: Picked) -> bool:
+    """Nothing was chosen. Tested by content: `==` compares the trace too, so a
+    Picked carrying one never equals ABSTAIN."""
+    return not picked.oids
+
+
+def verdict(field, oid: str | None, p: float | None, policy: str, *, complete: bool,
+            engine: Engine | None) -> Picked:
+    """One single-answer decision → Picked, shared by /pick and /step, with the
+    trace of how it was decided (`engine`, `p` and the floor it was judged against).
 
     A `closest` near miss needs a flag slot AND a complete view of the options:
-    the nearest of a partial list is a guess."""
+    the nearest of a partial list is a guess. `p` None is a confidence the model
+    gave unreadably: routed as 0.0, but never traced as a 0.0 it did not say."""
+    chance = p or 0.0
+
+    def traced(picked_oids: list[str], reason: str, floor: float) -> Picked:
+        return Picked(oids=picked_oids, reason=reason, trace=DecisionTrace(engine=engine, p=p, floor=floor))
+
+    low_stakes = field.route == "low_stakes"
     if not oid or oid == NO_OPTION:
-        return ABSTAIN
-    if field.route == "low_stakes":
-        return Picked(oids=[oid], reason="assumed") if p >= ASSUMED_FLOOR else ABSTAIN
-    if p >= MATCH_FLOOR[policy]:
-        return Picked(oids=[oid], reason="matched")
-    if policy == "flag" and complete and p >= CLOSEST_FLOOR:
-        return Picked(oids=[oid], reason="closest")
-    return ABSTAIN
+        return traced([], "abstained", ASSUMED_FLOOR if low_stakes else MATCH_FLOOR[policy])
+    if low_stakes:
+        if chance >= ASSUMED_FLOOR:
+            return traced([oid], "assumed", ASSUMED_FLOOR)
+        return traced([], "abstained", ASSUMED_FLOOR)
+    if chance >= MATCH_FLOOR[policy]:
+        return traced([oid], "matched", MATCH_FLOOR[policy])
+    if policy == "flag" and complete and chance >= CLOSEST_FLOOR:
+        return traced([oid], "closest", CLOSEST_FLOOR)
+    return traced([], "abstained", MATCH_FLOOR[policy])
 
 
 @dataclass(frozen=True)
@@ -157,21 +178,25 @@ def polarity_question(field) -> str:
     return f"{field.question} (options: {'; '.join(texts)})"
 
 
-def polarity_answers(fields, facts: dict[str, Fact], session: Session, budget: Budget) -> dict[str, Computed | None]:
+def polarity_answers(fields, facts: dict[str, Fact], session: Session, budget: Budget,
+                     ways: dict[str, autofill_polarity.Polarity] | None = None) -> dict[str, Computed | None]:
     """Per slot field holding a Yes/No fact, the applicant's answer to its
     question as worded: its polarity decided (autofill_polarity), then the value
-    flipped by code. None: unsure, neither, or a wordy value asked the other way."""
+    flipped by code. None: unsure, neither, or a wordy value asked the other way.
+    `ways`, when given, is filled with each field's decided Polarity (the trace's)."""
     yes_no = {f.fid: facts[f.slot] for f in fields
               if f.route == "slot" and f.slot in facts and facts[f.slot].yes_no}
-    ways = autofill_polarity.decide([autofill_polarity.Ask(f.fid, polarity_question(f), facts[f.slot].describe,
-                                                           facts[f.slot].policy)
-                                     for f in fields if f.fid in yes_no], session, budget)
+    decided = autofill_polarity.decide([autofill_polarity.Ask(f.fid, polarity_question(f), facts[f.slot].describe,
+                                                              facts[f.slot].policy)
+                                        for f in fields if f.fid in yes_no], session, budget)
+    if ways is not None:
+        ways.update(decided)
     out: dict[str, Computed | None] = {}
     for fid, fact in yes_no.items():
-        answer = autofill_polarity.answer_for(str(fact.value), ways[fid].way)
+        answer = autofill_polarity.answer_for(str(fact.value), decided[fid].way)
         # A saved answer is described by its own question ("saved answer to:
         # …"): a statement would read as that answer being false. Literal only.
-        same = ways[fid].way == autofill_polarity.SAME and not fact.slot.startswith("custom.")
+        same = decided[fid].way == autofill_polarity.SAME and not fact.slot.startswith("custom.")
         # A worded answer ("No, I do not have a disability") says which fact
         # it answers: beside an undirected question ("Please check one of the
         # boxes below:", iCIMS CC-305) Jev picked the right box under the floor.
@@ -204,7 +229,11 @@ def _instructions(field: PickField, values: list[str], hint: JobHint | None, fac
             f"{json.dumps(values[0])}? {NEVER_YES_NO} {_PAGE_TEXT_IS_DATA}")
 
 
-def _with_jev(fields, facts, hint, session, answers: dict[str, Computed]) -> dict[str, Picked]:
+def _with_jev(fields, facts, hint, session,
+              answers: dict[str, Computed]) -> tuple[dict[str, Picked], dict[str, tuple[str, float]]]:
+    """Each field's Picked, and Jev's top choice with its probability for every
+    field it answered readably, even an abstained one: a second opinion that
+    decides is traced against it (`autofill_map.second_decided`)."""
     state = {"job": asdict(hint) if hint else None, "fields": []}
     questions, criteria_by_fid = {}, {}
     for f in fields:
@@ -216,12 +245,14 @@ def _with_jev(fields, facts, hint, session, answers: dict[str, Computed]) -> dic
         questions[f.fid] = jev.choice_question(_instructions(f, values, hint, facts, answers.get(f.fid)),
                                                criteria_by_fid[f.fid])
     replies = jev.decide(questions, state, session)
-    out = {}
+    out, tops = {}, {}
     for f in fields:
         got = jev.choice_of(replies.get(f.fid), criteria_by_fid[f.fid])
-        out[f.fid] = verdict(f, got.choice if got else None, got.probability if got else 0.0,
-                             _policy(f, facts), complete=f.complete)
-    return out
+        if got:
+            tops[f.fid] = (got.choice, got.probability)
+        out[f.fid] = verdict(f, got.choice if got else None, got.probability if got else None,
+                             _policy(f, facts), complete=f.complete, engine="jev")
+    return out, tops
 
 
 def _with_llm(fields, facts, hint, session, answers: dict[str, Computed], trace_name="autofill-pick", *,
@@ -246,25 +277,28 @@ def _with_llm(fields, facts, hint, session, answers: dict[str, Computed], trace_
         oids = entry.get("oids")
         oids = [o for o in oids if isinstance(o, str) and o in offered] if isinstance(oids, list) else []
         conf = entry.get("confidence")
-        conf = float(conf) if jev._unit(conf) else 0.0
-        out[f.fid] = verdict(f, oids[0] if oids else None, conf, _policy(f, facts), complete=f.complete)
+        conf = float(conf) if jev._unit(conf) else None   # unreadable: routed as 0.0, traced as None
+        out[f.fid] = verdict(f, oids[0] if oids else None, conf, _policy(f, facts), complete=f.complete,
+                             engine="fast")
     return out
 
 
 def _second_opinion(fields: list[PickField], facts: dict[str, Fact], hint: JobHint | None, session: Session,
-                    budget: Budget, answers: dict[str, Computed], *, reasoning_next: bool = False) -> dict[str, Picked]:
+                    budget: Budget, answers: dict[str, Computed], *,
+                    reasoning_next: bool = False) -> dict[str, Picked] | None:
     """ONE fast-model pick for the fact fields Jev abstained on, on what is
     left of the request's budget (capped; leaving a reasoning call that
     follows time to start), through the same `verdict`. Out of time or
-    failed, Jev's abstention stands."""
+    failed, Jev's abstention stands. None: it did not run (the trace's
+    `second` stays None for those fields)."""
     timeout = budget.left(SECOND_OPINION_MAX_S, reserve=MIN_CALL_S if reasoning_next else 0.0)
     if not fields or timeout is None:
-        return {}
+        return None
     try:
         return _with_llm(fields, facts, hint, session, answers, "autofill-pick-second", timeout=timeout)
     except llm.LLMProviderError:
         logger.warning("fast model second opinion failed; Jev's abstentions stand")
-        return {}
+        return None
 
 
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None) -> dict[str, Picked]:
@@ -280,7 +314,8 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
     out = {f.fid: ABSTAIN for f in fields if f.fid not in asked}
     # A Yes/No fact's answer to the question as worded: polarity first, code
     # flips; unsure, it is left to the user and never picked.
-    computed = polarity_answers(askable, facts, session, budget)
+    ways: dict[str, autofill_polarity.Polarity] = {}
+    computed = polarity_answers(askable, facts, session, budget, ways)
     answers = {fid: a for fid, a in computed.items() if a is not None}
     out |= {fid: ABSTAIN for fid in computed if fid not in answers}
     askable = [f for f in askable if f.fid not in computed or f.fid in answers]
@@ -289,7 +324,7 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
         picked = None
         if model_settings.get_autofill_engine(session) == "jev":
             try:
-                picked = _with_jev(askable, facts, hint, session, answers)
+                picked, tops = _with_jev(askable, facts, hint, session, answers)
             except llm.LLMProviderError:
                 logger.warning("jev pick failed; the fast model picks this batch")
         if picked is None:
@@ -298,14 +333,29 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
             picked = main_call(budget, lambda timeout: _with_llm(askable, facts, hint, session, answers,
                                                                  timeout=timeout), "fast pick")
         else:
-            unsure = [f for f in askable if f.route == "slot" and picked[f.fid] == ABSTAIN]
-            decided = {fid: p for fid, p in _second_opinion(unsure, facts, hint, session, budget, answers,
-                                                             reasoning_next=bool(reasoned)).items()
-                       if p != ABSTAIN}
+            unsure = [f for f in askable if f.route == "slot" and abstained(picked[f.fid])]
+            second = _second_opinion(unsure, facts, hint, session, budget, answers,
+                                     reasoning_next=bool(reasoned))
+            decided = 0
+            # None: it did not run, and each field keeps Jev's trace as it was.
+            if second is not None:
+                for f in unsure:
+                    got = second[f.fid]
+                    if abstained(got):
+                        picked[f.fid] = picked[f.fid].model_copy(
+                            update={"trace": second_asked(picked[f.fid].trace)})
+                    else:
+                        trace = second_decided(got.trace, tops.get(f.fid), got.oids[0])
+                        picked[f.fid] = got.model_copy(update={"trace": trace})
+                        decided += 1
             if decided:
-                logger.info("pick: the fast model decided %d of %d fields Jev abstained on", len(decided), len(unsure))
-            picked |= decided
+                logger.info("pick: the fast model decided %d of %d fields Jev abstained on", decided, len(unsure))
         out |= picked
     if reasoned:
         out |= reason(reasoned, facts, session, budget, hint.company if hint else None)
+    # Also the fields polarity left to the user: they carry no trace (no pick was asked), but
+    # how polarity went is exactly what explains them (iCIMS CC-305, live 2026-10-02).
+    for fid, w in ways.items():
+        out[fid] = out[fid].model_copy(update={"polarity": PolarityTrace(way=w.way or "unsure",
+                                                                         engine=w.engine, p=w.p)})
     return out

@@ -59,7 +59,8 @@ def _decide(req: StepRequest, mid: str | None, p: float, policy: str) -> StepRes
     if not mid or mid == GIVE_UP:
         return ABSTAIN
     if _is_answer(req, mid):
-        picked = verdict(req, mid, p, policy, complete=req.complete)
+        # engine=None until the step records its trace (the fill-trace plan, Task 4).
+        picked = verdict(req, mid, p, policy, complete=req.complete, engine=None)
         return StepResponse(mid=mid, reason=picked.reason) if picked.oids else ABSTAIN
     return StepResponse(mid=mid, reason="progress") if p >= PROGRESS_FLOOR else ABSTAIN
 

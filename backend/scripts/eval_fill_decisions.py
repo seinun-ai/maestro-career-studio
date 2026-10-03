@@ -397,7 +397,7 @@ class Run:
     jev_errors: list[str] = field(default_factory=list)
     # (option or move id, probability or confidence) of each decision, as
     # the floors saw it: the report shows the number behind an abstain.
-    trace: list[tuple[str | None, float]] = field(default_factory=list)
+    trace: list[tuple[str | None, float | None]] = field(default_factory=list)
     # `routed` only: the fields the fast second opinion was asked about, and
     # whether it decided the last case (it answered where Jev did not).
     second_asked: set[str] = field(default_factory=set)
@@ -481,8 +481,11 @@ def engine_of(run: Run, low_stakes: bool = False):
             elif module is autofill_polarity:
                 pass   # recorded by `seen_polarity`, with its engine
             else:
-                run.fast_decided = (any(p != autofill_pick.ABSTAIN for p in got.values()) if isinstance(got, dict)
-                                    else got != autofill_step.ABSTAIN)
+                # None: it never ran. Else decided by content: an abstain that carries a trace is
+                # not equal to ABSTAIN, so `!=` would call every one decided.
+                run.fast_decided = got is not None and (
+                    any(not autofill_pick.abstained(p) for p in got.values()) if isinstance(got, dict)
+                    else got.mid is not None)
             return got
         return asked
 
@@ -502,7 +505,7 @@ def engine_of(run: Run, low_stakes: bool = False):
         autofill_polarity._with_llm = refuse
     if run.engine == "jev":   # Jev alone: its unsure answers stand
         autofill_map._second_opinion = lambda *_a, **_k: None   # never ran
-        autofill_pick._second_opinion = lambda *_a, **_k: {}
+        autofill_pick._second_opinion = lambda *_a, **_k: None   # never ran
         autofill_step._second_opinion = lambda *_a, **_k: autofill_step.ABSTAIN
         autofill_polarity._second_opinion = lambda *_a, **_k: {}
     elif run.engine == "routed":
