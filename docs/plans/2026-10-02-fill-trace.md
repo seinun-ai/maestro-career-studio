@@ -191,6 +191,11 @@ Expect everything to pass.
 
 **Step 5:** Commit: `feat(autofill): value-free decision traces on map, pick and step answers`
 
+*As built:* the pick and step pins exclude the trace keys **by name**
+(`TRACE_KEYS = {"trace", "polarity"}`), not with `exclude_none`. The step pins assert `"mid": None`
+on purpose, and `exclude_none` would drop it. Later tasks keep this pattern; don't switch back.
+`DecisionTrace` also has `first_same: bool | None`.
+
 ---
 
 ### Task 2: /map returns its decision trace
@@ -228,11 +233,20 @@ budget, or a failure). Change it to return `None` when it did not run, and keep 
 it was given. `map_fields` merges `second or {}` (`second.items()` at L536) and remembers
 separately whether it ran.
 
-`first_p`: on `second == "decided"`, Jev's `p` for that fid (its top choice, even under the floor).
+`first_p` and `first_same` (on `second == "decided"`):
+- `first_p` is Jev's `p` for its own top choice, even under the floor.
+- `first_same` is whether that top choice equals the key the second opinion decided.
 
-Low-stakes and reasoned routes (L551-556): `trace=DecisionTrace(engine=None)`. `_low_stakes` and
-`_answerable` discard their `p` (L401-420). Leave that known gap with a one-line comment; the
-route is still recorded.
+The second opinion runs only when Jev abstained, so its top choice is often "none". Only agreeing
+cases are floor evidence (Task 1 review).
+
+Low-stakes and reasoned routes (L551-556): `trace=DecisionTrace(engine=<the engine that judged
+it>)`.
+- `_low_stakes` asks Jev (engine "jev") or the fast model (engine "fast").
+- `_answerable` always asks the fast model (engine "fast").
+
+`p` stays None: `_low_stakes` and `_answerable` discard it (L401-420). Leave that known gap with a
+one-line comment.
 
 **Step 1: Failing tests:**
 - **Jev decides.** Slot X at 0.97 → `trace == DecisionTrace(engine="jev", p=0.97, floor=<floor of X>)`.
@@ -295,8 +309,9 @@ Fix:
   When the oid is the no-match key, the trace still carries `p`, the probability of the no-match
   answer.
 - **Second opinion in `pick`.** `unsure` is the slot fields whose Jev pick is abstained:
-  - when the second opinion decides one: its trace, plus `second="decided"` and
-    `first_p=<Jev's p>`;
+  - when the second opinion decides one: its trace, plus `second="decided"`,
+    `first_p=<Jev's p for its own top choice>`, and `first_same=<whether Jev's top oid equals
+    the decided oid>`;
   - when it ran and didn't decide: Jev's trace with `second="asked"`;
   - when it didn't run (`budget.left` is None, or a failure), `second` stays None. Make
     `_second_opinion` return None when it didn't run, as in Task 2. `pick` merges
@@ -318,7 +333,9 @@ Fix:
 - **Jev matches.** Jev picks o2 at 0.95 with an exact policy →
   `trace == DecisionTrace(engine="jev", p=0.95, floor=0.9)`.
 - **Fast decides.** Jev abstains at 0.82 and the fast model decides at 0.97 →
-  `trace == DecisionTrace(engine="fast", p=0.97, floor=0.9, second="decided", first_p=0.82)`. This
+  `trace == DecisionTrace(engine="fast", p=0.97, floor=0.9, second="decided", first_p=0.82, first_same=True)`
+  when Jev's top choice was the same oid. Add a second case where Jev's top choice was the no-match
+  key, which gives `first_same=False`. This
   test also proves the second opinion is still asked: the equality bug above made `unsure` empty.
 - **Fast asked.** Jev abstains and the fast model also abstains → `second="asked"`, and the result
   is abstained.
@@ -359,7 +376,8 @@ and expect PASS.
   - A `give_up` and a no-mid answer still carry engine and `p`; they are calibration evidence for
     give-ups. Return a fresh `StepResponse(mid=None, reason="abstained", trace=…)`.
 - **Second opinion.**
-  - It decided: `second="decided"` and `first_p=<Jev's p>`.
+  - It decided: `second="decided"`, `first_p=<Jev's p>` and `first_same=<Jev's mid == the decided
+    mid>`.
   - It ran and abstained: Jev's trace with `second="asked"`.
   - It didn't run: `second` is None.
 - **Polarity.** `step()` decides polarity at L137-140. Attach a `PolarityTrace` the same way
@@ -368,7 +386,8 @@ and expect PASS.
 
 **Step 1: Failing tests:**
 - a progress move at 0.6 by Jev → `DecisionTrace(engine="jev", p=0.6, floor=0.5)`;
-- Jev gives up at 0.7 and the fast model decides an answer click → `engine="fast", second="decided", first_p=0.7`;
+- Jev gives up at 0.7 and the fast model decides an answer click →
+  `engine="fast", second="decided", first_p=0.7, first_same=False`;
 - the second opinion still runs after a Jev abstain that carries a trace (the regression test for
   L158);
 - polarity unsure gives `polarity.way == "unsure"`;
@@ -421,6 +440,7 @@ class TraceStep(BaseModel):
     floor: float | None = Field(default=None, ge=0.0, le=1.0)
     second: Second | None = None
     first_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    first_same: bool | None = None
     way: PolarityWay | None = None                            # polarity
     option: int | None = Field(default=None, ge=0, le=MAX_PICK_OPTIONS)  # index into the field's options
     reason: StepReason | None = None                          # pick / step
@@ -544,7 +564,7 @@ Read the field statuses for `KEPT` and `FAILED` from the fill-loop header's repo
     `no_effect`, `unexpected`, `reverted` or `refused`. This is the design's "a pick the page
     rejected or reverted".
 
-`first|<op>|<band of first_p>`, for steps with `second == "decided"`
+`first|<op>|<band of first_p>`, for steps with `second == "decided"` **and** `first_same` true
 - Counts: `n`, and `kept` / `left` / `failed` as above.
 - This is the evidence for "Jev at 0.8x, confirmed by the fast model, kept by the page".
 
@@ -656,7 +676,8 @@ Commit: `refactor(scripts): one copy-only database guard, shared by the eval and
    ms. Show the top 15.
 2. **Calibration.** Per decision op × engine × band: `n`, then the `kept`, `left`, `failed` and
    `rejected` shares.
-3. **First-engine evidence.** Per op × band of `first_p`: `n` and the `kept` share. Pair it with
+3. **First-engine evidence.** Per op × band of `first_p`, counting only the cases where the first
+   engine's top choice was the answer that stood (`first_same`): `n` and the `kept` share. Pair it with
    the second opinion's value per op: `asked`, `decided`, and the share of `decided_kept`.
 4. **Slowest fields.** From the stored runs, the 10 fields with the most steps and the most total
    ms: host, label, steps, ms, outcome.
@@ -708,7 +729,8 @@ whole run is lost silently.
 | `sweep` re-open (L1151-1174) | `{op:"sweep", effect:"reverted"}` |
 | `lookUp` hit (L559-573) | `{op:"recipe"}`. A variant is an order string, never a move id; don't record it. |
 
-- `decision(t)` copies only `engine`, `p`, `floor`, `second` and `first_p`, and only those present.
+- `decision(t)` copies only `engine`, `p`, `floor`, `second`, `first_p` and `first_same`, and only
+  those present.
 - `effectOf` and `exploreEffect` implement the two tables above. A test pins `effectOf` against the
   header's page-outcome list (L109-114): every word listed there must have a row.
 
