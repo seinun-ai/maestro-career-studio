@@ -3,6 +3,9 @@
 SYSTEM.md {#inv-autofill-telemetry-no-values}: a counter key holds enums, ids and bands only,
 never a host or a label, so the counters outlive clearing the runs. The stored runs hold the
 trace itself (value-free by schema) and are what DELETE /telemetry clears.
+
+Every key format lives here (the `*_key` builders, `KEY_PARTS`, `parse_key`) so the report
+script reads keys the way this module writes them.
 """
 
 from collections import defaultdict
@@ -16,11 +19,20 @@ from app.models.autofill_run import AutofillRun
 from app.schemas.autofill_trace import RunTrace, TraceField, TraceStep
 
 RUNS_KEPT = 50
-KEPT = {"verified", "closest", "assumed", "already", "partial"}  # report statuses (fill-loop.js header)
-FAILED = {"unconfirmed", "cannot_operate", "unsupported"}
-DECISIONS = {"map", "polarity", "pick", "step"}
-ACTIONS = {"explore", "choose", "set", "write", "move"}
-REJECTED = {"no_effect", "unexpected", "reverted", "refused"}
+KEPT = frozenset({"verified", "closest", "assumed", "already", "partial"})  # report statuses (fill-loop.js header)
+FAILED = frozenset({"unconfirmed", "cannot_operate", "unsupported"})
+DECISIONS = frozenset({"map", "polarity", "pick", "step"})
+ACTIONS = frozenset({"explore", "choose", "set", "write", "move"})
+REJECTED = frozenset({"no_effect", "unexpected", "reverted", "refused"})  # the effects that waste a try
+NONE_PART = "-"  # a key part with no value (no family, no floor, no band)
+
+# The parts of each key family, after its name: `action|<family>|<kind>` and so on.
+KEY_PARTS = {
+    "action": ("family", "kind"),
+    "decision": ("op", "engine", "by", "floor", "band", "choice"),
+    "first": ("op", "floor", "band"),
+    "second": ("op",),
+}
 
 Counters = dict[str, dict[str, int]]
 
@@ -30,6 +42,49 @@ def band(p: float | None) -> str | None:
     if p is None:
         return None
     return str(min(int(p * 10 + 1e-9), 9) / 10)
+
+
+def _band_part(p: float | None) -> str:
+    return band(p) or NONE_PART
+
+
+def _floor_part(floor: float | None) -> str:
+    return NONE_PART if floor is None else str(round(floor, 2))
+
+
+def action_key(family: str | None, kind: str) -> str:
+    return f"action|{family or NONE_PART}|{kind}"
+
+
+def decision_key(step: TraceStep) -> str:
+    """`by` is `first` unless a second opinion decided: the second engine only runs on the first's
+    abstentions, so its population differs. `choice` is the polarity `way` for a polarity step, else
+    answer / none (the model chose the no-answer key) / unknown (its choice could not be read)."""
+    by = "second" if step.second == "decided" else "first"
+    if step.op == "polarity":
+        choice = step.way or "unknown"
+    else:
+        choice = "unknown" if step.chose_none is None else "none" if step.chose_none else "answer"
+    return (f"decision|{step.op}|{step.engine}|{by}|{_floor_part(step.floor)}|"
+            f"{_band_part(step.p)}|{choice}")
+
+
+def first_key(step: TraceStep) -> str:
+    """The first engine is always Jev today (the second opinion only runs on Jev). `first_same`
+    means it named the same choice, so it faced this step's floor."""
+    return f"first|{step.op}|{_floor_part(step.floor)}|{_band_part(step.first_p)}"
+
+
+def second_key(op: str) -> str:
+    """`asked`: the second opinion ran and did not change the answer; `decided`: its answer stands.
+    Total asks are asked + decided."""
+    return f"second|{op}"
+
+
+def parse_key(key: str) -> tuple[str, dict[str, str]]:
+    """A counter key as (family name, {part name: value})."""
+    name, *parts = key.split("|")
+    return name, dict(zip(KEY_PARTS[name], parts, strict=True))
 
 
 def _status(field: TraceField) -> str:
@@ -46,11 +101,11 @@ def _bump(out: Counters, key: str, name: str, n: int = 1) -> None:
 
 def _fold_action(out: Counters, field: TraceField, step: TraceStep) -> None:
     kind = step.move.split(":")[0] if step.op == "move" and step.move else step.op
-    key = f"action|{field.family or '-'}|{kind}"
+    key = action_key(field.family, kind)
     _bump(out, key, "tries")
-    if step.effect:
-        _bump(out, key, step.effect)
-    if step.ms:
+    _bump(out, key, step.effect or "effect_unknown")
+    if step.ms is not None:
+        _bump(out, key, "timed")
         _bump(out, key, "ms", step.ms)
 
 
@@ -63,10 +118,7 @@ def _rejected_next(field: TraceField, after: int) -> bool:
 
 
 def _fold_decision(out: Counters, field: TraceField, at: int, status: str) -> None:
-    step = field.steps[at]
-    floor = "-" if step.floor is None else str(round(step.floor, 2))
-    answer = "none" if step.chose_none else "answer"
-    key = f"decision|{step.op}|{step.engine}|{floor}|{band(step.p) or '-'}|{answer}"
+    key = decision_key(field.steps[at])
     _bump(out, key, "n")
     _bump(out, key, status)
     if _rejected_next(field, at):
@@ -74,15 +126,16 @@ def _fold_decision(out: Counters, field: TraceField, at: int, status: str) -> No
 
 
 def _fold_second(out: Counters, step: TraceStep, status: str) -> None:
-    key = f"second|{step.op}"
+    key = second_key(step.op)
     _bump(out, key, step.second)
-    if step.second == "decided":
-        if status == "kept":
-            _bump(out, key, "decided_kept")
-        if step.first_same:
-            first = f"first|{step.op}|{band(step.first_p) or '-'}"
-            _bump(out, first, "n")
-            _bump(out, first, status)
+    if step.second != "decided":
+        return
+    if status == "kept":
+        _bump(out, key, "decided_kept")
+    if step.first_same is True:
+        first = first_key(step)
+        _bump(out, first, "n")
+        _bump(out, first, status)
 
 
 def fold(trace: RunTrace) -> Counters:
@@ -93,16 +146,22 @@ def fold(trace: RunTrace) -> Counters:
         for at, step in enumerate(field.steps):
             if step.op in ACTIONS:
                 _fold_action(out, field, step)
-            if step.op in DECISIONS and step.engine:
+            elif step.op in DECISIONS and step.engine:  # no engine: code decided, never counted
                 _fold_decision(out, field, at, status)
-            if step.second:
-                _fold_second(out, step, status)
+                if step.second:
+                    _fold_second(out, step, status)
     return dict(out)
 
 
 def _add_counters(db: Session, increments: Counters) -> None:
+    rows = {
+        row.key: row
+        for row in db.scalars(
+            select(AutofillMechanismStat).where(AutofillMechanismStat.key.in_(increments))
+        )
+    }
     for key, counts in increments.items():
-        row = db.get(AutofillMechanismStat, key)
+        row = rows.get(key)
         if row is None:
             db.add(AutofillMechanismStat(key=key, counts=dict(counts)))
             continue
@@ -125,19 +184,21 @@ def _prune(db: Session) -> None:
 
 def store_run(db: Session, trace: RunTrace) -> None:
     """Insert the run (a re-post of the same run_id replaces it and is NOT folded twice), prune
-    to the newest RUNS_KEPT by started_at, and fold a NEW run into the counters.
+    to the newest RUNS_KEPT by started_at, fold a NEW run into the counters, and COMMIT.
 
-    The write lock comes first: routes run in the threadpool, so two posts close together would
-    otherwise lose counter increments (read-modify-write) or 500 on a duplicate run_id insert.
-    A re-post of a run that was already pruned looks new and is folded again; that is accepted,
-    because it is rare.
+    The dump and the fold are computed first, so the write lock is held only for the reads and
+    writes. The lock then comes before the run_id lookup: routes run in the threadpool, so two
+    posts close together would otherwise lose counter increments (read-modify-write) or 500 on a
+    duplicate run_id insert. A re-post of a run that was already pruned looks new and is folded
+    again; that is accepted, because it is rare.
     """
-    begin_write(db)
     doc = trace.model_dump(mode="json", exclude_none=True)
+    increments = fold(trace)
+    begin_write(db)
     row = db.scalar(select(AutofillRun).where(AutofillRun.run_id == trace.run_id))
     if row is None:
         db.add(AutofillRun(run_id=trace.run_id, host=trace.host, started_at=trace.started_at, trace=doc))
-        _add_counters(db, fold(trace))
+        _add_counters(db, increments)
     else:
         row.host, row.started_at, row.trace = trace.host, trace.started_at, doc
     db.flush()
