@@ -78,6 +78,37 @@
   chip. `bg-primary/N text-primary` is retired as a component fill. Callout
   containers (`border-primary/25 bg-primary/5` with foreground text) are not
   component states and stay.
+- **Shared tokens name every repeated choice** (`app/globals.css`; the
+  browsable reference with live previews is the Maestro Career Studio design
+  system artifact). New code takes a token, never a raw value.
+  **Status** is a role with a container pair, cut at M3's tones from the hue
+  the app already used, with chroma held near the primary container's: `success` (accepted, passed, added text), `warning`
+  (interviewing, a caution), `attention` (Needs you), `tertiary` (an offer,
+  an Ask), the `error-container` pair beside `--destructive`, and the primary
+  container for information (Applied, Proposed). A chip is
+  `bg-success-container text-on-success-container`; text or a dot on a
+  surface is `text-success` / `bg-success`. The hand-paired palette classes
+  (`bg-amber-500/10 text-amber-800 dark:…`) needed a dark twin at every call
+  site and are not written in new code. **Surfaces** are the five
+  `surface-container-*` tones (lowest is `--card`, container is `--muted`,
+  highest is `--canvas`); `bg-muted/N` resolved to a different grey on the
+  page, a card and the sidebar. **Type** is M3's scale as one utility
+  (`text-title-large` for a page title, `text-title-medium` a card title,
+  `text-body-medium` body, `text-label-medium` a chip or field label): size,
+  line height and weight travel together, tracking stays Geist's.
+  **Corners** are `rounded-corner-xs` (menus), `-sm` (controls), `-md`
+  (cards), `-lg` (sheets), `-xl` (dialogs), and `rounded-full` for pills.
+  **Elevation** is `shadow-level1` to `shadow-level3`, for what floats;
+  tone separates everything else. **Motion** is `ease-standard`,
+  `ease-emphasized-decelerate` and `ease-emphasized-accelerate` with the
+  `--duration-*` variables. `test_frontend_design_tokens.py` pins every
+  status pair and every text role at 4.5:1 on every surface in both modes,
+  the ladder's order and its anchors. **A scale name added to `@theme` is
+  registered in `lib/utils.ts` in the same change**: tailwind-merge files an
+  unknown `text-*` as a colour, so `cn("text-title-medium",
+  "text-muted-foreground")` dropped the size; the same test keeps the two
+  lists equal. The existing call sites move over in the order
+  `docs/plans/2026-10-02-design-system-tokens.md` gives.
 - **A focus indicator is the solid ring, never a translucent one.**
   `ring-ring/50` and `outline-ring/60` measure about 1.8 to 2.6:1 against the
   page, under WCAG 1.4.11's 3:1, so a ring, outline or border on a `focus:`,
