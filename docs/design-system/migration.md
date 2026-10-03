@@ -56,6 +56,13 @@ The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (
 | `leading-snug`, `leading-relaxed`, `leading-tight` beside a size | drop it: the scale sets the line height. Long reading text (the chat reply and its code blocks, notes, the profile summary, judged text) and inline diff highlights keep `leading-6` or `leading-7` |
 | `font-medium` or `font-semibold` beside a size | drop it: the scale sets the weight (a semibold name or heading is now 500) |
 
+## Buttons
+
+| Today | Write instead |
+| --- | --- |
+| `<Button variant="secondary">`, `buttonVariants({ variant: "secondary" })` (grey fill) | `variant="tonal"` (`secondary-container`, the one low-emphasis filled button); `outline` on a `secondary-container` surface |
+| `<Badge variant="secondary">` | stays: Badge's grey fill is for plain metadata |
+
 ## Shape, shadow, motion
 
 | Today | Write instead |
@@ -96,5 +103,5 @@ The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (
 ## Rules while moving
 
 - Add a new `@theme` scale name to the tailwind-merge list in `frontend/lib/utils.ts` in the same change, or `cn()` drops it.
-- A Button's `variant="secondary"` becomes `tonal` when it is a create or secondary action, `outline` otherwise.
+- There is no Button `variant="secondary"` any more: every grey secondary button is `tonal`, or `outline` when it sits on a `secondary-container` surface. A Badge's `variant="secondary"` stays (plain metadata).
 - Do not mix old and new in one component: move the whole file.

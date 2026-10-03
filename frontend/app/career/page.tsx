@@ -201,7 +201,7 @@ function CustomSectionsTab({
         <p className="text-muted-foreground text-body-medium">
           Publications, awards, volunteering and more.
         </p>
-        <Button size="sm" variant="secondary" onClick={onAdd}>
+        <Button size="sm" variant="tonal" onClick={onAdd}>
           <Plus aria-hidden="true" /> Add section
         </Button>
       </div>
@@ -278,7 +278,7 @@ function EntityTab({
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-end gap-3">
-        <Button size="sm" variant="secondary" onClick={onAdd}>
+        <Button size="sm" variant="tonal" onClick={onAdd}>
           <Plus aria-hidden="true" /> Add {singular}
         </Button>
       </div>

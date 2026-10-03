@@ -14,7 +14,8 @@ const buttonVariants = cva(
         // hover feedback at all. (The gate is correct in badge.tsx, where it
         // came from: a Badge is usually not interactive.)
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        // M3's filled-tonal: SECONDARY container, M3's role for "recessive
+        // The one low-emphasis filled button (the grey `secondary` variant was
+        // folded into it). M3's filled-tonal: SECONDARY container, M3's role for "recessive
         // components like tonal buttons". It was `bg-primary/10 text-primary`,
         // which failed AA (3.8-4.3:1) in light mode; the role pair is pinned
         // at >= 4.5:1 by backend/tests/test_frontend_color_roles.py.
@@ -30,8 +31,6 @@ const buttonVariants = cva(
         // 3:1). The dark focus border is set back to the solid ring here.
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50 dark:focus-visible:border-ring",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-surface-container-high",
         destructive:

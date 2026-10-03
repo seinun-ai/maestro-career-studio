@@ -662,3 +662,23 @@ def test_what_floats_carries_its_level():
     fab = re.search(r"fab:\s*\"([^\"]+)\"", _read("components/ui/button.tsx"))
     assert fab and "hover:shadow-level1" in fab.group(1).split()
     assert "hover:shadow-level1" in _read("components/status-chip.tsx")
+
+
+def test_there_is_one_low_emphasis_filled_button():
+    """The grey `secondary` variant is folded into `tonal`. Badge keeps its own
+    `secondary` (plain metadata, sanctioned by the Badge README), so only Buttons are walked."""
+    variants = re.search(r"const buttonVariants = cva\(.*?\n  \{\n    variants: \{\n      variant: \{(.*?)\n      \},", _read("components/ui/button.tsx"), re.S)
+    assert variants, "buttonVariants' variant map is not where this pin looks"
+    names = re.findall(r"^        ([a-z]+):", variants.group(1), re.M)
+    assert "tonal" in names and "secondary" not in names, names
+    hits = []
+    for rel in _frontend_sources():
+        if not rel.endswith(".tsx"):
+            continue
+        for number, name, tag in _jsx_tags(rel, ("Button", "IconButton")):
+            if re.search(r"(?<![\w-])variant=(?:\"secondary\"|\{[^}]*[\"']secondary[\"'])", tag):
+                hits.append(f"{rel}:{number}: <{name}>")
+    assert not hits, "a Button still passes variant=\"secondary\" at:\n" + "\n".join(hits)
+    # buttonVariants({ variant: "secondary" }) styles a link as a button.
+    called = _lines_matching(re.compile(r"buttonVariants\([^)]*[\"']secondary[\"']"))
+    assert not called, "buttonVariants asks for secondary at:\n" + "\n".join(called)

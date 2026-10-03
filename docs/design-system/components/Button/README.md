@@ -22,7 +22,8 @@ Buttons run an action; the variant says how much it matters, and a view has exac
 - Corners are `radius-corner-sm`; the FAB is `radius-corner-lg`.
 - Hover on `tonal` and `fab` is the pre-mixed 8% state layer (`secondary-container-hover`, `primary-container-hover`); never pick an opacity at the call site.
 - Focus is a solid `ring` border with a 3px halo. Pressing scales the button to 0.97.
-- Do not use the grey `secondary` variant in new work; it is being folded into `tonal`.
+- `tonal` is the one low-emphasis filled button. There is no grey `secondary` variant; Badge keeps its own `secondary` for plain metadata.
+- `tonal` rests on `background`, `card` or a `surface-container-*` panel. On a `secondary-container` surface (a current row, a selected chip) it would vanish, so use `outline` there.
 - Do not put two filled buttons in one view. A modal's confirm is filled because the modal is a view of its own.
 
 Source: `frontend/components/ui/button.tsx`. Changed from source: `sm` label 12.8px to 12px, type through the scale.

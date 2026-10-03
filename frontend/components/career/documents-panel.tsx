@@ -152,7 +152,7 @@ export function DocumentsPanel({
           <Button
             className="mt-3"
             size="sm"
-            variant="secondary"
+            variant="tonal"
             onClick={() => inputRef.current?.click()}
             disabled={upload.isPending}
           >

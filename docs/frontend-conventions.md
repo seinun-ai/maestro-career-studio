@@ -73,7 +73,9 @@
   (ring against primary is 1.49:1 light, 1.70:1 dark). **Current in a list or nav**
   (a sidebar row, the open chat) is secondary container, semibold, and
   `aria-current`, with no Check. **A create or secondary action** is
-  `Button variant="tonal"`. **A non-interactive status chip** is
+  `Button variant="tonal"`, the one low-emphasis filled button (there is no
+  grey `secondary` Button variant; a Badge keeps its own for plain metadata;
+  `test_frontend_design_tokens.py` pins the Button side). **A non-interactive status chip** is
   `Badge variant="tonal"` or the secondary-container pair on a custom-sized
   chip. `bg-primary/N text-primary` is retired as a component fill. Callout
   containers (`border-primary/25 bg-primary/5` with foreground text) are not

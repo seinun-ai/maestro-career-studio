@@ -45,7 +45,7 @@ export function ProfilePanel() {
         {errorDetail(profile.error) ? (
           <p className="text-muted-foreground mt-1 text-body-small">{errorDetail(profile.error)}</p>
         ) : null}
-        <Button className="mt-3" size="sm" variant="secondary" onClick={() => void profile.refetch()}>
+        <Button className="mt-3" size="sm" variant="tonal" onClick={() => void profile.refetch()}>
           Try again
         </Button>
       </div>
@@ -209,7 +209,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                 <Button
                   type="button"
                   size="sm"
-                  variant="secondary"
+                  variant="tonal"
                   onClick={() => setSkills([...skills, { category: "", items: [] }])}
                 >
                   <Plus aria-hidden="true" /> Add group

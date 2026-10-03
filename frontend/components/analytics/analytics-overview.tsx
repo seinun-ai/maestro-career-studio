@@ -189,7 +189,7 @@ export function AnalyticsOverview({
             <Button
               className="mt-1 w-fit"
               size="sm"
-              variant="secondary"
+              variant="tonal"
               onClick={() => onOpenTab("gaps")}
             >
               See all skill gaps <ArrowRight aria-hidden="true" />
@@ -227,7 +227,7 @@ export function AnalyticsOverview({
             <Button
               className="mt-1 w-fit"
               size="sm"
-              variant="secondary"
+              variant="tonal"
               onClick={() => onOpenTab("gaps")}
             >
               See all skill gaps <ArrowRight aria-hidden="true" />

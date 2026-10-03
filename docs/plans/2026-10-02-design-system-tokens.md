@@ -54,6 +54,10 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
   variant's hairline is a real `border` (its `hsl(var(--sidebar-border))` wrapped an oklch token and painted nothing);
   the sticky table header's inset hairline is the one allow-listed literal. `test_frontend_design_tokens.py` fails on any
   `shadow-*` that is not `shadow-level1|2|3` and pins which primitives carry which level.
+- Step 7, buttons: of the 35 `variant="secondary"` in the app, 8 were Buttons (Add section, Add item, See all skill
+  gaps twice, Choose file, Try again twice, Add group) and 27 were Badges. The 8 are `tonal` and the Button's
+  `secondary` variant is deleted; Badge keeps its own for plain metadata. `test_frontend_design_tokens.py` fails on a
+  Button, IconButton or `buttonVariants` call that asks for `secondary`.
 
 ## What is left, in order
 
@@ -67,7 +71,7 @@ branch point.
 | 4 | ~~Type~~ done | `text-[22px]` page titles, `text-[10px]`/`[11px]`/`[0.8rem]` (33 uses), size + weight pairs | `text-title-large`, `text-label-small`, `text-title-medium` and the rest | start with `PageHeader`, `CardTitle`, `Badge` |
 | 5 | ~~Corners~~ done | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |
 | 6 | ~~Shadows~~ done | 54 `shadow`/`shadow-sm`/`-md`/`-lg` uses | `shadow-level1..3` on menus, popovers, dialogs, the hovered FAB; none elsewhere | visible change: resting cards, inputs, switches and tabs lose their shadow |
-| 7 | Buttons | `variant="secondary"` (35 uses) beside `tonal` (6) | one low-emphasis filled variant: `tonal` | drop `secondary` when its last caller moves |
+| 7 | ~~Buttons~~ done | `variant="secondary"` (35 uses) beside `tonal` (6) | one low-emphasis filled variant: `tonal` | drop `secondary` when its last caller moves |
 | 8 | CompanyMonogram | six palette pairs | the four status containers plus primary and secondary container | keeps the hash, changes the tints |
 
 ## UX changes that go with it
