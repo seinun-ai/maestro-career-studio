@@ -216,15 +216,16 @@ Cutting a release is a separate, maintainer-only checklist:
 We require all automated test suites to stay clean and green on every commit.
 
 ### Backend Testing (`pytest`)
-The backend test suite needs no database service, and two runs cannot collide: `backend/tests/conftest.py` creates a throwaway SQLite file per test process under the system temp directory, migrates it, and removes it afterwards.
+The backend test suite needs no database service, and two runs cannot collide: `backend/tests/conftest.py` creates a throwaway SQLite file per test process (and per `pytest-xdist` worker) under the system temp directory, migrates it, and removes it afterwards. It also blanks `OPENAI_API_KEY` and `GEMINI_API_KEY`, so no test can reach a real model.
 
-The suite deletes every table as it goes, so the fixture refuses a `TEST_DATABASE_URL` that is not a SQLite file, that names the application's own database, or that points anywhere inside `data/`. Set it only to send the run at a scratch file of your own; leave it unset for the default.
+The suite deletes every table as it goes, so the fixture refuses a `TEST_DATABASE_URL` that is not a SQLite file, that names the application's own database, or that points anywhere inside `data/`. Set it only to send the run at a scratch file of your own; leave it unset for the default. It cannot be combined with `-n`, because every worker would delete from that one file.
 
 Run the test suite from inside `backend/`:
 ```bash
 cd backend
-pytest tests/ mcp_server/tests/ -q
+pytest tests/ mcp_server/tests/ -q -n auto --dist loadfile
 ```
+`-n auto` runs one worker per core and takes the full suite from about 15 minutes to about 4 on a 10-core laptop. Keep `--dist loadfile`: the browser tests share one Chromium per file. Drop `-n` to run sequentially, for example when debugging one test.
 *(Note: Tests that require active network downloads or external LLM API keys should remain cleanly ignored or skipped in CI offline environments).*
 
 ### Frontend Verification
