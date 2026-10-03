@@ -469,7 +469,7 @@ export function RolePicker(props: RolePickerProps) {
                width of the word it holds. Sized to that, every role in the
                list truncated to two syllables and the list was unreadable,
                which matters more now that clearing a role is a row in it. */
-            className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) min-w-56 overflow-y-auto overscroll-contain rounded-corner-xs p-1 shadow-md ring-1"
+            className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) min-w-56 overflow-y-auto overscroll-contain rounded-corner-xs p-1 shadow-level2 ring-1"
           >
             <Combobox.List>
               <Combobox.Collection>

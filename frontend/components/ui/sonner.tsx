@@ -38,7 +38,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
+          // Sonner paints its own box-shadow at higher specificity; `!` wins it.
+          toast: "cn-toast shadow-level2!",
         },
       }}
       {...props}

@@ -84,9 +84,13 @@ The fatal gate (`border-destructive/50 bg-destructive/5`) and the note callout (
 | `rounded-2xl rounded-br-md` (a chat bubble with a tail) | `rounded-corner-md rounded-br-corner-xs` |
 | `rounded-[2px]` on a rendered PDF page | `rounded-corner-xs`; the tooltip arrow's `rounded-[2px]` stays, a 4px corner would blunt its point |
 | `--radius`, `var(--radius-md)` in a class or a style | `--radius-corner-*`; the `--radius-sm` to `-4xl` ladder is only for third-party components |
-| `shadow-sm`, `shadow` | `shadow-level1`, or none on a card |
-| `shadow-md` | `shadow-level2` |
-| `shadow-lg` | `shadow-level3` |
+| `shadow-sm`, `shadow`, `shadow-xs`, `shadow-none` on a card, tile, panel, input, button, tab, switch, slider, rendered PDF page or a selected segment | none: delete it, and delete a `shadow-none` that only cancelled a primitive's shadow (no primitive has one now). A card that lifts on hover moves and tints instead: no `hover:shadow-sm` |
+| `hover:shadow-sm` on a clickable chip (`StatusChip`, a removable tag) or the FAB | `hover:shadow-level1` |
+| `shadow-md`, `shadow-lg` on a menu, select, popover or tooltip surface; `shadow-sm` on a chart tooltip; a toast | `shadow-level2` (a chart tooltip's inline style is `boxShadow: "var(--shadow-level2)"`) |
+| `shadow-md` on a dragged row; `shadow-sm` or `shadow` on a sticky bar or pill that floats over scrolling content | `shadow-level2` |
+| `shadow-lg` on a sheet; none on a dialog | `shadow-level3` |
+| `shadow-[0_0_0_1px_hsl(var(--sidebar-border))]` (a hairline in a shadow) | a real `border border-sidebar-border`; `hsl(var(--x))` around an oklch token paints nothing |
+| `shadow-[inset_0_-1px_0_var(--color-border)]` on a sticky table header cell | stays: a border on a sticky `<th>` under `border-collapse` scrolls away from the header (the one allow-listed literal) |
 | `duration-150 ease-out` | `duration-(--duration-short3) ease-standard` |
 
 ## Rules while moving

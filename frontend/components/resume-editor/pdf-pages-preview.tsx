@@ -161,7 +161,7 @@ export function PdfPagesPreview({
                   : undefined
               }
               className={cn(
-                "mx-auto mb-4 block rounded-corner-xs bg-white shadow-lg ring-1 ring-black/5",
+                "mx-auto mb-4 block rounded-corner-xs bg-white ring-1 ring-black/5",
                 PAGE_CLASS[zoom],
                 // Until page 1 reports its size, 100% has no width to set, and
                 // the 150-DPI PNG would paint at 1275px before snapping to 816.
@@ -171,7 +171,7 @@ export function PdfPagesPreview({
           ))}
           <span
             className={cn(
-              "text-background sticky bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center rounded-full px-3 py-1 text-label-medium shadow",
+              "text-background sticky bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center rounded-full px-3 py-1 text-label-medium shadow-level2",
               data.page_count > 1 ? "bg-warning" : "bg-foreground",
             )}
           >

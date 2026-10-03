@@ -52,7 +52,7 @@ function RateTooltip({
   const row = active ? payload?.[0]?.payload : undefined;
   if (!row) return null;
   return (
-    <div className="bg-background rounded-corner-xs border p-2 text-body-small shadow-sm">
+    <div className="bg-background rounded-corner-xs border p-2 text-body-small shadow-level2">
       <p className="font-medium">{row.kind}</p>
       <p className="text-muted-foreground">
         {row.rate.toFixed(0)}% · {row.success} filled, {row.failure} missed

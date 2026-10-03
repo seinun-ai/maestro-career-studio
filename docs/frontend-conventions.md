@@ -122,8 +122,12 @@
   maps each old class. A primitive's corner is overridden by a caller's
   `className` (tailwind-merge knows `rounded-corner-*`), so a call site does not
   restate the default: `Card` takes no `rounded-*`.
-  **Elevation** is `shadow-level1` to `shadow-level3`, for what floats;
-  tone separates everything else. **Motion** is `ease-standard`,
+  **Elevation** is `shadow-level1` to `shadow-level3`, for what floats
+  (level1 a hovered FAB or chip, level2 menus, popovers, tooltips, toasts and
+  chart tooltips, level3 dialogs and sheets); tone separates everything else, so
+  a card, tile, input, tab or table rests flat. `test_frontend_design_tokens.py`
+  fails on any other `shadow-*` utility and on a bracketed one (one allow-listed
+  literal: the sticky table header's inset hairline). **Motion** is `ease-standard`,
   `ease-emphasized-decelerate` and `ease-emphasized-accelerate` with the
   `--duration-*` variables. `test_frontend_design_tokens.py` pins every
   status pair and every text role at 4.5:1 on every surface in both modes,

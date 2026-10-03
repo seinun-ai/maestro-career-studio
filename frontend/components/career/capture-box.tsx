@@ -112,7 +112,7 @@ export function CaptureBox() {
   return (
     <Card
       className={cn(
-        "border-0 bg-primary/5 py-3 shadow-none ring-0 transition-shadow duration-150",
+        "border-0 bg-primary/5 py-3 ring-0 transition-shadow duration-150",
         dragging && "ring-2 ring-primary/50",
       )}
       onDragOver={(event) => {
@@ -153,7 +153,7 @@ export function CaptureBox() {
             readOnly={capture.isPending}
             aria-describedby="career-capture-help"
             className={cn(
-              "col-span-2 row-start-2 border-0 bg-background/90 px-4 shadow-sm ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring",
+              "col-span-2 row-start-2 border-0 bg-background/90 px-4 ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring",
               open
                 ? "min-h-24 py-3 sm:col-span-3"
                 : "min-h-9 resize-none py-1.5 sm:col-span-1 sm:col-start-2 sm:row-start-1",

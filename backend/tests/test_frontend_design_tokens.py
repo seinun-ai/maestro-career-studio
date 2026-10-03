@@ -568,3 +568,97 @@ def test_the_focus_ring_only_removes_what_it_added():
     assert "el.classList.add(...added);" in source
     assert "el.classList.remove(...added)" in source
     assert "classList.remove(...RING)" not in source
+
+
+# Only what floats casts a shadow: `shadow-level1` a hovered FAB or interactive chip,
+# `shadow-level2` a menu, popover, tooltip, toast, dragged row or sticky bar over
+# content, `shadow-level3` a dialog or sheet. Cards, tiles, inputs, buttons, tabs and
+# tables rest flat. Any variant prefix is fine (`hover:`, `data-dragging:`), and a
+# trailing `!` (an important utility that must beat a third party's own rule).
+_SHADOW_UTILITY = re.compile(r"(?<![\w-])shadow(?:-[^\s\"'`!]+)?!?(?=[\s\"'`]|$)")
+_SHADOW_LEVEL = re.compile(r"shadow-level[123]!?")
+# A 1px hairline that has to live in a box-shadow. The sticky table header's rule
+# stays one: a border on a sticky <th> under border-collapse stays with the grid
+# and scrolls away from the header it should underline.
+_SHADOW_BY_HAND_ALLOWED: list[tuple[str, str]] = [
+    ("components/ui/table.tsx", "shadow-[inset_0_-1px_0_var(--color-border)]"),
+]
+
+
+def _shadow_hits():
+    for rel, number, match in _literal_matches(_SHADOW_UTILITY):
+        yield rel, number, match.group(0)
+
+
+def test_no_shadow_is_written_but_the_three_levels():
+    """`shadow-sm`, `shadow-md`, `shadow-lg`, `shadow-none` and a bracketed
+    `shadow-[...]` are the stock ladder or a shadow by hand. docs/design-system/migration.md
+    maps each; a flat element writes none."""
+    hits = [
+        f"{rel}:{number}: {literal}"
+        for rel, number, literal in _shadow_hits()
+        if not _SHADOW_LEVEL.fullmatch(literal) and (rel, literal) not in _SHADOW_BY_HAND_ALLOWED
+    ]
+    assert not hits, "a shadow utility off the level scale is left at:\n" + "\n".join(hits)
+
+
+def test_every_shadow_exception_still_matches():
+    found = {(rel, literal) for rel, _, literal in _shadow_hits()}
+    stale = [entry for entry in _SHADOW_BY_HAND_ALLOWED if entry not in found]
+    assert not stale, f"allow-list entries that match nothing: {stale}"
+
+
+def test_an_inline_box_shadow_reads_a_level():
+    """A chart tooltip is styled inline, so its shadow is `var(--shadow-level2)`."""
+    bad = [
+        hit
+        for hit in _lines_matching(re.compile(r"boxShadow\s*:|box-shadow\s*:"))
+        if not re.search(r"var\(--shadow-level[123]\)", _line_at(hit))
+    ]
+    assert not bad, "an inline box-shadow is not a level at:\n" + "\n".join(bad)
+    assert 'boxShadow: "var(--shadow-level2)"' in _read("components/charts/chart-kit.tsx")
+
+
+def _line_at(hit: str) -> str:
+    rel, number = hit.rsplit(":", 1)
+    return _read(rel).splitlines()[int(number) - 1]
+
+
+# `transition-[color,box-shadow]` names a property; only a `shadow` utility casts one.
+_CASTS_SHADOW = re.compile(r"(?<![\w-])shadow(?![\w])")
+
+
+def _class_list(rel: str, slot: str) -> list[str]:
+    return _slot_classes(rel, slot).split()
+
+
+def test_a_card_and_a_flat_control_cast_no_shadow():
+    for rel, slot in (
+        ("components/ui/card.tsx", "card"),
+        ("components/ui/input.tsx", "input"),
+        ("components/ui/textarea.tsx", "textarea"),
+        ("components/ui/checkbox.tsx", "checkbox"),
+        ("components/ui/switch.tsx", "switch"),
+        ("components/ui/slider.tsx", "slider-thumb"),
+    ):
+        text = _read(rel)
+        assert 'data-slot="%s"' % slot in text, f"{rel} lost its {slot} slot"
+        assert not _CASTS_SHADOW.search(_slot_classes(rel, slot)), f"{rel}: {slot} casts a shadow"
+    button = re.search(r"const buttonVariants = cva\(\s*\"([^\"]+)\"", _read("components/ui/button.tsx"))
+    assert button and not _CASTS_SHADOW.search(button.group(1)), "a button rests flat"
+    assert not _CASTS_SHADOW.search(_read("components/ui/tabs.tsx")), "a tab rests flat"
+
+
+def test_what_floats_carries_its_level():
+    popover = _read("components/ui/popover.tsx")
+    surface = re.search(r"export const POPUP_SURFACE =\s*\"([^\"]+)\"", popover)
+    assert surface and "shadow-level2" in surface.group(1).split()  # popover and menu
+    assert "shadow-level2" in _class_list("components/ui/dropdown-menu.tsx", "dropdown-menu-sub-content")
+    assert "shadow-level2" in _class_list("components/ui/select.tsx", "select-content")
+    assert "shadow-level2" in _class_list("components/ui/tooltip.tsx", "tooltip-content")
+    assert 'toast: "cn-toast shadow-level2!"' in _read("components/ui/sonner.tsx")
+    assert "shadow-level3" in _class_list("components/ui/dialog.tsx", "dialog-content")
+    assert "shadow-level3" in _class_list("components/ui/sheet.tsx", "sheet-content")
+    fab = re.search(r"fab:\s*\"([^\"]+)\"", _read("components/ui/button.tsx"))
+    assert fab and "hover:shadow-level1" in fab.group(1).split()
+    assert "hover:shadow-level1" in _read("components/status-chip.tsx")

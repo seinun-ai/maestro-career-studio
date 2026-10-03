@@ -64,7 +64,7 @@ function chipClasses(interactive: boolean): string {
     "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-label-medium",
     interactive &&
       "cursor-pointer transition-[transform,box-shadow] duration-150 ease-out select-none " +
-        "hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring",
+        "hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring",
   );
 }
 

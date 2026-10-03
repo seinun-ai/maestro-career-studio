@@ -275,7 +275,7 @@ export function ActionSegment({
           className={cn(
             "h-6 rounded-full px-2 text-label-medium transition-colors aria-disabled:opacity-50",
             value === action
-              ? "bg-background text-foreground shadow-sm"
+              ? "bg-background text-foreground"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

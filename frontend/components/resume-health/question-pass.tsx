@@ -342,7 +342,7 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
               />
             ))}
           </ol>
-          <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-corner-md border px-3 py-2 text-body-medium shadow-sm">
+          <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-corner-md border px-3 py-2 text-body-medium shadow-level2">
             <p aria-live="polite">{progress.words}</p>
             <div className="flex flex-wrap gap-2">
               <Button

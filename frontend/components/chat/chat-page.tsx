@@ -568,7 +568,7 @@ export function ChatPage() {
       : (resumes.data?.find((r) => r.slug === target)?.display_name ?? target);
 
   const composer = (
-    <div className="bg-card focus-within:border-ring rounded-corner-md border p-2 shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:shadow-md">
+    <div className="bg-card focus-within:border-ring rounded-corner-md border p-2 transition-[border-color] duration-150">
       {(selections.length > 0 || attachments.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 px-2 pt-1.5">
           {selections.map((s, i) => (
@@ -600,7 +600,7 @@ export function ChatPage() {
             void send();
           }
         }}
-        className="min-h-0 resize-none border-0 bg-transparent px-3 py-2 shadow-none focus-visible:ring-0 dark:bg-transparent"
+        className="min-h-0 resize-none border-0 bg-transparent px-3 py-2 focus-visible:ring-0 dark:bg-transparent"
       />
       <input
         ref={fileInputRef}
@@ -634,7 +634,7 @@ export function ChatPage() {
             size="sm"
             aria-label="Resume to edit"
             title={pinnedName}
-            className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 border-0 bg-transparent px-2.5 text-body-small shadow-none hover:bg-muted"
+            className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 border-0 bg-transparent px-2.5 text-body-small hover:bg-muted"
           >
             <FileText className="size-3.5" />
             <SelectValue className="min-w-0">
@@ -732,7 +732,7 @@ export function ChatPage() {
             setHistoryCollapsed(false);
             focusNext(hideRailRef);
           }}
-          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-corner-sm border border-l-0 shadow-md transition-colors @2xl/chat:flex"
+          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-corner-sm border border-l-0 transition-colors @2xl/chat:flex"
         >
           <ChevronRight className="size-4" />
         </button>

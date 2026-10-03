@@ -38,6 +38,7 @@ export const TOOLTIP_CONTENT_STYLE: CSSProperties = {
   borderRadius: "var(--radius-corner-xs)",
   fontSize: 12,
   color: "var(--popover-foreground)",
+  boxShadow: "var(--shadow-level2)",
 };
 export const TOOLTIP_LABEL_STYLE: CSSProperties = {
   color: "var(--popover-foreground)",

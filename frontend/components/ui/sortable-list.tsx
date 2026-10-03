@@ -128,7 +128,7 @@ export function SortableItem({
       // Translate only: a scale would stretch a row dragged over a taller one.
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "relative rounded-corner-md data-dragging:z-10 data-dragging:bg-background data-dragging:shadow-md",
+        "relative rounded-corner-md data-dragging:z-10 data-dragging:bg-background data-dragging:shadow-level2",
         className,
       )}
       {...rest}

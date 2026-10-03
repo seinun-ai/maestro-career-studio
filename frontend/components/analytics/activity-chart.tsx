@@ -77,7 +77,7 @@ export function ActivityChart({
             className={cn(
               "rounded-full px-3 py-1 text-label-medium transition-colors duration-150 ease-out",
               granularity === option.value
-                ? "bg-background shadow-sm"
+                ? "bg-background"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >

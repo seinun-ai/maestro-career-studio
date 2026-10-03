@@ -46,6 +46,14 @@ brand (Geist, Lucide icons, the blue and yellow mark, compact controls).
   adds its own. Every sidebar row is a `rounded-full` pill, so hover and the current row share a shape.
   Chips and removable tags are `rounded-full`. `test_frontend_design_tokens.py` fails on a Tailwind
   `rounded-*` or a bracketed radius (one allow-listed literal: the tooltip arrow) and pins the primitives.
+- Step 6, shadows: of the 39 stock shadow utilities, 5 became `shadow-level1` (the hovered FAB, status chip and
+  two interactive chips, the focused skip link), 9 `shadow-level2` (menus, selects, popovers, a dragged row, the sticky
+  bars and the PDF page pill over scrolling content, a chart tooltip) and 1 `shadow-level3` (the sheet); the other 24
+  are gone, 8 of them `shadow-none` that only cancelled a card's or input's shadow. The dialog gains `shadow-level3`
+  and the tooltip, toasts and the chart-kit tooltip `shadow-level2`, none of which had one. The sidebar outline
+  variant's hairline is a real `border` (its `hsl(var(--sidebar-border))` wrapped an oklch token and painted nothing);
+  the sticky table header's inset hairline is the one allow-listed literal. `test_frontend_design_tokens.py` fails on any
+  `shadow-*` that is not `shadow-level1|2|3` and pins which primitives carry which level.
 
 ## What is left, in order
 
@@ -58,7 +66,7 @@ branch point.
 | 3 | ~~Surfaces~~ done | 74 `bg-muted/N` uses in 45 files, 11 opacities | `/10`–`/30` → page (drop the fill) or `surface-container-low`; `/35`–`/60` → `surface-container-low`; `/70` and solid → `surface-container` | mechanical |
 | 4 | ~~Type~~ done | `text-[22px]` page titles, `text-[10px]`/`[11px]`/`[0.8rem]` (33 uses), size + weight pairs | `text-title-large`, `text-label-small`, `text-title-medium` and the rest | start with `PageHeader`, `CardTitle`, `Badge` |
 | 5 | ~~Corners~~ done | 14 `rounded-*` variants | controls `corner-sm`, cards `corner-md`, dialogs `corner-xl`, pills `rounded-full` | primitives first; visible change (cards 14px → 12px, controls 10px → 8px, dialogs larger) |
-| 6 | Shadows | 54 `shadow`/`shadow-sm`/`-md`/`-lg` uses | `shadow-level1..3` on menus, popovers, dialogs, the hovered FAB; none elsewhere | |
+| 6 | ~~Shadows~~ done | 54 `shadow`/`shadow-sm`/`-md`/`-lg` uses | `shadow-level1..3` on menus, popovers, dialogs, the hovered FAB; none elsewhere | visible change: resting cards, inputs, switches and tabs lose their shadow |
 | 7 | Buttons | `variant="secondary"` (35 uses) beside `tonal` (6) | one low-emphasis filled variant: `tonal` | drop `secondary` when its last caller moves |
 | 8 | CompanyMonogram | six palette pairs | the four status containers plus primary and secondary container | keeps the hash, changes the tints |
 

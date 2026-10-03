@@ -24,7 +24,7 @@ const buttonVariants = cva(
         // Add job). Primary container is M3's default FAB colour. A
         // FAB in a rail rests flat and hover raises it one level; a resting
         // shadow read as permanently hovered.
-        fab: "bg-primary-container text-on-primary-container hover:bg-primary-container-hover hover:shadow-sm",
+        fab: "bg-primary-container text-on-primary-container hover:bg-primary-container-hover hover:shadow-level1",
         // `dark:border-input` outranks the base `focus-visible:border-ring`, so
         // dark mode showed only the ring/50 halo (~2.2:1, under WCAG 1.4.11's
         // 3:1). The dark focus border is set back to the solid ring here.
