@@ -7,4 +7,4 @@ A stat tile shows one number with what it counts and what it is out of.
 - Put three to five tiles in one row with a 12px gap.
 - A number alone is not a stat: always say what it is of ("of your 52 applications").
 
-Source: `frontend/components/analytics/stat-tile.tsx`. Changed from source: `bg-muted/40` to `surface-container-low`, value 20px to 22px.
+Source: `frontend/components/analytics/stat-tile.tsx`.

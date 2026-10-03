@@ -37,7 +37,7 @@ export default function RouteError({
         This page didn&apos;t load. Anything you saved is safe.
       </p>
       {process.env.NODE_ENV === "development" && error.message && (
-        <pre className="bg-muted/40 text-muted-foreground max-w-full overflow-x-auto rounded-md px-3 py-2 text-left text-xs">
+        <pre className="bg-surface-container-low text-muted-foreground max-w-full overflow-x-auto rounded-md px-3 py-2 text-left text-xs">
           {error.message}
         </pre>
       )}

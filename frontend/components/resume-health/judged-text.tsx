@@ -41,7 +41,7 @@ export function SuggestionCopyOnly({
 }) {
   return (
     <div className="mt-2 space-y-2 border-t pt-2">
-      <div className="bg-muted/40 rounded-md p-2">
+      <div className="bg-surface-container-low rounded-md p-2">
         <DiffText oldText={currentText} newText={suggestion} />
       </div>
       <p className="text-muted-foreground max-w-[65ch] text-xs">

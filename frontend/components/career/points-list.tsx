@@ -147,7 +147,7 @@ export function PointsList({
       </CardHeader>
       <CardContent className="px-0">
         {ordered.length === 0 ? (
-          <div className="mx-4 rounded-xl bg-muted/45 px-5 py-8 text-center">
+          <div className="mx-4 rounded-xl bg-surface-container-low px-5 py-8 text-center">
             <p className="text-sm font-medium">No bullets yet</p>
             <p className="text-muted-foreground mt-1 text-xs">
               Add an update or a document to start.
@@ -250,7 +250,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
   return (
     <article
       className={cn(
-        "group/point px-4 py-3.5 transition-colors duration-150 ease-out hover:bg-muted/30",
+        "group/point px-4 py-3.5 transition-colors duration-150 ease-out hover:bg-surface-container-low dark:hover:bg-surface-container-high",
         point.state === "draft" && "bg-amber-500/5",
         point.state === "retired" && "opacity-70",
       )}
@@ -345,7 +345,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <PointStateChip state={point.state} pending={pending} onSelect={changeState} />
         <span
-          className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-muted/70 px-2 text-xs"
+          className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-xs dark:bg-surface-container-highest"
           title={point.origin_detail ? `Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}` : undefined}
         >
           {originLabel(point)}
@@ -377,7 +377,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
         {/* "You · You said it" said one thing twice. */}
         {point.origin === "manual" && point.provenance === "user_stated" ? null : (
           <span
-            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-muted/70 px-2 text-xs"
+            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-xs dark:bg-surface-container-highest"
             title={
               point.provenance
                 ? undefined

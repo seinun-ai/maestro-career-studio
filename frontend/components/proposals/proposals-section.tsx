@@ -825,7 +825,7 @@ function ProposalRow({
             // and squeezed the title to a few letters at 768 and to nothing at
             // 375. Narrow, the chips wrap under the text and the decorative
             // monogram steps aside.
-            className="hover:bg-muted/40 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl p-3 text-left transition-colors sm:p-4"
+            className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl p-3 text-left transition-colors sm:p-4"
           >
             <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
             <div className="min-w-0 grow basis-[10rem]">
@@ -857,7 +857,7 @@ function ProposalRow({
               {needs ? <p className="mt-1 text-xs break-words">{needs}</p> : null}
             </div>
             {base ? (
-              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-muted/70 px-2 py-0.5 text-xs sm:inline-flex">
+              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-xs dark:bg-surface-container-highest sm:inline-flex">
                 {baseName}
                 {score != null ? ` · ATS score ${score}` : ""}
               </span>

@@ -217,10 +217,10 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                 </Button>
               </div>
               {skills.length === 0 ? (
-                <p className="text-muted-foreground rounded-xl bg-muted/45 p-4 text-center text-xs">No skill groups yet.</p>
+                <p className="text-muted-foreground rounded-xl bg-surface-container-low p-4 text-center text-xs">No skill groups yet.</p>
               ) : (
                 skills.map((group, index) => (
-                  <div key={index} className="grid gap-2 rounded-xl bg-muted/35 p-3 sm:grid-cols-[12rem_1fr_auto] sm:items-start">
+                  <div key={index} className="grid gap-2 rounded-xl bg-surface-container-low p-3 sm:grid-cols-[12rem_1fr_auto] sm:items-start">
                     <div className="grid gap-1.5">
                       <Label htmlFor={`kb-skill-category-${index}`}>Group name</Label>
                       <Input

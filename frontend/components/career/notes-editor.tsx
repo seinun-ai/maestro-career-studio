@@ -193,7 +193,7 @@ export function NotesEditor({
         ) : notes.trim() ? (
           <div className="text-sm leading-7 whitespace-pre-wrap">{withoutStaleMarks(notes)}</div>
         ) : (
-          <div className="rounded-xl bg-muted/45 px-5 py-7 text-center">
+          <div className="rounded-xl bg-surface-container-low px-5 py-7 text-center">
             <p className="text-sm font-medium">No notes yet</p>
             <p className="text-muted-foreground mt-1 text-xs">
               Add details that don&apos;t belong on a resume.

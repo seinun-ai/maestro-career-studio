@@ -194,7 +194,7 @@ export function VersionHistorySheet({
         )}
       </button>
       {selected === v.version_number && (
-        <div className="bg-muted/40 mt-1 rounded-md border p-3">
+        <div className="bg-surface-container-low mt-1 rounded-md border p-3">
           <VersionDiffView kind={kind} resumeKey={resumeKey} version={v.version_number} />
           {v.version_number !== latestNumber && (
             <div className="mt-3 flex justify-end">

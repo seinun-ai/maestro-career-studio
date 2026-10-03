@@ -140,7 +140,7 @@ export function AnalyticsOverview({
           (status) => (
             <span
               key={status}
-              className="text-muted-foreground inline-flex h-7 items-center gap-1.5 rounded-full bg-muted/70 px-3 text-xs"
+              className="text-muted-foreground inline-flex h-7 items-center gap-1.5 rounded-full bg-surface-container px-3 text-xs"
             >
               {statusLabel(status)}
               <span className="text-foreground font-medium">

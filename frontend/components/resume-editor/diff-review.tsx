@@ -529,7 +529,7 @@ function CoherenceFlags({
 function GateRow({ gate }: { gate: HealthGate }) {
   const notAssessed = gate.status === "not_assessed";
   const accent = notAssessed
-    ? "border-border bg-muted/40"
+    ? "border-border bg-surface-container-low"
     : gate.tier === "fatal"
       ? "border-destructive/50 bg-destructive/5"
       : "border-amber-500/50 bg-amber-500/5";
@@ -702,7 +702,7 @@ export function DiffReviewPanel({
   })).filter((group) => group.items.length > 0);
 
   return (
-    <section className="space-y-2 rounded-lg border bg-muted/20 p-3">
+    <section className="space-y-2 rounded-lg border p-3">
       <header className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-medium">
           {hunks.length} {hunks.length === 1 ? "change" : "changes"} from your

@@ -164,7 +164,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
   return (
     <div className="flex flex-col gap-4">
       <LowSampleCaption n={total} lowSample={total < 5} unit="jobs" />
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile
           label="Jobs"
           value={String(total)}
@@ -196,7 +196,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
       {o.signals.length > 0 && (
         <div className="flex flex-col gap-2">
           {o.signals.map((s, i) => (
-            <div key={i} className="bg-muted/40 rounded-md px-3 py-2">
+            <div key={i} className="bg-surface-container-low rounded-md px-3 py-2">
               <p className="text-foreground text-sm font-medium">{signalTitle(s.title, o)}</p>
               <p className="text-muted-foreground mt-0.5 text-xs">{s.detail}</p>
             </div>
@@ -313,23 +313,14 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
                 No pay data yet. Most jobs don&apos;t list pay.
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
                 {o.salary_by_role.map((r) => (
-                  <div
+                  <StatTile
                     key={`${r.role_category}:${r.currency ?? "unknown"}`}
-                    className="bg-muted/40 rounded-md p-3"
-                  >
-                    <p className="text-muted-foreground text-xs">
-                      {label(r.role_category)}
-                      {r.currency ? ` · ${r.currency}` : ""}
-                    </p>
-                    <p className="text-foreground text-base font-medium">
-                      {payRange(r.avg_min, r.avg_max, r.currency)}
-                    </p>
-                    <p className="text-muted-foreground mt-0.5 text-xs">
-                      {r.n} {r.n === 1 ? "job" : "jobs"} with pay listed
-                    </p>
-                  </div>
+                    label={`${label(r.role_category)}${r.currency ? ` · ${r.currency}` : ""}`}
+                    value={payRange(r.avg_min, r.avg_max, r.currency)}
+                    sub={`${r.n} ${r.n === 1 ? "job" : "jobs"} with pay listed`}
+                  />
                 ))}
               </div>
             )}

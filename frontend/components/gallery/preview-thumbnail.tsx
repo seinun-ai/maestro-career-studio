@@ -54,7 +54,7 @@ export function PreviewThumbnail({
         // card's radius, and keep a single bottom rule as the separator from
         // the card body. A full box border here would double up with the
         // card's own ring along the left, right and top edges.
-        "bg-muted/40 relative aspect-[17/22] w-full overflow-hidden rounded-t-xl border-b",
+        "bg-surface-container-low relative aspect-[17/22] w-full overflow-hidden rounded-t-xl border-b",
         className,
       )}
     >

@@ -647,7 +647,7 @@ function ApplicationsContent() {
               then its header cannot stick to the window. */}
           <Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
+              <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
                 {header("role", "Role", "w-[42%]")}
                 <TableHead className="w-[16%]">Resume</TableHead>
                 {header("status", "Status", "w-[14%]")}

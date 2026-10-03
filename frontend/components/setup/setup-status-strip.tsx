@@ -18,7 +18,7 @@ function pillClass(done: boolean) {
     PILL,
     done
       ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
-      : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+      : "bg-muted text-muted-foreground hover:bg-surface-container-high hover:text-foreground",
   );
 }
 

@@ -567,7 +567,7 @@ function PassRowView({
             )
           ) : (
             <>
-              <div className="bg-muted/40 rounded-md p-2">
+              <div className="bg-surface-container-low rounded-md p-2">
                 <DiffText oldText={row.original} newText={text || row.suggestion} />
               </div>
               {row.edited != null && (

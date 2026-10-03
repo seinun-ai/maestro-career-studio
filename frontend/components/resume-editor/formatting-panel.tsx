@@ -314,7 +314,7 @@ export function FormattingPanel({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="hover:bg-muted/50 flex w-full items-center justify-between px-3 py-2 text-sm font-medium transition-colors"
+          className="hover:bg-surface-container-low flex w-full items-center justify-between px-3 py-2 text-sm font-medium transition-colors"
         >
           <span className="flex items-center gap-2">
             <SlidersHorizontal className="size-3.5" />
@@ -348,7 +348,7 @@ export function FormattingPanel({
             />
           )}
           {onRevertToBase && (
-            <div className="text-muted-foreground bg-muted/40 flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs">
+            <div className="text-muted-foreground bg-surface-container-low flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs">
               <span>
                 {inherited && !customized
                   ? "Same as base resume"

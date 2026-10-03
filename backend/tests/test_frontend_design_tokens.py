@@ -16,6 +16,7 @@ import pytest
 
 from tests.test_frontend_color_roles import (
     _CSS,
+    _FRONTEND,
     _MODES,
     _contrast,
     _oklab,
@@ -160,3 +161,51 @@ def test_scale_names_are_registered_with_tailwind_merge():
     assert sorted(_registered("ease")) == sorted(easings)
     for name in ("standard", "emphasized-decelerate", "emphasized-accelerate"):
         assert name in _registered("ease")
+
+
+def test_no_surface_is_a_muted_with_opacity():
+    """`bg-muted/N` is a different grey on every page, card and theme: use the ladder."""
+    hits = []
+    for folder in ("app", "components"):
+        for path in sorted((_FRONTEND / folder).rglob("*")):
+            if path.suffix not in (".ts", ".tsx"):
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if re.search(r"bg-muted/\d+", line):
+                    hits.append(f"{path.relative_to(_FRONTEND)}:{number}")
+    assert not hits, "bg-muted/N is left at:\n" + "\n".join(hits)
+
+
+def test_stat_tile_is_a_filled_card():
+    tile = _read("components/analytics/stat-tile.tsx")
+    for cls in (
+        "bg-surface-container-low",
+        "rounded-corner-md",
+        "text-title-large",
+        "text-body-small",
+        "font-medium",
+    ):
+        assert cls in tile, cls
+    assert "bg-muted" not in tile
+    container = re.search(r'<div className=\{cn\("([^"]+)"', tile)
+    assert container, "StatTile's container is no longer a cn(...) literal"
+    assert not re.search(r"\b(border|shadow)", container.group(1)), container.group(1)
+
+
+def test_table_rows_lift_on_hover_in_dark_cards():
+    """Dark: the card is surface-container, so a -low hover would darken the row."""
+    table = _read("components/ui/table.tsx")
+    assert "dark:hover:bg-surface-container-high" in table
+    assert "dark:has-aria-expanded:bg-surface-container-high" in table
+
+
+def test_header_rows_that_skip_the_hover_skip_it_in_dark_too():
+    """A row's dark hover is its own variant, so `hover:bg-transparent` leaves it."""
+    bare = []
+    for folder in ("app", "components"):
+        for path in sorted((_FRONTEND / folder).rglob("*.tsx")):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if "<TableRow" in line and "hover:bg-transparent" in line:
+                    if "dark:hover:bg-transparent" not in line:
+                        bare.append(f"{path.relative_to(_FRONTEND)}:{number}")
+    assert not bare, "dark hover still lights the header at:\n" + "\n".join(bare)
