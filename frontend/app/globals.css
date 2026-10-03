@@ -55,6 +55,28 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Status roles and the surface ladder (declared in :root / .dark below).
+     Utilities: bg-success-container, text-on-success-container, text-warning,
+     bg-surface-container-low and so on. */
+  --color-success: var(--success);
+  --color-success-container: var(--success-container);
+  --color-on-success-container: var(--on-success-container);
+  --color-warning: var(--warning);
+  --color-warning-container: var(--warning-container);
+  --color-on-warning-container: var(--on-warning-container);
+  --color-attention: var(--attention);
+  --color-attention-container: var(--attention-container);
+  --color-on-attention-container: var(--on-attention-container);
+  --color-tertiary: var(--tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary-container: var(--on-tertiary-container);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -62,6 +84,79 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* M3 corner scale, beside the --radius ladder above (which the shadcn
+     primitives still read). One corner per kind of thing: corner-xs menus
+     and tooltips, corner-sm controls, corner-md cards, corner-lg sheets,
+     corner-xl dialogs; pills stay rounded-full. */
+  --radius-corner-xs: 0.25rem;
+  --radius-corner-sm: 0.5rem;
+  --radius-corner-md: 0.75rem;
+  --radius-corner-lg: 1rem;
+  --radius-corner-xl: 1.75rem;
+  /* M3 elevation levels 1-3 (key + ambient shadow). Tone separates surfaces
+     first; a shadow is for what floats: level1 a raised card or a hovered
+     FAB, level2 menus and popovers, level3 dialogs. */
+  --shadow-level1: 0 1px 2px 0 rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
+  --shadow-level2: 0 1px 2px 0 rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
+  --shadow-level3: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 4px 8px 3px rgb(0 0 0 / 0.15);
+  /* M3 type scale: size, line height and weight travel together, so a call
+     site writes text-title-medium and never pairs a size with a weight by
+     hand. Sizes and line heights are M3's; tracking is left to Geist (M3's
+     values are tuned for Roboto). A font-* utility still overrides the
+     weight. Every name here is registered with tailwind-merge in
+     lib/utils.ts; an unregistered text-* name is merged as a COLOUR and
+     silently dropped beside text-muted-foreground. Pinned by
+     backend/tests/test_frontend_design_tokens.py. */
+  --text-display-large: 3.5625rem;
+  --text-display-large--line-height: 4rem;
+  --text-display-large--font-weight: 400;
+  --text-display-medium: 2.8125rem;
+  --text-display-medium--line-height: 3.25rem;
+  --text-display-medium--font-weight: 400;
+  --text-display-small: 2.25rem;
+  --text-display-small--line-height: 2.75rem;
+  --text-display-small--font-weight: 400;
+  --text-headline-large: 2rem;
+  --text-headline-large--line-height: 2.5rem;
+  --text-headline-large--font-weight: 400;
+  --text-headline-medium: 1.75rem;
+  --text-headline-medium--line-height: 2.25rem;
+  --text-headline-medium--font-weight: 400;
+  --text-headline-small: 1.5rem;
+  --text-headline-small--line-height: 2rem;
+  --text-headline-small--font-weight: 400;
+  --text-title-large: 1.375rem;
+  --text-title-large--line-height: 1.75rem;
+  --text-title-large--font-weight: 400;
+  --text-title-medium: 1rem;
+  --text-title-medium--line-height: 1.5rem;
+  --text-title-medium--font-weight: 500;
+  --text-title-small: 0.875rem;
+  --text-title-small--line-height: 1.25rem;
+  --text-title-small--font-weight: 500;
+  --text-body-large: 1rem;
+  --text-body-large--line-height: 1.5rem;
+  --text-body-large--font-weight: 400;
+  --text-body-medium: 0.875rem;
+  --text-body-medium--line-height: 1.25rem;
+  --text-body-medium--font-weight: 400;
+  --text-body-small: 0.75rem;
+  --text-body-small--line-height: 1rem;
+  --text-body-small--font-weight: 400;
+  --text-label-large: 0.875rem;
+  --text-label-large--line-height: 1.25rem;
+  --text-label-large--font-weight: 500;
+  --text-label-medium: 0.75rem;
+  --text-label-medium--line-height: 1rem;
+  --text-label-medium--font-weight: 500;
+  --text-label-small: 0.6875rem;
+  --text-label-small--line-height: 1rem;
+  --text-label-small--font-weight: 500;
+  /* M3 easing. Standard for small utility transitions that start and end on
+     screen; emphasized-decelerate to enter, emphasized-accelerate to exit. */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
 }
 
 :root {
@@ -122,6 +217,42 @@
   --chart-4: #188038;
   --chart-5: #9334e6;
   --chart-6: #0097a7;
+  /* Status roles: M3 "custom colours". Each is a tonal palette cut from the
+     hue the app already used for that meaning (emerald, amber, orange,
+     violet), at M3's three slots: the role itself (text and dots on a
+     surface), its container, and text on the container. Lightness follows
+     M3's tones 40 / 90 / 30; chroma is held near the primary container's,
+     so a column of status chips reads as one family. They
+     replace the hand-paired palette classes (bg-amber-500/10 text-amber-800
+     dark:...), which needed a dark twin at every call site. "Info" has no
+     pair of its own: it is the primary container. Every pair and every role
+     on every surface below is pinned at 4.5:1 by
+     backend/tests/test_frontend_design_tokens.py. */
+  --success: oklch(0.48 0.1 163);
+  --success-container: oklch(0.915 0.06 163);
+  --on-success-container: oklch(0.4 0.083 163);
+  --warning: oklch(0.48 0.1 70);
+  --warning-container: oklch(0.915 0.06 70);
+  --on-warning-container: oklch(0.4 0.084 70);
+  --attention: oklch(0.49 0.135 47);
+  --attention-container: oklch(0.915 0.046 47);
+  --on-attention-container: oklch(0.4 0.11 47);
+  --tertiary: oklch(0.48 0.19 293);
+  --tertiary-container: oklch(0.915 0.043 293);
+  --on-tertiary-container: oklch(0.4 0.17 293);
+  /* The error container pair; --destructive stays the error colour itself. */
+  --error-container: oklch(0.915 0.042 25);
+  --on-error-container: oklch(0.4 0.15 27);
+  /* M3's surface-container ladder over the neutrals already here: lowest is
+     --card, container is --muted, highest is --canvas. One named tone per
+     step replaces the eleven bg-muted/N opacities, which resolved to
+     different greys on the page, a card and the sidebar. Highest stops at
+     0.915: --muted-foreground reads 4.43:1 on 0.905. */
+  --surface-container-lowest: oklch(1 0 0);
+  --surface-container-low: oklch(0.96 0 0);
+  --surface-container: oklch(0.94 0 0);
+  --surface-container-high: oklch(0.928 0 0);
+  --surface-container-highest: oklch(0.915 0 0);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -170,6 +301,28 @@
   --chart-4: #2e9e52;
   --chart-5: #a254e8;
   --chart-6: #0ea5b7;
+  /* Status roles on dark: role near tone 80, container near tone 30, text
+     on it near tone 90. */
+  --success: oklch(0.83 0.11 163);
+  --success-container: oklch(0.38 0.075 163);
+  --on-success-container: oklch(0.915 0.06 163);
+  --warning: oklch(0.83 0.11 70);
+  --warning-container: oklch(0.38 0.075 70);
+  --on-warning-container: oklch(0.915 0.06 70);
+  --attention: oklch(0.83 0.1 47);
+  --attention-container: oklch(0.38 0.09 47);
+  --on-attention-container: oklch(0.915 0.046 47);
+  --tertiary: oklch(0.83 0.09 293);
+  --tertiary-container: oklch(0.38 0.12 293);
+  --on-tertiary-container: oklch(0.915 0.043 293);
+  --error-container: oklch(0.38 0.11 27);
+  --on-error-container: oklch(0.915 0.042 25);
+  /* Lowest is --canvas, container is --card, highest is --muted. */
+  --surface-container-lowest: oklch(0.115 0 0);
+  --surface-container-low: oklch(0.175 0 0);
+  --surface-container: oklch(0.205 0 0);
+  --surface-container-high: oklch(0.24 0 0);
+  --surface-container-highest: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -185,6 +338,15 @@
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  /* M3 durations, for duration-(--duration-short4) and the like. short for
+     selection controls and state changes, medium for a panel or a sheet,
+     long for a full-page change. */
+  --duration-short2: 100ms;
+  --duration-short3: 150ms;
+  --duration-short4: 200ms;
+  --duration-medium2: 300ms;
+  --duration-medium4: 400ms;
+  --duration-long2: 500ms;
 }
 
 @layer base {

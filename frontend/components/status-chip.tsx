@@ -11,7 +11,8 @@ import {
 import { cn } from "@/lib/utils";
 import { APPLICATION_STATUSES, type ApplicationStatus } from "@/lib/types";
 
-/** Tonal chip colors per status — soft fill + strong dot, both themes. */
+/** One colour role per status: its container pair for the chip, the role
+ * itself for the dot. The roles carry both themes (app/globals.css). */
 const STATUS_STYLES: Record<
   ApplicationStatus,
   { label: string; chip: string; dot: string }
@@ -23,28 +24,28 @@ const STATUS_STYLES: Record<
   },
   applied: {
     label: "Applied",
-    chip: "bg-blue-600/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
-    dot: "bg-blue-600 dark:bg-blue-400",
+    chip: "bg-primary-container text-on-primary-container",
+    dot: "bg-primary",
   },
   interviewing: {
     label: "Interviewing",
-    chip: "bg-amber-500/15 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300",
-    dot: "bg-amber-500 dark:bg-amber-400",
+    chip: "bg-warning-container text-on-warning-container",
+    dot: "bg-warning",
   },
   offered: {
     label: "Offer",
-    chip: "bg-violet-600/10 text-violet-700 dark:bg-violet-400/15 dark:text-violet-300",
-    dot: "bg-violet-600 dark:bg-violet-400",
+    chip: "bg-tertiary-container text-on-tertiary-container",
+    dot: "bg-tertiary",
   },
   accepted: {
     label: "Offer accepted",
-    chip: "bg-green-600/10 text-green-800 dark:bg-green-400/15 dark:text-green-300",
-    dot: "bg-green-600 dark:bg-green-400",
+    chip: "bg-success-container text-on-success-container",
+    dot: "bg-success",
   },
   rejected: {
     label: "Rejected",
-    chip: "bg-red-600/10 text-red-700 dark:bg-red-400/15 dark:text-red-300",
-    dot: "bg-red-600 dark:bg-red-400",
+    chip: "bg-error-container text-on-error-container",
+    dot: "bg-destructive",
   },
   withdrawn: {
     label: "Withdrawn",
@@ -83,13 +84,13 @@ export function SavedChip() {
 }
 
 // needs_decision and needs_human are ONE state to the user ("Needs you"), so they
-// share one object: one label, one colour. Orange, not amber: amber is the
-// application chip's "Interviewing", which sits in the same tracker column.
-// orange-800, not 700: 700 on this tint is 3.98:1 over --muted (AA is 4.5).
-// Contrast pinned in test_frontend_color_roles.py.
+// share one object: one label, one colour. The attention role (orange), not
+// warning (amber): warning is the application chip's "Interviewing", which
+// sits in the same tracker column. Contrast pinned in
+// test_frontend_design_tokens.py.
 const NEEDS_YOU = {
   label: "Needs you",
-  className: "bg-orange-500/10 text-orange-800 dark:text-orange-400",
+  className: "bg-attention-container text-on-attention-container",
 };
 
 /** Derived agent-lane state for a saved (no-application) job, from its newest
@@ -124,13 +125,13 @@ export const PROPOSAL_STATUS_CHIP: Record<
   string,
   { label: string; className: string }
 > = {
-  pending_review: { label: "Proposed", className: "bg-blue-500/10 text-blue-700 dark:text-blue-400" },
+  pending_review: { label: "Proposed", className: "bg-primary-container text-on-primary-container" },
   needs_decision: NEEDS_YOU,
   needs_human: NEEDS_YOU,
-  accepted: { label: "Queued", className: "bg-sky-500/10 text-sky-800 dark:text-sky-400" },
-  approved: { label: "Approved", className: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400" },
-  submitted: { label: "Applied", className: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300" },
-  submission_uncertain: { label: "Check if sent", className: "bg-orange-500/10 text-orange-800 dark:text-orange-400" },
+  accepted: { label: "Queued", className: "bg-secondary-container text-on-secondary-container" },
+  approved: { label: "Approved", className: "bg-success-container text-on-success-container" },
+  submitted: { label: "Applied", className: "bg-success-container text-on-success-container" },
+  submission_uncertain: { label: "Check if sent", className: "bg-attention-container text-on-attention-container" },
   rejected: { label: "Skipped", className: "text-muted-foreground bg-muted" },
   expired: { label: "Expired", className: "text-muted-foreground bg-muted" },
 };

@@ -717,7 +717,8 @@ _CHIP_SOURCES = (
 # (the monogram's TONES).
 _CHIP_CLASS = re.compile(r'(?:(?:chip|className):\s*|^\s*)"([^"]*\bbg-[^"]*)"', re.M)
 _CHIP_UTIL = re.compile(
-    r"(?<![\w:/-])(dark:)?(bg|text)-([a-z]+-\d+|muted(?:-foreground)?)(?:/(\d+))?(?![\w/-])"
+    r"(?<![\w:/-])(dark:)?(bg|text)-"
+    r"([a-z]+-\d+|muted(?:-foreground)?|(?:on-)?[a-z]+-container)(?:/(\d+))?(?![\w/-])"
 )
 _CHIPS = [(rel, cls) for rel in _CHIP_SOURCES for cls in _CHIP_CLASS.findall(_read(rel))]
 
@@ -747,7 +748,9 @@ def _chip_surfaces(t):
 
 
 def _chip_colour(mode, name):
-    if name.startswith("muted"):
+    # A role (muted, a status container pair) is read from globals.css and
+    # carries its own dark value; only a palette shade needs the copied table.
+    if name in _MODES[mode]:
         return _rgb(_MODES[mode], name)
     assert name in _TAILWIND, f"copy --color-{name} from tailwindcss/theme.css into _TAILWIND"
     return _srgb(_oklab(_TAILWIND[name]))
@@ -857,7 +860,9 @@ def _palette_ratio(mode, classes, under):
 
 
 def test_every_palette_text_is_found():
-    assert len(_PALETTE_TEXTS) >= 75, len(_PALETTE_TEXTS)
+    # A floor that the scan still works, not a target: it steps down as call
+    # sites move to the status roles (61 after the status and grade chips).
+    assert len(_PALETTE_TEXTS) >= 55, len(_PALETTE_TEXTS)
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
@@ -899,15 +904,15 @@ def test_placed_palette_text_meets_aa_where_it_sits(rel, literal, surfaces, mode
         assert ratio >= 4.5, f"{mode}: {rel} {literal} on {surface} is {ratio:.2f}:1"
 
 
-_SIDEBAR_BADGE = "bg-orange-500/10 text-orange-800 dark:text-orange-300"
+_SIDEBAR_BADGE = "bg-attention-container text-on-attention-container"
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
 def test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state(mode):
     """The Agent inbox count sits on the sidebar at rest, on a hovered row
     (--sidebar-accent), on the current row (secondary container) and on the
-    current row under the pointer (its hover mix). The Needs you chip's own
-    dark text, orange-400, reads 3.88:1 on that last one."""
+    current row under the pointer (its hover mix). The pair is a solid fill;
+    a tint let the row show through, and one dark shade read 3.88:1 there."""
     assert f'const NEEDS_YOU_BADGE = "{_SIDEBAR_BADGE}";' in _read("components/app-sidebar.tsx")
     t = _MODES[mode]
     mix = _HOVER_MIX["secondary-container"]

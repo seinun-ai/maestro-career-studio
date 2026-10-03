@@ -16,11 +16,11 @@ import type { BaseSummaryRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const GRADE_STYLES: Record<string, string> = {
-  A: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
-  B: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
-  C: "bg-amber-500/15 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200",
-  D: "bg-destructive/10 text-destructive",
-  F: "bg-destructive/10 text-destructive",
+  A: "bg-success-container text-on-success-container",
+  B: "bg-success-container text-on-success-container",
+  C: "bg-warning-container text-on-warning-container",
+  D: "bg-attention-container text-on-attention-container",
+  F: "bg-error-container text-on-error-container",
 };
 
 export function BaseSummaryCards() {

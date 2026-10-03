@@ -75,10 +75,10 @@ const ACCOUNT_ITEMS: NavItem[] = [
 ];
 
 // The Needs-you count wears the Needs you chip's orange (status-chip.tsx).
-// Dark text is orange-300, one step lighter than the chip's orange-400: on the
-// current row under the pointer the chip's shade reads 3.88:1, and this one
-// holds 4.5:1 on all four row states (test_frontend_color_roles.py).
-const NEEDS_YOU_BADGE = "bg-orange-500/10 text-orange-800 dark:text-orange-300";
+// The attention role's container pair, the same as the Needs you chip. It is
+// a solid fill, so it holds 4.5:1 on all four row states
+// (test_frontend_color_roles.py).
+const NEEDS_YOU_BADGE = "bg-attention-container text-on-attention-container";
 
 export function AppSidebar() {
   const pathname = usePathname();
