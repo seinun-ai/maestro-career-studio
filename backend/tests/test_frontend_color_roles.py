@@ -325,9 +325,11 @@ def test_selected_tonal_toggles_show_a_check():
     assert "{review ? <Check /> : <GitCompare />}" in _STUDIO
     source = _read("components/source-toggle.tsx")
     assert "{value === s && <Check" in source
+    # The inbox's History statuses are FilterChips (components/filter-chips.tsx): tonal plus a Check.
+    chips = _read("components/filter-chips.tsx")
+    assert "bg-secondary-container" in chips and "{on && <Check" in chips
     proposals = _read("components/proposals/proposals-section.tsx")
-    assert 'variant={active ? "tonal" : "outline"}' in proposals
-    assert "{active && <Check" in proposals
+    assert "<FilterChips" in proposals and 'variant={active ? "tonal" : "outline"}' not in proposals
 
 
 def test_active_chat_session_is_current():

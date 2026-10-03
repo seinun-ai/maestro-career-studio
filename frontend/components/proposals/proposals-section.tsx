@@ -19,6 +19,7 @@ import { CompanyMonogram } from "@/components/company-monogram";
 import { EmptyState } from "@/components/empty-state";
 import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
+import { FilterChips } from "@/components/filter-chips";
 import { ListToolbar } from "@/components/list-toolbar";
 import { useRoleLabel } from "@/components/role-category-picker";
 import {
@@ -30,7 +31,7 @@ import { IconButton } from "@/components/icon-button";
 import { humanizeEnum } from "@/components/job-extracted-fields";
 import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -187,9 +188,8 @@ export function ProposalsSection() {
   const [minScore, setMinScore] = useState<ScoreFloor | null>(null);
   const roleLabel = useRoleLabel();
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyStatus, setHistoryStatus] = useState<"all" | ProposalStatus>(
-    "all",
-  );
+  // The History statuses that are on; none on shows them all (FilterChips has no "All").
+  const [historyStatus, setHistoryStatus] = useState<ReadonlySet<ProposalStatus>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string> | null>(null);
   const [declineTarget, setDeclineTarget] = useState<
     { mode: "single"; id: string } | { mode: "bulk" } | null
@@ -273,9 +273,9 @@ export function ProposalsSection() {
   const historyAll = useMemo(() => inLane(filtered, "history"), [filtered]);
   const history = useMemo(() => {
     const scoped =
-      historyStatus === "all"
+      historyStatus.size === 0
         ? historyAll
-        : historyAll.filter((p) => p.status === historyStatus);
+        : historyAll.filter((p) => historyStatus.has(p.status));
     return sortProposals(scoped, sort);
   }, [historyAll, historyStatus, sort]);
 
@@ -638,29 +638,16 @@ export function ProposalsSection() {
             </button>
             {historyOpen ? (
               <>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="History status">
-                  {(
-                    [
-                      "all", ...INBOX_LANES.history,
-                    ] as const
-                  ).map((status) => {
-                    const active = historyStatus === status;
-                    const label =
-                      status === "all" ? "All" : STATUS_LABELS[status];
-                    return (
-                      <Button
-                        key={status}
-                        size="xs"
-                        variant={active ? "tonal" : "outline"}
-                        aria-pressed={active}
-                        onClick={() => setHistoryStatus(status)}
-                      >
-                        {active && <Check />}
-                        {label}
-                      </Button>
-                    );
-                  })}
-                </div>
+                <FilterChips
+                  label="History status"
+                  value={historyStatus}
+                  onChange={setHistoryStatus}
+                  options={INBOX_LANES.history.map((status) => ({
+                    value: status,
+                    label: STATUS_LABELS[status],
+                    count: historyAll.filter((p) => p.status === status).length,
+                  }))}
+                />
                 {history.length === 0 ? (
                   <p className="text-muted-foreground text-body-medium">No history yet.</p>
                 ) : (

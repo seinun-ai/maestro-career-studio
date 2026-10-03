@@ -103,9 +103,13 @@ step 3.
    plain muted number. Not converted, owner to decide: the filled strip remains in the resume studios' section tabs
    (they wrap in a narrow pane), the template editor (Formatting / Code), the chat scope picker, the import and New
    base resume dialogs and the career-history import drawer.
-3. **The Jobs status filter becomes filter chips**: one chip per status with its count, selected =
-   tonal + Check + `aria-pressed` (the existing "selected in a set" rule). Same for the Agent inbox's
-   four dropdowns where a filter has five or fewer values.
+3. ~~**The Jobs status filter becomes filter chips**~~ done as `components/filter-chips.tsx` (one chip per value
+   with its count, selected = tonal + Check + `aria-pressed`, several on, none on = no filter), but the Jobs filter
+   stays a Select: measured in Geist 12px, its eight application values are 773px of chips and gaps (more with
+   the four agent-lane values) against a 720px toolbar row at 1024 and 976px at 1280, with the 209px Tracked /
+   Yours / Agents toggle sharing it. None of the Agent inbox's four dropdowns qualifies (Sort and Minimum score
+   are single-valued, Role has six or more values and Job board dozens), so the one caller is the inbox's
+   History status filter, which was hand-built chips with an "All" chip and no counts.
 4. **Group headings lose the capitals.** `CONTACT`, `SUMMARY`, `SKILLS`, `TO REVIEW · 19` (19 `uppercase`
    uses in 12 files) become sentence-case `text-title-small text-muted-foreground`.
 5. **Health-report rows use the outline-variant edge**, not a tinted violet border, and the "Answer"

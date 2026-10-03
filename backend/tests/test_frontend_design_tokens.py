@@ -634,6 +634,56 @@ def test_the_line_tab_is_a_primary_underline_under_a_hairline():
         assert cls in trigger, cls
 
 
+# ── Filter chips (docs/design-system/components/FilterChips) ──────────────────
+
+_FILTER_CHIPS = _read("components/filter-chips.tsx")
+
+
+def test_filter_chips_are_toggle_buttons_in_a_named_group_with_a_check_on_the_selected():
+    assert 'role="group"' in _FILTER_CHIPS and "aria-label={label}" in _FILTER_CHIPS
+    button = _FILTER_CHIPS[_FILTER_CHIPS.index("<button") : _FILTER_CHIPS.index("</button>")]
+    assert 'type="button"' in button and "aria-pressed={on}" in button
+    # The count is said in the chip's name (a count beside the label can drop out of it).
+    assert "aria-label={`${o.label} ${o.count}`}" in button
+    # On: tonal plus a leading Check (the tonal fill alone is too faint). Off: outline and muted text.
+    assert "{on && <Check" in button and 'aria-hidden="true"' in button
+    on, off = re.search(r'on\s*\? "([^"]+)"\s*: "([^"]+)"', button).groups()
+    assert "bg-secondary-container" in on and "text-on-secondary-container" in on
+    assert "border-border" in off and "text-muted-foreground" in off
+    # 28px, a pill, label-medium, tabular numerals, the solid 2px ring outline.
+    for cls in ("h-7", "rounded-full", "text-label-medium", "gap-1", "focus-visible:outline-2", "focus-visible:outline-ring"):
+        assert cls in re.split(r"[\s\"]+", button), cls
+    assert 'className="tabular-nums"' in button
+    assert "gap-2" in _FILTER_CHIPS  # 8px between chips
+    # Several can be on together: a set, toggled one value at a time.
+    assert "value: ReadonlySet<T>" in _FILTER_CHIPS and "next.delete(v)" in _FILTER_CHIPS
+
+
+def test_no_filter_chip_group_has_an_all_chip():
+    """None on means no filter. Every call site's options come from the field's own values."""
+    hits = []
+    for rel in _frontend_sources():
+        if not rel.endswith(".tsx") or rel == "components/filter-chips.tsx":
+            continue
+        text = _read(rel)
+        for opening in re.finditer(r"<FilterChips\b", text):
+            block = text[opening.start() : text.index("/>", opening.start())]
+            if re.search(r"""["']all["']|\bAll\b""", block):
+                hits.append(rel)
+    assert not hits, f'a FilterChips has an "All" option at: {hits}'
+    assert not re.search(r"""["']all["']|>\s*All\s*<""", _FILTER_CHIPS), "the component adds no All chip"
+
+
+def test_the_jobs_status_filter_stays_a_select_because_its_values_do_not_fit_one_line():
+    """Measured 2026-10-03 in Geist 12px, label-medium, px-3: eight application values (Saved to
+    Withdrawn) with a two-digit count are 773px of chips and gaps, plus a Check on each chip that is
+    on; the Jobs toolbar's second row is 720px at 1024 and 976px at 1280, and the Tracked / Yours /
+    Agents toggle takes 209px of it. The filter also has four agent-lane values. FilterChips says a
+    filter with more values than fit on one line stays a Select."""
+    tracker = _read("app/applications/page.tsx")
+    assert 'aria-label="Filter by status"' in tracker and "<FilterChips" not in tracker
+
+
 def test_the_focus_ring_only_removes_what_it_added():
     """RING carries `rounded-corner-md`, which a Card already has; stripping it after the
     flash would square the card."""

@@ -51,10 +51,14 @@
   **Selected
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
   `Check` plus `aria-pressed` (Review changes,
-  SourceToggle, the Agent inbox's history filter, the zoom presets, employment types,
+  SourceToggle, `FilterChips` (the Agent inbox's History statuses), the zoom presets, employment types,
   section presets, and the template picker): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
-  `test_selected_tonal_toggles_show_a_check` pins the first three. Three exceptions carry the state
+  `test_selected_tonal_toggles_show_a_check` pins the first three. **`FilterChips`**
+  (`components/filter-chips.tsx`) is one field of about six values or fewer, every value with its count, several
+  on at once, none on meaning no filter, so it never has an "All" chip; a filter with more values than fit on one
+  line stays a Select (the Jobs status filter, measured, and the inbox's Role and Job board), and a
+  single-valued control (a sort order, a score floor) is a Select, not chips. Three exceptions carry the state
   without a Check: the formatting panel's segmented buttons are solid
   `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
   and a Check would widen every segment in a narrow pane), Career history's

@@ -128,6 +128,31 @@ def test_the_toolbar_is_one_row_like_applications():
     assert 'placeholder="e.g. 50"' not in _SECTION
 
 
+def test_the_toolbar_keeps_its_four_selects_none_is_a_chip_group():
+    """FilterChips are for a filter of about six values or fewer, several of which can be on. None of
+    these qualifies: Sort and Minimum score are single-valued (a sort order, a floor; two floors on
+    at once mean nothing), Role has a value per role category that appears (six in the owner's data)
+    and Job board one per host (thirty-odd). The History status filter below the lanes is the chip
+    group (docs/design-system/components/FilterChips)."""
+    assert "<FilterChips" not in _toolbar()
+    assert _toolbar().count("<Select\n") + _toolbar().count("<Select ") == 4
+
+
+def test_the_history_statuses_are_filter_chips_with_counts_and_no_all():
+    """A set of statuses, each chip with how many proposals it would show; none on shows them all."""
+    start = _SECTION.index("<FilterChips")
+    chips = _SECTION[start : _SECTION.index("/>", _SECTION.index("count:", start)) + 2]
+    assert 'label="History status"' in chips
+    assert "value={historyStatus}" in chips and "onChange={setHistoryStatus}" in chips
+    assert "count: historyAll.filter((p) => p.status === status).length," in chips
+    assert "useState<ReadonlySet<ProposalStatus>>(new Set())" in _SECTION
+    assert "historyStatus.size === 0" in _SECTION and "historyStatus.has(p.status)" in _SECTION
+    # The hand-built chips (xs Buttons, an "All" chip, no counts) are gone.
+    assert '"all", ...INBOX_LANES.history' not in _SECTION
+    assert 'status === "all" ? "All"' not in _SECTION
+    assert 'useState<"all" | ProposalStatus>' not in _SECTION
+
+
 def test_the_sort_values_describe_themselves():
     for label in ('score: "Best score first"', 'newest: "Newest first"',
                   'title: "Job title A–Z"', 'company: "Company A–Z"'):
@@ -557,7 +582,7 @@ def test_the_lanes_are_read_from_the_one_table():
     """Each lane filters through `inLane`, never its own list (M6)."""
     for lane in ("needs_you", "triage", "queued", "in_flight", "history"):
         assert _SECTION.count(f'inLane(filtered, "{lane}")') == 1, lane
-    assert '"all", ...INBOX_LANES.history' in _SECTION  # the History filter's chips
+    assert "options={INBOX_LANES.history.map((status) => ({" in _SECTION  # the History filter's chips
     for old in ("const NEEDS_YOU", "const TRIAGE", "const QUEUED", "const IN_FLIGHT", "const HISTORY",
                 "export const STATUS_ORDER", ".includes(p.status)"):
         assert old not in _SECTION, old
