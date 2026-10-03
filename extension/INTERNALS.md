@@ -1290,14 +1290,18 @@ Two things bound that:
 
 Separately from the rows above, a "Saved answers + AI" run builds one `report.trace` in
 `shared/fill-loop.js`, and the panel (`panel/actions/fill.js`) sends it once as `fill_trace`. It
-records, per field, how the engines decided: the label source, the map / polarity / pick decisions
+records, per field, how the engines decided: the label source, the map / polarity / pick / step decisions
 (route, slot, engine, confidence, second opinion, chosen option index), each step as an op with `ms`
 and its effect, and the final status. Failed model calls are noted as `{op, ms}`. A field keeps at
 most 40 steps (the first 20 and the last 20), and any text is cut to 200 characters without
 splitting a surrogate pair.
 
-It holds no value. A label or section is blanked, run-wide, when it contains any value the run
-wrote, was answered, left over or found committed in a field. The page's own option texts and the
+It holds no value. A label or section is blanked, run-wide, when it contains a value the run wrote,
+was answered, left over or found committed (`rowKeys` / `siblingKeys` in `shared/fill-loop.js`). Two
+things never count: a field's own option texts (a country select answered "United States" would
+otherwise blank every label saying so) and a lone checkbox's yes/no. A field's own value blanks its
+own label at any length; another field's value blanks a label at 2+ characters when that other
+field is typed (text, date, search, popup) and at 4+ otherwise. The page's own option texts and the
 chosen option's index are kept on every field, EEO included (owner decision), so a wrong pick can be
 read back; no typed or profile string ever sits in a free-text slot. `sw.js` `scrubTrace` then
 rebuilds the trace from a whitelist mirroring `app/schemas/autofill_trace.py` (numbers only, anything

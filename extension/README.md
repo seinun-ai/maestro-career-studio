@@ -68,12 +68,17 @@ itself makes.
 
 When you run a fill, the extension records **which fields it found and whether
 they filled** (the field's label, its type, the outcome, and a dropdown's
-option texts). It **never records what you typed** or any value on the page.
+option texts). It **never records what you typed** or what a field held.
 Each record does carry the site's hostname and a timestamp, so over time it
 amounts to **a list of where you applied and when**.
 
+A fill that uses AI also keeps a **run trace**: a private, local record of how
+Autofill decided each field. It includes the page's own option texts and which
+option was chosen, demographic (EEO) questions included, and never anything you
+typed or any text from your profile. The last 50 runs are kept.
+
 - **Clear it:** in the web app, **Analytics → Autofill coverage → Clear data**.
-  This deletes the records but does not turn recording off.
+  This deletes the records and the run traces but does not turn recording off.
 - **Turn it off:** there is no switch in the panel. On `chrome://extensions`,
   click the **service worker** link on the Maestro CS Companion card, open its
   **Console** tab, and run:
@@ -82,7 +87,7 @@ amounts to **a list of where you applied and when**.
   chrome.storage.sync.set({ telemetryEnabled: false })
   ```
 
-  Run it again with `true` to turn it back on.
+  Run it again with `true` to turn it back on. This turns off run traces too.
 
 ### Learned widget moves
 

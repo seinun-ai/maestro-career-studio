@@ -28,7 +28,7 @@ have pointed at the failing step (label source, map, polarity, pick) in one read
   it gives. Rejected: (B) both sides write halves joined by a run id, which needs two
   writers, a join and partial-run cleanup; (C) logs only, which keeps no per-run record and
   merges observations across runs.
-- **Option texts.** Option texts and the chosen index are recorded on all fields (2026-10-03).
+- **Option texts.** Option texts and the chosen index are recorded on all fields, EEO included (2026-10-03).
 
 ## The record
 
@@ -39,10 +39,9 @@ One record per Autofill run:
   `halted` (stopped, or out of time)
 - totals: fields seen, filled, left and prefilled, and the rounds used
 - `fields`: one entry per field, in page order:
-  - **what was read:** `label` (blanked if it holds the written value, as telemetry does),
+  - **what was read:** `label` (blanked, run-wide, if it holds any value the run wrote, was answered, left or found committed; a field's own option texts and a lone checkbox's yes/no excepted),
     `label_source` (label-for, preceding, trailing-text, row-above, …), shape, `section`,
-    `required`, option count and option texts (the page's own, capped as telemetry caps
-    them), and the widget family (the key the recipe book already computes)
+    `required`, option count and option texts (the page's own, each capped at 200 characters), and the widget family (the key the recipe book already computes)
   - **steps:** an ordered list of events. Each has its kind, `ms`, and `effect` (progress,
     no_effect, reverted, refused or error):
     - `map`: route, slot, engine, confidence, threshold, second opinion (not asked, asked

@@ -303,15 +303,13 @@ file to open.
   pattern; there is no "immediate unlink" helper — don't reintroduce one.
 - **Stable per-application `artifact_dir`** `{#inv-stable-artifact-dir}`: one folder per application,
   `applications/Company_Role_YYYYMMDD_<idprefix>/`, allocated once via
-  `services/application_artifacts.get_dir`, persisted on
-  `Application.artifact_dir`; resume/source/PDF, previews, cover letters and
-  proposal `evidence/` colocate there. Playwright upload constraint: a folder
+  `services/application_artifacts.get_dir`, persisted on `Application.artifact_dir`;
+  resume/source/PDF, previews, cover letters and proposal `evidence/` colocate there. Playwright upload constraint: a folder
   grant on `applications/` does **not** expand `browser_file_upload` — stage a
   disposable copy via MCP `prepare_application_pdf_upload` under
   `.playwright-mcp/uploads/` (or `$MAESTRO_CS_UPLOAD_DIR`), pair Playwright
-  `--output-dir` with the parent `.playwright-mcp` tree, and pass the returned
-  `upload_path` to the file chooser — never copy/move with shell tools.
-  Details: `docs/playbooks/agent-apply.md`, `backend/mcp_server/README.md`.
+  `--output-dir` with the parent `.playwright-mcp` tree, and pass the returned `upload_path` to the file chooser —
+  never copy/move with shell or filesystem tools. Details: `docs/playbooks/agent-apply.md`, `backend/mcp_server/README.md`.
 - **Honesty invariant** `{#inv-honesty}`: an `add_keyword` on a skill the engine found NO evidence of
   (`fix_hint == "absent"`) may only land in the skills section, never as a fabricated experience/project
   bullet. Enforced server-side in `save_resolutions` (guards MCP/API callers, not just the UI).
@@ -320,10 +318,10 @@ file to open.
   output) both call the pure `placement_targets.canonicalize` —
   `services/placement_targets.py` owns the placement-target contract, and the
   frontend's `buildPlacementTargets` hand-mirrors its targets shape. Extra targets require `section="extra"`, a stable
-  `section_key`, and either an enabled entry's original index or, for a flat
-  bullets section, the same stable key as `index_or_category`.
+  `section_key`, and either an enabled entry's original index or, for a flat bullets section, the same stable key
+  as `index_or_category`.
 - **MCP control invariants** `{#inv-mcp-controls}`: no MCP tool name contains "delete"; no
-  set-default-template tool. Registration is pinned by a subset assert in `mcp_server/tests/test_server.py`.
+  set-default-template tool. Registration is pinned by a subset assert in `mcp_server/tests/test_server.py` — add new tools there.
 - **`tailor_application` vs `edit_application`** `{#inv-tailor-vs-edit}` (MCP): the former REPLACES
   `customized_json` wholesale from the BASE resume; the latter applies ops to the
   CURRENT draft — docstrings lead with this; keep them unmistakable. Edit indices are
@@ -333,14 +331,15 @@ file to open.
 - **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry`
   stores label, kind, rule id, option texts, outcome, host — never what was typed, what was there before, or
   any AI answer: no value column, `extra="forbid"` (an extra key 422s), sw re-filters to six keys. `POST /runs`
-  stores one strict `RunTrace` (newest 50 kept): a label or section holding any written, answered, leftover or
-  committed value is blanked; the page's option texts and the chosen index are kept on every field, EEO included
-  (owner decision); the rest is ops, ms, effect and decision enums and numbers, never a typed or profile string
-  in a free-text slot. `sw.js` `scrubTrace` whitelists against the schema; telemetry and traces post nothing when
-  `telemetryEnabled` is `false`. Runs fold into host/label-free `autofill_mechanism_stats`. `host` + `first_seen_at`
-  record where and when you applied, so `DELETE /telemetry` clears rows and runs (counts in body), keeps counters,
-  never the capture toggle (`extension/INTERNALS.md`; `…/telemetry/summary` ranks failures + saturation).
-  `backend/scripts/fill_trace.py last|report` reads a DB copy only.
+  stores one strict `RunTrace` (newest 50 kept): a label or section holding a value the run wrote, was answered,
+  left or found committed is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`; a field's own option texts and a
+  lone checkbox's yes/no excepted; another field's value counts at 2+ chars typed, 4+ otherwise); the page's
+  option texts and the chosen index are kept on every field, EEO included (owner decision); the rest is ops, ms,
+  effect and decision enums and numbers, never a typed or profile string in a free-text slot. `sw.js` `scrubTrace`
+  whitelists against the schema; telemetry and traces post nothing when `telemetryEnabled` is `false`. Runs fold
+  into host/label-free `autofill_mechanism_stats`. `host` + `first_seen_at` record where and when you applied, so
+  `DELETE /telemetry` clears rows and runs (counts in body), keeps counters, never the capture toggle
+  (`extension/INTERNALS.md`; `…/telemetry/summary` ranks failures). `scripts/fill_trace.py last|report` reads a DB copy.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at
   the sender, but `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat
   iframes, and the ISOLATED world protects the message in transit, NOT the DOM written into: a frame

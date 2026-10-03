@@ -145,13 +145,12 @@ class _Ask:
 
 def _with_llm(req: StepRequest, ask: _Ask, session: Session, trace_name: str = "autofill-step", *,
               timeout: float | None = None) -> StepResponse:
-    criteria = ask.criteria
     raw = fast_json(session, _LLM_PROMPT.format(
-        instructions=ask.instructions, state=json.dumps(ask.state), moves=json.dumps(criteria)),
+        instructions=ask.instructions, state=json.dumps(ask.state), moves=json.dumps(ask.criteria)),
         trace_name, timeout=timeout)
     raw = raw if isinstance(raw, dict) else {}
     move = raw.get("move")
-    mid = move if isinstance(move, str) and move in criteria else None
+    mid = move if isinstance(move, str) and move in ask.criteria else None
     conf = raw.get("confidence")
     # A move that was not offered is unknown, not a give-up: no p, so `chose_none` stays None.
     p = float(conf) if jev._unit(conf) and not (move and mid is None) else None
@@ -228,7 +227,8 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         if answer is None:
             return StepResponse(mid=None, reason="abstained", polarity=polarity)
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
-    ask = _Ask(_instructions(req, values, hint, facts, answer),
-               {"job": asdict(hint) if hint else None, "history": req.history}, criteria, policy)
+    ask = _Ask(instructions=_instructions(req, values, hint, facts, answer),
+               state={"job": asdict(hint) if hint else None, "history": req.history},
+               criteria=criteria, policy=policy)
     moved = _move(req, ask, session, budget)
     return moved.model_copy(update={"polarity": polarity})

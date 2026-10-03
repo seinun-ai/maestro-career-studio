@@ -61,7 +61,8 @@
       {"path": "backend/tests/test_extension_sw_router.py", "symbol": "test_a_trace_is_not_posted_when_the_user_turned_telemetry_off"},
       {"path": "backend/tests/test_autofill_trace_router.py", "symbol": "test_an_unknown_key_in_the_body_is_a_422"},
       {"path": "backend/tests/test_autofill_trace_router.py", "symbol": "test_no_counter_key_or_count_holds_a_host_or_label"},
-      {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_no_value_reaches_the_trace"}
+      {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_no_value_reaches_the_trace"},
+      {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_what_the_trace_keeps_of_the_page_is_its_labels_and_options"}
     ],
     "inv-single-dialect": [
       {"path": "backend/tests/test_db_portability.py", "symbol": "test_no_dialect_imports_outside_types_module"},

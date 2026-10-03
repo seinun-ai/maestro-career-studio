@@ -89,14 +89,14 @@ export function AutofillCoverageCard() {
 
   const clear = useMutation({
     mutationFn: () =>
-      apiFetch<{ deleted: number }>("/api/autofill/telemetry", {
+      apiFetch<{ deleted: number; runs_deleted?: number }>("/api/autofill/telemetry", {
         method: "DELETE",
       }),
-    onSuccess: ({ deleted }) => {
+    onSuccess: ({ deleted, runs_deleted = 0 }) => {
       qc.invalidateQueries({ queryKey: ["autofill-telemetry-summary"] });
-      toast.success(
-        deleted === 1 ? "Cleared 1 captured field" : `Cleared ${deleted} captured fields`
-      );
+      const fields = deleted === 1 ? "1 captured field" : `${deleted} captured fields`;
+      const runs = runs_deleted === 1 ? "1 run record" : `${runs_deleted} run records`;
+      toast.success(`Cleared ${fields} and ${runs}`);
     },
     onError: (err: Error) => toast.error(couldnt("clear the data", err)),
   });
@@ -113,8 +113,8 @@ export function AutofillCoverageCard() {
       title: "Clear captured autofill data?",
       description:
         `This deletes what was recorded about ${signatures} form ${signatures === 1 ? "field" : "fields"}` +
-        ` on ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were on and when.` +
-        " You can't undo this." +
+        ` on ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were on and when,` +
+        " and the stored records of how Autofill decided each field's answer. You can't undo this." +
         // The Companion has no switch for capture (extension/README.md), so
         // the confirm names none.
         " Recording continues while the Companion runs.",

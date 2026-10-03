@@ -31,9 +31,10 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 ### Added
 
 - Autofill keeps a private record of how it decided each field (which answer it
-  chose, how sure it was, what the page did), for diagnosing and tuning it. It
-  holds no typed answer or profile text, stays on your machine, keeps your last
-  50 runs, follows the same telemetry switch, and goes when you press Clear data.
+  chose, demographic questions included, how sure it was, what the page did),
+  for diagnosing and tuning it. It holds no typed answer or profile text, stays
+  on your machine, keeps your last 50 runs, turns off with the same opt-out as
+  field telemetry, and goes when you press Clear data.
 
 ### Fixed
 
