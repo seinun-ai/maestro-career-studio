@@ -67,6 +67,9 @@ class PolarityTrace(BaseModel):
     way: PolarityWay
     engine: Engine | None = None
     p: float | None = Field(default=None, ge=0.0, le=1.0)
+    # Set only when this way was recalled from memory (autofill_polarity): the same decision as an
+    # earlier call's, not a new one. Absent for a fresh decision.
+    remembered: bool | None = None
 
 
 MAX_FIELDS = 40

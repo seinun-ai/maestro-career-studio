@@ -764,7 +764,7 @@ def test_a_trace_keeps_exactly_the_schemas_keys_at_each_level(tmp_path):
     full_step = {"op": "step", "ms": 5, "effect": "progress", "word": "ok", "route": "slot",
                  "slot": "a.b", "why": "unclear_job", "engine": "jev", "p": 0.9, "floor": 0.5,
                  "second": "decided", "first_p": 0.4, "first_same": True, "chose_none": False,
-                 "way": "same", "option": 3, "reason": "matched", "move": "click:o3"}
+                 "way": "same", "remembered": True, "option": 3, "reason": "matched", "move": "click:o3"}
     body = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=[full_step])]))
     [field] = body["fields"]
     assert set(body) == set(RunTrace.model_fields)
@@ -874,6 +874,13 @@ def test_step_numbers_are_rounded_and_odd_ones_dropped(tmp_path):
         {"op": "set"},
         {"op": "set"},
     ]
+
+
+def test_a_remembered_flag_is_kept_only_as_a_boolean(tmp_path):
+    steps = [{"op": "polarity", "way": "same", "remembered": True}, {"op": "polarity", "way": "same", "remembered": False},
+             {"op": "polarity", "way": "same", "remembered": "true"}, {"op": "polarity", "way": "same", "remembered": 1}]
+    got = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=steps)]))["fields"][0]["steps"]
+    assert [s.get("remembered") for s in got] == [True, False, None, None]
 
 
 def test_a_step_with_an_unknown_op_is_dropped_and_odd_words_are_not_forwarded(tmp_path):

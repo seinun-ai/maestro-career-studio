@@ -30,7 +30,7 @@ import logging
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from sqlalchemy.orm import Session
@@ -101,6 +101,8 @@ class Polarity:
     # The deciding answer's probability (value-free: the fill trace reads it). A
     # remembered polarity keeps it. None: nothing decided.
     p: float | None = None
+    # True only on a copy `_recall` returns: it is an earlier call's decision, not a new one.
+    remembered: bool = False
 
 
 UNSURE = Polarity(None, None)
@@ -128,7 +130,7 @@ def _recall(key: tuple[str, str, str]) -> Polarity | None:
         if _clock() - held[0] > MEMORY_TTL_S:
             del _memory[key]
             return None
-        return held[1]
+        return replace(held[1], remembered=True)
 
 
 def forget() -> None:

@@ -45,7 +45,9 @@ class TraceStep(DecisionFields):
     slot: str | None = Field(default=None, max_length=120, pattern=SLOT)  # a fact NAME
     why: Why | None = None
     way: PolarityWay | None = None  # polarity
-    # index into the options offered to /pick (not TraceField.options, which is capped)
+    remembered: bool | None = None  # polarity: recalled from an earlier call, not a new decision (never folded)
+    # index into the field's own `options` (the page's passive list, in page order), only when the field has
+    # one; below MAX_PICK_OPTIONS, so a longer list's later options carry no index
     option: int | None = Field(default=None, ge=0, lt=MAX_PICK_OPTIONS)
     reason: StepReason | None = None  # pick / step
     move: str | None = Field(default=None, max_length=40, pattern=MOVE_ID)  # op step / move

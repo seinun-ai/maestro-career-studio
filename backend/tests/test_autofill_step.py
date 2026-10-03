@@ -719,6 +719,15 @@ def test_a_yes_no_step_carries_how_its_polarity_went(db_session, monkeypatch):
 
 
 @pytest.mark.usefixtures("jev_on")
+@pytest.mark.usefixtures("jev_on")
+def test_a_step_repeating_a_question_traces_its_polarity_as_remembered(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("click:o1", 0.99), way=("same", 0.95))
+    r = req(question="Do you need sponsorship?", slot="work_auth.sponsorship_now")
+    assert stepped(r, db_session).polarity == PolarityTrace(way="same", engine="jev", p=0.95)
+    assert stepped(r, db_session).polarity == PolarityTrace(way="same", engine="jev", p=0.95, remembered=True)
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_an_unsure_polarity_is_traced_and_the_step_has_no_trace(db_session, monkeypatch):
     fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.99}, way=("opposite", 0.6))
     fake_jev(monkeypatch, ("click:o1", 0.99), way=("opposite", 0.6))   # under the polarity floor, twice

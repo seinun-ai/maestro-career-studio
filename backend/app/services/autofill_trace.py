@@ -148,6 +148,8 @@ def fold(trace: RunTrace) -> Counters:
         for at, step in enumerate(field.steps):
             if step.op in ACTIONS:
                 _fold_action(out, field, step)
+            elif step.remembered:  # a recalled polarity is an earlier decision, counted when it was made
+                continue
             elif step.op in DECISIONS and step.engine:  # no engine: code decided, never counted
                 _fold_decision(out, field, at, status)
                 if step.second:

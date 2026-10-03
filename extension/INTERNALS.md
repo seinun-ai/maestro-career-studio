@@ -1292,7 +1292,9 @@ Separately from the rows above, a "Saved answers + AI" run builds one `report.tr
 `shared/fill-loop.js`, and the panel (`panel/actions/fill.js`) sends it once as `fill_trace`. It
 records, per field, how the engines decided: the label source, the map / polarity / pick / step decisions
 (route, slot, engine, confidence, second opinion, chosen option index), each step as an op with `ms`
-and its effect, and the final status. Failed model calls are noted as `{op, ms}`. A field keeps at
+and its effect, and the final status. Failed model calls are noted as `{op, ms}`. A field notes its
+polarity once (the first answer: later /pick and /step calls on a Yes/No field answer with the same way, recalled
+from memory; a recalled way carries `remembered` and the counters skip it). A field keeps at
 most 40 steps (the first 20 and the last 20), and any text is cut to 200 characters without
 splitting a surrogate pair.
 
@@ -1303,7 +1305,14 @@ otherwise blank every label saying so) and a lone checkbox's yes/no. A field's o
 own label at any length; another field's value blanks a label at 2+ characters when that other
 field is typed (text, date, search, popup) and at 4+ otherwise. The page's own option texts and the
 chosen option's index are kept on every field, EEO included (owner decision), so a wrong pick can be
-read back; no typed or profile string ever sits in a free-text slot. `sw.js` `scrubTrace` then
+read back. The index counts the field's own `options` list (the inventory's passive list, `o{i+1}`, as stored
+in `options`), not the options /pick was offered (those drop placeholder and never-fill rows); it is left out
+when the field has no passive list, when the pick was an explored row (explore oids restart at o1, so a row
+counts only when its oid and text are the passive option's), or at 250 and over (the schema's bound). An
+option text that contains another TYPED field's value (text, date, search, popup; 2+ characters) is blanked,
+since a dependent select can list what was typed earlier: only typed siblings screen it (a country chosen
+in one select must not blank another's list), and a row's own keys never do, so the index still lines up.
+No typed or profile string ever sits in a free-text slot. `sw.js` `scrubTrace` then
 rebuilds the trace from a whitelist mirroring `app/schemas/autofill_trace.py` (numbers only, anything
 the schema would reject dropped), and posts it to `POST /api/autofill/runs` only while
 `telemetryEnabled` is not `false` — the same switch as above. The backend keeps the newest 50 runs

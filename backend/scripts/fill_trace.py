@@ -34,8 +34,10 @@ indented line per step, so `grep` finds a field, an op or a floor:
 
 A step with no engine was decided by code. "—" is a value the extension could not read; "none" is
 the model choosing the no-answer key; `route:none` is /map routing the field to no fact. In
-`opt[N]`, N is the 0-based index into the options offered to /pick (not the field's `options`
-list, which is capped). Labels print as JSON strings, so a label cannot fake a line. The trace
+`opt[N]`, N is the 0-based index into the field's own `options` list (the page's passive list, as
+recorded) and the chosen option's text follows as a JSON string when that list holds it; no `opt` is
+printed for a field the page gave no list. `polarity same (remembered)` is a recalled earlier answer,
+not a new decision (the counters skip it). Labels and option texts print as JSON strings, so a label cannot fake a line. The trace
 holds no answer text (SYSTEM.md {#inv-autofill-telemetry-no-values}), so none is printed.
 """
 
@@ -86,25 +88,38 @@ def _join(*parts: str | None) -> str:
 # ---------- decisions: what was chosen, then how sure the engine was
 
 
-def _map_target(step: TraceStep) -> str:
+def _map_target(step: TraceStep, _options: list[str] | None) -> str:
     where = step.slot if step.route == "slot" and step.slot else f"route:{step.route}" if step.route else "—"
     return f"→ {where}" + (f" ({step.why})" if step.why else "")
 
 
-def _pick_target(step: TraceStep) -> str:
-    chosen = "none" if step.chose_none else "—" if step.option is None else f"opt[{step.option}]"
+def _pick_target(step: TraceStep, options: list[str] | None) -> str:
+    """`opt[N]` is the 0-based index into the field's own `options`; its text follows when the stored
+    list reaches that far (a field with more than 30 options keeps only the first 30)."""
+    if step.chose_none:
+        chosen = "none"
+    elif step.option is None:
+        chosen = "—"
+    else:
+        shown = f" {_label(options[step.option])}" if options and step.option < len(options) else ""
+        chosen = f"opt[{step.option}]{shown}"
     return f"{chosen} {step.reason}" if step.reason else chosen
 
 
-def _step_target(step: TraceStep) -> str:
+def _step_target(step: TraceStep, _options: list[str] | None) -> str:
     chosen = step.move or ("none" if step.chose_none else "—")
     return f"{chosen} {step.reason}" if step.reason else chosen
 
 
-DECISION_TARGETS: dict[str, Callable[[TraceStep], str]] = {
+def _polarity_target(step: TraceStep, _options: list[str] | None) -> str:
+    return (step.way or "—") + (" (remembered)" if step.remembered else "")
+
+
+# Each takes the step and the field's own option list (only a pick reads it).
+DECISION_TARGETS: dict[str, Callable[[TraceStep, list[str] | None], str]] = {
     "map": _map_target,
     "pick": _pick_target,
-    "polarity": lambda step: step.way or "—",
+    "polarity": _polarity_target,
     "step": _step_target,
 }
 
@@ -125,8 +140,8 @@ def _second(step: TraceStep) -> str | None:
     return f"({step.second})" if step.second else None
 
 
-def _decision(step: TraceStep) -> str:
-    return _join(f"{step.op} {DECISION_TARGETS[step.op](step)}", _confidence(step), _second(step), _ms(step.ms))
+def _decision(step: TraceStep, options: list[str] | None) -> str:
+    return _join(f"{step.op} {DECISION_TARGETS[step.op](step, options)}", _confidence(step), _second(step), _ms(step.ms))
 
 
 # ---------- page actions: what was tried, and what the page did
@@ -138,8 +153,9 @@ def _action(step: TraceStep) -> str:
     return _join(f"{what} {effect}", _ms(step.ms))
 
 
-def render_step(step: TraceStep) -> str:
-    return _decision(step) if step.op in DECISION_TARGETS else _action(step)
+def render_step(step: TraceStep, options: list[str] | None = None) -> str:
+    """One step as a line; `options` is the field's own list, which a pick's index points into."""
+    return _decision(step, options) if step.op in DECISION_TARGETS else _action(step)
 
 
 # ---------- fields and runs
@@ -149,7 +165,7 @@ def render_field(field: TraceField) -> list[str]:
     source = f"label←{field.label_source}" if field.label_source else None
     head = _join(f"[{field.outcome}]", _label(field.label), field.shape, source, field.family,
                  f"round {field.round}" if field.round else None)
-    return [head, *(f"  {render_step(step)}" for step in field.steps)]
+    return [head, *(f"  {render_step(step, field.options)}" for step in field.steps)]
 
 
 def render_header(trace: RunTrace) -> str:

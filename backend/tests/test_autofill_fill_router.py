@@ -252,7 +252,7 @@ def test_the_pick_response_carries_the_decision_trace_and_the_polarity(db_sessio
     assert (got["oids"], got["reason"]) == (["o1"], "matched")
     assert got["trace"]["engine"] == "jev" and got["trace"]["p"] == 0.97
     assert set(got["trace"]) == {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none"}
-    assert got["polarity"] == {"way": "same", "engine": "jev", "p": 0.97}
+    assert got["polarity"] == {"way": "same", "engine": "jev", "p": 0.97, "remembered": None}
 
 
 @pytest.mark.parametrize("path, field", [("/api/autofill/map", MAP_FIELD), ("/api/autofill/pick", PICK_FIELD)])
@@ -342,7 +342,7 @@ def test_the_step_response_carries_the_decision_trace_and_the_polarity(db_sessio
     assert (got["mid"], got["reason"]) == ("click:o1", "matched")
     assert got["trace"]["engine"] == "jev" and got["trace"]["p"] == 0.97
     assert set(got["trace"]) == {"engine", "p", "floor", "second", "first_p", "first_same", "chose_none"}
-    assert got["polarity"] == {"way": "same", "engine": "jev", "p": 0.97}
+    assert got["polarity"] == {"way": "same", "engine": "jev", "p": 0.97, "remembered": None}
 
 
 @pytest.mark.usefixtures("profile")

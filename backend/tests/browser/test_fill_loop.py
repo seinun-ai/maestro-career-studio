@@ -2351,6 +2351,32 @@ def test_a_trace_notes_a_picks_polarity_before_the_pick(page, load):
     assert pick["option"] == 1
 
 
+def test_a_remembered_polarity_is_marked_in_the_trace(page, load):
+    out = run(page, load,
+              frames=[[f("s", "select", "Disability?", options=[opt("o1", "Yes"), opt("o2", "No")], optionsComplete=True)]],
+              map={"s": {"route": "slot", "slot": "eeo.disability", "value": "No"}},
+              pick={"s": {"oids": ["o2"], "reason": "matched",
+                          "polarity": {"way": "same", "engine": "jev", "p": 0.9, "remembered": True}}})
+    assert traced(out, "s")["steps"][1] == {"op": "polarity", "way": "same", "engine": "jev", "p": 0.9, "remembered": True}
+
+
+def test_a_field_notes_its_polarity_once_however_many_steps_repeat_it(page, load):
+    """Every /step on a Yes/No fact answers with its polarity (recalled after the first); the trace
+    keeps the first, so a long field's 40-step budget is not spent on copies."""
+    state = {"candidates": [{"mid": "scroll", "describe": "Scroll"}, GIVE_UP]}
+    fresh = {"way": "same", "engine": "jev", "p": 0.9}
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?")]] * 3,
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
+              apply={"scroll": {"outcome": "progressed"}},
+              step={"states": [{**state, "version": 1}, {**state, "version": 2}],
+                    "moves": [{"mid": "scroll", "reason": "progress", "polarity": fresh},
+                              {"mid": "scroll", "reason": "progress", "polarity": {**fresh, "remembered": True}}]})
+    steps = traced(out, "d")["steps"]
+    assert [s["op"] for s in steps].count("step") >= 2
+    assert [(s["way"], s.get("remembered")) for s in steps if s["op"] == "polarity"] == [("same", None)]
+
+
 def test_a_trace_marks_a_wasted_gesture_no_effect_and_the_second_kind_refused(page, load):
     state = {"candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'},
                             {"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}
@@ -2445,6 +2471,48 @@ def test_what_the_trace_keeps_of_the_page_is_its_labels_and_options(page, load):
     assert (traced(out, "d")["options"], traced(out, "d")["option_count"]) == (
         ["No, I do not have a disability", "Yes, I have a disability"], 2)
     assert (traced(out, "e")["options"], "explore" in ops(out, "e")) == (None, True)  # a search lists rows only on explore
+
+
+def test_an_option_echoing_a_siblings_typed_value_is_blanked(page, load):
+    """A dependent select can list what was typed earlier ("which of your employers"): the option text
+    that holds a typed sibling's value goes, the index stays aligned, and an ordinary list is as it was."""
+    echoing = [opt("o1", "Acme Corp"), opt("o2", "Other"), opt("o3", "Work at Acme Corp, remote")]
+    plain = [opt("o1", "Yes"), opt("o2", "No")]
+    out = run(page, load,
+              frames=[[f("e", question="Employer"),
+                       f("w", "select", "Which employer?", options=echoing, optionsComplete=True),
+                       f("a", "select", "Authorized to work?", options=plain, optionsComplete=True)]] * 2,
+              map={"e": {"route": "slot", "slot": "experience.0.company", "value": "Acme Corp"},
+                   "w": {"route": "low_stakes"}, "a": {"route": "low_stakes"}},
+              pick={"w": {"oids": ["o2"], "reason": "assumed"}, "a": {"oids": ["o1"], "reason": "assumed"}})
+    assert traced(out, "w")["options"] == ["", "Other", ""] and traced(out, "w")["option_count"] == 3
+    assert [s["option"] for s in traced(out, "w")["steps"] if s["op"] == "pick"] == [1]
+    assert traced(out, "a")["options"] == ["Yes", "No"]
+    assert "Acme" not in json.dumps(trace_of(out))
+
+
+def test_an_answer_chosen_in_one_select_does_not_blank_another_selects_options(page, load):
+    """Only TYPED siblings screen option texts: a country picked in one select leaves another's list whole."""
+    countries = [opt("o1", "United States"), opt("o2", "Canada")]
+    out = run(page, load,
+              frames=[[f("c", "select", "Country", options=countries, optionsComplete=True),
+                       f("n", "select", "Nationality", options=countries, optionsComplete=True)]] * 2,
+              map={"c": {"route": "slot", "slot": "personal.country", "value": "Canada"},
+                   "n": {"route": "low_stakes"}},
+              pick={"c": {"oids": ["o2"], "reason": "matched"}, "n": {"oids": ["o1"], "reason": "assumed"}})
+    assert traced(out, "n")["options"] == ["United States", "Canada"]
+    assert traced(out, "c")["options"] == ["United States", "Canada"]
+
+
+def test_a_typed_fields_own_value_does_not_screen_its_own_option_list(page, load):
+    """A popup that lists "Acme Corp (current)" and was answered "Acme Corp" keeps its texts (the row's
+    own keys never screen its own list; the label still goes blank)."""
+    out = run(page, load,
+              frames=[[f("p", "popup", "Employer Acme Corp", options=[opt("o1", "Acme Corp (current)"), opt("o2", "Other")])]] * 2,
+              map={"p": {"route": "slot", "slot": "experience.0.company", "value": "Acme Corp"}},
+              explore={"Acme Corp": {"options": [opt("o1", "Acme Corp (current)")], "complete": True}},
+              pick={"p": {"oids": ["o1"], "reason": "matched"}})
+    assert traced(out, "p")["options"] == ["Acme Corp (current)", "Other"] and traced(out, "p")["label"] == ""
 
 
 def test_a_field_trace_keeps_to_the_schemas_caps_and_patterns(page, load):
@@ -2772,15 +2840,49 @@ def test_a_step_that_chose_give_up_records_the_move(page, load):
 # ---------- what a pick's index means, and a set's picks
 
 
-def test_a_picks_option_index_counts_the_offered_options_not_the_pages(page, load):
-    """A placeholder row and a never-fill option are never offered, so the chosen option's index is
-    among the two that were; the page's own list (kept whole, option_count 4) still shows all four."""
+def test_a_picks_option_index_is_the_pages_own_not_the_offered_one(page, load):
+    """A placeholder row and a never-fill option are never offered to /pick, but the index still counts
+    them: it points into the field's `options`, so a reader names the option that was chosen."""
     options = [opt("o0", "Select One"), opt("o1", "Never fill", blocked=True), opt("o2", "Yes"), opt("o3", "No")]
     out = run(page, load, frames=[[f("s", "select", "Pick", options=options, optionsComplete=True)]],
               map={"s": {"route": "low_stakes"}}, pick={"s": {"oids": ["o3"], "reason": "assumed"}})
     t = traced(out, "s")
-    assert [s["option"] for s in t["steps"] if s["op"] == "pick"] == [1]
-    assert (t["options"], t["option_count"]) == (["Select One", "Never fill", "Yes", "No"], 4)
+    [index] = [s["option"] for s in t["steps"] if s["op"] == "pick"]
+    assert (index, t["options"][index], t["option_count"]) == (3, "No", 4)
+    assert t["options"] == ["Select One", "Never fill", "Yes", "No"]
+
+
+def test_no_option_index_is_recorded_for_a_field_with_no_passive_list(page, load):
+    """An explored popup's rows are oids o1.. of their own: they are not the page's list, and a
+    popup the inventory could not read has none (`options` stays null)."""
+    out = run(page, load, frames=[[f("d", "popup", "Where?")]] * 2,
+              map={"d": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              explore={"d": {"options": [opt("o1", "Referral"), opt("o2", "LinkedIn")], "complete": True}},
+              pick={"d": {"oids": ["o2"], "reason": "matched"}})
+    t = traced(out, "d")
+    assert t["options"] is None
+    assert [s["option"] for s in t["steps"] if s["op"] == "pick"] == [None]
+
+
+def test_an_explored_pick_that_is_not_the_passive_option_has_no_index(page, load):
+    """The passive list says o2 is "Maybe"; the explore's o2 is "LinkedIn": same oid, another option."""
+    out = run(page, load, frames=[[f("d", "popup", "Where?", options=[opt("o1", "Yes"), opt("o2", "Maybe")])]] * 2,
+              map={"d": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              explore={"d": {"options": [opt("o1", "Referral"), opt("o2", "LinkedIn")], "complete": True}},
+              pick={"d": {"oids": ["o2"], "reason": "matched"}})
+    assert [s["option"] for s in traced(out, "d")["steps"] if s["op"] == "pick"] == [None]
+
+
+def test_an_option_index_past_the_schemas_bound_is_dropped(page, load):
+    """Never-fill options are not offered, so an offered option can sit past the 250th in the page's list."""
+    many = [opt(f"o{i + 1}", f"Option {i}", blocked=i < 20) for i in range(300)]
+    out = run(page, load, frames=[[f("s", "select", "Pick", options=many, optionsComplete=True)]],
+              map={"s": {"route": "low_stakes"}}, pick={"s": {"oids": ["o270"], "reason": "assumed"}})
+    t = traced(out, "s")
+    assert t["option_count"] == 300 and [s["option"] for s in t["steps"] if s["op"] == "pick"] == [None]
+    out = run(page, load, frames=[[f("s", "select", "Pick", options=many, optionsComplete=True)]],
+              map={"s": {"route": "low_stakes"}}, pick={"s": {"oids": ["o250"], "reason": "assumed"}})
+    assert [s["option"] for s in traced(out, "s")["steps"] if s["op"] == "pick"] == [249]
 
 
 def test_a_set_notes_a_pick_per_item_and_one_set_action(page, load):

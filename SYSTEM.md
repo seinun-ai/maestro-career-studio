@@ -328,17 +328,17 @@ file to open.
   **0-based into the full JSON section array**, including `enabled: false` rows (PDF
   render omits those — never display ordinals). Successful PATCH `/edits` responses
   echo `applied[]`.
-- **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry`
-  stores label, kind, rule id, option texts, outcome, host — never what was typed, what was there before, or
-  any AI answer: no value column, `extra="forbid"` (an extra key 422s), sw re-filters to six keys. `POST /runs`
-  stores one strict `RunTrace` (newest 50 kept): a label or section holding a value the run wrote, was answered,
-  left or found committed is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`; a field's own option texts and a
-  lone checkbox's yes/no excepted; another field's value counts at 2+ chars typed, 4+ otherwise); the page's
-  option texts and the chosen index are kept on every field, EEO included (owner decision); the rest is ops, ms,
-  effect and decision enums and numbers, never a typed or profile string in a free-text slot. `sw.js` `scrubTrace`
-  whitelists against the schema; telemetry and traces post nothing when `telemetryEnabled` is `false`. Runs fold
-  into host/label-free `autofill_mechanism_stats`. `host` + `first_seen_at` record where and when you applied, so
-  `DELETE /telemetry` clears rows and runs (counts in body), keeps counters, never the capture toggle
+- **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}`
+  `POST /api/autofill/telemetry` stores label, kind, rule id, option texts, outcome, host — never what was typed, was
+  there before, or any AI answer: no value column, `extra="forbid"`, sw re-filters to six keys. `POST /runs` stores one
+  strict `RunTrace` (newest 50 kept): a label or section holding a value the run wrote, was answered, left or found
+  committed is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`; a field's own option texts and a lone checkbox's yes/no
+  excepted; another field's value counts at 2+ chars typed, 4+ otherwise); the page's option texts and the chosen option's
+  index in that field's own list are kept on every field, EEO too, except a text holding another TYPED field's value; the
+  rest is enums and numbers, never a typed or profile string in a free-text slot. `sw.js` `scrubTrace` whitelists against
+  the schema; nothing posts when `telemetryEnabled` is `false`. Runs fold into host/label-free `autofill_mechanism_stats`
+  (a remembered polarity is not counted). Rows carry `host` + `first_seen_at`, runs `host` + `started_at`: where and when
+  you applied, so `DELETE /telemetry` clears rows and runs, keeps counters, never the capture toggle
   (`extension/INTERNALS.md`; `…/telemetry/summary` ranks failures). `scripts/fill_trace.py last|report` reads a DB copy.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at
   the sender, but `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat

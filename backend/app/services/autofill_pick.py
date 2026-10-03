@@ -198,7 +198,7 @@ def polarity_ways(fields, facts: dict[str, Fact], session: Session,
 
 def polarity_trace(w: autofill_polarity.Polarity) -> PolarityTrace:
     """How polarity went, value-free; UNSURE reads as 'unsure'."""
-    return PolarityTrace(way=w.way or "unsure", engine=w.engine, p=w.p)
+    return PolarityTrace(way=w.way or "unsure", engine=w.engine, p=w.p, remembered=True if w.remembered else None)
 
 
 def polarity_answers(fields, facts: dict[str, Fact],

@@ -22,11 +22,12 @@ def test_answers_carry_an_optional_trace_and_polarity():
     assert Picked(oids=[], reason="abstained").polarity is None
     assert StepResponse(mid=None, reason="abstained").trace is None
     assert StepResponse(mid=None, reason="abstained").polarity is None
-    assert PolarityTrace(way="unsure").model_dump() == {"way": "unsure", "engine": None, "p": None}
+    assert PolarityTrace(way="unsure").model_dump() == {"way": "unsure", "engine": None, "p": None, "remembered": None}
 
 
 def test_a_polarity_trace_holds_only_enums_and_numbers():
-    assert PolarityTrace(way="same", engine="jev", p=0.9).model_dump() == {"way": "same", "engine": "jev", "p": 0.9}
+    assert PolarityTrace(way="same", engine="jev", p=0.9).model_dump() == {"way": "same", "engine": "jev", "p": 0.9, "remembered": None}
+    assert PolarityTrace(way="same", remembered=True).remembered is True
     for bad in ({"way": "maybe"}, {"way": "same", "p": 1.5}, {"way": "same", "note": "x"}, {"engine": "jev"}):
         with pytest.raises(ValidationError):
             PolarityTrace(**bad)

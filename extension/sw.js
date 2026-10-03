@@ -439,6 +439,7 @@ const TRACE_STEP = {
   first_same: traceBool,
   chose_none: traceBool,
   way: traceOneOf(TRACE_WAYS),
+  remembered: traceBool,
   option: traceInt(TRACE_PICKS - 1),
   reason: traceOneOf(TRACE_REASONS),
   move: traceMatch(TRACE_MOVE, TRACE_MOVE_MAX),

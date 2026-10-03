@@ -146,9 +146,11 @@
  * an action, its effect (effectOf, exploreEffect: the vocabularies above,
  * folded to eight words). It is built from an ALLOWLIST (buildRunTrace names
  * every source). THE RULE (SYSTEM.md inv-autofill-telemetry-no-values): the
- * trace records which page option was chosen (an index into the options
- * offered) and the page's own option texts (the inventory's passive lists
- * only, never an explore's rows, which echo what a search typed); it never
+ * trace records which page option was chosen (its index in the field's own
+ * option list, the passive one stored as `options`) and the page's own option
+ * texts (the inventory's passive lists only, never an explore's rows, which
+ * echo what a search typed; a text that holds a typed sibling's value is
+ * blanked, a dependent list can echo one); a field notes its polarity once; it never
  * holds a typed or profile string in a free-text slot. Labels and sections
  * are blanked RUN-WIDE when they hold any row's answer, value, write,
  * leftover or committed value (`committed` is a deny key only, never
@@ -457,15 +459,22 @@
       if (steps.length >= TRACE_STEPS) steps.splice(TRACE_STEPS / 2, 1);
       steps.push(step);
     };
-    // A model's answer on a field: its polarity when it read one, then the
-    // decision. A call that failed or ran out of time (no `res`) is a bare
+    // A model's answer on a field: its polarity when it read one (the FIRST
+    // only: every later /pick and /step on a Yes/No field answers with the same
+    // way, recalled from memory, and would fill the field's step budget), then
+    // the decision. A call that failed or ran out of time (no `res`) is a bare
     // {op, ms}: slow failures show up, with nothing else to say.
+    const polarityNoted = new Set();
     const noteAnswer = (fid, op, res, got, ms, extra) => {
       if (!res) return note(fid, { op, ms: wholeMs(ms) });
       if (!got) return undefined;
       const pol = got.polarity;
-      if (TRACE_WAYS.has(pol?.way)) {
-        note(fid, { op: "polarity", way: pol.way, engine: TRACE_ENGINES.has(pol.engine) ? pol.engine : null, p: unit(pol.p) ? pol.p : null });
+      if (TRACE_WAYS.has(pol?.way) && !polarityNoted.has(fid)) {
+        polarityNoted.add(fid);
+        note(fid, {
+          op: "polarity", way: pol.way, engine: TRACE_ENGINES.has(pol.engine) ? pol.engine : null, p: unit(pol.p) ? pol.p : null,
+          ...(pol.remembered === true ? { remembered: true } : {}),
+        });
       }
       return note(fid, { op, ms: wholeMs(ms), ...extra, ...decisionOf(got.trace) });
     };
@@ -785,13 +794,21 @@
       if (!o?.text) return { abstained: true };
       return { text: o.text, reason: got.reason, ...(typeof o.where === "string" ? { where: o.where } : {}) };
     };
-    // The option /pick chose, as its 0-based place among those it was OFFERED
-    // (never the page's own list, which may be longer), or null.
+    // The option /pick chose, as its 0-based place in the field's PASSIVE list
+    // (`f.options`, the page's own, which the trace stores as `options`: it
+    // counts the placeholder and never-fill rows /pick is never offered), or
+    // null: no list, an explored row that is no option of it (explore oids
+    // restart at o1), or an index the schema does not bound (`PICK_OPTIONS`).
+    const passiveIndex = (f, chosen) => {
+      if (!chosen || !Array.isArray(f.options)) return null;
+      const at = f.options.findIndex((o) => o?.oid === chosen.oid && o.text === chosen.text);
+      return at >= 0 && at < PICK_OPTIONS ? at : null;
+    };
     const notePick = (f, res, offered, ms) => {
       const got = res?.picks?.[f.fid];
-      const at = got?.oids?.length ? offered.slice(0, PICK_OPTIONS).findIndex((o) => o.oid === got.oids[0]) : -1;
+      const chosen = got?.oids?.length ? offered.slice(0, PICK_OPTIONS).find((o) => o.oid === got.oids[0]) : null;
       noteAnswer(f.fid, "pick", res, got, ms, {
-        reason: TRACE_REASONS.has(got?.reason) ? got.reason : null, option: at >= 0 ? at : null,
+        reason: TRACE_REASONS.has(got?.reason) ? got.reason : null, option: passiveIndex(f, chosen),
       });
     };
     const pick = async (f, row, opts, complete, item) => {
@@ -1923,11 +1940,26 @@
   };
   const siblingKeys = (row) => rowKeys(row).filter((k) => k.length >= (TYPED_SHAPES.has(row.field?.shape)
     ? MIN_TYPED_SIBLING_KEY : MIN_SIBLING_KEY));
-  const traceField = (status, row, others) => {
+  // Option texts are screened against TYPED siblings' keys only (a dependent
+  // select can list what was typed earlier: "which of your employers"). A
+  // choice answer's key is not one: a country chosen in one select would blank
+  // another select's country list. A row's own keys never screen its own list.
+  // Answers, per row, the pattern for that row's option texts (null: none).
+  const optionScreen = (rows) => {
+    const typedKeys = new Map([...rows.values()].map((r) => [r, TYPED_SHAPES.has(r.field?.shape) ? siblingKeys(r) : []]));
+    const every = [...new Set([...typedKeys.values()].flat())];
+    const all = denyRegex(every);
+    return (row) => {
+      const own = typedKeys.get(row) ?? [];
+      return own.length ? denyRegex([...new Set([...typedKeys].filter(([r]) => r !== row).flatMap(([, k]) => k))]) : all;
+    };
+  };
+  const traceField = (status, row, others, optionKeys) => {
     const f = row.field ?? {};
     const own = denyRegex(rowKeys(row));
     const clipped = (text) => String(text).slice(0, TRACE_TEXT).replace(LONE_SURROGATE, "");
     const shown = (text) => (others?.test(text) || own?.test(text) ? "" : clipped(text));
+    const optionText = (text) => (optionKeys?.test(text) ? "" : clipped(text));
     const options = Array.isArray(f.options) ? f.options : null;
     return {
       fid: row.fid,
@@ -1938,7 +1970,7 @@
       required: Boolean(f.required),
       // The inventory's passive list only (a static list, read before anything
       // was typed): an explore's rows echo what a search typed.
-      options: options && options.slice(0, TRACE_FIELD_OPTIONS).map((o) => clipped(o?.text ?? "")),
+      options: options && options.slice(0, TRACE_FIELD_OPTIONS).map((o) => optionText(String(o?.text ?? ""))),
       option_count: Math.min(options?.length ?? 0, TRACE_COUNT_MAX),
       ...(TRACE_FAMILY.test(f.recipe?.family) ? { family: f.recipe.family } : {}),
       steps: row.steps ?? [],
@@ -1950,6 +1982,7 @@
     const host = String(report.host ?? "").toLowerCase();
     if (!TRACE_HOST.test(host)) return null;
     const others = denyRegex([...new Set([...rows.values()].flatMap(siblingKeys))]);
+    const optionKeys = optionScreen(rows);
     return {
       run_id: String(report.runId).toLowerCase(),
       host,
@@ -1958,7 +1991,7 @@
       halted: report.stopped ? "stopped" : report.timedOut ? "timeout" : null,
       rounds: Math.min(report.rounds ?? 0, MAX_TRACE_ROUNDS),
       fields: report.fields.filter((r) => FID.test(r.fid) && rows.has(r.fid)).slice(0, MAX_RUN_FIELDS)
-        .map((r) => traceField(r.status, rows.get(r.fid), others)),
+        .map((r) => traceField(r.status, rows.get(r.fid), others, optionKeys(rows.get(r.fid)))),
     };
   };
   // null when the page's host cannot be said in the schema's pattern (no frame

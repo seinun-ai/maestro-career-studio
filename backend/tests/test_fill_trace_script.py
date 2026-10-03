@@ -35,6 +35,8 @@ def fields(tag: str) -> list[dict]:
     return [
         {"fid": "f1", "label": f"Disability status {tag}", "label_source": "aria-label", "shape": "select",
          "family": "f:ab12", "outcome": "verified", "round": 1,
+         "options": ["No, I do not have a disability", "Prefer not to say", "Yes, I have a disability"],
+         "option_count": 3,
          "steps": [{"op": "map", "route": "slot", "slot": "eeo.disability_status", "engine": "jev", "p": 0.97,
                     "floor": 0.9, "chose_none": False, "ms": 1200},
                    {"op": "pick", "option": 2, "engine": "fast", "p": 0.97, "floor": 0.9, "second": "decided",
@@ -57,7 +59,7 @@ def expected(run_id: str, host: str, when: str, tag: str, halted: str = "none") 
         f"RUN {run_id}  {host}  {when}  fields=4 filled=1 left=1 failed=1 prefilled=1 halted={halted} rounds=2",
         f'[verified]  "Disability status {tag}"  select  label←aria-label  f:ab12  round 1',
         "  map → eeo.disability_status  jev 0.97 ≥0.90  1.2s",
-        "  pick opt[2] matched  fast 0.97 ≥0.90  (decided; jev was 0.82, same choice)  2.1s",
+        '  pick opt[2] "Yes, I have a disability" matched  fast 0.97 ≥0.90  (decided; jev was 0.82, same choice)  2.1s',
         "  choose → progress (selected)  412ms",
         f'[cannot_operate]  "Authorized to work {tag}"  group  round 2',
         "  polarity unsure  fast 0.61  (asked)",
@@ -173,6 +175,29 @@ def test_db_may_follow_the_subcommand(copy, script):
 def test_db_is_required(script):
     done = script("last")
     assert done.returncode == 2 and "--db" in done.stderr
+
+
+def test_a_remembered_polarity_prints_as_remembered(tmp_path, script):
+    doc = trace("run-recalled-1", "boards.example.com", T0, "x")
+    doc["fields"][1]["steps"][0] = {"op": "polarity", "way": "same", "engine": "jev", "p": 0.97, "remembered": True}
+    done = script("--db", str(make_db(tmp_path / "t" / "t.sqlite3", [doc])), "last")
+    assert done.returncode == 0, done.stderr
+    assert "  polarity same (remembered)  jev 0.97" in done.stdout.splitlines()
+
+
+def test_a_picks_option_prints_its_text_only_when_the_page_list_holds_it(tmp_path, script):
+    doc = trace("run-opts-1", "boards.example.com", T0, "x")
+    doc["fields"][0]["options"] = ['He said "hi"\n[verified]', "Other"]
+    pick = doc["fields"][0]["steps"][1]
+    pick["option"] = 0
+    other = {**doc["fields"][2], "steps": [{"op": "pick", "option": 5, "reason": "matched"}]}   # past the list
+    doc["fields"][2] = other
+    done = script("--db", str(make_db(tmp_path / "t" / "t.sqlite3", [doc])), "last")
+    assert done.returncode == 0, done.stderr
+    lines = done.stdout.splitlines()
+    assert any(line.startswith('  pick opt[0] "He said \\"hi\\"\\n[verified]" matched') for line in lines)
+    assert "  pick opt[5] matched  code" in lines
+    assert sum(line.startswith("[verified]") for line in lines) == 1
 
 
 def test_a_label_cannot_fake_a_line(tmp_path, script):

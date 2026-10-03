@@ -223,7 +223,7 @@ def test_the_memory_is_bounded_and_forgets_after_its_time(monkeypatch):
 def test_the_memory_holds_no_value():
     """Keys are the question (page text), the fact's description and its policy; entries a way, an
     engine and the probability that decided it."""
-    assert [f.name for f in autofill_polarity.Polarity.__dataclass_fields__.values()] == ["way", "engine", "p"]
+    assert [f.name for f in autofill_polarity.Polarity.__dataclass_fields__.values()] == ["way", "engine", "p", "remembered"]
 
 
 # ---------- the deciding probability travels with the polarity (the fill trace reads it)
@@ -246,6 +246,18 @@ def test_a_remembered_polarity_keeps_its_probability(db_session, monkeypatch):
     got = decide([ask("q2")], db_session)["q2"]   # a /step asking the same question as worded
     assert calls == []
     assert (got.way, got.engine, got.p) == (SAME, "jev", 0.97)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_recalled_polarity_is_marked_remembered_and_a_fresh_one_is_not(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"q": (SAME, 0.97)})
+    fresh = decide([ask("q")], db_session)["q"]
+    again = decide([ask("q2")], db_session)["q2"]
+    assert (fresh.remembered, again.remembered) == (False, True)
+    assert (again.way, again.engine, again.p) == (SAME, "jev", 0.97)
+    key = autofill_polarity._key(ask("q"))
+    assert autofill_polarity._recall(key).remembered is True
+    assert autofill_polarity._memory[key][1].remembered is False   # the stored copy stays unmarked
 
 
 # ---------- an undirected label reads as SAME (re-review of 6b90eb96)

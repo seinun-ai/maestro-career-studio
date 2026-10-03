@@ -186,6 +186,18 @@ def test_a_polarity_decision_is_counted_by_its_way():
     assert got["decision|polarity|jev|first|0.8|0.9|unknown"] == {"n": 1, "kept": 1}
 
 
+def test_a_remembered_polarity_is_no_new_decision_and_is_not_counted():
+    """Jev answered once; the recalled copies on later /step calls are the same decision."""
+    got = fold(_trace(fields=[_field("0-1", "verified", [
+        _decision("polarity", chose_none=None, way="same"),
+        _decision("polarity", chose_none=None, way="same", remembered=True),
+        _decision("polarity", chose_none=None, way="same", remembered=True)])]))
+    assert got["decision|polarity|jev|first|0.8|0.9|same"] == {"n": 1, "kept": 1}
+    only = fold(_trace(fields=[_field("0-1", "verified", [
+        _decision("polarity", chose_none=None, way="same", remembered=True)])]))
+    assert only == {}
+
+
 def test_two_decisions_before_a_rejected_action_are_both_rejected():
     got = fold(_trace(fields=[_field("0-1", "left", [
         _decision("step"), _decision("pick"), _act("choose", "reverted")])]))

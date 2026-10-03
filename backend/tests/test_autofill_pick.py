@@ -1626,6 +1626,7 @@ def test_a_decided_polarity_is_traced_with_its_engine_and_probability(db_session
     fake_jev(monkeypatch, {"s": ("o2", 0.95)}, ways={"s": ("same", 0.97)})
     got = pick([sponsor_field()], db_session)["s"]
     assert got.polarity == PolarityTrace(way="same", engine="jev", p=0.97)
+    assert got.polarity.remembered is None   # a fresh decision is never marked
     assert got.trace == DecisionTrace(engine="jev", p=0.95, floor=0.9, chose_none=False)
 
 
@@ -1647,7 +1648,7 @@ def test_a_remembered_polarity_keeps_its_probability_and_engine(db_session, monk
                         lambda questions, state, session=None: asked.append(questions) or real(questions, state))
     got = pick([sponsor_field()], db_session)["s"]
     assert all(not is_polarity(q) for qs in asked for q in qs.values())   # recalled, not asked again
-    assert got.polarity == PolarityTrace(way="same", engine="jev", p=0.97)
+    assert got.polarity == PolarityTrace(way="same", engine="jev", p=0.97, remembered=True)
 
 
 def test_a_field_with_no_yes_no_fact_has_no_polarity(db_session, monkeypatch):
