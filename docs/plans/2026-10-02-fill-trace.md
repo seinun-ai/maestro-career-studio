@@ -384,6 +384,18 @@ hand. `first_same` is None when the first engine gave no readable answer.
   in the same request was decided by the second opinion.
 - Include a router test that the trace and polarity reach the /step JSON response.
 
+**Reuse from Task 3 (as built after its cleanup):**
+- `verdict(field, oid, p, policy, *, engine)` no longer takes `complete`; it reads
+  `field.complete`. An answer click's floor is `picked.trace.floor`, so don't recompute it.
+- `polarity_ways(fields, facts, session, budget)` makes the model calls and
+  `polarity_answers(fields, facts, ways)` is pure; step already calls them.
+- `polarity_trace(w)` builds the `PolarityTrace`.
+- The eval's `_fast_decided(got)` should use `autofill_step.abstained(got)` in place of
+  `got.mid is not None`.
+- **Pin test (Task 3 review):** add a test that greps `backend/app/services/autofill_*.py` and
+  `backend/scripts/eval_fill_decisions.py` for `[!=]=\s*(\w+\.)?ABSTAIN\b` and expects no
+  match. That stops the equality bug from coming back.
+
 **Blocker fixed here** (same as Task 3). `second != ABSTAIN` (L116) and `decided != ABSTAIN`
 (L158) break once a trace is attached.
 - Add `def abstained(r: StepResponse) -> bool: return r.mid is None` and use it at both sites, and
