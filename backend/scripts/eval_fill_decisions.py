@@ -476,7 +476,8 @@ def engine_of(run: Run, low_stakes: bool = False):
                 for owner, name in fast_calls:
                     setattr(owner, name, refuse)
             if module is autofill_map:
-                run.second_asked.update(f.fid for f in args[0])
+                if got is not None:   # it ran: None is "never ran", as in the trace's `second`
+                    run.second_asked.update(f.fid for f in args[0])
             elif module is autofill_polarity:
                 pass   # recorded by `seen_polarity`, with its engine
             else:

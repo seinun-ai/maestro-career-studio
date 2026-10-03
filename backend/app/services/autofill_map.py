@@ -295,6 +295,27 @@ def main_call(budget: Budget, call: Callable[[float], "T"], what: str) -> "T":
         return call(budget.rest())
 
 
+def second_decided(trace: DecisionTrace, first: tuple[str, float] | None,
+                   decided: str) -> DecisionTrace:
+    """`trace` (the second opinion's own: its engine, p and floor) marked as the
+    answer that stands. `first`: the first engine's top choice and probability,
+    even under its floor (None: it gave no readable answer); `decided`: the
+    choice that now stands. `first_same` compares the two AS THE MODELS NAMED
+    THEM, before `_placed_key` places an entry's fact: deliberate, it can only
+    undercount agreement, the safe direction for a calibration that reads
+    agreement as evidence a floor was too high. None when `first` is None."""
+    return trace.model_copy(update={
+        "second": "decided",
+        "first_p": first[1] if first else None,
+        "first_same": None if first is None else first[0] == decided})
+
+
+def second_asked(trace: DecisionTrace) -> DecisionTrace:
+    """`trace` marked as: the second opinion ran for this field and did not
+    change the answer (never for one that never ran, nor for a failed run)."""
+    return trace.model_copy(update={"second": "asked"})
+
+
 def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: str, timeout: float) -> set[str]:
     """The fast model's yes, per question, at `floor`. A failure answers "none
     of them": a second pass is optional, and the map it follows must survive it."""
@@ -475,10 +496,11 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     return Mapped(route="none"), floor
 
 
-def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact], engine: Engine, *,
-            eeo_consented: bool) -> Mapped:
+def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact],
+            engine: Engine, *, eeo_consented: bool) -> Mapped:
     """`_route`, with the decision it came from: which engine answered, how
-    sure, against what floor. A foreign entry is code's none, no model's call."""
+    sure, against what floor. A field the model omitted keeps the engine with
+    `p` None and `floor` SLOT_FLOOR. A foreign entry is code's none, no model's call."""
     mapped, floor = _route(field, picked, facts, eeo_consented=eeo_consented)
     if _foreign(field):
         return mapped.model_copy(update={"trace": DecisionTrace()})
@@ -549,34 +571,31 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
             logger.warning("jev map failed; the fast model maps this batch")
     if picked is None:
         engine = "fast"
-        picked = main_call(budget, lambda timeout: _with_llm(fields, criteria, session, timeout=timeout), "fast map")
+        picked = main_call(
+            budget, lambda timeout: _with_llm(fields, criteria, session, timeout=timeout), "fast map")
     else:
         unsure = [f for f in fields if _unsure(f, picked.get(f.fid), facts)]
         second = _second_opinion(unsure, criteria, session, budget)
     ran = second is not None
     second = second or {}
-    out = {f.fid: _traced(f, picked.get(f.fid), facts, engine, eeo_consented=eeo_consented) for f in fields}
+    out = {f.fid: _traced(f, picked.get(f.fid), facts, engine, eeo_consented=eeo_consented)
+           for f in fields}
     # Only a fact or an EEO block is the second opinion's to decide: a field
     # Jev said no fact answers never becomes a model-drafted free-text answer.
-    by_fid = {f.fid: f for f in fields}
-    decided = {}
-    for fid, answer in second.items():
-        mapped, floor = _route(by_fid[fid], answer, facts, eeo_consented=eeo_consented)
-        if mapped.route in ("slot", "blocked"):
-            # Jev's top choice, even under its floor: where it names the same key the
-            # fast model decided on, that is evidence the floor was too high.
-            first = picked.get(fid)
-            decided[fid] = mapped.model_copy(update={"trace": DecisionTrace(
-                engine="fast", p=answer[1], floor=floor, second="decided",
-                first_p=first[1] if first else None, first_same=first is not None and first[0] == answer[0])})
+    decided: dict[str, Mapped] = {}
+    for f in unsure:
+        if answer := second.get(f.fid):
+            mapped = _traced(f, answer, facts, "fast", eeo_consented=eeo_consented)
+            if mapped.route in ("slot", "blocked"):
+                trace = second_decided(mapped.trace, picked.get(f.fid), answer[0])
+                decided[f.fid] = mapped.model_copy(update={"trace": trace})
+                continue
+        if ran:
+            out[f.fid] = out[f.fid].model_copy(update={"trace": second_asked(out[f.fid].trace)})
     if decided:
-        logger.info("map: the fast model decided %d of %d fields Jev was unsure of", len(decided), len(second))
+        logger.info("map: the fast model decided %d of %d fields Jev was unsure of",
+                    len(decided), len(second))
     out |= decided
-    if ran:
-        for f in unsure:
-            if f.fid not in decided:
-                trace = out[f.fid].trace.model_copy(update={"second": "asked"})
-                out[f.fid] = out[f.fid].model_copy(update={"trace": trace})
     _one_job_per_entry(fields, out)
 
     def leftovers(*, history: bool) -> list[MapField]:
@@ -586,6 +605,7 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
 
     # Out of time (`budget.left()`), a pass asks nothing: the open questions stay the user's.
     # Known gap: `_low_stakes` and `_answerable` discard the probability, so `p` stays None.
+    # These routes REPLACE the field's trace on purpose: it describes the route that stands.
     if low_stakes:
         for fid, judge in _low_stakes(leftovers(history=False), facts, session, budget).items():
             out[fid] = Mapped(route="low_stakes", trace=DecisionTrace(engine=judge))

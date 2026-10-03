@@ -1433,7 +1433,8 @@ def test_trace_fast_decides_a_field_jev_gave_no_readable_answer(db_session, monk
     monkeypatch.setattr(autofill_map.jev, "decide", lambda q, s, session=None: {})
     fake_llm(monkeypatch, {"s": {"key": SPONSORSHIP, "confidence": 0.9}})
     trace = run([field("s", "Sponsorship?", "select")], db_session)["s"].trace
-    assert (trace.engine, trace.second, trace.first_p, trace.first_same) == ("fast", "decided", None, False)
+    assert (trace.engine, trace.second, trace.first_p, trace.first_same) == (
+        "fast", "decided", None, None)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1489,7 +1490,8 @@ def test_trace_floor_is_the_floor_of_the_key_the_model_chose_not_the_placed_one(
     """A Websites entry is placed at the profile's k-th URL, a different fact than the model named:
     the floor is the named fact's, taken before the remap."""
     floors = {id(SITES["personal.website"]): 0.9, id(SITES["personal.github"]): 0.5}
-    monkeypatch.setattr(autofill_map, "_floor", lambda fact: floors[id(fact)])
+    monkeypatch.setattr(autofill_map, "_floor",
+                        lambda fact: floors.get(id(fact), autofill_map.SLOT_FLOOR))
     fake_jev(monkeypatch, {"a": ("personal.website", 0.95)})
     got = autofill_map.map_fields([field("a", "URL", section="Websites 2", repeat_index=1,
                                          profile_entry=1, entry_kind="websites")], SITES, db_session,
@@ -1558,14 +1560,31 @@ def test_trace_reasoned_is_always_the_fast_model(db_session, monkeypatch):
 @pytest.mark.usefixtures("jev_on")
 def test_trace_holds_only_numbers_and_enums_never_a_fact_value(db_session, monkeypatch):
     facts = autofill_catalog.build({"personal": {"phone": "555-0100", "city": "Springfield"}}, [], [])
-    fake_jev(monkeypatch, {"p": ("personal.phone", 0.97), "c": ("personal.city", 0.7),
+    fake_jev(monkeypatch, {"p": ("personal.phone", 0.97), "c": ("personal.city", 0.5),
                            "n": ("none", 0.95), "t": ("none", 0.95)}, noul={"t": 0.99})
     fake_llm(monkeypatch, {"c": {"key": "personal.city", "confidence": 0.9}})
     got = autofill_map.map_fields([field("p", "Phone"), field("c", "City"), field("n", "Anything else?"),
                                    field("t", "Willing to travel?", "select")], facts, db_session,
                                   eeo_consented=True, low_stakes=True)
     assert got["p"].value == "555-0100"
+    # One batch, three outcomes: Jev's confident field never meets the second opinion, which
+    # decides the shaky one and is asked about, but changes nothing for, a "none" field. The
+    # low-stakes route replaces its field's trace: it describes the route that stands.
+    assert (got["p"].trace.second, got["c"].trace.second) == (None, "decided")
+    assert got["n"].trace.second == "asked"
+    assert (got["t"].route, got["t"].trace) == ("low_stakes", DecisionTrace(engine="jev"))
     keys = {"engine", "p", "floor", "second", "first_p", "first_same"}
     for fid, mapped in got.items():
         assert set(mapped.trace.model_dump()) == keys, fid
         assert not [v for v in ("555-0100", "Springfield") if v in mapped.trace.model_dump_json()], fid
+
+
+def test_second_trace_helpers_state_the_rules():
+    base = DecisionTrace(engine="fast", p=0.9, floor=0.8)
+    assert autofill_map.second_decided(base, ("a", 0.4), "a") == base.model_copy(
+        update={"second": "decided", "first_p": 0.4, "first_same": True})
+    assert autofill_map.second_decided(base, ("none", 0.95), "a").first_same is False
+    unreadable = autofill_map.second_decided(base, None, "a")
+    assert (unreadable.first_p, unreadable.first_same) == (None, None)
+    assert autofill_map.second_asked(base).second == "asked"
+    assert base.second is None  # the helpers copy, never mutate
