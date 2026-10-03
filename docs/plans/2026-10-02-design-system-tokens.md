@@ -37,7 +37,11 @@ branch point.
 | 7 | Buttons | `variant="secondary"` (35 uses) beside `tonal` (6) | one low-emphasis filled variant: `tonal` | drop `secondary` when its last caller moves |
 | 8 | CompanyMonogram | six palette pairs | the four status containers plus primary and secondary container | keeps the hash, changes the tints |
 
-## UX changes that go with it (owner decides each)
+## UX changes that go with it
+
+The owner approved all six on 2026-10-03. Each lands with the step that touches its surface: 1 with
+corners (step 5), 4 with type (step 4), 6 with surfaces (step 3), 2, 3 and 5 as their own changes after
+step 3.
 
 1. **Sidebar current row is a full pill** (`rounded-full`), as in M3's navigation drawer. It already
    uses the secondary container, semibold and `aria-current`.
