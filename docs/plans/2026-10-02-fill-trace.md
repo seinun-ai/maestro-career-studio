@@ -2,6 +2,16 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**Final counter keys (Task 6 review, 2026-10-03; authoritative over the Task 6 text below):**
+- `action|<family>|<kind>`: tries, one count per effect, `effect_unknown`, `ms`, `timed`.
+- `decision|<op>|<engine>|<by first|second>|<floor>|<band>|<choice>`. `choice` is answer, none
+  or unknown; for polarity it is the `way`.
+- `first|<op>|<floor>|<band(first_p)>`, only when second is "decided" and `first_same` is true.
+- `second|<op>`: asked (ran, unchanged), decided, decided_kept.
+
+`autofill_trace.py` owns the key builders, `KEY_PARTS`, `parse_key`, `NONE_PART` and the frozen
+op and effect sets. Task 9 imports them.
+
 **Execution notes (2026-10-03, from the Task 1-4 reviews).**
 - `DecisionTrace` gained `first_same` and `chose_none`.
 - Code decisions carry no trace on every endpoint.
@@ -730,10 +740,11 @@ Commit: `refactor(scripts): one copy-only database guard, shared by the eval and
 
 **Sections.** Plain text, from `AutofillMechanismStat` and the stored runs.
 
-1. **Wasted actions.** Per family × kind: `tries`, the share that was not `progress`, and average
-   ms. Sort by wasted ms, which is (`no_effect + unexpected + reverted + refused` tries) × average
+1. **Wasted actions.** Per family × kind: `tries`, the share that was not `progress` (the
+   `REJECTED` set plus `effect_unknown`, shown apart), and average ms (`ms / timed`). Sort by wasted ms, which is (`no_effect + unexpected + reverted + refused` tries) × average
    ms. Show the top 15.
-2. **Calibration.** Per decision op × engine × floor × band, with `answer` and `none` rows kept apart: `n`, then the `kept`, `left`, `failed` and
+2. **Calibration.** Per decision op × engine × by × floor × band, with `answer`, `none` and
+   `unknown` rows kept apart (polarity rows by `way`): `n`, then the `kept`, `left`, `failed` and
    `rejected` shares.
 3. **First-engine evidence.** Per op × band of `first_p`, counting only the cases where the first
    engine's top choice was the answer that stood (`first_same`): `n` and the `kept` share. Pair it with
