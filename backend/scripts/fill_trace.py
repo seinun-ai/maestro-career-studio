@@ -7,24 +7,42 @@ Run from backend/ against a COPY of the database (the same guard as the fill eva
 `last` prints the N newest runs. Per run one header line, then per field one line and one
 indented line per step, so `grep` finds a field, an op or a floor:
 
-    RUN <run_id>  <host>  <UTC time>  fields=N filled=N left=N prefilled=N halted=<none|stopped|timeout> rounds=N
+    RUN <run_id>  <host>  <UTC time>  fields=N filled=N left=N failed=N prefilled=N halted=<none|stopped|timeout> rounds=N
     [outcome]  "label"  shape  label←source  family  round N
-      map → <slot | route>  jev 0.97 ≥0.90  1.2s
-      pick #2 matched  fast 0.97 ≥0.90  (decided; jev was 0.82, same choice)  2.1s
-      polarity unsure  fast 0.61 (asked)
+      map → <slot | route:R>  jev 0.97 ≥0.90  1.2s
+      pick opt[2] matched  fast 0.97 ≥0.90  (decided; jev was 0.82, same choice)  2.1s
+      polarity unsure  fast 0.61  (asked)
       choose → no_effect (no_effect)  412ms
 
-A step with no engine was decided by code. "—" is a value the extension could not read; "none" is the
-model choosing the no-answer key. The trace holds no answer text (SYSTEM.md
-{#inv-autofill-telemetry-no-values}), so none is printed.
+A step with no engine was decided by code. "—" is a value the extension could not read; "none" is
+the model choosing the no-answer key; `route:none` is /map routing the field to no fact. In
+`opt[N]`, N is the 0-based index into the options offered to /pick (not the field's `options`
+list, which is capped). Labels print as JSON strings, so a label cannot fake a line. The trace
+holds no answer text (SYSTEM.md {#inv-autofill-telemetry-no-values}), so none is printed.
 """
 
+from __future__ import annotations
+
 import argparse
+import json
 import sys
 from collections.abc import Callable
+from datetime import UTC
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from scripts.db_copy import bind_read_only, open_copy, refusal
+
+if TYPE_CHECKING:  # the app is imported only after open_copy sets its environment
+    from sqlalchemy.orm import Session
+
+    from app.models.autofill_run import AutofillRun
+    from app.schemas.autofill_trace import RunTrace, TraceField, TraceStep
+
+
+def _label(s: str) -> str:
+    """A page's text as one JSON string: quotes and newlines escaped, so it cannot fake a line."""
+    return json.dumps(s, ensure_ascii=False)
 
 
 def _ms(ms: int | None) -> str | None:
@@ -44,22 +62,22 @@ def _join(*parts: str | None) -> str:
 # ---------- decisions: what was chosen, then how sure the engine was
 
 
-def _map_target(step) -> str:
-    where = step.slot if step.route == "slot" and step.slot else step.route
-    return f"→ {where or '—'}" + (f" ({step.why})" if step.why else "")
+def _map_target(step: TraceStep) -> str:
+    where = step.slot if step.route == "slot" and step.slot else f"route:{step.route}" if step.route else "—"
+    return f"→ {where}" + (f" ({step.why})" if step.why else "")
 
 
-def _pick_target(step) -> str:
-    chosen = "none" if step.chose_none else "—" if step.option is None else f"#{step.option}"
+def _pick_target(step: TraceStep) -> str:
+    chosen = "none" if step.chose_none else "—" if step.option is None else f"opt[{step.option}]"
     return f"{chosen} {step.reason}" if step.reason else chosen
 
 
-def _step_target(step) -> str:
+def _step_target(step: TraceStep) -> str:
     chosen = step.move or ("none" if step.chose_none else "—")
     return f"{chosen} {step.reason}" if step.reason else chosen
 
 
-DECISION_TARGETS: dict[str, Callable] = {
+DECISION_TARGETS: dict[str, Callable[[TraceStep], str]] = {
     "map": _map_target,
     "pick": _pick_target,
     "polarity": lambda step: step.way or "—",
@@ -67,101 +85,136 @@ DECISION_TARGETS: dict[str, Callable] = {
 }
 
 
-def _confidence(step) -> str:
+def _confidence(step: TraceStep) -> str:
     if step.engine is None:
         return "code"
     floor = f" ≥{step.floor:.2f}" if step.floor is not None else ""
     return f"{step.engine} {_num(step.p)}{floor}"
 
 
-def _second(step) -> str | None:
-    """`asked`: the second opinion ran and changed nothing; `decided`: its answer stands over Jev's."""
+def _second(step: TraceStep) -> str | None:
+    """`asked`: the second opinion ran and changed nothing; `decided`: its answer stands over the
+    first engine's. The first engine is always Jev today (see autofill_trace.first_key's docstring)."""
     if step.second == "decided":
         same = {True: ", same choice", False: ", other choice"}.get(step.first_same, "")
         return f"(decided; jev was {_num(step.first_p)}{same})"
     return f"({step.second})" if step.second else None
 
 
-def _decision(step) -> str:
+def _decision(step: TraceStep) -> str:
     return _join(f"{step.op} {DECISION_TARGETS[step.op](step)}", _confidence(step), _second(step), _ms(step.ms))
 
 
 # ---------- page actions: what was tried, and what the page did
 
 
-def _action(step) -> str:
+def _action(step: TraceStep) -> str:
     what = f"{step.op} {step.move}" if step.move else step.op
     effect = f"→ {step.effect or '—'}" + (f" ({step.word})" if step.word else "")
     return _join(f"{what} {effect}", _ms(step.ms))
 
 
-def render_step(step) -> str:
+def render_step(step: TraceStep) -> str:
     return _decision(step) if step.op in DECISION_TARGETS else _action(step)
 
 
 # ---------- fields and runs
 
 
-def render_field(field) -> list[str]:
+def render_field(field: TraceField) -> list[str]:
     source = f"label←{field.label_source}" if field.label_source else None
-    head = _join(f"[{field.outcome}]", f'"{field.label}"', field.shape, source, field.family,
+    head = _join(f"[{field.outcome}]", _label(field.label), field.shape, source, field.family,
                  f"round {field.round}" if field.round else None)
     return [head, *(f"  {render_step(step)}" for step in field.steps)]
 
 
-def render_header(run, trace) -> str:
-    """filled = ended kept (the key module's KEPT) except `already`, which is prefilled: the page
-    had the answer before the run. left = every other outcome, FAILED ones included."""
-    from app.services.autofill_trace import KEPT
+def render_header(trace: RunTrace) -> str:
+    """The key module's sets name how each field ended. prefilled: `already` (the page had the answer
+    before the run). filled: the other KEPT outcomes. failed: FAILED outcomes. left: everything else."""
+    from app.services.autofill_trace import FAILED, KEPT
 
     outcomes = [f.outcome for f in trace.fields]
     prefilled = outcomes.count("already")
     filled = sum(o in KEPT for o in outcomes) - prefilled
-    left = len(outcomes) - filled - prefilled
-    when = trace.started_at.strftime("%Y-%m-%d %H:%M:%SZ")
+    failed = sum(o in FAILED for o in outcomes)
+    left = len(outcomes) - filled - failed - prefilled
+    when = trace.started_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%SZ")
     return _join(f"RUN {trace.run_id}", trace.host, when,
-                 f"fields={len(outcomes)} filled={filled} left={left} prefilled={prefilled} "
+                 f"fields={len(outcomes)} filled={filled} left={left} failed={failed} prefilled={prefilled} "
                  f"halted={trace.halted or 'none'} rounds={trace.rounds}")
 
 
-def render_run(run) -> list[str]:
+def _check(run: AutofillRun) -> tuple[RunTrace | None, str]:
+    """The stored trace as a RunTrace and "", or None and the first failing location (never the
+    value found there) when it no longer matches the schema."""
     from pydantic import ValidationError
 
     from app.schemas.autofill_trace import RunTrace
 
     try:
-        trace = RunTrace.model_validate(run.trace)
-    except ValidationError:
-        return [f"RUN {run.run_id}  {run.host}  unreadable trace (it does not match the current schema)"]
-    return [render_header(run, trace), *(line for field in trace.fields for line in render_field(field))]
+        return RunTrace.model_validate(run.trace), ""
+    except ValidationError as e:
+        return None, ".".join(str(part) for part in e.errors(include_input=False)[0]["loc"])
 
 
-def last(session, host: str | None, n: int) -> int:
+def _trace(run: AutofillRun) -> RunTrace | None:
+    return _check(run)[0]
+
+
+def render_run(run: AutofillRun) -> list[str]:
+    trace, loc = _check(run)
+    if trace is None:
+        return [f"RUN {run.run_id}  {run.host}  unreadable trace at {loc} (it does not match the current schema)"]
+    return [render_header(trace), *(line for field in trace.fields for line in render_field(field))]
+
+
+# ---------- subcommands: each is `run(session, args) -> exit code`
+
+
+def run_last(session: Session, args: argparse.Namespace) -> int:
     from sqlalchemy import select
 
     from app.models.autofill_run import AutofillRun
 
     query = select(AutofillRun).order_by(AutofillRun.started_at.desc(), AutofillRun.created_at.desc())
-    if host:
-        query = query.where(AutofillRun.host == host)
-    runs = session.scalars(query.limit(n)).all()
+    if args.host:
+        query = query.where(AutofillRun.host == args.host)
+    runs = session.scalars(query.limit(args.n)).all()
     if not runs:
-        print("no stored run" + (f" for host {host}" if host else ""), file=sys.stderr)
+        print("no stored run" + (f" for host {args.host}" if args.host else ""), file=sys.stderr)
         return 1
     for run in runs:
         print("\n".join(render_run(run)))
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--db", type=Path, required=True,
-                    help="a COPY of the database (never a file under a checkout's data/ or DATA_DIR)")
+def _positive(text: str) -> int:
+    n = int(text)
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return n
+
+
+def _parser() -> argparse.ArgumentParser:
+    # --db is accepted before or after the subcommand: SUPPRESS keeps the subparser's copy from
+    # overwriting a value given before it. main() reports a missing one.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--db", type=Path, default=argparse.SUPPRESS,
+                        help="a COPY of the database (never a file under a checkout's data/ or DATA_DIR)")
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], parents=[common])
     sub = ap.add_subparsers(dest="command", required=True)
-    p_last = sub.add_parser("last", help="the newest run(s), field by field")
+    p_last = sub.add_parser("last", parents=[common], help="the newest run(s), field by field")
     p_last.add_argument("--host", default=None, help="only runs on this host")
-    p_last.add_argument("--n", type=int, default=1, help="how many runs, newest first (default 1)")
+    p_last.add_argument("--n", type=_positive, default=1, help="how many runs, newest first (default 1)")
+    p_last.set_defaults(run=run_last)
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = _parser()
     args = ap.parse_args(argv)
+    if not hasattr(args, "db"):
+        ap.error("--db is required")
     if why := refusal(args.db):
         ap.error(why)
     # Before the app is imported: its settings read these once.
@@ -170,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     from app.db import SessionLocal
 
     with SessionLocal() as session:
-        return last(session, args.host, args.n)
+        return args.run(session, args)
 
 
 if __name__ == "__main__":

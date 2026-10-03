@@ -3,20 +3,23 @@ live database (the fill evaluation, the fill-trace reader).
 
 A script here never touches the live database: `refusal` turns away any path
 inside a live data directory, or that is the same file as one there (a hard
-link), compared by file identity, not spelling; `open_copy` points the app's settings at the copy before app code is
-imported; `bind_read_only` binds every session to a read-only connection and
-proves a write fails. Nothing the app lazily seeds or writes can reach the live
-file.
+link), compared by file identity, not spelling; `open_copy` points the app's
+settings at the copy before app code is imported; `bind_read_only` binds every
+session to a read-only connection and proves a write fails. Nothing the app
+lazily seeds or writes can reach the live file.
 """
 
+import atexit
 import os
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-# Duplicates app.config.DB_FILENAME on purpose: importing app.config would freeze the settings before the env is set.
+# Duplicates app.config.DB_FILENAME on purpose: importing app.config would
+# freeze the settings before the env is set.
 DB_FILENAME = "maestro_cs.sqlite3"
 
 
@@ -41,7 +44,7 @@ def _identity(path: Path) -> tuple[int, int]:
 
 
 def refusal(db: Path) -> str | None:
-    """Why `db` may not be evaluated against, or None.
+    """Why `db` may not be read by a script, or None.
 
     By file IDENTITY, never by spelling: macOS's filesystem ignores case, so
     ".../DATA/..." names the live directory while no string compare says so,
@@ -93,7 +96,7 @@ def bind_read_only(db: Path) -> None:
     app_db.SessionLocal.configure(bind=read_only)
     with app_db.SessionLocal() as session:
         try:
-            session.execute(text("CREATE TABLE eval_write_probe (x INTEGER)"))
+            session.execute(text("CREATE TABLE dbcopy_write_probe (x INTEGER)"))
             session.commit()
         except OperationalError:
             session.rollback()
@@ -104,9 +107,13 @@ def bind_read_only(db: Path) -> None:
 def open_copy(db: Path, *, bind: Callable[[Path], None] | None = None) -> None:
     """Point the app at the copy `db` and bind it read-only (`bind`, by default
     `bind_read_only`). Call after `refusal(db)` is None and before the app is
-    imported: its settings read these variables once."""
+    imported: its settings read these variables once. The temp dirs it creates for
+    the settings and logs are removed at exit."""
     os.environ["DATABASE_URL"] = f"sqlite:///{db.resolve()}"
     os.environ.pop("TEST_DATABASE_URL", None)
     for name in ("SETTINGS_DIR", "LOGS_DIR"):
-        os.environ.setdefault(name, tempfile.mkdtemp(prefix=f"dbcopy-{name.lower()}-"))
+        if name not in os.environ:   # a dir the env names is the caller's: never removed
+            made = tempfile.mkdtemp(prefix=f"dbcopy-{name.lower()}-")
+            atexit.register(shutil.rmtree, made, ignore_errors=True)
+            os.environ[name] = made
     (bind or bind_read_only)(db)

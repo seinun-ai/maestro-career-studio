@@ -623,7 +623,10 @@ def test_a_map_case_is_scored_against_the_slot_it_routes(monkeypatch):
 
 def test_open_copy_points_the_app_at_the_copy_and_binds_it(tmp_path, monkeypatch):
     """open_copy sets DATABASE_URL, drops TEST_DATABASE_URL, defaults the settings
-    and log dirs, then binds the copy by the function it is given."""
+    and log dirs, then binds the copy by the function it is given. A temp dir it
+    makes is registered for removal at exit; a dir the env names never is."""
+    import shutil
+
     from scripts import db_copy
 
     copy = tmp_path / db_copy.DB_FILENAME
@@ -633,7 +636,8 @@ def test_open_copy_points_the_app_at_the_copy_and_binds_it(tmp_path, monkeypatch
     monkeypatch.setenv("SETTINGS_DIR", str(tmp_path / "settings"))
     monkeypatch.setenv("LOGS_DIR", "placeholder")   # so monkeypatch restores whatever open_copy leaves
     monkeypatch.delenv("LOGS_DIR")
-    bound = []
+    bound, registered = [], []
+    monkeypatch.setattr(db_copy.atexit, "register", lambda fn, *a, **kw: registered.append((fn, a, kw)))
     db_copy.open_copy(copy, bind=lambda db: bound.append((db, os.environ["DATABASE_URL"],
                                                           "TEST_DATABASE_URL" in os.environ)))
     # the env was already set when the bind ran: the app is imported only after open_copy
@@ -643,3 +647,4 @@ def test_open_copy_points_the_app_at_the_copy_and_binds_it(tmp_path, monkeypatch
     assert os.environ["SETTINGS_DIR"] == str(tmp_path / "settings")   # a set dir is kept
     logs = Path(os.environ["LOGS_DIR"])                                # an unset one gets a fresh temp dir
     assert logs.is_dir() and logs.parent == tmp_path and logs.name.startswith("dbcopy-logs_dir-")
+    assert registered == [(shutil.rmtree, (str(logs),), {"ignore_errors": True})]   # only the one it made
