@@ -197,3 +197,15 @@ def test_table_rows_lift_on_hover_in_dark_cards():
     table = _read("components/ui/table.tsx")
     assert "dark:hover:bg-surface-container-high" in table
     assert "dark:has-aria-expanded:bg-surface-container-high" in table
+
+
+def test_header_rows_that_skip_the_hover_skip_it_in_dark_too():
+    """A row's dark hover is its own variant, so `hover:bg-transparent` leaves it."""
+    bare = []
+    for folder in ("app", "components"):
+        for path in sorted((_FRONTEND / folder).rglob("*.tsx")):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if "<TableRow" in line and "hover:bg-transparent" in line:
+                    if "dark:hover:bg-transparent" not in line:
+                        bare.append(f"{path.relative_to(_FRONTEND)}:{number}")
+    assert not bare, "dark hover still lights the header at:\n" + "\n".join(bare)

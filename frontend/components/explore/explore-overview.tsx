@@ -313,7 +313,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
                 No pay data yet. Most jobs don&apos;t list pay.
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
                 {o.salary_by_role.map((r) => (
                   <StatTile
                     key={`${r.role_category}:${r.currency ?? "unknown"}`}

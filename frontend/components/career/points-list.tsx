@@ -345,7 +345,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <PointStateChip state={point.state} pending={pending} onSelect={changeState} />
         <span
-          className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-xs"
+          className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-xs dark:bg-surface-container-highest"
           title={point.origin_detail ? `Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}` : undefined}
         >
           {originLabel(point)}
@@ -377,7 +377,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
         {/* "You · You said it" said one thing twice. */}
         {point.origin === "manual" && point.provenance === "user_stated" ? null : (
           <span
-            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-xs"
+            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-xs dark:bg-surface-container-highest"
             title={
               point.provenance
                 ? undefined

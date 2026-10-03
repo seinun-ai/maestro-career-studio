@@ -857,7 +857,7 @@ function ProposalRow({
               {needs ? <p className="mt-1 text-xs break-words">{needs}</p> : null}
             </div>
             {base ? (
-              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-xs sm:inline-flex">
+              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-xs dark:bg-surface-container-highest sm:inline-flex">
                 {baseName}
                 {score != null ? ` · ATS score ${score}` : ""}
               </span>
