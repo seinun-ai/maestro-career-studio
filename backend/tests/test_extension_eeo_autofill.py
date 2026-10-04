@@ -165,6 +165,10 @@ def test_eeo_fill_requires_opt_in_and_visible_control(tmp_path):
         "race-ethnicity",
     ]
     assert all(case["value"] for case in scenarios["visibleEeo"])
+    # The answer receipt names where each write came from by the rule's id
+    # (`shared/receipt.js`), so every write carries it, EEO ones included.
+    assert [case["result"]["filled"][0]["rule"] for case in scenarios["visibleEeo"]] == [
+        case["result"]["eeoFilled"][0]["field"] for case in scenarios["visibleEeo"]]
 
     for case in scenarios["hiddenEeo"]:
         assert case["value"] == ""

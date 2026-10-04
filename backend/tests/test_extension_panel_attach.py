@@ -218,10 +218,12 @@ def test_autofill_attaches_the_resume_to_an_empty_resume_box(tmp_path):
 
 def test_the_attach_comes_after_the_fields(tmp_path):
     """Workday re-renders the upload section after an upload, so the fields
-    are written first and the attach is the run's last page write."""
+    are written first and the attach is the run's last page write. The answer
+    receipt's `fill_inventory` after it is a page READ, so it is not counted."""
     out = _autofill(tmp_path, EMPTY_RESUME_BOX)
     order = [msg["type"] for msg in out["sent"]
-             if msg["type"] in ("attach_pdf", "page_broadcast")]
+             if msg["type"] == "attach_pdf" or (
+                 msg["type"] == "page_broadcast" and msg["message"]["type"] != "fill_inventory")]
     assert order[-1] == "attach_pdf"
     assert order.count("page_broadcast") >= 2
 

@@ -17,7 +17,9 @@
  * - NOTHING HERE REACHES FOR ANYTHING: no `card`, no `chrome`, no `document`,
  *   no `fetch`, no timers.
  *
- * WHAT THIS FILE PUBLISHES BESIDES ITS ACTION: `ns.panelFillFinished`. The
+ * WHAT THIS FILE PUBLISHES BESIDES ITS ACTION: `ns.panelRecordReceipt` (the
+ * answer receipt's post, below; the pause row posts through it too) and
+ * `ns.panelFillFinished`. The
  * "is this page's fill finished" predicate belongs to the Fill stage and is
  * READ by the pause row (`panel/actions/pause.js`), because the last pause row
  * closing has to mark the page done exactly as a clean run would. One function
@@ -312,6 +314,52 @@
         || row.status === "assumed"));
   }
 
+  /** The answer receipt (`shared/receipt.js`): one row per run, posted for a
+   * MATCHED job only, since the receipt keys on `job_id`.
+   *
+   * The page's own read is a `fill_inventory` fan-out, so only a frame that
+   * earns the user's data answers it (SYSTEM.md {#inv-frame-earns-data}); a
+   * refused frame's empty list adds nothing. The post goes through the
+   * generic `api` door and never `telemetry` or `fill_trace`: the receipt
+   * carries values, so the telemetry setting neither gates nor carries it
+   * (SYSTEM.md {#inv-filled-answers-local}). `inventory: false` is the pause
+   * row's: its one answer needs no read of the page.
+   *
+   * `base_resume` is the base the fill used (the application's own, else the
+   * panel's pick): the server links a receipt to an application by job + base.
+   *
+   * Returns the flag rows "Check before you submit" lists, or null. NEVER
+   * THROWS: a lost receipt costs the record, never the fill. */
+  async function recordReceipt(store, facts, token, build, { inventory = true } = {}) {
+    const jobId = facts.job?.id;
+    if (!jobId || !store.current(token)) return null;
+    try {
+      const frames = inventory ? await store.broadcast({ type: "fill_inventory" }) : [];
+      // A frame that never answered read nothing: only what the run reported stands.
+      const { fields, fids } = build(frames.filter((frame) => frame.result !== undefined));
+      if (!fields.length || !store.current(token)) return null;
+      const posted = await store.api(`/api/jobs/${encodeURIComponent(jobId)}/filled-answers`, {
+        method: "POST",
+        body: JSON.stringify({ channel: "companion", ...ns.receipt.pageOf(facts.url),
+                               application_id: facts.application?.id ?? null,
+                               base_resume: facts.application?.base_resume ?? facts.baseSlug ?? null,
+                               fields }),
+      });
+      return flagRows(posted, fids);
+    } catch (err) {
+      console.warn("[maestro-cs] the answer record was not saved:", String(err?.message ?? err));
+      return null;
+    }
+  }
+
+  /** The POST's flagged fields as the Fill body lists them: by the field id the
+   * run knew (null for a rule-pass row), with every reason in one line. */
+  const flagRows = (posted, fids) => (posted?.flags ?? []).map((row) => ({
+    fid: fids[row.index] ?? null,
+    question: row.question,
+    reason: (row.flags ?? []).map((flag) => flag.reason).join(" "),
+  }));
+
   /** "Saved answers + AI": the fill loop (`shared/fill-loop.js`) — the page's
    * fields listed, their meaning mapped by the AI, each one written and
    * checked, the report grouped by what happened to each field.
@@ -331,12 +379,12 @@
     // `startFill`'s per-run clear, plus the loop's own run state.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
                   closest: null, writeResults: null, blank: null, aiNote: null,
-                  loop: null, fillRound: 0, stopRequested: false });
+                  loop: null, receiptFlags: null, fillRound: 0, stopRequested: false });
     const stopped = () => !live() || store.read().stopRequested === true;
     let auto = null;
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
-      return ns.fillLoop.runFill({
+      const report = await ns.fillLoop.runFill({
         broadcast: (message) => (live() ? store.broadcast(message) : Promise.resolve([])),
         api: store.api,
         // Which of the engine's own moves worked, per kind of control: tried
@@ -361,6 +409,10 @@
         base: facts.application ? null : facts.baseSlug,
         sourceHint: ns.fillLoop.sourceHintOf(facts.url),
       });
+      // After the run's own attach (`beforeSweep` set `auto`), so the upload is on the receipt.
+      const flags = await recordReceipt(store, facts, token,
+        (frames) => ns.receipt.fromLoop(report, frames, auto));
+      return { report, flags };
     }, "Couldn't fill this form.");
     if (!done) {
       if (live()) {
@@ -369,7 +421,7 @@
       }
       return;
     }
-    const loop = done.out;
+    const { report: loop, flags } = done.out;
     // Value-free: labels, shapes and outcomes, never an answer (fill-loop.js).
     store.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(loop));
     if (loop.trace) store.trace(loop.trace);
@@ -386,6 +438,7 @@
       loop,
       fillRound: null,
       stopRequested: false,
+      receiptFlags: flags,
       aiNote: aiNoteFor(loop.aiFailure),
       note: { text: [loopNote(loop, store.build.plural), attachLine].filter(Boolean).join(" ") },
     });
@@ -482,7 +535,7 @@
     // while the run is open.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
                   closest: null, writeResults: null, blank: null, aiNote: null,
-                  loop: null });
+                  loop: null, receiptFlags: null });
     let noSavedAnswers = false;
     let auto = null;
     const done = await duringAction(store, "fill", async () => {
@@ -541,10 +594,12 @@
       }
       // "Saved answers only" attaches too: the file is the user's own.
       auto = await autoAttachResume(store, token, () => !store.current(token));
-      return run;
+      const flags = await recordReceipt(store, facts, token,
+        (frames) => ns.receipt.fromRulePass(store.read().fill, frames, auto));
+      return { run, flags };
     }, "Couldn't fill this form.");
     if (!done) return;
-    const { out } = done;
+    const { run: out, flags } = done.out;
     const attachLine = landAutoAttach(store, auto);
     // RE-READ for the rule pass's own result: it landed in the store from
     // inside the run, which is where the progress rows want it.
@@ -566,6 +621,7 @@
       closest: out.closest ?? [],
       writeResults: out.writeResults,
       blank,
+      receiptFlags: flags,
       // The counts are the rows'; this slot gets the one sentence. "Needs you"
       // counts the essays with the residue because the user's question is what
       // is still open, and an unanswered essay is exactly that — they are kept
@@ -873,5 +929,6 @@
   ns.panelActionsFill = { startFill, attachResume };
   ns.panelFillFinished = fillFinished;
   ns.panelLeftSentence = leftSentence;
+  ns.panelRecordReceipt = recordReceipt;
   ns.panelFinishedSentence = finishedSentence;
 })();

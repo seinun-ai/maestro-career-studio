@@ -192,7 +192,7 @@ def test_a_site_that_reformats_our_value_reports_filled_normalized(tmp_path):
     )
     assert outcome_for(result, "Phone") == "filled_normalized"
     assert result["values"]["Phone"] == "(555) 123-4567"
-    assert result["filled"] == [{"label": "phone", "value": "5551234567"}]
+    assert result["filled"] == [{"label": "phone", "rule": "phone", "value": "5551234567"}]
 
 
 def test_normalization_ignores_case_and_punctuation(tmp_path):

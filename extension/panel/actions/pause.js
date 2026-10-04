@@ -265,6 +265,7 @@
     // The disabled state was an accident of where the render fell, and this is
     // the rule instead: `busy` covers everything an action writes, its learn
     // tail included (see `duringAction`'s own contract).
+    const token = store.token();
     const done = await duringAction(store, "fill", async () => {
       const frames = await store.broadcast({
         type: "fill_answers",
@@ -281,6 +282,11 @@
       // did not match, or an input that rejected the value, is simply absent.
       // So this is a readback, not an acknowledgement.
       const stuck = frames.flatMap((frame) => frame.result ?? []).includes(qid);
+      // Your answer, typed into the panel and on the page now: the receipt's `you`.
+      if (stuck) {
+        await ns.panelRecordReceipt(store, facts, token,
+          () => ns.receipt.typedAnswer(row.label, answer), { inventory: false });
+      }
       if (!stuck || !learn) return { stuck, learned: "" };
       try {
         const target = await learnAnswer(store, row, answer);

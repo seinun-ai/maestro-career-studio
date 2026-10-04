@@ -373,7 +373,7 @@ def test_workday_skills_token_today(tmp_path):
     # Under the cap, so the report carries no hedge — and the profile beside it
     # supplies no skills, which is the point: it is not a source of them.
     assert result["filled"] == [
-        {"label": "type to add skills | search | skills--skills",
+        {"label": "type to add skills | search | skills--skills", "rule": "skills",
          "value": "Python, SQL, Experiment design"},
     ]
 

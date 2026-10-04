@@ -86,3 +86,15 @@ def test_no_export_serves_a_recorded_answer(db_session, tmp_path, monkeypatch):
     assert jobs_export.status_code == 200 and str(job.id) in jobs_export.text
     assert _ANSWER not in jobs_export.text
     assert _ANSWER not in career_exports.get_career_export(db_session, force=True).markdown
+
+
+def test_the_companion_posts_the_receipt_through_the_api_door_only():
+    """The Companion's half: the builder names no value-free channel, and the post is the
+    generic `api` door, never `telemetry` or `fill_trace` (and so not gated by the telemetry
+    setting: `test_the_receipt_goes_through_the_api_door_even_with_telemetry_off` runs it)."""
+    receipt = js_code(_read("extension/shared/receipt.js"))
+    assert not re.search(r"\b(telemetry|fill_trace|trace)\b", receipt)
+    record = _between(js_code(_read("extension/panel/actions/fill.js")),
+                      "async function recordReceipt", "const flagRows")
+    assert "store.api(" in record
+    assert not re.search(r"store\.(telemetry|trace)\(|telemetryEnabled", record)

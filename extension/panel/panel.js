@@ -453,6 +453,14 @@
      * "occupied" when the box already held a file). Page-shaped like
      * `attached`, and read beside the application it was made for. */
     autoAttach: null,
+    /** The flags the last run's answer receipt came back with
+     * (`POST /api/jobs/{id}/filled-answers`): `[{fid, question, reason}]`, or
+     * null before a run. Page-shaped like `loop`: `resetPageFacts` and each
+     * run's own clear empty it. */
+    receiptFlags: null,
+    /** The matched job's knock-out scan (`knockout` on `/api/jobs/match`), or
+     * null: a backend fact about the job, re-read with every match. */
+    knockout: null,
     baseSlug: null,
     baseSelected: false,
     /** The base came from the bound application's own `base_resume`
@@ -804,6 +812,8 @@
     // tab `fill_cancel`) and its generation check ends the panel half, so Stop
     // has nothing left to stop here.
     store.loop = null;
+    store.receiptFlags = null;
+    store.knockout = null;
     store.fillRound = null;
     store.stopRequested = false;
     // The half-typed answers with them: a qid is a token the collect stamped
@@ -1190,6 +1200,7 @@
       // which re-asks.
       store.match = null;
       store.job = null;
+      store.knockout = null;
       store.application = null;
       store.baseFromApplication = false;
       store.claimed = false;
@@ -1221,6 +1232,7 @@
       ? { id: result.job.id, company: result.job.company, title: result.job.title }
       : null;
     store.application = result.application ?? null;
+    store.knockout = result.knockout ?? null;
     // The application's base is the base question's answer: the Base ring
     // and the "+N" compare against the resume it came from, and the ranking
     // must not move off it. Its own flag, not `baseSelected`: the backend
@@ -1938,6 +1950,9 @@
         eeoConsent: card.eeoConsent,
         // The loop's report and, while it runs, how far it has got.
         loop: card.loop,
+        // The last run's flagged answers, and the matched job's knock-out scan.
+        receiptFlags: card.receiptFlags,
+        knockout: card.knockout,
         // Whether the recipe book holds anything to forget.
         learnedMoves: card.learnedMoves,
         fillRound: card.fillRound,

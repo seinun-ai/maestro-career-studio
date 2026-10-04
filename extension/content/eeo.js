@@ -262,7 +262,7 @@
     commitOk,
   }) {
     const record = (item, stuck = true) => {
-      filled.push(item);
+      filled.push({ ...item, rule: rule.id });
       if (stuck) {
         eeoFilled.push({ field: rule.id, label: item.label, value: item.value });
       }
