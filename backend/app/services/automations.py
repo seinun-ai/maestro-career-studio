@@ -134,9 +134,8 @@ def _split(path: Path) -> tuple[dict, str]:
     return front, body.lstrip("\n")
 
 
-@lru_cache(maxsize=1)
-def load_cards() -> tuple[AutomationCard, ...]:
-    """Parse every skill once. Raises ValueError on any malformed or unknown card."""
+def _read_skills() -> tuple[dict[str, str], dict[str, _Meta]]:
+    """Every skill's body by folder name, and the validated metadata of those that are cards."""
     bodies: dict[str, str] = {}
     metas: dict[str, _Meta] = {}
     for path in sorted(SKILLS_DIR.glob("*/SKILL.md")):
@@ -150,28 +149,47 @@ def load_cards() -> tuple[AutomationCard, ...]:
                 metas[skill_id] = _Meta.model_validate(front["metadata"])
             except ValidationError as exc:
                 raise ValueError(f"{path}: bad metadata: {exc}") from exc
+    return bodies, metas
+
+
+def _check_card_set(metas: dict[str, _Meta]) -> None:
     if sorted(metas) != sorted(CARD_ORDER):
         raise ValueError(
             f"cards {sorted(metas)} != designed {sorted(CARD_ORDER)} (looked in {SKILLS_DIR})")
-    cards = []
-    used: set[str] = set()
-    for skill_id in CARD_ORDER:
-        meta = metas[skill_id]
-        body = bodies[skill_id]
-        for extra in meta.include:
-            if extra not in bodies:
-                raise ValueError(f"{skill_id}: include {extra!r} has no skill file")
-            if extra in metas or extra == skill_id:
-                raise ValueError(f"{skill_id}: include {extra!r} must be a non-card skill")
-            used.add(extra)
-            body = f"{body.rstrip()}\n\n{bodies[extra]}"
-        cards.append(AutomationCard(id=skill_id, title=meta.title, summary=meta.summary,
-                                    kind=meta.kind, needs=tuple(meta.needs), never=meta.never,
-                                    body=body))
+
+
+def _check_no_orphans(bodies: dict[str, str], metas: dict[str, _Meta]) -> None:
+    used = {extra for meta in metas.values() for extra in meta.include}
     orphans = sorted(set(bodies) - set(metas) - used)
     if orphans:
         raise ValueError(f"skills {orphans} are neither a card nor included by one")
-    return tuple(cards)
+
+
+def _card_body(skill_id: str, bodies: dict[str, str], metas: dict[str, _Meta]) -> str:
+    """A card's own body followed by each non-card skill it includes."""
+    body = bodies[skill_id]
+    for extra in metas[skill_id].include:
+        if extra not in bodies:
+            raise ValueError(f"{skill_id}: include {extra!r} has no skill file")
+        if extra in metas or extra == skill_id:
+            raise ValueError(f"{skill_id}: include {extra!r} must be a non-card skill")
+        body = f"{body.rstrip()}\n\n{bodies[extra]}"
+    return body
+
+
+@lru_cache(maxsize=1)
+def load_cards() -> tuple[AutomationCard, ...]:
+    """Parse every skill once. Raises ValueError on any malformed or unknown card."""
+    bodies, metas = _read_skills()
+    _check_card_set(metas)
+    cards = tuple(
+        AutomationCard(id=skill_id, title=metas[skill_id].title, summary=metas[skill_id].summary,
+                       kind=metas[skill_id].kind, needs=tuple(metas[skill_id].needs),
+                       never=metas[skill_id].never,
+                       body=_card_body(skill_id, bodies, metas))
+        for skill_id in CARD_ORDER)
+    _check_no_orphans(bodies, metas)
+    return cards
 
 
 def apply_kind() -> Kind:
