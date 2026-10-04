@@ -35,6 +35,7 @@ import {
   humanizeEnum,
 } from "@/components/job-extracted-fields";
 import { JobKnockoutCard } from "@/components/job-knockout-card";
+import { JobSubmittedTab } from "@/components/job-submitted-tab";
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { ProposalAgentPanel } from "@/components/proposals/proposal-agent-panel";
 import {
@@ -61,8 +62,9 @@ import { jobMetaLine } from "@/lib/job-meta";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
 
-// Tab values stay jd/fit/output/qa for deep-link compat (?tab=fit, ?tab=output).
-const JOB_TABS = ["jd", "fit", "output", "qa"] as const;
+// Tab values stay jd/fit/output/qa for deep-link compat (?tab=fit, ?tab=output); `submitted` is
+// What was submitted, shown once the job has filled answers (or when a link opens it).
+const JOB_TABS = ["jd", "fit", "output", "qa", "submitted"] as const;
 
 /**
  * Why Resume and Q&A are locked: they show a job's application, which tailoring, Use resume as is
@@ -73,10 +75,12 @@ const LOCKED_REASON =
 
 function JobTabsList({
   hasApp,
+  showSubmitted,
   reasonId,
   className,
 }: {
   hasApp: boolean;
+  showSubmitted: boolean;
   reasonId: string;
   className?: string;
 }) {
@@ -104,6 +108,8 @@ function JobTabsList({
       <TabsTrigger value="qa" {...lockedProps}>
         Q&amp;A
       </TabsTrigger>
+      {/* Not locked behind an application: a form can be filled before one exists. */}
+      {showSubmitted ? <TabsTrigger value="submitted">What was submitted</TabsTrigger> : null}
     </TabsList>
   );
 }
@@ -327,6 +333,7 @@ export default function JobDetailPage({
 
   const { job } = data;
   const hasApp = !!application;
+  const showSubmitted = Boolean(data?.has_filled_answers) || tab === "submitted";
   const salary = formatSalary(
     job.salary_min,
     job.salary_max,
@@ -589,7 +596,7 @@ export default function JobDetailPage({
           <div className="space-y-2">
             {/* The hairline is the row's, so it runs under the button too. */}
             <div className="flex items-center gap-2 border-b">
-              <JobTabsList hasApp={hasApp} reasonId={lockedReasonId} className="flex-1 group-data-horizontal/tabs:border-b-0" />
+              <JobTabsList hasApp={hasApp} showSubmitted={showSubmitted} reasonId={lockedReasonId} className="flex-1 group-data-horizontal/tabs:border-b-0" />
               {application?.customized_json ? (
                 <Button
                   size="sm"
@@ -635,6 +642,14 @@ export default function JobDetailPage({
                 <ArrowRight className="size-3.5" />
               </button>
             ) : null}
+          </TabsContent>
+
+          <TabsContent value="submitted" className="mt-0 space-y-4">
+            <JobSubmittedTab
+              jobId={id}
+              active={tab === "submitted"}
+              onOpenTab={application ? setTab : undefined}
+            />
           </TabsContent>
 
           {application ? (
