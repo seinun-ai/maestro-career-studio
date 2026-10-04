@@ -79,7 +79,7 @@ def _usable_answers_only(values: dict[str, Any]) -> WorkAuth:
     return WorkAuth.model_validate(usable)
 
 
-def _work_auth_from_profile(profile: dict[str, Any]) -> WorkAuth:
+def work_auth_from_profile(profile: dict[str, Any]) -> WorkAuth:
     """Read work authorization, tolerating the pre-2026-07 two-boolean shape.
 
     Dual-read, not a rewrite-on-load: the extension ships independently and an
@@ -106,11 +106,11 @@ def _work_auth_from_profile(profile: dict[str, Any]) -> WorkAuth:
 
 
 def get_work_auth(session: Session | None = None) -> WorkAuth:
-    return _work_auth_from_profile(get_profile(session))
+    return work_auth_from_profile(get_profile(session))
 
 
 def peek_work_auth(session: Session | None = None) -> WorkAuth:
-    return _work_auth_from_profile(peek_profile(session))
+    return work_auth_from_profile(peek_profile(session))
 
 
 def _personal_str(personal: dict[str, Any], key: str) -> str | None:

@@ -310,3 +310,9 @@ def test_no_tab_row_wraps():
     for path in sorted(_FRONTEND.joinpath("app").rglob("*.tsx")) + sorted(_FRONTEND.joinpath("components").rglob("*.tsx")):
         for tag in re.findall(r"<TabsList\b[^>]*>", path.read_text()):
             assert not re.search(r"\b(?:flex-wrap|h-auto)\b", tag), f"{path.name}: a tab row never wraps"
+
+
+def test_the_on_site_check_links_to_the_preferences_group():
+    """A missing home city or relocation answer is fixed in Preferences: without the map entry
+    the knock-out card's link landed on the whole Autofill section."""
+    assert 'on_site: "preferences"' in _read("components/job-knockout-card.tsx")

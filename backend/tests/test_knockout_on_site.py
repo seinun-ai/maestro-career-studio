@@ -38,6 +38,38 @@ MATRIX = [
     ("on-site spelled out, will relocate", "on-site", NYC, HOME_TX, True, "pass"),
     ("no home on file", "onsite", NYC, {}, False, "profile_missing"),
     ("no home, will relocate", "onsite", NYC, {}, "yes", "pass"),
+    ("typed yes with a full stop", "onsite", NYC, HOME_TX, "Yes.", "pass"),
+    ("typed no with a full stop", "onsite", NYC, HOME_TX, "No.", "conflict"),
+    ("state written D.C.", "onsite", {"city": "Washington", "state": "DC"},
+     {"city": "Arlington", "state": "D.C."}, False, "pass"),
+    # A same-named city is not the same place.
+    ("Portland ME vs Portland OR", "onsite", {"city": "Portland", "state": "ME", "country": "US"},
+     {"city": "Portland", "state": "OR", "country": "US"}, False, "conflict"),
+    ("London GB vs London Ontario", "onsite", {"city": "London", "country": "GB"},
+     {"city": "London", "state": "ON", "country": "Canada"}, False, "conflict"),
+    ("London GB vs London Ontario, no country typed", "onsite", {"city": "London", "country": "GB"},
+     {"city": "London", "state": "ON"}, False, "conflict"),
+    ("Perth WA AU vs Seattle WA US", "onsite", {"city": "Perth", "state": "WA", "country": "AU"},
+     {"city": "Seattle", "state": "WA", "country": "US"}, False, "conflict"),
+    ("Perth WA AU vs a Washington typed with no country", "onsite",
+     {"city": "Perth", "state": "WA", "country": "AU"}, {"city": "Seattle", "state": "Washington"},
+     False, "conflict"),
+    ("country spelled out on one side", "onsite", {"city": "Austin", "state": "TX", "country": "US"},
+     {"city": "Austin", "state": "Texas", "country": "United States"}, False, "pass"),
+    ("a city whose state is not stated matches by name", "onsite", {"city": "Austin"}, HOME_TX,
+     False, "pass"),
+    ("several places, yours among them", "onsite",
+     {"city": "New York", "state": "NY", "location_raw": "New York, NY or San Francisco, CA"},
+     {"city": "San Francisco", "state": "California"}, False, "pass"),
+    ("several places, yours not among them", "onsite",
+     {"city": "New York", "state": "NY", "location_raw": "New York, NY or San Francisco, CA"},
+     {"city": "York", "state": "PA"}, False, "conflict"),
+    ("several places, a shorter city name inside one", "onsite",
+     {"city": "New York", "state": "NY", "location_raw": "New York, NY"},
+     {"city": "York", "state": "PA"}, False, "conflict"),
+    ("several places, your city but another state", "onsite",
+     {"city": "New York", "state": "NY", "location_raw": "New York, NY or Portland, OR"},
+     {"city": "Portland", "state": "ME"}, False, "conflict"),
 ]
 
 
@@ -54,6 +86,21 @@ def test_an_unknown_work_mode_adds_no_check(mode):
     assert check is None
 
 
+@pytest.mark.parametrize("place", [
+    {"country": "US", "location_raw": "On-site, United States"},
+    {"location_raw": "Anywhere"},
+    {},
+])
+def test_an_on_site_job_with_no_city_or_state_adds_no_check(place):
+    check, status = _on_site("onsite", place, HOME_TX, False)
+    assert (check, status) == (None, "unstated")
+
+
+def test_a_remote_job_needs_no_place():
+    check, _ = _on_site("remote", {"country": "US"}, HOME_TX, False)
+    assert check["result"] == "pass"
+
+
 def test_a_conflict_is_the_scans_verdict():
     _, status = _on_site("onsite", NYC, HOME_TX, False)
     assert status == "conflict"
@@ -66,10 +113,30 @@ MESSAGES = [
 ]
 
 
+@pytest.mark.parametrize(("relocate", "message"), [
+    (False, "This job is hybrid in New York. Your profile says you won't relocate."),
+    (None, "This job is hybrid in New York. Answer Willing to relocate in Profile › Autofill."),
+])
+def test_a_hybrid_job_is_called_hybrid(relocate, message):
+    check, _ = _on_site("hybrid", NYC, HOME_TX, relocate)
+    assert check["message"] == message
+
+
 @pytest.mark.parametrize(("personal", "relocate", "message"), MESSAGES)
 def test_the_on_site_messages_are_plain_sentences(personal, relocate, message):
     check, _ = _on_site("onsite", NYC, personal, relocate)
     assert check["message"] == message
+
+
+def test_the_scan_reads_the_profile_once(db_session, tmp_path, monkeypatch):
+    from app.services import knockout
+    job = _on_site_job(db_session, tmp_path, monkeypatch)
+    reads = []
+    real = autofill_profile.get_profile
+    monkeypatch.setattr(autofill_profile, "get_profile",
+                        lambda session=None: reads.append(1) or real(session))
+    knockout.scan_for(db_session, job)
+    assert len(reads) == 1
 
 
 def _on_site_job(db_session, tmp_path, monkeypatch):

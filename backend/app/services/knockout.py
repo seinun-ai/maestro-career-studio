@@ -23,6 +23,8 @@ import re
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from app.models.job import Job
 from app.schemas.autofill_profile import WorkAuth
 
@@ -240,6 +242,13 @@ _US_STATES = {
 }
 _CITY_ALIASES = {"nyc": "new york", "new york city": "new york", "sf": "san francisco"}
 _RELOCATE = {"yes": "yes", "y": "yes", "true": "yes", "no": "no", "n": "no", "false": "no"}
+# Countries as a two-letter code, whichever way they were written.
+_COUNTRIES = {
+    "us": "us", "usa": "us", "united states": "us", "united states of america": "us",
+    "gb": "gb", "uk": "gb", "united kingdom": "gb", "great britain": "gb",
+    "ca": "ca", "canada": "ca",
+}
+_CA_PROVINCES = {"ab", "bc", "mb", "nb", "nl", "ns", "nt", "nu", "on", "pe", "qc", "sk", "yt"}
 
 
 def _words(value: Any) -> str:
@@ -255,13 +264,54 @@ def _city(value: Any) -> str:
 
 
 def _state(value: Any) -> str:
-    return _US_STATES.get(_words(value), _words(value))
+    """A US state as its code; "D.C." and "N.Y." come out as dc and ny."""
+    words = _words(value)
+    if re.fullmatch(r"\w( \w)+", words):
+        words = words.replace(" ", "")
+    return _US_STATES.get(words, words)
+
+
+def _country(country: Any, state: Any) -> str:
+    """The country as a code; with none stated, the state says it when it can (a US state,
+    a Canadian province), else empty."""
+    named = _words(country)
+    if named:
+        return _COUNTRIES.get(named, named)
+    code = _state(state)
+    if code in _US_STATES.values():
+        return "us"
+    return "ca" if code in _CA_PROVINCES else ""
+
+
+def _agree(one: str, other: str) -> bool:
+    """Two values disagree only when both are stated and differ."""
+    return not (one and other and one != other)
+
+
+def _state_run(location: str, code: str) -> bool:
+    names = {code, *(name for name, abbr in _US_STATES.items() if abbr == code)}
+    return any(f" {name} " in location for name in names)
+
+
+def _listed_city(job: Job, personal: dict[str, Any]) -> bool:
+    """A posting that lists several places ("New York, NY or San Francisco, CA") names your city
+    among them: its words hold your city as a whole run, and your state when you gave one."""
+    location, city = f" {_words(job.location_raw)} ", _city(personal.get("city"))
+    state = _state(personal.get("state"))
+    return bool(city) and f" {city} " in location and (not state or _state_run(location, state))
 
 
 def _same_place(job: Job, personal: dict[str, Any]) -> bool:
+    if not _agree(_country(job.country, job.state), _country(personal.get("country"),
+                                                             personal.get("state"))):
+        return False
+    job_state, home_state = _state(job.state), _state(personal.get("state"))
     if _city(job.city) and _city(job.city) == _city(personal.get("city")):
+        if _agree(job_state, home_state):
+            return True
+    if job_state and job_state == home_state:
         return True
-    return bool(_state(job.state)) and _state(job.state) == _state(personal.get("state"))
+    return _listed_city(job, personal)
 
 
 def _relocate_answer(preferences: dict[str, Any] | None) -> str | None:
@@ -270,35 +320,41 @@ def _relocate_answer(preferences: dict[str, Any] | None) -> str | None:
     value = (preferences or {}).get("willing_to_relocate")
     if isinstance(value, bool):
         return "yes" if value else "no"
-    return _RELOCATE.get(str(value or "").strip().casefold())
+    return _RELOCATE.get(_words(value))
 
 
-def _on_site_verdict(job: Job, answer: str | None,
+def _on_site_verdict(job: Job, mode: str, answer: str | None,
                      personal: dict[str, Any]) -> tuple[str, str | None]:
     where = job.city or job.state or job.location_raw or "another location"
+    kind = "on-site" if mode == "onsite" else "hybrid"
     if answer == "yes":
         return "pass", None
     if not (_words(personal.get("city")) or _words(personal.get("state"))):
-        return "profile_missing", (f"This job is on-site in {where}. Add your city and state in "
+        return "profile_missing", (f"This job is {kind} in {where}. Add your city and state in "
                                    "Profile › Autofill.")
     if answer == "no":
-        return "conflict", f"This job is on-site in {where}. Your profile says you won't relocate."
-    return "profile_missing", (f"This job is on-site in {where}. Answer Willing to relocate in "
+        return "conflict", f"This job is {kind} in {where}. Your profile says you won't relocate."
+    return "profile_missing", (f"This job is {kind} in {where}. Answer Willing to relocate in "
                                "Profile › Autofill.")
 
 
 def _on_site_check(job: Job, preferences: dict[str, Any] | None,
                    personal: dict[str, Any]) -> dict[str, Any] | None:
     """Remote is a pass; on-site or hybrid where you live is a pass; elsewhere the relocation
-    answer decides. An unknown work mode states nothing, so it adds no check."""
+    answer decides. An unknown work mode, or an on-site job with no city or state to compare
+    ("On-site, United States"), states nothing, so it adds no check."""
     mode = _work_mode(job.work_mode)
     if mode is None:
         return None
     answer = _relocate_answer(preferences)
     check: dict[str, Any] = {"kind": "on_site", "job_value": mode, "profile_value": answer}
-    if mode == "remote" or _same_place(job, personal):
+    if mode == "remote":
         return {**check, "result": "pass", "message": None}
-    result, message = _on_site_verdict(job, answer, personal)
+    if not (_city(job.city) or _state(job.state)):
+        return None
+    if _same_place(job, personal):
+        return {**check, "result": "pass", "message": None}
+    result, message = _on_site_verdict(job, mode, answer, personal)
     return {**check, "result": result, "message": message}
 
 
@@ -334,15 +390,15 @@ def scan_job(
     return {"status": status, "checks": checks}
 
 
-def scan_for(session: Any, job: Job) -> dict[str, Any]:
+def scan_for(session: Session, job: Job) -> dict[str, Any]:
     """`scan_job` over the stored profile: the ONE reader behind the job page, the agent's final
-    review and the Companion's `/api/jobs/match`."""
+    review and the Companion's `/api/jobs/match`. The profile is read once."""
     from app.services import autofill_profile, job_preferences
 
     profile = autofill_profile.get_profile(session)
     return scan_job(
         job,
-        autofill_profile.get_work_auth(session),
+        autofill_profile.work_auth_from_profile(profile),
         profile.get("preferences"),
         years_experience=job_preferences.get_preferences(session).years_experience,
         personal=profile.get("personal"),
