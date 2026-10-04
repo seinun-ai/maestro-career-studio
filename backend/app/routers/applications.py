@@ -36,6 +36,7 @@ from app.services import (
     ats_score,
     base_resume_data,
     coherence_check,
+    filled_answers,
     pdf_preview,
     resume_diff,
     resume_ops,
@@ -375,6 +376,8 @@ def patch_application(
     if "status" in fields and application.status in (
         "applied", "interviewing", "offered", "accepted",
     ):
+        # Marked applied: the job's receipt rows posted before it had an application are its.
+        filled_answers.link_unlinked(db, application)
         open_props = db.scalars(
             select(ApplicationProposal).where(
                 ApplicationProposal.job_id == application.job_id,

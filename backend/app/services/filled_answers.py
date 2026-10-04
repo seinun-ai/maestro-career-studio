@@ -212,11 +212,25 @@ def has_any(session: Session, job_id: UUID) -> bool:
     return bool(session.scalar(select(exists().where(FilledAnswer.job_id == job_id))))
 
 
+def _stamped(fields: list[dict[str, Any]], version: int | None) -> list[dict[str, Any]] | None:
+    """The fields with the resume version on each resume upload that has none; None when
+    nothing changes (the column is a plain JSON value, so a changed list is a new list)."""
+    stamped = [{**field, "version": version}
+               if field.get("source") == "upload" and field.get("slot") == "resume"
+               and field.get("version") is None else field for field in fields]
+    return stamped if stamped != fields else None
+
+
 def link_unlinked(session: Session, application: Application) -> int:
-    """Late linking: the job's rows posted before it had an application belong to this one.
-    The caller commits; `application.id` must be set (flushed)."""
+    """Late linking: the job's rows posted before it had an application belong to this one,
+    and their resume uploads take the application's latest resume version, as a post made with
+    the application would have. The caller commits; `application.id` must be set (flushed)
+    and the version recorded first."""
     rows = session.scalars(select(FilledAnswer).where(
         FilledAnswer.job_id == application.job_id, FilledAnswer.application_id.is_(None))).all()
+    version = _resume_version(session, application.id)
     for row in rows:
         row.application_id = application.id
+        if version is not None and (stamped := _stamped(row.fields or [], version)) is not None:
+            row.fields = stamped
     return len(rows)

@@ -14,7 +14,7 @@ from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
-from app.services import auto_apply_settings
+from app.services import auto_apply_settings, filled_answers
 
 
 class TransitionError(Exception):
@@ -184,6 +184,7 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
             app_row.status = "applied"
             if app_row.applied_at is None:
                 app_row.applied_at = datetime.now(UTC)
+            filled_answers.link_unlinked(session, app_row)
 
     session.commit()
     return prop
