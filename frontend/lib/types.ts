@@ -2014,3 +2014,25 @@ export interface VersionInfo {
   git_sha: string | null;
   schema_revision: string;
 }
+
+// ── Automations (GET /api/automations; backend/app/services/automations.py) ──
+export type AutomationKind = "scheduled" | "attended" | "custom";
+export type AutomationNeed = "maestro" | "email" | "browser" | "web";
+export type AutomationCard = {
+  id: string;
+  title: string;
+  summary: string;
+  kind: AutomationKind;
+  needs: AutomationNeed[];
+  never: string | null;
+  body: string;
+};
+export type AgentApp = {
+  id: string;
+  label: string;
+  reachable: boolean;
+  preamble: string;
+  attended_preamble: string;
+  note: string | null;
+};
+export type AutomationCatalog = { cards: AutomationCard[]; apps: AgentApp[] };
