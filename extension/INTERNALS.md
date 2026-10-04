@@ -513,7 +513,8 @@ know, and each one was learned from a live failure.
   fault); the automatic on-open score logs nothing. A run with no saved answers leads its
   note with "No saved answers yet …", and `sw.js`' `attach_pdf` puts the status
   on its error the way `api()` does, so a failed PDF fetch reads as the backend
-  answering rather than as an app that is not running.
+  answering rather than as an app that is not running. The runner's own sentences are marked
+  `guidedRun.shown`, so a thrown sentence reaches the note as written.
 
 ## How the fill behaves
 

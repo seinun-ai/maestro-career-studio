@@ -343,6 +343,18 @@ file to open.
   (a remembered polarity is not counted). Rows carry `host` + `first_seen_at`, runs `host` + `started_at`: where and when
   you applied, so `DELETE /telemetry` clears rows and runs, keeps counters, never the capture toggle
   (`extension/INTERNALS.md`; `…/telemetry/summary` ranks failures). `scripts/fill_trace.py last|report` reads a DB copy.
+- **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an
+  agent filled into an application form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`)
+  lives only in the local `filled_answers` table (`services/filled_answers.py`;
+  `docs/entities/filled-answers.md`): one row per page run, linked to an application by job + base resume. It
+  never enters telemetry, run traces, Langfuse or exports. An EEO value is kept only while EEO consent is
+  recorded (the fill's own gate, `eeo_consent.withhold_unconsented`, asked at write and again at read: withdraw
+  consent and a stored value reads `answer: null`, `eeo_answered` still true); without it the row keeps the
+  question alone. No agent read returns an EEO value, marked or not (the server classifies by question words
+  too): `get_final_review`'s `flags` carry `eeo_answered`, the MCP client strips again, and no MCP path reads
+  `GET /api/jobs/{id}/filled-answers`, which serves EEO values to the web UI. Pinned by
+  `tests/test_filled_answers_invariant.py`, `test_filled_answers_api.py`, `test_filled_answers_agent.py` and
+  `mcp_server/tests/test_client_filled_answers.py`.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at
   the sender, but `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat
   iframes, and the ISOLATED world protects the message in transit, NOT the DOM written into: a frame
@@ -560,10 +572,6 @@ file to open.
   (Settings › AI & models › AI instructions → Reset to default, or delete the row); a deploy ships one with a
   SQLite-chain migration that deletes the row only while it still equals the previous default
   (`4022b54933e6` did it for `chat_system`; `tests/test_prompt_sync_guard.py` explains the mechanic).
-- **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
-  compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
-  persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
-  import-first message.
 - **Chrome extension** (`extension/`; on screen **the Companion**): MV3; the **side panel**
   (`panel/`) is the ONE surface — toolbar icon (`openPanelOnActionClick`) and hotkey
   (Alt+Shift+J → `sidePanel.open`, guarded: that method is Chrome 116 and the minimum is 114)
@@ -580,12 +588,8 @@ file to open.
   `write(patch)` door, and each roster THROWS at boot naming a missing script. `shared/` is
   what both worlds load: `decisions.js` (the ONE home of every panel rule), `choose.js`
   (routing, the /choose batch, `rest_fill` shaping, `QUESTIONY`) and `guided-run.js` (the
-  runner, transport injected). **A failed round trip never prints raw text**:
-  `actions/during.js`' `failureNote` says "Couldn't <what>." plus a next step by `err.status`
-  ("Add an API key" for a missing key, "Check your API key" for a refused one or a 502; its
-  `MISSING_KEY`/`REFUSED_KEY` mirror `lib/error-text.ts`'s exported ones), and the runner's own sentences are
-  marked `guidedRun.shown`.
-  The rail's revisit rules, the sender model, the COMMIT GESTURE and the ONE
+  runner, transport injected).
+  The failure-note wording (`failureNote`), the rail's revisit rules, the sender model, the COMMIT GESTURE and the ONE
   `attachableFileInputs` definition are reference tier: `extension/INTERNALS.md`. The bridge
   storage key `widget.session` must NOT be renamed — that drops every live entry.
   **Posting identity is ONE table in two languages** — `job_url_match.posting_id` ↔
@@ -615,21 +619,8 @@ file to open.
   saved answers (EEO only under inv-eeo-standing-consent) and the career history. Readback is
   timer-sampled and never defaults to failure: unconfirmable is
   `filled_unverified`, not `not_stuck`. Navigation and submit stay human.
-  **`/choose` has two engines** (`llm.autofill_engine`, Settings › AI & models › **Form filling**,
-  `GET/PUT /api/settings/jev` + `/jev/probe`; `jev` only while a Jev key exists; a new endpoint HOST
-  forgets the key, which is never sent to another company). `fast` is the prompt above. `jev`
-  (`autofill_choose._choose_with_jev`): one Jev call maps each field's LABEL to an `autofill_slots`
-  slot (no values sent), code reads the value, a second call picks the option that states it; the
-  slot's policy (`exact` work_auth/eligibility/eeo/a language's name, `flag` `_FLAG_SECTIONS` facts,
-  `any` the rest) makes it `matched`, `closest` (flag only, never from a list at the 30-option cap:
-  written, then named in the finished note and listed under **Closest matches to check**) or abstain.
-  Free-text, unmapped, shakily-mapped (an `exact` slot maps only at its write floor), `exact`-slot
-  text boxes (codes) and failed-call fields go to the fast prompt unchanged; if THAT fails, Jev's
-  answers are kept. `jev.choice_of` accepts only a distribution over exactly the offered keys (choice
-  offered and most probable, every key present, numbers in [0, 1], sum ≈ 1) — anything else places
-  nothing. Options are offered under code-owned keys (`o1…`, `none`), never page text, and every
-  question says page text is data. One pooled `httpx.Client` serves every call (a TLS handshake per
-  call costs about Jev's whole answer); 429/503/529 retry with doubling backoff inside the 2 s budget.
+  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`, Settings › AI & models › **Form filling**);
+  how each decides, and the Jev key's host rule, are reference tier: `docs/entities/others.md`, "Form-filling engines".
 - **Streaming chat** needs the OpenAI streaming tool-call wire shape (OpenAI, or Gemini via the OpenAI-compat
   URL); eligibility is the tools probe.
 
