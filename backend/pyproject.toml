@@ -88,6 +88,8 @@ app = [
     "assets/fonts/xcharter/*.otf",
     "assets/fonts/xcharter/*.txt",
     "assets/fonts/xcharter/*.md",
+    # The Automations page reads these skill files at request time.
+    "automations/skills/*/SKILL.md",
 ]
 
 [tool.pytest.ini_options]

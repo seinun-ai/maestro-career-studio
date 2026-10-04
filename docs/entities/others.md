@@ -564,6 +564,6 @@
   browser, and final submit consent stays in that session. Funnel: `GET
   /api/proposals/funnel` (declared before `/{proposal_id}` — path shadowing).
   Playbook: `docs/playbooks/agent-apply.md`; execution skill:
-  `docs/skills/agent-apply-execution/SKILL.md`; consent-gated constraint in
+  `backend/app/automations/skills/agent-apply-execution/SKILL.md`; consent-gated constraint in
   `docs/agentic-job-search.md`.
 

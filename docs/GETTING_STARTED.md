@@ -335,7 +335,9 @@ troubleshooting are in
 ## 6. Where it can go next
 
 Once your assistant is connected, it can run the whole loop.
-[`docs/skills/`](skills/) has ready-made skills for it:
+[`docs/skills/`](skills/) has ready-made skills for it, and the app's
+**Automations** page copies each one as a prompt you paste into Claude
+Desktop, Codex or any MCP agent. Your agent asks you when to run it:
 
 - **`job-hunt`** — finds recent postings that fit you, saves and scores them,
   and proposes the best ones. You decide in the **Agent inbox**. It can run on
@@ -344,6 +346,12 @@ Once your assistant is connected, it can run the whole loop.
 - **`apply-session`** — works through the jobs you accepted. It prepares each
   application on its own and asks you only for information the app doesn't
   have, plus one yes per application before the final submit.
+- **`mail-status`** — reads your job email and moves each application to
+  applied, interviewing, rejected or offered. It never sends mail.
+- **`referral-pages`** — checks your referrals' careers pages for new roles that
+  fit you and proposes them.
+- **`tailor-run`** — prepares a tailored resume for each queued job, using only
+  facts you've already given.
 - **`customize-job-skills`** — suggests skills from what your agent knows about
   you, then builds your own version with your client's skill creator and
   scheduler.

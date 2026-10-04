@@ -1,6 +1,13 @@
 ---
 name: apply-session
 description: Use to work through the user's accepted Maestro CS application queue with a browser — tailor where needed, fill each application, and submit once the user says yes. Autonomous apart from that yes.
+metadata:
+  title: Apply session
+  summary: Works your queued jobs in a browser and fills each application.
+  kind: attended
+  needs: [maestro, browser]
+  never: Never submits without your yes.
+  include: [agent-apply-execution]
 ---
 
 # Apply session

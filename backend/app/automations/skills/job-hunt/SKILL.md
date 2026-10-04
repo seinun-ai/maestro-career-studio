@@ -1,6 +1,12 @@
 ---
 name: job-hunt
 description: Use to run a Maestro CS job hunt — find recent postings that fit the user's Job Search Brief, capture and score them, and propose the best ones for the user to triage. Works attended or as a scheduled run.
+metadata:
+  title: Job hunt
+  summary: Finds recent postings that fit your brief, saves and scores them, and proposes the best.
+  kind: scheduled
+  needs: [maestro, web]
+  never: Never applies, submits or triages for you.
 ---
 
 # Job hunt
