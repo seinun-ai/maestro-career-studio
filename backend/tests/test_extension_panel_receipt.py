@@ -13,11 +13,14 @@ from tests.extension_fixtures import entry
 from tests.extension_harness import run_node
 from tests.extension_panel_harness import (
     BASE_RESUMES,
+    LIGHTNING_JOB,
     PANEL_SOURCE,
     SCORES,
     SETTINGS_REPLY,
     _armed_entry,
+    _by_class,
     _reply,
+    _text,
 )
 from tests.test_extension_panel_fill import (
     _LOOP_DRIVER_JS,
@@ -27,12 +30,14 @@ from tests.test_extension_panel_fill import (
     _answer,
     _fill,
     _field,
+    _loop_groups,
 )
 
 RECEIPT = "POST /api/jobs/job-lightning/filled-answers"
 APP_DETAIL = {"id": "app-remembered", "status": "draft", "applied_at": None,
               "pdf_path": "renders/app-remembered/ada-resume.pdf"}
 REASON = "A screening question with no saved answer behind it."
+ON_SITE = "This job is on-site in New York. Your profile says you won't relocate."
 POSTED = {"id": "r1", "application_id": "app-remembered", "flag_count": 1, "flags": [
     {"index": 3, "question": "How did you hear about us?", "section": None,
      "flags": [{"id": "guessed_screening", "reason": REASON}]}]}
@@ -613,4 +618,94 @@ def test_the_debounced_capture_refreshes_the_flags_the_panel_shows(tmp_path):
 
 def test_an_edit_capture_that_posts_nothing_leaves_the_flags_alone(tmp_path):
     out = _run(tmp_path, pings=[{}])
+    assert [row["question"] for row in out["receiptFlags"]] == ["How did you hear about us?"]
+
+
+# ---------- Task 9: the Fill body shows the flags and the job's knock-out verdict ----------
+
+def _scan(status, result, message=ON_SITE, kind="on_site"):
+    return {"status": status, "checks": [{"kind": kind, "result": result, "job_value": "onsite",
+                                          "profile_value": "no", "message": message}]}
+
+
+def _banner(tmp_path, scan, **spec):
+    match = {"match": "exact", "job": LIGHTNING_JOB, "knockout": scan,
+             "application": {"id": "app-remembered", "status": "draft"}}
+    return _run(tmp_path, match=match, **spec)
+
+
+def test_check_before_you_submit_lists_what_the_post_flagged(tmp_path):
+    groups = dict(_loop_groups(_run(tmp_path)["settled"]["rail"]))
+    assert groups["Check before you submit"] == [f"How did you hear about us? · {REASON}"]
+
+
+def test_the_flag_group_is_first_a_labelled_heading_and_list(tmp_path):
+    rail = _run(tmp_path)["settled"]["rail"]
+    headings = [heading for heading, _ in _loop_groups(rail)]
+    assert headings[:2] == ["2 filled", "Check before you submit"]
+    [flags] = _by_class(rail, "flags")
+    assert (flags["tag"], flags["attrs"]["aria-label"]) == ("UL", "Check before you submit")
+    [heading] = [node for node in _by_class(rail, "grp") if node["text"] == "Check before you submit"]
+    assert (heading["attrs"]["role"], heading["attrs"]["aria-level"]) == ("heading", "3")
+
+
+def _flag_tags(out):
+    [flags] = _by_class(out["settled"]["rail"], "flags")
+    return [kid["tag"] for item in flags["children"] for kid in item["children"][:1]]
+
+
+def test_a_flag_row_with_a_field_jumps_to_it_on_both_paths(tmp_path):
+    """The rule pass's rows come from the inventory too, so they carry a field id."""
+    assert _flag_tags(_run(tmp_path)) == ["BUTTON"]
+    assert _flag_tags(_rules(tmp_path)) == ["BUTTON"]
+
+
+def test_a_flag_row_with_no_field_is_plain_text(tmp_path):
+    nameless = {**POSTED, "flags": [{**POSTED["flags"][0], "index": 99}]}
+    assert _flag_tags(_run(tmp_path, api_extra={RECEIPT: _reply(nameless)})) == ["SPAN"]
+
+
+def test_no_flags_means_no_group(tmp_path):
+    out = _run(tmp_path, api_extra={RECEIPT: _reply({**POSTED, "flag_count": 0, "flags": []})})
+    assert "Check before you submit" not in _text(out["settled"]["rail"])
+
+
+def test_a_rule_pass_body_lists_the_flags_too(tmp_path):
+    assert "Check before you submit" in _text(_rules(tmp_path)["settled"]["rail"])
+
+
+def test_the_knockout_verdict_heads_the_fill_body_before_a_run(tmp_path):
+    out = _banner(tmp_path, _scan("conflict", "conflict"))
+    [line] = _by_class(out["loaded"]["rail"], "ko")
+    assert line["text"] == f"Before you fill: {ON_SITE}"
+
+
+def test_an_incomplete_profile_check_shows_its_line_too(tmp_path):
+    message = "This job is on-site. Add your city or relocation answer to Profile."
+    out = _banner(tmp_path, _scan("incomplete_profile", "profile_missing", message))
+    [line] = _by_class(out["loaded"]["rail"], "ko")
+    assert line["text"] == f"Before you fill: {message}"
+
+
+@pytest.mark.parametrize("scan", [_scan("clear", "pass", "Fine."), _scan("unstated", "job_unstated", "x"),
+                                  None, {"status": "conflict", "checks": []}])
+def test_a_clear_or_unstated_scan_says_nothing(tmp_path, scan):
+    assert _by_class(_banner(tmp_path, scan)["loaded"]["rail"], "ko") == []
+
+
+def test_the_banner_is_one_status_line_and_stays_after_a_run(tmp_path):
+    out = _banner(tmp_path, _scan("conflict", "conflict"))
+    [line] = _by_class(out["settled"]["rail"], "ko")
+    assert line["attrs"]["role"] == "status"
+
+
+def test_marking_applied_refreshes_the_flags_from_the_capture_it_made(tmp_path):
+    cleared = {**POSTED, "flag_count": 0, "flags": []}
+    out = _run(tmp_path, pressStatus="Applied", framesAfter={"fill_inventory": EDITED},
+               api_extra={**APPLIED, RECEIPT: [_reply(POSTED), _reply(cleared)]})
+    assert out["receiptFlags"] == []
+
+
+def test_marking_applied_with_nothing_to_capture_keeps_the_flags(tmp_path):
+    out = _run(tmp_path, pressStatus="Applied", api_extra=APPLIED)
     assert [row["question"] for row in out["receiptFlags"]] == ["How did you hear about us?"]

@@ -600,3 +600,10 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 }
 @keyframes cs-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin::after { animation: none; } }
+
+/* The answer receipt's flags (stages/fill.js `flagNodes`) and the knock-out
+ * banner (`knockoutLine`): warn-tinted, never a control. */
+.flagged .grp { margin-top: 12px; font-size: 12px; font-weight: 700; }
+.resid.flags .kindmark { color: var(--cs-warn-text); }
+.sub.ko { margin: 0 0 8px; padding: 6px 8px; border-radius: 8px;
+  background: var(--cs-warn-tonal); color: var(--cs-warn-text); }

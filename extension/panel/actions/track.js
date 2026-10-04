@@ -73,11 +73,13 @@
     }
     if ((facts.application.status ?? "draft") === status) return;
     const token = store.token();
+    let flags = null;
     const done = await duringAction(store, "track", async () => {
       // BEFORE the status moves: what you typed or changed since the last fill is
       // the form as submitted, so it is on the answer record while the page is
-      // still read. Never throws, and never holds the PATCH back.
-      if (status === "applied" && facts.receiptSeen) await ns.panelRecordEdits(store, facts, token);
+      // still read. Never throws, and never holds the PATCH back. Its answer is
+      // the flags of the form as it stands: "Check before you submit" follows it.
+      if (status === "applied" && facts.receiptSeen) flags = await ns.panelRecordEdits(store, facts, token);
       return store.api(`/api/applications/${facts.application.id}`, {
         method: "PATCH", body: JSON.stringify({ status }),
       });
@@ -94,6 +96,7 @@
     // it.
     if (!after.application) return;
     store.write({
+      ...(flags === null ? {} : { receiptFlags: flags }),
       // The backend's own answer for the status, not the argument: a route
       // that normalised or refused the value must not be reported back as the
       // value we sent. `?? status` only covers a response that omits the key.

@@ -1286,6 +1286,16 @@ and its values reach no value-free builder (SYSTEM.md
   the bound tab, for a matched job with a receipt posted; after `EDIT_CAPTURE_MS`
   (3 s) of quiet it runs the same gated edit capture. The message is a hint: all
   values still come from the gated `fill_inventory` read.
+- **What the Fill body shows of it.** The post answers with the flagged fields
+  (server-computed, fixed reason strings); `receiptFlags` is rendered by
+  `stages/fill.js` `flagNodes` as the "Check before you submit" group, first among
+  the loop report's groups and beside the rule pass's rows. Warn-only: nothing
+  gates Next or Submit. A row with a field id jumps to it. The debounced capture
+  and Mark applied refresh the list from their own post's answer (a capture that
+  posts nothing leaves it; leaving a page cannot, the page is gone). The matched
+  job's knock-out scan (`knockout` on `/api/jobs/match`) heads the body as one
+  `role="status"` line, "Before you fill: <the scan's message>", only for a
+  `conflict` or `profile_missing` check.
 - **A rule that wrote over your edit** is the rule's value, not yours: a
   rule-pass run first reads which fids were already changed (`touchedBefore`) and
   does not mark those `edited_by_you`; the loop never writes a field you changed.
