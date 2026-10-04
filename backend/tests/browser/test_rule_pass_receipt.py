@@ -100,3 +100,20 @@ def test_a_read_only_listing_leaves_the_standing_consent_alone(page, load):
       document.body.insertAdjacentHTML('beforeend', "<label for='s2'>I agree to the terms *</label><input type='checkbox' id='s2'>");
       return {INV}.list({{}}).fields.length; }}""")
     assert got >= 1
+
+
+def test_a_typed_id_number_is_absent_from_the_receipt_under_standing_consent(page, load):
+    """Real fields, real keystrokes: with `consentForms` the inventory says "not blocked" for the
+    SSN box, and the panel's builder (the real `shared/receipt.js`) still leaves it out."""
+    load(page, "<label for='s'>Social Security Number</label><input id='s'>"
+               "<label for='f'>First name</label><input id='f'>",
+         [*SOURCES, "shared/receipt.js"])
+    for selector, text in (("#s", "000-00-0000"), ("#f", "Ada")):
+        page.click(selector)
+        page.keyboard.type(text)
+    fields = page.evaluate(f"() => {INV}.list({{consentForms: true}}).fields")
+    ssn = next(field for field in fields if field["question"] == "Social Security Number")
+    assert (ssn["touched"], ssn["policyBlocked"]) == (True, False)
+    built = page.evaluate(f"(fields) => {NS}.receipt.fromEdits([{{result: {{fields}}}}], {{}})", fields)
+    assert [(f["question"], f["answer"]) for f in built["fields"]] == [("First name", "Ada")]
+    assert "000-00-0000" not in json.dumps(built)

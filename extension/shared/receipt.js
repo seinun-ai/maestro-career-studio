@@ -61,6 +61,11 @@
   const clip = (text, n) => String(text ?? "").slice(0, n);
   const fold = (text) => String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 
+  const neverFilled = (question) => {
+    if (typeof ns.isNeverFilled !== "function") throw new Error("receipt: shared/policy.js is not loaded");
+    return ns.isNeverFilled(question);
+  };
+
   function sourceOfSlot(slot) {
     const section = String(slot ?? "").split(".")[0];
     if (PROFILE_SECTIONS.has(section)) return "profile";
@@ -109,7 +114,11 @@
    * cost the whole run its record). */
   function entry(base, extra) {
     const question = clip(base.question, MAX_QUESTION).trim();
-    if (!question) return null;
+    // The never-fill labels (signatures, passwords, government IDs) are judged
+    // by the policy's consent-INDEPENDENT list: standing consent lifts the
+    // fill's rules, not this one. A missing policy script fails loud and closed
+    // (the builder throws, the post is skipped).
+    if (!question || neverFilled(question)) return null;
     return { question, section: base.section ? clip(base.section, MAX_SECTION) : null,
              required: Boolean(base.required), options_count: null, slot: null,
              eeo: false, edited_by_you: false, ...extra };

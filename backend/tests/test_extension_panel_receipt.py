@@ -435,3 +435,30 @@ def test_leaving_without_a_receipt_asks_the_page_nothing(tmp_path):
     out = _run(tmp_path, tabs=TABS, leaveTo=8, stored={"widget.session": _armed_entry()})
     assert _receipts(out) == []
     assert not [msg for msg in out["broadcasts"] if msg["message"].get("readOnly")]
+
+
+# ---------- never-fill is consent-independent ----------
+
+def test_a_typed_id_number_is_not_recorded_even_under_standing_consent(tmp_path):
+    """With `consentForms` the engine's own policy answers "not blocked" for everything, so the
+    inventory's `policyBlocked` is false for a typed SSN; the receipt still leaves it out."""
+    page = _page(_live("v1", "First name", "Ada"),
+                 _live("s1", "Social Security Number", "000-00-0000", touched=True),
+                 _live("s2", "Passport number", "X1234567", touched=True),
+                 _live("s3", "Signature", "Ada L.", touched=True),
+                 _live("c1", "City", "Austin", touched=True))
+    out = _run(tmp_path, page=page, report={**LOOP_REPORT, "consentForms": True})
+    sent = json.dumps(_body(out))
+    assert "000-00-0000" not in sent and "X1234567" not in sent and "Ada L." not in sent
+    assert "Austin" in sent
+
+
+def test_a_never_fill_label_is_dropped_on_every_builder(tmp_path):
+    """The loop's `yours` and written rows, the rule pass, and the edit capture."""
+    sig = _live("sg", "Signature", "Ada L.", touched=True)
+    report = {"host": LOOP_HOST, "consentForms": True, "fields": [
+        _field("sg", "Signature", "yours"), _field("v1", "Password", "verified", answer="x")]}
+    page = _page(sig, _live("v1", "Password", "hunter2"))
+    assert "hunter2" not in json.dumps(_run(tmp_path, page=page, report=report)["sent"])
+    rules = [{"frameId": 0, "result": {**RULE_FRAMES[0]["result"], "filled": [_item("sg", "first-name")]}}]
+    assert _receipts(_rules(tmp_path, rules=rules, page=_page(sig))) == []

@@ -68,6 +68,15 @@
   };
 
   ns.isPolicyBlocked = isPolicyBlocked;
+
+  /** Whether a label names something this extension never handles: a
+   * signature, a password, a government ID. CONSENT-INDEPENDENT, unlike
+   * `isPolicyBlocked`, whose `consentForms` lifts every rule (agreement ticks
+   * are the one thing standing consent unlocks). The answer receipt asks THIS,
+   * so a typed SSN is never recorded even while that consent stands. Salary
+   * questions are not here: they are the user's own ordinary answers, and what
+   * consent lifts for the fill is not a secret class. */
+  ns.isNeverFilled = (labelText) => NEVER_FILLED.some((pattern) => pattern.test(String(labelText ?? "")));
   // The agreement family, as one pattern, for the old engine's rule that ticks
   // these once consent is given. Published rather than restated: the list that
   // REFUSES a field and the list that fills it must be the same list, or a
