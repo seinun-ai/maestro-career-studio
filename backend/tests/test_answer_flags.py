@@ -60,6 +60,11 @@ def _ids(field, profile=None):
     "When can you start?",
     "What is your notice period?",
     "Do you currently reside in the United States?",
+    "Are you over 18?",
+    "Are you 18 years of age or older?",
+    "Are you willing to commute?",
+    "Where do you currently reside?",
+    "Are you able to work in the office three days a week?",
 ])
 def test_screening_questions_are_recognized_by_their_words(question):
     assert answer_flags.is_screening(question, None)
@@ -71,6 +76,13 @@ def test_screening_questions_are_recognized_by_their_words(question):
     "How did you hear about us, e.g. a career fair at your university?",
     "Tell us about your residency program experience",
     "Describe a project you are proud of",
+    "Describe your experience with hybrid cloud architectures",
+    "How do you spend your commute?",
+    "Tell us about your 18 months of experience with Kafka",
+    "We have 18 offices worldwide. Why us?",
+    "Where does your data reside in a typical pipeline?",
+    "Describe what you'd add to the culture in our NYC office",
+    "Describe a time you worked in the office of the CTO",
 ])
 def test_ordinary_questions_are_not_screening(question):
     assert not answer_flags.is_screening(question, None)
@@ -136,6 +148,26 @@ QUIET = [
 ]
 
 
+AUTHORIZED = {"work_auth": {"authorized_now": True, "sponsorship_now": False}}
+QUIET += [
+    ("authorized without the need for sponsorship, Yes",
+     _field("Are you legally authorized to work in the United States without the need for sponsorship?",
+            "Yes", "profile", slot="work_auth.authorized_now"), AUTHORIZED),
+    ("authorized without restriction, Yes",
+     _field("Are you authorized to work in the US without restriction?", "Yes", "profile",
+            slot="work_auth.authorized_now"), AUTHORIZED),
+    ("authorized without restriction, No: an ambiguous cue stays quiet both ways",
+     _field("Are you authorized to work in the US without restriction?", "No", "profile",
+            slot="work_auth.authorized_now"), AUTHORIZED),
+    ("a lead-in clause's negation is not the question's",
+     _field("If you do not have a degree, are you still willing to relocate?", "Yes", "profile",
+            slot="preferences.willing_to_relocate"), {"preferences": {"willing_to_relocate": True}}),
+    ("work without sponsorship, Yes",
+     _field("Can you work in the US without sponsorship?", "Yes", "profile",
+            slot="work_auth.sponsorship_now"), AUTHORIZED),
+    ("a long essay a model wrote",
+     _field(ON_SITE_WEEKLY, "x" * 201, "written"), {}),
+]
 QUIET += [
     ("a sponsorship answer read off the saved ones",
      _field("Will you now or in the future require sponsorship?", "No", "inferred",
@@ -209,6 +241,10 @@ DIFFERS += [
                          ids=[case[0] for case in DIFFERS])
 def test_an_answer_unlike_the_saved_one_is_flagged(field, profile):
     assert _ids(field, profile) == ["differs_from_profile"]
+
+
+def test_a_short_written_answer_to_a_screening_question_is_flagged():
+    assert _ids(_field(ON_SITE_WEEKLY, "x" * 200, "written")) == ["guessed_screening"]
 
 
 def test_an_unsaved_voluntary_question_is_judged_by_its_own_key():

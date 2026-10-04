@@ -180,7 +180,7 @@ def test_a_missing_application_is_a_404(db_session):
 
 @pytest.mark.parametrize("field", [
     {"question": "   ", "answer": "A", "source": "profile"},
-    {"question": "Q", "answer": ["A"], "options_count": 2, "source": "inferred", "extra": 1},
+    {"question": "Q", "answer": ["A"], "source": "inferred", "extra": 1},
     {"question": "Q", "answer": "A", "options_count": 2, "source": "profile"},
 ])
 def test_a_malformed_field_is_a_422(db_session, field):

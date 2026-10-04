@@ -23,17 +23,29 @@ SCREENING_RE = re.compile(
     r"authori[sz]|sponsor|\bvisas?\b|relocat|on-?site|in[- ]office|days (?:a|per) week|in[- ]person"
     r"|clearance|citizen|\bdegree\b|graduat|enrolled|start date|availab"
     r"|\beligib\w* to work|right to work|work permit|permanent resident|green card|\bh-?1b\b"
-    r"|\b18\b|years of age|\bcommut(?:e|ing)\b|\bhybrid\b|in (?:our|the) [^.?]{0,20}office"
-    r"|when can you start|notice period|\bresid(?:e|es|ing)\b",
+    r"|(?:at least|over|older than|age of)\s+18\b|\b18\s*(?:\+|years? (?:of age|old)|or older)"
+    r"|(?:able|willing) to commute|\bcommut\w* (?:to|distance)|can you commute"
+    r"|\bhybrid (?:role|position|schedule|work|arrangement|model)\b"
+    r"|\b(?:work|be|based|come|report) (?:in|from|into|to) (?:our|the) [^.?]{0,20}office"
+    r"|when can you start|notice period|\byou (?:currently |now )?resid(?:e|ing)\b",
     re.IGNORECASE,
 )
 EEO_RE = re.compile(
     r"gender|\bsex\b|\brace\b|ethnicit|hispanic|latin[oa]|veteran|disabilit|sexual orientation",
     re.IGNORECASE,
 )
-# A question worded against its fact ("work WITHOUT sponsorship?") legitimately flips a Yes/No.
+# Any negation cue at all: where one is present but not on the question's own verb, the
+# polarity is unclear and a Yes/No is never judged ("authorized WITHOUT restriction?").
 NEGATION_RE = re.compile(
     r"\b(not|without|no longer|never|don't|do not|doesn't|does not|won't|will not|unable)\b",
+    re.IGNORECASE,
+)
+# A negation on the question's own verb, near its start: "Will you NOT require...?",
+# "Won't you need...?", "Are you unable to...?". Only this turns a saved Yes/No around.
+OWN_VERB_NEGATION_RE = re.compile(
+    r"^\W*(?:do|does|did|will|would|are|is|can|could|have|has)\s+you\s+(?:not|never)\b"
+    r"|^\W*(?:don'?t|won'?t|aren'?t|can'?t|couldn'?t|isn'?t|doesn'?t)\s+you\b"
+    r"|^(?:\W*\w+){0,3}?\W+unable\b",
     re.IGNORECASE,
 )
 REASONS = {
@@ -43,6 +55,8 @@ REASONS = {
     "eeo_without_saved_answer": "You have no saved answer for this voluntary question.",
 }
 _GUESSED = frozenset({"inferred", "written"})
+# A knock-out answer is a word or a sentence; a longer written answer is an essay about something else.
+MAX_KNOCKOUT_CHARS = 200
 
 
 # The profile's EEO key a question's words name, for a field a writer sent without its slot.
@@ -100,6 +114,8 @@ def _guessed_screening(field: dict[str, Any], facts: dict[str, Fact]) -> bool:
         return False
     if field.get("slot") in facts:
         return False
+    if field.get("source") == "written" and len(str(field.get("answer") or "")) > MAX_KNOCKOUT_CHARS:
+        return False
     return _answered(field) and is_screening(field.get("question", ""), field.get("slot"))
 
 
@@ -155,14 +171,24 @@ def _yes_no(text: str) -> str | None:
     return head if head in ("Yes", "No") else None
 
 
+def _polarity(question: str) -> str:
+    """"plain", "negated" (the question's own verb is negated) or "unclear" (a cue elsewhere in
+    it). Only the last comma-separated part of the asking sentence counts: "If you do not have a
+    degree, are you willing to relocate?" asks the second."""
+    clause = _asking_clause(question).rsplit(",", 1)[-1].strip()
+    if OWN_VERB_NEGATION_RE.search(clause):
+        return "negated"
+    return "unclear" if NEGATION_RE.search(clause) else "plain"
+
+
 def _yes_no_differs(question: str, answer: str, saved: str) -> bool:
-    """A negated asking clause ("Will you NOT require sponsorship?") turns the saved fact's
-    answer around, so the literal same Yes/No is the odd one out there."""
+    """A negated question ("Will you NOT require sponsorship?") turns the saved fact's answer
+    around, so the literal same Yes/No is the odd one out there; an unclear one judges nothing."""
     said, kept = _yes_no(answer), _yes_no(saved)
-    if said is None or kept is None:
+    polarity = _polarity(question)
+    if said is None or kept is None or polarity == "unclear":
         return False
-    negated = bool(NEGATION_RE.search(_asking_clause(question)))
-    return (said == kept) if negated else (said != kept)
+    return (said == kept) if polarity == "negated" else (said != kept)
 
 
 def _comparable(fact: Fact | None, answer: Any) -> bool:
