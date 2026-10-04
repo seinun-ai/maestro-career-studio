@@ -392,21 +392,26 @@ def _second(out):
     return json.loads(receipts[1]["init"]["body"])
 
 
-def test_an_edit_after_the_fill_is_posted_at_mark_applied_before_the_status_moves(tmp_path):
-    out = _run(tmp_path, pressStatus="Applied", framesAfter={"fill_inventory": EDITED}, api_extra=APPLIED)
-    body = _second(out)
-    fields = {f["question"]: f for f in body["fields"]}
+def _mark_applied(tmp_path):
+    return _run(tmp_path, pressStatus="Applied", framesAfter={"fill_inventory": EDITED}, api_extra=APPLIED)
+
+
+def test_an_edit_after_the_fill_is_posted_at_mark_applied(tmp_path):
+    fields = {f["question"]: f for f in _second(_mark_applied(tmp_path))["fields"]}
     # Your edit of a run's write keeps the run's source and says it is edited; the rest
     # of what was posted is restated, so the server's per-occurrence order holds.
-    assert (fields["First name"]["answer"], fields["First name"]["source"],
-            fields["First name"]["edited_by_you"]) == ("Adaline", "profile", True)
+    first = fields["First name"]
+    assert (first["answer"], first["source"], first["edited_by_you"]) == ("Adaline", "profile", True)
     assert (fields["City"]["source"], fields["City"]["edited_by_you"]) == ("you", False)
     assert "Social Security Number" not in fields
-    # The two receipts, then the status PATCH: the page is read while it is still the form.
-    kinds = [msg["init"]["method"] for msg in out["sent"] if msg["type"] == "api"
-             and msg.get("init", {}).get("method") in ("POST", "PATCH")
-             and (msg["path"].endswith("/filled-answers") or msg["init"]["method"] == "PATCH")]
-    assert kinds == ["POST", "POST", "PATCH"]
+
+
+def test_the_edits_are_posted_before_the_status_moves(tmp_path):
+    """The page is read while it is still the form: the two receipts, then the PATCH."""
+    methods = [msg["init"]["method"] for msg in _mark_applied(tmp_path)["sent"] if msg["type"] == "api"
+               and msg.get("init", {}).get("method") in ("POST", "PATCH")
+               and (msg["path"].endswith("/filled-answers") or msg["path"].endswith("app-remembered"))]
+    assert methods == ["POST", "POST", "PATCH"]
 
 
 def test_nothing_changed_since_the_post_posts_nothing_at_mark_applied(tmp_path):
