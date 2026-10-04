@@ -22,13 +22,19 @@
  * even when you typed it. A field the run left open, left alone or found
  * already filled is not recorded: it is not the Companion's answer.
  *
+ * THE PAGE'S OWN INVENTORY IS THE SOURCE OF A ROW. A rule-pass write names the
+ * field it went to (`fid`, from `content/inventory.js`), and the row's
+ * question, section, value and options are read from that field after the run:
+ * the label a rule matched on is the option's text for a radio or a checkbox.
+ * A write with no field behind it is not recorded.
+ *
  * EVERY OCCURRENCE IS KEPT. Two fields with one label (a second "Company" in
  * a work-history block) are two entries, in page order: the server keeps the
  * latest answer per (step, section, question, occurrence), so folding them
  * here would make the second field's answer overwrite the first's.
  *
  * WHAT THIS FILE PUBLISHES: ns.receipt = { fromLoop, fromRulePass,
- * typedAnswer, pageOf, sourceOfSlot, sourceOfRule }.
+ * fromEdits, seenOf, typedAnswer, pageOf, sourceOfSlot, sourceOfRule }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -38,14 +44,20 @@
   // first three carry that value as their `answer`, the others a note.
   const WROTE = new Set(["verified", "closest", "assumed", "partial", "unconfirmed"]);
   const ANSWERED = new Set(["verified", "closest", "assumed"]);
-  // A rule-pass write the engine could not confirm (`content/autofill.js` notes).
-  const UNLANDED = /^(may not have registered|no matching option)/;
   // The EEO rules' ids (`content/eeo.js`) and the profile slot each answers.
   const EEO_SLOTS = { gender: "eeo.gender", "race-ethnicity": "eeo.race_ethnicity",
                       "hispanic-latino": "eeo.hispanic_latino", veteran: "eeo.veteran_status",
                       disability: "eeo.disability_status" };
-  // The backend's limits (app/schemas/filled_answers.py).
+  // The backend's limits (app/schemas/filled_answers.py): a field is cut to
+  // them here, so one oversize field cannot make the server refuse the run.
   const MAX_FIELDS = 300;
+  const MAX_QUESTION = 500;
+  const MAX_SECTION = 200;
+  const MAX_SLOT = 120;
+  const MAX_ANSWER_CHARS = 20000;
+  const MAX_ITEMS = 100;
+  const MAX_ITEM_CHARS = 500;
+  const MAX_OPTIONS = 1000;
   const clip = (text, n) => String(text ?? "").slice(0, n);
   const fold = (text) => String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 
@@ -53,6 +65,9 @@
     const section = String(slot ?? "").split(".")[0];
     if (PROFILE_SECTIONS.has(section)) return "profile";
     if (section === "experience" || section === "skills") return "resume";
+    // `derived.full_name` is the profile's own first and last name joined: a
+    // saved fact, so it reads as the profile's like the rule `full-name` does.
+    if (slot === "derived.full_name") return "profile";
     return section === "custom" ? "custom" : "inferred";
   }
 
@@ -73,11 +88,11 @@
   /** A value as the receipt stores it: a list stays a list, blank is null. */
   function answerOf(value) {
     if (Array.isArray(value)) {
-      const items = value.map((item) => clip(item, 500).trim()).filter(Boolean).slice(0, 100);
+      const items = value.map((item) => clip(item, MAX_ITEM_CHARS).trim()).filter(Boolean).slice(0, MAX_ITEMS);
       return items.length ? items : null;
     }
     const text = String(value ?? "").trim();
-    return text ? clip(text, 20000) : null;
+    return text ? clip(text, MAX_ANSWER_CHARS) : null;
   }
 
   /** fid → the field as the page holds it now, from the frames that answered. */
@@ -89,12 +104,22 @@
     return out;
   }
 
+  /** One field as the server takes it, cut to its bounds; null when it has no
+   * question (the server refuses a blank one, and one such field must never
+   * cost the whole run its record). */
   function entry(base, extra) {
-    return { question: clip(base.question || "A field with no label", 500),
-             section: base.section ? clip(base.section, 200) : null,
+    const question = clip(base.question, MAX_QUESTION).trim();
+    if (!question) return null;
+    return { question, section: base.section ? clip(base.section, MAX_SECTION) : null,
              required: Boolean(base.required), options_count: null, slot: null,
              eeo: false, edited_by_you: false, ...extra };
   }
+
+  /** How many options a multi-select page field offered, or null. */
+  const optionsOf = (live) => {
+    const count = live?.multi ? (live.options ?? []).length : 0;
+    return count ? Math.min(count, MAX_OPTIONS) : null;
+  };
 
   function loopEntry(row, live) {
     const yours = row.status === "yours";
@@ -104,10 +129,10 @@
     return entry(row, {
       answer,
       source: yours ? "you" : sourceOfRow(row),
-      slot: row.route === "slot" ? row.slot ?? null : null,
+      slot: row.route === "slot" ? clip(row.slot, MAX_SLOT) || null : null,
       eeo: String(row.slot ?? "").startsWith("eeo."),
       edited_by_you: !yours && live?.touched === true,
-      options_count: live?.multi ? (live.options ?? []).length || null : null,
+      options_count: optionsOf(live),
     });
   }
 
@@ -116,7 +141,9 @@
   function youEntry(live) {
     if (!live.touched || live.policyBlocked || live.shape === "unknown") return null;
     const answer = answerOf(live.committed);
-    return answer === null ? null : { fid: live.fid, field: entry(live, { answer, source: "you" }) };
+    const field = answer === null ? null
+      : entry(live, { answer, source: "you", options_count: optionsOf(live) });
+    return field && { fid: live.fid, field };
   }
 
   /** The fields you typed or changed that no report names. */
@@ -128,11 +155,16 @@
   function uploadEntry(upload) {
     if (upload?.outcome !== "attached" || !upload.filename) return [];
     return [{ fid: null, field: entry({ question: "Resume" },
-                                      { answer: clip(upload.filename, 500), source: "upload", slot: "resume" }) }];
+                                      { answer: clip(upload.filename, MAX_ITEM_CHARS), source: "upload", slot: "resume" }) }];
   }
 
-  function finish(entries) {
-    const kept = entries.slice(0, MAX_FIELDS);
+  /** The entries in the page's own order (the server counts a repeated label
+   * by its place in the row), those the page does not list (the upload) last;
+   * capped at the server's field limit. */
+  function finish(entries, inventory) {
+    const place = new Map([...(inventory?.keys() ?? [])].map((fid, at) => [fid, at]));
+    const rank = (one) => place.get(one.fid) ?? Infinity;
+    const kept = entries.filter((one) => one.field).sort((a, b) => rank(a) - rank(b)).slice(0, MAX_FIELDS);
     return { fields: kept.map((one) => one.field), fids: kept.map((one) => one.fid ?? null) };
   }
 
@@ -141,84 +173,85 @@
   function fromLoop(report, frames, upload) {
     const inventory = inventoryOf(frames);
     const rows = report?.fields ?? [];
-    const written = rows.map((row) => ({ fid: row.fid, field: loopEntry(row, inventory.get(row.fid)) }))
-      .filter((one) => one.field);
+    const written = rows.map((row) => ({ fid: row.fid, field: loopEntry(row, inventory.get(row.fid)) }));
     const taken = new Set(rows.map((row) => row.fid));
-    return finish([...written, ...youEntries(inventory, taken), ...uploadEntry(upload)]);
+    return finish([...written, ...youEntries(inventory, taken), ...uploadEntry(upload)], inventory);
   }
 
-  // A rule label is the field's joined label text (`labelFor`): its first part
-  // is the <label>'s own words.
-  const questionOfLabel = (label) => String(label ?? "").split(" | ")[0].trim();
-
-  /** What the rule pass wrote, one entry per write, in the order it wrote. */
-  function ruleEntries(fill) {
-    const eeo = new Map((fill?.eeoFilled ?? []).map((item) => [item.label, EEO_SLOTS[item.field] ?? null]));
-    const out = [];
-    for (const item of [...(fill?.filled ?? []), ...(fill?.corrected ?? [])]) {
-      const answer = answerOf(item.value);
-      if (UNLANDED.test(item.note ?? "") || answer === null) continue;
-      out.push({ fid: null, field: entry({ question: questionOfLabel(item.label) }, {
-        answer, source: sourceOfRule(item.rule), eeo: eeo.has(item.label),
-        slot: eeo.get(item.label) ?? null }) });
-    }
-    return out;
-  }
-
-  /** A field you changed after a rule wrote it: the rule's source, your value,
-   * in the rule's place. */
-  function changedRule(mine, ruled) {
-    const { source, slot, eeo } = ruled.field;
-    return { ...mine, field: { ...mine.field, source, slot, eeo, edited_by_you: true } };
-  }
-
-  /** The page's fields by their folded question, in page order. */
-  function byQuestion(inventory) {
-    const out = new Map();
-    for (const live of inventory.values()) {
-      const key = fold(live.question);
-      out.set(key, [...(out.get(key) ?? []), live]);
-    }
-    return out;
-  }
-
-  /** Your changes over the rule pass's writes. The k-th field of a label
-   * answers the k-th write of that label, so same-labelled fields never fold
-   * into one. When the page and the pass disagree on how many of a label
-   * there are, the k-th cannot be told, so a changed field is a plain `you`
-   * entry beside the pass's own. */
-  function mergeYours(ruled, inventory) {
-    const out = [...ruled];
-    const extra = [];
-    const writes = new Map();
-    ruled.forEach((one, at) => {
-      const key = fold(one.field.question);
-      writes.set(key, [...(writes.get(key) ?? []), at]);
-    });
-    for (const [key, fields] of byQuestion(inventory)) {
-      const at = writes.get(key) ?? [];
-      fields.forEach((live, k) => {
-        const mine = youEntry(live);
-        if (!mine) return;
-        if (at.length === fields.length) out[at[k]] = changedRule(mine, out[at[k]]);
-        else extra.push(mine);
-      });
-    }
-    return [...out, ...extra];
+  /** The field a rule write went to, as the page holds it now. The question,
+   * section, options and value are the INVENTORY's, found by the fid the rule
+   * pass named: the label a rule matched on is the option's text for a radio
+   * or a checkbox, a name for a bare input. A write with no field behind it
+   * (no fid, a frame that did not answer), one the page does not hold, and one
+   * the policy never fills are not recorded. */
+  function ruleEntry(item, live) {
+    if (!live || live.policyBlocked) return null;
+    const answer = answerOf(live.committed);
+    if (answer === null) return null;
+    const eeoSlot = EEO_SLOTS[item.rule] ?? null;
+    const field = entry(live, { answer, source: sourceOfRule(item.rule), eeo: eeoSlot !== null,
+                                slot: eeoSlot, edited_by_you: live.touched === true,
+                                options_count: optionsOf(live) });
+    return field && { fid: live.fid, field };
   }
 
   /** A rule-pass run (`reconcileFill`'s `fill`), the page after it, and the
-   * attach. A field you changed after a rule wrote it keeps the rule's source. */
+   * attach. One entry per FIELD (a checkbox group written box by box is one),
+   * a field you changed after a rule wrote it keeps the rule's source. */
   function fromRulePass(fill, frames, upload) {
-    const merged = mergeYours(ruleEntries(fill), inventoryOf(frames));
-    return finish([...merged, ...uploadEntry(upload)]);
+    const inventory = inventoryOf(frames);
+    const taken = new Map();
+    for (const item of [...(fill?.filled ?? []), ...(fill?.corrected ?? [])]) {
+      const one = taken.has(item.fid) ? null : ruleEntry(item, inventory.get(item.fid));
+      if (one) taken.set(one.fid, one);
+    }
+    return finish([...taken.values(), ...youEntries(inventory, taken), ...uploadEntry(upload)], inventory);
+  }
+
+  /** What the receipt remembers of a row it posted, by field id: enough to
+   * post a later edit of that field under the same source. */
+  function seenOf(built) {
+    const out = {};
+    built.fids.forEach((fid, at) => {
+      if (!fid) return;
+      const { source, slot, eeo, edited_by_you: edited, answer } = built.fields[at];
+      out[fid] = { source, slot, eeo, edited, answer: JSON.stringify(answer) };
+    });
+    return out;
+  }
+
+  /** One field of the page against what an earlier post said of it: its entry
+   * (your edit keeps a run's source and marks it edited), and whether it is a
+   * change worth posting. Null when the page's field is not recordable. */
+  function editOf(live, before) {
+    if (live.policyBlocked || live.shape === "unknown") return null;
+    if (!before && !live.touched) return null;
+    const answer = answerOf(live.committed);
+    if (answer === null && !(before && live.touched)) return null;
+    const changed = live.touched && (!before || JSON.stringify(answer) !== before.answer);
+    const field = entry(live, {
+      answer, source: before?.source ?? "you", slot: before?.slot ?? null, eeo: before?.eeo ?? false,
+      edited_by_you: before ? Boolean(before.edited) || (live.touched && before.source !== "you") : false,
+      options_count: optionsOf(live) });
+    return field && { changed, one: { fid: live.fid, field } };
+  }
+
+  /** The page now against what was posted (`seen`, by field id): the fields
+   * you typed or changed since, in a row that also restates every field
+   * already posted, so the server's per-occurrence order holds. Empty when
+   * nothing changed. */
+  function fromEdits(frames, seen) {
+    const inventory = inventoryOf(frames);
+    const edits = [...inventory.values()].map((live) => editOf(live, seen?.[live.fid])).filter(Boolean);
+    if (!edits.some((edit) => edit.changed)) return { fields: [], fids: [] };
+    return finish(edits.map((edit) => edit.one), inventory);
   }
 
   /** One pause-row answer: typed into the panel, written on the page. */
   function typedAnswer(label, answer) {
     const value = answerOf(answer);
     return finish(value === null ? [] : [{ fid: null,
-      field: entry({ question: questionOfLabel(label) }, { answer: value, source: "you" }) }]);
+      field: entry({ question: label }, { answer: value, source: "you" }) }], null);
   }
 
   /** Where the run happened: the tab's host, and its path as the wizard step. */
@@ -231,5 +264,5 @@
     }
   }
 
-  ns.receipt = { fromLoop, fromRulePass, typedAnswer, pageOf, sourceOfSlot, sourceOfRule };
+  ns.receipt = { fromLoop, fromRulePass, fromEdits, seenOf, typedAnswer, pageOf, sourceOfSlot, sourceOfRule };
 })();

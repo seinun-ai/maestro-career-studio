@@ -3630,6 +3630,7 @@ ns.fillLoop.runFill = async (deps, options) => {
     ? Object.assign(new Error(spec.aiFailure.message), { status: spec.aiFailure.status })
     : null;
   return { runId: "r", host: spec.report.host, fields: spec.report.fields,
+           consentForms: spec.report.consentForms === true,
            aiFailure: failure, stopped: run.cancelledAtEnd && !spec.switchTo,
            timedOut: spec.report.timedOut === true,
            ...(spec.report.sections ? { sections: spec.report.sections } : {}),
@@ -3658,6 +3659,20 @@ main(async () => {
   if (open) open();
   await settle();
   const settled = regions();
+  // What the page holds AFTER the run (the user typed since), then the user
+  // marks the application applied and/or leaves the page.
+  if (spec.framesAfter) Object.assign(spec.frames, spec.framesAfter);
+  if (spec.pressStatus !== undefined) {
+    const segment = withClass(REGIONS.foot, "status-seg").flatMap((seg) => seg.children)
+      .find((one) => one.textContent === spec.pressStatus);
+    if (!segment) throw new Error(`no status control reads "${spec.pressStatus}"`);
+    segment.click();
+    await settle();
+  }
+  if (spec.leaveTo !== undefined) {
+    await onActivated({ tabId: spec.leaveTo });
+    await settle();
+  }
   if (spec.jump !== undefined) {
     const button = withClass(REGIONS.rail, "loop").flatMap((one) => withClass(one, "resid"))
       .flatMap((list) => list.children).map((item) => item.children[0])
@@ -3672,7 +3687,7 @@ main(async () => {
     if (open) open();
     await settle();
   }
-  emit({ loaded, clicked, running, stopping, settled, runs, sent, broadcasts, writes });
+  emit({ loaded, clicked, running, stopping, settled, runs, sent, broadcasts, writes, warnings });
 });
 """
 

@@ -58,7 +58,7 @@ PAGE = [{"frameId": 0, "result": {"frame": "f0", "host": LOOP_HOST, "fields": [
 REFUSED = [{"frameId": 0, "result": {"frame": None, "host": LOOP_HOST, "fields": []}}]
 
 
-def _run(tmp_path, page=PAGE, settings=SETTINGS_REPLY, match=None, **spec):
+def _run(tmp_path, page=PAGE, settings=SETTINGS_REPLY, match=None, api_extra=None, **spec):
     report = spec.pop("report", LOOP_REPORT)
     spec.setdefault("tabs", [{"id": 7, "url": LOOP_URL}])
     spec.setdefault("stored", {"widget.session": entry(touched=False)})
@@ -69,7 +69,7 @@ def _run(tmp_path, page=PAGE, settings=SETTINGS_REPLY, match=None, **spec):
     api = {RECEIPT: _reply(POSTED),
            "lightningai": _reply(match or {"match": "none", "job": None, "application": None}),
            "/api/base-resumes": _reply(BASE_RESUMES), "/api/ats-scores": _reply(SCORES),
-           "GET /api/applications/app-remembered": _reply(APP_DETAIL)}
+           "GET /api/applications/app-remembered": _reply(APP_DETAIL), **(api_extra or {})}
     frames = {"fill_inventory": page, "fill_focus": [{"frameId": 0, "result": True}],
               "fill_cancel": [{"frameId": 0, "result": True}]}
     return run_node(_LOOP_DRIVER_JS, {**spec, "report": report, "api": api, "replies": replies,
@@ -168,67 +168,108 @@ def test_no_matched_job_posts_no_receipt(tmp_path):
     assert _receipts(_run(tmp_path, stored={"widget.session": _armed_entry()})) == []
 
 
+def _item(fid, rule, value="x"):
+    return {"label": "what the rule matched on", "value": value, "rule": rule, "fid": fid}
+
+
+def _group(fid, question, committed, options, **extra):
+    return _live(fid, question, committed, shape="group", multi=isinstance(committed, list),
+                 options=[{"text": text} for text in options], **extra)
+
+
 RULE_FRAMES = [{"frameId": 0, "result": {
     "filled": [
-        {"label": "first name | first_name", "value": "Ada", "rule": "first-name"},
-        {"label": "email | email", "value": "ada@example.test", "rule": "email"},
-        {"label": "why do you want to work here? | why", "value": "The research.", "rule": "custom"},
-        {"label": "skills | skills", "value": "python, pytorch", "rule": "skills"},
-        {"label": "phone | phone", "value": "555", "rule": "phone",
-         "note": "may not have registered, check the field"},
-        {"label": "gender | gender", "value": "Female", "rule": "gender"},
+        _item("v1", "first-name"),
+        _item("v2", "email"),
+        _item("w1", "work-auth"),
+        _item("why", "custom"),
+        _item("sk", "skills"),
+        _item("r1", "race-ethnicity"),
+        _item("r1", "race-ethnicity"),
+        _item("ph", "phone"),
+        _item("sg", "initials"),
+        {"label": "orphan", "value": "z", "rule": "city"},
     ],
-    "eeoFilled": [{"field": "gender", "label": "gender | gender", "value": "Female"}],
     "corrected": [], "already": [], "seen": 6, "observations": []}}]
+RACES = ["Asian", "White", "Black or African American"]
 RULE_PAGE = [{"frameId": 0, "result": {"frame": "f0", "host": LOOP_HOST, "fields": [
-    _live("e1", "Email", "ada@work.test", touched=True),
-    _live("z1", "Pronouns", "she/her", touched=True)]}}]
+    _live("v1", "First name", "Ada"),
+    _live("v2", "Email", "ada@work.test", touched=True),
+    _group("w1", "Are you authorized to work in the US?", "Yes", ["Yes", "No"]),
+    _live("why", "Why do you want to work here?", "The research.", shape="textarea"),
+    _live("sk", "Skills", ["python", "pytorch"], shape="search", multi=True, options=SKILL_OPTIONS),
+    _group("r1", "Race (select all that apply)", ["Asian"], RACES),
+    _live("ph", "Phone", ""),
+    _live("z1", "Pronouns", "she/her", touched=True),
+    _live("sg", "Initials", "AD", policyBlocked=True),
+]}}]
 
 
-def _rules(tmp_path, rules=RULE_FRAMES, page=RULE_PAGE, **spec):
+def _rules(tmp_path, rules=RULE_FRAMES, page=RULE_PAGE, api_extra=None, **spec):
     return _fill(tmp_path, start=True, stored={"widget.session": entry(touched=False)},
                  api={RECEIPT: _reply(POSTED),
-                      "GET /api/applications/app-remembered": _reply(APP_DETAIL)},
+                      "GET /api/applications/app-remembered": _reply(APP_DETAIL), **(api_extra or {})},
                  frames={"profile_fill": rules, "fill_inventory": page}, **spec)
 
 
-def test_a_rule_pass_run_posts_its_writes_with_their_rule_sources(tmp_path):
+def _rule_fields(tmp_path, **spec):
+    return {f["question"]: f for f in _body(_rules(tmp_path, **spec))["fields"]}
+
+
+def test_a_rule_pass_run_posts_each_field_the_inventory_names(tmp_path):
+    """The rows are the PAGE's fields (their question, value and options), found by the fid the
+    rule pass named: never the label a rule matched on, which for a radio is the option."""
     fields = _body(_rules(tmp_path))["fields"]
-    assert [(f["question"], f["source"], f["edited_by_you"], f["eeo"]) for f in fields] == [
-        ("first name", "profile", False, False),
-        ("Email", "profile", True, False),
-        ("why do you want to work here?", "custom", False, False),
-        ("skills", "resume", False, False),
-        ("gender", "profile", False, True),
-        ("Pronouns", "you", False, False),
+    assert [(f["question"], f["answer"], f["source"], f["edited_by_you"], f["eeo"]) for f in fields] == [
+        ("First name", "Ada", "profile", False, False),
+        ("Email", "ada@work.test", "profile", True, False),
+        ("Are you authorized to work in the US?", "Yes", "profile", False, False),
+        ("Why do you want to work here?", "The research.", "custom", False, False),
+        ("Skills", ["python", "pytorch"], "resume", False, False),
+        ("Race (select all that apply)", ["Asian"], "profile", False, True),
+        ("Pronouns", "she/her", "you", False, False),
     ]
 
 
-def test_same_labelled_rule_writes_are_each_kept(tmp_path):
-    """Latest-wins on the server is per occurrence (step, section, question, index), so two
-    fields with one label are two rows here, and a change to the second one lands on it."""
-    twin = [{"frameId": 0, "result": {**RULE_FRAMES[0]["result"], "eeoFilled": [], "filled": [
-        {"label": "company | company", "value": "Acme", "rule": "emp-company"},
-        {"label": "company | company", "value": "Initech", "rule": "emp-company"}]}}]
+def test_a_checkbox_group_is_one_row_with_a_list_and_its_option_count(tmp_path):
+    fields = _rule_fields(tmp_path)
+    race = fields["Race (select all that apply)"]
+    assert (race["answer"], race["options_count"], race["slot"]) == (["Asian"], 3, "eeo.race_ethnicity")
+    assert fields["Are you authorized to work in the US?"]["options_count"] is None
+
+
+def test_a_rule_write_the_page_does_not_hold_is_not_recorded(tmp_path):
+    """No field behind it (no fid), an empty value (it did not register) or a field no frame
+    answered about: nothing is guessed from the label."""
+    questions = " ".join(_rule_fields(tmp_path))
+    assert "orphan" not in questions and "Phone" not in questions
+    assert _receipts(_rules(tmp_path, page=REFUSED)) == []
+
+
+def test_a_never_fill_field_is_not_recorded_on_the_rule_pass(tmp_path):
+    assert "Initials" not in _rule_fields(tmp_path)
+    assert "AD" not in json.dumps(_body(_rules(tmp_path)))
+
+
+def test_same_labelled_rule_writes_are_each_kept_in_page_order(tmp_path):
+    """Latest-wins on the server is per occurrence (step, section, question, index): two
+    fields with one label are two rows, in the page's order, and a change to the second one
+    lands on the second."""
+    twin = [{"frameId": 0, "result": {**RULE_FRAMES[0]["result"], "filled": [
+        _item("c2", "emp-company"), _item("c1", "emp-company")]}}]
     page = [{"frameId": 0, "result": {"frame": "f0", "host": LOOP_HOST, "fields": [
         _live("c1", "Company", "Acme"), _live("c2", "Company", "Initrode", touched=True)]}}]
     fields = _body(_rules(tmp_path, rules=twin, page=page))["fields"]
-    assert [(f["question"], f["answer"], f["source"], f["edited_by_you"]) for f in fields] == [
-        ("company", "Acme", "resume", False), ("Company", "Initrode", "resume", True)]
-
-
-def test_a_changed_field_whose_occurrence_cannot_be_told_is_its_own_row(tmp_path):
-    """The page holds three "Company" fields and the pass wrote two: which write belongs to
-    the changed one is unknowable, so it is a plain `you` row beside the pass's own."""
-    twin = [{"frameId": 0, "result": {**RULE_FRAMES[0]["result"], "eeoFilled": [], "filled": [
-        {"label": "company | company", "value": "Acme", "rule": "emp-company"},
-        {"label": "company | company", "value": "Initech", "rule": "emp-company"}]}}]
-    page = [{"frameId": 0, "result": {"frame": "f0", "host": LOOP_HOST, "fields": [
-        _live("c1", "Company", "Acme"), _live("c2", "Company", "Initech"),
-        _live("c3", "Company", "Hooli", touched=True)]}}]
-    fields = _body(_rules(tmp_path, rules=twin, page=page))["fields"]
     assert [(f["answer"], f["source"], f["edited_by_you"]) for f in fields] == [
-        ("Acme", "resume", False), ("Initech", "resume", False), ("Hooli", "you", False)]
+        ("Acme", "resume", False), ("Initrode", "resume", True)]
+
+
+def test_a_label_with_an_asterisk_is_the_inventorys_question(tmp_path):
+    page = [{"frameId": 0, "result": {"frame": "f0", "host": LOOP_HOST, "fields": [
+        _live("v1", "First name", "Ada")]}}]
+    rules = [{"frameId": 0, "result": {**RULE_FRAMES[0]["result"], "filled": [
+        {"label": "first name * | first_name", "value": "Ada", "rule": "first-name", "fid": "v1"}]}}]
+    assert [f["question"] for f in _body(_rules(tmp_path, rules=rules, page=page))["fields"]] == ["First name"]
 
 
 def test_a_pause_answer_that_sticks_posts_as_yours(tmp_path):
@@ -255,7 +296,8 @@ SLOT_SOURCES = [
     ("eligibility.over_18", "profile"), ("eeo.gender", "profile"),
     ("preferences.willing_to_relocate", "profile"), ("education.0.degree", "profile"),
     ("languages.0.language", "profile"), ("experience.0.title", "resume"), ("skills", "resume"),
-    ("custom.3", "custom"), ("derived.full_name", "inferred"), ("derived.agrees_to_terms", "inferred"),
+    # The profile's own first and last name joined: a saved fact, like the rule `full-name`.
+    ("custom.3", "custom"), ("derived.full_name", "profile"), ("derived.agrees_to_terms", "inferred"),
 ]
 RULE_SOURCES = [
     ("first-name", "profile"), ("edu-degree", "profile"), ("work-auth", "profile"),
@@ -270,3 +312,121 @@ def test_every_slot_and_rule_maps_to_its_pill(tmp_path):
                    tmp_path, source=RECEIPT_JS)
     assert out["slots"] == [source for _, source in SLOT_SOURCES]
     assert out["rules"] == [source for _, source in RULE_SOURCES]
+
+
+# ---------- one policy, bounds the server enforces, the run's consent ----------
+
+def _page(*fields):
+    return [{"frameId": 0, "result": {"frame": "f0", "host": LOOP_HOST, "fields": list(fields)}}]
+
+
+def test_a_never_fill_field_is_not_recorded_on_the_loop_path_either(tmp_path):
+    """The loop reports the field as written; the page says the policy never fills it."""
+    page = _page(_live("v1", "First name", "Ada", policyBlocked=True),
+                 _live("v2", "Email", "ada@work.test"))
+    questions = [f["question"] for f in _body(_run(tmp_path, page=page))["fields"]]
+    assert "First name" not in questions and "Email" in questions
+
+
+@pytest.mark.parametrize("consent", [True, False])
+def test_the_post_run_read_carries_the_runs_consent_and_starts_no_run(tmp_path, consent):
+    """A consent tick made under standing consent is never-fill only without it, so the
+    page is read under the run's own consent; `readOnly` leaves the engine's alone."""
+    out = _run(tmp_path, report={**LOOP_REPORT, "consentForms": consent})
+    reads = [msg["message"] for msg in out["broadcasts"] if msg["message"]["type"] == "fill_inventory"
+             and msg["message"].get("readOnly")]
+    assert [(read["consentForms"], "runId" in read) for read in reads] == [(consent, False)]
+
+
+def test_the_rule_pass_read_carries_the_standing_consent_of_its_context(tmp_path):
+    context = {"profile": {"first_name": "Ada"}, "employment": [], "skills": [],
+               "eeo_consent": {"enabled": False, "consent_forms": True,
+                               "acknowledged_at": None, "policy_version": ""}}
+    out = _rules(tmp_path, api_extra={"/api/autofill/context": _reply(context)})
+    [read] = [msg["message"] for msg in out["sent"] if msg["type"] == "page_broadcast"
+              and msg["message"].get("readOnly")]
+    assert read["consentForms"] is True
+
+
+def test_a_field_that_would_break_the_servers_bounds_is_cut_not_sent_whole(tmp_path):
+    """One oversize or label-less field must not cost the whole run its record (a 422)."""
+    page = _page(
+        _live("v1", "First name", "Ada"),
+        _live("q1", "Q" * 600, "A" * 25000, touched=True),
+        _live("q2", "   ", "nameless", touched=True),
+        _live("p1", "Skills", ["Python"] * 150, shape="search", multi=True,
+              options=[{"text": str(i)} for i in range(1500)]),
+    )
+    fields = {f["question"][:3]: f for f in _body(_run(tmp_path, page=page))["fields"]}
+    assert len(fields["QQQ"]["question"]) == 500 and len(fields["QQQ"]["answer"]) == 20000
+    assert fields["Ski"]["options_count"] == 1000 and len(fields["Ski"]["answer"]) == 100
+    assert "nameless" not in json.dumps(_body(_run(tmp_path, page=page)))
+
+
+def test_a_failed_post_logs_the_status_and_never_the_message(tmp_path):
+    out = _run(tmp_path, api_extra={RECEIPT: {"ok": False, "error": "secret-body-text", "status": 422}})
+    logged = [line for line in out["warnings"] if "answer record" in line]
+    assert logged and "secret-body-text" not in " ".join(logged) and "422" in logged[0]
+
+
+# ---------- what you changed after the run: Mark applied, and leaving the page ----------
+
+EDITED = _page(
+    _live("v1", "First name", "Adaline", touched=True),
+    _live("v2", "Email", "ada@work.test", touched=True),
+    _live("c1", "Highest degree", "Master's", shape="select"),
+    _live("a1", "How did you hear about us?", "LinkedIn", shape="popup"),
+    _live("p1", "Skills", ["Python", "SQL", "Go"], shape="search", multi=True, options=SKILL_OPTIONS),
+    _live("y1", "City", "Austin", touched=True),
+    _live("z1", "Pronouns", "she/her", touched=True),
+    _live("s1", "Social Security Number", "000-00-0000", touched=True, policyBlocked=True),
+)
+APPLIED = {"PATCH /api/applications/app-remembered": _reply({**APP_DETAIL, "status": "applied",
+                                                             "applied_at": "2026-10-04T10:00:00+00:00"})}
+TABS = [{"id": 7, "url": LOOP_URL}, {"id": 8, "url": "https://example.com/elsewhere"}]
+
+
+def _second(out):
+    receipts = _receipts(out)
+    assert len(receipts) == 2, [msg["path"] for msg in receipts]
+    return json.loads(receipts[1]["init"]["body"])
+
+
+def test_an_edit_after_the_fill_is_posted_at_mark_applied_before_the_status_moves(tmp_path):
+    out = _run(tmp_path, pressStatus="Applied", framesAfter={"fill_inventory": EDITED}, api_extra=APPLIED)
+    body = _second(out)
+    fields = {f["question"]: f for f in body["fields"]}
+    # Your edit of a run's write keeps the run's source and says it is edited; the rest
+    # of what was posted is restated, so the server's per-occurrence order holds.
+    assert (fields["First name"]["answer"], fields["First name"]["source"],
+            fields["First name"]["edited_by_you"]) == ("Adaline", "profile", True)
+    assert (fields["City"]["source"], fields["City"]["edited_by_you"]) == ("you", False)
+    assert "Social Security Number" not in fields
+    # The two receipts, then the status PATCH: the page is read while it is still the form.
+    kinds = [msg["init"]["method"] for msg in out["sent"] if msg["type"] == "api"
+             and msg.get("init", {}).get("method") in ("POST", "PATCH")
+             and (msg["path"].endswith("/filled-answers") or msg["init"]["method"] == "PATCH")]
+    assert kinds == ["POST", "POST", "PATCH"]
+
+
+def test_nothing_changed_since_the_post_posts_nothing_at_mark_applied(tmp_path):
+    out = _run(tmp_path, pressStatus="Applied", api_extra=APPLIED)
+    assert len(_receipts(out)) == 1
+
+
+def test_leaving_the_page_posts_the_pending_edits_once(tmp_path):
+    out = _run(tmp_path, tabs=TABS, leaveTo=8, framesAfter={"fill_inventory": EDITED})
+    body = _second(out)
+    assert body["step"] == "/lightningai/jobs/99/apply"
+    assert {f["question"]: f["answer"] for f in body["fields"]}["First name"] == "Adaline"
+    assert body["application_id"] == "app-remembered"
+
+
+def test_leaving_a_page_with_nothing_changed_posts_nothing(tmp_path):
+    assert len(_receipts(_run(tmp_path, tabs=TABS, leaveTo=8))) == 1
+
+
+def test_leaving_without_a_receipt_asks_the_page_nothing(tmp_path):
+    out = _run(tmp_path, tabs=TABS, leaveTo=8, stored={"widget.session": _armed_entry()})
+    assert _receipts(out) == []
+    assert not [msg for msg in out["broadcasts"] if msg["message"].get("readOnly")]

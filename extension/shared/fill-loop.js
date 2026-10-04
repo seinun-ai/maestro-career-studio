@@ -1857,7 +1857,11 @@
       heading, kind, wanted, entries, added, outcome, reason: reason ?? null, ...(other ? { other } : {}),
     }));
     const report = { runId, fields, host, aiFailure, stopped, timedOut: over, sections, rounds: round };
-    return { ...report, trace: buildRunTrace(report, rows, { startedAt, endedAt: new Date() }) };
+    // `consentForms` is the run's standing consent, carried so the panel's own
+    // read of the page after the run (the answer receipt) judges never-fill
+    // fields by the same policy the run did. It is not in `report`, which the
+    // value-free trace is built from.
+    return { ...report, consentForms, trace: buildRunTrace(report, rows, { startedAt, endedAt: new Date() }) };
   }
 
   // ---- telemetry: one observation per reported field, and never a value.

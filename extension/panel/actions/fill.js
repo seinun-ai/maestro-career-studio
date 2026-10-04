@@ -17,8 +17,9 @@
  * - NOTHING HERE REACHES FOR ANYTHING: no `card`, no `chrome`, no `document`,
  *   no `fetch`, no timers.
  *
- * WHAT THIS FILE PUBLISHES BESIDES ITS ACTION: `ns.panelRecordReceipt` (the
- * answer receipt's post, below; the pause row posts through it too) and
+ * WHAT THIS FILE PUBLISHES BESIDES ITS ACTION: `ns.panelRecordReceipt` and
+ * `ns.panelRecordEdits` (the answer receipt's posts, below; the pause row, Mark
+ * applied and the panel's rebind post through them too) and
  * `ns.panelFillFinished`. The
  * "is this page's fill finished" predicate belongs to the Fill stage and is
  * READ by the pause row (`panel/actions/pause.js`), because the last pause row
@@ -314,42 +315,75 @@
         || row.status === "assumed"));
   }
 
-  /** The answer receipt (`shared/receipt.js`): one row per run, posted for a
-   * MATCHED job only, since the receipt keys on `job_id`.
+  /** The answer receipt (`shared/receipt.js`): one row per capture, posted for
+   * a MATCHED job only, since the receipt keys on `job_id`.
    *
-   * The page's own read is a `fill_inventory` fan-out, so only a frame that
-   * earns the user's data answers it (SYSTEM.md {#inv-frame-earns-data}); a
-   * refused frame's empty list adds nothing. The post goes through the
-   * generic `api` door and never `telemetry` or `fill_trace`: the receipt
-   * carries values, so the telemetry setting neither gates nor carries it
-   * (SYSTEM.md {#inv-filled-answers-local}). `inventory: false` is the pause
-   * row's: its one answer needs no read of the page.
+   * The page's own read is a `fill_inventory` fan-out (`readOnly`, so it starts
+   * no run and leaves the engine's standing consent alone), so only a frame
+   * that earns the user's data answers it (SYSTEM.md {#inv-frame-earns-data});
+   * a refused frame's empty list adds nothing. `consentForms` is the run's
+   * standing consent, so a consent tick the run made under it is judged by the
+   * policy the run used. The post goes through the generic `api` door and never
+   * `telemetry` or `fill_trace`: the receipt carries values, so the telemetry
+   * setting neither gates nor carries it (SYSTEM.md {#inv-filled-answers-local}).
+   * `inventory: false` is the pause row's: its one answer needs no read.
    *
    * `base_resume` is the base the fill used (the application's own, else the
    * panel's pick): the server links a receipt to an application by job + base.
    *
+   * `leaving` is a capture made as the panel lets go of this page (a rebind):
+   * its broadcast leaves before the store resets, and nothing is written back
+   * to a store that is about to describe another page.
+   *
    * Returns the flag rows "Check before you submit" lists, or null. NEVER
    * THROWS: a lost receipt costs the record, never the fill. */
-  async function recordReceipt(store, facts, token, build, { inventory = true } = {}) {
+  async function recordReceipt(store, facts, token, build, opts = {}) {
+    const { inventory = true, consentForms = false, leaving = false } = opts;
     const jobId = facts.job?.id;
-    if (!jobId || !store.current(token)) return null;
+    if (!jobId || (!leaving && !store.current(token))) return null;
     try {
-      const frames = inventory ? await store.broadcast({ type: "fill_inventory" }) : [];
+      const frames = inventory
+        ? await store.broadcast({ type: "fill_inventory", readOnly: true, consentForms }) : [];
       // A frame that never answered read nothing: only what the run reported stands.
-      const { fields, fids } = build(frames.filter((frame) => frame.result !== undefined));
-      if (!fields.length || !store.current(token)) return null;
+      const built = build(frames.filter((frame) => frame.result !== undefined));
+      if (!built.fields.length || (!leaving && !store.current(token))) return null;
+      // Re-read past the check: a load may have landed while the page was read.
+      const now = leaving ? facts : store.read();
       const posted = await store.api(`/api/jobs/${encodeURIComponent(jobId)}/filled-answers`, {
         method: "POST",
-        body: JSON.stringify({ channel: "companion", ...ns.receipt.pageOf(facts.url),
-                               application_id: facts.application?.id ?? null,
-                               base_resume: facts.application?.base_resume ?? facts.baseSlug ?? null,
-                               fields }),
+        body: JSON.stringify({ channel: "companion", ...ns.receipt.pageOf(now.url),
+                               application_id: now.application?.id ?? null,
+                               base_resume: now.application?.base_resume ?? now.baseSlug ?? null,
+                               fields: built.fields }),
       });
-      return flagRows(posted, fids);
+      if (!leaving) rememberPosted(store, token, built, consentForms);
+      return flagRows(posted, built.fids);
     } catch (err) {
-      console.warn("[maestro-cs] the answer record was not saved:", String(err?.message ?? err));
+      // The status only: a message may quote the request.
+      console.warn("[maestro-cs] the answer record was not saved:", err?.status ?? "no status");
       return null;
     }
+  }
+
+  /** What the page was told, by field id, so a later edit posts under the same
+   * source (`receiptSeen`; page-shaped, cleared with the page). */
+  function rememberPosted(store, token, built, consentForms) {
+    if (!store.current(token)) return;
+    const before = store.read().receiptSeen;
+    // A run starts from nothing (`receiptSeen` cleared) and brings its own consent; an
+    // edit capture or a pause answer keeps the consent the run left.
+    const standing = before ? before.consentForms : consentForms;
+    store.write({ receiptSeen: { consentForms: standing, fids: { ...before?.fids, ...ns.receipt.seenOf(built) } } });
+  }
+
+  /** The fields you typed or changed since the last post, posted as they stand
+   * now: at "Mark applied", and (`leaving`) as the panel lets go of the page.
+   * Nothing is posted when nothing changed or no run has posted yet. */
+  function recordEdits(store, facts, token, { leaving = false } = {}) {
+    const seen = facts.receiptSeen;
+    if (!seen) return Promise.resolve(null);
+    return recordReceipt(store, facts, token,
+      (frames) => ns.receipt.fromEdits(frames, seen.fids), { consentForms: seen.consentForms, leaving });
   }
 
   /** The POST's flagged fields as the Fill body lists them: by the field id the
@@ -379,7 +413,8 @@
     // `startFill`'s per-run clear, plus the loop's own run state.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
                   closest: null, writeResults: null, blank: null, aiNote: null,
-                  loop: null, receiptFlags: null, fillRound: 0, stopRequested: false });
+                  loop: null, receiptFlags: null, receiptSeen: null, fillRound: 0,
+                  stopRequested: false });
     const stopped = () => !live() || store.read().stopRequested === true;
     let auto = null;
     const done = await duringAction(store, "fill", async () => {
@@ -411,7 +446,8 @@
       });
       // After the run's own attach (`beforeSweep` set `auto`), so the upload is on the receipt.
       const flags = await recordReceipt(store, facts, token,
-        (frames) => ns.receipt.fromLoop(report, frames, auto));
+        (frames) => ns.receipt.fromLoop(report, frames, auto),
+        { consentForms: report.consentForms === true });
       return { report, flags };
     }, "Couldn't fill this form.");
     if (!done) {
@@ -535,7 +571,7 @@
     // while the run is open.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
                   closest: null, writeResults: null, blank: null, aiNote: null,
-                  loop: null, receiptFlags: null });
+                  loop: null, receiptFlags: null, receiptSeen: null });
     let noSavedAnswers = false;
     let auto = null;
     const done = await duringAction(store, "fill", async () => {
@@ -595,7 +631,8 @@
       // "Saved answers only" attaches too: the file is the user's own.
       auto = await autoAttachResume(store, token, () => !store.current(token));
       const flags = await recordReceipt(store, facts, token,
-        (frames) => ns.receipt.fromRulePass(store.read().fill, frames, auto));
+        (frames) => ns.receipt.fromRulePass(store.read().fill, frames, auto),
+        { consentForms: store.read().eeoConsent?.consent_forms === true });
       return { run, flags };
     }, "Couldn't fill this form.");
     if (!done) return;
@@ -930,5 +967,6 @@
   ns.panelFillFinished = fillFinished;
   ns.panelLeftSentence = leftSentence;
   ns.panelRecordReceipt = recordReceipt;
+  ns.panelRecordEdits = recordEdits;
   ns.panelFinishedSentence = finishedSentence;
 })();

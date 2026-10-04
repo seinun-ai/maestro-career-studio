@@ -1444,6 +1444,8 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # The answer receipt's flags and the matched job's knock-out scan: both
         # are about THIS form and THIS job, so neither may reach the next tab.
         "receiptFlags": [{"fid": "f1", "question": "Relocate?", "reason": "Every option is ticked."}],
+        # What the receipt posted, by field id: the next page's edits must not inherit it.
+        "receiptSeen": {"consentForms": False, "fids": {"f1": {"source": "profile"}}},
         "knockout": {"status": "conflict", "checks": []},
         "eeoConsent": {"enabled": True, "consent_forms": False},
         # The QnA drawer, both halves. The question was asked about this posting
@@ -1481,7 +1483,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "fill": None, "writeResults": None, "residue": None, "essays": None,
         "closest": None, "blank": None, "aiNote": None,
         "loop": None, "fillRound": None, "stopRequested": False,
-        "receiptFlags": None, "knockout": None,
+        "receiptFlags": None, "receiptSeen": None, "knockout": None,
         "eeoConsent": None, "answers": {},
         "qna": {"open": False, "question": "", "answered": None, "answer": None,
                 "applicationId": None, "copied": False},

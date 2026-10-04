@@ -458,6 +458,11 @@
      * null before a run. Page-shaped like `loop`: `resetPageFacts` and each
      * run's own clear empty it. */
     receiptFlags: null,
+    /** What the answer receipt has posted for THIS page, by field id:
+     * `{consentForms, fids: {fid: {source, slot, eeo, edited, answer}}}`, or
+     * null before a post. It is what lets a later edit (Mark applied, leaving
+     * the page) post under the source the run gave the field. Page-shaped. */
+    receiptSeen: null,
     /** The matched job's knock-out scan (`knockout` on `/api/jobs/match`), or
      * null: a backend fact about the job, re-read with every match. */
     knockout: null,
@@ -813,6 +818,7 @@
     // has nothing left to stop here.
     store.loop = null;
     store.receiptFlags = null;
+    store.receiptSeen = null;
     store.knockout = null;
     store.fillRound = null;
     store.stopRequested = false;
@@ -2741,6 +2747,13 @@
    * Refresh the work done on a page it is not leaving (`PAGE_WORK`).
    * `inPlace` is a url change inside the bound tab (`loadHasForm`). */
   async function bindPage(tabId, url, carry = {}, { inPlace = false } = {}) {
+    // The answer receipt's last word on the page being LEFT, started before the
+    // reset: its read of the page leaves now, on the tab bound now, and what it
+    // posts is about the facts as they stand now. Nothing waits for it. A
+    // Refresh (same tab, same url) is not leaving.
+    if (card.tabId !== null && (card.tabId !== tabId || card.url !== url)) {
+      ns.panelRecordEdits(actionStore(), { ...card }, null, { leaving: true });
+    }
     // FIRST, and before anything is loaded: everything the store holds is
     // about the page we are leaving.
     resetPageFacts(card);
@@ -2792,7 +2805,8 @@
   const PAGE_WORK = [
     "touched", "hasForm", "fileInputs", "attached", "autoAttach", "baseSelected",
     "baseArmed", "tailorOpen", "revisit", "fill", "eeoConsent", "residue", "essays",
-    "closest", "blank", "aiNote", "writeResults", "loop", "answers", "qna",
+    "closest", "blank", "aiNote", "writeResults", "loop", "receiptFlags", "receiptSeen",
+    "answers", "qna",
     "preview", "previewTyped", "prepared",
   ];
 
