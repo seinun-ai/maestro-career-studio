@@ -1,6 +1,7 @@
 """The Automations catalog (docs/plans/2026-10-04-automations-page-design.md)."""
 
 import pytest
+from pydantic import ValidationError
 
 from app.services import automations
 
@@ -24,8 +25,9 @@ def test_the_technique_file_is_not_a_card_but_rides_on_apply():
     assert "agent-apply-execution" not in cards
     body = cards["apply-session"].body
     assert body.startswith("# Apply session")
-    # the technique file's own H1 appears after the apply skill
-    assert body.index("# Apply session") < body.rindex("\n# ")
+    # the technique file's own H1 follows the apply skill
+    assert "\n# Agent Apply Execution" in body
+    assert body.index("# Apply session") < body.index("\n# Agent Apply Execution")
 
 
 def test_apply_is_attended_until_full_automation_exists():
@@ -59,15 +61,80 @@ def test_guardrails_survive_rewording():
     assert "Never call `resolve_gaps`" in cards["tailor-run"]
 
 
-def test_a_card_missing_its_metadata_fails_loudly(tmp_path, monkeypatch):
-    bad = tmp_path / "broken" / "SKILL.md"
-    bad.parent.mkdir()
-    bad.write_text("---\nname: broken\ndescription: x\nmetadata:\n  title: Broken\n---\nbody\n")
+def _card_text(name, **meta):
+    fields = {"title": "T", "summary": "S", "kind": "scheduled", "needs": "[maestro]", **meta}
+    lines = "".join(f"  {k}: {v}\n" for k, v in fields.items() if v is not None)
+    return f"---\nname: {name}\ndescription: x\nmetadata:\n{lines}---\nbody of {name}\n"
+
+
+def _write(root, name, text):
+    path = root / name / "SKILL.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+@pytest.fixture
+def skills_dir(tmp_path, monkeypatch):
+    """A minimal valid skill set (the six cards + one technique file) to break one way at a time."""
+    for card_id in CARD_IDS:
+        include = "[technique]" if card_id == "apply-session" else None
+        _write(tmp_path, card_id, _card_text(card_id, include=include))
+    _write(tmp_path, "technique", "---\nname: technique\ndescription: x\n---\n# Technique\n")
+    monkeypatch.setattr(automations, "SKILLS_DIR", tmp_path)
+    automations.load_cards.cache_clear()
+    yield tmp_path
+    monkeypatch.undo()
+    automations.load_cards.cache_clear()
+
+
+def test_the_minimal_skill_set_loads(skills_dir):
+    cards = {c.id: c for c in automations.load_cards()}
+    assert cards["apply-session"].body.endswith("# Technique\n")
+
+
+@pytest.mark.parametrize("name, text, match", [
+    ("mail-status", "---\nname: mail-status\ndescription: x\nmetadata:\n  title: T\n---\nb\n",
+     "bad metadata"),
+    ("mail-status", _card_text("mail-status", kind="weekly"), "bad metadata"),
+    ("mail-status", _card_text("mail-status", colour="red"), "bad metadata"),
+    ("mail-status", _card_text("other"), "must match its folder"),
+    ("mail-status", _card_text("mail-status", include="[nowhere]"), "no skill file"),
+    ("mail-status", _card_text("mail-status", include="[job-hunt]"), "non-card"),
+    ("mail-status", _card_text("mail-status", include="[mail-status]"), "non-card"),
+    ("orphan", "---\nname: orphan\ndescription: x\n---\nb\n", "orphan"),
+    ("mail-status", "---\nname: [oops\n---\nb\n", "not valid YAML"),
+    ("mail-status", "---\n- a\n- b\n---\nb\n", "must be a mapping"),
+    ("mail-status", "no frontmatter\n", "no frontmatter"),
+], ids=["missing-fields", "unknown-kind", "extra-key", "name-mismatch", "unknown-include",
+        "include-a-card", "include-itself", "orphan", "invalid-yaml", "non-mapping",
+        "no-frontmatter"])
+def test_a_broken_skill_file_fails_loudly(skills_dir, name, text, match):
+    _write(skills_dir, name, text)
+    with pytest.raises(ValueError, match=match):
+        automations.load_cards()
+
+
+def test_a_missing_card_fails_loudly(skills_dir):
+    (skills_dir / "job-hunt" / "SKILL.md").unlink()
+    with pytest.raises(ValueError, match="designed"):
+        automations.load_cards()
+
+
+def test_an_empty_skills_dir_names_the_directory(tmp_path, monkeypatch):
     monkeypatch.setattr(automations, "SKILLS_DIR", tmp_path)
     automations.load_cards.cache_clear()
     try:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=str(tmp_path)):
             automations.load_cards()
     finally:
         monkeypatch.undo()
         automations.load_cards.cache_clear()
+
+
+def test_catalog_models_are_frozen():
+    card = automations.catalog().cards[0]
+    assert isinstance(card.needs, tuple)
+    with pytest.raises(ValidationError):
+        card.title = "changed"
+    with pytest.raises(ValidationError):
+        automations.catalog().apps[0].label = "changed"

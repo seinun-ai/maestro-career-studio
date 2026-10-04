@@ -21,6 +21,8 @@ SKILLS_DIR = Path(__file__).resolve().parent.parent / "automations" / "skills"
 CARD_ORDER = ("mail-status", "job-hunt", "referral-pages", "tailor-run", "apply-session",
               "customize-job-skills")
 
+# `scheduled` cards get the app's ask-when preamble; `attended` and `custom`
+# cards get its attended preamble (the agent does the job with the user now).
 Kind = Literal["scheduled", "attended", "custom"]
 Need = Literal["maestro", "email", "browser", "web"]
 
@@ -36,16 +38,18 @@ class _Meta(BaseModel):
 
 
 class AutomationCard(BaseModel):
+    model_config = ConfigDict(frozen=True)
     id: str
     title: str
     summary: str
     kind: Kind
-    needs: list[Need]
+    needs: tuple[Need, ...]
     never: str | None
     body: str
 
 
 class AgentApp(BaseModel):
+    model_config = ConfigDict(frozen=True)
     id: str
     label: str
     reachable: bool
@@ -121,7 +125,13 @@ def _split(path: Path) -> tuple[dict, str]:
     head, sep, body = text[4:].partition("\n---\n")
     if not sep:
         raise ValueError(f"{path}: unterminated frontmatter")
-    return yaml.safe_load(head) or {}, body.lstrip("\n")
+    try:
+        front = yaml.safe_load(head)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{path}: frontmatter is not valid YAML: {exc}") from exc
+    if not isinstance(front, dict):
+        raise ValueError(f"{path}: frontmatter must be a mapping")
+    return front, body.lstrip("\n")
 
 
 @lru_cache(maxsize=1)
@@ -141,17 +151,26 @@ def load_cards() -> tuple[AutomationCard, ...]:
             except ValidationError as exc:
                 raise ValueError(f"{path}: bad metadata: {exc}") from exc
     if sorted(metas) != sorted(CARD_ORDER):
-        raise ValueError(f"cards {sorted(metas)} != designed {sorted(CARD_ORDER)}")
+        raise ValueError(
+            f"cards {sorted(metas)} != designed {sorted(CARD_ORDER)} (looked in {SKILLS_DIR})")
     cards = []
+    used: set[str] = set()
     for skill_id in CARD_ORDER:
         meta = metas[skill_id]
         body = bodies[skill_id]
         for extra in meta.include:
             if extra not in bodies:
                 raise ValueError(f"{skill_id}: include {extra!r} has no skill file")
+            if extra in metas or extra == skill_id:
+                raise ValueError(f"{skill_id}: include {extra!r} must be a non-card skill")
+            used.add(extra)
             body = f"{body.rstrip()}\n\n{bodies[extra]}"
         cards.append(AutomationCard(id=skill_id, title=meta.title, summary=meta.summary,
-                                    kind=meta.kind, needs=meta.needs, never=meta.never, body=body))
+                                    kind=meta.kind, needs=tuple(meta.needs), never=meta.never,
+                                    body=body))
+    orphans = sorted(set(bodies) - set(metas) - used)
+    if orphans:
+        raise ValueError(f"skills {orphans} are neither a card nor included by one")
     return tuple(cards)
 
 
