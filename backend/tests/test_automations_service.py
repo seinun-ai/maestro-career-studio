@@ -1,5 +1,9 @@
 """The Automations catalog (docs/plans/2026-10-04-automations-page-design.md)."""
 
+import fnmatch
+import tomllib
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -112,6 +116,25 @@ def test_a_broken_skill_file_fails_loudly(skills_dir, name, text, match):
     _write(skills_dir, name, text)
     with pytest.raises(ValueError, match=match):
         automations.load_cards()
+
+
+def test_crlf_skill_files_load(skills_dir):
+    text = _card_text("mail-status").replace("\n", "\r\n")
+    (skills_dir / "mail-status" / "SKILL.md").write_bytes(text.encode())
+    card = next(c for c in automations.load_cards() if c.id == "mail-status")
+    assert card.body == "body of mail-status\n"
+
+
+def test_the_wheel_ships_every_skill_file():
+    """A wheel install must carry the skills; the source tree and containers hide a miss."""
+    backend = Path(__file__).resolve().parent.parent
+    globs = tomllib.loads((backend / "pyproject.toml").read_text())[
+        "tool"]["setuptools"]["package-data"]["app"]
+    skills = sorted((backend / "app" / "automations" / "skills").glob("*/SKILL.md"))
+    assert skills
+    for path in skills:
+        rel = path.relative_to(backend / "app").as_posix()
+        assert any(fnmatch.fnmatchcase(rel, g) for g in globs), f"{rel} not in package-data"
 
 
 def test_a_missing_card_fails_loudly(skills_dir):

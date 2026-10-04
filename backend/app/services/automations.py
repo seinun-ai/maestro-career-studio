@@ -78,9 +78,9 @@ APPS: tuple[AgentApp, ...] = (
     ),
     AgentApp(
         id="codex", label="Codex", reachable=True,
-        preamble=("Using the Maestro Career Studio MCP server, do the job below. Then help me "
-                  "schedule it: ask how often and when, and write a launchd or cron entry that "
-                  "runs `codex exec` with this prompt."),
+        preamble=("Using the Maestro Career Studio MCP server, first ask me how often and when "
+                  "to run the job below. Then write a launchd or cron entry that runs "
+                  "`codex exec` with the job below only, not this paragraph."),
         attended_preamble=(
             "Using the Maestro Career Studio MCP server, "
             "do the job below with me now."),
@@ -106,13 +106,13 @@ APPS: tuple[AgentApp, ...] = (
         note=f"{_REMOTE} Use Claude Desktop for now.",
     ),
     AgentApp(
-        id="chatgpt", label="ChatGPT", reachable=False,
+        id="chatgpt", label="ChatGPT web", reachable=False,
         preamble=("Using the Maestro Career Studio connector, set the job below up as a "
                   f"scheduled task. {_ASK}"),
         attended_preamble=(
             "Using the Maestro Career Studio connector, "
             "do the job below with me now."),
-        note=f"{_REMOTE} Use Codex or Claude Desktop for now.",
+        note=f"{_REMOTE} In the ChatGPT desktop app, pick Any MCP agent.",
     ),
 )
 

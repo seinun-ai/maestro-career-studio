@@ -70,7 +70,7 @@ export function AutomationCard({
         </CardTitle>
         <Badge variant="outline">{KIND_LABEL[card.kind]}</Badge>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-3">
+      <CardContent className="flex flex-col gap-3">
         <p className="max-w-[65ch]">{card.summary}</p>
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-muted-foreground text-label-medium">Needs</span>
