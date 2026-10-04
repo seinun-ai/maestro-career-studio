@@ -3620,6 +3620,8 @@ const gate = () => new Promise((resolve) => { open = resolve; });
 ns.fillLoop.runFill = async (deps, options) => {
   const run = { options, cancelledAtStart: deps.cancelled(), afterGate: null };
   runs.push(run);
+  // A second press may report differently (`againReport`).
+  const report = runs.length > 1 && spec.againReport ? spec.againReport : spec.report;
   deps.onProgress({ phase: "round", round: 1 });
   if (spec.holdRun) await gate();
   run.cancelledAtEnd = deps.cancelled();
@@ -3629,12 +3631,12 @@ ns.fillLoop.runFill = async (deps, options) => {
   const failure = spec.aiFailure
     ? Object.assign(new Error(spec.aiFailure.message), { status: spec.aiFailure.status })
     : null;
-  return { runId: "r", host: spec.report.host, fields: spec.report.fields,
-           consentForms: spec.report.consentForms === true,
+  return { runId: "r", host: report.host, fields: report.fields,
+           consentForms: report.consentForms === true,
            aiFailure: failure, stopped: run.cancelledAtEnd && !spec.switchTo,
-           timedOut: spec.report.timedOut === true,
-           ...(spec.report.sections ? { sections: spec.report.sections } : {}),
-           ...(spec.report.trace !== undefined ? { trace: spec.report.trace } : {}) };
+           timedOut: report.timedOut === true,
+           ...(report.sections ? { sections: report.sections } : {}),
+           ...(report.trace !== undefined ? { trace: report.trace } : {}) };
 };
 const stopButton = () => withClass(REGIONS.foot, "stop")[0] ?? null;
 main(async () => {

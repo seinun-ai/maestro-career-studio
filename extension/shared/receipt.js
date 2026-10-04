@@ -177,14 +177,28 @@
     return { fields: kept.map((one) => one.field), fids: kept.map((one) => one.fid ?? null) };
   }
 
-  /** A loop run (`ns.fillLoop.runFill`'s report), the page after it, and
-   * Autofill's own attach (`autoAttachResume`'s report, or null). */
-  function fromLoop(report, frames, upload) {
+  /** Every field an earlier post named (`seen`, by field id) that is still on
+   * the page, restated as it stands and under the source it was posted with,
+   * unless this run already has it. The server keeps the newest answer per
+   * (step, section, question, OCCURRENCE in the row), so a run that posts only
+   * the third "Company" would land on the first one's place: a run restates
+   * what is already there. */
+  function restated(inventory, seen, taken) {
+    return [...inventory.values()].filter((live) => seen?.[live.fid] && !taken.has(live.fid))
+      .map((live) => editOf(live, seen[live.fid])?.one).filter(Boolean);
+  }
+
+  /** A loop run (`ns.fillLoop.runFill`'s report), the page after it,
+   * Autofill's own attach (`autoAttachResume`'s report, or null) and what an
+   * earlier post said (`seen`, or undefined). */
+  function fromLoop(report, frames, upload, seen) {
     const inventory = inventoryOf(frames);
     const rows = report?.fields ?? [];
     const written = rows.map((row) => ({ fid: row.fid, field: loopEntry(row, inventory.get(row.fid)) }));
-    const taken = new Set(rows.map((row) => row.fid));
-    return finish([...written, ...youEntries(inventory, taken), ...uploadEntry(upload)], inventory);
+    const yours = youEntries(inventory, new Set(rows.map((row) => row.fid)));
+    const mine = [...written.filter((one) => one.field), ...yours];
+    const again = restated(inventory, seen, new Set(mine.map((one) => one.fid)));
+    return finish([...mine, ...again, ...uploadEntry(upload)], inventory);
   }
 
   /** The field a rule write went to, as the page holds it now. The question,
@@ -205,16 +219,24 @@
   }
 
   /** A rule-pass run (`reconcileFill`'s `fill`), the page after it, and the
-   * attach. One entry per FIELD (a checkbox group written box by box is one),
-   * a field you changed after a rule wrote it keeps the rule's source. */
-  function fromRulePass(fill, frames, upload) {
+   * attach and `seen` (see `fromLoop`). One entry per FIELD (a checkbox group
+   * written box by box is one), a field you changed after a rule wrote it keeps
+   * the rule's source. `before` is the set of fids you had already changed when
+   * the run began: a rule that wrote over one of them wrote AFTER your touch, so
+   * the value is the rule's and is not marked as yours. */
+  function fromRulePass(fill, frames, upload, { seen, before } = {}) {
     const inventory = inventoryOf(frames);
     const taken = new Map();
     for (const item of [...(fill?.filled ?? []), ...(fill?.corrected ?? [])]) {
       const one = taken.has(item.fid) ? null : ruleEntry(item, inventory.get(item.fid));
       if (one) taken.set(one.fid, one);
     }
-    return finish([...taken.values(), ...youEntries(inventory, taken), ...uploadEntry(upload)], inventory);
+    for (const one of taken.values()) {
+      if (before?.has(one.fid)) one.field.edited_by_you = false;
+    }
+    const mine = [...taken.values(), ...youEntries(inventory, taken)];
+    const again = restated(inventory, seen, new Set(mine.map((one) => one.fid)));
+    return finish([...mine, ...again, ...uploadEntry(upload)], inventory);
   }
 
   /** What the receipt remembers of a row it posted, by field id: enough to

@@ -338,12 +338,12 @@
    * Returns the flag rows "Check before you submit" lists, or null. NEVER
    * THROWS: a lost receipt costs the record, never the fill. */
   async function recordReceipt(store, facts, token, build, opts = {}) {
-    const { inventory = true, consentForms = false, leaving = false } = opts;
+    const { inventory = true, consentForms, leaving = false } = opts;
     const jobId = facts.job?.id;
     if (!jobId || (!leaving && !store.current(token))) return null;
     try {
       const frames = inventory
-        ? await store.broadcast({ type: "fill_inventory", readOnly: true, consentForms }) : [];
+        ? await store.broadcast({ type: "fill_inventory", readOnly: true, consentForms: consentForms === true }) : [];
       // A frame that never answered read nothing: only what the run reported stands.
       const built = build(frames.filter((frame) => frame.result !== undefined));
       if (!built.fields.length || (!leaving && !store.current(token))) return null;
@@ -370,9 +370,10 @@
   function rememberPosted(store, token, built, consentForms) {
     if (!store.current(token)) return;
     const before = store.read().receiptSeen;
-    // A run starts from nothing (`receiptSeen` cleared) and brings its own consent; an
-    // edit capture or a pause answer keeps the consent the run left.
-    const standing = before ? before.consentForms : consentForms;
+    // A run brings its own consent; an edit capture or a pause answer keeps the consent
+    // the last run left. `receiptSeen` is cleared only with the page (`resetPageFacts`),
+    // so the next run restates what an earlier one posted.
+    const standing = consentForms ?? before?.consentForms ?? false;
     store.write({ receiptSeen: { consentForms: standing, fids: { ...before?.fids, ...ns.receipt.seenOf(built) } } });
   }
 
@@ -384,6 +385,20 @@
     if (!seen) return Promise.resolve(null);
     return recordReceipt(store, facts, token,
       (frames) => ns.receipt.fromEdits(frames, seen.fids), { consentForms: seen.consentForms, leaving });
+  }
+
+  /** The fids you had already changed on the page, read before a rule-pass run
+   * (the loop never writes a field you changed; the rule pass can). Empty when
+   * nothing is recorded for this page or the read fails. */
+  async function touchedBefore(store, facts) {
+    if (!facts.job?.id) return new Set();
+    try {
+      const frames = await store.broadcast({ type: "fill_inventory", readOnly: true });
+      return new Set(frames.flatMap((frame) => frame.result?.fields ?? [])
+        .filter((field) => field.touched).map((field) => field.fid));
+    } catch {
+      return new Set();
+    }
   }
 
   /** The POST's flagged fields as the Fill body lists them: by the field id the
@@ -413,8 +428,7 @@
     // `startFill`'s per-run clear, plus the loop's own run state.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
                   closest: null, writeResults: null, blank: null, aiNote: null,
-                  loop: null, receiptFlags: null, receiptSeen: null, fillRound: 0,
-                  stopRequested: false });
+                  loop: null, receiptFlags: null, fillRound: 0, stopRequested: false });
     const stopped = () => !live() || store.read().stopRequested === true;
     let auto = null;
     const done = await duringAction(store, "fill", async () => {
@@ -446,7 +460,7 @@
       });
       // After the run's own attach (`beforeSweep` set `auto`), so the upload is on the receipt.
       const flags = await recordReceipt(store, facts, token,
-        (frames) => ns.receipt.fromLoop(report, frames, auto),
+        (frames) => ns.receipt.fromLoop(report, frames, auto, store.read().receiptSeen?.fids),
         { consentForms: report.consentForms === true });
       return { report, flags };
     }, "Couldn't fill this form.");
@@ -571,11 +585,13 @@
     // while the run is open.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
                   closest: null, writeResults: null, blank: null, aiNote: null,
-                  loop: null, receiptFlags: null, receiptSeen: null });
+                  loop: null, receiptFlags: null });
     let noSavedAnswers = false;
     let auto = null;
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
+      // What you had already changed, so a rule that writes over it is not called yours.
+      const before = await touchedBefore(store, facts);
       let run;
       try {
         run = await runGuidedFill({
@@ -631,7 +647,8 @@
       // "Saved answers only" attaches too: the file is the user's own.
       auto = await autoAttachResume(store, token, () => !store.current(token));
       const flags = await recordReceipt(store, facts, token,
-        (frames) => ns.receipt.fromRulePass(store.read().fill, frames, auto),
+        (frames) => ns.receipt.fromRulePass(store.read().fill, frames, auto,
+          { seen: store.read().receiptSeen?.fids, before }),
         { consentForms: store.read().eeoConsent?.consent_forms === true });
       return { run, flags };
     }, "Couldn't fill this form.");

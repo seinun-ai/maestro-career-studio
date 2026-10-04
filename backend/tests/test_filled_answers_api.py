@@ -155,6 +155,18 @@ def test_a_refill_replaces_only_the_matching_occurrence(db_session):
     assert [f["answer"] for f in _fields(body)] == ["C", "B"]
 
 
+def test_a_run_that_restates_the_earlier_rows_updates_the_right_occurrence(db_session):
+    """What the Companion posts after a second run (`receiptSeen`): every field already posted,
+    so the one that changed lands on its own place, not on the first same-labelled field's."""
+    job = _mk_job(db_session)
+    title = {"section": "Work Experience"}
+    rows = [_f("Company", name, **title) for name in ("Acme", "Initech", "Hooli")]
+    _post(job, rows, step="/apply")
+    _post(job, [*rows[:2], _f("Company", "Pied Piper", **title)], step="/apply")
+    body = client.get(f"/api/jobs/{job.id}/filled-answers").json()
+    assert [f["answer"] for f in _fields(body)] == ["Acme", "Initech", "Pied Piper"]
+
+
 def test_a_step_reports_its_newest_page_run(db_session):
     job = _mk_job(db_session)
     _post(job, [_f("First name", "Ada")], step="/apply", host="old.example.com")

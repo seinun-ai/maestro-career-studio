@@ -205,11 +205,19 @@ RULE_PAGE = [{"frameId": 0, "result": {"frame": "f0", "host": LOOP_HOST, "fields
 ]}}]
 
 
-def _rules(tmp_path, rules=RULE_FRAMES, page=RULE_PAGE, api_extra=None, **spec):
+def _untouched(page):
+    """The page as it stood before the run: nothing you changed yet."""
+    return [{**frame, "result": {**frame["result"], "fields": [
+        {**field, "touched": False} for field in frame["result"]["fields"]]}} for frame in page]
+
+
+def _rules(tmp_path, rules=RULE_FRAMES, page=RULE_PAGE, api_extra=None, before=None, **spec):
+    """The rule pass reads the page before it runs (what you had changed) and after it."""
+    reads = {"__seq": [before if before is not None else _untouched(page), page]}
     return _fill(tmp_path, start=True, stored={"widget.session": entry(touched=False)},
                  api={RECEIPT: _reply(POSTED),
                       "GET /api/applications/app-remembered": _reply(APP_DETAIL), **(api_extra or {})},
-                 frames={"profile_fill": rules, "fill_inventory": page}, **spec)
+                 frames={"profile_fill": rules, "fill_inventory": reads}, **spec)
 
 
 def _rule_fields(tmp_path, **spec):
@@ -343,8 +351,8 @@ def test_the_rule_pass_read_carries_the_standing_consent_of_its_context(tmp_path
                "eeo_consent": {"enabled": False, "consent_forms": True,
                                "acknowledged_at": None, "policy_version": ""}}
     out = _rules(tmp_path, api_extra={"/api/autofill/context": _reply(context)})
-    [read] = [msg["message"] for msg in out["sent"] if msg["type"] == "page_broadcast"
-              and msg["message"].get("readOnly")]
+    *_, read = [msg["message"] for msg in out["sent"] if msg["type"] == "page_broadcast"
+                and msg["message"].get("readOnly")]
     assert read["consentForms"] is True
 
 
@@ -462,3 +470,40 @@ def test_a_never_fill_label_is_dropped_on_every_builder(tmp_path):
     assert "hunter2" not in json.dumps(_run(tmp_path, page=page, report=report)["sent"])
     rules = [{"frameId": 0, "result": {**RULE_FRAMES[0]["result"], "filled": [_item("sg", "first-name")]}}]
     assert _receipts(_rules(tmp_path, rules=rules, page=_page(sig))) == []
+
+
+def test_a_rule_that_wrote_over_your_earlier_edit_is_not_called_yours(tmp_path):
+    """You changed the email, then ran the rule pass, which wrote its own value over it: the
+    value is the rule's, so `edited_by_you` stays false (a touch BEFORE the write)."""
+    fields = {f["question"]: f for f in _body(_rules(tmp_path, before=RULE_PAGE))["fields"]}
+    assert (fields["Email"]["source"], fields["Email"]["edited_by_you"]) == ("profile", False)
+    assert fields["Pronouns"]["source"] == "you"
+
+
+# ---------- a later run restates what an earlier one posted ----------
+
+THREE = _page(_live("c1", "Company", "Acme"), _live("c2", "Company", "Initech"),
+              _live("c3", "Company", "Hooli"))
+# A field left open in both runs, so the step is unfinished and the Fill button stays.
+OPEN = _field("n1", "Preferred shift", "needs_answer", shape="group", route="none", lastOutcome="no_fact")
+RUN_ONE = {"host": LOOP_HOST, "fields": [
+    _field(fid, "Company", "verified", answer=name, route="slot", slot="experience.0.employer")
+    for fid, name in (("c1", "Acme"), ("c2", "Initech"), ("c3", "Hooli"))] + [OPEN]}
+RUN_TWO = {"host": LOOP_HOST, "fields": [
+    _field("c1", "Company", "already"), _field("c2", "Company", "already"),
+    _field("c3", "Company", "verified", answer="Pied Piper", route="slot", slot="experience.0.employer"),
+    OPEN]}
+
+
+def test_a_second_run_restates_the_fields_the_first_posted_in_page_order(tmp_path):
+    """Run 1 posts Company c1, c2, c3; run 2 writes only c3. The server counts a repeated
+    label by its place in the row, so a row holding only c3 would land on c1's place:
+    the second post names all three, in page order, c3 updated."""
+    after = _page(_live("c1", "Company", "Acme"), _live("c2", "Company", "Initech"),
+                  _live("c3", "Company", "Pied Piper"))
+    out = _run(tmp_path, page=THREE, report=RUN_ONE, againReport=RUN_TWO, again=True,
+               framesAfter={"fill_inventory": after})
+    first, second = (json.loads(msg["init"]["body"])["fields"] for msg in _receipts(out))
+    assert [f["answer"] for f in first] == ["Acme", "Initech", "Hooli"]
+    assert [(f["answer"], f["source"]) for f in second] == [
+        ("Acme", "resume"), ("Initech", "resume"), ("Pied Piper", "resume")]
