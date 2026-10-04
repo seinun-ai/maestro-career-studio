@@ -83,6 +83,8 @@ session card's prompt points to it.
      `interviewing`, rejection → `rejected`, offer → `offered`.
   4. Adds a dated one-line note naming the email's subject. The note must append; it must not
      replace existing notes (the plan must check `update_application`'s notes behavior).
+     As shipped, the note line records the email's type and date, not its subject, so Maestro
+     never stores email text (deliberate).
 
   An unclear match changes nothing. It ends with a short digest: what changed, unclear matches,
   and applications with no reply in 21+ days. No new status is added.

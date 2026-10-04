@@ -93,7 +93,7 @@ backend/
                        + jev (the Companion's fill pass and its Jev engine),
                        automations (the Automations page's catalog), …)
     automations/skills/  the agent prompts, one <name>/SKILL.md each: the Automations
-                       page's source and the skills docs/skills/ indexes
+                       source of the Automations page; indexed by docs/skills/README.md
     templates/         bundled .tex.j2 sources, typst_classic.typ and cover_letter.typ
     tools/             operator tools, `python -m app.tools.<name>`: backup_db
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
@@ -518,14 +518,13 @@ file to open.
   only verbatim-callable args or none at all, offer prose is derived from the filtered options, and composers
   take the requested state explicitly rather than inferring intent from results. Scoring is mentioned in
   prose, never as an option — it needs a `job_id` no composer can know.
-- **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. `GET /api/automations`
-  (DB-free; `services/automations.py` parses `app/automations/skills/<name>/SKILL.md`, whose app-only card fields sit
-  under frontmatter `metadata:`) returns the cards and the **agent apps**: Claude Desktop, Codex, Any MCP agent, plus
-  Claude web and ChatGPT, shown unreachable because MCP here is local-only. A card's **Copy prompt** puts the app's
-  wrapper plus the skill body on the clipboard (Show prompt reveals it; a clipboard failure opens it). Maestro runs NO
-  scheduler and inserts nothing about the user: a scheduled card's wrapper tells the agent to ask the user when to
-  run, an attended or custom one runs now. Apply is attended (`apply_kind()`) until full automation mode. Parsing is
-  strict and `load_cards()` runs at startup, so a malformed skill file fails boot.
+- **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. DB-free `GET /api/automations`
+  (`services/automations.py` parses `app/automations/skills/<name>/SKILL.md`; card-only fields sit under frontmatter
+  `metadata:`) returns the cards and the **agent apps**: Claude Desktop, Codex, Any MCP agent, plus Claude web and
+  ChatGPT web, shown unreachable because MCP here is local-only (the ChatGPT desktop app works via Any MCP agent).
+  **Copy prompt** puts the app's wrapper plus the skill body on the clipboard. Maestro runs NO scheduler: a scheduled
+  card's wrapper has the agent ask the user when to run. Apply is attended (`apply_kind()`) until full automation
+  mode. `load_cards()` is strict and runs at startup, so a malformed skill file fails boot.
 - **In-app chat**, on screen the **Assistant** (`services/chat_agent.py` + `chat_tools.py`): a distinct
   toolset (resume edit, KB capture, template admin including the mutations MCP
   deliberately lacks). Its resume-edit tool runs the SAME pipeline as the REST
@@ -733,7 +732,7 @@ with the failure mode that bought it. Code citing "§8" lands here.
   live in `backend/`; an unnamed "slop ratchet OK" was the 2026-08-17 false green). **`complexity_hotspots` is a
   COUNT — re-baseline it rather than chasing it**: adding code, adding tests or decomposing a monster all raise it;
   judge erosion by hotspot density per KLOC and the worst cc. Orphan LOC and duplication are honest ratchets. Scan a
-  SURFACE dir, never the repo root (it orphans the whole backend). The extension's allowlisted clones are the
+  SURFACE dir, never the repo root (it orphans the whole backend); jscpd is optional. The extension's allowlisted clones are the
   documented injected twins, but the matcher pairs FILE NAMES by substring and `allowlisted_clones` is PRINTED, not
   gated: check it by eye. Graph signals read the gitignored `graphify-out/graph.json` (`graphify extract . --no-cluster
   --code-only`, PyPI `graphifyy`).
@@ -886,13 +885,14 @@ citation. Priority lives in the item text, not in the ordinal.
   desktop shell and to a Claude Desktop child, so a bare `pdflatex` does not resolve. `engines.find_pdflatex` searches
   the TeX homes after PATH, and every run spawns the resolved ABSOLUTE path.
 - **A seeded template copies its source only on INSERT** (2026-09-20): v0.4.0's Postgres import landed rows AFTER
-  migrations ran, so the importer re-landed old bytes → `template_registry.SUPERSEDED_SEED_DIGESTS` resyncs at SEED time.
+  migrations ran, so a migration-time rewrite hit an empty file and the importer re-landed old bytes →
+  `template_registry.SUPERSEDED_SEED_DIGESTS` resyncs at SEED time.
 - **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): `journal_mode` persists in the file; `foreign_keys`,
   `synchronous` and `busy_timeout` reset every connect, so 21 `ondelete=` cascades silently stopped → every SQLite
   engine goes through `app.db.make_engine`.
 - **Autogenerate fully qualifies a TypeDecorator** (2026-09-19): `app.models.types.UTCDateTime()` is unimportable in a
-  revision → use the impl type by hand. `alembic check` skips server defaults (the parity test passes
-  `compare_server_default=True`).
+  revision → use the impl type by hand. Alembic compares compiled DDL (no `compare_type` hook); `alembic check` skips
+  server defaults (the parity test passes `compare_server_default=True`).
 - **A Boolean `server_default="false"` is TEXT on SQLite** (2026-09-19): `'false'` is truthy in Python, so every
   user template read as the default → use `expression.false()` (pinned by `test_db_portability`).
 - **`Session.commit()` flushes first** (2026-09-19): a teardown that deletes rows and commits also lands a
@@ -910,7 +910,7 @@ citation. Priority lives in the item text, not in the ordinal.
 - **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers, no MIME types. Every
   picker reads `frontend/lib/upload-accept.ts`.
 - **A guard test mocked away the guard** (2026-08-25): a green suite hid a 100%-failing rewrite path because it replaced
-  `guarded_rewrite` → when a guard is the subject, fake `llm.call_openai`, never the guard.
+  `guarded_rewrite` → when a guard or validator is the subject, fake `llm.call_openai`, never the guard.
 - **The FAST model quietly caps score honesty** (2026-08-24): flash-lite extractions missed conceptual JD skills →
   base ATS scores inflated ~9 pts vs fuller extractors. Fast tier drives coverage/honesty/latency; Smart barely moves
   outcomes — re-benchmark FAST before changing model defaults.
@@ -931,11 +931,12 @@ citation. Priority lives in the item text, not in the ordinal.
   fires after the SSE headers are out and reaches the browser as a truncated stream. Capabilities are probed on save
   (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`; unprobed models are never blocked.
 - **A probe must issue the SAME call as the surface it measures**: same client (`llm.get_chat_client`), same kwargs
-  from `llm.completion_extras`. A re-implemented call's stored row SHADOWS reality — a false tools=No once 422'd every
+  from `llm.completion_extras` (the one site for such rules). A re-implemented call's stored row SHADOWS reality — a false tools=No once 422'd every
   chat message.
 - **LLM provider outages are ONE exception type**: `llm.py` normalizes them to `llm.LLMProviderError`; `app.main` maps
   it to 502 + its `str()`, a user sentence; plain `RuntimeError` is LOCAL and stays a 500. Never catch `openai.*` in
-  routers; classify a provider failure on `provider_detail`, never `str(exc)` (2026-09-24).
+  routers; classify a provider failure on `provider_detail`, never `str(exc)` — a user sentence once replaced the text
+  the capability probe matched on (2026-09-24).
 - **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` moving children off a parent leaves its loaded
   collection stale, so `session.delete(parent)` cascades away the moved rows → expire the parent between (`career_kb.merge_entities`).
 - **Workday apply steps read as "no form"** (2026-09-25): Workday has no `<form>`/`<select>`, a `type="text"` phone

@@ -86,7 +86,7 @@ and the screen speaks plainly ("item", "bullet", "Career history"). Do not
 | **MCP client** | An outside AI assistant that uses the app over the MCP server | connected agent; Settings › Connected agents | integration, plugin |
 | **Extension** | The Chrome side panel (`extension/`) | Companion ("the Companion" in a sentence) | browser extension, widget |
 | **Automations** | The page of copy-only prompts, one per job an outside agent can do with Maestro (`app/automations/skills/`, `GET /api/automations`); Maestro runs no scheduler | Automations (sidebar, Job search) | scheduler, workflows, jobs, bots |
-| **Agent App** | The app a user pastes an Automations prompt into: Claude Desktop, Codex, Any MCP agent; Claude web and ChatGPT are listed but unreachable, since MCP here is local-only | agent app (the picker) | client, platform, integration |
+| **Agent App** | The app a user pastes an Automations prompt into: Claude Desktop, Codex, Any MCP agent; Claude web and ChatGPT web are listed but unreachable, since MCP here is local-only (the ChatGPT desktop app works through Any MCP agent) | agent app (the picker) | client, platform, integration |
 | **Scheduled / Attended** | A card's kind: Scheduled prompts tell the agent to ask the user when to run; Attended ones (Apply) run now, with the user's yes before each submit | Scheduled, Attended badge | recurring, manual, automatic |
 | **Full Automation Mode** | The future phase in which Apply could be scheduled too; `apply_kind()` returns attended until it exists | "Scheduled applying comes with full automation mode." | auto-apply, autopilot |
 

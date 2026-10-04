@@ -456,12 +456,13 @@ Claude extension's **Tool profile** setting or with
 `setup-mcp.sh --profile`. Use one set at a time.
 
 **Skills.** [`docs/skills/`](docs/skills/) has ready-made skills for a daily job
-hunt and an apply run that works on its own and asks you only for what the app
-doesn't know, plus one yes before each submit. `customize-job-skills` suggests
-skills from what your agent knows about you, asks a few questions, and builds
-them with your assistant's own skill creator and scheduler. The **Automations**
-page in the app puts each one on the clipboard: copy a prompt into Claude
-Desktop, Codex or any MCP agent, and your agent asks when to run it.
+hunt, an apply run that asks you only for what the app doesn't know (plus one
+yes before each submit), mail-status, referral pages and a tailor run.
+`customize-job-skills` suggests skills from what your agent knows about you,
+asks a few questions, and builds them with your assistant's own skill creator
+and scheduler. The **Automations** page in the app puts each one on the
+clipboard: copy a prompt into Claude Desktop, Codex or any MCP agent, and your
+agent asks when to run it.
 
 Keep the connection type **STDIO** (the default). The HTTP option would expose
 the app, which has no login — don't. (ChatGPT on the *web* can't reach a local
@@ -573,10 +574,11 @@ app, finds postings on whatever sites it can use, saves and scores them against
 your resumes, and hands back a ranked shortlist for you to review. There's no
 job-board integration to be locked into.
 
-Ready-made **`job-hunt`** and **`apply-session`** skills are in
-[`docs/skills/`](docs/skills/) — copy a prompt from the app's **Automations**
-page into Claude Desktop, Codex or any MCP agent (your agent asks when to run
-it), copy the skills into your assistant's skills folder as-is, or run **`customize-job-skills`** to make them yours or build new ones
+Ready-made skills (`job-hunt`, `apply-session`, `mail-status`, `referral-pages`,
+`tailor-run`) are in [`docs/skills/`](docs/skills/) — copy a prompt from the
+app's **Automations** page into Claude Desktop, Codex or any MCP agent (your
+agent asks when to run it), copy the skills into your assistant's skills folder
+as-is, or run **`customize-job-skills`** to make them yours or build new ones
 (batch tailoring, referral-first hunting, a weekly digest) from your own data.
 
 ### Going all the way: agent applications
