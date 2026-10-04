@@ -49,6 +49,18 @@ def _drop_none(**kwargs: Any) -> dict[str, Any]:
     return {k: v for k, v in kwargs.items() if v is not None}
 
 
+def _without_eeo_values(review: Any) -> Any:
+    """The client's own strip, beside the server's (two gates, the `get_autofill_profile`
+    precedent): an EEO answer's value never reaches an agent (SYSTEM.md
+    {#inv-filled-answers-local})."""
+    if not isinstance(review, dict):
+        return review
+    for flag in review.get("flags") or []:
+        if isinstance(flag, dict) and flag.get("eeo"):
+            flag.pop("answer", None)
+    return review
+
+
 def _origin_headers(origin_detail: str | None) -> dict[str, str]:
     """Provenance for a KB write or a proposal. Every MCP write is origin 'mcp';
     the detail names the client so the entity timeline (or the proposal's
@@ -1307,4 +1319,18 @@ class BackendClient:
         )
 
     def get_final_review(self, proposal_id: str) -> Any:
-        return self._request("GET", f"/api/proposals/{proposal_id}/final-review")
+        return _without_eeo_values(
+            self._request("GET", f"/api/proposals/{proposal_id}/final-review")
+        )
+
+    def record_filled_answers(
+        self,
+        job_id: str,
+        fields: list[dict[str, Any]],
+        *,
+        step: str | None = None,
+        application_id: str | None = None,
+    ) -> Any:
+        body = {"channel": "agent", "fields": fields,
+                **_drop_none(step=step, application_id=application_id)}
+        return self._request("POST", f"/api/jobs/{job_id}/filled-answers", json=body)

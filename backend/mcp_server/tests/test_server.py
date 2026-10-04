@@ -72,6 +72,7 @@ def test_all_tools_registered():
         "mark_submitted",
         "record_triage",
         "report_failure",
+        "record_filled_answers",
     }
     expected |= KB_TOOL_NAMES
     assert expected <= names
@@ -1187,6 +1188,7 @@ _PINNED_HINTS = {
     "record_consent": (False, True, False, False),
     "mark_submitted": (False, True, False, False),
     # Purely additive.
+    "record_filled_answers": (False, False, False, False),
     "kb_create_entity": (False, False, False, False),
     "attach_evidence": (False, False, False, False),
 }
@@ -1438,3 +1440,15 @@ def test_the_hint_helper_swallows_only_backend_errors():
 
     with pytest.raises(KeyError):
         srv._best_effort_hint(bug)
+
+
+def test_record_filled_answers_forwards_to_client(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client,
+        "record_filled_answers",
+        lambda job_id, fields, **kw: seen.update(job_id=job_id, fields=fields, **kw) or {"id": "r1"},
+    )
+    fields = [{"question": "Q", "answer": "A", "source": "profile"}]
+    assert srv.record_filled_answers("j1", fields, step="1") == {"id": "r1"}
+    assert seen == {"job_id": "j1", "fields": fields, "step": "1", "application_id": None}

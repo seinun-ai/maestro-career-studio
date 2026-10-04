@@ -234,3 +234,26 @@ def link_unlinked(session: Session, application: Application) -> int:
         if version is not None and (stamped := _stamped(row.fields or [], version)) is not None:
             row.fields = stamped
     return len(rows)
+
+
+def _agent_view(row: FilledAnswer, field: dict[str, Any], flags: list[dict[str, str]]) -> dict[str, Any]:
+    view = {"step": row.step, "question": field.get("question"), "section": field.get("section"),
+            "source": field.get("source"), "eeo": bool(field.get("eeo")), "flags": flags}
+    if view["eeo"]:
+        view["eeo_answered"] = bool(field.get("eeo_answered"))
+    else:
+        view["answer"] = field.get("answer")
+    return view
+
+
+def agent_flags(session: Session, job: Job | None) -> list[dict[str, Any]]:
+    """The job's flagged answers for an agent's final review, latest per question. An EEO
+    answer's value never goes to an agent, consent or not: `eeo_answered` says whether one was
+    given (SYSTEM.md {#inv-filled-answers-local})."""
+    rows = _rows(session, job.id) if job is not None else []
+    if not rows:
+        return []
+    context = flag_context(session, job)
+    flagged = ((row, field, answer_flags.flags_for(field, *context))
+               for row, field in latest_fields(rows))
+    return [_agent_view(row, field, flags) for row, field, flags in flagged if flags]

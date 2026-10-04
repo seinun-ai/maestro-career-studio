@@ -405,6 +405,9 @@ def get_final_review(session: Session, prop: ApplicationProposal) -> dict:
             "title": job.title if job else None,
         },
         "knockout": _knockout_scan(session, job),
+        # The recorded form answers worth a second look before "Submit now?" (warn only).
+        # EEO entries carry `eeo_answered`, never a value.
+        "flags": filled_answers.agent_flags(session, job),
         "fit": {
             "chosen_base": chosen,
             "scores": scores or None,
