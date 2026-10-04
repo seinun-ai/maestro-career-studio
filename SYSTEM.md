@@ -627,9 +627,9 @@ file to open.
 
 Reference tier, like §4: consulted while working in `frontend/`, not read for orientation. Lives in
 [`docs/frontend-conventions.md`](docs/frontend-conventions.md): layout and sidebar rules, Tailwind v4 tokens and
-M3 colour roles, the studios' save and preview model, a11y and focus behaviour, naming, the copy rules and the
-one glossary (*Canonical terms*, enforced by `test_frontend_vocabulary.py`), each with the failure mode that
-bought it. Code citing "§8" lands here.
+M3 colour roles, the studios' save and preview model, a11y and focus behaviour, naming, the copy rules and the one
+glossary (*Canonical terms*; ratchets `test_frontend_vocabulary.py`, `test_frontend_sentence_length.py`), each
+with the failure mode that bought it. Code citing "§8" lands here.
 
 ## 9. Dev & test environment
 

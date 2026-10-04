@@ -287,7 +287,7 @@ def test_sentences_say_the_companion():
         ("components/settings/autofill-section.tsx", 'description="The Companion uses these to fill job applications."'),
         ("components/settings/autofill-section.tsx", 'title: "Let the Companion fill agreements and signatures?",'),
         ("components/settings/prompts-section.tsx", '"How the Companion picks answers for form choices."'),
-        ("components/settings/connected-agents-card.tsx", "and the Companion, the Maestro CS browser extension,"),
+        ("components/settings/connected-agents-card.tsx", "The Companion, the Maestro CS browser extension, saves jobs"),
     ):
         assert sentence in _flat(_read(rel)), (rel, sentence)
 
@@ -409,7 +409,7 @@ def test_the_connected_agents_card_is_exact_about_bullets_and_yeses():
     assert "The app records each yes but can&apos;t stop an agent, so stay with it while it applies." in card
     assert "audit trail" not in card
     hints = _flat(_read("components/settings/mcp-workflow-section.tsx"))
-    assert "so Claude or Codex can go from scoring to tailoring to applying without being told each step." in hints
+    assert "Claude or Codex can then go from scoring to tailoring to applying without being told each step." in hints
     assert "minimal" not in hints and "walk the" not in hints
 
 

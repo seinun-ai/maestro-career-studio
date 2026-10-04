@@ -391,7 +391,7 @@ export function ProposalsSection() {
         icon={Bot}
         title="No proposals yet"
         // The page header carries the consent line (no submit without your yes); once is enough.
-        description="Proposals come from an AI agent you connect, such as Claude, Codex or the ChatGPT desktop app, using MCP (the standard way AI apps connect to tools). The app never proposes jobs itself."
+        description="Proposals come from an AI agent you connect, such as Claude, Codex or the ChatGPT desktop app. It connects through MCP (the standard way AI apps connect to tools). The app never proposes jobs itself."
         action={
           <div className="flex max-w-full flex-col items-center gap-2 px-4">
             {/* Links styled as buttons, not Buttons rendered as links: Base UI's Button

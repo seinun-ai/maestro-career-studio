@@ -153,13 +153,13 @@ const extraSectionsArraySchema = z
         ctx.addIssue({
           code: "custom",
           path: [i, "key"],
-          message: `extra section key '${section.key}' collides with the core '${folded}' section`,
+          message: `the name '${section.key}' belongs to the ${folded} section`,
         });
       } else if (seen.has(folded)) {
         ctx.addIssue({
           code: "custom",
           path: [i, "key"],
-          message: `duplicate extra section key '${section.key}'`,
+          message: `the name '${section.key}' is used twice`,
         });
       }
       seen.add(folded);

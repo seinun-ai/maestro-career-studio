@@ -114,9 +114,9 @@ export function ConnectedAgentsCard() {
             agent, so stay with it while it applies.
           </p>
           <p className="text-muted-foreground max-w-[65ch]">
-            Two helpers are part of the app, not connected agents: the Assistant, which you talk
-            to inside this app, and the Companion, the Maestro CS browser extension, which saves jobs
-            and fills application forms in your browser.
+            Two helpers are part of the app, not connected agents. You talk to the Assistant
+            inside this app. The Companion, the Maestro CS browser extension, saves jobs and fills
+            application forms in your browser.
           </p>
           <div className="flex flex-wrap gap-2">
             {/* Plain links styled as buttons: Base UI's Button renders an <a> with
