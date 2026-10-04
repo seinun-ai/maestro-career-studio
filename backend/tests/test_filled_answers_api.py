@@ -193,3 +193,10 @@ def test_a_numeric_answer_is_stored_as_text(db_session):
                  ).status_code == 201
     [field] = _fields(client.get(f"/api/jobs/{job.id}/filled-answers").json())
     assert field["answer"] == "5"
+
+
+def test_a_post_keeps_the_base_resume_it_was_filled_for(db_session):
+    job = _mk_job(db_session, company="Acme")
+    body = _post(job, [_f("First name", "Ada")], base_resume="data_scientist").json()
+    assert db_session.get(FilledAnswer, UUID(body["id"])).base_resume == "data_scientist"
+    assert _post(job, [_f("First name", "Ada")], base_resume="x" * 121).status_code == 422

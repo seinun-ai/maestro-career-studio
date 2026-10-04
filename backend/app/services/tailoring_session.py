@@ -27,6 +27,7 @@ from app.services import (
     application_writes,
     artifacts,
     ats_score,
+    filled_answers,
     gap_analysis,
     gap_enrichment,
     health_gates,
@@ -1452,6 +1453,7 @@ def tailor(
             .order_by(Application.created_at.desc())
             .limit(1)
         )
+        created = existing is None
         if existing is not None:
             existing.user_prompt = user_prompt
             application = existing
@@ -1472,6 +1474,8 @@ def tailor(
             source="tailor",
             source_ref=str(session_id),
         )
+        if created:
+            filled_answers.link_unlinked(session, application)
         for item in handled_pre_ops:
             if item.get("action") != "port_kb_point":
                 continue

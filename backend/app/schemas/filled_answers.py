@@ -83,6 +83,7 @@ class FilledAnswersCreate(BaseModel):
     host: str | None = Field(default=None, max_length=255)
     step: str | None = Field(default=None, max_length=300)
     application_id: UUID | None = None
+    base_resume: str | None = Field(default=None, max_length=120)
     fields: list[FilledField] = Field(min_length=1, max_length=MAX_FIELDS)
 
 

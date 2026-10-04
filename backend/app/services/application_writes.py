@@ -6,7 +6,7 @@ resume version, and remove the old files from disk — and disk removal must
 wait until the caller's transaction commits, or a rollback leaves the DB
 pointing at deleted files. This stages everything transactional and returns
 the stale paths for the caller to pass to artifacts.remove_files() AFTER
-commit. It also links the job's unlinked answer receipt rows to the application.
+commit.
 """
 from pathlib import Path
 from typing import Any
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.resume_version import ResumeVersion
-from app.services import artifacts, filled_answers
+from app.services import artifacts
 from app.services.resume_versions import record_version
 
 # The one sentence for an application with no tailored resume to read yet:
@@ -44,7 +44,4 @@ def stage_resume_update(
         summary=summary,
         source_ref=source_ref,
     )
-    # The job's answer receipt, posted before it had an application, belongs to this one
-    # (docs/entities/filled-answers.md, "Linking"); after the version so uploads can be stamped.
-    filled_answers.link_unlinked(db, application)
     return stale, version

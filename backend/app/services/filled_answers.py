@@ -12,6 +12,7 @@ and no agent read returns one. Nothing here imports telemetry, tracing or an LLM
 """
 
 import logging
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -76,15 +77,19 @@ def _application_id(session: Session, job: Job, application_id: UUID | None) -> 
     return app_row.id
 
 
-def _resume_version(session: Session, application_id: UUID | None) -> int | None:
+def _resume_version(session: Session, application_id: UUID | None,
+                    at: datetime | None = None) -> int | None:
+    """The application's newest resume version, as of `at` when given (None when the
+    application had no version yet then)."""
     if application_id is None:
         return None
-    return session.scalar(
-        select(func.max(ResumeVersion.version_number)).where(
-            ResumeVersion.resume_kind == "application",
-            ResumeVersion.resume_key == str(application_id),
-        )
+    query = select(func.max(ResumeVersion.version_number)).where(
+        ResumeVersion.resume_kind == "application",
+        ResumeVersion.resume_key == str(application_id),
     )
+    if at is not None:
+        query = query.where(ResumeVersion.created_at <= at)
+    return session.scalar(query)
 
 
 def _host_of(url: str | None) -> str | None:
@@ -118,7 +123,7 @@ def record(session: Session, job: Job, payload: FilledAnswersCreate) -> dict[str
     fields = [_stored(field, consented, version) for field in payload.fields]
     row = FilledAnswer(job_id=job.id, application_id=application_id, channel=payload.channel,
                        host=payload.host or _host_of(job.source_url), step=payload.step,
-                       fields=fields)
+                       base_resume=payload.base_resume, fields=fields)
     session.add(row)
     session.commit()
     flagged = _flagged_indexes(fields, context)
@@ -221,16 +226,29 @@ def _stamped(fields: list[dict[str, Any]], version: int | None) -> list[dict[str
     return stamped if stamped != fields else None
 
 
-def link_unlinked(session: Session, application: Application) -> int:
-    """Late linking: the job's rows posted before it had an application belong to this one,
-    and their resume uploads take the application's latest resume version, as a post made with
-    the application would have. The caller commits; `application.id` must be set (flushed)
-    and the version recorded first."""
+def _claimed_rows(session: Session, application: Application) -> list[FilledAnswer]:
+    """The job's unlinked rows this application owns: posted for its base, or posted without
+    saying which base while the job has just this one application."""
     rows = session.scalars(select(FilledAnswer).where(
         FilledAnswer.job_id == application.job_id, FilledAnswer.application_id.is_(None))).all()
-    version = _resume_version(session, application.id)
+    mine = [row for row in rows if row.base_resume == application.base_resume]
+    if any(row.base_resume is None for row in rows):
+        sole = session.scalar(select(func.count()).select_from(Application).where(
+            Application.job_id == application.job_id)) == 1
+        mine += [row for row in rows if row.base_resume is None and sole]
+    return mine
+
+
+def link_unlinked(session: Session, application: Application) -> int:
+    """Late linking, for a NEW application or one marked applied or submitted (never on a
+    rebuild): the job's rows posted before it had an application, for this one's base, belong
+    to it. Their resume uploads take the version the application had when the row was posted,
+    none when it had no version yet. The caller commits; `application.id` must be set
+    (flushed) and the version recorded first."""
+    rows = _claimed_rows(session, application)
     for row in rows:
         row.application_id = application.id
+        version = _resume_version(session, application.id, row.captured_at)
         if version is not None and (stamped := _stamped(row.fields or [], version)) is not None:
             row.fields = stamped
     return len(rows)

@@ -24,6 +24,7 @@ def upgrade() -> None:
         sa.Column("step", sa.Text(), nullable=True),
         sa.Column("captured_at", sa.DateTime(), server_default=sa.text("(CURRENT_TIMESTAMP)"),
                   nullable=False),
+        sa.Column("base_resume", sa.Text(), nullable=True),
         sa.Column("fields", sa.JSON(), nullable=False),
         sa.ForeignKeyConstraint(["application_id"], ["applications.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["job_id"], ["jobs.id"], ondelete="CASCADE"),

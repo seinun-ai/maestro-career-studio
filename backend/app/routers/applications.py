@@ -112,6 +112,7 @@ def create_application_from_base(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    created = application is None
     if application is not None:
         application.job_id = payload.job_id
         application.base_resume = payload.base_resume
@@ -130,6 +131,8 @@ def create_application_from_base(
     stale, _ = stage_resume_update(
         db, application, customized, source="import", summary=summary
     )
+    if created:  # a rebuild keeps what the job's receipt already belongs to
+        filled_answers.link_unlinked(db, application)
     db.commit()
     db.refresh(application)
     artifacts.remove_files(stale)

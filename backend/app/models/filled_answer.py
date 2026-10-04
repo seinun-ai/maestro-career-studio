@@ -44,4 +44,7 @@ class FilledAnswer(Base):
     application_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType(as_uuid=True), ForeignKey("applications.id", ondelete="SET NULL")
     )
+    # The base resume the writer was filling for (a slug), so late linking can tell two
+    # applications of one job apart; null when the writer did not say.
+    base_resume: Mapped[str | None] = mapped_column(Text)
     fields: Mapped[list] = mapped_column(JSONDoc, nullable=False)
