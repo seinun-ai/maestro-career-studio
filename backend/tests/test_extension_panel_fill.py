@@ -3671,6 +3671,13 @@ main(async () => {
     segment.click();
     await settle();
   }
+  // The bound tab's content script says you changed fields (`fields_touched`); a spec
+  // names the senders, in order: {id?, tab?}. The panel waits out its debounce.
+  for (const from of spec.pings ?? []) {
+    heard({ type: "fields_touched", fids: ["v1"] },
+          { id: from.id ?? "test-extension", tab: { id: from.tab ?? 7 } });
+  }
+  if (spec.pings) await settle();
   if (spec.leaveTo !== undefined) {
     await onActivated({ tabId: spec.leaveTo });
     await settle();
@@ -3689,7 +3696,7 @@ main(async () => {
     if (open) open();
     await settle();
   }
-  emit({ loaded, clicked, running, stopping, settled, runs, sent, broadcasts, writes, warnings });
+  emit({ loaded, clicked, running, stopping, settled, runs, sent, broadcasts, writes, warnings, delays });
 });
 """
 

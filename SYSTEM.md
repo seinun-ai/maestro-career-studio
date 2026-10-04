@@ -354,9 +354,10 @@ file to open.
   too): `get_final_review`'s `flags` carry `eeo_answered`, the MCP client strips again, and no MCP path reads
   `GET /api/jobs/{id}/filled-answers`, which serves EEO values to the web UI. The Companion panel
   (`shared/receipt.js`, posted by `panel/actions/fill.js` `recordReceipt`) posts the receipt through the generic `api`
-  door, never `telemetry`/`fill_trace`, so it works with telemetry off; after each run, at Mark applied and as it
-  leaves a page it reads only frames that earn the data (inv-frame-earns-data), records no never-fill field, and its
-  values never reach the run-trace builders. Pinned by
+  door, never `telemetry`/`fill_trace`, so it works with telemetry off; after each run, while you edit (a value-free
+  fids-only hint), at Mark applied and as it leaves a page it reads only frames that earn the data
+  (inv-frame-earns-data), records no never-fill field even under standing consent (`ns.isNeverFilled`), and its values
+  never reach the run-trace builders. Pinned by
   `tests/test_filled_answers_invariant.py`, `test_extension_panel_receipt.py`, `test_filled_answers_api.py`,
   `test_filled_answers_agent.py` and `mcp_server/tests/test_client_filled_answers.py`.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at

@@ -264,7 +264,12 @@
     for (const el of path) {
       if (el === busy) return;
       if (fidOf.has(el)) {
-        if (fidOf.get(el) !== busyFid) touched.add(fidOf.get(el));
+        if (fidOf.get(el) !== busyFid) {
+          touched.add(fidOf.get(el));
+          // The only hook out of this module: which field (a fid, never a value)
+          // the USER changed, for content/touch-notice.js.
+          ns.onFieldTouched?.(fidOf.get(el));
+        }
         return;
       }
     }

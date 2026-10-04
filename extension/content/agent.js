@@ -582,8 +582,7 @@
                origin: location.origin, controls: ns.fillableControls() };
     },
     profile_fill: (msg) => (frameMayReceiveUserData(msg)
-      ? ns.fillFormFromProfile(msg.profile, msg.employment, msg.eeoEnabled === true,
-        msg.skills, msg.consentForms === true)
+      ? ns.fillFormFromProfile(msg.profile, msg.employment, msg.eeoEnabled === true, msg.skills, msg.consentForms === true)
       : { filled: [], eeoFilled: [], corrected: [], already: [], seen: 0, observations: [] }),
     collect_open_questions: (msg) => (frameMayReceiveUserData(msg)
       ? ns.collectOpenQuestions()
@@ -696,4 +695,5 @@
   }
 
   ns.pageHandlers = PAGE_HANDLERS;
+  ns.frameMayReceiveUserData = frameMayReceiveUserData; // content/touch-notice.js asks it at send time
 })();

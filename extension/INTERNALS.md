@@ -36,6 +36,7 @@ worker:
 | `content/eeo.js` | every frame | voluntary EEO rules and protected-class control handling |
 | `content/autofill.js` | every frame | profile field matching and fill engine |
 | `content/open-questions.js` | every frame | open-question collection and answer injection |
+| `content/touch-notice.js` | every frame | tells the panel THAT you changed a field: one throttled (2 s) `fields_touched` message of fids only, sent only where the frame gate (`ns.frameMayReceiveUserData`) says yes; engine writes never trigger it |
 | `content/detect.js` | every frame, every page | the detection read — reads, scores, returns |
 | `content/agent.js` | every frame | page RPC front door, extraction wrapper, resume attach |
 | `panel/panel.{html,css,js}` | the side panel | the store, the loaders, the generation guard, the render loop, the tab binding; sends everything through the service worker |
@@ -51,7 +52,9 @@ that publishes functions, and `agent.js` registers one message listener. Nothing
 detects on load, mounts anything, stores anything or sends anything. The one
 other thing that runs at load is `inventory.js`'s capture listener for trusted
 `input`/`change` events: it remembers WHICH element the user changed (a weak
-reference, never a value) so the engine never overwrites it.
+reference, never a value) so the engine never overwrites it. That listener has
+one hook out, `ns.onFieldTouched(fid)`, which `touch-notice.js` turns into the
+only message a content script ever sends on its own (see "The answer receipt").
 
 `detect.js` is the decision point and it answers only when asked — the panel
 sends `detect_page` to frame 0 of the tab it is bound to, because a panel runs in
@@ -1238,7 +1241,12 @@ and its values reach no value-free builder (SYSTEM.md
   `consentForms` (the loop report's, the rule pass's context), so the policy
   that judged the run judges the read. Only a frame that earns the data answers
   (`{#inv-frame-earns-data}`). A field the policy never fills (`policyBlocked`)
-  is never recorded, on any path.
+  is never recorded, on any path. The inventory's flag is not the whole of that:
+  standing consent makes the fill's `isPolicyBlocked` answer "not blocked" for
+  every label, so the receipt also drops the labels of the consent-independent
+  `ns.isNeverFilled` (`shared/policy.js`: signatures, passwords, government IDs;
+  salary questions are not on it). It is applied in the receipt's one entry
+  builder, so every path obeys it.
 - **The rule pass names its field.** Each `filled`/`corrected` item carries the
   rule id and the `fid` of the control written (`ns.fillInventory.fidFor(el)`,
   which names a control no pass has listed yet at the cost of a re-list per DOM
@@ -1254,15 +1262,33 @@ and its values reach no value-free builder (SYSTEM.md
   500, answer 20000, 100 list items, `options_count` 1000); a field with no
   question is skipped, never sent.
 - **Capture points:** after a loop run, after a rule-pass run, after a pause
-  answer, at **Mark applied** (`setStatus`, before the PATCH), and as the panel
-  **lets go of a page** (`bindPage`, before `resetPageFacts`, when the tab or url
-  changes; a Refresh is not leaving). The last two post what you typed or
-  changed since the last post (`fromEdits`): a field a run wrote keeps its
-  source and is marked `edited_by_you`, one it did not is `you`; the row also
-  restates the fields already posted. `receiptSeen` (page-shaped, carried by
-  Refresh) is the memory of what was posted, by fid; nothing is posted when
-  nothing changed. The leaving capture is fire-and-forget, built from the
+  answer, **while bound** (a debounced capture, below), at **Mark applied**
+  (`setStatus`, before the PATCH), and as the panel **lets go of a page**
+  (`bindPage`, before `resetPageFacts`, when the tab or url changes; a Refresh
+  is not leaving). The last three post what you typed or changed since the last
+  post (`fromEdits`): a field a run wrote keeps its source and is marked
+  `edited_by_you`, one it did not is `you`. `receiptSeen` (page-shaped, carried
+  by Refresh, cleared only with the page) is the memory of what was posted, by
+  fid; nothing is posted when nothing changed, and none of these reads a page
+  no run has posted for. The leaving capture is fire-and-forget, built from the
   facts as they stood, and writes nothing back to the store.
+- **Every post restates.** The server keeps the newest answer per (step,
+  section, question, occurrence IN THE ROW), so a row with only the third
+  "Company" would land on the first one's place. Each run and each edit capture
+  therefore also restates every already-posted field still on the page
+  (`restated`/`fromEdits`), in page order, under the source it was posted with.
+- **The hint while bound.** `content/touch-notice.js` sends the panel
+  `{type: "fields_touched", fids}` (opaque fids, no value), at most once per two
+  seconds, for fields the USER changed (`inventory.js`'s trusted-event listener;
+  the engine's writes run under `fillBusyEl` and are exempt), and only from a
+  frame that passes `ns.frameMayReceiveUserData` (agent.js's gate, asked at send
+  time). The panel (`onFieldsTouched`) accepts it only from this extension, from
+  the bound tab, for a matched job with a receipt posted; after `EDIT_CAPTURE_MS`
+  (3 s) of quiet it runs the same gated edit capture. The message is a hint: all
+  values still come from the gated `fill_inventory` read.
+- **A rule that wrote over your edit** is the rule's value, not yours: a
+  rule-pass run first reads which fids were already changed (`touchedBefore`) and
+  does not mark those `edited_by_you`; the loop never writes a field you changed.
 
 ## Telemetry — what leaves the page
 

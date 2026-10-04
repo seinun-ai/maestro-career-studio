@@ -108,6 +108,8 @@ PANEL_OWN_SRCS = [src for src in PANEL_SCRIPT_SRCS if not src.startswith("../")]
 _PANEL_FAKES_JS = r"""
 let onActivated = null;
 let onUpdated = null;
+let onRuntimeMessage = null;
+const heard = (msg, sender) => onRuntimeMessage(msg, sender);
 // A frame of some tab finished loading (`chrome.webNavigation.onCompleted`):
 // how the panel hears that an iframe was added with no url change, such as
 // an embedded application form a page inserts when its Apply tab opens.
@@ -303,6 +305,10 @@ global.chrome = {
     },
   },
   runtime: {
+    id: "test-extension",
+    // The content script's `fields_touched` hint reaches the panel here: a driver
+    // calls `heard(message, sender)` to play one.
+    onMessage: { addListener: (fn) => { listeners.push("runtime.onMessage"); onRuntimeMessage = fn; } },
     sendMessage: async (msg) => {
       sent.push(msg);
       if (msg.type === "api") {

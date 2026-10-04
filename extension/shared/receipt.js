@@ -145,14 +145,18 @@
     });
   }
 
+  /** A page field as an entry (with its options), keyed by its fid, or null. */
+  function ofField(live, extra) {
+    const field = entry(live, { options_count: optionsOf(live), ...extra });
+    return field && { fid: live.fid, field };
+  }
+
   /** One field you typed or changed, as an entry, or null when it is not
    * recordable: untouched, never-fill, unreadable or blank. */
   function youEntry(live) {
     if (!live.touched || live.policyBlocked || live.shape === "unknown") return null;
     const answer = answerOf(live.committed);
-    const field = answer === null ? null
-      : entry(live, { answer, source: "you", options_count: optionsOf(live) });
-    return field && { fid: live.fid, field };
+    return answer === null ? null : ofField(live, { answer, source: "you" });
   }
 
   /** The fields you typed or changed that no report names. */
@@ -188,6 +192,13 @@
       .map((live) => editOf(live, seen[live.fid])?.one).filter(Boolean);
   }
 
+  /** A run's own entries, then what earlier posts said of the other fields, then
+   * the attach: the finished row. */
+  function withRestated(mine, { inventory, seen, upload }) {
+    const again = restated(inventory, seen, new Set(mine.map((one) => one.fid)));
+    return finish([...mine, ...again, ...uploadEntry(upload)], inventory);
+  }
+
   /** A loop run (`ns.fillLoop.runFill`'s report), the page after it,
    * Autofill's own attach (`autoAttachResume`'s report, or null) and what an
    * earlier post said (`seen`, or undefined). */
@@ -196,9 +207,7 @@
     const rows = report?.fields ?? [];
     const written = rows.map((row) => ({ fid: row.fid, field: loopEntry(row, inventory.get(row.fid)) }));
     const yours = youEntries(inventory, new Set(rows.map((row) => row.fid)));
-    const mine = [...written.filter((one) => one.field), ...yours];
-    const again = restated(inventory, seen, new Set(mine.map((one) => one.fid)));
-    return finish([...mine, ...again, ...uploadEntry(upload)], inventory);
+    return withRestated([...written.filter((one) => one.field), ...yours], { inventory, seen, upload });
   }
 
   /** The field a rule write went to, as the page holds it now. The question,
@@ -212,10 +221,8 @@
     const answer = answerOf(live.committed);
     if (answer === null) return null;
     const eeoSlot = EEO_SLOTS[item.rule] ?? null;
-    const field = entry(live, { answer, source: sourceOfRule(item.rule), eeo: eeoSlot !== null,
-                                slot: eeoSlot, edited_by_you: live.touched === true,
-                                options_count: optionsOf(live) });
-    return field && { fid: live.fid, field };
+    return ofField(live, { answer, source: sourceOfRule(item.rule), eeo: eeoSlot !== null,
+                           slot: eeoSlot, edited_by_you: live.touched === true });
   }
 
   /** A rule-pass run (`reconcileFill`'s `fill`), the page after it, and the
@@ -234,9 +241,7 @@
     for (const one of taken.values()) {
       if (before?.has(one.fid)) one.field.edited_by_you = false;
     }
-    const mine = [...taken.values(), ...youEntries(inventory, taken)];
-    const again = restated(inventory, seen, new Set(mine.map((one) => one.fid)));
-    return finish([...mine, ...again, ...uploadEntry(upload)], inventory);
+    return withRestated([...taken.values(), ...youEntries(inventory, taken)], { inventory, seen, upload });
   }
 
   /** What the receipt remembers of a row it posted, by field id: enough to
@@ -260,11 +265,10 @@
     const answer = answerOf(live.committed);
     if (answer === null && !(before && live.touched)) return null;
     const changed = live.touched && (!before || JSON.stringify(answer) !== before.answer);
-    const field = entry(live, {
+    const one = ofField(live, {
       answer, source: before?.source ?? "you", slot: before?.slot ?? null, eeo: before?.eeo ?? false,
-      edited_by_you: before ? Boolean(before.edited) || (live.touched && before.source !== "you") : false,
-      options_count: optionsOf(live) });
-    return field && { changed, one: { fid: live.fid, field } };
+      edited_by_you: before ? Boolean(before.edited) || (live.touched && before.source !== "you") : false });
+    return one && { changed, one };
   }
 
   /** The page now against what was posted (`seen`, by field id): the fields

@@ -2683,6 +2683,7 @@
     // note is the panel's one line about the page in front of the user, and an
     // apology about a tab they have already left is not that. The next
     // activation rebinds, which is the recovery.
+    chrome.runtime.onMessage.addListener(onFieldsTouched);
     chrome.tabs.onActivated.addListener(({ tabId }) => {
       chrome.tabs.get(tabId)
         .then((activated) => onTab(tabId, activated.url ?? ""))
@@ -2724,6 +2725,31 @@
     if (tab) await onTab(tab.id, tab.url ?? "");
   }
 
+  /** "You changed a field", from the bound tab's content script
+   * (`content/touch-notice.js`): fids only, no values, at most one per two
+   * seconds. It is a HINT, not data: after the user has been quiet for
+   * `EDIT_CAPTURE_MS` the panel re-reads the page through the gated
+   * `fill_inventory` and posts what changed since the last post
+   * (`ns.panelRecordEdits`), so an edit lands on the answer record without a
+   * press of Mark applied. Heard only from our own content script in the tab
+   * this panel is bound to, and only once a run has posted for a matched job
+   * (`receiptSeen`): a page the Companion never filled is never read for this. */
+  const EDIT_CAPTURE_MS = 3000;
+  let editCaptureTimer = null;
+
+  function onFieldsTouched(msg, sender) {
+    if (msg?.type !== "fields_touched" || sender?.id !== chrome.runtime.id) return false;
+    if (sender.tab?.id !== card.tabId || !card.receiptSeen || !card.job?.id) return false;
+    clearTimeout(editCaptureTimer);
+    const token = generation;
+    editCaptureTimer = setTimeout(() => {
+      // A run in flight posts its own receipt, which restates what is posted.
+      if (!current(token) || card.busy !== null) return;
+      ns.panelRecordEdits(actionStore(), { ...card }, token);
+    }, EDIT_CAPTURE_MS);
+    return false;
+  }
+
   async function onTab(tabId, url, { inPlace = false } = {}) {
     // A LOOP STILL RUNNING is two halves. The panel half ends with the
     // generation bump below (its `cancelled()` reads it); the page half — a
@@ -2754,6 +2780,7 @@
     if (card.tabId !== null && (card.tabId !== tabId || card.url !== url)) {
       ns.panelRecordEdits(actionStore(), { ...card }, null, { leaving: true });
     }
+    clearTimeout(editCaptureTimer);
     // FIRST, and before anything is loaded: everything the store holds is
     // about the page we are leaving.
     resetPageFacts(card);

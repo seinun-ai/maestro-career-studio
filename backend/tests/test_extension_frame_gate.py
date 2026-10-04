@@ -136,6 +136,8 @@ ns.fillOps = {
 };
 
 main(async () => {
+  // The gate itself, as `content/touch-notice.js` asks it at send time.
+  if (spec.type === "gate") { emit({ calls, data: ns.frameMayReceiveUserData({}) }); return; }
   const handler = ns.pageHandlers[spec.type];
   const data = await handler({
     type: spec.type, profile: { personal: { email: "a@b.test" } }, employment: [],
@@ -552,3 +554,12 @@ def test_fill_cancel_reaches_every_frame(tmp_path):
     make it miss the frame that is working."""
     out = _run(tmp_path, type_="fill_cancel", top_frame=False, form=False)
     assert out["calls"] == [["fillOps.cancel", 0]] and out["data"] is True
+
+
+@pytest.mark.parametrize(("top_frame", "form", "detect_throws", "allowed"), [
+    (True, False, False, True), (False, True, False, True),
+    (False, False, False, False), (False, True, True, False)])
+def test_the_published_gate_is_the_one_the_handlers_use(tmp_path, top_frame, form, detect_throws, allowed):
+    """`touch-notice.js` sends only where this says yes: the top frame, or a subframe with a form."""
+    out = _run(tmp_path, type_="gate", top_frame=top_frame, form=form, detect_throws=detect_throws)
+    assert out["data"] is allowed

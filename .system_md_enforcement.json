@@ -70,6 +70,8 @@
       {"path": "backend/tests/test_filled_answers_invariant.py", "symbol": "test_the_companion_posts_the_receipt_through_the_api_door_only"},
       {"path": "backend/tests/test_extension_panel_receipt.py", "symbol": "test_the_receipt_goes_through_the_api_door_even_with_telemetry_off"},
       {"path": "backend/tests/test_extension_panel_receipt.py", "symbol": "test_a_refused_frame_sends_nothing"},
+      {"path": "backend/tests/test_extension_panel_receipt.py", "symbol": "test_a_typed_id_number_is_not_recorded_even_under_standing_consent"},
+      {"path": "backend/tests/browser/test_touch_notice.py", "symbol": "test_a_frame_that_has_not_earned_the_data_says_nothing"},
       {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_an_eeo_value_does_not_outlive_the_consent"},
       {"path": "backend/tests/test_filled_answers_agent.py", "symbol": "test_an_eeo_answer_reaches_the_agent_without_its_value_even_under_consent"},
       {"path": "backend/mcp_server/tests/test_client_filled_answers.py", "symbol": "test_no_mcp_path_reads_the_receipt_endpoint"},

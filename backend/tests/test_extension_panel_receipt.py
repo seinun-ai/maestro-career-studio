@@ -507,3 +507,37 @@ def test_a_second_run_restates_the_fields_the_first_posted_in_page_order(tmp_pat
     assert [f["answer"] for f in first] == ["Acme", "Initech", "Hooli"]
     assert [(f["answer"], f["source"]) for f in second] == [
         ("Acme", "resume"), ("Initech", "resume"), ("Pied Piper", "resume")]
+
+
+# ---------- the content script's "you changed a field" hint, heard while bound ----------
+
+def test_an_edit_after_the_fill_is_posted_after_the_debounce_without_marking_applied(tmp_path):
+    out = _run(tmp_path, pings=[{}], framesAfter={"fill_inventory": EDITED})
+    first = {f["question"]: f for f in _second(out)["fields"]}["First name"]
+    assert (first["answer"], first["edited_by_you"]) == ("Adaline", True)
+    assert 3000 in out["delays"]
+    assert not [msg for msg in out["sent"] if "PATCH" in str(msg.get("init"))]
+
+
+def test_a_burst_of_hints_is_one_capture(tmp_path):
+    out = _run(tmp_path, pings=[{}, {}, {}], framesAfter={"fill_inventory": EDITED})
+    assert len(_receipts(out)) == 2
+
+
+def test_a_hint_with_nothing_changed_posts_nothing(tmp_path):
+    assert len(_receipts(_run(tmp_path, pings=[{}]))) == 1
+
+
+@pytest.mark.parametrize("sender", [{"id": "another-extension"}, {"tab": 99}])
+def test_a_hint_from_another_extension_or_tab_is_ignored(tmp_path, sender):
+    out = _run(tmp_path, pings=[sender], framesAfter={"fill_inventory": EDITED})
+    assert len(_receipts(out)) == 1
+
+
+def test_a_hint_on_a_page_nothing_was_posted_for_reads_nothing(tmp_path):
+    """No matched job, so no receipt and none remembered: the Companion never read this page,
+    and a field you typed there is not its to record."""
+    out = _run(tmp_path, pings=[{}], stored={"widget.session": _armed_entry()},
+               framesAfter={"fill_inventory": EDITED})
+    assert _receipts(out) == []
+    assert not [msg for msg in out["broadcasts"] if msg["message"].get("readOnly")]
