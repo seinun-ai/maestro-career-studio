@@ -7,6 +7,7 @@ each export serves. The endpoint, serializer and MCP halves are pinned by
 `mcp_server/tests/test_client_filled_answers.py` (which also pins that no MCP path GETs the
 receipt)."""
 
+import ast
 import re
 from pathlib import Path
 
@@ -42,13 +43,26 @@ def _read(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
 
 
+def _python_code(rel: str) -> str:
+    """The file's code with docstrings and comments gone (`ast.unparse` keeps neither), so
+    citing the invariant's id in prose cannot fail a pin that means "the CODE names it"."""
+    tree = ast.parse(_read(rel))
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(body, list):
+            body[:] = [stmt for stmt in body if not (
+                isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
+                and isinstance(stmt.value.value, str))] or [ast.Pass()]
+    return ast.unparse(tree)
+
+
 def _between(source: str, start: str, end: str) -> str:
     return source[source.index(start):source.index(end, source.index(start))]
 
 
 @pytest.mark.parametrize("rel", _VALUE_FREE_BACKEND)
 def test_no_value_free_channel_or_export_reads_the_receipt(rel):
-    assert not _RECEIPT.search(_read(rel)), f"{rel} names the receipt"
+    assert not _RECEIPT.search(_python_code(rel)), f"{rel} names the receipt"
 
 
 def test_telemetry_and_trace_never_read_the_receipt():

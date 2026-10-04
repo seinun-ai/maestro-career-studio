@@ -144,7 +144,7 @@ file to open.
 | AtsScore (`models/ats_score.py`) | [`docs/entities/ats-score.md`](docs/entities/ats-score.md) | base upsert-singletons vs appended tailored history; deterministic engine |
 | ResumeVersion (`models/resume_version.py`) | [`docs/entities/resume-version.md`](docs/entities/resume-version.md) | append-only snapshots on every write path — the undo story |
 | Health rubric | [docs/health-check-rubric.md](docs/health-check-rubric.md) | what the check judges and why: levels, questions, flags, word bank, disputes (the report's code contract: Others, ResumeLintReport) |
-| Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, and the secondary entities that need rules but not a file each |
+| Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, the settings endpoints (model settings, form-filling engines, persona draft, setup status) and the secondary entities that need rules but not a file each |
 
 ## 5. The application workflow, end to end (web)
 
@@ -347,10 +347,10 @@ file to open.
   agent filled into an application form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`)
   lives only in the local `filled_answers` table (`services/filled_answers.py`;
   `docs/entities/filled-answers.md`): one row per page run, linked to an application by job + base resume. It
-  never enters telemetry, run traces, Langfuse or exports. An EEO value is kept only while EEO consent is
-  recorded (the fill's own gate, `eeo_consent.withhold_unconsented`, asked at write and again at read: withdraw
-  consent and a stored value reads `answer: null`, `eeo_answered` still true); without it the row keeps the
-  question alone. No agent read returns an EEO value, marked or not (the server classifies by question words
+  never enters telemetry, run traces, Langfuse or exports. An EEO value is stored only under recorded
+  EEO consent (the fill's own gate, `eeo_consent.withhold_unconsented`, asked at write; without it the row keeps
+  the question with `answer: null`); withdrawing consent clears stored EEO answers (`eeo_consent.set_consent` →
+  `filled_answers.clear_eeo_answers`; `eeo_answered` stays true) and reads are gated again as a second guard. No agent read returns an EEO value, marked or not (the server classifies by question words
   too): `get_final_review`'s `flags` carry `eeo_answered`, the MCP client strips again, and no MCP path reads
   `GET /api/jobs/{id}/filled-answers`, which serves EEO values to the web UI. The Companion panel
   (`shared/receipt.js`, posted by `panel/actions/fill.js` `recordReceipt`) posts the receipt through the generic `api`
@@ -592,7 +592,7 @@ file to open.
   what both worlds load: `decisions.js` (the ONE home of every panel rule), `choose.js`
   (routing, the /choose batch, `rest_fill` shaping, `QUESTIONY`) and `guided-run.js` (the
   runner, transport injected).
-  The failure-note wording (`failureNote`), the rail's revisit rules, the sender model, the COMMIT GESTURE and the ONE
+  The failure note (never the server's raw text; `failureNote`), the rail's revisit rules, the sender model, the COMMIT GESTURE and the ONE
   `attachableFileInputs` definition are reference tier: `extension/INTERNALS.md`. The bridge
   storage key `widget.session` must NOT be renamed — that drops every live entry.
   **Posting identity is ONE table in two languages** — `job_url_match.posting_id` ↔

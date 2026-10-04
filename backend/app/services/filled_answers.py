@@ -131,6 +131,29 @@ def record(session: Session, job: Job, payload: FilledAnswersCreate) -> dict[str
             "flags": flagged}
 
 
+def _is_eeo_field(field: dict[str, Any]) -> bool:
+    return bool(field.get("eeo")) or answer_flags.is_eeo(field.get("question") or "",
+                                                        field.get("slot"))
+
+
+def _cleared(field: dict[str, Any]) -> dict[str, Any]:
+    return {**field, "eeo": True, "eeo_answered": bool(field.get("eeo_answered"))
+            or _has_answer(field.get("answer")), "answer": None}
+
+
+def clear_eeo_answers(session: Session) -> int:
+    """Consent was withdrawn: drop every stored EEO value, keeping the question and
+    `eeo_answered`. Granting consent again brings nothing back. The read-time gate stays as the
+    second guard. Returns the number of rows changed."""
+    changed = 0
+    for row in session.scalars(select(FilledAnswer)):
+        if any(_is_eeo_field(f) and f.get("answer") is not None for f in row.fields):
+            row.fields = [_cleared(f) if _is_eeo_field(f) else f for f in row.fields]
+            changed += 1
+    session.commit()
+    return changed
+
+
 def _rows(session: Session, job_id: UUID) -> list[FilledAnswer]:
     return list(session.scalars(
         select(FilledAnswer).where(FilledAnswer.job_id == job_id)

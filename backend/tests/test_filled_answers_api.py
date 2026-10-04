@@ -4,6 +4,7 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.config import settings
 from app.main import app
@@ -168,6 +169,37 @@ def test_an_eeo_value_does_not_outlive_the_consent(db_session):
     job = _mk_job(db_session)
     _post(job, [_f("Gender", "Female", eeo=True, slot="eeo.gender")])
     eeo_consent.set_consent(EeoConsent(enabled=False), db_session)
+    [field] = _fields(client.get(f"/api/jobs/{job.id}/filled-answers").json())
+    assert (field["answer"], field["eeo_answered"]) == (None, True)
+
+
+def _stored_answers(db_session, job):
+    db_session.expire_all()
+    rows = db_session.scalars(select(FilledAnswer).where(FilledAnswer.job_id == job.id)).all()
+    return {field["question"]: field for row in rows for field in row.fields}
+
+
+def test_withdrawing_consent_clears_the_stored_eeo_answers_not_just_the_read(db_session):
+    eeo_consent.set_consent(EeoConsent(enabled=True), db_session)
+    job = _mk_job(db_session)
+    _post(job, [_f("Gender", "Female", eeo=True, slot="eeo.gender"),
+                _f("Are you a protected veteran?", "No"),
+                _f("First name", "Ada")])
+    res = client.put("/api/settings/eeo-consent", json={"value": {"enabled": False}})
+    assert res.status_code == 200
+    stored = _stored_answers(db_session, job)
+    assert [(q, f["answer"], f["eeo_answered"]) for q, f in stored.items() if f["eeo"]] == [
+        ("Gender", None, True), ("Are you a protected veteran?", None, True)]
+    assert stored["First name"]["answer"] == "Ada"
+
+
+def test_granting_consent_again_does_not_bring_a_cleared_answer_back(db_session):
+    eeo_consent.set_consent(EeoConsent(enabled=True), db_session)
+    job = _mk_job(db_session)
+    _post(job, [_f("Gender", "Female", eeo=True, slot="eeo.gender")])
+    eeo_consent.set_consent(EeoConsent(enabled=False), db_session)
+    eeo_consent.set_consent(EeoConsent(enabled=True), db_session)
+    assert _stored_answers(db_session, job)["Gender"]["answer"] is None
     [field] = _fields(client.get(f"/api/jobs/{job.id}/filled-answers").json())
     assert (field["answer"], field["eeo_answered"]) == (None, True)
 

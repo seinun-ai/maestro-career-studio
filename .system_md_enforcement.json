@@ -73,7 +73,11 @@
       {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_an_eeo_value_does_not_outlive_the_consent"},
       {"path": "backend/tests/test_filled_answers_agent.py", "symbol": "test_an_eeo_answer_reaches_the_agent_without_its_value_even_under_consent"},
       {"path": "backend/mcp_server/tests/test_client_filled_answers.py", "symbol": "test_no_mcp_path_reads_the_receipt_endpoint"},
-      {"path": "backend/app/services/filled_answers.py", "symbol": "withhold_unconsented"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_an_eeo_answer_without_consent_keeps_only_the_question"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_withdrawing_consent_clears_the_stored_eeo_answers_not_just_the_read"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_granting_consent_again_does_not_bring_a_cleared_answer_back"},
+      {"path": "backend/app/services/filled_answers.py", "symbol": "def _consented"},
+      {"path": "backend/app/services/filled_answers.py", "symbol": "def clear_eeo_answers"},
       {"path": "backend/mcp_server/client.py", "symbol": "_without_eeo_values"}
     ],
     "inv-single-dialect": [
