@@ -11,6 +11,7 @@ from app.models.bullet_rewrite import BulletRewrite
 from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog, KBProfile
 from app.models.chat import ChatAttachment, ChatMessage, ChatSession
 from app.models.consent_event import ConsentEvent
+from app.models.filled_answer import FilledAnswer
 from app.models.health_ask_answer import HealthAskAnswer
 from app.models.health_gate_waiver import HealthGateWaiver
 from app.models.job import Job
@@ -38,6 +39,7 @@ __all__ = [
     "ChatMessage",
     "ChatSession",
     "ConsentEvent",
+    "FilledAnswer",
     "HealthAskAnswer",
     "HealthGateWaiver",
     "Job",

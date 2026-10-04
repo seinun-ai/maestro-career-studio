@@ -18,6 +18,7 @@ def test_all_planned_tables_are_registered():
         "chat_messages",
         "chat_sessions",
         "consent_events",
+        "filled_answers",
         "health_ask_answers",
         "health_gate_waivers",
         "jobs",
