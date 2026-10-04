@@ -172,10 +172,9 @@ file to open.
    otherwise they use `cs-tracker-seq`. Overview mounts the proposal's card, titled with its
    filer (`proposed_by`, worded by `lib/agent-name.ts`), when `proposal_id` is present; every
    job read derives `proposal_status`/`proposal_id` from the newest proposal. Overview also
-   renders the **knock-out pre-scan** (`services/knockout.scan_job`, embedded
-   in `GET /jobs/{id}/detail` and in `get_final_review` as `knockout`):
-   stated JD requirements (work auth, OPT policy, salary) vs the autofill
-   profile, recomputed on every read. Verdicts are `conflict` / `clear` /
+   renders the **knock-out pre-scan** (`services/knockout.scan_for`, embedded in
+   `GET /jobs/{id}/detail`, `get_final_review` and `/jobs/match` as `knockout`): stated JD
+   requirements (work auth, OPT, salary, on-site vs where you live and relocation) vs the profile, recomputed on every read. Verdicts are `conflict` / `clear` /
    `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
    warns (pay is negotiable). Informational like G11 tier 2: it flags; the
    consent/submit decision stays human.

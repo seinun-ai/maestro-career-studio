@@ -333,14 +333,9 @@ def _knockout_scan(session: Session, job: Job | None) -> dict | None:
     consent gate stays with the human."""
     if job is None:
         return None
-    from app.services import autofill_profile, job_preferences, knockout
+    from app.services import knockout
 
-    return knockout.scan_job(
-        job,
-        autofill_profile.get_work_auth(session),
-        autofill_profile.get_profile(session).get("preferences"),
-        years_experience=job_preferences.get_preferences(session).years_experience,
-    )
+    return knockout.scan_for(session, job)
 
 
 def get_final_review(session: Session, prop: ApplicationProposal) -> dict:

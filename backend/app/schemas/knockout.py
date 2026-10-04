@@ -7,7 +7,7 @@ KnockoutResult = Literal["pass", "conflict", "warning", "job_unstated", "profile
 
 
 class KnockoutCheck(BaseModel):
-    kind: Literal["work_authorization", "opt", "salary", "experience"]
+    kind: Literal["work_authorization", "opt", "salary", "experience", "on_site"]
     result: KnockoutResult
     job_value: str | None = None
     profile_value: str | None = None

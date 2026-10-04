@@ -136,7 +136,7 @@ export type KnockoutStatus =
   | "unstated";
 
 export interface KnockoutCheck {
-  kind: "work_authorization" | "opt" | "salary" | "experience";
+  kind: "work_authorization" | "opt" | "salary" | "experience" | "on_site";
   result: "pass" | "conflict" | "warning" | "job_unstated" | "profile_missing";
   job_value: string | null;
   profile_value: string | null;

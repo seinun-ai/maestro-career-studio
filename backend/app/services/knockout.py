@@ -2,7 +2,8 @@
 
 Compares what the posting states (work authorization, OPT policy, salary)
 against what the autofill profile answers, BEFORE tailoring/filling effort is
-spent. Read-and-compare only — every input already exists on `Job` and in the
+spent. A stated on-site or hybrid work mode is compared against where you live
+and `preferences.willing_to_relocate`. Read-and-compare only — every input already exists on `Job` and in the
 autofill profile; this module persists nothing.
 
 Verdict semantics (inv-honesty applied to screening):
@@ -217,26 +218,109 @@ def _experience_check(job: Job, years_experience: int | None) -> dict[str, Any] 
     return {**check, "result": "pass", "message": None}
 
 
+# The job's work mode, in the extraction's words (`prompts/extract_jd.txt`: remote | hybrid |
+# onsite | unknown) and the ones an agent's ingest may use.
+_WORK_MODES = {"remote": "remote", "hybrid": "hybrid", "onsite": "onsite", "inoffice": "onsite",
+               "office": "onsite", "inperson": "onsite"}
+# A US state as its two-letter code, whichever way it was written: the extraction writes codes,
+# the profile holds what the user typed.
+_US_STATES = {
+    "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar", "california": "ca",
+    "colorado": "co", "connecticut": "ct", "delaware": "de", "district of columbia": "dc",
+    "washington dc": "dc", "florida": "fl", "georgia": "ga", "hawaii": "hi", "idaho": "id",
+    "illinois": "il", "indiana": "in", "iowa": "ia", "kansas": "ks", "kentucky": "ky",
+    "louisiana": "la", "maine": "me", "maryland": "md", "massachusetts": "ma", "michigan": "mi",
+    "minnesota": "mn", "mississippi": "ms", "missouri": "mo", "montana": "mt", "nebraska": "ne",
+    "nevada": "nv", "new hampshire": "nh", "new jersey": "nj", "new mexico": "nm",
+    "new york": "ny", "north carolina": "nc", "north dakota": "nd", "ohio": "oh",
+    "oklahoma": "ok", "oregon": "or", "pennsylvania": "pa", "rhode island": "ri",
+    "south carolina": "sc", "south dakota": "sd", "tennessee": "tn", "texas": "tx", "utah": "ut",
+    "vermont": "vt", "virginia": "va", "washington": "wa", "west virginia": "wv",
+    "wisconsin": "wi", "wyoming": "wy",
+}
+_CITY_ALIASES = {"nyc": "new york", "new york city": "new york", "sf": "san francisco"}
+_RELOCATE = {"yes": "yes", "y": "yes", "true": "yes", "no": "no", "n": "no", "false": "no"}
+
+
+def _words(value: Any) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", str(value or "").casefold()).split())
+
+
+def _work_mode(raw: Any) -> str | None:
+    return _WORK_MODES.get(re.sub(r"[\s_-]", "", str(raw or "").casefold()))
+
+
+def _city(value: Any) -> str:
+    return _CITY_ALIASES.get(_words(value), _words(value))
+
+
+def _state(value: Any) -> str:
+    return _US_STATES.get(_words(value), _words(value))
+
+
+def _same_place(job: Job, personal: dict[str, Any]) -> bool:
+    if _city(job.city) and _city(job.city) == _city(personal.get("city")):
+        return True
+    return bool(_state(job.state)) and _state(job.state) == _state(personal.get("state"))
+
+
+def _relocate_answer(preferences: dict[str, Any] | None) -> str | None:
+    """`willing_to_relocate` as yes or no, or None: unset, or typed words that are neither
+    ("Open to relocating for the right role" is a real answer, and not a yes)."""
+    value = (preferences or {}).get("willing_to_relocate")
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return _RELOCATE.get(str(value or "").strip().casefold())
+
+
+def _on_site_verdict(job: Job, answer: str | None,
+                     personal: dict[str, Any]) -> tuple[str, str | None]:
+    where = job.city or job.state or job.location_raw or "another location"
+    if answer == "yes":
+        return "pass", None
+    if not (_words(personal.get("city")) or _words(personal.get("state"))):
+        return "profile_missing", (f"This job is on-site in {where}. Add your city and state in "
+                                   "Profile › Autofill.")
+    if answer == "no":
+        return "conflict", f"This job is on-site in {where}. Your profile says you won't relocate."
+    return "profile_missing", (f"This job is on-site in {where}. Answer Willing to relocate in "
+                               "Profile › Autofill.")
+
+
+def _on_site_check(job: Job, preferences: dict[str, Any] | None,
+                   personal: dict[str, Any]) -> dict[str, Any] | None:
+    """Remote is a pass; on-site or hybrid where you live is a pass; elsewhere the relocation
+    answer decides. An unknown work mode states nothing, so it adds no check."""
+    mode = _work_mode(job.work_mode)
+    if mode is None:
+        return None
+    answer = _relocate_answer(preferences)
+    check: dict[str, Any] = {"kind": "on_site", "job_value": mode, "profile_value": answer}
+    if mode == "remote" or _same_place(job, personal):
+        return {**check, "result": "pass", "message": None}
+    result, message = _on_site_verdict(job, answer, personal)
+    return {**check, "result": result, "message": message}
+
+
 def scan_job(
     job: Job,
     work_auth: WorkAuth,
     preferences: dict[str, Any] | None,
     years_experience: int | None = None,
+    personal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    # settings/autofill.json is hand-editable loose JSON; `preferences` may
+    # settings/autofill.json is hand-editable loose JSON; `preferences` and `personal` may
     # arrive as any shape.
     if not isinstance(preferences, dict):
         preferences = None
-    checks = [_work_auth_check(job, work_auth)]
-    opt = _opt_check(job, work_auth)
-    if opt is not None:
-        checks.append(opt)
-    salary = _salary_check(job, preferences)
-    if salary is not None:
-        checks.append(salary)
-    experience = _experience_check(job, years_experience)
-    if experience is not None:
-        checks.append(experience)
+    personal = personal if isinstance(personal, dict) else {}
+    optional = (
+        _opt_check(job, work_auth),
+        _salary_check(job, preferences),
+        _experience_check(job, years_experience),
+        _on_site_check(job, preferences, personal),
+    )
+    checks = [_work_auth_check(job, work_auth), *(c for c in optional if c is not None)]
 
     results = {c["result"] for c in checks}
     if "conflict" in results:
@@ -248,3 +332,18 @@ def scan_job(
     else:
         status = "unstated"
     return {"status": status, "checks": checks}
+
+
+def scan_for(session: Any, job: Job) -> dict[str, Any]:
+    """`scan_job` over the stored profile: the ONE reader behind the job page, the agent's final
+    review and the Companion's `/api/jobs/match`."""
+    from app.services import autofill_profile, job_preferences
+
+    profile = autofill_profile.get_profile(session)
+    return scan_job(
+        job,
+        autofill_profile.get_work_auth(session),
+        profile.get("preferences"),
+        years_experience=job_preferences.get_preferences(session).years_experience,
+        personal=profile.get("personal"),
+    )

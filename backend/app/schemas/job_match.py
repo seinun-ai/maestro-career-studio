@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from app.schemas.application import ApplicationSummary
 from app.schemas.job import JobSummary
+from app.schemas.knockout import KnockoutScan
 
 
 class JobMatchResult(BaseModel):
@@ -33,3 +34,5 @@ class JobMatchResult(BaseModel):
     match: Literal["exact", "none"]
     job: JobSummary | None = None
     application: ApplicationSummary | None = None
+    # the matched job's knock-out verdict, for the Companion's banner (null when nothing matched)
+    knockout: KnockoutScan | None = None

@@ -39,6 +39,7 @@ from app.services import (
     jd_extraction,
     job_search_brief,
     job_url_match,
+    knockout,
     market_settings,
     quick_tailor,
     role_categories,
@@ -511,6 +512,7 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
         match="exact",
         job=JobSummary.model_validate(job),
         application=summary,
+        knockout=knockout.scan_for(db, job),
     )
 
 
@@ -549,14 +551,7 @@ def get_job_detail(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     # Same derived proposal_status / proposal_id / proposal_proposed_by as the list endpoint
     # (transient attrs) so the job page can triage and load proposal detail.
     _with_newest_proposal(db, job)
-    from app.services import autofill_profile, job_preferences, knockout
-
-    scan = knockout.scan_job(
-        job,
-        autofill_profile.get_work_auth(db),
-        autofill_profile.get_profile(db).get("preferences"),
-        years_experience=job_preferences.get_preferences(db).years_experience,
-    )
+    scan = knockout.scan_for(db, job)
     return JobDetail(
         job=JobRead.model_validate(job),
         application=ApplicationRead.model_validate(application) if application else None,
