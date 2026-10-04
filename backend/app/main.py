@@ -20,6 +20,7 @@ from app.routers import (
     chat,
     explore,
     exports,
+    filled_answers,
     jobs,
     proposals,
     qa,
@@ -206,6 +207,7 @@ app.include_router(chat.router)
 app.include_router(exports.router)
 app.include_router(version.router)
 app.include_router(automations.router)
+app.include_router(filled_answers.router)
 
 
 @app.get("/health")

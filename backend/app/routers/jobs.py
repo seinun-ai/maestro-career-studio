@@ -35,6 +35,7 @@ from app.schemas.job_search_brief import JobSearchBriefResponse
 from app.services import (
     artifacts,
     base_resume_data,
+    filled_answers,
     jd_extraction,
     job_search_brief,
     job_url_match,
@@ -560,6 +561,7 @@ def get_job_detail(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
         job=JobRead.model_validate(job),
         application=ApplicationRead.model_validate(application) if application else None,
         knockout=scan,
+        has_filled_answers=filled_answers.has_any(db, job_id),
     )
 
 

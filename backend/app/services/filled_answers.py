@@ -1,0 +1,188 @@
+"""The answer receipt: what each page run filled into a job's application form.
+
+Writers: the Companion after every fill run, an agent per form page (MCP
+`record_filled_answers`). Readers: the job page's What was submitted tab (`receipt`), the
+Companion's Check before you submit group (the POST response) and the agent's final review
+(`agent_flags`). Per question the latest answer wins across rows. Flags are computed at read
+time against the current profile (`answer_flags`), never stored.
+
+SYSTEM.md {#inv-filled-answers-local}: the values stay in this table. An EEO value is kept only
+while EEO consent is recorded, through the fill's own gate (`eeo_consent.withhold_unconsented`),
+and no agent read returns one. Nothing here imports telemetry, tracing or an LLM client.
+"""
+
+import logging
+from typing import Any
+from urllib.parse import urlsplit
+from uuid import UUID
+
+from sqlalchemy import exists, func, select
+from sqlalchemy.orm import Session
+
+from app.models.application import Application
+from app.models.filled_answer import FilledAnswer
+from app.models.job import Job
+from app.models.resume_version import ResumeVersion
+from app.schemas.filled_answers import FilledAnswersCreate, FilledField
+from app.services import answer_flags, autofill_catalog, eeo_consent
+
+logger = logging.getLogger(__name__)
+
+
+class ApplicationMismatch(ValueError):
+    """The posted application belongs to another job."""
+
+
+def _consented(session: Session) -> bool:
+    """The fill's gate, asked the fill's way: does `profile.eeo` survive
+    `withhold_unconsented`? An unreadable consent keeps no EEO value."""
+    try:
+        consent = eeo_consent.get_consent(session).model_dump(mode="json")
+    except Exception:  # noqa: BLE001 - an unreadable consent withholds, it never fails a post
+        logger.exception("eeo consent could not be read; keeping no EEO values")
+        consent = None
+    return "eeo" in eeo_consent.withhold_unconsented({"eeo": {}}, consent)
+
+
+def _has_answer(answer: Any) -> bool:
+    if isinstance(answer, list):
+        return any(str(item).strip() for item in answer)
+    return bool(str(answer or "").strip())
+
+
+def _stored(field: FilledField, consented: bool, version: int | None) -> dict[str, Any]:
+    data = field.model_dump()
+    data["eeo"] = field.eeo or answer_flags.is_eeo(field.question, field.slot)
+    data["eeo_answered"] = data["eeo"] and _has_answer(field.answer)
+    if data["eeo"] and not consented:
+        data["answer"] = None
+    data["version"] = version if field.source == "upload" and field.slot == "resume" else None
+    return data
+
+
+def _application_id(session: Session, job: Job, application_id: UUID | None) -> UUID | None:
+    if application_id is None:
+        return None
+    app_row = session.get(Application, application_id)
+    if app_row is None or app_row.job_id != job.id:
+        raise ApplicationMismatch("That application belongs to another job.")
+    return app_row.id
+
+
+def _resume_version(session: Session, application_id: UUID | None) -> int | None:
+    if application_id is None:
+        return None
+    return session.scalar(
+        select(func.max(ResumeVersion.version_number)).where(
+            ResumeVersion.resume_kind == "application",
+            ResumeVersion.resume_key == str(application_id),
+        )
+    )
+
+
+def _host_of(url: str | None) -> str | None:
+    return urlsplit(url or "").hostname or None
+
+
+def flag_context(session: Session, job: Job) -> tuple[dict[str, Any], set[str]]:
+    """What the flags compare against: the profile as the fill would serve it."""
+    profile = eeo_consent.disclosable_profile(session)
+    facts = autofill_catalog.build(profile, [], [], company=job.company)
+    return facts, answer_flags.saved_eeo(profile)
+
+
+def _flagged_indexes(fields: list[dict[str, Any]], context) -> list[dict[str, Any]]:
+    out = []
+    for index, field in enumerate(fields):
+        flags = answer_flags.flags_for(field, *context)
+        if flags:
+            out.append({"index": index, "question": field["question"],
+                        "section": field.get("section"), "flags": flags})
+    return out
+
+
+def record(session: Session, job: Job, payload: FilledAnswersCreate) -> dict[str, Any]:
+    """Store one page run and answer its flags. Settings are read before the row is added:
+    a first settings read may seed a row and commit (SYSTEM.md §11 item 35)."""
+    application_id = _application_id(session, job, payload.application_id)
+    consented = _consented(session)
+    context = flag_context(session, job)
+    version = _resume_version(session, application_id)
+    fields = [_stored(field, consented, version) for field in payload.fields]
+    row = FilledAnswer(job_id=job.id, application_id=application_id, channel=payload.channel,
+                       host=payload.host or _host_of(job.source_url), step=payload.step,
+                       fields=fields)
+    session.add(row)
+    session.commit()
+    flagged = _flagged_indexes(fields, context)
+    return {"id": row.id, "application_id": application_id, "flag_count": len(flagged),
+            "flags": flagged}
+
+
+def _rows(session: Session, job_id: UUID) -> list[FilledAnswer]:
+    return list(session.scalars(
+        select(FilledAnswer).where(FilledAnswer.job_id == job_id)
+        .order_by(FilledAnswer.captured_at, FilledAnswer.id)
+    ))
+
+
+def _fold(text: Any) -> str:
+    return " ".join(str(text or "").casefold().split())
+
+
+def latest_fields(rows: list[FilledAnswer]) -> list[tuple[FilledAnswer, dict[str, Any]]]:
+    """Per question (section + question), the newest answer: rows run oldest first, so a later
+    row's field replaces an earlier one's and keeps the place the question first had."""
+    latest: dict[tuple[str, str], tuple[FilledAnswer, dict[str, Any]]] = {}
+    for row in rows:
+        for field in row.fields or []:
+            latest[(_fold(field.get("section")), _fold(field.get("question")))] = (row, field)
+    return list(latest.values())
+
+
+def _section(step: dict[str, Any], name: str | None) -> dict[str, Any]:
+    for section in step["sections"]:
+        if section["section"] == name:
+            return section
+    section = {"section": name, "fields": []}
+    step["sections"].append(section)
+    return section
+
+
+def _grouped(latest, context, rows: list[FilledAnswer]) -> tuple[list[dict[str, Any]], int]:
+    order = {}
+    for row in rows:
+        order.setdefault(row.step or "", len(order))
+    steps: dict[str, dict[str, Any]] = {}
+    flagged = 0
+    for row, field in latest:
+        flags = answer_flags.flags_for(field, *context)
+        flagged += bool(flags)
+        step = steps.setdefault(row.step or "", {
+            "step": row.step, "host": row.host, "channel": row.channel,
+            "captured_at": row.captured_at, "sections": []})
+        _section(step, field.get("section"))["fields"].append({**field, "flags": flags})
+    return sorted(steps.values(), key=lambda step: order[step["step"] or ""]), flagged
+
+
+def receipt(session: Session, job: Job) -> dict[str, Any]:
+    rows = _rows(session, job.id)
+    if not rows:
+        return {"job_id": job.id, "steps": []}
+    steps, flagged = _grouped(latest_fields(rows), flag_context(session, job), rows)
+    return {"job_id": job.id, "host": rows[-1].host, "pages": len(steps),
+            "captured_at": rows[-1].captured_at, "flag_count": flagged, "steps": steps}
+
+
+def has_any(session: Session, job_id: UUID) -> bool:
+    return bool(session.scalar(select(exists().where(FilledAnswer.job_id == job_id))))
+
+
+def link_unlinked(session: Session, application: Application) -> int:
+    """Late linking: the job's rows posted before it had an application belong to this one.
+    The caller commits; `application.id` must be set (flushed)."""
+    rows = session.scalars(select(FilledAnswer).where(
+        FilledAnswer.job_id == application.job_id, FilledAnswer.application_id.is_(None))).all()
+    for row in rows:
+        row.application_id = application.id
+    return len(rows)
