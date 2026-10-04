@@ -30,6 +30,11 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Added
 
+- The **Automations** page: copy a prompt into Claude Desktop, Codex or any MCP
+  agent, which asks when to run and then does the job with Maestro. New
+  `mail-status`, `referral-pages` and `tailor-run` skills join `job-hunt`,
+  `apply-session` and `customize-job-skills`; the skills now live in
+  `backend/app/automations/skills/` (`docs/skills/` is their index).
 - Autofill keeps a private record of how it decided each field (which answer it
   chose, demographic questions included, how sure it was, what the page did),
   for diagnosing and tuning it. It holds no typed answer or profile text, stays

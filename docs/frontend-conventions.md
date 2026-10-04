@@ -1071,7 +1071,7 @@
   what a press does, never the mechanism: "Hide sidebar" in the sidebar,
   "Show sidebar" on the reveal pill, and `SidebarTrigger`'s own name follows
   the open state. Groups:
-  **Job search** (Jobs, Agent inbox, Referrals), **Career library** (Career history,
+  **Job search** (Jobs, Agent inbox, Automations, Referrals), **Career library** (Career history,
   Base resumes, Templates), **Tools** (Assistant, Analytics); the pinned button
   above the groups is **Add job**; Profile + Settings
   pinned in `SidebarFooter`. The Agent inbox item carries a Needs-you count:
@@ -1282,7 +1282,11 @@
     sheet) and **Suggested project** (the Assistant's project card).
     "Proposal" means only a job a connected agent filed, and a filer is named
     through `lib/agent-name.ts`, never printed raw. Bare "Agent" appears only
-    in Agent inbox, the source toggle's "Agents" and Agent pipeline. **Agent
+    in Agent inbox, the source toggle's "Agents" and Agent pipeline. The
+    **Automations** page calls the app a user runs a prompt in an **agent app**
+    (Claude Desktop, Codex, Any MCP agent) and each card **Scheduled** or
+    **Attended** (or Custom); it copies a prompt and never promises to run one.
+    **Agent
     inbox** (`/proposals`), never Agent proposals; its lanes are **Needs
     you**, **To review**, **Queued**, **Applying** and **History** (one table,
     `lib/inbox-lanes.ts`); its verbs **Queue** and **Skip** in the inbox and

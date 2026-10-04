@@ -335,7 +335,9 @@ troubleshooting are in
 ## 6. Where it can go next
 
 Once your assistant is connected, it can run the whole loop.
-[`docs/skills/`](skills/) has ready-made skills for it:
+[`docs/skills/`](skills/) has ready-made skills for it, and the app's
+**Automations** page copies each one as a prompt you paste into Claude
+Desktop, Codex or any MCP agent. Your agent asks you when to run it:
 
 - **`job-hunt`** — finds recent postings that fit you, saves and scores them,
   and proposes the best ones. You decide in the **Agent inbox**. It can run on

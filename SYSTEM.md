@@ -81,7 +81,8 @@ backend/
     routers/           HTTP endpoints (applications, jobs, tailoring_sessions,
                        ats, base_resumes, templates, qa, resume_versions,
                        resume_lint, career_kb, exports, chat, explore, referrals,
-                       settings, autofill, proposals, setup, role_categories, version)
+                       settings, autofill, proposals, automations, setup, role_categories,
+                       version)
     services/          business logic (ats/, tailoring_session, gap_analysis,
                        role_categories, kb_import, exports, gap_enrichment,
                        placement_targets, ats_score, application_writes,
@@ -89,7 +90,10 @@ backend/
                        pdf_render (dual-engine: pdflatex + typst), pdf_preview,
                        jd_extraction, resume_lint, health_*, career_kb,
                        chat_agent, chat_tools, autofill_choose + autofill_slots
-                       + jev (the Companion's fill pass and its Jev engine), …)
+                       + jev (the Companion's fill pass and its Jev engine),
+                       automations (the Automations page's catalog), …)
+    automations/skills/  the agent prompts, one <name>/SKILL.md each: the Automations
+                       page's source and the skills docs/skills/ indexes
     templates/         bundled .tex.j2 sources, typst_classic.typ and cover_letter.typ
     tools/             operator tools, `python -m app.tools.<name>`: backup_db
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
@@ -514,6 +518,14 @@ file to open.
   only verbatim-callable args or none at all, offer prose is derived from the filtered options, and composers
   take the requested state explicitly rather than inferring intent from results. Scoring is mentioned in
   prose, never as an option — it needs a `job_id` no composer can know.
+- **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. `GET /api/automations`
+  (DB-free; `services/automations.py` parses `app/automations/skills/<name>/SKILL.md`, whose app-only card fields sit
+  under frontmatter `metadata:`) returns the cards and the **agent apps**: Claude Desktop, Codex, Any MCP agent, plus
+  Claude web and ChatGPT, shown unreachable because MCP here is local-only. A card's **Copy prompt** puts the app's
+  wrapper plus the skill body on the clipboard (Show prompt reveals it; a clipboard failure opens it). Maestro runs NO
+  scheduler and inserts nothing about the user: a scheduled card's wrapper tells the agent to ask the user when to
+  run, an attended or custom one runs now. Apply is attended (`apply_kind()`) until full automation mode. Parsing is
+  strict and `load_cards()` runs at startup, so a malformed skill file fails boot.
 - **In-app chat**, on screen the **Assistant** (`services/chat_agent.py` + `chat_tools.py`): a distinct
   toolset (resume edit, KB capture, template admin including the mutations MCP
   deliberately lacks). Its resume-edit tool runs the SAME pipeline as the REST
@@ -716,16 +728,15 @@ with the failure mode that bought it. Code citing "§8" lands here.
   re-read each. The pins catch the worst subclass; nothing catches the rest but this checklist.
 - **Slop ratchet.** Per-surface `.slopconfig.json` + committed `.slop-baseline.json` in `backend/`,
   `frontend/`, `extension/`; the maintainer runs `python3 ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py
-  check <surface>` from the repo root (not shipped; see CONTRIBUTING), and non-zero means a metric regressed —
-  fix, or re-baseline with a reason. **RUN EVERY SURFACE YOU TOUCHED AND NAME EACH ONE IN THE CLAIM**: the
-  extension's tests live in `backend/`, and an unnamed "slop ratchet OK" is the shape of the 2026-08-17 false
-  green. **`complexity_hotspots` is a COUNT — re-baseline it rather than chasing it**: it rises when code
-  grows, when you add tests, and when you DECOMPOSE a monster (one cc=46 function split can move it UP); judge
-  erosion by hotspot density per KLOC and the worst cc. Orphan LOC and duplication are honest ratchets. Scan a
-  SURFACE dir, never the repo root (a root scan orphans the whole backend). jscpd is optional. The
-  extension's allowlisted clones are the documented injected twins, but the matcher pairs FILE NAMES by
-  substring and `allowlisted_clones` is PRINTED, never gated: check it by eye. Graph signals read
-  `graphify-out/graph.json` (gitignored; `graphify extract . --no-cluster --code-only`, PyPI `graphifyy`).
+  check <surface>` from the repo root (not shipped; see CONTRIBUTING); non-zero means a metric regressed — fix, or
+  re-baseline with a reason. **RUN EVERY SURFACE YOU TOUCHED AND NAME EACH ONE IN THE CLAIM** (the extension's tests
+  live in `backend/`; an unnamed "slop ratchet OK" was the 2026-08-17 false green). **`complexity_hotspots` is a
+  COUNT — re-baseline it rather than chasing it**: adding code, adding tests or decomposing a monster all raise it;
+  judge erosion by hotspot density per KLOC and the worst cc. Orphan LOC and duplication are honest ratchets. Scan a
+  SURFACE dir, never the repo root (it orphans the whole backend). The extension's allowlisted clones are the
+  documented injected twins, but the matcher pairs FILE NAMES by substring and `allowlisted_clones` is PRINTED, not
+  gated: check it by eye. Graph signals read the gitignored `graphify-out/graph.json` (`graphify extract . --no-cluster
+  --code-only`, PyPI `graphifyy`).
 
 ## 10. Design-decision record
 
@@ -875,36 +886,31 @@ citation. Priority lives in the item text, not in the ordinal.
   desktop shell and to a Claude Desktop child, so a bare `pdflatex` does not resolve. `engines.find_pdflatex` searches
   the TeX homes after PATH, and every run spawns the resolved ABSOLUTE path.
 - **A seeded template copies its source only on INSERT** (2026-09-20): v0.4.0's Postgres import landed rows AFTER
-  migrations ran, so a migration rewriting a superseded seed would have fired on an empty file and the importer
-  re-landed the old bytes — hence `template_registry.SUPERSEDED_SEED_DIGESTS` resyncs at SEED time.
-- **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): `journal_mode` persists in the file, but
-  `foreign_keys`/`synchronous`/`busy_timeout` reset on every connect, so 21 `ondelete=` cascades silently stopped.
-  Every SQLite engine goes through `app.db.make_engine`, which sets them per connection.
+  migrations ran, so the importer re-landed old bytes → `template_registry.SUPERSEDED_SEED_DIGESTS` resyncs at SEED time.
+- **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): `journal_mode` persists in the file; `foreign_keys`,
+  `synchronous` and `busy_timeout` reset every connect, so 21 `ondelete=` cascades silently stopped → every SQLite
+  engine goes through `app.db.make_engine`.
 - **Autogenerate fully qualifies a TypeDecorator** (2026-09-19): `app.models.types.UTCDateTime()` is unimportable in a
-  revision → use the impl type by hand. Alembic compares compiled DDL, so `compare_type` needs no hook; `alembic
-  check` skips server defaults — hence the parity test's `compare_server_default=True` pass.
+  revision → use the impl type by hand. `alembic check` skips server defaults (the parity test passes
+  `compare_server_default=True`).
 - **A Boolean `server_default="false"` is TEXT on SQLite** (2026-09-19): `'false'` is truthy in Python, so every
-  user-created template read as the default. Boolean defaults are expressions (`expression.false()`), pinned by
-  `test_db_portability`.
+  user template read as the default → use `expression.false()` (pinned by `test_db_portability`).
 - **`Session.commit()` flushes first** (2026-09-19): a teardown that deletes rows and commits also lands a
   never-flushed `add`, AFTER the deletes, leaking it into the next test → `rollback()` before a teardown clear.
-- **`with sqlite3.connect(...)` commits but does not CLOSE** (2026-09-19): a leaked read lock on the live database and
-  an open handle on the temp image → `app/tools/backup_db.py` closes every connection in a `finally`; never use the
-  sqlite3 context manager as a closer.
-- **SQLite's `CURRENT_TIMESTAMP` has no microseconds** (2026-09-19): compared as TEXT against the ORM's `.ffffff`
-  binds, same-second rows tied and "oldest wins" fell to a uuid4 tie-break → the APP writes every timestamp
-  (`default=utcnow`/`onupdate=utcnow`), so never test `updated_at == created_at` for "never edited".
+- **`with sqlite3.connect(...)` commits but does not CLOSE** (2026-09-19): a leaked read lock and an open handle →
+  `app/tools/backup_db.py` closes every connection in a `finally`; the context manager is not a closer.
+- **SQLite's `CURRENT_TIMESTAMP` has no microseconds** (2026-09-19): same-second rows tied against the ORM's `.ffffff`
+  binds and "oldest wins" fell to a uuid4 tie-break → the APP writes every timestamp; never test `updated_at ==
+  created_at` for "never edited".
 - **One path, every job** (2026-09-01): LinkedIn's list rewrites only `?currentJobId=` and the matcher dropped the
   query string, so every job was the first one saved. A query-keyed board needs its key in BOTH `posting_id` tables
   (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's until checked.
-- **A starter that fails its own gate** (2026-09-01): the from-scratch template rendered three sections, so
-  create-with-validate certified `false` on an untouched draft. What the app mints AND validates in one request must
-  clear every probe.
+- **A starter that fails its own gate** (2026-09-01): the from-scratch template certified `false` on an untouched
+  draft. What the app mints AND validates in one request must clear every probe.
 - **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers, no MIME types. Every
   picker reads `frontend/lib/upload-accept.ts`.
-- **A guard test mocked away the guard** (2026-08-25): a green ask/answer suite hid a 100%-failing numeric rewrite
-  path because it replaced `guarded_rewrite`. When a guard or validator is the subject, fake `llm.call_openai`, never
-  the guard.
+- **A guard test mocked away the guard** (2026-08-25): a green suite hid a 100%-failing rewrite path because it replaced
+  `guarded_rewrite` → when a guard is the subject, fake `llm.call_openai`, never the guard.
 - **The FAST model quietly caps score honesty** (2026-08-24): flash-lite extractions missed conceptual JD skills →
   base ATS scores inflated ~9 pts vs fuller extractors. Fast tier drives coverage/honesty/latency; Smart barely moves
   outcomes — re-benchmark FAST before changing model defaults.
@@ -915,30 +921,23 @@ citation. Priority lives in the item text, not in the ordinal.
   after refresh, never columns — don't "fix" them into the ORM.
 - **score_target(result=...)**: passes a precomputed engine result to persist; the double-run it replaced was audit
   finding C18 — don't re-add a second run.
-- **The query cache keeps old key order** (2026-09-22): structural sharing reuses unchanged subtrees, so
-  `JSON.stringify` of a refetch ≠ the PATCH response and a studio's own Save read as foreign. `TailoredResumeStudio`
-  compares `serverKey` (sorted keys); adoption rules: frontend-conventions. Known gaps: §11 item 26.
-- **PDFium is not thread-safe** (2026-09-23): `/templates` fetched gallery previews in parallel on the threadpool and
-  segfaulted libpdfium (`FPDF_LoadPage`). Every PDFium use under `app/` holds `services/pdfium_lock.PDFIUM_LOCK`,
-  pinned by an AST scan in `tests/test_pdfium_lock.py`.
-- **Worktree subagents** may edit the MAIN checkout: hand them absolute worktree paths, verify with `git -C <wt>
-  status`.
-- **Ports 8000/8001 may be squatted** by other apps or stale servers: `/openapi.json` `info.title` is "Maestro CS
-  API".
+- **The query cache keeps old key order** (2026-09-22): structural sharing made a refetch's `JSON.stringify` differ from
+  the PATCH response, so a studio's own Save read as foreign → compare `serverKey` (sorted keys); §11 item 26.
+- **PDFium is not thread-safe** (2026-09-23): parallel gallery previews segfaulted libpdfium → every PDFium use under
+  `app/` holds `services/pdfium_lock.PDFIUM_LOCK` (AST scan in `tests/test_pdfium_lock.py`).
+- **Worktree subagents** may edit the MAIN checkout: hand them absolute worktree paths, verify with `git -C <wt> status`.
+- **Ports 8000/8001 may be squatted**: `/openapi.json` `info.title` is "Maestro CS API".
 - **Check model capability in the ROUTER, never inside `run_turn`**: `run_turn` is a generator — anything it raises
   fires after the SSE headers are out and reaches the browser as a truncated stream. Capabilities are probed on save
   (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`; unprobed models are never blocked.
-- **A probe must issue the SAME call as the surface it measures**: same client (`llm.get_chat_client`) and the same
-  per-model kwargs from `llm.completion_extras` (the one site for such rules). A probe that re-implements the call
-  measures one the app never makes, and its stored row then SHADOWS reality — a false tools=No once 422'd every chat
-  message.
+- **A probe must issue the SAME call as the surface it measures**: same client (`llm.get_chat_client`), same kwargs
+  from `llm.completion_extras`. A re-implemented call's stored row SHADOWS reality — a false tools=No once 422'd every
+  chat message.
 - **LLM provider outages are ONE exception type**: `llm.py` normalizes them to `llm.LLMProviderError`; `app.main` maps
-  it to 502 + its `str()`, a sentence for the user; plain `RuntimeError` is a LOCAL failure and stays a 500. Never
-  catch `openai.*` in routers. A user sentence once replaced the text the capability probe matched on (2026-09-24):
-  classify a provider failure on `provider_detail`, never `str(exc)`.
-- **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` that moves children off a parent does not refresh
-  the parent's already-loaded collection, so a following `session.delete(parent)` cascades away the rows just moved —
-  expire the parent between the two (`career_kb.merge_entities`).
+  it to 502 + its `str()`, a user sentence; plain `RuntimeError` is LOCAL and stays a 500. Never catch `openai.*` in
+  routers; classify a provider failure on `provider_detail`, never `str(exc)` (2026-09-24).
+- **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` moving children off a parent leaves its loaded
+  collection stale, so `session.delete(parent)` cascades away the moved rows → expire the parent between (`career_kb.merge_entities`).
 - **Workday apply steps read as "no form"** (2026-09-25): Workday has no `<form>`/`<select>`, a `type="text"` phone
   and no email on My Information, so every step but the résumé upload scored 1 and Fill was withheld. Measure
   `detectPage`'s signals on the live page before blaming timing; the fix is `workday-apply-route`.

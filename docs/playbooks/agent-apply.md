@@ -12,7 +12,7 @@ This playbook layers on top of
 [agentic-job-search.md](../agentic-job-search.md); all of its hard constraints
 (consent, EEO, bot detection, and fabrication) apply verbatim. The execution
 mechanics are summarized by the
-[agent-apply-execution skill](../skills/agent-apply-execution/SKILL.md).
+[agent-apply-execution skill](../../backend/app/automations/skills/agent-apply-execution/SKILL.md).
 This playbook is the canonical policy owner; the skill is a concise execution
 overlay and cannot relax or override it. Strategy lives here in editable text,
 never in backend code — change a lane by editing this file.

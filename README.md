@@ -459,7 +459,9 @@ Claude extension's **Tool profile** setting or with
 hunt and an apply run that works on its own and asks you only for what the app
 doesn't know, plus one yes before each submit. `customize-job-skills` suggests
 skills from what your agent knows about you, asks a few questions, and builds
-them with your assistant's own skill creator and scheduler.
+them with your assistant's own skill creator and scheduler. The **Automations**
+page in the app puts each one on the clipboard: copy a prompt into Claude
+Desktop, Codex or any MCP agent, and your agent asks when to run it.
 
 Keep the connection type **STDIO** (the default). The HTTP option would expose
 the app, which has no login — don't. (ChatGPT on the *web* can't reach a local
@@ -572,8 +574,9 @@ your resumes, and hands back a ranked shortlist for you to review. There's no
 job-board integration to be locked into.
 
 Ready-made **`job-hunt`** and **`apply-session`** skills are in
-[`docs/skills/`](docs/skills/) — copy them into your assistant's skills folder
-as-is, or run **`customize-job-skills`** to make them yours or build new ones
+[`docs/skills/`](docs/skills/) — copy a prompt from the app's **Automations**
+page into Claude Desktop, Codex or any MCP agent (your agent asks when to run
+it), copy the skills into your assistant's skills folder as-is, or run **`customize-job-skills`** to make them yours or build new ones
 (batch tailoring, referral-first hunting, a weekly digest) from your own data.
 
 ### Going all the way: agent applications
@@ -665,7 +668,7 @@ report is one of the most valuable contributions right now.
 - **Getting Started:** [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — install to first tailored PDF, step by step.
 - **Updating:** [`docs/UPDATING.md`](docs/UPDATING.md) — updating by hand, backups, rolling back.
 - **Known issues:** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — what works well, what's rough, and what's a deliberate limitation.
-- **Skills for your AI assistant:** [`docs/skills/`](docs/skills/) — job hunt, apply run, and a skill that builds your own.
+- **Skills for your AI assistant:** [`docs/skills/`](docs/skills/) — job hunt, apply run, mail status, referral pages, tailor run, and a skill that builds your own; the app's **Automations** page copies each as a prompt.
 - **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — development setup, tests, development mode and LLM tracing, and where help is wanted.
 - **How it's built:** [`SYSTEM.md`](SYSTEM.md) — the architecture reference for contributors and coding agents; read the relevant part before changing behaviour.
 - **Glossary:** [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — the project's vocabulary, worth ten minutes before your first contribution.

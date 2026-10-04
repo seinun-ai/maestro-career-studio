@@ -124,7 +124,9 @@ does not.
   this was assembled".
 - **The tracker records state but does not manage follow-through.** No next
   action, due date, reminder, status history, or snapshot of the exact artifact
-  you actually submitted.
+  you actually submitted. Moving statuses from your mail is an external agent
+  run (the `mail-status` prompt on the Automations page), not something the app
+  does or schedules itself.
 - **Import auto-approves more than you might expect.** Unchanged bullets from a
   file you wrote are approved on import; only merged or AI-generated points land
   in the review inbox. Defensible, but the result dialog does not say so.
