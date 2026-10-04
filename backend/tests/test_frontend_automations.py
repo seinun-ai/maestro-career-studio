@@ -45,7 +45,9 @@ def test_copy_is_off_for_an_unreachable_app_and_says_why():
     # A disabled <button> drops keyboard focus; this one stays focusable and
     # points at the app note.
     assert "focusableWhenDisabled" in _CARD
-    assert "aria-describedby" in _CARD
+    assert "aria-describedby={!app.reachable ? disabledReasonId : undefined}" in _CARD
+    assert "id={noteId}" in _PAGE
+    assert "disabledReasonId={noteId}" in _PAGE
     assert 'aria-live="polite"' in _PAGE
 
 
@@ -61,6 +63,7 @@ def test_a_failed_clipboard_write_opens_the_prompt_to_select():
 def test_the_card_copy():
     assert "Prompt copied. Paste it into" in _CARD
     assert "Scheduled applying comes with full automation mode." in _CARD
+    assert 'card.id === APPLY_CARD_ID && card.kind === "attended"' in _CARD
 
 
 def test_a_scheduled_card_gets_the_wrapper_that_asks_when_to_run():

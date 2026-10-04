@@ -74,7 +74,7 @@ export default function AutomationsPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
             <AppPicker
               apps={data.apps}
               value={app.id}
@@ -86,7 +86,7 @@ export default function AutomationsPage() {
             {/* Always mounted, so switching apps announces the new note. */}
             <div aria-live="polite">
               {app.note ? (
-                <p id={noteId} className="text-muted-foreground max-w-[65ch]">
+                <p id={noteId} className="text-muted-foreground mt-2 max-w-[65ch]">
                   {app.note}
                 </p>
               ) : null}

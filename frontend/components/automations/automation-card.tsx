@@ -51,9 +51,13 @@ export function AutomationCard({
       .then(() => navigator.clipboard.writeText(text))
       .then(() => toast.success(`Prompt copied. Paste it into ${app.label}.`))
       .catch(() => {
-        focusPromptWhenShown.current = true;
-        setOpen(true);
-        promptRef.current?.focus();
+        // Already open: focus it now. Otherwise open it, and the effect
+        // focuses it on arrival (a flag left set would steal a later Show).
+        if (promptRef.current) promptRef.current.focus();
+        else {
+          focusPromptWhenShown.current = true;
+          setOpen(true);
+        }
         toast.error("Couldn't copy. Select the prompt below instead.");
       });
   }
@@ -84,7 +88,7 @@ export function AutomationCard({
             Scheduled applying comes with full automation mode.
           </p>
         ) : null}
-        <div className="mt-auto flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <Button
             onClick={copy}
             disabled={!app.reachable}
