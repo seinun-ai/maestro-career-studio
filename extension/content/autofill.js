@@ -708,7 +708,19 @@ async function fillFormFromProfile(
    * owns nothing — so the three statements are one gesture and were written out
    * four times before the duplication gate said so.
    */
-  const clickControl = (el) => { visitControl(el); el.click(); leaveControl(el); };
+  const clickControl = (el) => {
+    visitControl(el);
+    // A radio or checkbox click fires a TRUSTED change on the control: it is
+    // the engine's own write, not the user's, so the field is named busy for
+    // exactly that click (`content/fill-ops.js` does the same around its ops).
+    ns.fillBusyEl = el;
+    try {
+      el.click();
+    } finally {
+      ns.fillBusyEl = null;
+    }
+    leaveControl(el);
+  };
 
   /** Did the control really end up carrying the answer?
    *
@@ -1237,6 +1249,11 @@ async function fillFormFromProfile(
   // protected-class control is the user's own and is claimed nowhere.
   const already = [];
   const recordFilled = (item) => filled.push(item);
+  // Which field a write went to, for the answer receipt: the inventory's fid
+  // (a re-list per unnamed control, capped so a page of unlisted controls
+  // cannot make the pass quadratic).
+  let relists = 8;
+  const receiptFid = (input) => ns.fillInventory?.fidFor(input, { relist: relists-- > 0 }) ?? null;
   let seen = 0;
   const doneRadioGroups = new Set();
 
@@ -1618,6 +1635,7 @@ async function fillFormFromProfile(
       recordFilled({
         label,
         rule: rule.id,
+        fid: receiptFid(input),
         // 120, not the 60 every other branch uses: this echoes a LIST, and 60
         // characters truncates it after the third skill — which reads as if the
         // fill stopped there.
@@ -1645,7 +1663,7 @@ async function fillFormFromProfile(
         visitControl(input);
         setNativeValue(input, best.el.value);
         leaveControl(input);
-        recordFilled({ label, rule: rule.id, value: best.text.trim().slice(0, 60) });
+        recordFilled({ label, rule: rule.id, fid: receiptFid(input), value: best.text.trim().slice(0, 60) });
         observe(input, kind, labelText, rule, "filled");
       } else if (best && input.value === best.el.value) {
         // Already at the option we would pick — a re-run, or an agreeing ATS
@@ -1682,7 +1700,7 @@ async function fillFormFromProfile(
           // validates on.
           clickControl(radio);
           if (stillChecked(radio)) {
-            recordFilled({ label, rule: rule.id, value: rl.slice(0, 40) });
+            recordFilled({ label, rule: rule.id, fid: receiptFid(input), value: rl.slice(0, 40) });
             observe(input, kind, labelText, rule, "filled");
           } else {
             noteAttempt(labelText, res.value);
@@ -1710,6 +1728,7 @@ async function fillFormFromProfile(
           recordFilled({
             label,
             rule: rule.id,
+            fid: receiptFid(input),
             value: "ticked",
             // Provenance the user can check, which is the point of HR-1: the
             // one thing to re-read is the end date on that job.
@@ -1748,6 +1767,7 @@ async function fillFormFromProfile(
       recordFilled({
         label,
         rule: rule.id,
+        fid: receiptFid(input),
         value: popup.text,
         note: popup.ok ? undefined : "no matching option, choose it manually",
       });
@@ -1773,6 +1793,7 @@ async function fillFormFromProfile(
       recordFilled({
         label,
         rule: rule.id,
+        fid: receiptFid(input),
         value: combo.text,
         note: combo.ok ? undefined : "no matching option, enter it manually",
       });
@@ -1804,6 +1825,7 @@ async function fillFormFromProfile(
       recordFilled({
         label,
         rule: rule.id,
+        fid: receiptFid(input),
         value: String(res.value),
         // No hedge on filled_normalized: the value landed, the site just
         // renders it its own way, and hedging a success teaches the user to
@@ -1846,7 +1868,7 @@ async function fillFormFromProfile(
       visitControl(input);
       setNativeValue(input, String(res.value));
       leaveControl(input);
-      corrected.push({ label, rule: rule.id, was, value: String(res.value) });
+      corrected.push({ label, rule: rule.id, fid: receiptFid(input), was, value: String(res.value) });
       observe(input, kind, labelText, rule, "corrected");
     }
   }

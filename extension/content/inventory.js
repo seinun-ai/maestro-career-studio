@@ -193,8 +193,11 @@
   // consentForms is per call and defaults to OFF: a caller that does not pass
   // the standing consent never inherits a previous run's.
   let lastFields = null; // what the last list() returned, whoever called it
-  const list = ({ consentForms = false } = {}) => {
-    lastConsentForms = consentForms;
+  // `keep` is the answer receipt's read of the page after a run: it lists with
+  // the run's consent but leaves the standing consent this module resolves and
+  // re-lists with (`lastConsentForms`) as the run left it.
+  const list = ({ consentForms = false, keep = false } = {}) => {
+    if (!keep) lastConsentForms = consentForms;
     flush();
     const fields = ns.shapes.pass(() => scan(consentForms));
     flush();
@@ -269,6 +272,20 @@
   };
   for (const type of ["input", "change"]) document.addEventListener(type, onUserChange, true);
 
+  // The fid a control's field has, so the rule pass can say WHICH field it
+  // wrote (the answer receipt reads that field's question and value from the
+  // inventory, never from the label text a rule matched on). An element no
+  // pass has named yet costs one re-list per DOM change; `relist: false` is the
+  // caller's budget spent: a plain lookup, null when unnamed.
+  const fidFor = (el, { relist = true } = {}) => {
+    if (!el) return null;
+    if (!fidOf.has(el) && relist) {
+      flush();
+      if (listedAt !== generation) ns.fillInventory.list({ consentForms: lastConsentForms, keep: true });
+    }
+    return fidOf.get(el) ?? null;
+  };
+
   // The last list()'s fields while nothing in the DOM changed since it, else
   // null: a caller may reuse them instead of listing again. Kept HERE, with
   // the generation it was taken at, because a list() can happen anywhere
@@ -279,7 +296,7 @@
   };
 
   ns.fillInventory = {
-    list, peek, resolve, last, frame: FRAME,
+    list, peek, resolve, last, fidFor, frame: FRAME,
     fpOf: (fid) => registry.get(fid)?.fp ?? null,
     liveFp,
     shapeOf: (fid) => (registry.has(fid) ? ns.shapes.byName(registry.get(fid).shape) : null),

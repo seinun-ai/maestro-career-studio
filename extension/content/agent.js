@@ -609,7 +609,7 @@
      * `fill_cancel` is ungated on purpose: it carries nothing and only stops
      * work in flight, and a Stop that could miss a frame would be no Stop. */
     fill_inventory: (msg) => (frameMayReceiveUserData(msg)
-      ? ns.fillOps.inventory({ consentForms: msg.consentForms === true, runId: msg.runId, peek: msg.peek === true })
+      ? ns.fillOps.inventory({ consentForms: msg.consentForms === true, runId: msg.runId, peek: msg.peek === true, readOnly: msg.readOnly === true })
       : { frame: null, host: location.hostname, fields: [] }),
     fill_explore: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.explore(msg.requests)
