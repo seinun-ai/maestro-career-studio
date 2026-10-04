@@ -1,13 +1,19 @@
 ---
 name: customize-job-skills
 description: Use when the user wants to personalize the Maestro CS job-hunt or apply-session skill, or create a new skill of their own around the app — batch tailoring, referral-first hunting, a weekly digest, anything the tools can do. Suggests ideas from what you know about the user and their data, asks a few questions, then builds it with the client's skill creator and scheduler.
+metadata:
+  title: Make your own
+  summary: Builds automations around you from what your agent knows and your data in Maestro.
+  kind: custom
+  needs: [maestro]
 ---
 
 # Customize the job skills
 
 Help the user end up with skills that fit how *they* job-hunt — either their own
 version of the ready-made `job-hunt` and `apply-session` skills (this repo:
-`docs/skills/`), or something new built on the Maestro CS tools.
+`backend/app/automations/skills/`, indexed at `docs/skills/README.md`), or
+something new built on the Maestro CS tools.
 
 ## 1. Look before you ask
 
