@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Settings as SettingsIcon,
   UserRound,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -49,6 +50,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/applications", label: "Jobs", icon: Inbox },
       { href: "/proposals", label: "Agent inbox", icon: Bot },
+      { href: "/automations", label: "Automations", icon: Workflow },
       { href: "/referrals", label: "Referrals", icon: Handshake },
     ],
   },

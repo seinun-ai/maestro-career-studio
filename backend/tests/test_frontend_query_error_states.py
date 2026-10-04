@@ -231,6 +231,7 @@ _LOAD_ERROR_CALLERS = sorted(
 # 404-as-state callers read the remembered error instead (pinned below).
 _FAILURE_BRANCHES = {
     "app/referrals/page.tsx": "{isLoadFailure(referrals) ? (",
+    "app/automations/page.tsx": "{isLoadFailure(query) ? (",
     "app/base-resumes/page.tsx": "{isLoadFailure(resumes) ? (",
     "app/profile/page.tsx": "{isLoadFailure(setupStatus) ? (",
     "app/applications/page.tsx": "const loadFailed = isLoadFailure(apps) || isLoadFailure(savedJobs);",
@@ -288,6 +289,7 @@ def test_a_retry_keeps_the_error_mounted(relpath: str):
 # so the gate is the ternary, not the first `isLoadFailure(`.
 _LOADING_GATES = [
     ("app/referrals/page.tsx", '<Skeleton className="h-40 w-full" />', "isLoadFailure(referrals) ?"),
+    ("app/automations/page.tsx", '<Skeleton className="h-64 w-full" />', "isLoadFailure(query) ?"),
     ("app/applications/page.tsx", "animate-shimmer h-12", "loadFailed ? ("),
     ("components/proposals/proposals-section.tsx", "if (isLoading) {", "if (isLoadFailure("),
     ("components/ats-score-panel.tsx", "scores.isLoading ||", "if (isLoadFailure(scores))"),
