@@ -1222,6 +1222,48 @@ know, and each one was learned from a live failure.
   because "we could not see it land" is a different claim from "it did not".
 - **Nothing is ever submitted automatically.** Always review before submitting.
 
+## The answer receipt — what the panel records of a form
+
+`shared/receipt.js` builds, and `panel/actions/fill.js` posts, ONE row per
+capture to `POST /api/jobs/{id}/filled-answers` (matched job only; the body
+names the base resume the fill used, which is how the server links it to an
+application). It is a record of VALUES, so it is not telemetry: the generic
+`api` door, never `telemetry`/`fill_trace`, whatever `telemetryEnabled` says,
+and its values reach no value-free builder (SYSTEM.md
+`{#inv-filled-answers-local}`).
+
+- **The page's inventory is the source of a row.** After a run the panel reads
+  the page with a `fill_inventory` carrying `readOnly: true` (no run starts;
+  the engine's standing `consentForms` is not replaced) and the run's own
+  `consentForms` (the loop report's, the rule pass's context), so the policy
+  that judged the run judges the read. Only a frame that earns the data answers
+  (`{#inv-frame-earns-data}`). A field the policy never fills (`policyBlocked`)
+  is never recorded, on any path.
+- **The rule pass names its field.** Each `filled`/`corrected` item carries the
+  rule id and the `fid` of the control written (`ns.fillInventory.fidFor(el)`,
+  which names a control no pass has listed yet at the cost of a re-list per DOM
+  change, capped per run). The panel reads that field's question, section,
+  committed value and options from the inventory by fid; the rule's label is
+  never used (for a radio or checkbox it is the option's text). A write with no
+  field behind it is not recorded. A checkbox group is ONE row with a list
+  answer and `options_count`. The pass's own radio/checkbox clicks run under
+  `ns.fillBusyEl` (`clickControl`), so the trusted `change` they fire does not
+  mark the field `touched`.
+- **Rows are in page order, every occurrence kept** (the server counts a
+  repeated label by its place in the row), cut to the server's bounds (question
+  500, answer 20000, 100 list items, `options_count` 1000); a field with no
+  question is skipped, never sent.
+- **Capture points:** after a loop run, after a rule-pass run, after a pause
+  answer, at **Mark applied** (`setStatus`, before the PATCH), and as the panel
+  **lets go of a page** (`bindPage`, before `resetPageFacts`, when the tab or url
+  changes; a Refresh is not leaving). The last two post what you typed or
+  changed since the last post (`fromEdits`): a field a run wrote keeps its
+  source and is marked `edited_by_you`, one it did not is `you`; the row also
+  restates the fields already posted. `receiptSeen` (page-shaped, carried by
+  Refresh) is the memory of what was posted, by fid; nothing is posted when
+  nothing changed. The leaving capture is fire-and-forget, built from the
+  facts as they stood, and writes nothing back to the store.
+
 ## Telemetry — what leaves the page
 
 On by default (`telemetryEnabled` in `chrome.storage.sync`, defaulted in
