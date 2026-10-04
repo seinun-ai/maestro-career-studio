@@ -29,6 +29,8 @@ def post_filled_answers(
     job = _job(db, job_id)
     try:
         return filled_answers.record(db, job, payload)
+    except filled_answers.ApplicationNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except filled_answers.ApplicationMismatch as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

@@ -25,12 +25,17 @@ from app.models.job import Job
 from app.models.resume_version import ResumeVersion
 from app.schemas.filled_answers import FilledAnswersCreate, FilledField
 from app.services import answer_flags, autofill_catalog, eeo_consent
+from app.services.autofill_catalog import Fact
 
 logger = logging.getLogger(__name__)
 
 
 class ApplicationMismatch(ValueError):
     """The posted application belongs to another job."""
+
+
+class ApplicationNotFound(LookupError):
+    """The posted application does not exist."""
 
 
 def _consented(session: Session) -> bool:
@@ -64,7 +69,9 @@ def _application_id(session: Session, job: Job, application_id: UUID | None) -> 
     if application_id is None:
         return None
     app_row = session.get(Application, application_id)
-    if app_row is None or app_row.job_id != job.id:
+    if app_row is None:
+        raise ApplicationNotFound(f"No application {application_id}.")
+    if app_row.job_id != job.id:
         raise ApplicationMismatch("That application belongs to another job.")
     return app_row.id
 
@@ -84,7 +91,7 @@ def _host_of(url: str | None) -> str | None:
     return urlsplit(url or "").hostname or None
 
 
-def flag_context(session: Session, job: Job) -> tuple[dict[str, Any], set[str]]:
+def flag_context(session: Session, job: Job) -> tuple[dict[str, Fact], set[str]]:
     """What the flags compare against: the profile as the fill would serve it."""
     profile = eeo_consent.disclosable_profile(session)
     facts = autofill_catalog.build(profile, [], [], company=job.company)
@@ -130,13 +137,23 @@ def _fold(text: Any) -> str:
     return " ".join(str(text or "").casefold().split())
 
 
+def _keyed(row: FilledAnswer, field: dict[str, Any], seen: dict[tuple, int]) -> tuple:
+    """step, section, question, and which occurrence of that label this is in its row: a form
+    may repeat a label (two "Job Title" boxes under Work Experience)."""
+    label = (_fold(field.get("section")), _fold(field.get("question")))
+    seen[label] = seen.get(label, -1) + 1
+    return (row.step or "", *label, seen[label])
+
+
 def latest_fields(rows: list[FilledAnswer]) -> list[tuple[FilledAnswer, dict[str, Any]]]:
-    """Per question (section + question), the newest answer: rows run oldest first, so a later
-    row's field replaces an earlier one's and keeps the place the question first had."""
-    latest: dict[tuple[str, str], tuple[FilledAnswer, dict[str, Any]]] = {}
+    """Per question occurrence, the newest answer. Rows run oldest first, so a later row's field
+    replaces the same occurrence on the same step and keeps the place the question first had;
+    the same question on another step is another answer."""
+    latest: dict[tuple, tuple[FilledAnswer, dict[str, Any]]] = {}
     for row in rows:
+        seen: dict[tuple, int] = {}
         for field in row.fields or []:
-            latest[(_fold(field.get("section")), _fold(field.get("question")))] = (row, field)
+            latest[_keyed(row, field, seen)] = (row, field)
     return list(latest.values())
 
 
@@ -149,27 +166,44 @@ def _section(step: dict[str, Any], name: str | None) -> dict[str, Any]:
     return section
 
 
-def _grouped(latest, context, rows: list[FilledAnswer]) -> tuple[list[dict[str, Any]], int]:
-    order = {}
+def _readable(field: dict[str, Any], flags: list[dict[str, str]], consented: bool) -> dict[str, Any]:
+    """The field as the tab reads it. Consent is asked again at read time: an EEO value stored
+    while it was recorded is not served once it is withdrawn (`eeo_answered` still says it was)."""
+    view = {**field, "flags": flags}
+    if field.get("eeo") and not consented:
+        view["answer"] = None
+    return view
+
+
+def _step_heads(rows: list[FilledAnswer]) -> dict[str, dict[str, Any]]:
+    """Each step's host, channel and time from its NEWEST row, in the order the steps first came."""
+    heads: dict[str, dict[str, Any]] = {}
     for row in rows:
-        order.setdefault(row.step or "", len(order))
-    steps: dict[str, dict[str, Any]] = {}
+        key = row.step or ""
+        position = heads[key]["order"] if key in heads else len(heads)
+        heads[key] = {"order": position, "step": row.step, "host": row.host,
+                      "channel": row.channel, "captured_at": row.captured_at, "sections": []}
+    return heads
+
+
+def _grouped(latest, context, rows: list[FilledAnswer], consented: bool) -> tuple[list[dict[str, Any]], int]:
+    steps = _step_heads(rows)
     flagged = 0
     for row, field in latest:
         flags = answer_flags.flags_for(field, *context)
         flagged += bool(flags)
-        step = steps.setdefault(row.step or "", {
-            "step": row.step, "host": row.host, "channel": row.channel,
-            "captured_at": row.captured_at, "sections": []})
-        _section(step, field.get("section"))["fields"].append({**field, "flags": flags})
-    return sorted(steps.values(), key=lambda step: order[step["step"] or ""]), flagged
+        _section(steps[row.step or ""], field.get("section"))["fields"].append(
+            _readable(field, flags, consented))
+    ordered = sorted(steps.values(), key=lambda step: step["order"])
+    return [{k: v for k, v in step.items() if k != "order"} for step in ordered], flagged
 
 
 def receipt(session: Session, job: Job) -> dict[str, Any]:
     rows = _rows(session, job.id)
     if not rows:
         return {"job_id": job.id, "steps": []}
-    steps, flagged = _grouped(latest_fields(rows), flag_context(session, job), rows)
+    steps, flagged = _grouped(latest_fields(rows), flag_context(session, job), rows,
+                              _consented(session))
     return {"job_id": job.id, "host": rows[-1].host, "pages": len(steps),
             "captured_at": rows[-1].captured_at, "flag_count": flagged, "steps": steps}
 

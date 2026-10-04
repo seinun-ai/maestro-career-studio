@@ -126,3 +126,70 @@ def test_the_job_detail_says_whether_anything_was_filled(db_session):
     assert client.get(f"/api/jobs/{job.id}/detail").json()["has_filled_answers"] is False
     _post(job, [_f("First name", "Ada")])
     assert client.get(f"/api/jobs/{job.id}/detail").json()["has_filled_answers"] is True
+
+
+def test_two_fields_with_one_label_in_a_row_both_survive(db_session):
+    job = _mk_job(db_session)
+    _post(job, [_f("Job Title", "Engineer", section="Work Experience"),
+                _f("Job Title", "Analyst", section="Work Experience")], step="/apply")
+    body = client.get(f"/api/jobs/{job.id}/filled-answers").json()
+    assert [f["answer"] for f in _fields(body)] == ["Engineer", "Analyst"]
+
+
+def test_the_same_question_on_two_steps_stays_on_both(db_session):
+    job = _mk_job(db_session)
+    _post(job, [_f("Phone", "555")], step="/apply/1")
+    _post(job, [_f("Phone", "556")], step="/apply/2")
+    body = client.get(f"/api/jobs/{job.id}/filled-answers").json()
+    assert [(s["step"], s["sections"][0]["fields"][0]["answer"]) for s in body["steps"]] == [
+        ("/apply/1", "555"), ("/apply/2", "556")]
+
+
+def test_a_refill_replaces_only_the_matching_occurrence(db_session):
+    job = _mk_job(db_session)
+    title = {"section": "Work Experience"}
+    _post(job, [_f("Job Title", "A", **title), _f("Job Title", "B", **title)], step="/apply")
+    _post(job, [_f("Job Title", "C", **title)], step="/apply")
+    body = client.get(f"/api/jobs/{job.id}/filled-answers").json()
+    assert [f["answer"] for f in _fields(body)] == ["C", "B"]
+
+
+def test_a_step_reports_its_newest_page_run(db_session):
+    job = _mk_job(db_session)
+    _post(job, [_f("First name", "Ada")], step="/apply", host="old.example.com")
+    client.post(f"/api/jobs/{job.id}/filled-answers", json={
+        "channel": "agent", "host": "new.example.com", "step": "/apply", "fields": [_f("Last name", "L")]})
+    [step] = client.get(f"/api/jobs/{job.id}/filled-answers").json()["steps"]
+    assert (step["channel"], step["host"]) == ("agent", "new.example.com")
+
+
+def test_an_eeo_value_does_not_outlive_the_consent(db_session):
+    eeo_consent.set_consent(EeoConsent(enabled=True), db_session)
+    job = _mk_job(db_session)
+    _post(job, [_f("Gender", "Female", eeo=True, slot="eeo.gender")])
+    eeo_consent.set_consent(EeoConsent(enabled=False), db_session)
+    [field] = _fields(client.get(f"/api/jobs/{job.id}/filled-answers").json())
+    assert (field["answer"], field["eeo_answered"]) == (None, True)
+
+
+def test_a_missing_application_is_a_404(db_session):
+    job = _mk_job(db_session)
+    res = _post(job, [_f("First name", "Ada")], application_id="00000000-0000-0000-0000-000000000000")
+    assert res.status_code == 404
+
+
+@pytest.mark.parametrize("field", [
+    {"question": "   ", "answer": "A", "source": "profile"},
+    {"question": "Q", "answer": ["A"], "options_count": 2, "source": "inferred", "extra": 1},
+    {"question": "Q", "answer": "A", "options_count": 2, "source": "profile"},
+])
+def test_a_malformed_field_is_a_422(db_session, field):
+    assert _post(_mk_job(db_session), [field]).status_code == 422
+
+
+def test_a_numeric_answer_is_stored_as_text(db_session):
+    job = _mk_job(db_session)
+    assert _post(job, [{"question": "Years of experience", "answer": 5, "source": "profile"}]
+                 ).status_code == 201
+    [field] = _fields(client.get(f"/api/jobs/{job.id}/filled-answers").json())
+    assert field["answer"] == "5"

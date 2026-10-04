@@ -8,7 +8,7 @@ reads these values: they are a frozen vocabulary.
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -40,6 +40,21 @@ class FilledField(BaseModel):
     eeo: bool = False
     edited_by_you: bool = False
 
+    @field_validator("question")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("a question has words")
+        return value
+
+    @field_validator("answer", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> Any:
+        """A number a writer typed ("5") arrives as one: store its text rather than refuse the run."""
+        def one(item: Any) -> Any:
+            return str(item) if isinstance(item, (int, float)) and not isinstance(item, bool) else item
+        return [one(item) for item in value] if isinstance(value, list) else one(value)
+
     @field_validator("answer")
     @classmethod
     def _bounded(cls, value: str | list[str] | None) -> str | list[str] | None:
@@ -51,9 +66,11 @@ class FilledField(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _upload_names_its_kind(self) -> "FilledField":
+    def _consistent(self) -> "FilledField":
         if self.source == "upload" and self.slot not in UPLOAD_SLOTS:
             raise ValueError("an upload's slot is resume or cover_letter")
+        if self.options_count is not None and isinstance(self.answer, str):
+            raise ValueError("options_count counts the options of a list answer")
         return self
 
 
