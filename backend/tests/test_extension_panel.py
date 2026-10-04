@@ -835,10 +835,13 @@ def test_the_panel_binds_to_the_active_tab_and_stays_bound(booted):
     `fanoutTab` verifies WHO may name a tab, never WHICH — a service worker
     cannot know which tab the user is looking at. So a `card.tabId` left stale
     across a tab switch would aim a fill, or a PDF attach, at the wrong tab and
-    the SW would pass it. These three listeners are that guard.
+    the SW would pass it. The three tab listeners are that guard; the fourth, the
+    runtime listener, hears the content script's value-free `fields_touched` hint
+    (it is accepted only from the bound tab: `test_extension_panel_receipt.py`).
     """
     assert booted["queries"] == [{"active": True, "lastFocusedWindow": True}]
-    assert booted["listeners"] == ["onActivated", "onUpdated", "webNavigation.onCompleted"]
+    assert booted["listeners"] == ["runtime.onMessage", "onActivated", "onUpdated",
+                                   "webNavigation.onCompleted"]
     # The url is the only fact the panel has about a page it has not asked the
     # backend about yet, so it is what the identity line shows — which makes it
     # the visible proof of which tab the panel is bound to.
