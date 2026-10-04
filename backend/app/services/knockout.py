@@ -273,10 +273,11 @@ def _state(value: Any) -> str:
 
 def _country(country: Any, state: Any) -> str:
     """The country as a code; with none stated, the state says it when it can (a US state,
-    a Canadian province), else empty."""
+    a Canadian province), else empty. A full name this table does not know is unknown, so it
+    never disagrees."""
     named = _words(country)
     if named:
-        return _COUNTRIES.get(named, named)
+        return _COUNTRIES.get(named, named if len(named) == 2 else "")
     code = _state(state)
     if code in _US_STATES.values():
         return "us"
@@ -288,17 +289,21 @@ def _agree(one: str, other: str) -> bool:
     return not (one and other and one != other)
 
 
-def _state_run(location: str, code: str) -> bool:
+def _city_then_state(location: str, city: str, code: str) -> bool:
+    """`location` (padded words) holds the city with the state right after it."""
     names = {code, *(name for name, abbr in _US_STATES.items() if abbr == code)}
-    return any(f" {name} " in location for name in names)
+    return any(f" {city} {name} " in location for name in names)
 
 
 def _listed_city(job: Job, personal: dict[str, Any]) -> bool:
     """A posting that lists several places ("New York, NY or San Francisco, CA") names your city
-    among them: its words hold your city as a whole run, and your state when you gave one."""
+    among them: its words hold your city as a whole run, followed by your state when you gave
+    one ("Portland, ME" is not Portland, OR)."""
     location, city = f" {_words(job.location_raw)} ", _city(personal.get("city"))
     state = _state(personal.get("state"))
-    return bool(city) and f" {city} " in location and (not state or _state_run(location, state))
+    if not city:
+        return False
+    return _city_then_state(location, city, state) if state else f" {city} " in location
 
 
 def _same_place(job: Job, personal: dict[str, Any]) -> bool:
