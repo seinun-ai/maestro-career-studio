@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppPicker } from "@/components/automations/app-picker";
@@ -25,9 +25,12 @@ const AUTOMATIONS_KEY = ["automations"] as const;
 const DEFAULT_APP = "claude-desktop";
 
 export default function AutomationsPage() {
+  const noteId = useId();
   const query = useQuery({
     queryKey: AUTOMATIONS_KEY,
     queryFn: () => apiFetch<AutomationCatalog>("/api/automations"),
+    // The catalog reads files shipped with the app: it changes on a restart.
+    staleTime: Infinity,
   });
   // The last app chosen, if storage allows; an unknown or missing id falls
   // back to the default below.
@@ -55,7 +58,7 @@ export default function AutomationsPage() {
         subtitle="Copy a prompt into your own agent app. It asks when to run, then does these jobs with Maestro."
       />
       <p className="max-w-[65ch]">
-        Your agent needs the Maestro connector first.{" "}
+        Your agent needs to be connected to Maestro first.{" "}
         <NewTabLink href={CONNECT_AGENT_GUIDE_URL} className="text-primary">
           How to connect an agent
         </NewTabLink>
@@ -71,23 +74,37 @@ export default function AutomationsPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <>
-          <AppPicker
-            apps={data.apps}
-            value={app.id}
-            onChange={(id) => {
-              setPicked(id);
-              setStoredApp(id);
-            }}
-          />
-          {app.note ? (
-            <p className="text-muted-foreground max-w-[65ch]">{app.note}</p>
-          ) : null}
+          <div className="flex flex-col gap-2">
+            <AppPicker
+              apps={data.apps}
+              value={app.id}
+              onChange={(id) => {
+                setPicked(id);
+                setStoredApp(id);
+              }}
+            />
+            {/* Always mounted, so switching apps announces the new note. */}
+            <div aria-live="polite">
+              {app.note ? (
+                <p id={noteId} className="text-muted-foreground max-w-[65ch]">
+                  {app.note}
+                </p>
+              ) : null}
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             {cards.map((card) => (
-              <AutomationCard key={card.id} card={card} app={app} />
+              <AutomationCard
+                key={card.id}
+                card={card}
+                app={app}
+                disabledReasonId={noteId}
+              />
             ))}
           </div>
-          {custom ? <AutomationCard card={custom} app={app} /> : null}
+          {custom ? (
+            <AutomationCard card={custom} app={app} disabledReasonId={noteId} />
+          ) : null}
         </>
       )}
     </PageShell>

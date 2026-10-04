@@ -1,13 +1,13 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { NEED_LABELS, promptFor } from "@/lib/automations";
+import { APPLY_CARD_ID, NEED_LABELS, promptFor } from "@/lib/automations";
 import type { AgentApp, AutomationCard as AutomationCardData } from "@/lib/types";
 
 const KIND_LABEL = {
@@ -22,20 +22,38 @@ const KIND_LABEL = {
 export function AutomationCard({
   card,
   app,
+  disabledReasonId,
 }: {
   card: AutomationCardData;
   app: AgentApp;
+  /** The app note that says why Copy is off; Copy points at it. */
+  disabledReasonId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const promptId = useId();
+  const promptRef = useRef<HTMLPreElement>(null);
+  const focusPromptWhenShown = useRef(false);
   const text = promptFor(card, app);
 
+  // After a failed copy the prompt is the next thing to do: focus lands on it
+  // (and selects it) once it is on screen.
+  useEffect(() => {
+    if (open && focusPromptWhenShown.current) {
+      focusPromptWhenShown.current = false;
+      promptRef.current?.focus();
+    }
+  }, [open]);
+
   function copy() {
-    navigator.clipboard
-      .writeText(text)
+    // `Promise.resolve().then` turns a missing clipboard API (an insecure
+    // page), which throws at once, into the same rejection `.catch` handles.
+    Promise.resolve()
+      .then(() => navigator.clipboard.writeText(text))
       .then(() => toast.success(`Prompt copied. Paste it into ${app.label}.`))
       .catch(() => {
+        focusPromptWhenShown.current = true;
         setOpen(true);
+        promptRef.current?.focus();
         toast.error("Couldn't copy. Select the prompt below instead.");
       });
   }
@@ -61,19 +79,27 @@ export function AutomationCard({
         {card.never ? (
           <p className="text-muted-foreground max-w-[65ch]">{card.never}</p>
         ) : null}
-        {card.id === "apply-session" && card.kind === "attended" ? (
+        {card.id === APPLY_CARD_ID && card.kind === "attended" ? (
           <p className="text-muted-foreground max-w-[65ch]">
             Scheduled applying comes with full automation mode.
           </p>
         ) : null}
         <div className="mt-auto flex items-center gap-2">
-          <Button onClick={copy} disabled={!app.reachable}>
+          <Button
+            onClick={copy}
+            disabled={!app.reachable}
+            // A disabled <button> drops keyboard focus and says nothing about
+            // why; this one stays focusable and points at the app note.
+            focusableWhenDisabled
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            aria-describedby={!app.reachable ? disabledReasonId : undefined}
+          >
             <Copy aria-hidden="true" /> Copy prompt
           </Button>
           <Button
             variant="ghost"
             aria-expanded={open}
-            aria-controls={promptId}
+            aria-controls={open ? promptId : undefined}
             onClick={() => setOpen((o) => !o)}
           >
             {open ? "Hide prompt" : "Show prompt"}
@@ -81,10 +107,13 @@ export function AutomationCard({
         </div>
         {open ? (
           <pre
+            ref={promptRef}
             id={promptId}
             tabIndex={0}
             aria-label={`Prompt for ${card.title}`}
-            className="bg-muted max-h-80 overflow-auto rounded-corner-md p-3 text-body-small whitespace-pre-wrap select-all"
+            // Keyboard focus selects the prompt alone, so Ctrl+C copies it.
+            onFocus={(e) => window.getSelection()?.selectAllChildren(e.currentTarget)}
+            className="bg-muted max-h-80 overflow-auto rounded-corner-md p-3 text-body-medium whitespace-pre-wrap select-all"
           >
             {text}
           </pre>

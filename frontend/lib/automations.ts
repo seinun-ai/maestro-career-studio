@@ -21,3 +21,6 @@ export const NEED_LABELS: Record<AutomationNeed, string> = {
 export const APP_STORE_KEY = "cs-automations-app";
 export const parseStoredApp = (raw: string | null) => raw;
 export const serializeApp = (id: string | null) => id ?? "";
+
+/** The one card that is attended for now (backend/app/automations/skills). */
+export const APPLY_CARD_ID = "apply-session";
