@@ -89,7 +89,7 @@ class FilledFieldInput(TypedDict):
 
     question: str
     source: Literal["profile", "resume", "custom", "written", "inferred", "you", "upload"]
-    answer: NotRequired[str | list[str] | None]
+    answer: NotRequired[str | int | float | list[str] | None]
     section: NotRequired[str | None]
     required: NotRequired[bool]
     options_count: NotRequired[int | None]
@@ -1790,7 +1790,7 @@ def get_final_review(proposal_id: str) -> Any:
     not called (it accepts application_id to late-link) or an application id
     was passed where a proposal id belongs. duplicate_submitted=true means a
     same-company+title proposal was already submitted (relevant to the user's
-    approval decision. `flags` lists the job's recorded form answers worth a second look
+    approval decision). `flags` lists the job's recorded form answers worth a second look
     (record_filled_answers): question, source, answer (an EEO one carries eeo_answered
     instead) and each flag's reason."""
     return _client.get_final_review(proposal_id)
@@ -1801,8 +1801,9 @@ def get_final_review(proposal_id: str) -> Any:
 def record_filled_answers(
     job_id: str,
     fields: FilledFields,
-    step: str | None = None,
+    step: str | int | None = None,
     application_id: str | None = None,
+    base_resume: str | None = None,
 ) -> Any:
     """Record what was filled into this job's application form, one call per form page: each
     field's question, answer and source. Per question the latest call wins; the job page's
@@ -1814,9 +1815,10 @@ def record_filled_answers(
     differs_from_profile or eeo_without_saved_answer, each with a one-line reason. Flags
     warn; nothing is blocked, and get_final_review lists the job's flags again. `step` names
     the page (a page number or the URL path). `application_id` links the record now; without
-    it the record links when the job's application is created, marked applied or submitted."""
+    it the record links, for the application of `base_resume` (the base resume's slug), when
+    that application is created, marked applied or submitted."""
     return _client.record_filled_answers(
-        job_id, fields, step=step, application_id=application_id
+        job_id, fields, step=step, application_id=application_id, base_resume=base_resume
     )
 
 

@@ -54,3 +54,13 @@ def test_a_review_with_nothing_recorded_has_no_flags(db_session):
     job = _mk_job(db_session, company="Quiet", source="agent")
     pid = client.post("/api/proposals", json={"job_id": str(job.id)}).json()["id"]
     assert client.get(f"/api/proposals/{pid}/final-review").json()["flags"] == []
+
+
+def test_an_eeo_question_is_hidden_even_when_the_stored_row_never_marked_it():
+    from app.models.filled_answer import FilledAnswer
+    from app.services import filled_answers
+
+    stored = {"question": "What is your gender?", "answer": "Female", "source": "inferred",
+              "eeo": False, "eeo_answered": False}
+    view = filled_answers._agent_view(FilledAnswer(step="1"), stored, [])
+    assert ("answer" in view, view["eeo"], view["eeo_answered"]) == (False, True, True)

@@ -255,10 +255,12 @@ def link_unlinked(session: Session, application: Application) -> int:
 
 
 def _agent_view(row: FilledAnswer, field: dict[str, Any], flags: list[dict[str, str]]) -> dict[str, Any]:
+    eeo = bool(field.get("eeo")) or answer_flags.is_eeo(field.get("question") or "",
+                                                         field.get("slot"))
     view = {"step": row.step, "question": field.get("question"), "section": field.get("section"),
-            "source": field.get("source"), "eeo": bool(field.get("eeo")), "flags": flags}
+            "source": field.get("source"), "eeo": eeo, "flags": flags}
     if view["eeo"]:
-        view["eeo_answered"] = bool(field.get("eeo_answered"))
+        view["eeo_answered"] = bool(field.get("eeo_answered")) or _has_answer(field.get("answer"))
     else:
         view["answer"] = field.get("answer")
     return view

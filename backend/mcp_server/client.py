@@ -1324,13 +1324,10 @@ class BackendClient:
         )
 
     def record_filled_answers(
-        self,
-        job_id: str,
-        fields: list[dict[str, Any]],
-        *,
-        step: str | None = None,
-        application_id: str | None = None,
+        self, job_id: str, fields: list[dict[str, Any]], **page: Any
     ) -> Any:
-        body = {"channel": "agent", "fields": fields,
-                **_drop_none(step=step, application_id=application_id)}
+        """`page` is the run's optional step (sent as text), application_id and base_resume."""
+        if page.get("step") is not None:
+            page["step"] = str(page["step"])
+        body = {"channel": "agent", "fields": fields, **_drop_none(**page)}
         return self._request("POST", f"/api/jobs/{job_id}/filled-answers", json=body)
