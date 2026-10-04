@@ -3696,7 +3696,8 @@ main(async () => {
     if (open) open();
     await settle();
   }
-  emit({ loaded, clicked, running, stopping, settled, runs, sent, broadcasts, writes, warnings, delays });
+  emit({ loaded, clicked, running, stopping, settled, runs, sent, broadcasts, writes, warnings, delays,
+          receiptFlags: ns.panel.actionStore().read().receiptFlags });
 });
 """
 

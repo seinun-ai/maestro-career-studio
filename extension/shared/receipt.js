@@ -264,10 +264,12 @@
     if (!before && !live.touched) return null;
     const answer = answerOf(live.committed);
     if (answer === null && !(before && live.touched)) return null;
+    // An EDIT is a changed value: a field you merely clicked into, or one a rule wrote over
+    // your earlier touch, is still "touched" on the page but not edited by you now.
     const changed = live.touched && (!before || JSON.stringify(answer) !== before.answer);
     const one = ofField(live, {
       answer, source: before?.source ?? "you", slot: before?.slot ?? null, eeo: before?.eeo ?? false,
-      edited_by_you: before ? Boolean(before.edited) || (live.touched && before.source !== "you") : false });
+      edited_by_you: Boolean(before?.edited || (changed && before && before.source !== "you")) });
     return one && { changed, one };
   }
 

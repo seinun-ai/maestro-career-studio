@@ -541,3 +541,76 @@ def test_a_hint_on_a_page_nothing_was_posted_for_reads_nothing(tmp_path):
                framesAfter={"fill_inventory": EDITED})
     assert _receipts(out) == []
     assert not [msg for msg in out["broadcasts"] if msg["message"].get("readOnly")]
+
+
+# ---------- the receipt's wider never-record list ----------
+
+POLICY_JS = (Path(__file__).resolve().parents[2] / "extension" / "shared" / "policy.js").read_text(
+    encoding="utf-8")
+_NEVER_DRIVER_JS = r"""
+const ns = loadModules();
+emit({ never: spec.labels.map(ns.isNeverFilled), blocked: spec.labels.map((l) => ns.isPolicyBlocked(l)) });
+"""
+ID_LABELS = [
+    "Passport #", "Passport No.", "Passport", "Passport number", "Drivers License #", "Driver license",
+    "Driver's license number", "Tax ID", "TIN", "ITIN", "Taxpayer Identification Number",
+    "Social Insurance Number (SIN)", "National Insurance Number",
+    "Alien Registration Number (A-Number)", "USCIS number", "Social Security Number", "Signature",
+]
+NOT_IDS = ["Latin American studies", "Please start within 30 days", "Are you authorized to work in the US?",
+           "Expected salary", "First name"]
+
+
+def _never(tmp_path, labels):
+    return run_node(_NEVER_DRIVER_JS, {"labels": labels}, tmp_path, source=POLICY_JS)
+
+
+def test_every_id_label_a_form_may_use_is_never_recorded(tmp_path):
+    assert _never(tmp_path, ID_LABELS)["never"] == [True] * len(ID_LABELS)
+
+
+def test_ordinary_labels_are_not_caught_as_ids(tmp_path):
+    assert _never(tmp_path, NOT_IDS)["never"] == [False] * len(NOT_IDS)
+
+
+def test_the_fills_own_policy_is_not_widened_by_the_receipts_list(tmp_path):
+    """Widening what the FILL refuses is a separate decision: only the receipt's list grew."""
+    blocked = dict(zip(ID_LABELS, _never(tmp_path, ID_LABELS)["blocked"], strict=True))
+    assert not blocked["Passport"] and not blocked["TIN"] and not blocked["USCIS number"]
+    assert blocked["Social Security Number"]
+
+
+# ---------- an edit mark is sticky only when YOU changed the value ----------
+
+def test_a_touched_field_whose_value_you_did_not_change_stays_unmarked(tmp_path):
+    """Email was posted as the profile's, unedited. Later the page still says "touched" (you
+    clicked into it) but its value is the posted one: an edit capture triggered by ANOTHER
+    field must not turn it into an edit of yours."""
+    page = _page(_live("v2", "Email", "ada@work.test"), _live("v1", "First name", "Ada"))
+    after = _page(_live("v2", "Email", "ada@work.test", touched=True),
+                  _live("v1", "First name", "Adaline", touched=True))
+    out = _run(tmp_path, page=page, pings=[{}], framesAfter={"fill_inventory": after})
+    first, second = (json.loads(msg["init"]["body"])["fields"] for msg in _receipts(out))
+    emails = [{f["question"]: f for f in fields}["Email"] for fields in (first, second)]
+    assert [(e["source"], e["edited_by_you"]) for e in emails] == [("profile", False)] * 2
+    assert {f["question"]: f for f in second}["First name"]["edited_by_you"] is True
+
+
+def test_the_mark_stays_once_you_have_changed_the_value(tmp_path):
+    out = _run(tmp_path, pings=[{}], framesAfter={"fill_inventory": EDITED})
+    again = {f["question"]: f for f in _second(out)["fields"]}["First name"]
+    assert (again["answer"], again["edited_by_you"]) == ("Adaline", True)
+
+
+# ---------- "Check before you submit" refreshes after a hand fix ----------
+
+def test_the_debounced_capture_refreshes_the_flags_the_panel_shows(tmp_path):
+    cleared = {**POSTED, "flag_count": 0, "flags": []}
+    out = _run(tmp_path, pings=[{}], framesAfter={"fill_inventory": EDITED},
+               api_extra={RECEIPT: [_reply(POSTED), _reply(cleared)]})
+    assert out["receiptFlags"] == []
+
+
+def test_an_edit_capture_that_posts_nothing_leaves_the_flags_alone(tmp_path):
+    out = _run(tmp_path, pings=[{}])
+    assert [row["question"] for row in out["receiptFlags"]] == ["How did you hear about us?"]

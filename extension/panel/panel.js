@@ -2742,10 +2742,16 @@
     if (sender.tab?.id !== card.tabId || !card.receiptSeen || !card.job?.id) return false;
     clearTimeout(editCaptureTimer);
     const token = generation;
-    editCaptureTimer = setTimeout(() => {
+    editCaptureTimer = setTimeout(async () => {
       // A run in flight posts its own receipt, which restates what is posted.
       if (!current(token) || card.busy !== null) return;
-      ns.panelRecordEdits(actionStore(), { ...card }, token);
+      const flags = await ns.panelRecordEdits(actionStore(), { ...card }, token);
+      // The post answers with the flags of the form as it stands now: "Check before you
+      // submit" follows a hand fix. Null is "nothing was posted": the list stays.
+      if (flags !== null && current(token)) {
+        card.receiptFlags = flags;
+        render();
+      }
     }, EDIT_CAPTURE_MS);
     return false;
   }

@@ -76,7 +76,16 @@
    * so a typed SSN is never recorded even while that consent stands. Salary
    * questions are not here: they are the user's own ordinary answers, and what
    * consent lifts for the fill is not a secret class. */
-  ns.isNeverFilled = (labelText) => NEVER_FILLED.some((pattern) => pattern.test(String(labelText ?? "")));
+  // The receipt's own, wider list of ID labels (passport, driver's licence, tax and national
+  // numbers). Widening what the FILL refuses is a separate decision: NEVER_FILLED is unchanged.
+  const RECORD_NEVER = [
+    /\bpassport\b/i,
+    /\bdrivers?'?s? licen[cs]e\b/i,
+    /\btax ?id\b|\b(?:tax ?payer )?identification number\b|\bi?tin\b/i,
+    /social insurance number|national insurance number|alien registration|\ba-?number\b|\buscis\b/i,
+  ];
+  ns.isNeverFilled = (labelText) => [...NEVER_FILLED, ...RECORD_NEVER]
+    .some((pattern) => pattern.test(String(labelText ?? "")));
   // The agreement family, as one pattern, for the old engine's rule that ticks
   // these once consent is given. Published rather than restated: the list that
   // REFUSES a field and the list that fills it must be the same list, or a
