@@ -7,21 +7,26 @@ once. Only open-lane rows get readiness; History rows get none.
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.filled_answer import FilledAnswer
 from app.models.job import Job
+from app.models.types import utcnow
 from app.services import eeo_consent, filled_answers, knockout
-from app.services.proposals import OPEN_STATUSES
+from app.services.proposals import APPLIED_MANUALLY, OPEN_STATUSES
 
 logger = logging.getLogger(__name__)
 Pair = tuple[ApplicationProposal, Job]
+NEW_WINDOW = timedelta(hours=24)
+WEEK = timedelta(days=7)
+NEEDS_YOU = ("needs_decision", "needs_human")
 
 
 def is_ready(readiness: dict[str, Any] | None) -> bool:
@@ -84,3 +89,35 @@ def for_proposals(session: Session, pairs: list[Pair]) -> dict[UUID, dict[str, A
             logger.warning("readiness skipped for proposal %s", prop.id, exc_info=True)
             out[prop.id] = None
     return out
+
+
+def _count(session: Session, *where) -> int:
+    return session.scalar(select(func.count(ApplicationProposal.id)).where(*where)) or 0
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+def summary(session: Session, since: datetime | None = None) -> dict[str, Any]:
+    """The arrivals strip: new since `since` (default the last day), ready to apply, needs you,
+    applied this week (submitted by an agent or applied by the user)."""
+    now = utcnow()
+    since = _as_utc(since) if since else now - NEW_WINDOW
+    queued = session.execute(
+        select(ApplicationProposal, Job)
+        .join(Job, Job.id == ApplicationProposal.job_id)
+        .where(ApplicationProposal.status == "accepted")
+    ).all()
+    applied = or_(
+        ApplicationProposal.status == "submitted",
+        and_(ApplicationProposal.status == "rejected",
+             ApplicationProposal.reason == APPLIED_MANUALLY),
+    )
+    return {
+        "since": since,
+        "new": _count(session, ApplicationProposal.created_at > since),
+        "ready": sum(is_ready(r) for r in for_proposals(session, [tuple(r) for r in queued]).values()),
+        "needs_you": _count(session, ApplicationProposal.status.in_(NEEDS_YOU)),
+        "applied_this_week": _count(session, applied, ApplicationProposal.updated_at >= now - WEEK),
+    }

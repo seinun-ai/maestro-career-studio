@@ -395,7 +395,7 @@ def patch_application(
                         "channel": "frontend",
                         "note": "user marked the application applied",
                     },
-                    reason="applied manually",
+                    reason=proposal_svc.APPLIED_MANUALLY,
                 )
             except proposal_svc.TransitionError:
                 # A concurrent transition beat us to a terminal state; the

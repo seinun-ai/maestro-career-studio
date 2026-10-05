@@ -74,6 +74,14 @@ class AssertOpenProposalBody(BaseModel):
     op: Literal["prepare", "attach_evidence", "record_consent", "mark_submitted"] = "prepare"
 
 
+class ProposalReadiness(BaseModel):
+    """Is this job ready to send? Open-lane rows only (services/inbox_readiness.py)."""
+
+    tailored: bool | None = None
+    knockout: str | None = None
+    to_check: int = 0
+
+
 class ProposalRead(BaseModel):
     id: UUID
     job_id: UUID
@@ -92,6 +100,7 @@ class ProposalRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     job: JobSummary
+    readiness: ProposalReadiness | None = None
 
     model_config = {"from_attributes": True}
 
@@ -101,6 +110,14 @@ class ProposalListResponse(BaseModel):
     # Count over the full filtered set, before limit/offset (0 pre-pagination
     # responses never carried it, so it defaults rather than requires).
     total: int = 0
+
+
+class ProposalSummaryResponse(BaseModel):
+    since: datetime
+    new: int = 0
+    ready: int = 0
+    needs_you: int = 0
+    applied_this_week: int = 0
 
 
 class ApplicationSummaryForProposal(BaseModel):

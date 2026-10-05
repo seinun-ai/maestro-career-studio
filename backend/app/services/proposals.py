@@ -69,6 +69,10 @@ OPEN_STATUSES = frozenset({
 # What the web app's own queue records as the filer (ProposalCreate.proposed_by).
 FILED_BY_YOU = "you"
 
+# The reason a proposal closes with when the user applied to its job themselves
+# (routers/applications.py); the inbox's History shows it as Applied yourself.
+APPLIED_MANUALLY = "applied manually"
+
 
 def _visible_letters(name: str) -> str:
     """The name as a reader sees it: NFKC (fullwidth "ｙｏｕ" is "you"), without
