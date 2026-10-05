@@ -49,3 +49,9 @@ its links or attachments.
    using the email's date. Skip the line if it is already there.
 7. **Digest.** End with what changed, the emails you could not match, and the
    applications still `applied` after 21 days or more (see `applied_at`) with no reply.
+8. **Record the run.** Call `record_run` with automation `mail-status`, the outcome
+   (`ok`; `partial` if some mail could not be read; `failed` if none could), and
+   `report` with `counts` (`updated`: applications moved; `skipped`: emails left
+   unmatched), `digest`, and `job_ids` for jobs whose applications moved. The digest
+   holds counts and company-and-role lines only, never email text: no subjects,
+   senders or bodies.

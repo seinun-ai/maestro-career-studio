@@ -66,6 +66,12 @@ def test_remote_only_apps_are_shown_but_unreachable():
                  id="tailor-no-own-claims"),
     pytest.param("tailor-run", "Never answer them yourself.", id="tailor-no-self-answers"),
     pytest.param("tailor-run", "Never call `resolve_gaps`", id="tailor-no-resolve-gaps"),
+    *[pytest.param(card, f"Call `record_run` with automation `{card}`", id=f"{card}-records")
+      for card in ("mail-status", "job-hunt", "referral-pages", "tailor-run", "apply-session")],
+    pytest.param("mail-status", "never email text", id="mail-digest-no-email-text"),
+    pytest.param("job-hunt", '`store_extracted_jd` with `source="agent"`', id="hunt-marks-agent"),
+    pytest.param("customize-job-skills", "call `record_run` with the automation's own name",
+                 id="custom-records"),
 ])
 def test_guardrails_survive_rewording(card_id, sentence):
     cards = {c.id: c.body for c in automations.catalog().cards}

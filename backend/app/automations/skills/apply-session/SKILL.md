@@ -46,6 +46,10 @@ everything else yourself.
    `submission_receipt`, and `mark_submitted`. If you can't tell whether it went
    through, say so and never click again.
 6. **Digest.** End with submitted / needs the user / declined / still queued.
+7. **Record the run.** Call `record_run` with automation `apply-session`, the outcome
+   (`ok`; `partial` if some work failed; `failed` if none could be done), and
+   `report` with `counts` (`updated`: applications submitted; `needs_you`;
+   `skipped`: declined), `digest`, and `job_ids` for the jobs worked.
 
 The Maestro CS tools' own descriptions carry the rest (states, evidence,
 duplicates) — follow them rather than working around a refusal. If the

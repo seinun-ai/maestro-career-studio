@@ -56,4 +56,9 @@ each one, and which browser tool.
 - For a schedule, use the client's scheduler (Claude Code: `/schedule`;
   otherwise the client's scheduled tasks). No scheduler — say so and hand over
   the prompt to run.
+- End every automation with one step: call `record_run` with the automation's own name
+  (40 characters at most), outcome (`ok`, `partial` or `failed`), and `report` with
+  `counts`, `digest` and `job_ids` for the jobs touched, so its runs show in Maestro's
+  Agent inbox. Use only non-negative whole-number counts named `found`, `proposed`,
+  `skipped`, `tailored`, `updated` or `needs_you`.
 - Finish by telling the user what was created, where, and how to run or change it.
