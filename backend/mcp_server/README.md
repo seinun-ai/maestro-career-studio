@@ -272,6 +272,7 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 - `get_final_review`: everything to check before you approve, including the flagged answers.
 - `record_filled_answers`: records what was filled on each form page and where each answer came from; its flags show again in `get_final_review`.
 - `record_consent`: record your approve/reject, only after you have actually answered.
+- `record_run`: record one finished automation run; it appears under Recent runs in the Agent inbox.
 - `attach_evidence`, `attach_evidence_file`: attach the screenshots your approval and the submission need (the final review and the confirmation).
 - `mark_submitted`: mark an approved proposal as submitted.
 

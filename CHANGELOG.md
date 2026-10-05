@@ -60,8 +60,9 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Changed
 
-- `job-hunt` saves jobs with `source='agent'` and the posting's `source_url`, so
-  the existing open-proposal gate applies and later hunts can find saved jobs by URL.
+- Jobs `job-hunt` saves are marked as found by an agent and keep the job's
+  link. They wait in the Agent inbox alongside jobs from referral pages, and
+  later hunts recognize jobs already saved.
 - Agents record each form page's answers instead of attaching a screenshot of
   every page; the final-review and submission screenshots stay.
 
