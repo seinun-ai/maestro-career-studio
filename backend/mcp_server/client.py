@@ -1331,3 +1331,13 @@ class BackendClient:
             page["step"] = str(page["step"])
         body = {"channel": "agent", "fields": fields, **_drop_none(**page)}
         return self._request("POST", f"/api/jobs/{job_id}/filled-answers", json=body)
+
+    def record_run(
+        self, automation: str, outcome: str, report: dict[str, Any] | None,
+        origin_detail: str | None = None,
+    ) -> Any:
+        """`report` is the run's optional counts, digest and job_ids, sent flat."""
+        body = {"automation": automation, "outcome": outcome, **_drop_none(**(report or {}))}
+        return self._request(
+            "POST", "/api/agent-runs", json=body, headers=_origin_headers(origin_detail)
+        )

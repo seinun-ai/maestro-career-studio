@@ -73,6 +73,7 @@ def test_all_tools_registered():
         "record_triage",
         "report_failure",
         "record_filled_answers",
+        "record_run",
     }
     expected |= KB_TOOL_NAMES
     assert expected <= names
@@ -1145,7 +1146,7 @@ async def test_registered_tool_docstrings_fit_client_truncation_budget():
 
 async def test_every_tool_carries_a_title_and_explicit_hints():
     tools = await srv.mcp.list_tools()
-    assert len(tools) >= 83
+    assert len(tools) >= 85
     for tool in tools:
         assert tool.title, tool.name
         ann = tool.annotations
@@ -1469,3 +1470,90 @@ async def test_record_filled_answers_accepts_page_numbers_and_numeric_answers():
         srv._client.record_filled_answers = original
     assert seen["kw"]["step"] == 2
     assert [f["answer"] for f in seen["args"][1]] == [5, 12.5]
+
+
+def test_record_run_forwards_to_client(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "record_run",
+        lambda automation, outcome, report, origin_detail=None: seen.update(
+            automation=automation, outcome=outcome, report=report) or {"id": "r1"},
+    )
+    assert srv.record_run("mail-status", "ok", {"counts": {"updated": 1}}) == {"id": "r1"}
+    assert seen == {"automation": "mail-status", "outcome": "ok",
+                    "report": {"counts": {"updated": 1}}}
+
+
+def test_record_run_attributes_the_run_to_the_mcp_client(monkeypatch):
+    from types import SimpleNamespace
+
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "record_run",
+        lambda automation, outcome, report, origin_detail=None: seen.update(
+            report=report, origin_detail=origin_detail) or {"id": "r1"},
+    )
+    ctx = SimpleNamespace(session=SimpleNamespace(
+        client_params=SimpleNamespace(clientInfo=SimpleNamespace(name="codex"))
+    ))
+    assert srv.record_run("job-hunt", "failed", ctx=ctx) == {"id": "r1"}
+    assert seen == {"report": None, "origin_detail": "codex"}
+
+
+@pytest.mark.parametrize("profile", ["hunt", "apply"])
+def test_record_run_is_available_in_the_automation_profiles(profile):
+    from mcp_server.profiles import allowed_tools
+
+    assert "record_run" in allowed_tools(profile)
+
+
+async def test_record_run_exposes_its_signature_and_write_hints():
+    tool = next(tool for tool in await srv.mcp.list_tools() if tool.name == "record_run")
+    schema = tool.inputSchema
+    assert schema["required"] == ["automation", "outcome"]
+    assert schema["properties"]["outcome"]["enum"] == ["ok", "partial", "failed"]
+    assert schema["properties"]["report"]["default"] is None
+    assert "ctx" not in schema["properties"]
+    ann = tool.annotations
+    assert (ann.readOnlyHint, ann.destructiveHint, ann.idempotentHint, ann.openWorldHint) == (
+        False, False, False, False
+    )
+
+
+async def test_record_run_exposes_optional_report_shapes():
+    tool = next(tool for tool in await srv.mcp.list_tools() if tool.name == "record_run")
+    schema = tool.inputSchema
+    assert set(schema["$defs"]["RunReport"]["properties"]) == {"counts", "digest", "job_ids"}
+    assert set(schema["$defs"]["RunCounts"]["properties"]) == {
+        "found", "proposed", "skipped", "tailored", "updated", "needs_you"
+    }
+    assert "required" not in schema["$defs"]["RunReport"]
+    assert "required" not in schema["$defs"]["RunCounts"]
+
+
+@pytest.mark.parametrize("report", [
+    {"counts": {"found": 3, "applied": 1}},
+    {"counts": {"found": 3}, "digset": "typo"},
+])
+async def test_record_run_refuses_unknown_report_or_count_keys(monkeypatch, report):
+    import json
+
+    import httpx
+    import respx
+    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp_server.client import BackendClient
+
+    def backend_response(request):
+        body = json.loads(request.read())
+        if "applied" in body.get("counts", {}) or "digset" in body:
+            return httpx.Response(422, json={"detail": "unknown report key"})
+        return httpx.Response(201, json={"id": "r1"})
+
+    monkeypatch.setattr(srv, "_client", BackendClient("http://test-backend"))
+    monkeypatch.setattr(srv, "_client_label", lambda ctx: "codex")
+    with respx.mock:
+        respx.post("http://test-backend/api/agent-runs").mock(side_effect=backend_response)
+        with pytest.raises(ToolError):
+            await srv.mcp.call_tool("record_run", {
+                "automation": "job-hunt", "outcome": "ok", "report": report,
+            })
