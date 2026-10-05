@@ -97,6 +97,13 @@ in tests); Next.js 16 + React 19 + react-query; frontend pinned by
   A `LoadErrorState` caller must be pinned in `tests/test_frontend_query_error_states.py`;
   this plan uses none (the new panels fail quietly with a muted line).
 
+**How this plan was checked:** Tasks 1–11 were applied to a scratch worktree at 25bceb86 and
+run (Fable 5.1): the full backend suite (9,063 passed, 1 skipped, xdist), the MCP suite (85
+tools), the node lib tests, `tsc --noEmit`, `npm run lint`, and the slop ratchet on backend and
+frontend (both OK). Its seven corrections are folded in below (the models-metadata pin, two
+verbatim prompt pins, lane attribute order, the corner token, `GuardedLink`, and the apostrophe
+pin). `npm run build`, Task 12 and the live check were not run.
+
 **Design ambiguities resolved in this plan (do not re-decide them):**
 1. `agent_runs` has no `started_at` and no `created_at`: the panel shows when a run finished,
    `finished_at` is set when the record is written, and the MCP tool stays at 4 params (the
@@ -127,6 +134,7 @@ in tests); Next.js 16 + React 19 + react-query; frontend pinned by
 - Create: `backend/app/models/agent_run.py`
 - Create: `backend/migrations/versions/7d3c1a9e5b20_agent_runs.py`
 - Modify: `backend/app/models/__init__.py`
+- Modify: `backend/tests/test_models_metadata.py` (`test_all_planned_tables_are_registered` pins every table)
 - Test: `backend/tests/test_agent_runs_model.py`
 
 **Step 1: Write the failing test**
@@ -233,6 +241,9 @@ def downgrade() -> None:
 
 `backend/app/models/__init__.py`: add `from app.models.agent_run import AgentRun` in import
 order and `"AgentRun",` to `__all__`.
+
+`backend/tests/test_models_metadata.py`: add `"agent_runs",` to the table set in
+`test_all_planned_tables_are_registered` (otherwise: `Extra items in the left set: 'agent_runs'`).
 
 **Step 4: Run the test and the parity check**
 
@@ -497,7 +508,7 @@ Add `"read_one"` to `__all__`. `_prune` reads `MAX_RUNS` at call time, so the te
 **Step 4: Run the tests**
 
 Run: `/opt/anaconda3/bin/python3 -m pytest tests/test_agent_runs_service.py -q`
-Expected: PASS (6 tests). If `_read` is over cc 10 or 50 lines, split the job lookup into a
+Expected: PASS (8 tests). If `_read` is over cc 10 or 50 lines, split the job lookup into a
 `_jobs_by_id(session, runs)` helper.
 
 **Step 5: Commit**
@@ -604,7 +615,7 @@ def list_agent_runs(
     return {"items": agent_runs.recent(db, limit)}
 ```
 
-In `app/main.py` add `agent_runs,` to the `from app.routers import (...)` list (alphabetical) and
+In `app/main.py` add `agent_runs,` to the `from app.routers import (...)` list (it is not alphabetical: put it after `role_categories,`) and
 `app.include_router(agent_runs.router)` after `app.include_router(filled_answers.router)`.
 
 **Step 4: Run the tests**
@@ -803,8 +814,13 @@ Append one numbered step after each prompt's last (Digest) step, numbered next i
      jobs whose applications moved. The digest holds counts and company-and-role lines only,
      never email text: no subjects, senders or bodies.
   ```
-- **job-hunt** — step 4 becomes "**Capture and score** each survivor: `store_extracted_jd` with
-  `source="agent"` and the posting's `source_url`, then `score_ats`." and add after step 6:
+- **job-hunt** — step 4 becomes (keep `` `store_extracted_jd` with `source="agent"` `` on ONE
+  line; the pin is verbatim):
+  ```
+  4. **Capture and score** each survivor: `store_extracted_jd` with `source="agent"`
+     and the posting's `source_url`, then `score_ats`. Extract only what the posting states.
+  ```
+  and add after step 6:
   ```
   7. **Record the run.** Call `record_run` with automation `job-hunt`, the outcome (`ok`;
      `partial` if a source failed; `failed` if none could be read), counts (`found`,
@@ -819,9 +835,9 @@ Append one numbered step after each prompt's last (Digest) step, numbered next i
   (applications submitted), `needs_you` and `skipped` (declined); job ids of the jobs worked.
 - **customize-job-skills**, §4 "Build it", a new bullet before "Finish by telling…":
   ```
-  - End every automation you build with one step: call `record_run` with the automation's own
-    name (40 characters at most), its outcome, counts and digest, so its runs show in
-    Maestro's Agent inbox.
+  - End every automation with one step: call `record_run` with the automation's own name
+    (40 characters at most), its outcome, counts and digest, so its runs show in Maestro's
+    Agent inbox.
   ```
 
 Keep each line ≤ 90 characters like the surrounding text. Wording may differ, but every pinned
@@ -1641,9 +1657,12 @@ export function ReadinessMarks({ readiness }: { readiness: Readiness | null | un
    <ReadinessMarks readiness={proposal.readiness} />
    ```
 4. The status `Badge` text: `{historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}`.
-5. `Lane` takes an optional `anchor?: string` rendered as the section's `id`. Pass
-   `anchor="inbox-needs-you"`, `"inbox-to-review"`, `"inbox-queued"`; the History `<section>`
-   gets `id="inbox-history"`.
+5. `Lane` takes an optional `anchor?: string`, rendered as `id={anchor}` placed AFTER
+   `aria-labelledby={headingId}` on the `<section>`; pass `anchor=` as the LAST prop on each
+   `<Lane>` (after `title`): `"inbox-needs-you"`, `"inbox-to-review"`, `"inbox-queued"`. The
+   History `<section>` gets `id="inbox-history"` after `aria-labelledby={historyId}`. Existing
+   pins in `test_frontend_agent_inbox.py` quote the attribute order (`<Lane ref={toReview}
+   title=…`, `<section ref={ref} tabIndex={-1} aria-labelledby={headingId}`).
 
 Imports: `isNew`, `historyLabel`, `readyFirst` from `@/lib/inbox-readiness`; `ReadinessMarks`.
 Do not rename lane titles (existing pins).
@@ -1834,7 +1853,7 @@ export function ArrivalsStrip({ since }: { since: string | null }) {
             type="button"
             disabled={!count}
             onClick={() => jumpTo(tile.anchor)}
-            className="flex flex-col items-start gap-1 rounded-xl border bg-card p-4 text-left disabled:cursor-default enabled:hover:bg-surface-container-high"
+            className="flex flex-col items-start gap-1 rounded-corner-md border bg-card p-4 text-left disabled:cursor-default enabled:hover:bg-surface-container-high"
           >
             <span className="text-headline-small tabular-nums">{count ?? "–"}</span>
             <span className="text-muted-foreground text-body-medium">{tile.label}</span>
@@ -1856,8 +1875,7 @@ different from these classes, use those (moderate freedom). An empty `since` nev
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
-
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { apiFetch } from "@/lib/api";
 import { agentDisplayName } from "@/lib/agent-name";
 import { AGENT_RUNS_LATEST_KEY, countsLine, outcomeWord } from "@/lib/agent-runs";
@@ -1867,7 +1885,7 @@ import type { AgentRun, AgentRunList } from "@/lib/types";
 function RunLine({ run }: { run: AgentRun }) {
   const who = agentDisplayName(run.agent);
   return (
-    <details className="group rounded-lg border px-4 py-3">
+    <details className="group rounded-corner-md border px-4 py-3">
       <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-title-small">{run.title}</span>
         <span className="text-muted-foreground text-body-small">
@@ -1902,7 +1920,7 @@ export function RecentRuns() {
     <section aria-labelledby="recent-runs" className="flex flex-col gap-2">
       <h2 id="recent-runs" className="text-muted-foreground text-title-small">Recent runs</h2>
       {isError ? (
-        <p className="text-muted-foreground">Couldn&apos;t load recent runs.</p>
+        <p className="text-muted-foreground">{"Couldn't load recent runs."}</p>
       ) : !data ? null : data.items.length === 0 ? (
         <p className="text-muted-foreground">
           No runs yet. Set one up on Automations.{" "}
