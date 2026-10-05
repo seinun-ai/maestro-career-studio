@@ -1552,8 +1552,31 @@ async def test_record_run_refuses_unknown_report_or_count_keys(monkeypatch, repo
     monkeypatch.setattr(srv, "_client", BackendClient("http://test-backend"))
     monkeypatch.setattr(srv, "_client_label", lambda ctx: "codex")
     with respx.mock:
-        respx.post("http://test-backend/api/agent-runs").mock(side_effect=backend_response)
+        route = respx.post("http://test-backend/api/agent-runs").mock(side_effect=backend_response)
         with pytest.raises(ToolError):
             await srv.mcp.call_tool("record_run", {
                 "automation": "job-hunt", "outcome": "ok", "report": report,
             })
+    assert not route.called
+
+
+async def test_record_run_omits_null_report_fields_before_posting(monkeypatch):
+    import json
+
+    import httpx
+    import respx
+    from mcp_server.client import BackendClient
+
+    monkeypatch.setattr(srv, "_client", BackendClient("http://test-backend"))
+    monkeypatch.setattr(srv, "_client_label", lambda ctx: "codex")
+    with respx.mock:
+        route = respx.post("http://test-backend/api/agent-runs").mock(
+            return_value=httpx.Response(201, json={"id": "r1"})
+        )
+        await srv.mcp.call_tool("record_run", {
+            "automation": "job-hunt", "outcome": "failed",
+            "report": {"counts": None, "digest": None},
+        })
+
+    request = route.calls.last.request
+    assert json.loads(request.read()) == {"automation": "job-hunt", "outcome": "failed"}

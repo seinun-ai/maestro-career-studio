@@ -130,9 +130,9 @@ class RunCounts(TypedDict, total=False):
 class RunReport(TypedDict, total=False):
     """What record_run stores beyond the automation and its outcome."""
 
-    counts: RunCounts
-    digest: str
-    job_ids: list[str]
+    counts: RunCounts | None
+    digest: str | None
+    job_ids: list[str] | None
 
 
 _RUN_REPORT_FIELD = Field(
