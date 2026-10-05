@@ -855,9 +855,8 @@ citation. Priority lives in the item text, not in the ordinal.
     draft; a hand-set "Shows a result" leaves the report, so Done can't reset it; rename
     `BaseResumeDetail.version_number` to `edit_version_number`.
 42. Answer trust follow-ups: fix-and-learn from the receipt; the auto-submit preview; a "What Maestro knows about you"
-    page; graduation and enrollment as a JD-extracted knock-out; `policy.js` `RECORD_NEVER` folded into the shared
-    `NEVER_FILLED`; receipt capture across a full-page navigation and for a manual Attach resume press.
-     Source limits phase 4 must close (rule-pass rows lack slots; agent sources are claims): `docs/entities/filled-answers.md`.
+    page; a JD-extracted graduation/enrollment knock-out; `RECORD_NEVER` folded into `NEVER_FILLED`; receipt capture
+    across a full-page navigation and for a manual Attach press. Phase-4 source limits: `docs/entities/filled-answers.md`.
 
 ## 12. Gotchas that have bitten before
 

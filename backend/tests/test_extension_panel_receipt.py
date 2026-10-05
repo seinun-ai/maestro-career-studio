@@ -63,7 +63,12 @@ PAGE = [{"frameId": 0, "result": {"frame": "f0", "host": LOOP_HOST, "fields": [
 REFUSED = [{"frameId": 0, "result": {"frame": None, "host": LOOP_HOST, "fields": []}}]
 
 
-def _run(tmp_path, page=PAGE, settings=SETTINGS_REPLY, match=None, api_extra=None, page_form=True, **spec):
+def _run(tmp_path, page=PAGE, api_extra=None, **spec):
+    """`settings`, `match` (the job match reply), `page_form` and `report` are read off `spec`;
+    the rest of it is the driver's own spec."""
+    settings = spec.pop("settings", SETTINGS_REPLY)
+    match = spec.pop("match", None)
+    page_form = spec.pop("page_form", True)
     report = spec.pop("report", LOOP_REPORT)
     spec.setdefault("tabs", [{"id": 7, "url": LOOP_URL}])
     spec.setdefault("stored", {"widget.session": entry(touched=False)})
