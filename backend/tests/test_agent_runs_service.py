@@ -1,7 +1,7 @@
 """The run log's service: trim, drop, prune, latest per automation."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -32,6 +32,12 @@ def test_bad_counts_are_refused(counts):
         AgentRunCreate(automation="job-hunt", outcome="ok", counts=counts)
 
 
+@pytest.mark.parametrize("count", [True, 1.0, 1.5], ids=["boolean", "whole-float", "fraction"])
+def test_counts_must_be_strict_non_negative_integers(count):
+    with pytest.raises(ValidationError):
+        AgentRunCreate(automation="job-hunt", outcome="ok", counts={"found": count})
+
+
 @pytest.mark.parametrize("automation", ["", "   ", "x" * 41],
                          ids=["empty", "blank", "too-long"])
 def test_the_automation_has_a_name_of_at_most_40_characters(automation):
@@ -45,6 +51,20 @@ def test_only_the_newest_runs_are_kept(db_session, monkeypatch):
         _run(db_session, digest=str(n))
     kept = db_session.query(AgentRun).order_by(AgentRun.finished_at).all()
     assert [r.digest for r in kept] == ["2", "3", "4"]
+
+
+def test_pruning_never_deletes_the_run_just_recorded(db_session, monkeypatch):
+    monkeypatch.setattr(agent_runs, "MAX_RUNS", 1)
+    existing = AgentRun(automation="job-hunt", outcome="ok", digest="future",
+                        finished_at=datetime.now(timezone.utc) + timedelta(minutes=5))
+    db_session.add(existing)
+    db_session.commit()
+
+    recorded = _run(db_session, digest="just recorded")
+
+    kept = db_session.query(AgentRun).all()
+    assert len(kept) == 1 and kept[0].id == recorded.id
+    assert recorded.digest == "just recorded"
 
 
 def test_latest_is_one_run_per_automation_with_titles_and_jobs(db_session):
@@ -102,6 +122,17 @@ def test_job_ids_are_trimmed_before_unknown_ids_are_dropped(db_session):
     assert payload.job_ids == ids[:50]
     run = agent_runs.record(db_session, payload, agent=None)
     assert run.job_ids == [] and run.agent is None
+
+
+def test_job_ids_are_deduplicated_in_order_before_the_limit(db_session):
+    first = _mk_job(db_session)
+    second = _mk_job(db_session)
+    job_ids = [first.id] * 50 + [second.id]
+    payload = AgentRunCreate(automation="job-hunt", outcome="ok", job_ids=job_ids)
+
+    assert payload.job_ids == [first.id, second.id]
+    assert agent_runs.record(db_session, payload, agent=None).job_ids == [
+        str(first.id), str(second.id)]
 
 
 def test_a_deleted_job_does_not_break_the_run_log(db_session):

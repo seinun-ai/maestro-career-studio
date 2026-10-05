@@ -28,10 +28,11 @@ def _known(session: Session, ids: list[UUID]) -> set[UUID]:
     return set(session.scalars(select(Job.id).where(Job.id.in_(ids))))
 
 
-def _prune(session: Session) -> None:
-    keep = (select(AgentRun.id)
-            .order_by(AgentRun.finished_at.desc(), AgentRun.id.desc()).limit(MAX_RUNS))
-    session.execute(delete(AgentRun).where(AgentRun.id.not_in(keep)))
+def _prune(session: Session, keep_id: UUID) -> None:
+    keep = (select(AgentRun.id).where(AgentRun.id != keep_id)
+            .order_by(AgentRun.finished_at.desc(), AgentRun.id.desc())
+            .limit(max(0, MAX_RUNS - 1)))
+    session.execute(delete(AgentRun).where(AgentRun.id != keep_id, AgentRun.id.not_in(keep)))
 
 
 def record(session: Session, payload: AgentRunCreate, agent: str | None) -> AgentRun:
@@ -41,7 +42,7 @@ def record(session: Session, payload: AgentRunCreate, agent: str | None) -> Agen
                    job_ids=[str(i) for i in payload.job_ids if i in known])
     session.add(run)
     session.flush()
-    _prune(session)
+    _prune(session, run.id)
     session.commit()
     session.refresh(run)
     return run

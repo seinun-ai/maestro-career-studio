@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 RunOutcome = Literal["ok", "partial", "failed"]
 RunCountKey = Literal["found", "proposed", "skipped", "tailored", "updated", "needs_you"]
@@ -22,7 +22,7 @@ class AgentRunCreate(BaseModel):
 
     automation: str = Field(min_length=1, max_length=40)
     outcome: RunOutcome
-    counts: dict[RunCountKey, Annotated[int, Field(ge=0)]] = Field(default_factory=dict)
+    counts: dict[RunCountKey, Annotated[StrictInt, Field(ge=0)]] = Field(default_factory=dict)
     digest: str = ""
     job_ids: list[UUID] = Field(default_factory=list)
 
@@ -42,7 +42,7 @@ class AgentRunCreate(BaseModel):
     @field_validator("job_ids")
     @classmethod
     def _jobs(cls, value: list[UUID]) -> list[UUID]:
-        return value[:MAX_JOB_IDS]
+        return list(dict.fromkeys(value))[:MAX_JOB_IDS]
 
 
 class AgentRunJob(BaseModel):
