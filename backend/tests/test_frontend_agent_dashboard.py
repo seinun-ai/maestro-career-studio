@@ -64,16 +64,29 @@ def test_the_last_visit_survives_blocked_storage_and_reads_once():
     assert "let tabSince: string | null = null;" in _VISIT
 
 
-def test_jumping_to_history_opens_it_before_scrolling_and_exposes_its_state():
+def test_history_jump_opens_history_synchronously():
     assert "const history = useState(false);" in _DASH
     assert "<InboxHistoryContext.Provider value={history}>" in _DASH
-    assert "useContext(InboxHistoryContext) ?? localHistory" in _SECTION
     assert 'if (anchor === "inbox-history")' in _DASH
     assert "flushSync(() => history[1](true))" in _DASH
     assert "onJump={openHistory}" in _DASH
+
+
+def test_history_jump_opens_before_the_strip_scrolls():
     assert _STRIP.index("onJump?.(anchor)") < _STRIP.index("scrollIntoView")
     assert "jumpTo(tile.anchor, onJump)" in _STRIP
+
+
+def test_history_state_is_shared_and_accessibly_named():
+    assert "useContext(InboxHistoryContext) ?? localHistory" in _SECTION
     assert "aria-expanded={historyOpen}" in _SECTION
+
+
+def test_lane_targets_clear_the_sticky_toolbar():
+    lane = _SECTION[_SECTION.index('<section ref={ref} tabIndex={-1} aria-labelledby={headingId}') :]
+    history = _SECTION[_SECTION.index('<section tabIndex={-1} aria-labelledby={historyId}') :]
+    assert "tall:scroll-mt-28" in lane.split('className="', 1)[1].split('"', 1)[0]
+    assert "tall:scroll-mt-28" in history.split('className="', 1)[1].split('"', 1)[0]
 
 
 def test_tiles_show_disabled_state_and_use_the_button_focus_ring():

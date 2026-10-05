@@ -627,7 +627,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
             </Lane>
           ) : null}
 
-          <section tabIndex={-1} aria-labelledby={historyId} id="inbox-history" className="flex flex-col gap-2 outline-none">
+          <section tabIndex={-1} aria-labelledby={historyId} id="inbox-history" className="flex flex-col gap-2 outline-none tall:scroll-mt-28">
             <button
               id={historyId}
               type="button"
@@ -742,7 +742,7 @@ function Lane({
   return (
     // tabIndex={-1}: named by its heading, it takes focus when the last row acted on, or the bulk
     // bar, leaves it. Its rows sit in their own list, so a row's neighbours are rows.
-    <section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor} className="flex flex-col gap-2 overflow-x-auto outline-none">
+    <section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor} className="flex flex-col gap-2 overflow-x-auto outline-none tall:scroll-mt-28">
       <h2 id={headingId} className="text-muted-foreground text-title-small">
         {title}
       </h2>
