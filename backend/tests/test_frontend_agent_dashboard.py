@@ -5,11 +5,9 @@ and blocked storage still renders the page. Source pins cover the UI contracts; 
 the visit hook's mount effect against invalid values and throwing storage without a browser.
 """
 
-import json
-import subprocess
 from pathlib import Path
 
-import pytest
+from tests.node_ts import run_node_test
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -23,6 +21,7 @@ _DASH = _read("components/proposals/inbox-dashboard.tsx")
 _STRIP = _read("components/proposals/arrivals-strip.tsx")
 _RUNS = _read("components/proposals/recent-runs.tsx")
 _VISIT = _read("hooks/use-inbox-visit.ts")
+_VISIT_LIB = _read("lib/inbox-visit.ts")
 _SECTION = _read("components/proposals/proposals-section.tsx")
 
 
@@ -58,10 +57,12 @@ def test_recent_run_links_keep_the_leave_guard_and_inbox_sequence():
 
 
 def test_the_last_visit_survives_blocked_storage_and_reads_once():
-    assert _VISIT.count("try {") >= 2  # the read and the write
+    assert _VISIT.count("try {") >= 1  # storage access can itself be blocked
+    assert _VISIT_LIB.count("catch {") >= 2  # read and write failures stay independent
     assert "useRef(false)" in _VISIT  # dev double-effect never reads its own write
-    assert "24 * 60 * 60 * 1000" in _VISIT
-    assert "let tabSince: string | null = null;" in _VISIT
+    assert "24 * 60 * 60 * 1000" in _VISIT_LIB
+    assert "const VISIT_CLOCK = createVisitClock();" in _VISIT
+    assert "VISIT_CLOCK.resolve(storage, Date.now())" in _VISIT
 
 
 def test_history_jump_opens_history_synchronously():
@@ -106,110 +107,6 @@ def test_dashboard_tiles_use_the_shared_pattern_and_long_run_text_wraps():
         assert clipped not in _RUNS
 
 
-_VISIT_SCRIPT = r"""
-const fs = require("node:fs");
-const vm = require("node:vm");
-const assert = require("node:assert/strict");
-const { test } = require("node:test");
-const ts = require(require.resolve("typescript", { paths: [process.cwd()] }));
-const config = __CONFIG__;
-let now = Date.parse("2026-10-05T12:00:00.000Z");
-let stored = config.stored;
-const result = { since: null, reads: 0, writes: 0, saved: null };
-let effects = [];
-const react = {
-  useState: () => [null, value => { result.since = value; }],
-  useRef: value => ({ current: value }),
-  useEffect: effect => effects.push(effect),
-};
-class FixedDate extends Date {
-  constructor(value = now) { super(value); }
-  static now() { return now; }
-}
-const storage = {
-  getItem(key) {
-    if (key !== "cs-inbox-last-visit") throw new Error("wrong key");
-    result.reads++;
-    if (config.readThrows) throw new Error("blocked read");
-    return stored;
-  },
-  setItem(key, value) {
-    if (key !== "cs-inbox-last-visit") throw new Error("wrong key");
-    result.writes++;
-    if (config.writeThrows) throw new Error("blocked write");
-    result.saved = stored = value;
-  },
-};
-const compiled = ts.transpileModule(fs.readFileSync("hooks/use-inbox-visit.ts", "utf8"), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS },
-}).outputText;
-function loadModule() {
-  const moduleUnderTest = { exports: {} };
-  vm.runInNewContext(compiled, {
-    module: moduleUnderTest, exports: moduleUnderTest.exports,
-    require: name => { if (name === "react") return react; throw new Error(name); },
-    window: { localStorage: storage }, Date: FixedDate,
-  });
-  return moduleUnderTest.exports;
-}
-function mount(hook) {
-  effects = [];
-  result.since = null;
-  assert.equal(hook.useInboxVisit(), null);
-  effects.forEach(effect => { effect(); effect(); });
-}
-const hook = loadModule();
-test("first mount survives storage errors and dev double-effect", () => {
-  mount(hook);
-  assert.equal(result.since, config.expected);
-  assert.equal(result.reads, 1);
-  assert.equal(result.writes, 1);
-  assert.equal(result.saved, config.writeThrows ? null : new Date(now).toISOString());
-});
-test("returning from a job reuses this tab's visit without touching storage", () => {
-  now += 60 * 60 * 1000;
-  mount(hook);
-  assert.equal(result.since, config.expected);
-  assert.equal(result.reads, 1);
-  assert.equal(result.writes, 1);
-  assert.equal(result.saved, config.writeThrows ? null : "2026-10-05T12:00:00.000Z");
-});
-test("a full reload reads and writes storage again", () => {
-  now += 60 * 60 * 1000;
-  const expected = !config.readThrows && stored && !Number.isNaN(Date.parse(stored))
-    ? stored : new Date(now - 24 * 60 * 60 * 1000).toISOString();
-  mount(loadModule());
-  assert.equal(result.since, expected);
-  assert.equal(result.reads, 2);
-  assert.equal(result.writes, 2);
-  assert.equal(result.saved, config.writeThrows ? null : new Date(now).toISOString());
-});
-"""
-
-
-@pytest.mark.parametrize(
-    "stored,read_throws,write_throws,expected",
-    [
-        ("2026-10-03T09:30:00.000Z", False, False, "2026-10-03T09:30:00.000Z"),
-        (None, False, False, "2026-10-04T12:00:00.000Z"),
-        ("not a date", False, False, "2026-10-04T12:00:00.000Z"),
-        ("", False, False, "2026-10-04T12:00:00.000Z"),
-        ("   ", False, False, "2026-10-04T12:00:00.000Z"),
-        ("2026-10-03T09:30:00.000Z", True, True, "2026-10-04T12:00:00.000Z"),
-        ("2026-10-03T09:30:00.000Z", True, False, "2026-10-04T12:00:00.000Z"),
-        ("2026-10-03T09:30:00.000Z", False, True, "2026-10-03T09:30:00.000Z"),
-    ],
-)
-def test_visit_effect_keeps_the_old_time_and_survives_storage_errors(
-    stored, read_throws, write_throws, expected, tmp_path,
-):
-    config = {"stored": stored, "readThrows": read_throws, "writeThrows": write_throws,
-              "expected": expected}
-    script = tmp_path / "inbox-visit.test.cjs"
-    script.write_text(_VISIT_SCRIPT.replace("__CONFIG__", json.dumps(config)), encoding="utf-8")
-    done = subprocess.run(
-        ["node", "--test", "--test-reporter=tap", str(script)],
-        cwd=_FRONTEND, capture_output=True, text=True,
-    )
-    assert done.returncode == 0, done.stdout + done.stderr
-    assert "# pass 3" in done.stdout and "# fail 0" in done.stdout
+def test_visit_clock_uses_node_type_stripping_without_npm_packages():
+    result = run_node_test("lib/inbox-visit.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
