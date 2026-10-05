@@ -1257,6 +1257,17 @@ and its values reach no value-free builder (SYSTEM.md
   answer and `options_count`. The pass's own radio/checkbox clicks run under
   `ns.fillBusyEl` (`clickControl`), so the trusted `change` they fire does not
   mark the field `touched`.
+- **What it records, and under which source.** Every field the run wrote, with the page's committed value (a
+  multi-select as its list, `options_count` from the inventory), its source from the slot (`sourceOfSlot`:
+  the profile's sections and `derived.full_name` → `profile`, `experience.*` and `skills` → `resume`,
+  `custom.*` → `custom`, any other `derived.*` → `inferred`; the loop's free-text route → `written`) or from
+  the rule id (`sourceOfRule`); every field you typed or changed that no report names (`touched`) as `you`;
+  Autofill's own resume attach as an `upload` (`slot: "resume"`, the file name); a pause-row answer that
+  sticks as its own one-field `you` row (`typedAnswer`, no inventory read). A field left open, left alone
+  or found already filled is not recorded; an EEO write carries `eeo` and its `eeo.*` slot.
+- **Host and step.** `pageOf` sends the tab's hostname and its URL path (no query or hash) as the `step`,
+  so a wizard that keeps one path across its pages reads as ONE step, and a label repeated on two such pages
+  is one answer there (latest wins). It is the receipt's only notion of a page.
 - **Rows are in page order, every occurrence kept** (the server counts a
   repeated label by its place in the row), cut to the server's bounds (question
   500, answer 20000, 100 list items, `options_count` 1000); a field with no

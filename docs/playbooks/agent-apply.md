@@ -174,14 +174,18 @@ identity.
 5. Fill and navigate ordinary wizard pages continuously, without per-page
    review, confirmation, or narration. Diff completed fields against the
    canonical Maestro CS profile and correct ATS-parsed mismatches.
-6. **Silent per-page evidence (2026-08-01):** after completing each wizard
-   page and BEFORE clicking Next, screenshot it (Playwright saves under
-   `.playwright-mcp`) and attach the file path with
-   `attach_evidence_file(..., kind="step", label="page N — <step name>")`.
-   Do not narrate these captures and do not ask about them — the only user
-   touchpoint remains the final review. Evidence belongs in the proposal
-   ledger and server-returned stable `artifact_dir`, not only in browser or
-   model context.
+6. **Per-page answer record:** after completing each wizard page and BEFORE
+   clicking Next, call `record_filled_answers(job_id, fields, step="N")` with
+   every field on the page: its question, the answer as submitted (a list of the
+   ticked options for a multi-select, with `options_count`) and its `source`
+   (`profile`, `resume`, `custom`, `written`, `inferred`, `you`, `upload`; a
+   field you chose yourself without a saved fact behind it is `inferred`, prose
+   you composed is `written`). Mark a voluntary self-identification question
+   `eeo: true`. Do not narrate the call and do not ask about it — the only user
+   touchpoint remains the final review — and keep the `flags` it returns for
+   that review. The record is the per-page evidence: a per-page screenshot is
+   not required. The `final_review` and `submission_receipt` evidence stay
+   required.
 7. After every full-page or third-party navigation, take a fresh form snapshot
    and reverify profile-versus-form values, the attachment, and all
    acknowledgements. Repeat this check immediately before submit.
@@ -246,12 +250,15 @@ The target manifest defines exactly three evidence kinds:
 least one `final_review` item; `mark_submitted` requires a
 `submission_receipt`.
 
-Stop once at the ATS submit boundary. Call `get_final_review` and give one
+Stop once at the ATS submit boundary. Record the last page with
+`record_filled_answers` first, then call `get_final_review` and give one
 consolidated review that names:
 
 - company and role;
 - tailored PDF filename;
 - key application answers;
+- every entry of `get_final_review`'s `flags`, by question, answer and reason
+  (an EEO one by question only, since its value is never returned);
 - blocked or manually completed items; and
 - attached evidence.
 
@@ -262,11 +269,12 @@ to decline (`reason="duplicate"`).
 
 Capture the completed final-review state and silently attach its file path with
 `attach_evidence_file(..., kind="final_review")` before asking for consent.
-This final-review evidence is required in addition to the meaningful step
-evidence captured during preparation.
+This final-review evidence is required in addition to the per-page answer
+records.
 
-Ask one explicit question: **“Submit now?”** A clear affirmative response to
-that review authorizes the agent to call
+Ask one explicit question: **“Submit now?”** Name each flag in that question,
+one line each. A clear affirmative response to that review authorizes the agent
+to call
 `record_consent(proposal_id, "approved", channel, note)`. In the target
 backend, that approval transition atomically verifies `final_review` evidence
 and reserves one daily-cap slot keyed by proposal **before** any browser click.

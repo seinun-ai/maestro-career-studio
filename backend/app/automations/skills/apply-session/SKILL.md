@@ -30,15 +30,17 @@ everything else yourself.
 3. **Fill.** Answer from the user's profile, Career KB and saved Q&A
    (`get_autofill_profile`, `list_qa_entries`). Read back what each field saved.
    Signatures, logins, CAPTCHAs and legal attestations are the user's to do in
-   the browser.
+   the browser. Before Next on each page, `record_filled_answers` with every
+   field, its answer and where it came from.
 4. **Blocked?** Don't stall the run: `report_failure` with the reason (or decline
    the posting if it is gone) and move on to the next one.
 5. **Submit.** Call `get_final_review`, attach a screenshot of the filled form
    as `final_review` evidence, and show the user one short summary (company,
-   role, PDF, key answers, and any duplicate warning). Only after their yes for
-   *this* application: `record_consent`, click submit once, attach the
-   confirmation as `submission_receipt`, and `mark_submitted`. If you can't tell
-   whether it went through, say so and never click again.
+   role, PDF, key answers, every flag in `flags` with its reason, and any
+   duplicate warning). Only after their yes for *this* application:
+   `record_consent`, click submit once, attach the confirmation as
+   `submission_receipt`, and `mark_submitted`. If you can't tell whether it went
+   through, say so and never click again.
 6. **Digest.** End with submitted / needs the user / declined / still queued.
 
 The Maestro CS tools' own descriptions carry the rest (states, evidence,

@@ -40,6 +40,24 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   for diagnosing and tuning it. It holds no typed answer or profile text, stays
   on your machine, keeps your last 50 runs, turns off with the same opt-out as
   field telemetry, and goes when you press Clear data.
+- **What was submitted**: the job page keeps a record of every answer the
+  Companion or a connected agent filled into the application form, page by page,
+  with a small pill saying where each came from (Profile, Resume, Custom,
+  Written, Inferred, You, Upload). Answers worth a second look (a screening
+  question answered by a guess, every option ticked, an answer unlike your
+  profile, a voluntary question with nothing saved) are flagged before you
+  submit, in the Companion's new **Check before you submit** group and in the
+  agent's final review, and the tab shows them with their reason. Diversity
+  answers are kept only with your consent, are cleared when you withdraw it,
+  and are never sent to an agent. New MCP tool `record_filled_answers`.
+- The knock-out check on a job also compares an on-site or hybrid office with
+  where you live and whether you would relocate, and the Companion shows its
+  verdict above the form before you fill.
+
+### Changed
+
+- Agents record each form page's answers instead of attaching a screenshot of
+  every page; the final-review and submission screenshots stay.
 
 ### Fixed
 

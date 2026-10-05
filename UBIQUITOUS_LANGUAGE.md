@@ -43,6 +43,9 @@ and the screen speaks plainly ("item", "bullet", "Career history"). Do not
 | **Tailoring Session** | The working draft between a base resume and an application, where edits accumulate before commit | gap analysis | session, draft, workspace |
 | **Quick Tailor** | A one-shot tailor whose resolutions are planned from the saved profile instead of reviewed at the checkpoint; a Tailoring Session is still created underneath | Quick tailor | fast tailor, instant tailor |
 | **Artifact** | A rendered output file belonging to one application — resume PDF, cover letter, Q&A | PDF, cover letter, answers | output, document, deliverable |
+| **Answer Receipt** | The record of what the Companion or a connected agent filled into one job's application form, page by page, the latest answer per question (code: `FilledAnswer`, table `filled_answers`; also "filled answers") | What was submitted (the job page's tab) | submission record, form log, answer history |
+| **Answer Source** | Where one filled answer came from; a frozen vocabulary phase 4's auto-submit rule reads (`profile`, `resume`, `custom`, `written`, `inferred`, `you`, `upload`) | the pill: Profile, Resume, Custom, Written, Inferred, You, Upload | provenance, origin |
+| **Answer Flag** | A warn-only reason to look again at one filled answer before submitting (`guessed_screening`, `ticked_everything`, `differs_from_profile`, `eeo_without_saved_answer`); computed at read time, never stored | Check before you submit (the Companion's group; a connected agent names each in its final question); a warning line with its reason (the tab) | risk, error, blocker, alert |
 
 ## Assessment
 

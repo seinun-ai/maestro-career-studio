@@ -172,6 +172,14 @@
   compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
   persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
   import-first message.
+- **In-app chat: pinned-resume resolution** (SYSTEM.md §7): the pin is a HINT, not a guard — it reaches the model as one line of the
+  ephemeral context block; the enforced guard is `check_ops_in_scope` over selection PATHS (which needs a
+  pin only because the scope picker is fed the pinned resume). The composer resolves it once per session —
+  session `context_json.target_key` if stored, else the most recently updated base resume — and must READ
+  `context_json` back on reopen, not only write it on send (write-only silently dropped the pin). The pin
+  FOLLOWS whichever base actually changed via both landing paths: the streamed `change_card` and an applied
+  `propose_edits` card (which PATCHes directly and emits no stream event — `EditProposalCard` takes
+  `onApplied`). Selections drop on a real switch: they are paths into the resume they came from.
 - **Setup status** (`GET /api/setup/status`): a derived, **read-only**
   six-step onboarding view — no wizard-progress state; guidance is
   dismissible and recomputed from existing data (the `FirstRunImportCard`
