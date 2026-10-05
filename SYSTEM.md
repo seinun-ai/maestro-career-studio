@@ -76,13 +76,13 @@ backend/
                        override BASE_RESUMES_DIR/APPLICATIONS_DIR/SETTINGS_DIR/LOGS_DIR locally)
     db.py              SQLAlchemy; sessions use autoflush=False (see §12)
     models/            ORM (application, job, tailoring_session, ats_score,
-                       resume_version, base_resume, template, career_kb, qa_entry, …)
+                       resume_version, base_resume, template, career_kb, qa_entry, agent_run, …)
     schemas/           Pydantic request/response models
     routers/           HTTP endpoints (applications, jobs, tailoring_sessions,
                        ats, base_resumes, templates, qa, resume_versions,
                        resume_lint, career_kb, exports, chat, explore, referrals,
                        settings, autofill, proposals, automations, setup, role_categories,
-                       version)
+                       version, agent_runs)
     services/          business logic (ats/, tailoring_session, gap_analysis,
                        role_categories, kb_import, exports, gap_enrichment,
                        placement_targets, ats_score, application_writes,
@@ -91,7 +91,7 @@ backend/
                        jd_extraction, resume_lint, health_*, career_kb,
                        chat_agent, chat_tools, autofill_choose + autofill_slots
                        + jev (the Companion's fill pass and its Jev engine),
-                       automations (the Automations page's catalog), …)
+                       automations (the Automations page's catalog), agent_runs + inbox_readiness, …)
     automations/skills/  the agent prompts, one <name>/SKILL.md each: the Automations
                        source of the Automations page; indexed by docs/skills/README.md
     templates/         bundled .tex.j2 sources, typst_classic.typ and cover_letter.typ
@@ -115,7 +115,7 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP server (84 tools, thin REST wrappers)
+ extension ─┼→ jobs router → Job row  ├─ MCP server (85 tools, thin REST wrappers)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼
         ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
@@ -144,6 +144,7 @@ file to open.
 | AtsScore (`models/ats_score.py`) | [`docs/entities/ats-score.md`](docs/entities/ats-score.md) | base upsert-singletons vs appended tailored history; deterministic engine |
 | ResumeVersion (`models/resume_version.py`) | [`docs/entities/resume-version.md`](docs/entities/resume-version.md) | append-only snapshots on every write path — the undo story |
 | FilledAnswer (`models/filled_answer.py`) | [`docs/entities/filled-answers.md`](docs/entities/filled-answers.md) | the answer receipt: what each form page run filled, each answer's source, the warn-only flags, the EEO lifecycle |
+| AgentRun (`models/agent_run.py`) | [`docs/entities/agent-runs.md`](docs/entities/agent-runs.md) | finished automation reports; Recent runs, Last ran, retention and phase 4 limits |
 | Health rubric | [docs/health-check-rubric.md](docs/health-check-rubric.md) | what the check judges and why: levels, questions, flags, word bank, disputes (the report's code contract: Others, ResumeLintReport) |
 | Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, the settings endpoints (model settings, form-filling engines, persona draft, setup status) and the secondary entities that need rules but not a file each |
 
@@ -160,7 +161,9 @@ file to open.
    toggle; `?source=` deep-linkable; Analytics' copy reads All, as it counts every application).
    "Saved" = job with no application — agent-captured jobs stay out unless the toggle is `Agents`,
    which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,
-   `/proposals`, whose lanes are one table: `lib/inbox-lanes.ts`). Filter groups: All/Saved,
+   `/proposals`, whose lanes are one table: `lib/inbox-lanes.ts`; above them an arrivals strip
+   (`/api/proposals/summary`) and Recent runs (`agent_runs`, docs/entities/agent-runs.md);
+   open rows carry read-time readiness (`services/inbox_readiness.py`)). Filter groups: All/Saved,
    **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`, from
    the newest `proposal_status`); `skipped` absorbs proposal `rejected` AND `expired`, while
    the ROW chip still says Expired. Option rules: frontend-conventions, "Tracker filter".
@@ -485,7 +488,8 @@ file to open.
   profile-driven fast path), render + slim PDF inspection (`get_rendered_pdf` has **no** `page_images_b64`;
   `get_rendered_pdf_page_image` is the opt-in one-page visual, `max_dimension_px` default 1024 with a ~1MB encoded cap;
   `prepare_application_pdf_upload` stages a disposable Playwright copy under `.playwright-mcp/uploads/`), application
-  tracking, the apply package, templates (draft/validate only; Typst constraints in `create_template_draft`'s
+  tracking, `record_run` (finished automation reports; `docs/entities/agent-runs.md`), the apply package,
+  templates (draft/validate only; Typst constraints in `create_template_draft`'s
   docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile` (`profile.eeo` consent-gated),
   and `get_career_context` (read-only; anti-fabrication framing in the docstring). The Career KB is writable via MCP:
   reads carry IDs the context prose does not; entity/profile writes land directly, but POINTS go through the user's
@@ -540,13 +544,9 @@ file to open.
   only verbatim-callable args or none at all, offer prose is derived from the filtered options, and composers
   take the requested state explicitly rather than inferring intent from results. Scoring is mentioned in
   prose, never as an option — it needs a `job_id` no composer can know.
-- **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. DB-free `GET /api/automations`
-  (`services/automations.py` parses `app/automations/skills/<name>/SKILL.md`; card-only fields sit under frontmatter
-  `metadata:`) returns the cards and the **agent apps**: Claude Desktop, Codex, Any MCP agent, plus Claude web and
-  ChatGPT web, shown unreachable because MCP here is local-only (the ChatGPT desktop app works via Any MCP agent).
-  **Copy prompt** puts the app's wrapper plus the skill body on the clipboard. Maestro runs NO scheduler: a scheduled
-  card's wrapper has the agent ask the user when to run. Apply is attended (`apply_kind()`) until full automation
-  mode. `load_cards()` is strict and runs at startup, so a malformed skill file fails boot.
+- **Automations page** (`/automations`, sidebar after Agent inbox): **Copy prompt** hands work to the user's agent;
+  Maestro runs NO scheduler. Each run prompt ends with MCP `record_run`; cards show Last ran.
+  Catalog, wrappers and startup rules live in `docs/entities/others.md`, "Automations page".
 - **In-app chat**, on screen the **Assistant** (`services/chat_agent.py` + `chat_tools.py`): a distinct
   toolset (resume edit, KB capture, template admin including the mutations MCP
   deliberately lacks). Its resume-edit tool runs the SAME pipeline as the REST
