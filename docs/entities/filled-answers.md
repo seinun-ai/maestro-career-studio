@@ -5,7 +5,7 @@
 One row per page run of a job's application form. Columns: `job_id` (FK, cascades with the job),
 `application_id` (nullable, `SET NULL`, linked late), `base_resume` (the slug the writer was filling for,
 nullable), `channel` (`companion` | `agent`), `host` (the writer's, else the host of the job's
-`source_url`), `step` (a page number or the URL path, as text), `captured_at`, and `fields`, a list of
+`source_url`), `step` (the page's URL path, as text; an agent's page number is accepted), `captured_at`, and `fields`, a list of
 `{question, section, required, answer, options_count, source, slot, eeo, edited_by_you}` as written
 (`schemas/filled_answers.FilledField`, `extra="forbid"`; an answer is text or, for a multi-select, the list
 of ticked options; a number is stored as its text) plus the server's `eeo_answered` and `version`. Rows are
@@ -15,14 +15,17 @@ appended and never pruned; the values live here and nowhere else (SYSTEM.md §6 
   pause-row answer that sticks, and one per edit capture (a debounced re-read after you change a field, at
   Mark applied, and as the panel leaves a page; `extension/INTERNALS.md`, "The answer receipt"). An agent
   posts one per form page with MCP `record_filled_answers`, before Next and before "Submit now?". A
-  writer may name the application (it must be this job's: 404 unknown, 400 another job's).
+  writer may name the application (it must be this job's: 404 unknown, 400 another job's). An agent
+  passes the page's URL path (`location.pathname`) as `step`, the Companion's own key, so its row and the
+  Companion's row for one page fold into one (a page number is another key and stays a separate page,
+  shown as "Page N"), and passes `application_id` when its proposal has one.
 - **Sources are a frozen vocabulary**, read by phase 4's auto-submit rule: `profile` (the autofill
   profile's personal, work_auth, eligibility, eeo, preferences, education and languages slots, and
   `derived.full_name`), `resume` (an `experience.N.*` slot or `skills`), `custom` (a saved answer,
   `custom.N`), `written` (prose `/choose` or an agent composed; it blends profile, saved answers, career
   history and persona, so prose is not split into Resume vs Career history), `inferred` (any other
   `derived.*` fact, a low-stakes or reasoned choice, anything no saved fact states), `you` (typed or
-  changed by the user), `upload` (a file: `slot` is `resume` or `cover_letter`, `answer` the file name; a
+  changed by the user in the browser; never an agent's own choice, which is `inferred`), `upload` (a file: `slot` is `resume` or `cover_letter`, `answer` the file name; a
   resume upload carries the application's resume `version`). On screen each is a one-word pill: Profile,
   Resume, Custom, Written, Inferred, You, Upload.
 - **You, and edited by you.** A field the user changed AFTER the Companion wrote it keeps the Companion's
@@ -47,7 +50,7 @@ appended and never pruned; the values live here and nowhere else (SYSTEM.md §6 
   and none when it had no version yet.
 - **EEO lifecycle.** A field is EEO when the writer says so, its slot is `eeo.*`, or its question names a
   protected characteristic (`answer_flags.EEO_RE`: gender, sex, race, ethnicity, Hispanic or Latino,
-  veteran, disability, sexual orientation). At write its value is kept only while EEO consent is recorded,
+  veteran, disability, sexual orientation, pronouns, LGBT, queer). At write its value is kept only while EEO consent is recorded,
   decided by `eeo_consent.withhold_unconsented` as the fill decides it (an unreadable consent keeps
   none); without consent the field keeps the question, `answer: null` and `eeo_answered`. Withdrawing
   consent (`eeo_consent.set_consent`) calls `clear_eeo_answers`, which nulls every stored EEO value in
@@ -95,3 +98,8 @@ appended and never pruned; the values live here and nowhere else (SYSTEM.md §6 
   Elsewhere a `willing_to_relocate` yes passes; otherwise a missing home city and state is
   `profile_missing`, a no is `conflict`, and an unset or free-text answer is `profile_missing`. The
   Companion's Fill body shows a conflict or missing answer as one plain line above the form.
+- **Phase-4 limits** (what the flags cannot vouch for). A rule-pass row carries no slot except EEO, so
+  `differs_from_profile` cannot fire on "Saved answers only" runs, and a screening answer labelled `profile`
+  there is unchecked; a `RULE_SLOTS` map from rule to slot is the fix. An agent's `source` is the agent's
+  claim: treat `channel=agent` with `profile`, `custom` or `resume` and no catalog slot as unverified for
+  auto-submit.

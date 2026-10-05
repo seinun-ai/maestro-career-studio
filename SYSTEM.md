@@ -857,6 +857,7 @@ citation. Priority lives in the item text, not in the ordinal.
 42. Answer trust follow-ups: fix-and-learn from the receipt; the auto-submit preview; a "What Maestro knows about you"
     page; graduation and enrollment as a JD-extracted knock-out; `policy.js` `RECORD_NEVER` folded into the shared
     `NEVER_FILLED`; receipt capture across a full-page navigation and for a manual Attach resume press.
+     Source limits phase 4 must close (rule-pass rows lack slots; agent sources are claims): `docs/entities/filled-answers.md`.
 
 ## 12. Gotchas that have bitten before
 

@@ -21,7 +21,7 @@ tool below is one action your assistant can take in the app.
 ## Install
 
 Pick the route for your assistant. Every route defaults to the `full` profile
-(all 83 tools); see [Profiles](#profiles) to narrow it.
+(all 84 tools); see [Profiles](#profiles) to narrow it.
 
 ### Claude (Desktop, and Claude Code inside the Claude app)
 
@@ -141,9 +141,9 @@ chat isn't cluttered with unrelated ones.
 
 | Profile | Use when | Tools |
 | --- | --- | --- |
-| `full` | Mixed use (default) | all 83 |
+| `full` | Mixed use (default) | all 84 |
 | `hunt` | Finding jobs and proposing them, no browser filling | 19 |
-| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 46 |
+| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 47 |
 | `explore` | Charts and trends across your saved jobs (`explore_*`) | 11 |
 | `templates` | Creating and testing resume templates | 12 |
 | `career` | Reading and editing your Career KB | 18 |
