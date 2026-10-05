@@ -15,9 +15,13 @@ export const SOURCE_LABELS: Record<AnswerSource, string> = {
   upload: "Upload",
 };
 
-/** "Filled on {host} · {n} pages · {date}". The to-check count follows it as its own control. */
-export function receiptHeading(receipt: FilledAnswers, date: string): string {
-  const pages = `${receipt.pages} ${receipt.pages === 1 ? "page" : "pages"}`;
+/**
+ * "Filled on {host} · {n} pages · {date}". `shown` is the page blocks on screen, not the backend's
+ * count: a page holding only voluntary questions has no block, and the header must agree with
+ * the blocks. The to-check count follows the header as its own control.
+ */
+export function receiptHeading(receipt: FilledAnswers, shown: number, date: string): string {
+  const pages = shown > 0 ? `${shown} ${shown === 1 ? "page" : "pages"}` : "";
   return [`Filled on ${receipt.host ?? "the employer's site"}`, pages, date].filter(Boolean).join(" · ");
 }
 

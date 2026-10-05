@@ -158,6 +158,9 @@ export default function JobDetailPage({
       ? requestedTab
       : "jd",
   );
+  // Once opened, What was submitted stays in the row: the job's own flag may predate the fill.
+  const [submittedSeen, setSubmittedSeen] = useState(tab === "submitted");
+  if (tab === "submitted" && !submittedSeen) setSubmittedSeen(true);
   const [declineOpen, setDeclineOpen] = useState(false);
   const qc = useQueryClient();
   const router = useRouter();
@@ -333,7 +336,7 @@ export default function JobDetailPage({
 
   const { job } = data;
   const hasApp = !!application;
-  const showSubmitted = Boolean(data?.has_filled_answers) || tab === "submitted";
+  const showSubmitted = Boolean(data?.has_filled_answers) || submittedSeen;
   const salary = formatSalary(
     job.salary_min,
     job.salary_max,

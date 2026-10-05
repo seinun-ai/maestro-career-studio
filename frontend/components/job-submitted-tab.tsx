@@ -43,6 +43,9 @@ export function JobSubmittedTab({
     queryKey: ["filled-answers", jobId],
     queryFn: () => apiFetch<FilledAnswers>(`/api/jobs/${jobId}/filled-answers`),
     enabled: active,
+    // The panel stays mounted, so the app's 30s freshness would show a receipt from before a fill:
+    // opening the tab always asks again.
+    staleTime: 0,
   });
   if (isLoadFailure(query)) {
     return (
@@ -75,7 +78,7 @@ function Receipt({ receipt, onOpenTab }: { receipt: FilledAnswers; onOpenTab?: O
   return (
     <div className="space-y-4">
       <p className="text-body-medium">
-        {receiptHeading(receipt, date)}
+        {receiptHeading(receipt, steps.length, date)}
         {receipt.flag_count > 0 && first ? (
           <>
             {" · "}
