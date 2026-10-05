@@ -24,7 +24,7 @@
 # model has to guess which to call — use `enabled = false` to park the ones you
 # are not using rather than deleting them.
 
-# Every tool (84). Includes the Career KB write tools, so this profile alone is
+# Every tool (85). Includes the Career KB write tools, so this profile alone is
 # enough to curate the KB — `career` below just trims the surface.
 [mcp_servers.maestro-career-studio]
 command = "<PYTHON>"

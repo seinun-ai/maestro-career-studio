@@ -162,7 +162,8 @@ file to open.
    "Saved" = job with no application — agent-captured jobs stay out unless the toggle is `Agents`,
    which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,
    `/proposals`, whose lanes are one table: `lib/inbox-lanes.ts`; above them an arrivals strip
-   (`/api/proposals/summary`) and Recent runs (`agent_runs`, docs/entities/agent-runs.md);
+   (`/api/proposals/summary`; visit window kept until this tab reloads; its History tile opens History)
+   and Recent runs (`agent_runs`, docs/entities/agent-runs.md);
    open rows carry read-time readiness (`services/inbox_readiness.py`)). Filter groups: All/Saved,
    **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`, from
    the newest `proposal_status`); `skipped` absorbs proposal `rejected` AND `expired`, while
@@ -546,7 +547,7 @@ file to open.
   prose, never as an option — it needs a `job_id` no composer can know.
 - **Automations page** (`/automations`, sidebar after Agent inbox): **Copy prompt** hands work to the user's agent;
   Maestro runs NO scheduler. Each run prompt ends with MCP `record_run`; cards show Last ran.
-  Catalog, wrappers and startup rules live in `docs/entities/others.md`, "Automations page".
+  Catalog, wrappers and startup rules: [docs/entities/others.md](docs/entities/others.md), "Automations page".
 - **In-app chat**, on screen the **Assistant** (`services/chat_agent.py` + `chat_tools.py`): a distinct
   toolset (resume edit, KB capture, template admin including the mutations MCP
   deliberately lacks). Its resume-edit tool runs the SAME pipeline as the REST

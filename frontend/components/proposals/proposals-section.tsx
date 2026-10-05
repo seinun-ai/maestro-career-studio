@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
 import { GuardedLink as Link } from "@/components/guarded-link";
@@ -82,6 +82,8 @@ import {
 } from "@/lib/types";
 
 const PROPOSALS_KEY = ["proposals"] as const;
+// The dashboard can open History before a tile scrolls; standalone inboxes keep local state.
+export const InboxHistoryContext = createContext<readonly [boolean, Dispatch<SetStateAction<boolean>>] | null>(null);
 // The API's max page (routers/proposals.py: le=500); `total` counts them all.
 const PROPOSALS_LIMIT = 500;
 const SEQUENCE_STORE_KEY = "cs-proposals-seq";
@@ -189,7 +191,8 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   const [board, setBoard] = useState("all");
   const [minScore, setMinScore] = useState<ScoreFloor | null>(null);
   const roleLabel = useRoleLabel();
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const localHistory = useState(false);
+  const [historyOpen, setHistoryOpen] = useContext(InboxHistoryContext) ?? localHistory;
   // The History statuses that are on; none on shows them all (FilterChips has no "All").
   const [historyStatus, setHistoryStatus] = useState<ReadonlySet<ProposalStatus>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string> | null>(null);
@@ -628,6 +631,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
             <button
               id={historyId}
               type="button"
+              aria-expanded={historyOpen}
               className="text-muted-foreground inline-flex items-center gap-1.5 text-title-small"
               onClick={() => setHistoryOpen((v) => !v)}
             >

@@ -23,6 +23,7 @@ _DASH = _read("components/proposals/inbox-dashboard.tsx")
 _STRIP = _read("components/proposals/arrivals-strip.tsx")
 _RUNS = _read("components/proposals/recent-runs.tsx")
 _VISIT = _read("hooks/use-inbox-visit.ts")
+_SECTION = _read("components/proposals/proposals-section.tsx")
 
 
 def test_the_page_renders_the_dashboard_in_order():
@@ -60,6 +61,26 @@ def test_the_last_visit_survives_blocked_storage_and_reads_once():
     assert _VISIT.count("try {") >= 2  # the read and the write
     assert "useRef(false)" in _VISIT  # dev double-effect never reads its own write
     assert "24 * 60 * 60 * 1000" in _VISIT
+    assert "let tabSince: string | null = null;" in _VISIT
+
+
+def test_jumping_to_history_opens_it_before_scrolling_and_exposes_its_state():
+    assert "const history = useState(false);" in _DASH
+    assert "<InboxHistoryContext.Provider value={history}>" in _DASH
+    assert "useContext(InboxHistoryContext) ?? localHistory" in _SECTION
+    assert 'if (anchor === "inbox-history")' in _DASH
+    assert "flushSync(() => history[1](true))" in _DASH
+    assert "onJump={openHistory}" in _DASH
+    assert _STRIP.index("onJump?.(anchor)") < _STRIP.index("scrollIntoView")
+    assert "jumpTo(tile.anchor, onJump)" in _STRIP
+    assert "aria-expanded={historyOpen}" in _SECTION
+
+
+def test_tiles_show_disabled_state_and_use_the_button_focus_ring():
+    for cls in ("disabled:opacity-50", "disabled:[&_p]:text-muted-foreground",
+                "outline-none", "border", "border-transparent", "focus-visible:border-ring",
+                "focus-visible:ring-3", "focus-visible:ring-ring/50"):
+        assert cls in _STRIP
 
 
 def test_dashboard_tiles_use_the_shared_pattern_and_long_run_text_wraps():
@@ -75,11 +96,14 @@ def test_dashboard_tiles_use_the_shared_pattern_and_long_run_text_wraps():
 _VISIT_SCRIPT = r"""
 const fs = require("node:fs");
 const vm = require("node:vm");
-const ts = require("typescript");
-const config = JSON.parse(process.argv[1]);
-const now = Date.parse("2026-10-05T12:00:00.000Z");
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
+const ts = require(require.resolve("typescript", { paths: [process.cwd()] }));
+const config = __CONFIG__;
+let now = Date.parse("2026-10-05T12:00:00.000Z");
+let stored = config.stored;
 const result = { since: null, reads: 0, writes: 0, saved: null };
-const effects = [];
+let effects = [];
 const react = {
   useState: () => [null, value => { result.since = value; }],
   useRef: value => ({ current: value }),
@@ -94,27 +118,59 @@ const storage = {
     if (key !== "cs-inbox-last-visit") throw new Error("wrong key");
     result.reads++;
     if (config.readThrows) throw new Error("blocked read");
-    return config.stored;
+    return stored;
   },
   setItem(key, value) {
     if (key !== "cs-inbox-last-visit") throw new Error("wrong key");
     result.writes++;
     if (config.writeThrows) throw new Error("blocked write");
-    result.saved = value;
+    result.saved = stored = value;
   },
 };
 const compiled = ts.transpileModule(fs.readFileSync("hooks/use-inbox-visit.ts", "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS },
 }).outputText;
-const moduleUnderTest = { exports: {} };
-vm.runInNewContext(compiled, {
-  module: moduleUnderTest, exports: moduleUnderTest.exports,
-  require: name => { if (name === "react") return react; throw new Error(name); },
-  window: { localStorage: storage }, Date: FixedDate,
+function loadModule() {
+  const moduleUnderTest = { exports: {} };
+  vm.runInNewContext(compiled, {
+    module: moduleUnderTest, exports: moduleUnderTest.exports,
+    require: name => { if (name === "react") return react; throw new Error(name); },
+    window: { localStorage: storage }, Date: FixedDate,
+  });
+  return moduleUnderTest.exports;
+}
+function mount(hook) {
+  effects = [];
+  result.since = null;
+  assert.equal(hook.useInboxVisit(), null);
+  effects.forEach(effect => { effect(); effect(); });
+}
+const hook = loadModule();
+test("first mount survives storage errors and dev double-effect", () => {
+  mount(hook);
+  assert.equal(result.since, config.expected);
+  assert.equal(result.reads, 1);
+  assert.equal(result.writes, 1);
+  assert.equal(result.saved, config.writeThrows ? null : new Date(now).toISOString());
 });
-result.initial = moduleUnderTest.exports.useInboxVisit();
-effects.forEach(effect => { effect(); effect(); });
-process.stdout.write(JSON.stringify(result));
+test("returning from a job reuses this tab's visit without touching storage", () => {
+  now += 60 * 60 * 1000;
+  mount(hook);
+  assert.equal(result.since, config.expected);
+  assert.equal(result.reads, 1);
+  assert.equal(result.writes, 1);
+  assert.equal(result.saved, config.writeThrows ? null : "2026-10-05T12:00:00.000Z");
+});
+test("a full reload reads and writes storage again", () => {
+  now += 60 * 60 * 1000;
+  const expected = !config.readThrows && stored && !Number.isNaN(Date.parse(stored))
+    ? stored : new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  mount(loadModule());
+  assert.equal(result.since, expected);
+  assert.equal(result.reads, 2);
+  assert.equal(result.writes, 2);
+  assert.equal(result.saved, config.writeThrows ? null : new Date(now).toISOString());
+});
 """
 
 
@@ -124,20 +180,23 @@ process.stdout.write(JSON.stringify(result));
         ("2026-10-03T09:30:00.000Z", False, False, "2026-10-03T09:30:00.000Z"),
         (None, False, False, "2026-10-04T12:00:00.000Z"),
         ("not a date", False, False, "2026-10-04T12:00:00.000Z"),
+        ("", False, False, "2026-10-04T12:00:00.000Z"),
+        ("   ", False, False, "2026-10-04T12:00:00.000Z"),
         ("2026-10-03T09:30:00.000Z", True, True, "2026-10-04T12:00:00.000Z"),
+        ("2026-10-03T09:30:00.000Z", True, False, "2026-10-04T12:00:00.000Z"),
         ("2026-10-03T09:30:00.000Z", False, True, "2026-10-03T09:30:00.000Z"),
     ],
 )
 def test_visit_effect_keeps_the_old_time_and_survives_storage_errors(
-    stored, read_throws, write_throws, expected,
+    stored, read_throws, write_throws, expected, tmp_path,
 ):
-    config = {"stored": stored, "readThrows": read_throws, "writeThrows": write_throws}
+    config = {"stored": stored, "readThrows": read_throws, "writeThrows": write_throws,
+              "expected": expected}
+    script = tmp_path / "inbox-visit.test.cjs"
+    script.write_text(_VISIT_SCRIPT.replace("__CONFIG__", json.dumps(config)), encoding="utf-8")
     done = subprocess.run(
-        ["node", "-e", _VISIT_SCRIPT, json.dumps(config)],
-        cwd=_FRONTEND, capture_output=True, text=True, check=True,
+        ["node", "--test", "--test-reporter=tap", str(script)],
+        cwd=_FRONTEND, capture_output=True, text=True,
     )
-    result = json.loads(done.stdout)
-    assert result["initial"] is None
-    assert result["since"] == expected
-    assert result["reads"] == result["writes"] == 1
-    assert result["saved"] == (None if write_throws else "2026-10-05T12:00:00.000Z")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "# pass 3" in done.stdout and "# fail 0" in done.stdout
