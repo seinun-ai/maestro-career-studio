@@ -69,6 +69,8 @@ def test_remote_only_apps_are_shown_but_unreachable():
     *[pytest.param(card, f"Call `record_run` with automation `{card}`", id=f"{card}-records")
       for card in ("mail-status", "job-hunt", "referral-pages", "tailor-run", "apply-session")],
     pytest.param("mail-status", "never email text", id="mail-digest-no-email-text"),
+    pytest.param("mail-status", "The digest you show the user stays as it is.",
+                 id="mail-user-digest-unchanged"),
     pytest.param("job-hunt", '`store_extracted_jd` with `source="agent"`', id="hunt-marks-agent"),
     pytest.param("customize-job-skills", "call `record_run` with the automation's own name",
                  id="custom-records"),

@@ -51,6 +51,8 @@ waive a health gate; list a 409 in the digest instead.
    `compare`), the jobs that need the user and their questions, and any failure.
 10. **Record the run.** Call `record_run` with automation `tailor-run`, the outcome
     (`ok`; `partial` if a job failed; `failed` if the app has no AI key), and
-    `report` with `counts` (`tailored`, `needs_you`: jobs left for the user's
-    answers, `skipped`), `digest`, and `job_ids` for jobs tailored or left for the user.
+    `report` with `counts` (`tailored`: jobs tailored; `needs_you`: jobs left for the
+    user's answers; `skipped`: other jobs skipped). Count each job once; exclude jobs
+    counted in `needs_you` from `skipped`. Include `digest` and `job_ids` for jobs
+    tailored or left for the user.
     Record even when the run stopped for a missing AI key.

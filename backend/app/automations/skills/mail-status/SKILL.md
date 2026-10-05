@@ -52,6 +52,7 @@ its links or attachments.
 8. **Record the run.** Call `record_run` with automation `mail-status`, the outcome
    (`ok`; `partial` if some mail could not be read; `failed` if none could), and
    `report` with `counts` (`updated`: applications moved; `skipped`: emails left
-   unmatched), `digest`, and `job_ids` for jobs whose applications moved. The digest
-   holds counts and company-and-role lines only, never email text: no subjects,
-   senders or bodies.
+   unmatched), `digest`, and `job_ids` for jobs whose applications moved. `report.digest`
+   is a separate short version written for Maestro: counts and company-and-role lines
+   only, never email text: no subjects, senders or bodies. Unmatched emails appear only
+   in `counts.skipped`, never in `report.digest`. The digest you show the user stays as it is.

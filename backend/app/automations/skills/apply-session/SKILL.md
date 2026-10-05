@@ -47,9 +47,10 @@ everything else yourself.
    through, say so and never click again.
 6. **Digest.** End with submitted / needs the user / declined / still queued.
 7. **Record the run.** Call `record_run` with automation `apply-session`, the outcome
-   (`ok`; `partial` if some work failed; `failed` if none could be done), and
-   `report` with `counts` (`updated`: applications submitted; `needs_you`;
-   `skipped`: declined), `digest`, and `job_ids` for the jobs worked.
+    (`ok`; `partial` if some work failed; `failed` if none could be done), and
+    `report` with `counts` (`updated`: applications submitted; `needs_you`: jobs stopped
+    for the user via `report_failure` or left `needs_human`; `skipped`: declined),
+    `digest`, and `job_ids` for the jobs worked.
 
 The Maestro CS tools' own descriptions carry the rest (states, evidence,
 duplicates) — follow them rather than working around a refusal. If the
