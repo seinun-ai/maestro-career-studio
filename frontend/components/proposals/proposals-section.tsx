@@ -71,7 +71,7 @@ import {
   needsYouLine,
   selectedAmong,
 } from "@/lib/inbox-lanes";
-import { historyLabel, isNew, readyFirst } from "@/lib/inbox-readiness";
+import { historyLabel, historyStatusOf, isNew, readyFirst } from "@/lib/inbox-readiness";
 import { jobMetaLine } from "@/lib/job-meta";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
@@ -277,7 +277,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
     const scoped =
       historyStatus.size === 0
         ? historyAll
-        : historyAll.filter((p) => historyStatus.has(p.status));
+        : historyAll.filter((p) => historyStatus.has(historyStatusOf(p.status, p.reason)));
     return sortProposals(scoped, sort);
   }, [historyAll, historyStatus, sort]);
 
@@ -649,7 +649,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
                   options={INBOX_LANES.history.map((status) => ({
                     value: status,
                     label: STATUS_LABELS[status],
-                    count: historyAll.filter((p) => p.status === status).length,
+                    count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length,
                   }))}
                 />
                 {history.length === 0 ? (
@@ -829,7 +829,7 @@ function ProposalRow({
                 <span className="truncate text-title-small">
                   {job.title ?? "Untitled role"}
                 </span>
-                {job.disqualifying_for_opt ? (
+                {job.disqualifying_for_opt && proposal.readiness?.knockout !== "opt" ? (
                   <span
                     className="text-warning inline-flex items-center gap-1 text-body-small"
                     title="OPT is the US student work permit"
@@ -866,7 +866,7 @@ function ProposalRow({
               </span>
             ) : null}
             <Badge
-              className={cn("shrink-0", STATUS_BADGE_CLASS[proposal.status])}
+              className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
               variant="secondary"
             >
               {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}

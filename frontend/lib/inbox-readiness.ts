@@ -1,5 +1,6 @@
 // Readiness on the Agent inbox's rows (backend services/inbox_readiness.py owns the rule; this is
-// its twin for sorting and words). Pure: `node --test` loads it, so it imports nothing.
+// its twin for sorting and words). `node --test` loads it directly; imports are types only.
+import type { ProposalStatus } from "./types";
 
 export type Readiness = { tailored: boolean | null; knockout: string | null; to_check: number };
 export type ReadinessMark = { text: string; tone: "muted" | "warning" };
@@ -39,6 +40,14 @@ export function readyFirst<T extends { readiness?: Readiness | null }>(items: re
 /** History's chip: Applied yourself for a job you applied to outside the agent. */
 export function historyLabel(status: string, reason: string | null | undefined, fallback: string): string {
   return status === "rejected" && reason === APPLIED_MANUALLY ? "Applied yourself" : fallback;
+}
+
+/** History groups manual applies with Applied while keeping the stored status unchanged. */
+export function historyStatusOf(
+  status: ProposalStatus,
+  reason: string | null | undefined,
+): ProposalStatus {
+  return status === "rejected" && reason === APPLIED_MANUALLY ? "submitted" : status;
 }
 
 /** Created after the last visit. No visit time known yet: nothing is marked new. */

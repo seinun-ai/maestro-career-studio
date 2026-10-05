@@ -144,9 +144,10 @@ def test_the_history_statuses_are_filter_chips_with_counts_and_no_all():
     chips = _SECTION[start : _SECTION.index("/>", _SECTION.index("count:", start)) + 2]
     assert 'label="History status"' in chips
     assert "value={historyStatus}" in chips and "onChange={setHistoryStatus}" in chips
-    assert "count: historyAll.filter((p) => p.status === status).length," in chips
+    assert "count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length," in chips
     assert "useState<ReadonlySet<ProposalStatus>>(new Set())" in _SECTION
-    assert "historyStatus.size === 0" in _SECTION and "historyStatus.has(p.status)" in _SECTION
+    assert "historyStatus.size === 0" in _SECTION
+    assert "historyStatus.has(historyStatusOf(p.status, p.reason))" in _SECTION
     # The hand-built chips (xs Buttons, an "All" chip, no counts) are gone.
     assert '"all", ...INBOX_LANES.history' not in _SECTION
     assert 'status === "all" ? "All"' not in _SECTION
@@ -816,6 +817,21 @@ def test_the_arrivals_anchors_keep_lane_titles_and_focus_attributes_in_order():
     assert "anchor?: string;" in _SECTION
     assert "<section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor}" in _SECTION
     assert '<section tabIndex={-1} aria-labelledby={historyId} id="inbox-history"' in _SECTION
+
+
+_READINESS = _read("lib/inbox-readiness.ts")
+
+
+def test_history_filter_counts_and_selection_use_the_applied_yourself_group():
+    assert "historyStatusOf(p.status, p.reason)" in _SECTION
+    assert "historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length" in _SECTION
+    assert "historyStatus.has(historyStatusOf(p.status, p.reason))" in _SECTION
+    assert 'STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)]' in _SECTION
+    assert 'status === "rejected" && reason === APPLIED_MANUALLY ? "submitted" : status' in _READINESS
+
+
+def test_the_opt_warning_stays_when_readiness_is_unknown_and_dedupes_when_known():
+    assert "job.disqualifying_for_opt && proposal.readiness?.knockout !== \"opt\"" in _SECTION
 
 
 def test_the_needs_you_help_says_where_a_stop_is_answered():

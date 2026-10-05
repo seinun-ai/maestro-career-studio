@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { historyLabel, isNew, isReady, readinessMarks, readyFirst } from "./inbox-readiness.ts";
+import { historyLabel, historyStatusOf, isNew, isReady, readinessMarks, readyFirst } from "./inbox-readiness.ts";
 
 const ready = { tailored: true, knockout: null, to_check: 0 };
 
@@ -72,6 +72,13 @@ test("a job the user applied to themselves reads Applied yourself", () => {
   assert.equal(historyLabel("submitted", null, "Applied"), "Applied");
   assert.equal(historyLabel("submitted", "applied manually", "Applied"), "Applied");
   assert.equal(historyLabel("rejected", undefined, "Skipped"), "Skipped");
+});
+
+test("manual applies are grouped under Applied in History filters", () => {
+  assert.equal(historyStatusOf("rejected", "applied manually"), "submitted");
+  assert.equal(historyStatusOf("rejected", "not a fit"), "rejected");
+  assert.equal(historyStatusOf("rejected", null), "rejected");
+  assert.equal(historyStatusOf("submitted", "applied manually"), "submitted");
 });
 
 test("new means created after the last visit", () => {
