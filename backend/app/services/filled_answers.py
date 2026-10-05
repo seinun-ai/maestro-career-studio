@@ -96,9 +96,11 @@ def _host_of(url: str | None) -> str | None:
     return urlsplit(url or "").hostname or None
 
 
-def flag_context(session: Session, job: Job) -> tuple[dict[str, Fact], set[str]]:
-    """What the flags compare against: the profile as the fill would serve it."""
-    profile = eeo_consent.disclosable_profile(session)
+def flag_context(session: Session, job: Job,
+                 profile: dict[str, Any] | None = None) -> tuple[dict[str, Fact], set[str]]:
+    """What the flags compare against: the profile as the fill would serve it. A batch passes
+    `profile` (`eeo_consent.disclosable_profile`) so it is read once."""
+    profile = eeo_consent.disclosable_profile(session) if profile is None else profile
     facts = autofill_catalog.build(profile, [], [], company=job.company)
     return facts, answer_flags.saved_eeo(profile)
 
@@ -238,6 +240,15 @@ def receipt(session: Session, job: Job) -> dict[str, Any]:
 
 def has_any(session: Session, job_id: UUID) -> bool:
     return bool(session.scalar(select(exists().where(FilledAnswer.job_id == job_id))))
+
+
+def flag_count(session: Session, job: Job, profile: dict[str, Any] | None = None) -> int:
+    """How many of the job's latest answers carry a flag: the receipt's `flag_count`."""
+    rows = _rows(session, job.id)
+    if not rows:
+        return 0
+    context = flag_context(session, job, profile)
+    return sum(bool(answer_flags.flags_for(field, *context)) for _row, field in latest_fields(rows))
 
 
 def _stamped(fields: list[dict[str, Any]], version: int | None) -> list[dict[str, Any]] | None:
