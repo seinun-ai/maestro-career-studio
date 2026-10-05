@@ -5,6 +5,7 @@ and blocked storage still renders the page. Source pins cover the UI contracts; 
 the visit hook's mount effect against invalid values and throwing storage without a browser.
 """
 
+import re
 from pathlib import Path
 
 from tests.node_ts import run_node_test
@@ -61,7 +62,10 @@ def test_the_last_visit_survives_blocked_storage_and_reads_once():
     assert _VISIT_LIB.count("catch {") >= 2  # read and write failures stay independent
     assert "useRef(false)" in _VISIT  # dev double-effect never reads its own write
     assert "24 * 60 * 60 * 1000" in _VISIT_LIB
-    assert "const VISIT_CLOCK = createVisitClock();" in _VISIT
+    clock_pin = r"^const VISIT_CLOCK = createVisitClock\(\);$"
+    assert re.search(clock_pin, _VISIT, re.M)
+    indented_clock = _VISIT.replace("const VISIT_CLOCK = createVisitClock();", "  const VISIT_CLOCK = createVisitClock();")
+    assert not re.search(clock_pin, indented_clock, re.M)
     assert "VISIT_CLOCK.resolve(storage, Date.now())" in _VISIT
 
 
