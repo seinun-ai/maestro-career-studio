@@ -30,6 +30,10 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Added
 
+- The **Agent inbox dashboard**: readiness marks on open rows, an arrivals strip
+  and **Recent runs** with each automation's counts, digest and job links. Queued
+  jobs ready to apply sort first. Automations cards show **Last ran**. New MCP
+  tool `record_run` keeps the latest 200 run reports.
 - The **Automations** page: copy a prompt into Claude Desktop, Codex or any MCP
   agent, which asks when to run and then does the job with Maestro. New
   `mail-status`, `referral-pages` and `tailor-run` skills join `job-hunt`,
@@ -56,11 +60,16 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Changed
 
+- Jobs `job-hunt` saves are marked as found by an agent and keep the job's
+  link. They wait in the Agent inbox alongside jobs from referral pages, and
+  later hunts recognize jobs already saved.
 - Agents record each form page's answers instead of attaching a screenshot of
   every page; the final-review and submission screenshots stay.
 
 ### Fixed
 
+- Agent inbox History says **Applied yourself** for jobs you applied to, with
+  the Applied badge, counts and filter grouping; their stored status is unchanged.
 - A page of screening questions with nothing else on it (iCIMS's Candidate
   Questions step: age, work authorization, sponsorship) is recognised as an
   application form, so Autofill is offered there and can fill it.

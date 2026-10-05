@@ -11,6 +11,7 @@ from app.origin_guard import OriginGuardMiddleware
 
 from app.routers import (
     role_categories,
+    agent_runs,
     applications,
     ats,
     automations,
@@ -208,6 +209,7 @@ app.include_router(exports.router)
 app.include_router(version.router)
 app.include_router(automations.router)
 app.include_router(filled_answers.router)
+app.include_router(agent_runs.router)
 
 
 @app.get("/health")

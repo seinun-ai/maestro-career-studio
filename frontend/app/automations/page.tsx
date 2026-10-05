@@ -11,6 +11,7 @@ import { PageHeader, PageShell } from "@/components/page-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { CONNECT_AGENT_GUIDE_URL } from "@/lib/agent-links";
+import { AGENT_RUNS_LATEST_KEY, latestByAutomation } from "@/lib/agent-runs";
 import { apiFetch } from "@/lib/api";
 import {
   APP_STORE_KEY,
@@ -19,7 +20,7 @@ import {
 } from "@/lib/automations";
 import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
-import type { AutomationCatalog } from "@/lib/types";
+import type { AgentRunList, AutomationCatalog } from "@/lib/types";
 
 const AUTOMATIONS_KEY = ["automations"] as const;
 const DEFAULT_APP = "claude-desktop";
@@ -31,6 +32,10 @@ export default function AutomationsPage() {
     queryFn: () => apiFetch<AutomationCatalog>("/api/automations"),
     // The catalog reads files shipped with the app: it changes on a restart.
     staleTime: Infinity,
+  });
+  const runs = useQuery({
+    queryKey: AGENT_RUNS_LATEST_KEY,
+    queryFn: () => apiFetch<AgentRunList>("/api/agent-runs/latest"),
   });
   // The last app chosen, if storage allows; an unknown or missing id falls
   // back to the default below.
@@ -50,6 +55,7 @@ export default function AutomationsPage() {
     data?.apps[0];
   const cards = data?.cards.filter((c) => c.kind !== "custom") ?? [];
   const custom = data?.cards.find((c) => c.kind === "custom");
+  const ran = runs.data ? latestByAutomation(runs.data.items) : null;
 
   return (
     <PageShell>
@@ -99,6 +105,7 @@ export default function AutomationsPage() {
                 card={card}
                 app={app}
                 disabledReasonId={noteId}
+                lastRun={ran ? (ran.get(card.id) ?? null) : undefined}
               />
             ))}
           </div>

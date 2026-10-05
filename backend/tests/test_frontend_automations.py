@@ -66,6 +66,25 @@ def test_the_card_copy():
     assert 'card.id === APPLY_CARD_ID && card.kind === "attended"' in _CARD
 
 
+def test_last_ran_uses_cached_data_and_fails_quietly_without_it():
+    assert 'apiFetch<AgentRunList>("/api/agent-runs/latest")' in _PAGE
+    assert "const ran = runs.data ? latestByAutomation(runs.data.items) : null;" in _PAGE
+    assert "lastRun={ran ? (ran.get(card.id) ?? null) : undefined}" in _PAGE
+    assert 'title="Couldn\'t load runs.' not in _PAGE
+    assert "isLoadFailure(runs)" not in _PAGE
+
+
+def test_each_card_says_when_it_last_ran():
+    assert "AGENT_RUNS_LATEST_KEY" in _PAGE
+    assert 'apiFetch<AgentRunList>("/api/agent-runs/latest")' in _PAGE
+    assert "lastRanLine(lastRun, formatTimeAgo)" in _CARD
+
+
+def test_the_catalog_stays_db_free():
+    # The Last ran line comes from its own read; GET /api/automations reads no table.
+    assert "agent-runs" not in _LIB
+
+
 def test_a_scheduled_card_gets_the_wrapper_that_asks_when_to_run():
     assert 'card.kind === "scheduled" ? app.preamble : app.attended_preamble' in _LIB
 

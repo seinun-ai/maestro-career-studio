@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { APPLY_CARD_ID, NEED_LABELS, promptFor } from "@/lib/automations";
+import { formatTimeAgo } from "@/lib/format-date";
+import { lastRanLine } from "@/lib/agent-runs";
 import type { AgentApp, AutomationCard as AutomationCardData } from "@/lib/types";
 
 const KIND_LABEL = {
@@ -23,17 +25,21 @@ export function AutomationCard({
   card,
   app,
   disabledReasonId,
+  lastRun,
 }: {
   card: AutomationCardData;
   app: AgentApp;
   /** The app note that says why Copy is off; Copy points at it. */
   disabledReasonId?: string;
+  /** Undefined while no run data is available, null when this card never ran. */
+  lastRun?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const promptId = useId();
   const promptRef = useRef<HTMLPreElement>(null);
   const focusPromptWhenShown = useRef(false);
   const text = promptFor(card, app);
+  const ranLine = lastRanLine(lastRun, formatTimeAgo);
 
   // After a failed copy the prompt is the next thing to do: focus lands on it
   // (and selects it) once it is on screen.
@@ -72,6 +78,7 @@ export function AutomationCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="max-w-[65ch]">{card.summary}</p>
+        {ranLine ? <p className="text-muted-foreground text-body-small">{ranLine}</p> : null}
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-muted-foreground text-label-medium">Needs</span>
           {card.needs.map((need) => (

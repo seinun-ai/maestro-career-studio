@@ -1,3 +1,4 @@
+from app.models.agent_run import AgentRun
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.ats_score import AtsScore
@@ -25,6 +26,7 @@ from app.models.tailoring_session import TailoringSession
 from app.models.template import Template
 
 __all__ = [
+    "AgentRun",
     "Application",
     "ApplicationProposal",
     "AtsScore",

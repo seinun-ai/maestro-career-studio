@@ -144,9 +144,10 @@ def test_the_history_statuses_are_filter_chips_with_counts_and_no_all():
     chips = _SECTION[start : _SECTION.index("/>", _SECTION.index("count:", start)) + 2]
     assert 'label="History status"' in chips
     assert "value={historyStatus}" in chips and "onChange={setHistoryStatus}" in chips
-    assert "count: historyAll.filter((p) => p.status === status).length," in chips
+    assert "count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length," in chips
     assert "useState<ReadonlySet<ProposalStatus>>(new Set())" in _SECTION
-    assert "historyStatus.size === 0" in _SECTION and "historyStatus.has(p.status)" in _SECTION
+    assert "historyStatus.size === 0" in _SECTION
+    assert "historyStatus.has(historyStatusOf(p.status, p.reason))" in _SECTION
     # The hand-built chips (xs Buttons, an "All" chip, no counts) are gone.
     assert '"all", ...INBOX_LANES.history' not in _SECTION
     assert 'status === "all" ? "All"' not in _SECTION
@@ -777,6 +778,60 @@ def test_keep_it_patches_to_review_without_consent():
     assert '...(status === "pending_review" ? {} : { consent: { channel: "frontend" } }),' in _TRIAGE
     assert "...(applicationId ? { application_id: applicationId } : {})," in _TRIAGE
     assert "const needs = needsYouLine(data.status, data.reason);" in _PANEL
+
+
+# ── Dashboard rows: readiness, arrivals and manual applies ─────────────────
+
+_MARKS = _read("components/proposals/readiness-marks.tsx")
+
+
+def test_rows_show_readiness_marks_and_queued_puts_ready_first():
+    assert "<ReadinessMarks readiness={proposal.readiness} />" in _SECTION
+    assert 'readyFirst(sortProposals(inLane(filtered, "queued"), sort))' in _SECTION
+    assert "readinessMarks(readiness)" in _MARKS
+
+
+def test_history_says_applied_yourself_and_new_rows_are_marked():
+    assert "historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])" in _SECTION
+    assert "isNew(proposal.created_at, since)" in _SECTION
+
+
+def test_the_visit_time_reaches_every_row_and_unknown_readiness_shows_no_marks():
+    assert "export function ProposalsSection({ since = null }: { since?: string | null } = {})" in _SECTION
+    row_props = _block(_SECTION, "const rowProps = {", "\n  };")
+    assert re.search(r"^    since,$", row_props, re.M)
+    assert "since: string | null;" in _row()
+    assert "if (marks.length === 0) return null;" in _MARKS
+    new_mark = _block(_row(), "{isNew(proposal.created_at, since) ? (", ") : null}")
+    assert 'aria-hidden="true"' in new_mark and "New" in new_mark
+
+
+def test_the_arrivals_anchors_keep_lane_titles_and_focus_attributes_in_order():
+    for title, anchor in (("Needs you", "inbox-needs-you"), ("To review", "inbox-to-review"),
+                          ("Queued", "inbox-queued")):
+        opening = re.search(
+            rf'<Lane\s+(?:ref=\{{\w+\}}\s+)?title=\{{`{title} · .*?anchor="([^"]+)"\s*>',
+            _SECTION, re.S,
+        )
+        assert opening.group(1) == anchor
+    assert "anchor?: string;" in _SECTION
+    assert "<section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor}" in _SECTION
+    assert '<section tabIndex={-1} aria-labelledby={historyId} id="inbox-history"' in _SECTION
+
+
+_READINESS = _read("lib/inbox-readiness.ts")
+
+
+def test_history_filter_counts_and_selection_use_the_applied_yourself_group():
+    assert "historyStatusOf(p.status, p.reason)" in _SECTION
+    assert "historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length" in _SECTION
+    assert "historyStatus.has(historyStatusOf(p.status, p.reason))" in _SECTION
+    assert 'STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)]' in _SECTION
+    assert 'status === "rejected" && reason === APPLIED_MANUALLY ? "submitted" : status' in _READINESS
+
+
+def test_the_opt_warning_stays_when_readiness_is_unknown_and_dedupes_when_known():
+    assert "job.disqualifying_for_opt && proposal.readiness?.knockout !== \"opt\"" in _SECTION
 
 
 def test_the_needs_you_help_says_where_a_stop_is_answered():

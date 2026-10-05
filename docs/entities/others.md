@@ -595,3 +595,52 @@
   `backend/app/automations/skills/agent-apply-execution/SKILL.md`; consent-gated constraint in
   `docs/agentic-job-search.md`.
 
+  **Inbox readiness**: `GET /api/proposals` computes `readiness` at read time, never stores
+  it, and only marks open rows (`pending_review`, `needs_decision`, `accepted`, `approved`,
+  `needs_human`); History rows receive null. `services/inbox_readiness.py` reads the scan
+  profile once per batch and shares a consent-gated answer profile for jobs with receipts.
+  `tailored` is the linked application's `bool(pdf_path)`, or null when the application
+  is unlinked or gone. `knockout` is the first conflicting check's kind only when the scan
+  status is `conflict`, otherwise null. `to_check` counts latest receipt fields carrying
+  any flag (one count per field, even with several flags), or 0 without recorded answers.
+  A row failure is logged and gives that row null; a batch-level read failure gives every
+  open row null while the list still returns. `inbox_readiness.is_ready` is phase 4's shared
+  rule: `tailored is True`, `knockout is None`, `to_check == 0`; null readiness is not ready.
+  Frontend twin `lib/inbox-readiness.ts` words the marks **Tailored**, **Not tailored**,
+  **Knock-out: …**, **N to check**. Ready rows sort first in Queued (`accepted`), keeping
+  the user's chosen sort within each group. Marks and sorting do not move rows between lanes.
+
+  **Arrivals summary**: `GET /api/proposals/summary?since=` returns `since` and four counts
+  across the ledger, independently of the list's pagination or filters: `new` counts all
+  proposals with `created_at > since` (default last 24 hours); `ready` counts Queued
+  (`accepted`) rows satisfying `inbox_readiness.is_ready`; `needs_you` counts
+  `needs_decision` plus `needs_human`, the sidebar badge's same statuses; `applied_this_week`
+  counts `submitted` or `rejected` with reason `applied manually`, where `updated_at` is
+  within the last 7 days, including the boundary. Naive `since` is interpreted as UTC.
+  The browser remembers the previous visit in `cs-inbox-last-visit`, reads it once on mount,
+  then stores now; absent, invalid or blocked storage falls back to the last 24 hours.
+  Rows created strictly after that visit get a **New** dot. The four tiles above Recent runs
+  and the lanes read **New since your last visit**, **Ready to apply**, **Needs you**,
+  **Applied this week**, and jump to their lanes. Recent runs reads the newest run per
+  automation ([agent-runs.md](agent-runs.md)), not every record in the run log.
+
+  **Applied yourself in History**: `rejected` with reason `applied manually` reads
+  **Applied yourself**, uses the Applied badge and counts/filters under Applied. This is
+  label and grouping only; the stored status, transition guards and consent rules stay unchanged.
+
+  **Phase 4 limits**: the readiness PDF mark does not check that the file is on disk;
+  auto-submit must check before uploading. `incomplete_profile` and `warning` knock-out
+  scans count as no knock-out; this dashboard rule cannot establish a complete profile.
+  The run digest is unverified agent text, including the prompt's claim that it has no email
+  text. There is no overdue logic because Maestro does not know the user's schedule.
+
+- **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. DB-free `GET /api/automations`
+  (`services/automations.py` parses `app/automations/skills/<name>/SKILL.md`; card-only fields sit under frontmatter
+  `metadata:`) returns the cards and the **agent apps**: Claude Desktop, Codex, Any MCP agent, plus Claude web and
+  ChatGPT web, shown unreachable because MCP here is local-only (the ChatGPT desktop app works via Any MCP agent).
+  **Copy prompt** puts the app's wrapper plus the skill body on the clipboard. Maestro runs NO scheduler: a scheduled
+  card's wrapper has the agent ask the user when to run. Apply is attended (`apply_kind()`) until full automation
+  mode. `load_cards()` is strict and runs at startup, so a malformed skill file fails boot.
+  Each run prompt ends with MCP `record_run`. Cards read `GET /api/agent-runs/latest` and
+  show **Last ran** or **Not run yet** after data arrives; a read that never produced data
+  shows no line, while a failed background refetch keeps the cached line ([agent-runs.md](agent-runs.md)).

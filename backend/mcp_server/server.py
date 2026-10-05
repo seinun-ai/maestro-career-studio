@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
 from mcp_server import workflow
@@ -112,6 +112,39 @@ _FILLED_FIELDS_FIELD = Field(
     )
 )
 FilledFields = Annotated[list[FilledFieldInput], _FILLED_FIELDS_FIELD]
+
+
+@with_config(ConfigDict(extra="forbid"))
+class RunCounts(TypedDict, total=False):
+    """What a run did, as whole numbers."""
+
+    found: int
+    proposed: int
+    skipped: int
+    tailored: int
+    updated: int
+    needs_you: int
+
+
+@with_config(ConfigDict(extra="forbid"))
+class RunReport(TypedDict, total=False):
+    """What record_run stores beyond the automation and its outcome."""
+
+    counts: RunCounts | None
+    digest: str | None
+    job_ids: list[str] | None
+
+
+_RUN_REPORT_FIELD = Field(
+    description=(
+        "{counts?, digest?, job_ids?}. counts: whole numbers for found, proposed, skipped, "
+        "tailored, updated and needs_you; other keys are refused. digest: the run's plain-text "
+        "summary, kept to its first 2000 characters; it holds counts and title-and-company lines, "
+        "not email text. job_ids: the jobs the run touched, the first 50 kept; unknown job ids "
+        "are dropped."
+    )
+)
+RunReportArg = Annotated[RunReport | None, _RUN_REPORT_FIELD]
 
 _INGEST_DATA_FIELD = Field(
     description=(
@@ -1821,6 +1854,23 @@ def record_filled_answers(
     return _client.record_filled_answers(
         job_id, fields, step=step, application_id=application_id, base_resume=base_resume
     )
+
+
+@mcp.tool(**_write("Record Automation Run", destructive=False, idempotent=False))
+@_guard
+def record_run(
+    automation: str,
+    outcome: Literal["ok", "partial", "failed"],
+    report: RunReportArg = None,
+    ctx: Context | None = None,
+) -> Any:
+    """Stores one finished automation run. The Agent inbox lists the newest run of each
+    automation under Recent runs (its counts, digest and job links), and each Automations card
+    shows when its automation last ran. automation is the card id (mail-status, job-hunt,
+    referral-pages, tailor-run, apply-session) or a custom automation's own name, 40 characters
+    at most. outcome: ok, partial (some of the work failed) or failed (none of it was done).
+    The newest 200 runs are kept. Returns the stored run."""
+    return _client.record_run(automation, outcome, report, origin_detail=_client_label(ctx))
 
 
 @mcp.tool(**_write("Record Application Consent", destructive=True, idempotent=False))

@@ -21,7 +21,7 @@ tool below is one action your assistant can take in the app.
 ## Install
 
 Pick the route for your assistant. Every route defaults to the `full` profile
-(all 84 tools); see [Profiles](#profiles) to narrow it.
+(all 85 tools); see [Profiles](#profiles) to narrow it.
 
 ### Claude (Desktop, and Claude Code inside the Claude app)
 
@@ -141,9 +141,9 @@ chat isn't cluttered with unrelated ones.
 
 | Profile | Use when | Tools |
 | --- | --- | --- |
-| `full` | Mixed use (default) | all 84 |
-| `hunt` | Finding jobs and proposing them, no browser filling | 19 |
-| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 47 |
+| `full` | Mixed use (default) | all 85 |
+| `hunt` | Finding jobs and proposing them, no browser filling | 20 |
+| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 48 |
 | `explore` | Charts and trends across your saved jobs (`explore_*`) | 11 |
 | `templates` | Creating and testing resume templates | 12 |
 | `career` | Reading and editing your Career KB | 18 |
@@ -272,6 +272,7 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 - `get_final_review`: everything to check before you approve, including the flagged answers.
 - `record_filled_answers`: records what was filled on each form page and where each answer came from; its flags show again in `get_final_review`.
 - `record_consent`: record your approve/reject, only after you have actually answered.
+- `record_run`: record one finished automation run; it appears under Recent runs in the Agent inbox.
 - `attach_evidence`, `attach_evidence_file`: attach the screenshots your approval and the submission need (the final review and the confirmation).
 - `mark_submitted`: mark an approved proposal as submitted.
 

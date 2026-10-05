@@ -1936,6 +1936,9 @@ export interface Proposal {
   created_at: string;
   updated_at: string;
   job: ProposalJobSummary;
+  /** Open-lane rows only (backend services/inbox_readiness.py); null in History. Optional: an
+   *  older backend does not send it. */
+  readiness?: { tailored: boolean | null; knockout: string | null; to_check: number } | null;
 }
 
 interface ProposalQAEntry {
@@ -1954,6 +1957,30 @@ export interface ProposalDetail extends Proposal {
 export interface ProposalListResponse {
   items: Proposal[];
   total: number;
+}
+
+export interface ProposalSummary {
+  since: string;
+  new: number;
+  ready: number;
+  needs_you: number;
+  applied_this_week: number;
+}
+
+export interface AgentRun {
+  id: UUID;
+  automation: string;
+  title: string;
+  outcome: "ok" | "partial" | "failed";
+  agent: string | null;
+  finished_at: string;
+  counts: Record<string, number>;
+  digest: string;
+  jobs: { id: UUID; title: string | null; company: string | null }[];
+}
+
+export interface AgentRunList {
+  items: AgentRun[];
 }
 
 interface ProposalBulkResult {

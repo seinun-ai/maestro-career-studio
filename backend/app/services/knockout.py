@@ -395,16 +395,20 @@ def scan_job(
     return {"status": status, "checks": checks}
 
 
-def scan_for(session: Session, job: Job) -> dict[str, Any]:
-    """`scan_job` over the stored profile: the ONE reader behind the job page, the agent's final
-    review and the Companion's `/api/jobs/match`. The profile is read once."""
+def scan_args(session: Session) -> dict[str, Any]:
+    """The stored profile as `scan_job`'s keyword arguments, read once: a batch reuses it."""
     from app.services import autofill_profile, job_preferences
 
     profile = autofill_profile.get_profile(session)
-    return scan_job(
-        job,
-        autofill_profile.work_auth_from_profile(profile),
-        profile.get("preferences"),
-        years_experience=job_preferences.get_preferences(session).years_experience,
-        personal=profile.get("personal"),
-    )
+    return {
+        "work_auth": autofill_profile.work_auth_from_profile(profile),
+        "preferences": profile.get("preferences"),
+        "years_experience": job_preferences.get_preferences(session).years_experience,
+        "personal": profile.get("personal"),
+    }
+
+
+def scan_for(session: Session, job: Job) -> dict[str, Any]:
+    """`scan_job` over the stored profile: the ONE reader behind the job page, the agent's final
+    review and the Companion's `/api/jobs/match`. The profile is read once."""
+    return scan_job(job, **scan_args(session))

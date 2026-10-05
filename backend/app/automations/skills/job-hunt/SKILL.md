@@ -26,13 +26,17 @@ the user's, in the app.
    description, ones `find_job_by_url` already knows, and employers that look
    like data harvesting rather than hiring (a quick web check is enough; keep
    staffing agencies but say so in the proposal).
-4. **Capture and score** each survivor: `store_extracted_jd`, then `score_ats`.
-   Extract only what the posting states.
+4. **Capture and score** each survivor: `store_extracted_jd` with `source="agent"`
+   and the posting's `source_url`, then `score_ats`. Extract only what the posting states.
 5. **Propose** the best-scoring ones up to the ceiling with `propose_application`,
    skipping roles the brief rules out. Give each a one-line match reason and a
    short note on the company.
 6. **Digest.** End with what you pulled per source, what you dropped and why,
    what you proposed (title, company, score, link), and any source that failed.
+7. **Record the run.** Call `record_run` with automation `job-hunt`, the outcome
+   (`ok`; `partial` if a source failed; `failed` if none could be read), and
+   `report` with `counts` (`found`, `proposed`, `skipped`), `digest`, and
+   `job_ids` for the jobs you proposed.
 
 The tools' own descriptions carry the details (idempotency, blocklist refusals,
 posting-scoped declines); follow them rather than working around a refusal.

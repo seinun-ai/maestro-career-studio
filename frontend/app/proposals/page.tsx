@@ -1,5 +1,5 @@
 import { CapToday } from "@/components/proposals/cap-today";
-import { ProposalsSection } from "@/components/proposals/proposals-section";
+import { InboxDashboard } from "@/components/proposals/inbox-dashboard";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
 export default function ProposalsPage() {
@@ -16,7 +16,7 @@ export default function ProposalsPage() {
           </>
         }
       />
-      <ProposalsSection />
+      <InboxDashboard />
     </PageShell>
   );
 }

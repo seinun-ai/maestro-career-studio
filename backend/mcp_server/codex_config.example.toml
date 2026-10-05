@@ -24,7 +24,7 @@
 # model has to guess which to call — use `enabled = false` to park the ones you
 # are not using rather than deleting them.
 
-# Every tool (84). Includes the Career KB write tools, so this profile alone is
+# Every tool (85). Includes the Career KB write tools, so this profile alone is
 # enough to curate the KB — `career` below just trims the surface.
 [mcp_servers.maestro-career-studio]
 command = "<PYTHON>"
@@ -35,7 +35,7 @@ enabled = true
 BACKEND_URL = "http://localhost:8001"
 MAESTRO_CS_MCP_PROFILE = "full"
 
-# Curate the Career KB: ID-bearing reads plus draft-gated writes (10 tools).
+# Curate the Career KB: ID-bearing reads plus draft-gated writes (18 tools).
 # The only profile besides `full` with KB writes. No write tool takes a `state`
 # argument, so approving a point from here is unrepresentable — approval stays in
 # the web UI at /career. Editing a point's text sends it back to draft.

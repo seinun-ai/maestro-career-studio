@@ -4,6 +4,7 @@ from app import models  # noqa: F401
 
 def test_all_planned_tables_are_registered():
     assert set(Base.metadata.tables) == {
+        "agent_runs",
         "application_proposals",
         "applications",
         "ats_scores",
