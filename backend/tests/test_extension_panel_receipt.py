@@ -63,12 +63,13 @@ PAGE = [{"frameId": 0, "result": {"frame": "f0", "host": LOOP_HOST, "fields": [
 REFUSED = [{"frameId": 0, "result": {"frame": None, "host": LOOP_HOST, "fields": []}}]
 
 
-def _run(tmp_path, page=PAGE, settings=SETTINGS_REPLY, match=None, api_extra=None, **spec):
+def _run(tmp_path, page=PAGE, settings=SETTINGS_REPLY, match=None, api_extra=None, page_form=True, **spec):
     report = spec.pop("report", LOOP_REPORT)
     spec.setdefault("tabs", [{"id": 7, "url": LOOP_URL}])
     spec.setdefault("stored", {"widget.session": entry(touched=False)})
     replies = {"read_settings": settings,
-               "panel_frame0": _reply({"tier": "B", "form": True, "score": 2}),
+               "panel_frame0": _reply({"tier": "B" if page_form else "none", "form": page_form,
+                                       "score": 2 if page_form else 0}),
                "panel_prepare": _reply({"injected": True}),
                "telemetry": _reply({"posted": 0}), "fill_trace": _reply({"posted": 1})}
     api = {RECEIPT: _reply(POSTED),
@@ -677,14 +678,14 @@ def test_a_rule_pass_body_lists_the_flags_too(tmp_path):
 def test_the_knockout_verdict_heads_the_fill_body_before_a_run(tmp_path):
     out = _banner(tmp_path, _scan("conflict", "conflict"))
     [line] = _by_class(out["loaded"]["rail"], "ko")
-    assert line["text"] == f"Before you fill: {ON_SITE}"
+    assert line["text"] == ON_SITE
 
 
 def test_an_incomplete_profile_check_shows_its_line_too(tmp_path):
     message = "This job is on-site. Add your city or relocation answer to Profile."
     out = _banner(tmp_path, _scan("incomplete_profile", "profile_missing", message))
     [line] = _by_class(out["loaded"]["rail"], "ko")
-    assert line["text"] == f"Before you fill: {message}"
+    assert line["text"] == message
 
 
 @pytest.mark.parametrize("scan", [_scan("clear", "pass", "Fine."), _scan("unstated", "job_unstated", "x"),
@@ -693,10 +694,43 @@ def test_a_clear_or_unstated_scan_says_nothing(tmp_path, scan):
     assert _by_class(_banner(tmp_path, scan)["loaded"]["rail"], "ko") == []
 
 
-def test_the_banner_is_one_status_line_and_stays_after_a_run(tmp_path):
+def test_the_banner_is_plain_text_that_stays_after_a_run(tmp_path):
+    """Rebuilt every render, so it is not a live region (nothing to announce again): plain
+    text, in the scan's own words, with no "before you fill" the run would make stale."""
     out = _banner(tmp_path, _scan("conflict", "conflict"))
     [line] = _by_class(out["settled"]["rail"], "ko")
-    assert line["attrs"]["role"] == "status"
+    assert "role" not in line["attrs"] and line["text"] == ON_SITE
+
+
+def test_the_banner_shows_on_the_no_form_body_too(tmp_path):
+    """The verdict is about the JOB: a page with no form on it (the posting) still says it."""
+    out = _banner(tmp_path, _scan("conflict", "conflict"), page_form=False, skipRun=True)
+    [line] = _by_class(out["loaded"]["rail"], "ko")
+    assert line["text"] == ON_SITE
+
+
+def test_with_several_checks_the_first_one_of_the_status_wins(tmp_path):
+    auth = "Your profile says you need sponsorship; this job offers none."
+    scan = {"status": "conflict", "checks": [
+        {"kind": "work_authorization", "result": "conflict", "message": auth},
+        {"kind": "on_site", "result": "conflict", "message": ON_SITE}]}
+    [line] = _by_class(_banner(tmp_path, scan)["loaded"]["rail"], "ko")
+    assert line["text"] == auth
+
+
+def test_a_conflict_outranks_a_missing_profile_answer(tmp_path):
+    scan = {"status": "conflict", "checks": [
+        {"kind": "on_site", "result": "profile_missing", "message": "Add your city to Profile."},
+        {"kind": "salary", "result": "conflict", "message": "Pay is below your floor."}]}
+    [line] = _by_class(_banner(tmp_path, scan)["loaded"]["rail"], "ko")
+    assert line["text"] == "Pay is below your floor."
+
+
+def test_pressing_a_flag_focuses_that_field_on_the_page(tmp_path):
+    """The row's button asks the page to focus ITS field: `fill_focus` with the fid the loop minted."""
+    out = _run(tmp_path, pressFlag="How did you hear about us?")
+    focus = [msg["message"] for msg in out["broadcasts"] if msg["message"]["type"] == "fill_focus"]
+    assert [(msg["type"], msg["fid"]) for msg in focus] == [("fill_focus", "a1")]
 
 
 def test_marking_applied_refreshes_the_flags_from_the_capture_it_made(tmp_path):

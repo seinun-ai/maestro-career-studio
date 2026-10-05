@@ -512,8 +512,9 @@
   /** "Check before you submit": the answers this run's receipt flagged (the
    * POST to `/api/jobs/{id}/filled-answers` answers them), each with the
    * server's one-line reason. WARN ONLY: Next and Submit stay the user's and
-   * nothing here gates them. A row the loop wrote jumps to its field; a
-   * rule-pass row has no field id to jump to, so its name is plain text.
+   * nothing here gates them. A row with a field id jumps to its field (the
+   * loop's and the rule pass's both come from the page's inventory); the rows
+   * with none, an uploaded file or a pause-row answer, are plain text.
    * Returns the heading and the list, or nothing. */
   const CHECK_HEADING = "Check before you submit";
   function flagNodes({ facts, act, build }) {
@@ -537,17 +538,17 @@
   }
 
   /** The matched job's knock-out verdict, one line, before a run and after
-   * it: it is about the job, not the fill. Only a conflict or a missing
-   * profile answer is worth the line, in the scan's own words; a clear or
-   * unstated scan says nothing here (the job page's Overview has the card). */
+   * it, on the no-form body too: it is about the job, not the fill. Only a
+   * conflict or a missing profile answer is worth the line, in the scan's own
+   * words and nothing added (it must read true after a run as well); a clear
+   * or unstated scan says nothing here (the job page's Overview has the card).
+   * Plain text, not a live region: the body is rebuilt on every render. */
   function knockoutLine({ facts, build }) {
     const scan = facts.knockout;
     const want = { conflict: "conflict", incomplete_profile: "profile_missing" }[scan?.status];
     const check = want ? (scan.checks ?? []).find((one) => one.result === want && one.message) : null;
     if (!check) return null;
-    const line = build.node("div", "sub ko", `Before you fill: ${check.message}`);
-    line.setAttribute("role", "status");
-    return line;
+    return build.node("div", "sub ko", check.message);
   }
 
   /** The fill loop's report, grouped by what happened to each field, in the
@@ -852,7 +853,7 @@
     const { node, attach } = build;
     const collected = facts.residue !== null || facts.essays !== null;
     if (facts.hasForm !== true && !facts.fill && !collected && !facts.loop) {
-      return attach(node("div", "stg-body"), node("div", "sub", NO_FORM_HERE),
+      return attach(node("div", "stg-body"), knockoutLine(ctx), node("div", "sub", NO_FORM_HERE),
                     attachRow(ctx), qnaDrawer(ctx));
     }
     const body = attach(node("div", "stg-body"), knockoutLine(ctx), modeControl(ctx));

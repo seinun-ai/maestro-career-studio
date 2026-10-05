@@ -402,7 +402,7 @@
   }
 
   /** The POST's flagged fields as the Fill body lists them: by the field id the
-   * run knew (null for a rule-pass row), with every reason in one line. */
+   * run knew (null for an uploaded file or a pause-row answer), with every reason in one line. */
   const flagRows = (posted, fids) => (posted?.flags ?? []).map((row) => ({
     fid: fids[row.index] ?? null,
     question: row.question,

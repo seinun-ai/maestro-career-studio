@@ -1293,9 +1293,9 @@ and its values reach no value-free builder (SYSTEM.md
   gates Next or Submit. A row with a field id jumps to it. The debounced capture
   and Mark applied refresh the list from their own post's answer (a capture that
   posts nothing leaves it; leaving a page cannot, the page is gone). The matched
-  job's knock-out scan (`knockout` on `/api/jobs/match`) heads the body as one
-  `role="status"` line, "Before you fill: <the scan's message>", only for a
-  `conflict` or `profile_missing` check.
+  job's knock-out scan (`knockout` on `/api/jobs/match`) heads the body (the
+  no-form body too) as one plain-text line, the scan's own message and nothing
+  added, only for a `conflict` or `profile_missing` check.
 - **A rule that wrote over your edit** is the rule's value, not yours: a
   rule-pass run first reads which fids were already changed (`touchedBefore`) and
   does not mark those `edited_by_you`; the loop never writes a field you changed.

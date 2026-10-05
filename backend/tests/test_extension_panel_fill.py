@@ -3642,7 +3642,8 @@ const stopButton = () => withClass(REGIONS.foot, "stop")[0] ?? null;
 main(async () => {
   await settle();
   const loaded = regions();
-  withClass(REGIONS.foot, "cta")[0].click();
+  // `skipRun`: the page is only LOOKED at (a posting with no form has no Fill button).
+  if (!spec.skipRun) withClass(REGIONS.foot, "cta")[0].click();
   const clicked = regions();
   await settle();
   const running = regions();
@@ -3678,6 +3679,13 @@ main(async () => {
           { id: from.id ?? "test-extension", tab: { id: from.tab ?? 7 } });
   }
   if (spec.pings) await settle();
+  if (spec.pressFlag !== undefined) {
+    const button = withClass(REGIONS.rail, "flags").flatMap((list) => list.children)
+      .map((item) => item.children[0]).find((one) => one.textContent === spec.pressFlag);
+    if (!button) throw new Error(`no flag row reads "${spec.pressFlag}"`);
+    button.click();
+    await settle();
+  }
   if (spec.leaveTo !== undefined) {
     await onActivated({ tabId: spec.leaveTo });
     await settle();
