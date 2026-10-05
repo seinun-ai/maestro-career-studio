@@ -779,6 +779,45 @@ def test_keep_it_patches_to_review_without_consent():
     assert "const needs = needsYouLine(data.status, data.reason);" in _PANEL
 
 
+# ── Dashboard rows: readiness, arrivals and manual applies ─────────────────
+
+_MARKS = _read("components/proposals/readiness-marks.tsx")
+
+
+def test_rows_show_readiness_marks_and_queued_puts_ready_first():
+    assert "<ReadinessMarks readiness={proposal.readiness} />" in _SECTION
+    assert 'readyFirst(sortProposals(inLane(filtered, "queued"), sort))' in _SECTION
+    assert "readinessMarks(readiness)" in _MARKS
+
+
+def test_history_says_applied_yourself_and_new_rows_are_marked():
+    assert "historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])" in _SECTION
+    assert "isNew(proposal.created_at, since)" in _SECTION
+
+
+def test_the_visit_time_reaches_every_row_and_unknown_readiness_shows_no_marks():
+    assert "export function ProposalsSection({ since = null }: { since?: string | null } = {})" in _SECTION
+    row_props = _block(_SECTION, "const rowProps = {", "\n  };")
+    assert re.search(r"^    since,$", row_props, re.M)
+    assert "since: string | null;" in _row()
+    assert "if (marks.length === 0) return null;" in _MARKS
+    new_mark = _block(_row(), "{isNew(proposal.created_at, since) ? (", ") : null}")
+    assert 'aria-hidden="true"' in new_mark and "New" in new_mark
+
+
+def test_the_arrivals_anchors_keep_lane_titles_and_focus_attributes_in_order():
+    for title, anchor in (("Needs you", "inbox-needs-you"), ("To review", "inbox-to-review"),
+                          ("Queued", "inbox-queued")):
+        opening = re.search(
+            rf'<Lane\s+(?:ref=\{{\w+\}}\s+)?title=\{{`{title} · .*?anchor="([^"]+)"\s*>',
+            _SECTION, re.S,
+        )
+        assert opening.group(1) == anchor
+    assert "anchor?: string;" in _SECTION
+    assert "<section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor}" in _SECTION
+    assert '<section tabIndex={-1} aria-labelledby={historyId} id="inbox-history"' in _SECTION
+
+
 def test_the_needs_you_help_says_where_a_stop_is_answered():
     from tests.node_ts import ts_map
 

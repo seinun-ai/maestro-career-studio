@@ -27,6 +27,7 @@ import {
   DeclineDialog,
   useProposalActions,
 } from "@/components/proposals/triage-actions";
+import { ReadinessMarks } from "@/components/proposals/readiness-marks";
 import { IconButton } from "@/components/icon-button";
 import { humanizeEnum } from "@/components/job-extracted-fields";
 import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
@@ -70,6 +71,7 @@ import {
   needsYouLine,
   selectedAmong,
 } from "@/lib/inbox-lanes";
+import { historyLabel, isNew, readyFirst } from "@/lib/inbox-readiness";
 import { jobMetaLine } from "@/lib/job-meta";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
@@ -174,7 +176,7 @@ function sortProposals(items: Proposal[], sort: SortKey): Proposal[] {
   return list;
 }
 
-export function ProposalsSection() {
+export function ProposalsSection({ since = null }: { since?: string | null } = {}) {
   const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: PROPOSALS_KEY,
     queryFn: () =>
@@ -263,7 +265,7 @@ export function ProposalsSection() {
     [filtered, sort],
   );
   const queued = useMemo(
-    () => sortProposals(inLane(filtered, "queued"), sort),
+    () => readyFirst(sortProposals(inLane(filtered, "queued"), sort)),
     [filtered, sort],
   );
   const inFlight = useMemo(
@@ -417,6 +419,7 @@ export function ProposalsSection() {
   }
 
   const rowProps = {
+    since,
     duplicateKeys,
     pending: actions.pending,
     onAct: (p: Proposal, action: RowAction, from: HTMLElement) => {
@@ -525,6 +528,7 @@ export function ProposalsSection() {
             <Lane
               title={`Needs you · ${needsYou.length}`}
               help={needsYouHelp(needsYou.map((p) => p.status))}
+              anchor="inbox-needs-you"
             >
               {needsYou.map((p) => (
                 <ProposalRow
@@ -537,7 +541,7 @@ export function ProposalsSection() {
             </Lane>
           ) : null}
 
-          <Lane ref={toReview} title={`To review · ${triage.length}`}>
+          <Lane ref={toReview} title={`To review · ${triage.length}`} anchor="inbox-to-review">
             {dayBatches.length === 0 ? (
               <p className="text-muted-foreground text-body-medium">Nothing to review.</p>
             ) : (
@@ -600,7 +604,7 @@ export function ProposalsSection() {
           </Lane>
 
           {queued.length > 0 ? (
-            <Lane title={`Queued · ${queued.length}`}>
+            <Lane title={`Queued · ${queued.length}`} anchor="inbox-queued">
               {queued.map((p) => (
                 <ProposalRow key={p.id} proposal={p} lane="queued" {...rowProps} />
               ))}
@@ -620,7 +624,7 @@ export function ProposalsSection() {
             </Lane>
           ) : null}
 
-          <section tabIndex={-1} aria-labelledby={historyId} className="flex flex-col gap-2 outline-none">
+          <section tabIndex={-1} aria-labelledby={historyId} id="inbox-history" className="flex flex-col gap-2 outline-none">
             <button
               id={historyId}
               type="button"
@@ -721,18 +725,20 @@ function Lane({
   help = [],
   children,
   ref,
+  anchor,
 }: {
   title: string;
   /** How this lane's rows are answered, under its heading (the Needs-you lane). */
   help?: string[];
   children: React.ReactNode;
   ref?: React.Ref<HTMLElement>;
+  anchor?: string;
 }) {
   const headingId = useId();
   return (
     // tabIndex={-1}: named by its heading, it takes focus when the last row acted on, or the bulk
     // bar, leaves it. Its rows sit in their own list, so a row's neighbours are rows.
-    <section ref={ref} tabIndex={-1} aria-labelledby={headingId} className="flex flex-col gap-2 overflow-x-auto outline-none">
+    <section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor} className="flex flex-col gap-2 overflow-x-auto outline-none">
       <h2 id={headingId} className="text-muted-foreground text-title-small">
         {title}
       </h2>
@@ -751,6 +757,7 @@ type LaneKind = "needs_you" | "triage" | "queued" | "in_flight" | "history";
 function ProposalRow({
   proposal,
   lane,
+  since,
   duplicateKeys,
   selected,
   onToggleSelected,
@@ -759,6 +766,7 @@ function ProposalRow({
 }: {
   proposal: Proposal;
   lane: LaneKind;
+  since: string | null;
   duplicateKeys: Set<string>;
   selected: Set<string>;
   onToggleSelected: (id: string, next: boolean) => void;
@@ -835,6 +843,13 @@ function ProposalRow({
                     Possible duplicate
                   </span>
                 ) : null}
+                {isNew(proposal.created_at, since) ? (
+                  <span className="inline-flex items-center gap-1 text-label-small text-primary">
+                    <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
+                    New
+                  </span>
+                ) : null}
+                <ReadinessMarks readiness={proposal.readiness} />
               </div>
               <div className="text-muted-foreground truncate text-body-small">
                 {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
@@ -854,7 +869,7 @@ function ProposalRow({
               className={cn("shrink-0", STATUS_BADGE_CLASS[proposal.status])}
               variant="secondary"
             >
-              {STATUS_LABELS[proposal.status]}
+              {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
             </Badge>
           </Link>
           <div className="flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
