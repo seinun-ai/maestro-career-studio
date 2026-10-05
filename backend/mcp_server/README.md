@@ -21,7 +21,7 @@ tool below is one action your assistant can take in the app.
 ## Install
 
 Pick the route for your assistant. Every route defaults to the `full` profile
-(all 83 tools); see [Profiles](#profiles) to narrow it.
+(all 84 tools); see [Profiles](#profiles) to narrow it.
 
 ### Claude (Desktop, and Claude Code inside the Claude app)
 
@@ -141,9 +141,9 @@ chat isn't cluttered with unrelated ones.
 
 | Profile | Use when | Tools |
 | --- | --- | --- |
-| `full` | Mixed use (default) | all 83 |
+| `full` | Mixed use (default) | all 84 |
 | `hunt` | Finding jobs and proposing them, no browser filling | 19 |
-| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 46 |
+| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 47 |
 | `explore` | Charts and trends across your saved jobs (`explore_*`) | 11 |
 | `templates` | Creating and testing resume templates | 12 |
 | `career` | Reading and editing your Career KB | 18 |
@@ -269,9 +269,10 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 - `propose_application`, `list_proposals`, `get_proposal`: file a job your assistant found for your review, and read the queue.
 - `record_triage`: accept or decline proposals; accepted ones are queued for the next apply run.
 - `request_decision`, `record_decision`, `resume_proposal`, `report_failure`: handle proposals that need your input or hit a problem.
-- `get_final_review`: everything to check before you approve.
+- `get_final_review`: everything to check before you approve, including the flagged answers.
+- `record_filled_answers`: records what was filled on each form page and where each answer came from; its flags show again in `get_final_review`.
 - `record_consent`: record your approve/reject, only after you have actually answered.
-- `attach_evidence`, `attach_evidence_file`: attach screenshots of each step.
+- `attach_evidence`, `attach_evidence_file`: attach the screenshots your approval and the submission need (the final review and the confirmation).
 - `mark_submitted`: mark an approved proposal as submitted.
 
 **Career KB**

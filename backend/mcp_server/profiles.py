@@ -78,6 +78,7 @@ APPLY_TOOLS = frozenset({
     "request_decision",
     "resume_proposal",
     "get_final_review",
+    "record_filled_answers",
     "record_consent",
     "attach_evidence",
     "attach_evidence_file",

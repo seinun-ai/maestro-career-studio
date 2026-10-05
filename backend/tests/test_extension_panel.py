@@ -835,10 +835,13 @@ def test_the_panel_binds_to_the_active_tab_and_stays_bound(booted):
     `fanoutTab` verifies WHO may name a tab, never WHICH — a service worker
     cannot know which tab the user is looking at. So a `card.tabId` left stale
     across a tab switch would aim a fill, or a PDF attach, at the wrong tab and
-    the SW would pass it. These three listeners are that guard.
+    the SW would pass it. The three tab listeners are that guard; the fourth, the
+    runtime listener, hears the content script's value-free `fields_touched` hint
+    (it is accepted only from the bound tab: `test_extension_panel_receipt.py`).
     """
     assert booted["queries"] == [{"active": True, "lastFocusedWindow": True}]
-    assert booted["listeners"] == ["onActivated", "onUpdated", "webNavigation.onCompleted"]
+    assert booted["listeners"] == ["runtime.onMessage", "onActivated", "onUpdated",
+                                   "webNavigation.onCompleted"]
     # The url is the only fact the panel has about a page it has not asked the
     # backend about yet, so it is what the identity line shows — which makes it
     # the visible proof of which tab the panel is bound to.
@@ -1441,6 +1444,12 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # inventory minted, and Stop has nothing to stop on the next tab.
         "loop": {"fields": [{"fid": "f1", "status": "needs_answer"}]},
         "fillRound": 2, "stopRequested": True,
+        # The answer receipt's flags and the matched job's knock-out scan: both
+        # are about THIS form and THIS job, so neither may reach the next tab.
+        "receiptFlags": [{"fid": "f1", "question": "Relocate?", "reason": "Every option is ticked."}],
+        # What the receipt posted, by field id: the next page's edits must not inherit it.
+        "receiptSeen": {"consentForms": False, "fids": {"f1": {"source": "profile"}}},
+        "knockout": {"status": "conflict", "checks": []},
         "eeoConsent": {"enabled": True, "consent_forms": False},
         # The QnA drawer, both halves. The question was asked about this posting
         # and the answer is grounded in this application, so a drawer that
@@ -1477,6 +1486,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "fill": None, "writeResults": None, "residue": None, "essays": None,
         "closest": None, "blank": None, "aiNote": None,
         "loop": None, "fillRound": None, "stopRequested": False,
+        "receiptFlags": None, "receiptSeen": None, "knockout": None,
         "eeoConsent": None, "answers": {},
         "qna": {"open": False, "question": "", "answered": None, "answer": None,
                 "applicationId": None, "copied": False},
@@ -1530,7 +1540,8 @@ def applied_match(tmp_path_factory):
             # shape the panel's own rather than the endpoint's.
             "job": {"id": "j9", "company": "Lightning AI", "title": "Research Engineer",
                     "description": "a whole posting nobody asked for"},
-            "application": {"id": "a9", "status": "draft"}}},
+            "application": {"id": "a9", "status": "draft"},
+            "knockout": {"status": "clear", "checks": []}}},
         "none": {"result": {"match": "none", "job": None, "application": None}},
         "exact_no_application": {"result": {
             "match": "exact", "job": {"id": "j9", "company": "Lightning AI",
@@ -1553,6 +1564,7 @@ def test_a_match_writes_the_panels_own_shape_and_not_the_endpoints(applied_match
     # Three keys, projected — never the row the endpoint happened to return.
     assert store["job"] == {"id": "j9", "company": "Lightning AI", "title": "Research Engineer"}
     assert store["application"] == {"id": "a9", "status": "draft"}
+    assert store["knockout"] == {"status": "clear", "checks": []}
     # The backend named this page. That is not a claim the user made, so the
     # Job row gets no un-pick door. A leftover `claimed` from the previous
     # posting would open one on a match the user cannot withdraw.
@@ -1563,6 +1575,7 @@ def test_a_match_writes_the_panels_own_shape_and_not_the_endpoints(applied_match
     assert applied_match["exact_no_application"]["store"]["claimed"] is False
     assert applied_match["none"]["store"] == {**STALE, "match": "none", "job": None,
                                              "application": None, "claimed": False,
+                                             "knockout": None,
                                              "baseFromApplication": False,
                                              "settings": None}
 

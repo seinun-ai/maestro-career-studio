@@ -32,7 +32,8 @@
         "content/autofill.js",
         "content/open-questions.js",
         "content/detect.js",
-        "content/agent.js"
+        "content/agent.js",
+        "content/touch-notice.js"
       ],
       "all_frames": true,
       "match_about_blank": true,

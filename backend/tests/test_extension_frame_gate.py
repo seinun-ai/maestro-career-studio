@@ -136,6 +136,8 @@ ns.fillOps = {
 };
 
 main(async () => {
+  // The gate itself, as `content/touch-notice.js` asks it at send time.
+  if (spec.type === "gate") { emit({ calls, data: ns.frameMayReceiveUserData({}) }); return; }
   const handler = ns.pageHandlers[spec.type];
   const data = await handler({
     type: spec.type, profile: { personal: { email: "a@b.test" } }, employment: [],
@@ -147,6 +149,7 @@ main(async () => {
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
     ...(spec.peek ? { peek: true } : {}),
+    ...(spec.readOnly ? { readOnly: true } : {}),
     // The origin the panel vouches for (`withFlowOrigin`), only when stated.
     ...(spec.flowOrigin === undefined ? {} : { flowOrigin: spec.flowOrigin }),
   });
@@ -156,7 +159,8 @@ main(async () => {
 
 
 def _run(tmp_path, *, type_, top_frame, form=False, detect_throws=False, file_inputs=(),
-         expect=None, peek=False, flow_origin=None, origin=None, controls=None):
+         expect=None, peek=False, flow_origin=None, origin=None, controls=None,
+         read_only=False):
     extra = {}
     if controls is not None:
         extra["controls"] = list(controls)
@@ -169,7 +173,7 @@ def _run(tmp_path, *, type_, top_frame, form=False, detect_throws=False, file_in
         {
             "type": type_, "topFrame": top_frame, "form": form,
             "detectThrows": detect_throws, "fileInputs": list(file_inputs),
-            "expect": expect, "peek": peek, **extra,
+            "expect": expect, "peek": peek, "readOnly": read_only, **extra,
         },
         tmp_path,
         source=page_runtime_source(),
@@ -523,9 +527,12 @@ def test_fill_inventory_forwards_the_standing_consent_and_the_run_id(tmp_path):
     """A new runId is what releases a latched Stop, and consent is per call.
     `peek` (the fids only, after a commit) is forwarded, and only a literal true."""
     out = _run(tmp_path, type_="fill_inventory", top_frame=True)
-    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2", "peek": False}]]
+    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2", "peek": False, "readOnly": False}]]
     out = _run(tmp_path, type_="fill_inventory", top_frame=True, peek=True)
-    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2", "peek": True}]]
+    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2", "peek": True, "readOnly": False}]]
+    # The answer receipt's read of the page after a run: `readOnly` is forwarded, only as a literal true.
+    out = _run(tmp_path, type_="fill_inventory", top_frame=True, read_only=True)
+    assert out["calls"][0][1]["readOnly"] is True
 
 
 def test_fill_step_state_forwards_the_field_and_nothing_else(tmp_path):
@@ -547,3 +554,12 @@ def test_fill_cancel_reaches_every_frame(tmp_path):
     make it miss the frame that is working."""
     out = _run(tmp_path, type_="fill_cancel", top_frame=False, form=False)
     assert out["calls"] == [["fillOps.cancel", 0]] and out["data"] is True
+
+
+@pytest.mark.parametrize(("top_frame", "form", "detect_throws", "allowed"), [
+    (True, False, False, True), (False, True, False, True),
+    (False, False, False, False), (False, True, True, False)])
+def test_the_published_gate_is_the_one_the_handlers_use(tmp_path, top_frame, form, detect_throws, allowed):
+    """`touch-notice.js` sends only where this says yes: the top frame, or a subframe with a form."""
+    out = _run(tmp_path, type_="gate", top_frame=top_frame, form=form, detect_throws=detect_throws)
+    assert out["data"] is allowed

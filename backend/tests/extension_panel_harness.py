@@ -108,6 +108,8 @@ PANEL_OWN_SRCS = [src for src in PANEL_SCRIPT_SRCS if not src.startswith("../")]
 _PANEL_FAKES_JS = r"""
 let onActivated = null;
 let onUpdated = null;
+let onRuntimeMessage = null;
+const heard = (msg, sender) => onRuntimeMessage(msg, sender);
 // A frame of some tab finished loading (`chrome.webNavigation.onCompleted`):
 // how the panel hears that an iframe was added with no url change, such as
 // an embedded application form a page inserts when its Apply tab opens.
@@ -196,8 +198,11 @@ const release = (order) => {
 // which is a real state (a tab whose scripts never loaded), not a broken
 // harness, so it is the default rather than a throw.
 const broadcastReply = (message) => {
-  const canned = (spec.frames ?? {})[message.type];
+  let canned = (spec.frames ?? {})[message.type];
   if (canned === undefined) return { ok: false, error: "no frame answered" };
+  // `{"__seq": [first, second, ...]}`: consumed in order, the last repeating: a
+  // page that changes between two reads of the same message type.
+  if (canned && canned.__seq) canned = canned.__seq.length > 1 ? canned.__seq.shift() : canned.__seq[0];
   if (message.type !== "guided_write") return { ok: true, data: canned };
   // The engine answers PER PAIR, so the fixture declares outcomes BY QID and
   // the frame reports about exactly the pairs it was sent. A canned result
@@ -300,6 +305,10 @@ global.chrome = {
     },
   },
   runtime: {
+    id: "test-extension",
+    // The content script's `fields_touched` hint reaches the panel here: a driver
+    // calls `heard(message, sender)` to play one.
+    onMessage: { addListener: (fn) => { listeners.push("runtime.onMessage"); onRuntimeMessage = fn; } },
     sendMessage: async (msg) => {
       sent.push(msg);
       if (msg.type === "api") {

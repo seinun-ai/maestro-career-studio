@@ -136,7 +136,7 @@ export type KnockoutStatus =
   | "unstated";
 
 export interface KnockoutCheck {
-  kind: "work_authorization" | "opt" | "salary" | "experience";
+  kind: "work_authorization" | "opt" | "salary" | "experience" | "on_site";
   result: "pass" | "conflict" | "warning" | "job_unstated" | "profile_missing";
   job_value: string | null;
   profile_value: string | null;
@@ -154,6 +154,8 @@ export interface JobDetail {
   job: Job;
   application: Application | null;
   knockout: KnockoutScan | null;
+  /** Whether anything was recorded as filled into this job's form (the What was submitted tab). */
+  has_filled_answers: boolean;
 }
 
 export interface ContactInfo {
@@ -2036,3 +2038,69 @@ export type AgentApp = {
   note: string | null;
 };
 export type AutomationCatalog = { cards: AutomationCard[]; apps: AgentApp[] };
+
+/** Where a filled answer came from: the What was submitted tab's pill (backend
+ * `schemas/filled_answers.py` `Source`; hand-synced like the status vocabulary). */
+export type AnswerSource =
+  | "profile"
+  | "resume"
+  | "custom"
+  | "written"
+  | "inferred"
+  | "you"
+  | "upload";
+
+export type AnswerFlagId =
+  | "guessed_screening"
+  | "ticked_everything"
+  | "differs_from_profile"
+  | "eeo_without_saved_answer";
+
+/** A warn-only flag on one answer, with its one-line reason (written by the backend). */
+export interface AnswerFlag {
+  id: AnswerFlagId;
+  reason: string;
+}
+
+export interface FilledField {
+  question: string;
+  section: string | null;
+  required: boolean;
+  /** A list for a multi-select; null for an EEO answer kept without consent. */
+  answer: string | string[] | null;
+  options_count: number | null;
+  source: AnswerSource;
+  /** For an upload: "resume" or "cover_letter". */
+  slot: string | null;
+  eeo: boolean;
+  /** True when an EEO question was answered, even though its value is not kept. */
+  eeo_answered: boolean;
+  edited_by_you: boolean;
+  /** The application's resume version, on a resume upload. */
+  version: number | null;
+  flags: AnswerFlag[];
+}
+
+export interface FilledSection {
+  section: string | null;
+  fields: FilledField[];
+}
+
+export interface FilledStep {
+  step: string | null;
+  host: string | null;
+  channel: "companion" | "agent";
+  captured_at: string;
+  sections: FilledSection[];
+}
+
+/** `GET /api/jobs/{id}/filled-answers`: per question the latest answer, by page and section.
+ * With nothing recorded, `steps` is empty and the counts are zero. */
+export interface FilledAnswers {
+  job_id: string;
+  host: string | null;
+  pages: number;
+  captured_at: string | null;
+  flag_count: number;
+  steps: FilledStep[];
+}

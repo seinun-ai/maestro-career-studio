@@ -68,7 +68,7 @@ The user's Maestro CS profile is the source of truth; distrust values an applica
 - Comboboxes: clear, type, exact-select, blur, read back; verify state/city persistence.
 - After any third-party/full-page navigation, take a fresh full-form resnapshot; re-verify ordinary fields, attachments, and acknowledgements.
 - Evidence kinds are exactly `step`, `final_review`, and `submission_receipt`; pass `kind` to `attach_evidence_file`.
-- Silently attach EACH completed wizard page as `step` (screenshot before clicking Next; never narrate or ask) and the final-review state as `final_review` before consent. Approval requires `final_review`; `mark_submitted` requires `submission_receipt` or explicit user attestation.
+- Silently `record_filled_answers` for EACH completed wizard page before clicking Next (never narrate or ask); per-page screenshots are not required. Pass the page's URL path (`location.pathname`) as `step`, never a page number, and the proposal's `application_id` when it has one; source `you` is only what the USER typed in the browser, never your own choice. Attach the final-review state as `final_review` before consent. Approval requires `final_review`; `mark_submitted` requires `submission_receipt` or explicit user attestation.
 
 ## EEO and human-only boundaries
 
@@ -92,9 +92,10 @@ types/selects/clicks; the agent never relay-enters answers.
 - PDF and every field read back against canonical profile.
 - EEO consent on and exact stored answers applied (or in-browser handoff).
 - Fresh full-form resnapshot intact.
-- Step/final-review evidence attached.
+- Every page recorded with `record_filled_answers`; final-review evidence attached.
+- `get_final_review`'s `flags` read; each one goes into the question.
 
-Give one consolidated final review naming company/role and ask, “Submit now?” Only its affirmative reply authorizes final `record_consent(approved)` plus immediate submission; unrelated “yes” is not consent. Do not ask twice.
+Give one consolidated final review naming company/role and every flag with its reason, and ask, “Submit now?” Only its affirmative reply authorizes final `record_consent(approved)` plus immediate submission; unrelated “yes” is not consent. Do not ask twice.
 
 Final approval atomically verifies `final_review` and reserves one daily-cap slot keyed by proposal. The reservation is idempotent: re-approval cannot double-count. `submitted` finalizes/keeps it; `submission_uncertain` keeps it consumed; explicit pre-click rejection or `resume_proposal` after pre-click interruption releases it. Pre-approval `needs_human` has none.
 

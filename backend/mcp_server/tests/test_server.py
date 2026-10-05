@@ -72,6 +72,7 @@ def test_all_tools_registered():
         "mark_submitted",
         "record_triage",
         "report_failure",
+        "record_filled_answers",
     }
     expected |= KB_TOOL_NAMES
     assert expected <= names
@@ -1187,6 +1188,7 @@ _PINNED_HINTS = {
     "record_consent": (False, True, False, False),
     "mark_submitted": (False, True, False, False),
     # Purely additive.
+    "record_filled_answers": (False, False, False, False),
     "kb_create_entity": (False, False, False, False),
     "attach_evidence": (False, False, False, False),
 }
@@ -1438,3 +1440,32 @@ def test_the_hint_helper_swallows_only_backend_errors():
 
     with pytest.raises(KeyError):
         srv._best_effort_hint(bug)
+
+
+def test_record_filled_answers_forwards_to_client(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client,
+        "record_filled_answers",
+        lambda job_id, fields, **kw: seen.update(job_id=job_id, fields=fields, **kw) or {"id": "r1"},
+    )
+    fields = [{"question": "Q", "answer": 5, "source": "profile"}]
+    assert srv.record_filled_answers("j1", fields, step=2, base_resume="swe") == {"id": "r1"}
+    assert seen == {"job_id": "j1", "fields": fields, "step": 2, "application_id": None,
+                    "base_resume": "swe"}
+
+
+async def test_record_filled_answers_accepts_page_numbers_and_numeric_answers():
+    """A model sends step as the page number and a numeric answer as a number."""
+    args = {"job_id": "j1", "step": 2, "fields": [
+        {"question": "Years of experience", "answer": 5, "source": "profile"},
+        {"question": "Rate", "answer": 12.5, "source": "you"}]}
+    seen = {}
+    original = srv._client.record_filled_answers
+    srv._client.record_filled_answers = lambda *a, **kw: seen.update(args=a, kw=kw) or {"id": "r1"}
+    try:
+        await srv.mcp.call_tool("record_filled_answers", args)
+    finally:
+        srv._client.record_filled_answers = original
+    assert seen["kw"]["step"] == 2
+    assert [f["answer"] for f in seen["args"][1]] == [5, 12.5]

@@ -509,6 +509,48 @@
     return list;
   }
 
+  /** "Check before you submit": the answers this run's receipt flagged (the
+   * POST to `/api/jobs/{id}/filled-answers` answers them), each with the
+   * server's one-line reason. WARN ONLY: Next and Submit stay the user's and
+   * nothing here gates them. A row with a field id jumps to its field (the
+   * loop's and the rule pass's both come from the page's inventory); the rows
+   * with none, an uploaded file or a pause-row answer, are plain text.
+   * Returns the heading and the list, or nothing. */
+  const CHECK_HEADING = "Check before you submit";
+  function flagNodes({ facts, act, build }) {
+    const rows = facts.receiptFlags ?? [];
+    if (!rows.length) return [];
+    const head = build.node("div", "grp", CHECK_HEADING);
+    head.setAttribute("role", "heading");
+    head.setAttribute("aria-level", "3");
+    const list = build.node("ul", "resid flags");
+    list.setAttribute("aria-label", CHECK_HEADING);
+    for (const row of rows) {
+      const name = build.node(row.fid ? "button" : "span", null, row.question || "A field with no label");
+      if (row.fid) {
+        name.type = "button";
+        name.addEventListener("click", () => act.focusField(row.fid));
+      }
+      build.attach(list, build.attach(build.node("li"), name,
+        build.node("span", "kindmark", ` · ${row.reason} `)));
+    }
+    return [head, list];
+  }
+
+  /** The matched job's knock-out verdict, one line, before a run and after
+   * it, on the no-form body too: it is about the job, not the fill. Only a
+   * conflict or a missing profile answer is worth the line, in the scan's own
+   * words and nothing added (it must read true after a run as well); a clear
+   * or unstated scan says nothing here (the job page's Overview has the card).
+   * Plain text, not a live region: the body is rebuilt on every render. */
+  function knockoutLine({ facts, build }) {
+    const scan = facts.knockout;
+    const want = { conflict: "conflict", incomplete_profile: "profile_missing" }[scan?.status];
+    const check = want ? (scan.checks ?? []).find((one) => one.result === want && one.message) : null;
+    if (!check) return null;
+    return build.node("div", "sub ko", check.message);
+  }
+
   /** The fill loop's report, grouped by what happened to each field, in the
    * order the user acts on them: what was filled (a count), what was filled
    * with a value to check, what still needs them, what the Companion could not
@@ -554,6 +596,8 @@
     const report = node("div", "loop");
     const filled = having("verified").length;
     if (filled) attach(report, node("div", "sub count", `${filled} filled`));
+    // First among the groups: the answers to read before anything else.
+    attach(report, ...flagNodes(ctx));
     for (const [key, heading, mark] of LOOP_GROUPS) {
       const rows = key === "open"
         // Required first; otherwise the page's own order.
@@ -809,10 +853,10 @@
     const { node, attach } = build;
     const collected = facts.residue !== null || facts.essays !== null;
     if (facts.hasForm !== true && !facts.fill && !collected && !facts.loop) {
-      return attach(node("div", "stg-body"), node("div", "sub", NO_FORM_HERE),
+      return attach(node("div", "stg-body"), knockoutLine(ctx), node("div", "sub", NO_FORM_HERE),
                     attachRow(ctx), qnaDrawer(ctx));
     }
-    const body = attach(node("div", "stg-body"), modeControl(ctx));
+    const body = attach(node("div", "stg-body"), knockoutLine(ctx), modeControl(ctx));
     // A LOOP REPORT is its own body: the rule pass's three rows describe a
     // different run. While the loop is still going there is no report yet, and
     // the offer's sentence below gives way to how far it has got.
@@ -857,7 +901,9 @@
     // happened it IS a report row and belongs with them, and while it is still
     // an offer it belongs above the fields that need the user rather than under
     // them, where a control mixed into that list would read as one of them.
-    return attach(body, attachRow(ctx), needsList(ctx, run), checkList(ctx, run), qnaDrawer(ctx));
+    const flags = flagNodes(ctx);
+    return attach(body, attachRow(ctx), needsList(ctx, run), checkList(ctx, run),
+                  flags.length ? attach(node("div", "flagged"), ...flags) : null, qnaDrawer(ctx));
   }
 
   ns.panelStageFill = fillBody;

@@ -14,7 +14,7 @@ from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
-from app.services import auto_apply_settings
+from app.services import auto_apply_settings, filled_answers
 
 
 class TransitionError(Exception):
@@ -184,6 +184,7 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
             app_row.status = "applied"
             if app_row.applied_at is None:
                 app_row.applied_at = datetime.now(UTC)
+            filled_answers.link_unlinked(session, app_row)
 
     session.commit()
     return prop
@@ -332,14 +333,9 @@ def _knockout_scan(session: Session, job: Job | None) -> dict | None:
     consent gate stays with the human."""
     if job is None:
         return None
-    from app.services import autofill_profile, job_preferences, knockout
+    from app.services import knockout
 
-    return knockout.scan_job(
-        job,
-        autofill_profile.get_work_auth(session),
-        autofill_profile.get_profile(session).get("preferences"),
-        years_experience=job_preferences.get_preferences(session).years_experience,
-    )
+    return knockout.scan_for(session, job)
 
 
 def get_final_review(session: Session, prop: ApplicationProposal) -> dict:
@@ -409,6 +405,9 @@ def get_final_review(session: Session, prop: ApplicationProposal) -> dict:
             "title": job.title if job else None,
         },
         "knockout": _knockout_scan(session, job),
+        # The recorded form answers worth a second look before "Submit now?" (warn only).
+        # EEO entries carry `eeo_answered`, never a value.
+        "flags": filled_answers.agent_flags(session, job),
         "fit": {
             "chosen_base": chosen,
             "scores": scores or None,

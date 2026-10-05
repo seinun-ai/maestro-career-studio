@@ -64,6 +64,24 @@
       {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_no_value_reaches_the_trace"},
       {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_what_the_trace_keeps_of_the_page_is_its_labels_and_options"}
     ],
+    "inv-filled-answers-local": [
+      {"path": "backend/tests/test_filled_answers_invariant.py", "symbol": "test_telemetry_and_trace_never_read_the_receipt"},
+      {"path": "backend/tests/test_filled_answers_invariant.py", "symbol": "test_no_export_serves_a_recorded_answer"},
+      {"path": "backend/tests/test_filled_answers_invariant.py", "symbol": "test_the_companion_posts_the_receipt_through_the_api_door_only"},
+      {"path": "backend/tests/test_extension_panel_receipt.py", "symbol": "test_the_receipt_goes_through_the_api_door_even_with_telemetry_off"},
+      {"path": "backend/tests/test_extension_panel_receipt.py", "symbol": "test_a_refused_frame_sends_nothing"},
+      {"path": "backend/tests/test_extension_panel_receipt.py", "symbol": "test_a_typed_id_number_is_not_recorded_even_under_standing_consent"},
+      {"path": "backend/tests/browser/test_touch_notice.py", "symbol": "test_a_frame_that_has_not_earned_the_data_says_nothing"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_an_eeo_value_does_not_outlive_the_consent"},
+      {"path": "backend/tests/test_filled_answers_agent.py", "symbol": "test_an_eeo_answer_reaches_the_agent_without_its_value_even_under_consent"},
+      {"path": "backend/mcp_server/tests/test_client_filled_answers.py", "symbol": "test_no_mcp_path_reads_the_receipt_endpoint"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_an_eeo_answer_without_consent_keeps_only_the_question"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_withdrawing_consent_clears_the_stored_eeo_answers_not_just_the_read"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_granting_consent_again_does_not_bring_a_cleared_answer_back"},
+      {"path": "backend/app/services/filled_answers.py", "symbol": "def _consented"},
+      {"path": "backend/app/services/filled_answers.py", "symbol": "def clear_eeo_answers"},
+      {"path": "backend/mcp_server/client.py", "symbol": "_without_eeo_values"}
+    ],
     "inv-single-dialect": [
       {"path": "backend/tests/test_db_portability.py", "symbol": "test_no_dialect_imports_outside_types_module"},
       {"path": "backend/app/models/types.py", "symbol": "UTCDateTime"}

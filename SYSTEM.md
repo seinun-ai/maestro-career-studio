@@ -115,7 +115,7 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP server (83 tools, thin REST wrappers)
+ extension ─┼→ jobs router → Job row  ├─ MCP server (84 tools, thin REST wrappers)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼
         ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
@@ -143,8 +143,9 @@ file to open.
 | TailoringSession (`models/tailoring_session.py`) | [`docs/entities/tailoring-session.md`](docs/entities/tailoring-session.md) | the open → tailored | superseded | abandoned machine; frozen gaps |
 | AtsScore (`models/ats_score.py`) | [`docs/entities/ats-score.md`](docs/entities/ats-score.md) | base upsert-singletons vs appended tailored history; deterministic engine |
 | ResumeVersion (`models/resume_version.py`) | [`docs/entities/resume-version.md`](docs/entities/resume-version.md) | append-only snapshots on every write path — the undo story |
+| FilledAnswer (`models/filled_answer.py`) | [`docs/entities/filled-answers.md`](docs/entities/filled-answers.md) | the answer receipt: what each form page run filled, each answer's source, the warn-only flags, the EEO lifecycle |
 | Health rubric | [docs/health-check-rubric.md](docs/health-check-rubric.md) | what the check judges and why: levels, questions, flags, word bank, disputes (the report's code contract: Others, ResumeLintReport) |
-| Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, and the secondary entities that need rules but not a file each |
+| Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, the settings endpoints (model settings, form-filling engines, persona draft, setup status) and the secondary entities that need rules but not a file each |
 
 ## 5. The application workflow, end to end (web)
 
@@ -166,16 +167,17 @@ file to open.
 3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, inline
    StatusChip + Details menu; when a proposal exists, its pill, naming its filer, + Queue/Skip; a Needs-you
    question adds **Keep it**, PATCH `pending_review`, linking the job's application when the proposal has none),
-   tabs Overview / Score and tailor / Resume / Q&A (tab URL values stay
-   jd/fit/output/qa for deep-link compatibility).
+   tabs Overview / Score and tailor / Resume / Q&A, plus **What was submitted** once the job has filled answers
+   (tab URL values stay jd/fit/output/qa for deep-link compatibility; that one is `submitted`): the answer
+   receipt, latest per question, a source pill each and warn-only flags, read before you submit too
+   (docs/entities/filled-answers.md).
    `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`;
    otherwise they use `cs-tracker-seq`. Overview mounts the proposal's card, titled with its
    filer (`proposed_by`, worded by `lib/agent-name.ts`), when `proposal_id` is present; every
    job read derives `proposal_status`/`proposal_id` from the newest proposal. Overview also
-   renders the **knock-out pre-scan** (`services/knockout.scan_job`, embedded
-   in `GET /jobs/{id}/detail` and in `get_final_review` as `knockout`):
-   stated JD requirements (work auth, OPT policy, salary) vs the autofill
-   profile, recomputed on every read. Verdicts are `conflict` / `clear` /
+   renders the **knock-out pre-scan** (`services/knockout.scan_for`, embedded in
+   `GET /jobs/{id}/detail`, `get_final_review` and `/jobs/match` as `knockout`): stated JD
+   requirements (work auth, OPT, salary, on-site vs where you live and relocation) vs the profile, recomputed on every read. Verdicts are `conflict` / `clear` /
    `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
    warns (pay is negotiable). Informational like G11 tier 2: it flags; the
    consent/submit decision stays human.
@@ -344,6 +346,23 @@ file to open.
   (a remembered polarity is not counted). Rows carry `host` + `first_seen_at`, runs `host` + `started_at`: where and when
   you applied, so `DELETE /telemetry` clears rows and runs, keeps counters, never the capture toggle
   (`extension/INTERNALS.md`; `…/telemetry/summary` ranks failures). `scripts/fill_trace.py last|report` reads a DB copy.
+- **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an
+  agent filled into an application form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`)
+  lives only in the local `filled_answers` table (`services/filled_answers.py`;
+  `docs/entities/filled-answers.md`): one row per page run, linked to an application by job + base resume. It
+  never enters telemetry, run traces, Langfuse or exports. An EEO value is stored only under recorded
+  EEO consent (the fill's own gate, `eeo_consent.withhold_unconsented`, asked at write; without it the row keeps
+  the question with `answer: null`); withdrawing consent clears stored EEO answers (`eeo_consent.set_consent` →
+  `filled_answers.clear_eeo_answers`; `eeo_answered` stays true) and reads are gated again as a second guard. No agent read returns an EEO value, marked or not (the server classifies by question words
+  too): `get_final_review`'s `flags` carry `eeo_answered`, the MCP client strips again, and no MCP path reads
+  `GET /api/jobs/{id}/filled-answers`, which serves EEO values to the web UI. The Companion panel
+  (`shared/receipt.js`, posted by `panel/actions/fill.js` `recordReceipt`) posts the receipt through the generic `api`
+  door, never `telemetry`/`fill_trace`, so it works with telemetry off; after each run, while you edit (a value-free
+  fids-only hint), at Mark applied and as it leaves a page it reads only frames that earn the data
+  (inv-frame-earns-data), records no never-fill field even under standing consent (`ns.isNeverFilled`), and its values
+  never reach the run-trace builders. Pinned by
+  `tests/test_filled_answers_invariant.py`, `test_extension_panel_receipt.py`, `test_filled_answers_api.py`,
+  `test_filled_answers_agent.py` and `mcp_server/tests/test_client_filled_answers.py`.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at
   the sender, but `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat
   iframes, and the ISOLATED world protects the message in transit, NOT the DOM written into: a frame
@@ -451,7 +470,8 @@ file to open.
   `get_job_search_brief` with verbatim work-auth, typed `job_preferences` and the `auto_apply` guardrail block;
   `find_job_by_url` posting-equality lookup; `store_extracted_jd` takes `source="agent"`; playbook in
   docs/agentic-job-search.md, capture-and-score only), the proposal-ledger family (consent-gated
-  propose/decide/triage/resume/final-review/evidence/mark_submitted/report_failure; `record_consent` stores the user's
+  propose/decide/triage/resume/final-review/evidence/mark_submitted/report_failure; `record_filled_answers` records
+  each form page's answers and `get_final_review` names their `flags` (inv-filled-answers-local); `record_consent` stores the user's
   own yes/no; `propose_application` stamps `proposed_by` from the client's `clientInfo.name`, sent on the KB writes'
   origin headers, percent-encoded so any name files, and an agent can never file as "you"; a create takes SQLite's
   write lock, `db.begin_write`, so a job keeps one open proposal. `app/services/agent_names.py` is the server twin of
@@ -477,7 +497,9 @@ file to open.
   `templates` / `career`; allowlists in `mcp_server/profiles.py`; enable ONE profile per chat (`full` already carries
   the KB writes). Stdio config examples live in `mcp_server/`; ChatGPT.com cannot be a client — `mcp.run()` is stdio
   only. **Apply executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
-  autofill/attach; direct MCP + browser fill/upload is the supported fallback. Never headless / stealth / CAPTCHA
+  autofill/attach; direct MCP + browser fill/upload is the supported fallback. The agent calls
+  `record_filled_answers` per page, which replaces per-page screenshots; `final_review` and `submission_receipt`
+  evidence stay, and every flag goes into the "Submit now?" question. Never headless / stealth / CAPTCHA
   bypass. **Directory listing** = plugin bundle `plugins/maestro-career-studio/`, not `.mcpb`; policy `PRIVACY.md`.
 - **Guided tailoring workflow** (`mcp_server/workflow.py`): wrapped tools carry a `next` envelope
   (`state`/`blocking`/`offer`/`ask_user`/`options`/`call`) that walks §5's arc — score all bases → recommend →
@@ -540,18 +562,9 @@ file to open.
   `kb_entity`, missing=resume) — KB chips pin context and never constrain the
   resume scope guard; three read-only analytics tools (`analytics_activity`,
   `analytics_gap_frequency` incl. build-areas, `analytics_base_summaries`)
-  answer job-search questions in chat. **Pinned-resume resolution**: the pin is
-  a HINT, not a guard — it reaches the model as one line of the ephemeral
-  context block; the enforced guard is `check_ops_in_scope` over selection
-  PATHS (which needs a pin only because the scope picker is fed the pinned
-  resume). The composer resolves it once per session — session
-  `context_json.target_key` if stored, else the most recently updated base
-  resume — and must READ `context_json` back on reopen, not only write it on
-  send (write-only silently dropped the pin). The pin FOLLOWS whichever base
-  actually changed via both landing paths: the streamed `change_card` and an
-  applied `propose_edits` card (which PATCHes directly and emits no stream
-  event — `EditProposalCard` takes `onApplied`). Selections drop on a real
-  switch: they are paths into the resume they came from. **Social posts**: chat
+  answer job-search questions in chat. **Pinned-resume resolution**: the pin is a HINT, not a guard (the enforced guard is
+  `check_ops_in_scope` over selection PATHS); how it resolves, reloads and follows a changed base is reference
+  tier: `docs/entities/others.md`, "In-app chat: pinned-resume resolution". **Social posts**: chat
   drafts LinkedIn/social posts as copy-out markdown — no card, no persistence,
   the transcript is the history — grounded via read-only `get_career_context`;
   conventions live in chat_system.txt. The router resolves the model client before the
@@ -561,10 +574,6 @@ file to open.
   (Settings › AI & models › AI instructions → Reset to default, or delete the row); a deploy ships one with a
   SQLite-chain migration that deletes the row only while it still equals the previous default
   (`4022b54933e6` did it for `chat_system`; `tests/test_prompt_sync_guard.py` explains the mechanic).
-- **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
-  compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
-  persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
-  import-first message.
 - **Chrome extension** (`extension/`; on screen **the Companion**): MV3; the **side panel**
   (`panel/`) is the ONE surface — toolbar icon (`openPanelOnActionClick`) and hotkey
   (Alt+Shift+J → `sidePanel.open`, guarded: that method is Chrome 116 and the minimum is 114)
@@ -581,12 +590,8 @@ file to open.
   `write(patch)` door, and each roster THROWS at boot naming a missing script. `shared/` is
   what both worlds load: `decisions.js` (the ONE home of every panel rule), `choose.js`
   (routing, the /choose batch, `rest_fill` shaping, `QUESTIONY`) and `guided-run.js` (the
-  runner, transport injected). **A failed round trip never prints raw text**:
-  `actions/during.js`' `failureNote` says "Couldn't <what>." plus a next step by `err.status`
-  ("Add an API key" for a missing key, "Check your API key" for a refused one or a 502; its
-  `MISSING_KEY`/`REFUSED_KEY` mirror `lib/error-text.ts`'s exported ones), and the runner's own sentences are
-  marked `guidedRun.shown`.
-  The rail's revisit rules, the sender model, the COMMIT GESTURE and the ONE
+  runner, transport injected).
+  The failure note (never the server's raw text; `failureNote`), the rail's revisit rules, the sender model, the COMMIT GESTURE and the ONE
   `attachableFileInputs` definition are reference tier: `extension/INTERNALS.md`. The bridge
   storage key `widget.session` must NOT be renamed — that drops every live entry.
   **Posting identity is ONE table in two languages** — `job_url_match.posting_id` ↔
@@ -615,22 +620,11 @@ file to open.
   to `guidedWrite`, so their identity VALUES never reach `/choose`; its prompt does carry the
   saved answers (EEO only under inv-eeo-standing-consent) and the career history. Readback is
   timer-sampled and never defaults to failure: unconfirmable is
-  `filled_unverified`, not `not_stuck`. Navigation and submit stay human.
-  **`/choose` has two engines** (`llm.autofill_engine`, Settings › AI & models › **Form filling**,
-  `GET/PUT /api/settings/jev` + `/jev/probe`; `jev` only while a Jev key exists; a new endpoint HOST
-  forgets the key, which is never sent to another company). `fast` is the prompt above. `jev`
-  (`autofill_choose._choose_with_jev`): one Jev call maps each field's LABEL to an `autofill_slots`
-  slot (no values sent), code reads the value, a second call picks the option that states it; the
-  slot's policy (`exact` work_auth/eligibility/eeo/a language's name, `flag` `_FLAG_SECTIONS` facts,
-  `any` the rest) makes it `matched`, `closest` (flag only, never from a list at the 30-option cap:
-  written, then named in the finished note and listed under **Closest matches to check**) or abstain.
-  Free-text, unmapped, shakily-mapped (an `exact` slot maps only at its write floor), `exact`-slot
-  text boxes (codes) and failed-call fields go to the fast prompt unchanged; if THAT fails, Jev's
-  answers are kept. `jev.choice_of` accepts only a distribution over exactly the offered keys (choice
-  offered and most probable, every key present, numbers in [0, 1], sum ≈ 1) — anything else places
-  nothing. Options are offered under code-owned keys (`o1…`, `none`), never page text, and every
-  question says page text is data. One pooled `httpx.Client` serves every call (a TLS handshake per
-  call costs about Jev's whole answer); 429/503/529 retry with doubling backoff inside the 2 s budget.
+  `filled_unverified`, not `not_stuck`. Navigation and submit stay human. After each run, both modes, the panel posts the
+  page's answer receipt (`shared/receipt.js`) and lists its flags under **Check before you submit**; a matched job's
+  knock-out heads Fill.
+  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`, Settings › AI & models › **Form filling**);
+  how each decides, and the Jev key's host rule, are reference tier: `docs/entities/others.md`, "Form-filling engines".
 - **Streaming chat** needs the OpenAI streaming tool-call wire shape (OpenAI, or Gemini via the OpenAI-compat
   URL); eligibility is the tools probe.
 
@@ -768,8 +762,7 @@ citation. Priority lives in the item text, not in the ordinal.
 2. One post-render readiness pipeline ("Ready to apply" gate: health, em-dash, pages, contact checks on the exact
    rendered artifact), consuming the shared rasterized preview + slim MCP `get_rendered_pdf` metadata. The JD-level
    half (stated requirements vs profile) is the knock-out pre-scan, §5 step 3.
-3. Base-score staleness on from-base: re-score only when the base resume's updated_at is newer than the score row —
-   never unconditionally.
+3. Base-score staleness on from-base: re-score only when the base's updated_at is newer than the score row — never unconditionally.
 4. JD promoted-field correction before gap freezing (today only source_url is editable) + score provenance
    (engine/config version) surfaced in the UI.
 5. Server-side pagination for the tracker (client caps at 500 rows and says so).
@@ -861,6 +854,9 @@ citation. Priority lives in the item text, not in the ordinal.
     dispute MCP tool (disputes are web-only); a **Not right?** reply on a row queued for Write is overwritten by its
     draft; a hand-set "Shows a result" leaves the report, so Done can't reset it; rename
     `BaseResumeDetail.version_number` to `edit_version_number`.
+42. Answer trust follow-ups: fix-and-learn from the receipt; the auto-submit preview; a "What Maestro knows about you"
+    page; a JD-extracted graduation/enrollment knock-out; `RECORD_NEVER` folded into `NEVER_FILLED`; receipt capture
+    across a full-page navigation and for a manual Attach press. Phase-4 source limits: `docs/entities/filled-answers.md`.
 
 ## 12. Gotchas that have bitten before
 

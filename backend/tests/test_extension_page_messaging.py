@@ -445,9 +445,11 @@ def test_every_consumer_of_the_fan_out_asks_whether_it_reached_anybody():
     found", "N could not be written" — and each is a lie when nothing answered.
     So the rule is: every fan-out call site consults reachedness.
 
-    FIVE consumers, every one reporting. (The applied-detection watcher was
-    the sixth, the one that reported nothing; it is retired, and every fan-out
-    left ends in a sentence a dead page would make false.)
+    SIX consumers, every one reporting. (The applied-detection watcher was
+    a seventh, the one that reported nothing; it is retired, and every fan-out
+    left ends in a sentence a dead page would make false.) The sixth is the
+    answer receipt's post-run read (`recordReceipt`, `fill_inventory`): a frame
+    that never answered contributes no field, which is its reachedness check.
 
     `scroll_to_field` is deliberately NOT one of them, and the pattern below
     excludes it by shape rather than by name: it travels inside a
@@ -472,7 +474,7 @@ def test_every_consumer_of_the_fan_out_asks_whether_it_reached_anybody():
     fanned |= set(re.findall(r'ask\("(attach_pdf)"', callers))
     assert fanned == {
         "profile_fill", "collect_open_questions", "fill_answers", "attach_pdf",
-        "guided_write",
+        "guided_write", "fill_inventory",
     }, f"a fan-out consumer was renamed or removed: {sorted(fanned)}"
 
     # One guard per REPORTING consumer. profile_fill's is `!result.reached` —

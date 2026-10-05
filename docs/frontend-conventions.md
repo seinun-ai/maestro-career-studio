@@ -991,8 +991,13 @@
 - react-query keys: `["applications"]`, `["jobs"]`,
   `["jobs","without-application", source]`, `["job-detail", jobId]`,
   `["ats-scores", jobId]`, `["ats-compare", appId]`,
-  `["tailoring-session", id]`, `["referrals"]`, `["qa", appId]`, … —
-  invalidate job-detail alongside applications when status changes.
+  `["tailoring-session", id]`, `["referrals"]`, `["qa", appId]`,
+  `["filled-answers", jobId]`, … — invalidate job-detail alongside applications
+  when status changes. Window-focus refetch is off app-wide (`app/providers.tsx`);
+  a query turns it on itself only when its data changes in another window: the
+  job detail and What was submitted, since the Companion fills in a tab beside
+  this one. The tab's query also sets `staleTime: 0`, because tab panels stay
+  mounted and the app's 30 s freshness would show a receipt from before the fill.
 - Shared components: `StatusChip`/`SavedChip` (`components/status-chip.tsx` —
   the ONLY status vocabulary/color source in the UI), `CompanyMonogram` (a hash of the company name
   picks one of four tones: primary, tertiary and secondary container, and
@@ -1269,7 +1274,11 @@
     resume's. A bullet's drafted text is its **wording** (**Write new wording**, **Write 3 new
     wordings**, **Accept 2 new wordings**), never a new version.
     **skill group**, **School**, **On-site**, **Role**, **Employment type**,
-    **Offer**, **Diversity questions (voluntary)**. **Persona** keeps its
+    **Offer**, **Diversity questions (voluntary)**. **What was submitted** is
+    the job page's tab holding the answer receipt; its source pills are
+    **Profile**, **Resume**, **Custom**, **Written**, **Inferred**, **You** and
+    **Upload**, and the Companion's group of flagged answers is **Check before
+    you submit**. **Persona** keeps its
     name. The model roles are **Fast model**, **Smart model** and
     **Assistant model**, never Chat model. **One word per kind of agent**:
     **Assistant** (the in-app chat and its sidebar item; one conversation is

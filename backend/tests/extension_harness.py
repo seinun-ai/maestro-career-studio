@@ -150,6 +150,7 @@ PAGE_RUNTIME_SOURCES = [
     CONTENT / "open-questions.js",
     CONTENT / "detect.js",
     CONTENT / "agent.js",
+    CONTENT / "touch-notice.js",
 ]
 # The two lists PARTITION the manifest, each in its injection order: a file
 # the manifest gains must be placed in one of them on purpose.

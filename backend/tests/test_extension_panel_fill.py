@@ -3620,6 +3620,8 @@ const gate = () => new Promise((resolve) => { open = resolve; });
 ns.fillLoop.runFill = async (deps, options) => {
   const run = { options, cancelledAtStart: deps.cancelled(), afterGate: null };
   runs.push(run);
+  // A second press may report differently (`againReport`).
+  const report = runs.length > 1 && spec.againReport ? spec.againReport : spec.report;
   deps.onProgress({ phase: "round", round: 1 });
   if (spec.holdRun) await gate();
   run.cancelledAtEnd = deps.cancelled();
@@ -3629,17 +3631,19 @@ ns.fillLoop.runFill = async (deps, options) => {
   const failure = spec.aiFailure
     ? Object.assign(new Error(spec.aiFailure.message), { status: spec.aiFailure.status })
     : null;
-  return { runId: "r", host: spec.report.host, fields: spec.report.fields,
+  return { runId: "r", host: report.host, fields: report.fields,
+           consentForms: report.consentForms === true,
            aiFailure: failure, stopped: run.cancelledAtEnd && !spec.switchTo,
-           timedOut: spec.report.timedOut === true,
-           ...(spec.report.sections ? { sections: spec.report.sections } : {}),
-           ...(spec.report.trace !== undefined ? { trace: spec.report.trace } : {}) };
+           timedOut: report.timedOut === true,
+           ...(report.sections ? { sections: report.sections } : {}),
+           ...(report.trace !== undefined ? { trace: report.trace } : {}) };
 };
 const stopButton = () => withClass(REGIONS.foot, "stop")[0] ?? null;
 main(async () => {
   await settle();
   const loaded = regions();
-  withClass(REGIONS.foot, "cta")[0].click();
+  // `skipRun`: the page is only LOOKED at (a posting with no form has no Fill button).
+  if (!spec.skipRun) withClass(REGIONS.foot, "cta")[0].click();
   const clicked = regions();
   await settle();
   const running = regions();
@@ -3658,6 +3662,34 @@ main(async () => {
   if (open) open();
   await settle();
   const settled = regions();
+  // What the page holds AFTER the run (the user typed since), then the user
+  // marks the application applied and/or leaves the page.
+  if (spec.framesAfter) Object.assign(spec.frames, spec.framesAfter);
+  if (spec.pressStatus !== undefined) {
+    const segment = withClass(REGIONS.foot, "status-seg").flatMap((seg) => seg.children)
+      .find((one) => one.textContent === spec.pressStatus);
+    if (!segment) throw new Error(`no status control reads "${spec.pressStatus}"`);
+    segment.click();
+    await settle();
+  }
+  // The bound tab's content script says you changed fields (`fields_touched`); a spec
+  // names the senders, in order: {id?, tab?}. The panel waits out its debounce.
+  for (const from of spec.pings ?? []) {
+    heard({ type: "fields_touched", fids: ["v1"] },
+          { id: from.id ?? "test-extension", tab: { id: from.tab ?? 7 } });
+  }
+  if (spec.pings) await settle();
+  if (spec.pressFlag !== undefined) {
+    const button = withClass(REGIONS.rail, "flags").flatMap((list) => list.children)
+      .map((item) => item.children[0]).find((one) => one.textContent === spec.pressFlag);
+    if (!button) throw new Error(`no flag row reads "${spec.pressFlag}"`);
+    button.click();
+    await settle();
+  }
+  if (spec.leaveTo !== undefined) {
+    await onActivated({ tabId: spec.leaveTo });
+    await settle();
+  }
   if (spec.jump !== undefined) {
     const button = withClass(REGIONS.rail, "loop").flatMap((one) => withClass(one, "resid"))
       .flatMap((list) => list.children).map((item) => item.children[0])
@@ -3672,7 +3704,8 @@ main(async () => {
     if (open) open();
     await settle();
   }
-  emit({ loaded, clicked, running, stopping, settled, runs, sent, broadcasts, writes });
+  emit({ loaded, clicked, running, stopping, settled, runs, sent, broadcasts, writes, warnings, delays,
+          receiptFlags: ns.panel.actionStore().read().receiptFlags });
 });
 """
 

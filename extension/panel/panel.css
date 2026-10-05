@@ -376,9 +376,9 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * frame to scroll). So the button reset first, then the link's own colour and
  * rule. The mockup's `.needs` box hangs off it below. */
 /* The fill loop's report: a heading per group of rows, count lines between. */
-.loop .grp { margin-top: 12px; font-size: 12px; font-weight: 700; }
+.loop .grp, .flagged .grp { margin-top: 12px; font-size: 12px; font-weight: 700; }
 .loop .count { margin-top: 8px; }
-.loop .grp + .resid { margin-top: 2px; }
+.loop .grp + .resid, .flagged .grp + .resid { margin-top: 2px; }
 .resid { list-style: none; margin: 8px 0 0; padding: 0; }
 .resid li { margin-top: 5px; font-size: 12px; }
 .resid button {
@@ -600,3 +600,11 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 }
 @keyframes cs-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin::after { animation: none; } }
+
+/* The answer receipt's flags (stages/fill.js `flagNodes`) and the knock-out
+ * banner (`knockoutLine`): warn-tinted, never a control. Their heading and list
+ * spacing is the loop report's (`.loop .grp` above). */
+.resid.flags .kindmark { color: var(--cs-warn-text); }
+.resid.flags li { overflow-wrap: anywhere; }
+.sub.ko { margin: 0 0 8px; padding: 6px 8px; border-radius: 8px;
+  background: var(--cs-warn-tonal); color: var(--cs-warn-text); overflow-wrap: anywhere; }

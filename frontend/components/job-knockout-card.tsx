@@ -52,6 +52,7 @@ const CHECK_GROUP: Partial<Record<KnockoutCheck["kind"], string>> = {
   work_authorization: "work_auth",
   opt: "work_auth",
   salary: "preferences",
+  on_site: "preferences",
 };
 
 /** Deep-link at the group holding the gap, not the section.

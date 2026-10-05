@@ -21,6 +21,7 @@ worker:
 | `shared/choose.js` | every frame **and** the panel document | the pure half of the open-question path: routing, the ≤40 `/choose` batch, `rest_fill` shaping, and the one `QUESTIONY` |
 | `shared/guided-run.js` | every frame **and** the panel document | the guided-fill runner: one sequencing/batching engine, transport injected |
 | `shared/policy.js` | every frame **and** the panel document | the shared never-fill policy — read by the fill engine and by the panel's pause row, whose render AND action are the half that is easy to miss |
+| `shared/receipt.js` | the panel document | the answer receipt builder: a run's report plus the post-run `fill_inventory` become the `POST /api/jobs/{id}/filled-answers` fields, each with its source pill; every same-labelled occurrence is kept, never-fill and unrun fields are not recorded, and it names no telemetry or trace channel (SYSTEM.md `{#inv-filled-answers-local}`); posted by `panel/actions/fill.js` `recordReceipt` through the generic `api` door |
 | `shared/recipe-book.js` | the panel document | the recipe book: which of the engine's own moves worked per widget family, its lifecycle and bounds; the loop's `deps.recipes` |
 | `shared/profile-fields.js` | every frame **and** the panel document | the label patterns naming a TYPED home in the autofill profile: one table read by the rule that FILLS the field and by the pause row that decides where an answer is LEARNED |
 | `content/field-reader.js` | every frame | the new fill engine's one answer to "what is this field asking" (label-for → … → nearby → preceding: the visible text right before the field, when nothing names it — never a radio's or checkbox's, and only text that passes the label test: short, no sentence, no error, no heading before it, no other text or trailing label beside it), with its source. `readField(container)` runs it too, so a nameless group container or date wrapper can take its question from it; `ns.precedingLabel` is also a group's question with no container. A label that names only a part ("Month", "Day", "Year", "Type", "Number") is prefixed with its group's question, and a control holding one part of a date says which (`part`) |
@@ -35,6 +36,7 @@ worker:
 | `content/eeo.js` | every frame | voluntary EEO rules and protected-class control handling |
 | `content/autofill.js` | every frame | profile field matching and fill engine |
 | `content/open-questions.js` | every frame | open-question collection and answer injection |
+| `content/touch-notice.js` | every frame | tells the panel THAT you changed a field: one throttled (2 s) `fields_touched` message of fids only, sent only where the frame gate (`ns.frameMayReceiveUserData`) says yes; engine writes never trigger it |
 | `content/detect.js` | every frame, every page | the detection read — reads, scores, returns |
 | `content/agent.js` | every frame | page RPC front door, extraction wrapper, resume attach |
 | `panel/panel.{html,css,js}` | the side panel | the store, the loaders, the generation guard, the render loop, the tab binding; sends everything through the service worker |
@@ -50,7 +52,9 @@ that publishes functions, and `agent.js` registers one message listener. Nothing
 detects on load, mounts anything, stores anything or sends anything. The one
 other thing that runs at load is `inventory.js`'s capture listener for trusted
 `input`/`change` events: it remembers WHICH element the user changed (a weak
-reference, never a value) so the engine never overwrites it.
+reference, never a value) so the engine never overwrites it. That listener has
+one hook out, `ns.onFieldTouched(fid)`, which `touch-notice.js` turns into the
+only message a content script ever sends on its own (see "The answer receipt").
 
 `detect.js` is the decision point and it answers only when asked — the panel
 sends `detect_page` to frame 0 of the tab it is bound to, because a panel runs in
@@ -513,7 +517,8 @@ know, and each one was learned from a live failure.
   fault); the automatic on-open score logs nothing. A run with no saved answers leads its
   note with "No saved answers yet …", and `sw.js`' `attach_pdf` puts the status
   on its error the way `api()` does, so a failed PDF fetch reads as the backend
-  answering rather than as an app that is not running.
+  answering rather than as an app that is not running. The runner's own sentences are marked
+  `guidedRun.shown`, so a thrown sentence reaches the note as written.
 
 ## How the fill behaves
 
@@ -1219,6 +1224,92 @@ know, and each one was learned from a live failure.
   could not be confirmed in budget is `filled_unverified` — never `not_stuck`,
   because "we could not see it land" is a different claim from "it did not".
 - **Nothing is ever submitted automatically.** Always review before submitting.
+
+## The answer receipt — what the panel records of a form
+
+`shared/receipt.js` builds, and `panel/actions/fill.js` posts, ONE row per
+capture to `POST /api/jobs/{id}/filled-answers` (matched job only; the body
+names the base resume the fill used, which is how the server links it to an
+application). It is a record of VALUES, so it is not telemetry: the generic
+`api` door, never `telemetry`/`fill_trace`, whatever `telemetryEnabled` says,
+and its values reach no value-free builder (SYSTEM.md
+`{#inv-filled-answers-local}`).
+
+- **The page's inventory is the source of a row.** After a run the panel reads
+  the page with a `fill_inventory` carrying `readOnly: true` (no run starts;
+  the engine's standing `consentForms` is not replaced) and the run's own
+  `consentForms` (the loop report's, the rule pass's context), so the policy
+  that judged the run judges the read. Only a frame that earns the data answers
+  (`{#inv-frame-earns-data}`). A field the policy never fills (`policyBlocked`)
+  is never recorded, on any path. The inventory's flag is not the whole of that:
+  standing consent makes the fill's `isPolicyBlocked` answer "not blocked" for
+  every label, so the receipt also drops the labels of the consent-independent
+  `ns.isNeverFilled` (`shared/policy.js`: signatures, passwords, government IDs;
+  salary questions are not on it). It is applied in the receipt's one entry
+  builder, so every path obeys it.
+- **The rule pass names its field.** Each `filled`/`corrected` item carries the
+  rule id and the `fid` of the control written (`ns.fillInventory.fidFor(el)`,
+  which names a control no pass has listed yet at the cost of a re-list per DOM
+  change, capped per run). The panel reads that field's question, section,
+  committed value and options from the inventory by fid; the rule's label is
+  never used (for a radio or checkbox it is the option's text). A write with no
+  field behind it is not recorded. A checkbox group is ONE row with a list
+  answer and `options_count`. The pass's own radio/checkbox clicks run under
+  `ns.fillBusyEl` (`clickControl`), so the trusted `change` they fire does not
+  mark the field `touched`.
+- **What it records, and under which source.** Every field the run wrote, with the page's committed value (a
+  multi-select as its list, `options_count` from the inventory), its source from the slot (`sourceOfSlot`:
+  the profile's sections and `derived.full_name` → `profile`, `experience.*` and `skills` → `resume`,
+  `custom.*` → `custom`, any other `derived.*` → `inferred`; the loop's free-text route → `written`) or from
+  the rule id (`sourceOfRule`); every field you typed or changed that no report names (`touched`) as `you`;
+  Autofill's own resume attach as an `upload` (`slot: "resume"`, the file name); a pause-row answer that
+  sticks as its own one-field `you` row (`typedAnswer`, no inventory read). A field left open, left alone
+  or found already filled is not recorded; an EEO write carries `eeo` and its `eeo.*` slot.
+- **Host and step.** `pageOf` sends the tab's hostname and its URL path (no query or hash) as the `step`,
+  so a wizard that keeps one path across its pages reads as ONE step, and a label repeated on two such pages
+  is one answer there (latest wins). It is the receipt's only notion of a page.
+- **Rows are in page order, every occurrence kept** (the server counts a
+  repeated label by its place in the row), cut to the server's bounds (question
+  500, answer 20000, 100 list items, `options_count` 1000); a field with no
+  question is skipped, never sent.
+- **Capture points:** after a loop run, after a rule-pass run, after a pause
+  answer, **while bound** (a debounced capture, below), at **Mark applied**
+  (`setStatus`, before the PATCH), and as the panel **lets go of a page**
+  (`bindPage`, before `resetPageFacts`, when the tab or url changes; a Refresh
+  is not leaving). The last three post what you typed or changed since the last
+  post (`fromEdits`): a field a run wrote keeps its source and is marked
+  `edited_by_you`, one it did not is `you`. `receiptSeen` (page-shaped, carried
+  by Refresh, cleared only with the page) is the memory of what was posted, by
+  fid; nothing is posted when nothing changed, and none of these reads a page
+  no run has posted for. The leaving capture is fire-and-forget, built from the
+  facts as they stood, and writes nothing back to the store.
+- **Every post restates.** The server keeps the newest answer per (step,
+  section, question, occurrence IN THE ROW), so a row with only the third
+  "Company" would land on the first one's place. Each run and each edit capture
+  therefore also restates every already-posted field still on the page
+  (`restated`/`fromEdits`), in page order, under the source it was posted with.
+- **The hint while bound.** `content/touch-notice.js` sends the panel
+  `{type: "fields_touched", fids}` (opaque fids, no value), at most once per two
+  seconds, for fields the USER changed (`inventory.js`'s trusted-event listener;
+  the engine's writes run under `fillBusyEl` and are exempt), and only from a
+  frame that passes `ns.frameMayReceiveUserData` (agent.js's gate, asked at send
+  time). The panel (`onFieldsTouched`) accepts it only from this extension, from
+  the bound tab, for a matched job with a receipt posted; after `EDIT_CAPTURE_MS`
+  (3 s) of quiet it runs the same gated edit capture. The message is a hint: all
+  values still come from the gated `fill_inventory` read.
+- **What the Fill body shows of it.** The post answers with the flagged fields
+  (server-computed, fixed reason strings); `receiptFlags` is rendered by
+  `stages/fill.js` `flagNodes` as the "Check before you submit" group, first among
+  the loop report's groups and beside the rule pass's rows. Warn-only: nothing
+  gates Next or Submit. A row with a field id jumps to it. The debounced capture
+  and Mark applied refresh the list from their own post's answer (a capture that
+  posts nothing leaves it; leaving a page cannot, the page is gone). The matched
+  job's knock-out scan (`knockout` on `/api/jobs/match`) heads the body (the
+  no-form body too) as one plain-text line, the scan's own message and nothing
+  added, only for a `conflict` or `profile_missing` check.
+- **A rule that wrote over your edit** is the rule's value, not yours: a
+  rule-pass run first reads which fids were already changed (`touchedBefore`) and
+  does not mark those `edited_by_you`; the loop never writes a field you changed.
 
 ## Telemetry — what leaves the page
 

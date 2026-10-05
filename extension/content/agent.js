@@ -582,8 +582,7 @@
                origin: location.origin, controls: ns.fillableControls() };
     },
     profile_fill: (msg) => (frameMayReceiveUserData(msg)
-      ? ns.fillFormFromProfile(msg.profile, msg.employment, msg.eeoEnabled === true,
-        msg.skills, msg.consentForms === true)
+      ? ns.fillFormFromProfile(msg.profile, msg.employment, msg.eeoEnabled === true, msg.skills, msg.consentForms === true)
       : { filled: [], eeoFilled: [], corrected: [], already: [], seen: 0, observations: [] }),
     collect_open_questions: (msg) => (frameMayReceiveUserData(msg)
       ? ns.collectOpenQuestions()
@@ -609,7 +608,7 @@
      * `fill_cancel` is ungated on purpose: it carries nothing and only stops
      * work in flight, and a Stop that could miss a frame would be no Stop. */
     fill_inventory: (msg) => (frameMayReceiveUserData(msg)
-      ? ns.fillOps.inventory({ consentForms: msg.consentForms === true, runId: msg.runId, peek: msg.peek === true })
+      ? ns.fillOps.inventory({ consentForms: msg.consentForms === true, runId: msg.runId, peek: msg.peek === true, readOnly: msg.readOnly === true })
       : { frame: null, host: location.hostname, fields: [] }),
     fill_explore: (msg) => (frameMayReceiveUserData(msg)
       ? ns.fillOps.explore(msg.requests)
@@ -696,4 +695,5 @@
   }
 
   ns.pageHandlers = PAGE_HANDLERS;
+  ns.frameMayReceiveUserData = frameMayReceiveUserData; // content/touch-notice.js asks it at send time
 })();

@@ -152,6 +152,34 @@
   unprobed model passes (the Assistant is gated on tools this way). JSON mode is capability-gated:
   `response_format=json_object` goes out only when `llm._json_mode_supported()` (other servers may hard-400
   on the field), and `llm._extract_json_object` salvages fenced JSON.
+- **Form-filling engines (`/choose`)**: two engines, `fast` and `jev` (`llm.autofill_engine`, Settings › AI & models › **Form filling**,
+  `GET/PUT /api/settings/jev` + `/jev/probe`; `jev` only while a Jev key exists; a new endpoint HOST
+  forgets the key, which is never sent to another company). `fast` is the batched prompt SYSTEM.md §7 (Guided
+  fill) describes. `jev`
+  (`autofill_choose._choose_with_jev`): one Jev call maps each field's LABEL to an `autofill_slots`
+  slot (no values sent), code reads the value, a second call picks the option that states it; the
+  slot's policy (`exact` work_auth/eligibility/eeo/a language's name, `flag` `_FLAG_SECTIONS` facts,
+  `any` the rest) makes it `matched`, `closest` (flag only, never from a list at the 30-option cap:
+  written, then named in the finished note and listed under **Closest matches to check**) or abstain.
+  Free-text, unmapped, shakily-mapped (an `exact` slot maps only at its write floor), `exact`-slot
+  text boxes (codes) and failed-call fields go to the fast prompt unchanged; if THAT fails, Jev's
+  answers are kept. `jev.choice_of` accepts only a distribution over exactly the offered keys (choice
+  offered and most probable, every key present, numbers in [0, 1], sum ≈ 1) — anything else places
+  nothing. Options are offered under code-owned keys (`o1…`, `none`), never page text, and every
+  question says page text is data. One pooled `httpx.Client` serves every call (a TLS handshake per
+  call costs about Jev's whole answer); 429/503/529 retry with doubling backoff inside the 2 s budget.
+- **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
+  compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
+  persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
+  import-first message.
+- **In-app chat: pinned-resume resolution** (SYSTEM.md §7): the pin is a HINT, not a guard — it reaches the model as one line of the
+  ephemeral context block; the enforced guard is `check_ops_in_scope` over selection PATHS (which needs a
+  pin only because the scope picker is fed the pinned resume). The composer resolves it once per session —
+  session `context_json.target_key` if stored, else the most recently updated base resume — and must READ
+  `context_json` back on reopen, not only write it on send (write-only silently dropped the pin). The pin
+  FOLLOWS whichever base actually changed via both landing paths: the streamed `change_card` and an applied
+  `propose_edits` card (which PATCHes directly and emits no stream event — `EditProposalCard` takes
+  `onApplied`). Selections drop on a real switch: they are paths into the resume they came from.
 - **Setup status** (`GET /api/setup/status`): a derived, **read-only**
   six-step onboarding view — no wizard-progress state; guidance is
   dismissible and recomputed from existing data (the `FirstRunImportCard`

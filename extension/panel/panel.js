@@ -453,6 +453,19 @@
      * "occupied" when the box already held a file). Page-shaped like
      * `attached`, and read beside the application it was made for. */
     autoAttach: null,
+    /** The flags the last run's answer receipt came back with
+     * (`POST /api/jobs/{id}/filled-answers`): `[{fid, question, reason}]`, or
+     * null before a run. Page-shaped like `loop`: `resetPageFacts` and each
+     * run's own clear empty it. */
+    receiptFlags: null,
+    /** What the answer receipt has posted for THIS page, by field id:
+     * `{consentForms, fids: {fid: {source, slot, eeo, edited, answer}}}`, or
+     * null before a post. It is what lets a later edit (Mark applied, leaving
+     * the page) post under the source the run gave the field. Page-shaped. */
+    receiptSeen: null,
+    /** The matched job's knock-out scan (`knockout` on `/api/jobs/match`), or
+     * null: a backend fact about the job, re-read with every match. */
+    knockout: null,
     baseSlug: null,
     baseSelected: false,
     /** The base came from the bound application's own `base_resume`
@@ -804,6 +817,9 @@
     // tab `fill_cancel`) and its generation check ends the panel half, so Stop
     // has nothing left to stop here.
     store.loop = null;
+    store.receiptFlags = null;
+    store.receiptSeen = null;
+    store.knockout = null;
     store.fillRound = null;
     store.stopRequested = false;
     // The half-typed answers with them: a qid is a token the collect stamped
@@ -1190,6 +1206,7 @@
       // which re-asks.
       store.match = null;
       store.job = null;
+      store.knockout = null;
       store.application = null;
       store.baseFromApplication = false;
       store.claimed = false;
@@ -1221,6 +1238,7 @@
       ? { id: result.job.id, company: result.job.company, title: result.job.title }
       : null;
     store.application = result.application ?? null;
+    store.knockout = result.knockout ?? null;
     // The application's base is the base question's answer: the Base ring
     // and the "+N" compare against the resume it came from, and the ranking
     // must not move off it. Its own flag, not `baseSelected`: the backend
@@ -1938,6 +1956,9 @@
         eeoConsent: card.eeoConsent,
         // The loop's report and, while it runs, how far it has got.
         loop: card.loop,
+        // The last run's flagged answers, and the matched job's knock-out scan.
+        receiptFlags: card.receiptFlags,
+        knockout: card.knockout,
         // Whether the recipe book holds anything to forget.
         learnedMoves: card.learnedMoves,
         fillRound: card.fillRound,
@@ -2662,6 +2683,7 @@
     // note is the panel's one line about the page in front of the user, and an
     // apology about a tab they have already left is not that. The next
     // activation rebinds, which is the recovery.
+    chrome.runtime.onMessage.addListener(onFieldsTouched);
     chrome.tabs.onActivated.addListener(({ tabId }) => {
       chrome.tabs.get(tabId)
         .then((activated) => onTab(tabId, activated.url ?? ""))
@@ -2703,6 +2725,37 @@
     if (tab) await onTab(tab.id, tab.url ?? "");
   }
 
+  /** "You changed a field", from the bound tab's content script
+   * (`content/touch-notice.js`): fids only, no values, at most one per two
+   * seconds. It is a HINT, not data: after the user has been quiet for
+   * `EDIT_CAPTURE_MS` the panel re-reads the page through the gated
+   * `fill_inventory` and posts what changed since the last post
+   * (`ns.panelRecordEdits`), so an edit lands on the answer record without a
+   * press of Mark applied. Heard only from our own content script in the tab
+   * this panel is bound to, and only once a run has posted for a matched job
+   * (`receiptSeen`): a page the Companion never filled is never read for this. */
+  const EDIT_CAPTURE_MS = 3000;
+  let editCaptureTimer = null;
+
+  function onFieldsTouched(msg, sender) {
+    if (msg?.type !== "fields_touched" || sender?.id !== chrome.runtime.id) return false;
+    if (sender.tab?.id !== card.tabId || !card.receiptSeen || !card.job?.id) return false;
+    clearTimeout(editCaptureTimer);
+    const token = generation;
+    editCaptureTimer = setTimeout(async () => {
+      // A run in flight posts its own receipt, which restates what is posted.
+      if (!current(token) || card.busy !== null) return;
+      const flags = await ns.panelRecordEdits(actionStore(), { ...card }, token);
+      // The post answers with the flags of the form as it stands now: "Check before you
+      // submit" follows a hand fix. Null is "nothing was posted": the list stays.
+      if (flags !== null && current(token)) {
+        card.receiptFlags = flags;
+        render();
+      }
+    }, EDIT_CAPTURE_MS);
+    return false;
+  }
+
   async function onTab(tabId, url, { inPlace = false } = {}) {
     // A LOOP STILL RUNNING is two halves. The panel half ends with the
     // generation bump below (its `cancelled()` reads it); the page half — a
@@ -2726,6 +2779,19 @@
    * Refresh the work done on a page it is not leaving (`PAGE_WORK`).
    * `inPlace` is a url change inside the bound tab (`loadHasForm`). */
   async function bindPage(tabId, url, carry = {}, { inPlace = false } = {}) {
+    // The answer receipt's last word on the page being LEFT, started before the
+    // reset: its read of the page leaves now, on the tab bound now, and what it
+    // posts is about the facts as they stand now. Nothing waits for it. A
+    // Refresh (same tab, same url) is not leaving. Its read is bound to the tab
+    // being left HERE, in the panel that owns the binding, so an `await` added
+    // to the capture later can never read the tab bound next.
+    if (card.tabId !== null && (card.tabId !== tabId || card.url !== url)) {
+      const left = card.tabId;
+      ns.panelRecordEdits(
+        { ...actionStore(), broadcast: (message) => ask("page_broadcast", { tabId: left, message }) },
+        { ...card }, null, { leaving: true });
+    }
+    clearTimeout(editCaptureTimer);
     // FIRST, and before anything is loaded: everything the store holds is
     // about the page we are leaving.
     resetPageFacts(card);
@@ -2777,7 +2843,8 @@
   const PAGE_WORK = [
     "touched", "hasForm", "fileInputs", "attached", "autoAttach", "baseSelected",
     "baseArmed", "tailorOpen", "revisit", "fill", "eeoConsent", "residue", "essays",
-    "closest", "blank", "aiNote", "writeResults", "loop", "answers", "qna",
+    "closest", "blank", "aiNote", "writeResults", "loop", "receiptFlags", "receiptSeen",
+    "answers", "qna",
     "preview", "previewTyped", "prepared",
   ];
 

@@ -299,6 +299,9 @@
         ns.fillBase.resume();
         verified.clear();
       }
+      // A read-only one (the answer receipt's, after the run) lists under the
+      // run's consent without becoming the standing one.
+      if (opts.readOnly) return inv().list({ consentForms: opts.consentForms === true, keep: true });
       consentForms = opts.consentForms === true;
       return inv().list({ consentForms });
     }),

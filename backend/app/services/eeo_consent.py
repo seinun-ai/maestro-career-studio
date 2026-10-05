@@ -94,6 +94,12 @@ def set_consent(consent: EeoConsent, session: Session | None = None) -> EeoConse
         policy_version=CURRENT_POLICY_VERSION if turned_on else stored.policy_version,
     )
     EEO_CONSENT.set(record, session)
+    if session is not None and not record.enabled:
+        # inv-filled-answers-local: withdrawn consent clears stored EEO answers. Imported here
+        # because the receipt service imports this module for its gate.
+        from app.services import filled_answers
+
+        filled_answers.clear_eeo_answers(session)
     return EeoConsent.model_validate(_lapse_stale_agreement(record.model_dump()))
 
 

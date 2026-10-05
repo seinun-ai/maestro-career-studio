@@ -83,6 +83,36 @@ _RESOLUTIONS_FIELD = Field(
 )
 GapResolutions = Annotated[list[GapResolution], _RESOLUTIONS_FIELD]
 
+
+class FilledFieldInput(TypedDict):
+    """One form field as record_filled_answers stores it."""
+
+    question: str
+    source: Literal["profile", "resume", "custom", "written", "inferred", "you", "upload"]
+    answer: NotRequired[str | int | float | list[str] | None]
+    section: NotRequired[str | None]
+    required: NotRequired[bool]
+    options_count: NotRequired[int | None]
+    slot: NotRequired[str | None]
+    eeo: NotRequired[bool]
+    edited_by_you: NotRequired[bool]
+
+
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_FILLED_FIELDS_FIELD = Field(
+    description=(
+        "The page's fields as filled: {question, source, answer?, section?, required?, "
+        "options_count?, slot?, eeo?, edited_by_you?}. answer is a string, or for a "
+        "multi-select the list of ticked options with options_count, the number offered. "
+        "source: profile (the autofill profile) | resume (work history or skills) | custom (a "
+        "saved answer) | written (prose composed for this form) | inferred (a choice no saved "
+        "fact states) | you (typed or changed by the user) | upload (a file: slot resume or "
+        "cover_letter, answer the file name). slot names the profile fact, such as "
+        "preferences.willing_to_relocate. eeo marks a voluntary self-identification question."
+    )
+)
+FilledFields = Annotated[list[FilledFieldInput], _FILLED_FIELDS_FIELD]
+
 _INGEST_DATA_FIELD = Field(
     description=(
         "ResumeData. Only contact.name and contact.email are required. 422 if "
@@ -1760,8 +1790,37 @@ def get_final_review(proposal_id: str) -> Any:
     not called (it accepts application_id to late-link) or an application id
     was passed where a proposal id belongs. duplicate_submitted=true means a
     same-company+title proposal was already submitted (relevant to the user's
-    approval decision)."""
+    approval decision). `flags` lists the job's recorded form answers worth a second look
+    (record_filled_answers): question, source, answer (an EEO one carries eeo_answered
+    instead) and each flag's reason."""
     return _client.get_final_review(proposal_id)
+
+
+@mcp.tool(**_write("Record Filled Answers", destructive=False, idempotent=False))
+@_guard
+def record_filled_answers(
+    job_id: str,
+    fields: FilledFields,
+    step: str | int | None = None,
+    application_id: str | None = None,
+    base_resume: str | None = None,
+) -> Any:
+    """Record what was filled into this job's application form, one call per form page: each
+    field's question, answer and source. Per question the latest call wins; the job page's
+    What was submitted tab shows the record. An EEO answer is kept only while the user's
+    standing EEO consent is recorded, and no MCP read returns its value. Returns {id,
+    application_id, flag_count, flags}: each flagged field by its index in `fields`, with
+    guessed_screening (a screening question answered by inference or composed prose),
+    ticked_everything (a multi-select with every one of 3+ options ticked),
+    differs_from_profile or eeo_without_saved_answer, each with a one-line reason. Flags
+    warn; nothing is blocked, and get_final_review lists the job's flags again. `step` names
+    the page: pass its URL path (location.pathname), the Companion's own key, so an agent row
+    and a Companion row for one page fold together; a page number is still accepted.
+    `application_id` links the record now; without it the record links, for the application of `base_resume` (the base resume's slug), when
+    that application is created, marked applied or submitted."""
+    return _client.record_filled_answers(
+        job_id, fields, step=step, application_id=application_id, base_resume=base_resume
+    )
 
 
 @mcp.tool(**_write("Record Application Consent", destructive=True, idempotent=False))

@@ -253,6 +253,10 @@ def test_the_content_script_is_the_split_modules_in_dependency_order(content_scr
         "content/open-questions.js",
         "content/detect.js",
         "content/agent.js",
+        # Last, and it reads `ns.onFieldTouched`'s caller (inventory.js) and
+        # `ns.frameMayReceiveUserData` (agent.js) only at call time: it is the one
+        # content script that SENDS (a value-free "you changed a field" to the panel).
+        "content/touch-notice.js",
     ]
 
 
