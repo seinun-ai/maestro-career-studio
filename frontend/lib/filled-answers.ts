@@ -25,6 +25,12 @@ export function receiptHeading(receipt: FilledAnswers, shown: number, date: stri
   return [`Filled on ${receipt.host ?? "the employer's site"}`, pages, date].filter(Boolean).join(" · ");
 }
 
+/** An answer with nothing in it: unset, empty or whitespace, or a list of only those. */
+export function isBlankAnswer(answer: string | string[] | null): boolean {
+  if (answer === null) return true;
+  return (Array.isArray(answer) ? answer : [answer]).every((item) => item.trim() === "");
+}
+
 /** A field's anchor, so the to-check count can jump to the first flagged answer. */
 export function fieldAnchor(step: number, section: number, field: number): string {
   return `answer-${step}-${section}-${field}`;

@@ -28,7 +28,7 @@ _TYPES = _read("lib/types.ts")
 def test_the_tab_is_deep_linkable_and_shown_once_something_was_filled():
     assert 'const JOB_TABS = ["jd", "fit", "output", "qa", "submitted"] as const;' in _PAGE
     assert '<TabsTrigger value="submitted">What was submitted</TabsTrigger>' in _PAGE
-    assert 'Boolean(data?.has_filled_answers) || submittedSeen' in _PAGE
+    assert 'Boolean(data.has_filled_answers) || submittedSeen' in _PAGE
     assert "has_filled_answers: boolean;" in _TYPES
 
 
@@ -38,11 +38,19 @@ def test_the_trigger_stays_once_the_tab_was_opened():
     assert 'if (tab === "submitted" && !submittedSeen) setSubmittedSeen(true);' in _PAGE
 
 
+def test_the_job_refetches_on_focus_so_the_trigger_appears_after_a_fill_elsewhere():
+    detail = _PAGE[_PAGE.index('queryKey: ["job-detail", id]'):]
+    assert "refetchOnWindowFocus: true," in detail.split("});")[0]
+
+
 def test_the_tab_is_not_locked_behind_an_application():
     trigger = _PAGE[_PAGE.index('<TabsTrigger value="submitted">'):]
     assert "lockedProps" not in trigger.split("</TabsTrigger>")[0]
     content = _PAGE.index('<TabsContent value="submitted"')
     assert content < _PAGE.index("{application ? (")
+    before = _PAGE[:content]
+    between = before[before.rindex("</TabsContent>"):]
+    assert "application" not in between and "hasApp" not in between
 
 
 def test_the_receipt_is_fetched_only_while_its_tab_is_open_and_never_from_a_stale_cache():
@@ -50,6 +58,7 @@ def test_the_receipt_is_fetched_only_while_its_tab_is_open_and_never_from_a_stal
     assert 'queryKey: ["filled-answers", jobId]' in _TAB
     assert "enabled: active," in _TAB
     assert "staleTime: 0," in _TAB
+    assert "refetchOnWindowFocus: true," in _TAB
     assert 'active={tab === "submitted"}' in _PAGE
 
 
@@ -84,12 +93,50 @@ def test_the_header_counts_the_page_blocks_shown_not_the_backends_pages():
     "Answer hidden",
     "Edited by you",
     "Answered. Not kept without your consent.",
+    "Not answered.",
+    "Left blank",
+    "Array.isArray(field.answer)",
     "`Resume attached: ${name}",
     "(version ${field.version})",
     "`Cover letter attached: ${name}`",
 ])
 def test_the_tabs_words(words):
     assert words in _TAB
+
+
+def test_a_blank_answer_says_so_before_any_list_or_text():
+    assert "return (Array.isArray(answer) ? answer : [answer]).every((item) => item.trim() === \"\");" in _LIB
+    assert "if (answer === null) return true;" in _LIB
+    blank = _TAB.index("if (isBlankAnswer(field.answer)) {")
+    assert blank < _TAB.index("if (Array.isArray(field.answer)) {") < _TAB.index("<ClampedText")
+    assert "Left blank" in _TAB[blank:blank + 200]
+
+
+def test_a_page_is_named_by_its_step_with_its_host_when_it_differs():
+    assert "const name = step.step ?? `Page ${index + 1}`;" in _TAB
+    assert "step.host && step.host !== host ?" in _TAB
+    assert "host={receipt.host}" in _TAB
+
+
+def test_long_text_wraps_and_a_written_answer_clamps_with_show_more():
+    assert _TAB.count("wrap-anywhere") == 6  # question, flag, list item, prose, upload button and line
+    assert 'line-clamp-6' in _TAB
+    assert '{open ? "Show less" : "Show more"}' in _TAB
+    assert "el.scrollHeight > el.clientHeight + 1" in _TAB
+
+
+def test_a_jump_target_scrolls_clear_and_shows_a_solid_ring():
+    assert '"scroll-mt-6 rounded-corner-xs focus:outline-2 focus:outline-offset-2 focus:outline-ring"' in _TAB
+    assert "outline-none" not in _TAB
+    assert '<li id={id} tabIndex={-1} className={`grid gap-1 ${JUMP_TARGET}`}>' in _TAB
+    assert "tabIndex={-1} className={`space-y-3 rounded-corner-md border p-4 ${JUMP_TARGET}`}" in _TAB
+
+
+def test_sections_are_headings_and_the_toggle_names_what_it_controls():
+    assert '<h4 className="text-title-small text-muted-foreground">{section.section}</h4>' in _TAB
+    assert "aria-expanded={open}" in _TAB
+    assert "aria-controls={listId}" in _TAB
+    assert '<ul id={listId} className="space-y-3">' in _TAB
 
 
 def test_voluntary_answers_are_hidden_until_asked_for_each_visit():
@@ -99,7 +146,7 @@ def test_voluntary_answers_are_hidden_until_asked_for_each_visit():
 
 
 def test_a_flag_is_a_warning_mark_with_its_reason_never_color_alone():
-    assert re.search(r'text-warning">\s*<AlertTriangle', _TAB)
+    assert re.search(r'text-warning wrap-anywhere">\s*<AlertTriangle', _TAB)
     assert "{flag.reason}" in _TAB
 
 

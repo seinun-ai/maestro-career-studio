@@ -191,6 +191,9 @@ export default function JobDetailPage({
   const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: ["job-detail", id],
     queryFn: () => apiFetch<JobDetail>(`/api/jobs/${id}/detail`),
+    // A Companion fill happens in another window: coming back asks again, so the What was
+    // submitted tab appears without a reload. One local call, and the content on screen stays.
+    refetchOnWindowFocus: true,
   });
 
   const application = data?.application ?? null;
@@ -336,7 +339,7 @@ export default function JobDetailPage({
 
   const { job } = data;
   const hasApp = !!application;
-  const showSubmitted = Boolean(data?.has_filled_answers) || submittedSeen;
+  const showSubmitted = Boolean(data.has_filled_answers) || submittedSeen;
   const salary = formatSalary(
     job.salary_min,
     job.salary_max,
