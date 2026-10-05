@@ -80,7 +80,11 @@ def for_proposals(session: Session, pairs: list[Pair]) -> dict[UUID, dict[str, A
     pairs = [(p, j) for p, j in pairs if p.status in OPEN_STATUSES]
     if not pairs:
         return {}
-    batch = _Batch(session, pairs)
+    try:
+        batch = _Batch(session, pairs)
+    except Exception:  # noqa: BLE001 - one failed batch read must not blank the inbox
+        logger.warning("readiness batch skipped for %s proposals", len(pairs), exc_info=True)
+        return {prop.id: None for prop, _job in pairs}
     out: dict[UUID, dict[str, Any] | None] = {}
     for prop, job in pairs:
         try:

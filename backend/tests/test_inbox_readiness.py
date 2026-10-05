@@ -166,6 +166,20 @@ def test_answered_jobs_share_one_disclosable_profile(db_session, monkeypatch):
     assert calls == [1]
 
 
+def test_a_batch_read_failure_returns_null_for_each_open_proposal(db_session, monkeypatch, caplog):
+    rows = [_proposal(db_session), _proposal(db_session, status="approved"),
+            _proposal(db_session, status="submitted")]
+
+    def fail_scan_args(_session):
+        raise RuntimeError("profile unavailable")
+
+    monkeypatch.setattr(knockout, "scan_args", fail_scan_args)
+    got = inbox_readiness.for_proposals(db_session, rows)
+    open_ids = {prop.id for prop, _job in rows[:2]}
+    assert got == {proposal_id: None for proposal_id in open_ids}
+    assert "readiness batch skipped" in caplog.text
+
+
 def test_one_answer_with_two_flags_counts_once(db_session):
     prop, job = _proposal(db_session, status="approved")
     field = {**TICKED_ALL, "question": "Are you authorized to work?"}
