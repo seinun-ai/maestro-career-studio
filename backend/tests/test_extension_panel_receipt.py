@@ -441,6 +441,14 @@ def test_leaving_the_page_posts_the_pending_edits_once(tmp_path):
     assert body["application_id"] == "app-remembered"
 
 
+def test_the_leaving_read_is_bound_to_the_tab_being_left(tmp_path):
+    """The capture names the tab it is leaving (7), not the one bound next (8)."""
+    out = _run(tmp_path, tabs=TABS, leaveTo=8, framesAfter={"fill_inventory": EDITED})
+    reads = [msg for msg in out["sent"] if msg["type"] == "page_broadcast"
+             and msg["message"].get("readOnly")]
+    assert [msg["tabId"] for msg in reads][-1] == 7
+
+
 def test_leaving_a_page_with_nothing_changed_posts_nothing(tmp_path):
     assert len(_receipts(_run(tmp_path, tabs=TABS, leaveTo=8))) == 1
 

@@ -175,12 +175,15 @@ identity.
    review, confirmation, or narration. Diff completed fields against the
    canonical Maestro CS profile and correct ATS-parsed mismatches.
 6. **Per-page answer record:** after completing each wizard page and BEFORE
-   clicking Next, call `record_filled_answers(job_id, fields, step="N")` with
+   clicking Next (and on the last page, before `get_final_review`), call `record_filled_answers(job_id, fields, step=location.pathname)`
+   (the page's URL path, the Companion's own key, so an agent row and a Companion row for one page
+   fold into one; never a page number) with `application_id` when the proposal has one, and with
    every field on the page: its question, the answer as submitted (a list of the
    ticked options for a multi-select, with `options_count`) and its `source`
    (`profile`, `resume`, `custom`, `written`, `inferred`, `you`, `upload`; a
    field you chose yourself without a saved fact behind it is `inferred`, prose
-   you composed is `written`). Mark a voluntary self-identification question
+   you composed is `written`; `you` is only what the USER typed in the browser, never your own
+   choice). Mark a voluntary self-identification question
    `eeo: true`. Do not narrate the call and do not ask about it — the only user
    touchpoint remains the final review — and keep the `flags` it returns for
    that review. The record is the per-page evidence: a per-page screenshot is

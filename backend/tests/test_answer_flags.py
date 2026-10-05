@@ -97,9 +97,17 @@ def test_an_eeo_slot_is_not_a_screening_question():
 
 
 @pytest.mark.parametrize("question", ["Gender", "Race / Ethnicity", "Are you Hispanic or Latino?",
-                                      "Veteran status", "Disability status", "Sexual orientation"])
+                                      "Veteran status", "Disability status", "Sexual orientation",
+                                      "What are your pronouns?", "Do you identify as LGBTQ+?",
+                                      "Do you identify as queer?"])
 def test_eeo_questions_are_recognized_by_their_words(question):
     assert answer_flags.is_eeo(question, None)
+
+
+@pytest.mark.parametrize("question", ["Preferred name", "Which programming languages do you use?",
+                                      "How did you hear about us?"])
+def test_ordinary_questions_are_not_eeo(question):
+    assert not answer_flags.is_eeo(question, None)
 
 
 SCREENING_CASES = [

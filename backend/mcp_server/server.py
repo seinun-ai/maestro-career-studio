@@ -1814,8 +1814,9 @@ def record_filled_answers(
     ticked_everything (a multi-select with every one of 3+ options ticked),
     differs_from_profile or eeo_without_saved_answer, each with a one-line reason. Flags
     warn; nothing is blocked, and get_final_review lists the job's flags again. `step` names
-    the page (a page number or the URL path). `application_id` links the record now; without
-    it the record links, for the application of `base_resume` (the base resume's slug), when
+    the page: pass its URL path (location.pathname), the Companion's own key, so an agent row
+    and a Companion row for one page fold together; a page number is still accepted.
+    `application_id` links the record now; without it the record links, for the application of `base_resume` (the base resume's slug), when
     that application is created, marked applied or submitted."""
     return _client.record_filled_answers(
         job_id, fields, step=step, application_id=application_id, base_resume=base_resume

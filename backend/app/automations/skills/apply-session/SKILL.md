@@ -31,10 +31,14 @@ everything else yourself.
    (`get_autofill_profile`, `list_qa_entries`). Read back what each field saved.
    Signatures, logins, CAPTCHAs and legal attestations are the user's to do in
    the browser. Before Next on each page, `record_filled_answers` with every
-   field, its answer and where it came from.
+   field, its answer and where it came from. Pass the page's URL path
+   (`location.pathname`) as `step`, never a page number, and the proposal's
+   `application_id` when it has one. Source `you` means only what the USER
+   typed in the browser, never your own choice (that is `inferred`).
 4. **Blocked?** Don't stall the run: `report_failure` with the reason (or decline
    the posting if it is gone) and move on to the next one.
-5. **Submit.** Call `get_final_review`, attach a screenshot of the filled form
+5. **Submit.** Record the last page with `record_filled_answers`, then call
+   `get_final_review`, attach a screenshot of the filled form
    as `final_review` evidence, and show the user one short summary (company,
    role, PDF, key answers, every flag in `flags` with its reason, and any
    duplicate warning). Only after their yes for *this* application:

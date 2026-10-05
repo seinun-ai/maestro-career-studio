@@ -32,7 +32,7 @@ class FilledAnswer(Base):
     )
     channel: Mapped[str] = mapped_column(Text, nullable=False)  # "companion" | "agent"
     host: Mapped[str | None] = mapped_column(Text)
-    step: Mapped[str | None] = mapped_column(Text)  # a page number or the URL path
+    step: Mapped[str | None] = mapped_column(Text)  # the page's URL path (a page number is accepted)
     job_id: Mapped[uuid.UUID] = mapped_column(
         UUIDType(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )

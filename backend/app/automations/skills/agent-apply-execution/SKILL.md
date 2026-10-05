@@ -68,7 +68,7 @@ The user's Maestro CS profile is the source of truth; distrust values an applica
 - Comboboxes: clear, type, exact-select, blur, read back; verify state/city persistence.
 - After any third-party/full-page navigation, take a fresh full-form resnapshot; re-verify ordinary fields, attachments, and acknowledgements.
 - Evidence kinds are exactly `step`, `final_review`, and `submission_receipt`; pass `kind` to `attach_evidence_file`.
-- Silently `record_filled_answers` for EACH completed wizard page before clicking Next (never narrate or ask); per-page screenshots are not required. Attach the final-review state as `final_review` before consent. Approval requires `final_review`; `mark_submitted` requires `submission_receipt` or explicit user attestation.
+- Silently `record_filled_answers` for EACH completed wizard page before clicking Next (never narrate or ask); per-page screenshots are not required. Pass the page's URL path (`location.pathname`) as `step`, never a page number, and the proposal's `application_id` when it has one; source `you` is only what the USER typed in the browser, never your own choice. Attach the final-review state as `final_review` before consent. Approval requires `final_review`; `mark_submitted` requires `submission_receipt` or explicit user attestation.
 
 ## EEO and human-only boundaries
 

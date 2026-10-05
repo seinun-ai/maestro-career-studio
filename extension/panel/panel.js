@@ -2782,9 +2782,14 @@
     // The answer receipt's last word on the page being LEFT, started before the
     // reset: its read of the page leaves now, on the tab bound now, and what it
     // posts is about the facts as they stand now. Nothing waits for it. A
-    // Refresh (same tab, same url) is not leaving.
+    // Refresh (same tab, same url) is not leaving. Its read is bound to the tab
+    // being left HERE, in the panel that owns the binding, so an `await` added
+    // to the capture later can never read the tab bound next.
     if (card.tabId !== null && (card.tabId !== tabId || card.url !== url)) {
-      ns.panelRecordEdits(actionStore(), { ...card }, null, { leaving: true });
+      const left = card.tabId;
+      ns.panelRecordEdits(
+        { ...actionStore(), broadcast: (message) => ask("page_broadcast", { tabId: left, message }) },
+        { ...card }, null, { leaving: true });
     }
     clearTimeout(editCaptureTimer);
     // FIRST, and before anything is loaded: everything the store holds is

@@ -118,7 +118,8 @@ function StepBlock({
   host: string | null;
   onOpenTab?: OpenTab;
 }) {
-  const name = step.step ?? `Page ${index + 1}`;
+  // A bare number is a page index (an agent's `step: 2`), not a name to show as is.
+  const name = /^\d+$/.test(step.step ?? "") ? `Page ${step.step}` : (step.step ?? `Page ${index + 1}`);
   return (
     <section className="space-y-3 rounded-corner-md border p-4">
       <div className="flex min-w-0 items-baseline gap-2">

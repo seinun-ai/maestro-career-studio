@@ -113,7 +113,7 @@ def test_a_blank_answer_says_so_before_any_list_or_text():
 
 
 def test_a_page_is_named_by_its_step_with_its_host_when_it_differs():
-    assert "const name = step.step ?? `Page ${index + 1}`;" in _TAB
+    assert "const name = /^\\d+$/.test(step.step ?? \"\")" in _TAB
     assert "step.host && step.host !== host ?" in _TAB
     assert "host={receipt.host}" in _TAB
 
@@ -159,3 +159,9 @@ def test_uploads_link_to_the_resume_and_q_and_a_tabs_only_when_those_tabs_are_op
 def test_the_knockout_card_points_an_on_site_gap_at_the_preferences():
     assert '  on_site: "preferences",' in _read("components/job-knockout-card.tsx")
     assert '"experience" | "on_site";' in _TYPES
+
+
+def test_a_purely_numeric_step_reads_as_a_page():
+    """An agent's `step: 2` is a page number, so the heading says "Page 2", not a bare "2"."""
+    assert '/^\\d+$/.test(step.step ?? "") ? `Page ${step.step}`' in _TAB
+    assert "?? `Page ${index + 1}`" in _TAB

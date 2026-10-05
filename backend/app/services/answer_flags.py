@@ -31,7 +31,8 @@ SCREENING_RE = re.compile(
     re.IGNORECASE,
 )
 EEO_RE = re.compile(
-    r"gender|\bsex\b|\brace\b|ethnicit|hispanic|latin[oa]|veteran|disabilit|sexual orientation",
+    r"gender|\bsex\b|\brace\b|ethnicit|hispanic|latin[oa]|veteran|disabilit|sexual orientation"
+    r"|pronoun|lgbt|queer",
     re.IGNORECASE,
 )
 # Any negation cue at all: where one is present but not on the question's own verb, the
