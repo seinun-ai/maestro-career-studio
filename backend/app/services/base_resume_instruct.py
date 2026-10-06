@@ -27,7 +27,8 @@ from sqlalchemy.orm import Session
 
 from app.models.base_resume import BaseResume
 from app.schemas.resume_edit import ResumeEdit, ResumeEditRequest, render_ops_shapes
-from app.services import llm, model_settings, prompts
+from app.services import base_resume_data, llm, model_settings, prompts
+from app.services.prompt_assembly import anchor_block
 from app.services.resume_edit import apply_edits
 
 logger = logging.getLogger(__name__)
@@ -42,8 +43,16 @@ class Proposal:
     ops: list[ResumeEdit] = field(default_factory=list)
 
 
-def _ask(session: Session, instruction: str, resume: dict, correction: str | None) -> dict:
-    prompt = Template(prompts.get_prompt("base_resume_instruct", session)).safe_substitute(
+def _ask(
+    session: Session,
+    instruction: str,
+    resume: dict,
+    correction: str | None,
+    anchors: dict | None = None,
+) -> dict:
+    prompt = anchor_block(anchors, for_job=False) + Template(
+        prompts.get_prompt("base_resume_instruct", session)
+    ).safe_substitute(
         instruction=instruction,
         resume_json=json.dumps(resume, indent=1),
         op_shapes=render_ops_shapes(),
@@ -106,9 +115,10 @@ def propose(session: Session, row: BaseResume, instruction: str) -> Proposal:
     if len(instruction) > MAX_INSTRUCTION_CHARS:
         raise ValueError(f"Instruction is over {MAX_INSTRUCTION_CHARS} characters.")
     resume: dict[str, Any] = row.data_json
+    anchors = base_resume_data.anchors(row)
     correction: str | None = None
     for _attempt in range(2):
-        result = _ask(session, instruction, resume, correction)
+        result = _ask(session, instruction, resume, correction, anchors)
         try:
             return _read(result, resume)
         except ValueError as exc:

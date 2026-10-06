@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models.application import Application
+from app.models.base_resume import BaseResume
 from app.models.career_kb import KBPoint, KBPortLog
 from app.models.job import Job
 from app.models.tailoring_session import TailoringSession
@@ -27,6 +28,7 @@ from app.services import (
     application_writes,
     artifacts,
     ats_score,
+    base_resume_data,
     filled_answers,
     gap_analysis,
     gap_enrichment,
@@ -1261,6 +1263,7 @@ def _llm_customized(
         user_prompt=user_prompt,
         persona=persona.get_persona(session),
         already_applied=already_applied,
+        anchors=base_resume_data.anchors(session.get(BaseResume, tailoring.base_resume)),
     )
     result = llm.call_openai(
         prompt=prompt,

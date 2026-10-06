@@ -1,5 +1,8 @@
 """Instruction → proposal on a base resume. Proposes; never writes."""
 
+import json
+from string import Template
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -7,6 +10,7 @@ from app.db import get_db
 from app.main import app
 from app.models.base_resume import BaseResume
 from app.models.resume_version import ResumeVersion
+from app.schemas.resume_edit import render_ops_shapes
 from app.services import base_resume_instruct, llm, prompts
 
 RESUME = {
@@ -162,3 +166,44 @@ def test_the_prompt_is_registered_and_forbids_fabrication():
     text = (prompts.PROMPT_DIR / "base_resume_instruct.txt").read_text(encoding="utf-8")
     assert "NEVER fabricate" in text
     assert "$op_shapes" in text and "$resume_json" in text and "$instruction" in text
+
+
+def test_ask_for_changes_sends_the_anchor_line(db_session, row, monkeypatch):
+    row.countries = ["IN"]
+    row.company = "Infosys"
+    db_session.commit()
+    fake = _llm(GOOD)
+    monkeypatch.setattr(llm, "call_openai", fake)
+    base_resume_instruct.propose(db_session, row, "tighten the summary")
+    prompt = fake.calls[0]
+    assert prompt.startswith("RESUME ANCHORS: Countries: India · Company: Infosys\n")
+    assert "Emphasize these where relevant. They are not evidence of experience." in prompt
+    # An Ask for changes is not for a job, so there is no employer clause.
+    assert "not this application's employer" not in prompt
+    assert "tighten the summary" in prompt
+
+
+def test_ask_for_changes_anchor_line_survives_the_correction(db_session, row, monkeypatch):
+    row.focus = "payments"
+    db_session.commit()
+    bad = {"summary": "x", "notes": "", "ops": [
+        {"kind": "replace_bullet", "section": "experience", "index": 7,
+         "bullet_index": 0, "value": "y"}]}
+    fake = _llm(bad, GOOD)
+    monkeypatch.setattr(llm, "call_openai", fake)
+    base_resume_instruct.propose(db_session, row, "reword")
+    assert fake.calls[1].startswith("RESUME ANCHORS: Focus: payments\n")
+    assert "did not apply" in fake.calls[1]
+
+
+def test_ask_for_changes_without_anchors_is_unchanged(db_session, row, monkeypatch):
+    fake = _llm(GOOD)
+    monkeypatch.setattr(llm, "call_openai", fake)
+    base_resume_instruct.propose(db_session, row, "tighten the summary")
+    expected = Template(prompts.get_prompt("base_resume_instruct", db_session)).safe_substitute(
+        instruction="tighten the summary",
+        resume_json=json.dumps(RESUME, indent=1),
+        op_shapes=render_ops_shapes(),
+    )
+    assert "RESUME ANCHORS" not in fake.calls[0]
+    assert fake.calls[0] == expected

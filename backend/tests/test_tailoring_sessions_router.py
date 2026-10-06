@@ -2281,6 +2281,42 @@ def test_tailor_user_prompt_reaches_prompt_and_application(db_session, tmp_path,
     assert application.user_prompt == "Keep bullets terse."
 
 
+def _tailor_with_anchored_base(db_session, tmp_path, monkeypatch, **anchors):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    base = db_session.get(BaseResume, slug)
+    for name, value in anchors.items():
+        setattr(base, name, value)
+    db_session.commit()
+    calls = _mock_tailor_llm(monkeypatch)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        created = _open_session(client, job, slug, resolutions=[SALESFORCE_RESOLUTION])
+        response = _tailor(client, created["id"])
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    return calls[0]["prompt"]
+
+
+def test_tailor_sends_the_anchor_line(db_session, tmp_path, monkeypatch):
+    prompt = _tailor_with_anchored_base(
+        db_session, tmp_path, monkeypatch, countries=["GB"], company="Monzo"
+    )
+    assert "RESUME ANCHORS: Countries: United Kingdom · Company: Monzo\n" in prompt
+    assert (
+        "Emphasize these where relevant. They are not evidence of experience."
+        " The anchor company is not this application's employer."
+    ) in prompt
+
+
+def test_tailor_without_anchors_sends_no_anchor_line(db_session, tmp_path, monkeypatch):
+    prompt = _tailor_with_anchored_base(db_session, tmp_path, monkeypatch)
+    assert "RESUME ANCHORS" not in prompt
+
+
 def test_tailor_prompt_excludes_skipped_gaps_from_mandate(db_session, tmp_path, monkeypatch):
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch)
