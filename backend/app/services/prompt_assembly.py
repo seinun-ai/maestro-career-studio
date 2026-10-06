@@ -69,7 +69,8 @@ def anchor_block(anchors: dict[str, Any] | None, *, for_job: bool) -> str:
 
     parts: list[str] = []
     if anchors.get("countries"):
-        names = ", ".join(countries.name_for(code) for code in anchors["countries"])
+        known = countries.labels()  # a stored code the list lost degrades to the code
+        names = ", ".join(known.get(code, code) for code in anchors["countries"])
         parts.append(f"Countries: {names}")
     for key, label in (("role", "Role"), ("company", "Company"), ("focus", "Focus")):
         if anchors.get(key):

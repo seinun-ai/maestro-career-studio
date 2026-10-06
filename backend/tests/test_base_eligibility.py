@@ -6,6 +6,7 @@ from app.services.base_eligibility import (
     candidates,
     candidates_for_country,
     country_eligible,
+    eligible_given,
     is_eligible,
 )
 
@@ -21,6 +22,14 @@ def _job(db_session, country):
     db_session.add(job)
     db_session.flush()
     return job
+
+
+def test_eligible_given_table():
+    assert eligible_given(None, "US", False)  # no row: usable anywhere
+    assert eligible_given(["US"], "US", False) and eligible_given([], "US", False)
+    assert not eligible_given(["IN"], "US", False)
+    assert eligible_given(["IN"], "US", True)  # fallback keeps every base
+    assert eligible_given(["IN"], None, False)  # unknown job country passes
 
 
 def test_country_eligible_table():

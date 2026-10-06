@@ -25,6 +25,13 @@ from app.services import countries
 from app.services.base_resume_data import selectable_filter
 
 
+def eligible_given(base_countries: list[str] | None, job_country: str | None, fallback: bool) -> bool:
+    """THE rule, on values already read: `None` base countries means the base has
+    no row, so it is usable anywhere; otherwise its countries pass or the job is
+    in fallback. `job_country` is already normalized."""
+    return base_countries is None or fallback or country_eligible(base_countries, job_country)
+
+
 def country_eligible(base_countries: list[str], job_country: str | None) -> bool:
     """True when a base with these countries may serve a job in `job_country`.
 
@@ -81,9 +88,9 @@ def is_eligible(session: Session, job: Job, slug: str) -> bool:
     fallback. Reads the row whatever its state (an archived base keeps its
     countries). A slug with no row has no anchors, so like `countries == []` it
     is usable anywhere."""
-    if candidates(session, job).fallback:
-        return True
     row = session.get(BaseResume, slug)
-    if row is None:
-        return True
-    return country_eligible(row.countries or [], countries.normalize(job.country))
+    return eligible_given(
+        None if row is None else list(row.countries or []),
+        countries.normalize(job.country),
+        candidates(session, job).fallback,
+    )

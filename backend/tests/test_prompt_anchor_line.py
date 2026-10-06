@@ -51,6 +51,13 @@ def test_anchor_block_exact_text_and_order():
     )
 
 
+def test_anchor_block_degrades_an_unknown_stored_code_to_the_code():
+    text = anchor_block(
+        {"countries": ["GB", "ZZ"], "role": None, "company": None, "focus": None}, for_job=False
+    )
+    assert text.startswith("RESUME ANCHORS: Countries: United Kingdom, ZZ\n")
+
+
 def test_employer_clause_needs_both_for_job_and_a_company():
     only_focus = {"countries": [], "role": None, "company": None, "focus": "payments"}
     assert "employer" not in anchor_block(only_focus, for_job=True)

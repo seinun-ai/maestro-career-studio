@@ -98,11 +98,11 @@ class _Batch:
         rule as `base_eligibility.is_eligible`, batched."""
         code = countries.normalize(job.country)
         slug = self.bases.get(prop.application_id) if prop.application_id else None
-        if code is None or slug is None or slug not in self.base_countries:
-            return None  # no country, no application, or a base with no row: usable anywhere
-        if base_eligibility.country_eligible(self.base_countries[slug], code):
-            return None
-        return None if self._in_fallback(code) else code
+        if code is None or slug is None:
+            return None  # no country or no application: nothing to check
+        # A slug with no row reads None: usable anywhere.
+        base = self.base_countries.get(slug)
+        return None if base_eligibility.eligible_given(base, code, self._in_fallback(code)) else code
 
     def row(self, prop: ApplicationProposal, job: Job) -> dict[str, Any]:
         to_check = (filled_answers.flag_count(self.session, job, self.profile)
