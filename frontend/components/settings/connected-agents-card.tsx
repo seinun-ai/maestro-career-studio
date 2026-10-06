@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { AGENT_APPLICATIONS_URL, CONNECT_AGENT_GUIDE_URL, JOB_HUNT_SKILL_URL } from "@/lib/agent-links";
 
 const LINKS = [
@@ -103,10 +104,19 @@ export function ConnectedAgentsCard() {
               <h3 id={cantId} className="font-medium">
                 They can&apos;t
               </h3>
-              <ul aria-labelledby={cantId} className="text-muted-foreground grid list-disc gap-1 pl-5">
-                <li>Go past the daily limit below.</li>
-                <li>Delete an item or a bullet from your career history.</li>
-                <li>Connect from claude.ai or chatgpt.com in a browser.</li>
+              <ul aria-labelledby={cantId} className="text-muted-foreground grid gap-1">
+                <li className="flex items-start gap-1.5">
+                  <CONCEPT_ICONS.cannot className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <span>Go past the daily limit below.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <CONCEPT_ICONS.cannot className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <span>Delete an item or a bullet from your career history.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <CONCEPT_ICONS.cannot className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <span>Connect from claude.ai or chatgpt.com in a browser.</span>
+                </li>
               </ul>
             </div>
           </div>

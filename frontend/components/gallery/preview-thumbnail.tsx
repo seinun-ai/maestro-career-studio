@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { FileText } from "lucide-react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 /**
@@ -45,7 +46,10 @@ export function PreviewThumbnail({
   className?: string;
 }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  // Like the failure, remembered by SRC: a new URL (a re-render) shows the skeleton again.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const showImage = src !== null && failedSrc !== src;
+  const loading = showImage && loadedSrc !== src;
 
   return (
     <div
@@ -59,14 +63,25 @@ export function PreviewThumbnail({
       )}
     >
       {showImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          onError={() => setFailedSrc(src)}
-          className="h-full w-full bg-white object-cover object-top"
-        />
+        <>
+          {loading && <Skeleton className="absolute inset-0 rounded-none" />}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            // A cached image (success or failure) can settle before hydration, and then neither onLoad nor
+            // onError fires. Both states are keyed by SRC, so a new URL starts from the skeleton again.
+            ref={(img) => {
+              if (!img?.complete) return;
+              if (img.naturalWidth > 0) setLoadedSrc(src);
+              else setFailedSrc(src);
+            }}
+            onLoad={() => setLoadedSrc(src)}
+            onError={() => setFailedSrc(src)}
+            className={cn("h-full w-full bg-white object-cover object-top", loading && "opacity-0")}
+          />
+        </>
       ) : (
         <div className="text-muted-foreground flex h-full w-full flex-col items-center justify-center gap-2 text-body-small">
           <FileText className="size-6 opacity-40" aria-hidden />

@@ -4,6 +4,7 @@ import { GuardedLink as Link } from "@/components/guarded-link";
 import { useQuery } from "@tanstack/react-query";
 import { HeartPulse } from "lucide-react";
 
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { RetryChip } from "@/components/retry-chip";
 import { COUNT_META, countWords, GRADE_STYLES } from "@/components/resume-health/finding-cards";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
@@ -149,15 +150,16 @@ export function HealthListChip({ slug }: { slug: string }) {
     <Link
       href={`/base-resumes/${slug}/health`}
       className={cn(
-        "relative z-20 shrink-0 rounded-corner-xs px-1.5 py-0.5 text-label-small",
+        "relative z-20 inline-flex shrink-0 items-center gap-1 rounded-corner-xs px-1.5 py-0.5 text-label-small",
         blocked
-          ? "bg-destructive/10 text-destructive"
+          ? "bg-error-container text-on-error-container"
           : (GRADE_STYLES[data.grade] ?? GRADE_STYLES.C),
       )}
       title={summary}
       aria-label={summary}
       onClick={(event) => event.stopPropagation()}
     >
+      <CONCEPT_ICONS.health className="size-3" aria-hidden="true" />
       {blocked ? "Must fix" : data.grade}
     </Link>
   );

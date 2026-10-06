@@ -22,6 +22,7 @@ _SIDEBAR = _read("components/app-sidebar.tsx")
 _PAGE = _read("app/automations/page.tsx")
 _CARD = _read("components/automations/automation-card.tsx")
 _LIB = _read("lib/automations.ts")
+_LIB_RUNS = _read("lib/agent-runs.ts")
 _STORAGE = _read("hooks/use-local-storage-state.ts")
 
 
@@ -52,11 +53,12 @@ def test_copy_is_off_for_an_unreachable_app_and_says_why():
 
 
 def test_a_failed_clipboard_write_opens_the_prompt_to_select():
-    # A missing clipboard API throws at once, before any promise exists.
-    assert "Promise.resolve()" in _CARD
-    catch = _CARD[_CARD.index(".catch(") :]
-    catch = catch[: catch.index("});")]
-    assert "setOpen(true)" in catch
+    # useCopy owns the clipboard call (and the missing-API throw); the card handles the `false` branch.
+    assert "useCopy" in _CARD and "navigator.clipboard" not in _CARD
+    # The `false` branch (the hook already toasted via onError) opens the prompt.
+    failed = _CARD[_CARD.index("if (ok)") :]
+    failed = failed[: failed.index("\n  }\n")]
+    assert "setOpen(true)" in failed and "else" in failed
     assert "select-all" in _CARD
 
 
@@ -69,7 +71,8 @@ def test_the_card_copy():
 def test_last_ran_uses_cached_data_and_fails_quietly_without_it():
     assert 'apiFetch<AgentRunList>("/api/agent-runs/latest")' in _PAGE
     assert "const ran = runs.data ? latestByAutomation(runs.data.items) : null;" in _PAGE
-    assert "lastRun={ran ? (ran.get(card.id) ?? null) : undefined}" in _PAGE
+    assert "lastRun={ran ? (ran.get(card.id)?.finished_at ?? null) : undefined}" in _PAGE
+    assert "outcome={ran?.get(card.id)?.outcome}" in _PAGE
     assert 'title="Couldn\'t load runs.' not in _PAGE
     assert "isLoadFailure(runs)" not in _PAGE
 
@@ -104,3 +107,28 @@ def test_the_remembered_app_is_best_effort():
     assert "picked ??" in _PAGE
     # The hook guards both the read and the write.
     assert _STORAGE.count("catch") >= 2
+
+
+def test_small_surfaces_gain_their_glyphs():
+    card = _CARD
+    assert "CONCEPT_ICONS.scheduled" in card and "CONCEPT_ICONS.notRun" in card
+    assert "<CONCEPT_ICONS.cannot " in _read("components/settings/connected-agents-card.tsx")
+    assert "CONCEPT_ICONS.cannot" in _CARD and "Globe2" in _CARD and "<Ban " not in _CARD
+    assert "MessageSquareText" in _read("components/qa-tab.tsx")
+    # The outcome glyph is Task 21's component, not a copy; lib/agent-runs.ts stays import-free.
+    assert 'from "@/components/proposals/run-outcome"' in card
+    assert "import " not in _LIB_RUNS
+
+
+def test_the_connect_note_is_a_callout_until_an_automation_has_run():
+    assert "bg-secondary-container text-on-secondary-container rounded-corner-md" in _PAGE
+    assert "const anyRan = !!ran && !!data && data.cards.some((c) => ran.has(c.id));" in _PAGE
+    # A failed runs query still shows the callout; nothing shows only while runs or the catalog are loading.
+    assert "const noteReady = runs.isError || (!!runs.data && !!data);" in _PAGE
+    assert "{!noteReady ? null : anyRan ? (" in _PAGE
+
+
+def test_email_and_cover_letter_have_one_glyph_each():
+    assert "CONCEPT_ICONS.email" in _CARD and "AtSign" not in _CARD
+    assert "CONCEPT_ICONS.coverLetter" in _read("components/qa-tab.tsx")
+    assert "CONCEPT_ICONS.email" in _read("components/career/profile-panel.tsx")

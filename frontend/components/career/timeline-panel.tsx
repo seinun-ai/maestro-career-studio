@@ -1,6 +1,6 @@
 import {
   Bot,
-  CheckCircle2,
+  CircleCheck,
   CircleDot,
   FilePlus2,
   ListPlus,
@@ -15,7 +15,7 @@ const ICONS = {
   created: CircleDot,
   doc_added: FilePlus2,
   points_minted: ListPlus,
-  point_approved: CheckCircle2,
+  point_approved: CircleCheck,
   point_captured: Bot,
   ported: Send,
 };

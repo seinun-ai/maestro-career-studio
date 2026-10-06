@@ -136,7 +136,8 @@ def _generate_button() -> str:
 def test_generate_waits_while_a_letter_is_being_edited():
     """Generate replaces every saved letter: it destroyed the one open in the
     editor, and the next Save wrote the old draft over the new letter."""
-    assert "disabled={coverLetter.isPending || letterEditing}" in _generate_button()
+    button = _generate_button()
+    assert "pending={coverLetter.isPending}" in button and "disabled={letterEditing}" in button
 
 
 def test_a_letter_does_not_open_for_editing_while_one_generates():
@@ -179,5 +180,6 @@ def test_generate_buttons_keep_focus_while_they_work():
     for click in ("onClick={() => askOnce(questions)}", "onClick={() => void generateCoverLetter()}"):
         start = flat.rindex("<Button", 0, flat.index(click))
         button = flat[start : flat.index("</Button>", start)]
-        assert "focusableWhenDisabled" in button, click
+        # `pending` keeps focus itself (the primitive); an extra disabled reason needs the prop.
+        assert "focusableWhenDisabled" in button or "pending={" in button, click
     assert "focusableWhenDisabled" in _regenerate_button()

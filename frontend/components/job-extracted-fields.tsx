@@ -1,18 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Briefcase,
-  CheckCircle2,
-  Clock,
-  DollarSign,
-  FileText,
-  GraduationCap,
-  ListChecks,
-  MapPin,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+import { Clock, DollarSign, GraduationCap, ListChecks, MapPin } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useRoleLabel } from "@/components/role-category-picker";
@@ -20,8 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Job } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
-interface ExtractedSkill {
+const JobFactsIcon = CONCEPT_ICONS.jobFacts;
+const SkillsIcon = CONCEPT_ICONS.skills;
+const JobWordsIcon = CONCEPT_ICONS.jobWords;
+const WorkAuthorizationIcon = CONCEPT_ICONS.workAuthorization;
+const StudentPermitIcon = CONCEPT_ICONS.studentPermit;
+
+export interface ExtractedSkill {
   skill_name: string;
   skill_category?: string;
   requirement_level?: string;
@@ -155,27 +151,38 @@ function StatLine({
   );
 }
 
-function SkillGroup({
+/** The three requirement groups, each under its word (colour alone never says Required vs Preferred). */
+export function SkillGroup({
   title,
   variant,
   skills,
+  limit,
 }: {
   title: string;
-  variant: "default" | "secondary" | "outline";
+  variant: "default" | "tonal" | "outline";
   skills: ExtractedSkill[];
+  /** Show at most this many badges, then "+N more"; the heading count stays the full total. */
+  limit?: number;
 }) {
   if (skills.length === 0) return null;
+  const shown = limit === undefined ? skills : skills.slice(0, Math.max(0, limit));
+  const extra = skills.length - shown.length;
   return (
     <div>
       <div className="text-muted-foreground mb-1.5 text-label-medium">
         {title} ({skills.length})
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {skills.map((s, i) => (
+        {shown.map((s, i) => (
           <Badge key={`${s.skill_name}-${i}`} variant={variant}>
             {s.skill_name}
           </Badge>
         ))}
+        {extra > 0 && (
+          <span className="text-muted-foreground self-center text-body-small">
+            +{extra} more
+          </span>
+        )}
       </div>
     </div>
   );
@@ -279,7 +286,7 @@ export function JobExtractedFields({
               (the labelled StatLines below keep the — convention). */}
           {roleChips.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
-              <Briefcase className="text-muted-foreground size-4" />
+              <JobFactsIcon className="text-muted-foreground size-4" />
               {roleChips.map(([field, value]) => (
                 <Badge key={field} variant="outline" title={`${field}: ${value}`}>
                   {value}
@@ -316,12 +323,12 @@ export function JobExtractedFields({
               value={yearsLine}
             />
             <StatLine
-              icon={<ShieldCheck />}
+              icon={<WorkAuthorizationIcon />}
               label="Work authorization"
               value={workAuthLine}
             />
             <StatLine
-              icon={<CheckCircle2 />}
+              icon={<StudentPermitIcon />}
               label="OPT (US student work permit) accepted"
               value={optLine}
             />
@@ -330,7 +337,7 @@ export function JobExtractedFields({
           {skills.length > 0 && (
             <div className="space-y-3 border-t pt-4">
               <h4 className="flex items-center gap-2 text-title-small [&>svg]:size-4">
-                <Sparkles />
+                <SkillsIcon />
                 Skills ({skills.length})
               </h4>
               <SkillGroup
@@ -340,7 +347,7 @@ export function JobExtractedFields({
               />
               <SkillGroup
                 title="Preferred"
-                variant="secondary"
+                variant="tonal"
                 skills={preferred}
               />
               <SkillGroup
@@ -370,7 +377,7 @@ export function JobExtractedFields({
 
       <div className="mt-5 space-y-3">
         <Button variant="outline" size="sm" onClick={() => setShowRaw((s) => !s)}>
-          <FileText />
+          <JobWordsIcon />
           {showRaw ? "Hide full job description" : "Show full job description"}
         </Button>
         {showRaw && (

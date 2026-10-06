@@ -520,6 +520,7 @@ export function SendToResumeDialog({
                 <Button
                   className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                   onClick={() => adaptOnce()}
+                  pending={adapt.isPending}
                   disabled={!targetSlug || selected.size === 0 || pending}
                   focusableWhenDisabled
                 >

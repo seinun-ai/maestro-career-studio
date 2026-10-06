@@ -726,4 +726,5 @@
   so a broken alternate fails boot even while full automation is Off.
   Each run prompt ends with MCP `record_run`. Cards read `GET /api/agent-runs/latest` and
   show **Last ran** or **Not run yet** after data arrives; a read that never produced data
-  shows no line, while a failed background refetch keeps the cached line ([agent-runs.md](agent-runs.md)).
+  shows no line, while a failed background refetch keeps the cached line ([agent-runs.md](agent-runs.md)). A
+  ran card also wears its newest run's outcome chip; until a card has run, the connect-your-agent note is a callout.

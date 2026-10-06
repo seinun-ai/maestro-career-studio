@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 
 import {
@@ -8,7 +9,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { CONFIRM_MS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import type { SegmentTone } from "@/components/visual";
 import { APPLICATION_STATUSES, type ApplicationStatus } from "@/lib/types";
 
 /** One colour role per status: its container pair for the chip, the role
@@ -54,6 +57,18 @@ const STATUS_STYLES: Record<
   },
 };
 
+/** The bar-segment tone for each status: the same roles as the dots above (the dots dim draft and
+ * withdrawn with /60 and /40; a bar segment has no room for that). Analytics' status mix reads this. */
+export const STATUS_TONES: Record<ApplicationStatus, SegmentTone> = {
+  draft: "muted",
+  applied: "primary",
+  interviewing: "warning",
+  offered: "tertiary",
+  accepted: "success",
+  rejected: "error",
+  withdrawn: "muted",
+};
+
 export function statusLabel(status: string | null): string {
   if (!status) return "Draft";
   return STATUS_STYLES[status as ApplicationStatus]?.label ?? "Unknown";
@@ -63,9 +78,14 @@ function chipClasses(interactive: boolean): string {
   return cn(
     "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-label-medium",
     interactive &&
-      "cursor-pointer transition-[transform,box-shadow] duration-150 ease-out select-none " +
+      "cursor-pointer transition-[background-color,color,scale,box-shadow] duration-(--duration-short3) ease-(--ease-standard) select-none " +
         "hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring",
   );
+}
+
+/** A status's own dot, for places that list statuses without the chip (filters, analytics). */
+export function StatusDot({ status, className }: { status: ApplicationStatus; className?: string }) {
+  return <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", STATUS_STYLES[status].dot, className)} />;
 }
 
 /** Static pill for jobs that have no application yet ("Saved"). */
@@ -91,6 +111,7 @@ export function SavedChip() {
 const NEEDS_YOU = {
   label: "Needs you",
   className: "bg-attention-container text-on-attention-container",
+  dot: "bg-attention",
 };
 
 /** Derived agent-lane state for a saved (no-application) job, from its newest
@@ -123,18 +144,25 @@ const NEEDS_YOU = {
  */
 export const PROPOSAL_STATUS_CHIP: Record<
   string,
-  { label: string; className: string }
+  { label: string; className: string; dot: string }
 > = {
-  pending_review: { label: "Proposed", className: "bg-primary-container text-on-primary-container" },
+  pending_review: { label: "Proposed", className: "bg-primary-container text-on-primary-container", dot: "bg-primary" },
   needs_decision: NEEDS_YOU,
   needs_human: NEEDS_YOU,
-  accepted: { label: "Queued", className: "bg-secondary-container text-on-secondary-container" },
-  approved: { label: "Approved", className: "bg-success-container text-on-success-container" },
-  submitted: { label: "Applied", className: "bg-success-container text-on-success-container" },
-  submission_uncertain: { label: "Check if sent", className: "bg-attention-container text-on-attention-container" },
-  rejected: { label: "Skipped", className: "text-muted-foreground bg-muted" },
-  expired: { label: "Expired", className: "text-muted-foreground bg-muted" },
+  accepted: { label: "Queued", className: "bg-secondary-container text-on-secondary-container", dot: "bg-on-secondary-container" },
+  approved: { label: "Approved", className: "bg-success-container text-on-success-container", dot: "bg-success" },
+  submitted: { label: "Applied", className: "bg-success-container text-on-success-container", dot: "bg-success" },
+  submission_uncertain: { label: "Check if sent", className: "bg-attention-container text-on-attention-container", dot: "bg-attention" },
+  rejected: { label: "Skipped", className: "text-muted-foreground bg-muted", dot: "bg-muted-foreground/60" },
+  expired: { label: "Expired", className: "text-muted-foreground bg-muted", dot: "bg-muted-foreground/60" },
 };
+
+/** A proposal status's own dot, for the inbox lanes' headings and filters (the chip is hidden there, D5). */
+export function LaneDot({ status, className }: { status: string; className?: string }) {
+  const dot = PROPOSAL_STATUS_CHIP[status]?.dot;
+  if (!dot) return null;
+  return <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", dot, className)} />;
+}
 
 /** Label-only view, for callers that bring their own container. */
 export function proposalStatusLabel(status: string): string {
@@ -177,8 +205,28 @@ export function StatusChip({
   const current = (status ?? "draft") as ApplicationStatus;
   const style = STATUS_STYLES[current] ?? STATUS_STYLES.draft;
 
+  // One soft ring pulse once a change has settled: not on first paint, and not
+  // when a failed PATCH rolls the status back to what it was before.
+  const settled = useRef(current);
+  const [confirm, setConfirm] = useState(false);
+  useEffect(() => {
+    if (pending || settled.current === current) return;
+    settled.current = current;
+    setConfirm(true);
+    const t = window.setTimeout(() => setConfirm(false), CONFIRM_MS);
+    return () => window.clearTimeout(t);
+  }, [current, pending]);
+  // A natively disabled trigger cannot take focus back when the menu closes, so
+  // the chip stays focusable (aria-disabled) and just refuses to open meanwhile.
+  const [open, setOpen] = useState(false);
+
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      open={open && !pending}
+      onOpenChange={(next) => {
+        if (!pending) setOpen(next);
+      }}
+    >
       <DropdownMenuTrigger
         render={
           // data-status-chip: what a list hands focus to when a status change
@@ -186,8 +234,10 @@ export function StatusChip({
           <button
             type="button"
             data-status-chip
+            aria-disabled={pending || undefined}
+            data-confirm={confirm || undefined}
             aria-label={`Status: ${style.label}. Change status`}
-            className={cn(chipClasses(true), style.chip, className)}
+            className={cn(chipClasses(true), style.chip, "data-confirm:animate-confirm", className)}
             onClick={(e) => e.stopPropagation()}
           >
             {pending ? (
@@ -211,7 +261,7 @@ export function StatusChip({
             <DropdownMenuItem
               key={s}
               onClick={() => {
-                if (s !== current) onSelect(s);
+                if (!pending && s !== current) onSelect(s);
               }}
             >
               <span className={cn("size-2 rounded-full", item.dot)} />

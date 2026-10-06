@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 619,
-    "total_loc": 186370,
-    "src_loc": 51838,
-    "test_loc": 134532,
+    "modules": 628,
+    "total_loc": 188001,
+    "src_loc": 51904,
+    "test_loc": 136097,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -194,6 +194,14 @@
         "lines": 89
       },
       {
+        "file": "tests/test_frontend_visual_surfaces.py",
+        "line": 110,
+        "name": "test_gap_actions_carry_icons_and_explain_once",
+        "complexity": 25,
+        "params": 0,
+        "lines": 23
+      },
+      {
         "file": "app/services/kb_consolidation.py",
         "line": 1072,
         "name": "_merge_skills",
@@ -227,11 +235,19 @@
       },
       {
         "file": "tests/test_extension_panel.py",
-        "line": 689,
+        "line": 691,
         "name": "test_the_panel_document_is_self_contained_and_joins_the_namespace",
         "complexity": 24,
         "params": 0,
         "lines": 73
+      },
+      {
+        "file": "tests/test_frontend_visual_surfaces.py",
+        "line": 229,
+        "name": "test_wave5_review_one_glyph_per_meaning_and_honest_marks",
+        "complexity": 24,
+        "params": 0,
+        "lines": 26
       },
       {
         "file": "scripts/eval_fill_decisions.py",
@@ -315,7 +331,7 @@
       },
       {
         "file": "tests/test_extension_panel_resume.py",
-        "line": 484,
+        "line": 498,
         "name": "test_quick_tailor_creates_the_application_and_the_rings_say_so",
         "complexity": 23,
         "params": 1,
@@ -392,25 +408,9 @@
         "complexity": 21,
         "params": 2,
         "lines": 31
-      },
-      {
-        "file": "tests/test_kb_ingest_parsed.py",
-        "line": 52,
-        "name": "test_ingest_parsed_happy_path_returns_ids",
-        "complexity": 21,
-        "params": 3,
-        "lines": 39
-      },
-      {
-        "file": "tests/test_kb_ingest_parsed.py",
-        "line": 273,
-        "name": "test_onboarding_round_trip_ingest_approve_compose",
-        "complexity": 21,
-        "params": 4,
-        "lines": 53
       }
     ],
-    "hotspot_count": 587,
+    "hotspot_count": 609,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -469,8 +469,8 @@
       }
     ],
     "error_masking_count": 11,
-    "internal_import_edges": 2590,
-    "imports_per_module": 4.18,
+    "internal_import_edges": 2603,
+    "imports_per_module": 4.14,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -492,7 +492,7 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.61,
+    "percentage": 0.6,
     "duplicated_lines": 381,
     "clones": 43,
     "allowlisted_clones": 0,
@@ -603,7 +603,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "587 function(s) over threshold. worst: mcp_server/tests/test_server.py:535 cc=42",
+      "detail": "609 function(s) over threshold. worst: mcp_server/tests/test_server.py:535 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -616,16 +616,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 186370,
-    "src_loc": 51838,
-    "test_loc": 134532,
-    "modules": 619,
+    "total_loc": 188001,
+    "src_loc": 51904,
+    "test_loc": 136097,
+    "modules": 628,
     "orphan_loc": 0,
-    "duplication_pct": 0.61,
+    "duplication_pct": 0.6,
     "duplicated_lines": 381,
     "clone_count": 43,
-    "complexity_hotspots": 587,
+    "complexity_hotspots": 609,
     "error_masking": 11,
-    "imports_per_module": 4.18
+    "imports_per_module": 4.14
   }
 }

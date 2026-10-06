@@ -3,10 +3,9 @@
 import { useId, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Copy,
   Download,
-  FileText,
   Loader2,
+  MessageSquareText,
   Pencil,
   RefreshCw,
   Trash2,
@@ -14,10 +13,12 @@ import {
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { CopyButton } from "@/components/copy-button";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -35,6 +36,9 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { QAEntry, QAResponse } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const CreatePdfIcon = CONCEPT_ICONS.createPdf;
 
 const TONES = ["balanced", "enthusiastic", "formal", "concise"];
 
@@ -63,6 +67,8 @@ export function QATab({ applicationId }: { applicationId: string }) {
   const [questions, setQuestions] = useState("");
   const [tone, setTone] = useState<string>("balanced");
   const questionsHintId = useId();
+  const needQuestionId = useId();
+  const noQuestions = questions.trim().length === 0;
   const historyHeadingId = useId();
 
   const invalidate = () =>
@@ -76,7 +82,6 @@ export function QATab({ applicationId }: { applicationId: string }) {
         .split("\n")
         .map((q) => q.trim())
         .filter((q) => q.length > 0);
-      if (list.length === 0) throw new Error("Type at least one question.");
       return apiFetch<QAResponse>("/api/qa", {
         method: "POST",
         body: JSON.stringify({
@@ -207,12 +212,18 @@ export function QATab({ applicationId }: { applicationId: string }) {
           />
           <Button
             onClick={() => askOnce(questions)}
-            disabled={askQuestions.isPending}
+            pending={askQuestions.isPending}
+            disabled={noQuestions}
             focusableWhenDisabled
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            aria-describedby={noQuestions ? needQuestionId : undefined}
           >
             {askQuestions.isPending ? "Answering…" : "Answer questions"}
           </Button>
+          {noQuestions ? (
+            <p id={needQuestionId} className="text-muted-foreground text-body-small">
+              Type at least one question.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -238,7 +249,8 @@ export function QATab({ applicationId }: { applicationId: string }) {
           </div>
           <Button
             onClick={() => void generateCoverLetter()}
-            disabled={coverLetter.isPending || letterEditing}
+            pending={coverLetter.isPending}
+            disabled={letterEditing}
             focusableWhenDisabled
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
@@ -259,7 +271,13 @@ export function QATab({ applicationId }: { applicationId: string }) {
             retrying={isFetching}
             onRetry={() => void refetch()}
           />
-        ) : !entries || entries.length === 0 ? (
+        ) : entries === undefined ? (
+          <div role="status" aria-busy="true" className="space-y-3">
+            <span className="sr-only">Loading answers…</span>
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        ) : entries.length === 0 ? (
           <p className="text-muted-foreground text-body-medium">No answers yet.</p>
         ) : (
           entries.map((entry, i) => {
@@ -370,9 +388,20 @@ function QAEntryCard({
       data-pending={isRegenerating || isRendering || isSaving || undefined}
     >
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <CardTitle className="text-title-small">
-          {isDocument ? KIND_LABELS[entry.kind] : entry.prompt}
+        <CardTitle className="flex min-w-0 flex-1 items-start gap-2 text-title-small">
+          {isCoverLetter ? (
+            <CONCEPT_ICONS.coverLetter className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          ) : (
+            <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          )}
+          <span>{isDocument ? KIND_LABELS[entry.kind] : entry.prompt}</span>
         </CardTitle>
+        {isCoverLetter && entry.pdf_path ? (
+          <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-surface-container px-2 text-label-medium text-foreground">
+            <CONCEPT_ICONS.done className="size-3 shrink-0 text-success" aria-hidden="true" />
+            PDF ready
+          </span>
+        ) : null}
         <div className="flex shrink-0 gap-1">
           {isDocument && !editing ? (
             <IconButton
@@ -386,19 +415,11 @@ function QAEntryCard({
               disabled={isSaving || isRendering || isRegenerating || generating}
             />
           ) : null}
-          <IconButton
-            label="Copy"
-            icon={<Copy />}
-            onClick={() => {
-              navigator.clipboard
-                .writeText(entry.answer ?? "")
-                .then(() => toast.success("Copied"));
-            }}
-          />
+          <CopyButton text={entry.answer ?? ""} />
           {isCoverLetter ? (
             <IconButton
               label="Create PDF"
-              icon={isRendering ? <Loader2 className="animate-spin" /> : <FileText />}
+              icon={isRendering ? <Loader2 className="animate-spin" /> : <CreatePdfIcon />}
               onClick={onRender}
               disabled={isRendering || isSaving || editing}
             />

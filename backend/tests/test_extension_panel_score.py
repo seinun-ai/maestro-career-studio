@@ -302,7 +302,7 @@ def test_a_scored_job_opens_with_the_best_base_chosen_and_the_job_step_done(tmp_
     out = _score(tmp_path)
     rows = _rows(_rail_rows({"regions": out["loaded"]}))
     assert list(rows) == ["job", "resume", "fill", "track"]
-    assert [row["numeral"] for row in rows.values()] == ["✓", "2", "3", "4"]
+    assert [row["numeral"] for row in rows.values()] == ["circle-check", "2", "3", "4"]
     assert rows["job"]["state"] == "done"
     assert rows["job"]["summary"] == "AI/ML Engineer · 72"
     assert rows["resume"]["state"] == "active"

@@ -6,7 +6,7 @@ import {
   ATTENTION_BADGE_LABEL,
 } from "@/components/attention-zone";
 import { useMutation } from "@tanstack/react-query";
-import { MoreHorizontal } from "lucide-react";
+import { ChevronsUp, Ellipsis } from "lucide-react";
 import { toast } from "sonner";
 
 import { DemonstrateSkillDialog } from "@/components/resume-health/demonstrate-skill-dialog";
@@ -38,6 +38,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { IconButton } from "@/components/icon-button";
+import { DeltaChip, DotMeter } from "@/components/visual";
 import {
   answerAsk,
   ApiError,
@@ -99,7 +100,7 @@ export const EVIDENCE_LABELS = Object.fromEntries(
 ) as Record<EvidenceLevel, string>;
 
 export const LOCKED_BTN =
-  "disabled:pointer-events-auto aria-disabled:pointer-events-auto";
+  "disabled:pointer-events-auto aria-disabled:pointer-events-auto data-disabled:pointer-events-auto";
 
 export type FindingCardShared = {
   data: ResumeData;
@@ -306,7 +307,7 @@ function FindingOverflow({
           render={
             <IconButton
               label="More actions for this issue"
-              icon={<MoreHorizontal className="size-4" />}
+              icon={<Ellipsis className="size-4" />}
               size="icon-xs"
             />
           }
@@ -519,7 +520,8 @@ export function SuggestionEditor({
         <Button
           size="sm"
           variant="tonal"
-          disabled={!canApply || apply.isPending || locked}
+          pending={apply.isPending}
+          disabled={!canApply || locked}
           title={locked ? STALE_APPLY_HINT : undefined}
           focusableWhenDisabled
           className={
@@ -540,8 +542,14 @@ function LevelChip({ finding }: { finding: LintFinding }) {
   const name = levelNameOf(finding);
   if (!name) return null;
   const label = EVIDENCE_LABELS[name as EvidenceLevel] ?? name;
+  // Place on the ladder: the list runs best first, so direct fills 5 and unaddressed 1.
+  const at = EVIDENCE_LEVELS.findIndex((level) => level.value === name);
+  // A level the ladder does not know has no place on it: the word alone, never a full meter.
+  if (at < 0) return <span className="text-muted-foreground text-label-medium">{label}</span>;
+  const filled = EVIDENCE_LEVELS.length - at;
   return (
-    <span className="text-muted-foreground text-body-small">{label}</span>
+    <DotMeter name="How well it is shown" filled={filled} total={EVIDENCE_LEVELS.length}
+      word={label} className="text-muted-foreground" />
   );
 }
 
@@ -565,9 +573,14 @@ function CollapsedRow({
     <div className="flex min-w-0 flex-wrap items-start gap-2">
       <div className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left">
         <button type="button" onClick={onExpand} aria-expanded={false} className="text-left">
-          <span className="text-muted-foreground min-w-0 text-body-small break-words">
-            {finding.label} · <LevelChip finding={finding} />
-            {finding.zone === "hot" && <> · {ATTENTION_BADGE_LABEL}</>}
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-muted-foreground min-w-0 text-body-small break-words">{finding.label}</span>
+            <LevelChip finding={finding} />
+            {finding.zone === "hot" && (
+              <span className="inline-flex h-5 items-center gap-1 rounded-full bg-secondary-container px-2 text-label-medium text-on-secondary-container">
+                <ChevronsUp className="size-3" aria-hidden="true" />{ATTENTION_BADGE_LABEL}
+              </span>
+            )}
           </span>
         </button>
         {quote ? (
@@ -620,7 +633,7 @@ export function FindingGroupHeader({
       <h3 className="text-title-small">
         {title} <span className="text-body-medium text-muted-foreground">({findings.length})</span>
       </h3>
-      {points > 0 && <p className="text-muted-foreground text-body-small">Up to +{points} points</p>}
+      {points > 0 && <p><DeltaChip value={points} prefix="up to" /></p>}
       {coaching && (
         <p className="text-muted-foreground max-w-[65ch] text-body-medium">
           {coaching.why} {coaching.how}
@@ -939,9 +952,8 @@ export function AskCard({
           <Button
             size="sm"
             variant="tonal"
-            disabled={
-              context.length === 0 || draft.isPending || locked
-            }
+            pending={draft.isPending}
+            disabled={context.length === 0 || locked}
             title={locked ? STALE_APPLY_HINT : undefined}
             // Disables itself while writing: a native `disabled` drops focus.
             focusableWhenDisabled
@@ -1243,7 +1255,7 @@ function FailedGate({
           className={cn(
             "shrink-0",
             gate.tier === "fatal"
-              ? "bg-destructive/10 text-destructive"
+              ? "bg-error-container text-on-error-container"
               : "bg-warning-container text-on-warning-container",
           )}
         >

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef } from "react";
-import { ArrowDown, ArrowUp, ArrowUpToLine, MoreHorizontal, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpToLine, Ellipsis, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -97,7 +97,7 @@ export function BulletList({
                           // tells a screen-reader user nothing about WHICH bullet it acts on.
                           aria-label={`More actions for ${noun} ${i + 1}`}
                         >
-                          <MoreHorizontal />
+                          <Ellipsis />
                         </Button>
                       }
                     />

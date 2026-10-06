@@ -111,7 +111,8 @@ def test_save_button_keeps_focus_when_it_disables_itself():
     # itself on every click. `disabled:` matches only the native attribute, so
     # the dimming is restated on `data-disabled`.
     assert "focusableWhenDisabled" in _SAVE_BUTTON
-    assert "data-disabled:opacity-50" in _SAVE_BUTTON
+    # The dimming is the Button's own (data-disabled), not restated here.
+    assert "data-disabled:opacity-50" not in _SAVE_BUTTON
 
 
 _BASE = _read("components/resume-editor/editor-body.tsx")
@@ -593,10 +594,12 @@ def test_selected_zoom_preset_leads_with_a_check():
 
 def test_save_button_keeps_its_label_while_saving():
     # "Saving…" in the button widened it from 52 to 89px mid-click. The header
-    # status line carries the words; the button keeps "Save" and spins.
+    # status line carries the words; the button keeps "Save" and spins through the Button's own `pending`
+    # (spinner + aria-busy), not a hand-drawn Loader2.
     assert "Saving…" not in _SAVE_BUTTON
-    assert '{pending && <Loader2 className="animate-spin" aria-hidden="true" />}' in _SAVE_BUTTON
-    assert re.search(r"/>\}\s*Save\s*</Button>", _SAVE_BUTTON)
+    assert "pending={pending}" in _SAVE_BUTTON
+    assert "Loader2" not in _SAVE_BUTTON
+    assert re.search(r">\s*Save\s*</Button>", _SAVE_BUTTON)
 
 
 def test_job_page_preview_box_has_no_hidden_fill():

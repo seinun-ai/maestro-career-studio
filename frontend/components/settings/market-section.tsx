@@ -86,7 +86,7 @@ export function MarketSection() {
                   id="market-select"
                   aria-labelledby="market-select-label"
                   aria-describedby="market-select-hint"
-                  data-pending={save.isPending ? "" : undefined}
+                  data-pending={save.isPending ? "true" : undefined}
                 >
                   <SelectValue>{current ? current.label : selected}</SelectValue>
                 </SelectTrigger>

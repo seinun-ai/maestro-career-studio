@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal } from "lucide-react";
+import { Ellipsis } from "lucide-react";
 import { toast } from "sonner";
 
 import { BaseResumeGallery } from "@/components/base-resumes/base-resume-gallery";
@@ -112,7 +112,17 @@ export default function BaseResumesListPage() {
         { method: "POST" },
       ),
     onSuccess: (_data, vars) => {
-      toast.success(vars.archived ? "Resume restored" : "Resume archived");
+      if (vars.archived) toast.success("Resume restored");
+      else
+        toast.success("Resume archived", {
+          action: {
+            label: "Undo",
+            onClick: () =>
+              apiFetch<BaseResumeDetail>(`/api/base-resumes/${vars.slug}/unarchive`, { method: "POST" })
+                .then(() => invalidate())
+                .catch((err: Error) => toast.error(couldnt("undo the archive", err))),
+          },
+        });
       invalidate();
     },
     onError: (err: Error, vars) =>
@@ -303,7 +313,7 @@ function CardMenu({
       <DropdownMenuTrigger
         render={
           <Button ref={triggerRef} size="icon-sm" variant="ghost" aria-label={`Actions for ${name}`}>
-            <MoreHorizontal className="size-4" />
+            <Ellipsis className="size-4" />
           </Button>
         }
       />

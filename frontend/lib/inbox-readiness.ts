@@ -3,7 +3,7 @@
 import type { ProposalStatus } from "./types";
 
 export type Readiness = { tailored: boolean | null; knockout: string | null; to_check: number };
-export type ReadinessMark = { text: string; tone: "muted" | "warning" };
+export type ReadinessMark = { text: string; tone: "warning" | "error" };
 
 const KNOCKOUT_WORDS: Record<string, string> = {
   work_authorization: "work authorization",
@@ -23,13 +23,19 @@ export function isReady(r: Readiness | null | undefined): boolean {
 export function readinessMarks(r: Readiness | null | undefined): ReadinessMark[] {
   if (!r) return [];
   const marks: ReadinessMark[] = [];
-  if (r.tailored != null) marks.push({ text: r.tailored ? "Tailored" : "Not tailored", tone: "muted" });
   if (r.knockout) {
     const word = KNOCKOUT_WORDS[r.knockout];
-    marks.push({ text: word ? `Knock-out: ${word}` : "Knock-out", tone: "warning" });
+    marks.push({ text: word ? `Knock-out: ${word}` : "Knock-out", tone: "error" });
   }
   if (r.to_check > 0) marks.push({ text: `${r.to_check} to check`, tone: "warning" });
   return marks;
+}
+
+/** The three readiness steps as a meter: tailored, no knock-out, answers checked. Null without readiness. */
+export function readinessSteps(r: Readiness | null | undefined): { done: number; total: 3 } | null {
+  if (!r) return null;
+  const done = [r.tailored === true, r.knockout == null, r.to_check === 0].filter(Boolean).length;
+  return { done, total: 3 };
 }
 
 /** Ready rows first; each group keeps the order it came in (the user's chosen sort). */

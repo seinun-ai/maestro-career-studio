@@ -4,10 +4,12 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { CardResolution } from "@/components/chat/card-resolution";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { applyResumeEdits, setChatCardState } from "@/lib/api";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import type {
@@ -15,6 +17,8 @@ import type {
   ChatProposal,
   UUID,
 } from "@/lib/types";
+
+const AiIcon = CONCEPT_ICONS.ai;
 
 /**
  * Staged extraction result (upload → project bullets). Never added silently —
@@ -62,9 +66,10 @@ export function ProposalCard({
   const targetLabel = proposal.target_kind === "base" ? baseName : "the tailored resume";
 
   return (
-    <div className="rounded-corner-md border border-dashed px-3 py-2">
+    <div className={`rounded-corner-md border border-dashed px-3 py-2${resolution ? " opacity-80" : ""}`}>
       <div className="flex items-center gap-2 text-body-medium">
-        <Badge variant="outline">
+        <Badge variant="outline" className="gap-1">
+          <AiIcon className="size-3" aria-hidden="true" />
           Suggested project
         </Badge>
         <span className="font-medium">{proposal.project.name}</span>
@@ -82,9 +87,7 @@ export function ProposalCard({
       </ul>
       <div className="mt-2 flex justify-end gap-2">
         {resolution ? (
-          <span className="text-muted-foreground text-body-small">
-            {resolution === "merged" ? "Added" : "Discarded"}
-          </span>
+          <CardResolution done={resolution === "merged"} doneWord="Added" />
         ) : (
           <>
             <Button

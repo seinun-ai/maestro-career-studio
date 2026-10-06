@@ -49,7 +49,7 @@ def test_recent_runs_reads_latest_and_fails_quietly():
     assert "No runs yet. Set one up on Automations." in _RUNS
     assert "Couldn't load recent runs." in _RUNS
     assert "LoadErrorState" not in _RUNS
-    assert "countsLine(" in _RUNS and "outcomeWord(" in _RUNS and "agentDisplayName(" in _RUNS
+    assert "countsLine(" in _RUNS and "<RunOutcome" in _RUNS and "agentDisplayName(" in _RUNS
 
 
 def test_recent_run_links_keep_the_leave_guard_and_inbox_sequence():

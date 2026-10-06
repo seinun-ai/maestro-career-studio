@@ -4,24 +4,14 @@ import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRoleLabel } from "@/components/role-category-picker";
 import { Info } from "lucide-react";
 
-import { humanizeEnum } from "@/components/job-extracted-fields";
+import { humanizeEnum, SkillGroup, type ExtractedSkill } from "@/components/job-extracted-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Job } from "@/lib/types";
 
-interface ExtractedSkill {
-  skill_name: string;
-  requirement_level?: string;
-}
-
-function skillVariant(
-  level: string | undefined,
-): "default" | "secondary" | "outline" {
-  if (level === "required") return "default";
-  if (level === "preferred") return "secondary";
-  return "outline";
-}
+// Cap on badges across all three groups; the rest read as "+N more" under the group that holds them.
+const SKILL_CAP = 24;
 
 export function JobExtractionSummary({
   job,
@@ -32,8 +22,13 @@ export function JobExtractionSummary({
 }) {
   const skills =
     (job.extracted_json?.skills as ExtractedSkill[] | undefined) ?? [];
-  const visible = skills.slice(0, 24);
-  const extra = skills.length - visible.length;
+  const required = skills.filter((x) => x.requirement_level === "required");
+  const preferred = skills.filter((x) => x.requirement_level === "preferred");
+  const mentioned = skills.filter(
+    (x) => x.requirement_level !== "required" && x.requirement_level !== "preferred",
+  );
+  const preferredLimit = Math.max(0, SKILL_CAP - required.length);
+  const mentionedLimit = Math.max(0, preferredLimit - preferred.length);
   // Words, never the stored keys (`ai_ml_engineer`, `full_time`, `on_site`).
   const roleLabelOf = useRoleLabel();
 
@@ -74,21 +69,11 @@ export function JobExtractionSummary({
           {job.location && <Badge variant="outline">{job.location}</Badge>}
         </div>
 
-        {visible.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {visible.map((skill) => (
-              <Badge
-                key={skill.skill_name}
-                variant={skillVariant(skill.requirement_level)}
-              >
-                {skill.skill_name}
-              </Badge>
-            ))}
-            {extra > 0 && (
-              <span className="text-muted-foreground self-center text-body-small">
-                +{extra} more
-              </span>
-            )}
+        {skills.length > 0 && (
+          <div className="space-y-3">
+            <SkillGroup title="Required" variant="default" skills={required} limit={SKILL_CAP} />
+            <SkillGroup title="Preferred" variant="tonal" skills={preferred} limit={preferredLimit} />
+            <SkillGroup title="Mentioned" variant="outline" skills={mentioned} limit={mentionedLimit} />
           </div>
         )}
 

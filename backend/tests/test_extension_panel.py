@@ -143,7 +143,9 @@ from tests.extension_panel_harness import (
     _armed_entry,
     _by_class,
     _gets,
+    _icons,
     _load,
+    _numeral,
     _PANEL_FAKES_JS,
     _panel_script,
     _rail_rows,
@@ -870,10 +872,13 @@ def test_the_header_link_points_at_the_web_app_and_never_at_nothing(booted):
     [link] = _by_class(booted["opened"]["identity"], "linkish")
     # No job and no application yet, so the link can only offer the app itself.
     assert link["href"] == APP_URL
-    assert link["text"] == "Open in Maestro CS ↗"
-    # The accessible name says the destination in full. Beside a job title this
-    # matters more than it did beside the deleted wordmark.
-    assert link["attrs"]["aria-label"] == "Open in Maestro CS"
+    assert _text(link) == "Open in Maestro CS"
+    # The leaves-this-surface mark is an icon, never a text arrow.
+    assert _icons(link) == ["external-link"]
+    # The accessible name says the destination in full, and that it opens a new
+    # tab. Beside a job title this matters more than it did beside the deleted
+    # wordmark.
+    assert link["attrs"]["aria-label"] == "Open in Maestro CS (opens in a new tab)"
 
 
 def test_the_panel_says_its_own_name_nowhere_because_chrome_already_does(booted):
@@ -931,7 +936,9 @@ def test_the_rail_renders_four_stages_and_marks_the_one_you_are_on(booted):
     # carries a stage body, and reading the subtree whole would make this
     # assertion about the Job preview's labels as well.
     assert [_text(_by_class(row, "stg-row")[0]) for row in rows] == [
-        "1 Job", "2 Resume", "3 Fill", "4 Track"]
+        "1 Job", "2 Resume Not yet", "3 Fill Not yet", "4 Track Not yet"]
+    # A locked row says it in visible words with its icon, not in an aria-label alone.
+    assert [_icons(_by_class(row, "stg-state")[0]) for row in rows[1:]] == [["lock"]] * 3
     assert [row["class"] for row in rows] == [
         "stg active", "stg locked", "stg locked", "stg locked"]
     # Four steps in order, so the rail is a LIST — the position and the count
@@ -942,9 +949,10 @@ def test_the_rail_renders_four_stages_and_marks_the_one_you_are_on(booted):
     # am I", and a screen reader gets none of the border.
     assert [row["attrs"].get("aria-current") for row in rows] == [
         "step", None, None, None]
-    # …and the tick, the numeral and the greying carry their state in words.
+    # …and the tick, the numeral and the greying carry their state in words: the active row's numeral is
+    # named, and a locked row's words are visible text (above), so its numeral needs no name of its own.
     assert [_by_class(row, "stg-num")[0]["attrs"].get("aria-label") for row in rows] == [
-        "current step", "not yet", "not yet", "not yet"]
+        "current step", None, None, None]
 
 
 def test_the_footer_carries_one_primary_and_it_refuses_an_empty_page(booted):
@@ -1063,6 +1071,8 @@ def test_a_settings_ask_that_answers_nothing_boots_the_panel_on_defaults(tmp_pat
     # page loaded, the rail is live, and the fill mode narrowed to the assist
     # pass rather than to nothing.
     assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Not saved yet"
+    # A neutral outline, a fact and not a warning.
+    assert _by_class(out["regions"]["identity"], "chip")[0]["class"] == "chip outline"
     assert _rows(_rail_rows(out))["job"]["state"] == "active"
     # No appUrl, so no link — the one thing the failed ask actually costs, and
     # it is already an absence rather than a sentence.
@@ -1316,7 +1326,7 @@ def test_every_rail_state_says_itself_in_words(rail):
     assert _states(rail) == {"active", "done", "skipped", "locked"}
     assert _plain_labels(rail) == {
         "active": "current step", "done": "done",
-        "skipped": "not needed", "locked": "not yet",
+        "skipped": "Not needed", "locked": "Not yet",
     }
     # BOTH WORDS on the one row that is both, because a reader told only
     # "current step" hears an unfinished last step and a reader told only
@@ -1645,6 +1655,22 @@ def test_the_unreachable_line_is_one_plain_sentence_and_never_login_shaped(appli
 
 
 
+@pytest.mark.parametrize("status,word,role", [
+    ("applied", "Applied", "role-primary"), ("rejected", "Rejected", "role-error"),
+    ("offered", "Offer", "role-tertiary"), ("draft", "Draft application", "role-muted")])
+def test_the_identity_chip_wears_the_statuss_colour_role(tmp_path, status, word, role):
+    out = _load(tmp_path, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": status}}),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf", "status": status}),
+    }, replies={"read_settings": SETTINGS_REPLY,
+                "panel_frame0": _reply({"tier": "A", "form": True, "score": 3})})
+    [chip] = _by_class(out["regions"]["identity"], "chip")
+    assert (chip["text"], chip["class"]) == (word, f"chip {role}")
+
+
 def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     """The whole load, through the real render driver: the match names the job,
     the library supplies the default base, `latest_scores` supplies both rings,
@@ -1672,12 +1698,14 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     # line only Refresh shares.
     [link] = _by_class(out["regions"]["identity"], "linkish")
     assert link["href"] == f"{APP_URL}/applications/app-1"
-    assert link["text"] == "Open application ↗"
+    assert _text(link) == "Open application"
+    assert _icons(link) == ["external-link"]
     # The visible label is short; the accessible name is not allowed to be, and
     # this is the state where it does the work. Beside a job title and a
     # company, "Open application" alone reads as the POSTING'S apply page —
     # the one destination this link never has.
-    assert link["attrs"]["aria-label"] == "Open this application in Maestro CS"
+    assert link["attrs"]["aria-label"] == (
+        "Open this application in Maestro CS (opens in a new tab)")
     # ITS OWN LINE, and this is the assertion that keeps it off `row1`. Beside
     # the chip was the first home and a measured mistake: `.who` and a nowrap
     # link share one axis there, so at 400px — a NORMAL side-panel width — the
@@ -1688,7 +1716,7 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     assert last["class"] == "id-foot"
     assert [kid["class"] for kid in last["children"]] == ["refresh", "linkish"]
     [row1] = _by_class(identity, "row1")
-    assert [kid["class"] for kid in row1["children"]] == ["who", "chip app"]
+    assert [kid["class"] for kid in row1["children"]] == ["who", "chip role-muted"]
     # Every endpoint is the widget's, unchanged — a panel that invented a route
     # would 404 in the browser and pass here.
     paths = [msg["path"] for msg in out["sent"] if msg["type"] == "api"]
@@ -2301,7 +2329,7 @@ main(async () => {
   // action is the footer's status segment (a bound application's reopened Job
   // row has no primary), and its PATCH fails, so the rail stays where it was.
   withClass(REGIONS.foot, "status-seg")[0].children
-    .find((button) => button.textContent === "Applied").click();
+    .find((button) => button.allText === "Applied").click();
   const duringRun = regions();
   release();
   await settle();
@@ -2409,8 +2437,8 @@ def test_reopening_shows_that_stages_body_without_moving_the_rail(revisited):
         None, None, "step", None]
     # …and the tick did not move either. Reopening is not rewinding: nothing
     # about the application changed because the user looked at a step again.
-    assert [_by_class(row, "stg-num")[0]["text"] for row in rail_rows] == [
-        "✓", "✓", "3", "4"]
+    assert [_numeral(row) for row in rail_rows] == [
+        "circle-check", "circle-check", "3", "4"]
 
 
 def test_pressing_an_open_header_again_closes_it(revisited):
@@ -2456,15 +2484,16 @@ def test_the_reopen_control_is_a_real_button_that_names_what_it_opened(revisited
     assert "aria-controls" not in closed["attrs"]
     # The row still reads as the row: the numeral, its state in words, and the
     # name are inside the button rather than replaced by it.
-    assert _text(button).startswith("✓ Job")
+    assert _icons(_by_class(button, "stg-num")[0]) == ["circle-check"]
+    assert _text(button).startswith("Job")
     assert _by_class(button, "stg-num")[0]["attrs"]["aria-label"] == "done"
     # And the state is VISIBLE too, because `aria-expanded` reaches nobody
     # looking at the screen: a done row that opens looks exactly like one that
     # does not until a mark says so, and "hover to find out" is not something a
     # keyboard can do. Hidden from the reader, which has the attribute — the
     # better version of the same sentence.
-    assert _by_class(button, "stg-caret")[0]["text"] == "▾"
-    assert _by_class(closed, "stg-caret")[0]["text"] == "▸"
+    assert _icons(_by_class(button, "stg-caret")[0]) == ["chevron-down"]
+    assert _icons(_by_class(closed, "stg-caret")[0]) == ["chevron-right"]
     assert _by_class(button, "stg-caret")[0]["attrs"]["aria-hidden"] == "true"
 
 
@@ -2778,7 +2807,7 @@ loadModules();
 const opener = (key) => findById(REGIONS.rail, `stg-open-${key}`);
 const statusButton = (label) => withClass(REGIONS.foot, "status-seg")
   .flatMap((segment) => segment.children)
-  .filter((button) => button.textContent === label)[0];
+  .filter((button) => button.allText === label)[0];
 main(async () => {
   await settle();
   opener("resume").click();
@@ -3087,7 +3116,7 @@ def test_refresh_is_disabled_while_a_fill_runs_and_never_cancels_it(tmp_path):
     # …and its report lands, which a bumped generation would have discarded.
     [note] = _by_class(out["finished"]["foot"], "note")
     assert note["text"] == "Fill finished. Review before you submit."
-    assert _rows(_rail_rows({"regions": out["finished"]}))["fill"]["numeral"] == "✓"
+    assert _rows(_rail_rows({"regions": out["finished"]}))["fill"]["numeral"] == "circle-check"
     assert not _refresh_button(out["finished"]["identity"])["disabled"]
 
 

@@ -62,6 +62,8 @@ export interface Job {
   /** Who filed the newest proposal: "you", an MCP client's name, or null.
    *  Optional: an older backend does not send it (reads as unknown). */
   proposal_proposed_by?: string | null;
+  /** The best base-resume score, list endpoint only; null when never scored. */
+  best_ats_score?: number | null;
 }
 
 export interface JobCreate {
@@ -127,6 +129,8 @@ export interface ApplicationSummary {
   job_location: string | null;
   /** Joined like the job fields. Optional: a backend that predates it omits it. */
   base_resume_name?: string | null;
+  /** Newest tailored score, else the base resume's; list endpoint only, null when unscored. */
+  ats_score?: number | null;
 }
 
 export type KnockoutStatus =

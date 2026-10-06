@@ -293,8 +293,8 @@ def test_every_proposal_surface_names_who_filed_it():
     row = _SECTION[_SECTION.index("function ProposalRow(") :]
     assert "const byLine = proposalByLine(proposal.proposed_by, proposal.status);" in row
     assert 'const meta = [byLine, formatTimeAgo(proposal.created_at)].filter(Boolean).join(" · ");' in row
-    # It truncates in a narrow row: the whole of it on hover.
-    assert '<div className="text-muted-foreground truncate text-body-small" title={meta}>' in row
+    # The line is a chip and a time; the whole sentence stays as its title, for the narrow row.
+    assert 'title={meta}' in row and "<ActorChip" in row and "agentDisplayName(proposal.proposed_by)" in row
     assert '<CardTitle>{proposalByLine(data.proposed_by, data.status) ?? "Agent inbox"}</CardTitle>' in _PANEL
     assert "Proposed {formatShortDate(data.created_at)}" in _PANEL and '<Fact label="Proposed">' not in _PANEL
     assert "? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;" in _JOB
@@ -431,7 +431,8 @@ def test_a_row_checkbox_names_its_job():
 
 def test_queue_and_accept_say_queued():
     """Decision 19: the result of Accept is a Queued chip, so its words say Queued."""
-    assert 'toast.success("Queued. A connected agent can apply to it now.")' in _JOB
+    assert 'toast.success("Queued. A connected agent can apply to it now.")' in _TRIAGE
+    assert "Queued. A connected agent" not in _JOB
     assert "Accepted —" not in _JOB
     assert '{promote.isPending ? "Queueing…" : "Queue in Agent inbox"}' in _JOB
     assert 'label="Queue in Agent inbox"' in _TRACKER
@@ -474,8 +475,8 @@ def _sidebar() -> str:
 def test_the_sidebar_names_the_inbox_and_the_assistant():
     """A1 and decision 5: the inbox item and the in-app chat's item."""
     sidebar = _sidebar()
-    assert '{ href: "/proposals", label: "Agent inbox", icon: Bot },' in sidebar
-    assert '{ href: "/chat", label: "Assistant", icon: MessageSquare },' in sidebar
+    assert '{ href: "/proposals", label: "Agent inbox", icon: CONCEPT_ICONS.agentInbox },' in sidebar
+    assert '{ href: "/chat", label: "Assistant", icon: CONCEPT_ICONS.assistant },' in sidebar
     for old in ('label: "Agent Proposals"', 'label: "Chat"'):
         assert old not in sidebar, old
 
@@ -608,7 +609,7 @@ def test_bulk_actions_use_only_the_rows_shown():
 
 
 def test_a_row_acted_on_alone_leaves_the_selection():
-    done = _SECTION[_SECTION.index("onDone: (ids) => {") :]
+    done = _SECTION[_SECTION.index("onDone: (ids, became) => {") :]
     done = done[: done.index("\n    },\n")]
     assert "for (const id of ids) copy.delete(id);" in done
 
@@ -646,7 +647,7 @@ def test_row_actions_keep_focus_while_they_run():
 def test_a_row_that_leaves_its_lane_hands_focus_on():
     """The next row's same control, else the previous row's, else the lane."""
     assert (
-        'next: focusSuccessor(from.closest(\'[data-slot="card"]\'), `[data-row-action="${action}"]`),'
+        'next: focusSuccessor(from.closest(".collapse-exit"), `[data-row-action="${action}"]`),'
         in _SECTION
     )
     effect = _SECTION[_SECTION.index("const l = leaving.current;") :]
@@ -664,12 +665,12 @@ def test_the_bulk_bar_hands_focus_to_the_lane_when_it_leaves():
     assert '<Lane ref={toReview} title={`To review · ' in _SECTION
     bar = _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
     assert bar.count("focusableWhenDisabled") == 3
-    assert bar.count("data-disabled:pointer-events-none data-disabled:opacity-50") == 3
+    assert bar.count("data-disabled:pointer-events-none data-disabled:opacity-50") == 2  # Queue spins via pending
 
 
 def test_the_skip_dialog_keeps_focus_and_hands_it_on():
     dialog = _TRIAGE[_TRIAGE.index("export function DeclineDialog(") : _TRIAGE.index("export function BulkBar(")]
-    assert dialog.count("focusableWhenDisabled") == 2  # Cancel and Skip
+    assert dialog.count("focusableWhenDisabled") == 1  # Cancel; Skip is `pending`, which keeps focus itself
     assert "<DialogContent size=\"sm\" finalFocus={finalFocus}>" in dialog
     final = _SECTION[_SECTION.index("finalFocus={() => {") :]
     final = final[: final.index("}}")]
@@ -770,7 +771,7 @@ def test_the_job_page_keeps_a_question_with_the_jobs_application():
     for part in ('status: "pending_review",', "applicationId: asked.data?.application ? undefined : application?.id,",
                  "disabled={triagePending || !asked.data}", "triaged.current = true;"):
         assert part in job_keep, part
-    assert 'if (became === "pending_review") toast.success("Kept. It\'s back in To review.");' in _JOB
+    assert 'toast.success("Kept. It\'s back in To review.")' in _TRIAGE and "Kept. It's back" not in _JOB
 
 
 def test_keep_it_patches_to_review_without_consent():
@@ -801,7 +802,7 @@ def test_the_visit_time_reaches_every_row_and_unknown_readiness_shows_no_marks()
     row_props = _block(_SECTION, "const rowProps = {", "\n  };")
     assert re.search(r"^    since,$", row_props, re.M)
     assert "since: string | null;" in _row()
-    assert "if (marks.length === 0) return null;" in _MARKS
+    assert "if (!steps) return null;" in _MARKS
     new_mark = _block(_row(), "{isNew(proposal.created_at, since) ? (", ") : null}")
     assert 'aria-hidden="true"' in new_mark and "New" in new_mark
 
@@ -848,3 +849,37 @@ def test_the_consent_line_is_said_once_on_the_inbox():
     empty = _SECTION[_SECTION.index("if (items.length === 0) {") : _SECTION.index("const rowProps")]
     assert "Nothing is submitted without your yes." not in empty
     assert "<p>Jobs your connected agents found. Nothing is submitted without your yes.</p>" in _PAGE
+
+
+def test_readiness_steps_node():
+    from tests.node_ts import run_node_test
+
+    result = run_node_test("lib/inbox-readiness.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_inbox_rows_use_actor_score_and_readiness_visuals():
+    src = _SECTION
+    assert "ActorChip" in src and "ScoreBar" in src
+    assert "DotMeter" in _MARKS
+    assert "ATS score ${score}" not in src and "· ATS score" not in src
+    # D5: the status chip is hidden where every row of the lane shares one status.
+    assert 'lane === "history" || lane === "needs_you"' in src
+
+
+def test_empty_inbox_top_collapses():
+    assert "Nothing new since your last visit" in _read("components/proposals/arrivals-strip.tsx")
+
+
+def test_run_outcome_is_a_glyph_and_a_word():
+    out = _read("components/proposals/run-outcome.tsx")
+    assert all(f"CONCEPT_ICONS.{c}" in out for c in ("done", "warning", "fails")) and "CircleAlert" not in out and "outcomeWord(" in out
+    assert not re.search(r"^import ", _read("lib/agent-runs.ts"), re.M)
+
+
+def test_an_untailored_row_says_so_beside_the_meter():
+    assert 'readiness?.tailored === false ? <span className="text-muted-foreground text-label-small">Not tailored</span>' in _MARKS
+    assert "Not tailored" not in _MARKS.split("readiness?.tailored === false", 1)[0]
+    # Long agent names shrink and truncate inside the meta line; the bar beside the cap sentence is hidden from AT.
+    assert 'className="min-w-0 shrink"' in _SECTION
+    assert 'aria-hidden="true" className="inline-flex"' in _read("components/proposals/cap-today.tsx")

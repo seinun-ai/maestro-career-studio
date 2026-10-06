@@ -34,7 +34,7 @@
     // Neutral: an application's resume may be tailored or the base unchanged
     // (track-this), and the panel cannot tell which.
     noPdf: "This application's resume has no PDF yet.",
-    link: "Tailor in Maestro CS ↗",
+    link: "Tailor in Maestro CS",
   };
 
   /** Why the base is off beside an application: one sentence, by who bound
@@ -79,7 +79,10 @@
    * gap-analysis route, which needs a session the panel would have to create. */
   function fitLink({ facts, build }, label) {
     if (!facts.appUrl || !facts.job?.id) return null;
-    const anchor = build.node("a", null, label);
+    // The leaves-this-surface mark is an icon beside the words; "opens in a new tab" rides the accessible name,
+    // like the web app's NewTabLink.
+    const anchor = build.attach(build.node("a", null, label), build.icon("external-link", { size: 12 }));
+    anchor.setAttribute("aria-label", `${label} (opens in a new tab)`);
     anchor.href = `${facts.appUrl}/jobs/${facts.job.id}?tab=fit`;
     anchor.target = "_blank";
     anchor.rel = "noopener noreferrer";
@@ -109,7 +112,7 @@
    * Tailor is open. ONE region, so `aria-controls` has one thing to point at. */
   function tailorOptions(ctx) {
     const { node, attach } = ctx.build;
-    const custom = fitLink(ctx, "Tailor in Maestro CS ↗");
+    const custom = fitLink(ctx, WORDS.link);
     const options = node("div");
     options.id = TAILOR_OPTIONS_ID;
     return attach(options,

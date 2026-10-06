@@ -133,7 +133,8 @@ export default function NewApplicationPage() {
       <div className="flex flex-wrap items-center gap-3">
         <Button
           onClick={() => extract(undefined)}
-          disabled={disabled || busy || needsKey}
+          pending={busy}
+          disabled={disabled || needsKey}
           // Disables itself while saving: a disabled <button> drops focus
           // to <body> (dimmed on data-disabled, as Save is).
           focusableWhenDisabled
