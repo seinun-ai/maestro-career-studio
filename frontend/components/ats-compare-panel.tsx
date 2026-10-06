@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, MoveRight, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,65 +16,78 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ApiError, getAtsCompare, runAtsScoreTarget } from "@/lib/api";
+import { DeltaChip } from "@/components/visual";
 import { SUBSCORE_LABELS, fixHintLabel, placementLabel } from "@/lib/ats-words";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
+import { formatDelta } from "@/lib/visual";
 import type { Application, AtsSkillRow } from "@/lib/types";
 
-/** Signed subscore delta (0–1 float) as a green/red bar with a ±points label. */
+/** Signed subscore delta (0–1 float): a ±points label and a bar growing from a centre line, right for a gain, left for a loss. Zero is neutral: no bar. */
 function DeltaBar({ label, value }: { label: string; value: number }) {
   const pts = value * 100;
-  const positive = pts >= 0;
-  const width = Math.min(Math.abs(pts), 100);
+  const { text, sign } = formatDelta(pts);
+  const Icon = CONCEPT_ICONS[sign === "up" ? "increase" : sign === "down" ? "decrease" : "none"];
+  const tone = sign === "up" ? "text-success" : sign === "down" ? "text-destructive" : "text-muted-foreground";
+  const width = Math.min(Math.abs(pts) / 2, 50);
   return (
     <div className="space-y-0.5">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-muted-foreground text-body-small">{label}</span>
-        <span
-          className={cn(
-            "text-label-medium tabular-nums",
-            positive ? "text-success" : "text-destructive",
-          )}
-        >
-          {positive ? "+" : ""}
-          {pts.toFixed(1)}
+        <span className={cn("inline-flex items-center gap-1 text-label-medium tabular-nums", tone)}>
+          <Icon aria-hidden="true" className="size-3 shrink-0 self-center" />
+          {text}
         </span>
       </div>
-      <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
-        <div
-          className={cn(
-            "h-full rounded-full transition-[width]",
-            positive ? "bg-success" : "bg-destructive",
-          )}
-          style={{ width: `${width}%` }}
-        />
+      <div className="bg-muted relative h-1.5 w-full overflow-hidden rounded-full">
+        <div className="bg-border absolute inset-y-0 left-1/2 w-px" />
+        {sign === "flat" ? null : (
+          <div
+            className={cn("absolute inset-y-0", sign === "up" ? "bg-success left-1/2" : "bg-destructive right-1/2")}
+            style={{ width: `${width}%` }}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-/** Compact before-and-after cell: matched → where; missing → what would fix it. */
-function SkillStateCell({ row }: { row: AtsSkillRow | null }) {
-  if (!row) {
-    return <span className="text-muted-foreground">—</span>;
-  }
-  const note = row.matched ? placementLabel(row.placement) : fixHintLabel(row.fix_hint);
+type Change = "gained" | "lost" | "same";
+
+const CHANGE = {
+  gained: { Icon: CONCEPT_ICONS.increase, word: "Gained", tone: "text-success" },
+  lost: { Icon: CONCEPT_ICONS.decrease, word: "Lost", tone: "text-destructive" },
+  same: { Icon: CONCEPT_ICONS.none, word: "Same", tone: "text-muted-foreground" },
+} as const;
+
+const CHANGE_ORDER: Record<Change, number> = { gained: 0, lost: 1, same: 2 };
+
+/** Missing before and matched after is a gain; the reverse a loss; anything else the same. */
+function changeOf(before: AtsSkillRow | null, after: AtsSkillRow | null): Change {
+  const was = !!before?.matched;
+  const is = !!after?.matched;
+  return !was && is ? "gained" : was && !is ? "lost" : "same";
+}
+
+function ChangeCell({ change }: { change: Change }) {
+  const { Icon, word, tone } = CHANGE[change];
   return (
-    <span className="inline-flex flex-wrap items-center gap-1.5">
-      {row.matched ? (
-        <Badge
-          variant="outline"
-          className="border-transparent bg-success-container text-on-success-container"
-        >
-          Matched
-        </Badge>
-      ) : (
-        <Badge variant="outline" className="text-muted-foreground">
-          Missing
-        </Badge>
-      )}
-      {note ? <span className="text-muted-foreground text-body-small">{note}</span> : null}
+    <span className={cn("inline-flex items-center gap-1.5", tone)}>
+      <Icon aria-hidden="true" className="size-4 shrink-0" />
+      {word}
     </span>
+  );
+}
+
+/** The after state's note: where a matched skill sits, or what would fix a missing one. */
+function SkillNowCell({ row }: { row: AtsSkillRow | null }) {
+  if (!row) return <span className="text-muted-foreground">—</span>;
+  const note = row.matched ? placementLabel(row.placement) : fixHintLabel(row.fix_hint);
+  return note ? (
+    <span className="text-muted-foreground text-body-small">{note}</span>
+  ) : (
+    <span className="text-muted-foreground">—</span>
   );
 }
 
@@ -167,7 +179,10 @@ export function AtsComparePanel({
   if (!data) return null;
 
   const deltaPts = data.delta.composite;
-  const deltaPositive = deltaPts >= 0;
+  // Gained first, then Lost, then Same; the sort is stable, so each group keeps the server's order.
+  const skillRows = data.skill_diff
+    .map((row) => ({ row, change: changeOf(row.before, row.after) }))
+    .sort((a, b) => CHANGE_ORDER[a.change] - CHANGE_ORDER[b.change]);
 
   return (
     <Card>
@@ -194,15 +209,7 @@ export function AtsComparePanel({
           </span>
           <MoveRight className="text-muted-foreground size-4 self-center" />
           <span>{data.tailored.composite.toFixed(1)}</span>
-          <span
-            className={cn(
-              "text-title-small",
-              deltaPositive ? "text-success" : "text-destructive",
-            )}
-          >
-            ({deltaPositive ? "+" : ""}
-            {deltaPts.toFixed(1)})
-          </span>
+          <DeltaChip value={deltaPts} unit="points" className="self-center" />
         </div>
 
         <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
@@ -220,26 +227,22 @@ export function AtsComparePanel({
             <TableHeader>
               <TableRow>
                 <TableHead>Skill</TableHead>
-                <TableHead>Before</TableHead>
-                <TableHead>After</TableHead>
+                <TableHead>Change</TableHead>
+                <TableHead>Now</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.skill_diff.map((row) => {
-                return (
-                  <TableRow key={row.jd_skill}>
-                    <TableCell className="font-medium whitespace-normal">
-                      {row.jd_skill}
-                    </TableCell>
-                    <TableCell className="whitespace-normal">
-                      <SkillStateCell row={row.before} />
-                    </TableCell>
-                    <TableCell className="whitespace-normal">
-                      <SkillStateCell row={row.after} />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {skillRows.map(({ row, change }) => (
+                <TableRow key={row.jd_skill}>
+                  <TableCell className="font-medium whitespace-normal">{row.jd_skill}</TableCell>
+                  <TableCell className="whitespace-normal">
+                    <ChangeCell change={change} />
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    <SkillNowCell row={row.after} />
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         ) : (

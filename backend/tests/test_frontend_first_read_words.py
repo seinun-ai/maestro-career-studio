@@ -30,7 +30,10 @@ def test_the_tracker_names_its_status_filter():
 
 def test_the_resume_tab_says_what_a_draft_lacks():
     panel = _read("components/application-panel.tsx")
-    assert '{pdfReady ? "PDF ready" : hasDraft ? "Not yet a PDF" : "Not started"}' in panel
+    # Two steps (Draft, PDF) carry the state; no sentence or badge repeats it.
+    assert '{pdfReady ? "PDF ready" : hasDraft ? "Not yet a PDF" : "Not started"}' not in panel
+    assert "<ResumeSteps" in panel and "CONCEPT_ICONS.done" in panel and "CONCEPT_ICONS.notRun" in panel
+    assert "No tailored resume yet. Start on the Score and tailor tab." in panel
 
 
 def test_dates_read_as_words():
@@ -64,3 +67,15 @@ def test_the_inbox_names_its_own_numbers():
     assert "Couldn't load the daily cap" not in cap and '"Retry loading' not in cap
     triage = _read("components/proposals/triage-actions.tsx")
     assert 'description: "This also deletes the screenshots your agent took.",' in triage
+
+
+def test_resume_tab_says_its_state_once():
+    src = _read("components/application-panel.tsx")
+    assert "Your PDF is ready." not in src and '"Not yet a PDF"' not in src
+
+
+def test_compare_shows_what_changed():
+    src = _read("components/ats-compare-panel.tsx")
+    for word in ("Gained", "Lost", "Same"):
+        assert f'"{word}"' in src or f">{word}<" in src
+    assert "formatDelta" in src or "DeltaChip" in src

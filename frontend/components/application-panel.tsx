@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  ChevronRight,
   Download,
   ExternalLink,
   FileOutput,
@@ -16,7 +17,6 @@ import { toast } from "sonner";
 import { AtsComparePanel } from "@/components/ats-compare-panel";
 import { useConfirm } from "@/components/confirm-dialog";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -39,6 +39,7 @@ import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { Application, JobDetail, Referral, RenderResult } from "@/lib/types";
@@ -280,6 +281,30 @@ export function ApplicationDetailsMenu({
   );
 }
 
+/** Draft, then PDF: each step a done or not-run icon with its word; the wrapper's label says both in one sentence. */
+function ResumeSteps({ hasDraft, pdfReady }: { hasDraft: boolean; pdfReady: boolean }) {
+  const step = (done: boolean, word: string) => {
+    const Icon = done ? CONCEPT_ICONS.done : CONCEPT_ICONS.notRun;
+    return (
+      <span className="inline-flex items-center gap-1">
+        <Icon aria-hidden="true" className={done ? "size-4 text-success" : "size-4 text-muted-foreground"} />
+        {word}
+      </span>
+    );
+  };
+  return (
+    <p
+      role="img"
+      aria-label={`Draft ${hasDraft ? "done" : "not started"}. PDF ${pdfReady ? "ready" : "not created yet"}`}
+      className="text-muted-foreground flex items-center gap-1.5 text-body-medium"
+    >
+      {step(hasDraft, "Draft")}
+      <ChevronRight aria-hidden="true" className="size-4" />
+      {step(pdfReady, "PDF")}
+    </p>
+  );
+}
+
 export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
   const qc = useQueryClient();
   const [previewVersion, setPreviewVersion] = useState(0);
@@ -309,12 +334,6 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
   const pdfFilename =
     app.pdf_path?.split(/[\\/]/).pop() ?? "tailored-resume.pdf";
 
-  const status = pdfReady
-    ? "Your PDF is ready."
-    : hasDraft
-      ? "Draft ready. Create a PDF to preview it."
-      : "No tailored resume yet. Start on the Score and tailor tab.";
-
   return (
     <div className="space-y-4">
       {/* The ONE before/after compare surface, next to the artifact it
@@ -326,11 +345,8 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
           <div className="space-y-1">
             {/* Not "Tailored": Use resume as is and Mark applied put the base resume here unchanged. */}
             <CardTitle>Resume for this job</CardTitle>
-            <p className="text-muted-foreground text-body-medium">{status}</p>
+            <ResumeSteps hasDraft={hasDraft} pdfReady={pdfReady} />
           </div>
-          <Badge variant={pdfReady ? "default" : "outline"} className="shrink-0">
-            {pdfReady ? "PDF ready" : hasDraft ? "Not yet a PDF" : "Not started"}
-          </Badge>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -389,7 +405,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
             <div className="text-muted-foreground flex h-40 items-center justify-center rounded-corner-md border border-dashed p-6 text-center text-body-medium">
               {hasDraft
                 ? "No PDF yet."
-                : "No tailored resume yet."}
+                : "No tailored resume yet. Start on the Score and tailor tab."}
             </div>
           )}
         </CardContent>
