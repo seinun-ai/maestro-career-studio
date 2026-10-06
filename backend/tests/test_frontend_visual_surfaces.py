@@ -122,3 +122,29 @@ def test_gap_categories_count_handled_and_a_resolving_card_collapses():
     assert 'className="collapse-exit data-leaving:pointer-events-none"' in card
     assert "data-leaving={leaving || undefined}" in card and "}, ROW_EXIT_MS);" in card
     assert "200" not in card
+
+
+# --- Task 20: health rows and the question pass -------------------------------------
+
+
+def test_health_rows_draw_the_evidence_ladder_and_priority_chip():
+    src = _read("components/resume-health/finding-cards.tsx")
+    assert "DotMeter" in src and "ChevronsUp" in src and "DeltaChip" in src
+    assert "EVIDENCE_LEVELS.length - EVIDENCE_LEVELS.findIndex" in src
+    assert "bg-secondary-container" in src and "text-on-secondary-container" in src
+    assert "Up to +" not in src
+    assert "CONCEPT_ICONS.health" in _read("components/resume-health/health-badges.tsx")
+    assert "ProgressCount" in _read("components/resume-health/question-pass.tsx")
+
+
+def test_question_pass_rows_are_glyph_and_word_and_the_footer_has_a_bar():
+    src = _read("components/resume-health/question-pass.tsx")
+    for icon in ("Clock", "Loader2", "CircleX", "SkipForward", "CircleCheck", "Minus"):
+        assert icon in src, icon
+    assert "animate-spin" in src and "text-success" in src
+    assert "<ProgressCount" in src and "showText={false}" in src and "{progress.words}" in src
+
+
+def test_preview_thumbnail_shows_a_skeleton_until_the_image_loads():
+    src = _read("components/gallery/preview-thumbnail.tsx")
+    assert "<Skeleton" in src and "onLoad" in src and "onError" in src and "No PDF yet" not in src

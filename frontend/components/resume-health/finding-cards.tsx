@@ -6,7 +6,7 @@ import {
   ATTENTION_BADGE_LABEL,
 } from "@/components/attention-zone";
 import { useMutation } from "@tanstack/react-query";
-import { Ellipsis } from "lucide-react";
+import { ChevronsUp, Ellipsis } from "lucide-react";
 import { toast } from "sonner";
 
 import { DemonstrateSkillDialog } from "@/components/resume-health/demonstrate-skill-dialog";
@@ -38,6 +38,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { IconButton } from "@/components/icon-button";
+import { DeltaChip, DotMeter } from "@/components/visual";
 import {
   answerAsk,
   ApiError,
@@ -541,8 +542,11 @@ function LevelChip({ finding }: { finding: LintFinding }) {
   const name = levelNameOf(finding);
   if (!name) return null;
   const label = EVIDENCE_LABELS[name as EvidenceLevel] ?? name;
+  // Place on the ladder: the list runs best first, so direct fills 5 and unaddressed 1.
+  const filled = EVIDENCE_LEVELS.length - EVIDENCE_LEVELS.findIndex((level) => level.value === name);
   return (
-    <span className="text-muted-foreground text-body-small">{label}</span>
+    <DotMeter name="How well it is shown" filled={Math.min(filled, EVIDENCE_LEVELS.length)} total={EVIDENCE_LEVELS.length}
+      word={label} className="text-muted-foreground" />
   );
 }
 
@@ -566,9 +570,14 @@ function CollapsedRow({
     <div className="flex min-w-0 flex-wrap items-start gap-2">
       <div className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left">
         <button type="button" onClick={onExpand} aria-expanded={false} className="text-left">
-          <span className="text-muted-foreground min-w-0 text-body-small break-words">
-            {finding.label} · <LevelChip finding={finding} />
-            {finding.zone === "hot" && <> · {ATTENTION_BADGE_LABEL}</>}
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-muted-foreground min-w-0 text-body-small break-words">{finding.label}</span>
+            <LevelChip finding={finding} />
+            {finding.zone === "hot" && (
+              <span className="inline-flex h-5 items-center gap-1 rounded-full bg-secondary-container px-2 text-label-medium text-on-secondary-container">
+                <ChevronsUp className="size-3" aria-hidden="true" />{ATTENTION_BADGE_LABEL}
+              </span>
+            )}
           </span>
         </button>
         {quote ? (
@@ -621,7 +630,7 @@ export function FindingGroupHeader({
       <h3 className="text-title-small">
         {title} <span className="text-body-medium text-muted-foreground">({findings.length})</span>
       </h3>
-      {points > 0 && <p className="text-muted-foreground text-body-small">Up to +{points} points</p>}
+      {points > 0 && <p><DeltaChip value={points} prefix="up to" /></p>}
       {coaching && (
         <p className="text-muted-foreground max-w-[65ch] text-body-medium">
           {coaching.why} {coaching.how}

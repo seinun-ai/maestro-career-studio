@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CircleCheck, CircleX, Clock, Loader2, Minus, SkipForward } from "lucide-react";
 import { toast } from "sonner";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
@@ -25,6 +25,7 @@ import {
   type PassRow,
 } from "@/components/resume-health/pass-rows";
 import { usePassWrites } from "@/components/resume-health/use-pass-writes";
+import { ProgressCount } from "@/components/visual";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -343,7 +344,10 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
             ))}
           </ol>
           <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-corner-md border px-3 py-2 text-body-medium shadow-level2">
-            <p aria-live="polite">{progress.words}</p>
+            <p aria-live="polite" className="flex flex-wrap items-center gap-2">
+              {progress.words}
+              <ProgressCount done={progress.answered} total={progress.total} noun="answered" showText={false} />
+            </p>
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
@@ -473,7 +477,9 @@ function PassRowView({
         <p className="text-muted-foreground text-body-small">{row.finding.label}</p>
         <p className="text-foreground mt-1 line-clamp-2 max-w-[65ch] text-body-medium">{row.original ?? row.finding.issue}</p>
         <div className="mt-1 flex items-center gap-2">
-          <p className="text-muted-foreground text-body-small">Skipped for now.</p>
+          <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
+            <SkipForward className="size-3.5" aria-hidden="true" />Skipped for now.
+          </p>
           <Button
             ref={answerItRef}
             size="xs"
@@ -550,16 +556,31 @@ function PassRowView({
               className="max-w-[65ch] text-body-medium"
             />
           )}
-          {row.status === "queued" && <p className="text-muted-foreground text-body-small">Waiting to write…</p>}
-          {row.status === "drafting" && <p className="text-muted-foreground text-body-small">Writing…</p>}
+          {row.status === "queued" && (
+            <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
+              <Clock className="size-3.5" aria-hidden="true" />Waiting to write…
+            </p>
+          )}
+          {row.status === "drafting" && (
+            <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
+              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />Writing…
+            </p>
+          )}
           {row.status === "failed" && (
-            <p className="text-destructive text-body-small">Couldn&apos;t write new wording for this one. Try again.</p>
+            <p className="text-destructive inline-flex items-center gap-1 text-body-small">
+              <CircleX className="size-3.5 shrink-0" aria-hidden="true" />Couldn&apos;t write new wording for this one. Try again.
+            </p>
           )}
         </div>
       )}
 
       {(row.status === "drafted" || row.status === "saving") && row.suggestion != null && (
         <div className="space-y-2 border-t pt-2">
+          {row.status === "drafted" && (
+            <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
+              <CircleCheck className="text-success size-3.5" aria-hidden="true" />New wording ready
+            </p>
+          )}
           {copyOnly(row) || row.original == null ? (
             row.original == null ? (
               <p className="text-foreground max-w-[65ch] text-body-medium">{row.suggestion}</p>
@@ -600,7 +621,9 @@ function PassRowView({
             )}
             {!copyOnly(row) && row.original != null && row.status === "drafted" && !canSave(row) && (
               // The wording is the bullet as it stands: saving it would write no version.
-              <p className="text-muted-foreground text-body-small">No change to save</p>
+              <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
+                <Minus className="size-3.5" aria-hidden="true" />No change to save
+              </p>
             )}
             {!copyOnly(row) && row.original != null && row.edited == null && (
               <Button

@@ -118,7 +118,7 @@ def test_collapsed_row_cannot_overflow_on_a_long_entry_label():
     ("<entry> · bullet N"), wrapping inside the card rather than widening it.
     """
     row = _CARDS[_CARDS.index("function CollapsedRow("): _CARDS.index("export function FindingGroupHeader(")]
-    assert "{finding.label} · <LevelChip finding={finding} />" in row
+    assert "{finding.label}" in row and "<LevelChip finding={finding} />" in row
     assert "shortFindingLabel" not in _CARDS and "shortFindingLabel" not in _HELPERS
     assert "break-words" in row
     # The action + overflow menu hold their width instead of being squeezed,
