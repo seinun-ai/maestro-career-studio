@@ -20,6 +20,7 @@ SKILLS_DIR = Path(__file__).resolve().parent.parent / "automations" / "skills"
 
 CARD_ORDER = ("mail-status", "job-hunt", "referral-pages", "tailor-run", "apply-session",
               "customize-job-skills")
+ALTERNATES = {"apply-auto": "apply-session"}
 
 # `scheduled` cards get the app's ask-when preamble; `attended` and `custom`
 # cards get its attended preamble (the agent does the job with the user now).
@@ -153,9 +154,10 @@ def _read_skills() -> tuple[dict[str, str], dict[str, _Meta]]:
 
 
 def _check_card_set(metas: dict[str, _Meta]) -> None:
-    if sorted(metas) != sorted(CARD_ORDER):
+    expected = sorted(CARD_ORDER + tuple(ALTERNATES))
+    if sorted(metas) != expected:
         raise ValueError(
-            f"cards {sorted(metas)} != designed {sorted(CARD_ORDER)} (looked in {SKILLS_DIR})")
+            f"cards {sorted(metas)} != designed {expected} (looked in {SKILLS_DIR})")
 
 
 def _check_no_orphans(bodies: dict[str, str], metas: dict[str, _Meta]) -> None:
@@ -192,17 +194,34 @@ def load_cards() -> tuple[AutomationCard, ...]:
     return cards
 
 
-def apply_kind() -> Kind:
-    """Attended until full automation mode (phase 4) adds the auto-submit setting.
+@lru_cache(maxsize=1)
+def _alternate(skill_id: str) -> AutomationCard:
+    """Build an alternate card and keep the catalog identity it replaces."""
+    bodies, metas = _read_skills()
+    meta = metas[skill_id]
+    return AutomationCard(
+        id=ALTERNATES[skill_id], title=meta.title, summary=meta.summary,
+        kind=meta.kind, needs=tuple(meta.needs), never=meta.never,
+        body=_card_body(skill_id, bodies, metas),
+    )
 
-    Phase 4 reads that setting here and switches the Apply card's kind, `never`
-    line and body to the auto-submit prompt; the page needs no change.
+
+def apply_kind(full_automation: bool = False) -> Kind:
+    """Choose scheduled applying only when full automation mode is on.
+
+    The catalog keeps one Apply card identity and swaps the prompt behind it.
     """
-    return "attended"
+    return "scheduled" if full_automation else "attended"
 
 
-def catalog() -> AutomationCatalog:
+def catalog(full_automation: bool = False) -> AutomationCatalog:
     """The cards in designed order plus the per-agent-app wrappers."""
-    cards = [c.model_copy(update={"kind": apply_kind()}) if c.id == "apply-session" else c
-             for c in load_cards()]
+    cards = []
+    for card in load_cards():
+        if card.id != "apply-session":
+            cards.append(card)
+        elif full_automation:
+            cards.append(_alternate("apply-auto"))
+        else:
+            cards.append(card.model_copy(update={"kind": apply_kind()}))
     return AutomationCatalog(cards=cards, apps=list(APPS))

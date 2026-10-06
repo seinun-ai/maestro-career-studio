@@ -34,10 +34,37 @@ def test_the_technique_file_is_not_a_card_but_rides_on_apply():
     assert body.index("# Apply session") < body.index("\n# Agent Apply Execution")
 
 
-def test_apply_is_attended_until_full_automation_exists():
+def test_apply_is_attended_while_full_automation_is_off():
     cards = {c.id: c for c in automations.catalog().cards}
     assert cards["apply-session"].kind == "attended"
     assert cards["apply-session"].never == "Never submits without your yes."
+
+
+def test_full_automation_serves_the_automatic_apply_prompt():
+    cards = {c.id: c for c in automations.catalog(full_automation=True).cards}
+    apply = cards["apply-session"]
+    assert apply.kind == "scheduled"
+    assert apply.title == "Apply automatically"
+    assert apply.never == "Never submits a job whose final review shows anything to check."
+    assert apply.body.startswith("# Apply automatically")
+    assert "\n# Agent Apply Execution" in apply.body
+
+
+@pytest.mark.parametrize("sentence", [
+    "Submit without asking only when `get_final_review` shows all of these:",
+    "`record_consent` with channel `auto`",
+    "`mark_submitted` with channel `auto` and a `note` naming what confirmed it",
+    "Work the queue the way the user has asked you to",
+    "Never submit the same application twice.",
+    "`report_failure` with the reason",
+    "Jobs in Needs you go back through the user's queue before a later automatic run.",
+    "A yes from the user is recorded with `record_consent` channel `chat`",
+    "Stop when the daily cap in the brief is used up.",
+    "Call `record_run` with automation `apply-session`",
+])
+def test_the_automatic_apply_guardrails(sentence):
+    body = {c.id: c for c in automations.catalog(full_automation=True).cards}["apply-session"].body
+    assert sentence in body
 
 
 def test_scheduled_wrappers_leave_timing_to_the_user():
@@ -94,16 +121,20 @@ def _write(root, name, text):
 
 @pytest.fixture
 def skills_dir(tmp_path, monkeypatch):
-    """A minimal valid skill set (the six cards + one technique file) to break one way at a time."""
+    """A minimal valid skill set (cards + technique files) to break one way at a time."""
     for card_id in CARD_IDS:
         include = "[technique]" if card_id == "apply-session" else None
         _write(tmp_path, card_id, _card_text(card_id, include=include))
+    _write(tmp_path, "apply-auto", _card_text(
+        "apply-auto", title="Apply automatically", include="[technique]"))
     _write(tmp_path, "technique", "---\nname: technique\ndescription: x\n---\n# Technique\n")
     monkeypatch.setattr(automations, "SKILLS_DIR", tmp_path)
     automations.load_cards.cache_clear()
+    automations._alternate.cache_clear()
     yield tmp_path
     monkeypatch.undo()
     automations.load_cards.cache_clear()
+    automations._alternate.cache_clear()
 
 
 def test_the_minimal_skill_set_loads(skills_dir):
