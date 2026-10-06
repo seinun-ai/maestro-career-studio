@@ -42,6 +42,11 @@ def test_lane_dot_and_every_proposal_status_carry_a_dot_role():
     assert table.count("dot:") == 7  # the two NEEDS_YOU entries share one object
 
 
+def test_no_status_dot_is_the_invisible_neutral_secondary():
+    chip = (_VISUAL.parent / "status-chip.tsx").read_text()
+    assert "dot: \"bg-secondary\"" not in chip  # --secondary is a neutral grey: ~1:1 on the chip surfaces
+
+
 def test_agent_and_ai_actors_use_the_register():
     actor = (_VISUAL / "actor-chip.tsx").read_text()
     for concept in ("CONCEPT_ICONS.ai", "CONCEPT_ICONS.agentInbox"):

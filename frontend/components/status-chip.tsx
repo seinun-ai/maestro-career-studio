@@ -135,7 +135,7 @@ export const PROPOSAL_STATUS_CHIP: Record<
   pending_review: { label: "Proposed", className: "bg-primary-container text-on-primary-container", dot: "bg-primary" },
   needs_decision: NEEDS_YOU,
   needs_human: NEEDS_YOU,
-  accepted: { label: "Queued", className: "bg-secondary-container text-on-secondary-container", dot: "bg-secondary" },
+  accepted: { label: "Queued", className: "bg-secondary-container text-on-secondary-container", dot: "bg-on-secondary-container" },
   approved: { label: "Approved", className: "bg-success-container text-on-success-container", dot: "bg-success" },
   submitted: { label: "Applied", className: "bg-success-container text-on-success-container", dot: "bg-success" },
   submission_uncertain: { label: "Check if sent", className: "bg-attention-container text-on-attention-container", dot: "bg-attention" },

@@ -9,7 +9,7 @@ export type DeltaSign = "up" | "down" | "flat";
 
 /** "+6.2" / "−1.4" (a true minus sign) / "0.0", and which way it went. */
 export function formatDelta(value: number, digits = 1): { text: string; sign: DeltaSign } {
-  const snapped = Number(value.toFixed(digits));
+  const snapped = Number.isFinite(value) ? Number(value.toFixed(digits)) : 0;
   if (snapped === 0) return { text: (0).toFixed(digits), sign: "flat" };
   const text = `${snapped > 0 ? "+" : "−"}${Math.abs(snapped).toFixed(digits)}`;
   return { text, sign: snapped > 0 ? "up" : "down" };
@@ -20,15 +20,20 @@ export function meterLabel(name: string, filled: number, total: number, word: st
 }
 
 export function segmentShares<K extends string>(parts: { key: K; count: number }[]): { key: K; share: number }[] {
-  const total = parts.reduce((sum, p) => sum + Math.max(0, p.count), 0);
-  return parts.map((p) => ({ key: p.key, share: total === 0 ? 0 : (Math.max(0, p.count) / total) * 100 }));
+  const own = (p: { count: number }) => (Number.isFinite(p.count) ? Math.max(0, p.count) : 0);
+  const total = parts.reduce((sum, p) => sum + own(p), 0);
+  return parts.map((p) => ({ key: p.key, share: total === 0 ? 0 : (own(p) / total) * 100 }));
 }
 
-function sparkPoints(values: number[], width: number, height: number): { x: number; y: number }[] {
+function sparkPoints(input: number[], width: number, height: number): { x: number; y: number }[] {
+  const finite = input.filter(Number.isFinite);
+  // One value is a flat line across the box: two points, same y.
+  const values = finite.length === 1 ? [finite[0], finite[0]] : finite;
+  if (values.length === 0) return [];
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min;
-  const stepX = values.length === 1 ? 0 : width / (values.length - 1);
+  const stepX = width / (values.length - 1);
   return values.map((v, i) => ({
     x: +(i * stepX).toFixed(2),
     y: +(span === 0 ? height / 2 : height - ((v - min) / span) * height).toFixed(2),

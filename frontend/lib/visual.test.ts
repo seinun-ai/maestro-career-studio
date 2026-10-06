@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { clampPct, formatDelta, meterLabel, segmentShares, sparkPath } from "./visual.ts";
+import { clampPct, formatDelta, meterLabel, segmentShares, sparkEnd, sparkPath } from "./visual.ts";
 
 test("clampPct keeps a share between 0 and 100", () => {
   assert.equal(clampPct(50), 50);
@@ -16,6 +16,8 @@ test("formatDelta signs a change and calls zero flat", () => {
   assert.deepEqual(formatDelta(6.24), { text: "+6.2", sign: "up" });
   assert.deepEqual(formatDelta(-1.36), { text: "−1.4", sign: "down" });
   assert.deepEqual(formatDelta(0.04), { text: "0.0", sign: "flat" });
+  assert.deepEqual(formatDelta(Number.NaN), { text: "0.0", sign: "flat" });
+  assert.deepEqual(formatDelta(Infinity), { text: "0.0", sign: "flat" });
 });
 
 test("meterLabel reads as a sentence", () => {
@@ -25,6 +27,7 @@ test("meterLabel reads as a sentence", () => {
 test("segmentShares splits a whole and survives an empty one", () => {
   assert.deepEqual(segmentShares([{ key: "a", count: 3 }, { key: "b", count: 1 }]).map((s) => s.share), [75, 25]);
   assert.deepEqual(segmentShares([{ key: "a", count: 0 }]).map((s) => s.share), [0]);
+  assert.deepEqual(segmentShares([{ key: "a", count: Number.NaN }, { key: "b", count: 2 }]).map((s) => s.share), [0, 100]);
 });
 
 test("sparkPath spans the box and handles flat and short series", () => {
@@ -32,4 +35,9 @@ test("sparkPath spans the box and handles flat and short series", () => {
   assert.match(sparkPath([1, 1, 1], 100, 20), /^M0 10/);
   const d = sparkPath([0, 5, 10], 100, 20);
   assert.ok(d.startsWith("M0 20") && d.endsWith("100 0"));
+  assert.equal(sparkPath([7], 100, 20), "M0 10 L100 10");
+  assert.equal(sparkPath([Number.NaN, 7], 100, 20), "M0 10 L100 10");
+  assert.equal(sparkPath([Number.NaN], 100, 20), "");
+  assert.deepEqual(sparkEnd([7], 100, 20), { x: 100, y: 10 });
+  assert.equal(sparkEnd([], 100, 20), null);
 });
