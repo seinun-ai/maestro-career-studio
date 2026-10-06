@@ -9,7 +9,7 @@ from sqlalchemy.orm.attributes import flag_dirty
 
 from app.db import Base
 from app.models.job import Job
-from app.models.career_kb import KBEntity, KBPoint
+from app.models.career_kb import KBEntity, KBPoint, KBProfile
 from app.models.setting import Setting
 from app.models.sync import SyncRequest, SyncState, SyncTombstone
 from app.models.types import utcnow
@@ -53,6 +53,16 @@ def owned_here(session: Session, job_id: uuid.UUID) -> bool:
             status.is_remote() or handover != "offered")
 
 
+def _not_owned_message(session: Session, job_id: uuid.UUID) -> str:
+    if status.is_remote():
+        return "This job is on your laptop; work on it there."
+    with session.no_autoflush:
+        _, handover = _ownership(session, _job_of(session, job_id))
+    if handover == "offered":
+        return "This job is on its way to your bot. Use Keep it here to keep working on it."
+    return "This job is with your bot; ask for it back with Work on it here."
+
+
 def require_owned(session: Session, job_id: uuid.UUID) -> None:
     """Check before a route writes files; the flush hook checks again at commit."""
     if not status.enabled() or session.info.get("sync_apply"):
@@ -60,9 +70,7 @@ def require_owned(session: Session, job_id: uuid.UUID) -> None:
     if _job_of(session, job_id) is None:
         raise NotOwnedHere(UNRESOLVED_MESSAGE)
     if not owned_here(session, job_id):
-        message = ("This job is on your laptop; work on it there." if status.is_remote()
-                   else "This job is with your bot; ask for it back with Work on it here.")
-        raise NotOwnedHere(message)
+        raise NotOwnedHere(_not_owned_message(session, job_id))
 
 
 def require_profile_writable(session: Session) -> None:
@@ -84,6 +92,19 @@ def seed_setting(session: Session, row: Setting) -> None:
         if enabled:
             session.info.pop("setting_seed", None)
             session.info.pop("sync_guard_setting_rows", None)
+
+
+def seed_profile(session: Session, row: KBProfile) -> None:
+    """Flush the empty singleton profile a first read creates; home's row replaces it."""
+    enabled = status.enabled()
+    if enabled:
+        session.info["sync_guard_profile_seed"] = {row}
+    try:
+        session.add(row)
+        session.flush()
+    finally:
+        if enabled:
+            session.info.pop("sync_guard_profile_seed", None)
 
 
 @dataclass
@@ -252,6 +273,8 @@ def _allowed_profile_insert(session: Session, row: Base) -> bool:
     if isinstance(row, Setting):
         return bool(session.info.get("setting_seed")) and row in session.info.get(
             "sync_guard_setting_rows", ())
+    if isinstance(row, KBProfile):
+        return row in session.info.get("sync_guard_profile_seed", ())
     return _is_holder(row) or (isinstance(row, KBPoint) and row.provenance == "user_cannot_confirm")
 
 

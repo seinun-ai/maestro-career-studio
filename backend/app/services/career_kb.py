@@ -31,6 +31,7 @@ from app.services import base_resume_data
 from app.services.base_resume_data import write_base_resume_json
 from app.services.resume_edit import apply_edits
 from app.services.resume_versions import record_version
+from app.services.sync import hooks
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +57,7 @@ def get_or_create_profile(session: Session) -> KBProfile:
     profile = session.get(KBProfile, 1)
     if profile is None:
         profile = KBProfile(id=1)
-        session.add(profile)
-        session.flush()
+        hooks.seed_profile(session, profile)
     return profile
 
 
@@ -653,8 +653,6 @@ def merge_entities(session: Session, source_id: uuid.UUID, target_id: uuid.UUID)
     # (expired below) and ORM-moved port logs remain current here —
     # that is enough for this function's own contract, and the router
     # commits immediately afterwards.
-    from app.services.sync import hooks
-
     # Application port logs belong to jobs: ORM writes reach the sync hook.
     for log in session.scalars(select(KBPortLog).where(KBPortLog.entity_id == source_id)):
         log.entity_id = target_id

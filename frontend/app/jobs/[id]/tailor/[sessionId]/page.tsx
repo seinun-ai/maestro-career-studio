@@ -365,11 +365,11 @@ export default function TailorSessionPage({
       // skipped, with the server-composed reasons — a flywheel drop must
       // never be silent (the page navigates away, so the toast IS the note).
       const skips = result.kb_writeback_skips ?? [];
-      if (skips.length > 0) {
+      if (skips.some((skip) => skip.reason === "profile_owned_elsewhere")) {
+        toast.message("Your laptop keeps your career history, so this wasn't added to it here.");
+      } else if (skips.length > 0) {
         toast.message(
-          skips.some((skip) => skip.reason === "profile_owned_elsewhere")
-            ? "Your laptop keeps your career history, so this wasn't added to it here."
-            : `${skips.length} ${skips.length === 1 ? "answer wasn't" : "answers weren't"} added to your career history`,
+          `${skips.length} ${skips.length === 1 ? "answer wasn't" : "answers weren't"} added to your career history`,
           { description: skips.map((skip) => skip.detail).join(" · ") },
         );
       }

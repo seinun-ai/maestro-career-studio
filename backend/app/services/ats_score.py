@@ -1,5 +1,5 @@
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import not_, select
 from sqlalchemy.orm import Session
@@ -9,8 +9,10 @@ from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.base_resume import BaseResume
 from app.models.job import Job
+from app.models.types import utcnow
 from app.services.application_writes import NO_TAILORED_RESUME
 from app.services import gap_analysis
+from app.services.sync import hooks
 from app.services.ats import score_resume
 from app.services.ats.jd_normalizer import normalize_jd
 from app.services import base_resume_data
@@ -49,6 +51,44 @@ def _resolve_resume_data(session: Session, target_type: str, target_id: str) -> 
     raise ValueError(f"Unknown target_type: {target_type}")
 
 
+def _score_values(
+    session: Session, job_id: UUID, target_type: str, target_id: str, result: Any | None
+) -> dict[str, Any]:
+    job = get_scorable_job(session, job_id)
+    resume_data, resolved_app_id = _resolve_resume_data(session, target_type, target_id)
+    if result is None:
+        result = score_resume(resume_data, job.extracted_json)
+    return {
+        "composite": result.composite,
+        "subscores_json": {
+            **result.subscores,
+            "title_tier": result.title_tier,
+            "gate_warnings": result.gate_warnings,
+            "format_flags": result.format_flags,
+            "jd_skills_extracted_count": result.jd_skills_extracted_count,
+            "jd_skills_matched_count": result.jd_skills_matched_count,
+            "coverage_ratio": result.coverage_ratio,
+            "coverage_warning": result.coverage_warning,
+        },
+        "skill_table_json": result.skill_table,
+        "gaps_json": gap_analysis.build_gaps(result),
+        "config_version": result.config_version,
+        "engine_version": result.engine_version,
+        # Set only for target_type == "application": base rows are shared per
+        # (job, slug) and must not be stamped with a triggering application.
+        "application_id": resolved_app_id,
+    }
+
+
+def score_unsaved(
+    job_id: UUID, target_type: str, target_id: str, *, phase: str, session: Session
+) -> AtsScore:
+    """Score one target WITHOUT persisting: same row shape, never added to the session."""
+    values = _score_values(session, job_id, target_type, target_id, None)
+    return AtsScore(id=uuid4(), created_at=utcnow(), job_id=job_id,
+                    target_type=target_type, target_id=target_id, phase=phase, **values)
+
+
 def score_target(
     job_id: UUID,
     target_type: str,
@@ -73,31 +113,7 @@ def score_target(
     owns_session = session is None
     session = session or SessionLocal()
     try:
-        job = get_scorable_job(session, job_id)
-        resume_data, resolved_app_id = _resolve_resume_data(session, target_type, target_id)
-        if result is None:
-            result = score_resume(resume_data, job.extracted_json)
-
-        values: dict[str, Any] = {
-            "composite": result.composite,
-            "subscores_json": {
-                **result.subscores,
-                "title_tier": result.title_tier,
-                "gate_warnings": result.gate_warnings,
-                "format_flags": result.format_flags,
-                "jd_skills_extracted_count": result.jd_skills_extracted_count,
-                "jd_skills_matched_count": result.jd_skills_matched_count,
-                "coverage_ratio": result.coverage_ratio,
-                "coverage_warning": result.coverage_warning,
-            },
-            "skill_table_json": result.skill_table,
-            "gaps_json": gap_analysis.build_gaps(result),
-            "config_version": result.config_version,
-            "engine_version": result.engine_version,
-            # Set only for target_type == "application": base rows are shared per
-            # (job, slug) and must not be stamped with a triggering application.
-            "application_id": resolved_app_id,
-        }
+        values = _score_values(session, job_id, target_type, target_id, result)
 
         row: AtsScore | None = None
         if phase == "base":
@@ -249,6 +265,8 @@ def compare(application_id: UUID, session: Session | None = None) -> dict[str, A
             raise ValueError(f"Application not found: {application_id}")
 
         backfilled = False
+        # A job another machine owns is read-only here: score in memory, persist nothing.
+        score = score_target if hooks.owned_here(session, application.job_id) else score_unsaved
         base_row = session.scalars(
             select(AtsScore)
             .where(
@@ -263,21 +281,21 @@ def compare(application_id: UUID, session: Session | None = None) -> dict[str, A
             .limit(1)
         ).first()
         if base_row is None:
-            base_row = score_target(
+            base_row = score(
                 application.job_id, "base_resume", application.base_resume,
                 phase="base", session=session,
             )
             backfilled = True
         tailored_row = _latest_row(session, application, "tailored")
         if tailored_row is None:
-            tailored_row = score_target(
+            tailored_row = score(
                 application.job_id, "application", str(application.id),
                 phase="tailored", session=session,
             )
             backfilled = True
         # Before the version guard below: a backfilled row must persist even
         # when the comparison itself then fails (matching prior behavior).
-        if backfilled:
+        if backfilled and score is score_target:
             session.commit()
 
         if (base_row.engine_version, base_row.config_version) != (

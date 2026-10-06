@@ -124,15 +124,15 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
         status tracking (StatusChip)        QA router (cover letter / answers)
 ```
 
-`data/maestro_cs.sqlite3` (SQLite, WAL) holds rows and local sync clocks; ORM flushes stamp jobs/profile, including imports and moves.
-Deleted jobs leave tombstones; Core writers touch their subtree (`services/sync/hooks.py`). With a key, writes to replicas,
-home offers, unresolved current jobs and remote profiles are refused (except seeds/cannot-confirm); missing previous parents allow repair.
-File writers check before disk changes; no key allows all writes. Transaction end/rollback clear hook state (`tests/sync/test_guard.py`).
-Resume JSON/rendered files stay on disk (`base_resumes` row + file required); job-site login: `settings/secrets/` (§6).
+`data/maestro_cs.sqlite3` (SQLite, WAL) holds rows and local sync clocks; ORM flushes stamp jobs/profile, including imports and both sides of
+moves. Deleted jobs leave tombstones; Core writers touch their subtree (`services/sync/hooks.py`). With a key, writes to replicas, home offers,
+unresolved current jobs and remote profiles are refused (except seeds/cannot-confirm); missing previous parents allow repair. File writers check
+before disk changes; no key allows all writes. Transaction end/rollback clear hook state (`tests/sync/test_guard.py`). Resume JSON/rendered
+files stay on disk (`base_resumes` row + file required); job-site login: `settings/secrets/` (§6).
 
 ## 4. Core entities and their lifecycles
 
-Reference tier: consulted per task in `docs/entities/`, keeping the root orientation-sized; each file carries
+Reference tier: consulted per task, not read for orientation, in `docs/entities/`, keeping the root orientation-sized; each file carries
 this contract. Code citing "§4" lands here; the table says which file to open.
 
 | Entity | File | Scope |
@@ -206,11 +206,10 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    KBPortLog row; deduped per point/entry), then remaining non-skip
    resolutions → smart-model LLM → typed edit ops → apply → keyword-survival
    check (one retry, then add_skill_item fallback — LLM path only) →
-   reuse-or-insert application → version row → draft-KBPoint write-back of
-   substantive user_input answers (origin=gap_elicitation; every skipped
-   write-back returns on the response as `kb_writeback_skips` with a reason —
-   too_short / wrong_section / no_entity_match / duplicate — and the gap page
-   toasts a quiet note, so flywheel drops are never silent) → session
+   reuse-or-insert application → version row → draft-KBPoint write-back of substantive user_input answers (origin=gap_elicitation; every
+   skipped write-back returns on the response as `kb_writeback_skips` with a reason — too_short / wrong_section / no_entity_match / duplicate,
+   or profile_owned_elsewhere (always-on copy: tailoring skips draft career-history points) — and the gap page toasts a quiet note, so
+   flywheel drops are never silent) → session
    `tailored` → tailored score — one transaction (tailor() commits once at
    its end; score_target stages on the same session). A pre-op-only session tailors with zero LLM calls; MCP can
    pass caller ops to skip the backend LLM. Post-tailor the UI lands in

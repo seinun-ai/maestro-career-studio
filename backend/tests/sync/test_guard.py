@@ -365,14 +365,14 @@ def test_remote_tailor_reports_profile_skip(client, seeded, db_session, monkeypa
     assert not db_session.scalars(select(models.KBPoint)).all()
 
 
-def test_remote_boot_and_lazy_defaults(db_session, external_fakes, monkeypatch):
+def test_remote_boot_and_lazy_defaults(db_session, external_fakes, monkeypatch, caplog):
     status.create_key()
     monkeypatch.setattr(settings, "sync_remote_url", "http://127.0.0.1:8101")
     with TestClient(app) as booted:
         assert booted.get("/health").status_code == 200
         assert booted.get("/api/templates").status_code == 200
     assert db_session.get(models.Setting, "kb.seeded") is None
-    assert db_session.get(models.KBProfile, 1) is None
+    assert "NotOwnedHere" not in caplog.text and "eager refresh failed" not in caplog.text
     _check_lazy_defaults(db_session)
 
 
@@ -682,3 +682,100 @@ def test_document_ingest_checks_before_llm_and_disk(client, db_session, monkeypa
     assert calls == ([] if enabled else [True])
     files = [path for path in settings.kb_documents_dir.rglob("*") if path.is_file()]
     assert len(files) == (0 if enabled else 1)
+
+
+PROFILE_READS = ["/api/kb/profile", "/api/kb/compose", "/api/kb/context", "/api/exports",
+                 "/api/exports/career"]
+
+
+def test_remote_first_read_seeds_the_empty_profile(client, seeded, db_session, monkeypatch):
+    db_session.get(models.Job, uuid.UUID(seeded["job"])).owner_machine = None
+    db_session.commit()
+    status.create_key()
+    monkeypatch.setattr(settings, "sync_remote_url", "http://127.0.0.1:8101")
+    assert db_session.get(models.KBProfile, 1) is None
+    for path in PROFILE_READS:
+        assert client.get(path).status_code == 200, path
+    created = client.post("/api/qa", json={"application_id": seeded["app"],
+                                           "questions": ["Example screening question"]})
+    assert created.status_code in (200, 201), created.text
+    regenerated = client.post(f"/api/qa/{seeded['qa']}/regenerate")
+    assert regenerated.status_code == 200, regenerated.text
+    assert db_session.get(models.KBProfile, 1) is not None
+
+
+def test_remote_profile_seed_opens_nothing_else(client, db_session, monkeypatch):
+    status.create_key()
+    monkeypatch.setattr(settings, "sync_remote_url", "http://127.0.0.1:8101")
+    assert client.get("/api/kb/profile").status_code == 200
+    assert "sync_guard_profile_seed" not in db_session.info
+    response = client.patch("/api/kb/profile", json={"summary": "Changed"})
+    assert response.status_code == 409 and response.json()["detail"] == PROFILE_MESSAGE
+    db_session.rollback()
+    assert db_session.get(models.KBProfile, 1).summary in (None, "")
+    with pytest.raises(hooks.NotOwnedHere):
+        db_session.add(models.KBProfile(id=2))
+        db_session.flush()
+
+
+def test_remote_patch_on_a_missing_profile_is_refused(client, db_session, monkeypatch):
+    status.create_key()
+    monkeypatch.setattr(settings, "sync_remote_url", "http://127.0.0.1:8101")
+    response = client.patch("/api/kb/profile", json={"summary": "Changed"})
+    assert response.status_code == 409
+    db_session.rollback()
+    profile = db_session.get(models.KBProfile, 1)
+    assert profile is None or not profile.summary
+
+
+@pytest.mark.parametrize("handover", ["offered", None])
+def test_offered_job_message_points_at_keep_it_here(db_session, handover):
+    job = _seed_job(db_session, owner=None if handover else "other-machine", handover=handover)
+    db_session.commit()
+    status.create_key()
+    with pytest.raises(hooks.NotOwnedHere) as error:
+        hooks.require_owned(db_session, job.id)
+    if handover:
+        assert str(error.value) == ("This job is on its way to your bot. "
+                                    "Use Keep it here to keep working on it.")
+    else:
+        assert str(error.value) == ("This job is with your bot; "
+                                    "ask for it back with Work on it here.")
+
+
+def _compare_rows(db_session, job):
+    from app.services import ats_score
+
+    application = db_session.scalar(select(models.Application).where(
+        models.Application.job_id == job.id))
+    return application, ats_score
+
+
+@pytest.mark.parametrize("owner", ["other-machine", None], ids=["replica", "owned"])
+def test_ats_compare_is_a_read_on_a_replica(client, seeded, db_session, owner):
+    job = db_session.get(models.Job, uuid.UUID(seeded["job"]))
+    job.owner_machine = owner
+    db_session.commit()
+    status.create_key()
+    response = client.get(f"/api/applications/{seeded['app']}/ats-compare")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert set(body) >= {"application_id", "base", "tailored", "delta", "skill_diff"}
+    assert body["base"]["phase"] == "base" and body["tailored"]["phase"] == "tailored"
+    rows = db_session.scalars(select(models.AtsScore)).all()
+    assert len(rows) == (0 if owner else 2)
+
+
+def test_remote_lint_skips_certification_quietly(db_session, monkeypatch, caplog):
+    from app.services import resume_lint
+
+    row = models.Template(id="guard_lint", source="Example source", engine="typst", status="ready")
+    db_session.add(row)
+    db_session.commit()
+    status.create_key()
+    monkeypatch.setattr(settings, "sync_remote_url", "http://127.0.0.1:8101")
+    with caplog.at_level("DEBUG"):
+        gates = resume_lint.structure_gates(db_session, row.id, RESUME)
+    assert [gate["id"] for gate in gates][:1] == ["S1"] and gates[0]["status"] == "not_assessed"
+    assert not [record for record in caplog.records if record.levelname in ("ERROR", "WARNING")]
+    assert db_session.get(models.Template, row.id).parse_certified is None
