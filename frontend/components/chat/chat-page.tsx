@@ -96,7 +96,7 @@ const HISTORY_COLLAPSED_KEY = "chatPage.historyCollapsed";
  * the model's identifiers in backend/app/services/chat_tools.py, pinned there).
  * A Map, not an object: `{...}[name]` answered "constructor" with a function.
  */
-const TOOL_PHRASES = new Map<string, { phrase: string; concept: Concept }>([
+const TOOL_PHRASES = new Map<string, { phrase: string; concept: ToolConcept }>([
   ["list_base_resumes", { phrase: "Looking at your resumes…", concept: "baseResume" }],
   ["get_resume", { phrase: "Reading your resume…", concept: "baseResume" }],
   ["edit_resume", { phrase: "Editing your resume…", concept: "baseResume" }],
@@ -120,22 +120,25 @@ const TOOL_PHRASES = new Map<string, { phrase: string; concept: Concept }>([
   ["delete_template", { phrase: "Deleting a template…", concept: "templates" }],
 ]);
 
+/** The concepts a tool chip can wear; each word is the one its icon carries in the sidebar. */
+type ToolConcept = Extract<Concept, "baseResume" | "careerHistory" | "analytics" | "templates" | "attachment" | "assistant">;
+
 /** The one word a chip shows; its full phrase stays the title and screen-reader text. */
-const CHIP_WORDS: Partial<Record<Concept, string>> = {
-  baseResume: "Resume",
+const CHIP_WORDS: Record<ToolConcept, string> = {
+  baseResume: "Base resumes",
   careerHistory: "Career history",
-  analytics: "Job search",
+  analytics: "Analytics",
   templates: "Templates",
   attachment: "Attachment",
-  assistant: "Working",
+  assistant: "Assistant",
 };
 
 /** One chip per phrase, in the order first seen: a tool that runs twice says so once. */
-function toolChip(name: string): { phrase: string; concept: Concept } {
+function toolChip(name: string): { phrase: string; concept: ToolConcept } {
   return TOOL_PHRASES.get(name) ?? { phrase: "Working…", concept: "assistant" };
 }
 
-function toolChips(tools: string[]): { phrase: string; concept: Concept }[] {
+function toolChips(tools: string[]): { phrase: string; concept: ToolConcept }[] {
   const chips = tools.map(toolChip);
   return chips.filter((c, i) => chips.findIndex((o) => o.phrase === c.phrase) === i);
 }
@@ -144,7 +147,7 @@ function toolChips(tools: string[]): { phrase: string; concept: Concept }[] {
  * The stream sends only `tool_start`, so a tool counts as finished when something later arrives
  * (`running` goes false). Then a CircleCheck holds for CONFIRM_HOLD_MS and the domain icon returns.
  */
-function ToolChip({ phrase, concept, running }: { phrase: string; concept: Concept; running: boolean }) {
+function ToolChip({ phrase, concept, running }: { phrase: string; concept: ToolConcept; running: boolean }) {
   const [wasRunning, setWasRunning] = useState(running);
   const [held, setHeld] = useState(false);
   if (wasRunning !== running) {
@@ -163,7 +166,7 @@ function ToolChip({ phrase, concept, running }: { phrase: string; concept: Conce
       className="text-muted-foreground flex items-center gap-1.5 text-body-small"
     >
       <Icon className={`size-3 ${running ? "animate-spin" : ""}`} aria-hidden="true" />
-      <span aria-hidden="true">{CHIP_WORDS[concept] ?? "Working"}</span>
+      <span aria-hidden="true">{CHIP_WORDS[concept]}</span>
       <span className="sr-only">{phrase}</span>
     </div>
   );
@@ -610,6 +613,10 @@ export function ChatPage() {
   const hasThread = (detail.data?.messages.length ?? 0) > 0 || !!streaming;
   const threadFailed = sessionId !== null && isLoadFailure(detail);
   // The message being sent, until the saved thread holds it: shown once, never twice.
+  // The newest tool is the only one that can still be running.
+  const newestPhrase = streaming?.tools.length
+    ? toolChip(streaming.tools[streaming.tools.length - 1]).phrase
+    : null;
   const showPending =
     streaming !== null && !detail.data?.messages.some((m) => m.id === streaming.userMessageId);
 
@@ -842,7 +849,7 @@ export function ChatPage() {
                         concept={chip.concept}
                         running={
                           streaming.toolRunning &&
-                          chip.phrase === toolChip(streaming.tools[streaming.tools.length - 1]).phrase
+                          chip.phrase === newestPhrase
                         }
                       />
                     ))}

@@ -142,11 +142,20 @@ def test_assistant_tool_chips_show_their_domain():
     assert "CONFIRM_HOLD_MS" in src and "1200" not in src
     # The stream has no finish event: text, a card or the end of the stream finishes the tool.
     assert src.count("toolRunning: false") >= 7 and "toolRunning: true" in src
+    # Each chip word is the word its icon carries in the sidebar.
+    words = _between(src, "const CHIP_WORDS", "};")
+    for concept, word in (("baseResume", "Base resumes"), ("careerHistory", "Career history"),
+                          ("analytics", "Analytics"), ("templates", "Templates"),
+                          ("attachment", "Attachment"), ("assistant", "Assistant")):
+        assert f'{concept}: "{word}"' in words, concept
+    assert '?? "Working"' not in src and "{CHIP_WORDS[concept]}" in src
+    assert "newestPhrase" in src
+    badge = '<FileDiff className="size-3" aria-hidden="true" />\n            Edited'
     cards = {
-        "proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80", "Discarded"),
-        "edit-proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80", "Applied"),
-        "change-card.tsx": ("<FileDiff", "Edited", "Edited"),
-        "kb-capture-card.tsx": ("CONCEPT_ICONS.careerHistory", "Career history", "Career history"),
+        "proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80", "<DoneIcon", "<X ", "Added", "Discarded"),
+        "edit-proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80", "<DoneIcon", "<X ", "Applied", "Discarded"),
+        "change-card.tsx": (badge,),
+        "kb-capture-card.tsx": ("CONCEPT_ICONS.careerHistory", "<HistoryIcon", "Career history"),
     }
     for name, needles in cards.items():
         text = (_ROOT / "frontend/components/chat" / name).read_text(encoding="utf-8")
