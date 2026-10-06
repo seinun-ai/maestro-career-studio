@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db import begin_write
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
@@ -34,7 +35,37 @@ def is_other_copys(db: Session, job_id: uuid.UUID) -> bool:
     return owner is not None and owner != status.machine_id(db)
 
 
+def _earlier_pending(db: Session, kind: str, job_id: uuid.UUID, key: str, value: str) -> SyncRequest | None:
+    """The request of this kind for the same target that has not been sent yet, if any."""
+    rows = db.scalars(
+        select(SyncRequest)
+        .where(SyncRequest.kind == kind, SyncRequest.job_id == job_id,
+               SyncRequest.origin == "local", SyncRequest.status == "pending")
+        .order_by(SyncRequest.created_at, SyncRequest.id)
+    )
+    return next((r for r in rows if kind == "take_over" or r.payload_json.get(key) == value), None)
+
+
 def enqueue(db: Session, kind: str, job_id: uuid.UUID, payload: dict) -> SyncRequest:
+    """Store a request, folding it into an earlier one for the same target that is not sent yet.
+
+    The 202 leaves the local replica unchanged, so the user sees the old state and clicks again:
+    a second decision on a proposal replaces the first (the last one wins, consent included),
+    a second application patch merges into the first, a second take-over is not added. A request
+    already sent is never touched; the new one is added after it. The write lock makes the
+    check and the insert one step, like the one-open-proposal check in the proposals router.
+    """
+    begin_write(db)
+    key = {"proposal_transition": "proposal_id", "application_patch": "application_id"}.get(kind, "")
+    earlier = _earlier_pending(db, kind, job_id, key, payload.get(key))
+    if earlier is not None:
+        if kind == "proposal_transition":
+            earlier.payload_json = payload
+        elif kind == "application_patch":
+            earlier.payload_json = {**payload, "fields": {**earlier.payload_json["fields"],
+                                                           **payload["fields"]}}
+        db.commit()
+        return earlier
     row = SyncRequest(kind=kind, job_id=job_id, payload_json=payload,
                       origin="local", status="pending")
     db.add(row)

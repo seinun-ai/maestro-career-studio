@@ -242,3 +242,101 @@ def test_nothing_outside_the_allowlist_reaches_a_request(client, db_session, syn
     response = _patch_proposal(client, proposal, status="rejected", consent=CONSENT, **extra)
     assert response.status_code == 409
     assert _requests(db_session) == []
+
+
+# Repeated clicks while the 202 leaves the replica unchanged must not stack requests.
+
+def _patch_application(client, application, **fields):
+    return client.patch(f"/api/applications/{application.id}", json=fields)
+
+
+def test_skip_then_accept_leaves_one_pending_request_saying_accepted(client, db_session, sync_on):
+    _, _, proposal = _case(db_session)
+    _patch_proposal(client, proposal, status="rejected", consent=CONSENT, reason="Not for me")
+    _patch_proposal(client, proposal, status="accepted", consent={"channel": "mcp"})
+    (row,) = _requests(db_session)
+    assert row.status == "pending"
+    assert row.payload_json == {"proposal_id": str(proposal.id), "to": "accepted",
+                                "reason": None, "consent": {"channel": "mcp"}}
+
+
+def test_accepting_twice_leaves_one_request(client, db_session, sync_on):
+    _, _, proposal = _case(db_session)
+    for _ in range(2):
+        assert _patch_proposal(client, proposal, status="accepted", consent=CONSENT).status_code == 202
+    assert len(_requests(db_session)) == 1
+
+
+def test_a_later_decision_without_consent_drops_the_earlier_consent(client, db_session, sync_on):
+    _, _, proposal = _case(db_session)
+    _patch_proposal(client, proposal, status="rejected", consent=CONSENT)
+    _patch_proposal(client, proposal, status="needs_human", reason="Login wall")
+    (row,) = _requests(db_session)
+    assert row.payload_json == {"proposal_id": str(proposal.id), "to": "needs_human",
+                                "reason": "Login wall"}
+
+
+def test_decisions_on_two_proposals_stay_two_requests(client, db_session, sync_on):
+    _, _, first = _case(db_session, live=False)
+    _, _, second = _case(db_session, live=False)
+    _live(db_session)
+    _patch_proposal(client, first, status="rejected", consent=CONSENT)
+    _patch_proposal(client, second, status="rejected", consent=CONSENT)
+    assert len(_requests(db_session)) == 2
+
+
+def test_three_identical_notes_blurs_make_one_request(client, db_session, sync_on):
+    _, application, _ = _case(db_session)
+    for _ in range(3):
+        assert _patch_application(client, application, notes="Call on Friday").status_code == 202
+    (row,) = _requests(db_session)
+    assert row.payload_json == {"application_id": str(application.id),
+                                "fields": {"notes": "Call on Friday"}}
+
+
+def test_notes_then_status_merge_into_one_request_and_later_values_win(
+        client, db_session, sync_on):
+    _, application, _ = _case(db_session)
+    _patch_application(client, application, notes="first")
+    _patch_application(client, application, status="applied")
+    _patch_application(client, application, notes="second")
+    (row,) = _requests(db_session)
+    assert row.payload_json == {"application_id": str(application.id),
+                                "fields": {"notes": "second", "status": "applied"}}
+
+
+def test_a_bulk_call_with_the_same_id_twice_stores_one_request(client, db_session, sync_on):
+    _, _, proposal = _case(db_session)
+    response = client.post("/api/proposals/bulk-transition", json={
+        "ids": [str(proposal.id), str(proposal.id)], "status": "rejected", "consent": CONSENT})
+    assert response.status_code == 200
+    assert len(_requests(db_session)) == 1
+
+
+def test_a_second_take_over_for_the_same_job_is_not_added(db_session, sync_on):
+    job = _job(db_session)
+    _live(db_session)
+    requests.enqueue_take_over(db_session, job.id)
+    requests.enqueue_take_over(db_session, job.id)
+    assert len(_requests(db_session)) == 1
+
+
+def test_a_sent_request_is_never_changed_and_a_new_click_adds_a_second(
+        client, db_session, sync_on):
+    _, application, proposal = _case(db_session)
+    job_id = proposal.job_id
+    _patch_proposal(client, proposal, status="rejected", consent=CONSENT)
+    _patch_application(client, application, notes="one")
+    requests.enqueue_take_over(db_session, job_id)
+    for row in _requests(db_session):
+        row.status = "sent"
+    db_session.commit()
+    _patch_proposal(client, proposal, status="accepted", consent=CONSENT)
+    _patch_application(client, application, notes="two")
+    requests.enqueue_take_over(db_session, job_id)
+    rows = _requests(db_session)
+    assert sorted(r.status for r in rows) == ["pending"] * 3 + ["sent"] * 3
+    sent = [r for r in rows if r.status == "sent"]
+    assert {r.payload_json.get("to") for r in sent if r.kind == "proposal_transition"} == {"rejected"}
+    assert [r.payload_json["fields"] for r in sent if r.kind == "application_patch"] == [
+        {"notes": "one"}]
