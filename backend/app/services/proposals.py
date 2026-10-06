@@ -30,8 +30,8 @@ ALLOWED = {
     "accepted": {"approved", "rejected", "needs_human"},
     "approved": {"submitted", "needs_human", "rejected", "submission_uncertain"},
     "needs_human": {"approved", "rejected", "pending_review"},
-    # One attested-only edge (guarded in transition()): the user later confirms
-    # an uncertain submit went through (confirmation email / portal check).
+    # One attested-only edge (guarded in transition()): after an uncertain
+    # submit, the user or an agent in full automation confirms it went through.
     # Never resumable, never re-clickable — that stays absolute.
     "submission_uncertain": {"submitted"},
     # submitted / rejected / expired are terminal
@@ -70,11 +70,21 @@ def _auto_approval_is_blocked(session: Session, prop: ApplicationProposal,
     return new_status == "approved" and _company_is_blocked(session, prop, company_blocklist)
 
 
+def _has_alphanumeric_confirmation(note: str | None) -> bool:
+    return any(char.isalnum() for char in note or "")
+
+
+def _auto_transition_supported(new_status: str, attested: bool) -> bool:
+    return new_status == "approved" or (new_status == "submitted" and attested)
+
+
 def _check_auto_consent(session: Session, prop: ApplicationProposal, new_status: str,
                         consent: dict, attested: bool) -> None:
-    if not (new_status == "approved" or (new_status == "submitted" and attested)):
+    if not _auto_transition_supported(new_status, attested):
         raise TransitionError("the auto channel only approves a job or confirms it went through")
-    if new_status == "submitted" and not (consent.get("note") or "").strip():
+    if new_status == "approved" and prop.status != "accepted":
+        raise TransitionError("the auto channel can only approve a user-queued proposal")
+    if new_status == "submitted" and not _has_alphanumeric_confirmation(consent.get("note")):
         raise TransitionError("an automatic submit needs a note saying what confirmed it")
     cfg = auto_apply_settings.get_settings(session)
     if not cfg.full_automation:
@@ -173,15 +183,16 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
     if new_status == "approved" and not _evidence_has_kind(prop, "final_review"):
         raise TransitionError("approved requires final_review evidence")
     if new_status == "submitted":
-        # Receipt is the agent-verified path; attestation is the user's own word,
-        # or the agent's word with a named confirmation while full automation is On
-        # (channel auto, checked above).
+        # Receipt is the agent-verified path; attestation may be the user's own
+        # word or an agent's named confirmation while full automation is On.
         if prop.status == "submission_uncertain" and not attested:
             raise TransitionError(
-                "submission_uncertain -> submitted requires user attestation")
+                "submission_uncertain -> submitted requires attestation "
+                "(the user's, or the agent's in full automation mode)")
         if not attested and not _evidence_has_kind(prop, "submission_receipt"):
             raise TransitionError(
-                "submitted requires submission_receipt evidence or user attestation")
+                "submitted requires submission_receipt evidence or attestation "
+                "(the user's, or the agent's in full automation mode)")
         if attested and (not consent or consent.get("channel") not in CONSENT_CHANNELS):
             raise TransitionError("attested submit requires consent with a valid channel")
 

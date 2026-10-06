@@ -306,7 +306,8 @@ def test_uncertain_to_submitted_requires_attestation(db_session):
     _approve(db_session, prop)
     svc.transition(db_session, prop, "submission_uncertain", reason="submission_uncertain")
     # Even WITH receipt-grade evidence, the uncertain edge demands attestation.
-    with pytest.raises(svc.TransitionError, match="attestation"):
+    with pytest.raises(svc.TransitionError,
+                       match=r"attestation \(the user's, or the agent's in full automation mode\)"):
         svc.transition(db_session, prop, "submitted", consent={"channel": "chat"})
     svc.transition(db_session, prop, "submitted", attested=True,
                    consent={"channel": "chat", "note": "confirmation email arrived"})
@@ -385,22 +386,30 @@ def _full_automation(db_session, on):
     auto_apply_settings.set_settings(AutoApplySettings(full_automation=on), db_session)
 
 
+def _queued_proposal(db_session):
+    prop = _mk_proposal(db_session)
+    svc.transition(db_session, prop, "accepted", consent={"channel": "chat", "note": "queued"})
+    return prop
+
+
 def test_auto_consent_is_refused_while_full_automation_is_off(db_session):
     _full_automation(db_session, False)
-    prop = _mk_proposal(db_session)
+    prop = _queued_proposal(db_session)
     prop.evidence_json = _final_review_evidence()
     with pytest.raises(svc.TransitionError, match="full automation"):
         svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
-    assert prop.status == "pending_review" and prop.cap_reserved_at is None
-    assert db_session.query(ConsentEvent).filter_by(proposal_id=prop.id).count() == 0
+    assert prop.status == "accepted" and prop.cap_reserved_at is None
+    assert db_session.query(ConsentEvent).filter_by(
+        proposal_id=prop.id, action="approved").count() == 0
 
 
 def test_auto_consent_approves_while_on_and_is_recorded_as_auto(db_session):
     _full_automation(db_session, True)
-    prop = _mk_proposal(db_session)
+    prop = _queued_proposal(db_session)
     prop.evidence_json = _final_review_evidence()
     svc.transition(db_session, prop, "approved", consent={"channel": "auto", "note": "clean review"})
-    event = db_session.query(ConsentEvent).filter_by(proposal_id=prop.id).one()
+    event = db_session.query(ConsentEvent).filter_by(
+        proposal_id=prop.id, action="approved").one()
     assert (prop.status, event.channel) == ("approved", "auto")
     assert event.action == "approved" and event.note == "clean review"
     assert event.evidence_manifest_json == _final_review_evidence()
@@ -415,9 +424,21 @@ def test_auto_consent_only_approves_or_confirms(db_session, status):
         svc.transition(db_session, prop, status, consent={"channel": "auto"})
 
 
-def _approved_auto(db_session):
+@pytest.mark.parametrize("status", ["pending_review", "needs_human"])
+def test_auto_approval_requires_the_users_queued_lane(db_session, status):
     _full_automation(db_session, True)
     prop = _mk_proposal(db_session)
+    if status == "needs_human":
+        svc.transition(db_session, prop, "needs_human", reason="login wall")
+    prop.evidence_json = _final_review_evidence()
+    with pytest.raises(svc.TransitionError, match="user-queued"):
+        svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
+    assert prop.status == status and prop.cap_reserved_at is None
+
+
+def _approved_auto(db_session):
+    _full_automation(db_session, True)
+    prop = _queued_proposal(db_session)
     prop.evidence_json = _final_review_evidence()
     svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
     return prop
@@ -435,7 +456,8 @@ def test_in_full_automation_the_agents_word_marks_it_submitted(db_session):
     assert app_row.status == "applied" and app_row.applied_at is not None
 
 
-@pytest.mark.parametrize("note", [None, "", "  ", "\t\n"])
+@pytest.mark.parametrize("note", [None, "", "  ", "\t\n", "\u200b", "\ufeff",
+                                   "\u200b\ufeff", "---"])
 def test_the_agents_word_needs_a_note_naming_the_confirmation(db_session, note):
     prop = _approved_auto(db_session)
     with pytest.raises(svc.TransitionError, match="what confirmed it"):
@@ -443,6 +465,17 @@ def test_the_agents_word_needs_a_note_naming_the_confirmation(db_session, note):
                        consent={"channel": "auto", "note": note})
     assert prop.status == "approved"
     assert db_session.query(ConsentEvent).filter_by(proposal_id=prop.id, action="submitted").count() == 0
+
+
+def test_auto_submission_uncertain_can_be_confirmed_by_the_agents_word(db_session):
+    prop = _approved_auto(db_session)
+    svc.transition(db_session, prop, "submission_uncertain", reason="submission_uncertain")
+    svc.transition(db_session, prop, "submitted", attested=True,
+                   consent={"channel": "auto", "note": "Confirmation email received"})
+    event = db_session.query(ConsentEvent).filter_by(
+        proposal_id=prop.id, action="submitted").one()
+    assert prop.status == "submitted" and event.channel == "auto"
+    assert event.note == "Confirmation email received"
 
 
 def test_the_agents_word_is_refused_once_full_automation_is_off(db_session):
@@ -474,7 +507,7 @@ def test_auto_consent_cannot_submit_without_attestation_even_with_a_receipt(db_s
 
 def test_auto_consent_still_requires_final_review_evidence(db_session):
     _full_automation(db_session, True)
-    prop = _mk_proposal(db_session)
+    prop = _queued_proposal(db_session)
     with pytest.raises(svc.TransitionError, match="final_review"):
         svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
 
@@ -482,7 +515,7 @@ def test_auto_consent_still_requires_final_review_evidence(db_session):
 @pytest.mark.parametrize("status", ["applied", "interviewing", "offered", "accepted"])
 def test_auto_consent_still_refuses_an_already_applied_application(db_session, status):
     _full_automation(db_session, True)
-    prop = _mk_proposal(db_session)
+    prop = _queued_proposal(db_session)
     app_row = db_session.get(Application, prop.application_id)
     app_row.status = status
     db_session.commit()
@@ -497,18 +530,19 @@ def test_auto_consent_still_refuses_past_the_daily_cap(db_session):
 
     auto_apply_settings.set_settings(
         AutoApplySettings(full_automation=True, max_submissions_per_day=1), db_session)
-    first, second = _mk_proposal(db_session), _mk_proposal(db_session)
+    first, second = _queued_proposal(db_session), _queued_proposal(db_session)
     for prop in (first, second):
         prop.evidence_json = _final_review_evidence()
     svc.transition(db_session, first, "approved", consent={"channel": "auto"})
     with pytest.raises(svc.TransitionError, match="daily submission cap reached"):
         svc.transition(db_session, second, "approved", consent={"channel": "auto"})
-    assert second.status == "pending_review" and second.cap_reserved_at is None
-    assert db_session.query(ConsentEvent).filter_by(proposal_id=second.id).count() == 0
+    assert second.status == "accepted" and second.cap_reserved_at is None
+    assert db_session.query(ConsentEvent).filter_by(
+        proposal_id=second.id, action="approved").count() == 0
 
 
 def test_auto_approval_refuses_company_blocked_after_proposal_was_created(db_session):
-    prop = _mk_proposal(db_session)
+    prop = _queued_proposal(db_session)
     from app.schemas.auto_apply import AutoApplySettings
     from app.services import auto_apply_settings
 
@@ -517,8 +551,9 @@ def test_auto_approval_refuses_company_blocked_after_proposal_was_created(db_ses
     prop.evidence_json = _final_review_evidence()
     with pytest.raises(svc.TransitionError, match="Companies to skip list"):
         svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
-    assert prop.status == "pending_review" and prop.cap_reserved_at is None
-    assert db_session.query(ConsentEvent).filter_by(proposal_id=prop.id).count() == 0
+    assert prop.status == "accepted" and prop.cap_reserved_at is None
+    assert db_session.query(ConsentEvent).filter_by(
+        proposal_id=prop.id, action="approved").count() == 0
 
 
 def test_auto_submission_is_recorded_if_company_blocked_after_approval(db_session):
@@ -555,7 +590,7 @@ def test_auto_consent_reaches_the_rest_gate(db_session, on, expected_status):
     from app.main import app
 
     _full_automation(db_session, on)
-    prop = _mk_proposal(db_session)
+    prop = _queued_proposal(db_session)
     prop.evidence_json = _final_review_evidence()
     db_session.commit()
     response = TestClient(app).patch(f"/api/proposals/{prop.id}", json={
