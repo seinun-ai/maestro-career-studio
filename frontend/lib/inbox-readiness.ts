@@ -38,10 +38,12 @@ export function readinessMarks(r: Readiness | null | undefined): ReadinessMark[]
   return marks;
 }
 
-/** The three readiness steps as a meter: tailored, no knock-out, answers checked. Null without readiness. */
+/** The three readiness steps as a meter: tailored, nothing blocks it (no knock-out, and the resume is set for the
+ *  job's country), answers checked. So the meter is full only when the row `isReady`. Null without readiness. */
 export function readinessSteps(r: Readiness | null | undefined): { done: number; total: 3 } | null {
   if (!r) return null;
-  const done = [r.tailored === true, r.knockout == null, r.to_check === 0].filter(Boolean).length;
+  const unblocked = r.knockout == null && r.base_country == null;
+  const done = [r.tailored === true, unblocked, r.to_check === 0].filter(Boolean).length;
   return { done, total: 3 };
 }
 

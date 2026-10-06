@@ -113,4 +113,7 @@ test("readiness steps count what is done", () => {
   assert.deepEqual(readinessSteps({ tailored: true, knockout: null, to_check: 0 }), { done: 3, total: 3 });
   assert.deepEqual(readinessSteps({ tailored: false, knockout: "opt", to_check: 2 }), { done: 0, total: 3 });
   assert.deepEqual(readinessSteps({ tailored: null, knockout: null, to_check: 1 }), { done: 1, total: 3 });
+  // A resume for another country blocks like a knock-out: the meter is never full on a row that is not ready.
+  assert.deepEqual(readinessSteps({ tailored: true, knockout: null, to_check: 0, base_country: "US" }), { done: 2, total: 3 });
+  assert.deepEqual(readinessSteps({ tailored: true, knockout: "opt", to_check: 0, base_country: "US" }), { done: 2, total: 3 });
 });

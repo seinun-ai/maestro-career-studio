@@ -38,7 +38,8 @@ their agent.
 - **Check:** record every completed page with `record_filled_answers`, naming
   the saved fact (`slot`) behind each screening answer, then call
   `get_final_review`. Submit without asking only when the PDF is ready, no
-  knock-out conflict exists, `flags` is empty, `duplicate_submitted` is false,
+  knock-out conflict exists, `base_country.eligible` is not false (the resume
+  is set for the job's country), `flags` is empty, `duplicate_submitted` is false,
   no blocked/manual items remain, and every screening answer names its saved
   fact. Check the PDF is present before uploading. The agent judges these
   checks; the server enforces evidence, queue, switch, cap, Companies to skip

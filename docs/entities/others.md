@@ -669,7 +669,8 @@
   the execution skill points to those four exceptions. It works only Queued
   (`accepted`) jobs, in the order and batches the user agrees with their agent.
   It records each page's answers, checks `get_final_review` (PDF ready, no
-  knock-out conflict, no flags, no duplicate, no blocked/manual items, every
+  knock-out conflict, the resume set for the job's country (`base_country.eligible` not false), no flags,
+  no duplicate, no blocked/manual items, every
   screening answer naming its saved fact `slot`), attaches `final_review`
   evidence, records approval with channel `auto`, submits once, then calls
   `mark_submitted(channel="auto", note=confirmation)`. Blocked jobs go to
@@ -721,8 +722,10 @@
   readiness is not ready. `get_final_review` carries the same check as `base_country:
   {job_country, base, eligible}` on the resume that would be sent (the application's, else the fit's
   `chosen_base`; null without a job or a base).
-  Frontend twin `lib/inbox-readiness.ts` words the marks **Tailored**, **Not tailored**,
-  **Knock-out: …**, **N to check**, **Resume for another country**. Ready rows sort first in Queued (`accepted`), keeping
+  Frontend twin `lib/inbox-readiness.ts`: a ready row shows **Ready**; any other a three-step meter (tailored;
+  nothing blocks it, meaning no knock-out and no resume for another country; answers checked), **Not tailored**
+  when it is not, and chips **Knock-out: …** (error), **Resume for another country** and **N to check**
+  (warning). Ready rows sort first in Queued (`accepted`), keeping
   the user's chosen sort within each group. Marks and sorting do not move rows between lanes.
 
   **Arrivals summary**: `GET /api/proposals/summary?since=` returns `since` and four counts

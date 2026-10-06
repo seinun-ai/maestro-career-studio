@@ -30,6 +30,7 @@ Only work jobs whose `ownership.owned_here` is true.
    Submit without asking only when `get_final_review` shows all of these:
    - the PDF is ready;
    - there is no knock-out conflict;
+   - `base_country.eligible` is not false (the resume is set for the job's country);
    - `flags` is empty;
    - `duplicate_submitted` is false;
    - there are no blocked or manual items;
