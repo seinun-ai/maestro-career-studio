@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Integer, Text, func
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.types import JSONDoc, UTCDateTime, utcnow
@@ -30,6 +31,14 @@ class BaseResume(Base):
     # `other` as "a real role that matches no category"), `unknown` only for
     # never-tagged. See the round-2 design doc for the four-state table.
     role_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Anchors: what this resume is written for, set with the role pair on
+    # PATCH /identity. `countries` holds upper-case ISO codes and [] means "no
+    # country filter" (never NULL); company and focus are short free text.
+    countries: Mapped[list[str]] = mapped_column(
+        JSONDoc, nullable=False, default=list, server_default=sa_text("'[]'")
+    )
+    company: Mapped[str | None] = mapped_column(Text, nullable=True)
+    focus: Mapped[str | None] = mapped_column(Text, nullable=True)
     data_json: Mapped[dict] = mapped_column(JSONDoc, nullable=False)
     pdf_path: Mapped[str | None] = mapped_column(Text)
     tex_path: Mapped[str | None] = mapped_column(Text)

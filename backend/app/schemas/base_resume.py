@@ -13,6 +13,9 @@ class BaseResumeSummary(BaseModel):
     display_name: str | None = None
     role_category: str
     role_label: str | None = None
+    countries: list[str] = []
+    company: str | None = None
+    focus: str | None = None
     updated_at: datetime
     pdf_rendered_at: datetime | None = None
     # Both drive the gallery card: render_error picks the thumbnail state,
@@ -28,6 +31,9 @@ class BaseResumeDetail(BaseModel):
     display_name: str | None = None
     role_category: str
     role_label: str | None = None
+    countries: list[str] = []
+    company: str | None = None
+    focus: str | None = None
     data: ResumeData
     pdf_path: str | None = None
     tex_path: str | None = None
@@ -146,6 +152,11 @@ class BaseResumeIdentity(BaseModel):
     role_category: str | None = None
     role_label: str | None = None
     display_name: str | None = None
+    # Anchors. Omitted = unchanged. countries: null and [] both store [];
+    # company/focus: "" or null clears. Values are validated, never guessed.
+    countries: list[str] | None = None
+    company: str | None = None
+    focus: str | None = None
 
 
 class BaseResumePortProject(BaseModel):

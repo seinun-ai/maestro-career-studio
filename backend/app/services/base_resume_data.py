@@ -147,3 +147,27 @@ def declared_role(session, slug: str | None) -> str | None:
     if row is None or row.role_category in (None, "unknown", "other"):
         return None
     return row.role_category
+
+
+def anchors(row: BaseResume | None) -> dict | None:
+    """What a base resume is written for: countries, role, company, focus.
+
+    `role` is the user's own words (role_label) else the category's display
+    label, and None when the role is undeclared (`unknown`, or `other` with no
+    label). Returns None for no row, a soft-deleted row, or a row with all four
+    empty, so a caller can skip the line instead of rendering an empty one.
+    """
+    from app.services import role_categories
+
+    if row is None or row.deleted_at is not None:
+        return None
+    role = row.role_label
+    if not role and row.role_category not in (None, role_categories.UNKNOWN, role_categories.OTHER):
+        role = role_categories.label_for(row.role_category)
+    result = {
+        "countries": list(row.countries or []),
+        "role": role or None,
+        "company": row.company,
+        "focus": row.focus,
+    }
+    return result if any(result.values()) else None

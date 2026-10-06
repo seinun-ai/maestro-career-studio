@@ -58,6 +58,9 @@ class TailoringSessionRead(BaseModel):
     health_warning: str | None = None
     # Transient (GET only, open sessions): why this session is stale, or None.
     stale_reason: str | None = None
+    # The base resume's anchors (countries, role, company, focus), read off the
+    # model property; None when the base is gone or has none.
+    base_anchors: dict | None = None
     created_at: datetime
     updated_at: datetime
 

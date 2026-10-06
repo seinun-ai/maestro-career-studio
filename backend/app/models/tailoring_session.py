@@ -2,10 +2,11 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import ForeignKey, Index, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
+from app.models.base_resume import BaseResume
 
 
 class TailoringSession(Base):
@@ -42,3 +43,26 @@ class TailoringSession(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False
     )
+
+    # The base this session was opened on, by slug. `base_resume` is a plain
+    # Text column (no FK: a session outlives its base's soft delete), so this
+    # is a read-only join, never a write path.
+    base_row: Mapped[BaseResume | None] = relationship(
+        BaseResume,
+        primaryjoin="foreign(TailoringSession.base_resume) == BaseResume.slug",
+        viewonly=True,
+        uselist=False,
+        lazy="select",
+    )
+
+    @property
+    def base_anchors(self) -> dict | None:
+        """The base's anchors (countries, role, company, focus), or None.
+
+        None for a missing or soft-deleted base and for one with no anchors.
+        Read by TailoringSessionRead through from_attributes, so every route
+        that returns a session carries it.
+        """
+        from app.services.base_resume_data import anchors
+
+        return anchors(self.base_row)

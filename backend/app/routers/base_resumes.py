@@ -40,6 +40,7 @@ from app.services import (
     base_resume_instruct,
     base_resume_render,
     career_kb,
+    countries,
     kb_base_sync,
     kb_consolidation,
     kb_import,
@@ -161,6 +162,39 @@ def _next_role_slug(role_category: str, db: Session) -> str:
     return f"{role_category}_{suffix}"
 
 
+def _validated_anchors(payload: BaseResumeIdentity, fields: set[str]) -> dict:
+    """The column updates the identity PATCH's anchor fields ask for.
+
+    Driven by `fields` (model_fields_set): omitted means unchanged, so only a
+    sent key lands in the result. Everything is validated here, before the
+    caller mutates the row, so a 422 saves nothing. Countries go through
+    `countries.normalize` (codes in any case, "UK", English names), keep
+    first-seen order without repeats, and null or [] store [] (the column is
+    NOT NULL). A blank text anchor clears to None.
+    """
+    updates: dict = {}
+    if "countries" in fields:
+        codes: list[str] = []
+        for value in payload.countries or []:
+            code = countries.normalize(value)
+            if code is None:
+                raise HTTPException(status_code=422, detail=f"Unknown country code: {value}.")
+            if code not in codes:
+                codes.append(code)
+        updates["countries"] = codes
+    for name in ("company", "focus"):
+        if name not in fields:
+            continue
+        text = (getattr(payload, name) or "").strip()
+        if len(text) > MAX_LABEL_CHARS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Keep the {name} to {MAX_LABEL_CHARS} characters or fewer.",
+            )
+        updates[name] = text or None
+    return updates
+
+
 def _detail(
     row: BaseResume,
     *,
@@ -176,6 +210,9 @@ def _detail(
         display_name=row.display_name,
         role_category=row.role_category,
         role_label=row.role_label,
+        countries=row.countries,
+        company=row.company,
+        focus=row.focus,
         data=ResumeData.model_validate(row.data_json),
         pdf_path=row.pdf_path,
         tex_path=row.tex_path,
@@ -568,7 +605,10 @@ def update_base_resume_identity(
     payload: BaseResumeIdentity,
     db: Annotated[Session, Depends(get_db)],
 ):
-    """Set a base resume's role and/or display name.
+    """Set a base resume's role, display name and/or anchors.
+
+    The anchors are countries (ISO codes), company and focus; saving them is
+    metadata too, so a 422 on any field saves none of them.
 
     Deliberately NOT the full PUT: that rewrites data_json, records a
     ResumeVersion, rewrites the on-disk JSON and recompiles the PDF. Declaring a
@@ -579,6 +619,7 @@ def update_base_resume_identity(
         raise HTTPException(status_code=404, detail="Base resume not found")
 
     fields = payload.model_fields_set
+    anchor_updates = _validated_anchors(payload, fields)
     if "role_label" in fields:
         # An explicit null clears the declaration back to the visible
         # "unknown" state; a value is validated, never coerced.
@@ -602,6 +643,8 @@ def update_base_resume_identity(
         )
     if "display_name" in fields:
         row.display_name = payload.display_name
+    for column, value in anchor_updates.items():
+        setattr(row, column, value)
 
     db.commit()
     db.refresh(row)
@@ -753,6 +796,10 @@ def duplicate_base_resume(
         # A duplicate targets the same role by definition.
         role_category=source.role_category,
         role_label=source.role_label,
+        # ...and the same anchors: copied, not shared (a fresh list).
+        countries=list(source.countries or []),
+        company=source.company,
+        focus=source.focus,
     )
     db.add(row)
     record_version(
