@@ -5,7 +5,7 @@ description: Use for the browser side of a Maestro CS application — filling an
 
 # Agent Apply Execution
 
-In full automation mode the Apply automatically prompt (`apply-auto`) replaces three things here: the per-application yes, who signs in to job-site accounts (`get_job_site_login`), and the proof of submission (the agent's note); everything else still applies.
+In full automation mode the Apply automatically prompt (`apply-auto`) replaces four things here: the per-application yes, who signs in to job-site accounts (`get_job_site_login`), the proof of submission (the agent's note), and the user being present at the submit; everything else still applies.
 
 ## Operating contract
 

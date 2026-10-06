@@ -58,13 +58,32 @@ def test_full_automation_serves_the_automatic_apply_prompt():
     "Never submit the same application twice.",
     "`report_failure` with the reason",
     "Jobs in Needs you go back through the user's queue before a later automatic run.",
-    "A yes from the user is recorded with `record_consent` channel `chat`",
+    "every screening answer you recorded names its saved fact (`slot`).",
+    "Attach the filled-form screenshot as `final_review` evidence.",
+    "Then call `record_consent` with channel `chat`, action `approved`, and the user's words.",
+    "Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.",
+    "If the user says yes:",
     "Stop when the daily cap in the brief is used up.",
     "Call `record_run` with automation `apply-session`",
+    "and the user being present at the submit",
 ])
 def test_the_automatic_apply_guardrails(sentence):
     body = {c.id: c for c in automations.catalog(full_automation=True).cards}["apply-session"].body
     assert sentence in body
+
+
+def test_the_user_yes_path_records_consent_before_submitting():
+    body = {c.id: c for c in automations.catalog(full_automation=True).cards}["apply-session"].body
+    step = body[body.index("7. **Everything else.**"):]
+    ordered = [
+        "If the user says yes:",
+        "Attach the filled-form screenshot as `final_review` evidence.",
+        "Then call `record_consent` with channel `chat`, action `approved`, and the user's words.",
+        "Submit once.",
+        "Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.",
+    ]
+    positions = [step.index(sentence) for sentence in ordered]
+    assert positions == sorted(positions)
 
 
 def test_scheduled_wrappers_leave_timing_to_the_user():
@@ -160,6 +179,16 @@ def test_the_minimal_skill_set_loads(skills_dir):
         "no-frontmatter"])
 def test_a_broken_skill_file_fails_loudly(skills_dir, name, text, match):
     _write(skills_dir, name, text)
+    with pytest.raises(ValueError, match=match):
+        automations.load_cards()
+
+
+@pytest.mark.parametrize(("text", "match"), [
+    (_card_text("apply-auto", include="[nowhere]"), "no skill file"),
+    (_card_text("apply-auto", kind="weekly"), "bad metadata"),
+], ids=["unknown-include", "bad-metadata"])
+def test_a_broken_alternate_skill_fails_at_startup(skills_dir, text, match):
+    _write(skills_dir, "apply-auto", text)
     with pytest.raises(ValueError, match=match):
         automations.load_cards()
 

@@ -30,7 +30,7 @@ Full automation mode must be on in the brief; otherwise stop.
    - `flags` is empty;
    - `duplicate_submitted` is false;
    - there are no blocked or manual items;
-   - every screening answer names its saved fact (`slot`).
+   - every screening answer you recorded names its saved fact (`slot`).
 6. **Submit.** Attach a screenshot of the filled form as `final_review` evidence.
    Record `record_consent` with channel `auto` and action `approved`.
    Submit once.
@@ -39,7 +39,11 @@ Full automation mode must be on in the brief; otherwise stop.
    A confirmation screenshot is optional.
    If you cannot tell whether submission succeeded, call `report_failure` with reason `submission_uncertain` and never retry.
 7. **Everything else.** Call `report_failure` with the reason, ask the user, and move on.
-   A yes from the user is recorded with `record_consent` channel `chat`; submit as in step 6.
+   If the user says yes:
+   Attach the filled-form screenshot as `final_review` evidence.
+   Then call `record_consent` with channel `chat`, action `approved`, and the user's words.
+   Submit once.
+   Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.
 8. **Record the run.** Call `record_run` with automation `apply-session`.
    Report outcome `ok`, `partial` if a job failed, or `failed` if no job could be worked.
    Include `counts` (`updated`: submitted; `needs_you`: parked for the user; `skipped`: declined), `digest`, and `job_ids` for the jobs worked.

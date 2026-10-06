@@ -190,6 +190,8 @@ def load_cards() -> tuple[AutomationCard, ...]:
                        never=metas[skill_id].never,
                        body=_card_body(skill_id, bodies, metas))
         for skill_id in CARD_ORDER)
+    for skill_id in ALTERNATES:
+        _card_body(skill_id, bodies, metas)
     _check_no_orphans(bodies, metas)
     return cards
 
@@ -206,12 +208,9 @@ def _alternate(skill_id: str) -> AutomationCard:
     )
 
 
-def apply_kind(full_automation: bool = False) -> Kind:
-    """Choose scheduled applying only when full automation mode is on.
-
-    The catalog keeps one Apply card identity and swaps the prompt behind it.
-    """
-    return "scheduled" if full_automation else "attended"
+def apply_kind() -> Kind:
+    """The attended Apply card remains the default when automation is off."""
+    return "attended"
 
 
 def catalog(full_automation: bool = False) -> AutomationCatalog:
