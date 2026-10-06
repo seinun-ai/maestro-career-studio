@@ -23,9 +23,10 @@ switch, but agents can't see that switch, and nothing says whether to include a 
   is written from the same resume and career history as the tailored resume, which full
   automation already submits unread.
 
-## Part 1: What the user sets (Settings → Form filling)
+## Part 1: What the user sets (Profile → Autofill, the "Answers for job forms" card)
 
-- A new **Cover letters** card:
+- A new **Cover letters** group, under the low-stakes switch in the same card (planning found the
+  switch lives there, not on Settings → Form filling, which holds the fill engine):
   - **When to include one:** "Skip unless required" (default), "Always write one", or "Never, and
     park the job if it's required".
   - **Tone:** Balanced (default), Enthusiastic, Formal or Concise — the four tones the Q&A tab

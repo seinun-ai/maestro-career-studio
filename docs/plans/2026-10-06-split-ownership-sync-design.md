@@ -149,3 +149,40 @@ sync key from its vault; it doesn't build or modify Maestro.
 
 Two writers on the same row (no merge logic anywhere); a hosted multi-user copy; the web app on
 the always-on machine; anything about how the agent handles CAPTCHAs, mail or reaching the user.
+
+## Amendments from planning (2026-10-06)
+
+Planning read the code and the first pilot's report; these refine Parts A–D without changing the
+model (one writer per piece of data, the laptop owns the profile, each job has one owner).
+
+- **No long-running sync program.** The always-on copy's backend runs a round when asked
+  (`POST /api/sync/round`); a `sync.sh` cron line every 5 minutes and the MCP tool `sync_now` ask.
+  The backoff (toward 30 minutes, snapping back on success) and the one-round-at-a-time lock live
+  in that backend. The SSH tunnel is kept up by the machine's own watchdog. The laptop's sync
+  endpoints are the only HTTP surface; the always-on copy works on its own database in-process.
+- **The ownership check is one database hook.** Maestro has no single loader for jobs (about 60
+  inline lookups) and the Assistant writes in-process, so the check is a SQLAlchemy `before_flush`
+  hook that refuses a write to a non-owned job's rows (or, on the always-on copy, to profile rows).
+  The same hook bumps the revisions. Reads that write (expiring stale proposals, clearing EEO
+  answers on every job) skip non-owned jobs.
+- **Requests on the other side's jobs** go through the routes the user already uses: a queue,
+  skip, status or note change on a non-owned job is stored as a request and answered "Sent at the
+  next sync" instead of refused.
+- **Files and paths.** Some path columns are absolute and differ per machine, so bundles carry
+  paths relative to their root (applications, base resumes, career documents) and the receiver
+  rewrites them. A base resume's content is read from its `<slug>.json` file, so the file travels
+  with the row; settings with a file mirror are written through their setting service.
+- **Machine-local settings never sync:** `sync.*`, model capability caches and similar.
+- **Additions from job work on the always-on copy.** Tailoring can record "I can't confirm this"
+  points in the career history, which the laptop owns. Those inserts are allowed on the always-on
+  copy and sent to the laptop as add-only additions (idempotent by claim text); nothing else in
+  the profile is writable there.
+- **First pairing.** A job both copies hold (the always-on copy was seeded from a laptop snapshot)
+  is the laptop's; a job only the always-on copy holds is its own. Profile differences on the
+  always-on copy are listed, and the first round refuses until they are accepted
+  (`sync.sh --pair --accept-profile-overwrite`), except additions as above.
+- **Version check:** a sync protocol number plus the schema revision (`/api/version`'s app
+  version is an unset environment variable on most installs).
+- **Testing** runs the laptop side as a real backend process (the app, its settings and its
+  database are process-wide), with the always-on side in-process.
+- **Memory:** the slim pilot already did the trim (backend ~122-150 MB native); no task here.
