@@ -356,3 +356,17 @@ def test_record_decision_409_when_no_matching_application(db_session):
     svc.request_decision(db_session, prop, reason="pick base")
     with pytest.raises(svc.TransitionError, match="no tailored resume to link"):
         svc.record_decision(db_session, prop, fit={"chosen_base": "hybrid"})
+
+
+def test_approve_is_refused_past_the_daily_cap(db_session):
+    from app.schemas.auto_apply import AutoApplySettings
+    from app.services import auto_apply_settings
+
+    auto_apply_settings.set_settings(AutoApplySettings(max_submissions_per_day=1), db_session)
+    first, second = _mk_proposal(db_session), _mk_proposal(db_session)
+    for prop in (first, second):
+        prop.evidence_json = _final_review_evidence()
+    svc.transition(db_session, first, "approved", consent={"channel": "chat", "note": "yes"})
+    with pytest.raises(svc.TransitionError, match="daily submission cap reached"):
+        svc.transition(db_session, second, "approved", consent={"channel": "chat", "note": "yes"})
+    assert second.status == "pending_review"
