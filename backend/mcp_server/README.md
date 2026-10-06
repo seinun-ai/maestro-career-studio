@@ -229,6 +229,7 @@ Each tool's own description (which your assistant sees) has the full details.
 - `edit_base_resume`: change parts of a base resume and re-render its PDF. The tool's own description lists the edit types.
 - `update_base_resume`, `create_base_resume`: replace or create a whole base resume.
 - `duplicate_base_resume`, `archive_base_resume`, `unarchive_base_resume`: copy, hide or restore one (archiving deletes nothing).
+- `set_base_resume_identity`: set what a resume is for — its countries, role, company and focus. A resume set for some countries is scored and recommended only for jobs in them.
 - `list_resume_versions`, `get_resume_version`, `restore_resume_version`: every saved version of a resume; restoring adds a new version and deletes nothing.
 
 **Health check** (run before tailoring)
@@ -236,7 +237,7 @@ Each tool's own description (which your assistant sees) has the full details.
 - `waive_health_gate`, `unwaive_health_gate`: skip a failing check only when you say so, or undo that.
 
 **Scoring and tailoring**
-- `score_ats`: score one resume, or all your base resumes, against a job.
+- `score_ats`: score one resume, or all your base resumes set for the job's country, against a job.
 - `compare_ats`: before/after scores for a tailored application.
 - `create_tailoring_session`, `list_tailoring_sessions`, `get_tailoring_session`, `close_tailoring_session`: start, find, resume or abandon a gap walkthrough. These are the same sessions as the web app's gap page, so you can start in one and finish in the other.
 - `resolve_gaps`: save your answer for each gap (add a keyword, describe real experience, attach a project, skip, or "can't confirm" so it's never asked again).

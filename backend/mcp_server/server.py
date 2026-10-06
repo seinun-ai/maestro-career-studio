@@ -875,7 +875,7 @@ def update_base_resume(slug: str, data: dict, display_name: str | None = None) -
     return _client.update_base_resume(slug, data=data, display_name=display_name)
 
 
-@mcp.tool(**_write("Set resume target", destructive=False, idempotent=True))
+@mcp.tool(**_write("Set Resume Target", destructive=False, idempotent=True))
 @_guard
 def set_base_resume_identity(
     slug: str,
