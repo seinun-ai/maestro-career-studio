@@ -666,7 +666,12 @@ Each step commits on its own. A failed step stops the round, and the next round 
 - Compare the remote's profile rows with home's (per-row hashes).
 - Differences other than cannot-confirm additions → refuse with the list of table names and keys,
   never values, unless `accept_profile_overwrite`.
-- Job ids on both sides → home's (the remote's copy becomes a replica at step 7).
+- Job ids on both sides → home's: flip them to replicas (owner = home) up front in the pairing
+  commit, so step 6 never pushes them (Task 11 review); list the shared jobs where the remote has
+  progressed (an application or a proposal past pending_review) in the refusal, since the laptop's
+  copy will replace them.
+- Set `paired` in the same commit as the first applied `profile_rev`, so a first round that fails
+  before then is compared again (Task 11 review).
 - Base resumes only the remote has (seeds or pre-pairing rows) are deleted by the first profile
   apply; list them by slug in the refusal, and list remote-owned applications built from them (their
   rebuild and Q&A routes will answer "Unknown base resume" afterwards; Task 9 review).
