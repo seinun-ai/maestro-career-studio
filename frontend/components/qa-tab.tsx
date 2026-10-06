@@ -3,7 +3,6 @@
 import { useId, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Copy,
   Download,
   Loader2,
   Pencil,
@@ -13,6 +12,7 @@ import {
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { CopyButton } from "@/components/copy-button";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -387,15 +387,7 @@ function QAEntryCard({
               disabled={isSaving || isRendering || isRegenerating || generating}
             />
           ) : null}
-          <IconButton
-            label="Copy"
-            icon={<Copy />}
-            onClick={() => {
-              navigator.clipboard
-                .writeText(entry.answer ?? "")
-                .then(() => toast.success("Copied"));
-            }}
-          />
+          <CopyButton text={entry.answer ?? ""} />
           {isCoverLetter ? (
             <IconButton
               label="Create PDF"

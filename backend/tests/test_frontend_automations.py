@@ -52,11 +52,12 @@ def test_copy_is_off_for_an_unreachable_app_and_says_why():
 
 
 def test_a_failed_clipboard_write_opens_the_prompt_to_select():
-    # A missing clipboard API throws at once, before any promise exists.
-    assert "Promise.resolve()" in _CARD
-    catch = _CARD[_CARD.index(".catch(") :]
-    catch = catch[: catch.index("});")]
-    assert "setOpen(true)" in catch
+    # useCopy owns the clipboard call (and the missing-API throw); the card handles the `false` branch.
+    assert "useCopy" in _CARD and "navigator.clipboard" not in _CARD
+    # The `false` branch (the hook already toasted via onError) opens the prompt.
+    failed = _CARD[_CARD.index("if (ok)") :]
+    failed = failed[: failed.index("\n  }\n")]
+    assert "setOpen(true)" in failed and "else" in failed
     assert "select-all" in _CARD
 
 

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Copy } from "lucide-react";
+import { CircleCheck, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCopy } from "@/hooks/use-copy";
 import { APPLY_CARD_ID, NEED_LABELS, promptFor } from "@/lib/automations";
 import { formatTimeAgo } from "@/lib/format-date";
 import { lastRanLine } from "@/lib/agent-runs";
@@ -50,22 +51,23 @@ export function AutomationCard({
     }
   }, [open]);
 
-  function copy() {
-    // `Promise.resolve().then` turns a missing clipboard API (an insecure
-    // page), which throws at once, into the same rejection `.catch` handles.
-    Promise.resolve()
-      .then(() => navigator.clipboard.writeText(text))
-      .then(() => toast.success(`Prompt copied. Paste it into ${app.label}.`))
-      .catch(() => {
-        // Already open: focus it now. Otherwise open it, and the effect
-        // focuses it on arrival (a flag left set would steal a later Show).
-        if (promptRef.current) promptRef.current.focus();
-        else {
-          focusPromptWhenShown.current = true;
-          setOpen(true);
-        }
-        toast.error("Couldn't copy. Select the prompt below instead.");
-      });
+  // One message on a failed copy: `onError` replaces the hook's own toast, and the fallback below opens the prompt.
+  const { copied, copy } = useCopy({
+    onError: () => toast.error("Couldn't copy. Select the prompt below instead."),
+  });
+
+  async function copyPrompt() {
+    const ok = await copy(text);
+    if (ok) {
+      toast.success(`Prompt copied. Paste it into ${app.label}.`);
+    } else if (promptRef.current) {
+      // Already open: focus it now. Otherwise open it, and the effect
+      // focuses it on arrival (a flag left set would steal a later Show).
+      promptRef.current.focus();
+    } else {
+      focusPromptWhenShown.current = true;
+      setOpen(true);
+    }
   }
 
   return (
@@ -97,7 +99,7 @@ export function AutomationCard({
         ) : null}
         <div className="flex items-center gap-2">
           <Button
-            onClick={copy}
+            onClick={() => void copyPrompt()}
             disabled={!app.reachable}
             // A disabled <button> drops keyboard focus and says nothing about
             // why; this one stays focusable and points at the app note.
@@ -105,7 +107,8 @@ export function AutomationCard({
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
             aria-describedby={!app.reachable ? disabledReasonId : undefined}
           >
-            <Copy aria-hidden="true" /> Copy prompt
+            {copied ? <CircleCheck aria-hidden="true" /> : <Copy aria-hidden="true" />}
+            {copied ? "Copied" : "Copy prompt"}
           </Button>
           <Button
             variant="ghost"

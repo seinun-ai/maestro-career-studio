@@ -1349,6 +1349,10 @@
     the server can reverse the change: Approve on a draft bullet (PATCH back to `draft`) and
     Archive on a base resume (`/unarchive`). Skip and Queue get no Undo. Undo answers too: a
     failure toasts through `couldnt(...)`.
+  - *Copy*: every clipboard write goes through `useCopy` (`hooks/use-copy.ts`: holds `copied` for 1.2s;
+    a refused write toasts through `couldnt(...)`, or calls `onError` instead, never both). An icon-only
+    copy is `CopyButton` (CircleCheck, a "Copied" chip, a polite spoken status); a labelled one swaps its
+    label to "Copied"; a menu item keeps its instructive toast.
 - The Assistant page (`/chat`) is Gemini-styled: centered greeting + floating pill composer
   when empty, docked composer with an inline resume picker ("Resume to edit") otherwise;
   user messages are muted tonal bubbles, assistant text plain. The sessions

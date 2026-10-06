@@ -62,6 +62,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { fieldsNeedFixing } from "@/lib/describe-edit";
+import { useCopy } from "@/hooks/use-copy";
 import { couldnt } from "@/lib/error-text";
 import { type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -96,6 +97,9 @@ export function EditorBody({
   initial: BaseResumeDetail;
 }) {
   const qc = useQueryClient();
+  const { copy: copyId } = useCopy({
+    onError: (err) => toast.error(couldnt("copy the ID", err)),
+  });
   const [data, setData] = useState<ResumeData>(initial.data);
   const [displayName, setDisplayName] = useState(initial.display_name ?? "");
   const [rawMode, setRawMode] = useState(false);
@@ -472,10 +476,9 @@ export function EditorBody({
                           label says who it is for: it is not the resume's name. */}
                       <DropdownMenuItem
                         onClick={() => {
-                          navigator.clipboard
-                            .writeText(slug)
-                            .then(() => toast.success("ID copied. Connected agents find this resume by it."))
-                            .catch((err) => toast.error(couldnt("copy the ID", err)));
+                          void copyId(slug).then((ok) => {
+                            if (ok) toast.success("ID copied. Connected agents find this resume by it.");
+                          });
                         }}
                       >
                         <Copy />

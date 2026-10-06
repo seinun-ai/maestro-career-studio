@@ -143,3 +143,21 @@ def test_a_leaving_entry_is_pruned_when_the_refetch_drops_it():
     effect = section.split("// Clear an id once the refetched list no longer holds it as it was", 1)[1].split("}, [items, leavingIds]);", 1)[0]
     assert "now.get(id) === status" in effect and "setLeavingIds(new Map(rest))" in effect
     assert "[&_button]:opacity-0!" in section  # beats the button's own data-disabled:opacity-50
+
+
+def test_copy_uses_one_hook_with_an_error_path():
+    hook = _read("hooks/use-copy.ts")
+    assert "navigator.clipboard.writeText" in hook and "catch" in hook and "couldnt(" in hook
+    assert "onError" in hook
+    for rel in ("components/qa-tab.tsx", "components/automations/automation-card.tsx",
+                "components/resume-editor/editor-body.tsx"):
+        src = _read(rel)
+        assert "useCopy" in src or "CopyButton" in src, rel
+        assert "navigator.clipboard" not in src, rel
+
+
+def test_the_copy_button_confirms_in_place_and_aloud():
+    btn = _read("components/copy-button.tsx")
+    assert "Copied" in btn and 'aria-live="polite"' in btn and "data-show" in btn
+    # D2: a done state is CircleCheck, never Check.
+    assert "CircleCheck" in btn and not re.search(r"\bCheck\b", btn.replace("CircleCheck", ""))
