@@ -42,6 +42,7 @@ _PENDING_SITES = {
     "app/jobs/[id]/page.tsx": ["Queue in Agent inbox"],
     "components/proposals/triage-actions.tsx": ["Skip (dialog)", "Queue (bulk)"],
     "components/career/inbox-panel.tsx": ["Approve"],
+    "components/ats-score-panel.tsx": ["Update scores"],
 }
 
 

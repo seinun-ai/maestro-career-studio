@@ -98,7 +98,9 @@ def test_the_gap_page_and_score_tab_count_with_it():
     assert "{counts.open > 0 ? `${counts.open} open` : \"Nothing open\"}" in page
     panel = _read("components/ats-score-panel.tsx")
     assert "gapCounts(" in panel and "resolutions_json.length" not in panel
-    assert "` · ${answered} answered`" in panel
+    # The count rides on ProgressCount above the button, so the button says only what it does.
+    assert '<ProgressCount done={answered} total={totalGaps} noun="answered"' in panel
+    assert "` · ${answered} answered`" not in panel
 
 
 def test_auto_filled_banner_names_the_job_s_own_words():
@@ -423,8 +425,9 @@ def test_the_score_tab_says_why_undated_jobs_score_low():
     panel = _read("components/ats-score-panel.tsx")
     assert "{datesUnreadable(score.subscores_json.format_flags) && (" in panel
     assert "<p className=\"text-muted-foreground text-body-small\">{UNREADABLE_DATES_NOTE}</p>" in panel
-    # "11 of 100", not a bare 11.
-    assert '<span className="text-body-small text-muted-foreground"> of 100</span>' in panel
+    # Each subscore is a meter out of 100 (aria-valuemax); the visible " of 100" went, the headline keeps "/ 100".
+    assert "> of 100<" not in panel and "aria-valuemax" not in panel and "<ScoreBar" in panel
+    assert '<span className="text-muted-foreground text-body-medium"> / 100</span>' in panel
 
 
 def test_a_skill_with_no_example_never_contradicts_mentioned_in():

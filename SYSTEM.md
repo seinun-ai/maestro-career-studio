@@ -189,7 +189,8 @@ file to open.
 4. **Score** — Score and tailor auto-scores all active bases on first visit; per-base
    cards → **Analyze gaps** creates a session (one filled button, on the best match;
    Restart gap analysis and Mark applied without tailoring sit in each card's ⋯).
-   When every card draws the low-coverage warning, one banner says it instead.
+   When every card draws the low-coverage warning, or the same gate warning, one banner says it instead;
+   the lowest subscore of a card wears a Weakest word.
    With no base resume the tab
    offers Import resumes and documents instead, and scores once that dialog closes.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions

@@ -51,3 +51,25 @@ def test_job_header_shows_the_best_score_and_locks_tabs_with_an_icon():
     assert "ScoreBar" in src and "CONCEPT_ICONS.locked" in src
     assert 'id={lockedReasonId} className="sr-only"' in src  # still the triggers' aria-describedby target
     assert 'queryKey: ["ats-scores", id]' in src and '.filter((s) => s.phase === "base")' in src
+
+
+# --- Task 18: score and tailor cards ---------------------------------------------------
+
+
+def test_score_cards_hoist_shared_warnings_and_mark_the_weakest():
+    src = _read("components/ats-score-panel.tsx")
+    assert "sharedWarnings" in src and "Weakest" in src
+    assert "ProgressCount" in src and "useCountUp" in src
+    assert "> of 100<" not in src
+
+
+def test_score_card_subscores_and_coverage_are_meters():
+    src = _read("components/ats-score-panel.tsx")
+    assert 'label="Skills covered"' in src and "valueText={`${matched} of ${extracted}`}" in src
+    assert "useCountUp(score.composite)" in src
+    # The best match leads: two columns wide, its subscores in two.
+    assert "@3xl:col-span-2" in src and "@3xl:grid-cols-2" in src
+    # Update scores' spinner is the Button's own; timings live in lib/motion.ts.
+    assert "pending={run.isPending}" in src
+    assert 'className={run.isPending ? "animate-spin"' not in src
+    assert not any(n in src for n in ("1200", "400", "200"))

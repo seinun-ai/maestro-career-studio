@@ -21,6 +21,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProgressCount, ScoreBar } from "@/components/visual";
+import { useCountUp } from "@/hooks/use-count-up";
 import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import {
@@ -66,26 +68,25 @@ function coverageWarning(score: AtsScore): string | null {
   return score.coverage_warning || score.subscores_json?.coverage_warning || null;
 }
 
-function SubscoreBar({ label, value }: { label: string; value: number }) {
-  const pct = Math.round(value * 100);
+/** One subscore as a meter out of 100: the number sits beside the bar, so no " of 100" is needed. */
+function SubscoreBar({ label, value, weakest }: { label: string; value: number; weakest: boolean }) {
   return (
     <div className="space-y-0.5">
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex items-center gap-2">
         <span className="text-muted-foreground text-body-small">{label}</span>
-        {/* "11 of 100": a bare 11 read as a count, not a score out of 100. */}
-        <span className="text-label-medium tabular-nums">
-          {pct}
-          <span className="text-body-small text-muted-foreground"> of 100</span>
-        </span>
+        {/* A word only (D4): no colour, no threshold; the arrow icon means Lost elsewhere. */}
+        {weakest && (
+          <span className="inline-flex h-4 items-center rounded-full bg-surface-container px-1.5 text-label-small">Weakest</span>
+        )}
       </div>
-      <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
-        <div
-          className="bg-primary h-full rounded-full transition-[width]"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <ScoreBar value={Math.round(value * 100)} max={100} label={label} width="flex-1" className="w-full" />
     </div>
   );
+}
+
+/** The index of the lowest value; ties go to the first. */
+function lowestIndex(values: number[]): number {
+  return values.reduce((low, v, i) => (v < values[low] ? i : low), 0);
 }
 
 /**
@@ -172,6 +173,7 @@ function AtsScoreCard({
   applyingAsIs,
   applied,
   showCoverage,
+  sharedWarnings,
 }: {
   score: AtsScore;
   top: boolean;
@@ -187,19 +189,26 @@ function AtsScoreCard({
   applied: boolean;
   /** False when the panel's banner already says every resume shows too few of the job's skills. */
   showCoverage: boolean;
+  /** Gate warnings every card carries: the panel's banner says them once, so the card leaves them out. */
+  sharedWarnings: Set<string>;
 }) {
   const baseName = useBaseResumeLabel();
   const actionRef = useRef<HTMLButtonElement>(null);
   const focusAction = useCallback(() => actionRef.current, []);
-  const gateWarnings = score.subscores_json.gate_warnings ?? [];
+  const gateWarnings = (score.subscores_json.gate_warnings ?? []).filter((w) => !sharedWarnings.has(w));
+  const shownScore = useCountUp(score.composite);
+  const subscoreValues = SUBSCORE_LABELS.map(({ key }) => score.subscores_json[key] ?? 0);
+  const weakestAt = lowestIndex(subscoreValues);
+  const extracted = score.jd_skills_extracted_count ?? 0;
+  const matched = score.jd_skills_matched_count ?? 0;
   const coverage = showCoverage ? coverageWarning(score) : null;
   // The gap page's own counts: stored resolutions include skips and gaps it no longer lists.
-  const { answered } = openSession
+  const { answered, total: totalGaps } = openSession
     ? gapCounts(
         openSession.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)),
         openSession.resolutions_json,
       )
-    : { answered: 0 };
+    : { answered: 0, total: 0 };
   // One filled button on the tab: the best match's. The rest are outlined, so "Best match" leads.
   const variant = top ? "default" : "outline";
   return (
@@ -207,6 +216,7 @@ function AtsScoreCard({
       className={cn(
         "animate-fade-rise",
         top && "ring-primary",
+        top && "@3xl:col-span-2",
       )}
       style={{ animationDelay: `${Math.min(index, 8) * 50}ms` }}
     >
@@ -235,18 +245,27 @@ function AtsScoreCard({
       {/* flex-1 and mt-auto: every card's button sits on the same line, whatever notes a card has. */}
       <CardContent className="flex flex-1 flex-col gap-3">
         <div className="text-headline-small tabular-nums">
-          {score.composite.toFixed(1)}
+          {shownScore.toFixed(1)}
           <span className="text-muted-foreground text-body-medium"> / 100</span>
         </div>
-        <div className="space-y-1.5">
-          {SUBSCORE_LABELS.map(({ key, label }) => (
-            <SubscoreBar
-              key={key}
-              label={label}
-              value={score.subscores_json[key] ?? 0}
-            />
+        <div className={cn("grid gap-y-1.5", top && "@3xl:grid-cols-2 @3xl:gap-x-6")}>
+          {SUBSCORE_LABELS.map(({ key, label }, i) => (
+            <SubscoreBar key={key} label={label} value={subscoreValues[i]} weakest={i === weakestAt} />
           ))}
         </div>
+        {extracted > 0 && (
+          <div className="space-y-0.5">
+            <span className="text-muted-foreground text-body-small">Skills covered</span>
+            <ScoreBar
+              value={matched}
+              max={extracted}
+              label="Skills covered"
+              valueText={`${matched} of ${extracted}`}
+              width="flex-1"
+              className="w-full"
+            />
+          </div>
+        )}
         {datesUnreadable(score.subscores_json.format_flags) && (
           <p className="text-muted-foreground text-body-small">{UNREADABLE_DATES_NOTE}</p>
         )}
@@ -267,7 +286,10 @@ function AtsScoreCard({
             )}
           </ul>
         )}
-        <div className="mt-auto pt-1">
+        <div className="mt-auto space-y-1.5 pt-1">
+          {openSession && !creating && totalGaps > 0 && (
+            <ProgressCount done={answered} total={totalGaps} noun="answered" />
+          )}
           {openSession && !creating ? (
             <Button
               ref={actionRef}
@@ -278,7 +300,6 @@ function AtsScoreCard({
               render={
                 <Link href={`/jobs/${jobId}/tailor/${openSession.id}`}>
                   Continue gap analysis
-                  {answered > 0 ? ` · ${answered} answered` : ""}
                 </Link>
               }
             />
@@ -559,6 +580,15 @@ export function AtsScorePanel({
     const lowCoverageEverywhere =
       baseRows.length > 1 && baseRows.every((row) => coverageWarning(row) != null);
 
+    // Gate warnings every card carries are a fact about the job, said once above the cards.
+    const sharedWarnings = new Set<string>(
+      baseRows.length > 1
+        ? (baseRows[0].subscores_json.gate_warnings ?? []).filter((w) =>
+            baseRows.every((row) => row.subscores_json.gate_warnings?.includes(w)),
+          )
+        : [],
+    );
+
     return (
       <div className="@container space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -566,13 +596,11 @@ export function AtsScorePanel({
           <Button
             variant="outline"
             size="sm"
-            className="shrink-0 data-disabled:pointer-events-none data-disabled:opacity-50"
+            className="shrink-0"
             onClick={() => runOnce("manual")}
-            // Focusable while it runs: a natively disabled button dropped focus to <body>.
-            focusableWhenDisabled
-            disabled={run.isPending}
+            pending={run.isPending}
           >
-            <RefreshCw className={run.isPending ? "animate-spin" : undefined} />
+            <RefreshCw />
             {run.isPending ? "Updating scores…" : "Update scores"}
           </Button>
         </div>
@@ -580,6 +608,16 @@ export function AtsScorePanel({
           <div className="flex gap-2 rounded-corner-md bg-warning-container p-2 text-body-medium text-on-warning-container">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <p>{LOW_COVERAGE_ON_EVERY_RESUME}</p>
+          </div>
+        )}
+        {sharedWarnings.size > 0 && (
+          <div className="flex gap-2 rounded-corner-md bg-warning-container p-2 text-body-medium text-on-warning-container">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <ul className="space-y-1">
+              {[...sharedWarnings].map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
           </div>
         )}
         <div className="grid gap-3 @md:grid-cols-2 @3xl:grid-cols-3">
@@ -600,6 +638,7 @@ export function AtsScorePanel({
               }
               applied={applied}
               showCoverage={!lowCoverageEverywhere}
+              sharedWarnings={sharedWarnings}
             />
           ))}
         </div>
