@@ -32,19 +32,11 @@ from starlette.requests import ClientDisconnect
 
 from app.db import get_db
 from app.models.agent_run import AgentRun
-from app.models.application import Application
-from app.models.application_proposal import ApplicationProposal
-from app.models.career_kb import KBPoint
 from app.models.job import Job
 from app.models.sync import SyncRequest, SyncState, SyncTombstone
 from app.models.types import utcnow
-from app.routers import version
 from app.schemas.agent_runs import MAX_DIGEST, MAX_JOB_IDS, RunCountKey, RunOutcome
-from app.schemas.application import ApplicationPatch
-from app.schemas.proposal import ConsentPayload
-from app.services import application_status, proposals, tailoring_session
-from app.services.ats import normalize_term
-from app.services.sync import duplicates, hooks, jobs_bundle, profile_bundle, status
+from app.services.sync import duplicates, hooks, jobs_bundle, profile_bundle, request_apply, requests, status
 from app.services.sync import round as sync_round
 
 logger = logging.getLogger(__name__)
@@ -59,8 +51,6 @@ _MACHINE_ID = re.compile(r"[A-Za-z0-9_-]{1,32}")
 _JOB_HEX = re.compile(r"[0-9a-f]{32}")
 _CURSOR_END = "f" * 32
 _CHUNK = 500
-_MAX_CLAIM = 2000
-_MAX_REASON = 500
 
 _NOT_FOUND = "Not Found"
 _INVALID = "The request wasn't valid."
@@ -78,15 +68,8 @@ _OURS = "This job belongs to your laptop."
 _CANT_APPLY = "Maestro couldn't apply this job."
 _UNREADABLE = "This job couldn't be read."
 _NOT_HERE = "This job isn't on your laptop."
-_MOVING = "This job is moving to your bot; make the change there once it arrives."
-_WRONG_JOB = "That doesn't belong to this job."
-_BAD_PAYLOAD = "This request wasn't valid."
-_NO_TAKE_OVER = "A job on your laptop is handed over from your laptop."
-_UNKNOWN_KIND = "Maestro doesn't know that kind of request."
-_NOT_REPEATABLE = "This request can't be repeated."
 _TIMEOUT = "The request took too long to arrive."
 _RETRY = "This job's text matches a job that is still changing; Maestro will try again."
-_REQUEST_FAILED = "Maestro couldn't apply this request."
 
 
 class _Refused(Exception):
@@ -148,7 +131,7 @@ def _check_version(request: Request, db: Session) -> PeerInfo:
     if len(parts) != 3 or not _MACHINE_ID.fullmatch(parts[2]):
         raise _Refused(409, _VERSION, "version")
     protocol, revision, peer_id = parts
-    if protocol != str(status.SYNC_PROTOCOL) or revision != version.get_version(db).schema_revision:
+    if protocol != str(status.SYNC_PROTOCOL) or revision != status.schema_revision(db):
         raise _Refused(409, _VERSION, "version")
     home_id = status.machine_id(db)
     db.commit()  # the first call stores this copy's id
@@ -240,10 +223,6 @@ def _profile_rev(db: Session) -> int:
     return db.scalar(select(SyncState.value).where(SyncState.name == "profile_rev")) or 0
 
 
-def _owned_here_clause(db: Session):
-    return or_(Job.owner_machine.is_(None), Job.owner_machine == status.machine_id(db))
-
-
 def _disk_error() -> HTTPException:
     logger.warning("A sync request couldn't save the files it received.")
     return HTTPException(500, detail=_DISK)
@@ -254,7 +233,7 @@ def _disk_error() -> HTTPException:
 
 @router.get("/hello")
 def hello(peer: Peer, db: DB):
-    return {"protocol": status.SYNC_PROTOCOL, "schema_revision": version.get_version(db).schema_revision,
+    return {"protocol": status.SYNC_PROTOCOL, "schema_revision": status.schema_revision(db),
             "machine_id": status.machine_id(db), "profile_rev": _profile_rev(db)}
 
 
@@ -282,18 +261,13 @@ def _export(db: Session, job_ids: list[uuid.UUID]) -> tuple[list[dict], int]:
     return bundles, skipped
 
 
-def _weight(bundle: dict) -> int:
-    """About how many bytes a bundle adds to a response: its files, base64, and its rows."""
-    return sum(len(entry["b64"]) for entry in bundle["files"]) + len(json.dumps(bundle["rows"]))
-
-
 def _export_page(db: Session, rows: list, limit: int) -> tuple[list[dict], int, int]:
     """Bundles of the leading rows, up to ``limit`` and the byte budget but never fewer than one
     row. Returns them, how many could not be sent, and how many rows were taken."""
     bundles, skipped, used, taken = [], 0, 0, 0
     for row in rows[:limit]:
         found, left_out = _export(db, [row.id])
-        size = _weight(found[0]) if found else 0
+        size = jobs_bundle.weight(found[0]) if found else 0
         if taken and used + size > PAGE_BYTES:
             break
         bundles.extend(found)
@@ -324,7 +298,7 @@ def _jobs_after(db: Session, rev: int, ident: str, limit: int) -> list:
     after = Job.sync_rev > rev
     if ident:
         after = or_(after, and_(Job.sync_rev == rev, Job.id > uuid.UUID(ident)))
-    return db.execute(select(Job.id, Job.sync_rev).where(_owned_here_clause(db), after)
+    return db.execute(select(Job.id, Job.sync_rev).where(jobs_bundle.owned_clause(db), after)
                       .order_by(Job.sync_rev, Job.id).limit(limit + 1)).all()
 
 
@@ -481,161 +455,15 @@ def get_requests(peer: Peer, db: DB):
     return shown
 
 
-class _RequestIn(BaseModel):
-    id: uuid.UUID
-    kind: str
-    job_id: uuid.UUID | None = None
-    payload: dict[str, Any]
-    created_at: AwareDatetime
-
-
 class _RequestsPush(BaseModel):
-    requests: list[_RequestIn]
-
-
-class _Refusal(Exception):
-    """Why a request was refused; always a fixed or rule sentence."""
-
-    def __init__(self, reason: str):
-        super().__init__(reason)
-        self.reason = reason
-
-
-class _TransitionPayload(BaseModel):
-    proposal_id: uuid.UUID
-    to: str
-    reason: str | None = None
-    consent: ConsentPayload | None = None
-
-
-class _PatchPayload(BaseModel):
-    application_id: uuid.UUID
-    fields: dict[str, Any]
-
-
-def _payload(model: type[Model], item: _RequestIn) -> Model:
-    try:
-        return model.model_validate(item.payload)
-    except ValidationError:
-        raise _Refusal(_BAD_PAYLOAD) from None
-
-
-def _own_job(db: Session, job_id: uuid.UUID | None) -> Job:
-    """The job a request is about, when it is this copy's and not on its way out."""
-    job = db.get(Job, job_id) if job_id is not None else None
-    if job is None or job.owner_machine not in (None, status.machine_id(db)):
-        raise _Refusal(_NOT_HERE)
-    if job.handover == "offered":
-        raise _Refusal(_MOVING)
-    return job
-
-
-def _apply_transition(db: Session, item: _RequestIn) -> None:
-    job = _own_job(db, item.job_id)
-    body = _payload(_TransitionPayload, item)
-    proposal = db.get(ApplicationProposal, body.proposal_id)
-    if proposal is None or proposal.job_id != job.id:
-        raise _Refusal(_WRONG_JOB)
-    consent = body.consent.model_dump(exclude_unset=True) if body.consent else None
-    try:
-        if body.to == "pending_review" and proposal.status == "needs_decision":
-            proposals.record_decision(db, proposal, fit={})  # as the web route does
-        else:
-            proposals.transition(db, proposal, body.to, consent=consent, reason=body.reason)
-    except proposals.TransitionError as rule:
-        raise _Refusal(str(rule)) from None
-
-
-def _patch_values(fields: dict) -> dict:
-    try:
-        patch = ApplicationPatch.model_validate(fields)
-    except ValidationError:
-        raise _Refusal(_BAD_PAYLOAD) from None
-    values = {name: getattr(patch, name) for name in patch.model_fields_set}
-    if not values or set(fields) - {"status", "notes"} or values.get("status", "x") is None:
-        raise _Refusal(_BAD_PAYLOAD)
-    return values
-
-
-def _apply_patch(db: Session, item: _RequestIn) -> None:
-    job = _own_job(db, item.job_id)
-    body = _payload(_PatchPayload, item)
-    values = _patch_values(body.fields)
-    application = db.get(Application, body.application_id)
-    if application is None or application.job_id != job.id:
-        raise _Refusal(_WRONG_JOB)
-    application_status.apply_status_and_notes(db, application, values)
-
-
-def _apply_addition(db: Session, item: _RequestIn) -> None:
-    claim = item.payload.get("claim")
-    if not isinstance(claim, str) or not claim.strip() or len(claim) > _MAX_CLAIM:
-        raise _Refusal(_BAD_PAYLOAD)
-    known = {normalize_term(text) for text in db.scalars(select(KBPoint.text).where(
-        KBPoint.provenance == "user_cannot_confirm")) if text}
-    if normalize_term(claim) in known:
-        return
-    holder = tailoring_session._cannot_confirm_holder(db)
-    db.add(KBPoint(entity_id=holder.id, text=claim.strip(), state="retired",
-                   origin="gap_elicitation", provenance="user_cannot_confirm"))
-
-
-def _refuse_take_over(db: Session, item: _RequestIn) -> None:
-    raise _Refusal(_NO_TAKE_OVER)
-
-
-_APPLIERS = {"proposal_transition": _apply_transition, "application_patch": _apply_patch,
-             "profile_addition": _apply_addition, "take_over": _refuse_take_over}
-
-
-def _record(item: _RequestIn, outcome: str, reason: str | None) -> SyncRequest:
-    return SyncRequest(id=item.id, job_id=item.job_id, kind=item.kind[:32],
-                       payload_json=item.payload, origin="remote", status=outcome, reason=reason,
-                       created_at=item.created_at, answered_at=utcnow())
-
-
-def _refused(db: Session, item: _RequestIn, reason: str) -> tuple[str, str | None]:
-    db.rollback()
-    db.add(_record(item, "refused", reason))
-    db.commit()
-    return "refused", reason
-
-
-def _settle(db: Session, item: _RequestIn) -> tuple[str, str | None]:
-    """Apply one request; its record commits with the change itself. A request that cannot be
-    applied is refused alone, with a fixed sentence."""
-    applier = _APPLIERS.get(item.kind)
-    try:
-        if applier is None:
-            raise _Refusal(_UNKNOWN_KIND)
-        db.add(_record(item, "applied", None))
-        applier(db, item)
-        db.commit()
-        return "applied", None
-    except _Refusal as refusal:
-        return _refused(db, item, refusal.reason)
-    except hooks.NotOwnedHere as refusal:
-        return _refused(db, item, str(refusal))
-    except Exception:
-        logger.warning("A sync request couldn't be applied.")
-        return _refused(db, item, _REQUEST_FAILED)
-
-
-def _answer(db: Session, item: _RequestIn) -> dict:
-    earlier = db.get(SyncRequest, item.id)
-    if earlier is not None:  # a resend: answer as before, apply nothing
-        mine = earlier.origin == "remote"
-        outcome, reason = (earlier.status, earlier.reason) if mine else ("refused", _NOT_REPEATABLE)
-    else:
-        outcome, reason = _settle(db, item)
-    return {"id": item.id.hex, "status": outcome, "reason": reason}
+    requests: list[request_apply.RequestIn]
 
 
 @router.post("/requests")
 def post_requests(peer: Peer, db: DB, body: Body):
     """Apply the peer's requests in the order they were made, under the normal rules."""
     items = sorted(_parse(_RequestsPush, body).requests, key=lambda i: (i.created_at, i.id))
-    return [_answer(db, item) for item in items]
+    return [request_apply.answer(db, item) for item in items]
 
 
 class _ResultIn(BaseModel):
@@ -656,7 +484,7 @@ def post_request_results(peer: Peer, db: DB, body: Body):
         if row is None or row.origin != "local" or row.status != "sent":
             continue
         row.status, row.answered_at = result.status, utcnow()
-        row.reason = (result.reason or "")[:_MAX_REASON] or None
+        row.reason = (result.reason or "")[:request_apply.MAX_REASON] or None
         updated += 1
     db.commit()
     return {"updated": updated}
@@ -668,7 +496,7 @@ def post_request_results(peer: Peer, db: DB, body: Body):
 @router.get("/handover/offers")
 def get_offers(peer: Peer, db: DB):
     ids = list(db.scalars(select(Job.id).where(
-        _owned_here_clause(db), Job.handover == "offered").order_by(Job.sync_rev, Job.id)))
+        jobs_bundle.owned_clause(db), Job.handover == "offered").order_by(Job.sync_rev, Job.id)))
     bundles, skipped = _export(db, ids)
     return {"bundles": bundles, "skipped": skipped}
 
@@ -718,6 +546,7 @@ def _store_returned(db: Session, peer: PeerInfo, bundle: dict, job_id: uuid.UUID
     with _as_sync_apply(db):
         job = db.get(Job, job_id)
         job.owner_machine, job.handover = None, None
+        requests.settle_take_overs(db, job_id)  # a lost reply must not leave the request at "sent"
         db.commit()
     return None
 
@@ -792,10 +621,10 @@ def _require_round_caller(request: Request) -> None:
 
 @router.post("/round", dependencies=[Depends(_require_round_caller)])
 def post_round(db: DB, body: _RoundBody | None = None):
-    """Run one round now and return its per-step counts (never contents)."""
+    """Run one round now and return its per-step counts (never contents) and its ``outcome``."""
     options = body or _RoundBody()
     try:
         return sync_round.run_round(db, force=options.force, pair=options.pair,
                                     accept_profile_overwrite=options.accept_profile_overwrite)
     except sync_round.RoundBusy:
-        raise HTTPException(409, detail=_BUSY) from None
+        return JSONResponse(status_code=409, content={"detail": _BUSY, "outcome": "transient"})

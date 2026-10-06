@@ -21,7 +21,7 @@ from app.db import Base, get_db, make_engine
 from app.main import app
 from app.routers import sync as sync_router
 from app.services import job_site_login, proposals
-from app.services.sync import duplicates, files, jobs_bundle, status
+from app.services.sync import duplicates, files, jobs_bundle, request_apply, status
 from tests.sync.test_jobs_bundle import SENTINEL, WHEN, build_job
 
 LOGIN_SENTINEL = "SENTINEL-LOGIN-4482"
@@ -405,7 +405,7 @@ def test_a_page_stops_at_the_byte_budget_with_more(client, auth, db_session, roo
     first = home_job(db_session, roots, tag="one")
     home_job(db_session, roots, tag="two")
     one = client.get("/api/sync/jobs?limit=1", headers=auth).json()["bundles"][0]
-    weight = sync_router._weight(one)
+    weight = jobs_bundle.weight(one)
     monkeypatch.setattr(sync_router, "PAGE_BYTES", weight + weight // 2)
     page = client.get("/api/sync/jobs", headers=auth).json()
     assert [b["job_id"] for b in page["bundles"]] == [first.job.hex]
@@ -1001,7 +1001,7 @@ def test_a_request_that_raises_is_refused_alone_with_a_fixed_sentence(
 
     def boom(db, item):
         raise RuntimeError(f"secret {SENTINEL}")
-    monkeypatch.setitem(sync_router._APPLIERS, "take_over", boom)
+    monkeypatch.setitem(request_apply.APPLIERS, "take_over", boom)
     now = datetime.now(UTC)
     bad = _request(ids.job, "take_over", {}, now - timedelta(minutes=1))
     good = _request(ids.job, "application_patch", {

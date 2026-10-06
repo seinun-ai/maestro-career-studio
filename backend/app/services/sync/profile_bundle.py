@@ -389,7 +389,7 @@ def apply_profile(db: Session, bundle: dict, *, max_bytes: int = DEFAULT_MAX_BYT
     parsed = _parse(bundle)
     before, kept = _db_files(db), _bundle_files(parsed)
     try:
-        with jobs_bundle._applying(db):
+        with jobs_bundle.applying(db):
             removed = _apply_rows(db, parsed)
             files.unpack(parsed.files, max_bytes=max_bytes)
             _apply_login(parsed.login)
@@ -399,6 +399,6 @@ def apply_profile(db: Session, bundle: dict, *, max_bytes: int = DEFAULT_MAX_BYT
         # SQLAlchemy's message would print the statement with its parameters.
         raise ValueError("malformed bundle") from None
     artifacts.remove_files(_stale_files(before, kept) + _mirror_files(removed.keys))
-    with jobs_bundle._applying(db):
+    with jobs_bundle.applying(db):
         _write_mirrors(db, parsed)
     return parsed.rev

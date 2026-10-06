@@ -125,7 +125,7 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
 ```
 
 `data/maestro_cs.sqlite3` (SQLite, WAL) holds rows and local sync clocks; ORM flushes stamp jobs/profile, including imports and both sides of
-moves. Deleted jobs leave tombstones; Core writers touch their subtree (`services/sync/hooks.py`). With a key, writes to replicas, home offers,
+moves. Deleted jobs leave tombstones; Core writers touch their subtree (`services/sync/hooks.py`). With a key, writes to replicas, home offers, remote returns,
 unresolved current jobs and remote profiles are refused (except seeds/cannot-confirm); missing previous parents allow repair. File writers check
 before disk changes; no key allows all writes. Transaction end/rollback clear hook state (`tests/sync/test_guard.py`). Resume JSON/rendered
 files stay on disk (`base_resumes` row + file required); job-site login: `settings/secrets/` (§6).

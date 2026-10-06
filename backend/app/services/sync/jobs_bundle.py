@@ -10,6 +10,7 @@ The whole bundle is validated before the first write, and nothing here logs or e
 contents: errors name a table or a column, never a value.
 """
 
+import json
 import math
 import os
 import shutil
@@ -21,7 +22,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import sqlalchemy as sa
-from sqlalchemy import delete, inspect, select
+from sqlalchemy import delete, inspect, or_, select
 from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -444,7 +445,7 @@ def _apply_rows(db: Session, parsed: Parsed, sender_machine: str) -> list[str]:
 
 
 @contextmanager
-def _applying(db: Session) -> Iterator[None]:
+def applying(db: Session) -> Iterator[None]:
     """One transaction under ``sync_apply`` (the ownership guard stands aside); any failure rolls
     back and the flag is restored."""
     previous = db.info.get("sync_apply")
@@ -463,6 +464,17 @@ def _applying(db: Session) -> Iterator[None]:
             db.info["sync_apply"] = previous
 
 
+def weight(bundle: dict) -> int:
+    """About how many bytes a bundle adds to a request: its files, base64, and its rows."""
+    return sum(len(entry["b64"]) for entry in bundle["files"]) + len(json.dumps(bundle["rows"]))
+
+
+def owned_clause(db: Session):
+    """The jobs this copy owns: unowned, or owned by this machine."""
+    return or_(models.Job.owner_machine.is_(None),
+               models.Job.owner_machine == status.machine_id(db))
+
+
 def apply_job(db: Session, bundle: dict, *, sender_machine: str,
               max_bytes: int = DEFAULT_MAX_BYTES) -> None:
     """Make this machine's copy of the job equal the bundle, owned by ``sender_machine``.
@@ -474,7 +486,7 @@ def apply_job(db: Session, bundle: dict, *, sender_machine: str,
     parsed = _parse(bundle)
     _check_artifact_folders(db, parsed)
     try:
-        with _applying(db):
+        with applying(db):
             folders = _apply_rows(db, parsed, sender_machine)
             files.unpack(parsed.files, max_bytes=max_bytes)
     except IntegrityError:
@@ -516,7 +528,7 @@ def apply_tombstone(db: Session, job_id: uuid.UUID) -> None:
     the owner already announced the deletion."""
     folders = [value for value in db.scalars(select(models.Application.artifact_dir).where(
         models.Application.job_id == job_id)) if value]
-    with _applying(db):
+    with applying(db):
         scope = _db_scope(db, job_id)
         bundle_rows.delete_rows(db, TABLES, {
             spec.name: list(db.scalars(select(spec.model).where(scope.clause(spec))))

@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 
 import httpx
 from sqlalchemy import or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -27,12 +28,13 @@ from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
 from app.models.sync import SyncRequest, SyncTombstone
 from app.models.types import utcnow
-from app.routers import version
 from app.services import http_client
-from app.services.sync import duplicates, hooks, jobs_bundle, profile_bundle, status
+from app.services.sync import duplicates, hooks, jobs_bundle, profile_bundle, request_apply, status
 
 PAGE_BYTES = 40 * 1024 * 1024  # well under home's 100 MB request cap
 PUSH_JOBS = 20
+RETRY_LIMIT = 5
+FORCE_GAP = timedelta(seconds=30)
 PULL_JOBS = 20
 OWNERSHIP_CHUNK = 500
 RUN_PAGE = 200
@@ -44,12 +46,14 @@ NOT_SET_UP = "Sync isn't set up."
 NOT_PAIRED = "This copy isn't paired with your laptop yet; run the first sync with the pair option."
 VERSION_MISMATCH = "Update Maestro on both machines to the same version."
 UNREACHABLE = "Laptop unreachable."
+SYNCED_JUST_NOW = "Synced moments ago."
 BUSY_APPLYING = "Your bot is applying to this one; try again after its run."
 _DISK = "Maestro couldn't save the files it received."
 _CANT_READ = "Maestro couldn't read the files it needed to send."
 _UNREADABLE = "Your laptop's answer wasn't what Maestro expected."
 _PROFILE = "Maestro couldn't apply your laptop's profile."
 _GENERIC = "Your laptop couldn't finish that sync request."
+_LOCAL = "Maestro couldn't finish that sync on this copy."
 _NOT_HOLDING = "Your bot isn't holding this job."
 _CANT_SEND_BACK = "Maestro couldn't send this job back to your laptop."
 _SENTENCES = {
@@ -61,6 +65,9 @@ _CONFLICTS = {
     "machine": "These two copies share one machine id; give the always-on copy its own data.",
     "busy": "A sync is already running on your laptop.",
 }
+# The round's machine-readable result, for the script that drives it: ``ok``; ``transient`` (try
+# again later, nobody needs to act); ``needs_person`` (a person has to fix something first).
+OK, TRANSIENT, NEEDS_PERSON = "ok", "transient", "needs_person"
 
 
 class RoundBusy(Exception):
@@ -68,15 +75,23 @@ class RoundBusy(Exception):
 
 
 class _Skip(Exception):
-    """The round can't start; nothing was changed and nothing is recorded."""
+    """The round can't start; nothing was changed. ``remember`` also keeps the sentence as the
+    status's last error (a version mismatch), and nothing else."""
+
+    def __init__(self, sentence: str, outcome: str = NEEDS_PERSON, remember: bool = False):
+        super().__init__(sentence)
+        self.outcome, self.remember = outcome, remember
 
 
 class _Stop(Exception):
     """The round stops here and is recorded as failed. Always a fixed sentence."""
 
-    def __init__(self, sentence: str, code: int | None = None):
+    def __init__(self, sentence: str, code: int | None = None, outcome: str | None = None):
         super().__init__(sentence)
         self.sentence, self.code = sentence, code
+        # Without an explicit word: no status code is a lost line, a 5xx a laptop hiccup, any
+        # other refusal something the person has to fix.
+        self.outcome = outcome or (TRANSIENT if code is None or code >= 500 else NEEDS_PERSON)
 
     @property
     def text(self) -> str:
@@ -103,13 +118,6 @@ def _now() -> datetime:
     return utcnow()
 
 
-def _endpoints():
-    """Home's request appliers live with its endpoints. Imported late: that module imports this one."""
-    from app.routers import sync as endpoints
-
-    return endpoints
-
-
 # ----------------------------------------------------------------------------------- the wire
 
 
@@ -127,8 +135,9 @@ def _refusal(response: httpx.Response) -> Exception:
     if code == 409:
         reason = _reason_of(response)
         if reason == "version":
-            return _Skip(VERSION_MISMATCH)
-        return _Stop(_CONFLICTS.get(reason, _GENERIC), code)
+            return _Skip(VERSION_MISMATCH, remember=True)
+        return _Stop(_CONFLICTS.get(reason, _GENERIC), code,
+                     TRANSIENT if reason == "busy" else None)
     return _Stop(_SENTENCES.get(code, _GENERIC), code)
 
 
@@ -142,11 +151,11 @@ def _call(ctx: _Ctx, method: str, path: str, *, params: dict | None = None, body
     try:
         return response.json()
     except ValueError:
-        raise _Stop(_UNREADABLE) from None
+        raise _Stop(_UNREADABLE, outcome=NEEDS_PERSON) from None
 
 
 def _headers(db: Session, key: str) -> dict:
-    revision = version.get_version(db).schema_revision
+    revision = status.schema_revision(db)
     mine = status.machine_id(db)
     db.commit()
     return {"Authorization": f"Bearer {key}",
@@ -161,13 +170,9 @@ def _chunks(items: list, size: int) -> Iterator[list]:
 # --------------------------------------------------------------------------------- local helpers
 
 
-def _owner_clause(db: Session):
-    return or_(Job.owner_machine.is_(None), Job.owner_machine == status.machine_id(db))
-
-
 def _set_owner(db: Session, job_ids: list, owner: str | None) -> None:
     """Flip who owns these jobs, clearing any handover; the guard stands aside for this."""
-    with jobs_bundle._applying(db):
+    with jobs_bundle.applying(db):
         for job_id in job_ids:
             job = db.get(Job, job_id)
             if job is not None:
@@ -198,9 +203,9 @@ def _answer_text(value) -> str | None:
 
 def _hello(ctx: _Ctx) -> None:
     hello = _call(ctx, "GET", "/api/sync/hello")
-    mine = version.get_version(ctx.db).schema_revision
+    mine = status.schema_revision(ctx.db)
     if hello["protocol"] != status.SYNC_PROTOCOL or hello["schema_revision"] != mine:
-        raise _Skip(VERSION_MISMATCH)
+        raise _Skip(VERSION_MISMATCH, remember=True)
     ctx.home_id = str(hello["machine_id"])
 
 
@@ -225,27 +230,35 @@ def _ensure_paired(ctx: _Ctx, options: _Options) -> None:
 # ------------------------------------------------------------------------------------ 4: reconcile
 
 
-def _reconcile_one(ctx: _Ctx, job_id, handover: str | None, label: str | None, counts: dict) -> None:
-    if label == "remote":  # home says the job is ours: a committed offer, or a return that never landed
-        _set_owner(ctx.db, [job_id], None)
-        counts["owned"] += 1
-    elif label == "home" and handover == "returning":  # a return that landed before the local flip
-        _set_owner(ctx.db, [job_id], ctx.home_id)
-        counts["replicas"] += 1
-    elif label == "gone":
-        jobs_bundle.apply_tombstone(ctx.db, job_id)
+def _settle_gone(ctx: _Ctx, row, counts: dict) -> None:
+    if row.handover == "returning" and row.owner_machine != ctx.home_id:
+        _set_owner(ctx.db, [row.id], None)  # ours, mid-return: home doesn't know it, so keep it
+        counts["kept"] += 1
+    else:
+        jobs_bundle.apply_tombstone(ctx.db, row.id)
         counts["deleted"] += 1
 
 
+def _reconcile_one(ctx: _Ctx, row, label: str | None, counts: dict) -> None:
+    if label == "remote":  # home says the job is ours: a committed offer, or a return that never landed
+        _set_owner(ctx.db, [row.id], None)
+        counts["owned"] += 1
+    elif label == "home" and row.handover == "returning":  # a return that landed before the local flip
+        _set_owner(ctx.db, [row.id], ctx.home_id)
+        counts["replicas"] += 1
+    elif label == "gone":
+        _settle_gone(ctx, row, counts)
+
+
 def _reconcile(ctx: _Ctx) -> dict:
-    counts = {"owned": 0, "replicas": 0, "deleted": 0}
-    candidates = ctx.db.execute(select(Job.id, Job.handover).where(
+    counts = {"owned": 0, "replicas": 0, "deleted": 0, "kept": 0}
+    candidates = ctx.db.execute(select(Job.id, Job.handover, Job.owner_machine).where(
         or_(Job.owner_machine == ctx.home_id, Job.handover == "returning"))).all()
     for chunk in _chunks(candidates, OWNERSHIP_CHUNK):
         labels = _call(ctx, "POST", "/api/sync/ownership",
                        body={"job_ids": [row.id.hex for row in chunk]})
         for row in chunk:
-            _reconcile_one(ctx, row.id, row.handover, labels.get(row.id.hex), counts)
+            _reconcile_one(ctx, row, labels.get(row.id.hex), counts)
     return counts
 
 
@@ -262,7 +275,7 @@ def _profile(ctx: _Ctx) -> dict:
     try:
         rev = profile_bundle.apply_profile(ctx.db, answer)
     except ValueError:
-        raise _Stop(_PROFILE) from None
+        raise _Stop(_PROFILE, outcome=NEEDS_PERSON) from None
     status.update_state(ctx.db, profile_rev=rev)
     return {"applied": 1}
 
@@ -272,9 +285,13 @@ def _profile(ctx: _Ctx) -> dict:
 
 @dataclass
 class _Push:
+    """One push in flight. ``retry`` maps a refused job's id to the rounds it has been refused;
+    ``stuck`` maps a job refused ``RETRY_LIMIT`` times to home's sentence."""
+
     acked: int
-    top: int
-    cap: int | None = None
+    retry: dict
+    stuck: dict
+    top: int = 0
     counts: dict = field(default_factory=lambda: dict.fromkeys(
         ("sent", "refused", "skipped", "dropped", "kept_both", "deleted"), 0))
 
@@ -282,14 +299,15 @@ class _Push:
 @dataclass
 class _Page:
     bundles: list
+    listed: dict  # job id (hex) -> the revision it had when the round listed it
     top: int
     skipped: int
     taken: int
 
 
-def _weight(bundle: dict) -> int:
-    """About how many bytes a bundle adds to a request: its files, base64, and its rows."""
-    return sum(len(entry["b64"]) for entry in bundle["files"]) + len(str(bundle["rows"]))
+def _hex(raw) -> str | None:
+    job_id = _uuid(raw)
+    return job_id.hex if job_id else None
 
 
 def _export_one(db: Session, job_id) -> dict | None:
@@ -298,19 +316,22 @@ def _export_one(db: Session, job_id) -> dict | None:
     except (ValueError, LookupError):
         return None  # too large, a symlink, or gone since it was listed
     except OSError:
-        raise _Stop(_CANT_READ) from None
+        raise _Stop(_CANT_READ, outcome=NEEDS_PERSON) from None
 
 
 def _take_page(db: Session, rows: list) -> _Page:
-    """Bundles of the leading rows, up to PUSH_JOBS and PAGE_BYTES but never fewer than one row."""
-    page, used = _Page([], 0, 0, 0), 0
+    """Bundles of the leading rows, up to PUSH_JOBS and PAGE_BYTES but never fewer than one row.
+    The page's top is the revision each row had when listed, never the exported one: a job edited
+    since keeps a higher revision, so the next round sends it."""
+    page, used = _Page([], {}, 0, 0, 0), 0
     for row in rows[:PUSH_JOBS]:
         bundle = _export_one(db, row.id)
-        size = _weight(bundle) if bundle else 0
+        size = jobs_bundle.weight(bundle) if bundle else 0
         if page.taken and used + size > PAGE_BYTES:
             break
         page.taken, used = page.taken + 1, used + size
-        page.top = max(page.top, bundle["sync_rev"] if bundle else row.sync_rev)
+        page.listed[row.id.hex] = row.sync_rev
+        page.top = max(page.top, row.sync_rev)
         if bundle:
             page.bundles.append(bundle)
         else:
@@ -333,11 +354,26 @@ def _uuid(raw):
         return None
 
 
+def _track_refusals(push: _Push, page: _Page, refused: dict) -> None:
+    """A refused job is retried on later rounds and parked after RETRY_LIMIT; any job in the page
+    that wasn't refused (or couldn't be sent at all) is no longer tracked."""
+    for job_hex in page.listed:
+        push.stuck.pop(job_hex, None)  # parked, then edited: it was tried again
+        if job_hex not in refused:
+            push.retry.pop(job_hex, None)
+            continue
+        attempts = push.retry.get(job_hex, 0) + 1
+        if attempts >= RETRY_LIMIT:
+            push.retry.pop(job_hex, None)
+            push.stuck[job_hex] = refused[job_hex]
+        else:
+            push.retry[job_hex] = attempts
+
+
 def _settle_push(ctx: _Ctx, answer: dict, page: _Page, push: _Push) -> None:
-    revs = {bundle["job_id"]: bundle["sync_rev"] for bundle in page.bundles}
-    refused = [revs[item["job_id"]] for item in answer["refused"] if item.get("job_id") in revs]
-    for rev in refused:
-        push.cap = rev - 1 if push.cap is None else min(push.cap, rev - 1)
+    refused = {_hex(item.get("job_id")): _answer_text(item.get("reason")) or _GENERIC
+               for item in answer["refused"] if _hex(item.get("job_id")) in page.listed}
+    _track_refusals(push, page, refused)
     push.counts["refused"] += len(answer["refused"])
     push.counts["sent"] += len(page.bundles) - len(refused)
     push.counts["deleted"] += len(answer.get("deleted", []))
@@ -348,11 +384,9 @@ def _settle_push(ctx: _Ctx, answer: dict, page: _Page, push: _Push) -> None:
             push.counts["kept_both"] += 1
 
 
-def _save_ack(ctx: _Ctx, push: _Push) -> None:
-    ack = push.top if push.cap is None else min(push.top, push.cap)
-    if ack > push.acked:
-        status.update_state(ctx.db, acked_own=ack)
-        push.acked = ack
+def _save_progress(ctx: _Ctx, push: _Push) -> None:
+    push.acked = max(push.acked, push.top)
+    status.update_state(ctx.db, acked_own=push.acked, retry_own=push.retry, stuck_own=push.stuck)
 
 
 def _send_page(ctx: _Ctx, page: _Page, tombstones: list, push: _Push) -> None:
@@ -361,23 +395,45 @@ def _send_page(ctx: _Ctx, page: _Page, tombstones: list, push: _Push) -> None:
                        body={"bundles": page.bundles, "tombstones": tombstones})
         _settle_push(ctx, answer, page, push)
     push.counts["skipped"] += page.skipped
-    push.top = max(push.top, page.top, *(item["rev"] for item in tombstones))
-    _save_ack(ctx, push)
+    push.top = max(push.top, page.top)
+    _save_progress(ctx, push)
+
+
+def _still_mine(db: Session, tracked: dict) -> dict:
+    """The tracked jobs that still exist here and are ours; a deleted or handed-over one is dropped."""
+    ids = [job_id for job_id in map(_uuid, tracked) if job_id is not None]
+    alive = {job_id.hex for job_id in db.scalars(select(Job.id).where(
+        jobs_bundle.owned_clause(db), Job.id.in_(ids)))} if ids else set()
+    return {job_hex: value for job_hex, value in tracked.items() if job_hex in alive}
+
+
+def _listing(db: Session, push: _Push) -> list:
+    """Own jobs changed since the ack, plus the refused ones waiting for another try."""
+    wanted = Job.sync_rev > push.acked
+    retry_ids = [job_id for job_id in map(_uuid, push.retry) if job_id is not None]
+    if retry_ids:
+        wanted = or_(wanted, Job.id.in_(retry_ids))
+    return db.execute(select(Job.id, Job.sync_rev).where(jobs_bundle.owned_clause(db), wanted)
+                      .order_by(Job.sync_rev, Job.id)).all()
 
 
 def _push(ctx: _Ctx) -> dict:
     db = ctx.db
-    acked = status.read_state(db)["acked_own"]
-    rows = db.execute(select(Job.id, Job.sync_rev).where(_owner_clause(db), Job.sync_rev > acked)
-                      .order_by(Job.sync_rev, Job.id)).all()
+    saved = status.read_state(db)
+    push = _Push(acked=saved["acked_own"], retry=_still_mine(db, saved["retry_own"]),
+                 stuck=_still_mine(db, saved["stuck_own"]))
+    rows = _listing(db, push)
     tombstones = [{"job_id": row.job_id.hex, "rev": row.rev} for row in db.scalars(
-        select(SyncTombstone).where(SyncTombstone.rev > acked).order_by(SyncTombstone.rev))]
-    push = _Push(acked=acked, top=acked)
+        select(SyncTombstone).where(SyncTombstone.rev > push.acked).order_by(SyncTombstone.rev))]
+    deleted_top = max((item["rev"] for item in tombstones), default=0)
     while rows or tombstones:
         page = _take_page(db, rows)
         rows = rows[page.taken:]
         _send_page(ctx, page, tombstones, push)
         tombstones = []
+    push.top = max(push.top, deleted_top)  # only now: every page before it has gone
+    _save_progress(ctx, push)
+    push.counts["stuck"] = len(push.stuck)
     return push.counts
 
 
@@ -399,10 +455,22 @@ def _apply_home_bundle(ctx: _Ctx, bundle: dict) -> str:
         return "skipped"
 
 
+def _set_aside(ctx: _Ctx, job_id) -> None:
+    """Park a home replica's text hash under a placeholder so another home job may take the text.
+    Home's hashes are unique, so a replica that clashes holds a stale one; its own newer version
+    brings the real hash when the pull reaches it."""
+    with jobs_bundle.applying(ctx.db):
+        ctx.db.get(Job, job_id).raw_text_hash = duplicates.stale_hash(job_id)
+
+
 def _settle_clash(ctx: _Ctx, bundle: dict, local_id) -> str:
     db = ctx.db
     local = db.get(Job, local_id)
-    if local is None or local.owner_machine not in (None, status.machine_id(db)):
+    if local is None:
+        return "held"
+    if local.owner_machine == ctx.home_id:
+        return _replace_stale(ctx, bundle, local_id)
+    if local.owner_machine not in (None, status.machine_id(db)):
         return "held"
     try:
         if _progressed(db, local_id):
@@ -414,6 +482,16 @@ def _settle_clash(ctx: _Ctx, bundle: dict, local_id) -> str:
         jobs_bundle.apply_job(db, bundle, sender_machine=ctx.home_id,
                               max_bytes=jobs_bundle.DEFAULT_MAX_BYTES)
         return "dropped"
+    except (ValueError, jobs_bundle.DuplicateJob):
+        return "skipped"
+
+
+def _replace_stale(ctx: _Ctx, bundle: dict, replica_id) -> str:
+    _set_aside(ctx, replica_id)
+    try:
+        jobs_bundle.apply_job(ctx.db, bundle, sender_machine=ctx.home_id,
+                              max_bytes=jobs_bundle.DEFAULT_MAX_BYTES)
+        return "applied"
     except (ValueError, jobs_bundle.DuplicateJob):
         return "skipped"
 
@@ -456,7 +534,7 @@ def _pull(ctx: _Ctx) -> dict:
             break  # the cursor stays before this page; it is applied again next round
         following = page["next_since"]
         if not isinstance(following, str) or (page["more"] and following == since):
-            raise _Stop(_UNREADABLE)
+            raise _Stop(_UNREADABLE, outcome=NEEDS_PERSON)
         status.update_state(ctx.db, since_home=following)
         since = following
         if not page["more"]:
@@ -467,58 +545,22 @@ def _pull(ctx: _Ctx) -> dict:
 # ------------------------------------------------------------------------------ 8: requests both ways
 
 
-def _parse_item(raw):
-    from pydantic import ValidationError
-
-    try:
-        return _endpoints()._RequestIn.model_validate(raw)
-    except ValidationError:
-        return None
-
-
 def _answer_home_requests(ctx: _Ctx, counts: dict) -> None:
     """Answer home's unanswered requests. A repeat is answered from its local record, never applied
     again. A take-over waits for step 9, which decides it."""
     results = []
     for raw in _call(ctx, "GET", "/api/sync/requests"):
-        item = _parse_item(raw)
+        item = request_apply.parse(raw)
         if item is None:
             counts["invalid"] += 1
         elif item.kind == "take_over" and ctx.db.get(SyncRequest, item.id) is None:
             ctx.takeovers.append(item)
         else:
-            results.append(_endpoints()._answer(ctx.db, item))
+            results.append(request_apply.answer(ctx.db, item))
     counts["answered"] += len(results)
     counts["refused"] += sum(result["status"] == "refused" for result in results)
     if results:
         _call(ctx, "POST", "/api/sync/request-results", body={"results": results})
-
-
-def _apply_here(ctx: _Ctx, row: SyncRequest) -> str:
-    """A request made while the job was home's, for a job that is ours now: apply it, don't send it."""
-    rules = _endpoints()
-    item = rules._RequestIn(id=row.id, kind=row.kind, job_id=row.job_id,
-                            payload=row.payload_json, created_at=row.created_at)
-    applier = rules._APPLIERS.get(row.kind)
-    try:
-        if applier is None:
-            raise rules._Refusal(rules._UNKNOWN_KIND)
-        if row.kind != "take_over":  # asking for a job back that is already here is moot
-            applier(ctx.db, item)
-        return _finish_local(ctx, row.id, "applied", None)
-    except (rules._Refusal, hooks.NotOwnedHere) as refusal:
-        ctx.db.rollback()
-        return _finish_local(ctx, row.id, "refused", _answer_text(str(refusal)))
-    except Exception:
-        ctx.db.rollback()
-        return _finish_local(ctx, row.id, "refused", rules._REQUEST_FAILED)
-
-
-def _finish_local(ctx: _Ctx, request_id, outcome: str, reason: str | None) -> str:
-    row = ctx.db.get(SyncRequest, request_id)
-    row.status, row.reason, row.answered_at = outcome, reason, utcnow()
-    ctx.db.commit()
-    return outcome
 
 
 def _wire(row: SyncRequest) -> dict:
@@ -544,7 +586,7 @@ def _send_local_requests(ctx: _Ctx, counts: dict) -> None:
     to_send = []
     for row in pending:
         if row.job_id is not None and hooks.owned_here(ctx.db, row.job_id):
-            counts["applied_here"] += _apply_here(ctx, row) == "applied"
+            counts["applied_here"] += request_apply.settle_stored(ctx.db, row) == "applied"
         else:
             to_send.append(row)
     if to_send:
@@ -588,22 +630,23 @@ def _record_decision(ctx: _Ctx, item, outcome: str, reason: str | None) -> None:
                            created_at=item.created_at, answered_at=utcnow()))
 
 
+def _set_handover(db: Session, job_id, value: str | None) -> None:
+    with jobs_bundle.applying(db):
+        db.get(Job, job_id).handover = value
+
+
 def _hand_back(ctx: _Ctx, job_id) -> bool:
-    """Send the job home. The job is marked returning first, so a crash leaves a state the next
-    round's reconcile reads against home's answer."""
-    db = ctx.db
-    with jobs_bundle._applying(db):
-        db.get(Job, job_id).handover = "returning"
+    """Send the job home. The job is already marked returning, so a failed call leaves a state the
+    next round's reconcile reads against home's answer."""
     try:
-        bundle = jobs_bundle.export_job(db, job_id, max_bytes=jobs_bundle.DEFAULT_MAX_BYTES)
+        bundle = jobs_bundle.export_job(ctx.db, job_id, max_bytes=jobs_bundle.DEFAULT_MAX_BYTES)
     except (ValueError, LookupError, OSError):
         return False
     answer = _call(ctx, "POST", "/api/sync/handover/return", body={"bundles": [bundle]})
     return job_id.hex in answer["job_ids"]
 
 
-def _decide_return(ctx: _Ctx, item) -> tuple[str, str | None]:
-    """Grant or refuse one take-over; the decision is recorded in the same commit as its effect."""
+def _return_refusal(ctx: _Ctx, item) -> tuple[str, str | None] | None:
     db = ctx.db
     job = db.get(Job, item.job_id) if item.job_id else None
     if job is None:
@@ -612,9 +655,21 @@ def _decide_return(ctx: _Ctx, item) -> tuple[str, str | None]:
         return "applied", None
     if job.owner_machine is not None and job.owner_machine != status.machine_id(db):
         return "refused", _NOT_HOLDING
-    if _mid_application(db, job.id):
+    return None
+
+
+def _decide_return(ctx: _Ctx, item) -> tuple[str, str | None]:
+    """Grant or refuse one take-over; the decision is recorded in the same commit as its effect.
+    The job is marked returning before the bot's own work is looked at, so no edit or run can slip
+    in between the check and the hand-over."""
+    settled = _return_refusal(ctx, item)
+    if settled is not None:
+        return settled
+    _set_handover(ctx.db, item.job_id, "returning")
+    if _mid_application(ctx.db, item.job_id):
+        _set_handover(ctx.db, item.job_id, None)
         return "refused", BUSY_APPLYING
-    if _hand_back(ctx, job.id):
+    if _hand_back(ctx, item.job_id):
         return "applied", None
     return "refused", _CANT_SEND_BACK
 
@@ -623,7 +678,7 @@ def _return_jobs(ctx: _Ctx, counts: dict) -> None:
     results = []
     for item in ctx.takeovers:
         outcome, reason = _decide_return(ctx, item)
-        with jobs_bundle._applying(ctx.db):
+        with jobs_bundle.applying(ctx.db):
             _finish_return(ctx, item, outcome)
             _record_decision(ctx, item, outcome, reason)
         counts["returned" if outcome == "applied" else "refused"] += 1
@@ -697,7 +752,7 @@ def _record_failure(db: Session, stop: _Stop) -> None:
     db.rollback()
     failures = status.read_state(db)["failures"] + 1
     delay = min(30, 5 * 2 ** min(failures - 1, 5))
-    status.update_state(db, failures=failures, last_error=stop.text,
+    status.update_state(db, failures=failures, last_error=stop.text, attempted_at=_now().isoformat(),
                         next_attempt_at=(_now() + timedelta(minutes=delay)).isoformat())
 
 
@@ -708,29 +763,63 @@ def _guarded(ctx: _Ctx, options: _Options) -> None:
         ctx.summary[name] = step(ctx)
 
 
+def _stop_for(failure: Exception) -> _Stop:
+    """The fixed sentence for a failure; what the failure said is never kept."""
+    if isinstance(failure, _Stop):
+        return failure
+    if isinstance(failure, OSError):
+        return _Stop(_DISK, outcome=NEEDS_PERSON)
+    if isinstance(failure, (SQLAlchemyError, ValueError)):
+        return _Stop(_LOCAL, outcome=TRANSIENT)
+    return _Stop(_UNREADABLE, outcome=NEEDS_PERSON)
+
+
+def _skipped(sentence: str, outcome: str) -> dict:
+    return {"ok": False, "skipped": sentence, "outcome": outcome}
+
+
 def _attempt(db: Session, http: httpx.Client, options: _Options) -> dict:
     ctx = _Ctx(db, http)
     try:
         _guarded(ctx, options)
     except _Skip as skip:
         db.rollback()
-        return {"ok": False, "skipped": str(skip)}
-    except (OSError, _Stop, KeyError, TypeError, AttributeError) as failure:
-        stop = failure if isinstance(failure, _Stop) else _Stop(
-            _DISK if isinstance(failure, OSError) else _UNREADABLE)
+        if skip.remember:
+            status.update_state(db, last_error=str(skip))
+        return _skipped(str(skip), skip.outcome)
+    except (OSError, _Stop, KeyError, TypeError, AttributeError, SQLAlchemyError,
+            ValueError) as failure:
+        stop = _stop_for(failure)
         _record_failure(db, stop)
-        return {"ok": False, "error": stop.text, "steps": ctx.summary}
+        return {"ok": False, "outcome": stop.outcome, "error": stop.text, "steps": ctx.summary}
     status.update_state(db, failures=0, next_attempt_at=None, last_error=None,
-                        last_ok=_now().isoformat())
-    return {"ok": True, "steps": ctx.summary}
+                        last_ok=_now().isoformat(), attempted_at=_now().isoformat())
+    return {"ok": True, "outcome": OK, "steps": ctx.summary}
+
+
+def _just_ran(state: dict) -> bool:
+    try:
+        last = datetime.fromisoformat(state["attempted_at"]) if state["attempted_at"] else None
+    except ValueError:
+        return False
+    return last is not None and timedelta(0) <= _now() - last < FORCE_GAP
+
+
+def _held_off(state: dict, options: _Options) -> dict | None:
+    """The skipped answer for a round that may not start yet, or None. A forced round skips the
+    backoff window but not the half minute after the last attempt."""
+    if options.force:
+        return _skipped(SYNCED_JUST_NOW, TRANSIENT) if _just_ran(state) else None
+    wait = _waiting(state)
+    return _skipped(wait, TRANSIENT) if wait else None
 
 
 def _locked_round(db: Session, options: _Options) -> dict:
     key = status.read_key()
     if key is None or not settings.sync_remote_url:
-        return {"ok": False, "skipped": NOT_SET_UP}
-    if not options.force and (wait := _waiting(status.read_state(db))):
-        return {"ok": False, "skipped": wait}
+        return _skipped(NOT_SET_UP, NEEDS_PERSON)
+    if (held := _held_off(status.read_state(db), options)) is not None:
+        return held
     with http_client.new_client(base_url=settings.sync_remote_url, headers=_headers(db, key),
                                 timeout=_TIMEOUT) as http:
         return _attempt(db, http, options)
@@ -738,7 +827,8 @@ def _locked_round(db: Session, options: _Options) -> dict:
 
 def run_round(db: Session, *, force: bool = False, pair: bool = False,
               accept_profile_overwrite: bool = False) -> dict:
-    """Run one round and return its per-step counts. ``force`` ignores the backoff window; ``pair``
+    """Run one round and return its per-step counts and an ``outcome`` (``ok``, ``transient`` or
+    ``needs_person``). ``force`` ignores the backoff window, but not the 30 s after an attempt; ``pair``
     allows the first round; ``accept_profile_overwrite`` lets a first round replace this copy's
     profile. Raises RoundBusy when a round is already running here."""
     if not _LOCK.acquire(blocking=False):

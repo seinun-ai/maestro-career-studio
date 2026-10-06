@@ -15,6 +15,7 @@ from app.models.sync import SyncRequest, SyncState, SyncTombstone
 from app.models.types import utcnow
 from app.services.sync import registry, status
 
+RETURNING_MESSAGE = "This job is going back to your laptop. Make the change there after the next sync."
 UNRESOLVED_MESSAGE = "Maestro couldn't tell which job this change belongs to, so it wasn't saved."
 PROFILE_MESSAGE = "Your laptop keeps your profile. Change it there."
 _PROFILE_CONTENT_COLUMNS = ("contact_json", "summary", "skills_json", "notes")
@@ -50,15 +51,17 @@ def owned_here(session: Session, job_id: uuid.UUID) -> bool:
         if job is None:
             return False
         owner, handover = _ownership(session, job)
-        return (owner is None or owner == status.machine_id(session)) and (
-            status.is_remote() or handover != "offered")
+        refused = "returning" if status.is_remote() else "offered"
+        return (owner is None or owner == status.machine_id(session)) and handover != refused
 
 
 def _not_owned_message(session: Session, job_id: uuid.UUID) -> str:
-    if status.is_remote():
-        return "This job is on your laptop; work on it there."
     with session.no_autoflush:
-        _, handover = _ownership(session, _job_of(session, job_id))
+        owner, handover = _ownership(session, _job_of(session, job_id))
+    if status.is_remote():
+        if owner in (None, status.machine_id(session)) and handover == "returning":
+            return RETURNING_MESSAGE
+        return "This job is on your laptop; work on it there."
     if handover == "offered":
         return "This job is on its way to your bot. Use Keep it here to keep working on it."
     return "This job is with your bot; ask for it back with Work on it here."

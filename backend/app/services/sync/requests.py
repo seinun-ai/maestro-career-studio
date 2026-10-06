@@ -18,6 +18,7 @@ from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
 from app.models.sync import SyncRequest
+from app.models.types import utcnow
 from app.schemas.proposal import ProposalBulkTransition, ProposalTransition
 from app.services.sync import hooks, status
 
@@ -76,6 +77,14 @@ def enqueue(db: Session, kind: str, job_id: uuid.UUID, payload: dict) -> SyncReq
 def enqueue_take_over(db: Session, job_id: uuid.UUID) -> SyncRequest:
     """Ask the other copy to hand this job back."""
     return enqueue(db, "take_over", job_id, {})
+
+
+def settle_take_overs(db: Session, job_id: uuid.UUID) -> None:
+    """The job is back: its unanswered take-over requests are done. No commit; the caller's."""
+    for row in db.scalars(select(SyncRequest).where(
+            SyncRequest.job_id == job_id, SyncRequest.kind == "take_over",
+            SyncRequest.origin == "local", SyncRequest.status.in_(("pending", "sent")))):
+        row.status, row.answered_at = "applied", utcnow()
 
 
 def queued_response() -> JSONResponse:

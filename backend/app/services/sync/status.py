@@ -19,10 +19,14 @@ MACHINE_ID_KEY = "sync.machine_id"
 STATE_KEY = "sync.state"
 SYNC_PROTOCOL = 1
 # The always-on copy's round state (local setting, never synced). ``since_home`` is home's opaque
-# jobs cursor; ``acked_own`` is the highest local job revision home has acknowledged; times are ISO.
+# jobs cursor; ``acked_own`` is the highest local job revision the push has gone past; ``retry_own``
+# maps a job home refused to the rounds it was refused, ``stuck_own`` one refused too often to the
+# (fixed) reason home gave; ``attempted_at`` is when the last round that reached home ended; times
+# are ISO.
 STATE_DEFAULTS: dict = {
     "paired": False, "last_ok": None, "last_error": None, "failures": 0, "next_attempt_at": None,
     "since_home": "0", "acked_own": 0, "profile_rev": None, "runs_at": None,
+    "retry_own": {}, "stuck_own": {}, "attempted_at": None,
 }
 _logger = logging.getLogger(__name__)
 _KEY_READ_WARNING_LOGGED = False
@@ -81,6 +85,11 @@ def machine_id(db: Session) -> str:
     return connection.execute(query).scalar_one()
 
 
+def schema_revision(db: Session) -> str:
+    """The alembic revision this database is at; both copies must match before they sync."""
+    return db.execute(text("SELECT version_num FROM alembic_version")).scalar() or "unknown"
+
+
 def ensure_machine_id() -> str | None:
     """Persist this install's id at startup when sync is configured."""
     if not enabled():
@@ -113,8 +122,18 @@ def create_key() -> Path:
     return path
 
 
+def _tracked_fits(name: str, value: object) -> bool:
+    """A dict of job id to attempts (``retry_own``) or to a reason (``stuck_own``)."""
+    kind = int if name == "retry_own" else str
+    return isinstance(value, dict) and all(
+        isinstance(key, str) and isinstance(item, kind) and not isinstance(item, bool)
+        for key, item in value.items())
+
+
 def _state_value_fits(name: str, value: object) -> bool:
     default = STATE_DEFAULTS[name]
+    if isinstance(default, dict):
+        return _tracked_fits(name, value)
     if isinstance(default, bool):
         return isinstance(value, bool)
     if isinstance(default, int):

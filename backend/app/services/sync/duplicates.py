@@ -22,6 +22,12 @@ def replica_hash(job_id: uuid.UUID) -> str:
     return hashlib.sha256(f"replica:{job_id.hex}".encode()).hexdigest()
 
 
+def stale_hash(job_id: uuid.UUID) -> str:
+    """A placeholder text hash, distinct from ``replica_hash``, for a replica whose own hash
+    another job of the sender has taken."""
+    return hashlib.sha256(f"stale:{job_id.hex}".encode()).hexdigest()
+
+
 class ReplicaClash(Exception):
     """The text belongs to a replica of the sender's own: that job is on its way out or in; retry."""
 

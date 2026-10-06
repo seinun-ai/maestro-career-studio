@@ -17,6 +17,7 @@ import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy import exc as sa_exc
 from sqlalchemy import select, text
 from sqlalchemy.orm import sessionmaker
 
@@ -26,7 +27,7 @@ from app.db import Base, get_db, make_engine
 from app.main import app
 from app.routers import sync as sync_router
 from app.services import application_status, http_client
-from app.services.sync import duplicates, jobs_bundle, requests, status
+from app.services.sync import duplicates, hooks, jobs_bundle, request_apply, requests, status
 from app.services.sync import round as sync_round
 from tests.sync.test_jobs_bundle import SENTINEL, WHEN, build_job
 from tests.sync.test_profile_bundle import build_profile
@@ -375,26 +376,11 @@ def test_a_round_inside_the_backoff_window_is_skipped_and_force_ignores_it(world
     assert state(world)["failures"] == 2
 
 
-def test_a_version_mismatch_skips_the_round_and_changes_nothing(world, home, clock):
-    lone_job(world, "home")
-    mine = lone_job(world, "remote")
-    world.home.execute(text("UPDATE alembic_version SET version_num = 'other'"))
-    world.home.commit()
-
-    summary = go(world)
-
-    assert summary == {"ok": False, "skipped": VERSION}
-    assert home.calls == [("GET", "/api/sync/hello")]
-    assert world.seen("remote").get(models.Setting, status.STATE_KEY) is None
-    assert job_of(world, "remote", mine).owner_machine is None
-    assert [call for call in home.calls if call[0] == "POST"] == []
-
-
 def test_a_hello_that_names_another_protocol_is_a_mismatch_too(world, home, clock):
     home.hello_patch = {"protocol": status.SYNC_PROTOCOL + 1}
 
-    assert go(world) == {"ok": False, "skipped": VERSION}
-    assert world.seen("remote").get(models.Setting, status.STATE_KEY) is None
+    assert go(world) == {"ok": False, "skipped": VERSION, "outcome": "needs_person"}
+    assert state(world)["last_error"] == VERSION
 
 
 def test_a_422_is_reported_by_code_never_by_its_body(world, home, clock, caplog):
@@ -454,21 +440,6 @@ def test_pages_are_cut_by_bytes_and_the_ack_follows_each_page(world, home, clock
     assert len(home.posts("/api/sync/jobs")) == 3
     assert state(world)["acked_own"] == top
     assert all(job_of(world, "home", job_id) is not None for job_id in ids)
-
-
-def test_a_refused_job_holds_the_ack_just_below_its_revision(world, home, clock):
-    first, second = full_job(world, "remote", "one"), full_job(world, "remote", "two")
-    first_rev = job_of(world, "remote", first).sync_rev
-    with world.building("remote"):
-        bundle = jobs_bundle.export_job(world.remote, first)
-    with world.as_("home"):  # home already holds this job as its own: it refuses the push
-        jobs_bundle.apply_job(world.home, bundle, sender_machine=world.machine_id("home"))
-
-    summary = go(world)
-
-    assert summary["ok"] and summary["steps"]["push"]["refused"] == 1
-    assert state(world)["acked_own"] == first_rev - 1
-    assert job_of(world, "home", second).owner_machine == world.machine_id("remote")
 
 
 def test_an_own_job_too_large_to_send_is_skipped_and_the_round_goes_on(world, home, clock,
@@ -832,3 +803,415 @@ def test_run_round_holds_one_round_at_a_time(world, home, clock):
     finally:
         sync_round._LOCK.release()
     assert home.calls == [] and go(world)["ok"]
+
+
+# ------------------------------------------------------------ review fixes for Task 11 (items 1-12)
+
+RETURNING = "This job is going back to your laptop. Make the change there after the next sync."
+OURS = "This job belongs to your laptop."
+MOMENTS_AGO = "Synced moments ago."
+THIS_COPY = "This job isn't on this copy."
+
+
+def _set_handover(world, side, job_id, value):
+    db = getattr(world, side)
+    with jobs_bundle.applying(db):
+        db.get(models.Job, job_id).handover = value
+
+
+def _edit_title(world, side, job_id, title):
+    other = world.factories[side]()
+    try:
+        other.get(models.Job, job_id).title = title
+        other.commit()
+    finally:
+        other.close()
+
+
+def _refuse_pushes(home, job_id, reason=OURS):
+    home.reply[("POST", "/api/sync/jobs")] = httpx.Response(200, json={
+        "applied": [], "duplicates": [], "deleted": [],
+        "refused": [{"job_id": job_id.hex, "reason": reason}]})
+
+
+def test_a_job_edited_after_the_listing_is_still_pushed_next_round(world, home, clock, monkeypatch):
+    first, second = lone_job(world, "remote"), lone_job(world, "remote")
+    real = jobs_bundle.export_job
+    exported = []
+
+    def export_then_edit_both(db, job_id, **kwargs):
+        out = real(db, job_id, **kwargs)
+        exported.append(job_id)
+        if len(exported) == 1:
+            other = second if job_id == first else first
+            _edit_title(world, "remote", job_id, "edited first")
+            _edit_title(world, "remote", other, "edited second")
+        return out
+
+    monkeypatch.setattr(jobs_bundle, "export_job", export_then_edit_both)
+    assert go(world)["ok"]
+    sent_first = exported[0]
+    listed_top = max(job_of(world, "remote", first).sync_rev, job_of(world, "remote", second).sync_rev)
+    assert state(world)["acked_own"] < listed_top
+    monkeypatch.setattr(jobs_bundle, "export_job", real)
+
+    assert go(world)["ok"]
+
+    assert job_of(world, "home", sent_first).title == "edited first"
+
+
+def test_an_ack_never_passes_a_tombstone_ahead_of_unsent_pages(world, home, clock, monkeypatch):
+    monkeypatch.setattr(sync_round, "PUSH_JOBS", 1)
+    first, second = lone_job(world, "remote"), lone_job(world, "remote")
+    doomed = lone_job(world, "remote")
+    with world.building("remote"):
+        world.remote.delete(world.remote.get(models.Job, doomed))
+        world.remote.commit()
+    real_call, posts = sync_round._call, []
+
+    def second_post_fails(ctx, method, path, **kwargs):
+        if (method, path) == ("POST", "/api/sync/jobs"):
+            posts.append(1)
+            if len(posts) == 2:
+                raise sync_round._Stop(UNREACHABLE)
+        return real_call(ctx, method, path, **kwargs)
+
+    monkeypatch.setattr(sync_round, "_call", second_post_fails)
+    assert go(world)["ok"] is False
+    assert state(world)["acked_own"] < job_of(world, "remote", second).sync_rev
+    monkeypatch.setattr(sync_round, "_call", real_call)
+    retry_after_backoff(clock, world)
+
+    assert go(world)["ok"]
+
+    assert job_of(world, "home", first) is not None and job_of(world, "home", second) is not None
+
+
+def test_a_pull_page_is_never_held_for_a_stale_hash_on_a_home_replica(world, home, clock,
+                                                                      monkeypatch):
+    monkeypatch.setattr(sync_round, "PULL_JOBS", 1)
+    first = lone_job(world, "home", hash_="H")
+    assert go(world)["ok"]
+    assert job_of(world, "remote", first).raw_text_hash == "H"
+    with world.building("home"):
+        world.home.get(models.Job, first).raw_text_hash = "H2"
+        world.home.commit()
+        second = uuid.uuid4()
+        world.home.add(models.Job(id=second, raw_text="x", raw_text_hash="H", title="B", created_at=WHEN))
+        world.home.commit()
+        world.home.get(models.Job, first).title = "A edited"
+        world.home.commit()
+
+    summary = go(world)
+
+    assert summary["ok"] and summary["steps"]["pull"]["retry"] == 0
+    assert job_of(world, "remote", second).raw_text_hash == "H"
+    here = job_of(world, "remote", first)
+    assert (here.title, here.raw_text_hash) == ("A edited", "H2")
+    assert state(world)["since_home"] == world_cursor_of_home(world)
+
+
+def world_cursor_of_home(world):
+    top = max(job_of(world, "home", job_id).sync_rev for job_id in world.seen("home").scalars(
+        select(models.Job.id)))
+    return f"{top}:{max(j.id for j in world.seen('home').scalars(select(models.Job)) if j.sync_rev == top).hex}"
+
+
+def test_a_lost_return_reply_does_not_leave_the_laptops_request_stuck(world, home, clock):
+    job = full_job(world, "remote", "r")
+    assert go(world)["ok"]
+    request_id = _ask_for_it_back(world, job)
+    home.lose_reply.add(("POST", "/api/sync/handover/return"))
+
+    assert go(world)["ok"] is False
+
+    stored = world.seen("home").get(models.SyncRequest, request_id)
+    assert stored.status == "applied" and stored.answered_at is not None
+    home.lose_reply.clear()
+    retry_after_backoff(clock, world)
+    assert go(world)["ok"]
+    here = job_of(world, "remote", job)
+    assert (here.owner_machine, here.handover) == (world.machine_id("home"), None)
+    assert world.seen("home").get(models.SyncRequest, request_id).status == "applied"
+
+
+def test_a_job_going_back_refuses_edits_on_the_bot_with_a_plain_sentence(world, home, clock):
+    job = lone_job(world, "remote")
+    _set_handover(world, "remote", job, "returning")
+
+    with pytest.raises(hooks.NotOwnedHere) as refused:
+        _edit_title(world, "remote", job, "lost edit")
+
+    assert str(refused.value) == RETURNING
+    assert hooks.owned_here(world.seen("remote"), job) is False
+
+
+def test_a_return_marks_the_job_before_it_asks_whether_the_bot_is_applying(world, home, clock,
+                                                                           monkeypatch):
+    job = full_job(world, "remote", "r")
+    assert go(world)["ok"]
+    _ask_for_it_back(world, job)
+    real, seen = sync_round._mid_application, []
+
+    def watching(db, job_id):
+        seen.append(job_id and job_of(world, "remote", job_id).handover)
+        return real(db, job_id)
+
+    monkeypatch.setattr(sync_round, "_mid_application", watching)
+
+    assert go(world)["steps"]["handovers"]["returned"] == 1
+    assert seen == ["returning"]
+
+
+def test_a_refused_return_clears_the_marker_again(world, home, clock):
+    job = full_job(world, "remote", "r")
+    assert go(world)["ok"]
+    with world.building("remote"):
+        world.remote.scalars(select(models.ApplicationProposal)).one().status = "approved"
+        world.remote.commit()
+    _ask_for_it_back(world, job)
+
+    assert go(world)["steps"]["handovers"]["refused"] == 1
+
+    here = job_of(world, "remote", job)
+    assert (here.owner_machine, here.handover) == (None, None)
+    _edit_title(world, "remote", job, "edits work again")
+
+
+class _Boom(Exception):
+    pass
+
+
+@pytest.mark.parametrize("failure", [
+    sa_exc.OperationalError("UPDATE jobs SET title=?", (SENTINEL,), Exception(SENTINEL)),
+    ValueError(SENTINEL),
+])
+def test_a_local_database_or_value_error_backs_off_with_a_fixed_sentence(
+        world, home, clock, monkeypatch, caplog, failure):
+    caplog.set_level(logging.DEBUG)
+
+    def broken(ctx):
+        raise failure
+
+    monkeypatch.setattr(sync_round, "_STEPS", (("reconcile", broken),))
+
+    summary = go(world)
+
+    assert summary["ok"] is False and summary["error"] == "Maestro couldn't finish that sync on this copy."
+    saved = state(world)
+    assert saved["failures"] == 1 and saved["last_error"] == summary["error"]
+    assert saved["next_attempt_at"] is not None
+    raw = world.seen("remote").get(models.Setting, status.STATE_KEY).value
+    assert SENTINEL not in json.dumps(summary) + raw + caplog.text
+
+
+def test_a_request_applied_here_is_marked_in_the_transaction_of_its_change(world, home, clock,
+                                                                           monkeypatch):
+    mine = full_job(world, "remote", "r")
+    application = _application_of(world, "remote", mine)
+    request_id = _notes_request(world, "remote", mine, application.id, "kept local")
+    real = application_status.apply_status_and_notes
+    before = []
+
+    def spy(db, application, values):
+        before.append(db.get(models.SyncRequest, request_id).status)  # the applier commits itself
+        real(db, application, values)
+
+    monkeypatch.setattr(application_status, "apply_status_and_notes", spy)
+
+    assert go(world)["steps"]["requests"]["applied_here"] == 1
+
+    assert before == ["applied"]
+    assert world.seen("remote").get(models.SyncRequest, request_id).status == "applied"
+    assert _application_of(world, "remote", mine).notes == "kept local"
+
+
+def test_the_not_here_sentence_follows_the_side(world, home, clock):
+    item = request_apply.RequestIn(id=uuid.uuid4(), kind="application_patch", job_id=uuid.uuid4(),
+                                   payload={"application_id": str(uuid.uuid4()),
+                                            "fields": {"notes": "x"}}, created_at=START)
+    with world.as_("remote"):
+        assert request_apply.answer(world.remote, item)["reason"] == THIS_COPY
+    with world.as_("home"):
+        other = request_apply.RequestIn(**{**item.model_dump(), "id": uuid.uuid4()})
+        assert request_apply.answer(world.home, other)["reason"] == "This job isn't on your laptop."
+
+
+def test_a_refused_own_job_advances_the_ack_and_is_retried_then_parked(world, home, clock):
+    job = lone_job(world, "remote")
+    rev = job_of(world, "remote", job).sync_rev
+    _refuse_pushes(home, job)
+
+    first = go(world)
+
+    assert first["steps"]["push"]["refused"] == 1
+    saved = state(world)
+    assert saved["acked_own"] == rev and saved["retry_own"] == {job.hex: 1}
+    for _ in range(4):
+        last = go(world)
+    assert len(home.posts("/api/sync/jobs")) == 5
+    saved = state(world)
+    assert saved["retry_own"] == {} and saved["stuck_own"] == {job.hex: OURS}
+    assert last["steps"]["push"]["stuck"] == 1
+
+    again = go(world)
+
+    assert len(home.posts("/api/sync/jobs")) == 5 and again["steps"]["push"]["stuck"] == 1
+    _edit_title(world, "remote", job, "edited while parked")
+    home.reply.clear()
+    assert go(world)["steps"]["push"]["sent"] == 1
+    assert job_of(world, "home", job).title == "edited while parked"
+    saved = state(world)
+    assert saved["stuck_own"] == {} and saved["retry_own"] == {}
+
+
+def test_a_refused_job_does_not_hold_back_the_others(world, home, clock):
+    first, second = full_job(world, "remote", "one"), full_job(world, "remote", "two")
+    top = max(job_of(world, "remote", first).sync_rev, job_of(world, "remote", second).sync_rev)
+    with world.building("remote"):
+        bundle = jobs_bundle.export_job(world.remote, first)
+    with world.as_("home"):  # home already holds this job as its own: it refuses the push
+        jobs_bundle.apply_job(world.home, bundle, sender_machine=world.machine_id("home"))
+
+    assert go(world)["steps"]["push"]["refused"] == 1
+
+    saved = state(world)
+    assert saved["acked_own"] == top and first.hex in saved["retry_own"]
+    assert job_of(world, "home", second).owner_machine == world.machine_id("remote")
+
+
+def test_a_version_mismatch_skip_leaves_a_sentence_for_the_status_and_nothing_else(world, home, clock):
+    mine = lone_job(world, "remote")
+    world.home.execute(text("UPDATE alembic_version SET version_num = 'other'"))
+    world.home.commit()
+
+    assert go(world) == {"ok": False, "skipped": VERSION, "outcome": "needs_person"}
+
+    saved = state(world)
+    assert saved["last_error"] == VERSION
+    assert {**saved, "last_error": None} == status.read_state(world.remote) | {"last_error": None}
+    assert (saved["failures"], saved["next_attempt_at"], saved["paired"], saved["acked_own"]) == (
+        0, None, False, 0)
+    assert job_of(world, "remote", mine).owner_machine is None
+
+
+def test_a_forced_round_within_thirty_seconds_of_the_last_attempt_does_nothing(world, home, clock):
+    assert go(world, force=True)["ok"]
+    home.calls.clear()
+    clock.now += timedelta(seconds=29)
+
+    assert go(world, force=True) == {"ok": False, "skipped": MOMENTS_AGO, "outcome": "transient"}
+    assert home.calls == []
+    clock.now += timedelta(seconds=2)
+
+    assert go(world, force=True)["ok"] and home.calls != []
+
+
+def test_a_forced_round_after_a_failed_attempt_waits_too(world, home, clock):
+    home.unreachable.add(("GET", "/api/sync/hello"))
+    assert go(world, force=True)["ok"] is False
+    home.calls.clear()
+
+    assert go(world, force=True) == {"ok": False, "skipped": MOMENTS_AGO, "outcome": "transient"}
+    assert home.calls == []
+
+
+def test_a_gone_answer_for_an_own_job_mid_return_keeps_the_job(world, home, clock):
+    job = lone_job(world, "remote")
+    _set_handover(world, "remote", job, "returning")
+
+    summary = go(world)
+
+    assert summary["ok"] and summary["steps"]["reconcile"]["kept"] == 1
+    here = job_of(world, "remote", job)
+    assert here is not None and (here.owner_machine, here.handover) == (None, None)
+
+
+def test_the_round_and_the_request_applier_import_no_router():
+    import ast
+    import inspect
+
+    for module in (sync_round, request_apply):
+        tree = ast.parse(inspect.getsource(module))
+        names = [node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+        names += [alias.name for node in ast.walk(tree) if isinstance(node, ast.Import)
+                  for alias in node.names]
+        assert not [name for name in names if name.startswith("app.routers")], module.__name__
+
+
+# ------------------------------------------------------------------- the machine-readable outcome
+
+
+def test_a_finished_round_says_ok(world, home, clock):
+    assert go(world)["outcome"] == "ok"
+
+
+@pytest.mark.parametrize("key, response", [
+    (("GET", "/api/sync/hello"), httpx.Response(500, json={"detail": SENTINEL})),
+    (("GET", "/api/sync/profile"), httpx.Response(409, json={"detail": "busy", "reason": "busy"})),
+])
+def test_a_laptop_that_hiccups_or_is_busy_is_transient(world, home, clock, key, response):
+    home.reply[key] = response
+
+    summary = go(world)
+
+    assert summary["ok"] is False and summary["outcome"] == "transient"
+
+
+def test_an_unreachable_laptop_and_a_timeout_are_transient(world, home, clock):
+    home.unreachable.add(("GET", "/api/sync/hello"))
+    assert go(world)["outcome"] == "transient"
+
+
+def test_a_round_inside_the_backoff_window_and_a_forced_repeat_are_transient(world, home, clock):
+    home.unreachable.add(("GET", "/api/sync/hello"))
+    go(world)
+    clock.now += timedelta(minutes=1)
+    assert go(world)["outcome"] == "transient"  # inside the window
+    clock.now += timedelta(minutes=10)
+    home.unreachable.clear()
+    assert go(world, force=True)["outcome"] == "ok"
+    assert go(world, force=True)["outcome"] == "transient"  # within 30 s
+
+
+@pytest.mark.parametrize("response", [
+    httpx.Response(401, json={"detail": SENTINEL}),
+    httpx.Response(404, json={"detail": SENTINEL}),
+    httpx.Response(422, json={"detail": SENTINEL}),
+    httpx.Response(409, json={"detail": SENTINEL, "reason": "machine"}),
+])
+def test_a_laptop_refusal_a_person_must_fix_needs_a_person(world, home, clock, response):
+    home.reply[("GET", "/api/sync/hello")] = response
+
+    summary = go(world)
+
+    assert summary["ok"] is False and summary["outcome"] == "needs_person"
+
+
+def test_a_version_mismatch_and_a_first_round_without_pairing_need_a_person(world, home, clock):
+    assert go(world, pair=False)["outcome"] == "needs_person"
+    home.hello_patch = {"protocol": status.SYNC_PROTOCOL + 1}
+    assert go(world)["outcome"] == "needs_person"
+
+
+def test_a_round_without_a_key_needs_a_person(world, home, clock):
+    with world.building("remote"):
+        assert go(world)["outcome"] == "needs_person"
+
+
+def test_the_busy_route_answer_carries_the_transient_outcome(client, sync_remote, monkeypatch):
+    def busy(db, **kwargs):
+        raise sync_round.RoundBusy
+
+    monkeypatch.setattr(sync_round, "run_round", busy)
+
+    response = client.post("/api/sync/round")
+
+    assert response.status_code == 409 and response.json()["outcome"] == "transient"
+
+
+def test_the_route_passes_the_outcome_through(client, sync_remote, monkeypatch):
+    monkeypatch.setattr(sync_round, "run_round",
+                        lambda db, **kw: {"ok": False, "outcome": "needs_person", "skipped": "x"})
+
+    assert client.post("/api/sync/round").json()["outcome"] == "needs_person"
