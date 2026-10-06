@@ -460,7 +460,7 @@ def sync_now() -> Any:
     Forces a round through the backoff window; an attempt within the last
     30 seconds is skipped with 'Synced moments ago.'. Sync off returns
     \"Sync isn't set up.\"; home returns
-    \"This is your laptop's copy; your bot runs the sync\"."""
+    \"This is your laptop's copy; your bot runs the sync.\""""
     return _client.sync_now()
 
 

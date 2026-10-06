@@ -207,11 +207,6 @@ def pack_dir_with_skips(root_name: str, rel_dir: str, *, max_bytes: int) -> tupl
     return packed, skipped
 
 
-def pack_dir(root_name: str, rel_dir: str, *, max_bytes: int) -> list[dict]:
-    """The files of ``pack_dir_with_skips`` without the skipped count."""
-    return pack_dir_with_skips(root_name, rel_dir, max_bytes=max_bytes)[0]
-
-
 def _target(value: object) -> tuple[str, str]:
     if not isinstance(value, str):
         raise ValueError("portable path must be a string")

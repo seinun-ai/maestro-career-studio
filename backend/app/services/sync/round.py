@@ -13,7 +13,6 @@ code plus a fixed sentence, and the summary holds counts only.
 import hashlib
 import json
 import threading
-import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -32,7 +31,7 @@ from app.models.setting import Setting
 from app.models.sync import SyncRequest, SyncTombstone
 from app.models.types import utcnow
 from app.services import http_client
-from app.services.sync import bundle_rows, duplicates, hooks, jobs_bundle, profile_bundle, request_apply, status
+from app.services.sync import bundle_rows, duplicates, hooks, jobs_bundle, profile_bundle, request_apply, status, wire
 
 PAGE_BYTES = 40 * 1024 * 1024  # well under home's 100 MB request cap
 PUSH_JOBS = 20
@@ -41,24 +40,19 @@ FORCE_GAP = timedelta(seconds=30)
 PULL_JOBS = 20
 OWNERSHIP_CHUNK = 500
 RUN_PAGE = 200
-MAX_REASON = 500
 _TIMEOUT = httpx.Timeout(120.0, connect=10.0)
 _LOCK = threading.Lock()
 
 NOT_SET_UP = "Sync isn't set up."
+NOT_OWN_TUNNEL = "The laptop's address must be this machine's own tunnel (127.0.0.1)."
 NOT_PAIRED = "This copy isn't paired with your laptop yet; run the first sync with the pair option."
 VERSION_MISMATCH = "Update Maestro on both machines to the same version."
 UNREACHABLE = "Laptop unreachable."
 SYNCED_JUST_NOW = "Synced moments ago."
-BUSY_APPLYING = "Your bot is applying to this one; try again after its run."
-_DISK = "Maestro couldn't save the files it received."
-_CANT_READ = "Maestro couldn't read the files it needed to send."
 _UNREADABLE = "Your laptop's answer wasn't what Maestro expected."
 _PROFILE = "Maestro couldn't apply your laptop's profile."
 _GENERIC = "Your laptop couldn't finish that sync request."
 _LOCAL = "Maestro couldn't finish that sync on this copy."
-_NOT_HOLDING = "Your bot isn't holding this job."
-_CANT_SEND_BACK = "Maestro couldn't send this job back to your laptop."
 _SENTENCES = {
     401: "Sync key doesn't match.",
     404: "Sync isn't set up on your laptop.",
@@ -201,7 +195,7 @@ def _mid_application(db: Session, job_id) -> bool:
 
 
 def _answer_text(value) -> str | None:
-    return value[:MAX_REASON] if isinstance(value, str) and value else None
+    return value[:wire.MAX_REASON] if isinstance(value, str) and value else None
 
 
 # ------------------------------------------------------------------------------- 2-3: hello, pairing
@@ -451,7 +445,7 @@ class _Page:
 
 
 def _hex(raw) -> str | None:
-    job_id = _uuid(raw)
+    job_id = wire.uuid_of(raw)
     return job_id.hex if job_id else None
 
 
@@ -461,7 +455,7 @@ def _export_one(db: Session, job_id) -> dict | None:
     except (ValueError, LookupError):
         return None  # too large, a symlink, or gone since it was listed
     except OSError:
-        raise _Stop(_CANT_READ, outcome=NEEDS_PERSON) from None
+        raise _Stop(wire.CANT_READ, outcome=NEEDS_PERSON) from None
 
 
 def _take_page(db: Session, rows: list) -> _Page:
@@ -486,17 +480,10 @@ def _take_page(db: Session, rows: list) -> _Page:
 
 def _drop_duplicate(ctx: _Ctx, job_id_hex: str, push: _Push) -> None:
     """Home keeps its own job for this text: drop ours, unless work began on it since the export."""
-    job_id = _uuid(job_id_hex)
+    job_id = wire.uuid_of(job_id_hex)
     if job_id is not None and not _progressed(ctx.db, job_id):
         jobs_bundle.apply_tombstone(ctx.db, job_id)
         push.counts["dropped"] += 1
-
-
-def _uuid(raw):
-    try:
-        return uuid.UUID(str(raw))
-    except ValueError:
-        return None
 
 
 def _track_refusals(push: _Push, page: _Page, refused: dict) -> None:
@@ -546,7 +533,7 @@ def _send_page(ctx: _Ctx, page: _Page, tombstones: list, push: _Push) -> None:
 
 def _still_mine(db: Session, tracked: dict) -> dict:
     """The tracked jobs that still exist here and are ours; a deleted or handed-over one is dropped."""
-    ids = [job_id for job_id in map(_uuid, tracked) if job_id is not None]
+    ids = [job_id for job_id in map(wire.uuid_of, tracked) if job_id is not None]
     alive = {job_id.hex for job_id in db.scalars(select(Job.id).where(
         jobs_bundle.owned_clause(db), Job.id.in_(ids)))} if ids else set()
     return {job_hex: value for job_hex, value in tracked.items() if job_hex in alive}
@@ -555,7 +542,7 @@ def _still_mine(db: Session, tracked: dict) -> dict:
 def _listing(db: Session, push: _Push) -> list:
     """Own jobs changed since the ack, plus the refused ones waiting for another try."""
     wanted = Job.sync_rev > push.acked
-    retry_ids = [job_id for job_id in map(_uuid, push.retry) if job_id is not None]
+    retry_ids = [job_id for job_id in map(wire.uuid_of, push.retry) if job_id is not None]
     if retry_ids:
         wanted = or_(wanted, Job.id.in_(retry_ids))
     return db.execute(select(Job.id, Job.sync_rev).where(jobs_bundle.owned_clause(db), wanted)
@@ -645,7 +632,7 @@ def _drop_deleted(ctx: _Ctx, tombstones: list) -> int:
     """Delete replicas of jobs home deleted; a job of ours is never deleted by home's say-so."""
     deleted = 0
     for item in tombstones:
-        job_id = _uuid(item["job_id"])
+        job_id = wire.uuid_of(item["job_id"])
         owner = ctx.db.scalar(select(Job.owner_machine).where(Job.id == job_id))
         if job_id is not None and owner == ctx.home_id:
             jobs_bundle.apply_tombstone(ctx.db, job_id)
@@ -708,14 +695,9 @@ def _answer_home_requests(ctx: _Ctx, counts: dict) -> None:
         _call(ctx, "POST", "/api/sync/request-results", body={"results": results})
 
 
-def _wire(row: SyncRequest) -> dict:
-    return {"id": row.id.hex, "kind": row.kind, "job_id": row.job_id.hex if row.job_id else None,
-            "payload": row.payload_json, "created_at": row.created_at.isoformat()}
-
-
 def _store_answers(ctx: _Ctx, answers: list, counts: dict) -> None:
     for answer in answers:
-        row = ctx.db.get(SyncRequest, _uuid(answer["id"]))
+        row = ctx.db.get(SyncRequest, wire.uuid_of(answer["id"]))
         if row is None or row.origin != "local" or answer["status"] not in ("applied", "refused"):
             continue
         row.status, row.reason, row.answered_at = (
@@ -736,7 +718,7 @@ def _send_local_requests(ctx: _Ctx, counts: dict) -> None:
             to_send.append(row)
     if to_send:
         answers = _call(ctx, "POST", "/api/sync/requests",
-                        body={"requests": [_wire(row) for row in to_send]})
+                        body={"requests": [wire.shown(row) for row in to_send]})
         counts["sent"] += len(to_send)
         _store_answers(ctx, answers, counts)
 
@@ -764,7 +746,7 @@ def _take_offers(ctx: _Ctx, counts: dict) -> None:
     if not stored:
         return
     committed = _call(ctx, "POST", "/api/sync/handover/commit", body={"job_ids": stored})["job_ids"]
-    ids = [_uuid(raw) for raw in committed if raw in stored]
+    ids = [wire.uuid_of(raw) for raw in committed if raw in stored]
     _set_owner(ctx.db, ids, None)
     counts["taken"] += len(ids)
 
@@ -795,11 +777,11 @@ def _return_refusal(ctx: _Ctx, item) -> tuple[str, str | None] | None:
     db = ctx.db
     job = db.get(Job, item.job_id) if item.job_id else None
     if job is None:
-        return "refused", _NOT_HOLDING
+        return "refused", request_apply.NOT_HOLDING
     if job.owner_machine == ctx.home_id:  # already handed back, and the record never landed
         return "applied", None
     if job.owner_machine is not None and job.owner_machine != status.machine_id(db):
-        return "refused", _NOT_HOLDING
+        return "refused", request_apply.NOT_HOLDING
     return None
 
 
@@ -813,10 +795,10 @@ def _decide_return(ctx: _Ctx, item) -> tuple[str, str | None]:
     _set_handover(ctx.db, item.job_id, "returning")
     if _mid_application(ctx.db, item.job_id):
         _set_handover(ctx.db, item.job_id, None)
-        return "refused", BUSY_APPLYING
+        return "refused", request_apply.BUSY_APPLYING
     if _hand_back(ctx, item.job_id):
         return "applied", None
-    return "refused", _CANT_SEND_BACK
+    return "refused", request_apply.CANT_SEND_BACK
 
 
 def _return_jobs(ctx: _Ctx, counts: dict) -> None:
@@ -914,7 +896,7 @@ def _stop_for(failure: Exception) -> _Stop:
     if isinstance(failure, _Stop):
         return failure
     if isinstance(failure, OSError):
-        return _Stop(_DISK, outcome=NEEDS_PERSON)
+        return _Stop(wire.DISK, outcome=NEEDS_PERSON)
     if isinstance(failure, (SQLAlchemyError, ValueError)):
         return _Stop(_LOCAL, outcome=TRANSIENT)
     return _Stop(_UNREADABLE, outcome=NEEDS_PERSON)
@@ -967,10 +949,12 @@ def _locked_round(db: Session, options: _Options) -> dict:
     key = status.read_key()
     if key is None or not settings.sync_remote_url:
         return _skipped(NOT_SET_UP, NEEDS_PERSON)
+    if not status.remote_is_own_tunnel():
+        return _skipped(NOT_OWN_TUNNEL, NEEDS_PERSON)
     if (held := _held_off(status.read_state(db), options)) is not None:
         return held
     with http_client.new_client(base_url=settings.sync_remote_url, headers=_headers(db, key),
-                                timeout=_TIMEOUT) as http:
+                                timeout=_TIMEOUT, trust_env=False) as http:
         return _attempt(db, http, options)
 
 

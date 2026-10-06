@@ -1,5 +1,6 @@
 """Ownership wire-policy parity: guard states produce the promised web controls."""
 
+from app.services.sync import hooks
 from tests.node_ts import FRONTEND, run_node_test, ts_map
 
 
@@ -54,3 +55,11 @@ def test_tailor_page_reads_ownership_and_locks_every_write():
     assert text.count("|| !ownership.canWrite}") >= 4  # notes, use as is, quick tailor, tailor
     assert "<JobOwnershipMark" in text and "<JobOwnershipNotice" in text
     assert "isOwnershipRefusal" in text
+
+
+def test_the_web_app_says_what_the_server_says():
+    """A refused write shows the server's sentence; the page's own copy is the same sentence."""
+    text = _source("lib/job-ownership.ts")
+    for sentence in (hooks.ON_LAPTOP_MESSAGE, hooks.WITH_BOT_MESSAGE, hooks.OFFERED_MESSAGE,
+                     hooks.RETURNING_MESSAGE):
+        assert f'"{sentence}"' in text, sentence

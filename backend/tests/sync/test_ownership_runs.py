@@ -10,6 +10,8 @@ from app.models.agent_run import AgentRun
 from app.models.job import Job
 from app.models.sync import SyncRequest
 from app.models.types import utcnow
+from app.services import agent_runs, proposals
+from app.services.sync import hooks, request_apply
 
 
 @pytest.fixture
@@ -102,3 +104,17 @@ def test_a_fixed_state_machine_refusal_keeps_its_reason(client, db_session, sync
     db_session.commit()
     response = client.get("/api/agent-runs/latest")
     assert response.status_code == 200 and response.json()["refused_requests"][0]["reason"] == reason
+
+
+def _sentences_of(module):
+    return {value for name, value in vars(module).items()
+            if name.isupper() and not name.startswith("_") and isinstance(value, str)}
+
+
+def test_every_refusal_sentence_the_sync_can_produce_is_allowed_through():
+    produced = _sentences_of(request_apply) | _sentences_of(hooks)
+    produced |= {proposals.not_allowed_message(status) for status in proposals.STATUS_CHIP_WORDS}
+    produced.add(proposals.COMPANY_BLOCKED)
+
+    assert len(produced) > 15  # the scan found the constants
+    assert agent_runs._SAFE_REQUEST_REASONS == produced  # nothing missing, nothing stale

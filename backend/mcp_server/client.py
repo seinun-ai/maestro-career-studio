@@ -432,7 +432,7 @@ class BackendClient:
             if sync.get("enabled") is False:
                 return "Sync isn't set up."
             if sync.get("enabled") is True and sync.get("role") == "home":
-                return "This is your laptop's copy; your bot runs the sync"
+                return "This is your laptop's copy; your bot runs the sync."
             raise
 
     def get_career_context(self) -> Any:

@@ -21,7 +21,7 @@ from app.config import settings
 from app.db import get_db
 from app.main import app
 from app.services import base_resume_data, proposals, seeding, tailoring_session
-from app.services.sync import jobs_bundle, profile_bundle, status
+from app.services.sync import jobs_bundle, profile_bundle, request_apply, status
 from app.services.sync import round as sync_round
 from tests.conftest import _clear_tables
 from tests.pdf_fixtures import text_pdf_bytes
@@ -641,5 +641,5 @@ def test_real_take_over_is_refused_while_the_bot_is_applying(machines):
     with machines.home.session() as db:
         request = db.scalar(select(models.SyncRequest).where(models.SyncRequest.kind == "take_over"))
         assert request.status == "refused"
-        assert request.reason == sync_round.BUSY_APPLYING
+        assert request.reason == request_apply.BUSY_APPLYING
         assert db.get(models.Job, ids.job).owner_machine == status.machine_id(machines.db)

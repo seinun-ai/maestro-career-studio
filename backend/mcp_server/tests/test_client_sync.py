@@ -33,7 +33,7 @@ def test_sync_now_forces_a_round_and_preserves_its_summary(summary, monkeypatch)
 @pytest.mark.parametrize(("sync", "sentence"), [
     ({"enabled": False, "role": None}, "Sync isn't set up."),
     ({"enabled": True, "role": "home"},
-     "This is your laptop's copy; your bot runs the sync"),
+     "This is your laptop's copy; your bot runs the sync."),
 ])
 @respx.mock
 def test_sync_now_distinguishes_home_from_sync_off(sync, sentence, monkeypatch):

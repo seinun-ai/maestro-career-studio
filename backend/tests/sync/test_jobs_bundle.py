@@ -3,6 +3,7 @@
 import copy
 import json
 import logging
+import os
 import shutil
 import traceback
 import uuid
@@ -18,7 +19,7 @@ from sqlalchemy.orm import sessionmaker
 from app import models
 from app.config import settings
 from app.db import Base, make_engine
-from app.services.sync import files, jobs_bundle, registry, status
+from app.services.sync import files, folders, jobs_bundle, registry, status
 from app.services.sync.hooks import NotOwnedHere
 
 SENTINEL = "SENTINEL-BODY-7731"
@@ -565,6 +566,114 @@ def test_a_bundle_may_not_aim_at_another_jobs_application_folder(home, recv, roo
     assert recv.get(models.Job, other.job) is not None
 
 
+def _folder_app(bundle):
+    return next(i["row"] for i in bundle["rows"] if i["table"] == "applications" and i["row"]["artifact_dir"])
+
+
+def _aim_at(bundle, folder):
+    """The bundle's one folder, files and paths all rewritten to point at ``folder``."""
+    app = _folder_app(bundle)
+    app.update(artifact_dir=f"applications:{folder}", pdf_path=None, tex_path=None)
+    for qa in (i["row"] for i in bundle["rows"] if i["table"] == "qa_entries"):
+        qa["pdf_path"] = None
+    bundle["files"] = [{**bundle["files"][0], "path": f"applications:{folder}/resume.pdf"}]
+
+
+def _case_insensitive(directory) -> bool:
+    probe = directory / "CaseProbe"
+    probe.mkdir()
+    return (directory / "caseprobe").exists()
+
+
+@pytest.mark.parametrize("spelling", ["co_role_dir", "CO_ROLE_DIR", "Co_Role_dir/Inner", "co_role_dir/inner"])
+def test_a_bundle_may_not_aim_at_another_jobs_folder_spelled_in_another_case(
+        home, recv, roots, spelling):
+    _, good = _bundle(home, roots)
+    roots.use("recv")
+    build_job(recv, roots.recv, tag="dir")
+    victim = roots.recv / "Co_Role_dir" / "resume.pdf"
+    before = victim.read_bytes()
+    bundle = copy.deepcopy(good)
+    _aim_at(bundle, spelling)
+    _refused(recv, roots, bundle)
+    assert victim.read_bytes() == before
+
+
+def test_a_bundle_may_not_aim_at_another_jobs_folder_by_inode_where_the_disk_ignores_case(
+        home, recv, roots, monkeypatch):
+    if not _case_insensitive(roots.recv):
+        pytest.skip("this filesystem is case-sensitive")
+    _, good = _bundle(home, roots)
+    roots.use("recv")
+    build_job(recv, roots.recv, tag="dir")
+    monkeypatch.setattr(folders, "_key", lambda path: os.path.abspath(path))  # only the inode is left
+    bundle = copy.deepcopy(good)
+    _aim_at(bundle, "co_role_dir")
+    _refused(recv, roots, bundle)
+    assert (roots.recv / "Co_Role_dir" / "resume.pdf").read_bytes() == b"%PDF dir"
+
+
+def test_two_folders_with_one_inode_overlap_whatever_their_spelling(tmp_path):
+    (tmp_path / "A").mkdir()
+    (tmp_path / "other").mkdir()
+    same = folders.same_file(str(tmp_path / "A"), str(tmp_path / "A" / ".." / "A"))
+    assert same and not folders.same_file(str(tmp_path / "A"), str(tmp_path / "other"))
+    assert not folders.same_file(str(tmp_path / "A"), str(tmp_path / "missing"))
+
+
+def test_the_comparison_folds_case_and_unicode_form(tmp_path):
+    base = str(tmp_path)
+    assert folders.overlaps(f"{base}/Acme", f"{base}/ACME/sub")
+    assert folders.overlaps(f"{base}/Caf\u00e9", f"{base}/cafe\u0301")
+    assert not folders.overlaps(f"{base}/Acme", f"{base}/Acme2")
+
+
+def _tampered(good, **changes):
+    bundle = copy.deepcopy(good)
+    app = _folder_app(bundle)
+    for key, value in changes.items():
+        if key == "qa":
+            next(i["row"] for i in bundle["rows"] if i["table"] == "qa_entries"
+                 and i["row"]["pdf_path"])["pdf_path"] = value
+        else:
+            app[key] = value
+    return bundle
+
+
+@pytest.mark.parametrize("changes", [
+    {"pdf_path": "applications:Elsewhere/x.pdf"},
+    {"tex_path": "applications:Elsewhere/x.tex"},
+    {"qa": "applications:Elsewhere/x.pdf"},
+    {"pdf_path": "applications:Co_Role_a_prefix/x.pdf"},
+    {"pdf_path": "applications:Co_Role_a"},
+    {"pdf_path": "applications:co_role_a/resume.pdf"},
+], ids=["pdf", "tex", "qa", "sibling-prefix", "the-folder-itself", "other-case"])
+def test_each_file_path_must_sit_inside_its_own_applications_folder(home, recv, roots, changes):
+    _, good = _bundle(home, roots)
+    _refused(recv, roots, _tampered(good, **changes))
+
+
+def test_file_paths_inside_the_own_folder_travel(home, recv, roots):
+    _, good = _bundle(home, roots)
+    roots.use("recv")
+    jobs_bundle.apply_job(recv, _tampered(good, pdf_path="applications:Co_Role_a/evidence/x.pdf"),
+                          sender_machine="m")
+
+
+def test_a_legacy_row_without_a_folder_may_still_travel_but_not_into_another_jobs_folder(
+        home, recv, roots):
+    _, good = _bundle(home, roots)
+    roots.use("recv")
+    other = build_job(recv, roots.recv, tag="dir")
+    legacy = _tampered(good, artifact_dir=None, pdf_path="applications:Co_Role_dir/x.pdf", tex_path=None)
+    legacy["files"] = []
+    _refused(recv, roots, legacy)
+    legacy = _tampered(good, artifact_dir=None, pdf_path="applications:Legacy/x.pdf", tex_path=None)
+    legacy["files"] = []
+    jobs_bundle.apply_job(recv, legacy, sender_machine="m")
+    assert recv.get(models.Job, other.job) is not None
+
+
 def test_a_job_may_reapply_its_own_artifact_folder(home, recv, roots):
     _, good = _bundle(home, roots)
     roots.use("recv")
@@ -812,6 +921,19 @@ def test_a_removed_folder_that_holds_a_kept_applications_folder_stays(home, recv
     home.commit()
     ship(home, recv, roots, ids.job)
     assert (roots.recv / "Co_Role_c" / "evidence" / "shot.png").is_file()
+
+
+def test_a_removed_folder_stays_when_a_kept_folder_differs_only_in_case(home, recv, roots):
+    ids = build_job(home, roots.home)
+    copy_profile(home, recv, ids)
+    other = build_job(recv, roots.recv, tag="b")
+    ship(home, recv, roots, ids.job)
+    recv.get(models.Application, other.app).artifact_dir = str(roots.recv / "co_role_a")
+    recv.commit()
+    assert jobs_bundle._unused_folders(recv, [str(roots.recv / "Co_Role_a")]) == []
+    roots.use("recv")
+    jobs_bundle.apply_tombstone(recv, ids.job)
+    assert (roots.recv / "Co_Role_a" / "resume.pdf").is_file()
 
 
 def test_latex_build_leftovers_are_not_packed_or_counted(home, roots):

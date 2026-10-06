@@ -8,6 +8,7 @@ process-global settings (key, remote url, file roots) are switched to home's sid
 
 import json
 import logging
+import socket
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -320,6 +321,51 @@ def test_a_first_round_needs_the_pair_flag(world, home, clock):
     assert state(world)["paired"] is False
     assert go(world, pair=True)["ok"] and state(world)["paired"] is True
     assert go(world, pair=False)["ok"]
+
+
+NOT_LOOPBACK = "The laptop's address must be this machine's own tunnel (127.0.0.1)."
+
+
+@pytest.mark.parametrize("url", [
+    "http://example.com:8101", "http://127.0.0.1.evil.com:8101", "http://localhost.evil.com",
+    "http://127.0.0.1@evil.com:8101", "http://10.0.0.5:8101", "https://[2001:db8::1]:8101",
+    "not a url"])
+def test_a_remote_address_that_is_not_this_machines_own_tunnel_is_refused(
+        world, home, clock, monkeypatch, url):
+    monkeypatch.setattr(settings, "sync_remote_url", url)
+
+    summary = go(world)
+
+    assert summary == {"ok": False, "skipped": NOT_LOOPBACK, "outcome": "needs_person"}
+    assert home.calls == []
+
+
+@pytest.mark.parametrize("url", ["http://localhost:8101", "http://[::1]:8101", "http://127.0.0.1:8101"])
+def test_a_loopback_remote_address_is_used(world, home, clock, monkeypatch, url):
+    monkeypatch.setattr(settings, "sync_remote_url", url)
+
+    assert go(world)["ok"] is True
+    assert home.calls
+
+
+def test_the_round_ignores_the_proxy_environment(world, monkeypatch):
+    """With HTTP_PROXY set the bearer key and the profile would go to the proxy in cleartext."""
+    with socket.socket() as spy, socket.socket() as closed:
+        for sock in (spy, closed):
+            sock.bind(("127.0.0.1", 0))
+        spy.listen()
+        spy.setblocking(False)
+        for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+            monkeypatch.setenv(name, f"http://127.0.0.1:{spy.getsockname()[1]}")
+        for name in ("NO_PROXY", "no_proxy"):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setattr(settings, "sync_remote_url", f"http://127.0.0.1:{closed.getsockname()[1]}")
+
+        summary = go(world)  # the target port is bound but not listening: refused
+
+        assert summary["outcome"] == "transient" and summary["error"] == UNREACHABLE
+        with pytest.raises(BlockingIOError):
+            spy.accept()
 
 
 def test_a_round_without_a_key_says_sync_is_not_set_up(world, home, clock):

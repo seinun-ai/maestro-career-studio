@@ -9,6 +9,7 @@ import threading
 import uuid
 from pathlib import Path
 
+import httpx
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -66,6 +67,18 @@ def enabled() -> bool:
 
 def is_remote() -> bool:
     return enabled() and bool(settings.sync_remote_url)
+
+
+LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
+
+
+def remote_is_own_tunnel() -> bool:
+    """True when ``SYNC_REMOTE_URL`` points at this machine's loopback (the SSH forward). The
+    bearer key and the whole profile ride that address in cleartext, so nothing else is used."""
+    try:
+        return httpx.URL(settings.sync_remote_url).host in LOOPBACK_HOSTS
+    except httpx.InvalidURL:
+        return False
 
 
 def mode() -> str:

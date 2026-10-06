@@ -29,6 +29,13 @@ def _file(value="applications:X/resume.pdf", data=b"verified bytes"):
     }
 
 
+def _pack(root_name, rel_dir, *, max_bytes):
+    """The packed files only; the skipped count has its own tests."""
+    from app.services.sync import files
+
+    return files.pack_dir_with_skips(root_name, rel_dir, max_bytes=max_bytes)[0]
+
+
 @pytest.mark.parametrize("name", ["applications", "base_resumes", "kb_documents"])
 def test_round_trip_between_machine_roots(roots, tmp_path, monkeypatch, name):
     from app.services.sync import files
@@ -38,7 +45,7 @@ def test_round_trip_between_machine_roots(roots, tmp_path, monkeypatch, name):
     source.write_bytes(b"\x00\x01\x02\x03\xff")
     portable = f"{name}:X/evidence/a.png"
     assert files.to_portable(str(source)) == portable
-    packed = files.pack_dir(name, "X", max_bytes=25 * 1024 * 1024)
+    packed = _pack(name, "X", max_bytes=25 * 1024 * 1024)
     assert packed == [_file(portable, b"\x00\x01\x02\x03\xff")]
 
     target = tmp_path / "destination" / name
@@ -81,7 +88,7 @@ def test_unsafe_relative_paths_are_refused(roots, relative):
     with pytest.raises(ValueError):
         files.from_portable(f"applications:{relative}")
     with pytest.raises(ValueError):
-        files.pack_dir("applications", relative, max_bytes=1024)
+        _pack("applications", relative, max_bytes=1024)
     with pytest.raises(ValueError):
         files.unpack([_file(f"applications:{relative}")])
     assert list(roots["applications"].iterdir()) == []
@@ -98,10 +105,9 @@ def test_unknown_or_missing_portable_root_is_refused(roots, value):
 
 
 def test_unknown_pack_root_is_refused(roots):
-    from app.services.sync import files
 
     with pytest.raises(ValueError, match=r"^Unknown sync root\.$"):
-        files.pack_dir("unknown", "X", max_bytes=1024)
+        _pack("unknown", "X", max_bytes=1024)
 
 
 @pytest.mark.parametrize("kind", ["file", "directory", "dangling", "inside"])
@@ -131,7 +137,7 @@ def test_symlinks_are_refused_in_both_directions(roots, tmp_path, kind):
     with pytest.raises(ValueError):
         files.from_portable(f"applications:{relative}")
     with pytest.raises(ValueError):
-        files.pack_dir("applications", "X", max_bytes=1024)
+        _pack("applications", "X", max_bytes=1024)
     with pytest.raises(ValueError):
         files.unpack([_file(f"applications:{relative}")])
     assert (outside / "a.pdf").read_bytes() == b"outside"
@@ -145,7 +151,7 @@ def test_symlinked_root_is_refused(roots, tmp_path, monkeypatch):
     alias.symlink_to(roots["applications"], target_is_directory=True)
     monkeypatch.setattr(settings, "applications_dir", alias)
     with pytest.raises(ValueError):
-        files.pack_dir("applications", "", max_bytes=1024)
+        _pack("applications", "", max_bytes=1024)
     with pytest.raises(ValueError):
         files.from_portable("applications:X/a.pdf")
     with pytest.raises(ValueError):
@@ -153,7 +159,6 @@ def test_symlinked_root_is_refused(roots, tmp_path, monkeypatch):
 
 
 def test_pack_skips_only_regenerated_page_preview_pngs(roots):
-    from app.services.sync import files
 
     directory = roots["applications"] / "X"
     for relative in (
@@ -165,7 +170,7 @@ def test_pack_skips_only_regenerated_page_preview_pngs(roots):
         path = directory / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"a")
-    packed = files.pack_dir("applications", "X", max_bytes=3)
+    packed = _pack("applications", "X", max_bytes=3)
     assert {entry["path"] for entry in packed} == {
         "applications:X/resume.pdf",
         "applications:X/resume.pages/info.json",
@@ -174,37 +179,34 @@ def test_pack_skips_only_regenerated_page_preview_pngs(roots):
 
 
 def test_pack_skips_nonregular_files_without_blocking(roots):
-    from app.services.sync import files
 
     directory = roots["applications"] / "X"
     directory.mkdir()
     os.mkfifo(directory / "pipe")
     (directory / "resume.pdf").write_bytes(b"a")
-    assert files.pack_dir("applications", "X", max_bytes=1) == [
+    assert _pack("applications", "X", max_bytes=1) == [
         _file("applications:X/resume.pdf", b"a")
     ]
 
 
 def test_pack_enforces_total_bytes_across_files(roots):
-    from app.services.sync import files
 
     directory = roots["applications"] / "X"
     directory.mkdir()
     (directory / "a").write_bytes(b"123")
     (directory / "b").write_bytes(b"456")
     with pytest.raises(ValueError):
-        files.pack_dir("applications", "X", max_bytes=5)
-    assert len(files.pack_dir("applications", "X", max_bytes=6)) == 2
+        _pack("applications", "X", max_bytes=5)
+    assert len(_pack("applications", "X", max_bytes=6)) == 2
 
 
 def test_pack_root_and_empty_files_work_at_zero_limit(roots):
-    from app.services.sync import files
 
     (roots["base_resumes"] / "base.json").write_bytes(b"")
-    assert files.pack_dir("base_resumes", "", max_bytes=0) == [_file("base_resumes:base.json", b"")]
-    assert files.pack_dir("applications", "missing", max_bytes=0) == []
+    assert _pack("base_resumes", "", max_bytes=0) == [_file("base_resumes:base.json", b"")]
+    assert _pack("applications", "missing", max_bytes=0) == []
     with pytest.raises(ValueError):
-        files.pack_dir("base_resumes", "", max_bytes=-1)
+        _pack("base_resumes", "", max_bytes=-1)
 
 
 def test_evidence_larger_than_five_mebibytes_is_refused(roots):
@@ -215,7 +217,7 @@ def test_evidence_larger_than_five_mebibytes_is_refused(roots):
     data = b"a" * (5 * 1024 * 1024 + 1)
     path.write_bytes(data)
     with pytest.raises(ValueError):
-        files.pack_dir("applications", "X", max_bytes=25 * 1024 * 1024)
+        _pack("applications", "X", max_bytes=25 * 1024 * 1024)
     path.unlink()
     with pytest.raises(ValueError):
         files.unpack([_file("applications:X/evidence/a.png", data)])
@@ -437,7 +439,7 @@ def test_pack_skips_files_it_cannot_send_and_counts_them(roots, monkeypatch):
     (directory / ".sync-abc123.tmp").write_bytes(b"leftover")
     try:
         packed, skipped = files.pack_dir_with_skips("kb_documents", "", max_bytes=1024)
-        assert files.pack_dir("kb_documents", "", max_bytes=1024) == packed
+        assert _pack("kb_documents", "", max_bytes=1024) == packed
     finally:
         unreadable.chmod(0o644)
     assert [entry["path"] for entry in packed] == ["kb_documents:good.pdf"]

@@ -15,8 +15,6 @@ import logging
 import re
 import threading
 import uuid
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, TypeVar
 
@@ -36,7 +34,17 @@ from app.models.job import Job
 from app.models.sync import SyncRequest, SyncState, SyncTombstone
 from app.models.types import utcnow
 from app.schemas.agent_runs import MAX_DIGEST, MAX_JOB_IDS, RunCountKey, RunOutcome
-from app.services.sync import duplicates, hooks, jobs_bundle, offers, profile_bundle, request_apply, requests, status
+from app.services.sync import (
+    duplicates,
+    hooks,
+    jobs_bundle,
+    offers,
+    profile_bundle,
+    request_apply,
+    requests,
+    status,
+    wire,
+)
 from app.services.sync import round as sync_round
 
 logger = logging.getLogger(__name__)
@@ -60,8 +68,6 @@ _VERSION = "Update Maestro on both machines to the same version."
 _SAME_MACHINE = "These two copies share one machine id; give the always-on copy its own data."
 _NO_KEY = "A sync key is needed."
 _NO_BROWSERS = "Browser requests can't use this."
-_DISK = "Maestro couldn't save the files it received."
-_CANT_READ = "Maestro couldn't read the files it needed to send."
 _FAILED = "Maestro couldn't finish that sync request."
 _NOT_YOURS = "This job isn't yours to send."
 _OURS = "This job belongs to your laptop."
@@ -199,24 +205,10 @@ def _parse(model: type[Model], body: object) -> Model:
 
 
 def _uuid(raw: object) -> uuid.UUID:
-    try:
-        return uuid.UUID(str(raw))
-    except ValueError:
-        raise HTTPException(422, detail=_INVALID) from None
-
-
-@contextmanager
-def _as_sync_apply(db: Session) -> Iterator[None]:
-    """Writes that move ownership are the sync's own: the guard stands aside inside."""
-    previous = db.info.get("sync_apply")
-    db.info["sync_apply"] = True
-    try:
-        yield
-    finally:
-        if previous is None:
-            db.info.pop("sync_apply", None)
-        else:
-            db.info["sync_apply"] = previous
+    parsed = wire.uuid_of(raw)
+    if parsed is None:
+        raise HTTPException(422, detail=_INVALID)
+    return parsed
 
 
 def _profile_rev(db: Session) -> int:
@@ -225,7 +217,7 @@ def _profile_rev(db: Session) -> int:
 
 def _disk_error() -> HTTPException:
     logger.warning("A sync request couldn't save the files it received.")
-    return HTTPException(500, detail=_DISK)
+    return HTTPException(500, detail=wire.DISK)
 
 
 # ------------------------------------------------------------------------------ read routes
@@ -245,7 +237,7 @@ def get_profile(peer: Peer, db: DB, since: Annotated[int | None, Query(ge=0)] = 
     try:
         return profile_bundle.export_profile(db)
     except (ValueError, OSError):
-        raise HTTPException(500, detail=_CANT_READ) from None
+        raise HTTPException(500, detail=wire.CANT_READ) from None
 
 
 def _export(db: Session, job_ids: list[uuid.UUID]) -> tuple[list[dict], int]:
@@ -257,7 +249,7 @@ def _export(db: Session, job_ids: list[uuid.UUID]) -> tuple[list[dict], int]:
         except (ValueError, LookupError):
             skipped += 1
         except OSError:
-            raise HTTPException(500, detail=_CANT_READ) from None
+            raise HTTPException(500, detail=wire.CANT_READ) from None
     return bundles, skipped
 
 
@@ -335,13 +327,6 @@ class _JobsPush(BaseModel):
     tombstones: list[_TombstoneIn] = []
 
 
-def _bundle_job_id(bundle: dict) -> uuid.UUID | None:
-    try:
-        return uuid.UUID(bundle["job_id"])
-    except (KeyError, TypeError, ValueError, AttributeError):
-        return None
-
-
 def _refusal_of(db: Session, peer: PeerInfo, bundle: dict, job_id: uuid.UUID | None) -> str | None:
     """Why this bundle may not be stored here, or None."""
     if job_id is None:
@@ -373,7 +358,7 @@ def _apply_one(db: Session, peer: PeerInfo, bundle: dict,
 
 
 def _store(db: Session, peer: PeerInfo, bundle: dict, found: dict) -> None:
-    job_id = _bundle_job_id(bundle)
+    job_id = wire.bundle_job_id(bundle)
     shown = job_id.hex if job_id else None
     outcome, reason = _apply_one(db, peer, bundle, job_id)
     if outcome is None:
@@ -434,11 +419,6 @@ def _label(owners: dict, job_id: uuid.UUID, home_id: str) -> str:
 # ------------------------------------------------------------------------------- requests
 
 
-def _shown(row: SyncRequest) -> dict:
-    return {"id": row.id.hex, "kind": row.kind, "job_id": row.job_id.hex if row.job_id else None,
-            "payload": row.payload_json, "created_at": row.created_at.isoformat()}
-
-
 @router.get("/requests")
 def get_requests(peer: Peer, db: DB):
     """This copy's unanswered requests for jobs the peer owns, marked sent. A sent one is served
@@ -448,7 +428,7 @@ def get_requests(peer: Peer, db: DB):
         .where(SyncRequest.origin == "local", SyncRequest.status.in_(("pending", "sent")),
                Job.owner_machine == peer.machine_id)
         .order_by(SyncRequest.created_at, SyncRequest.id)).all()
-    shown = [_shown(row) for row in rows]
+    shown = [wire.shown(row) for row in rows]
     for row in rows:
         row.status = "sent"
     db.commit()
@@ -484,7 +464,7 @@ def post_request_results(peer: Peer, db: DB, body: Body):
         if row is None or row.origin != "local" or row.status != "sent":
             continue
         row.status, row.answered_at = result.status, utcnow()
-        row.reason = (result.reason or "")[:request_apply.MAX_REASON] or None
+        row.reason = (result.reason or "")[:wire.MAX_REASON] or None
         updated += 1
     db.commit()
     return {"updated": updated}
@@ -508,7 +488,7 @@ def post_commit(peer: Peer, db: DB, body: Body):
     asked = [_uuid(raw) for raw in _parse(_JobIds, body).job_ids]
     home_id = status.machine_id(db)
     committed = []
-    with _as_sync_apply(db):
+    with hooks.standing_aside(db):
         for job in (db.get(Job, job_id) for job_id in asked):
             if job is not None and job.handover == "offered" and job.owner_machine in (None, home_id):
                 job.owner_machine, job.handover = peer.machine_id, None
@@ -522,7 +502,7 @@ class _BundlesPush(BaseModel):
 
 
 def _take_back(db: Session, peer: PeerInfo, bundle: dict, found: dict) -> None:
-    job_id = _bundle_job_id(bundle)
+    job_id = wire.bundle_job_id(bundle)
     shown = job_id.hex if job_id else None
     reason = _refusal_of(db, peer, bundle, job_id)
     if reason is None and db.get(Job, job_id) is None:
@@ -545,7 +525,7 @@ def _store_returned(db: Session, peer: PeerInfo, bundle: dict, job_id: uuid.UUID
     except OSError:
         db.rollback()
         raise _disk_error() from None
-    with _as_sync_apply(db):
+    with hooks.standing_aside(db):
         job = db.get(Job, job_id)
         job.owner_machine, job.handover = None, None
         requests.settle_take_overs(db, job_id)  # a lost reply must not leave the request at "sent"

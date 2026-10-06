@@ -30,7 +30,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app import models
 from app.db import Base
 from app.models.sync import SyncTombstone
-from app.services.sync import bundle_rows, files, status
+from app.services.sync import bundle_rows, files, folders, hooks, status
 from app.services.sync.bundle_rows import obj_pk, row_pk
 
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
@@ -288,6 +288,18 @@ def _check_links(job_id: uuid.UUID, rows: dict[str, list[dict]]) -> None:
                 raise ValueError(f"{spec.name} row is outside the job")
 
 
+def _check_own_folders(rows: dict[str, list[dict]]) -> None:
+    """A path under the applications root is not enough: each row's file sits in its own folder."""
+    apps = {row["id"]: row for row in rows["applications"]}
+    inside = [(row["artifact_dir"], row[key]) for row in rows["applications"]
+              for key in ("pdf_path", "tex_path")]
+    inside += [(apps[row["application_id"]]["artifact_dir"], row["pdf_path"])
+               for row in rows["qa_entries"]]
+    # a legacy row without a folder has nothing to sit in; _check_artifact_folders still guards it
+    if any(path and folder and not folders.lies_below(path, folder) for folder, path in inside):
+        raise ValueError("a file path is outside its application's folder")
+
+
 def _artifact_prefixes(bundle: dict) -> tuple[str, ...]:
     prefixes = []
     for item in bundle["rows"]:
@@ -314,6 +326,7 @@ def _parse(bundle: object) -> Parsed:
         job_id = uuid.UUID(bundle["job_id"])
         rows = bundle_rows.decode_rows(bundle, _BY_NAME, _decode_row)
         _check_links(job_id, rows)
+        _check_own_folders(rows)
         prefixes = _artifact_prefixes(bundle)
         return Parsed(job_id, rows, _check_files(bundle.get("files", []), prefixes), prefixes)
     except (KeyError, TypeError, AttributeError):
@@ -331,18 +344,35 @@ def _check_duplicate(db: Session, parsed: Parsed) -> None:
         raise DuplicateJob(local)
 
 
+def _parents(*paths: str | None) -> list[str]:
+    return [os.path.dirname(path) for path in paths if path]
+
+
+def _claimed_folders(rows: dict[str, list[dict]]) -> list[str]:
+    """The folders this job's rows write into: each application's own, or, for a legacy row that
+    never recorded one, the folders its file paths sit in."""
+    apps = {row["id"]: row for row in rows["applications"]}
+    claimed: list[str] = []
+    for row in rows["applications"]:
+        claimed += [row["artifact_dir"]] if row["artifact_dir"] else _parents(row["pdf_path"], row["tex_path"])
+    for row in rows["qa_entries"]:
+        if not apps[row["application_id"]]["artifact_dir"]:
+            claimed += _parents(row["pdf_path"])
+    return claimed
+
+
 def _check_artifact_folders(db: Session, parsed: Parsed) -> None:
     """A bundle's folders may not equal, contain or sit inside the folder of an application that is
-    not part of this job: files are written there, and they would overwrite another job's."""
-    ours = [os.path.realpath(row["artifact_dir"]) for row in parsed.rows["applications"]
-            if row["artifact_dir"]]
+    not part of this job (compared as the disk does, see ``folders``): files are written there,
+    and they would overwrite another job's."""
+    ours = _claimed_folders(parsed.rows)
     if not ours:
         return
-    others = (os.path.realpath(value) for value in db.scalars(
+    others = (value for value in db.scalars(
         select(models.Application.artifact_dir).where(
             models.Application.artifact_dir.is_not(None),
             models.Application.job_id != parsed.job_id)) if value)
-    if any(_nested(first, other) for other in others for first in ours):
+    if any(folders.overlaps(first, other) for other in others for first in ours):
         raise ValueError("artifact folder belongs to another job")
 
 
@@ -428,7 +458,7 @@ def _apply_rows(db: Session, parsed: Parsed, sender_machine: str) -> list[str]:
     _localize(db, parsed)
     existing = _load_existing(db, _receiver_scope(db, parsed))
     doomed = bundle_rows.missing(TABLES, existing, parsed.rows)
-    folders = [obj.artifact_dir for obj in doomed["applications"] if obj.artifact_dir]
+    dirs = [obj.artifact_dir for obj in doomed["applications"] if obj.artifact_dir]
     bundle_rows.delete_rows(db, TABLES, doomed)
     # The session's identity map is weak: hold every row until the end, or the hook's per-row job
     # lookup (session.get on the parent) would reload each collected parent from the database.
@@ -441,27 +471,21 @@ def _apply_rows(db: Session, parsed: Parsed, sender_machine: str) -> list[str]:
         # These models have no relationship() between them, so the unit of work does not order
         # their inserts by foreign key: flush each table before its children.
         db.flush()
-    return folders
+    return dirs
 
 
 @contextmanager
 def applying(db: Session) -> Iterator[None]:
-    """One transaction under ``sync_apply`` (the ownership guard stands aside); any failure rolls
-    back and the flag is restored."""
-    previous = db.info.get("sync_apply")
+    """One transaction under ``hooks.standing_aside`` (the ownership guard stands aside); any
+    failure rolls back and the flag is restored."""
     try:
         db.flush()  # whatever the caller left pending meets the guard before it stands aside
-        db.info["sync_apply"] = True
-        yield
-        db.commit()
+        with hooks.standing_aside(db):
+            yield
+            db.commit()
     except BaseException:
         db.rollback()
         raise
-    finally:
-        if previous is None:
-            db.info.pop("sync_apply", None)
-        else:
-            db.info["sync_apply"] = previous
 
 
 def weight(bundle: dict) -> int:
@@ -487,31 +511,27 @@ def apply_job(db: Session, bundle: dict, *, sender_machine: str,
     _check_artifact_folders(db, parsed)
     try:
         with applying(db):
-            folders = _apply_rows(db, parsed, sender_machine)
+            dirs = _apply_rows(db, parsed, sender_machine)
             files.unpack(parsed.files, max_bytes=max_bytes)
     except IntegrityError:
         raise ValueError("bundle conflicts with rows already here") from None
     except (StatementError, TypeError):
         raise ValueError("bundle could not be applied") from None
-    for path in _unused_folders(db, folders):  # staged: only after the commit that dropped the rows
+    for path in _unused_folders(db, dirs):  # staged: only after the commit that dropped the rows
         _remove_folder(path)
 
 
 # ---------------------------------------------------------------------------- tombstone
 
 
-def _unused_folders(db: Session, folders: list[str]) -> list[str]:
-    """Those of ``folders`` that no remaining application's folder is, lies inside or contains."""
-    if not folders:
+def _unused_folders(db: Session, folders_gone: list[str]) -> list[str]:
+    """Those of ``folders_gone`` that no remaining application's folder is, lies inside or contains."""
+    if not folders_gone:
         return []
-    kept = [os.path.abspath(value) for value in db.scalars(select(models.Application.artifact_dir)
+    kept = [value for value in db.scalars(select(models.Application.artifact_dir)
             .where(models.Application.artifact_dir.is_not(None))) if value]
-    return [path for path in dict.fromkeys(folders)
-            if not any(_nested(os.path.abspath(path), other) for other in kept)]
-
-
-def _nested(first: str, second: str) -> bool:
-    return first == second or first.startswith(second + os.sep) or second.startswith(first + os.sep)
+    return [path for path in dict.fromkeys(folders_gone)
+            if not any(folders.overlaps(path, other) for other in kept)]
 
 
 def _remove_folder(path: str) -> None:
@@ -526,7 +546,7 @@ def _remove_folder(path: str) -> None:
 def apply_tombstone(db: Session, job_id: uuid.UUID) -> None:
     """Delete a replica, its whole subtree and its artifact folders. No tombstone is left here:
     the owner already announced the deletion."""
-    folders = [value for value in db.scalars(select(models.Application.artifact_dir).where(
+    dirs = [value for value in db.scalars(select(models.Application.artifact_dir).where(
         models.Application.job_id == job_id)) if value]
     with applying(db):
         scope = _db_scope(db, job_id)
@@ -534,5 +554,5 @@ def apply_tombstone(db: Session, job_id: uuid.UUID) -> None:
             spec.name: list(db.scalars(select(spec.model).where(scope.clause(spec))))
             for spec in TABLES})
         db.execute(delete(SyncTombstone).where(SyncTombstone.job_id == job_id))
-    for path in _unused_folders(db, folders):
+    for path in _unused_folders(db, dirs):
         _remove_folder(path)

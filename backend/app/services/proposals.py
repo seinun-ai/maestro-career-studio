@@ -49,6 +49,14 @@ STATUS_CHIP_WORDS = {
     "rejected": "Skipped", "expired": "Expired",
 }
 
+COMPANY_BLOCKED = "This company is on your Companies to skip list in Settings › Connected agents"
+
+
+def not_allowed_message(status: str) -> str:
+    """The refusal for a change the proposal's status doesn't allow, in the chip's own word."""
+    return f"This proposal's status is {STATUS_CHIP_WORDS.get(status, status)}, so it can't be changed that way."
+
+
 CONSENT_REQUIRED = {"accepted", "approved", "rejected"}
 CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp", "auto")
 
@@ -68,9 +76,7 @@ def share_job_site_login(session: Session, prop: ApplicationProposal,
     if not cfg.full_automation:
         raise TransitionError("the job-site login needs full automation turned on in Settings")
     if _company_is_blocked(session, prop, cfg.company_blocklist):
-        raise TransitionError(
-            "This company is on your Companies to skip list in Settings › Connected agents"
-        )
+        raise TransitionError(COMPANY_BLOCKED)
     if prop.status not in LOGIN_STATUSES:
         raise TransitionError("the job-site login is for a queued or approved job")
     email, password = job_site_login.read()
@@ -114,7 +120,7 @@ def _check_auto_consent(session: Session, prop: ApplicationProposal, new_status:
     if not cfg.full_automation:
         raise TransitionError("the auto channel needs full automation turned on in Settings")
     if _auto_approval_is_blocked(session, prop, new_status, cfg.company_blocklist):
-        raise TransitionError("This company is on your Companies to skip list in Settings › Connected agents")
+        raise TransitionError(COMPANY_BLOCKED)
 
 EVIDENCE_KINDS = frozenset({"step", "final_review", "submission_receipt"})
 
@@ -196,9 +202,7 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
                intervention: dict | None = None,
                attested: bool = False) -> ApplicationProposal:
     if new_status not in ALLOWED.get(prop.status, set()):
-        raise TransitionError(
-            f"This proposal's status is {STATUS_CHIP_WORDS.get(prop.status, prop.status)}, "
-            "so it can't be changed that way.")
+        raise TransitionError(not_allowed_message(prop.status))
     if new_status in CONSENT_REQUIRED:
         if not consent or consent.get("channel") not in CONSENT_CHANNELS:
             raise TransitionError(f"{new_status} requires consent with a valid channel")

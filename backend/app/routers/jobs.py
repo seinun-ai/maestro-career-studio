@@ -46,6 +46,7 @@ from app.services import (
     tailoring_session,
 )
 from app.services.skill_normalize import canonicalize_skill_name, coerce_skill_category
+from app.services.sync import hooks as sync_hooks
 from app.services.sync import ownership as sync_ownership
 from app.services.sync import requests as sync_requests
 from app.services.sync import status as sync_status
@@ -553,18 +554,11 @@ def _home_job(db: Session, job_id: UUID) -> Job:
 def keep_job_here(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     job = _home_job(db, job_id)
     if job.owner_machine not in (None, sync_status.machine_id(db)):
-        raise HTTPException(status_code=409, detail="This job is with your bot; ask for it back with Work on it here.")
+        raise HTTPException(status_code=409, detail=sync_hooks.WITH_BOT_MESSAGE)
     if job.handover == "offered":
-        previous = db.info.get("sync_apply")
-        db.info["sync_apply"] = True
-        try:
+        with sync_hooks.standing_aside(db):
             job.handover = None
             db.commit()
-        finally:
-            if previous is None:
-                db.info.pop("sync_apply", None)
-            else:
-                db.info["sync_apply"] = previous
     return _with_newest_proposal(db, job)
 
 

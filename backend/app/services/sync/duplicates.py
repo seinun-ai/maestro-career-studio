@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
-from app.services.sync import jobs_bundle, status
+from app.services.sync import jobs_bundle, status, wire
 
 
 def replica_hash(job_id: uuid.UUID) -> str:
@@ -59,20 +59,13 @@ def with_replica_hash(bundle: dict) -> dict:
     return {**bundle, "rows": rows}
 
 
-def _job_id(bundle: object) -> uuid.UUID | None:
-    try:
-        return uuid.UUID(bundle["job_id"])
-    except (KeyError, TypeError, ValueError, AttributeError):
-        return None
-
-
 def _stored_with_replica_hash(db: Session, job_id: uuid.UUID) -> bool:
     return db.scalar(select(Job.raw_text_hash).where(Job.id == job_id)) == replica_hash(job_id)
 
 
 def for_stored(db: Session, bundle: dict) -> dict:
     """The bundle as it must be applied here: with the replica hash when the job is stored under it."""
-    job_id = _job_id(bundle)
+    job_id = wire.bundle_job_id(bundle)
     if job_id is not None and _stored_with_replica_hash(db, job_id):
         return with_replica_hash(bundle)
     return bundle

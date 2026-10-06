@@ -32,8 +32,8 @@ function ownershipReason(ownership?: JobOwnership): string {
     return "This job is going back to your laptop. Make the change there after the next sync.";
   }
   return ownership?.owner === "bot"
-    ? "This job is with your bot. Ask for it back with Work on it here."
-    : "This job is on your laptop. Work on it there.";
+    ? "This job is with your bot; ask for it back with Work on it here."
+    : "This job is on your laptop; work on it there.";
 }
 
 // The server refuses a write to a job on the other copy with one of four fixed sentences, each

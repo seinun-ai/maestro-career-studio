@@ -81,7 +81,10 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
    ```bash
    SYNC_REMOTE_URL=http://127.0.0.1:8101
    ```
-   Do not put the key in this file.
+   Do not put the key in this file. The address must be this machine's own
+   tunnel (`127.0.0.1`, `localhost` or `::1`). Maestro refuses any other address,
+   and it ignores `HTTP_PROXY` and the like for this connection, because the key
+   and your profile travel in it.
 4. **Restart,** because the key file is read at start:
    ```bash
    "$REPO/backend/scripts/native/stop.sh" --no-pause && "$REPO/backend/scripts/native/start.sh"
@@ -247,6 +250,8 @@ Either machine can be rebuilt from its backup plus one sync round.
   `sync_key create` there.
 - **`sync.sh` says "This copy is not set up as the always-on copy".** The VM
   has no key file, or `SYNC_REMOTE_URL` is unset. Check steps 2.2 to 2.4.
+- **"The laptop's address must be this machine's own tunnel (127.0.0.1)."**
+  `SYNC_REMOTE_URL` names another host. Set it to the tunnel's address (step 2.3).
 - **"Laptop unreachable."** The tunnel is down, or the laptop is asleep or off,
   or Docker is stopped. This is not an error: Maestro backs off and retries.
   Check the tunnel with `curl -s http://127.0.0.1:8101/health`.
@@ -258,7 +263,11 @@ Either machine can be rebuilt from its backup plus one sync round.
   at a time. Wait for the next one.
 - **"These two copies share one machine id".** The always-on copy was started
   from a copy of the laptop's database. Give it its own data folder from a fresh
-  `setup.sh`, then pair again.
+  `setup.sh`, then pair again. **A fresh data folder discards everything the
+  always-on copy holds on its own: the jobs it owns, their tailored resumes and
+  files, and its run log.** Rounds stop on this error, so nothing can be sent to
+  your laptop first. Copy out anything you want to keep from the old data folder
+  before you replace it.
 - **A stuck job.** If the laptop refuses a job five rounds in a row, Maestro
   stops sending it until it changes again. Look at the round's `refused` count.
   Open the job on the machine that owns it and fix or re-save it, and the next

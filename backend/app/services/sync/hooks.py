@@ -1,6 +1,8 @@
 """Track revisions and enforce one writer per job/profile on every ORM flush."""
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from sqlalchemy import event, inspect, select, text
@@ -18,7 +20,26 @@ from app.services.sync import registry, status
 RETURNING_MESSAGE = "This job is going back to your laptop. Make the change there after the next sync."
 UNRESOLVED_MESSAGE = "Maestro couldn't tell which job this change belongs to, so it wasn't saved."
 PROFILE_MESSAGE = "Your laptop keeps your profile. Change it there."
+ON_LAPTOP_MESSAGE = "This job is on your laptop; work on it there."
+OFFERED_MESSAGE = "This job is on its way to your bot. Use Keep it here to keep working on it."
+WITH_BOT_MESSAGE = "This job is with your bot; ask for it back with Work on it here."
+_SYNC_APPLY = "sync_apply"
 _PROFILE_CONTENT_COLUMNS = ("contact_json", "summary", "skills_json", "notes")
+
+
+@contextmanager
+def standing_aside(session: Session) -> Iterator[None]:
+    """The sync's own writes: the ownership guard stands aside inside, and the flag's earlier value
+    (a nested use) is put back on the way out, whatever happened."""
+    previous = session.info.get(_SYNC_APPLY)
+    session.info[_SYNC_APPLY] = True
+    try:
+        yield
+    finally:
+        if previous is None:
+            session.info.pop(_SYNC_APPLY, None)
+        else:
+            session.info[_SYNC_APPLY] = previous
 
 
 class NotOwnedHere(Exception):
@@ -61,15 +82,15 @@ def _not_owned_message(session: Session, job_id: uuid.UUID) -> str:
     if status.is_remote():
         if owner in (None, status.machine_id(session)) and handover == "returning":
             return RETURNING_MESSAGE
-        return "This job is on your laptop; work on it there."
+        return ON_LAPTOP_MESSAGE
     if handover == "offered":
-        return "This job is on its way to your bot. Use Keep it here to keep working on it."
-    return "This job is with your bot; ask for it back with Work on it here."
+        return OFFERED_MESSAGE
+    return WITH_BOT_MESSAGE
 
 
 def require_owned(session: Session, job_id: uuid.UUID) -> None:
     """Check before a route writes files; the flush hook checks again at commit."""
-    if not status.enabled() or session.info.get("sync_apply"):
+    if not status.enabled() or session.info.get(_SYNC_APPLY):
         return
     if _job_of(session, job_id) is None:
         raise NotOwnedHere(UNRESOLVED_MESSAGE)
@@ -79,7 +100,7 @@ def require_owned(session: Session, job_id: uuid.UUID) -> None:
 
 def require_profile_writable(session: Session) -> None:
     """Refuse remote profile file writes before any disk side effect."""
-    if status.is_remote() and not session.info.get("sync_apply"):
+    if status.is_remote() and not session.info.get(_SYNC_APPLY):
         raise NotOwnedHere(PROFILE_MESSAGE, "laptop")
 
 
@@ -314,7 +335,7 @@ def _guard_profile(session: Session, touched: TouchedRows) -> None:
 
 
 def _guard(session: Session, touched: TouchedRows) -> None:
-    if not status.enabled() or session.info.get("sync_apply"):
+    if not status.enabled() or session.info.get(_SYNC_APPLY):
         return
     _guard_jobs(session, touched)
     _guard_profile(session, touched)

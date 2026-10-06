@@ -24,14 +24,13 @@ from app.schemas.application import ApplicationPatch
 from app.schemas.proposal import ConsentPayload
 from app.services import application_status, proposals, tailoring_session
 from app.services.ats import normalize_term
-from app.services.sync import hooks, status
+from app.services.sync import hooks, status, wire
 
 logger = logging.getLogger(__name__)
 
 Model = TypeVar("Model", bound=BaseModel)
 
 MAX_CLAIM = 2000
-MAX_REASON = 500
 NOT_HERE_ON_HOME = "This job isn't on your laptop."
 NOT_HERE_ON_REMOTE = "This job isn't on this copy."
 MOVING = "This job is moving to your bot; make the change there once it arrives."
@@ -41,6 +40,10 @@ NO_TAKE_OVER = "A job on your laptop is handed over from your laptop."
 UNKNOWN_KIND = "Maestro doesn't know that kind of request."
 NOT_REPEATABLE = "This request can't be repeated."
 REQUEST_FAILED = "Maestro couldn't apply this request."
+# The bot's own answers to a take-over (round.py); the laptop shows them in its runs panel.
+BUSY_APPLYING = "Your bot is applying to this one; try again after its run."
+NOT_HOLDING = "Your bot isn't holding this job."
+CANT_SEND_BACK = "Maestro couldn't send this job back to your laptop."
 
 
 class RequestIn(BaseModel):
@@ -209,7 +212,7 @@ def _wire_of(row: SyncRequest) -> RequestIn:
 def _refuse_stored(db: Session, request_id: uuid.UUID, reason: str) -> str:
     db.rollback()
     row = db.get(SyncRequest, request_id)
-    row.status, row.reason, row.answered_at = "refused", reason[:MAX_REASON] or None, utcnow()
+    row.status, row.reason, row.answered_at = "refused", reason[:wire.MAX_REASON] or None, utcnow()
     db.commit()
     return "refused"
 

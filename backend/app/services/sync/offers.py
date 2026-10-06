@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
 from app.services import auto_apply_settings
-from app.services.sync import jobs_bundle, status
+from app.services.sync import hooks, jobs_bundle, status
 
 
 def mark_when_queued(db: Session, prop: ApplicationProposal) -> None:
@@ -47,15 +47,8 @@ def withdrawing(db: Session) -> Iterator[None]:
     if not status.enabled() or status.is_remote():
         yield
         return
-    previous = db.info.get("sync_apply")
-    db.info["sync_apply"] = True
-    try:
+    with hooks.standing_aside(db):
         for job in db.scalars(select(Job).where(jobs_bundle.owned_clause(db),
                                                 Job.handover == "offered")):
             job.handover = None
         yield
-    finally:
-        if previous is None:
-            db.info.pop("sync_apply", None)
-        else:
-            db.info["sync_apply"] = previous

@@ -17,35 +17,23 @@ from app.models.job import Job
 from app.models.sync import SyncRequest
 from app.models.types import utcnow
 from app.schemas.agent_runs import MAX_DIGEST, AgentRunCreate
-from app.services import automations
+from app.services import automations, proposals
+from app.services.sync import hooks, request_apply
 from app.services.sync import status as sync_status
 
 MAX_RUNS = 200
-_REQUEST_FAILED = "Maestro couldn't apply this request."
-# The peer can return arbitrary text. Only these complete, fixed sentences may reach the web app.
+# The peer can return arbitrary text. Only the fixed sentences this app itself produces may reach
+# the web app, named here from the modules that write them (a test fails when one is missing).
 _SAFE_REQUEST_REASONS = frozenset({
-    _REQUEST_FAILED,
-    "Your bot is applying to this one; try again after its run.",
-    "This job isn't on your laptop.",
-    "This job isn't on this copy.",
-    "This job is moving to your bot; make the change there once it arrives.",
-    "That doesn't belong to this job.",
-    "This request wasn't valid.",
-    "A job on your laptop is handed over from your laptop.",
-    "Maestro doesn't know that kind of request.",
-    "This request can't be repeated.",
-    "This job is on your laptop; work on it there.",
-    "This job is with your bot; ask for it back with Work on it here.",
-    "This job is on its way to your bot. Use Keep it here to keep working on it.",
-    "This job has no tailored resume to link yet. Tailor one first, then try again.",
-    "That application no longer exists.",
-    "This job is going back to your laptop. Make the change there after the next sync.",
-    "This company is on your Companies to skip list in Settings › Connected agents",
+    request_apply.REQUEST_FAILED, request_apply.BUSY_APPLYING, request_apply.NOT_HOLDING,
+    request_apply.CANT_SEND_BACK, request_apply.NOT_HERE_ON_HOME, request_apply.NOT_HERE_ON_REMOTE,
+    request_apply.MOVING, request_apply.WRONG_JOB, request_apply.BAD_PAYLOAD,
+    request_apply.NO_TAKE_OVER, request_apply.UNKNOWN_KIND, request_apply.NOT_REPEATABLE,
+    hooks.RETURNING_MESSAGE, hooks.UNRESOLVED_MESSAGE, hooks.PROFILE_MESSAGE,
+    hooks.ON_LAPTOP_MESSAGE, hooks.OFFERED_MESSAGE, hooks.WITH_BOT_MESSAGE,
+    proposals.COMPANY_BLOCKED,
+    *(proposals.not_allowed_message(status) for status in proposals.STATUS_CHIP_WORDS),
 })
-_SAFE_REQUEST_REASONS |= frozenset(
-    f"This proposal's status is {word}, so it can't be changed that way."
-    for word in ("Proposed", "Needs you", "Queued", "Approved", "Applied", "Check if sent", "Skipped", "Expired")
-)
 __all__ = ["MAX_DIGEST", "MAX_RUNS", "latest", "recent", "record", "read_one"]
 
 
@@ -114,7 +102,7 @@ def refused_requests(session: Session) -> list[dict[str, Any]]:
         .limit(20))
     return [{"id": row.id, "job_id": row.job_id, "answered_at": row.answered_at,
              "job_company": row.company, "job_title": row.title,
-             "reason": row.reason if row.reason in _SAFE_REQUEST_REASONS else _REQUEST_FAILED}
+             "reason": row.reason if row.reason in _SAFE_REQUEST_REASONS else request_apply.REQUEST_FAILED}
             for row in rows]
 
 

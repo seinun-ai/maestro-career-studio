@@ -13,7 +13,7 @@ test("sync off keeps every control available and has no mark", () => {
 test("a bot replica keeps request actions and locks all other writes", () => {
   assert.deepEqual(jobOwnershipView({ ...off, owned_here: false, owner: "bot" }), {
     mark: "With your bot", action: "work-here", canWrite: false, canRequest: true,
-    reason: "This job is with your bot. Ask for it back with Work on it here.", pending: false,
+    reason: "This job is with your bot; ask for it back with Work on it here.", pending: false,
   });
 });
 
@@ -29,7 +29,7 @@ test("a laptop replica cannot be requested through the home-only button", () => 
   const view = jobOwnershipView({ ...off, owned_here: false, owner: "laptop" });
   assert.equal(view.mark, "On your laptop");
   assert.equal(view.action, null);
-  assert.equal(view.reason, "This job is on your laptop. Work on it there.");
+  assert.equal(view.reason, "This job is on your laptop; work on it there.");
 });
 
 test("returning jobs stay locked while their final bundle travels", () => {

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.config import settings
+from app.services.sync import hooks, wire
 
 
 @pytest.fixture(autouse=True)
@@ -343,3 +344,45 @@ def test_explicit_profile_touch_tracks_core_only_update(db_session):
                        .values(value="updated").execution_options(synchronize_session=False))
     db_session.commit()
     assert _state(db_session, "profile_rev") > before
+
+
+def test_standing_aside_sets_the_flag_and_removes_it_after(db_session):
+    with hooks.standing_aside(db_session):
+        assert db_session.info["sync_apply"] is True
+    assert "sync_apply" not in db_session.info
+
+
+def test_standing_aside_puts_back_the_earlier_value_when_nested(db_session):
+    db_session.info["sync_apply"] = "outer"
+    with hooks.standing_aside(db_session):
+        with hooks.standing_aside(db_session):
+            assert db_session.info["sync_apply"] is True
+        assert db_session.info["sync_apply"] is True
+    assert db_session.info["sync_apply"] == "outer"
+
+
+def test_standing_aside_restores_the_flag_when_the_block_raises(db_session):
+    with pytest.raises(RuntimeError), hooks.standing_aside(db_session):
+        raise RuntimeError
+    assert "sync_apply" not in db_session.info
+
+
+@pytest.mark.parametrize("raw, expected", [(None, None), ("nope", None), (5, None),
+                                            ("0" * 31 + "1", uuid.UUID(int=1)),
+                                            (uuid.UUID(int=2), uuid.UUID(int=2))])
+def test_a_wire_id_is_a_uuid_or_none(raw, expected):
+    assert wire.uuid_of(raw) == expected
+
+
+@pytest.mark.parametrize("bundle", [None, [], {}, {"job_id": None}, {"job_id": "x"}, {"job_id": 7}])
+def test_a_bundle_without_a_readable_job_id_names_no_job(bundle):
+    assert wire.bundle_job_id(bundle) is None
+    assert wire.bundle_job_id({"job_id": uuid.UUID(int=3).hex}) == uuid.UUID(int=3)
+
+
+def test_a_request_is_shown_with_hex_ids(db_session):
+    from datetime import UTC, datetime
+    row = models.SyncRequest(id=uuid.UUID(int=4), kind="take_over", job_id=None,
+                             payload_json={"a": 1}, created_at=datetime(2026, 10, 6, tzinfo=UTC))
+    assert wire.shown(row) == {"id": uuid.UUID(int=4).hex, "kind": "take_over", "job_id": None,
+                               "payload": {"a": 1}, "created_at": "2026-10-06T00:00:00+00:00"}
