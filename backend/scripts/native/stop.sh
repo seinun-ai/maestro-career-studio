@@ -16,11 +16,13 @@ for arg in "$@"; do
 done
 
 # Mark the pause first, so a watchdog tick during the stop cannot restart the backend.
+paused=0
 if (( pause )) && [[ -d "$MAESTRO_HOME" && ! -L "$MAESTRO_HOME" ]]; then
     native_set_pause
+    paused=1
 fi
 native_stop
 printf '%s\n' 'Native backend stopped.'
-if (( pause )); then
+if (( paused )); then
     printf '%s\n' 'Watchdog paused for maintenance. Run start.sh to resume.'
 fi

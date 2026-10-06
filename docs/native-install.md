@@ -125,7 +125,7 @@ WantedBy=default.target
 ```
 
 systemd is the supervisor here, so the unit does not use `--watchdog`, and its
-stop uses `--no-pause` so a reboot does not leave the pause marker behind. For
+stop uses `--no-pause` because a systemd stop is not a maintenance pause. For
 maintenance, run `systemctl --user stop maestro`, then `systemctl --user start maestro`.
 
 Then `systemctl --user enable --now maestro`. Run `loginctl enable-linger $USER`
@@ -155,11 +155,14 @@ Save as `~/Library/LaunchAgents/maestro.backend.plist`, then
 
 `stop.sh` pauses the watchdog. It leaves a marker file, `$MAESTRO_HOME/maintenance`
 (mode 0600, holding the UTC time), so the next watchdog tick prints that Maestro is
-paused and starts nothing. `start.sh` removes the marker and starts, so a manual
-start resumes. To swap the database, run `stop.sh`, swap the file, then run
-`start.sh`. For a plain restart that should not pause, run
-`stop.sh --no-pause && start.sh`. While paused, `health.sh` says so and still
-exits 1. A reboot keeps the pause, because the `@reboot` line also uses `--watchdog`.
+paused and starts nothing. `start.sh` starts and then removes the marker, so a
+manual start resumes. While paused, `health.sh` says so and still exits 1. A reboot
+keeps the pause, because the `@reboot` line also uses `--watchdog`.
+
+- **Restart:** `stop.sh && start.sh`.
+- **Swap the database:** `stop.sh`, replace `$MAESTRO_HOME/data/maestro_cs.sqlite3`
+  and delete its `-wal` and `-shm` files, then `start.sh`.
+- **Update:** `stop.sh`, then `git pull` in the repository, `setup.sh`, and `start.sh`.
 
 ## Connect an agent
 
@@ -263,7 +266,7 @@ VM has about 640 MB available, no swap, and a browser the agent drives during ru
 1. **Install.** The agent clones the repository, then runs `setup.sh` with
    `MAESTRO_HOME=$HOME/maestro`. If `python3.12` is missing, install it first.
 2. **Base resumes.** A fresh install has none. Copy your base resume JSON files
-   into `$MAESTRO_HOME/base_resumes/`, then restart with `stop.sh --no-pause` and `start.sh`.
+   into `$MAESTRO_HOME/base_resumes/`, then restart with `stop.sh && start.sh`.
    The backend reads that folder at startup. Each file name, without `.json`,
    becomes the resume's name. Or have the agent create one with the
    `create_base_resume` MCP tool, which needs no restart.

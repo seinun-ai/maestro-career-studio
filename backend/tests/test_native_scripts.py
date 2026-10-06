@@ -647,6 +647,42 @@ def test_plain_start_removes_the_marker_and_starts(native_home):
     assert (ctx.home / "backend.pid").read_text().strip() == str(read_record(ctx, "uvicorn")["pid"])
 
 
+def test_a_resume_that_fails_before_the_pidfile_keeps_the_pause(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    pause_marker(ctx).write_text("2026-10-06T01:02:03Z\n")
+    (ctx.home / "maestro.env").write_text("MAESTRO_PORT='0'\n")
+    result = run_script("start.sh", ctx.env)
+    assert result.returncode == 1
+    assert pause_marker(ctx).exists()  # the watchdog must not take over a failed resume
+
+
+def test_a_resume_racing_the_watchdog_starts_one_backend(native_home):
+    ctx = native_home
+    start_home(ctx)
+    for _ in range(3):
+        assert run_script("stop.sh", ctx.env).returncode == 0
+        calls = read_record(ctx, "uvicorn")["calls"]
+        resume = subprocess.Popen(["bash", str(NATIVE / "start.sh")], cwd="/", env=ctx.env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        ticks = [run_native(WATCHDOG, ctx.env) for _ in range(5)]
+        out, err = resume.communicate(timeout=45)
+        assert resume.returncode == 0, err
+        assert all(tick.returncode in (0, 1) for tick in ticks)
+        backend = read_record(ctx, "uvicorn")
+        assert backend["calls"] == calls + 1
+        assert (ctx.home / "backend.pid").read_text().strip() == str(backend["pid"])
+        assert not pause_marker(ctx).exists()
+
+
+def test_stop_without_a_home_does_not_claim_a_pause(native_home):
+    ctx = native_home
+    env = {**ctx.env, "MAESTRO_HOME": str(ctx.home / "absent")}
+    result = run_script("stop.sh", env)
+    assert result.returncode == 0, result.stderr
+    assert "paused" not in result.stdout
+
+
 def test_start_rejects_unknown_flags(native_home):
     ctx = native_home
     setup_home(ctx)

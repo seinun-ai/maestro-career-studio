@@ -16,12 +16,13 @@ for arg in "$@"; do
 done
 
 native_private_home
+resume=0
 if paused_since="$(native_paused_since)"; then
     if (( watchdog )); then
         printf '%s\n' "Maestro is paused for maintenance since $paused_since; not starting. Run start.sh to resume."
         exit 0
     fi
-    native_clear_pause  # a manual start resumes
+    resume=1  # a manual start resumes, once it owns the pidfile
 fi
 if native_running; then
     native_error 'Native backend is already running.'
@@ -33,7 +34,7 @@ cd -- "$NATIVE_BACKEND"
 log="$MAESTRO_HOME/logs/backend.log"
 # Keep the last run's log: a watchdog restart must not wipe the crash traceback.
 if [[ -e "$log" || -L "$log" ]]; then
-    mv -f -- "$log" "$log.1"
+    mv -f -- "$log" "$log.1" 2>/dev/null || true
 fi
 : > "$log"
 chmod 600 "$log"
@@ -47,6 +48,10 @@ trap 'native_abort_launch; exit 1' INT TERM
 if ! printf '%s\n' "$NATIVE_PID" > "$MAESTRO_HOME/backend.pid"; then
     native_signal KILL
     native_error 'Cannot create the native pidfile.'
+fi
+# Only now: until the pidfile exists, a watchdog tick would start a second backend.
+if (( resume )); then
+    native_clear_pause
 fi
 if ! native_wait_for_health; then
     native_abort_launch
