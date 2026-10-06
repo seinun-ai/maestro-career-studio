@@ -98,9 +98,16 @@ def test_is_eligible_uses_the_base_own_countries_even_when_archived(db_session):
     assert is_eligible(db_session, job, "us") and is_eligible(db_session, job, "anywhere")
     assert is_eligible(db_session, job, "old_us")
     assert not is_eligible(db_session, job, "old_india")
-    assert not is_eligible(db_session, job, "no_such_base")
 
 
 def test_is_eligible_is_true_for_every_base_in_fallback(db_session):
     _bases(db_session, india=["IN"])
     assert is_eligible(db_session, _job(db_session, "US"), "india")
+
+
+def test_is_eligible_true_for_a_slug_with_no_row(db_session):
+    # a row-less base has no anchors: usable anywhere, like countries == []
+    _bases(db_session, us=["US"], india=["IN"])
+    job = _job(db_session, "US")
+    assert not candidates(db_session, job).fallback
+    assert is_eligible(db_session, job, "hybrid")

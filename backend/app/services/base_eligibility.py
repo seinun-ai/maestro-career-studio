@@ -79,10 +79,11 @@ def candidates(session: Session, job: Job, **kw) -> Candidates:
 def is_eligible(session: Session, job: Job, slug: str) -> bool:
     """Whether `slug` may serve `job`: its own countries pass, or the job is in
     fallback. Reads the row whatever its state (an archived base keeps its
-    countries); a slug with no row is not eligible unless the job is in fallback."""
+    countries). A slug with no row has no anchors, so like `countries == []` it
+    is usable anywhere."""
     if candidates(session, job).fallback:
         return True
     row = session.get(BaseResume, slug)
     if row is None:
-        return False
+        return True
     return country_eligible(row.countries or [], countries.normalize(job.country))
