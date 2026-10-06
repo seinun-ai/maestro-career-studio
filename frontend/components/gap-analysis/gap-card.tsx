@@ -3,7 +3,7 @@
 import { use, useRef, useState } from "react";
 
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
-import { Ban, Check, Library, Undo2 } from "lucide-react";
+import { Ban, Check, Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,9 @@ import {
   type LibraryCandidate,
   type Resolution,
 } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const CareerHistoryIcon = CONCEPT_ICONS.careerHistory;
 
 function payloadTarget(payload: Record<string, unknown>): SavedTarget | null {
   const raw = payload.placement_target;
@@ -573,7 +576,7 @@ export function GapCard({
         ref={rootRef}
         className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-corner-md border px-4 py-2.5 text-body-medium"
       >
-        <Library className="text-primary size-4 shrink-0" />
+        <CareerHistoryIcon className="text-primary size-4 shrink-0" />
         <span className="min-w-0 flex-1">
           <span className="font-medium">{title}</span>
           <span className="text-muted-foreground">

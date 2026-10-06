@@ -9,15 +9,7 @@ import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  CheckCircle2,
-  ChevronDown,
-  Library,
-  Loader2,
-  Wand2,
-  Zap,
-} from "lucide-react";
+import { ArrowLeft, CircleCheck, ChevronDown, Loader2, Wand2, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 import { TriangleAlert } from "lucide-react";
@@ -59,6 +51,9 @@ import {
   type JobDetail,
   type Resolution,
 } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const CareerHistoryIcon = CONCEPT_ICONS.careerHistory;
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -669,7 +664,7 @@ export default function TailorSessionPage({
     }
     return (
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-        <CheckCircle2 className="text-primary size-10" />
+        <CircleCheck className="text-primary size-10" />
         <h1 className="text-title-large font-medium">{heading}</h1>
         <p className="text-muted-foreground text-body-medium">{description}</p>
         <div className="flex gap-2">
@@ -762,7 +757,7 @@ export default function TailorSessionPage({
         )}
         {autoResolved.length > 0 && (
           <div className="border-primary/25 bg-primary/[0.04] animate-fade-rise flex items-center gap-2.5 rounded-corner-md border px-4 py-3">
-            <Library className="text-primary size-4 shrink-0" />
+            <CareerHistoryIcon className="text-primary size-4 shrink-0" />
             <p className="text-body-medium">
               <span className="font-medium">
                 {autoResolved.length} {autoResolved.length === 1 ? "gap was" : "gaps were"}

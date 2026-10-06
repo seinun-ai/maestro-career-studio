@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, use, useId, type ReactNode } from "react";
-import { Library, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatResumeMonth } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import type { GapAction, LibraryCandidate, ResumeData } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const CareerHistoryIcon = CONCEPT_ICONS.careerHistory;
 
 interface PlacementTargetDisplay {
   index_or_category: string | number;
@@ -583,7 +586,7 @@ export function LibraryCandidateChips({
   return (
     <div className="space-y-1.5">
       <p className="text-muted-foreground flex items-center gap-1.5 text-body-small">
-        <Library className="size-3.5 shrink-0" />
+        <CareerHistoryIcon className="size-3.5 shrink-0" />
         Found in your resumes and career history
       </p>
       <div className="flex flex-wrap gap-1.5">

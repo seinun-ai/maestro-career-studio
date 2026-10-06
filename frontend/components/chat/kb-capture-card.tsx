@@ -1,9 +1,12 @@
 import { GuardedLink as Link } from "@/components/guarded-link";
-import { Inbox } from "lucide-react";
+
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ChatKbCapture } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const DraftsIcon = CONCEPT_ICONS.drafts;
 
 export function KbCaptureCard({ capture }: { capture: ChatKbCapture }) {
   return (
@@ -18,7 +21,7 @@ export function KbCaptureCard({ capture }: { capture: ChatKbCapture }) {
           </span>
         </div>
         <Button size="sm" variant="ghost" render={<Link href="/career#kb-inbox" />}>
-          <Inbox aria-hidden="true" /> Review drafts
+          <DraftsIcon aria-hidden="true" /> Review drafts
         </Button>
       </div>
     </div>

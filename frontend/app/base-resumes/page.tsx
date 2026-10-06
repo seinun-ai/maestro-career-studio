@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal } from "lucide-react";
+import { Ellipsis } from "lucide-react";
 import { toast } from "sonner";
 
 import { BaseResumeGallery } from "@/components/base-resumes/base-resume-gallery";
@@ -303,7 +303,7 @@ function CardMenu({
       <DropdownMenuTrigger
         render={
           <Button ref={triggerRef} size="icon-sm" variant="ghost" aria-label={`Actions for ${name}`}>
-            <MoreHorizontal className="size-4" />
+            <Ellipsis className="size-4" />
           </Button>
         }
       />

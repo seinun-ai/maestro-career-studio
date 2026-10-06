@@ -6,7 +6,7 @@ import {
   ATTENTION_BADGE_LABEL,
 } from "@/components/attention-zone";
 import { useMutation } from "@tanstack/react-query";
-import { MoreHorizontal } from "lucide-react";
+import { Ellipsis } from "lucide-react";
 import { toast } from "sonner";
 
 import { DemonstrateSkillDialog } from "@/components/resume-health/demonstrate-skill-dialog";
@@ -306,7 +306,7 @@ function FindingOverflow({
           render={
             <IconButton
               label="More actions for this issue"
-              icon={<MoreHorizontal className="size-4" />}
+              icon={<Ellipsis className="size-4" />}
               size="icon-xs"
             />
           }

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CircleCheck, CircleHelp, ShieldAlert } from "lucide-react";
+import { TriangleAlert, CircleCheck, CircleHelp, ShieldAlert } from "lucide-react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import type { ReactNode } from "react";
 
@@ -151,7 +151,7 @@ export function JobKnockoutCard({
         <ul className="mt-2 space-y-1 text-body-small">
           {rows.map((c) => (
             <li key={c.kind} className="flex items-start gap-1.5">
-              <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+              <TriangleAlert className="mt-0.5 size-3 shrink-0" />
               <span>{c.message}</span>
             </li>
           ))}

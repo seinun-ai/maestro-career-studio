@@ -7,7 +7,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -61,6 +60,10 @@ import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const QueueIcon = CONCEPT_ICONS.queue;
+const ApproveIcon = CONCEPT_ICONS.approve;
 
 // Tab values stay jd/fit/output/qa for deep-link compat (?tab=fit, ?tab=output); `submitted` is
 // What was submitted, shown once the job has filled answers (or when a link opens it).
@@ -466,7 +469,7 @@ export default function JobDetailPage({
                   proposalActions.transition({ id: proposalId, status: "accepted" });
                 }}
               >
-                <Check className="size-3.5" />
+                <QueueIcon className="size-3.5" />
                 Queue
               </Button>
             ) : null}
@@ -487,7 +490,7 @@ export default function JobDetailPage({
                   });
                 }}
               >
-                <Check className="size-3.5" />
+                <ApproveIcon className="size-3.5" />
                 Keep it
               </Button>
             ) : null}

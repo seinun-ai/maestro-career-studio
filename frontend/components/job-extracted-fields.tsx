@@ -1,18 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Briefcase,
-  CheckCircle2,
-  Clock,
-  DollarSign,
-  FileText,
-  GraduationCap,
-  ListChecks,
-  MapPin,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+import { Clock, DollarSign, FileText, GraduationCap, ListChecks, MapPin } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useRoleLabel } from "@/components/role-category-picker";
@@ -20,6 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Job } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const JobFactsIcon = CONCEPT_ICONS.jobFacts;
+const SkillsIcon = CONCEPT_ICONS.skills;
+const WorkAuthorizationIcon = CONCEPT_ICONS.workAuthorization;
+const StudentPermitIcon = CONCEPT_ICONS.studentPermit;
 
 interface ExtractedSkill {
   skill_name: string;
@@ -279,7 +274,7 @@ export function JobExtractedFields({
               (the labelled StatLines below keep the — convention). */}
           {roleChips.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
-              <Briefcase className="text-muted-foreground size-4" />
+              <JobFactsIcon className="text-muted-foreground size-4" />
               {roleChips.map(([field, value]) => (
                 <Badge key={field} variant="outline" title={`${field}: ${value}`}>
                   {value}
@@ -316,12 +311,12 @@ export function JobExtractedFields({
               value={yearsLine}
             />
             <StatLine
-              icon={<ShieldCheck />}
+              icon={<WorkAuthorizationIcon />}
               label="Work authorization"
               value={workAuthLine}
             />
             <StatLine
-              icon={<CheckCircle2 />}
+              icon={<StudentPermitIcon />}
               label="OPT (US student work permit) accepted"
               value={optLine}
             />
@@ -330,7 +325,7 @@ export function JobExtractedFields({
           {skills.length > 0 && (
             <div className="space-y-3 border-t pt-4">
               <h4 className="flex items-center gap-2 text-title-small [&>svg]:size-4">
-                <Sparkles />
+                <SkillsIcon />
                 Skills ({skills.length})
               </h4>
               <SkillGroup

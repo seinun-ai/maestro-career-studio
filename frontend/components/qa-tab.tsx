@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
   Download,
-  FileText,
   Loader2,
   Pencil,
   RefreshCw,
@@ -35,6 +34,9 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { QAEntry, QAResponse } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const CreatePdfIcon = CONCEPT_ICONS.createPdf;
 
 const TONES = ["balanced", "enthusiastic", "formal", "concise"];
 
@@ -398,7 +400,7 @@ function QAEntryCard({
           {isCoverLetter ? (
             <IconButton
               label="Create PDF"
-              icon={isRendering ? <Loader2 className="animate-spin" /> : <FileText />}
+              icon={isRendering ? <Loader2 className="animate-spin" /> : <CreatePdfIcon />}
               onClick={onRender}
               disabled={isRendering || isSaving || editing}
             />

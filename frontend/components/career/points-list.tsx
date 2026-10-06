@@ -35,6 +35,9 @@ import { deleteKbPoint, patchKbPoint } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import type { KBPointOut, KBPointPatch, KBPointProvenance, KBPointState } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const ApproveIcon = CONCEPT_ICONS.approve;
 
 const STATES: { value: KBPointState; label: string; chip: string; dot: string }[] = [
   {
@@ -97,7 +100,7 @@ const STATE_ACTIONS: Record<
     label: "Approve bullet",
     hint: "Approve bullet",
     to: "approved",
-    icon: Check,
+    icon: ApproveIcon,
   },
   approved: {
     label: "Stop using",

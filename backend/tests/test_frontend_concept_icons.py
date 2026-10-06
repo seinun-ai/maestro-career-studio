@@ -57,7 +57,6 @@ def _register_entries() -> dict[str, str]:
     return dict(re.findall(r"^\s{2}(\w+):\s*(\w+),", body, re.M))
 
 
-@pytest.mark.xfail(strict=True, reason="Tasks 2-3")
 def test_no_banned_or_alias_icon_is_imported():
     hits = [
         f"{p.relative_to(_FRONTEND)}: {name} -> {_BANNED[name]}"
@@ -100,3 +99,30 @@ def test_no_text_glyph_stands_in_for_an_icon():
             if ch in code:
                 hits.append(f"{p.relative_to(_FRONTEND)}: {ch!r}")
     assert hits == [], "\n".join(hits)
+
+
+_MUST_NOT_IMPORT = [
+    ("components/career/inbox-panel.tsx", "Inbox"),
+    ("components/chat/kb-capture-card.tsx", "Inbox"),
+    ("components/career/entity-card.tsx", "BookOpen"),
+    ("components/job-extracted-fields.tsx", "ShieldCheck"),
+    ("components/job-extracted-fields.tsx", "Sparkles"),
+]
+
+
+def test_drifted_glyphs_are_gone_from_their_old_homes():
+    hits = [f"{f}: {n}" for f, n in _MUST_NOT_IMPORT if n in _lucide_names((_FRONTEND / f).read_text())]
+    assert hits == [], hits
+
+
+def test_queue_and_approve_are_not_drawn_as_a_check():
+    page = (_FRONTEND / "app/jobs/[id]/page.tsx").read_text()
+    row = (_FRONTEND / "components/proposals/proposals-section.tsx").read_text()
+    for text in (page, row):
+        assert "CONCEPT_ICONS.queue" in text and "CONCEPT_ICONS.approve" in text
+    assert 'label="Queue"\n                  icon={<Check />}' not in row
+
+
+def test_the_career_history_add_pill_does_not_say_refresh():
+    pill = (_FRONTEND / "components/kb-sync-pill.tsx").read_text()
+    assert "CONCEPT_ICONS.addToCareerHistory" in pill

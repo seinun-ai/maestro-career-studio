@@ -4,15 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Check,
-  CircleAlert,
-  Loader2,
-  MoreHorizontal,
-  RefreshCw,
-  TriangleAlert,
-  Wand2,
-} from "lucide-react";
+import { Check, CircleAlert, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -55,6 +47,10 @@ import {
   type AtsScore,
   type TailoringSession,
 } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const MoreIcon = CONCEPT_ICONS.more;
+const AnalyzeGapsIcon = CONCEPT_ICONS.analyzeGaps;
 
 /** "ATS score" spelled out once, where the tab first shows one (conventions: Canonical terms). */
 function AtsScoreLead() {
@@ -138,7 +134,7 @@ function ScoreCardMenu({
               variant="ghost"
               aria-label={`More actions for ${label}`}
             >
-              <MoreHorizontal />
+              <MoreIcon />
             </Button>
           }
         />
@@ -297,7 +293,7 @@ function AtsScoreCard({
               focusableWhenDisabled
               disabled={analyzeDisabled}
             >
-              {creating ? <Loader2 className="animate-spin" /> : <Wand2 />}
+              {creating ? <Loader2 className="animate-spin" /> : <AnalyzeGapsIcon />}
               {creating ? "Analyzing gaps…" : "Analyze gaps"}
             </Button>
           )}

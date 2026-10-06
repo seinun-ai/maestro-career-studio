@@ -4,15 +4,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Bot,
-  EllipsisVertical,
-  FilePlus2,
-  KeyRound,
-  Inbox,
-  SendHorizontal,
-  Trash2,
-} from "lucide-react";
+import { Bot, FilePlus2, KeyRound, Inbox, SendHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { CompanyMonogram } from "@/components/company-monogram";
@@ -74,6 +66,9 @@ import {
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const MoreIcon = CONCEPT_ICONS.more;
 
 // "saved" is the synthetic no-application state (a captured job you haven't
 // started on) — one name everywhere, not aspiring/not-applied/jobs.
@@ -782,7 +777,7 @@ function ApplicationsContent() {
                                 aria-label="More actions"
                                 className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
                               >
-                                <EllipsisVertical className="size-4" />
+                                <MoreIcon className="size-4" />
                               </Button>
                             }
                           />

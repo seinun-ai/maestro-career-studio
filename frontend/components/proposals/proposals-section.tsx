@@ -5,10 +5,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
-  AlertTriangle,
+  TriangleAlert,
   BookOpen,
   Bot,
-  Check,
   ChevronDown,
   Settings as SettingsIcon,
   Trash2,
@@ -80,6 +79,10 @@ import {
   type ProposalListResponse,
   type ProposalStatus,
 } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const QueueIcon = CONCEPT_ICONS.queue;
+const ApproveIcon = CONCEPT_ICONS.approve;
 
 const PROPOSALS_KEY = ["proposals"] as const;
 // The dashboard can open History before a tile scrolls; standalone inboxes keep local state.
@@ -838,7 +841,7 @@ function ProposalRow({
                     className="text-warning inline-flex items-center gap-1 text-body-small"
                     title="OPT is the US student work permit"
                   >
-                    <AlertTriangle className="size-3.5" aria-hidden="true" />
+                    <TriangleAlert className="size-3.5" aria-hidden="true" />
                     May not accept OPT
                   </span>
                 ) : null}
@@ -881,7 +884,7 @@ function ProposalRow({
               <>
                 <IconButton
                   label="Queue"
-                  icon={<Check />}
+                  icon={<QueueIcon />}
                   data-row-action="queue"
                   disabled={pending}
                   focusableWhenDisabled
@@ -902,7 +905,7 @@ function ProposalRow({
             {showKeep ? (
               <IconButton
                 label="Keep it"
-                icon={<Check />}
+                icon={<ApproveIcon />}
                 data-row-action="keep"
                 disabled={pending}
                 focusableWhenDisabled

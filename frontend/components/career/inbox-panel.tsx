@@ -8,7 +8,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { Check, Inbox, Pencil, Trash2, X } from "lucide-react";
+import { Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -35,6 +35,10 @@ import { deleteKbPoint, patchKbPoint, bulkKbPointState, KB_DRAFTS_LIMIT } from "
 import { couldnt, errorDetail, isPlainSentence } from "@/lib/error-text";
 import { SECTION_ORDER_LABELS, type SectionKey } from "@/lib/formatting";
 import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const DraftsIcon = CONCEPT_ICONS.drafts;
+const ApproveIcon = CONCEPT_ICONS.approve;
 
 type DraftGroup = {
   entityId: string;
@@ -204,7 +208,7 @@ export function InboxPanel({
     return (
       <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-surface-container-low py-3 ring-0 outline-none">
         <CardContent className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-medium">
-          <Inbox className="text-primary size-4 shrink-0" aria-hidden="true" />
+          <DraftsIcon className="text-primary size-4 shrink-0" aria-hidden="true" />
           <span className="font-medium">Drafts to review</span>
           {isLoading ? (
             <Skeleton className="h-4 w-64" aria-label="Loading career drafts" />
@@ -224,7 +228,7 @@ export function InboxPanel({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle className="flex items-center gap-2">
             <span className="flex size-8 items-center justify-center rounded-full bg-background/80">
-              <Inbox className="text-primary size-4" aria-hidden="true" />
+              <DraftsIcon className="text-primary size-4" aria-hidden="true" />
             </span>
             Drafts to review
             {!isLoading && <Badge variant="secondary">{drafts.length}</Badge>}
@@ -237,7 +241,7 @@ export function InboxPanel({
                 onClick={() => approveAll.mutate(approvableIds)}
                 disabled={pending || approvableIds.length === 0}
               >
-                <Check aria-hidden="true" />
+                <ApproveIcon aria-hidden="true" />
                 {approveAll.isPending ? "Approving…" : "Approve all shown"}
               </Button>
               {skipped > 0 && (
@@ -480,7 +484,7 @@ function DraftRow({
           // Disables itself while any draft saves: a native `disabled` drops focus.
           focusableWhenDisabled
         >
-          <Check aria-hidden="true" />
+          <ApproveIcon aria-hidden="true" />
           {update.isPending ? "Saving…" : "Approve"}
         </Button>
         <div className="min-w-44 flex-1 sm:max-w-64">
