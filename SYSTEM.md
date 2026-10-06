@@ -480,8 +480,8 @@ file to open.
   write lock, `db.begin_write`, so a job keeps one open proposal. `app/services/agent_names.py` is the server twin of
   `lib/agent-name.ts`, pinned by `tests/test_agent_names.py`: add a known client to BOTH), base resumes
   (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, a restore is a
-  new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those five are
-  **full-profile only**, like `set_base_resume_identity`, a base's only anchor writer: `""`/`[]` clear), health (run/get +
+  new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those five and
+  `set_base_resume_identity` (a base's only anchor writer, `""`/`[]` clear) are full-profile only), health (run/get +
   waivers; a finding carries its bullet's own `question`, `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`,
   a report `next_grade`; disputes and the word bank are web-only), the full tailoring workflow (session tools take
   **`tailoring_session_id`** — breaking rename, no legacy alias — and carry `base_anchors`; `resolve_gaps`' evidence-carrying

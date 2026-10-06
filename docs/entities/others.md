@@ -68,7 +68,8 @@
   above. They are written ONLY by `PATCH /api/base-resumes/{slug}/identity` (MCP
   `set_base_resume_identity`): an omitted field is unchanged, `null`/`""`/`[]` clear, and every value is
   validated before any lands, so a 422 saves none. `services/countries.normalize` is the one parser
-  (codes in any case, "UK" as GB, English short names; anything else is unknown); the list is vendored in
+  (codes in any case, English short names with or without accents, and common variants such as "UK",
+  "USA", "Holland", "Ivory Coast" and "Viet Nam"; anything else is unknown); the list is vendored in
   `services/data/countries.yaml` and served by `GET /api/countries`. Create, import, `from-kb`, PUT and
   edits never take anchors; duplicate copies `countries`, `company` and `focus` once, like the role pair.
   Anchors are metadata like role: no ResumeVersion, no disk rewrite, no render, no score change.
@@ -84,8 +85,9 @@
   selectable bases the country dropped). Readers drop only `skipped`: `ats_score.score_all_bases`,
   `latest_scores` and `best_base`, `explore_gaps._best_base_gap_rows`, `GET /api/ats-scores/candidates`
   and the `include_other_countries` flag on GET/POST `/api/ats-scores`. `is_eligible(job, slug)` (own
-  countries pass, OR fallback, OR no row) gates the inbox readiness `base_country` mark and final
-  review's `base_country`. Role, company and focus never filter or rank. Two prompts read the anchors,
+  countries pass, OR fallback, OR no row; an unknown job country passes) gates final review's
+  `base_country`, and inbox readiness applies the same rule batched; both call `eligible_given`.
+  Role, company and focus never filter or rank. Two prompts read the anchors,
   as a `RESUME ANCHORS` line from `prompt_assembly.anchor_block` placed after the persona: gap tailoring
   (the job variant adds that the anchor company is not this application's employer) and Ask for changes
   (`base_resume_instruct`). They are emphasis hints, never evidence; with none set both prompts are
@@ -632,7 +634,7 @@
   status is `conflict`, otherwise null. `to_check` counts latest receipt fields carrying
   any flag (one count per field, even with several flags), or 0 without recorded answers.
   `base_country` is the job's country code when the linked application's base resume is not
-  eligible for it (`base_eligibility`'s rule, batched), otherwise null: also null for no
+  eligible for it (`base_eligibility.eligible_given`, batched; final review calls `is_eligible`), otherwise null: also null for no
   application, no job country, a base with no row, or a job in `fallback`.
   A row failure is logged and gives that row null; a batch-level read failure gives every
   open row null while the list still returns. `inbox_readiness.is_ready` is phase 4's shared

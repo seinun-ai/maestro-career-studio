@@ -63,6 +63,8 @@ The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e
 
 ## Limits for phase 4
 
+The full readiness rule lives in `inbox_readiness.is_ready`; see [proposals](others.md).
+
 - **Readiness PDF mark**: `tailored` is `bool(pdf_path)` on the linked application, not a
   check that the file is on disk. Auto-submit must check the file before uploading it.
 - **Readiness knock-out mark**: only a scan with status `conflict` contributes a knock-out;
@@ -71,7 +73,6 @@ The model is `backend/app/models/agent_run.py`; the SQLite revision is `7d3c1a9e
 - **Readiness country mark**: `base_country` is set when the linked application's base resume
   lists countries that exclude the job's, and a set mark is not ready. A job with no known
   country, no application, or no eligible base at all (the fallback) carries none.
-  The full rule lives in `inbox_readiness.is_ready`; see [proposals](others.md).
 - **Run digest**: unverified agent text. The mail-status prompt forbids copying email text,
   but Maestro cannot verify that the digest obeys it or that its account of the run is true.
 - **Run timing**: there is no overdue logic or scheduler; Maestro does not know the user's
