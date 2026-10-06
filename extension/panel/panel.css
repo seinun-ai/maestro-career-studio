@@ -36,8 +36,9 @@
   --cs-danger-text: oklch(0.51 0.19 27);
   --cs-shadow: 0 2px 6px oklch(0.145 0 0 / 10%), 0 10px 28px oklch(0.145 0 0 / 12%);
   /* The web app's M3-named status roles (frontend/app/globals.css), copied value for value: a role's container
-   * and the text on it, one meaning per colour in both apps. Muted is the surface container. */
-  --cs-surface-container: oklch(0.94 0 0);
+   * and the text on it, one meaning per colour in both apps. Muted is the web's `--muted` and `--muted-foreground`. */
+  --cs-muted-container: oklch(0.94 0 0);
+  --cs-on-muted-container: oklch(0.505 0 0);
   --cs-primary-container: oklch(0.91 0.043 259);
   --cs-on-primary-container: oklch(0.33 0.12 259);
   --cs-secondary-container: oklch(0.925 0.022 259);
@@ -69,7 +70,8 @@
     --cs-warn-text: oklch(0.85 0.12 85);
     --cs-danger-text: oklch(0.78 0.14 27);
     --cs-shadow: 0 2px 6px oklch(0 0 0 / 40%), 0 10px 28px oklch(0 0 0 / 34%);
-    --cs-surface-container: oklch(0.205 0 0);
+    --cs-muted-container: oklch(0.269 0 0);
+    --cs-on-muted-container: oklch(0.708 0 0);
     --cs-primary-container: oklch(0.37 0.09 259);
     --cs-on-primary-container: oklch(0.92 0.038 259);
     --cs-secondary-container: oklch(0.33 0.03 259);
@@ -170,7 +172,7 @@ body {
 .chip.outline { border: 1px solid var(--cs-line); padding: 4px 8px; color: var(--cs-muted); }
 .chip.lib { background: var(--cs-primary-tonal); color: var(--cs-primary); }
 /* An application status's colour role (shared/status-roles.js): the web status chip's pairs. */
-.chip.role-muted { background: var(--cs-surface-container); color: var(--cs-muted); }
+.chip.role-muted { background: var(--cs-muted-container); color: var(--cs-on-muted-container); }
 .chip.role-primary { background: var(--cs-primary-container); color: var(--cs-on-primary-container); }
 .chip.role-warning { background: var(--cs-warning-container); color: var(--cs-on-warning-container); }
 .chip.role-tertiary { background: var(--cs-tertiary-container); color: var(--cs-on-tertiary-container); }
@@ -431,7 +433,7 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   display: flex; align-items: center; gap: 5px; }
 /* The count beside a heading: a small neutral chip. */
 .grp-n { font-size: 11px; font-weight: 700; line-height: 1; padding: 3px 7px; border-radius: 999px;
-  background: var(--cs-surface-container); color: var(--cs-muted); }
+  background: var(--cs-muted-container); color: var(--cs-on-muted-container); }
 .loop .check-line { margin-top: 12px; }
 .loop .check-line + .grp { margin-top: 6px; }
 .loop .count { margin-top: 8px; }
@@ -627,9 +629,8 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   white-space: nowrap;
   font: 700 12px/1 var(--cs-font); padding: 8px 12px; border-radius: 999px;
   border: 1px solid var(--cs-line); background: var(--cs-surface);
-  color: var(--cs-muted); cursor: pointer;
+  color: var(--cs-muted); cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
 }
-.status-seg button { display: inline-flex; align-items: center; gap: 4px; }
 /* The selected one of the pair: the secondary container and a leading check, whichever it is. */
 .status-seg button.on { background: var(--cs-secondary-container); color: var(--cs-on-secondary-container);
   border-color: transparent; }
@@ -675,24 +676,24 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   background: var(--cs-warn-tonal); color: var(--cs-warn-text); overflow-wrap: anywhere; }
 
 /* BUTTON STATES: hover (a mix toward the text colour), pressed (a small squeeze) and a solid focus ring, on the
- * footer's primary, Stop and the secondary buttons. A disabled button gets none of them. */
+ * footer's primary, Stop and the secondary buttons. A disabled button (`:disabled` or `aria-disabled`, the busy fork limbs') gets none of the hover or press. */
 .cta, .stop, .fork button, .fork a, .seg button, .status-seg button {
   transition: background-color 150ms, transform 140ms;
 }
-.cta:hover:not(:disabled) { background: color-mix(in oklab, var(--cs-primary), var(--cs-on-primary) 12%); }
-.stop:hover:not(:disabled), .fork button:hover:not(:disabled), .fork a:hover,
-.seg button:hover:not(:disabled), .status-seg button:hover:not(:disabled) {
+.cta:hover:not(:disabled):not([aria-disabled="true"]) { background: color-mix(in oklab, var(--cs-primary), var(--cs-on-primary) 12%); }
+.stop:hover:not(:disabled):not([aria-disabled="true"]), .fork button:hover:not(:disabled):not([aria-disabled="true"]), .fork a:hover,
+.seg button:hover:not(:disabled):not([aria-disabled="true"]), .status-seg button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: color-mix(in oklab, var(--cs-surface), var(--cs-text) 6%);
 }
-.seg button.on:hover:not(:disabled) { background: var(--cs-surface); }
-.status-seg button.on:hover:not(:disabled) {
+.seg button.on:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--cs-surface); }
+.status-seg button.on:hover:not(:disabled):not([aria-disabled="true"]) {
   background: color-mix(in oklab, var(--cs-secondary-container), var(--cs-on-secondary-container) 8%);
 }
-.fork button.sel:hover:not(:disabled) {
+.fork button.sel:hover:not(:disabled):not([aria-disabled="true"]) {
   background: color-mix(in oklab, var(--cs-primary-tonal), var(--cs-primary) 8%);
 }
-.cta:active:not(:disabled), .stop:active:not(:disabled), .fork button:active:not(:disabled), .fork a:active,
-.seg button:active:not(:disabled), .status-seg button:active:not(:disabled) { transform: scale(.97); }
+.cta:active:not(:disabled):not([aria-disabled="true"]), .stop:active:not(:disabled):not([aria-disabled="true"]), .fork button:active:not(:disabled):not([aria-disabled="true"]), .fork a:active,
+.seg button:active:not(:disabled):not([aria-disabled="true"]), .status-seg button:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(.97); }
 .cta:focus-visible, .stop:focus-visible, .fork button:focus-visible, .fork a:focus-visible,
 .seg button:focus-visible, .status-seg button:focus-visible {
   outline: 2px solid var(--cs-primary); outline-offset: 2px;
@@ -700,5 +701,5 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) {
   .cta, .stop, .fork button, .fork a, .seg button, .status-seg button { transition: none; }
   .cta:active, .stop:active, .fork button:active, .fork a:active,
-  .seg button:active, .status-seg button:active { transform: none; }
+  .seg button:active, .status-seg button:active { transform: none !important; }
 }

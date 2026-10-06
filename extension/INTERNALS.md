@@ -148,7 +148,7 @@ it armed. Three rules hold the shape up:
   than claiming the job exists. Skipping is not doing: arming a base resume skips
   Resume *visibly* — dashed, "Using your base resume as is.", never a
   tick, and never the word "Skipped" (it reads as declined, and it is the Agent
-  inbox's word for a rejected job; a screen reader hears "not needed"). And `done.fill` is this extension's own claim that it filled or
+  inbox's word for a rejected job; the row says "Not needed" in visible words with a minus). And `done.fill` is this extension's own claim that it filled or
   attached HERE, so an application marked applied inside the web app does not
   put a checkmark on a page the extension never wrote to.
 

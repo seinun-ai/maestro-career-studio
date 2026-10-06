@@ -113,8 +113,15 @@ def test_the_boot_names_icons_js_when_its_tag_is_missing(tmp_path):
 
 def test_an_icon_adds_no_words_to_a_row():
     """`_text` reads an svg as "", like a browser's `textContent`."""
-    svg = {"tag": "SVG", "namespace": SVG_NS, "text": "", "attrs": {},
-           "children": [{"tag": "PATH", "namespace": SVG_NS, "text": "d", "attrs": {},
+    svg = {"tag": "svg", "namespace": SVG_NS, "text": "", "attrs": {},
+           "children": [{"tag": "path", "namespace": SVG_NS, "text": "d", "attrs": {},
                          "children": []}]}
     row = {"tag": "SPAN", "namespace": None, "text": "Done", "attrs": {}, "children": [svg]}
     assert _text(row) == "Done"
+
+
+def test_the_boot_names_status_roles_js_when_its_tag_is_missing(tmp_path):
+    source = "\n".join(_panel_script(src) for src in PANEL_SCRIPT_SRCS if src != "../shared/status-roles.js")
+    with pytest.raises(AssertionError, match="status-roles.js"):
+        run_node(_ICON_DRIVER_JS, {"tabs": [], "replies": {"read_settings": SETTINGS_REPLY}},
+                 tmp_path, source=source)

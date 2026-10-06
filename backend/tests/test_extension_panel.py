@@ -1071,6 +1071,8 @@ def test_a_settings_ask_that_answers_nothing_boots_the_panel_on_defaults(tmp_pat
     # page loaded, the rail is live, and the fill mode narrowed to the assist
     # pass rather than to nothing.
     assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Not saved yet"
+    # A neutral outline, a fact and not a warning.
+    assert _by_class(out["regions"]["identity"], "chip")[0]["class"] == "chip outline"
     assert _rows(_rail_rows(out))["job"]["state"] == "active"
     # No appUrl, so no link — the one thing the failed ask actually costs, and
     # it is already an absence rather than a sentence.
@@ -1651,6 +1653,22 @@ def test_the_unreachable_line_is_one_plain_sentence_and_never_login_shaped(appli
 
 
 
+
+
+@pytest.mark.parametrize("status,word,role", [
+    ("applied", "Applied", "role-primary"), ("rejected", "Rejected", "role-error"),
+    ("offered", "Offer", "role-tertiary"), ("draft", "Draft application", "role-muted")])
+def test_the_identity_chip_wears_the_statuss_colour_role(tmp_path, status, word, role):
+    out = _load(tmp_path, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": status}}),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf", "status": status}),
+    }, replies={"read_settings": SETTINGS_REPLY,
+                "panel_frame0": _reply({"tier": "A", "form": True, "score": 3})})
+    [chip] = _by_class(out["regions"]["identity"], "chip")
+    assert (chip["text"], chip["class"]) == (word, f"chip {role}")
 
 
 def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):

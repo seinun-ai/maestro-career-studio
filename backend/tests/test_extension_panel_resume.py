@@ -956,6 +956,8 @@ def test_the_row_you_skipped_by_choice_is_a_door_and_the_ones_the_path_skipped_a
     assert door["attrs"]["aria-expanded"] == "false"
     # The row's own words ("Not needed" with its minus) and then the door's caret.
     assert _icons(door) == ["minus", "chevron-right"]
+    # "Not needed" is visible text on the row, not an aria-label alone.
+    assert [_text(n) for n in _by_class(door, "stg-state")] == ["Not needed"]
 
 
 def test_the_reopened_base_as_is_row_names_the_choice_and_offers_both_ways_on(tmp_path):
