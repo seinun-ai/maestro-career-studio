@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models.setting import Setting
+from app.services.sync import hooks
 
 
 PROMPT_DIR = Path(__file__).parent.parent / "prompts"
@@ -66,8 +67,8 @@ def get_prompt(key: str, session: Session | None = None) -> str:
             return existing.value or ""
 
         value = _file_default(key)
-        session.add(Setting(key=_setting_key(key), value=value))
-        session.commit()
+        row = Setting(key=_setting_key(key), value=value)
+        hooks.seed_setting(session, row)
         return value
     finally:
         if owns_session:

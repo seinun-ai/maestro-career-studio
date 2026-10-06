@@ -11,6 +11,7 @@ from app.config import settings
 from app.models.template import Template
 from app.schemas.template import validate_template_id
 from app.services import engines, pdf_render
+from app.services.sync import hooks
 
 # The ONE wording for "this LaTeX template cannot be validated on this host".
 # `compile_against_sample` returns it, `validate_template` records it as
@@ -307,6 +308,7 @@ def validate_template(template_id: str, session: Session) -> dict:
     if row is None:
         raise LookupError(f"Template not found: {template_id}")
 
+    hooks.require_profile_writable(session)
     preview = _preview_path(template_id)
     error = compile_against_sample(
         row.source,

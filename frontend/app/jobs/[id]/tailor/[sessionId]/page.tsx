@@ -367,7 +367,9 @@ export default function TailorSessionPage({
       const skips = result.kb_writeback_skips ?? [];
       if (skips.length > 0) {
         toast.message(
-          `${skips.length} ${skips.length === 1 ? "answer wasn't" : "answers weren't"} added to your career history`,
+          skips.some((skip) => skip.reason === "profile_owned_elsewhere")
+            ? "Your laptop keeps your career history, so this wasn't added to it here."
+            : `${skips.length} ${skips.length === 1 ? "answer wasn't" : "answers weren't"} added to your career history`,
           { description: skips.map((skip) => skip.detail).join(" · ") },
         );
       }

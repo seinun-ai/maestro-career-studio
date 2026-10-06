@@ -124,17 +124,16 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
         status tracking (StatusChip)        QA router (cover letter / answers)
 ```
 
-`data/maestro_cs.sqlite3` (SQLite, WAL) holds row state and local sync clocks. Every ORM flush stamps
-jobs/profile, including imports and both sides of moves; deleted jobs leave tombstones (`services/sync/hooks.py`).
-Core writers explicitly touch their subtree or use ORM writes; unresolved rows wait in `session.info["sync_unresolved"]`
-for the disabled ownership guard. Resume JSON and rendered files stay on disk (`base_resumes` row + file both required);
-the job-site login stays in `settings/secrets/` (§6).
+`data/maestro_cs.sqlite3` (SQLite, WAL) holds rows and local sync clocks; ORM flushes stamp jobs/profile, including imports and moves.
+Deleted jobs leave tombstones; Core writers touch their subtree (`services/sync/hooks.py`). With a key, writes to replicas,
+home offers, unresolved current jobs and remote profiles are refused (except seeds/cannot-confirm); missing previous parents allow repair.
+File writers check before disk changes; no key allows all writes. Transaction end/rollback clear hook state (`tests/sync/test_guard.py`).
+Resume JSON/rendered files stay on disk (`base_resumes` row + file required); job-site login: `settings/secrets/` (§6).
 
 ## 4. Core entities and their lifecycles
 
-Reference tier: consulted per task, not read for orientation, so it lives in `docs/entities/` — keeping the root
-file orientation-sized — each file under this same contract. Code citing "§4" lands here; the table says which
-file to open.
+Reference tier: consulted per task in `docs/entities/`, keeping the root orientation-sized; each file carries
+this contract. Code citing "§4" lands here; the table says which file to open.
 
 | Entity | File | Scope |
 |---|---|---|
@@ -865,6 +864,7 @@ citation. Priority lives in the item text, not in the ordinal.
 
 ## 12. Gotchas that have bitten before
 
+- **Guard files before commit** (2026-10-06): refusal still deleted documents/changed previews → check before disk I/O, including helpers (`tests/sync/test_guard.py`).
 - **Retry keys must identify controls** (2026-09-25): rule attempts use composite labels, collection uses clean
   questions, so `country | field-12` never reaches the `country` retry → use element identity and stable descriptors;
   a model upgrade cannot repair fields collection never sends (§11 item 40).

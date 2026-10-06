@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import SessionLocal
 from app.models.setting import Setting
+from app.services.sync import hooks
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,8 @@ def get_text(key: str, filename: str, session: Session | None = None) -> str:
         except OSError as exc:
             logger.warning("Text-setting mirror unavailable at %s: %s", path, exc)
 
-        session.add(Setting(key=key, value=content))
-        session.commit()
+        row = Setting(key=key, value=content)
+        hooks.seed_setting(session, row)
         return content
     finally:
         if owns_session:

@@ -742,6 +742,7 @@ def set_default(session: Session, template_id: str) -> Template:
         raise ValueError("Only a template that passed its check can be the default.")
     from app.services.sync import hooks
 
+    hooks.require_profile_writable(session)
     hooks.touch_profile(session)
     session.execute(update(Template).where(Template.is_default.is_(True)).values(is_default=False))
     row.is_default = True

@@ -529,11 +529,14 @@ def _enforce_daily_cap(session: Session) -> None:
 
 
 def expire_stale(session: Session) -> int:
+    from app.services.sync import hooks
+
     now = datetime.now(UTC)
     stale = session.scalars(select(ApplicationProposal).where(
         ApplicationProposal.status.in_(("pending_review", "needs_decision")),
         ApplicationProposal.expires_at.is_not(None),
         ApplicationProposal.expires_at < now)).all()
+    stale = [prop for prop in stale if hooks.owned_here(session, prop.job_id)]
     for prop in stale:
         prop.status = "expired"
         prop.reason = prop.reason or "expired unreviewed"

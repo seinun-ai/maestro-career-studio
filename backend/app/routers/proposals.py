@@ -27,6 +27,7 @@ from app.schemas.proposal import (
     ProposalSummaryResponse,
     ProposalTransition,
 )
+from app.services.sync import hooks
 from app.services import artifacts, auto_apply_settings, inbox_readiness, proposal_evidence
 from app.services import proposals as svc
 from app.write_origin import WriteOrigin, get_write_origin
@@ -465,6 +466,7 @@ async def upload_evidence(
     prop = db.get(ApplicationProposal, proposal_id)
     if prop is None:
         raise HTTPException(404, detail="Proposal not found")
+    hooks.require_owned(db, prop.job_id)
     if kind not in svc.EVIDENCE_KINDS:
         raise HTTPException(
             422,

@@ -1003,6 +1003,10 @@ def _write_back_elicited_points(
     from sqlalchemy import func as sa_func
 
     from app.models.career_kb import KBEntity
+    from app.services.sync import status
+
+    if status.is_remote():
+        return _remote_writeback_skips(tailoring)
 
     gaps_by_id = _gap_index(tailoring.gaps_json)
     skips: list[dict[str, Any]] = []
@@ -1096,6 +1100,15 @@ def _write_back_elicited_points(
             )
         )
     return skips
+
+
+def _remote_writeback_skips(tailoring: TailoringSession) -> list[dict[str, Any]]:
+    gaps = _gap_index(tailoring.gaps_json)
+    return [{"gap_id": item["gap_id"], "skill": gaps[item["gap_id"]].get("jd_skill"),
+             "reason": "profile_owned_elsewhere",
+             "detail": "Your laptop keeps your career history, so this wasn't added to it here."}
+            for item in tailoring.resolutions_json if item.get("action") == "user_input"
+            and gaps.get(item["gap_id"], {}).get("kind") in ("skill", "requirement")]
 
 
 def _is_duplicate_point(text: str, existing_texts: list[str]) -> bool:

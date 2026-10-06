@@ -1531,7 +1531,7 @@ export interface CoherenceCheckResult {
 export interface KBWritebackSkip {
   gap_id: string;
   skill: string | null;
-  reason: "too_short" | "wrong_section" | "no_entity_match" | "duplicate";
+  reason: "too_short" | "wrong_section" | "no_entity_match" | "duplicate" | "profile_owned_elsewhere";
   /** Server-composed sentence, e.g. "no Career KB entity titled “Acme Corp”". */
   detail: string;
 }

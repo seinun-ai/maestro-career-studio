@@ -84,7 +84,7 @@ class KBWritebackSkip(BaseModel):
     gap_id: str
     # The gap's JD skill / requirement line, for the UI note.
     skill: str | None = None
-    reason: Literal["too_short", "wrong_section", "no_entity_match", "duplicate"]
+    reason: Literal["too_short", "wrong_section", "no_entity_match", "duplicate", "profile_owned_elsewhere"]
     # Human sentence composed server-side (e.g. "no Career KB entity titled
     # 'Acme Corp'") so every surface words the drop the same way.
     detail: str

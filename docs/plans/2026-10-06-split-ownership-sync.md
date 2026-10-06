@@ -263,12 +263,19 @@ events. Either convert it to ORM, or call `hooks.touch_job(session, job_id)` /
   `{"detail": message, "owner": "laptop"|"bot"}`.
 - Modify `backend/app/services/proposals.py`: `expire_stale` must filter to owned jobs.
 - Modify `backend/app/services/filled_answers.py`: `clear_eeo_answers` must do the same.
+- Modify `backend/app/services/template_validation.py` and `template_registry.py` for the
+  profile prechecks below; modify the file-writing routers covered by the rule below.
 - Test: `backend/tests/sync/test_guard.py`.
 
 **The rule, applied only when `status.enabled()`:**
 - **Job rows** of a job whose `owner_machine` is set and isn't this machine's id are refused. On
   home, so are rows of a job with `handover == "offered"`, except a flush whose only change is
   clearing `handover` (that's Keep it here).
+- **Unresolved links:** refuse when the CURRENT job cannot be resolved, using
+  `NotOwnedHere("Maestro couldn't tell which job this change belongs to, so it wasn't saved.")`.
+  An unresolvable previous link does not block a repair; every resolvable current or previous
+  job must still be owned here. Clear `sync_touch_*`, `sync_unresolved` and guard state on soft
+  rollback and on root `after_transaction_end`, including close-and-reuse.
 - **Profile rows on the remote:** UPDATE and DELETE are refused. INSERTs are refused too, except:
   - A `Setting` INSERT made by a lazy first read: `text_settings.get_text` and `prompts.get_prompt`
     set `session.info["setting_seed"] = True` around their add + commit (try/finally), and only
@@ -288,7 +295,7 @@ events. Either convert it to ORM, or call `hooks.touch_job(session, job_id)` /
   - A new `KBPoint` with `provenance == "user_cannot_confirm"`, plus the archived "Unconfirmed
     claims" `KBEntity` holder that `_record_cannot_confirm` creates when absent
     (`tailoring_session.py:721`). Add one `SyncRequest(kind="profile_addition",
-    payload={"claim": text, "holder": {...} or None}, origin="local")` in the same flush; home
+    payload_json={"claim": text, "holder": {...} or None}, origin="local")` in the same flush; home
     applies it idempotently by claim text, creating the holder if it lacks one.
 - **Tailoring on the remote** must not write draft career-history points: `tailor()`'s
   gap-elicitation write-back (`KBPoint` with `origin="gap_elicitation"`,
@@ -304,15 +311,22 @@ events. Either convert it to ORM, or call `hooks.touch_job(session, job_id)` /
   message says what to do instead, e.g. "Ask for it back with Work on it here." Keep each message
   to one plain sentence.
 
-**Routes with file side effects before their commit** call `hooks.require_owned(session, job_id)`
+**Every route with file side effects before its commit** calls `hooks.require_owned(session, job_id)`
 first, so a refusal can't leave a half-done change on disk: `PATCH /api/qa/{id}` (deletes the PDF at
 `routers/qa.py:151-153` before committing), `DELETE /api/qa/{id}` (deletes files at `qa.py:164`
 before its commit), `POST /api/qa/{id}/render`, application render, and proposal evidence upload.
 `hooks.require_profile_writable(session)` does the same for profile routes with file side effects:
-`POST /api/career-kb/documents` (`career_kb.py:540` writes the file, commits at 557) and the base
+`POST /api/kb/entities/{entity_id}/documents`, `POST /api/kb/documents/ingest`,
+`DELETE /api/kb/documents/{document_id}` and the base
 resume routes `POST ""`, `PUT`, `PATCH /{slug}/edits`, `/from-kb`, `/import`, `/duplicate`,
 `/render`, plus `resume_versions` restore for kind `base` (`resume_versions.py:122`). The
 post-commit `remove_files` sites are already safe: a refused commit raises before them.
+Template preview validation checks in the shared `template_validation.validate_template`
+helper before compilation, covering HTTP and Assistant callers;
+`PUT /api/templates/{template_id}/default-formatting` checks before its preview compile too.
+`template_registry.set_default` checks before its Core update and `touch_profile` call.
+Audit router file writes/deletes again and guard any other site under applications, base resumes,
+KB documents or template previews before its commit.
 
 `NotOwnedHere` subclasses `Exception` directly, not `ValueError` (several routers map `ValueError`
 to 400).
@@ -333,6 +347,13 @@ to 400).
 - On the remote, a base resume edit is refused while a cannot-confirm point (and its holder entity,
   when absent) is accepted and queues one addition.
 - A refused QA PATCH on a replica leaves the replica's PDF on disk.
+- Refused document deletion, template validation and template formatting preserve their files;
+  set-default refuses before its Core update. Document-first ingest checks before its LLM call.
+- A version whose previous application was deleted can move to an owned job; a resolvable
+  previous replica still blocks the move. Touch, close and reuse carries no hook/guard state.
+- A dedicated Core-write audit test scans `backend/app` using registry classifications and
+  requires an explicit allowlist with nearby `touch_job`/`touch_profile` calls, exempting
+  LOCAL/RUN_LOG/SYNC tables; do not install an autouse execution listener.
 - **The remote boots with sync on** (the lifespan's seeding succeeds), and a never-seeded setting
   key reads its default without a 409.
 - With sync OFF the same routes all succeed (the parametrized twin).

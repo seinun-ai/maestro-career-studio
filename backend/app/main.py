@@ -37,6 +37,7 @@ from app.routers import (
 from app.services import automations as automation_prompts
 from app.services import http_client, memory, seeding, tracing
 from app.services.llm import LLMProviderError
+from app.services.sync.hooks import NotOwnedHere
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +172,11 @@ app.add_middleware(OriginGuardMiddleware, allowed_origins=ALLOWED_ORIGINS)
 # these three calls appear in is the reverse of the order they run in; the
 # order is pinned by test_the_host_check_outranks_the_origin_check.
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=app_settings.allowed_hosts)
+
+
+@app.exception_handler(NotOwnedHere)
+async def not_owned_here_handler(request: Request, exc: NotOwnedHere):
+    return JSONResponse(status_code=409, content={"detail": str(exc), "owner": exc.owner})
 
 
 @app.exception_handler(LLMProviderError)

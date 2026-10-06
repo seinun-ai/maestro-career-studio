@@ -56,6 +56,7 @@ from app.services.attachment_extract import (
 from app.services import resume_ops
 from app.services.resume_edit import ContentChangedError
 from app.services.resume_versions import record_version
+from app.services.sync import hooks
 
 
 logger = logging.getLogger(__name__)
@@ -231,6 +232,7 @@ def get_base_resume(slug: str, db: Annotated[Session, Depends(get_db)]):
 def create_base_resume(
     payload: BaseResumeCreate, db: Annotated[Session, Depends(get_db)]
 ):
+    hooks.require_profile_writable(db)
     _validate_slug(payload.slug)
     existing = db.get(BaseResume, payload.slug)
     if existing is not None:
@@ -279,6 +281,7 @@ def update_base_resume(
     payload: BaseResumeUpdate,
     db: Annotated[Session, Depends(get_db)],
 ):
+    hooks.require_profile_writable(db)
     row = db.get(BaseResume, slug)
     if row is None:
         raise HTTPException(status_code=404, detail="Base resume not found")
@@ -326,6 +329,7 @@ def edit_base_resume(
     persists, and re-renders. Unlike PUT, the caller never resends untouched
     fields. Out-of-range indices / unknown skills categories -> 400.
     """
+    hooks.require_profile_writable(db)
     row = db.get(BaseResume, slug)
     if row is None:
         raise HTTPException(status_code=404, detail="Base resume not found")
@@ -398,6 +402,7 @@ def create_from_kb(
     The summary is dropped unless `include_summary`, since a whole-career
     summary on a role-targeted resume is usually wrong.
     """
+    hooks.require_profile_writable(db)
     slug = payload.slug
     role_label, role_category = _resolved_tag(
         payload.role_label, payload.role_category
@@ -508,6 +513,7 @@ def import_base_resume(
     Naming is the user's: `display_name` and `slug` win when given; otherwise
     the file's stem names the resume and a free slug is derived from that.
     """
+    hooks.require_profile_writable(db)
     safe_name, parsed, parse_warnings = _parse_resume_upload(db, file)
 
     display = (display_name or "").strip() or (
@@ -730,6 +736,7 @@ def duplicate_base_resume(
     payload: BaseResumeDuplicate,
     db: Annotated[Session, Depends(get_db)],
 ):
+    hooks.require_profile_writable(db)
     _validate_slug(payload.new_slug)
     source = db.get(BaseResume, slug)
     if source is None:
@@ -829,6 +836,7 @@ def render_base_resume_endpoint(
     db: Annotated[Session, Depends(get_db)],
     template_id: str | None = None,
 ):
+    hooks.require_profile_writable(db)
     row = db.get(BaseResume, slug)
     if row is None:
         raise HTTPException(status_code=404, detail="Base resume not found")

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.services.sync import hooks
 from app.models.application import Application
 from app.models.job import Job
 from app.models.qa_entry import QAEntry
@@ -138,15 +139,22 @@ def list_qa_entries(
     )
 
 
+def _entry_for_write(db: Session, entry_id: UUID) -> QAEntry:
+    entry = db.get(QAEntry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="QA entry not found")
+    application = db.get(Application, entry.application_id)
+    hooks.require_owned(db, application.job_id if application else None)
+    return entry
+
+
 @router.patch("/{entry_id}", response_model=QAEntryRead)
 def update_qa_entry(
     entry_id: UUID,
     payload: QAEntryUpdate,
     db: Annotated[Session, Depends(get_db)],
 ):
-    entry = db.get(QAEntry, entry_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail="QA entry not found")
+    entry = _entry_for_write(db, entry_id)
     entry.answer = payload.answer
     if entry.pdf_path:
         artifacts.cleanup_qa_entry_files(entry)
@@ -158,9 +166,7 @@ def update_qa_entry(
 
 @router.delete("/{entry_id}", status_code=204)
 def delete_qa_entry(entry_id: UUID, db: Annotated[Session, Depends(get_db)]):
-    entry = db.get(QAEntry, entry_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail="QA entry not found")
+    entry = _entry_for_write(db, entry_id)
     artifacts.cleanup_qa_entry_files(entry)
     db.delete(entry)
     db.commit()
@@ -184,6 +190,7 @@ def render_cover_letter(entry_id: UUID, db: Annotated[Session, Depends(get_db)])
     if application is None or job is None:
         raise HTTPException(status_code=404, detail="Application or job not found")
 
+    hooks.require_owned(db, job.id)
     base_resume = base_resume_data.load_base_resume(application.base_resume, db)
     contact = base_resume.get("contact", {})
     # The cover letter follows the RESUME's engine: resolve the application's

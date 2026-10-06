@@ -10,6 +10,7 @@ from pydantic import AwareDatetime, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.services.sync import hooks
 from app.db import get_db
 from app.models.application import Application
 from app.models.base_resume import BaseResume
@@ -494,6 +495,10 @@ def render_application(
     """Thin HTTP adapter over ``application_render.render_resume``, which owns
     the pipeline and persists ``application.render_error`` on failure — this
     function only maps exception types to statuses."""
+    application = db.get(Application, application_id)
+    if application is not None:
+        hooks.require_owned(db, application.job_id)
+
     try:
         source_path, pdf_path, doc = application_render.render_resume(
             db, application_id, template_id=template_id
