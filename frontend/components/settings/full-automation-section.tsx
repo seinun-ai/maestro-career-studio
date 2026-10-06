@@ -98,7 +98,7 @@ function FullAutomationControls({ initial }: { initial: AutoApplySettings }) {
         />
       </SwitchRow>
       {pending && <p role="status" className="text-muted-foreground text-body-small">Saving…</p>}
-      <JobSiteLoginSection enabled={initial.full_automation} />
+      {initial.full_automation && <JobSiteLoginSection />}
     </div>
   );
 }
@@ -112,15 +112,14 @@ function jobSiteLoginPayload(email: string, newPassword: string) {
   return { email, ...(newPassword ? { password: newPassword } : {}) };
 }
 
-function JobSiteLoginSection({ enabled }: { enabled: boolean }) {
+function JobSiteLoginSection() {
   const login = useQuery({
     queryKey: LOGIN_KEY,
     queryFn: async () => loginStatus(await apiFetch<JobSiteLoginStatus>(LOGIN_PATH)),
-    enabled,
   });
   return (
-    <section className="grid gap-4" aria-label="Job-site login" hidden={!enabled}>
-      <div className="grid gap-1.5">
+    <section className="grid gap-4" aria-label="Job-site login">
+      <div className="grid content-end gap-1.5">
         <h3 className={GROUP_HEADING}>Job-site login</h3>
         <p className="text-muted-foreground text-body-small">
           {"Used only for job-site accounts. Your agent gets it while full automation is on, so it passes through your agent's AI provider. Use it for nothing else."}
@@ -253,12 +252,18 @@ function JobSiteLoginActions({ editor, saved }: { editor: LoginEditor; saved: bo
         type="button"
         variant="outline"
         focusableWhenDisabled
+        className="data-disabled:pointer-events-none data-disabled:opacity-50"
         disabled={busy || (!saved && !dirty)}
         onClick={() => void clear()}
       >
         Clear
       </Button>
-      <Button type="submit" focusableWhenDisabled disabled={!dirty || busy}>
+      <Button
+        type="submit"
+        focusableWhenDisabled
+        className="data-disabled:pointer-events-none data-disabled:opacity-50"
+        disabled={!dirty || busy}
+      >
         {busy ? "Saving…" : "Save"}
       </Button>
     </div>

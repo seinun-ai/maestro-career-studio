@@ -65,8 +65,8 @@ def test_the_switch_preserves_the_latest_whole_settings_value(source):
 
 
 def test_login_is_shown_only_while_on_and_uses_the_committed_routes(source):
-    assert "<JobSiteLoginSection enabled={initial.full_automation} />" in source
-    assert "hidden={!enabled}" in source
+    assert "initial.full_automation && <JobSiteLoginSection />" in source
+    assert "hidden={!enabled}" not in source
     assert "Job-site login" in source
     assert '"/api/settings/job-site-login"' in source
     assert 'method: "DELETE"' in source
@@ -133,11 +133,22 @@ def test_auto_apply_setting_writes_share_one_serial_queue(source):
         assert 'scope: { id: "settings-auto-apply" }' in card
 
 
-def test_off_hides_but_keeps_unsaved_login_edits_guarded(source):
-    assert "<JobSiteLoginSection enabled={initial.full_automation} />" in source
-    assert "hidden={!enabled}" in source
-    assert "enabled," in source
-    assert "useLeaveGuard(dirty || busy)" in source
+def test_off_discards_login_drafts_and_their_leave_guard(source):
+    assert "initial.full_automation && <JobSiteLoginSection />" in source
+    assert "hidden={!enabled}" not in source
+    login = source[source.index("function JobSiteLoginSection("):]
+    assert "function JobSiteLoginSection()" in login
+    assert "enabled," not in login
+
+
+def test_login_actions_dim_and_block_pointer_input_when_disabled(source):
+    actions = source[source.index("function JobSiteLoginActions("):]
+    disabled_style = 'className="data-disabled:pointer-events-none data-disabled:opacity-50"'
+    assert actions.count(disabled_style) == 2
+
+
+def test_login_email_column_aligns_with_the_password_field(source):
+    assert 'className="grid content-end gap-1.5"' in source
 
 
 def test_failed_login_loads_offer_retry_before_the_loading_state(source):
