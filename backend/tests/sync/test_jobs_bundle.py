@@ -3,6 +3,8 @@
 import copy
 import json
 import logging
+import shutil
+import traceback
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -10,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import event, inspect, select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import sessionmaker
 
 from app import models
@@ -412,7 +415,6 @@ def test_a_job_with_no_application_round_trips(home, recv, roots):
 
 def test_an_application_whose_folder_is_missing_still_travels(home, recv, roots):
     ids = build_job(home, roots.home)
-    import shutil
     shutil.rmtree(roots.home / "Co_Role_a")
     bundle = ship(home, recv, roots, ids.job)
     assert bundle["files"] == []
@@ -486,7 +488,8 @@ def _refused(recv, roots, bundle):
     before = (recv.query(models.Job).count(), tree(roots.recv))
     with pytest.raises(ValueError) as caught:
         jobs_bundle.apply_job(recv, bundle, sender_machine="m")
-    assert SENTINEL not in str(caught.value)
+    assert SENTINEL not in str(caught.value) and SENTINEL not in repr(caught.value)
+    assert SENTINEL not in "".join(traceback.format_exception(caught.value))
     assert (recv.query(models.Job).count(), tree(roots.recv)) == before
 
 
@@ -666,3 +669,120 @@ def test_tombstone_keeps_a_folder_another_application_still_uses(home, recv, roo
     roots.use("recv")
     jobs_bundle.apply_tombstone(recv, ids.job)
     assert shared.is_dir()
+
+
+BAD_VALUES = [
+    ("jobs", "title", {"k": SENTINEL}), ("jobs", "title", [SENTINEL]), ("jobs", "title", 5),
+    ("jobs", "raw_text", {"k": SENTINEL}), ("jobs", "raw_text", None),
+    ("resume_versions", "version_number", SENTINEL), ("resume_versions", "version_number", True),
+    ("resume_versions", "version_number", 1.5),
+    ("jobs", "disqualifying_for_opt", SENTINEL), ("jobs", "disqualifying_for_opt", 1),
+    ("jobs", "created_at", SENTINEL), ("jobs", "created_at", 5),
+    ("jobs", "salary_min", SENTINEL), ("jobs", "salary_min", 5), ("jobs", "salary_min", "NaN"),
+    ("ats_scores", "composite", None), ("jobs", "id", SENTINEL), ("jobs", "id", 5),
+    ("applications", "artifact_dir", {"k": SENTINEL}),
+]
+
+
+@pytest.mark.parametrize(("table", "column", "bad"), BAD_VALUES)
+def test_a_wrongly_typed_value_is_refused_without_echoing_anything(home, recv, roots, table,
+                                                                  column, bad):
+    _, good = _bundle(home, roots)
+    _row(good, table)[column] = bad
+    _refused(recv, roots, good)
+
+
+@pytest.mark.parametrize("error", [
+    ProgrammingError("INSERT ...", {"raw_text": SENTINEL}, Exception(SENTINEL)),
+    TypeError(SENTINEL),
+])
+def test_a_failure_while_writing_becomes_a_fixed_error(home, recv, roots, monkeypatch, error):
+    _, good = _bundle(home, roots)
+
+    def boom(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(jobs_bundle, "_apply_rows", boom)
+    _refused(recv, roots, good)
+
+
+def test_work_pending_in_the_callers_session_meets_the_guard_not_the_bypass(home, recv, roots,
+                                                                           request):
+    ids = build_job(home, roots.home)
+    copy_profile(home, recv, ids)
+    bundle = json.loads(json.dumps(jobs_bundle.export_job(home, ids.job)))
+    request.getfixturevalue("sync_remote")
+    roots.use("recv")
+    jobs_bundle.apply_job(recv, copy.deepcopy(bundle), sender_machine="laptop-1")
+    recv.get(models.Application, ids.app).status = "applied"  # a user write, still pending
+    with pytest.raises(NotOwnedHere):
+        jobs_bundle.apply_job(recv, copy.deepcopy(bundle), sender_machine="laptop-1")
+    assert "sync_apply" not in recv.info
+    recv.expire_all()
+    assert recv.get(models.Application, ids.app).status == "saved"
+
+
+def _add_application_with_folder(db, root, ids, tag):
+    folder = root / f"Co_Role_{tag}"
+    _write(folder / "resume.pdf", b"%PDF " + tag.encode())
+    _write(folder / "evidence" / "shot.png", b"png " + tag.encode())
+    app_id = uuid.uuid4()
+    db.add(models.Application(id=app_id, job_id=ids.job, base_resume="b", artifact_dir=str(folder),
+                              pdf_path=str(folder / "resume.pdf"), created_at=WHEN, updated_at=WHEN))
+    db.commit()
+    return app_id, folder
+
+
+def _remove_at_home(home, app_id, folder):
+    home.delete(home.get(models.Application, app_id))
+    home.commit()
+    shutil.rmtree(folder)
+
+
+def test_a_removed_applications_folder_goes_with_it(home, recv, roots):
+    ids = build_job(home, roots.home)
+    copy_profile(home, recv, ids)
+    app_id, folder = _add_application_with_folder(home, roots.home, ids, "c")
+    ship(home, recv, roots, ids.job)
+    assert (roots.recv / "Co_Role_c" / "evidence" / "shot.png").is_file()
+    _remove_at_home(home, app_id, folder)
+    ship(home, recv, roots, ids.job)
+    assert not (roots.recv / "Co_Role_c").exists()
+    assert (roots.recv / "Co_Role_a" / "resume.pdf").is_file()
+
+
+def test_a_removed_applications_folder_stays_while_another_application_uses_it(home, recv, roots):
+    ids = build_job(home, roots.home)
+    copy_profile(home, recv, ids)
+    other = build_job(recv, roots.recv, tag="b")
+    app_id, folder = _add_application_with_folder(home, roots.home, ids, "c")
+    ship(home, recv, roots, ids.job)
+    recv.get(models.Application, other.app).artifact_dir = str(roots.recv / "Co_Role_c")
+    recv.commit()
+    _remove_at_home(home, app_id, folder)
+    ship(home, recv, roots, ids.job)
+    assert (roots.recv / "Co_Role_c" / "resume.pdf").is_file()
+
+
+def test_a_removed_folder_that_holds_a_kept_applications_folder_stays(home, recv, roots):
+    ids = build_job(home, roots.home)
+    copy_profile(home, recv, ids)
+    app_id, folder = _add_application_with_folder(home, roots.home, ids, "c")
+    home.get(models.Application, ids.app2).artifact_dir = str(folder / "evidence")
+    home.commit()
+    ship(home, recv, roots, ids.job)
+    home.delete(home.get(models.Application, app_id))
+    home.commit()
+    ship(home, recv, roots, ids.job)
+    assert (roots.recv / "Co_Role_c" / "evidence" / "shot.png").is_file()
+
+
+def test_latex_build_leftovers_are_not_packed_or_counted(home, roots):
+    ids = build_job(home, roots.home)
+    for name in ("resume.aux", "resume.log", "resume.out"):
+        _write(roots.home / "Co_Role_a" / name, b"leftover")
+    bundle = jobs_bundle.export_job(home, ids.job)
+    assert sorted(entry["path"] for entry in bundle["files"]) == [
+        "applications:Co_Role_a/evidence/shot.png", "applications:Co_Role_a/resume.pdf",
+        "applications:Co_Role_a/resume.tex"]
+    assert bundle["files_skipped"] == 0

@@ -10,6 +10,7 @@ The whole bundle is validated before the first write, and nothing here logs or e
 contents: errors name a table or a column, never a value.
 """
 
+import os
 import shutil
 import uuid
 from collections.abc import Iterator
@@ -20,7 +21,7 @@ from decimal import Decimal
 
 import sqlalchemy as sa
 from sqlalchemy import delete, inspect, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -32,6 +33,7 @@ from app.services.sync import files, status
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
 _APPLICATIONS = "applications:"
 _JOB_COLUMNS_NOT_DATA = ("owner_machine", "sync_rev", "handover")
+_LATEX_LEFTOVERS = (".aux", ".log", ".out")  # rebuilt by every compile, never worth sending
 
 
 class DuplicateJob(Exception):
@@ -133,17 +135,49 @@ def _encode(value):
     return value
 
 
-def _decode(column: sa.Column, value):
-    if value is None:
-        return None
-    kind = getattr(column.type, "impl", column.type)  # a TypeDecorator names its base type
+def _base_type(column: sa.Column):
+    return getattr(column.type, "impl", column.type)  # a TypeDecorator names its base type
+
+
+def _accepts(kind, value) -> bool:
+    """Whether a JSON scalar has the shape this column stores. A bool is an int in Python, so it is
+    named first and kept out of the numeric kinds."""
+    if isinstance(kind, sa.JSON):
+        return True
+    if isinstance(kind, sa.Boolean):
+        return isinstance(value, bool)
+    if isinstance(kind, sa.Numeric) and not kind.asdecimal:
+        return isinstance(value, int | float) and not isinstance(value, bool)
+    if isinstance(kind, sa.Integer):
+        return isinstance(value, int) and not isinstance(value, bool)
+    return isinstance(kind, sa.String | sa.DateTime | sa.Uuid | sa.Numeric) and isinstance(value, str)
+
+
+def _convert(kind, value):
     if isinstance(kind, sa.Uuid):
         return uuid.UUID(value)
     if isinstance(kind, sa.DateTime):
         return datetime.fromisoformat(value)
     if isinstance(kind, sa.Numeric) and kind.asdecimal:
-        return Decimal(value)
+        number = Decimal(value)
+        if not number.is_finite():
+            raise ValueError
+        return number
     return value
+
+
+def _decode(table: str, column: sa.Column, value):
+    """The column's Python value; a value of the wrong shape or one that will not convert raises a
+    ValueError that names the table and never the value."""
+    if value is None and column.nullable:
+        return None
+    kind = _base_type(column)
+    try:
+        if value is None or not _accepts(kind, value):
+            raise ValueError
+        return _convert(kind, value)
+    except (ValueError, ArithmeticError):
+        raise ValueError(f"malformed {table} row") from None
 
 
 def _is_json(column: sa.Column) -> bool:
@@ -191,6 +225,7 @@ def _pack(dirs: list[str], max_bytes: int) -> tuple[list[dict], int]:
     remaining = max_bytes
     for rel in dirs:
         entries, left_out = files.pack_dir_with_skips("applications", rel, max_bytes=remaining)
+        entries = [entry for entry in entries if not entry["path"].lower().endswith(_LATEX_LEFTOVERS)]
         packed.extend(entries)
         skipped += left_out
         remaining -= sum(_decoded_size(entry) for entry in entries)
@@ -229,7 +264,7 @@ class Parsed:
 
 def _decode_value(spec: Table, column: sa.Column, key: str, value):
     if key not in spec.paths:
-        return _decode(column, value)
+        return _decode(spec.name, column, value)
     if value is not None and not (isinstance(value, str) and value.startswith(_APPLICATIONS)):
         raise ValueError(f"{spec.name} path is outside the applications root")
     return files.from_portable(value)
@@ -410,11 +445,14 @@ def _upsert(db: Session, spec: Table, existing: dict, rows: list[dict]) -> list[
     return objects
 
 
-def _apply_rows(db: Session, parsed: Parsed, sender_machine: str) -> None:
+def _apply_rows(db: Session, parsed: Parsed, sender_machine: str) -> list[str]:
+    """Write the bundle's rows; returns the artifact folders of the applications it deleted."""
     _check_duplicate(db, parsed)
     _localize(db, parsed)
     existing = _load_existing(db, _receiver_scope(db, parsed))
-    _delete_rows(db, _missing(existing, parsed))
+    doomed = _missing(existing, parsed)
+    folders = [obj.artifact_dir for obj in doomed["applications"] if obj.artifact_dir]
+    _delete_rows(db, doomed)
     # The session's identity map is weak: hold every row until the end, or the hook's per-row job
     # lookup (session.get on the parent) would reload each collected parent from the database.
     held: list[Base] = []
@@ -426,6 +464,7 @@ def _apply_rows(db: Session, parsed: Parsed, sender_machine: str) -> None:
         # These models have no relationship() between them, so the unit of work does not order
         # their inserts by foreign key: flush each table before its children.
         db.flush()
+    return folders
 
 
 @contextmanager
@@ -433,8 +472,9 @@ def _applying(db: Session) -> Iterator[None]:
     """One transaction under ``sync_apply`` (the ownership guard stands aside); any failure rolls
     back and the flag is restored."""
     previous = db.info.get("sync_apply")
-    db.info["sync_apply"] = True
     try:
+        db.flush()  # whatever the caller left pending meets the guard before it stands aside
+        db.info["sync_apply"] = True
         yield
         db.commit()
     except BaseException:
@@ -458,22 +498,31 @@ def apply_job(db: Session, bundle: dict, *, sender_machine: str,
     parsed = _parse(bundle)
     try:
         with _applying(db):
-            _apply_rows(db, parsed, sender_machine)
+            folders = _apply_rows(db, parsed, sender_machine)
             files.unpack(parsed.files, max_bytes=max_bytes)
     except IntegrityError:
         raise ValueError("bundle conflicts with rows already here") from None
+    except (StatementError, TypeError):
+        raise ValueError("bundle could not be applied") from None
+    for path in _unused_folders(db, folders):  # staged: only after the commit that dropped the rows
+        _remove_folder(path)
 
 
 # ---------------------------------------------------------------------------- tombstone
 
 
-def _folders_to_remove(db: Session, job_id: uuid.UUID) -> list:
-    """Artifact folders of this job's applications that no other application still uses."""
-    mine = [value for value in db.scalars(select(models.Application.artifact_dir).where(
-        models.Application.job_id == job_id)) if value]
-    others = set(db.scalars(select(models.Application.artifact_dir).where(
-        models.Application.job_id != job_id, models.Application.artifact_dir.is_not(None))))
-    return [path for path in dict.fromkeys(mine) if path not in others]
+def _unused_folders(db: Session, folders: list[str]) -> list[str]:
+    """Those of ``folders`` that no remaining application's folder is, lies inside or contains."""
+    if not folders:
+        return []
+    kept = [os.path.abspath(value) for value in db.scalars(select(models.Application.artifact_dir)
+            .where(models.Application.artifact_dir.is_not(None))) if value]
+    return [path for path in dict.fromkeys(folders)
+            if not any(_nested(os.path.abspath(path), other) for other in kept)]
+
+
+def _nested(first: str, second: str) -> bool:
+    return first == second or first.startswith(second + os.sep) or second.startswith(first + os.sep)
 
 
 def _remove_folder(path: str) -> None:
@@ -488,11 +537,12 @@ def _remove_folder(path: str) -> None:
 def apply_tombstone(db: Session, job_id: uuid.UUID) -> None:
     """Delete a replica, its whole subtree and its artifact folders. No tombstone is left here:
     the owner already announced the deletion."""
-    folders = _folders_to_remove(db, job_id)
+    folders = [value for value in db.scalars(select(models.Application.artifact_dir).where(
+        models.Application.job_id == job_id)) if value]
     with _applying(db):
         scope = _db_scope(db, job_id)
         _delete_rows(db, {spec.name: list(db.scalars(select(spec.model).where(scope.clause(spec))))
                           for spec in TABLES})
         db.execute(delete(SyncTombstone).where(SyncTombstone.job_id == job_id))
-    for path in folders:
+    for path in _unused_folders(db, folders):
         _remove_folder(path)
