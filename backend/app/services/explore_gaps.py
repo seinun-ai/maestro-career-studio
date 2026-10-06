@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, aliased
 from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.job import Job
+from app.services import base_eligibility, countries
 from app.services.explore_activity import bucket_for
 
 LOW_SAMPLE_THRESHOLD = 5
@@ -53,10 +54,15 @@ def _best_base_gap_rows(
     actually send. Base-phase rows are upsert singletons per (job, target),
     so "best" is a plain max-composite pick; ties break on target_id asc for
     deterministic reruns.
+
+    A base the country rule skips for the job's country (base_eligibility) is
+    never the pick, so a base written for another country cannot supply the
+    gaps. No other filter is added.
     """
     stmt = (
         select(
             AtsScore.job_id,
+            Job.country,
             AtsScore.target_id,
             AtsScore.composite,
             AtsScore.gaps_json,
@@ -70,8 +76,16 @@ def _best_base_gap_rows(
     )
     stmt = _apply_job_filters(stmt, role_category, level, employment_type)
 
+    skipped_by_country: dict[str | None, set[str]] = {}
     best: dict[Any, tuple[tuple[float, str], dict]] = {}
-    for job_id, target_id, composite, gaps in db.execute(stmt).all():
+    for job_id, job_country, target_id, composite, gaps in db.execute(stmt).all():
+        code = countries.normalize(job_country)
+        if code not in skipped_by_country:
+            skipped_by_country[code] = set(
+                base_eligibility.candidates_for_country(db, code).skipped
+            )
+        if str(target_id) in skipped_by_country[code]:
+            continue
         # The SQL is_not(None) does NOT catch these: SQLAlchemy writes a Python
         # None into JSONB as the JSON scalar `null`, not SQL NULL, so such rows
         # survive the WHERE and would blow up gaps.get() below. Guard before the

@@ -304,3 +304,77 @@ def test_best_base_raises_when_nothing_scoreable(db_session, tmp_path, monkeypat
     monkeypatch.setattr(settings, "base_resumes_dir", tmp_path)  # empty dir, no active slugs
     with pytest.raises(ValueError, match="None of your base resumes could be scored"):
         ats_score.best_base(job.id, db_session)
+
+
+def _seed_country_bases(db_session, tmp_path, monkeypatch, **countries_by_slug):
+    """Bases with files on disk and the given `countries` anchors."""
+    for slug, countries in countries_by_slug.items():
+        _seed_base(db_session, tmp_path, monkeypatch, slug)
+        db_session.get(BaseResume, slug).countries = countries
+    db_session.flush()
+
+
+def test_score_all_bases_skips_other_country_bases(db_session, tmp_path, monkeypatch):
+    job = _seed_job(db_session)
+    job.country = "US"
+    _seed_country_bases(db_session, tmp_path, monkeypatch,
+                        india=["IN"], us=["US"], anywhere=[])
+
+    rows = ats_score.score_all_bases(job.id, session=db_session)
+    assert {r.target_id for r in rows} == {"us", "anywhere"}
+
+    rows = ats_score.score_all_bases(job.id, session=db_session, include_other_countries=True)
+    assert {r.target_id for r in rows} == {"us", "anywhere", "india"}
+
+
+def test_score_all_bases_scores_everything_when_no_base_matches(db_session, tmp_path, monkeypatch):
+    job = _seed_job(db_session)
+    job.country = "US"
+    _seed_country_bases(db_session, tmp_path, monkeypatch, india=["IN"])
+    rows = ats_score.score_all_bases(job.id, session=db_session)
+    assert {r.target_id for r in rows} == {"india"}
+
+
+def test_latest_scores_hides_a_base_marked_for_another_country_after_scoring(
+    db_session, tmp_path, monkeypatch
+):
+    job = _seed_job(db_session)
+    job.country = "US"
+    _seed_country_bases(db_session, tmp_path, monkeypatch, india=[], us=["US"])
+    ats_score.score_all_bases(job.id, session=db_session)
+    db_session.commit()
+    assert {r.target_id for r in ats_score.latest_scores(job.id, db_session)} == {"india", "us"}
+
+    db_session.get(BaseResume, "india").countries = ["IN"]
+    db_session.commit()
+    assert [r.target_id for r in ats_score.latest_scores(job.id, db_session)] == ["us"]
+    assert {r.target_id for r in ats_score.latest_scores(
+        job.id, db_session, include_other_countries=True)} == {"india", "us"}
+
+
+def test_latest_scores_for_a_job_with_no_row_does_no_country_filtering(db_session):
+    from uuid import uuid4
+    assert ats_score.latest_scores(uuid4(), db_session) == []
+
+
+def test_best_base_ignores_other_country_bases(db_session):
+    job = _seed_job(db_session)
+    job.country = "US"
+    db_session.add_all([
+        BaseResume(slug="india", data_json={}, countries=["IN"]),
+        BaseResume(slug="us", data_json={}, countries=["US"]),
+    ])
+    db_session.flush()
+    t0 = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    db_session.add_all([
+        _row(job.id, target_type="base_resume", target_id="india",
+             phase="base", composite=90.0, created_at=t0),
+        _row(job.id, target_type="base_resume", target_id="us",
+             phase="base", composite=40.0, created_at=t0),
+    ])
+    db_session.commit()
+
+    assert ats_score.best_base(job.id, db_session) == "us"
+    job.country = None
+    db_session.commit()
+    assert ats_score.best_base(job.id, db_session) == "india"

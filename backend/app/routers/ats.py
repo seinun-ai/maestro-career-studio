@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.ats_score import AtsRunRequest, AtsScoreRead
-from app.services import ats_score
+from app.models.job import Job
+from app.schemas.ats_score import AtsCandidatesRead, AtsRunRequest, AtsScoreRead
+from app.services import ats_score, base_eligibility
 
 router = APIRouter(prefix="/api/ats-scores", tags=["ats-scores"])
 
@@ -31,7 +32,11 @@ def run_ats_scores(payload: AtsRunRequest, db: Annotated[Session, Depends(get_db
                 )
             ]
         else:
-            rows = ats_score.score_all_bases(payload.job_id, session=db)
+            rows = ats_score.score_all_bases(
+                payload.job_id,
+                session=db,
+                include_other_countries=payload.include_other_countries,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     # Caller-owned commit (score_target/score_all_bases stage on our session).
@@ -40,5 +45,24 @@ def run_ats_scores(payload: AtsRunRequest, db: Annotated[Session, Depends(get_db
 
 
 @router.get("", response_model=list[AtsScoreRead])
-def list_ats_scores(db: Annotated[Session, Depends(get_db)], job_id: Annotated[UUID, Query()]):
-    return ats_score.latest_scores(job_id, db)
+def list_ats_scores(
+    db: Annotated[Session, Depends(get_db)],
+    job_id: Annotated[UUID, Query()],
+    include_other_countries: Annotated[bool, Query()] = False,
+):
+    return ats_score.latest_scores(
+        job_id, db, include_other_countries=include_other_countries
+    )
+
+
+@router.get("/candidates", response_model=AtsCandidatesRead)
+def ats_candidates(db: Annotated[Session, Depends(get_db)], job_id: Annotated[UUID, Query()]):
+    """How the country rule treats this job: its country, which bases it skips,
+    and whether the filter fell back to every base."""
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    found = base_eligibility.candidates(db, job)
+    return AtsCandidatesRead(
+        job_country=found.job_country, fallback=found.fallback, skipped=found.skipped
+    )

@@ -13,11 +13,10 @@ from app.services.application_writes import NO_TAILORED_RESUME
 from app.services import gap_analysis
 from app.services.ats import score_resume
 from app.services.ats.jd_normalizer import normalize_jd
-from app.services import base_resume_data
+from app.services import base_resume_data, base_eligibility
 from app.services.base_resume_data import (
     base_resume_path,
     load_base_resume,
-    selectable_base_resume_slugs,
 )
 
 
@@ -127,7 +126,11 @@ def score_target(
             session.close()
 
 
-def score_all_bases(job_id: UUID, session: Session | None = None) -> list[AtsScore]:
+def score_all_bases(
+    job_id: UUID, session: Session | None = None, *, include_other_countries: bool = False
+) -> list[AtsScore]:
+    """Score every candidate base for the job (bases for another country are
+    skipped unless ``include_other_countries``; see base_eligibility)."""
     owns_session = session is None
     session = session or SessionLocal()
     try:
@@ -139,7 +142,10 @@ def score_all_bases(job_id: UUID, session: Session | None = None) -> list[AtsSco
         normalize_jd(job.extracted_json)
 
         rows: list[AtsScore] = []
-        for slug in selectable_base_resume_slugs(session):
+        slugs = base_eligibility.candidates(
+            session, job, include_other_countries=include_other_countries
+        ).slugs
+        for slug in slugs:
             # Per-slug, only a MISSING data file is skippable (fileless-but-active
             # slug, skipping active slugs with no on-disk file). Everything else —
             # including a corrupt-but-present file — propagates from score_target,
@@ -155,11 +161,27 @@ def score_all_bases(job_id: UUID, session: Session | None = None) -> list[AtsSco
             session.close()
 
 
+def _skipped_for_job(
+    session: Session, job_id: UUID, *, include_other_countries: bool = False
+) -> set[str]:
+    """Base slugs the country rule drops for this job; empty for a job with no
+    row (nothing to filter by, and no reason to raise on a read)."""
+    job = session.get(Job, job_id)
+    if job is None:
+        return set()
+    return set(
+        base_eligibility.candidates(
+            session, job, include_other_countries=include_other_countries
+        ).skipped
+    )
+
+
 def best_base(job_id: UUID, session: Session | None = None) -> str:
     """Slug of the base resume with the highest base-phase ATS composite.
 
     Reads persisted base rows (one per slug — base phase upserts); if none
-    exist yet, scores every active base first (pure engine, no LLM).
+    exist yet, scores every candidate base first (pure engine, no LLM). Rows of
+    bases the country rule skips for this job are ignored.
     """
     owns_session = session is None
     session = session or SessionLocal()
@@ -171,6 +193,8 @@ def best_base(job_id: UUID, session: Session | None = None) -> str:
                 AtsScore.phase == "base",
             )
         ))
+        skipped = _skipped_for_job(session, job_id)
+        rows = [r for r in rows if r.target_id not in skipped]
         if not rows:
             # Same read-that-writes contract as compare: an on-demand scoring
             # pass is committed here so it persists on a caller's session too.
@@ -186,7 +210,9 @@ def best_base(job_id: UUID, session: Session | None = None) -> str:
             session.close()
 
 
-def latest_scores(job_id: UUID, session: Session) -> list[AtsScore]:
+def latest_scores(
+    job_id: UUID, session: Session, *, include_other_countries: bool = False
+) -> list[AtsScore]:
     """Latest row per (target_type, target_id), base phase first, composite desc.
 
     Base rows for archived or soft-deleted resumes are dropped: this feeds the
@@ -194,8 +220,15 @@ def latest_scores(job_id: UUID, session: Session) -> list[AtsScore]:
     offering "Analyze gaps & tailor". Score rows outlive the base they scored,
     so without this an archived base stays tailorable forever. Application rows
     are untouched; only base_resume targets can be archived.
+
+    Base rows for bases the country rule skips for this job are hidden too,
+    unless ``include_other_countries`` (a base re-marked for another country
+    after scoring must not stay on offer). A job with no row is not filtered.
     """
-    hidden = set(
+    skipped = _skipped_for_job(
+        session, job_id, include_other_countries=include_other_countries
+    )
+    hidden = skipped | set(
         session.scalars(
             select(BaseResume.slug).where(
                 # NOT selectable — the inverse of the canonical predicate

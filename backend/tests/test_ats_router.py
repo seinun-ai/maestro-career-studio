@@ -319,3 +319,63 @@ def test_compare_unknown_application_returns_422(db_session):
 
     assert response.status_code == 422
     assert "Application not found" in response.json()["detail"]
+
+
+def test_candidates_route(db_session, tmp_path, monkeypatch):
+    job = _seed_job(db_session)
+    for slug, countries in (("india", ["IN"]), ("us", ["US"]), ("anywhere", [])):
+        _seed_base(db_session, tmp_path, monkeypatch, slug)
+        db_session.get(BaseResume, slug).countries = countries
+    db_session.commit()
+
+    def read(country):
+        job.country = country
+        db_session.commit()
+        response = TestClient(app).get("/api/ats-scores/candidates", params={"job_id": str(job.id)})
+        assert response.status_code == 200
+        return response.json()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        assert read("us") == {"job_country": "US", "fallback": False, "skipped": ["india"]}
+        assert read("Remote") == {"job_country": None, "fallback": False, "skipped": []}
+        db_session.query(BaseResume).filter(BaseResume.slug.in_(["us", "anywhere"])).delete()
+        db_session.commit()
+        assert read("US") == {"job_country": "US", "fallback": True, "skipped": []}
+        missing = TestClient(app).get("/api/ats-scores/candidates", params={"job_id": str(uuid4())})
+        assert missing.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_run_ats_scores_honours_include_other_countries(db_session, tmp_path, monkeypatch):
+    job = _seed_job(db_session)
+    for slug, countries in (("india", ["IN"]), ("us", ["US"])):
+        _seed_base(db_session, tmp_path, monkeypatch, slug)
+        db_session.get(BaseResume, slug).countries = countries
+    job.country = "US"
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        default = client.post("/api/ats-scores", json={"job_id": str(job.id)}).json()
+        everything = client.post(
+            "/api/ats-scores", json={"job_id": str(job.id), "include_other_countries": True}
+        ).json()
+        one = client.post(
+            "/api/ats-scores",
+            json={"job_id": str(job.id), "target_type": "base_resume", "target_id": "india"},
+        ).json()
+        listed = client.get("/api/ats-scores", params={"job_id": str(job.id)}).json()
+        listed_all = client.get(
+            "/api/ats-scores", params={"job_id": str(job.id), "include_other_countries": True}
+        ).json()
+    finally:
+        app.dependency_overrides.clear()
+
+    assert {r["target_id"] for r in default} == {"us"}
+    assert {r["target_id"] for r in everything} == {"us", "india"}
+    assert [r["target_id"] for r in one] == ["india"]  # an explicit target is scored as asked
+    assert {r["target_id"] for r in listed} == {"us"}
+    assert {r["target_id"] for r in listed_all} == {"us", "india"}

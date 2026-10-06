@@ -10,6 +10,15 @@ class AtsRunRequest(BaseModel):
     target_type: Literal["base_resume", "application"] | None = None
     target_id: str | None = None
     phase: Literal["base", "tailored"] | None = None
+    # Scoring every base: include the ones written for another country. Ignored
+    # when target_type/target_id name one target (that target is scored as asked).
+    include_other_countries: bool = False
+
+
+class AtsCandidatesRead(BaseModel):
+    job_country: str | None
+    fallback: bool
+    skipped: list[str]
 
 
 class AtsScoreRead(BaseModel):

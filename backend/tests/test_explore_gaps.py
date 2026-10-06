@@ -797,3 +797,32 @@ def test_tailoring_lift_flags_low_sample_including_all_row(db_session):
     assert rows["data_engineer"]["low_sample"] is True
     assert rows["all"]["n"] == 1
     assert rows["all"]["low_sample"] is True
+
+
+def test_best_base_gap_rows_never_pick_a_skipped_base(db_session):
+    # The higher-scoring base is written for another country: it must not be the
+    # pick, so its gaps do not stand in for the base you would send.
+    from app.models.base_resume import BaseResume
+
+    job = _seed_job(db_session, raw_hash="gf-country", role_category="data_engineer")
+    job.country = "United States"
+    other = _seed_job(db_session, raw_hash="gf-nocountry", role_category="data_engineer")
+    db_session.add_all([
+        BaseResume(slug="india", data_json={}, countries=["IN"]),
+        BaseResume(slug="us", data_json={}, countries=["US"]),
+        _base_row(job.id, "india", 90.0, gaps_json=_gaps_json(
+            missing_skill_gaps=[_skill_gap("kubernetes")])),
+        _base_row(job.id, "us", 40.0, gaps_json=_gaps_json(
+            missing_skill_gaps=[_skill_gap("spark")])),
+        _base_row(other.id, "india", 90.0, gaps_json=_gaps_json(
+            missing_skill_gaps=[_skill_gap("airflow")])),
+        _base_row(other.id, "us", 40.0, gaps_json=_gaps_json(
+            missing_skill_gaps=[_skill_gap("dbt")])),
+    ])
+    db_session.commit()
+
+    picked = {
+        job_id: list(gaps["categories"][0]["gaps"])[0]["jd_skill"]
+        for job_id, gaps in explore_gaps._best_base_gap_rows(db_session, None, None, None)
+    }
+    assert picked == {job.id: "spark", other.id: "airflow"}
