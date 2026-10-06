@@ -34,19 +34,22 @@ transitive dependency; make it direct), httpx, SQLite; Next.js 16 for the card; 
 
 **Files:**
 - Create: `backend/app/services/sync/seal.py`
-- Modify: `backend/pyproject.toml` (add `cryptography` to the base dependencies at the locked
-  version range; `requirements.lock` already pins 50.0.0 — regenerate it only if the check in the
-  Dockerfile comment demands it, and say so)
+- Modify: `backend/pyproject.toml` (add `cryptography>=43` to the base dependencies — the local
+  anaconda env has 43.0.3; `requirements.lock` already pins 50.0.0 via pdfminer-six/pyjwt and the
+  Dockerfile installs the lock then `--no-deps -e .`, so no regeneration; update only the lock's
+  `# via` comment if you touch it)
 - Test: `backend/tests/sync/test_seal.py`
 
 **The format (fixed):**
 - Keys: `derive(secret, label) = HKDF(SHA256, length=32, salt=b"maestro-sync", info=label)`.
   Labels: `b"maestro-sync v2 remote->home"`, `b"maestro-sync v2 home->remote"`,
   `b"maestro-sync v2 enroll remote->home"`, `b"maestro-sync v2 enroll home->remote"`.
-- Request header `X-Maestro-Seal: 2.<ts>.<rid>.<nonce>[.<tag>]` (base64url, no padding):
-  `ts` = Unix seconds; `rid` = 16 random bytes; `nonce` = 12 random bytes. When the plaintext body
-  is empty the whole ciphertext (16-byte tag) rides in the header's 5th field and the request has
-  no body (some proxies drop GET bodies); otherwise the body is the ciphertext.
+- Request header `X-Maestro-Seal: 2.<ts>.<rid>.<nonce>.<mac>.<tag-or-empty>` (base64url, no
+  padding): `ts` = Unix seconds; `rid` = 16 random bytes; `nonce` = 12 random bytes;
+  `mac` = `HMAC-SHA256(derive(secret, label + b" header"), request_aad)[:16]` — verified BEFORE any
+  body is read, so garbage costs one HMAC and no body (Fable review). The 6th field holds the whole
+  ciphertext (the 16-byte tag) when the plaintext body is empty, and the request then has no body
+  (some proxies drop GET bodies); otherwise it is empty and the body is the ciphertext.
 - Request AAD: `"\n".join([METHOD, path, canonical_query, ts, rid, x_maestro_sync]).encode()`,
   where `canonical_query` is the query string with keys sorted (`urllib.parse.urlencode(sorted(
   parse_qsl(raw, keep_blank_values=True)))`) and `x_maestro_sync` is the `X-Maestro-Sync` header
@@ -111,17 +114,24 @@ def request_aad(method: str, path: str, query: str, ts: str, rid: str, peer: str
 Then write (you choose the helper split; names below are FIXED):
 - `seal_request(secret, method, path, query, body: bytes, peer: str, *, label=TO_HOME,
   now: float | None = None) -> tuple[str, bytes, str]` → `(header, wire_body, rid)`.
-- `open_request(secret, method, path, query, header: str, wire_body: bytes, peer: str, *,
-  label=TO_HOME, now=None, replay: "ReplayCache | None") -> tuple[bytes, str]` →
-  `(plaintext, rid)`; raises `Broken` on: wrong version, malformed header, ts outside ±SKEW,
-  a body present when the tag rode in the header (or vice versa), `InvalidTag`, or a rid already
-  in `replay`. Register the rid only after the tag verifies.
+- `check_header(secret, method, path, query, header: str, peer: str, *, label=TO_HOME, now=None,
+  replay: "ReplayCache | None") -> "HeaderOk"`: parses the header, checks version and ±SKEW, verifies
+  `mac` with `hmac.compare_digest` (when the header is missing or malformed, still compute an HMAC
+  over a fixed dummy and compare, so timing doesn't tell them apart), then registers the rid in
+  `replay` (a seen rid is `Broken`). Returns what `open_request` needs.
+- `open_request(secret, ok: "HeaderOk", wire_body: bytes, *, label=TO_HOME) -> bytes`: the
+  plaintext; raises `Broken` on a body present when the tag rode in the header (or vice versa) or
+  `InvalidTag`.
 - `seal_response(secret, rid, status, body: bytes, *, label=TO_REMOTE) -> tuple[str, bytes]`.
 - `open_response(secret, rid, status, header, wire_body, *, label=TO_REMOTE) -> bytes`.
 - `class ReplayCache`: thread-safe dict rid→expiry with `seen(rid, now) -> bool` (adds when new,
   prunes expired entries on each call, caps at 100 000 entries by dropping the oldest).
 
-**Tests (fail first):** round trip for request (with and without body) and response; each
+Cache derived keys per (secret, label) (a small dict; secrets are few). Nonce volume: a few dozen
+messages per round, ~10⁵ a year under one key — far below the 2³² random-nonce guidance; say so
+in a comment.
+
+**Tests (fail first):** a header with a bad/absent mac is `Broken` without touching a body; round trip for request (with and without body) and response; each
 rejection raises `Broken` with an empty message: tampered body, tampered header field, tampered
 AAD component (method, path, query order-independent but value-sensitive, ts, peer), wrong
 secret, wrong direction label, stale ts (+/− 301 s), replayed rid, malformed base64, version 1;
@@ -141,16 +151,25 @@ a response opened with another rid or status fails; `derive` is deterministic an
   `test_two_machines.py`, others found by `grep -rn "Bearer" backend/tests`)
 - Test: `backend/tests/sync/test_sealed_home.py`
 
+**Scope (Fable review, blocker):** unseal only on home's peer routes: paths under `/api/sync/`
+EXCEPT `/api/sync/round` (the always-on copy's own unsealed loopback call used by `sync.sh` and
+MCP `sync_now`; its FastAPI-read `_RoundBody` stays untouched) and `/api/sync/enroll` (Task 5
+seals it with code-derived keys). `setup_router` (`/api/sync-setup/*`) shares `_SyncRoute` and
+keeps today's behaviour. Tests cover every route in `router.routes` except those two.
+
+**Tasks 2 and 3 land in ONE commit** (implement Task 2, then Task 3, run everything, then commit):
+after Task 2 alone the real two-process tests are red until the client seals.
+
 **Behavior:**
 1. Order per request: 404 when sync is off (no key, or this copy is remote) → 403 for an `Origin`
-   header (before the body is read) → read the body under the existing caps/timeout → **open the
-   seal** (`open_request` with the shared module-level `ReplayCache`) → version check (the
-   `X-Maestro-Sync` header, now authenticated by the AAD) → the lock → the handler.
+   header → **`check_header`** (mac, ts, replay — no body read yet) → read the body under the
+   existing caps/timeout → **`open_request`** → version check (the `X-Maestro-Sync` header, now
+   authenticated by the AAD) → the lock → the handler. A 408/413 raised after the header verified
+   is sealed normally (the rid is known).
 2. **Any seal failure → a bare 404**: empty body, no headers beyond the minimum, the same status
-   as "sync is off". Do the same amount of work for a missing header as for a bad tag (derive the
-   key and attempt a decrypt of a fixed dummy) so timing doesn't tell "no seal" from "bad seal".
-   Count failures in a module-level window: after 30 failures in 60 s, answer every sync request
-   with the bare 404 for 60 s without trying to open it (log one fixed line once per window).
+   as "sync is off" — with the dummy-HMAC equalization from Task 1. No lockout (an attacker could
+   lock out the real bot); instead throttle LOGGING of failures per `X-Forwarded-For` (one fixed
+   line per source per minute, never a header value).
 3. The bearer check is removed; an `Authorization` header is ignored (a request carrying only the
    old bearer key is a bare 404).
 4. Handlers receive the plaintext body exactly as before (inject it so `_json_body` keeps working;
@@ -165,12 +184,16 @@ params=None, key=…, peer=…)` that seals with `seal_request`, sends with the 
 the response with `open_response` (returns `(status, parsed_json)`); plus `raw(...)` for
 unsealed calls. Rewrite existing tests to use it — keep every assertion's meaning.
 
-**Tests:** every route in `router.routes` answers a bare 404 (empty body) when unsealed, when
-sealed with a wrong key, when carrying only `Authorization: Bearer <key>`, and when replayed; the
-Origin 403 still comes before the body is read; a sealed request works end to end and its response
-opens; a refusal (e.g. version mismatch 409) comes back sealed and readable by the client only;
-the failure limiter trips at 30 and resets; no log record (caplog DEBUG) contains a sentinel from
-a bundle, the key or the seal header.
+**Tests:** every peer route (all of `router.routes` except `/round` and `/enroll`) answers a bare
+404 (empty body) when unsealed, when sealed with a wrong key, when carrying only `Authorization:
+Bearer <key>`, and when replayed; a request with a bad header mac is refused without its body being
+read (send a body that would stall, assert the 404 comes back promptly); the Origin 403 still comes
+first; a sealed request works end to end and its response opens; a refusal (e.g. version mismatch
+409) comes back sealed and readable by the client only; the log throttle; no log record (caplog
+DEBUG) contains a sentinel from a bundle, the key or the seal header. **Update
+`.system_md_enforcement.json` in the same commit**: pins that vanish
+(`test_a_wrong_or_missing_key_is_a_401_that_echoes_nothing`, `test_the_key_is_checked_before_the_version`)
+must be replaced by their sealed successors, or `check_system_md.py` fails.
 
 ---
 
@@ -189,15 +212,27 @@ a bundle, the key or the seal header.
   `"https"` for `https://` on any other host; `None` otherwise (plain `http://` to a non-loopback
   host, or anything unparseable). A round with `None` is a `needs_person` skip with the fixed
   sentence "The laptop's address must be this machine's own tunnel or an https:// address."
+- `SYNC_REMOTE_URL` must have no path (anything beyond `/`) → `remote_route()` is None; the AAD
+  binds the path as sent, and Funnel strips and re-prepends only its own mount.
 - Client: `"tunnel"` → `trust_env=False` (as today); `"https"` → `trust_env=True` (the
   environment proxy is the only way out of a sandbox; the seal makes it harmless), `verify=True`.
-- Every call: `seal_request` on the way out (path = the URL path as sent, query = the encoded
-  params), `open_response` on the way back; a response that fails to open is a transient
-  "The laptop's answer couldn't be verified." (never the body).
+  With `trust_env=True` httpx loads `SSL_CERT_FILE`, else `SSL_CERT_DIR`, else certifi
+  (`REQUESTS_CA_BUNDLE` is ignored) — a sandbox whose proxy decrypts TLS must set `SSL_CERT_FILE`
+  to a bundle containing the proxy's CA (Task 7 docs). Building the client can raise `OSError` /
+  `ssl.SSLError` on a bad bundle: today `http_client.new_client` catches only `InvalidURL` and the
+  client is built outside `_attempt`'s try (round.py ~963) → move construction inside it and turn
+  those into a `needs_person` skip "The certificate bundle in SSL_CERT_FILE can't be read."
+- Every call: `request = ctx.http.build_request(method, path, params=..., content=...)`, seal with
+  `request.url.path` and `request.url.query.decode()`, set the seal header on the request, then
+  `ctx.http.send(request)`; `open_response` on the way back; a response that fails to open is a
+  transient "The laptop's answer couldn't be verified." (never the body).
 - Remove the `Authorization` header.
 
-**Tests:** `remote_route` table (loopback http/https, ::1, localhost, ts.net https, plain http
-non-loopback, ftp, garbage); a round over `"https"` builds its client with `trust_env=True` and a
+**Tests:** `remote_route` table (loopback http/https, ::1, localhost, ts.net https, a URL with a
+path, plain http non-loopback, ftp, garbage); a bad `SSL_CERT_FILE` gives the needs_person skip,
+not a 500; update the `.system_md_enforcement.json` pin
+`test_a_remote_address_that_is_not_this_machines_own_tunnel_is_refused` in the same commit (its
+`https://[2001:db8::1]` case becomes valid); a round over `"https"` builds its client with `trust_env=True` and a
 round over `"tunnel"` with `trust_env=False`; a forged/altered response from the fake home is
 refused and the round backs off with the fixed sentence; the whole existing round suite passes
 on seals.
@@ -214,8 +249,10 @@ on seals.
 **Behavior:** a request whose Host is `settings.sync_public_host` is accepted only when its path
 starts with `/api/sync/` (and that host is not added to `allowed_hosts`); any other path with that
 Host gets the same 400 TrustedHostMiddleware gives today. Implement as a small ASGI wrapper
-around the existing TrustedHostMiddleware (or an allowlist callable), not by widening
-`allowed_hosts`. Empty setting = today's behavior exactly.
+around the existing TrustedHostMiddleware (Starlette's is a plain ASGI class), not by widening
+`allowed_hosts`. The wrapper reads `settings.sync_public_host` at REQUEST time (main.py reads
+`allowed_hosts` at import, and tests must be able to switch the setting on). Empty setting =
+today's behavior exactly.
 
 **Tests:** with the setting: `/api/sync/hello` sealed via that Host works; `/api/jobs`,
 `/api/settings/...`, `/health`, `/docs`, `/` with that Host are refused; without the setting the
@@ -236,22 +273,29 @@ Host is refused everywhere; localhost behavior unchanged.
 **Behavior:**
 - `POST /api/settings/second-copy` (home): creates the key if missing; generates a code of 16
   characters from the Crockford base32 alphabet (80 bits via `secrets`), shows it as
-  `XXXX-XXXX-XXXX-XXXX`; stores only `sha256(normalized code)` and the window end (10 min) in local
-  `sync.` settings; returns `{code, open_until}` ONCE (a later GET returns `{enabled, open_until,
+  `XXXX-XXXX-XXXX-XXXX`; stores the digest (see below); returns `{code, open_until}` ONCE (a later GET returns `{enabled, open_until,
   last_paired_at}` without the code). `DELETE` retires it.
 - Normalizing a typed code: uppercase, drop spaces and dashes, map `O→0`, `I/L→1`, reject other
   characters.
+- **Keys from the code (Fable review, blocker):** both sides compute `digest =
+  sha256(normalized_code)` and derive the enroll keys with `derive(digest.hex(), ENROLL_*)`. Home
+  stores `digest.hex()` and the window end (10 min) in local `sync.` settings — never the code.
 - `POST /api/sync/enroll` (home, reached through Funnel or a tunnel, no sync key on the caller):
-  sealed with `ENROLL_TO_HOME` keys derived from the normalized code; the laptop tries the stored
-  code hash (constant time) — if no window is open, the code is wrong, or 5 attempts were used,
-  answer the bare 404 (count the attempt). On success: answer `{key}` sealed with
+  sealed (header mac + GCM) with the `ENROLL_TO_HOME` keys; the only check is the seal itself. No
+  window open, an expired window, or a failed open → the bare 404, and a failed open counts one of 5
+  attempts; on the 5th the window retires. On success: answer `{key}` sealed with
   `ENROLL_TO_REMOTE`, retire the code in the same commit, stamp `last_paired_at`, log one fixed
   line.
 - `POST /api/sync-setup/enroll` (remote, own loopback): body `{code}`; refuses when a key exists
   or `remote_route()` is None; calls home's enroll over the chosen route; writes the key 0600
   (O_EXCL); returns `{ok}` or a fixed sentence with an outcome. The code is never logged.
 - `sync.sh --pair --code <code>`: if no key file, calls `enroll-here` with the code first, then
-  the pairing round. `--code` without `--pair` is a usage error. The code never appears in output.
+  the pairing round. `--code -` reads the code from stdin (preferred: argv shows in `ps`); `--code`
+  without `--pair` is a usage error. The code never appears in output.
+- Strays to update (Fable review): `pairing.CLOSED` ("Click Allow pairing…") and its tests
+  (`test_pairing.py:26`, `test_native_pairing.py:72`), `pairing.TUNNEL`, `round.NOT_OWN_TUNNEL`, the
+  card copy "through its tunnel" (`second-copy-section.tsx:90`, its `.test.mjs:43`),
+  `maestro.env.example:14`, README.md:61, docs/native-install.md:172.
 - The card: **Show a pairing code** → the code large and copyable, a 10-minute countdown,
   **Stop**, then "Paired with your bot at <time>". Plain copy: "Paste this code to your bot. It
   works once, for 10 minutes." Follow docs/design-system.
@@ -271,13 +315,17 @@ two-process test: open a window → enroll with the code → pair; the card's pa
   fixture in `tests/sync/conftest.py`
 
 **Behavior to prove (real processes):** the remote reaches the home backend through a local
-recording forward proxy over plain HTTP (enable non-loopback-style routing for the test by
-pointing `SYNC_REMOTE_URL` at the proxy-reachable address and forcing the `"https"` client path
-with a test-only override of the route check — never in production code paths). Run pairing by
+recording forward proxy. Override in the in-process remote only: `monkeypatch.setattr(status,
+"remote_route", lambda: "https")` (the `machines` fixture already monkeypatches settings), set
+`HTTP_PROXY=<recording proxy>` and clear `NO_PROXY`. With an `http://` target httpx uses the
+absolute-URI forward form, so the proxy sees the HTTP request in cleartext — exactly the
+decrypting-proxy view we must survive; say so in the test's docstring. Run pairing by
 code, a full round with a profile sentinel, the AI key and a job-site login on home, a job push
 with a file, and a request. Assert the proxy's recording contains none of: the sync key, the
 pairing code, the sentinel, the AI key, the login password, a bundle's job title. Assert a
-replay of a recorded request through the proxy gets the bare 404.
+replay of a recorded request through the proxy gets the bare 404, and that a replay after a home
+restart (in-memory cache emptied, inside the 5-minute window) changes nothing (handlers are
+idempotent; `request_apply` dedupes by id) — state this residual in SECURITY.md.
 
 ---
 
@@ -288,7 +336,11 @@ command, `SYNC_PUBLIC_HOST`, the policy line `"nodeAttrs": [{"target": ["autogro
 "attr": ["funnel"]}]`, MagicDNS + HTTPS certificates; and "SSH tunnel"; both paired with a code;
 remove vault/key-copy steps; troubleshooting for "couldn't be verified", a bare 404 from a wrong
 key or an expired code), `SECURITY.md`, `PRIVACY.md` (what's public, who sees what: the bot's
-hosting platform holds the bot's replica; the internet and the relay see ciphertext only),
+hosting platform holds the bot's replica; the internet and the relay see ciphertext only; the
+pasted code plus a recorded enrollment would let that platform recover the sync key — nothing
+beyond the key file already in its sandbox, but it can outlive the sandbox in transcripts, so
+re-key (delete both key files, pair again) if the platform is ever suspect; prefer `--code -`), the
+sandbox's `SSL_CERT_FILE=<bundle with the proxy CA>`,
 `SYSTEM.md` (rewrite `inv-sync-channel`: every sync message sealed; unsealed → bare 404; the key
 never travels; only `/api/sync` may be published, through Funnel; pin to test_seal.py,
 test_sealed_home.py, test_public_host.py, test_pairing.py in `.system_md_enforcement.json`; stay
