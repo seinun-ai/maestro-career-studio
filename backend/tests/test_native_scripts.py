@@ -103,7 +103,12 @@ class Opener:
         if os.environ.get("NATIVE_TEST_FAIL") == "get":
             raise OSError(os.environ.get("OPENAI_API_KEY", ""))
         if url.endswith('/health'):
-            ready = (Path(os.environ['NATIVE_TEST_RECORDS']) / 'uvicorn.json').exists()
+            # Ready only once THIS launch's fake uvicorn has recorded itself: a record left by an
+            # earlier run (stop, then start) must not answer for a launch that has not exec'd yet.
+            record_path = Path(os.environ['NATIVE_TEST_RECORDS']) / 'uvicorn.json'
+            pidfile = Path(os.environ['MAESTRO_HOME']) / 'backend.pid'
+            ready = (record_path.exists() and pidfile.exists()
+                     and json.loads(record_path.read_text())['pid'] == int(pidfile.read_text()))
             return Response(json.dumps({"status": "ok" if ready else "waiting"}).encode())
         assert url.endswith('/health/memory')
         body = os.environ.get('NATIVE_TEST_MEMORY',
