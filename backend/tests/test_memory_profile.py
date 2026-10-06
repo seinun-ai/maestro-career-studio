@@ -80,9 +80,31 @@ def test_build_env_keeps_allocator_embedding_mode_and_cache_but_blanks_credentia
 def test_parse_args_defaults_and_overrides(tmp_path):
     defaults = profiler().parse_args([])
     assert (defaults.port, defaults.cycles, defaults.json) == (8711, 3, None)
+    assert defaults.base_resume == BACKEND.parent / "base_resumes/example.json"
     output = tmp_path / "readings.json"
-    args = profiler().parse_args(["--port", "9001", "--cycles", "5", "--json", str(output)])
-    assert (args.port, args.cycles, args.json) == (9001, 5, output)
+    resume = tmp_path / "example.json"
+    args = profiler().parse_args([
+        "--port", "9001", "--cycles", "5", "--json", str(output),
+        "--base-resume", str(resume),
+    ])
+    assert (args.port, args.cycles, args.json, args.base_resume) == (9001, 5, output, resume)
+
+
+def test_default_resume_uses_the_image_mount_when_the_checkout_file_is_absent(tmp_path, monkeypatch):
+    module = profiler()
+    mounted = tmp_path / "mounted/base_resumes/example.json"
+    mounted.parent.mkdir(parents=True)
+    mounted.write_text("{}")
+    monkeypatch.setattr(module, "BACKEND", tmp_path / "checkout/backend")
+    monkeypatch.setattr(module, "CONTAINER_BASE_RESUME", mounted)
+    assert module.default_base_resume() == mounted
+
+
+def test_prepare_home_reports_the_missing_base_resume_path(tmp_path):
+    module = profiler()
+    resume = tmp_path / "missing.json"
+    with pytest.raises(module.ProfileError, match=f"example base resume not found at {resume}"):
+        module.prepare_home(tmp_path / "home", resume)
 
 
 @pytest.mark.parametrize("argv", [
@@ -97,7 +119,7 @@ def test_parse_args_rejects_a_run_that_cannot_measure_a_cycle(argv):
 
 def test_prepare_home_and_migrations_use_only_the_throwaway_database(tmp_path):
     module = profiler()
-    module.prepare_home(tmp_path)
+    module.prepare_home(tmp_path, module.default_base_resume())
     for name in ("data", "applications", "settings", "base_resumes", "kb_documents", "logs", "exports"):
         assert (tmp_path / name).is_dir()
     assert (tmp_path / "base_resumes/example.json").read_bytes() == (
@@ -118,6 +140,8 @@ def validate_ingest(body):
 
     job = JobIngest.model_validate(body)
     assert job.raw_text and job.extracted_json.skills and job.source == "agent"
+    assert job.extracted_json.skills[-1].skill_name == "synthetic cycle 2 marker"
+    assert job.extracted_json.responsibilities[-1] == "Measure fresh ATS embeddings for synthetic cycle 2."
 
 
 def validate_score(body):
@@ -218,7 +242,7 @@ def test_startup_reports_a_dead_or_unresponsive_backend(return_code, timeout, me
     with httpx.Client(base_url="http://127.0.0.1", transport=httpx.MockTransport(
         lambda request: httpx.Response(503)
     )) as client:
-        with pytest.raises(RuntimeError, match=message):
+        with pytest.raises(profiler().ProfileError, match=message):
             profiler().wait_for_startup(client, process, timeout=timeout)
 
 
@@ -273,7 +297,7 @@ def test_temporary_backend_reaps_the_server_and_removes_home_on_every_exit(monke
     monkeypatch.setattr(module, "wait_for_startup", lambda client, process: None)
 
     def run():
-        with module.temporary_backend(0):
+        with module.temporary_backend(0, module.default_base_resume()):
             assert (state["home"] / "base_resumes/example.json").is_file()
             if failure:
                 raise failure("secret-sentinel")
@@ -301,7 +325,7 @@ def test_main_prints_table_and_writes_only_readings(tmp_path, monkeypatch, capsy
     module = profiler()
     rows = [{"cycle": 0, "step": "startup", "rss_mb": 144.0, "peak_mb": 150.0,
              "platform": "linux", "duration_s": 0.0}]
-    monkeypatch.setattr(module, "run_profile", lambda port, cycles: rows)
+    monkeypatch.setattr(module, "run_profile", lambda port, cycles, base_resume: rows)
     output = tmp_path / "readings.json"
     assert module.main(["--json", str(output)]) == 0
     assert json.loads(output.read_text()) == rows
@@ -310,17 +334,83 @@ def test_main_prints_table_and_writes_only_readings(tmp_path, monkeypatch, capsy
     assert printed.err == ""
 
 
-@pytest.mark.parametrize("failure,exit_code", [(RuntimeError, 1), (KeyboardInterrupt, 130)])
-def test_main_reports_failure_without_printing_exception_secrets(monkeypatch, capsys, failure, exit_code):
+@pytest.mark.parametrize("failure,message", [
+    ("port", "Profiling port unavailable; choose another --port."),
+    ("migration", "Database migration failed (exit code 17)."),
+    ("http", "score_ats: HTTP 422."),
+    ("other", "KeyError"),
+])
+def test_main_reports_safe_diagnostic_for_each_failure_kind(monkeypatch, capsys, failure, message):
     module = profiler()
 
-    def fail(port, cycles):
-        raise failure("secret-sentinel")
+    def fail(port, cycles, base_resume):
+        if failure == "port":
+            raise module.ProfileError("Profiling port unavailable; choose another --port.")
+        if failure == "migration":
+            raise module.ProfileError("Database migration failed (exit code 17).")
+        if failure == "http":
+            raise module.ProfileError("score_ats: HTTP 422.")
+        raise KeyError("secret-sentinel")
 
     monkeypatch.setattr(module, "run_profile", fail)
-    assert module.main([]) == exit_code
+    assert module.main([]) == 1
     printed = capsys.readouterr()
-    assert printed.err and "secret-sentinel" not in printed.err + printed.out
+    assert printed.err.strip() == message
+    assert "secret-sentinel" not in printed.err + printed.out
+
+
+def test_migration_error_preserves_only_the_exit_code(monkeypatch):
+    module = profiler()
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(
+        subprocess.CalledProcessError(17, "alembic", stderr="secret-sentinel")
+    ))
+    with pytest.raises(module.ProfileError, match=r"Database migration failed \(exit code 17\)"):
+        module.migrate({})
+
+
+def test_http_status_error_names_step_and_status_without_response_body():
+    client = httpx.Client(base_url="http://127.0.0.1", transport=httpx.MockTransport(
+        lambda request: httpx.Response(422, text="secret-sentinel")
+    ))
+    with client:
+        with pytest.raises(profiler().ProfileError, match="score_ats: HTTP 422"):
+            profiler().measured_request(client, [], "score_ats", 1,
+                                        ("POST", "/api/ats-scores", {}))
+
+
+def test_job_payload_changes_its_text_skill_and_responsibility_per_cycle():
+    module = profiler()
+    first, second = module.job_payload(1), module.job_payload(2)
+    assert first["raw_text"] != second["raw_text"]
+    assert "cycle 1" in first["raw_text"] and "cycle 2" in second["raw_text"]
+    assert first["extracted_json"]["skills"][-1]["skill_name"] != second["extracted_json"]["skills"][-1]["skill_name"]
+    assert first["extracted_json"]["responsibilities"][-1] != second["extracted_json"]["responsibilities"][-1]
+
+
+def test_sigterm_is_translated_to_interrupt_and_restores_the_prior_handler(monkeypatch, capsys):
+    module = profiler()
+    previous = signal.getsignal(signal.SIGTERM)
+    state = {}
+
+    def start(port, env):
+        state["home"] = Path(env["MAESTRO_HOME"])
+        state["process"] = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True,
+        )
+        return state["process"]
+
+    def terminate(client, process):
+        signal.raise_signal(signal.SIGTERM)
+
+    monkeypatch.setattr(module, "require_free_port", lambda port: None)
+    monkeypatch.setattr(module, "start_server", start)
+    monkeypatch.setattr(module, "migrate", lambda env: None)
+    monkeypatch.setattr(module, "wait_for_startup", terminate)
+    assert module.main(["--base-resume", str(module.default_base_resume())]) == 130
+    assert signal.getsignal(signal.SIGTERM) is previous
+    assert state["process"].poll() is not None
+    assert not state["home"].exists()
+    assert capsys.readouterr().err.strip() == "Memory profiling interrupted; the temporary backend was cleaned up."
 
 
 @pytest.mark.slow
