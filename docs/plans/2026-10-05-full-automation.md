@@ -18,7 +18,8 @@ decides). It is the source of truth for scope.
 
 **Architecture:**
 - `AutoApplySettings.full_automation` (Off by default) is the one switch. The server reads it in
-  three places only: the consent channel `auto` (accepted only while On), the job-site login
+  three places only: the consent channel `auto` (approvals and the agent's word that a job went
+  through, accepted only while On), the job-site login
   hand-off (refused while Off), and the Automations catalog (which Apply prompt it serves).
 - Eligibility is stated in a new prompt, `apply-auto`, read from `get_final_review`. The server
   does not judge eligibility; it keeps enforcing the daily cap, the blocklist and the
@@ -196,12 +197,12 @@ real key in the test.)
 
 ---
 
-### Task 3: Consent channel `auto`, accepted only while On
+### Task 3: Consent channel `auto` (approve; the agent's word as proof), accepted only while On
 
 **Files:**
 - Modify: `backend/app/services/proposals.py` (`CONSENT_CHANNELS`, `transition`)
 - Modify: `backend/app/schemas/proposal.py` (`ConsentPayload.channel`)
-- Modify: `backend/mcp_server/server.py` (`record_consent` `channel` literal + docstring)
+- Modify: `backend/mcp_server/server.py` (`record_consent` and `mark_submitted` channel literals + docstrings)
 - Test: `backend/tests/test_proposal_state_machine.py` (append), `backend/mcp_server/tests/test_proposal_tools.py` (literal pin if one lists channels)
 
 **Step 1: Failing tests**
@@ -231,11 +232,42 @@ def test_auto_consent_approves_while_on_and_is_recorded_as_auto(db_session):
 
 
 @pytest.mark.parametrize("status", ["accepted", "rejected"])
-def test_auto_consent_only_approves(db_session, status):
+def test_auto_consent_only_approves_or_confirms(db_session, status):
     _full_automation(db_session, True)
     prop = _mk_proposal(db_session)
-    with pytest.raises(svc.TransitionError, match="only approves"):
+    with pytest.raises(svc.TransitionError, match="approves a job or confirms"):
         svc.transition(db_session, prop, status, consent={"channel": "auto"})
+
+
+def _approved_auto(db_session):
+    _full_automation(db_session, True)
+    prop = _mk_proposal(db_session)
+    prop.evidence_json = _final_review_evidence()
+    svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
+    return prop
+
+
+def test_in_full_automation_the_agents_word_marks_it_submitted(db_session):
+    prop = _approved_auto(db_session)
+    svc.transition(db_session, prop, "submitted", attested=True,
+                   consent={"channel": "auto", "note": "Confirmation email: application received"})
+    events = db_session.query(ConsentEvent).filter_by(proposal_id=prop.id, action="submitted").all()
+    assert prop.status == "submitted" and [e.channel for e in events] == ["auto"]
+
+
+def test_the_agents_word_needs_a_note_naming_the_confirmation(db_session):
+    prop = _approved_auto(db_session)
+    with pytest.raises(svc.TransitionError, match="what confirmed it"):
+        svc.transition(db_session, prop, "submitted", attested=True,
+                       consent={"channel": "auto", "note": "  "})
+
+
+def test_the_agents_word_is_refused_once_full_automation_is_off(db_session):
+    prop = _approved_auto(db_session)
+    _full_automation(db_session, False)
+    with pytest.raises(svc.TransitionError, match="full automation"):
+        svc.transition(db_session, prop, "submitted", attested=True,
+                       consent={"channel": "auto", "note": "Confirmation page"})
 ```
 
 **Step 2: Run** — FAIL.
@@ -245,28 +277,39 @@ def test_auto_consent_only_approves(db_session, status):
 
 ```python
     if consent and consent.get("channel") == AUTO_CHANNEL:
-        _check_auto_consent(session, new_status)
+        _check_auto_consent(session, new_status, consent, attested)
 ```
 
 with, near `CONSENT_CHANNELS`:
 
 ```python
-# Full automation mode (phase 4): the agent's own yes, labelled so the ledger can tell it
-# from the user's. The server checks only the switch; eligibility is the agent's prompt.
+# Full automation mode (phase 4): the agent's own yes, and its own word that a job went
+# through, labelled so the ledger can tell them from the user's. The server checks only the
+# switch (and that a confirmation is named); eligibility is the agent's prompt.
 AUTO_CHANNEL = "auto"
 
 
-def _check_auto_consent(session: Session, new_status: str) -> None:
-    if new_status != "approved":
-        raise TransitionError("the auto channel only approves")
+def _check_auto_consent(session: Session, new_status: str, consent: dict,
+                        attested: bool) -> None:
+    if not (new_status == "approved" or (new_status == "submitted" and attested)):
+        raise TransitionError("the auto channel only approves a job or confirms it went through")
+    if new_status == "submitted" and not (consent.get("note") or "").strip():
+        raise TransitionError("an automatic submit needs a note saying what confirmed it")
     if not auto_apply_settings.get_settings(session).full_automation:
         raise TransitionError("the auto channel needs full automation turned on in Settings")
 ```
 
 `ConsentPayload.channel` adds `"auto"`. MCP `record_consent`: `channel: Literal["chat", "slack",
 "mcp", "auto"]`; append to its docstring: "`auto` is the agent's own yes in full automation mode:
-accepted only for `approved` and only while full automation is on." (Describe, never instruct:
-`_BANNED_VOICE`.) `mark_submitted`'s channel literal does NOT gain `auto` (an agent never attests).
+accepted only for `approved` and only while full automation is on." MCP `mark_submitted`:
+`channel: Literal["chat", "slack", "mcp", "auto"]`; when `channel == "auto"` it sends
+`attested=True` with the note (the agent's word, not the user's), so its body becomes
+`if user_attested or channel == "auto": ...`; append to its docstring: "In full automation mode,
+channel `auto` records the agent's own word that the application went through, with `note`
+naming what confirmed it (the confirmation page or a confirmation email); no receipt is needed,
+and it is accepted only while full automation is on." (Describe, never instruct: `_BANNED_VOICE`.)
+Add MCP tests: `mark_submitted(channel="auto", note=...)` forwards `attested=True` with that
+consent.
 
 **Step 4: Run** the state-machine, proposals-router and MCP proposal-tool tests — PASS.
 
@@ -620,8 +663,9 @@ def test_full_automation_serves_the_automatic_apply_prompt():
 @pytest.mark.parametrize("sentence", [
     "Submit without asking only when `get_final_review` shows all of these:",
     "`record_consent` with channel `auto`",
-    "`mark_submitted` with the site's confirmation attached as `submission_receipt`",
-    "Never set `attested`.",
+    "`mark_submitted` with channel `auto` and a `note` naming what confirmed it",
+    "Work the queue the way the user has asked you to",
+    "Never submit the same application twice.",
     "`request_decision` naming what blocked it",
     "Call `record_run` with automation `apply-session`",
 ])
@@ -682,8 +726,9 @@ metadata:
 Full automation mode is on (the brief's `auto_apply.full_automation`). If it is off, stop and say
 so: this prompt is for full automation mode only.
 
-1. **Queue.** `list_proposals(status="accepted")`, then work it in order, one job at a time.
-   Stop when the daily cap in the brief is used up.
+1. **Queue.** `list_proposals(status="accepted")`. Work the queue the way the user has asked you
+   to: which jobs, in what order, in batches or one by one, and how many per run. The daily cap in
+   the brief is the one fixed limit; stop when it is used up.
 2. **Prepare.** Tailor or render only when the linked application or its PDF is missing.
 3. **Accounts.** When the site needs an account or a sign-in, `get_job_site_login(proposal_id)`
    gives the user's job-site email and password.
@@ -697,9 +742,11 @@ so: this prompt is for full automation mode only.
    - `duplicate_submitted` is false;
    - no blocked or manual items.
 6. **Submit.** Attach a screenshot of the filled form as `final_review` evidence, then
-   `record_consent` with channel `auto` and action `approved`. Submit once. Then
-   `mark_submitted` with the site's confirmation attached as `submission_receipt`. Never set
-   `attested`. If you can't tell whether it went through, `report_failure` and never click again.
+   `record_consent` with channel `auto` and action `approved`. Submit. Never submit the same
+   application twice. Then `mark_submitted` with channel `auto` and a `note` naming what
+   confirmed it (the confirmation page's words, or a confirmation email). A screenshot of the
+   confirmation is optional. If you can't tell whether it went through, `report_failure` and
+   don't submit again.
 7. **Everything else.** Call `request_decision` naming what blocked it, ask the user, and move on
    to the next job. If the user says yes, record it with `record_consent` channel `chat` and
    submit as in step 6. Anything that stops you mid-form: `report_failure` with the reason, ask
@@ -1094,6 +1141,8 @@ stated (`git grep -n "85 tools\|all 85\|(85)"` outside `docs/plans` must come ba
    - With On, via curl as MCP: `record_consent` `auto` approves a proposal with `final_review`
      evidence; with Off it 409s. `POST /api/proposals/{id}/job-site-login` with MCP headers
      returns the login and writes a `login_shared` event; without the header 403.
+   - With On, `mark_submitted` channel `auto` with a note marks an approved job submitted; with
+     Off it 409s; without a note it 409s.
    - Snapshots: with `SNAPSHOT_DIR` set, POST a run → a snapshot appears; Create snapshot now
      works; `settings/secrets` is absent from it. Run `scripts/pull_snapshot.py --no-docker`
      against a second throwaway repo layout → files swapped, `mirror.json` written; that stack's

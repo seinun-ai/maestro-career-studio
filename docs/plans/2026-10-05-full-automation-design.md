@@ -25,6 +25,10 @@ agent apply without a per-application yes when a job passes every check, and let
   gate; (3) the Companion submitting.
 - **Consent label:** a new consent channel `auto`, accepted by the server only while full
   automation is On. It labels the agent's automatic yes so the record can tell it from the user's.
+- **Proof of submission:** in full automation mode the agent's word is enough: it marks a job
+  submitted as attested with channel `auto` and a note naming the confirmation (page or email).
+  Outside full automation, a receipt or the user's own word, as today.
+- **Order and batching:** the user's strategy with their agent, not Maestro's.
 - **Password:** one job-site password, stored in a local file, handed to the agent by MCP.
 - **Out of the design on purpose:** how the agent handles CAPTCHAs, mail, sign-in codes or how it
   reaches the user. That happens outside Maestro. The prompt only says: park the job and ask the
@@ -63,9 +67,13 @@ only for job-site accounts.
   answer recorded with the saved fact it came from (its `slot`). Phase 2's flags already carry the
   owner's rule (an inferred or written screening answer flags `guessed_screening`; a mismatch
   flags `differs_from_profile`; EEO without a saved answer flags; ticking every option flags).
+- **Strategy is the user's:** the prompt does not set order, batching or how many jobs a run
+  works; the user agrees that with their agent and its schedule. Fixed bounds: the daily cap and
+  one submit per application.
 - **Per queued job:** fill each page and record it (`record_filled_answers`) → `get_final_review`
-  → if eligible: `record_consent(channel="auto")`, submit once, attach the site's confirmation,
-  `mark_submitted` with that receipt (never attested) → otherwise `request_decision` naming what
+  → if eligible: `record_consent(channel="auto")`, submit once, then `mark_submitted` with the
+  agent's word as proof (`attested`, channel `auto`, a note naming what confirmed it: the
+  confirmation page or a confirmation email); a receipt screenshot is optional → otherwise `request_decision` naming what
   blocked it, ask the user, and move on. A yes from the user is recorded as `chat` and the agent
   submits. After the user fixes the cause, a later run can submit it.
 - Anything that stops the agent mid-form: park it (`request_decision` or `report_failure`) and
@@ -79,8 +87,9 @@ only for job-site accounts.
   automation is opt-in, capped, limited to jobs the user queued, and limited to answers that pass
   every check. Unscored, uncapped or unqueued applying stays refused.
 - **Consent channel `auto`:** added to every channel list (`services/proposals.py`
-  `CONSENT_CHANNELS`, `schemas/proposal.py` `ConsentPayload`, MCP `record_consent`); the server
-  accepts it only for `approved` and only while full automation is On (409 otherwise). New
+  `CONSENT_CHANNELS`, `schemas/proposal.py` `ConsentPayload`, MCP `record_consent` and
+  `mark_submitted`); the server accepts it only for `approved` and for an attested `submitted`
+  (with a note), and only while full automation is On (409 otherwise). New
   invariant `{#inv-auto-consent-gated}`.
 - **SYSTEM.md §7:** `record_consent` stores the user's yes/no, or in full automation mode the
   agent's automatic yes (channel `auto`). Companion invariants unchanged.
