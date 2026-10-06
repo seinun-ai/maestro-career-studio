@@ -277,10 +277,12 @@
 - **The base-resume studio header is the NAME; its subtitle is the save
   status, never an identity line.** Display name is
   the title (`EditableTitle`, instant PATCH `/identity`); the slug is the URL
-  plus a "Copy ID for connected agents" item; the target role is the ⋯ menu's FIRST item, which
-  names its own value ("Role: Data Scientist" / "Role not set") and opens
-  `RoleCategoryDialog`. Three identity lines used to stack in the header
-  saying the same words, because the slug derives from the name and the name
+  plus a "Copy ID for connected agents" item; the ⋯ menu's FIRST item opens the **Target** dialog
+  (`TargetDialog`) and names the role when one is set ("Target: Data Scientist", else "Target").
+  The dialog's countries, role, company and focus each save themselves (countries and role on
+  change, company and focus on blur when the trimmed text changed), each PATCH sending its own key
+  alone. Escape blurs a focused field first, so typed text commits. Three identity lines used to
+  stack in the header saying the same words, because the slug derives from the name and the name
   from the role. A menu item that names a value goes in `StudioOverflowMenu`'s
   `leading` slot, above the shared code-view and Version history pair; ordinary
   studio-specific actions stay in `children`, below it. The menu is `w-auto
@@ -781,16 +783,16 @@
     request lands, so focus is handed on: the row's ⋯, the header's first
     control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
     field a submit would disable goes `readOnly` instead (Add item's,
-    the API key and Custom AI server fields while they save, and the Role
-    dialog's picker while its pick saves: `RolePicker`'s `readOnly` keeps the
-    list shut and its own Backspace and Enter from committing). A `Select`
-    that saves on pick does the same (the Models role pickers, JSON mode):
+    the API key and Custom AI server fields while they save, and the Target
+    dialog's fields while each one saves: `RolePicker`'s and `CountryPicker`'s
+    `readOnly` keeps the list shut and their own Backspace and Enter from
+    committing). A `Select` that saves on pick does the same (the Models role pickers, JSON mode):
     Base UI's `readOnly`, never `disabled`, or the trigger the list closes
     onto drops focus to `<body>`. Add document opens one file picker per
     gesture: a double click's second click (`event.detail > 1`) is ignored.
-  - `RolePicker` refuses Base UI's Escape on a CLOSED list
+  - `RolePicker` and `CountryPicker` refuse Base UI's Escape on a CLOSED list
     (`preventBaseUIHandler`): Base UI clears the value there and swallows the
-    key, so an Esc meant for the Role dialog PATCHed the role to Unknown, left
+    key, so an Esc meant for the Target dialog PATCHed the role to Unknown, left
     the dialog open and dropped focus while it saved; in New base resume it
     cleared the picked role, and on /profile every favored role. Escape only
     closes; a role is cleared from Clear role or Backspace.
@@ -856,7 +858,7 @@
     `tabIndex={-1}` target directly once the dialog is gone.
   - Why: Base UI's default return target for a trigger-less dialog is the
     last connected element it saw focused, which can be inside the closing
-    dialog (the Role dialog's own picker input), and is `null` once the
+    dialog (the Target dialog's own picker input), and is `null` once the
     opener is gone (Load latest).
 - **`TabsContent` hides de-selected panels with `[&[inert]]:hidden`** — do not
   remove it. Base UI clears `hidden` only when a CLOSING transition finishes;
@@ -990,7 +992,8 @@
   bootstrap scripts need per-request nonces via middleware).
 - react-query keys: `["applications"]`, `["jobs"]`,
   `["jobs","without-application", source]`, `["job-detail", jobId]`,
-  `["ats-scores", jobId]`, `["ats-compare", appId]`,
+  `["ats-scores", jobId, { includeOtherCountries }]` and `["ats-scores", jobId, "candidates"]` (every
+  invalidation names the `["ats-scores", jobId]` prefix), `["ats-compare", appId]`,
   `["tailoring-session", id]`, `["referrals"]`, `["qa", appId]`,
   `["filled-answers", jobId]`, … — invalidate job-detail alongside applications
   when status changes. Window-focus refetch is off app-wide (`app/providers.tsx`);
@@ -1266,6 +1269,8 @@
     tailor, which scores every base resume). **Hide**, **Show**, **Hidden**
     for a resume entry; **Archive** and **Restore** for a base resume or a
     template (Version history's **Restore** brings back a version).
+    **Target** (the base resume's dialog for countries, role, company and focus; anchors is the agent
+    and code word, never on screen); a set one shows as pills on the gallery and score cards.
     **Other sections**, never extra or custom sections. On a health report
     the group is **Checks**; a fatal check's badge is **Must fix** and the
     other tier **Serious**; **Mark as OK** and **Undo**, never gate, blocker
@@ -1475,6 +1480,13 @@
   `scores.isSuccess`: a failed refetch keeps its old `[]`, and without the
   check the skeleton hid the error and its Retry for good. Pinned by
   `test_frontend_first_run.py`.
+- **The Score tab says what the job's country left out.** `GET /api/ats-scores/candidates` names
+  the base resumes set only for other countries. One muted line says how many weren't scored for
+  the job's country (`skippedCountriesLine` in `lib/ats-words.ts`), with a **Score them anyway**
+  button that scores and reads again with `include_other_countries` for that view and hands focus
+  to Update scores. With no resume set for the job's country every resume is scored, and the line
+  says so (`noResumeForCountry`). Gallery and score cards show a resume's Target as pills
+  (`AnchorPills`). Pinned by `test_frontend_base_resume_anchors.py`.
 - Career history pages follow the Base resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.

@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useState, type RefObject } from "react";
+import { useCallback, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { CountryPicker } from "@/components/country-picker";
 import {
   favoredRoleFromTag,
   identityFromFavoredRole,
+  MAX_ROLE_LABEL_CHARS,
   RolePicker,
 } from "@/components/role-picker";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +21,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { humanizeSlug } from "@/lib/humanize-slug";
@@ -92,6 +96,7 @@ export function RoleCategoryPicker({
   roleLabel: label = null,
   proposed = false,
   className,
+  id,
   "aria-label": ariaLabel = "Target role",
 }: {
   slug: string;
@@ -100,7 +105,9 @@ export function RoleCategoryPicker({
   /** True when the import pipeline guessed this role; the chip must look like a guess. */
   proposed?: boolean;
   className?: string;
-  /** The picker's name. There is no visible label beside it, so it needs one. */
+  /** For a `<Label htmlFor>` beside it (the Target dialog). */
+  id?: string;
+  /** The picker's name. Most callers have no visible label beside it, so it needs one. */
   "aria-label"?: string;
 }) {
   const qc = useQueryClient();
@@ -142,6 +149,7 @@ export function RoleCategoryPicker({
     >
       <RolePicker
         mode="single"
+        id={id}
         aria-label={ariaLabel}
         value={value}
         onValueChange={(next) => {
@@ -170,34 +178,136 @@ export function RoleCategoryPicker({
 }
 
 
-/** Menu-item wording for the role, e.g. "Role: Data Scientist". `unknown` with
- *  no label reads as an invitation, matching RoleBadge. */
-export function roleMenuLabel(
+/** The studio ⋯ item that opens the Target dialog, naming the role when one is set ("Target: Data
+ *  Scientist"). With none it reads "Target", the dialog's name. */
+export function targetMenuLabel(
   roleCategory: string,
   label: string | null | undefined,
   options?: RoleCategory[],
 ) {
-  if (roleCategory === "unknown" && !label) return "Role not set";
-  return `Role: ${displayRoleTag(roleCategory, label, options)}`;
+  if (roleCategory === "unknown" && !label) return "Target";
+  return `Target: ${displayRoleTag(roleCategory, label, options)}`;
+}
+
+/** The PATCH /identity keys the Target dialog writes besides the role, with their value shapes. */
+type AnchorValues = { countries: string[]; company: string; focus: string };
+
+const FIELD_WORDS: Record<keyof AnchorValues, string> = {
+  countries: "countries",
+  company: "company",
+  focus: "focus",
+};
+
+/**
+ * One Target field's write. PATCH /identity is metadata-only (no PDF, no version), and a key it is
+ * not sent stays as it is, so each field sends its own key alone: two fields saved back to back
+ * never overwrite each other with a stale copy.
+ */
+function useAnchorSave<K extends keyof AnchorValues>(slug: string, field: K) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (value: AnchorValues[K]) =>
+      apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/identity`, {
+        method: "PATCH",
+        body: JSON.stringify({ [field]: value }),
+      }),
+    onSuccess: (updated) => {
+      qc.setQueryData(["base-resumes", slug], updated);
+      qc.invalidateQueries({ queryKey: ["base-resumes"] });
+      // Countries decide which resumes a job is scored against.
+      if (field === "countries") qc.invalidateQueries({ queryKey: ["ats-scores"] });
+      const set = field === "countries" ? updated.countries.length > 0 : Boolean(updated[field]);
+      const words = FIELD_WORDS[field];
+      toast.success(`${words[0].toUpperCase()}${words.slice(1)} ${set ? "saved" : "cleared"}`);
+    },
+    onError: (err: Error) => toast.error(couldnt(`save the ${FIELD_WORDS[field]}`, err)),
+  });
+}
+
+/** A Target field: its label, its hint between the label and the control (wired), then the control. */
+function AnchorField({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: (ids: { id: string; describedBy: string | undefined }) => ReactNode;
+}) {
+  const id = useId();
+  const hintId = useId();
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {hint && (
+        <p id={hintId} className="text-muted-foreground text-body-small">
+          {hint}
+        </p>
+      )}
+      {children({ id, describedBy: hint ? hintId : undefined })}
+    </div>
+  );
+}
+
+/** Company or focus: saved on blur when the trimmed text changed. A failed save keeps the text. */
+function AnchorTextField({
+  slug,
+  field,
+  label,
+  hint,
+  value,
+}: {
+  slug: string;
+  field: "company" | "focus";
+  label: string;
+  hint?: string;
+  value: string | null;
+}) {
+  const [draft, setDraft] = useState(value ?? "");
+  const save = useAnchorSave(slug, field);
+  const commit = () => {
+    const next = draft.trim();
+    if (next === (value ?? "")) return;
+    save.mutate(next, { onSuccess: (updated) => setDraft(updated[field] ?? "") });
+  };
+  return (
+    <AnchorField label={label} hint={hint}>
+      {({ id, describedBy }) => (
+        <Input
+          id={id}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          // MAX_LABEL_CHARS bounds company and focus too, so the server's 422 is unreachable.
+          maxLength={MAX_ROLE_LABEL_CHARS}
+          aria-describedby={describedBy}
+          // Focus stays while it saves; a disabled field would drop it to <body>.
+          readOnly={save.isPending}
+        />
+      )}
+    </AnchorField>
+  );
 }
 
 /**
- * The picker in a dialog, for surfaces that keep the role OFF the page and
- * behind a menu.
+ * The Target dialog: the resume's countries, role, company and focus, behind the studio's ⋯ (the code
+ * calls the four anchors). Countries decide which jobs the resume is scored for; the other three
+ * steer tailoring and Ask for changes.
  *
- * A dialog rather than the picker nested straight into the dropdown: the
- * picker is itself a popup, and a combobox popup inside a menu popup fights
- * the menu for focus and dismissal. The dialog also gives the free-text
- * mapping strip ("Count 'X' as Y?") somewhere to appear — inside a menu it
- * would be clipped.
+ * A dialog rather than the pickers nested straight into the dropdown: a picker is itself a popup, and
+ * a combobox popup inside a menu popup fights the menu for focus and dismissal. The dialog also gives
+ * the free-text mapping strip ("Count 'X' as Y?") somewhere to appear.
  *
- * The write still lands on blur-free instant PATCH, so there is nothing to
- * save here; the footer button only closes.
+ * Every field saves itself (countries and role on change, company and focus on blur), so there is
+ * nothing to save here; the footer button only closes.
  */
-export function RoleCategoryDialog({
+export function TargetDialog({
   slug,
   roleCategory,
   roleLabel: label = null,
+  countries,
+  company,
+  focus,
   open,
   onOpenChange,
   finalFocus,
@@ -205,6 +315,9 @@ export function RoleCategoryDialog({
   slug: string;
   roleCategory: string;
   roleLabel?: string | null;
+  countries: string[];
+  company: string | null;
+  focus: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /**
@@ -215,23 +328,63 @@ export function RoleCategoryDialog({
    */
   finalFocus?: RefObject<HTMLElement | null>;
 }) {
+  const saveCountries = useAnchorSave(slug, "countries");
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const handleOpenChange = (next: boolean) => {
+    // Escape unmounts the fields with no blur, so a typed company or focus commits first.
+    const active = document.activeElement;
+    if (!next && active instanceof HTMLElement && bodyRef.current?.contains(active)) active.blur();
+    onOpenChange(next);
+  };
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent finalFocus={finalFocus}>
         <DialogHeader>
-          <DialogTitle>Target role</DialogTitle>
+          <DialogTitle>Target</DialogTitle>
           <DialogDescription>
-            The kind of job this resume is for.
+            Used when tailoring or asking for changes. Saving here does not change the resume.
           </DialogDescription>
         </DialogHeader>
-        <RoleCategoryPicker
-          slug={slug}
-          roleCategory={roleCategory}
-          roleLabel={label}
-          className="w-full"
-        />
+        <div ref={bodyRef} className="grid gap-4">
+          <AnchorField
+            label="Countries"
+            hint="Only scored for jobs in these countries. Leave empty to use anywhere."
+          >
+            {({ id, describedBy }) => (
+              <CountryPicker
+                id={id}
+                aria-label="Countries"
+                aria-describedby={describedBy}
+                // The picked set shows while it saves, not the one before it.
+                value={(saveCountries.isPending && saveCountries.variables) || countries}
+                onChange={(codes) => saveCountries.mutate(codes)}
+                readOnly={saveCountries.isPending}
+              />
+            )}
+          </AnchorField>
+          <AnchorField label="Role">
+            {({ id }) => (
+              <RoleCategoryPicker
+                id={id}
+                aria-label="Role"
+                slug={slug}
+                roleCategory={roleCategory}
+                roleLabel={label}
+                className="w-full"
+              />
+            )}
+          </AnchorField>
+          <AnchorTextField slug={slug} field="company" label="Company" value={company} />
+          <AnchorTextField
+            slug={slug}
+            field="focus"
+            label="Focus"
+            hint="Such as payments platforms."
+            value={focus}
+          />
+        </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Done
           </Button>
         </DialogFooter>

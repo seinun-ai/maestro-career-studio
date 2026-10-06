@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   CircleAlert,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { AnchorPills } from "@/components/base-resumes/anchor-pills";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useBaseResumeLabel, useBaseResumes } from "@/hooks/use-base-resume-label";
 import { LoadErrorState } from "@/components/load-error-state";
@@ -29,7 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { focusIfDropped } from "@/hooks/use-focus-return";
+import { focusIfDropped, useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import {
   ATS_SCORE_LEAD,
@@ -37,9 +38,12 @@ import {
   SUBSCORE_LABELS,
   UNREADABLE_DATES_NOTE,
   datesUnreadable,
+  noResumeForCountry,
+  skippedCountriesLine,
 } from "@/lib/ats-words";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
+import { countryName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
@@ -47,6 +51,7 @@ import {
   apiFetch,
   createApplicationFromBase,
   createTailoringSession,
+  getAtsCandidates,
   listAtsScores,
   listTailoringSessions,
   runAtsScores,
@@ -193,6 +198,9 @@ function AtsScoreCard({
   showCoverage: boolean;
 }) {
   const baseName = useBaseResumeLabel();
+  // The archived-inclusive list, the one `baseName` reads: a score can outlive its resume's archiving.
+  const { data: resumes } = useBaseResumes(true);
+  const resume = resumes?.find((r) => r.slug === score.target_id);
   const actionRef = useRef<HTMLButtonElement>(null);
   const focusAction = useCallback(() => actionRef.current, []);
   const gateWarnings = score.subscores_json.gate_warnings ?? [];
@@ -214,10 +222,13 @@ function AtsScoreCard({
       )}
       style={{ animationDelay: `${Math.min(index, 8) * 50}ms` }}
     >
-      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-        <CardTitle className="min-w-0 text-title-small">
-          {baseName(score.target_id)}
-        </CardTitle>
+      <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
+        <div className="grid min-w-0 gap-1">
+          <CardTitle className="min-w-0 text-title-small">
+            {baseName(score.target_id)}
+          </CardTitle>
+          {resume && <AnchorPills resume={resume} />}
+        </div>
         {/* h-5: the badge's height. ⋯ (bigger on touch) overflows it, centered, so a card with ⋯ and
             one without keep their scores on one line. */}
         <div className="flex h-5 shrink-0 items-center gap-1">
@@ -326,10 +337,23 @@ export function AtsScorePanel({
   const router = useRouter();
   const confirm = useConfirm();
 
+  // "Score them anyway" switches this view to every resume, those set for other countries too. The
+  // flag is in the key, under the ["ats-scores", jobId] prefix every invalidation names.
+  const [includeOtherCountries, setIncludeOtherCountries] = useState(false);
   const scores = useQuery({
-    queryKey: ["ats-scores", jobId],
-    queryFn: () => listAtsScores(jobId),
+    queryKey: ["ats-scores", jobId, { includeOtherCountries }],
+    queryFn: () => listAtsScores(jobId, { includeOtherCountries }),
+    // The cards stay while the switched list loads (conventions: a source switch keeps its rows).
+    placeholderData: keepPreviousData,
   });
+  // Which resumes the job's country left out. Enrichment only: a failure shows no line.
+  const candidates = useQuery({
+    queryKey: ["ats-scores", jobId, "candidates"],
+    queryFn: () => getAtsCandidates(jobId),
+  });
+  const jobCountry = candidates.data?.job_country ?? null;
+  // Once they are scored anyway, the line would be untrue.
+  const skipped = includeOtherCountries ? [] : (candidates.data?.skipped ?? []);
 
   // The engine scores every SELECTABLE base resume, the same set
   // GET /api/base-resumes returns. With none, "Score my resumes" can only
@@ -367,7 +391,9 @@ export function AtsScorePanel({
   }
 
   const run = useMutation({
-    mutationFn: () => runAtsScores(jobId),
+    // `all`: score them anyway, in the event that switches the view (its state is not read back yet).
+    mutationFn: (all: boolean | void) =>
+      runAtsScores(jobId, { includeOtherCountries: all === true || includeOtherCountries }),
     // Returned: the run stays pending until the list has refetched, so the
     // skeleton hands straight to the cards with no empty-state frame.
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ats-scores", jobId] }),
@@ -376,6 +402,15 @@ export function AtsScorePanel({
   // One run per gesture, and one at a time: a double click on Update scores sent a second POST that
   // collided with the first on the base-score key and toasted a failure after the success.
   const runOnce = useSingleFlight(run.mutate);
+
+  // The skipped line goes with the click, so focus moves to Update scores, which stays.
+  const updateRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useFocusOnNextCommit();
+  const scoreOtherCountries = () => {
+    setIncludeOtherCountries(true);
+    focusNext(updateRef);
+    runOnce(true);
+  };
 
   const createSession = useMutation({
     mutationFn: (baseResume: string) => createTailoringSession(jobId, baseResume),
@@ -564,6 +599,7 @@ export function AtsScorePanel({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <AtsScoreLead />
           <Button
+            ref={updateRef}
             variant="outline"
             size="sm"
             className="shrink-0 data-disabled:pointer-events-none data-disabled:opacity-50"
@@ -576,6 +612,28 @@ export function AtsScorePanel({
             {run.isPending ? "Updating scores…" : "Update scores"}
           </Button>
         </div>
+        {jobCountry && skipped.length > 0 && (
+          <p className="text-body-small text-muted-foreground">
+            {skippedCountriesLine(skipped.length, countryName(jobCountry))}{" "}
+            <Button
+              type="button"
+              variant="link"
+              size="xs"
+              className="h-auto p-0 data-disabled:opacity-50"
+              onClick={scoreOtherCountries}
+              // A run in flight would drop this one (one at a time), and the view would switch unscored.
+              focusableWhenDisabled
+              disabled={run.isPending}
+            >
+              Score them anyway
+            </Button>
+          </p>
+        )}
+        {jobCountry && candidates.data?.fallback && (
+          <p className="text-body-small text-muted-foreground">
+            {noResumeForCountry(countryName(jobCountry))}
+          </p>
+        )}
         {lowCoverageEverywhere && (
           <div className="flex gap-2 rounded-corner-md bg-warning-container p-2 text-body-medium text-on-warning-container">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />

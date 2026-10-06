@@ -25,6 +25,21 @@ export const ATS_SCORE_LEAD_ALL_JOBS =
 export const LOW_COVERAGE_ON_EVERY_RESUME =
   "Each of your resumes shows fewer than a quarter of this job's skills, so none of them is a close match yet.";
 
+/**
+ * The Score tab's line when the job's country left base resumes out (`/api/ats-scores/candidates`
+ * `skipped`: each is set for other countries only). `country` is the job's, in words.
+ */
+export function skippedCountriesLine(n: number, country: string): string {
+  return n === 1
+    ? `1 resume for another country wasn't scored for this ${country} job.`
+    : `${n} resumes for other countries weren't scored for this ${country} job.`;
+}
+
+/** The Score tab's note when no resume is set for the job's country, so every one was scored (`fallback`). */
+export function noResumeForCountry(country: string): string {
+  return `None of your resumes is set for ${country}.`;
+}
+
 /** The ATS score's parts, in the order both score cards draw them. */
 export const SUBSCORE_LABELS: {
   key: "keyword" | "placement_recency" | "semantic_fit" | "title" | "format";

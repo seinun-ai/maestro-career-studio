@@ -497,6 +497,26 @@ export interface BaseResumeSummary {
   render_error: string | null;
   /** Hidden from pickers, still fully resolvable. */
   archived_at: string | null;
+  /** The Target dialog's fields (the code calls them anchors). Countries are
+   *  ISO 3166-1 alpha-2 codes; empty means the resume is scored for every job. */
+  countries: string[];
+  company: string | null;
+  focus: string | null;
+}
+
+/** GET /api/countries: one ISO country, in file (code) order. */
+export interface Country {
+  code: string;
+  name: string;
+}
+
+/** GET /api/ats-scores/candidates: which base resumes the job's country left out.
+ *  `job_country` is null when the job's country is unknown (nothing is left out);
+ *  `fallback` is true when no resume is set for it, so every resume was scored. */
+export interface AtsCandidates {
+  job_country: string | null;
+  fallback: boolean;
+  skipped: string[];
 }
 
 /** POST /api/kb/import — one action mints base resumes AND feeds the Career KB.

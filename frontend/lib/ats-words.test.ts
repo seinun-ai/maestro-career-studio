@@ -4,8 +4,10 @@ import { test } from "node:test";
 import {
   datesUnreadable,
   fixHintLabel,
+  noResumeForCountry,
   placementLabel,
   requirementLabel,
+  skippedCountriesLine,
   undatedEvidence,
 } from "./ats-words.ts";
 
@@ -53,4 +55,19 @@ test("a skills-list skill found in undated entries says why they don't count", (
   assert.equal(undatedEvidence("skills_list_only", ["Northwind — Data Scientist"]), true);
   assert.equal(undatedEvidence("skills_list_only", []), false);
   assert.equal(undatedEvidence("dual", ["Northwind — Data Scientist"]), false);
+});
+
+test("the skipped line counts its resumes and names the job's country", () => {
+  assert.equal(
+    skippedCountriesLine(2, "United States"),
+    "2 resumes for other countries weren't scored for this United States job.",
+  );
+  assert.equal(
+    skippedCountriesLine(1, "India"),
+    "1 resume for another country wasn't scored for this India job.",
+  );
+});
+
+test("the fallback note names the country no resume is set for", () => {
+  assert.equal(noResumeForCountry("United States"), "None of your resumes is set for United States.");
 });

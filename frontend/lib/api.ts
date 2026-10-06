@@ -1,6 +1,7 @@
 import type { QueueResult } from "./agent-name";
 import type {
   Application,
+  AtsCandidates,
   AtsCompare,
   AtsScore,
   CareerExportMetadata,
@@ -152,10 +153,17 @@ export const apiUrl = (path: string) => `${getApiBase()}${path}`;
 
 // --- ATS scoring + tailoring sessions -------------------------------------
 
-export function runAtsScores(jobId: UUID) {
+/** `includeOtherCountries`: also score the base resumes set for other countries than the job's. */
+export function runAtsScores(
+  jobId: UUID,
+  opts: { includeOtherCountries?: boolean } = {},
+) {
   return apiFetch<AtsScore[]>("/api/ats-scores", {
     method: "POST",
-    body: JSON.stringify({ job_id: jobId }),
+    body: JSON.stringify({
+      job_id: jobId,
+      include_other_countries: Boolean(opts.includeOtherCountries),
+    }),
   });
 }
 
@@ -181,9 +189,21 @@ export function runAtsScoreTarget(
   });
 }
 
-export function listAtsScores(jobId: UUID) {
+/** `includeOtherCountries`: keep the scores of base resumes set for other countries than the job's. */
+export function listAtsScores(
+  jobId: UUID,
+  opts: { includeOtherCountries?: boolean } = {},
+) {
   return apiFetch<AtsScore[]>(
-    `/api/ats-scores?job_id=${encodeURIComponent(jobId)}`,
+    `/api/ats-scores?job_id=${encodeURIComponent(jobId)}` +
+      `&include_other_countries=${Boolean(opts.includeOtherCountries)}`,
+  );
+}
+
+/** Which base resumes the job's country leaves out of scoring, and whether none is set for it. */
+export function getAtsCandidates(jobId: UUID) {
+  return apiFetch<AtsCandidates>(
+    `/api/ats-scores/candidates?job_id=${encodeURIComponent(jobId)}`,
   );
 }
 

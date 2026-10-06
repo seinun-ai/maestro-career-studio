@@ -14,10 +14,11 @@ import { formatAbsoluteDateTime, formatLabeledAgo } from "@/lib/format-date";
 import { roleLabel } from "@/components/role-category-picker";
 import { baseResumeLabel, type BaseResumeSummary } from "@/lib/types";
 
+import { AnchorPills } from "./anchor-pills";
 import { BaseResumeThumbnail } from "./base-resume-thumbnail";
 
 /**
- * Thumbnail, name, last-edited and the actions menu. Nothing else.
+ * Thumbnail, name, last-edited, what its Target sets and the actions menu.
  *
  * The role badge is CONDITIONAL on purpose: role_category defaults to
  * "unknown", which the model keeps as "a visible state the UI offers to fix".
@@ -66,6 +67,7 @@ function BaseResumeCardBody({
                   Role not set
                 </Badge>
               )}
+              <AnchorPills resume={resume} />
             </div>
             {actions && <GalleryCardActions>{actions}</GalleryCardActions>}
           </div>

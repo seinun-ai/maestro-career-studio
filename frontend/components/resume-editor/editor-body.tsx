@@ -52,8 +52,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
-  RoleCategoryDialog,
-  roleMenuLabel,
+  TargetDialog,
+  targetMenuLabel,
   useRoleCategories,
 } from "@/components/role-category-picker";
 import { ChipListInput } from "@/components/ui/chip-input";
@@ -103,7 +103,7 @@ export function EditorBody({
   const [importOpen, setImportOpen] = useState(false);
   const [instructOpen, setInstructOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [roleOpen, setRoleOpen] = useState(false);
+  const [targetOpen, setTargetOpen] = useState(false);
   // The ⋯ trigger: focus returns here from the menu, from every overlay it
   // opens, and from the raw pane's exits (the pressed button unmounts).
   const overflowRef = useRef<HTMLButtonElement>(null);
@@ -414,11 +414,11 @@ export function EditorBody({
                          it is read as often as the two shared items are
                          used. */
                       leading={
-                        <DropdownMenuItem onClick={() => setRoleOpen(true)}>
+                        <DropdownMenuItem onClick={() => setTargetOpen(true)}>
                           <Tag />
-                          {roleMenuLabel(
-                            live?.role_category ?? initial.role_category,
-                            live?.role_label ?? initial.role_label,
+                          {targetMenuLabel(
+                            (live ?? initial).role_category,
+                            (live ?? initial).role_label,
                             roleCategories,
                           )}
                         </DropdownMenuItem>
@@ -605,12 +605,15 @@ export function EditorBody({
           qc.invalidateQueries({ queryKey: ["base-resumes", slug] })
         }
       />
-      <RoleCategoryDialog
+      <TargetDialog
         slug={slug}
-        roleCategory={live?.role_category ?? initial.role_category}
-        roleLabel={live?.role_label ?? initial.role_label}
-        open={roleOpen}
-        onOpenChange={setRoleOpen}
+        roleCategory={(live ?? initial).role_category}
+        roleLabel={(live ?? initial).role_label}
+        countries={(live ?? initial).countries}
+        company={(live ?? initial).company}
+        focus={(live ?? initial).focus}
+        open={targetOpen}
+        onOpenChange={setTargetOpen}
         finalFocus={overflowRef}
       />
       <InstructSheet
