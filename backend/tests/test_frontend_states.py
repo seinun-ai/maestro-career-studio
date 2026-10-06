@@ -56,6 +56,14 @@ def test_approve_does_not_say_saving():
     assert "Approving…" in row and '"Saving…"' not in row
 
 
+def test_approve_spins_only_when_approving():
+    row = _read("components/career/inbox-panel.tsx").split("function DraftRow(", 1)[1]
+    assert 'update.isPending && update.variables?.payload.state === "approved"' in row
+    button = row.split('data-draft-action="approve"', 1)[1].split("</Button>", 1)[0]
+    assert "pending={approving}" in button and '{approving ? "Approving…" : "Approve"}' in button
+    assert "update.isPending" not in button
+
+
 def test_only_the_bulk_queue_spins():
     bar = _read("components/proposals/triage-actions.tsx").split("export function BulkBar(", 1)[1]
     queue = bar.split("onClick={onQueue}", 1)[1].split("</Button>", 1)[0]
@@ -119,7 +127,7 @@ def test_inbox_rows_leave_with_an_exit_transition():
     assert "data-leaving" in section and "collapse-exit" in section and "grid-rows-[0fr]" not in section
     assert "actingIds" in section and 'data-pending={acting ? "true" : undefined}' in section
     hook = _read("components/proposals/triage-actions.tsx")
-    assert "actingIds" in hook and "ROW_EXIT_MS" in hook
+    assert "actingIds" in hook and "settleMs: ROW_EXIT_MS" in section
 
 
 def test_the_bulk_bar_slides_up_on_mount():

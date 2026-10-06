@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { CONFIRM_MS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { APPLICATION_STATUSES, type ApplicationStatus } from "@/lib/types";
 
@@ -199,7 +200,7 @@ export function StatusChip({
     if (pending || settled.current === current) return;
     settled.current = current;
     setConfirm(true);
-    const t = window.setTimeout(() => setConfirm(false), 400);
+    const t = window.setTimeout(() => setConfirm(false), CONFIRM_MS);
     return () => window.clearTimeout(t);
   }, [current, pending]);
   // A natively disabled trigger cannot take focus back when the menu closes, so

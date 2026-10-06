@@ -51,16 +51,17 @@ export function FieldMessage({
   warning?: string | null;
 }) {
   const text = error || warning;
-  if (!text) return null;
   const Icon = error ? ErrorIcon : WarningIcon;
+  // Always mounted, so a message that appears while typing is announced; the id stays put.
   return (
-    <p
-      id={id}
-      className={`flex items-start gap-1.5 text-body-small ${error ? "text-destructive" : "text-warning"}`}
-    >
-      <Icon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-      <span>{text}</span>
-    </p>
+    <div id={id} aria-live="polite">
+      {text ? (
+        <p className={`flex items-start gap-1.5 text-body-small ${error ? "text-destructive" : "text-warning"}`}>
+          <Icon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+          <span>{text}</span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 

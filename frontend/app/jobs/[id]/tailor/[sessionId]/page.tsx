@@ -2,7 +2,7 @@
 
 import { use, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
-import { SAVED_HOLD_MS } from "@/components/settings/autosave-status";
+import { useSavedHold } from "@/hooks/use-saved-hold";
 import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
@@ -72,18 +72,8 @@ function SaveIndicator({
   // where the compiler forbids ref reads. It keeps Try again mounted (and
   // focused) while the retry runs, since `state` flips to "saving" at once.
   const [retrying, setRetrying] = useState(false);
-  // "Saved" holds for a moment, then the line clears (compared during render: no ref reads).
-  const [prevState, setPrevState] = useState(state);
-  const [held, setHeld] = useState(false);
-  if (state !== prevState) {
-    setPrevState(state);
-    setHeld(state === "saved");
-  }
-  useEffect(() => {
-    if (!held) return;
-    const timer = window.setTimeout(() => setHeld(false), SAVED_HOLD_MS);
-    return () => window.clearTimeout(timer);
-  }, [held]);
+  // "Saved" holds for a moment, then the line clears.
+  const held = useSavedHold(state === "saving", state === "error");
   // Try again unmounts once the retry lands; focus it dropped goes to the status.
   // Only dropped focus: the user may already be typing in a field again. A
   // layout effect, so no frame is painted with focus on <body>.
@@ -111,7 +101,7 @@ function SaveIndicator({
           : state === "saved" && held
             ? (
               <>
-                <CircleCheck className="size-3 animate-confirm" aria-hidden="true" />
+                <CircleCheck className="size-3 animate-confirm rounded-full" aria-hidden="true" />
                 Saved
               </>
             )

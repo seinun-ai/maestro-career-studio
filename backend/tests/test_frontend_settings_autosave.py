@@ -7,6 +7,7 @@ value, and focus that never jumps out of a field mid-typing.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -159,7 +160,7 @@ def test_persona_draft_is_a_header_action_with_its_reason_read():
 def test_autosave_says_saved_for_a_moment():
     src = _read("components/settings/autosave-status.tsx")
     assert "CircleCheck" in src and "Saved" in src
-    assert "1200" in src
+    assert "useSavedHold" in src and "1200" not in src  # the hold lives in lib/motion.ts
     body = _STATUS[_STATUS.index("return (") :]
     assert "text-success" in body
     # The idle line stays the !failed branch; Saved is a transient branch before it.
@@ -169,8 +170,9 @@ def test_autosave_says_saved_for_a_moment():
 def test_gap_page_saved_holds_then_clears():
     page = _read("app/jobs/[id]/tailor/[sessionId]/page.tsx")
     indicator = page[page.index("function SaveIndicator(") : page.index("\n}\n", page.index("function SaveIndicator("))]
-    assert "CircleCheck" in indicator and "SAVED_HOLD_MS" in indicator and "text-success" in indicator
-    assert "1200" in _read("components/settings/autosave-status.tsx")
+    assert "CircleCheck" in indicator and "useSavedHold(" in indicator and "text-success" in indicator
+    assert "setTimeout" not in indicator  # one shared hook, no second copy of the hold
+    assert "animate-confirm rounded-full" in indicator
 
 
 def test_market_select_dims_while_saving():
@@ -182,6 +184,18 @@ def test_form_filling_saves_are_visible():
     src = _read("components/settings/form-filling-section.tsx")
     assert "<AutosaveStatus" in src
     assert "pending={save.isPending}" in src and "failed={save.isError}" in src
+    # A typed, unsaved key is not "saved automatically".
+    assert "idle={key === null}" in src
+
+
+def test_idle_line_is_words_only_and_outside_the_live_region():
+    status = _read("components/settings/autosave-status.tsx")
+    assert "idle = true" in status and "idle?: boolean" in status
+    assert not re.search(r"\bCheck\b", status)  # D2: Check = selected only
+    live = status[status.index("aria-live=\"polite\""): status.index("</span>", status.index("aria-live=\"polite\""))]
+    assert "Saves automatically" not in live
+    assert "&& idle ?" in status
+    assert "animate-confirm rounded-full" in status
 
 
 def test_a_rendering_pdf_preview_dims():

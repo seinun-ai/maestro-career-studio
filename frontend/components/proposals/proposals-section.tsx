@@ -25,9 +25,9 @@ import { useRoleLabel } from "@/components/role-category-picker";
 import {
   BulkBar,
   DeclineDialog,
-  ROW_EXIT_MS,
   useProposalActions,
 } from "@/components/proposals/triage-actions";
+import { ROW_EXIT_MS } from "@/lib/motion";
 import { ReadinessMarks } from "@/components/proposals/readiness-marks";
 import { IconButton } from "@/components/icon-button";
 import { humanizeEnum } from "@/components/job-extracted-fields";

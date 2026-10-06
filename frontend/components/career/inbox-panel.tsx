@@ -363,6 +363,8 @@ function DraftRow({
   });
   // One write per gesture: a double click on Approve sent two PATCHes.
   const updateOnce = useSingleFlight(update.mutate);
+  // Save and Move to item share this mutation: only an approval says "Approving…".
+  const approving = update.isPending && update.variables?.payload.state === "approved";
 
   const discard = useMutation({
     mutationKey: KB_POINT_MUTATION_KEY,
@@ -495,13 +497,13 @@ function DraftRow({
           className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
           size="sm"
           onClick={approve}
-          pending={update.isPending}
+          pending={approving}
           disabled={!text.trim() || pending}
           // Disables itself while any draft saves: a native `disabled` drops focus.
           focusableWhenDisabled
         >
           <ApproveIcon aria-hidden="true" />
-          {update.isPending ? "Approving…" : "Approve"}
+          {approving ? "Approving…" : "Approve"}
         </Button>
         <div className="min-w-44 flex-1 sm:max-w-64">
           <Label htmlFor={`draft-entity-${point.id}`} className="sr-only">

@@ -95,7 +95,7 @@ export function FormFillingSection() {
       {(data) => (
         <div className="grid gap-6">
           <SettingCardAction>
-            <AutosaveStatus pending={save.isPending} failed={save.isError} />
+            <AutosaveStatus pending={save.isPending} failed={save.isError} idle={key === null} />
           </SettingCardAction>
           <div className="grid items-end gap-4 @lg/setting:grid-cols-2">
             <KeyField

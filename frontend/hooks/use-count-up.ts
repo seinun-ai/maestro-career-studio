@@ -7,10 +7,10 @@ import { valueAt } from "@/lib/count-up";
 /** The displayed value of `target`, counting to each new value over `ms` (no motion when reduced). */
 export function useCountUp(target: number, ms = 400): number {
   const [shown, setShown] = useState(target);
+  // What is on screen now, so a target that changes mid-run counts on from here, not from the last target.
   const from = useRef(target);
   useEffect(() => {
     const start = from.current;
-    from.current = target;
     if (start === target) return;
     // One path: reduced motion is a zero-length run, so state only ever
     // changes inside the frame callback.
@@ -20,7 +20,9 @@ export function useCountUp(target: number, ms = 400): number {
     const t0 = performance.now();
     const step = (now: number) => {
       const t = dur === 0 ? 1 : (now - t0) / dur;
-      setShown(valueAt(start, target, t));
+      const v = valueAt(start, target, t);
+      from.current = v;
+      setShown(v);
       if (t < 1) frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);

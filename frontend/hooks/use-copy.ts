@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { couldnt } from "@/lib/error-text";
+import { CONFIRM_HOLD_MS } from "@/lib/motion";
 
 /** Copy text, then hold `copied` for a moment so the control can say so. A refused copy says why:
  *  with the default toast, or with `onError` instead of it (never both, so one failure is one message). */
 export function useCopy({
-  holdMs = 1200,
+  holdMs = CONFIRM_HOLD_MS,
   onError,
 }: { holdMs?: number; onError?: (err: unknown) => void } = {}) {
   const [copied, setCopied] = useState(false);

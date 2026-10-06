@@ -32,3 +32,11 @@ def test_answer_questions_is_disabled_while_the_box_is_empty():
     qa = _src("components/qa-tab.tsx")
     assert "disabled={noQuestions}" in qa and "focusableWhenDisabled" in qa and "Type at least one question." in qa
     assert "throw new Error(\"Type at least one question.\")" not in qa
+
+
+def test_field_message_is_a_live_region_with_a_stable_id():
+    field = _src("components/resume-editor/field.tsx")
+    body = field[field.index("export function FieldMessage("): field.index("Labelled text input")]
+    assert '<div id={id} aria-live="polite">' in body
+    assert "if (!text) return null" not in body  # the wrapper stays mounted
+    assert "{text ? (" in body

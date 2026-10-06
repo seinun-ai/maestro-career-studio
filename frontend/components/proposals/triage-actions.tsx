@@ -52,9 +52,6 @@ export function reasonLabel(reason: string): string {
 
 type BulkStatus = "accepted" | "rejected";
 
-/** How long a leaving row takes to collapse: globals.css `.collapse-exit` runs `--duration-short4`. */
-export const ROW_EXIT_MS = 200;
-
 /**
  * What a caller hears back, instead of per-call callbacks (a guarded start takes none). `onDone`: the
  * change was made, to these ids. `onUndone`: nothing changed (the request failed, or a delete was not

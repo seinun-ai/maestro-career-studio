@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, CircleCheck, Loader2, TriangleAlert } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
+import { CircleCheck, Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { focusIfDropped } from "@/hooks/use-focus-return";
+import { useSavedHold } from "@/hooks/use-saved-hold";
 
 /**
  * The quiet half of the settings save model.
@@ -26,37 +27,21 @@ import { focusIfDropped } from "@/hooks/use-focus-return";
  *
  * Four states: Saving…, Saved (a success says so for a moment, then settles),
  * Not saved (a failed write, with Try again where the card still holds a value
- * the server lacks), and Saves automatically.
+ * the server lacks), and Saves automatically (words only, outside the live
+ * region; `idle={false}` drops it while the card holds an unsaved value).
  */
-
-/** How long "Saved" holds before the idle line returns; one rhythm with the Copied chip. */
-export const SAVED_HOLD_MS = 1200;
-
-/** True for SAVED_HOLD_MS after `pending` falls with no failure. State, not a ref: the
- *  previous `pending` is compared during render, which the compiler forbids for refs. */
-function useSavedHold(pending: boolean, failed: boolean): boolean {
-  const [prevPending, setPrevPending] = useState(pending);
-  const [held, setHeld] = useState(false);
-  if (pending !== prevPending) {
-    setPrevPending(pending);
-    setHeld(prevPending && !pending && !failed);
-  }
-  useEffect(() => {
-    if (!held) return;
-    const timer = window.setTimeout(() => setHeld(false), SAVED_HOLD_MS);
-    return () => window.clearTimeout(timer);
-  }, [held]);
-  return held;
-}
 
 export function AutosaveStatus({
   pending,
   failed = false,
+  idle = true,
   onRetry,
   className,
 }: {
   pending: boolean;
   failed?: boolean;
+  /** False while the card holds an unsaved value (a typed key): "Saves automatically" would be untrue. */
+  idle?: boolean;
   onRetry?: () => void;
   className?: string;
 }) {
@@ -90,21 +75,20 @@ export function AutosaveStatus({
           </>
         ) : !failed && justSaved ? (
           <>
-            <CircleCheck className="size-3 animate-confirm" aria-hidden="true" />
+            <CircleCheck className="size-3 animate-confirm rounded-full" aria-hidden="true" />
             Saved
           </>
-        ) : !failed ? (
-          <>
-            <Check className="size-3" aria-hidden="true" />
-            Saves automatically
-          </>
-        ) : (
+        ) : !failed ? null : (
           <>
             <TriangleAlert className="size-3" aria-hidden="true" />
             Not saved
           </>
         )}
       </span>
+      {/* Outside the live region: each autosave announces Saving… then Saved, and stops. */}
+      {!pending && !failed && !justSaved && idle ? (
+        <span className="text-muted-foreground">Saves automatically</span>
+      ) : null}
       {failed && onRetry ? (
         <Button
           type="button"
