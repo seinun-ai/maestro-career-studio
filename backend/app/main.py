@@ -35,7 +35,7 @@ from app.routers import (
     version,
 )
 from app.services import automations as automation_prompts
-from app.services import seeding, tracing
+from app.services import memory, seeding, tracing
 from app.services.llm import LLMProviderError
 
 logger = logging.getLogger(__name__)
@@ -215,6 +215,11 @@ app.include_router(agent_runs.router)
 @app.get("/health")
 def healthcheck():
     return {"status": "ok"}
+
+
+@app.get("/health/memory")
+def health_memory():
+    return memory.readout()
 
 
 @app.get("/api/health", include_in_schema=False)
