@@ -30,7 +30,7 @@ def read_key() -> str | None:
     path = key_path()
     fd = None
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             return None
         with os.fdopen(fd, "r", encoding="utf-8") as handle:

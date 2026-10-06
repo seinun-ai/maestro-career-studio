@@ -3,6 +3,12 @@ import secrets
 import pytest
 
 from app.config import settings
+from app.services.sync import status
+
+
+@pytest.fixture(autouse=True)
+def reset_key_read_warning(monkeypatch):
+    monkeypatch.setattr(status, "_KEY_READ_WARNING_LOGGED", False)
 
 
 @pytest.fixture

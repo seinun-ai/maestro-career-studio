@@ -1,8 +1,10 @@
+import asyncio
+import os
 import stat
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Thread
 
 import pytest
 from sqlalchemy import event, select
@@ -115,6 +117,27 @@ def test_directory_is_not_a_key(tmp_path, monkeypatch):
     assert status.enabled() is False
 
 
+def test_fifo_key_returns_without_waiting_for_a_writer(tmp_path, monkeypatch):
+    from app.services.sync import status
+
+    path = tmp_path / "sync-key"
+    os.mkfifo(path)
+    monkeypatch.setattr(settings, "sync_key_file", path)
+    results = []
+    reader = Thread(target=lambda: results.append(status.read_key()), daemon=True)
+    reader.start()
+    reader.join(2)
+    finished = not reader.is_alive()
+    if not finished:
+        # Release the blocking reader on a red run so it cannot outlive the test.
+        writer = os.open(path, os.O_WRONLY | os.O_NONBLOCK)
+        os.close(writer)
+        reader.join(2)
+
+    assert finished
+    assert results == [None]
+
+
 def test_machine_id_is_stable_across_calls_and_sessions(db_session, _test_engine):
     from app.services.sync import status
 
@@ -159,34 +182,49 @@ def test_machine_id_concurrent_first_use_returns_one_id(db_session, _test_engine
     assert rows[0].value == ids[0]
 
 
-def test_machine_id_race_preserves_callers_pending_setting(db_session, _test_engine, monkeypatch):
+def _machine_id_race_listener(engine, winner_id, attempted_creation):
+    from app.services.sync import status
+
+    winner_committed = False
+
+    def commit_winner_after_first_read(*args):
+        nonlocal winner_committed
+        statement, parameters = args[2:4]
+        if "ON CONFLICT(key) DO NOTHING" in statement:
+            attempted_creation.append(True)
+        if winner_committed:
+            return
+        if not statement.startswith("SELECT settings.value") or parameters != (status.MACHINE_ID_KEY,):
+            return
+        with Session(engine, autoflush=False) as winner:
+            winner.add(Setting(key=status.MACHINE_ID_KEY, value=winner_id))
+            winner.commit()
+        winner_committed = True
+
+    return commit_winner_after_first_read
+
+
+def test_machine_id_race_preserves_callers_pending_setting(db_session, _test_engine):
     from app.services.sync import status
 
     winner_id = uuid.uuid4().hex
     db_session.add(Setting(key="caller.pending", value="must-survive"))
-    stale_read = db_session.get(Setting, "sync.machine_id")
-    assert stale_read is None
-    with Session(_test_engine, autoflush=False) as winner:
-        winner.add(Setting(key="sync.machine_id", value=winner_id))
-        winner.commit()
+    attempted_creation = []
+    listener = _machine_id_race_listener(_test_engine, winner_id, attempted_creation)
+    connection = db_session.connection()
+    event.listen(connection, "after_cursor_execute", listener)
+    try:
+        machine_id = status.machine_id(db_session)
+        db_session.commit()
+    finally:
+        event.remove(connection, "after_cursor_execute", listener)
 
-    original_get = db_session.get
-    first_lookup = True
-
-    def return_stale_first_read(entity, identity, **kwargs):
-        nonlocal first_lookup
-        if entity is Setting and identity == "sync.machine_id" and first_lookup:
-            first_lookup = False
-            return stale_read
-        return original_get(entity, identity, **kwargs)
-
-    monkeypatch.setattr(db_session, "get", return_stale_first_read)
-    machine_id = status.machine_id(db_session)
-    db_session.commit()
-
-    pending_survived = db_session.get(Setting, "caller.pending") is not None
-    assert pending_survived
+    assert attempted_creation == [True]
     assert machine_id == winner_id
+    with Session(_test_engine) as observer:
+        pending = observer.get(Setting, "caller.pending")
+        assert pending is not None
+        assert pending.value == "must-survive"
 
 
 def test_machine_id_works_inside_before_flush_on_first_use(db_session):
@@ -225,6 +263,41 @@ def test_ensure_machine_id_commits_when_sync_is_on(sync_on, db_session):
     assert db_session.get(Setting, "sync.machine_id").value == machine_id
 
 
+@pytest.mark.parametrize("sync_configured", [False, True])
+def test_lifespan_persists_machine_id_only_when_sync_is_on(
+    sync_on, db_session, monkeypatch, sync_configured
+):
+    from app import main
+    from app.services.sync import status
+
+    if not sync_configured:
+        sync_on.unlink()
+    startup_id_present = []
+
+    def record_id_presence():
+        startup_id_present.append(db_session.get(Setting, status.MACHINE_ID_KEY) is not None)
+
+    monkeypatch.setattr(main.http_client, "repair_proxy_env", lambda: None)
+    monkeypatch.setattr(main.seeding, "run_startup", record_id_presence)
+    monkeypatch.setattr(main, "_log_llm_config", record_id_presence)
+    monkeypatch.setattr(main.automation_prompts, "load_cards", lambda: None)
+    monkeypatch.setattr(main.tracing, "shutdown", lambda: None)
+
+    async def run_lifespan():
+        async with main.lifespan(main.app):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    assert startup_id_present == [False, sync_configured]
+    row = db_session.get(Setting, status.MACHINE_ID_KEY)
+    assert (row is not None) == sync_configured
+    if sync_configured:
+        first_id = status.machine_id(db_session)
+        db_session.rollback()
+        assert status.machine_id(db_session) == first_id
+
+
 @pytest.mark.parametrize("unreadable", ["key", "parent"])
 def test_unreadable_key_fails_closed_and_logs_one_safe_warning(
     sync_on, monkeypatch, caplog, unreadable
@@ -233,7 +306,6 @@ def test_unreadable_key_fails_closed_and_logs_one_safe_warning(
 
     from app.services.sync import status
 
-    monkeypatch.setattr(status, "_KEY_READ_WARNING_LOGGED", False, raising=False)
     sync_on.write_text("test-private-key-sentinel", encoding="utf-8")
     denied_path = {"key": sync_on, "parent": sync_on.parent}[unreadable]
     previous_mode = stat.S_IMODE(denied_path.stat().st_mode)
@@ -269,13 +341,13 @@ def test_unreadable_key_fails_closed_and_logs_one_safe_warning(
     assert safe_log
 
 
-def test_invalid_utf8_key_fails_closed_and_warns_once(sync_on, monkeypatch, caplog):
+@pytest.mark.parametrize("invalid_bytes", [b"\xff\xfe", b"\xff"])
+def test_invalid_utf8_key_fails_closed_and_warns_once(sync_on, caplog, invalid_bytes):
     import logging
 
     from app.services.sync import status
 
-    monkeypatch.setattr(status, "_KEY_READ_WARNING_LOGGED", False, raising=False)
-    sync_on.write_bytes(b"\xff\xfe")
+    sync_on.write_bytes(invalid_bytes)
 
     with caplog.at_level(logging.WARNING, logger=status.__name__):
         first_read_off = status.enabled() is False

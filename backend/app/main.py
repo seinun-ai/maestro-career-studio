@@ -113,8 +113,11 @@ def _log_llm_config() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.services.sync import status
+
     http_client.repair_proxy_env()  # before the first LLM call or model download
     seeding.run_startup()
+    status.ensure_machine_id()
     _log_llm_config()
     automation_prompts.load_cards()  # a malformed skill file fails startup, not a page
     yield
