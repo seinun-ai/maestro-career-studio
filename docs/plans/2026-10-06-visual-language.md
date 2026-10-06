@@ -2720,3 +2720,6 @@ implementer of task N reads the "Task N" bullets as part of its brief.
 - **Task 30 (from the Wave 1 review).** Iconography docs state "done = `CircleCheck` + `text-success`"; the
   remaining `CircleCheck text-primary` done sites and non-selected `Check` uses are recorded as a ratchet note, not
   swept.
+- **Task 7 / Task 15 (from the Task 7 review).** `animate-confirm` is a registered Tailwind `@utility`, not a plain
+  class: Tailwind v4 applies variants (`data-confirm:`, `data-copied:` …) only to registered utilities, and the plain
+  class compiled to nothing under a variant. Any later utility meant to take a variant is registered the same way.
