@@ -600,7 +600,9 @@ FastAPI's default 422 echoes the request `input`, which here would be bundle con
    - "home" with `returning` → become a replica;
    - "gone" → delete the replica.
 5. **Profile:** `GET profile?since=profile_rev`, then `apply_profile` if it changed.
-6. **Push own jobs:** owned here with `sync_rev > acked_own`, in pages, then `POST jobs`. On
+6. **Push own jobs** (Task 10 review: page pushes by a byte budget well under home's 100 MB body cap,
+   or one 413 page blocks every round; per-job refusals come back in `refused`, so `acked_own`
+   advances only to just below the first refused job's rev, and refused jobs retry next round): owned here with `sync_rev > acked_own`, in pages, then `POST jobs`. On
    `kept: "laptop"` duplicates, delete the local job and its files. `acked_own` becomes the highest
    local `sync_rev` among the bundles pushed, read before the POST, and is saved only after a 2xx.
 7. **Pull home jobs** (a `DuplicateJob` on pull — a home job whose hash matches a remote-owned
@@ -608,7 +610,8 @@ FastAPI's default 422 echoes the request `input`, which here would be bundle con
    progressed, then keep both with the replica's hash rewritten; a job too large to export or apply
    (over 25 MB) is skipped with a counted reason and never stops the round; Task 8 review): `GET jobs?since=since_home` in pages, then `apply_job` as replicas, then
    advance `since_home`.
-8. **Requests both ways** (Task 6 review: a local pending request for a job that became owned here,
+8. **Requests both ways** (home re-serves `sent` requests until answered: record each home request
+   id with its result locally and answer a repeat from that record, never re-applying it) (Task 6 review: a local pending request for a job that became owned here,
    e.g. after a take-over, is applied locally instead of sent; a request on a job the laptop has
    offered is refused by its guard in this step and the handover then completes in step 9, so the
    refusal reason says the job moved to the bot and the user can repeat the change there): `GET requests` → apply locally → `POST request-results`.
