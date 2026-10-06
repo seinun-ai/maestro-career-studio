@@ -309,3 +309,39 @@ Reviewed and left by the final review, by category: loose or brittle string pins
 chip has no line-through; mixed capitalisation in the rail's state words; SYSTEM.md sits at 999 of 1000 lines, so the
 next addition there needs a trim first. The full list with reasons lives in the final review's triage; none blocks the
 owner's pass.
+
+## Local pass (owner's Mac, after the cloud run)
+
+Run on `708df6f3`–`b5f8b955`, against a fresh stack on a snapshot of the live database (taken through the
+container's `app.tools.backup_db`, never by opening the live file).
+
+| Gate | Result |
+|---|---|
+| Backend suite (`-n auto --dist loadfile`, with TeX) | 9261 passed, 1 skipped, 0 failed |
+| `npx tsc --noEmit` / `npm run lint` / `npm run build` | clean / 0 errors, the same 2 warnings / OK |
+| Slop ratchet | `frontend` OK after one fix; `backend` OK after a hotspot re-baseline; `extension` OK |
+
+- **Fixed (frontend duplication):** the Assistant's two suggestion cards repeated their "Applied/Added |
+  Discarded" line (+1 clone, +11 lines). It is now one `CardResolution` component (`708df6f3`).
+- **Re-baselined (backend `complexity_hotspots` 586 → 608):** 21 of the 22 new hotspots are pin tests. The one
+  app function, `services/ats_score.tracker_scores`, sits at the threshold (cc 10, 30 lines) and was left.
+  Duplication fell from 0.65 to 0.62.
+- **Fixed (browser pass):** at 1280 the job header's Best pill pushed a long job title onto two lines. The pill
+  names its resume only from `2xl`; its hover title and the meter's accessible name keep the name
+  (`b5f8b955`).
+
+**Browser pass at 1280 and 1024, light and dark.** Screens checked:
+- Jobs, a job's four tabs, a knock-out job, the gap page, the health report, the Agent inbox (empty top and
+  History rows), a Career history item, Analytics, Automations, Settings, the Assistant.
+- Interactive: a status change is optimistic, blocked while pending, keeps focus and restores; Copy shows the
+  CircleCheck + "Copied" chip and announces "Copied".
+- Not reachable on the snapshot: rendered PDF previews and resume thumbnails. The DB stores the container's
+  `/app/...` paths, so they 404 on the Mac; the placeholder fallback showed instead.
+- Nothing that calls a model was pressed. The snapshot carries the stored API key, so those buttons were left
+  alone.
+
+**Design-system artifact:** republished as version 7 with the brand-book changes, the eight primitives' pages
+and the Button, StatTile, StatusChip and TextField updates. The primitives still have no `preview.html`.
+
+**Still the owner's:** loading the Companion unpacked in Chrome (its checklist is above), and the owner
+questions above.
