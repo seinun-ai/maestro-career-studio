@@ -1,7 +1,9 @@
 from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,12 @@ from app.db import get_db
 from app.schemas.auto_apply import AutoApplySettings
 from app.schemas.eeo_consent import EeoConsent
 from app.schemas.job_preferences import JobPreferences
+from app.schemas.job_site_login import (
+    PASSWORD_MAX,
+    PASSWORD_MIN,
+    JobSiteLoginIn,
+    JobSiteLoginStatus,
+)
 from app.schemas.market_settings import MarketSetting
 from app.schemas.mcp_workflow import McpWorkflowSettings
 from app.schemas.settings import (
@@ -26,6 +34,7 @@ from app.services import (
     eeo_consent,
     jev,
     job_preferences,
+    job_site_login,
     llm,
     llm_capabilities,
     market_settings,
@@ -131,6 +140,24 @@ class PersonaDraft(BaseModel):
 
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+class _JobSiteLoginRoute(APIRoute):
+    """Keep rejected credentials out of every login validation response."""
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def handler(request: Request):
+            try:
+                return await original(request)
+            except RequestValidationError:
+                raise HTTPException(422, detail="The job-site login is invalid.") from None
+
+        return handler
+
+
+job_site_login_router = APIRouter(route_class=_JobSiteLoginRoute)
 
 
 def _prompt_or_404(action):
@@ -250,6 +277,26 @@ def put_auto_apply(
     payload: SettingValueIn[AutoApplySettings], db: Annotated[Session, Depends(get_db)]
 ):
     return {"key": "auto_apply", "value": auto_apply_settings.set_settings(payload.value, db)}
+
+
+@job_site_login_router.get("/job-site-login", response_model=JobSiteLoginStatus)
+def get_job_site_login():
+    return job_site_login.status()
+
+
+@job_site_login_router.put("/job-site-login", response_model=JobSiteLoginStatus)
+def put_job_site_login(payload: JobSiteLoginIn):
+    if payload.password is not None and not PASSWORD_MIN <= len(payload.password) <= PASSWORD_MAX:
+        raise HTTPException(422, detail=f"The password needs {PASSWORD_MIN} to {PASSWORD_MAX} characters.")
+    job_site_login.write(payload.email, payload.password)
+    return job_site_login.status()
+
+
+@job_site_login_router.delete("/job-site-login", status_code=204)
+def delete_job_site_login():
+    job_site_login.clear()
+
+router.include_router(job_site_login_router)
 
 
 @router.get("/eeo-consent", response_model=SettingEnvelope[EeoConsent])
