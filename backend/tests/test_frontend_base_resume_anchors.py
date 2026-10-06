@@ -201,6 +201,12 @@ def test_the_score_list_key_carries_the_country_flag_and_prefix_invalidations_st
         assert 'qc.invalidateQueries({ queryKey: ["ats-scores", jobId] });' in _read(rel), rel
 
 
+def test_a_countries_save_refreshes_the_inbox_mark():
+    save = _between(_DIALOG_FILE, "function useAnchorSave", "onError")
+    assert 'qc.invalidateQueries({ queryKey: ["proposals"] });' in save
+    assert 'qc.invalidateQueries({ queryKey: ["ats-scores"] });' in save
+
+
 def test_the_api_forwards_the_country_flag():
     assert "include_other_countries: Boolean(opts.includeOtherCountries)," in _API
     assert "&include_other_countries=${Boolean(opts.includeOtherCountries)}" in _API

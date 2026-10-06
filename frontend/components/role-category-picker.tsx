@@ -214,8 +214,12 @@ function useAnchorSave<K extends keyof AnchorValues>(slug: string, field: K) {
     onSuccess: (updated) => {
       qc.setQueryData(["base-resumes", slug], updated);
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
-      // Countries decide which resumes a job is scored against.
-      if (field === "countries") qc.invalidateQueries({ queryKey: ["ats-scores"] });
+      // Countries decide which resumes a job is scored against, and which inbox
+      // rows carry the "Resume for another country" mark.
+      if (field === "countries") {
+        qc.invalidateQueries({ queryKey: ["ats-scores"] });
+        qc.invalidateQueries({ queryKey: ["proposals"] });
+      }
       const set = field === "countries" ? updated.countries.length > 0 : Boolean(updated[field]);
       const words = FIELD_WORDS[field];
       toast.success(`${words[0].toUpperCase()}${words.slice(1)} ${set ? "saved" : "cleared"}`);
