@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { isSyncQueued } from "@/lib/job-ownership";
 
 import { AtsComparePanel } from "@/components/ats-compare-panel";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -80,9 +81,11 @@ export function useApplicationMutations({
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (isSyncQueued(result)) toast.success("Sent at the next sync");
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["applications"] });
+      qc.invalidateQueries({ queryKey: ["jobs", "ownership"] });
     },
     onError: (err: Error) => toast.error(couldnt("update the application", err)),
   });
@@ -114,10 +117,14 @@ export function ApplicationDetailsMenu({
   app,
   jobId,
   jobSourceUrl,
+  readOnly = false,
+  canRequest = true,
 }: {
   app: Application;
   jobId: string;
   jobSourceUrl?: string | null;
+  readOnly?: boolean;
+  canRequest?: boolean;
 }) {
   const confirm = useConfirm();
   const [open, setOpen] = useState(false);
@@ -138,7 +145,10 @@ export function ApplicationDetailsMenu({
     enabled: open,
   });
 
-  const onPatch = (body: Partial<Application>) => patch.mutate(body);
+  const onPatch = (body: Partial<Application>) => {
+    if (readOnly && (!canRequest || Object.keys(body).some((key) => key !== "notes"))) return;
+    patch.mutate(body);
+  };
   const onDelete = async () => {
     const ok = await confirm({
       title: "Delete this application?",
@@ -187,6 +197,7 @@ export function ApplicationDetailsMenu({
               type="date"
               className="h-8 text-body-medium"
               value={appliedAt}
+              disabled={readOnly}
               onChange={(e) => setAppliedAt(e.target.value)}
               onBlur={() => onPatch({ applied_at: toIsoDate(appliedAt) })}
             />
@@ -196,6 +207,7 @@ export function ApplicationDetailsMenu({
             jobId={jobId}
             sourceUrl={jobSourceUrl ?? null}
             id="menu-tracking-url"
+            readOnly={readOnly}
           />
 
           <div className="grid gap-1">
@@ -208,6 +220,7 @@ export function ApplicationDetailsMenu({
               Referral
             </Label>
             <Select
+              disabled={readOnly}
               value={app.referral_id ?? "__none__"}
               onValueChange={(v) =>
                 onPatch({ referral_id: v === "__none__" ? null : v })
@@ -243,6 +256,7 @@ export function ApplicationDetailsMenu({
               id="menu-notes"
               className="text-body-medium"
               value={notes}
+              disabled={!canRequest}
               onChange={(e) => setNotes(e.target.value)}
               onBlur={() => onPatch({ notes })}
               rows={3}
@@ -254,7 +268,7 @@ export function ApplicationDetailsMenu({
             size="sm"
             className="w-full"
             onClick={onDelete}
-            disabled={deleting}
+            disabled={deleting || readOnly}
           >
             {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
             {deleting ? "Deleting…" : "Delete application"}
@@ -265,7 +279,7 @@ export function ApplicationDetailsMenu({
   );
 }
 
-export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
+export function OutputTab({ app, jobId, readOnly = false }: { app: Application; jobId: string; readOnly?: boolean }) {
   const qc = useQueryClient();
   const [previewVersion, setPreviewVersion] = useState(0);
   const hasDraft = !!app.customized_json;
@@ -304,7 +318,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
     <div className="space-y-4">
       {/* The ONE before/after compare surface, next to the artifact it
           describes (the ATS tab links here instead of double-mounting it). */}
-      {hasDraft ? <AtsComparePanel app={app} jobId={jobId} /> : null}
+      {hasDraft ? <AtsComparePanel app={app} jobId={jobId} readOnly={readOnly} /> : null}
 
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
@@ -324,7 +338,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
               // Focusable while it creates: a natively disabled button dropped focus to <body>.
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
               focusableWhenDisabled
-              disabled={!hasDraft || renderPdf.isPending}
+              disabled={!hasDraft || renderPdf.isPending || readOnly}
             >
               {renderPdf.isPending ? (
                 <Loader2 className="size-4 animate-spin" />

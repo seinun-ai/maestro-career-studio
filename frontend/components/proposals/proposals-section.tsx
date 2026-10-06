@@ -16,6 +16,10 @@ import {
 } from "lucide-react";
 
 import { CompanyMonogram } from "@/components/company-monogram";
+import { JobOwnershipMark, JobOwnershipNotice, JobOwnershipLoadError } from "@/components/job-ownership";
+import { useJobOwnershipMap } from "@/hooks/use-job-ownership";
+import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
+import type { JobOwnership } from "@/lib/types";
 import { EmptyState } from "@/components/empty-state";
 import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
@@ -179,6 +183,8 @@ function sortProposals(items: Proposal[], sort: SortKey): Proposal[] {
 }
 
 export function ProposalsSection({ since = null }: { since?: string | null } = {}) {
+  const ownershipQuery = useJobOwnershipMap();
+  const ownerships = ownershipQuery.data;
   const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: PROPOSALS_KEY,
     queryFn: () =>
@@ -207,6 +213,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   const toReview = useRef<HTMLElement>(null);
   const historyId = useId();
   const actions = useProposalActions({
+    onQueued: () => setDeclineTarget(null),
     onDone: (ids) => {
       // A row queued, skipped or deleted on its own leaves the selection; so do the bar's rows.
       setSelected((prev) => {
@@ -286,6 +293,10 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
 
   // Bulk actions and the bar's count see only the rows shown: never a row a filter or the search hides.
   const selectedShown = useMemo(() => selectedAmong(triage, selected), [triage, selected]);
+  const bulkBlocked = selectedShown.some((id) => {
+    const proposal = triage.find((p) => p.id === id);
+    return !jobOwnershipView(ownerships?.get(proposal?.job_id ?? "")).canRequest;
+  });
   const barShown = selectedShown.length > 0;
 
   // In the commit that takes the row out of its lane, or the bar away, before paint. A dialog still
@@ -422,6 +433,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   }
 
   const rowProps = {
+    ownerships,
     since,
     duplicateKeys,
     pending: actions.pending,
@@ -450,6 +462,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
 
   return (
     <div className="flex flex-col gap-6 pb-20">
+      <JobOwnershipLoadError query={ownershipQuery} />
       {/* The lanes stay later siblings of the toolbar: globals.css clears a
           focused row from under the stuck toolbar (and the bulk bar) only for
           `[data-slot="list-toolbar"] ~ :focus-within`. */}
@@ -682,7 +695,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
 
       <BulkBar
         selectedCount={selectedShown.length}
-        pending={actions.pending}
+        pending={actions.pending || bulkBlocked}
         onQueue={() => {
           leaveBar();
           actions.bulk({ ids: selectedShown, status: "accepted" });
@@ -705,7 +718,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
           leaving.current = null;
           setDeclineTarget(null);
         }}
-        pending={actions.pending}
+        pending={actions.pending || (declineTarget?.mode === "bulk" && bulkBlocked)}
         finalFocus={() => {
           const next = skipReturn.current;
           skipReturn.current = null;
@@ -760,6 +773,7 @@ type LaneKind = "needs_you" | "triage" | "queued" | "in_flight" | "history";
 
 function ProposalRow({
   proposal,
+  ownerships,
   lane,
   since,
   duplicateKeys,
@@ -769,6 +783,7 @@ function ProposalRow({
   pending,
 }: {
   proposal: Proposal;
+  ownerships?: Map<string, JobOwnership>;
   lane: LaneKind;
   since: string | null;
   duplicateKeys: Set<string>;
@@ -778,6 +793,8 @@ function ProposalRow({
   pending?: boolean;
 }) {
   const job = proposal.job;
+  const owner = ownerships?.get(proposal.job_id);
+  const ownership = jobOwnershipView(owner);
   const base = chosenBase(proposal);
   const baseName = useBaseResumeName(base ?? "", base !== null);
   const score = chosenScore(proposal);
@@ -812,6 +829,7 @@ function ProposalRow({
           {showCheckbox ? (
             <label className="flex items-center px-3">
               <Checkbox
+                disabled={!ownership.canRequest}
                 checked={selected.has(proposal.id)}
                 onCheckedChange={(next) => onToggleSelected(proposal.id, next)}
                 aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}
@@ -883,7 +901,7 @@ function ProposalRow({
                   label="Queue"
                   icon={<Check />}
                   data-row-action="queue"
-                  disabled={pending}
+                  disabled={pending || !ownership.canRequest}
                   focusableWhenDisabled
                   className="data-disabled:pointer-events-none data-disabled:opacity-50"
                   onClick={act("queue")}
@@ -892,7 +910,7 @@ function ProposalRow({
                   label="Skip"
                   icon={<X />}
                   data-row-action="skip"
-                  disabled={pending}
+                  disabled={pending || !ownership.canRequest}
                   focusableWhenDisabled
                   className="data-disabled:pointer-events-none data-disabled:opacity-50"
                   onClick={act("skip")}
@@ -905,6 +923,7 @@ function ProposalRow({
                 icon={<Check />}
                 data-row-action="keep"
                 disabled={pending}
+                {...ownershipControlProps(!ownership.canRequest)}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={act("keep")}
@@ -915,7 +934,7 @@ function ProposalRow({
                 label="Skip"
                 icon={<X />}
                 data-row-action="skip"
-                disabled={pending}
+                disabled={pending || !ownership.canRequest}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={act("skip")}
@@ -926,7 +945,7 @@ function ProposalRow({
                 label="Delete proposal"
                 icon={<Trash2 />}
                 data-row-action="delete"
-                disabled={pending}
+                disabled={pending || !ownership.canWrite}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={act("delete")}
@@ -934,6 +953,10 @@ function ProposalRow({
             ) : null}
           </div>
         </div>
+        {ownership.mark || ownership.reason ? <div className="px-4 pb-3">
+          <JobOwnershipMark jobId={proposal.job_id} ownership={owner} />
+          <JobOwnershipNotice ownership={owner} />
+        </div> : null}
       </CardContent>
     </Card>
   );

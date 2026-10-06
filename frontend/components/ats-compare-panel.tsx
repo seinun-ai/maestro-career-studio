@@ -88,9 +88,11 @@ function SkillStateCell({ row }: { row: AtsSkillRow | null }) {
 export function AtsComparePanel({
   app,
   jobId,
+  readOnly = false,
 }: {
   app: Application;
   jobId: string;
+  readOnly?: boolean;
 }) {
   const qc = useQueryClient();
 
@@ -148,7 +150,7 @@ export function AtsComparePanel({
               variant="outline"
               size="sm"
               onClick={() => rescoreBoth.mutate()}
-              disabled={rescoreBoth.isPending}
+              disabled={rescoreBoth.isPending || readOnly}
             >
               {rescoreBoth.isPending ? (
                 <Loader2 className="animate-spin" />
@@ -179,7 +181,7 @@ export function AtsComparePanel({
           size="sm"
           className="shrink-0"
           onClick={() => rescoreTailored.mutate()}
-          disabled={rescoreTailored.isPending}
+          disabled={rescoreTailored.isPending || readOnly}
         >
           <RefreshCw
             className={rescoreTailored.isPending ? "animate-spin" : undefined}

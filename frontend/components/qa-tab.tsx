@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
+import { ownershipControlProps } from "@/lib/job-ownership";
 import { useEditorFocusReturn } from "@/hooks/use-confirm-discard";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
@@ -49,7 +50,7 @@ const KIND_LABELS: Record<string, string> = {
   cover_letter: "Cover letter",
 };
 
-export function QATab({ applicationId }: { applicationId: string }) {
+export function QATab({ applicationId, readOnly = false }: { applicationId: string; readOnly?: boolean }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: entries, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
@@ -200,6 +201,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
           </p>
           <Textarea
             aria-label="Application questions"
+            disabled={readOnly}
             aria-describedby={questionsHintId}
             value={questions}
             onChange={(e) => setQuestions(e.target.value)}
@@ -207,7 +209,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
           />
           <Button
             onClick={() => askOnce(questions)}
-            disabled={askQuestions.isPending}
+            disabled={askQuestions.isPending || readOnly}
             focusableWhenDisabled
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
@@ -223,7 +225,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
         <CardContent className="flex flex-wrap items-end gap-2">
           <div className="grid gap-1.5">
             <Label htmlFor="tone">Tone</Label>
-            <Select value={tone} onValueChange={(v) => setTone(v ?? "balanced")}>
+            <Select disabled={readOnly} value={tone} onValueChange={(v) => setTone(v ?? "balanced")}>
               <SelectTrigger id="tone" className="w-44">
                 <SelectValue>{TONE_LABELS[tone] ?? tone}</SelectValue>
               </SelectTrigger>
@@ -239,6 +241,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
           <Button
             onClick={() => void generateCoverLetter()}
             disabled={coverLetter.isPending || letterEditing}
+            {...ownershipControlProps(readOnly)}
             focusableWhenDisabled
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
@@ -271,6 +274,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
               renderEntry.isPending && renderEntry.variables === entry.id;
             return (
               <QAEntryCard
+                readOnly={readOnly}
                 key={entry.id}
                 entry={entry}
                 index={i}
@@ -312,6 +316,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
 }
 
 function QAEntryCard({
+  readOnly = false,
   entry,
   index,
   isDeleting,
@@ -328,6 +333,7 @@ function QAEntryCard({
   onRender,
   onSave,
 }: {
+  readOnly?: boolean;
   entry: QAEntry;
   index: number;
   isDeleting: boolean;
@@ -384,6 +390,7 @@ function QAEntryCard({
                 onEditingChange(true);
               }}
               disabled={isSaving || isRendering || isRegenerating || generating}
+              {...ownershipControlProps(readOnly)}
             />
           ) : null}
           <IconButton
@@ -400,7 +407,7 @@ function QAEntryCard({
               label="Create PDF"
               icon={isRendering ? <Loader2 className="animate-spin" /> : <FileText />}
               onClick={onRender}
-              disabled={isRendering || isSaving || editing}
+              disabled={isRendering || isSaving || editing || readOnly}
             />
           ) : null}
           {isCoverLetter && entry.pdf_path ? (
@@ -422,6 +429,7 @@ function QAEntryCard({
               // A letter waits while any letter is open for editing: a new
               // one would land under the draft and the next Save overwrite it.
               disabled={regenerateBusy || isSaving || isRendering || (isCoverLetter && letterEditing)}
+              {...ownershipControlProps(readOnly)}
               focusableWhenDisabled
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
             />
@@ -430,7 +438,7 @@ function QAEntryCard({
             label="Delete"
             icon={<Trash2 />}
             onClick={onDelete}
-            disabled={isDeleting}
+            disabled={isDeleting || readOnly}
           />
         </div>
       </CardHeader>
@@ -443,13 +451,14 @@ function QAEntryCard({
               onChange={(e) => setDraft(e.target.value)}
               // Keys typed after Save would be dropped when the editor closes.
               readOnly={isSaving}
+              {...ownershipControlProps(readOnly, "readOnly")}
               rows={10}
               className="text-body-medium"
             />
             <div className="flex gap-2">
               <Button
                 size="sm"
-                disabled={isSaving}
+                disabled={isSaving || readOnly}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={async () => {

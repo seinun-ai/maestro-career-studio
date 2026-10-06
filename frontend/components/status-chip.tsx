@@ -167,11 +167,13 @@ export function StatusChip({
   status,
   onSelect,
   pending = false,
+  disabled = false,
   className,
 }: {
   status: string | null;
   onSelect: (status: ApplicationStatus) => void;
   pending?: boolean;
+  disabled?: boolean;
   className?: string;
 }) {
   const current = (status ?? "draft") as ApplicationStatus;
@@ -186,7 +188,8 @@ export function StatusChip({
           <button
             type="button"
             data-status-chip
-            aria-label={`Status: ${style.label}. Change status`}
+            disabled={disabled}
+            aria-label={disabled ? `Status: ${style.label}` : `Status: ${style.label}. Change status`}
             className={cn(chipClasses(true), style.chip, className)}
             onClick={(e) => e.stopPropagation()}
           >

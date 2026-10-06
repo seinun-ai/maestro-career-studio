@@ -176,6 +176,7 @@ function AtsScoreCard({
   applyingAsIs,
   applied,
   showCoverage,
+  readOnly = false,
 }: {
   score: AtsScore;
   top: boolean;
@@ -191,6 +192,7 @@ function AtsScoreCard({
   applied: boolean;
   /** False when the panel's banner already says every resume shows too few of the job's skills. */
   showCoverage: boolean;
+  readOnly?: boolean;
 }) {
   const baseName = useBaseResumeLabel();
   const actionRef = useRef<HTMLButtonElement>(null);
@@ -276,6 +278,7 @@ function AtsScoreCard({
             <Button
               ref={actionRef}
               className="w-full"
+              disabled={readOnly}
               size="sm"
               variant={variant}
               nativeButton={false}
@@ -315,10 +318,12 @@ function AtsScoreCard({
 export function AtsScorePanel({
   jobId,
   applicationStatus = null,
+  readOnly = false,
 }: {
   jobId: string;
   /** The job's application status, or null with none. */
   applicationStatus?: string | null;
+  readOnly?: boolean;
 }) {
   const applied = applicationStatus != null && applicationStatus !== "draft";
   const baseName = useBaseResumeLabel();
@@ -434,11 +439,12 @@ export function AtsScorePanel({
   // First visit: no persisted scores yet — run the (fast, deterministic) engine once.
   const autoRan = useRef(false);
   useEffect(() => {
+    if (readOnly) return;
     if (scores.isSuccess && scores.data.length === 0 && !autoRan.current) {
       autoRan.current = true;
       runOnce();
     }
-  }, [scores.isSuccess, scores.data, runOnce]);
+  }, [scores.isSuccess, scores.data, runOnce, readOnly]);
 
   // A resume imported from the prompt below lands in ["base-resumes"] (the
   // import dialog invalidates it). Score against it once the dialog closes,
@@ -454,13 +460,14 @@ export function AtsScorePanel({
   //   confirmed each new resume's target role.
   const sawNoBases = useRef(false);
   useEffect(() => {
+    if (readOnly) return;
     if (noBases && !bases.isFetching) {
       sawNoBases.current = true;
     } else if (sawNoBases.current && baseCount > 0 && !importOpen && !run.isPending) {
       sawNoBases.current = false;
       runOnce();
     }
-  }, [noBases, bases.isFetching, baseCount, importOpen, run.isPending, runOnce]);
+  }, [noBases, bases.isFetching, baseCount, importOpen, run.isPending, runOnce, readOnly]);
 
   // Score the imported resumes in the SAME event as the close: mutate() marks
   // the run pending synchronously, and the render that drops the prompt reads
@@ -469,7 +476,7 @@ export function AtsScorePanel({
   // list that lands after the dialog closed.
   const onImportOpenChange = (open: boolean) => {
     setImportOpen(open);
-    if (!open && sawNoBases.current && baseCount > 0 && !run.isPending) {
+    if (!readOnly && !open && sawNoBases.current && baseCount > 0 && !run.isPending) {
       sawNoBases.current = false;
       runOnce();
     }
@@ -498,7 +505,7 @@ export function AtsScorePanel({
     if (
       scores.isLoading ||
       (baseRows.length === 0 &&
-        (run.isPending || (run.isIdle && scores.isSuccess && scores.data.length === 0)))
+        (run.isPending || (!readOnly && run.isIdle && scores.isSuccess && scores.data.length === 0)))
     ) {
       return (
         <div className="@container">
@@ -528,7 +535,7 @@ export function AtsScorePanel({
             <p className="text-muted-foreground max-w-[50ch] text-body-medium">
               Import your resumes to score this job against each one.
             </p>
-            <Button ref={importButtonRef} size="sm" onClick={() => setImportOpen(true)}>
+            <Button ref={importButtonRef} size="sm" disabled={readOnly} onClick={() => setImportOpen(true)}>
               Import resumes and documents
             </Button>
           </div>
@@ -544,7 +551,7 @@ export function AtsScorePanel({
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
               onClick={() => runOnce()}
               focusableWhenDisabled
-              disabled={run.isPending}
+              disabled={run.isPending || readOnly}
             >
               {run.isPending && <Loader2 className="animate-spin" />}
               {run.isPending ? "Scoring…" : "Score my resumes"}
@@ -570,7 +577,7 @@ export function AtsScorePanel({
             onClick={() => runOnce()}
             // Focusable while it runs: a natively disabled button dropped focus to <body>.
             focusableWhenDisabled
-            disabled={run.isPending}
+            disabled={run.isPending || readOnly}
           >
             <RefreshCw className={run.isPending ? "animate-spin" : undefined} />
             {run.isPending ? "Updating scores…" : "Update scores"}
@@ -585,18 +592,19 @@ export function AtsScorePanel({
         <div className="grid gap-3 @md:grid-cols-2 @3xl:grid-cols-3">
           {baseRows.map((score, i) => (
             <AtsScoreCard
+              readOnly={readOnly}
               key={score.id}
               score={score}
               top={i === 0}
               index={i}
               creating={pendingBase === score.target_id}
-              analyzeDisabled={createSession.isPending}
+              analyzeDisabled={createSession.isPending || readOnly}
               onAnalyze={() => createOnce(score.target_id)}
               jobId={jobId}
               openSession={openSessionByBase.get(score.target_id) ?? null}
               onAppliedAsIs={(returnFocus) => appliedAsIsClick(score.target_id, returnFocus)}
               applyingAsIs={
-                appliedAsIs.isPending && appliedAsIs.variables === score.target_id
+                readOnly || (appliedAsIs.isPending && appliedAsIs.variables === score.target_id)
               }
               applied={applied}
               showCoverage={!lowCoverageEverywhere}

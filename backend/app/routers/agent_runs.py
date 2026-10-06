@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.agent_runs import AgentRunCreate, AgentRunList, AgentRunRead
+from app.schemas.agent_runs import AgentRunCreate, AgentRunList, AgentRunRead, RefusedJobRequest
 from app.services import agent_runs
 from app.write_origin import WriteOrigin, get_write_origin
 
@@ -27,6 +27,11 @@ def post_agent_run(
 @router.get("/latest", response_model=AgentRunList)
 def get_latest_runs(db: Annotated[Session, Depends(get_db)]):
     return {"items": agent_runs.latest(db)}
+
+
+@router.get("/refused-requests", response_model=list[RefusedJobRequest])
+def get_refused_requests(db: Annotated[Session, Depends(get_db)]):
+    return agent_runs.refused_requests(db)
 
 
 @router.get("", response_model=AgentRunList)

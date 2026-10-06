@@ -19,6 +19,7 @@ function normalizeUrl(value: string): string | null {
 export function JobTrackingUrlField({
   jobId,
   sourceUrl,
+  readOnly = false,
   queryKeys = [["job-detail", jobId], ["jobs"]],
   id = "job-tracking-url",
   label = "Job link",
@@ -26,6 +27,7 @@ export function JobTrackingUrlField({
 }: {
   jobId: string;
   sourceUrl: string | null;
+  readOnly?: boolean;
   queryKeys?: string[][];
   id?: string;
   label?: string;
@@ -56,6 +58,7 @@ export function JobTrackingUrlField({
   });
 
   const save = () => {
+    if (readOnly) return;
     const next = normalizeUrl(draft);
     const prev = sourceUrl ?? null;
     if (next === prev) return;
@@ -94,7 +97,7 @@ export function JobTrackingUrlField({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={save}
-        disabled={patch.isPending}
+        disabled={patch.isPending || readOnly}
         aria-describedby={description ? `${id}-hint` : undefined}
       />
     </div>

@@ -6,6 +6,7 @@ from app.schemas.knockout import KnockoutScan
 
 
 class JobDetail(BaseModel):
+    # Ownership is carried by the nested job, using the same shape as the job list.
     job: JobRead
     application: ApplicationRead | None = None
     # Stated-JD-requirements vs profile pre-scan; recomputed on every read so a

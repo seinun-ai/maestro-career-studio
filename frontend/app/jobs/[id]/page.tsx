@@ -37,6 +37,7 @@ import {
 import { JobKnockoutCard } from "@/components/job-knockout-card";
 import { JobSubmittedTab } from "@/components/job-submitted-tab";
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
+import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
 import { ProposalAgentPanel } from "@/components/proposals/proposal-agent-panel";
 import {
   STATUS_BADGE_CLASS,
@@ -59,6 +60,7 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
+import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
 
@@ -185,6 +187,7 @@ export default function JobDetailPage({
     onUndone: () => {
       triaged.current = false;
     },
+    onQueued: () => setDeclineOpen(false),
   });
   const headerFirst = () => actionsRef.current && focusTarget(actionsRef.current);
 
@@ -197,6 +200,7 @@ export default function JobDetailPage({
   });
 
   const application = data?.application ?? null;
+  const ownership = jobOwnershipView(data?.job.ownership);
   // Keep it on a question links the job's application when the proposal has none: the proposal
   // says whether it has one (the same query as the Overview card's).
   const asking = data?.job.proposal_status === "needs_decision" ? data.job.proposal_id ?? null : null;
@@ -295,7 +299,7 @@ export default function JobDetailPage({
           if (!ok) return;
           reExtract.mutate();
         }}
-        disabled={reExtract.isPending}
+        disabled={reExtract.isPending || !ownership.canWrite}
       >
         <RefreshCw
           className={reExtract.isPending ? "animate-spin" : undefined}
@@ -303,7 +307,7 @@ export default function JobDetailPage({
         {reExtract.isPending ? "Refreshing…" : "Refresh details"}
       </Button>
     ),
-    [confirm, reExtract],
+    [confirm, reExtract, ownership.canWrite],
   );
 
   // Before the loading gate: `data` stays undefined after a failure, so the
@@ -436,6 +440,7 @@ export default function JobDetailPage({
             <p className="text-muted-foreground truncate text-body-medium" title={metaLine}>
               {metaLine}
             </p>
+            {ownership.mark ? <div className="mt-2"><JobOwnershipMark jobId={id} ownership={job.ownership} /></div> : null}
           </div>
           <div ref={actionsRef} className="mt-1 ml-auto flex flex-wrap items-center justify-end gap-2">
             {isProposalStatus(proposalStatus) ? (
@@ -457,7 +462,7 @@ export default function JobDetailPage({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={triagePending}
+                disabled={triagePending || !ownership.canRequest}
                 // Focusable while it runs: a natively disabled button dropped focus to <body>.
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
@@ -476,6 +481,7 @@ export default function JobDetailPage({
                 variant="outline"
                 // Waits for the proposal's link: a second, different application would be refused.
                 disabled={triagePending || !asked.data}
+                {...ownershipControlProps(!ownership.canWrite)}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => {
@@ -495,7 +501,7 @@ export default function JobDetailPage({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={triagePending}
+                disabled={triagePending || !ownership.canRequest}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => setDeclineOpen(true)}
@@ -508,7 +514,7 @@ export default function JobDetailPage({
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={triagePending}
+                disabled={triagePending || !ownership.canWrite}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => {
@@ -526,7 +532,7 @@ export default function JobDetailPage({
                 size="sm"
                 // Focusable while it queues: a disabled button dropped focus to <body>.
                 focusableWhenDisabled
-                disabled={promote.isPending}
+                disabled={promote.isPending || !ownership.canWrite}
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => {
                   queued.current = true;
@@ -542,12 +548,15 @@ export default function JobDetailPage({
                 <StatusChip
                   status={application.status}
                   pending={patch.isPending}
+                  disabled={!ownership.canRequest}
                   onSelect={(status) => patch.mutate({ status })}
                 />
                 <ApplicationDetailsMenu
                   app={application}
                   jobId={id}
                   jobSourceUrl={job.source_url}
+                  readOnly={!ownership.canWrite}
+                  canRequest={ownership.canRequest}
                 />
               </>
             ) : null}
@@ -572,7 +581,7 @@ export default function JobDetailPage({
               icon={<Trash2 className="size-4" />}
               size="icon-sm"
               className="text-muted-foreground hover:text-destructive shrink-0"
-              disabled={deleteJob.isPending}
+              disabled={deleteJob.isPending || !ownership.canWrite}
               onClick={async () => {
                 const ok = await confirm({
                   title: "Delete this job?",
@@ -587,6 +596,7 @@ export default function JobDetailPage({
             />
           </div>
         </header>
+        <JobOwnershipNotice ownership={job.ownership} />
 
         <Tabs
           value={tab}
@@ -606,6 +616,7 @@ export default function JobDetailPage({
               {application?.customized_json ? (
                 <Button
                   size="sm"
+                  disabled={!ownership.canWrite}
                   nativeButton={false}
                   render={
                     <Link href={`/applications/${application.id}/resume`}>
@@ -631,11 +642,15 @@ export default function JobDetailPage({
               hideTitle
               actionsSlot={reExtractButton}
             />
-            <JobTrackingUrlField jobId={id} sourceUrl={job.source_url} />
+            <JobTrackingUrlField jobId={id} sourceUrl={job.source_url} readOnly={!ownership.canWrite} />
           </TabsContent>
 
           <TabsContent value="fit" className="mt-0 space-y-4">
-            <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} />
+            {ownership.canWrite ? (
+              <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} />
+            ) : (
+              <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} readOnly />
+            )}
             {/* The before/after compare lives on the Resume tab, next to the
                 artifact it describes — link instead of double-mounting it. */}
             {application?.customized_json ? (
@@ -661,10 +676,10 @@ export default function JobDetailPage({
           {application ? (
             <>
               <TabsContent value="output" className="mt-0 space-y-4">
-                <OutputTab app={application} jobId={id} />
+                <OutputTab app={application} jobId={id} readOnly={!ownership.canWrite} />
               </TabsContent>
               <TabsContent value="qa" className="mt-0 space-y-4">
-                <QATab applicationId={application.id} />
+                <QATab applicationId={application.id} readOnly={!ownership.canWrite} />
               </TabsContent>
             </>
           ) : (

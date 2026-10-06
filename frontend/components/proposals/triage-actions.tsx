@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
+import { isSyncQueued } from "@/lib/job-ownership";
 import { couldnt, isPlainSentence } from "@/lib/error-text";
 import type {
   Proposal,
@@ -60,6 +61,7 @@ type BulkStatus = "accepted" | "rejected";
 export type ProposalActionEvents = {
   onDone?: (ids: string[], became: BulkStatus | "pending_review" | "deleted") => void;
   onUndone?: () => void;
+  onQueued?: (ids: string[]) => void;
 };
 
 export function useProposalActions(events: ProposalActionEvents = {}) {
@@ -71,6 +73,7 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
     void qc.invalidateQueries({ queryKey: FUNNEL_KEY });
     void qc.invalidateQueries({ queryKey: ["job-detail"] });
     void qc.invalidateQueries({ queryKey: ["proposal"] });
+    void qc.invalidateQueries({ queryKey: ["jobs"] });
   };
 
   const transition = useMutation({
@@ -98,6 +101,12 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
       }),
     onSuccess: (_data, vars) => {
       invalidate();
+      if (isSyncQueued(_data)) {
+        toast.success("Sent at the next sync");
+        events.onQueued?.([vars.id]);
+        events.onUndone?.();
+        return;
+      }
       events.onDone?.([vars.id], vars.status);
     },
     onError: (err: Error, vars) => {
@@ -127,7 +136,16 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
       }),
     onSuccess: (data, vars) => {
       invalidate();
-      events.onDone?.(vars.ids, vars.status);
+      const queued = data.results.filter((r) => r.ok && r.detail === "Sent at the next sync.").map((r) => r.id);
+      const applied = data.results.filter((r) => r.ok && r.detail !== "Sent at the next sync.").map((r) => r.id);
+      if (queued.length > 0) {
+        toast.success("Sent at the next sync");
+        events.onQueued?.(queued);
+        events.onUndone?.();
+        if (applied.length > 0) events.onDone?.(applied, vars.status);
+      } else {
+        events.onDone?.(vars.ids, vars.status);
+      }
       const failed = data.results.filter((r) => !r.ok);
       if (failed.length === 0) return;
       // "queue": Accept's result is a Queued chip (the ONE status vocabulary).

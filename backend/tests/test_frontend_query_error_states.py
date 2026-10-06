@@ -263,6 +263,7 @@ _FAILURE_BRANCHES = {
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": "if (sessionError != null) {",
     "components/resume-versions/version-history-sheet.tsx": "{isLoadFailure(versions) && (",
     "components/job-submitted-tab.tsx": "if (isLoadFailure(query)) {",
+    "components/job-ownership.tsx": "return isLoadFailure(query) ? (",
 }
 
 

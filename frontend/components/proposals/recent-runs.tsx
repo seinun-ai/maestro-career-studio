@@ -8,7 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { agentDisplayName } from "@/lib/agent-name";
 import { AGENT_RUNS_LATEST_KEY, countsLine, outcomeWord } from "@/lib/agent-runs";
 import { formatTimeAgo } from "@/lib/format-date";
-import type { AgentRun, AgentRunList } from "@/lib/types";
+import type { AgentRun, AgentRunList, RefusedJobRequest } from "@/lib/types";
 
 function RunLine({ run }: { run: AgentRun }) {
   const who = agentDisplayName(run.agent);
@@ -19,7 +19,7 @@ function RunLine({ run }: { run: AgentRun }) {
         <span className="min-w-0 max-w-full text-title-small">{run.title}</span>
         <span className="min-w-0 max-w-full text-muted-foreground text-body-small">
           {formatTimeAgo(run.finished_at)}
-          {who ? ` · ${who}` : ""} · {outcomeWord(run.outcome)}
+          {who ? ` · ${who}` : ""}{run.on_bot ? " · on your bot" : ""} · {outcomeWord(run.outcome)}
         </span>
         <span className="min-w-0 max-w-full text-body-small">{countsLine(run.counts)}</span>
       </summary>
@@ -45,6 +45,11 @@ export function RecentRuns() {
     queryKey: AGENT_RUNS_LATEST_KEY,
     queryFn: () => apiFetch<AgentRunList>("/api/agent-runs/latest"),
   });
+  const refusals = useQuery({
+    queryKey: ["agent-runs", "refused-requests"],
+    queryFn: () => apiFetch<RefusedJobRequest[]>("/api/agent-runs/refused-requests"),
+    refetchOnWindowFocus: true,
+  });
   return (
     <section aria-labelledby="recent-runs" className="flex min-w-0 flex-col gap-2">
       <h2 id="recent-runs" className="text-muted-foreground text-title-small">Recent runs</h2>
@@ -58,6 +63,14 @@ export function RecentRuns() {
       ) : (
         data.items.map((run) => <RunLine key={run.id} run={run} />)
       )}
+      {refusals.isError ? <p className="text-muted-foreground text-body-small">{"Couldn't load request results."}</p> : null}
+      {refusals.data?.map((request) => (
+        <div key={request.id} className="rounded-corner-md bg-surface-container-low p-3 text-body-small">
+          <p className="text-title-small">Request refused</p>
+          <p className="mt-1 max-w-[65ch]">{request.reason}</p>
+          {request.job_id ? <Link href={`/jobs/${request.job_id}`} className="text-primary underline underline-offset-4">Open job</Link> : null}
+        </div>
+      ))}
     </section>
   );
 }

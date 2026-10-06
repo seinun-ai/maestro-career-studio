@@ -21,8 +21,21 @@ export interface RenderNoted {
   render_note?: string | null;
 }
 
+export interface JobOwnership {
+  owned_here: boolean;
+  owner: "laptop" | "bot" | null;
+  handover: string | null;
+  pending_requests: number;
+}
+
+export interface SyncQueued {
+  queued: true;
+  detail: string;
+}
+
 export interface Job {
   id: UUID;
+  ownership?: JobOwnership;
   raw_text: string;
   raw_text_hash: string;
   source_url: string | null;
@@ -1900,6 +1913,7 @@ export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 /** Thin job projection joined into proposal rows (backend JobSummary). */
 interface ProposalJobSummary {
   id: UUID;
+  ownership?: JobOwnership;
   source_url: string | null;
   company: string | null;
   title: string | null;
@@ -1980,6 +1994,7 @@ export interface AgentRun {
   title: string;
   outcome: "ok" | "partial" | "failed";
   agent: string | null;
+  on_bot?: boolean;
   finished_at: string;
   counts: Record<string, number>;
   digest: string;
@@ -1988,6 +2003,13 @@ export interface AgentRun {
 
 export interface AgentRunList {
   items: AgentRun[];
+}
+
+export interface RefusedJobRequest {
+  id: UUID;
+  job_id: UUID | null;
+  reason: string;
+  answered_at: string | null;
 }
 
 interface ProposalBulkResult {

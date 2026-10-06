@@ -14,6 +14,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { JobOwnershipMark, JobOwnershipNotice, JobOwnershipLoadError } from "@/components/job-ownership";
+import { useJobOwnershipMap } from "@/hooks/use-job-ownership";
+import { isSyncQueued, jobOwnershipView } from "@/lib/job-ownership";
 
 import { CompanyMonogram } from "@/components/company-monogram";
 import { EmptyState, TableFrame } from "@/components/empty-state";
@@ -199,6 +202,8 @@ function rowKey(r: Row): string {
 }
 
 function ApplicationsContent() {
+  const ownershipQuery = useJobOwnershipMap();
+  const jobOwnership = ownershipQuery.data;
   const router = useRouter();
   const searchParams = useSearchParams();
   const qc = useQueryClient();
@@ -258,6 +263,8 @@ function ApplicationsContent() {
         body: JSON.stringify({ status }),
       }),
     onSuccess: (_data, { id }) => {
+      if (isSyncQueued(_data)) toast.success("Sent at the next sync");
+      qc.invalidateQueries({ queryKey: ["jobs"] });
       qc.invalidateQueries({ queryKey: ["applications"] });
       const jobId = apps.data?.find((a) => a.id === id)?.job_id;
       if (jobId) qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
@@ -514,6 +521,7 @@ function ApplicationsContent() {
         }
       />
 
+      <JobOwnershipLoadError query={ownershipQuery} />
       <ListToolbar>
         <ListSearch label="Search jobs" value={q} onChange={setQ} />
         <div className="flex flex-wrap items-center gap-1.5">
@@ -659,6 +667,9 @@ function ApplicationsContent() {
             <TableBody className={cn("transition-opacity", stale && "opacity-60")}>
               {filtered.map((r) => {
                 const key = rowKey(r);
+                const jobId = r.kind === "saved" ? r.job.id : r.app.job_id;
+                const owner = r.kind === "saved" ? r.job.ownership : jobOwnership?.get(jobId);
+                const ownership = jobOwnershipView(owner);
                 const href =
                   r.kind === "saved"
                     ? `/jobs/${r.job.id}`
@@ -712,6 +723,8 @@ function ApplicationsContent() {
                               </span>
                             ) : null}
                           </p>
+                          {ownership.mark ? <div className="mt-1"><JobOwnershipMark jobId={jobId} ownership={owner} /></div> : null}
+                          <JobOwnershipNotice ownership={owner} />
                           <p className="text-muted-foreground truncate text-body-small">
                             {title}
                             {r.kind === "application" && r.app.job_location
@@ -730,6 +743,7 @@ function ApplicationsContent() {
                       ) : (
                         <StatusChip
                           status={r.app.status}
+                          disabled={!ownership.canRequest}
                           pending={
                             patchStatus.isPending &&
                             patchStatus.variables?.id === r.app.id
@@ -764,7 +778,7 @@ function ApplicationsContent() {
                             icon={<SendHorizontal />}
                             // Focusable while it queues: a disabled button dropped focus to <body>.
                             focusableWhenDisabled
-                            disabled={promoteJob.isPending}
+                            disabled={promoteJob.isPending || !ownership.canWrite}
                             className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 data-disabled:pointer-events-none data-disabled:opacity-50"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -790,6 +804,7 @@ function ApplicationsContent() {
                             {r.kind === "saved" ? (
                               <DropdownMenuItem
                                 variant="destructive"
+                                disabled={!ownership.canWrite}
                                 onClick={async () => {
                                   const ok = await confirm({
                                     title: "Delete this job?",
@@ -806,6 +821,7 @@ function ApplicationsContent() {
                             ) : (
                               <DropdownMenuItem
                                 variant="destructive"
+                                disabled={!ownership.canWrite}
                                 onClick={async () => {
                                   const ok = await confirm({
                                     title: "Delete this application?",

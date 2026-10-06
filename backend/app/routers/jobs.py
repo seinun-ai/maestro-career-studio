@@ -12,15 +12,17 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import begin_write, get_db
 from app.models.application import Application
 from app.models.job import Job
 from app.models.job_skill import JobSkill
+from app.models.sync import SyncRequest
 from app.schemas.application import ApplicationRead, ApplicationSummary
 from app.schemas.job import (
     JobCreate,
     JobExportRow,
     JobIngest,
+    JobOwnership,
     JobPatch,
     JobRead,
     JobSkillRead,
@@ -46,6 +48,9 @@ from app.services import (
     tailoring_session,
 )
 from app.services.skill_normalize import canonicalize_skill_name, coerce_skill_category
+from app.services.sync import hooks as sync_hooks
+from app.services.sync import requests as sync_requests
+from app.services.sync import status as sync_status
 
 
 logger = logging.getLogger(__name__)
@@ -260,7 +265,7 @@ def _persist_job(
         # Transient flag read by JobRead: the caller gets the tracked row back,
         # but the UI must not claim a fresh extraction happened (audit C14).
         existing.already_existed = True
-        return existing
+        return _with_ownership(db, existing)
     extraction = jd_extraction.apply_work_auth_backstop(raw_text, dict(extraction))
     # G11: the same requisition posted on two boards has a different URL AND
     # different page text, so hash/url dedup misses it. (company,
@@ -280,7 +285,7 @@ def _persist_job(
         )
         if twin is not None:
             twin.already_existed = True
-            return twin
+            return _with_ownership(db, twin)
     job = _job_from_extraction(
         raw_text, source_url, raw_text_hash, extraction, source=source, session=db
     )
@@ -289,7 +294,7 @@ def _persist_job(
     _insert_skills(db, job.id, extraction)
     db.commit()
     db.refresh(job)
-    return job
+    return _with_ownership(db, job)
 
 
 @router.post("", response_model=JobRead)
@@ -301,7 +306,7 @@ def create_job(payload: JobCreate, db: Annotated[Session, Depends(get_db)]):
     existing = _find_existing(db, payload.source_url, raw_text_hash, url_fallback=False)
     if existing is not None:
         existing.already_existed = True
-        return existing
+        return _with_ownership(db, existing)
     extraction = jd_extraction.extract_jd(payload.raw_text, db)
     return _persist_job(db, payload.raw_text, payload.source_url, raw_text_hash, extraction)
 
@@ -320,6 +325,31 @@ def _stamp_newest_proposal(job: Job, newest) -> None:
     job.proposal_id, job.proposal_status, job.proposal_proposed_by = newest or (None, None, None)
 
 
+def _stamp_ownership(db: Session, jobs: list[Job]) -> None:
+    if not sync_status.enabled():
+        for job in jobs:
+            job.ownership = JobOwnership()
+        return
+    local_id = sync_status.machine_id(db)
+    remote = sync_status.is_remote()
+    pending = dict(db.execute(
+        select(SyncRequest.job_id, func.count(SyncRequest.id))
+        .where(SyncRequest.job_id.in_([job.id for job in jobs]), SyncRequest.origin == "local",
+               SyncRequest.status.in_(("pending", "sent")))
+        .group_by(SyncRequest.job_id)).all())
+    for job in jobs:
+        local = job.owner_machine in (None, local_id)
+        job.ownership = JobOwnership(
+            owned_here=sync_hooks.owned_here(db, job.id),
+            owner="bot" if local == remote else "laptop",
+            handover=job.handover, pending_requests=pending.get(job.id, 0))
+
+
+def _with_ownership(db: Session, job: Job) -> Job:
+    _stamp_ownership(db, [job])
+    return job
+
+
 def _with_newest_proposal(db: Session, job: Job) -> Job:
     """One job, stamped as the list stamps each row. Every single-job JobRead goes through here:
     without it the fields read null while the list and `/detail` named the proposal."""
@@ -332,6 +362,7 @@ def _with_newest_proposal(db: Session, job: Job) -> Job:
         .limit(1)
     ).first()
     _stamp_newest_proposal(job, newest)
+    _stamp_ownership(db, [job])
     return job
 
 
@@ -379,6 +410,7 @@ def list_jobs(
             newest.setdefault(job_id, fields)
         for job in rows:
             _stamp_newest_proposal(job, newest.get(job.id))
+    _stamp_ownership(db, rows)
     return rows
 
 
@@ -433,6 +465,7 @@ def export_jobs(
     if limit is not None:
         stmt = stmt.limit(limit)
     jobs = db.scalars(stmt).all()
+    _stamp_ownership(db, jobs)
 
     skills_by_job: dict = defaultdict(list)
     job_ids = [j.id for j in jobs]
@@ -492,6 +525,7 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
         return JobMatchResult(match="none")
 
     job = db.get(Job, matched_id)
+    _stamp_ownership(db, [job])
     application = db.scalar(
         select(Application)
         .where(Application.job_id == job.id)
@@ -522,6 +556,46 @@ def get_job(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return _with_newest_proposal(db, job)
+
+
+def _home_job(db: Session, job_id: UUID) -> Job:
+    if not sync_status.enabled():
+        raise HTTPException(status_code=404, detail="Sync isn't set up.")
+    if sync_status.is_remote():
+        raise HTTPException(status_code=409, detail="Make this change on your laptop.")
+    begin_write(db)
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.post("/{job_id}/keep-here", response_model=JobRead)
+def keep_job_here(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
+    job = _home_job(db, job_id)
+    if job.owner_machine not in (None, sync_status.machine_id(db)):
+        raise HTTPException(status_code=409, detail="This job is with your bot; ask for it back with Work on it here.")
+    if job.handover == "offered":
+        previous = db.info.get("sync_apply")
+        db.info["sync_apply"] = True
+        try:
+            job.handover = None
+            db.commit()
+        finally:
+            if previous is None:
+                db.info.pop("sync_apply", None)
+            else:
+                db.info["sync_apply"] = previous
+    return _with_newest_proposal(db, job)
+
+
+@router.post("/{job_id}/work-here", status_code=202)
+def work_on_job_here(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
+    job = _home_job(db, job_id)
+    if not sync_requests.is_other_copys(db, job.id):
+        raise HTTPException(status_code=409, detail="This job is already on your laptop.")
+    sync_requests.enqueue_take_over(db, job.id)
+    return sync_requests.queued_response()
 
 
 @router.patch("/{job_id}", response_model=JobRead)

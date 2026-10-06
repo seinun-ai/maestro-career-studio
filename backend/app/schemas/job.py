@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.job_extraction import JobExtraction
 
@@ -24,8 +24,18 @@ class JobIngest(BaseModel):
     source: Literal["user", "agent"] = "user"
 
 
+class JobOwnership(BaseModel):
+    """Viewer-relative ownership; sync off is unmarked and writable."""
+
+    owned_here: bool = True
+    owner: Literal["laptop", "bot"] | None = None
+    handover: str | None = None
+    pending_requests: int = 0
+
+
 class JobRead(BaseModel):
     id: UUID
+    ownership: JobOwnership = Field(default_factory=JobOwnership)
     raw_text: str
     raw_text_hash: str
     source_url: str | None = None
@@ -79,6 +89,7 @@ class JobSummary(BaseModel):
     no raw_text / extracted_json. Detail/export keep JobRead / JobExportRow."""
 
     id: UUID
+    ownership: JobOwnership = Field(default_factory=JobOwnership)
     source_url: str | None = None
     # Provenance lane — the tracker's Saved-lane rule filters on it; dropping
     # it from the list projection makes that rule silently no-op.
