@@ -474,8 +474,8 @@ def _sidebar() -> str:
 def test_the_sidebar_names_the_inbox_and_the_assistant():
     """A1 and decision 5: the inbox item and the in-app chat's item."""
     sidebar = _sidebar()
-    assert '{ href: "/proposals", label: "Agent inbox", icon: Bot },' in sidebar
-    assert '{ href: "/chat", label: "Assistant", icon: MessageSquare },' in sidebar
+    assert '{ href: "/proposals", label: "Agent inbox", icon: CONCEPT_ICONS.agentInbox },' in sidebar
+    assert '{ href: "/chat", label: "Assistant", icon: CONCEPT_ICONS.assistant },' in sidebar
     for old in ('label: "Agent Proposals"', 'label: "Chat"'):
         assert old not in sidebar, old
 
