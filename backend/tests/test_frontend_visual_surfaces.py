@@ -68,7 +68,9 @@ def test_job_header_shows_the_best_score_and_locks_tabs_with_an_icon():
     assert 'id={lockedReasonId} className="sr-only"' in src  # still the triggers' aria-describedby target
     # The pill's visible words repeat the meter's aria-label ("Best score, <resume>").
     assert 'aria-hidden="true" className="text-muted-foreground">Best</span>' in src
-    assert 'aria-hidden="true" className="text-muted-foreground truncate">{baseName(best.target_id)}' in src
+    # The resume name is visible only at 2xl (a long title wrapped at 1280); hover and the meter name it always.
+    assert 'aria-hidden="true" className="text-muted-foreground hidden truncate 2xl:inline">{baseName(best.target_id)}' in src
+    assert "title={`Best score: ${best.composite.toFixed(1)}, ${baseName(best.target_id)}`}" in src
     assert 'queryKey: ["ats-scores", id]' in src and '.filter((s) => s.phase === "base")' in src
 
 

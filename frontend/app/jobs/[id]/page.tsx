@@ -549,14 +549,19 @@ export default function JobDetailPage({
               </Button>
             ) : null}
             {best ? (
-              <span className="bg-surface-container-low inline-flex h-7 min-w-0 items-center gap-2 rounded-full px-2.5 text-label-medium">
+              // The resume's name shows only at 2xl: at 1280 it squeezed a long job title onto two lines.
+              // The hover title and the meter's accessible name carry it at every width.
+              <span
+                title={`Best score: ${best.composite.toFixed(1)}, ${baseName(best.target_id)}`}
+                className="bg-surface-container-low inline-flex h-7 min-w-0 items-center gap-2 rounded-full px-2.5 text-label-medium"
+              >
                 <span aria-hidden="true" className="text-muted-foreground">Best</span>
                 <ScoreBar
                   value={best.composite}
                   valueText={best.composite.toFixed(1)}
                   label={`Best score, ${baseName(best.target_id)}`}
                 />
-                <span aria-hidden="true" className="text-muted-foreground truncate">{baseName(best.target_id)}</span>
+                <span aria-hidden="true" className="text-muted-foreground hidden truncate 2xl:inline">{baseName(best.target_id)}</span>
               </span>
             ) : null}
             {hasApp && application ? (
