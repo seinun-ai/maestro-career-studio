@@ -15,6 +15,7 @@ from app.models.application_proposal import ApplicationProposal
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
 from app.services import auto_apply_settings, filled_answers, job_site_login
+from app.services.sync import offers as sync_offers
 
 
 class TransitionError(Exception):
@@ -257,6 +258,7 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
                 app_row.applied_at = datetime.now(UTC)
             filled_answers.link_unlinked(session, app_row)
 
+    sync_offers.mark_when_queued(session, prop)
     session.commit()
     return prop
 

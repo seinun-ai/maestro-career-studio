@@ -213,6 +213,8 @@ def clock(monkeypatch):
 
 def go(world, **kwargs):
     kwargs.setdefault("pair", True)
+    # Task 11 job fixtures intentionally include different synthetic profiles.
+    kwargs.setdefault("accept_profile_overwrite", True)
     return sync_round.run_round(world.remote, **kwargs)
 
 
@@ -1066,6 +1068,7 @@ def test_a_refused_own_job_advances_the_ack_and_is_retried_then_parked(world, ho
 
 
 def test_a_refused_job_does_not_hold_back_the_others(world, home, clock):
+    assert go(world)["ok"]  # paired first: pairing itself turns a job both copies hold into a replica
     first, second = full_job(world, "remote", "one"), full_job(world, "remote", "two")
     top = max(job_of(world, "remote", first).sync_rev, job_of(world, "remote", second).sync_rev)
     with world.building("remote"):

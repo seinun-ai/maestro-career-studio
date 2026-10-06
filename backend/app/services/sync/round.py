@@ -10,6 +10,8 @@ Nothing here logs or stores a key, a bundle, a response body or ``str(exc)``: a 
 code plus a fixed sentence, and the summary holds counts only.
 """
 
+import hashlib
+import json
 import threading
 import uuid
 from collections.abc import Iterator
@@ -17,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import event, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -26,10 +28,11 @@ from app.models.agent_run import AgentRun
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
+from app.models.setting import Setting
 from app.models.sync import SyncRequest, SyncTombstone
 from app.models.types import utcnow
 from app.services import http_client
-from app.services.sync import duplicates, hooks, jobs_bundle, profile_bundle, request_apply, status
+from app.services.sync import bundle_rows, duplicates, hooks, jobs_bundle, profile_bundle, request_apply, status
 
 PAGE_BYTES = 40 * 1024 * 1024  # well under home's 100 MB request cap
 PUSH_JOBS = 20
@@ -112,6 +115,9 @@ class _Ctx:
     home_id: str = ""
     summary: dict = field(default_factory=dict)
     takeovers: list = field(default_factory=list)
+    pairing_profile: dict | None = field(default=None, repr=False)
+    shared_jobs: list = field(default_factory=list)
+    paired_now: bool = False
 
 
 def _now() -> datetime:
@@ -209,11 +215,147 @@ def _hello(ctx: _Ctx) -> None:
     ctx.home_id = str(hello["machine_id"])
 
 
+def _profile_index(bundle: dict) -> dict:
+    specs = {spec.name: spec for spec in profile_bundle.TABLES}
+    return {(item["table"], bundle_rows.row_pk(specs[item["table"]], item["row"])): item["row"]
+            for item in bundle["rows"]}
+
+
+# Each copy stamps these itself (a seeded template is written at that install's first start and
+# validated by its own engines), so two identical installs would otherwise always differ and
+# every first round would need the overwrite flag. Content columns never appear here.
+_LOCAL_STAMPS = frozenset({"created_at", "updated_at"})
+_LOCAL_BY_TABLE = {"templates": frozenset({"validated_at", "parse_report_json", "parse_certified",
+                                           "status", "last_error"})}
+
+
+def _row_hash(table: str, row: dict) -> str:
+    """Compare rows without retaining or exposing their values; JSON object order is immaterial
+    and the columns each copy stamps for itself don't count."""
+    skipped = _LOCAL_STAMPS | _LOCAL_BY_TABLE.get(table, frozenset())
+    kept = {name: value for name, value in row.items() if name not in skipped}
+    encoded = json.dumps(kept, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _addition_keys(remote: dict, home: dict) -> set:
+    """Only new cannot-confirm points and their new holder are allowed profile additions."""
+    points = {key for key, row in remote.items() if key[0] == "kb_points" and key not in home
+              and row["provenance"] == "user_cannot_confirm"}
+    holders = {remote[key]["entity_id"] for key in points}
+    ignored = set(points)
+    for key, row in remote.items():
+        if key[0] != "kb_entities" or key in home or row["id"] not in holders:
+            continue
+        children = {pk for pk, point in remote.items()
+                    if pk[0] == "kb_points" and point["entity_id"] == row["id"]}
+        if (row["kind"] == "extra" and row["title"] == "Unconfirmed claims"
+                and row["status"] == "archived" and row["origin"] == "gap_elicitation"
+                and row["detail_json"] == {"holder": "cannot_confirm"} and children <= points):
+            ignored.add(key)
+    return ignored
+
+
+def _empty_profile_keys(remote: dict) -> set:
+    """The career profile row every copy creates lazily, still holding nothing: nothing to lose."""
+    return {key for key, row in remote.items() if key[0] == "kb_profile"
+            and not any(row[name] for name in ("contact_json", "summary", "skills_json", "notes"))}
+
+
+def _differs(key: tuple, row: dict, theirs: dict) -> bool:
+    return key not in theirs or _row_hash(key[0], row) != _row_hash(key[0], theirs[key])
+
+
+def _profile_differences(remote: dict, home: dict) -> dict[str, list[str]]:
+    """List remote rows that would be lost or replaced. Home-only rows are ordinary replication."""
+    mine, theirs = _profile_index(remote), _profile_index(home)
+    ignored = _addition_keys(mine, theirs) | _empty_profile_keys(mine)
+    differences: dict[str, list[str]] = {}
+    for key, row in mine.items():
+        if key not in ignored and _differs(key, row, theirs):
+            table, pk = key
+            differences.setdefault(table, []).append("/".join(str(value) for value in pk))
+    return {table: sorted(keys) for table, keys in sorted(differences.items())}
+
+
+def _shared_jobs(ctx: _Ctx) -> list:
+    shared = []
+    ids = list(ctx.db.scalars(select(Job.id).order_by(Job.id)))
+    for chunk in _chunks(ids, OWNERSHIP_CHUNK):
+        labels = _call(ctx, "POST", "/api/sync/ownership",
+                       body={"job_ids": [job_id.hex for job_id in chunk]})
+        shared.extend(job_id for job_id in chunk if labels.get(job_id.hex) == "home")
+    return shared
+
+
+def _lost_bases(remote: dict, home: dict) -> list[str]:
+    mine = {item["row"]["slug"] for item in remote["rows"] if item["table"] == "base_resumes"}
+    theirs = {item["row"]["slug"] for item in home["rows"] if item["table"] == "base_resumes"}
+    return sorted(mine - theirs)
+
+
+def _affected_applications(db: Session, slugs: list[str]) -> list[str]:
+    query = select(Application.id).join(Job, Job.id == Application.job_id).where(
+        Application.base_resume.in_(slugs), jobs_bundle.owned_clause(db)).order_by(Application.id)
+    return [application_id.hex for application_id in db.scalars(query)]
+
+
 def _pairing_refusal(ctx: _Ctx, accept_profile_overwrite: bool) -> str | None:
-    """The sentence that stops a first round, or None to go ahead. This is where the first-round
-    comparison of the two profiles is wired in; with none wired in, nothing stops a paired first
-    round."""
-    return None
+    """Disclose only tables and keys, lost base slugs, affected applications and shared job ids.
+    Accepting permits replacement, never merging. Cache the compared home snapshot for apply."""
+    ctx.pairing_profile = _call(ctx, "GET", "/api/sync/profile")
+    ctx.shared_jobs = _shared_jobs(ctx)
+    if accept_profile_overwrite:
+        return None
+    remote = profile_bundle.export_profile(ctx.db)
+    differences = _profile_differences(remote, ctx.pairing_profile)
+    progressed = [job_id.hex for job_id in ctx.shared_jobs if _progressed(ctx.db, job_id)]
+    if not differences and not progressed:
+        return None
+    details = [f"{table}: {', '.join(keys)}" for table, keys in differences.items()]
+    lost = _lost_bases(remote, ctx.pairing_profile)
+    if lost:
+        details.append(f"Remote-only base resumes: {', '.join(lost)}")
+        applications = _affected_applications(ctx.db, lost)
+        if applications:
+            details.append(f"Remote-owned applications using them: {', '.join(applications)}")
+    if progressed:
+        details.append(f"Shared jobs with remote progress: {', '.join(progressed)}")
+    return ("Pairing would replace data on this copy. " + "; ".join(details)
+            + ". Run pairing with --pair --accept-profile-overwrite to continue.")
+
+
+def _apply_pairing_profile(ctx: _Ctx) -> None:
+    """The first profile apply's commit also stores its revision, paired, and shared ownership.
+    The listener is session-local and removed even on rollback; later mirror commits do nothing."""
+    ctx.db.commit()
+    staged = False
+
+    def stage(db):
+        nonlocal staged
+        if staged:
+            return
+        state = {**status.read_state(db), "paired": True,
+                 "profile_rev": ctx.pairing_profile["profile_rev"]}
+        row = db.get(Setting, status.STATE_KEY)
+        if row is None:
+            db.add(Setting(key=status.STATE_KEY, value=json.dumps(state)))
+        else:
+            row.value = json.dumps(state)
+        for job_id in ctx.shared_jobs:
+            job = db.get(Job, job_id)
+            job.owner_machine, job.handover = ctx.home_id, None
+        staged = True
+
+    event.listen(ctx.db, "before_commit", stage)
+    try:
+        profile_bundle.apply_profile(ctx.db, ctx.pairing_profile)
+    except ValueError:
+        raise _Stop(_PROFILE, outcome=NEEDS_PERSON) from None
+    finally:
+        event.remove(ctx.db, "before_commit", stage)
+    ctx.paired_now = True
+    ctx.pairing_profile = None
 
 
 def _ensure_paired(ctx: _Ctx, options: _Options) -> None:
@@ -224,7 +366,7 @@ def _ensure_paired(ctx: _Ctx, options: _Options) -> None:
     refusal = _pairing_refusal(ctx, options.accept_profile_overwrite)
     if refusal:
         raise _Skip(refusal)
-    status.update_state(ctx.db, paired=True)
+    _apply_pairing_profile(ctx)
 
 
 # ------------------------------------------------------------------------------------ 4: reconcile
@@ -266,6 +408,8 @@ def _reconcile(ctx: _Ctx) -> dict:
 
 
 def _profile(ctx: _Ctx) -> dict:
+    if ctx.paired_now:
+        return {"applied": 1}
     since = status.read_state(ctx.db)["profile_rev"]
     answer = _call(ctx, "GET", "/api/sync/profile",
                    params=None if since is None else {"since": since})
