@@ -252,14 +252,25 @@ function ApplicationsContent() {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
-    onSuccess: (_data, { id }) => {
-      qc.invalidateQueries({ queryKey: ["applications"] });
-      const jobId = apps.data?.find((a) => a.id === id)?.job_id;
-      if (jobId) qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
+    // The chip turns at once; a failed PATCH puts every cached list back.
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: ["applications"] });
+      const previous = qc.getQueriesData<ApplicationSummary[]>({ queryKey: ["applications"] });
+      qc.setQueriesData<ApplicationSummary[]>({ queryKey: ["applications"] }, (rows) =>
+        rows?.map((row) => (row.id === id ? { ...row, status } : row)),
+      );
+      return { previous };
     },
-    onError: (err: Error) => {
+    onError: (err: Error, _vars, context) => {
+      context?.previous.forEach(([key, rows]) => qc.setQueryData(key, rows));
       leaving.current = null;
       toast.error(couldnt("change the status", err));
+    },
+    // Returned, so isPending lasts until the refetch lands and the chip never shows the old label.
+    onSettled: (_data, _err, { id }) => {
+      const jobId = apps.data?.find((a) => a.id === id)?.job_id;
+      if (jobId) void qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
+      return qc.invalidateQueries({ queryKey: ["applications"] });
     },
   });
 

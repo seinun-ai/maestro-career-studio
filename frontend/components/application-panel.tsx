@@ -41,7 +41,7 @@ import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
-import type { Application, Referral, RenderResult } from "@/lib/types";
+import type { Application, JobDetail, Referral, RenderResult } from "@/lib/types";
 
 function formatDateInput(value: string | null | undefined): string {
   if (!value) return "";
@@ -80,11 +80,26 @@ export function useApplicationMutations({
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
-      qc.invalidateQueries({ queryKey: ["applications"] });
+    // The header chip turns at once; a failed PATCH puts the cached job back.
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: ["job-detail", jobId] });
+      const previous = qc.getQueryData<JobDetail>(["job-detail", jobId]);
+      qc.setQueryData<JobDetail>(["job-detail", jobId], (detail) =>
+        detail?.application
+          ? { ...detail, application: { ...detail.application, ...body } }
+          : detail,
+      );
+      return { previous };
     },
-    onError: (err: Error) => toast.error(couldnt("update the application", err)),
+    onError: (err: Error, _body, context) => {
+      qc.setQueryData(["job-detail", jobId], context?.previous);
+      toast.error(couldnt("update the application", err));
+    },
+    // Returned, so isPending lasts until the refetch lands.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["applications"] });
+      return qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
+    },
   });
 
   const deleteApp = useMutation({

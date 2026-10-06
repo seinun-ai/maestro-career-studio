@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 
 import {
@@ -63,7 +64,7 @@ function chipClasses(interactive: boolean): string {
   return cn(
     "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-label-medium",
     interactive &&
-      "cursor-pointer transition-[transform,box-shadow] duration-150 ease-out select-none " +
+      "cursor-pointer transition-[background-color,color,transform,box-shadow] duration-(--duration-short3) ease-(--ease-standard) select-none " +
         "hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring",
   );
 }
@@ -177,6 +178,17 @@ export function StatusChip({
   const current = (status ?? "draft") as ApplicationStatus;
   const style = STATUS_STYLES[current] ?? STATUS_STYLES.draft;
 
+  // One soft ring pulse when the status changes (not on first paint).
+  const shown = useRef(current);
+  const [confirm, setConfirm] = useState(false);
+  useEffect(() => {
+    if (shown.current === current) return;
+    shown.current = current;
+    setConfirm(true);
+    const t = window.setTimeout(() => setConfirm(false), 400);
+    return () => window.clearTimeout(t);
+  }, [current]);
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -186,8 +198,10 @@ export function StatusChip({
           <button
             type="button"
             data-status-chip
+            disabled={pending}
+            data-confirm={confirm || undefined}
             aria-label={`Status: ${style.label}. Change status`}
-            className={cn(chipClasses(true), style.chip, className)}
+            className={cn(chipClasses(true), style.chip, "data-confirm:animate-confirm", className)}
             onClick={(e) => e.stopPropagation()}
           >
             {pending ? (

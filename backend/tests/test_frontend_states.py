@@ -62,3 +62,31 @@ def test_only_the_bulk_queue_spins():
     skip = bar.split("onClick={onDecline}", 1)[1].split("</Button>", 1)[0]
     assert "pending={queuePending}" in queue
     assert "pending={" not in skip and "disabled={pending}" in skip
+
+
+def test_status_change_is_optimistic_and_awaits_the_refetch():
+    page = _read("app/applications/page.tsx")
+    # Up to the next mutation, as test_frontend_focus.py slices it: the body itself contains "});".
+    block = page.split("const patchStatus = useMutation", 1)[1].split("const deleteApp = useMutation(", 1)[0]
+    assert "onMutate" in block and "setQueriesData" in block
+    assert "onSettled" in block and "return qc.invalidateQueries" in block
+    assert "qc.setQueryData(key, rows)" in block  # a failed PATCH rolls back
+
+
+def test_the_job_header_status_patch_is_optimistic_too():
+    panel = _read("components/application-panel.tsx")
+    block = panel.split("const patch = useMutation", 1)[1].split("const deleteApp = useMutation(", 1)[0]
+    assert "onMutate" in block and "setQueryData" in block and "onError" in block
+    assert "onSettled" in block and "return qc.invalidateQueries" in block
+
+
+def test_a_pending_status_chip_cannot_be_changed_again():
+    chip = _read("components/status-chip.tsx")
+    body = chip.split("export function StatusChip", 1)[1]
+    assert "disabled={pending}" in body
+
+
+def test_the_status_chip_cross_fades_and_confirms():
+    chip = _read("components/status-chip.tsx")
+    assert "transition-[background-color,color" in chip
+    assert "data-confirm" in chip and "animate-confirm" in chip
