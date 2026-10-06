@@ -245,6 +245,16 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
 
   const items = useMemo(() => data?.items ?? [], [data]);
 
+  // Clear an id once the refetched list no longer holds it as it was: gone, or in another status. A stale
+  // entry would hide a row that comes back in that status (Queue, then Keep it returns it to To review).
+  useEffect(() => {
+    if (leavingIds.size === 0) return;
+    const now = new Map(items.map((p) => [p.id, p.status] as const));
+    const rest = [...leavingIds].filter(([id, status]) => now.get(id) === status);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- prunes state that mirrors the query's data
+    if (rest.length !== leavingIds.size) setLeavingIds(new Map(rest));
+  }, [items, leavingIds]);
+
   const roles = useMemo(() => {
     const set = new Set<string>();
     for (const p of items) {
@@ -839,100 +849,123 @@ function ProposalRow({
   return (
     // One child, so the wrapper can close its height (.collapse-exit in globals.css).
     <div className="collapse-exit" data-leaving={leavingIds.get(proposal.id) === proposal.status || undefined}>
-    <Card className="group" data-pending={acting ? "true" : undefined}>
-      <CardContent className="p-0">
-        <div className="flex items-stretch gap-1">
-          {showCheckbox ? (
-            <label className="flex items-center px-3">
-              <Checkbox
-                checked={selected.has(proposal.id)}
-                onCheckedChange={(next) => onToggleSelected(proposal.id, next)}
-                aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}
-              />
-            </label>
-          ) : null}
-          <Link
-            href={`/jobs/${proposal.job_id}?from=proposals`}
-            // flex-wrap + a real basis on the text, not flex-1 (the job
-            // header's fix): with basis-0 the shrink-0 chips kept their width
-            // and squeezed the title to a few letters at 768 and to nothing at
-            // 375. Narrow, the chips wrap under the text and the decorative
-            // monogram steps aside.
-            className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-corner-md p-3 text-left transition-colors sm:p-4"
-          >
-            <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
-            <div className="min-w-0 grow basis-[10rem]">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-title-small">
-                  {job.title ?? "Untitled role"}
-                </span>
-                {job.disqualifying_for_opt && proposal.readiness?.knockout !== "opt" ? (
-                  <span
-                    className="text-warning inline-flex items-center gap-1 text-body-small"
-                    title="OPT is the US student work permit"
-                  >
-                    <TriangleAlert className="size-3.5" aria-hidden="true" />
-                    May not accept OPT
-                  </span>
-                ) : null}
-                {isDup ? (
-                  <span className="inline-flex items-center rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
-                    Possible duplicate
-                  </span>
-                ) : null}
-                {isNew(proposal.created_at, since) ? (
-                  <span className="inline-flex items-center gap-1 text-label-small text-primary">
-                    <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
-                    New
-                  </span>
-                ) : null}
-                <ReadinessMarks readiness={proposal.readiness} />
-              </div>
-              <div className="text-muted-foreground truncate text-body-small">
-                {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
-              </div>
-              <div className="text-muted-foreground truncate text-body-small" title={meta}>
-                {meta}
-              </div>
-              {needs ? <p className="mt-1 text-body-small break-words">{needs}</p> : null}
-            </div>
-            {base ? (
-              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-body-small dark:bg-surface-container-highest sm:inline-flex">
-                {baseName}
-                {score != null ? ` · ATS score ${score}` : ""}
-              </span>
+      <Card className="group" data-pending={acting ? "true" : undefined}>
+        <CardContent className="p-0">
+          <div className="flex items-stretch gap-1">
+            {showCheckbox ? (
+              <label className="flex items-center px-3">
+                <Checkbox
+                  checked={selected.has(proposal.id)}
+                  onCheckedChange={(next) => onToggleSelected(proposal.id, next)}
+                  aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}
+                />
+              </label>
             ) : null}
-            <Badge
-              className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
-              variant="secondary"
+            <Link
+              href={`/jobs/${proposal.job_id}?from=proposals`}
+              // flex-wrap + a real basis on the text, not flex-1 (the job
+              // header's fix): with basis-0 the shrink-0 chips kept their width
+              // and squeezed the title to a few letters at 768 and to nothing at
+              // 375. Narrow, the chips wrap under the text and the decorative
+              // monogram steps aside.
+              className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-corner-md p-3 text-left transition-colors sm:p-4"
             >
-              {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
-            </Badge>
-          </Link>
-          <div
-            className={cn(
-              "relative flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
-              // The buttons stay (focus is kept) under the spinner that answers the press.
-              acting && "opacity-100 [&_button]:opacity-0",
-            )}
-          >
-            {acting ? (
-              <span role="status" className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                <span className="sr-only">Working</span>
-              </span>
-            ) : null}
-            {lane === "triage" ? (
-              <>
+              <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
+              <div className="min-w-0 grow basis-[10rem]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="truncate text-title-small">
+                    {job.title ?? "Untitled role"}
+                  </span>
+                  {job.disqualifying_for_opt && proposal.readiness?.knockout !== "opt" ? (
+                    <span
+                      className="text-warning inline-flex items-center gap-1 text-body-small"
+                      title="OPT is the US student work permit"
+                    >
+                      <TriangleAlert className="size-3.5" aria-hidden="true" />
+                      May not accept OPT
+                    </span>
+                  ) : null}
+                  {isDup ? (
+                    <span className="inline-flex items-center rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
+                      Possible duplicate
+                    </span>
+                  ) : null}
+                  {isNew(proposal.created_at, since) ? (
+                    <span className="inline-flex items-center gap-1 text-label-small text-primary">
+                      <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
+                      New
+                    </span>
+                  ) : null}
+                  <ReadinessMarks readiness={proposal.readiness} />
+                </div>
+                <div className="text-muted-foreground truncate text-body-small">
+                  {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
+                </div>
+                <div className="text-muted-foreground truncate text-body-small" title={meta}>
+                  {meta}
+                </div>
+                {needs ? <p className="mt-1 text-body-small break-words">{needs}</p> : null}
+              </div>
+              {base ? (
+                <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-body-small dark:bg-surface-container-highest sm:inline-flex">
+                  {baseName}
+                  {score != null ? ` · ATS score ${score}` : ""}
+                </span>
+              ) : null}
+              <Badge
+                className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
+                variant="secondary"
+              >
+                {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
+              </Badge>
+            </Link>
+            <div
+              className={cn(
+                "relative flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
+                // The buttons stay (focus is kept) under the spinner that answers the press.
+                acting && "opacity-100 [&_button]:opacity-0!",
+              )}
+            >
+              {acting ? (
+                <span role="status" className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <span className="sr-only">Working</span>
+                </span>
+              ) : null}
+              {lane === "triage" ? (
+                <>
+                  <IconButton
+                    label="Queue"
+                    icon={<QueueIcon />}
+                    data-row-action="queue"
+                    disabled={pending}
+                    focusableWhenDisabled
+                    className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                    onClick={act("queue")}
+                  />
+                  <IconButton
+                    label="Skip"
+                    icon={<X />}
+                    data-row-action="skip"
+                    disabled={pending}
+                    focusableWhenDisabled
+                    className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                    onClick={act("skip")}
+                  />
+                </>
+              ) : null}
+              {showKeep ? (
                 <IconButton
-                  label="Queue"
-                  icon={<QueueIcon />}
-                  data-row-action="queue"
+                  label="Keep it"
+                  icon={<ApproveIcon />}
+                  data-row-action="keep"
                   disabled={pending}
                   focusableWhenDisabled
                   className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                  onClick={act("queue")}
+                  onClick={act("keep")}
                 />
+              ) : null}
+              {showDecline ? (
                 <IconButton
                   label="Skip"
                   icon={<X />}
@@ -942,45 +975,22 @@ function ProposalRow({
                   className="data-disabled:pointer-events-none data-disabled:opacity-50"
                   onClick={act("skip")}
                 />
-              </>
-            ) : null}
-            {showKeep ? (
-              <IconButton
-                label="Keep it"
-                icon={<ApproveIcon />}
-                data-row-action="keep"
-                disabled={pending}
-                focusableWhenDisabled
-                className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                onClick={act("keep")}
-              />
-            ) : null}
-            {showDecline ? (
-              <IconButton
-                label="Skip"
-                icon={<X />}
-                data-row-action="skip"
-                disabled={pending}
-                focusableWhenDisabled
-                className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                onClick={act("skip")}
-              />
-            ) : null}
-            {canDelete ? (
-              <IconButton
-                label="Delete proposal"
-                icon={<Trash2 />}
-                data-row-action="delete"
-                disabled={pending}
-                focusableWhenDisabled
-                className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                onClick={act("delete")}
-              />
-            ) : null}
+              ) : null}
+              {canDelete ? (
+                <IconButton
+                  label="Delete proposal"
+                  icon={<Trash2 />}
+                  data-row-action="delete"
+                  disabled={pending}
+                  focusableWhenDisabled
+                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                  onClick={act("delete")}
+                />
+              ) : null}
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
     </div>
   );
 }
