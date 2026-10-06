@@ -23,6 +23,9 @@ class Job(Base):
     raw_text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(Text, nullable=False, server_default="user")
+    owner_machine: Mapped[str | None] = mapped_column(String(32))  # NULL means owned here
+    sync_rev: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    handover: Mapped[str | None] = mapped_column(String(16))  # offered | returning
     extracted_json: Mapped[dict | None] = mapped_column(JSONDoc)
     title: Mapped[str | None] = mapped_column(Text)
     company: Mapped[str | None] = mapped_column(Text)
