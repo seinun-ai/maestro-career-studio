@@ -226,6 +226,9 @@ def create_session(
         # A new session supersedes any prior open one for this (job, base): the
         # UI only ever resumes the newest open session, so older ones were
         # permanent orphans (audit C24).
+        from app.services.sync import hooks
+
+        hooks.touch_job(session, job_id)
         session.execute(
             update(TailoringSession)
             .where(

@@ -117,18 +117,18 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
  extension ─┼→ jobs router → Job row  ├─ MCP server (86 tools, thin REST wrappers)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
-                    ▼
-        ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
-                    ▼
-        TailoringSession (frozen gaps → resolutions → LLM tailor ops)
-                    ▼
-        Application (customized_json draft) → LaTeX render → PDF + preview PNGs
+                    ▼ ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
+                    ▼ TailoringSession (frozen gaps → resolutions → LLM tailor ops)
+                    ▼ Application (customized_json draft) → LaTeX render → PDF + preview PNGs
                     ▼                              ▼
         status tracking (StatusChip)        QA router (cover letter / answers)
 ```
 
-`data/maestro_cs.sqlite3` (SQLite, WAL) holds all state except resume file data (`base_resumes/<slug>.json` on
-disk — DB `base_resumes` row + file must both exist), rendered artifacts and the job-site login (`settings/secrets/`, §6).
+`data/maestro_cs.sqlite3` (SQLite, WAL) holds row state and local sync clocks. Every ORM flush stamps
+jobs/profile, including imports and both sides of moves; deleted jobs leave tombstones (`services/sync/hooks.py`).
+Core writers explicitly touch their subtree or use ORM writes; unresolved rows wait in `session.info["sync_unresolved"]`
+for the disabled ownership guard. Resume JSON and rendered files stay on disk (`base_resumes` row + file both required);
+the job-site login stays in `settings/secrets/` (§6).
 
 ## 4. Core entities and their lifecycles
 

@@ -197,8 +197,6 @@ def test_local_sync_and_run_rows_have_no_job(db_session, model):
         ("llm.capabilities.fast", False),
         ("kb.seeded", False),
         ("kb.seeded.base", False),
-        ("llm_library_proposals", False),
-        ("llm_library_proposals.extra", False),
         ("sync", True),
         ("llm.capabilities", True),
         ("prompt.sync.machine_id", True),
@@ -286,3 +284,58 @@ def test_job_resolution_works_during_before_flush(db_session, job_parents, model
     finally:
         event.remove(db_session, "before_flush", resolve_during_flush)
     assert resolved == [job.id]
+
+
+def test_gaps_stash_name_is_not_a_local_setting_prefix():
+    from app.services.sync import registry
+
+    assert registry.is_profile_row(models.Setting(key="llm_library_proposals")) is True
+
+
+def test_kb_port_log_pending_default_is_profile():
+    from app.services.sync import registry
+
+    assert registry.is_profile_row(models.KBPortLog(resume_key="base")) is True
+
+
+@pytest.mark.parametrize("model", DIRECT_JOB_MODELS)
+def test_job_ids_of_direct_link_move(db_session, job_parents, model):
+    from app.services.sync import registry
+
+    job, _, _ = job_parents
+    other_id = uuid.uuid4()
+    row = model(job_id=job.id)
+    # Merge a loaded-looking row into the identity map without INSERT constraints.
+    from sqlalchemy.orm import make_transient_to_detached
+
+    if hasattr(row, "id"):
+        row.id = uuid.uuid4()
+    else:
+        row.skill_name, row.skill_category, row.requirement_level = "Python", "tool", "required"
+    make_transient_to_detached(row)
+    db_session.add(row)
+    row.job_id = other_id
+    assert registry.job_ids_of(db_session, row) == {job.id, other_id}
+
+
+@pytest.mark.parametrize("model", INDIRECT_JOB_MODELS)
+def test_job_ids_of_indirect_link_move(db_session, job_parents, model):
+    from app.services.sync import registry
+    from sqlalchemy.orm import make_transient_to_detached
+
+    job, application, proposal = job_parents
+    other_id = uuid.uuid4()
+    other_application = models.Application(id=uuid.uuid4(), job_id=other_id)
+    other_proposal = models.ApplicationProposal(id=uuid.uuid4(), job_id=other_id)
+    db_session.add_all([other_application, other_proposal])
+    row = _child_of(model, application, proposal)
+    row.id = uuid.uuid4()
+    make_transient_to_detached(row)
+    db_session.add(row)
+    if model is models.QAEntry:
+        row.application_id = other_application.id
+    elif model is models.ConsentEvent:
+        row.proposal_id = other_proposal.id
+    else:
+        row.resume_key = str(other_application.id)
+    assert registry.job_ids_of(db_session, row) == {job.id, other_id}

@@ -4,7 +4,9 @@ test_every_table_is_classified fails otherwise.
 
 from uuid import UUID
 
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import get_history
 
 from app.db import Base
 from app.models.application import Application
@@ -57,7 +59,7 @@ TABLES = {
     "alembic_version": SYNC,
 }
 
-LOCAL_SETTING_PREFIXES = ("sync.", "llm.capabilities.", "kb.seeded", "llm_library_proposals")
+LOCAL_SETTING_PREFIXES = ("sync.", "llm.capabilities.", "kb.seeded")
 
 
 def _application_id(resume_key: str | None) -> UUID | None:
@@ -69,37 +71,91 @@ def _application_id(resume_key: str | None) -> UUID | None:
         return None
 
 
-def _parent_job_id(
-    session: Session,
-    model: type[Application] | type[ApplicationProposal],
-    identity: UUID | None,
-) -> UUID | None:
+def pending_parents(session: Session) -> dict:
+    """Index pending identities once; callers may reuse it for a whole flush."""
+    return {(type(obj), obj.id): obj for obj in session.new
+            if getattr(obj, "id", None) is not None}
+
+
+def _parent_job_id(session: Session, model: type, identity: UUID | None, parents: dict) -> UUID | None:
     if identity is None:
         return None
-    # The flush hook also sees children of parents not yet in the database.
-    for parent in session.new:
-        if isinstance(parent, model) and parent.id == identity:
-            return parent.job_id
-    parent = session.get(model, identity)
+    parent = parents.get((model, identity))
+    if parent is None:
+        parent = session.get(model, identity)
     return parent.job_id if parent is not None else None
 
 
-def job_id_of(session: Session, obj: Base) -> UUID | None:
+def _link_of(obj: Base) -> tuple[str, type | None] | None:
+    table = obj.__table__.name
+    if table == "consent_events":
+        return "proposal_id", ApplicationProposal
+    if table == "qa_entries":
+        return "application_id", Application
+    if TABLES.get(table) == "by_kind":
+        return "resume_key", Application
+    if TABLES.get(table) == JOB and table != "jobs":
+        return "job_id", None
+    return None
+
+
+def _resolve_link(session: Session, link: tuple, value, parents: dict) -> UUID | None:
+    _, model = link
+    if model is None:
+        return value
+    identity = value if isinstance(value, UUID) else _application_id(value)
+    return _parent_job_id(session, model, identity, parents)
+
+
+def job_id_of(session: Session, obj: Base, parents: dict | None = None) -> UUID | None:
     """Resolve a job row's owner subtree, including pending parents, without flushing."""
     with session.no_autoflush:
-        table = obj.__table__.name
-        classification = TABLES[table]
-        if classification == JOB:
-            if table == "jobs":
-                return obj.id
-            if table == "consent_events":
-                return _parent_job_id(session, ApplicationProposal, obj.proposal_id)
-            if table == "qa_entries":
-                return _parent_job_id(session, Application, obj.application_id)
-            return obj.job_id
-        if classification == "by_kind" and obj.resume_kind == "application":
-            return _parent_job_id(session, Application, _application_id(obj.resume_key))
-        return None
+        if obj.__table__.name == "jobs":
+            return obj.id
+        if TABLES.get(obj.__table__.name) == "by_kind" and obj.resume_kind != "application":
+            return None
+        link = _link_of(obj)
+        if link is None:
+            return None
+        index = pending_parents(session) if parents is None else parents
+        return _resolve_link(session, link, getattr(obj, link[0]), index)
+
+
+def _previous_values(session: Session, obj: Base, column: str) -> list:
+    history = get_history(obj, column)
+    if history.deleted or not history.has_changes():
+        return list(history.deleted)
+    state = inspect(obj)
+    if state.identity is None:
+        return []
+    # Expire-on-commit can leave an overwritten FK unloaded: history has no old value.
+    statement = select(getattr(type(obj), column)).where(
+        *(key == value for key, value in zip(state.mapper.primary_key, state.identity))
+    )
+    return [session.scalar(statement)]
+
+
+def job_ids_of(session: Session, obj: Base, parents: dict | None = None) -> set[UUID]:
+    """Both job subtrees of a moved row, including an unloaded previous link."""
+    with session.no_autoflush:
+        index = pending_parents(session) if parents is None else parents
+        current = job_id_of(session, obj, index)
+        result = {current} if current is not None else set()
+        link = _link_of(obj)
+        if obj not in session.dirty or link is None:
+            return result
+        by_kind = TABLES.get(obj.__table__.name) == "by_kind"
+        old_kinds = _previous_values(session, obj, "resume_kind") if by_kind else []
+        if by_kind and obj.resume_kind != "application" and "application" not in old_kinds:
+            return result
+        previous = _previous_values(session, obj, link[0])
+        if "application" in old_kinds and not previous:
+            previous = [getattr(obj, link[0])]
+        for value in previous:
+            identity = _resolve_link(session, link, value, index)
+            if identity is not None:
+                result.add(identity)
+        return result
 
 
 def is_profile_row(obj: Base) -> bool:
@@ -107,7 +163,6 @@ def is_profile_row(obj: Base) -> bool:
     table = obj.__table__.name
     if table == "settings":
         return isinstance(obj.key, str) and not obj.key.startswith(LOCAL_SETTING_PREFIXES)
-    classification = TABLES[table]
-    return classification == PROFILE or (
-        classification == "by_kind" and obj.resume_kind == "base"
-    )
+    classification = TABLES.get(table)
+    kind = "base" if table == "kb_port_log" and obj.resume_kind is None else getattr(obj, "resume_kind", None)
+    return classification == PROFILE or (classification == "by_kind" and kind == "base")

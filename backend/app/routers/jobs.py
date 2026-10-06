@@ -597,6 +597,9 @@ def re_extract_job(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     extraction = jd_extraction.apply_work_auth_backstop(job.raw_text, dict(extraction))
     _apply_extraction(job, extraction, db)
 
+    from app.services.sync import hooks
+
+    hooks.touch_job(db, job_id)
     db.execute(sa_delete(JobSkill).where(JobSkill.job_id == job_id))
     _insert_skills(db, job_id, extraction)
     db.commit()
