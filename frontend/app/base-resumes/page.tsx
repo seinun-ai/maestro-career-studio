@@ -112,7 +112,17 @@ export default function BaseResumesListPage() {
         { method: "POST" },
       ),
     onSuccess: (_data, vars) => {
-      toast.success(vars.archived ? "Resume restored" : "Resume archived");
+      if (vars.archived) toast.success("Resume restored");
+      else
+        toast.success("Resume archived", {
+          action: {
+            label: "Undo",
+            onClick: () =>
+              apiFetch<BaseResumeDetail>(`/api/base-resumes/${vars.slug}/unarchive`, { method: "POST" })
+                .then(() => invalidate())
+                .catch((err: Error) => toast.error(couldnt("undo the archive", err))),
+          },
+        });
       invalidate();
     },
     onError: (err: Error, vars) =>

@@ -1345,7 +1345,10 @@
     Applications).
   - *Toasts*: a success toast names its object ("Template deleted", never
     "Deleted"); an error toast says what failed (see *Errors*). A count and
-    its noun agree ("1 bullet", "3 bullets").
+    its noun agree ("1 bullet", "3 bullets"). A toast carries an **Undo** action only where
+    the server can reverse the change: Approve on a draft bullet (PATCH back to `draft`) and
+    Archive on a base resume (`/unarchive`). Skip and Queue get no Undo. Undo answers too: a
+    failure toasts through `couldnt(...)`.
 - The Assistant page (`/chat`) is Gemini-styled: centered greeting + floating pill composer
   when empty, docked composer with an inline resume picker ("Resume to edit") otherwise;
   user messages are muted tonal bubbles, assistant text plain. The sessions

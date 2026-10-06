@@ -187,12 +187,25 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
     ]);
 
   const update = useMutation({
-    mutationFn: ({ payload }: { payload: KBPointPatch; message: string }) =>
+    mutationFn: ({ payload }: { payload: KBPointPatch; message: string; undoable?: boolean }) =>
       patchKbPoint(point.id, payload),
     onSuccess: async (updated, variables) => {
       setText(updated.text);
       setEditing(false);
-      toast.success(variables.message);
+      toast.success(
+        variables.message,
+        variables.undoable
+          ? {
+              action: {
+                label: "Undo",
+                onClick: () =>
+                  patchKbPoint(updated.id, { state: "draft" })
+                    .then(() => invalidate())
+                    .catch((error: Error) => toast.error(couldnt("undo the approval", error))),
+              },
+            }
+          : undefined,
+      );
       await invalidate();
       if (variables.payload.state) focusIfDropped(actionRef.current);
     },
@@ -232,7 +245,12 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
       approved: point.state === "retired" ? "Using this bullet again" : "Bullet approved",
       retired: "Won't be offered again",
     };
-    updateOnce({ payload: { state }, message: messages[state] });
+    // Only approving a draft is undoable here; a retired bullet's "use again" has its own button back.
+    updateOnce({
+      payload: { state },
+      message: messages[state],
+      undoable: state === "approved" && point.state === "draft",
+    });
   };
   const action = STATE_ACTIONS[point.state];
   const ActionIcon = action.icon;

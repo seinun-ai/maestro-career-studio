@@ -125,3 +125,21 @@ def test_inbox_rows_leave_with_an_exit_transition():
 def test_the_bulk_bar_slides_up_on_mount():
     bar = _read("components/proposals/triage-actions.tsx").split("export function BulkBar(", 1)[1]
     assert "animate-in slide-in-from-bottom-2 fade-in-0 duration-(--duration-short4)" in bar
+
+
+def test_reversible_actions_offer_undo():
+    for rel in ("components/career/inbox-panel.tsx", "components/career/points-list.tsx", "app/base-resumes/page.tsx"):
+        src = _read(rel)
+        assert 'label: "Undo"' in src, rel
+    # Undo answers too: its own failure toast, and the draft Approve stays pinned to its busy label.
+    assert "couldnt(\"undo the approval\"" in _read("components/career/inbox-panel.tsx")
+    assert "couldnt(\"undo the archive\"" in _read("app/base-resumes/page.tsx")
+    # Skip and Queue are not reversible by the server (D8): no Undo in the triage hook.
+    assert 'label: "Undo"' not in _read("components/proposals/triage-actions.tsx")
+
+
+def test_a_leaving_entry_is_pruned_when_the_refetch_drops_it():
+    section = _read("components/proposals/proposals-section.tsx")
+    effect = section.split("// Clear an id once the refetched list no longer holds it as it was", 1)[1].split("}, [items, leavingIds]);", 1)[0]
+    assert "now.get(id) === status" in effect and "setLeavingIds(new Map(rest))" in effect
+    assert "[&_button]:opacity-0!" in section  # beats the button's own data-disabled:opacity-50

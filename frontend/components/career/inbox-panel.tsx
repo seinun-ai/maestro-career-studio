@@ -336,13 +336,27 @@ function DraftRow({
 
   const update = useMutation({
     mutationKey: KB_POINT_MUTATION_KEY,
-    mutationFn: ({ payload }: { payload: KBPointPatch; success: string }) =>
+    mutationFn: ({ payload }: { payload: KBPointPatch; success: string; undoable?: boolean }) =>
       patchKbPoint(point.id, payload),
     onSuccess: async (updated, variables) => {
       setText(updated.text);
       setEditing(false);
       onDirtyChange(point.id, false);
-      toast.success(variables.success);
+      // The row unmounts once the list refetches, so Undo closes over the id and the client only.
+      toast.success(
+        variables.success,
+        variables.undoable
+          ? {
+              action: {
+                label: "Undo",
+                onClick: () =>
+                  patchKbPoint(updated.id, { state: "draft" })
+                    .then(() => invalidateKbPoints(queryClient))
+                    .catch((error: Error) => toast.error(couldnt("undo the approval", error))),
+              },
+            }
+          : undefined,
+      );
       await invalidateKbPoints(queryClient);
     },
     onError: (error: Error) => toast.error(couldnt("save the draft", error)),
@@ -391,6 +405,7 @@ function DraftRow({
         ...(value && value !== point.text ? { text: value } : {}),
       },
       success: "Bullet approved",
+      undoable: true,
     });
   };
 
