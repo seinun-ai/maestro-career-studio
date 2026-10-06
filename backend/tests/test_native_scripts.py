@@ -18,10 +18,11 @@ import pytest
 
 BACKEND = Path(__file__).resolve().parents[1]
 NATIVE = BACKEND / "scripts/native"
-SCRIPTS = ("common.sh", "setup.sh", "start.sh", "stop.sh", "health.sh")
+SCRIPTS = ("common.sh", "setup.sh", "start.sh", "stop.sh", "health.sh", "sync.sh")
 HOME_DIRS = ("data", "applications", "settings", "base_resumes", "kb_documents",
              "logs", "exports", "fastembed_cache")
 SENTINEL = "synthetic-secret-do-not-print"
+SYNC_KEY = "synthetic-sync-key-do-not-print"
 READOUT = {"rss_mb": 144.0, "peak_mb": 150.0, "platform": "linux"}
 
 # These modules replace only dependencies at the subprocess boundary. The
@@ -82,7 +83,7 @@ while True:
 '''
 
 FAKE_HTTP = '''
-import io, json, os, socket, urllib.request
+import io, json, os, socket, urllib.error, urllib.request
 from pathlib import Path
 from native_test_support import record
 
@@ -91,9 +92,11 @@ class Response(io.BytesIO):
 
 class Opener:
     def open(self, request, timeout):
-        assert timeout <= 1
         url = getattr(request, "full_url", request)
         assert url.startswith("http://127.0.0.1:")
+        if getattr(request, "data", None) is not None:
+            return self.post(request, url)
+        assert timeout <= 1
         record("get")
         if os.environ.get("NATIVE_TEST_FAIL") == "get":
             raise OSError(os.environ.get("OPENAI_API_KEY", ""))
@@ -104,6 +107,21 @@ class Opener:
         body = os.environ.get('NATIVE_TEST_MEMORY',
             '{"rss_mb": 144.0, "peak_mb": 150.0, "platform": "linux"}')
         return Response(body.encode())
+
+    def post(self, request, url):
+        records = Path(os.environ["NATIVE_TEST_RECORDS"])
+        path = records / "round.json"
+        calls = json.loads(path.read_text())["calls"] + 1 if path.exists() else 1
+        path.write_text(json.dumps({"calls": calls, "url": url, "method": request.get_method(),
+            "body": json.loads(request.data), "content_type": request.get_header("Content-type"),
+            "has_auth": request.has_header("Authorization")}))
+        if os.environ.get("NATIVE_TEST_FAIL") == "post":
+            raise OSError(os.environ.get("OPENAI_API_KEY", ""))
+        status = int(os.environ.get("NATIVE_TEST_ROUND_STATUS", "200"))
+        body = os.environ.get("NATIVE_TEST_ROUND", '{"ok": true, "steps": {}}').encode()
+        if status != 200:
+            raise urllib.error.HTTPError(url, status, "x", {}, io.BytesIO(body))
+        return Response(body)
 
 def build_opener(*handlers):
     assert len(handlers) == 1 and handlers[0].proxies == {}
@@ -749,6 +767,231 @@ def test_a_marker_that_is_not_a_time_is_never_echoed(native_home):
     assert health.returncode == 1 and "paused for maintenance" in health.stderr
     assert_safe(watchdog, ctx)
     assert_safe(health, ctx)
+
+
+# ------------------------------------------------------------------ sync.sh and the key CLI
+
+
+def run_sync(ctx, *args, round_status=None, round_body=None, fail=None):
+    env = dict(ctx.env)
+    if round_status is not None:
+        env["NATIVE_TEST_ROUND_STATUS"] = str(round_status)
+    if round_body is not None:
+        env["NATIVE_TEST_ROUND"] = json.dumps(round_body)
+    if fail:
+        env["NATIVE_TEST_FAIL"] = fail
+    return subprocess.run(["bash", str(NATIVE / "sync.sh"), *args], cwd="/", env=env,
+                          capture_output=True, text=True, timeout=45)
+
+
+def posted_round(ctx):
+    return read_record(ctx, "round")
+
+
+def assert_sync_safe(result, ctx):
+    assert_safe(result, ctx)
+    assert SYNC_KEY not in result.stdout + result.stderr
+
+
+def test_sync_posts_one_plain_round_to_the_loopback_backend(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    (ctx.home / "maestro.env").write_text("MAESTRO_PORT=8741\n")
+    steps = {"reconcile": {"claimed": 0}, "pull": {"jobs": 2}}
+    result = run_sync(ctx, round_body={"ok": True, "steps": steps})
+    assert result.returncode == 0, result.stderr
+    sent = posted_round(ctx)
+    assert sent["calls"] == 1 and sent["method"] == "POST"
+    assert sent["url"] == "http://127.0.0.1:8741/api/sync/round"
+    assert sent["content_type"] == "application/json" and not sent["has_auth"]
+    assert sent["body"] == {"force": False, "pair": False, "accept_profile_overwrite": False}
+    assert json.loads(result.stdout[result.stdout.index("{"):]) == {"ok": True, "steps": steps}
+    assert_sync_safe(result, ctx)
+
+
+def test_sync_passes_pairing_through_and_forces_past_the_backoff(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    assert run_sync(ctx, "--pair").returncode == 0
+    assert posted_round(ctx)["body"] == {"force": True, "pair": True, "accept_profile_overwrite": False}
+    assert run_sync(ctx, "--pair", "--accept-profile-overwrite").returncode == 0
+    assert posted_round(ctx)["body"] == {"force": True, "pair": True, "accept_profile_overwrite": True}
+
+
+@pytest.mark.parametrize("args", [("--bogus",), ("--accept-profile-overwrite",), ("--pair", "extra"),
+                                  ("--pair", "--bogus"), ("pair",)])
+def test_sync_rejects_unknown_flags_with_usage_and_posts_nothing(native_home, args):
+    ctx = native_home
+    setup_home(ctx)
+    result = run_sync(ctx, *args)
+    assert result.returncode == 1 and "Usage: sync.sh [--pair [--accept-profile-overwrite]]" in result.stderr
+    assert not (ctx.records / "round.json").exists()
+
+
+def test_sync_declines_while_maintenance_is_paused(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    pause_marker(ctx).write_text("2026-10-06T10:11:12Z\n")
+    result = run_sync(ctx)
+    assert result.returncode == 0 and "2026-10-06T10:11:12Z" in result.stdout
+    assert "paused" in result.stdout and len(result.stdout.strip().splitlines()) == 1
+    assert not (ctx.records / "round.json").exists()
+    pause_marker(ctx).write_text(f"{SENTINEL}\n")
+    odd = run_sync(ctx, "--pair")
+    assert odd.returncode == 0 and "unknown time" in odd.stdout
+    assert_safe(odd, ctx)
+    assert not (ctx.records / "round.json").exists()
+
+
+BACKOFF = {"ok": False, "skipped": "The last sync failed. Next try at 2026-10-06T11:00:00+00:00."}
+
+
+@pytest.mark.parametrize(("status", "body", "code", "words"), [
+    (200, {"ok": True, "steps": {"pull": {"jobs": 1}}}, 0, "Synced"),
+    (200, {"ok": False, "skipped": "Sync isn't set up."}, 0, "Skipped"),
+    (200, BACKOFF, 0, "Skipped"),
+    (409, {"detail": "A sync is already running."}, 0, "already running"),
+    (200, {"ok": False, "error": "502: Your laptop didn't answer.", "steps": {"push": {"sent": 0}}},
+     1, "Your laptop didn't answer."),
+    (404, {"detail": "Not Found"}, 1, "always-on copy"),
+    (403, {"detail": "Browser requests can't use this."}, 1, "refused"),
+    (500, {"detail": "boom"}, 1, "500"),
+    (200, "not an object", 1, "unreadable"),
+])
+def test_sync_exit_codes_and_one_line_report(native_home, status, body, code, words):
+    ctx = native_home
+    setup_home(ctx)
+    result = run_sync(ctx, round_status=status, round_body=body)
+    assert result.returncode == code, result.stderr
+    assert words in result.stdout + result.stderr
+    assert_sync_safe(result, ctx)
+
+
+def test_sync_failure_to_reach_the_backend_is_exit_one_and_silent_about_why(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    result = run_sync(ctx, fail="post")
+    assert result.returncode == 1 and "not reachable" in result.stderr
+    assert_sync_safe(result, ctx)
+
+
+def test_sync_without_a_venv_is_a_plain_error(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    shutil.rmtree(ctx.home / "venv")
+    result = run_sync(ctx)
+    assert result.returncode == 1 and "run setup.sh" in result.stderr
+
+
+def test_sync_never_prints_a_key_in_the_key_file(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    (ctx.home / "sync-key").write_text(SYNC_KEY + "\n")
+    (ctx.home / "sync-key").chmod(0o600)
+    for status, body in ((200, {"ok": True, "steps": {}}), (200, {"ok": False, "error": "x"}),
+                         (500, {"detail": "boom"})):
+        result = run_sync(ctx, "--pair", round_status=status, round_body=body)
+        assert_sync_safe(result, ctx)
+    assert_sync_safe(run_sync(ctx, fail="post"), ctx)
+    assert_sync_safe(run_sync(ctx, "--bogus"), ctx)
+
+
+def exported_sync_key_file(ctx):
+    result = subprocess.run(
+        ["bash", "-c", 'source "$1"; native_load_env; printf %s "${SYNC_KEY_FILE-unset}"',
+         "probe", str(NATIVE / "common.sh")], cwd="/", env=ctx.env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_common_exports_the_key_file_only_when_one_exists(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    assert exported_sync_key_file(ctx) == "unset"
+    assert not (ctx.home / "sync-key").exists()  # setup writes no key
+    (ctx.home / "sync-key").write_text(SYNC_KEY + "\n")
+    assert exported_sync_key_file(ctx) == str(ctx.home.resolve() / "sync-key")
+    (ctx.home / "sync-key").unlink()
+    (ctx.home / "sync-key").symlink_to(ctx.home / "elsewhere")
+    assert exported_sync_key_file(ctx) == "unset"
+
+
+def test_env_example_has_the_commented_remote_url_and_key_file_note():
+    text = (NATIVE / "maestro.env.example").read_text()
+    assert re.search(r"^#SYNC_REMOTE_URL=http://127\.0\.0\.1:8101$", text, re.MULTILINE)
+    assert not re.search(r"^\s*SYNC_REMOTE_URL=", text, re.MULTILINE)
+    assert "sync-key" in text
+
+
+def run_key_cli(tmp_path, *args, key_file="default"):
+    env = {key: value for key, value in os.environ.items() if key != "SYNC_KEY_FILE"}
+    env["SETTINGS_DIR"] = str(tmp_path / "settings")
+    if key_file != "default":
+        env["SYNC_KEY_FILE"] = str(key_file)
+    return subprocess.run([sys.executable, "-m", "scripts.sync_key", *args], cwd=BACKEND, env=env,
+                          capture_output=True, text=True, timeout=60)
+
+
+def test_sync_key_create_writes_a_private_key_and_prints_only_its_path(tmp_path):
+    path = tmp_path / "vault" / "sync-key"
+    result = run_key_cli(tmp_path, "create", key_file=path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"{path}\n" and result.stderr == ""
+    key = path.read_text().strip()
+    assert len(key) >= 32 and key not in result.stdout
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert path.parent.stat().st_mode & 0o777 == 0o700
+
+
+def test_sync_key_create_refuses_to_overwrite(tmp_path):
+    path = tmp_path / "sync-key"
+    path.write_text(SYNC_KEY + "\n")
+    result = run_key_cli(tmp_path, "create", key_file=path)
+    assert result.returncode == 1 and result.stdout == ""
+    assert "already exists" in result.stderr and "Traceback" not in result.stderr
+    assert SYNC_KEY not in result.stderr
+    assert path.read_text() == SYNC_KEY + "\n"
+
+
+def test_sync_key_show_prints_the_key_and_nothing_else(tmp_path):
+    path = tmp_path / "sync-key"
+    path.write_text(SYNC_KEY + "\n")
+    result = run_key_cli(tmp_path, "show", key_file=path)
+    assert result.returncode == 0 and result.stdout == SYNC_KEY + "\n" and result.stderr == ""
+
+
+def test_sync_key_show_without_a_key_says_so_and_prints_no_key(tmp_path):
+    result = run_key_cli(tmp_path, "show", key_file=tmp_path / "none")
+    assert result.returncode == 1 and result.stdout == ""
+    assert "No sync key" in result.stderr and "create" in result.stderr
+
+
+def test_sync_key_path_prints_the_path_whether_or_not_a_key_exists(tmp_path):
+    path = tmp_path / "sync-key"
+    result = run_key_cli(tmp_path, "path", key_file=path)
+    assert result.returncode == 0 and result.stdout == f"{path}\n" and not path.exists()
+    path.write_text(SYNC_KEY + "\n")
+    again = run_key_cli(tmp_path, "path", key_file=path)
+    assert again.stdout == f"{path}\n" and SYNC_KEY not in again.stdout + again.stderr
+
+
+def test_sync_key_defaults_to_the_settings_secrets_directory(tmp_path):
+    result = run_key_cli(tmp_path, "create")
+    expected = tmp_path / "settings" / "secrets" / "sync-key"
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"{expected}\n" and expected.is_file()
+
+
+def test_sync_key_help_says_show_is_for_your_own_terminal(tmp_path):
+    result = run_key_cli(tmp_path, "show", "--help")
+    text = " ".join(result.stdout.split())
+    assert result.returncode == 0
+    assert "your own terminal" in text and "vault" in text and "never" in text and "chat" in text
+
+
+def test_sync_key_needs_a_subcommand(tmp_path):
+    assert run_key_cli(tmp_path).returncode != 0
+    assert run_key_cli(tmp_path, "bogus").returncode != 0
 
 
 def assert_real_backend_lifecycle(env):

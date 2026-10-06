@@ -49,6 +49,10 @@ native_export_env() {
     export ALLOWED_HOSTS=localhost,127.0.0.1
     export FASTEMBED_CACHE_PATH="$MAESTRO_HOME/fastembed_cache"
     unset TEST_DATABASE_URL
+    # Setup writes no key. Only a key the user placed here turns sync on; the path is never printed.
+    if [[ -f "$MAESTRO_HOME/sync-key" && ! -L "$MAESTRO_HOME/sync-key" ]]; then
+        export SYNC_KEY_FILE="$MAESTRO_HOME/sync-key"
+    fi
     NATIVE_PYTHON="$MAESTRO_HOME/venv/bin/python"
 }
 
@@ -245,6 +249,31 @@ try:
     print(json.dumps(body, allow_nan=False))
 except (OSError, ValueError, TypeError):
     raise SystemExit(1) from None
+PY
+}
+
+native_post() {
+    # POST a JSON body ($2) to the loopback backend. Prints the HTTP status, then the response
+    # body (at most 64 KiB); fails without printing when nothing answers. A round can be long.
+    "$NATIVE_PYTHON" - "$MAESTRO_PORT" "$1" "$2" 2>/dev/null <<'PY'
+import sys
+import urllib.error
+import urllib.request
+
+port, path, body = sys.argv[1:4]
+# Loopback must bypass inherited proxy settings. Errors never print what was sent.
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+request = urllib.request.Request(
+    f"http://127.0.0.1:{port}{path}", data=body.encode(),
+    headers={"Content-Type": "application/json"}, method="POST")
+try:
+    with opener.open(request, timeout=900) as response:
+        status, reply = response.status, response.read(65536)
+except urllib.error.HTTPError as refusal:
+    status, reply = refusal.code, refusal.read(65536)
+except (OSError, ValueError):
+    raise SystemExit(1) from None
+sys.stdout.write(f"{status}\n{reply.decode('utf-8', 'replace')}")
 PY
 }
 

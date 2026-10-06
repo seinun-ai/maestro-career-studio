@@ -140,6 +140,9 @@ jobs:
       - name: Lint scripts
         run: shellcheck scripts/*.sh
 
+      - name: Lint native scripts
+        run: shellcheck --external-sources --source-path=SCRIPTDIR backend/scripts/native/*.sh
+
   update-check:
     name: update.sh --check (no stack)
     runs-on: ubuntu-latest
