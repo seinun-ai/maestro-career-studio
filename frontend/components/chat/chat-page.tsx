@@ -18,7 +18,6 @@ import {
   Paperclip,
   Plus,
   Trash2,
-  Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -56,6 +55,8 @@ import {
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
+import { CONCEPT_ICONS, type Concept } from "@/lib/concept-icons";
+import { CONFIRM_HOLD_MS } from "@/lib/motion";
 import {
   ApiError,
   apiFetch,
@@ -95,33 +96,77 @@ const HISTORY_COLLAPSED_KEY = "chatPage.historyCollapsed";
  * the model's identifiers in backend/app/services/chat_tools.py, pinned there).
  * A Map, not an object: `{...}[name]` answered "constructor" with a function.
  */
-const TOOL_PHRASES = new Map<string, string>([
-  ["list_base_resumes", "Looking at your resumes…"],
-  ["get_resume", "Reading your resume…"],
-  ["edit_resume", "Editing your resume…"],
-  ["propose_edits", "Drafting a change for you to review…"],
-  ["propose_project", "Drafting a change for you to review…"],
-  ["read_attachment", "Reading your attachment…"],
-  ["kb_list_entities", "Reading your career history…"],
-  ["kb_get_entity", "Reading your career history…"],
-  ["get_career_context", "Reading your career history…"],
-  ["kb_capture", "Saving to your career history…"],
-  ["analytics_activity", "Looking at your job search numbers…"],
-  ["analytics_gap_frequency", "Looking at your job search numbers…"],
-  ["analytics_base_summaries", "Looking at your job search numbers…"],
-  ["list_templates", "Looking at templates…"],
-  ["get_template", "Looking at templates…"],
-  ["create_template_draft", "Working on a template…"],
-  ["update_template_draft", "Working on a template…"],
-  ["duplicate_template", "Working on a template…"],
-  ["validate_template", "Checking the template…"],
-  ["set_default_template", "Setting your default template…"],
-  ["delete_template", "Deleting a template…"],
+const TOOL_PHRASES = new Map<string, { phrase: string; concept: Concept }>([
+  ["list_base_resumes", { phrase: "Looking at your resumes…", concept: "baseResume" }],
+  ["get_resume", { phrase: "Reading your resume…", concept: "baseResume" }],
+  ["edit_resume", { phrase: "Editing your resume…", concept: "baseResume" }],
+  ["propose_edits", { phrase: "Drafting a change for you to review…", concept: "baseResume" }],
+  ["propose_project", { phrase: "Drafting a change for you to review…", concept: "baseResume" }],
+  ["read_attachment", { phrase: "Reading your attachment…", concept: "attachment" }],
+  ["kb_list_entities", { phrase: "Reading your career history…", concept: "careerHistory" }],
+  ["kb_get_entity", { phrase: "Reading your career history…", concept: "careerHistory" }],
+  ["get_career_context", { phrase: "Reading your career history…", concept: "careerHistory" }],
+  ["kb_capture", { phrase: "Saving to your career history…", concept: "careerHistory" }],
+  ["analytics_activity", { phrase: "Looking at your job search numbers…", concept: "analytics" }],
+  ["analytics_gap_frequency", { phrase: "Looking at your job search numbers…", concept: "analytics" }],
+  ["analytics_base_summaries", { phrase: "Looking at your job search numbers…", concept: "analytics" }],
+  ["list_templates", { phrase: "Looking at templates…", concept: "templates" }],
+  ["get_template", { phrase: "Looking at templates…", concept: "templates" }],
+  ["create_template_draft", { phrase: "Working on a template…", concept: "templates" }],
+  ["update_template_draft", { phrase: "Working on a template…", concept: "templates" }],
+  ["duplicate_template", { phrase: "Working on a template…", concept: "templates" }],
+  ["validate_template", { phrase: "Checking the template…", concept: "templates" }],
+  ["set_default_template", { phrase: "Setting your default template…", concept: "templates" }],
+  ["delete_template", { phrase: "Deleting a template…", concept: "templates" }],
 ]);
 
+/** The one word a chip shows; its full phrase stays the title and screen-reader text. */
+const CHIP_WORDS: Partial<Record<Concept, string>> = {
+  baseResume: "Resume",
+  careerHistory: "Career history",
+  analytics: "Job search",
+  templates: "Templates",
+  attachment: "Attachment",
+  assistant: "Working",
+};
+
 /** One chip per phrase, in the order first seen: a tool that runs twice says so once. */
-function toolPhrases(tools: string[]): string[] {
-  return [...new Set(tools.map((name) => TOOL_PHRASES.get(name) ?? "Working…"))];
+function toolChip(name: string): { phrase: string; concept: Concept } {
+  return TOOL_PHRASES.get(name) ?? { phrase: "Working…", concept: "assistant" };
+}
+
+function toolChips(tools: string[]): { phrase: string; concept: Concept }[] {
+  const chips = tools.map(toolChip);
+  return chips.filter((c, i) => chips.findIndex((o) => o.phrase === c.phrase) === i);
+}
+
+/**
+ * The stream sends only `tool_start`, so a tool counts as finished when something later arrives
+ * (`running` goes false). Then a CircleCheck holds for CONFIRM_HOLD_MS and the domain icon returns.
+ */
+function ToolChip({ phrase, concept, running }: { phrase: string; concept: Concept; running: boolean }) {
+  const [wasRunning, setWasRunning] = useState(running);
+  const [held, setHeld] = useState(false);
+  if (wasRunning !== running) {
+    setWasRunning(running);
+    setHeld(wasRunning && !running);
+  }
+  useEffect(() => {
+    if (!held) return;
+    const t = setTimeout(() => setHeld(false), CONFIRM_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [held]);
+  const Icon = running ? Loader2 : held ? CONCEPT_ICONS.done : CONCEPT_ICONS[concept];
+  return (
+    <div
+      title={phrase}
+      className="text-muted-foreground flex items-center gap-1.5 text-body-small"
+    >
+      <Icon className={`size-3 ${running ? "animate-spin" : ""}`} aria-hidden="true" />
+      <span aria-hidden="true">{CHIP_WORDS[concept] ?? "Working"}</span>
+      <span className="sr-only">{phrase}</span>
+    </div>
+  );
 }
 
 interface StreamingState {
@@ -132,6 +177,8 @@ interface StreamingState {
   userMessageId?: UUID;
   text: string;
   tools: string[];
+  /** The newest tool has no finish event: true from its `tool_start` until text, a card or the end. */
+  toolRunning: boolean;
   cards: ChatChangeCard[];
   proposals: (ChatProposal & { message_id?: UUID })[];
   proposalOps: (ChatProposalOps & { message_id?: UUID })[];
@@ -437,6 +484,7 @@ export function ChatPage() {
         userSelections: selections,
         text: "",
         tools: [],
+        toolRunning: false,
         cards: [],
         proposals: [],
         proposalOps: [],
@@ -451,12 +499,12 @@ export function ChatPage() {
           setStreaming((s) => (s ? { ...s, userMessageId: id } : s));
         } else if (event.type === "delta") {
           setStreaming((s) =>
-            s ? { ...s, text: s.text + event.text } : s,
+            s ? { ...s, text: s.text + event.text, toolRunning: false } : s,
           );
         } else if (event.type === "tool_start") {
           setStreaming((s) =>
             // A new LLM round begins after tool calls; its text streams fresh.
-            s ? { ...s, text: "", tools: [...s.tools, event.name] } : s,
+            s ? { ...s, text: "", tools: [...s.tools, event.name], toolRunning: true } : s,
           );
         } else if (event.type === "change_card") {
           const card: ChatChangeCard = {
@@ -467,7 +515,7 @@ export function ChatPage() {
             ops_count: event.ops_count,
             render_note: event.render_note,
           };
-          setStreaming((s) => (s ? { ...s, cards: [...s.cards, card] } : s));
+          setStreaming((s) => (s ? { ...s, cards: [...s.cards, card], toolRunning: false } : s));
           // The edit re-rendered the resume, so a TeX-less host substituted an
           // engine: say so here, exactly as every REST edit site does (the
           // card's own Revert already reports its own render).
@@ -481,7 +529,7 @@ export function ChatPage() {
             message_id: event.message_id,
           };
           setStreaming((s) =>
-            s ? { ...s, proposals: [...s.proposals, proposal] } : s,
+            s ? { ...s, proposals: [...s.proposals, proposal], toolRunning: false } : s,
           );
         } else if (event.type === "proposal_ops") {
           const proposal: ChatProposalOps & { message_id?: UUID } = {
@@ -493,7 +541,7 @@ export function ChatPage() {
             message_id: event.message_id,
           };
           setStreaming((s) =>
-            s ? { ...s, proposalOps: [...s.proposalOps, proposal] } : s,
+            s ? { ...s, proposalOps: [...s.proposalOps, proposal], toolRunning: false } : s,
           );
         } else if (event.type === "kb_capture") {
           const capture: ChatKbCapture = {
@@ -502,7 +550,7 @@ export function ChatPage() {
             point_count: event.point_count,
           };
           setStreaming((s) =>
-            s ? { ...s, captures: [...s.captures, capture] } : s,
+            s ? { ...s, captures: [...s.captures, capture], toolRunning: false } : s,
           );
         } else if (event.type === "error") {
           // The server's words only when they are a plain sentence for the user; a refused or
@@ -511,6 +559,8 @@ export function ChatPage() {
           toast.error(errorDetail(new Error(reason)) ?? "The Assistant couldn't finish. Try again.");
         }
       });
+      // The stream ended: a tool with no later event is finished too.
+      setStreaming((s) => (s ? { ...s, toolRunning: false } : s));
     } catch (err) {
       // Checked before the stream (routers/chat.py): no API key, or a model
       // that can't use tools. A setup problem, so it stays beside the composer.
@@ -785,13 +835,16 @@ export function ChatPage() {
                     {streaming.tools.length === 0 ? (
                       <span className="sr-only">The Assistant is replying…</span>
                     ) : null}
-                    {toolPhrases(streaming.tools).map((phrase) => (
-                      <div
-                        key={phrase}
-                        className="text-muted-foreground flex items-center gap-1.5 text-body-small"
-                      >
-                        <Wrench className="size-3" aria-hidden="true" /> {phrase}
-                      </div>
+                    {toolChips(streaming.tools).map((chip) => (
+                      <ToolChip
+                        key={chip.phrase}
+                        phrase={chip.phrase}
+                        concept={chip.concept}
+                        running={
+                          streaming.toolRunning &&
+                          chip.phrase === toolChip(streaming.tools[streaming.tools.length - 1]).phrase
+                        }
+                      />
                     ))}
                   </div>
                   {streaming.cards.map((card, i) => (
