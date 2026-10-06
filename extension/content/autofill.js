@@ -42,8 +42,8 @@
  * option list, clicks the best match). Identity rules (name/email/phone)
  * additionally overwrite non-empty values that disagree with the profile —
  * ATS resume-parse prefills are guesses, the profile is truth. Returns
- * {filled: [{label, value, note?}], eeoFilled: [{field, label, value}],
- * corrected: [{label, was, value}], already: [{label, value}], seen: N}.
+ * {filled: [{label, value, rule, note?}], eeoFilled: [{field, label, value}],
+ * corrected: [{label, was, value, rule}], already: [{label, value}], seen: N}.
  *
  * `already` is the fields that turned out to need nothing: the control holds
  * the value this fill would have written — a re-run on a wizard step, or an
@@ -114,7 +114,7 @@ async function fillFormFromProfile(
   const custom = Array.isArray(profile.custom) ? profile.custom : [];
   const emp = Array.isArray(employment) ? employment : [];
   // The resume's skills, flat and already de-duplicated by
-  // routers/autofill._resume_skills. Kept in resume order, which is what the
+  // services/autofill_context.resume_skills. Kept in resume order, which is what the
   // cap below selects on.
   const skillList = (Array.isArray(skills) ? skills : [])
     .map((skill) => String(skill ?? "").trim())
@@ -165,7 +165,7 @@ async function fillFormFromProfile(
   // A date, split into its parts. Every shape the two sources actually hold has
   // to parse, and the widest of them is the one that matters: the employment
   // payload passes `resume_json.experience[*].start_date` through verbatim
-  // (routers/autofill._employment_blocks) and the resume data model is
+  // (services/autofill_context.employment_blocks) and the resume data model is
   // "Mon YYYY" — see services/ats/resume_indexer.parse_month_year. This used to
   // accept only a leading ISO year, so every real employment date parsed to
   // NOTHING; that is what made `emp-start-month` look valueless, sent matchRule
@@ -483,7 +483,7 @@ async function fillFormFromProfile(
     // box by growing a value.
     //
     // Provenance, end to end: the resume's `end_date` really does hold the
-    // literal string "Present"; `routers/autofill._employment_blocks` reads
+    // literal string "Present"; `services/autofill_context.employment_blocks` reads
     // that (and an absent end date) as `current: true` with `end_date` blanked
     // to null; this reads that flag rather than re-deriving it, which is what
     // `empEndText`/`empEndDate` above already do. WHICH job is the block's
@@ -708,7 +708,19 @@ async function fillFormFromProfile(
    * owns nothing — so the three statements are one gesture and were written out
    * four times before the duplication gate said so.
    */
-  const clickControl = (el) => { visitControl(el); el.click(); leaveControl(el); };
+  const clickControl = (el) => {
+    visitControl(el);
+    // A radio or checkbox click fires a TRUSTED change on the control: it is
+    // the engine's own write, not the user's, so the field is named busy for
+    // exactly that click (`content/fill-ops.js` does the same around its ops).
+    ns.fillBusyEl = el;
+    try {
+      el.click();
+    } finally {
+      ns.fillBusyEl = null;
+    }
+    leaveControl(el);
+  };
 
   /** Did the control really end up carrying the answer?
    *
@@ -1237,6 +1249,11 @@ async function fillFormFromProfile(
   // protected-class control is the user's own and is claimed nowhere.
   const already = [];
   const recordFilled = (item) => filled.push(item);
+  // Which field a write went to, for the answer receipt: the inventory's fid
+  // (a re-list per unnamed control, capped so a page of unlisted controls
+  // cannot make the pass quadratic).
+  let relists = 8;
+  const receiptFid = (input) => ns.fillInventory?.fidFor(input, { relist: relists-- > 0 }) ?? null;
   let seen = 0;
   const doneRadioGroups = new Set();
 
@@ -1401,8 +1418,9 @@ async function fillFormFromProfile(
     const labelText = labelByInput.get(input);
     if (!labelText) continue; // unlabeled junk stays out of telemetry too
     // FIRST, ahead of the EEO opt-in, matchRule, and the visibility gate below:
-    // a never-fill control is a statement about the CONTROL, so no user
-    // setting, rule table, or rendering detail may change the answer. An EEO
+    // a never-fill control is a statement about the CONTROL, so only the
+    // standing consent_forms permission — never a rule table or a rendering
+    // detail — changes the answer (shared/policy.js). An EEO
     // self-identification SIGNATURE reported eeo_disabled while the opt-in was
     // off, which reads as "turn the opt-in on and we will handle this" — and we
     // never will.
@@ -1616,6 +1634,8 @@ async function fillFormFromProfile(
       observe(input, kind, labelText, rule, written.length ? "filled" : outcome);
       recordFilled({
         label,
+        rule: rule.id,
+        fid: receiptFid(input),
         // 120, not the 60 every other branch uses: this echoes a LIST, and 60
         // characters truncates it after the third skill — which reads as if the
         // fill stopped there.
@@ -1643,7 +1663,7 @@ async function fillFormFromProfile(
         visitControl(input);
         setNativeValue(input, best.el.value);
         leaveControl(input);
-        recordFilled({ label, value: best.text.trim().slice(0, 60) });
+        recordFilled({ label, rule: rule.id, fid: receiptFid(input), value: best.text.trim().slice(0, 60) });
         observe(input, kind, labelText, rule, "filled");
       } else if (best && input.value === best.el.value) {
         // Already at the option we would pick — a re-run, or an agreeing ATS
@@ -1680,7 +1700,7 @@ async function fillFormFromProfile(
           // validates on.
           clickControl(radio);
           if (stillChecked(radio)) {
-            recordFilled({ label, value: rl.slice(0, 40) });
+            recordFilled({ label, rule: rule.id, fid: receiptFid(input), value: rl.slice(0, 40) });
             observe(input, kind, labelText, rule, "filled");
           } else {
             noteAttempt(labelText, res.value);
@@ -1707,6 +1727,8 @@ async function fillFormFromProfile(
           observe(input, kind, labelText, rule, ticked ? "filled" : "not_stuck");
           recordFilled({
             label,
+            rule: rule.id,
+            fid: receiptFid(input),
             value: "ticked",
             // Provenance the user can check, which is the point of HR-1: the
             // one thing to re-read is the end date on that job.
@@ -1744,6 +1766,8 @@ async function fillFormFromProfile(
       observe(input, kind, labelText, rule, popup.ok ? "filled" : "combobox_snap_failed");
       recordFilled({
         label,
+        rule: rule.id,
+        fid: receiptFid(input),
         value: popup.text,
         note: popup.ok ? undefined : "no matching option, choose it manually",
       });
@@ -1768,6 +1792,8 @@ async function fillFormFromProfile(
       observe(input, kind, labelText, rule, combo.ok ? "filled" : "combobox_snap_failed");
       recordFilled({
         label,
+        rule: rule.id,
+        fid: receiptFid(input),
         value: combo.text,
         note: combo.ok ? undefined : "no matching option, enter it manually",
       });
@@ -1798,6 +1824,8 @@ async function fillFormFromProfile(
       observe(input, kind, labelText, rule, outcome);
       recordFilled({
         label,
+        rule: rule.id,
+        fid: receiptFid(input),
         value: String(res.value),
         // No hedge on filled_normalized: the value landed, the site just
         // renders it its own way, and hedging a success teaches the user to
@@ -1840,7 +1868,7 @@ async function fillFormFromProfile(
       visitControl(input);
       setNativeValue(input, String(res.value));
       leaveControl(input);
-      corrected.push({ label, was, value: String(res.value) });
+      corrected.push({ label, rule: rule.id, fid: receiptFid(input), was, value: String(res.value) });
       observe(input, kind, labelText, rule, "corrected");
     }
   }

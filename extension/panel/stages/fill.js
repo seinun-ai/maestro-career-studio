@@ -1,6 +1,6 @@
 /* Maestro CS Companion — the Fill stage's body.
  *
- * One of five files behind `ns.panelStages`; `panel/stages.js` is the joiner
+ * One of four files behind `ns.panelStages`; `panel/stages.js` is the joiner
  * and carries the whole contract. Read it before adding anything here.
  *
  * THE RULE, restated because a file that only POINTS at it is a file that
@@ -71,6 +71,9 @@
       button.type = "button";
       button.setAttribute("role", "radio");
       button.setAttribute("aria-checked", on ? "true" : "false");
+      // Stable across a rebuild (panel.js `withPlaceKept`), and where focus
+      // goes when the Forget control it sits above leaves.
+      button.id = `fill-mode-${mode}`;
       button.disabled = facts.busy === true;
       button.addEventListener("click", () => act.setFillMode(mode));
       build.attach(seg, button);
@@ -179,10 +182,10 @@
 
   /** The attach: the tailored PDF into this page's own upload box.
    *
-   * OFFERED, NEVER TAKEN. The panel does not attach during a fill and does not
-   * attach on a load — a fill writes text a user can read back at a glance, and
-   * an upload is a whole document going to an employer. So this is a control
-   * and the press is the whole of the decision.
+   * A PRESS, NEVER A LOAD. Nothing attaches on a load or a detect: an upload
+   * is a whole document going to an employer. Autofill attaches too, but only
+   * to one empty box that reads as a resume box (`autoAttachResume`); this
+   * control is for every other case, and the press is the whole of it.
    *
    * THREE STATES OFF ONE NUMBER, and the number is the page's own count of
    * boxes a résumé could go into (`fileInputs`, from the detect pass):
@@ -213,13 +216,28 @@
    * reload away. That is deliberate for this round — the interesting failure is
    * an attach that silently went to the wrong place, and offering to do it
    * again is how a user ends up with two.
+   *
+   * AUTOFILL'S OWN ATTACH (`autoAttach`) reports here too. Landed, it is the
+   * same done row. Left alone or unconfirmed, its line comes first and the
+   * offer stays under it, since the press is then the user's again.
    */
   function attachRow(ctx) {
-    const { facts, act, build } = ctx;
+    const { facts, build } = ctx;
     if (facts.attached) {
       return progressRow(ctx, DONE, "Resume attached",
                          `${facts.attached.filename} · ${boxes(facts.attached.count)}`);
     }
+    const auto = facts.autoAttach;
+    const said = auto?.outcome === "skipped" || auto?.outcome === "left"
+      ? progressRow(ctx, SKIPPED, "Resume not attached", auto.text)
+      : auto?.outcome === "unconfirmed" ? progressRow(ctx, OPEN, "Resume upload", auto.text) : null;
+    const offer = attachOffer(ctx);
+    return said && offer ? build.attach(build.node("div"), said, offer) : said ?? offer;
+  }
+
+  /** The Attach resume offer itself: `attachRow`'s three states off one number. */
+  function attachOffer(ctx) {
+    const { facts, act, build } = ctx;
     if (!facts.pdfReady || facts.fileInputs < 1) return null;
     const many = facts.fileInputs > 1;
     const box = build.node("div", "attach");
@@ -229,7 +247,10 @@
       : facts.attachName
         ? `Put ${facts.attachName} in this page's upload box.`
         : "Put your tailored resume in this page's upload box.");
-    const button = build.node("button", "save", "Attach resume");
+    // The box already lists a file (Autofill's read): the press would add
+    // another, so it says so. Visible words only, so the name is the label.
+    const occupied = facts.autoAttach?.reason === "occupied";
+    const button = build.node("button", "save", occupied ? "Attach anyway" : "Attach resume");
     button.type = "button";
     // `actingLimb`'s rule, and the ambiguity refusal in the same flag: a
     // control that stayed live during a fill would send a document into a page
@@ -488,6 +509,121 @@
     return list;
   }
 
+  /** "Check before you submit": the answers this run's receipt flagged (the
+   * POST to `/api/jobs/{id}/filled-answers` answers them), each with the
+   * server's one-line reason. WARN ONLY: Next and Submit stay the user's and
+   * nothing here gates them. A row with a field id jumps to its field (the
+   * loop's and the rule pass's both come from the page's inventory); the rows
+   * with none, an uploaded file or a pause-row answer, are plain text.
+   * Returns the heading and the list, or nothing. */
+  const CHECK_HEADING = "Check before you submit";
+  function flagNodes({ facts, act, build }) {
+    const rows = facts.receiptFlags ?? [];
+    if (!rows.length) return [];
+    const head = build.node("div", "grp", CHECK_HEADING);
+    head.setAttribute("role", "heading");
+    head.setAttribute("aria-level", "3");
+    const list = build.node("ul", "resid flags");
+    list.setAttribute("aria-label", CHECK_HEADING);
+    for (const row of rows) {
+      const name = build.node(row.fid ? "button" : "span", null, row.question || "A field with no label");
+      if (row.fid) {
+        name.type = "button";
+        name.addEventListener("click", () => act.focusField(row.fid));
+      }
+      build.attach(list, build.attach(build.node("li"), name,
+        build.node("span", "kindmark", ` · ${row.reason} `)));
+    }
+    return [head, list];
+  }
+
+  /** The matched job's knock-out verdict, one line, before a run and after
+   * it, on the no-form body too: it is about the job, not the fill. Only a
+   * conflict or a missing profile answer is worth the line, in the scan's own
+   * words and nothing added (it must read true after a run as well); a clear
+   * or unstated scan says nothing here (the job page's Overview has the card).
+   * Plain text, not a live region: the body is rebuilt on every render. */
+  function knockoutLine({ facts, build }) {
+    const scan = facts.knockout;
+    const want = { conflict: "conflict", incomplete_profile: "profile_missing" }[scan?.status];
+    const check = want ? (scan.checks ?? []).find((one) => one.result === want && one.message) : null;
+    if (!check) return null;
+    return build.node("div", "sub ko", check.message);
+  }
+
+  /** The fill loop's report, grouped by what happened to each field, in the
+   * order the user acts on them: what was filled (a count), what was filled
+   * with a value to check, what still needs them, what the Companion could not
+   * work, and one line for what it left alone. A group with no rows is not
+   * shown. Every row is a button that scrolls to its field and focuses it.
+   *
+   * THE STATUSES ARE THE LOOP'S (`shared/fill-loop.js`, "report status"); this
+   * file adds no reading of its own. `answer` is what the loop says beside a
+   * row: the value it chose, "3 of 5 added", or a "check it" note naming a
+   * value that landed without being confirmed. `unconfirmed` (the page shows
+   * a value it never confirmed) is a value to check, never Filled;
+   * `unsupported` (the control ignored every input the Companion can send) is
+   * a control it could not work, and says so. */
+  const LOOP_GROUPS = [
+    [["closest"], "Closest matches: check each one", (row) => row.answer && `closest match: ${row.answer}`],
+    [["assumed"], "Answered for you: check each one", (row) => row.answer],
+    [["unconfirmed"], "Filled but not confirmed: check each one", (row) => row.answer],
+    ["open", "Needs your answer", (row) => row.answer],
+    [["cannot_operate", "unsupported"], "Couldn't operate these controls",
+      (row) => (row.status === "unsupported" ? "doesn't accept automated input" : row.answer)],
+  ];
+  const LOOP_OPEN = new Set(["needs_answer", "partial"]);
+
+  function loopRows(ctx, rows, mark) {
+    const { build, act } = ctx;
+    const list = build.node("ul", "resid");
+    for (const row of rows) {
+      const button = build.node("button", null, row.question || "A field with no label");
+      button.type = "button";
+      button.addEventListener("click", () => act.focusField(row.fid));
+      const said = mark(row) || null;
+      build.attach(list, build.attach(build.node("li"), button,
+        said ? build.node("span", "kindmark", ` · ${said} `) : null));
+    }
+    return list;
+  }
+
+  function loopReport(ctx, loop) {
+    const { build } = ctx;
+    const { node, attach } = build;
+    const fields = loop.fields ?? [];
+    const having = (status) => fields.filter((row) => row.status === status);
+    const report = node("div", "loop");
+    const filled = having("verified").length;
+    if (filled) attach(report, node("div", "sub count", `${filled} filled`));
+    // First among the groups: the answers to read before anything else.
+    attach(report, ...flagNodes(ctx));
+    for (const [key, heading, mark] of LOOP_GROUPS) {
+      const rows = key === "open"
+        // Required first; otherwise the page's own order.
+        ? [...fields.filter((row) => LOOP_OPEN.has(row.status) && row.required),
+           ...fields.filter((row) => LOOP_OPEN.has(row.status) && !row.required)]
+        : fields.filter((row) => key.includes(row.status));
+      if (!rows.length) continue;
+      const list = loopRows(ctx, rows, mark);
+      list.setAttribute("aria-label", heading);
+      const head = node("div", "grp", heading);
+      head.setAttribute("role", "heading");
+      head.setAttribute("aria-level", "3");
+      attach(report, head, list);
+    }
+    const left = [
+      [having("already").length, (n) => `${n} already filled`],
+      [having("blocked").length, (n) => `${n} left to you by policy`],
+      [having("yours").length, (n) => `${n} you edited`],
+    ].filter(([n]) => n).map(([n, say]) => say(n));
+    if (left.length) attach(report, node("div", "sub count", left.join(" · ")));
+    // Entries of a repeating section the Companion did not add: the user's to add.
+    for (const line of ns.fillLoop.sectionLines(loop)) attach(report, node("div", "sub count", line));
+    if (!report.children.length) attach(report, node("div", "sub count", "No fields to fill here."));
+    return report;
+  }
+
   /** The id the drawer trigger's `aria-controls` names, and the handle a focus
    * restore will reach for. A constant for `TAILOR_OPTIONS_ID`'s reason and
    * built the same way: two places forty lines apart have to agree on it. */
@@ -628,6 +764,38 @@
   const NO_FORM_HERE = "No application form here. Open the employer's Apply "
     + "page to start filling.";
 
+  const FORGET_HINT_ID = "forget-moves-hint";
+
+  /** "Forget learned widget moves", while the recipe book holds anything.
+   *
+   * LAST IN THE BODY, and quiet (`unpick`'s muted text button, the panel's
+   * way of offering a way out that is not the next step): it is a
+   * preference about this browser, not a line of the run's report, so it sits
+   * under everything the run says. The hint says what is kept and what is
+   * not, because "learned" next to a form of your answers reads like the
+   * answers. Out of reach while anything runs, `modeControl`'s rule.
+   */
+  function forgetRow({ facts, act, build }) {
+    if (!facts.learnedMoves) return null;
+    const row = build.node("div", null);
+    const button = build.node("button", "unpick", "Forget learned widget moves");
+    button.type = "button";
+    button.disabled = facts.busy === true;
+    button.setAttribute("aria-describedby", FORGET_HINT_ID);
+    button.addEventListener("click", () => act.forgetLearnedMoves());
+    const hint = build.node("div", "sub",
+      "The Companion remembers which clicks and keys worked on each kind of form control. "
+      + "It keeps no answers and no web addresses.");
+    hint.id = FORGET_HINT_ID;
+    return build.attach(row, button, hint);
+  }
+  // The body, with the Forget control under it on every path.
+  function fillBody(ctx) {
+    const body = fillBodyOf(ctx);
+    const forget = forgetRow(ctx);
+    return forget ? ctx.build.attach(body, forget) : body;
+  }
+
   /** The Fill stage: choose the pass, run it, and read what it actually did.
    *
    * ON A PAGE WITH NO FORM none of the below is offered, and that is the
@@ -680,15 +848,22 @@
    * What FAILED is the note slot's, and the action writes a different sentence
    * for the partial case than for the page that was never reached.
    */
-  function fillBody(ctx) {
+  function fillBodyOf(ctx) {
     const { facts, build } = ctx;
     const { node, attach } = build;
     const collected = facts.residue !== null || facts.essays !== null;
-    if (facts.hasForm !== true && !facts.fill && !collected) {
-      return attach(node("div", "stg-body"), node("div", "sub", NO_FORM_HERE),
+    if (facts.hasForm !== true && !facts.fill && !collected && !facts.loop) {
+      return attach(node("div", "stg-body"), knockoutLine(ctx), node("div", "sub", NO_FORM_HERE),
                     attachRow(ctx), qnaDrawer(ctx));
     }
-    const body = attach(node("div", "stg-body"), modeControl(ctx));
+    const body = attach(node("div", "stg-body"), knockoutLine(ctx), modeControl(ctx));
+    // A LOOP REPORT is its own body: the rule pass's three rows describe a
+    // different run. While the loop is still going there is no report yet, and
+    // the offer's sentence below gives way to how far it has got.
+    if (facts.loop) {
+      if (facts.aiNote) attach(body, node("div", "sub", facts.aiNote));
+      return attach(body, loopReport(ctx, facts.loop), attachRow(ctx), qnaDrawer(ctx));
+    }
     // THE DRAWER IS LAST ON BOTH PATHS, which is why it is appended here rather
     // than at either return: it is not part of the report, and a composer above
     // the fields that still need answering would compete with them. On the
@@ -696,12 +871,16 @@
     // will do; on the after path it sits under the list of what is still open,
     // which is where the essays that feed it are.
     if (!facts.fill && !collected) {
-      return attach(body, node("div", "sub", facts.fillMode === "rules"
-        ? "Uses only your saved answers. Nothing goes to the AI."
-        // What /api/autofill/choose sends: the saved answers (diversity
-        // answers only under standing consent) and the career history.
-        : "Uses your saved answers, then asks the AI for the rest. "
-          + "The AI sees your saved answers and career history."),
+      const running = facts.fillRound !== null && facts.fillRound !== undefined;
+      return attach(body, node("div", "sub", running
+        ? (facts.fillRound ? `Filling this form… pass ${facts.fillRound + 1}.` : "Filling this form…")
+        : facts.fillMode === "rules"
+          ? "Uses only your saved answers. Nothing goes to the AI."
+          // What the loop sends: each field's question and options to map it
+          // (never a value), then the one saved answer or career fact that
+          // answers it to choose among the page's own options.
+          : "Uses your saved answers and the AI to fill the form. "
+            + "The AI sees the form's questions, your saved answers and career history."),
                     // ON BOTH PATHS, and gated on neither: the attach is an
                     // offer about the PAGE, not a line of the run's report, so
                     // it stands before a fill as well as after one. A user who
@@ -722,7 +901,9 @@
     // happened it IS a report row and belongs with them, and while it is still
     // an offer it belongs above the fields that need the user rather than under
     // them, where a control mixed into that list would read as one of them.
-    return attach(body, attachRow(ctx), needsList(ctx, run), checkList(ctx, run), qnaDrawer(ctx));
+    const flags = flagNodes(ctx);
+    return attach(body, attachRow(ctx), needsList(ctx, run), checkList(ctx, run),
+                  flags.length ? attach(node("div", "flagged"), ...flags) : null, qnaDrawer(ctx));
   }
 
   ns.panelStageFill = fillBody;

@@ -57,8 +57,10 @@ export function MetricAskInput({
   value,
   onChange,
   disabled,
+  label = "Number",
 }: {
   id?: string;
+  label?: string;
   value: MetricAskValue;
   onChange: (next: MetricAskValue) => void;
   disabled?: boolean;
@@ -83,7 +85,7 @@ export function MetricAskInput({
           value={value.freeText}
           onChange={(e) => set({ freeText: e.target.value })}
           disabled={disabled}
-          className="max-w-[65ch] text-sm"
+          className="max-w-[65ch] text-body-medium"
         />
         <Button
           type="button"
@@ -102,7 +104,7 @@ export function MetricAskInput({
     <div className="flex flex-col gap-2">
       <div className="flex min-w-0 flex-wrap items-end gap-2">
         <div className="grid gap-1">
-          <Label htmlFor={ids.amount}>Number</Label>
+          <Label htmlFor={ids.amount}>{label}</Label>
           <Input
             id={ids.amount}
             type="text"

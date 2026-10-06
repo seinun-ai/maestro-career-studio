@@ -74,7 +74,7 @@ _CONSEQUENCES = [
     ("components/resume-editor/tailored-resume-studio.tsx",
      "Your unsaved edits will be lost. You can't undo this."),
     # M25: the fatal tier is the only "must fix".
-    ("components/resume-health/finding-cards.tsx", '{ key: "gate", one: "must fix", many: "must fix",'),
+    ("components/resume-health/finding-cards.tsx", '{ key: "gate", one: "must fix", many: "must fix" }'),
     # M20: the pill's toast counts what it added from every count the server returns.
     ("components/kb-sync-pill.tsx", "{syncResultSentence(result)}"),
 ]
@@ -145,7 +145,7 @@ def test_the_sync_result_type_carries_the_item_count():
 def test_the_profile_says_what_starts_from_it():
     panel = _read("components/career/profile-panel.tsx")
     line = "Your contact details and skills. Resumes built from your career history start from these."
-    assert panel.count(line) == 2
+    assert panel.count(line) == 1  # the card's header; the sections edit in place under it
     assert "shared by all your resumes" not in panel
 
 
@@ -213,7 +213,7 @@ def test_must_fix_counts_only_failed_fatal_checks():
     line = _block(report, "export function scoreCompositionLine(", "\n}")
     assert "one must-fix problem" not in line
     cards = _read("components/resume-health/finding-cards.tsx")
-    assert '<h2 className="text-sm font-medium">Checks</h2>' in cards
+    assert '<h2 className="text-title-small">Checks</h2>' in cards
     assert '{ key: "serious", one: "serious problem", many: "serious problems",' in _flat(cards)
     group = _block(_read("components/resume-editor/diff-review.tsx"), "function GatesGroup(", "\n}")
     assert ">\n        Checks\n      </p>" in group and ">\n        Must fix\n" not in group
@@ -223,10 +223,11 @@ def test_every_health_surface_says_the_same_count():
     page = _read("components/resume-health/health-report-page.tsx")
     assert "const counts = body ? healthCounts(body) : {};" in page
     assert "body.counts?.[key]" not in page
-    assert '{ id: "gates", label: "Checks"' in page
-    assert "leftToFix(counts, nonNote.length)" in page
-    assert "checkDoneWords(result)" in page and "Check done. Grade ${result.grade}." not in page
-    assert "scoreCompositionLine(body.score, body.score_breakdown, gates)" in page
+    assert "leftToFix(\n    counts,\n    findings.filter((f) => f.type === \"fix\" || f.type === \"ask\").length,\n  );" in page
+    runs = _read("components/resume-health/use-health-runs.ts")
+    band = _read("components/resume-health/summary-band.tsx")
+    assert "checkDoneWords(result)" in runs and "Check done. Grade ${result.grade}." not in runs
+    assert "scoreCompositionLine(body.score, body.score_breakdown, gates)" in band
     assert "summarizeCounts(healthCounts(data))" in _read("components/resume-health/health-badges.tsx")
 
 
@@ -315,9 +316,10 @@ def test_health_copy_first_read():
     # The zone orders the fix list and sets severity; it never weights the score (health_score).
     assert 'ATTENTION_BADGE_LABEL = "Higher priority";' in _read("components/attention-zone.tsx")
     page = _read("components/resume-health/health-report-page.tsx")
-    assert "addNumbersLabel(metricAsks.length)" in page and "number questions" not in page
-    assert "` · Version ${body.resume_version_number}`" in page
-    assert "number questions" not in _read("components/resume-health/batch-ask-dialog.tsx")
+    band = _read("components/resume-health/summary-band.tsx")
+    assert "Start the questions ({askCount})" in band and "number questions" not in page
+    assert "checkedWords(formatTimeAgo(body.created_at), body.resume_version_number)" in page
+    assert "number questions" not in _read("components/resume-health/question-pass.tsx")
     cards = _read("components/resume-health/finding-cards.tsx")
     assert "This rating is wrong…" in cards and ">\n            Change rating\n" not in cards
 
@@ -458,7 +460,8 @@ def test_answer_and_review_hand_focus_into_the_opened_card():
 def test_checking_again_keeps_focus_on_a_check_button():
     page = _read("components/resume-health/health-report-page.tsx")
     assert page.count("<FocusHandoff to={checkRef}") == 3
-    assert "{analyzeButton(checkRef)}" in page
+    # The header's icon Check again is the target (Task 11: the rail's button went with the rail).
+    assert "ref={checkRef}" in page[page.index("<PageHeader"): page.index("{reportFailed ? (")]
 
 
 def test_update_score_keeps_its_one_guard():
@@ -494,16 +497,16 @@ def test_update_preview_keeps_focus():
     assert "const recompileOnce = useSingleFlight(recompileM.mutate);" in editor
 
 
-# --- Item 13: no horizontal scroll at 375 -------------------------------------
+# --- Item 13: rows wrap instead of scrolling sideways -------------------------
 
 
 def test_finding_rows_wrap_inside_their_cards():
     cards = _read("components/resume-health/finding-cards.tsx")
     row = _block(cards, "function CollapsedRow(", "\nexport function FindingGroupHeader(")
     assert '<div className="flex min-w-0 flex-wrap items-start gap-2">' in row
-    assert '<span className="flex min-w-0 flex-wrap items-center gap-1.5">' in row
+    assert '<span className="text-muted-foreground min-w-0 text-body-small break-words">' in row
     chrome = _block(cards, "export function ExpandedFindingChrome(", "\nfunction ClassificationOverrideDialog(")
-    assert "whitespace-normal" in chrome and "flex-wrap" in chrome
+    assert "break-words" in chrome and "flex-wrap" in chrome
 
 
 # --- Item 14: the number question starts empty ------------------------------
@@ -517,10 +520,42 @@ def test_the_number_question_starts_with_no_unit():
     assert 'if (!value.unit) return "";' in ctx
 
 
-def test_career_history_fits_375():
-    # An auto grid track grew to its cards' min-content (317px in a 271px
-    # column): /career scrolled sideways at 375 (scrollWidth 397).
+def test_career_history_columns_may_shrink():
+    # An auto grid track grew to its cards' min-content, so /career scrolled
+    # sideways once its column got narrower than its widest card.
     capture = _read("components/career/capture-box.tsx")
-    assert '<div className="flex flex-wrap items-center gap-2">' in capture
+    # One grid whose text column may shrink.
+    assert "grid-cols-[minmax(0,1fr)_auto] items-center" in capture
+    assert "flex flex-wrap items-center justify-between gap-2" in capture
     # The page's one column may shrink below its content's widest line.
     assert '<div className="grid grid-cols-[minmax(0,1fr)] gap-6">' in _read("app/career/page.tsx")
+
+
+def test_career_history_opens_on_the_history_not_on_empty_panels():
+    """Quick capture's open box and an empty Drafts to review took ~800px above the career history on
+    most visits. Capture rests as one line; no drafts is one line that keeps the #inbox target."""
+    capture = _read("components/career/capture-box.tsx")
+    assert 'const open = focused || text !== "" || capture.isPending || ingest.isPending || dragging;' in capture
+    assert "rows={open ? 4 : 1}" in capture
+    # Folds only when focus leaves the whole form: tabbing to Add to drafts must not fold it away.
+    assert "if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);" in capture
+    inbox = _read("components/career/inbox-panel.tsx")
+    assert inbox.count('<Card id="inbox" tabIndex={-1}') == 2  # the one-line state and the list
+    assert "if (isLoading || (!error && groups.length === 0)) {" in inbox
+
+
+def test_a_sections_one_edit_is_always_shown():
+    """A hover-only Edit made the Career profile, an item's details and its notes read as read-only."""
+    profile = _read("components/career/profile-panel.tsx")
+    for rel in ("components/career/profile-panel.tsx", "components/career/entity-detail.tsx",
+                "components/career/notes-editor.tsx"):
+        assert "opacity-0" not in _read(rel), rel
+    for title in ('title="Contact"', 'title="Summary"', 'title="Skills"', 'title="Notes for the AI"'):
+        assert f"<ProfileSection\n          {title}" in profile, title
+    assert "aria-label={`Edit ${title.toLowerCase()}`}" in profile
+    # A section's save sends its own field (the PATCH leaves the rest alone).
+    assert "mutationFn: (value: T) => patchKbProfile(toPatch(value))," in profile
+    # Skills: the name over its pills, groups flowed into columns, none split across two.
+    assert '<dl className="gap-x-8 sm:columns-2 xl:columns-3">' in profile
+    assert 'className="mb-4 break-inside-avoid"' in profile
+    assert "const FOLDED_LINES = 2;" in profile and "aria-expanded={open}" in profile

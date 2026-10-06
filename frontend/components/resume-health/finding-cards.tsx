@@ -3,7 +3,6 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
-  ATTENTION_BADGE,
   ATTENTION_BADGE_LABEL,
 } from "@/components/attention-zone";
 import { useMutation } from "@tanstack/react-query";
@@ -11,6 +10,9 @@ import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { DemonstrateSkillDialog } from "@/components/resume-health/demonstrate-skill-dialog";
+import { DisputeBox, type DisputeHandler } from "@/components/resume-health/dispute-box";
+import { DiffText, SourceQuote, SuggestionCopyOnly } from "@/components/resume-health/judged-text";
+import { WordingChecklist } from "@/components/resume-health/wording-checklist";
 import {
   emptyMetricAsk,
   MetricAskInput,
@@ -40,7 +42,6 @@ import {
   answerAsk,
   ApiError,
   applyResumeEdits,
-  draftRewrite,
   unwaiveGate,
   validateTemplate,
   waiveGate,
@@ -49,27 +50,28 @@ import { couldnt } from "@/lib/error-text";
 import { toastContentChanged, toastRewriteError } from "./report-errors";
 import {
   answerMatchesFinding,
+  bulletEditOp,
   groupNotesByRule,
-  hoistBlurb,
   isBulletSubjectRule,
   isContentChangedError,
   isMechanicalPunctRule,
   isMetricAsk,
   levelNameOf,
-  potentialPoints,
+  groupPoints,
   punctFixOps,
   sharedCoaching,
+  skillGroupOf,
+  splitWordingNotes,
   STALE_APPLY_HINT,
   type StoredAskAnswer,
   textAtLocation,
-  shortFindingLabel,
 } from "@/lib/health-report";
 import { focusIfDropped, useEditToggle, useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { notifyRenderNote } from "@/lib/render-note";
-import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
 import type {
+  DisputeResult,
   EvidenceLevel,
   LintFinding,
   LintGate,
@@ -86,17 +88,17 @@ type ClassificationOverrideHandler = (
 // analogue, …) stay the stored values.
 const EVIDENCE_LEVELS: { value: EvidenceLevel; label: string }[] = [
   { value: "direct", label: "Shows a result" },
-  { value: "analogue", label: "Shows scale" },
-  { value: "adjacent", label: "Specific, no number" },
+  { value: "analogue", label: "Partial result" },
+  { value: "adjacent", label: "Specific, no result" },
   { value: "implied", label: "Vague" },
   { value: "unaddressed", label: "Lists a duty" },
 ];
 
-const EVIDENCE_LABELS = Object.fromEntries(
+export const EVIDENCE_LABELS = Object.fromEntries(
   EVIDENCE_LEVELS.map(({ value, label }) => [value, label]),
 ) as Record<EvidenceLevel, string>;
 
-const LOCKED_BTN =
+export const LOCKED_BTN =
   "disabled:pointer-events-auto aria-disabled:pointer-events-auto";
 
 export type FindingCardShared = {
@@ -110,6 +112,13 @@ export type FindingCardShared = {
   nScoreable?: number | null;
   hideHow?: boolean;
   storedAnswer?: StoredAskAnswer;
+  /** The latest "Not right?" reply for this bullet, kept by the page across re-runs. */
+  dispute?: DisputeResult;
+  /** This bullet's dispute is the page's latest action: a card mounting now opens on the reply. */
+  disputeFresh?: boolean;
+  /** The fresh dispute's card landed on its reply, or was collapsed: it is fresh no more. */
+  onDisputeSeen?: () => void;
+  onDisputed?: DisputeHandler;
 };
 
 export type ExpandedFindingChromeProps = {
@@ -136,7 +145,7 @@ export function ExpandedFindingChrome({
   children,
 }: ExpandedFindingChromeProps) {
   return (
-    <div ref={ref} className={cn("min-w-0 rounded-md border px-3 py-2", cardClassName)}>
+    <div ref={ref} className={cn("min-w-0 rounded-corner-md border px-3 py-2", cardClassName)}>
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"
@@ -146,19 +155,16 @@ export function ExpandedFindingChrome({
         >
           {/* A long label ("Harbor Loop Logistics · bullet 3") wraps inside
               the card: at 375 it pushed the page sideways. */}
-          <Badge
-            variant="secondary"
-            className="text-muted-foreground h-auto max-w-full text-left text-xs break-words whitespace-normal"
-          >
-            {finding.label}
-          </Badge>
+          <span className="text-muted-foreground min-w-0 text-body-small break-words">
+            {finding.label} ·
+          </span>
           <LevelChip finding={finding} />
         </button>
         {overflow}
       </div>
       {quote && <SourceQuote text={quote} />}
       {how && !hideHow && (
-        <p className="mt-1.5 max-w-[65ch] text-sm">{how}</p>
+        <p className="mt-1.5 max-w-[65ch] text-body-medium">{how}</p>
       )}
       {children}
     </div>
@@ -238,7 +244,7 @@ function ClassificationOverrideDialog({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-body-small">
             Now: {currentLabel}. Saving updates the report.
           </p>
           {level !== "automatic" && (
@@ -252,7 +258,7 @@ function ClassificationOverrideDialog({
                 value={reason}
                 maxLength={500}
                 onChange={(event) => setReason(event.target.value)}
-                className="text-sm"
+                className="text-body-medium"
                 disabled={save.isPending}
               />
             </div>
@@ -327,31 +333,27 @@ function FindingOverflow({
  *  failed must-fix checks only, `serious` the failed serious ones). Shared by
  *  the report page and the studio's health link; `one`/`many` keep "1 note",
  *  "3 notes". */
-export const COUNT_META: { key: string; one: string; many: string; chip: string }[] = [
-  { key: "gate", one: "must fix", many: "must fix", chip: "bg-destructive/10 text-destructive" },
+export const COUNT_META: { key: string; one: string; many: string }[] = [
+  { key: "gate", one: "must fix", many: "must fix" },
   {
     key: "serious",
     one: "serious problem",
     many: "serious problems",
-    chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
   },
   {
     key: "critical",
     one: "critical",
     many: "critical",
-    chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
   },
   {
     key: "ask",
     one: "question",
     many: "questions",
-    chip: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
   },
   {
     key: "note",
     one: "note",
     many: "notes",
-    chip: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
   },
 ];
 
@@ -362,48 +364,20 @@ export function countWords(key: string, count: number): string {
   return `${count} ${noun}`;
 }
 
-const TYPE_CHIP: Record<"fix" | "ask", { label: string; chip: string; card: string }> = {
-  fix: {
-    label: "Fix",
-    chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
-    card: "border-amber-500/40",
-  },
-  ask: {
-    label: "Question",
-    chip: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
-    card: "border-violet-500/30",
-  },
+/** A Fix or Question card's edge. Its kind is said by the action (Review, Answer)
+ *  and the question line, so the edge is the neutral one (owner-approved UX change 5). */
+const TYPE_CARD: Record<"fix" | "ask", { card: string }> = {
+  fix: { card: "border-border" },
+  ask: { card: "border-border" },
 };
 
 export const GRADE_STYLES: Record<string, string> = {
-  A: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-400",
-  B: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-500",
-  C: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
-  D: "bg-orange-500/15 text-orange-800 dark:text-orange-400",
-  F: "bg-destructive/10 text-destructive",
+  A: "bg-success-container text-on-success-container",
+  B: "bg-success-container text-on-success-container",
+  C: "bg-warning-container text-on-warning-container",
+  D: "bg-attention-container text-on-attention-container",
+  F: "bg-error-container text-on-error-container",
 };
-
-function DiffText({ oldText, newText }: { oldText: string; newText: string }) {
-  return (
-    <p className="max-w-[65ch] text-sm leading-relaxed">
-      {wordDiff(oldText, newText).map((token, i) => (
-        <span
-          key={i}
-          className={cn(
-            token.kind === "removed" &&
-              "bg-destructive/10 text-destructive line-through",
-            token.kind === "added" &&
-              "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-          )}
-        >
-          {token.text}{" "}
-        </span>
-      ))}
-    </p>
-  );
-}
-
-/** Current text at a finding's location, for the tracked-changes view. */
 
 function SuggestionBlock({
   finding,
@@ -443,41 +417,30 @@ function SuggestionBlock({
   );
 }
 
-function SuggestionCopyOnly({
+/**
+ * A card's one suggestion: the hash-guarded editor (copy-only for Other sections, which have no
+ * bullet edit op), or the plain wording when the card has no text to compare it with.
+ */
+function CardSuggestion({
   currentText,
   suggestion,
+  ...rest
 }: {
-  currentText: string;
+  finding: LintFinding;
+  currentText: string | null;
   suggestion: string;
+  kind: "base" | "application";
+  resumeKey: string;
+  onApplied: () => void;
+  onReanalyze?: () => void;
+  locked?: boolean;
 }) {
-  return (
-    <div className="mt-2 space-y-2 border-t pt-2">
-      <div className="bg-muted/40 rounded-md p-2">
-        <DiffText oldText={currentText} newText={suggestion} />
-      </div>
-      <p className="text-muted-foreground max-w-[65ch] text-xs">
-        Can&apos;t apply this here yet. Copy the new wording into the resume.
-      </p>
-    </div>
-  );
-}
-
-function SourceQuote({ text, truncated }: { text: string; truncated?: boolean }) {
-  return (
-    <blockquote
-      className={cn(
-        "border-muted-foreground/30 border-l-2 pl-2 text-sm",
-        // Truncated one-liners are glanceable labels; keep them quiet. An
-        // expanded quote is body text the user actually reads — regular
-        // posture, near-full contrast, so it can't be mistaken for disabled.
-        truncated
-          ? "text-muted-foreground truncate italic"
-          : "text-foreground/80 max-w-[65ch]",
-      )}
-    >
-      {text}
-    </blockquote>
-  );
+  if (currentText == null) {
+    return (
+      <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-body-small">{suggestion}</p>
+    );
+  }
+  return <SuggestionBlock currentText={currentText} suggestion={suggestion} {...rest} />;
 }
 
 export function SuggestionEditor({
@@ -508,24 +471,10 @@ export function SuggestionEditor({
   const focusNext = useFocusOnNextCommit();
 
   const apply = useMutation({
-    mutationFn: () => {
-      const { section, index, bullet_index } = finding.location;
-      const hashValue = expectedHash ?? finding.content_hash;
-      const hash =
-        hashValue != null ? { expected_content_hash: hashValue } : {};
-      const op =
-        section === "summary"
-          ? { kind: "replace_summary", value: draft, ...hash }
-          : {
-              kind: "replace_bullet",
-              section,
-              index,
-              bullet_index,
-              value: draft,
-              ...hash,
-            };
-      return applyResumeEdits(kind, resumeKey, [op]);
-    },
+    mutationFn: () =>
+      applyResumeEdits(kind, resumeKey, [
+        bulletEditOp(finding.location, draft, expectedHash ?? finding.content_hash),
+      ]),
     onSuccess: (result) => {
       setApplied(true);
       focusNext(appliedRef);
@@ -543,7 +492,7 @@ export function SuggestionEditor({
       <p
         ref={appliedRef}
         tabIndex={-1}
-        className="text-muted-foreground mt-2 border-t pt-2 text-xs outline-none"
+        className="text-muted-foreground mt-2 border-t pt-2 text-body-small outline-none"
       >
         Applied
       </p>
@@ -554,7 +503,7 @@ export function SuggestionEditor({
 
   return (
     <div className="mt-2 space-y-2 border-t pt-2">
-      <div className="bg-muted/40 rounded-md p-2">
+      <div className="bg-surface-container-low rounded-corner-md p-2">
         <DiffText oldText={currentText} newText={draft || suggestion} />
       </div>
       <Textarea
@@ -562,12 +511,14 @@ export function SuggestionEditor({
         aria-label="New wording"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        className="max-w-[65ch] text-sm"
+        className="max-w-[65ch] text-body-medium"
         disabled={locked}
       />
       <div className="flex justify-end">
+        {/* Tonal: the report's one filled button is Start the questions. */}
         <Button
           size="sm"
+          variant="tonal"
           disabled={!canApply || apply.isPending || locked}
           title={locked ? STALE_APPLY_HINT : undefined}
           focusableWhenDisabled
@@ -590,9 +541,7 @@ function LevelChip({ finding }: { finding: LintFinding }) {
   if (!name) return null;
   const label = EVIDENCE_LABELS[name as EvidenceLevel] ?? name;
   return (
-    <Badge variant="secondary" className="shrink-0 text-xs">
-      {label}
-    </Badge>
+    <span className="text-muted-foreground text-body-small">{label}</span>
   );
 }
 
@@ -600,62 +549,48 @@ function CollapsedRow({
   finding,
   quote,
   actionLabel,
-  pts,
   onExpand,
   overflow,
 }: {
   finding: LintFinding;
   quote: string | null;
   actionLabel: string;
-  pts?: number | null;
   onExpand: () => void;
   overflow: ReactNode;
 }) {
-  // Two lines that wrap inside the card: the chips, then the quote. On one
-  // line the chips and the action ran past the card at 375 (scrollWidth 476).
+  // The group header states the rule, so the row names its place in full ("<entry> · bullet 3"),
+  // then the bullet as judged text and the bullet's own question. The label wraps inside the card:
+  // a long entry name must not push the action and ⋯ off it.
   return (
     <div className="flex min-w-0 flex-wrap items-start gap-2">
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left"
-        onClick={onExpand}
-        aria-expanded={false}
-        title={finding.label}
-      >
-        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge
-            variant="secondary"
-            className="text-muted-foreground max-w-[10rem] shrink-0 truncate text-xs"
-          >
-            {shortFindingLabel(finding.label)}
-          </Badge>
-          <LevelChip finding={finding} />
-          {finding.zone === "hot" && (
-            <Badge
-              variant="secondary"
-              className={`${ATTENTION_BADGE} text-xs`}
-            >
-              {ATTENTION_BADGE_LABEL}
-            </Badge>
-          )}
-          {pts != null && pts > 0 ? (
-            <span className="text-muted-foreground text-xs">
-              +{pts} points
-            </span>
-          ) : null}
-        </span>
+      <div className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left">
+        <button type="button" onClick={onExpand} aria-expanded={false} className="text-left">
+          <span className="text-muted-foreground min-w-0 text-body-small break-words">
+            {finding.label} · <LevelChip finding={finding} />
+            {finding.zone === "hot" && <> · {ATTENTION_BADGE_LABEL}</>}
+          </span>
+        </button>
         {quote ? (
           <span className="block w-full min-w-0">
-            <SourceQuote text={quote} truncated />
+            <SourceQuote text={quote} clamp />
           </span>
         ) : (
-          <span className="text-muted-foreground block w-full min-w-0 truncate text-sm">
+          <span className="text-muted-foreground block w-full min-w-0 text-body-medium">
             {finding.issue}
           </span>
         )}
-      </button>
+        {finding.question && (
+          <p className="text-foreground max-w-[65ch] text-body-medium">{finding.question}</p>
+        )}
+      </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <Button size="xs" variant="outline" onClick={onExpand}>
+        <Button
+          size="xs"
+          variant="link"
+          // Every row's action has its own name: "Answer: Data Analyst · Acme · bullet 3".
+          aria-label={`${actionLabel}: ${finding.label}`}
+          onClick={onExpand}
+        >
           {actionLabel}
         </Button>
         {overflow}
@@ -664,27 +599,33 @@ function CollapsedRow({
   );
 }
 
+/**
+ * A tab's group: the rule its rows break, stated once. The title is the rule (a detector's title, or
+ * the issue sentence every row shares), then the points the whole group could gain, then the why and
+ * how when every row shares them (the rows then leave their own out).
+ */
 export function FindingGroupHeader({
   title,
   findings,
-  id,
+  nScoreable,
 }: {
   title: string;
   findings: LintFinding[];
-  id: string;
+  nScoreable?: number | null;
 }) {
-  const blurb = hoistBlurb(findings);
+  const points = groupPoints(findings, nScoreable);
   const coaching = sharedCoaching(findings);
   return (
-    <div id={id} className="scroll-mt-6 space-y-1">
-      <h3 className="text-sm font-medium">{title}</h3>
-      {blurb ? (
-        <p className="text-muted-foreground max-w-[65ch] text-sm">{blurb}</p>
-      ) : coaching ? (
-        <p className="text-muted-foreground max-w-[65ch] text-sm">
+    <div className="space-y-1">
+      <h3 className="text-title-small">
+        {title} <span className="text-body-medium text-muted-foreground">({findings.length})</span>
+      </h3>
+      {points > 0 && <p className="text-muted-foreground text-body-small">Up to +{points} points</p>}
+      {coaching && (
+        <p className="text-muted-foreground max-w-[65ch] text-body-medium">
           {coaching.why} {coaching.how}
         </p>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -698,17 +639,42 @@ export function FixCard({
   onClassificationChanged,
   onReanalyze,
   locked,
-  nScoreable,
   hideHow,
+  dispute,
+  disputeFresh,
+  onDisputeSeen,
+  onDisputed,
 }: FindingCardShared & { finding: LintFinding }) {
-  const [expanded, setExpanded] = useState(false);
+  // A card the re-run after the latest dispute put in place opens on its reply and takes focus
+  // there; collapsing it ends that, so re-expanding never moves focus to an old reply.
+  const fresh = dispute != null && Boolean(disputeFresh);
+  const [expanded, setExpanded] = useState(fresh);
+  const [landOnReply, setLandOnReply] = useState(fresh);
+  const endLanding = () => {
+    if (!landOnReply) return;
+    setLandOnReply(false);
+    onDisputeSeen?.();
+  };
   // Review leaves with the collapsed row: focus goes into the opened card
   // (its first field, else its first control), never to <body>.
   const cardRef = useRef<HTMLDivElement>(null);
   const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
-  const meta = TYPE_CHIP.fix;
-  const pts = potentialPoints(levelNameOf(finding), nScoreable);
+  const meta = TYPE_CARD.fix;
+  const renderSuggestion = (s: string) => (
+    <CardSuggestion
+      finding={finding}
+      currentText={currentText}
+      suggestion={s}
+      kind={kind}
+      resumeKey={resumeKey}
+      onApplied={onApplied}
+      onReanalyze={onReanalyze}
+      locked={locked}
+    />
+  );
+  // One suggestion per card: a dispute's is newer than the check's own.
+  const disputeSuggestion = dispute?.suggestion ?? null;
   const overflow = (
     <FindingOverflow
       finding={finding}
@@ -718,12 +684,11 @@ export function FixCard({
 
   if (!expanded) {
     return (
-      <div className={cn("rounded-md border px-3 py-2", meta.card)}>
+      <div className={cn("rounded-corner-md border px-3 py-2", meta.card)}>
         <CollapsedRow
           finding={finding}
           quote={currentText}
           actionLabel="Review"
-          pts={pts}
           onExpand={() => {
             setExpanded(true);
             focusNext(cardRef);
@@ -736,6 +701,7 @@ export function FixCard({
 
   const showQuote =
     finding.suggestion == null &&
+    disputeSuggestion == null &&
     currentText != null &&
     currentText.trim().length > 0;
 
@@ -745,23 +711,27 @@ export function FixCard({
       finding={finding}
       cardClassName={meta.card}
       overflow={overflow}
-      onCollapse={() => setExpanded(false)}
+      onCollapse={() => {
+        setExpanded(false);
+        endLanding();
+      }}
       quote={showQuote ? currentText : null}
       how={finding.how}
       hideHow={hideHow}
     >
-      {finding.suggestion != null && currentText != null && (
-        <SuggestionBlock
-          finding={finding}
-          currentText={currentText}
-          suggestion={finding.suggestion}
-          kind={kind}
-          resumeKey={resumeKey}
-          onApplied={onApplied}
-          onReanalyze={onReanalyze}
-          locked={locked}
-        />
-      )}
+      {finding.suggestion != null && disputeSuggestion == null && renderSuggestion(finding.suggestion)}
+      <DisputeBox
+        finding={finding}
+        kind={kind}
+        resumeKey={resumeKey}
+        result={dispute}
+        land={landOnReply}
+        onLanded={endLanding}
+        onDisputed={onDisputed}
+        onReanalyze={onReanalyze}
+        locked={locked}
+        renderSuggestion={renderSuggestion}
+      />
     </ExpandedFindingChrome>
   );
 }
@@ -775,11 +745,22 @@ export function AskCard({
   onClassificationChanged,
   onReanalyze,
   locked,
-  nScoreable,
   hideHow,
   storedAnswer,
+  dispute,
+  disputeFresh,
+  onDisputeSeen,
+  onDisputed,
 }: FindingCardShared & { finding: LintFinding }) {
-  const [expanded, setExpanded] = useState(false);
+  // As on FixCard: opens on a fresh dispute's reply, and collapsing ends the landing.
+  const fresh = dispute != null && Boolean(disputeFresh);
+  const [expanded, setExpanded] = useState(fresh);
+  const [landOnReply, setLandOnReply] = useState(fresh);
+  const endLanding = () => {
+    if (!landOnReply) return;
+    setLandOnReply(false);
+    onDisputeSeen?.();
+  };
   const [answerDraft, setAnswerDraft] = useState<string | null>(null);
   const [metricDraft, setMetricDraft] = useState<MetricAskValue | null>(null);
   const [localSuggestion, setLocalSuggestion] = useState<
@@ -791,9 +772,9 @@ export function AskCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
-  const meta = TYPE_CHIP.ask;
-  const pts = potentialPoints(levelNameOf(finding), nScoreable);
-  const metricAsk = isMetricAsk(finding.question);
+  const meta = TYPE_CARD.ask;
+  const metricAsk = isMetricAsk(finding);
+  const [useAlternative, setUseAlternative] = useState(false);
   const storedFresh = answerMatchesFinding(storedAnswer, finding.content_hash);
   const staleDraft = Boolean(storedAnswer && !storedFresh);
   const answer = answerDraft ?? (storedFresh ? storedAnswer.answer : "");
@@ -818,8 +799,22 @@ export function AskCard({
       onClassificationChanged={onClassificationChanged}
     />
   );
+  const renderSuggestion = (s: string) => (
+    <CardSuggestion
+      finding={finding}
+      currentText={currentText}
+      suggestion={s}
+      kind={kind}
+      resumeKey={resumeKey}
+      onApplied={onApplied}
+      onReanalyze={onReanalyze}
+      locked={locked}
+    />
+  );
+  // One suggestion per card: a dispute's is newer than the answer's.
+  const disputeSuggestion = dispute?.suggestion ?? null;
 
-  const context = metricAsk ? metricContextFromValue(metric) : answer.trim();
+  const context = metricAsk && !useAlternative ? metricContextFromValue(metric) : answer.trim();
 
   const draft = useMutation({
     mutationFn: () => answerAsk(kind, resumeKey, finding.id, context),
@@ -844,12 +839,11 @@ export function AskCard({
 
   if (!expanded) {
     return (
-      <div className={cn("rounded-md border px-3 py-2", meta.card)}>
+      <div className={cn("rounded-corner-md border px-3 py-2", meta.card)}>
         <CollapsedRow
           finding={finding}
           quote={currentText}
           actionLabel="Answer"
-          pts={pts}
           onExpand={() => {
             setExpanded(true);
             focusNext(cardRef);
@@ -861,7 +855,11 @@ export function AskCard({
   }
 
   const showQuote =
-    suggestion == null && currentText != null && currentText.trim().length > 0;
+    suggestion == null &&
+    disputeSuggestion == null &&
+    currentText != null &&
+    currentText.trim().length > 0;
+  const answering = !(suggestion != null || notRewritable);
 
   return (
     <ExpandedFindingChrome
@@ -869,43 +867,47 @@ export function AskCard({
       finding={finding}
       cardClassName={meta.card}
       overflow={overflow}
-      onCollapse={() => setExpanded(false)}
+      onCollapse={() => {
+        setExpanded(false);
+        endLanding();
+      }}
       quote={showQuote ? currentText : null}
       how={finding.how}
       hideHow={hideHow}
     >
       {finding.question && (
-        <p className="text-muted-foreground mt-1 max-w-[65ch] text-sm italic">
-          {finding.question}
+        <p className="text-foreground mt-1 max-w-[65ch] text-body-medium">
+          {useAlternative ? finding.alt_question : finding.question}
         </p>
       )}
       {staleDraft && (
-        <p className="text-amber-700 dark:text-amber-400 mt-1 text-xs">
+        <p className="text-warning mt-1 text-body-small">
           This bullet changed after you answered. Write the new wording again.
         </p>
       )}
 
-      {suggestion != null && currentText != null ? (
-        <SuggestionBlock
-          finding={finding}
-          currentText={currentText}
-          suggestion={suggestion}
-          kind={kind}
-          resumeKey={resumeKey}
-          onApplied={onApplied}
-          onReanalyze={onReanalyze}
-          locked={locked}
-        />
-      ) : notRewritable || (suggestion != null && currentText == null) ? (
-        <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-xs">
-          {suggestion != null && currentText == null
-            ? suggestion
-            : "There's no single bullet to rewrite here. Add this to your resume directly."}
+      {suggestion != null ? (
+        disputeSuggestion == null && renderSuggestion(suggestion)
+      ) : notRewritable ? (
+        <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-body-small">
+          There&apos;s no single bullet to rewrite here. Add this to your resume directly.
         </p>
       ) : (
         <div className="mt-2 space-y-2 border-t pt-2">
-          {metricAsk ? (
+          {metricAsk && finding.alt_question && (
+            <button
+              type="button"
+              className="text-primary text-body-medium underline-offset-2 hover:underline"
+              aria-expanded={useAlternative}
+              onClick={() => { setUseAlternative((v) => !v); focusNext(cardRef); }}
+              disabled={locked}
+            >
+              {useAlternative ? "Use the number fields" : "No number? Answer this instead"}
+            </button>
+          )}
+          {metricAsk && !useAlternative ? (
             <MetricAskInput
+              label={finding.measure_target ? `Number for: ${finding.measure_target}` : undefined}
               value={metric}
               onChange={setMetricDraft}
               disabled={locked}
@@ -916,39 +918,56 @@ export function AskCard({
               aria-label="Your answer"
               value={answer}
               onChange={(e) => setAnswerDraft(e.target.value)}
-              className="max-w-[65ch] text-sm"
+              className="max-w-[65ch] text-body-medium"
               disabled={locked}
             />
           )}
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              disabled={
-                context.length === 0 || draft.isPending || locked
-              }
-              title={locked ? STALE_APPLY_HINT : undefined}
-              // Disables itself while writing: a native `disabled` drops focus.
-              focusableWhenDisabled
-              // Locked keeps pointer events, so its hint shows on hover.
-              className={
-                locked
-                  ? `${LOCKED_BTN} data-disabled:opacity-50`
-                  : "data-disabled:pointer-events-none data-disabled:opacity-50"
-              }
-              onClick={() => draftOnce()}
-            >
-              {draft.isPending ? "Writing…" : "Write new wording"}
-            </Button>
-          </div>
         </div>
       )}
+      <DisputeBox
+        finding={finding}
+        kind={kind}
+        resumeKey={resumeKey}
+        result={dispute}
+        land={landOnReply}
+        onLanded={endLanding}
+        onDisputed={onDisputed}
+        onReanalyze={onReanalyze}
+        locked={locked}
+        // "Not right?" sits beside the answer's own control while the card asks.
+        controls={answering ? (
+          <Button
+            size="sm"
+            variant="tonal"
+            disabled={
+              context.length === 0 || draft.isPending || locked
+            }
+            title={locked ? STALE_APPLY_HINT : undefined}
+            // Disables itself while writing: a native `disabled` drops focus.
+            focusableWhenDisabled
+            // Locked keeps pointer events, so its hint shows on hover.
+            className={
+              locked
+                ? `${LOCKED_BTN} data-disabled:opacity-50`
+                : "data-disabled:pointer-events-none data-disabled:opacity-50"
+            }
+            onClick={() => draftOnce()}
+          >
+            {draft.isPending ? "Writing…" : "Write new wording"}
+          </Button>
+        ) : null}
+        renderSuggestion={renderSuggestion}
+      />
     </ExpandedFindingChrome>
   );
 }
 
-
+/**
+ * The Notes tab: the Wording group, the rule table and the unscored skills. None changes the score.
+ * Too-long bullets are the Shorten tab's (`ShortenList`), and "No numbers anywhere" is the summary
+ * band's callout, so neither reaches here.
+ */
 export function NotesTable({
-  hidden,
   notes,
   data,
   kind,
@@ -956,10 +975,8 @@ export function NotesTable({
   onApplied,
   locked,
   onReanalyze,
+  onWordingChanged,
 }: {
-  /** The findings filter leaves notes out: hidden, not unmounted, so its
-   *  kept Demonstrate-skill drafts survive the filter. */
-  hidden?: boolean;
   notes: LintFinding[];
   data?: ResumeData | null;
   kind: "base" | "application";
@@ -967,8 +984,14 @@ export function NotesTable({
   onApplied: () => void;
   locked?: boolean;
   onReanalyze?: () => void;
+  /** Runs the report again after the word list changed (an Ignore, the word list's Save). */
+  onWordingChanged: () => Promise<void>;
 }) {
-  const groups = groupNotesByRule(notes);
+  // Wording notes (spelling and grammar slips, clichés, filler) are one checklist of their own.
+  const { wording, other } = splitWordingNotes(notes);
+  const allGroups = groupNotesByRule(other);
+  const skills = allGroups.find((g) => g.rule === "skills.undemonstrated") ?? null;
+  const groups = allGroups.filter((g) => g !== skills);
   const [skill, setSkill] = useState<string | null>(null);
   // One kept dialog per skill the user has opened, so a drafted rewrite
   // survives closing it and opening another skill.
@@ -978,7 +1001,7 @@ export function NotesTable({
     setSkill(subject);
   };
   const [doneSkills, setDoneSkills] = useState<Set<string>>(new Set());
-  // An Apply marks its chip "· done", which disables it, and Base UI's return
+  // An Apply marks its row "Done", which disables its action, and Base UI's return
   // to a disabled button lands on <body>. Focus goes to the opener while it is
   // live, else the next skill still to do, else the notes section itself (a
   // tabIndex={-1} target Base UI would pass to its first tabbable child).
@@ -993,12 +1016,6 @@ export function NotesTable({
     queueMicrotask(() => focusIfDropped(sectionRef.current));
     return false;
   };
-  const [expandedQuotes, setExpandedQuotes] = useState<Set<string>>(new Set());
-  const [condenseDraft, setCondenseDraft] = useState<{
-    finding: LintFinding;
-    suggestion: string;
-    content_hash: string;
-  } | null>(null);
 
   const applyOps = useMutation({
     mutationFn: (ops: Record<string, unknown>[]) =>
@@ -1011,174 +1028,132 @@ export function NotesTable({
     onError: (err: Error) => toastRewriteError(err, onReanalyze),
   });
 
-  const condense = useMutation({
-    mutationFn: (finding: LintFinding) =>
-      draftRewrite(kind, resumeKey, {
-        location: {
-          section: finding.location.section,
-          index: finding.location.index,
-          bullet_index: finding.location.bullet_index,
-        },
-        objective: "condense",
-        expected_content_hash: finding.content_hash ?? undefined,
-      }).then((result) => ({ finding, ...result })),
-    onSuccess: (result) => setCondenseDraft(result),
-    onError: (err: Error) => toastRewriteError(err, onReanalyze, "write new wording"),
-  });
-
   return (
-    <section ref={sectionRef} id="notes" tabIndex={-1} hidden={hidden} className="scroll-mt-6 space-y-2 outline-none">
-      <h2 className="text-muted-foreground text-sm font-medium">
-        Notes ({notes.length}). These don&apos;t change your score.
-      </h2>
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full table-fixed text-sm">
-          <tbody>
-            {groups.map((group) => {
-              const ops =
-                data && isMechanicalPunctRule(group.rule)
-                  ? punctFixOps(group.rule, group.subjects, data)
-                  : null;
-              const bulletRows = isBulletSubjectRule(group.rule);
-              const undemonstrated = group.rule === "skills.undemonstrated";
-              const subjectLine =
-                !bulletRows && !undemonstrated && group.subjects.length > 0
-                  ? group.subjects.slice(0, 8).join(", ") +
-                    (group.subjects.length > 8 ? ", …" : "")
-                  : null;
-              return (
-                <tr key={group.rule} className="border-b last:border-b-0">
-                  <td className="px-3 py-2 align-top">
-                    <p className="font-medium">
-                      {group.title} ({group.count})
-                    </p>
-                    {undemonstrated && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {group.subjects.map((subject) => {
-                          const done = doneSkills.has(subject);
-                          return (
-                            <button
-                              key={subject}
-                              type="button"
-                              data-skill={subject}
-                              className={cn(
-                                "rounded-full border px-2 py-0.5 text-xs",
-                                done
-                                  ? "text-muted-foreground line-through"
-                                  : "hover:bg-muted",
-                              )}
-                              onClick={() => !done && openSkill(subject)}
-                              disabled={done || locked || !data}
-                            >
-                              {subject}
-                              {done ? " · done" : ""}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {subjectLine && (
-                      <p className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs">
-                        {subjectLine}
+    <section ref={sectionRef} id="notes" tabIndex={-1} className="scroll-mt-6 space-y-3 outline-none">
+      <p className="text-muted-foreground text-body-medium">These don&apos;t change your score.</p>
+      {/* Always, even with no hits: Edit word list lives in its header. */}
+      <WordingChecklist
+        notes={wording}
+        data={data ?? null}
+        kind={kind}
+        resumeKey={resumeKey}
+        onApplied={onApplied}
+        onReanalyze={onReanalyze}
+        onWordingChanged={onWordingChanged}
+      />
+      {groups.length > 0 && (
+        <div className="overflow-x-auto rounded-corner-md border">
+          <table className="w-full table-fixed text-body-medium">
+            <tbody>
+              {groups.map((group) => {
+                const ops =
+                  data && isMechanicalPunctRule(group.rule)
+                    ? punctFixOps(group.rule, group.subjects, data)
+                    : null;
+                const bulletRows = isBulletSubjectRule(group.rule);
+                const subjectLine =
+                  !bulletRows && group.subjects.length > 0
+                    ? group.subjects.slice(0, 8).join(", ") +
+                      (group.subjects.length > 8 ? ", …" : "")
+                    : null;
+                return (
+                  <tr key={group.rule} className="border-b last:border-b-0">
+                    <td className="px-3 py-2 align-top">
+                      <p className="font-medium">
+                        {group.title} ({group.count})
                       </p>
-                    )}
-                    {group.shapeNote &&
-                      group.notes.map((note) => (
-                        <p
-                          key={note.id}
-                          className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs"
-                        >
-                          {note.issue} {note.how}
+                      {subjectLine && (
+                        <p className="text-muted-foreground mt-0.5 max-w-[65ch] text-body-small">
+                          {subjectLine}
                         </p>
-                      ))}
-                    {bulletRows && (
-                      <ul className="mt-1.5 space-y-1">
-                        {group.notes.map((note) => {
-                          const quote = note.subject ?? note.issue;
-                          const open = expandedQuotes.has(note.id);
-                          return (
-                            <li
-                              key={note.id}
-                              className="flex items-start justify-between gap-2"
-                            >
-                              <button
-                                type="button"
-                                className="text-muted-foreground min-w-0 flex-1 text-left text-xs italic"
-                                onClick={() =>
-                                  setExpandedQuotes((s) => {
-                                    const next = new Set(s);
-                                    if (next.has(note.id)) next.delete(note.id);
-                                    else next.add(note.id);
-                                    return next;
-                                  })
-                                }
-                              >
-                                <span className={open ? "whitespace-pre-wrap" : "truncate block"}>
-                                  {quote}
-                                </span>
-                              </button>
-                              {group.rule === "bullet.too_long" && (
-                                <Button
-                                  size="xs"
-                                  variant="outline"
-                                  disabled={locked || condense.isPending}
-                                  title={locked ? STALE_APPLY_HINT : undefined}
-                                  className={locked ? LOCKED_BTN : undefined}
-                                  onClick={() => condense.mutate(note)}
-                                >
-                                  Shorten
-                                </Button>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                    {condenseDraft &&
-                      group.notes.some((n) => n.id === condenseDraft.finding.id) &&
-                      data && (
-                        <div className="mt-2">
-                          <SuggestionEditor
-                            finding={condenseDraft.finding}
-                            currentText={
-                              textAtLocation(data, condenseDraft.finding) ??
-                              condenseDraft.finding.subject ??
-                              ""
-                            }
-                            suggestion={condenseDraft.suggestion}
-                            kind={kind}
-                            resumeKey={resumeKey}
-                            onApplied={() => {
-                              setCondenseDraft(null);
-                              onApplied();
-                            }}
-                            onReanalyze={onReanalyze}
-                            locked={locked}
-                            expectedHash={condenseDraft.content_hash}
-                          />
-                        </div>
                       )}
-                  </td>
-                  <td className="w-28 px-3 py-2 align-top text-right">
-                    {ops ? (
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        disabled={locked || applyOps.isPending}
-                        title={locked ? STALE_APPLY_HINT : undefined}
-                        className={locked ? LOCKED_BTN : undefined}
-                        onClick={() => applyOps.mutate(ops)}
-                      >
-                        Fix all
-                      </Button>
-                    ) : null}
-                  </td>
+                      {group.shapeNote &&
+                        group.notes.map((note) => (
+                          <p
+                            key={note.id}
+                            className="text-muted-foreground mt-0.5 max-w-[65ch] text-body-small"
+                          >
+                            {note.issue} {note.how}
+                          </p>
+                        ))}
+                      {bulletRows && (
+                        <ul className="mt-1.5 space-y-1">
+                          {group.notes.map((note) => (
+                            <li key={note.id} className="min-w-0">
+                              <SourceQuote text={note.subject ?? note.issue} clamp />
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td className="w-28 px-3 py-2 align-top text-right">
+                      {ops ? (
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          disabled={locked || applyOps.isPending}
+                          title={locked ? STALE_APPLY_HINT : undefined}
+                          className={locked ? LOCKED_BTN : undefined}
+                          onClick={() => applyOps.mutate(ops)}
+                        >
+                          Fix all
+                        </Button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {skills && (
+        <div className="space-y-1.5">
+          <h3 className="text-title-small">
+            {skills.title} ({skills.count})
+          </h3>
+          <p className="text-muted-foreground max-w-[65ch] text-body-medium">{skills.notes[0].how}</p>
+          <div className="overflow-x-auto rounded-corner-md border">
+            <table className="w-full text-body-medium">
+              <thead className="text-muted-foreground text-left text-body-small">
+                <tr className="border-b">
+                  <th scope="col" className="px-3 py-2 text-label-medium">Skill</th>
+                  <th scope="col" className="px-3 py-2 text-label-medium">Listed in</th>
+                  <th scope="col" className="px-3 py-2 text-label-medium">
+                    <span className="sr-only">Action</span>
+                  </th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {skills.subjects.map((subject) => {
+                  const done = doneSkills.has(subject);
+                  return (
+                    <tr key={subject} className="border-b last:border-b-0">
+                      <td className="px-3 py-1.5 break-words">{subject}</td>
+                      <td className="text-muted-foreground px-3 py-1.5">
+                        {skillGroupOf(data, subject) ?? "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <Button
+                          size="xs"
+                          variant="link"
+                          data-skill={subject}
+                          // The visible words first (WCAG 2.5.3), then the skill: every row's name differs.
+                          aria-label={done ? `Done: ${subject}` : `Show it in a bullet: ${subject}`}
+                          onClick={() => !done && openSkill(subject)}
+                          disabled={done || locked || !data}
+                        >
+                          {done ? "Done" : "Show it in a bullet"}
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {data && opened.map((s) => (
         <DemonstrateSkillDialog
           key={s}
@@ -1258,34 +1233,34 @@ function FailedGate({
   const accent =
     gate.tier === "fatal"
       ? "border-destructive/50 bg-destructive/5"
-      : "border-amber-500/50 bg-amber-500/5";
+      : "border-border";
 
   return (
-    <div className={cn("min-w-0 rounded-md border px-3 py-2", accent)}>
+    <div className={cn("min-w-0 rounded-corner-md border px-3 py-2", accent)}>
       <div className="flex flex-wrap items-center gap-2">
         <Badge
           variant="secondary"
           className={cn(
-            "shrink-0 text-xs",
+            "shrink-0",
             gate.tier === "fatal"
               ? "bg-destructive/10 text-destructive"
-              : "bg-amber-500/10 text-amber-800 dark:text-amber-400",
+              : "bg-warning-container text-on-warning-container",
           )}
         >
           {gate.tier === "fatal" ? "Must fix" : "Serious"}
         </Badge>
-        <span className="min-w-0 text-sm font-medium break-words">{gate.label}</span>
+        <span className="min-w-0 text-title-small break-words">{gate.label}</span>
       </div>
-      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm break-words">{gate.detail}</p>}
+      {gate.detail && <p className="mt-1 max-w-[65ch] text-body-medium break-words">{gate.detail}</p>}
       {gate.fix_hint && (
-        <p className="text-muted-foreground mt-1 max-w-[65ch] text-xs break-words">
+        <p className="text-muted-foreground mt-1 max-w-[65ch] text-body-small break-words">
           {gate.fix_hint}
         </p>
       )}
 
       {showReason ? (
         <div ref={editRef} className="mt-2 space-y-2">
-          <p className="text-muted-foreground max-w-[65ch] text-xs">
+          <p className="text-muted-foreground max-w-[65ch] text-body-small">
             Your score won&apos;t be limited by this any more. Your resume isn&apos;t
             changed. You can undo this here.
           </p>
@@ -1294,7 +1269,7 @@ function FailedGate({
             aria-label="Why is this OK?"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="max-w-[65ch] text-sm"
+            className="max-w-[65ch] text-body-medium"
           />
           <div className="flex justify-end gap-2">
             <Button
@@ -1305,8 +1280,10 @@ function FailedGate({
             >
               Cancel
             </Button>
+            {/* Tonal: the report's one filled button is Start the questions. */}
             <Button
               size="sm"
+              variant="tonal"
               disabled={reason.trim().length === 0 || markOk.isPending}
               onClick={() => waiveOnce()}
               // Disables itself while saving: a native `disabled` drops focus.
@@ -1364,9 +1341,9 @@ function WaivedGate({
   const unwaiveOnce = useSingleFlight(unwaive.mutate);
 
   return (
-    <div className="text-muted-foreground bg-muted/40 min-w-0 rounded-md border px-3 py-2">
+    <div className="text-muted-foreground bg-surface-container-low min-w-0 rounded-corner-md border px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-sm">{gate.label} (marked OK)</span>
+        <span className="min-w-0 truncate text-body-medium">{gate.label} (marked OK)</span>
         <Button
           ref={actionRef}
           size="sm"
@@ -1380,9 +1357,9 @@ function WaivedGate({
           {unwaive.isPending ? "Undoing…" : "Undo"}
         </Button>
       </div>
-      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm break-words">{gate.detail}</p>}
+      {gate.detail && <p className="mt-1 max-w-[65ch] text-body-medium break-words">{gate.detail}</p>}
       {gate.waiver_reason && (
-        <p className="mt-1 text-xs break-words">
+        <p className="mt-1 text-body-small break-words">
           <span className="text-foreground font-medium">Reason: </span>
           {gate.waiver_reason}
         </p>
@@ -1414,14 +1391,14 @@ function NotAssessedGate({
   });
 
   return (
-    <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
+    <div className="rounded-corner-md border border-border bg-surface-container-low px-3 py-2">
       <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="bg-muted text-muted-foreground shrink-0 text-xs">
+        <Badge variant="secondary" className="bg-muted text-muted-foreground shrink-0">
           Not checked
         </Badge>
-        <span className="text-sm font-medium">{gate.label}</span>
+        <span className="text-title-small">{gate.label}</span>
       </div>
-      <p className="text-muted-foreground mt-1 max-w-[65ch] text-sm">
+      <p className="text-muted-foreground mt-1 max-w-[65ch] text-body-medium">
         {gate.label} wasn&apos;t checked because this template hasn&apos;t been checked yet.
         {gate.detail ? ` ${gate.detail}` : ""}
       </p>
@@ -1476,7 +1453,7 @@ export function GateBanner({
   // checks too. "Must fix" is the fatal tier's badge only.
   return (
     <section id="gates" className="scroll-mt-6 space-y-2">
-      <h2 className="text-sm font-medium">Checks</h2>
+      <h2 className="text-title-small">Checks</h2>
       {failed.map((gate) => (
         <FailedGate
           key={gate.id}
@@ -1512,10 +1489,48 @@ export function GateBanner({
   );
 }
 
-export function ResolvedFinding({ finding }: { finding: LintFinding }) {
+export function ResolvedFinding({
+  finding,
+  dispute,
+  currentText,
+}: {
+  finding: LintFinding;
+  /** The dispute whose re-run lifted this bullet out of the report: its reply stays in view. */
+  dispute?: { reply: string; suggestion: string | null };
+  currentText?: string | null;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // A dispute that lifted this bullet took its card, and the reply that held focus, with it. The
+  // entry takes focus when it mounts after the card left; DisputeBox hands it over when the card
+  // leaves after the entry mounted.
+  useLayoutEffect(() => {
+    if (dispute) focusIfDropped(ref.current);
+  }, [dispute]);
   return (
-    <div className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm line-through">
-      Fixed: {finding.label}
+    <div
+      ref={ref}
+      tabIndex={dispute ? -1 : undefined}
+      data-resolved-hash={dispute ? (finding.content_hash ?? undefined) : undefined}
+      className="rounded-corner-md border border-dashed px-3 py-2 text-body-medium outline-none"
+    >
+      <p className="text-muted-foreground line-through">Fixed: {finding.label}</p>
+      {dispute && (
+        <>
+          <p role="status" className="text-foreground mt-1 max-w-[65ch]">
+            {dispute.reply}
+          </p>
+          {/* A fact from the note, as wording to copy: the bullet has left the report, so there is
+              no card to apply it from. */}
+          {dispute.suggestion != null &&
+            (currentText != null ? (
+              <SuggestionCopyOnly currentText={currentText} suggestion={dispute.suggestion} />
+            ) : (
+              <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-body-small">
+                {dispute.suggestion}
+              </p>
+            ))}
+        </>
+      )}
     </div>
   );
 }

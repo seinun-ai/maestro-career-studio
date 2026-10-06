@@ -44,7 +44,7 @@ from tests.extension_harness import (
 
 # Two jobs, most recent first, exactly as /api/autofill/employment-blocks
 # returns them: "Mon YYYY" dates, `end_date` None while `current` is true, and
-# `location` — the key Task 9 added to `routers/autofill._employment_blocks`
+# `location` — the key Task 9 added to `services/autofill_context.employment_blocks`
 # (the resume model has always carried it; the payload dropped it).
 _TWO_JOBS = [
     {

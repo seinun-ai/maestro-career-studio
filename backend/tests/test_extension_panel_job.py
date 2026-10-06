@@ -35,10 +35,12 @@ from tests.extension_panel_harness import (
     SCORES,
     SETTINGS_REPLY,
     _by_class,
+    _gets,
     _load,
     _posts,
     _PANEL_FAKES_JS,
     _rail_rows,
+    _refresh,
     _reply,
     _rows,
     _text,
@@ -111,7 +113,7 @@ main(async () => {
   release();
   await settle();
   const afterALateLanding = regions();
-  if (spec.click !== true) { emit({ loaded, afterALateLanding, sent }); return; }
+  if (spec.click !== true) { emit({ loaded, afterALateLanding, sent, warnings }); return; }
   withClass(REGIONS.foot, "cta")[0].click();
   // Synchronous, and deliberately: `addJob` sets `busy` and paints before its
   // first await, so this is the surface as the user sees it mid-save.
@@ -124,7 +126,7 @@ main(async () => {
   }
   release();
   await settle();
-  emit({ loaded, afterALateLanding, clicked, settled: regions(), sent });
+  emit({ loaded, afterALateLanding, clicked, settled: regions(), sent, warnings });
 });
 """
 
@@ -229,7 +231,7 @@ def test_page_text_is_never_called_a_job_description(tmp_path, source, words):
     page. The count was over whatever text the page had. The panel claims a
     job description only when the extractor found one by a job signal (a
     JobPosting record, or a job-description container); any other text is
-    still editable and still saved as it is, but it is not called one."""
+    not called one, and it is saved only under a title the user gives it."""
     out = _load(tmp_path, page={
         "extract_job_posting": _reply({"url": POSTING_URL, "title": "Recipes",
                                        "text": words, "source": source}),
@@ -505,15 +507,17 @@ def test_a_saved_job_is_sent_as_edited_and_the_stage_advances_on_the_reload(tmp_
         ],
         "POST /api/jobs": _reply(SAVED_JOB),
         "/api/base-resumes": _reply(BASE_RESUMES),
-        "/api/ats-scores": _reply([]),
+        "GET /api/ats-scores": _reply(SCORES[:2]),
+        "POST /api/ats-scores": _reply(SCORES[:2]),
     })
-    [post] = _posts(out)
+    post = _posts(out)[0]
     assert post["path"] == "/api/jobs"
     assert json.loads(post["init"]["body"]) == {
         "raw_text": POSTING_TEXT.replace("Lightning AI", "Lightning AI, Inc."),
         "source_url": TRACKED_URL,
     }
-    # The whole conversation, in order. The second match read is `loadContext`
+    # The whole conversation, in order. The scores POST is the same press
+    # scoring the saved job's bases. The second match read is `loadContext`
     # re-run, and the scores read after it is the proof that the reload found a
     # job where the first pass found none — the panel only asks for the scores
     # of a job it has.
@@ -527,16 +531,59 @@ def test_a_saved_job_is_sent_as_edited_and_the_stage_advances_on_the_reload(tmp_
     assert [f'{(msg.get("init") or {}).get("method", "GET")} {msg["path"].split("?")[0]}'
             for msg in out["sent"] if msg["type"] == "api"] == [
         "GET /api/jobs/match", "GET /api/applications", "GET /api/base-resumes",
-        "POST /api/jobs", "GET /api/jobs/match", "GET /api/ats-scores"]
+        "POST /api/jobs", "POST /api/ats-scores", "GET /api/jobs/match",
+        "GET /api/ats-scores"]
     settled = out["settled"]
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"] == "Saved. Found 3 skills."
+    assert note["text"] == "Saved. Found 3 skills. Best match: Data Scientist (ATS score 72)."
     assert note["class"] == "note"
     rows = _rows(_rail_rows({"regions": settled}))
     assert rows["job"]["state"] == "done"
-    assert rows["score"]["state"] == "active"
+    assert rows["resume"]["state"] == "active"
     # The body went with the step: nothing offers to add this job again.
     assert _by_class(settled["rail"], "kv") == []
+
+
+def test_saving_a_job_scores_its_bases_in_the_same_press(tmp_path):
+    """One press: the save, then the scores, which need the saved job. The best
+    base is preselected and counts as chosen, so the Job step is done and the
+    rail is on Resume without a second press."""
+    out = _job_stage(tmp_path, click=True, api={
+        "job-boards": [
+            _reply({"match": "none", "job": None, "application": None}),
+            _reply({"match": "exact", "job": SAVED_JOB, "application": None}),
+        ],
+        "POST /api/jobs": _reply(SAVED_JOB),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "GET /api/ats-scores": _reply(SCORES[:2]),
+        "POST /api/ats-scores": _reply(SCORES[:2]),
+    })
+    assert [msg["path"] for msg in _posts(out)] == ["/api/jobs", "/api/ats-scores"]
+    assert json.loads(_posts(out)[1]["init"]["body"]) == {"job_id": "job-just-saved"}
+    settled = out["settled"]
+    [note] = _by_class(settled["foot"], "note")
+    assert note["text"] == "Saved. Found 3 skills. Best match: Data Scientist (ATS score 72)."
+    rows = _rows(_rail_rows({"regions": settled}))
+    assert rows["job"]["state"] == "done"
+    assert rows["job"]["summary"] == "Data Scientist · 72"
+    assert rows["resume"]["state"] == "active"
+
+
+def test_a_score_that_fails_after_a_save_keeps_the_save_in_the_sentence(tmp_path):
+    """The job WAS saved; only the scoring failed. One note slot, so the
+    failure sentence carries the save's confirmation in front of it."""
+    out = _job_stage(tmp_path, click=True, api={
+        "job-boards": [
+            _reply({"match": "none", "job": None, "application": None}),
+            _reply({"match": "exact", "job": SAVED_JOB, "application": None}),
+        ],
+        "POST /api/jobs": _reply(SAVED_JOB),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "GET /api/ats-scores": _reply([]),
+        "POST /api/ats-scores": {"ok": False, "error": "boom", "status": 500},
+    })
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == "Saved. Found 3 skills. Couldn't score your base resumes. Try again."
 
 
 def test_a_posting_already_in_the_library_says_so_rather_than_claiming_a_save(tmp_path):
@@ -548,9 +595,11 @@ def test_a_posting_already_in_the_library_says_so_rather_than_claiming_a_save(tm
         "job-boards": _reply({"match": "none", "job": None, "application": None}),
         "POST /api/jobs": _reply({**SAVED_JOB, "already_existed": True}),
         "/api/base-resumes": _reply(BASE_RESUMES),
+        "POST /api/ats-scores": _reply(SCORES[:2]),
     })
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"] == "Already saved in Maestro CS."
+    assert note["text"] == (
+        "Already saved in Maestro CS. Best match: Data Scientist (ATS score 72).")
 
 
 # ---------- the application picker: no match, and the user's drafts ----------
@@ -843,27 +892,26 @@ def test_picking_an_application_arms_the_rail_and_writes_this_pages_tenant(tmp_p
     assert _picker(settled["rail"]) is None
 
 
-def test_a_picked_draft_with_no_pdf_says_why_base_as_is_is_off_and_the_way_out(tmp_path):
+def test_a_picked_draft_with_no_pdf_turns_the_base_off_and_offers_create_pdf(tmp_path):
     """THE DEAD BUTTON, on the page it was found on (Task 25's first read): a
     draft picked on an apply page, whose tailored resume has no PDF yet. The
-    stage is Resume, and "Use base resume as is" used to arm a claim nothing
-    reads beside an application. It is disabled now, and because this binding
-    is the user's own claim, the reason names the door that makes the base
-    usable again: Stop using this draft."""
+    stage is Resume, and the base button used to arm a claim nothing reads
+    beside an application. It is off now (`aria-disabled`, still focusable),
+    with one short sentence naming
+    this binding as the user's own pick (the Job row's Stop using this draft
+    is the way back to the base), and the step's primary is Create PDF."""
     out = _pick(tmp_path, api=_picker_api(**{
         "GET /api/applications/app-1": _reply(
             {"id": "app-1", "pdf_path": None, "status": "draft"})}))
     settled = out["settled"]
     assert _rows(_rail_rows({"regions": settled}))["resume"]["state"] == "active"
     base = next(n for n in _walk(settled["rail"])
-                if n["tag"] == "BUTTON" and n["text"] == "Use base resume as is")
-    assert base["disabled"] is True
+                if n["tag"] == "BUTTON" and n["text"] == "Use my base resume")
+    assert base["attrs"]["aria-disabled"] == "true"
     [reason] = [n for n in _walk(settled["rail"])
                 if n["id"] and n["id"] == base["attrs"]["aria-describedby"]]
-    assert reason["text"] == (
-        "This page is tied to a draft application, so your base resume can't be "
-        "used here. Select Stop using this draft under Job to use it, or open "
-        "the application in Maestro CS and select Create PDF.")
+    assert reason["text"] == "You picked a draft for this page, so it uses that resume."
+    assert _text(_by_class(settled["foot"], "cta")[0]) == "Create PDF"
 
 
 def test_a_pick_writes_widget_session_scoped_to_this_pages_tenant(tmp_path):
@@ -916,19 +964,19 @@ def test_the_bridge_survives_a_detail_get_that_fails(tmp_path):
     assert entry["applicationId"] == "app-1"
     assert entry["tenant"] == ACME_TENANT
     # The failure is said (duringAction's catch) while the pick STANDS (the
-    # chip claims only what the pick itself established). The action returned
-    # before loadBaseScores, so the rail degrades to the earliest stage whose
-    # data is missing — Score, whose own CTA re-earns the ranking — rather
-    # than claiming a readiness nothing read. Everything downstream recovers
-    # on the next load or the next press; the bridge is the one thing that
-    # must not wait for either.
+    # chip claims only what the pick itself established). The picked
+    # application answers the base question, but its PDF was never read, so
+    # the rail stops at Resume — the earliest step whose data is missing —
+    # rather than claiming a readiness nothing read: Fill stays locked.
+    # Everything downstream recovers on the next load or the next press; the
+    # bridge is the one thing that must not wait for either.
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == "Couldn't open that draft. Check that Maestro CS is running."
     assert _by_class(out["settled"]["identity"], "chip")[0]["text"] == (
         "Draft application")
     rows = _rows(_rail_rows({"regions": out["settled"]}))
-    assert rows["score"]["state"] == "active"
-    assert rows["resume"]["state"] == "locked"
+    assert rows["resume"]["state"] == "active"
+    assert rows["fill"]["state"] == "locked"
 
 
 def test_a_pick_on_the_apply_page_restores_on_the_next_wizard_step(tmp_path):
@@ -1399,7 +1447,7 @@ def test_the_late_yes_alone_arms_the_primary_and_moves_no_stage(tmp_path):
     assert _by_class(at_yes["foot"], "cta") == []
     assert _rows(_rail_rows({"regions": out["regions"]}))["fill"]["state"] == "active"
     [cta] = _by_class(out["regions"]["foot"], "cta")
-    assert cta["text"] == "Fill this form"
+    assert cta["text"] == "Autofill"
     assert cta["disabled"] is False
     # And no injection got us there: the page ANSWERED both times, and the
     # detect's injection rung reads a silence rather than a no.
@@ -2177,12 +2225,32 @@ def _unpick(tmp_path, **spec):
     return run_node(_UNPICK_DRIVER_JS, spec, tmp_path, source=PANEL_SOURCE)
 
 
-def test_a_claimed_job_row_is_a_door_a_backend_match_is_not(tmp_path):
-    """The reopen door is for a CLAIM, not for every done Job row.
+def test_filled_then_switched_to_a_draft_with_no_pdf_goes_back_to_resume(tmp_path):
+    """Filled with a draft that has its PDF (the session remembers `touched`),
+    then switched from the reopened Job row to a draft whose resume has no
+    PDF: the new draft's PDF is the open question, so the step is Resume and
+    Create PDF is the footer's primary — not Track with Resume hidden."""
+    picked = _pick(tmp_path)
+    entry = {**_session_writes(picked)[-1]["widget.session"], "touched": True}
+    out = _unpick(tmp_path, stored={"widget.session": entry}, switchDraft="app-2",
+                  api=_picker_api(**{"GET /api/applications/app-2": _reply(
+                      {"id": "app-2", "pdf_path": None, "status": "draft"})}))
+    before = _rows(_rail_rows({"regions": out["reopened"]}))
+    assert before["fill"]["state"] == "done"      # the page was filled
+    switched = out["switched"]
+    rows = _rows(_rail_rows({"regions": switched}))
+    assert rows["resume"]["state"] == "active"
+    assert _by_class(switched["foot"], "cta")[0]["text"] == "Create PDF"
+    assert "This application's resume has no PDF yet." in _text(switched["rail"])
 
-    A pick the user made is theirs to withdraw. A backend exact-match is the
-    page being that posting — the web app is where a wrong JD gets fixed, and
-    this row gets no door.
+
+def test_a_done_job_row_is_a_door_for_a_claim_and_for_a_backend_match(tmp_path):
+    """Every done Job row reopens, onto different bodies. A pick the user made
+    is theirs to withdraw, so a claim reopens onto the switcher and the
+    un-pick (below). A backend exact-match is the page being that posting, so
+    it reopens onto the base list (test_extension_panel.py's revisit section),
+    never onto the Save job preview: since Score merged into Job, a saved
+    job's Job step is the base question.
     """
     picked = _unpick(tmp_path)
     assert "stg-open-job" in [n["id"] for n in _walk(picked["armed"]["rail"])]
@@ -2196,7 +2264,7 @@ def test_a_claimed_job_row_is_a_door_a_backend_match_is_not(tmp_path):
         "GET /api/applications/app-from-backend": _reply(
             {"pdf_path": "r.pdf", "status": "draft"}),
     })
-    assert "stg-open-job" not in [n["id"] for n in _walk(matched["regions"]["rail"])]
+    assert "stg-open-job" in [n["id"] for n in _walk(matched["regions"]["rail"])]
 
 
 def test_reopening_a_claimed_job_shows_the_binding_the_picker_and_a_way_out(tmp_path):
@@ -2713,3 +2781,229 @@ def test_a_list_read_on_an_earlier_page_stops_offering_the_deleted_draft(tmp_pat
     offered = _offered(out["second"])
     assert offered, "the unbound page offered nothing to bind to"
     assert "app-1" not in offered, "the picker still offers the deleted draft"
+
+
+def test_typed_job_fields_survive_a_refresh(tmp_path):
+    """Refresh re-reads what Maestro CS says about the page and keeps what the
+    user did ON it. The typed title is still in its box even though the page
+    now answers with a fuller posting (which would otherwise land over it),
+    and the match is still asked again."""
+    fuller = _reply({"url": POSTING_URL, "title": "Principal ML Engineer | Lightning AI",
+                     "text": POSTING_TEXT + "\n\nWe also want you to lead the team.",
+                     "source": "json-ld"})
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": TRACKED_URL}],
+                   page={"extract_job_posting": POSTING_REPLY},
+                   pageAfter={"extract_job_posting": fuller},
+                   type={"title": "Staff ML Engineer"},
+                   api={"job-boards": _reply(
+                       {"match": "none", "job": None, "application": None}),
+                        "/api/base-resumes": _reply(BASE_RESUMES)})
+    assert _preview_inputs(out["refreshed"]["rail"]) == {
+        "title": "Staff ML Engineer",
+        "company": "Lightning AI",
+        "location": "Remote, US",
+    }
+    assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1
+
+
+# ---------- a posting inside an embedded frame ----------
+#
+# careers-gmr.icims.com, live (2026-09-30): the top document is the careers
+# site's chrome — navigation, footer, and a WebSite JSON-LD — and the posting
+# (a JobPosting JSON-LD with title, company and a 3,700-character description)
+# is in a same-origin iframe, `#icims_content_iframe`, loaded with
+# `in_iframe=1`. Frame 0 answered with its own body text, so Save job posted
+# the navigation and the backend stored a job with no title, no company and
+# no skills. The posting has to be asked of every frame when frame 0's answer
+# is not a job description.
+
+TOP_CHROME = {"url": POSTING_URL, "title": "AI Engineer | Careers",
+              "text": "Skip to Main Content\nHOME\nSEARCH JOBS\nBENEFITS\nContact Us\n"
+                      "Privacy Policy\nSite Usage",
+              "source": "body"}
+EMBEDDED_TEXT = "\n".join([
+    "Title: AI Engineer",
+    "Company: Global Medical Response",
+    "Location: Lewisville, TX",
+    "",
+    "Build machine learning systems in Python and PyTorch.",
+])
+# The frame's own url, as `getAllFrames` reports it: the same origin as the tab.
+EMBEDDED_URL = f"{POSTING_URL}?in_iframe=1"
+EMBEDDED_POSTING = {"url": EMBEDDED_URL, "title": "AI Engineer | Careers",
+                    "text": EMBEDDED_TEXT, "source": "json-ld"}
+# An ad or chat iframe: more text than the top document, and no job signal.
+AD_FRAME = {"url": "https://ads.example.test/slot", "title": "Ad",
+            "text": "Sponsored " * 80, "source": "body"}
+COULDNT_READ = ("The Companion couldn't read this job's description from the page. "
+                "Open the job post on its own page, or add the job in Maestro CS.")
+
+
+def _posting_broadcasts(out):
+    return [msg for msg in out["sent"] if msg["type"] == "page_broadcast"
+            and (msg.get("message") or {}).get("type") == "extract_job_posting"]
+
+
+def _embedded(tmp_path, frames, **spec):
+    """The Job stage on a page whose frame 0 is the careers site's chrome."""
+    spec.setdefault("page", {"extract_job_posting": _reply(TOP_CHROME),
+                             "detect_page": _reply({"tier": "none", "form": False,
+                                                    "score": 0})})
+    return _job_stage(tmp_path, frames={"extract_job_posting": frames}, **spec)
+
+
+def test_a_posting_inside_an_embedded_frame_fills_the_preview(tmp_path):
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
+                               {"frameId": 4, "url": EMBEDDED_URL, "result": EMBEDDED_POSTING}])
+    assert _posting_broadcasts(out), "no frame but frame 0 was asked for the posting"
+    assert _preview_inputs(out["loaded"]["rail"]) == {
+        "title": "AI Engineer",
+        "company": "Global Medical Response",
+        "location": "Lewisville, TX",
+    }
+    assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
+        "Job description found (8 words)")
+
+
+def test_save_job_sends_the_embedded_frames_posting(tmp_path):
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
+                               {"frameId": 4, "url": EMBEDDED_URL, "result": EMBEDDED_POSTING}],
+                    click=True, api={
+                        "job-boards": _reply({"match": "none", "job": None,
+                                              "application": None}),
+                        "POST /api/jobs": _reply(SAVED_JOB),
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "POST /api/ats-scores": _reply(SCORES[:2]),
+                    })
+    [post, _score] = _posts(out)
+    assert post["path"] == "/api/jobs"
+    assert json.loads(post["init"]["body"])["raw_text"] == EMBEDDED_TEXT
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"].startswith("Saved. Found 3 skills.")
+
+
+def test_the_richest_frame_wins_and_a_frame_with_no_job_signal_never_does(tmp_path):
+    """An ad frame with more text than anything else is still not a posting:
+    only a frame whose own answer is a job description can replace frame 0's."""
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
+                               {"frameId": 3, "result": AD_FRAME},
+                               {"frameId": 4, "url": EMBEDDED_URL, "result": EMBEDDED_POSTING},
+                               {"frameId": 5, "url": EMBEDDED_URL,
+                                "result": {**EMBEDDED_POSTING, "text": "Short.",
+                                           "source": "content"}}])
+    assert _preview_inputs(out["loaded"]["rail"])["title"] == "AI Engineer"
+
+
+# A vendor's "similar jobs" widget: another site's frame carrying its own
+# JobPosting JSON-LD, which would outrank everything on provenance.
+VENDOR_URL = "https://widgets.jobvendor.test/similar?company=acme"
+VENDOR_POSTING = {**EMBEDDED_POSTING, "url": VENDOR_URL,
+                  "text": "Title: Senior Something Else\nCompany: Other Co\n\n" + "Words. " * 200}
+
+
+def test_another_sites_frame_never_supplies_the_posting(tmp_path):
+    """A subframe's posting is taken only from the top document's own site.
+    Neither a cross-site JSON-LD widget nor a cross-site frame whose
+    description-like container counts as `content` (an ad's
+    `data-testid="description"`), nor a frame whose url is unknown."""
+    out = _embedded(tmp_path, [
+        {"frameId": 0, "result": TOP_CHROME},
+        {"frameId": 3, "url": VENDOR_URL, "result": VENDOR_POSTING},
+        {"frameId": 5, "url": "https://ads.example.test/slot",
+         "result": {**AD_FRAME, "source": "content"}},
+        {"frameId": 6, "result": VENDOR_POSTING},
+    ])
+    assert _preview_inputs(out["loaded"]["rail"])["title"] == ""
+    assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
+        "No job description found on this page.")
+
+
+def test_a_frame_on_the_same_site_under_another_subdomain_supplies_the_posting(tmp_path):
+    """Same site is the registrable domain, not the origin: a careers page on
+    one subdomain may frame its posting from another."""
+    out = _embedded(tmp_path, [
+        {"frameId": 0, "result": TOP_CHROME},
+        {"frameId": 3, "url": VENDOR_URL, "result": VENDOR_POSTING},
+        {"frameId": 4, "url": "https://boards.greenhouse.io/embed/job_app?for=lightningai",
+         "result": EMBEDDED_POSTING},
+    ])
+    assert _preview_inputs(out["loaded"]["rail"])["title"] == "AI Engineer"
+
+
+def test_a_posting_frame_0_answers_is_never_asked_of_the_other_frames(tmp_path):
+    """Today's behaviour where it works: a described posting in the top
+    document is the whole answer, and no frame beside it is read."""
+    out = _job_stage(tmp_path, frames={"extract_job_posting": [
+        {"frameId": 4, "url": EMBEDDED_URL, "result": EMBEDDED_POSTING}]})
+    assert _posting_broadcasts(out) == []
+    assert _preview_inputs(out["loaded"]["rail"])["title"] == "Machine Learning Engineer"
+
+
+def test_a_page_where_no_frame_holds_a_posting_is_never_saved_blank(tmp_path):
+    """THE LIVE ROW, refused: no title and nothing that is a job description.
+    Posting it spent an extraction on the site's navigation and left a job
+    with no title, no company and no skills in the library."""
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME},
+                               {"frameId": 3, "result": AD_FRAME}],
+                    click=True, api={
+                        "job-boards": _reply({"match": "none", "job": None,
+                                              "application": None}),
+                        "POST /api/jobs": _reply(SAVED_JOB),
+                    })
+    assert _posts(out) == []
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == COULDNT_READ
+    assert note["class"] == "note"
+
+
+def test_a_title_typed_over_page_text_is_still_saved(tmp_path):
+    """The refusal is for a save with NOTHING in it: a user who names the job
+    has told the extraction what it is looking at."""
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME}],
+                    click=True, type={"title": "AI Engineer"}, api={
+                        "job-boards": _reply({"match": "none", "job": None,
+                                              "application": None}),
+                        "POST /api/jobs": _reply(SAVED_JOB),
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "POST /api/ats-scores": _reply(SCORES[:2]),
+                    })
+    assert [post["path"] for post in _posts(out)] == ["/api/jobs", "/api/ats-scores"]
+
+
+def test_anything_typed_into_the_preview_is_saved_over_page_text(tmp_path):
+    """A user who pasted the description into a preview box over page text,
+    with the title left empty, has told the extraction what to read: the save
+    goes ahead."""
+    pasted = "We are hiring an AI engineer to build ML systems in Python."
+    out = _embedded(tmp_path, [{"frameId": 0, "result": TOP_CHROME}],
+                    click=True, type={"location": pasted}, api={
+                        "job-boards": _reply({"match": "none", "job": None,
+                                              "application": None}),
+                        "POST /api/jobs": _reply(SAVED_JOB),
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "POST /api/ats-scores": _reply(SCORES[:2]),
+                    })
+    [post, _score] = _posts(out)
+    assert pasted in json.loads(post["init"]["body"])["raw_text"]
+
+
+NO_SKILLS = ("No skills were found in this job's description. Check the description, "
+             "then choose Refresh details.")
+
+
+def test_a_saved_job_with_no_skills_says_where_to_refresh_it_and_warns_nothing(tmp_path):
+    """The backend refuses to score a job with no skills (422). That refusal is
+    expected and explained, so it is not a warning in chrome://extensions, and
+    the next step names where Refresh details is: the web app, not the panel."""
+    no_skills_job = {**SAVED_JOB, "extracted_json": {"skills": []}}
+    out = _job_stage(tmp_path, click=True, api={
+        "job-boards": _reply({"match": "none", "job": None, "application": None}),
+        "POST /api/jobs": _reply(no_skills_job),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "POST /api/ats-scores": {"ok": False, "error": NO_SKILLS, "status": 422},
+    })
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "Saved. Found 0 skills. Couldn't score your base resumes. "
+        "Open the job in Maestro CS and choose Refresh details.")
+    assert out["warnings"] == []

@@ -98,3 +98,78 @@ def test_label_patch(db_session, monkeypatch, tmp_path):
 def test_invalid_kind_rejected(db_session, monkeypatch, tmp_path):
     client = _client(db_session, monkeypatch, tmp_path)
     assert client.get("/api/resume-versions/banana/ds").status_code == 422
+
+
+# --- if_latest: Undo after a health question pass (health check v3, Task 12) ---------------------
+
+
+def test_restore_if_latest_mismatch_is_409_and_restores_nothing(db_session, monkeypatch, tmp_path):
+    client = _client(db_session, monkeypatch, tmp_path)
+    row = _seed_with_versions(db_session)
+
+    # The pass wrote on top of Version 1 and asks to undo only if its write is still the latest
+    # (Version 2 + 1 = 3). Nothing wrote Version 3, so the latest is 2: refused.
+    resp = client.post("/api/resume-versions/base/ds/1/restore?if_latest=3")
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "resume changed since"
+
+    db_session.rollback()
+    db_session.refresh(row)
+    assert row.data_json["summary"] == "Better summary"
+    assert [v["version_number"] for v in client.get("/api/resume-versions/base/ds").json()] == [2, 1]
+
+
+def test_restore_if_latest_match_restores(db_session, monkeypatch, tmp_path):
+    client = _client(db_session, monkeypatch, tmp_path)
+    row = _seed_with_versions(db_session)
+
+    resp = client.post("/api/resume-versions/base/ds/1/restore?if_latest=2")
+    assert resp.status_code == 200
+    assert resp.json()["version_number"] == 3
+    assert resp.json()["source"] == "restore"
+
+    db_session.refresh(row)
+    assert row.data_json["summary"] == "Summary"
+
+
+def test_restore_without_if_latest_restores_as_before(db_session, monkeypatch, tmp_path):
+    client = _client(db_session, monkeypatch, tmp_path)
+    row = _seed_with_versions(db_session)
+    # Version history's Restore passes nothing: an older latest is no reason to refuse.
+    extra = deepcopy(SAMPLE_DATA)
+    extra["summary"] = "Third"
+    row.data_json = extra
+    record_version(db_session, "base", "ds", extra, source="form_edit")
+    db_session.commit()
+
+    resp = client.post("/api/resume-versions/base/ds/1/restore")
+    assert resp.status_code == 200
+    assert resp.json()["version_number"] == 4
+    db_session.refresh(row)
+    assert row.data_json["summary"] == "Summary"
+
+
+def test_restore_if_latest_checks_under_the_write_lock(db_session, monkeypatch, tmp_path):
+    """The check and the restore are one transaction: the write lock is taken before the latest
+    version is read, so no write can land between the check and the restore."""
+    from app.routers import resume_versions as router_module
+    from app.services import resume_versions as service_module
+
+    client = _client(db_session, monkeypatch, tmp_path)
+    _seed_with_versions(db_session)
+    calls: list[str] = []
+    monkeypatch.setattr(router_module, "begin_write", lambda db: calls.append("lock"))
+    real_latest = service_module.latest_version
+
+    def _latest(db, kind, key):
+        calls.append("latest")
+        return real_latest(db, kind, key)
+
+    monkeypatch.setattr(service_module, "latest_version", _latest)
+
+    assert client.post("/api/resume-versions/base/ds/1/restore?if_latest=2").status_code == 200
+    assert calls[:2] == ["lock", "latest"]
+
+    calls.clear()
+    assert client.post("/api/resume-versions/base/ds/1/restore").status_code == 200
+    assert "lock" not in calls

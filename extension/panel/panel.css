@@ -88,11 +88,13 @@ body {
  * `.linkish` OUTLIVED THE BAND because it was never the band's: `.qna` styles a
  * BUTTON with it (see its own note), so it stays a free-standing rule. */
 
-.linkish {
+.linkish, .refresh {
   font: 600 12px/1 var(--cs-font); color: var(--cs-primary);
   text-decoration: none; padding: 7px 8px; border-radius: 8px;
 }
-.linkish:hover { background: var(--cs-primary-tonal); }
+.linkish:hover, .refresh:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--cs-primary-tonal);
+}
 
 .identity {
   flex: none; padding: 14px 14px 12px; background: var(--cs-surface);
@@ -115,6 +117,19 @@ body {
   display: block; width: fit-content; white-space: nowrap;
   margin: 10px 0 0 auto;
 }
+/* The last line holds Refresh at its left and the link at its right; the
+ * link's auto margin does the pushing, so a line with no Refresh (a
+ * `chrome://` tab) is the link alone exactly as before. Refresh is a button
+ * dressed as `.linkish`, hence the three UA resets, and its -8px margin lines
+ * its text up with the job title above. `:disabled` spelled out, as for
+ * `.fork button`: this rule sets `cursor`. */
+.identity .id-foot { display: flex; align-items: flex-start; }
+.identity .refresh {
+  border: none; background: none; cursor: pointer;
+  margin: 10px 0 0 -8px; white-space: nowrap;
+}
+.identity .refresh:disabled,
+.identity .refresh[aria-disabled="true"] { opacity: .6; cursor: default; }
 .chip {
   font: 700 10.5px/1 var(--cs-font); border-radius: 999px; padding: 5px 9px;
   flex: none; margin-top: 2px; letter-spacing: .02em;
@@ -151,7 +166,11 @@ body {
   list-style: none;
   display: flex; flex-direction: column; gap: 6px;
 }
+/* `flex: none` because a flex item shrinks by default: an open step taller
+ * than the rail was squeezed to fit and `overflow: hidden` cut its bottom off
+ * mid-sentence. Unshrunk, the rail overflows and scrolls instead. */
 .stg {
+  flex: none;
   background: var(--cs-surface); border: 1px solid var(--cs-line);
   border-radius: 14px; overflow: hidden;
 }
@@ -226,7 +245,7 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0;
 }
 
-/* The Score stage's ranked list: one row per base resume, best first.
+/* The Job step's ranked base list: one row per base resume, best first.
  *
  * A BUTTON where the mockup drew a div, because the row is the control — so
  * the first four declarations are the button reset the mockup never needed
@@ -239,6 +258,8 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   background: var(--cs-surface); cursor: pointer;
 }
 .baserow.sel { border-color: var(--cs-primary); background: var(--cs-primary-tonal); }
+/* Information only, beside a bound application: no pointer, nothing to press. */
+.baserow.ro { cursor: default; }
 .baserow .r {
   width: 14px; height: 14px; border-radius: 50%;
   border: 2px solid var(--cs-muted); flex: none;
@@ -252,10 +273,9 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * RANKING and never merely the top of the list — an all-unscored library has
  * no best, and a green chip on the first row would invent one.
  *
- * Namespaced under `.baserow` like its siblings, and here that is more than
- * tidiness: "score" is also a STAGE key, so a bare `.score` would be inherited
- * by whatever Task 12 or 15 happens to call a class of that name — silently,
- * and looking like a chip. */
+ * Namespaced under `.baserow` like its siblings: "score" is a common word,
+ * so a bare `.score` would be inherited by whatever a later task happens to
+ * call a class of that name — silently, and looking like a chip. */
 .baserow .score {
   margin-left: auto; font: 700 12px/1 var(--cs-font); border-radius: 999px;
   padding: 5px 8px; background: var(--cs-surface-2); color: var(--cs-muted);
@@ -310,7 +330,8 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * exact failure `actingLimb` was added to prevent. `.cta:disabled`'s idiom,
  * because they are the same state on the same surface — and, for the Quick
  * limb, on the button's own twin in the footer. */
-.fork button:disabled { opacity: .6; cursor: default; }
+.fork button:disabled,
+.fork button[aria-disabled="true"] { opacity: .6; cursor: default; }
 
 /* The Fill stage's mode control: two segments, one of them on.
  *
@@ -354,6 +375,10 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * which is a link's job even though it is a button (it goes nowhere; it asks a
  * frame to scroll). So the button reset first, then the link's own colour and
  * rule. The mockup's `.needs` box hangs off it below. */
+/* The fill loop's report: a heading per group of rows, count lines between. */
+.loop .grp, .flagged .grp { margin-top: 12px; font-size: 12px; font-weight: 700; }
+.loop .count { margin-top: 8px; }
+.loop .grp + .resid, .flagged .grp + .resid { margin-top: 2px; }
 .resid { list-style: none; margin: 8px 0 0; padding: 0; }
 .resid li { margin-top: 5px; font-size: 12px; }
 .resid button {
@@ -506,10 +531,15 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 
 /* ------- footer: status, the last thing that happened, one primary ------- */
 
+/* A COLUMN: the note on a full-width line of its own, the action row under it.
+ * One row put the note beside the controls, where a long sentence ("Attached
+ * Ajey_…pdf. Check the upload before you submit.") ran under the Draft/Applied
+ * chips and squeezed the primary onto three lines (owner's screenshot,
+ * 2026-09-27). */
 .p-foot {
   flex: none; padding: 12px 14px; background: var(--cs-surface);
   border-top: 1px solid var(--cs-line);
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-direction: column; align-items: stretch;
 }
 .sub { color: var(--cs-muted); font-size: 12px; min-width: 0; }
 /* The footer's one sentence, and two kinds of it. A backend that cannot be
@@ -518,19 +548,31 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * than on a tonal chip, so it is picked for contrast against `--cs-surface` in
  * each scheme — darkened in light, lightened in dark — the same reason
  * `--cs-warn-text` is a token at all. */
-.note { color: var(--cs-muted); font-size: 12px; min-width: 0; }
+/* `overflow-wrap: anywhere` so a long filename breaks inside its own line
+ * rather than overflowing it; the live region holds the whole sentence. The
+ * gap to the action row only when there is something to say. */
+.note { color: var(--cs-muted); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
+.note:not(:empty) { margin-bottom: 8px; }
 .note.error { color: var(--cs-danger-text); font-weight: 600; }
-.foot-controls { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+/* The action row: the status segment at the left, the primary pushed right by
+ * its own auto margin. It WRAPS: at 320px Draft, Applied, Stop and a spinning
+ * primary are 29px wider than the row, and a primary on a line of its own
+ * beats one hanging off the panel. */
+.foot-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .status-seg { display: flex; gap: 6px; }
 .status-seg button {
+  white-space: nowrap;
   font: 700 12px/1 var(--cs-font); padding: 8px 12px; border-radius: 999px;
   border: 1px solid var(--cs-line); background: var(--cs-surface);
   color: var(--cs-muted); cursor: pointer;
 }
 .status-seg button.on { background: var(--cs-good-tonal); color: var(--cs-good); border-color: transparent; }
 .status-seg button.draft-on { background: var(--cs-warn-tonal); color: var(--cs-warn-text); border-color: transparent; }
+/* Never wraps and never shrinks: a primary broken over three lines ("Fill /
+ * this / form") reads as three buttons. */
 .cta {
-  margin-left: auto; font: 700 13.5px/1 var(--cs-font);
+  margin-left: auto; flex: none; white-space: nowrap; min-width: 96px;
+  font: 700 13.5px/1 var(--cs-font);
   background: var(--cs-primary); color: var(--cs-on-primary);
   border: none; border-radius: 12px; padding: 12px 18px; cursor: pointer;
   box-shadow: var(--cs-shadow);
@@ -538,6 +580,14 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 /* An action is running. The button is out of reach either way — `disabled` is
    the real guard — and this is what says so before the user presses it again. */
 .cta:disabled { opacity: .6; cursor: default; box-shadow: none; }
+/* Stop, beside the running fill's spinner: outlined, so it never reads as the
+   primary it sits next to. */
+.stop {
+  font: 700 13px/1 var(--cs-font); padding: 11px 14px; border-radius: 12px;
+  border: 1px solid var(--cs-line); background: var(--cs-surface);
+  color: var(--cs-text); cursor: pointer;
+}
+.stop:disabled { opacity: .6; cursor: default; }
 /* One spinner for every busy button on this surface, so a user who has waited
    once recognises the wait. */
 .spin::after {
@@ -550,3 +600,11 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 }
 @keyframes cs-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin::after { animation: none; } }
+
+/* The answer receipt's flags (stages/fill.js `flagNodes`) and the knock-out
+ * banner (`knockoutLine`): warn-tinted, never a control. Their heading and list
+ * spacing is the loop report's (`.loop .grp` above). */
+.resid.flags .kindmark { color: var(--cs-warn-text); }
+.resid.flags li { overflow-wrap: anywhere; }
+.sub.ko { margin: 0 0 8px; padding: 6px 8px; border-radius: 8px;
+  background: var(--cs-warn-tonal); color: var(--cs-warn-text); overflow-wrap: anywhere; }

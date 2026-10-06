@@ -23,7 +23,8 @@ function Slider({
       >
         <SliderPrimitive.Track
           data-slot="slider-track"
-          className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-muted"
+          // No overflow-hidden: the 16px thumb sits inside this 6px track, which clipped it to a sliver.
+          className="relative h-1.5 w-full grow rounded-full bg-muted"
         >
           <SliderPrimitive.Indicator
             data-slot="slider-indicator"
@@ -31,7 +32,7 @@ function Slider({
           />
           <SliderPrimitive.Thumb
             data-slot="slider-thumb"
-            className="block size-4 shrink-0 rounded-full border border-primary/50 bg-background shadow-sm transition-colors hover:ring-4 hover:ring-ring/20 focus-visible:ring-4 focus-visible:ring-ring focus-visible:outline-none data-disabled:pointer-events-none"
+            className="block size-4 shrink-0 rounded-full border border-primary/50 bg-background transition-colors hover:ring-4 hover:ring-ring/20 focus-visible:ring-4 focus-visible:ring-ring focus-visible:outline-none data-disabled:pointer-events-none"
           />
         </SliderPrimitive.Track>
       </SliderPrimitive.Control>
@@ -43,7 +44,7 @@ function SliderValue({ className, ...props }: SliderPrimitive.Value.Props) {
   return (
     <SliderPrimitive.Value
       data-slot="slider-value"
-      className={cn("text-sm tabular-nums text-muted-foreground", className)}
+      className={cn("text-body-medium tabular-nums text-muted-foreground", className)}
       {...props}
     />
   )

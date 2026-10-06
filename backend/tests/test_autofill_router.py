@@ -77,8 +77,9 @@ def test_context_bundles_profile_employment_skills_and_eeo(
     assert body["eeo_consent"] == {
         "enabled": False,
         "consent_forms": False,
+        "consent_forms_lapsed": False,
         "acknowledged_at": None,
-        "policy_version": "1",
+        "policy_version": "2",
     }
 
 
@@ -134,7 +135,7 @@ def test_context_nulls_only_the_section_that_failed(db_session, tmp_path, monkey
     def _explode(_resume_json):
         raise RuntimeError("skills feed exploded")
 
-    monkeypatch.setattr(autofill_router, "_resume_skills", _explode)
+    monkeypatch.setattr(autofill_router, "resume_skills", _explode)
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:
         response = TestClient(app).get(f"/api/autofill/context?base={slug}")
@@ -235,7 +236,8 @@ def test_context_includes_eeo_consent_metadata_and_keeps_profile_eeo_values(
         },
         db_session,
     )
-    eeo_consent.set_consent(
+    # A historical record, so through the raw writer: set_consent owns the stamp.
+    eeo_consent.EEO_CONSENT.set(
         EeoConsent(
             enabled=True,
             acknowledged_at="2026-07-30T12:00:00+00:00",
@@ -252,6 +254,7 @@ def test_context_includes_eeo_consent_metadata_and_keeps_profile_eeo_values(
     assert body["eeo_consent"] == {
         "enabled": True,
         "consent_forms": False,
+        "consent_forms_lapsed": False,
         "acknowledged_at": "2026-07-30T12:00:00+00:00",
         "policy_version": "1",
     }

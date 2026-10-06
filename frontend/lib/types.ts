@@ -136,7 +136,7 @@ export type KnockoutStatus =
   | "unstated";
 
 export interface KnockoutCheck {
-  kind: "work_authorization" | "opt" | "salary" | "experience";
+  kind: "work_authorization" | "opt" | "salary" | "experience" | "on_site";
   result: "pass" | "conflict" | "warning" | "job_unstated" | "profile_missing";
   job_value: string | null;
   profile_value: string | null;
@@ -154,6 +154,8 @@ export interface JobDetail {
   job: Job;
   application: Application | null;
   knockout: KnockoutScan | null;
+  /** Whether anything was recorded as filled into this job's form (the What was submitted tab). */
+  has_filled_answers: boolean;
 }
 
 export interface ContactInfo {
@@ -292,14 +294,33 @@ export interface McpWorkflowSettings {
 }
 export type McpWorkflowSetting = SettingEnvelope<McpWorkflowSettings>;
 
+/** GET/PUT /api/settings/autofill-options: how far the Companion's fill may
+ *  go. A bare object, no envelope. The fill re-reads it server-side. */
+export interface AutofillOptions {
+  low_stakes: boolean;
+}
+
 export interface EeoConsent {
   enabled: boolean;
   /** Ticking an application's own agreement boxes — terms, acknowledgements,
    *  attestations. Separate from `enabled` so opting into EEO fill cannot
    *  silently also opt into agreeing to terms; one record, two permissions. */
   consent_forms: boolean;
+  /** Server-derived, never sent: `consent_forms` was agreed under an older
+   *  policy that covered less, so it is served off until the user agrees
+   *  again (backend/app/schemas/eeo_consent.py). */
+  consent_forms_lapsed?: boolean;
   acknowledged_at: string | null;
   policy_version: string;
+}
+
+/** What the web app PUTs. The server owns `acknowledged_at` / `policy_version`;
+ *  `agreed_policy` is request-only (never stored or served): the policy whose
+ *  wording the agreement confirm showed, sent on that switch's yes. Without it
+ *  the server holds `consent_forms` off, so a tab loaded before a policy change
+ *  cannot grant the permission under the old wording. */
+export interface EeoConsentUpdate extends EeoConsent {
+  agreed_policy?: string;
 }
 
 export interface ModelOption {
@@ -1752,16 +1773,64 @@ export interface LintFinding {
   zone?: "hot" | "cold" | null;
   suggestion?: string | null;
   question?: string | null;
+  ask_kind?: "measure" | "detail" | "reword" | null;
+  measure_target?: string | null;
+  alt_question?: string | null;
+  evidence?: string[];
+  gain?: number;
   source: string;
   /** Stable hash of the normalized text, present only for classifier findings. */
   content_hash?: string | null;
   classification_level?: EvidenceLevel | null;
-  classification_source?: "llm" | "cache" | "override" | "deterministic" | null;
+  classification_source?: "llm" | "cache" | "override" | "dispute" | "deterministic" | null;
   classification_reason?: string | null;
   /** Raw source string this finding is about — exact-match needle. Backend already sends this. */
   subject?: string;
   /** Detector id, e.g. `skills.undemonstrated`. Backend already sends this. */
   rule?: string;
+}
+
+/** GET /api/resume-lint/wording: the user's word bank, Never flag list and the default bank. */
+export interface WordingRead {
+  cliche: string[];
+  filler: string[];
+  /** "Never flag": skipped whether the word is on the bank or a slip. */
+  ignored: string[];
+  defaults: { cliche: string[]; filler: string[] };
+}
+
+/** PUT /api/resume-lint/wording: all three lists, whole (the backend normalizes them again). */
+export type WordingBody = Pick<WordingRead, "cliche" | "filler" | "ignored">;
+
+/** POST /api/resume-lint/{kind}/{key}/dispute: the bullet re-read with the user's note. */
+export interface DisputeResult {
+  before: { level: EvidenceLevel; question: string | null };
+  after: {
+    level: EvidenceLevel;
+    question: string | null;
+    ask_kind: "measure" | "detail" | null;
+  };
+  /** Written by the backend from the before/after comparison, never by the model. */
+  reply: string;
+  /** A guarded rewrite carrying a fact from the note; it counts only once applied. */
+  suggestion: string | null;
+  content_hash: string;
+}
+
+/** GET /api/resume-lint/{kind}/{key}/disputes: disputes whose text is still in the resume. */
+export interface StoredDispute {
+  content_hash: string;
+  location: LintLocation;
+  label: string;
+  text: string;
+  note: string;
+  reply: string;
+  suggestion: string | null;
+  /** The user said no number exists; number asks stay off until the dispute is reopened. */
+  metric_unavailable: boolean;
+  before: DisputeResult["before"];
+  after: DisputeResult["after"];
+  created_at: string;
 }
 
 export interface LintGate {
@@ -1801,6 +1870,7 @@ export interface LintReport {
   insufficient_evidence?: boolean;
   /** Absent until the scoring lane lands. */
   score_breakdown?: LintScoreBreakdown | null;
+  next_grade?: { grade: string; points: number } | null;
 }
 
 /** ---- Agent proposal ledger (auto-apply lane) ---- */
@@ -1866,6 +1936,9 @@ export interface Proposal {
   created_at: string;
   updated_at: string;
   job: ProposalJobSummary;
+  /** Open-lane rows only (backend services/inbox_readiness.py); null in History. Optional: an
+   *  older backend does not send it. */
+  readiness?: { tailored: boolean | null; knockout: string | null; to_check: number } | null;
 }
 
 interface ProposalQAEntry {
@@ -1884,6 +1957,30 @@ export interface ProposalDetail extends Proposal {
 export interface ProposalListResponse {
   items: Proposal[];
   total: number;
+}
+
+export interface ProposalSummary {
+  since: string;
+  new: number;
+  ready: number;
+  needs_you: number;
+  applied_this_week: number;
+}
+
+export interface AgentRun {
+  id: UUID;
+  automation: string;
+  title: string;
+  outcome: "ok" | "partial" | "failed";
+  agent: string | null;
+  finished_at: string;
+  counts: Record<string, number>;
+  digest: string;
+  jobs: { id: UUID; title: string | null; company: string | null }[];
+}
+
+export interface AgentRunList {
+  items: AgentRun[];
 }
 
 interface ProposalBulkResult {
@@ -1945,4 +2042,92 @@ export interface VersionInfo {
   version: string;
   git_sha: string | null;
   schema_revision: string;
+}
+
+// ── Automations (GET /api/automations; backend/app/services/automations.py) ──
+export type AutomationKind = "scheduled" | "attended" | "custom";
+export type AutomationNeed = "maestro" | "email" | "browser" | "web";
+export type AutomationCard = {
+  id: string;
+  title: string;
+  summary: string;
+  kind: AutomationKind;
+  needs: AutomationNeed[];
+  never: string | null;
+  body: string;
+};
+export type AgentApp = {
+  id: string;
+  label: string;
+  reachable: boolean;
+  preamble: string;
+  attended_preamble: string;
+  note: string | null;
+};
+export type AutomationCatalog = { cards: AutomationCard[]; apps: AgentApp[] };
+
+/** Where a filled answer came from: the What was submitted tab's pill (backend
+ * `schemas/filled_answers.py` `Source`; hand-synced like the status vocabulary). */
+export type AnswerSource =
+  | "profile"
+  | "resume"
+  | "custom"
+  | "written"
+  | "inferred"
+  | "you"
+  | "upload";
+
+export type AnswerFlagId =
+  | "guessed_screening"
+  | "ticked_everything"
+  | "differs_from_profile"
+  | "eeo_without_saved_answer";
+
+/** A warn-only flag on one answer, with its one-line reason (written by the backend). */
+export interface AnswerFlag {
+  id: AnswerFlagId;
+  reason: string;
+}
+
+export interface FilledField {
+  question: string;
+  section: string | null;
+  required: boolean;
+  /** A list for a multi-select; null for an EEO answer kept without consent. */
+  answer: string | string[] | null;
+  options_count: number | null;
+  source: AnswerSource;
+  /** For an upload: "resume" or "cover_letter". */
+  slot: string | null;
+  eeo: boolean;
+  /** True when an EEO question was answered, even though its value is not kept. */
+  eeo_answered: boolean;
+  edited_by_you: boolean;
+  /** The application's resume version, on a resume upload. */
+  version: number | null;
+  flags: AnswerFlag[];
+}
+
+export interface FilledSection {
+  section: string | null;
+  fields: FilledField[];
+}
+
+export interface FilledStep {
+  step: string | null;
+  host: string | null;
+  channel: "companion" | "agent";
+  captured_at: string;
+  sections: FilledSection[];
+}
+
+/** `GET /api/jobs/{id}/filled-answers`: per question the latest answer, by page and section.
+ * With nothing recorded, `steps` is empty and the counts are zero. */
+export interface FilledAnswers {
+  job_id: string;
+  host: string | null;
+  pages: number;
+  captured_at: string | null;
+  flag_count: number;
+  steps: FilledStep[];
 }

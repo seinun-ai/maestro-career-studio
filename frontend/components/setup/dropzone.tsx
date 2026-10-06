@@ -171,12 +171,12 @@ export function Dropzone({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`flex w-full flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+        className={`flex w-full flex-col items-center gap-2 rounded-corner-md border border-dashed p-6 text-body-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
           disabled
-            ? "cursor-not-allowed pointer-events-none opacity-50 border-muted-foreground/25 bg-muted/10"
+            ? "cursor-not-allowed pointer-events-none opacity-50 border-muted-foreground/25"
             : isDragging
               ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-              : "border-muted-foreground/25 hover:border-muted-foreground/50 bg-transparent hover:bg-muted/20"
+              : "border-muted-foreground/25 hover:border-muted-foreground/50 bg-transparent hover:bg-surface-container-low"
         }`}
       >
         <Upload className="size-5 text-muted-foreground" />
@@ -189,7 +189,7 @@ export function Dropzone({
               ? "Drop files here"
               : "Choose or drop files"}
         </span>
-        <span className="text-xs text-muted-foreground">{hint}</span>
+        <span className="text-body-small text-muted-foreground">{hint}</span>
       </button>
     </div>
   );

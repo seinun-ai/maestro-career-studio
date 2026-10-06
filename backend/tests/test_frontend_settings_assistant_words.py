@@ -56,19 +56,20 @@ def test_each_consent_switch_announces_itself():
     assert '"The Companion can now answer diversity questions"' in diversity
     assert '"The Companion won\'t answer diversity questions"' in diversity
     boxes = _between(_AUTOFILL, "const setConsentFormsEnabled = ", "\n  };")
-    assert '"The Companion can now tick agreement boxes"' in boxes
-    assert '"The Companion won\'t tick agreement boxes"' in boxes
+    assert '"The Companion can now fill agreements and signatures"' in boxes
+    assert '"The Companion won\'t fill agreements and signatures"' in boxes
 
 
 def test_the_consent_words_keep_every_promise():
-    """Shortened, never dropped: no AI, no signing, no submitting, no passwords
-    or ID numbers, and the switch can be turned off (Goal Card)."""
+    """Shortened, never dropped: no AI for diversity answers, never the next
+    page, never Submit, and the switch can be turned off (Goal Card). Since
+    2026-09-26 the agreement permission unlocks every field (signatures
+    included), so no promise says a signature is never filled."""
     flat = _flat(_AUTOFILL.replace('"\n          + "', ""))
     for promise in (
         "It never guesses and never uses AI for these.",
-        "Tax-credit questions, signatures and legal statements stay with you.",
-        "It never signs and never submits.",
-        "Signatures, initials, passwords and government ID numbers are never filled",
+        "Tax-credit questions stay with you, and this doesn't cover signatures or legal statements.",
+        "It never moves to the next page and never submits.",
         "Check every form before you submit it.",
         "Let the Companion answer the voluntary diversity questions?",
     ):
@@ -185,15 +186,22 @@ def _joined(src: str) -> str:
 
 
 def test_the_agreement_box_consent_lists_what_it_unlocks():
-    """C1: `consent_forms` unlocks every family in the extension's CONSENT_FORMS
-    (extension/shared/policy.js), not only terms and acknowledgements."""
+    """C1: `consent_forms` unlocks every field the label policy refuses
+    (extension/shared/policy.js): every CONSENT_FORMS family AND the
+    signatures, initials and typed-name attestations of NEVER_FILLED."""
     flat = _joined(_AUTOFILL)
     assert (
-        "This covers an application's own agreement boxes: terms, acknowledgements, "
-        "certifications, arbitration and waivers. It ticks a box."
+        "With this on, the Companion can fill every field on an application form, "
+        "including terms, acknowledgements, certifications, arbitration and waivers, "
+        "signatures, initials and typed-name attestations."
     ) in flat
-    assert "Terms, certifications, arbitration and waiver boxes." in flat
+    assert (
+        "The Companion can fill every field, including terms boxes, certifications, "
+        "signatures and typed-name attestations."
+    ) in flat
     assert "Terms and acknowledgement boxes only." not in flat
+    assert "never fills signatures" not in flat
+    assert "It ticks a box." not in flat
     policy = (_ROOT / "extension/shared/policy.js").read_text(encoding="utf-8")
     consent = _between(policy, "const CONSENT_FORMS = [", "];")
     for family in ("terms", "acknowledge", "certif", "arbitration", "waiver"):
@@ -203,8 +211,9 @@ def test_the_agreement_box_consent_lists_what_it_unlocks():
 def test_the_consent_switches_keep_their_promises():
     """M3, M4: each switch's hint keeps what it never does."""
     flat = _joined(_AUTOFILL)
-    assert "It never signs or submits, and never fills signatures, passwords or ID numbers." in flat
-    assert "Tax-credit questions and signatures are always yours to fill." in flat
+    assert "It never moves to the next page or submits." in flat
+    assert "Tax-credit questions are always yours to fill." in flat
+    assert "signatures are always yours" not in flat
     assert "(WOTC)" not in _AUTOFILL
     # M21: the group says the questions are voluntary.
     assert 'title: "Diversity questions (voluntary)",' in _AUTOFILL
@@ -276,9 +285,9 @@ def test_sentences_say_the_companion():
     """Planner decision 20: "the Companion" in a sentence, bare "Companion" only in a label."""
     for rel, sentence in (
         ("components/settings/autofill-section.tsx", 'description="The Companion uses these to fill job applications."'),
-        ("components/settings/autofill-section.tsx", 'title: "Let the Companion tick agreement boxes?",'),
+        ("components/settings/autofill-section.tsx", 'title: "Let the Companion fill agreements and signatures?",'),
         ("components/settings/prompts-section.tsx", '"How the Companion picks answers for form choices."'),
-        ("components/settings/connected-agents-card.tsx", "and the Companion, the Maestro CS browser extension,"),
+        ("components/settings/connected-agents-card.tsx", "The Companion, the Maestro CS browser extension, saves jobs"),
     ):
         assert sentence in _flat(_read(rel)), (rel, sentence)
 
@@ -400,7 +409,7 @@ def test_the_connected_agents_card_is_exact_about_bullets_and_yeses():
     assert "The app records each yes but can&apos;t stop an agent, so stay with it while it applies." in card
     assert "audit trail" not in card
     hints = _flat(_read("components/settings/mcp-workflow-section.tsx"))
-    assert "so Claude or Codex can go from scoring to tailoring to applying without being told each step." in hints
+    assert "Claude or Codex can then go from scoring to tailoring to applying without being told each step." in hints
     assert "minimal" not in hints and "walk the" not in hints
 
 
@@ -435,7 +444,7 @@ def test_errors_and_setup_speak_plainly():
     # A PDF step with nothing to do is not a step.
     assert '!(row.id === "engines" && row.done && status.engines.pdflatex.available)' in card
     strip = _flat(_read("components/setup/setup-status-strip.tsx"))
-    assert '<span className="text-muted-foreground text-xs font-medium">Setup steps:</span>' in strip
+    assert '<span className="text-muted-foreground text-label-medium">Setup steps:</span>' in strip
     assert '<Check aria-hidden="true" className="size-3" />' in strip
     assert "<DialogTitle>Import resumes and documents</DialogTitle>" in _read("components/setup/upload-dialog.tsx")
 
@@ -661,7 +670,9 @@ def test_the_covenant_question_explains_its_legal_term():
     renderer = _between(_AUTOFILL, "{group.fields.map((field) => {", "</fieldset>")
     assert 'const hintId = field.hint ? `${id}-hint` : undefined;' in renderer
     assert "<p id={hintId}" in renderer
-    assert renderer.count("aria-describedby={hintId}") == 2  # the select and the input
+    assert "hintId={hintId}" in renderer  # handed to the shared control …
+    control = _between(_AUTOFILL, "function FieldControl(", "\n}\n")
+    assert control.count("aria-describedby={hintId}") == 2  # … which the select and the input both read
 
 
 def test_gender_offers_non_binary_and_self_describe():
@@ -690,3 +701,40 @@ def test_the_self_description_shows_only_for_self_describe_and_goes_with_it():
     assert "if (field.when && groupValues(profile, group.key)[field.when[0]] !== field.when[1]) {" in renderer
     set_field = _between(_AUTOFILL, "const setField = (", "\n  };")
     assert "if (field.when?.[0] === key && field.when[1] !== value) delete values[field.key];" in set_field
+
+
+def test_an_agreement_from_an_older_policy_asks_again():
+    """Policy 2 widened the agreement switch, so a policy-1 yes is served off
+    with `consent_forms_lapsed` (backend/app/services/eeo_consent.py). The box
+    shows the switch as served and says why it is off, and the switch reads
+    both its hint and that note."""
+    boxes = _between(_AUTOFILL, "function CompanionPermissions(", "\n}\n")
+    assert "checked={consent.consent_forms}" in boxes
+    note = _between(boxes, "{consent.consent_forms_lapsed ? (", ") : null}")
+    assert "<p id={lapsedId}" in note
+    assert "This now covers more than when you agreed. Turn it on again to allow it." in _flat(note)
+    assert "<p id={hintId}" in boxes
+    assert (
+        "aria-describedby={ consent.consent_forms_lapsed ? `${hintId} ${lapsedId}` : hintId }"
+        in _flat(boxes)
+    )
+    types = _read("lib/types.ts")
+    assert "consent_forms_lapsed?: boolean;" in _between(types, "export interface EeoConsent {", "\n}")
+
+
+def test_an_agreement_yes_names_the_policy_it_agreed_to():
+    """The server owns the stamp and grants `consent_forms` only on a yes that
+    names its current policy, so the web app's constant must track it; a held
+    yes says so instead of claiming the permission is on."""
+    from app.schemas.eeo_consent import CURRENT_POLICY_VERSION
+
+    assert f'const AGREEMENT_POLICY = "{CURRENT_POLICY_VERSION}";' in _AUTOFILL
+    agree = _between(_AUTOFILL, "const setConsentFormsEnabled = ", "\n  };")
+    assert "acknowledged_at: consentForms ? null : consent.acknowledged_at," in agree
+    assert "agreed_policy: consentForms ? AGREEMENT_POLICY : undefined," in agree
+    assert "} else if (result.value.consent_forms) {" in agree
+    assert "Agreements and signatures weren't turned on. Reload the page and try again." in _flat(agree)
+    types = _read("lib/types.ts")
+    update = _between(types, "export interface EeoConsentUpdate extends EeoConsent {", "\n}")
+    assert "agreed_policy?: string;" in update
+    assert "mutationFn: (value: EeoConsentUpdate) =>" in _AUTOFILL

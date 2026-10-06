@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, RefreshCw, Wand2 } from "lucide-react";
+import {
+  Check,
+  CircleAlert,
+  Loader2,
+  MoreHorizontal,
+  RefreshCw,
+  TriangleAlert,
+  Wand2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -14,9 +22,22 @@ import { UploadDialog } from "@/components/setup/upload-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
-import { ATS_SCORE_LEAD, SUBSCORE_LABELS, UNREADABLE_DATES_NOTE, datesUnreadable } from "@/lib/ats-words";
+import {
+  ATS_SCORE_LEAD,
+  LOW_COVERAGE_ON_EVERY_RESUME,
+  SUBSCORE_LABELS,
+  UNREADABLE_DATES_NOTE,
+  datesUnreadable,
+} from "@/lib/ats-words";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { isLoadFailure } from "@/lib/query-state";
@@ -38,10 +59,15 @@ import {
 /** "ATS score" spelled out once, where the tab first shows one (conventions: Canonical terms). */
 function AtsScoreLead() {
   return (
-    <p className="text-muted-foreground max-w-[60ch] text-sm">
+    <p className="text-muted-foreground max-w-[60ch] text-body-medium">
       {ATS_SCORE_LEAD}
     </p>
   );
+}
+
+/** The server's low-coverage sentence, on the row or (older rows) inside its subscores. */
+function coverageWarning(score: AtsScore): string | null {
+  return score.coverage_warning || score.subscores_json?.coverage_warning || null;
 }
 
 function SubscoreBar({ label, value }: { label: string; value: number }) {
@@ -49,11 +75,11 @@ function SubscoreBar({ label, value }: { label: string; value: number }) {
   return (
     <div className="space-y-0.5">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-muted-foreground text-xs">{label}</span>
+        <span className="text-muted-foreground text-body-small">{label}</span>
         {/* "11 of 100": a bare 11 read as a count, not a score out of 100. */}
-        <span className="text-xs font-medium tabular-nums">
+        <span className="text-label-medium tabular-nums">
           {pct}
-          <span className="text-muted-foreground font-normal"> of 100</span>
+          <span className="text-body-small text-muted-foreground"> of 100</span>
         </span>
       </div>
       <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
@@ -62,6 +88,77 @@ function SubscoreBar({ label, value }: { label: string; value: number }) {
           style={{ width: `${pct}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The card's rarer actions (Restart gap analysis, Mark applied without tailoring), behind ⋯ so each card
+ * carries one button. Marking the job applied removes the last item, and the menu with it, while the
+ * confirm has returned focus to ⋯: focus then goes to the card's own button.
+ */
+function ScoreCardMenu({
+  label,
+  restart,
+  analyzeDisabled,
+  onAnalyze,
+  applied,
+  applyingAsIs,
+  onAppliedAsIs,
+  fallback,
+}: {
+  label: string;
+  restart: boolean;
+  analyzeDisabled: boolean;
+  onAnalyze: () => void;
+  applied: boolean;
+  applyingAsIs: boolean;
+  onAppliedAsIs: (returnFocus: () => HTMLElement | null) => void;
+  /** Where focus goes if the menu unmounts holding it: the card's button, read at that moment. */
+  fallback: () => HTMLElement | null;
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // A LAYOUT cleanup: the focused trigger is still inside the root here (useFocusHandoff's reasoning).
+  useLayoutEffect(() => {
+    const root = menuRef.current;
+    return () => {
+      if (!root || !root.contains(document.activeElement)) return;
+      queueMicrotask(() => focusIfDropped(fallback()));
+    };
+  }, [fallback]);
+  return (
+    <div ref={menuRef}>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              ref={triggerRef}
+              size="icon-sm"
+              variant="ghost"
+              aria-label={`More actions for ${label}`}
+            >
+              <MoreHorizontal />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" className="w-auto min-w-56">
+          {restart && (
+            <DropdownMenuItem disabled={analyzeDisabled} onClick={onAnalyze}>
+              <RefreshCw /> Restart gap analysis
+            </DropdownMenuItem>
+          )}
+          {applied ? null : (
+            <DropdownMenuItem
+              disabled={applyingAsIs}
+              // The item is gone once the menu closes: the confirm returns to ⋯.
+              onClick={() => onAppliedAsIs(() => triggerRef.current)}
+            >
+              <Check /> Mark applied without tailoring
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -78,6 +175,7 @@ function AtsScoreCard({
   onAppliedAsIs,
   applyingAsIs,
   applied,
+  showCoverage,
 }: {
   score: AtsScore;
   top: boolean;
@@ -87,13 +185,18 @@ function AtsScoreCard({
   analyzeDisabled: boolean;
   jobId: string;
   openSession: TailoringSession | null;
-  onAppliedAsIs: () => void;
+  onAppliedAsIs: (returnFocus: () => HTMLElement | null) => void;
   applyingAsIs: boolean;
   /** The job is already applied (or further): "Mark applied" would say nothing new. */
   applied: boolean;
+  /** False when the panel's banner already says every resume shows too few of the job's skills. */
+  showCoverage: boolean;
 }) {
   const baseName = useBaseResumeLabel();
+  const actionRef = useRef<HTMLButtonElement>(null);
+  const focusAction = useCallback(() => actionRef.current, []);
   const gateWarnings = score.subscores_json.gate_warnings ?? [];
+  const coverage = showCoverage ? coverageWarning(score) : null;
   // The gap page's own counts: stored resolutions include skips and gaps it no longer lists.
   const { answered } = openSession
     ? gapCounts(
@@ -101,6 +204,8 @@ function AtsScoreCard({
         openSession.resolutions_json,
       )
     : { answered: 0 };
+  // One filled button on the tab: the best match's. The rest are outlined, so "Best match" leads.
+  const variant = top ? "default" : "outline";
   return (
     <Card
       className={cn(
@@ -109,16 +214,33 @@ function AtsScoreCard({
       )}
       style={{ animationDelay: `${Math.min(index, 8) * 50}ms` }}
     >
-      <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <CardTitle className="min-w-0 text-sm leading-tight font-medium">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+        <CardTitle className="min-w-0 text-title-small">
           {baseName(score.target_id)}
         </CardTitle>
-        {top && <Badge className="shrink-0">Best match</Badge>}
+        {/* h-5: the badge's height. ⋯ (bigger on touch) overflows it, centered, so a card with ⋯ and
+            one without keep their scores on one line. */}
+        <div className="flex h-5 shrink-0 items-center gap-1">
+          {top && <Badge>Best match</Badge>}
+          {(openSession || !applied) && (
+            <ScoreCardMenu
+              label={baseName(score.target_id)}
+              restart={openSession != null}
+              analyzeDisabled={analyzeDisabled}
+              onAnalyze={onAnalyze}
+              applied={applied}
+              applyingAsIs={applyingAsIs}
+              onAppliedAsIs={onAppliedAsIs}
+              fallback={focusAction}
+            />
+          )}
+        </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="text-2xl font-semibold tabular-nums">
+      {/* flex-1 and mt-auto: every card's button sits on the same line, whatever notes a card has. */}
+      <CardContent className="flex flex-1 flex-col gap-3">
+        <div className="text-headline-small tabular-nums">
           {score.composite.toFixed(1)}
-          <span className="text-muted-foreground text-sm font-normal"> / 100</span>
+          <span className="text-muted-foreground text-body-medium"> / 100</span>
         </div>
         <div className="space-y-1.5">
           {SUBSCORE_LABELS.map(({ key, label }) => (
@@ -130,76 +252,56 @@ function AtsScoreCard({
           ))}
         </div>
         {datesUnreadable(score.subscores_json.format_flags) && (
-          <p className="text-muted-foreground text-xs">{UNREADABLE_DATES_NOTE}</p>
+          <p className="text-muted-foreground text-body-small">{UNREADABLE_DATES_NOTE}</p>
         )}
-        {gateWarnings.length > 0 && (
-          <div className="flex flex-wrap gap-1">
+        {(gateWarnings.length > 0 || coverage) && (
+          <ul className="space-y-1 text-body-small">
             {gateWarnings.map((warning) => (
-              <Badge key={warning} variant="destructive" className="h-auto whitespace-normal">
+              <li key={warning} className="text-destructive flex gap-1.5">
+                <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
                 {warning}
-              </Badge>
+              </li>
             ))}
-          </div>
+            {coverage && (
+              <li className="text-warning flex gap-1.5">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                {/* The server's sentence already gives the counts ("Your resume shows only 1 of this job's 8 skills (13%)."). */}
+                {coverage}
+              </li>
+            )}
+          </ul>
         )}
-        {(score.coverage_warning || score.subscores_json?.coverage_warning) && (
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-800 dark:text-amber-300">
-            {/* The server's sentence already gives the counts ("Your resume shows only 1 of this job's 8 skills (13%)."). */}
-            <p className="font-medium">
-              {score.coverage_warning || score.subscores_json?.coverage_warning}
-            </p>
-          </div>
-        )}
-        {openSession ? (
-          <div className="space-y-1.5">
+        <div className="mt-auto pt-1">
+          {openSession && !creating ? (
             <Button
+              ref={actionRef}
               className="w-full"
               size="sm"
+              variant={variant}
               nativeButton={false}
               render={
                 <Link href={`/jobs/${jobId}/tailor/${openSession.id}`}>
                   Continue gap analysis
-                  {answered > 0 ? ` (${answered} answered)` : ""}
+                  {answered > 0 ? ` · ${answered} answered` : ""}
                 </Link>
               }
             />
+          ) : (
             <Button
+              ref={actionRef}
               className="w-full data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
-              variant="ghost"
+              variant={variant}
               onClick={onAnalyze}
               // Focusable while it starts: a natively disabled button dropped focus to <body>.
               focusableWhenDisabled
               disabled={analyzeDisabled}
             >
-              {creating ? <Loader2 className="animate-spin" /> : null}
-              {creating ? "Analyzing gaps…" : "Start over"}
+              {creating ? <Loader2 className="animate-spin" /> : <Wand2 />}
+              {creating ? "Analyzing gaps…" : "Analyze gaps"}
             </Button>
-          </div>
-        ) : (
-          <Button
-            className="w-full data-disabled:pointer-events-none data-disabled:opacity-50"
-            size="sm"
-            onClick={onAnalyze}
-            focusableWhenDisabled
-            disabled={analyzeDisabled}
-          >
-            {creating ? <Loader2 className="animate-spin" /> : <Wand2 />}
-            {creating ? "Analyzing gaps…" : "Find gaps and tailor"}
-          </Button>
-        )}
-        {applied ? null : (
-          <Button
-            className="text-muted-foreground w-full data-disabled:pointer-events-none data-disabled:opacity-50"
-            size="sm"
-            variant="ghost"
-            onClick={onAppliedAsIs}
-            focusableWhenDisabled
-            disabled={applyingAsIs}
-          >
-            {applyingAsIs ? <Loader2 className="animate-spin" /> : <Check />}
-            Mark applied without tailoring
-          </Button>
-        )}
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -207,7 +309,7 @@ function AtsScoreCard({
 
 /**
  * Score and tailor tab: deterministic per-base ATS score + subscore breakdown.
- * Auto-runs scoring on first visit (fast — no LLM); "Find gaps and tailor"
+ * Auto-runs scoring on first visit (fast — no LLM); "Analyze gaps"
  * creates a gap analysis (LLM enrichment pass) and navigates to it.
  */
 export function AtsScorePanel({
@@ -247,7 +349,7 @@ export function AtsScorePanel({
     return opener?.isConnected ? opener : rootRef.current;
   };
 
-  // Open tailoring sessions let a card offer "Resume gap analysis". On
+  // Open tailoring sessions let a card offer "Continue gap analysis". On
   // loading/error this stays empty, so cards fall back to the normal button.
   const sessions = useQuery({
     queryKey: ["tailoring-sessions", jobId],
@@ -286,7 +388,7 @@ export function AtsScorePanel({
     },
     onError: (err: Error) => toast.error(couldnt("start the gap analysis", err)),
   });
-  // A double click on Find gaps and tailor started two gap analyses.
+  // A double click on Analyze gaps started two gap analyses.
   const createOnce = useSingleFlight(createSession.mutate);
 
   // "Mark applied without tailoring": the user override for skipping tailoring
@@ -313,7 +415,10 @@ export function AtsScorePanel({
   });
   const markAppliedOnce = useSingleFlight(appliedAsIs.mutate);
 
-  const appliedAsIsClick = async (baseResume: string) => {
+  const appliedAsIsClick = async (
+    baseResume: string,
+    returnFocus: () => HTMLElement | null,
+  ) => {
     const ok = await confirm({
       title: "Mark as applied without tailoring?",
       description:
@@ -321,6 +426,7 @@ export function AtsScorePanel({
         "It replaces any tailored draft (Version history keeps it) " +
         "and closes any open proposal in your Agent inbox for this job.",
       confirmLabel: "Mark applied",
+      returnFocus,
     });
     if (ok) markAppliedOnce(baseResume);
   };
@@ -418,8 +524,8 @@ export function AtsScorePanel({
       if (!unscorable && (noBases || importOpen)) {
         return (
           <div className="flex flex-col items-center gap-3 py-8 text-center">
-            <p className="text-sm font-medium">No base resumes to score against.</p>
-            <p className="text-muted-foreground max-w-[50ch] text-sm">
+            <p className="text-title-small">No base resumes to score against.</p>
+            <p className="text-muted-foreground max-w-[50ch] text-body-medium">
               Import your resumes to score this job against each one.
             </p>
             <Button ref={importButtonRef} size="sm" onClick={() => setImportOpen(true)}>
@@ -431,7 +537,7 @@ export function AtsScorePanel({
       return (
         <div className="flex flex-col items-center gap-3 py-8 text-center">
           {!unscorable && <AtsScoreLead />}
-          <p className="text-muted-foreground text-sm">{unscorable ?? "No ATS scores yet."}</p>
+          <p className="text-muted-foreground text-body-medium">{unscorable ?? "No ATS scores yet."}</p>
           {!unscorable && (
             <Button
               size="sm"
@@ -449,6 +555,9 @@ export function AtsScorePanel({
     }
 
     const pendingBase = createSession.isPending ? createSession.variables : null;
+    // Every resume under the coverage line is a fact about the job, not about one card: said once, above them.
+    const lowCoverageEverywhere =
+      baseRows.length > 1 && baseRows.every((row) => coverageWarning(row) != null);
 
     return (
       <div className="@container space-y-3">
@@ -467,6 +576,12 @@ export function AtsScorePanel({
             {run.isPending ? "Updating scores…" : "Update scores"}
           </Button>
         </div>
+        {lowCoverageEverywhere && (
+          <div className="flex gap-2 rounded-corner-md bg-warning-container p-2 text-body-medium text-on-warning-container">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <p>{LOW_COVERAGE_ON_EVERY_RESUME}</p>
+          </div>
+        )}
         <div className="grid gap-3 @md:grid-cols-2 @3xl:grid-cols-3">
           {baseRows.map((score, i) => (
             <AtsScoreCard
@@ -479,11 +594,12 @@ export function AtsScorePanel({
               onAnalyze={() => createOnce(score.target_id)}
               jobId={jobId}
               openSession={openSessionByBase.get(score.target_id) ?? null}
-              onAppliedAsIs={() => appliedAsIsClick(score.target_id)}
+              onAppliedAsIs={(returnFocus) => appliedAsIsClick(score.target_id, returnFocus)}
               applyingAsIs={
                 appliedAsIs.isPending && appliedAsIs.variables === score.target_id
               }
               applied={applied}
+              showCoverage={!lowCoverageEverywhere}
             />
           ))}
         </div>

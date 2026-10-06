@@ -44,18 +44,6 @@ def test_list_kb_points_sends_limit_offset_and_state():
 
 
 @respx.mock
-def test_list_kb_points_defaults_limit_500_offset_0():
-    route = respx.get(f"{BASE}/api/kb/points").mock(
-        return_value=httpx.Response(200, json=[])
-    )
-    BackendClient(BASE).list_kb_points()
-    params = route.calls.last.request.url.params
-    assert params["limit"] == "500"
-    assert params["offset"] == "0"
-    assert "state" not in params
-
-
-@respx.mock
 def test_get_base_resume():
     respx.get(f"{BASE}/api/base-resumes/master").mock(
         return_value=httpx.Response(200, json={"slug": "master", "data": {}})

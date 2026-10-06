@@ -195,15 +195,36 @@ def test_a_job_description_container_is_content_and_a_long_main_is_only_page(tmp
     """The panel says "Job description found" only for a job signal (Task
     25). A job-description container is one; a long `<main>` is only the
     page's text, so it answers `page` and the panel does not call it a job
-    description. Either way the text is the same text, so Save job keeps it."""
+    description."""
     long = "Plenty of words about something. " * 20
     found = _source(tmp_path, jd=[long], main=long + "and the nav")
     assert found["source"] == "content"
-    # The TEXT is chosen exactly as before (the longest candidate); only its
-    # provenance is new, so nothing a save sends has changed.
-    assert found["text"] == (long + "and the nav").strip()
+    # A `content` answer is the container's OWN text, never the longer
+    # `<main>` around it (see the next test for why).
+    assert found["text"] == long.strip()
     page = _source(tmp_path, main=long)
     assert page["source"] == "page"
     assert page["text"] == long.strip()
     body = _source(tmp_path, body="Weekend recipes")
     assert body["source"] == "body"
+
+
+def test_a_content_answer_never_carries_a_form_value_shown_beside_it(tmp_path):
+    """A frame holding both the job description and an application form: its
+    `<main>` is the longest candidate, and a custom widget there shows the
+    user's own value as plain text. `content` text is the job-description
+    container's own, so the value never reaches the panel, or a save."""
+    jd = "We are hiring an engineer to build reliable systems. " * 10
+    main = jd + "\nFirst name\nJordan\nEmail\njordan.rivera@example.test\nCountry\nUnited States"
+    found = _source(tmp_path, jd=[jd], main=main)
+    assert found["source"] == "content"
+    assert "jordan.rivera@example.test" not in found["text"]
+    assert "Jordan" not in found["text"]
+    assert found["text"] == jd.strip()
+
+
+def test_the_longest_job_description_container_is_the_answer(tmp_path):
+    short = "Apply now for this role and more. " * 10
+    long = "The role builds reliable data systems for the whole company. " * 10
+    found = _source(tmp_path, jd=[short, long])
+    assert (found["source"], found["text"]) == ("content", long.strip())

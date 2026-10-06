@@ -231,6 +231,7 @@ _LOAD_ERROR_CALLERS = sorted(
 # 404-as-state callers read the remembered error instead (pinned below).
 _FAILURE_BRANCHES = {
     "app/referrals/page.tsx": "{isLoadFailure(referrals) ? (",
+    "app/automations/page.tsx": "{isLoadFailure(query) ? (",
     "app/base-resumes/page.tsx": "{isLoadFailure(resumes) ? (",
     "app/profile/page.tsx": "{isLoadFailure(setupStatus) ? (",
     "app/applications/page.tsx": "const loadFailed = isLoadFailure(apps) || isLoadFailure(savedJobs);",
@@ -242,6 +243,7 @@ _FAILURE_BRANCHES = {
     "components/settings/setting-card.tsx": "const loadFailed = queries.some((q) => isLoadFailure(q));",
     "components/career/first-run-import-card.tsx": "if (isLoadFailure(entities)) {",
     "components/resume-health/health-report-page.tsx": "if (isLoadFailure(baseQuery)) {",
+    "components/resume-health/question-pass.tsx": "if (isLoadFailure(baseQuery)) {",
     "components/chat/chat-page.tsx": "const threadFailed = sessionId !== null && isLoadFailure(detail);",
     "components/setup/getting-started-card.tsx": "if (isLoadFailure(setupStatus)) {",
     "components/chat/scope-picker.tsx": "{isLoadFailure(kbEntities) ? (",
@@ -258,6 +260,7 @@ _FAILURE_BRANCHES = {
     "app/templates/[id]/page.tsx": "if (isLoadFailure(tq)) {",
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": "if (sessionError != null) {",
     "components/resume-versions/version-history-sheet.tsx": "{isLoadFailure(versions) && (",
+    "components/job-submitted-tab.tsx": "if (isLoadFailure(query)) {",
 }
 
 
@@ -287,6 +290,7 @@ def test_a_retry_keeps_the_error_mounted(relpath: str):
 # so the gate is the ternary, not the first `isLoadFailure(`.
 _LOADING_GATES = [
     ("app/referrals/page.tsx", '<Skeleton className="h-40 w-full" />', "isLoadFailure(referrals) ?"),
+    ("app/automations/page.tsx", '<Skeleton className="h-64 w-full" />', "isLoadFailure(query) ?"),
     ("app/applications/page.tsx", "animate-shimmer h-12", "loadFailed ? ("),
     ("components/proposals/proposals-section.tsx", "if (isLoading) {", "if (isLoadFailure("),
     ("components/ats-score-panel.tsx", "scores.isLoading ||", "if (isLoadFailure(scores))"),
@@ -298,6 +302,7 @@ _LOADING_GATES = [
     ("components/analytics/gap-tiers-panel.tsx", "areas.isLoading", "isLoadFailure(areas)"),
     ("components/charts/top-skills-chart.tsx", "if (isLoading)", "isLoadFailure(query)"),
     ("components/explore/explore-overview.tsx", "q.isLoading", "isLoadFailure(q)"),
+    ("components/job-submitted-tab.tsx", '<Skeleton className="h-48 w-full" />', "if (isLoadFailure(query)) {"),
 ]
 
 

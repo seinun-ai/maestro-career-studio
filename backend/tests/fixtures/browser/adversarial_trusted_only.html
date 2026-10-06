@@ -1,0 +1,58 @@
+<!-- ADVERSARIAL, not a reproduction: a Workday-style popup button (§3 markup:
+     button + hidden backing input + aria-controls list) whose handlers act
+     ONLY on trusted input (`event.isTrusted`). A person's click or key opens
+     and picks; every event a script dispatches, and el.click(), is ignored.
+     The engine has no trusted input (no debugger, by the owner's decision),
+     so the honest outcome is `unsupported`, never a fill. -->
+<div data-automation-id="formField-shiftPreference">
+  <fieldset><legend><div id="rich-label-shift-pref"><div data-automation-id="richText"><p>Which shift do you prefer?</p></div><abbr title="required">*</abbr></div></legend>
+    <div><button id="shift-pref" type="button" aria-haspopup="listbox" aria-label=" Select One Required" aria-controls="shift-pref-list"
+      aria-expanded="false">Select One</button>
+      <input type="text" class="hidden-backing" style="display:none"></div></fieldset></div>
+<div id="portal"></div>
+<script>
+(() => {
+  // __oracle.shift_pref is what the fake app HOLDS; the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.shift_pref = "";
+  window.ignoredEvents = 0;   // untrusted events the widget refused
+  const btn = document.getElementById("shift-pref");
+  const backing = btn.parentElement.querySelector(".hidden-backing");
+  const portal = document.getElementById("portal");
+  const ul = document.createElement("ul");
+  ul.id = "shift-pref-list";
+  ul.setAttribute("role", "listbox");
+  ul.style.display = "none";
+  const trusted = (e) => {
+    if (e.isTrusted) return true;
+    window.ignoredEvents += 1;
+    return false;
+  };
+  const show = (open) => { ul.style.display = open ? "block" : "none"; btn.setAttribute("aria-expanded", String(open)); };
+  for (const text of ["Select One", "Day", "Night"]) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    li.textContent = text;
+    li.addEventListener("click", (e) => {
+      if (!trusted(e)) return;
+      e.stopPropagation();
+      show(false);
+      btn.textContent = text;
+      btn.setAttribute("aria-label", ` ${text} Required`);
+      backing.value = text === "Select One" ? "" : "c0ffee00c0ffee00c0ffee00c0ffee00";
+      oracle.shift_pref = backing.value ? text : "";
+    });
+    ul.append(li);
+  }
+  portal.append(ul);
+  btn.addEventListener("click", (e) => { if (trusted(e)) show(ul.style.display === "none"); });
+  btn.addEventListener("keydown", (e) => {
+    if (!trusted(e)) return;
+    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") { e.preventDefault(); show(true); }
+    if (e.key === "Escape") show(false);
+  });
+  document.addEventListener("click", (e) => {
+    if (e.isTrusted && !ul.contains(e.target) && !btn.contains(e.target)) show(false);
+  });
+})();
+</script>

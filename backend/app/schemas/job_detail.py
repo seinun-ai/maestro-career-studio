@@ -11,3 +11,6 @@ class JobDetail(BaseModel):
     # Stated-JD-requirements vs profile pre-scan; recomputed on every read so a
     # re-extract or a Settings edit refreshes the verdict without a write path.
     knockout: KnockoutScan | None = None
+    # Whether anything was recorded as filled into this job's form: the job page shows its
+    # What was submitted tab only then (services/filled_answers.has_any).
+    has_filled_answers: bool = False

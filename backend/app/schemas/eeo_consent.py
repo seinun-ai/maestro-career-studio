@@ -4,9 +4,27 @@ Metadata only — never stores EEO answer values. Answers live in the autofill
 profile; this record only authorizes the extension/tool-side exact-match path.
 """
 
+import re
+
 from pydantic import BaseModel, Field
 
-CURRENT_POLICY_VERSION = "1"
+CURRENT_POLICY_VERSION = "2"
+# The first policy whose wording covers what `consent_forms` unlocks today.
+# Policy 1 described "the application's own agreement boxes"; policy 2 covers
+# every field (signatures, initials, typed-name attestations, salary, IDs), so
+# an agreement given under policy 1 does not carry over. `enabled` has no such
+# floor: policy 2 changed nothing the diversity opt-in covers.
+CONSENT_FORMS_MIN_POLICY_VERSION = "2"
+
+
+def policy_at_least(version: object, minimum: str) -> bool:
+    """Whether `version` is `minimum` or later. Fails CLOSED: a version that
+    is not a whole number (empty, missing, "1.5", anything hand-edited) is
+    older than every policy."""
+    # ASCII digits only: `str.isdigit` also accepts "²", which `int` rejects.
+    if not isinstance(version, str) or not re.fullmatch(r"[0-9]+", version):
+        return False
+    return int(version) >= int(minimum)
 
 
 class EeoConsent(BaseModel):
@@ -15,8 +33,9 @@ class EeoConsent(BaseModel):
     They travel together because they are one thing to the user — "what may
     this extension answer on my behalf" — and they are stored apart because
     they are not one decision. `enabled` authorizes disclosing protected
-    characteristics; `consent_forms` authorizes ticking an application's own
-    agreement boxes. Folding them into a single flag would make opting into
+    characteristics; `consent_forms` lifts the extension's label policy, so it
+    may fill an application's own agreement boxes and every other field it
+    refuses without it. Folding them into a single flag would make opting into
     EEO fill silently also opt into agreeing to terms, which is not a trade
     anyone chose.
 
@@ -26,16 +45,27 @@ class EeoConsent(BaseModel):
     model_config = {"extra": "forbid"}
 
     enabled: bool = False
-    # Ticking "Yes, I have read and consent to the terms and conditions" and
-    # its family — acknowledgements, attestations, arbitration and waiver
-    # boxes. OFF by default, and it stays a standing consent rather than a
-    # per-form question because that is what the user gives once, on purpose.
-    #
-    # What it does NOT unlock, at any setting: signature and initials fields,
-    # passwords, and government identifiers (SSN, passport, licence numbers).
-    # A signature is a distinct act rather than an agreement, and the other two
-    # are credentials, not consent — nothing in a profile authorizes typing
-    # them into a page.
+    # With it ON, the extension's label policy (extension/shared/policy.js)
+    # refuses nothing: "Yes, I have read and consent to the terms and
+    # conditions" and its family, and also signatures, initials, typed-name
+    # attestations and salary history. OFF by default, and a standing consent
+    # rather than a per-form question because that is what the user gives
+    # once, on purpose. At every setting the extension never clicks Next or
+    # Submit — those stay the user's.
     consent_forms: bool = False
+    # Server-derived, never an input: True when the stored record says
+    # `consent_forms` under a policy older than CONSENT_FORMS_MIN_POLICY_VERSION.
+    # Such a record is SERVED with `consent_forms` false (the permission is not
+    # granted anywhere) and this true, so the web app can say why the switch is
+    # off. `acknowledged_at` / `policy_version` are shared by both permissions;
+    # a yes to either restamps them with the current policy.
+    consent_forms_lapsed: bool = False
+    # The SERVER's audit stamp: set_consent writes both on a yes and ignores
+    # whatever a client sends for them.
     acknowledged_at: str | None = None
     policy_version: str = Field(default=CURRENT_POLICY_VERSION)
+    # Request-only, never stored or served: the policy whose wording the
+    # client showed when the user said yes to `consent_forms`. The web app
+    # sends the policy its agreement confirm describes; a client that does not
+    # (a tab loaded before a policy change) cannot grant it.
+    agreed_policy: str | None = Field(default=None, exclude=True)

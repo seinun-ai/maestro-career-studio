@@ -107,7 +107,7 @@ export function PromptsSection() {
             <div className="grid gap-3">
               <button
                 type="button"
-                className="text-muted-foreground hover:text-foreground flex items-center gap-1 justify-self-start text-xs"
+                className="text-muted-foreground hover:text-foreground flex items-center gap-1 justify-self-start text-body-small"
                 aria-expanded={advancedOpen}
                 aria-controls={advancedId}
                 onClick={() => setAdvancedOpen((o) => !o)}
@@ -200,30 +200,30 @@ function PromptCard({
         <div className="min-w-0">
           {title ? (
             <>
-              <p className="text-sm font-medium">{title}</p>
-              <p className="text-muted-foreground text-xs">{description}</p>
+              <p className="text-title-small">{title}</p>
+              <p className="text-muted-foreground text-body-small">{description}</p>
             </>
           ) : (
             // An advanced prompt's key is one unbreakable word (`resume_finding_verify`): at 375
             // it pushed the row, and its Expand, past the card. `wrap-anywhere` lets it break.
-            <p className="font-mono text-sm wrap-anywhere">{prompt.key}</p>
+            <p className="font-mono text-body-medium wrap-anywhere">{prompt.key}</p>
           )}
         </div>
-        <span className="text-muted-foreground shrink-0 text-xs">
+        <span className="text-muted-foreground shrink-0 text-body-small">
           {open ? "Hide" : "Edit"}
         </span>
       </button>
       {open && (
         <div id={bodyId} className="grid gap-3 px-3 pb-3">
           {/* Prompts fill `$name` and `${name}` from the app's data (string.Template). */}
-          <p id={hintId} className="text-muted-foreground text-xs">
+          <p id={hintId} className="text-muted-foreground text-body-small">
             Keep every word that starts with $. The app fills them in.
           </p>
           <Textarea
             rows={10}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="font-mono text-xs"
+            className="font-mono text-body-small"
             aria-label={`${name} instructions`}
             aria-describedby={hintId}
           />

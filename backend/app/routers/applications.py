@@ -36,6 +36,7 @@ from app.services import (
     ats_score,
     base_resume_data,
     coherence_check,
+    filled_answers,
     pdf_preview,
     resume_diff,
     resume_ops,
@@ -111,6 +112,7 @@ def create_application_from_base(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    created = application is None
     if application is not None:
         application.job_id = payload.job_id
         application.base_resume = payload.base_resume
@@ -129,6 +131,8 @@ def create_application_from_base(
     stale, _ = stage_resume_update(
         db, application, customized, source="import", summary=summary
     )
+    if created:  # a rebuild keeps what the job's receipt already belongs to
+        filled_answers.link_unlinked(db, application)
     db.commit()
     db.refresh(application)
     artifacts.remove_files(stale)
@@ -375,6 +379,8 @@ def patch_application(
     if "status" in fields and application.status in (
         "applied", "interviewing", "offered", "accepted",
     ):
+        # Marked applied: the job's receipt rows posted before it had an application are its.
+        filled_answers.link_unlinked(db, application)
         open_props = db.scalars(
             select(ApplicationProposal).where(
                 ApplicationProposal.job_id == application.job_id,
@@ -389,7 +395,7 @@ def patch_application(
                         "channel": "frontend",
                         "note": "user marked the application applied",
                     },
-                    reason="applied manually",
+                    reason=proposal_svc.APPLIED_MANUALLY,
                 )
             except proposal_svc.TransitionError:
                 # A concurrent transition beat us to a terminal state; the

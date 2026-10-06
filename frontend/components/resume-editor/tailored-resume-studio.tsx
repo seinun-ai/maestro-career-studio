@@ -391,20 +391,20 @@ function BuildDraft({
           }
         />
         <div>
-          <h1 className="text-[22px] font-medium tracking-tight">
+          <h1 className="text-title-large font-medium tracking-tight">
             Tailored resume
           </h1>
-          <p className="text-muted-foreground text-sm">{jobLabel}</p>
+          <p className="text-muted-foreground text-body-medium">{jobLabel}</p>
         </div>
       </header>
-      <div className="space-y-3 rounded-lg border p-6">
+      <div className="space-y-3 rounded-corner-md border p-6">
         {parseFailed ? (
-          <p className="text-destructive text-sm">
+          <p className="text-destructive text-body-medium">
             This tailored resume couldn&apos;t be opened. Choose Create draft to
             start again from your base resume.
           </p>
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             No tailored resume yet. Start with a copy of your base resume.
           </p>
         )}
@@ -520,10 +520,17 @@ function StudioEditor({
   const hunks = useMemo(() => diff.data?.hunks ?? [], [diff.data]);
   const changeCounts = useMemo(() => sectionChangeCounts(hunks), [hunks]);
   const showReview = review && reviewAvailable;
-  /** Count badge on a section tab, so review mode points at where to look. */
+  /** Count on a section tab, so review mode points at where to look. */
+  const changeCount = (tab: string) =>
+    showReview && changeCounts[tab] ? (
+      <span className="tabular-nums text-muted-foreground">{changeCounts[tab]}</span>
+    ) : null;
+  /** A section tab's name says its count in one phrase (a count beside the label can drop out of it). */
+  const changeLabel = (tab: string, label: string) =>
+    showReview && changeCounts[tab] ? `${label} ${changeCounts[tab]}` : undefined;
   const changeBadge = (tab: string) =>
     showReview && changeCounts[tab] ? (
-      <span className="bg-secondary-container text-on-secondary-container ml-1 rounded-full px-1.5 text-[10px] font-medium tabular-nums">
+      <span className="bg-secondary-container text-on-secondary-container ml-1 rounded-full px-1.5 text-label-small tabular-nums">
         {changeCounts[tab]}
       </span>
     ) : null;
@@ -778,8 +785,8 @@ function StudioEditor({
         editor={
           <div className="flex flex-col gap-4">
             {serverChanged && dirty && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-sm dark:border-amber-400/40 dark:bg-amber-400/[0.08]">
-                <span className="text-amber-700 dark:text-amber-300">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-corner-md bg-warning-container px-3 py-2 text-body-medium text-on-warning-container">
+                <span>
                   This tailored resume was changed somewhere else.
                 </span>
                 <Button
@@ -987,7 +994,7 @@ function StudioEditor({
                     onApplyHygiene={handleApplyHygiene}
                   />
                 )}
-                <div className="grid gap-1.5 rounded-md">
+                <div className="grid gap-1.5">
                   <Label htmlFor="studio-summary">
                     Summary
                     {changeBadge("summary")}
@@ -1003,36 +1010,36 @@ function StudioEditor({
                 </div>
 
                 <Tabs defaultValue="contact">
-                  {/* Wraps: seven section tabs do not fit a pane
-                      that is a fraction of the window. */}
-                  <TabsList className="h-auto flex-wrap">
-                    <TabsTrigger value="contact">
+                  {/* Seven section tabs do not fit a pane that is a fraction of the
+                      window: the row scrolls sideways. */}
+                  <TabsList>
+                    <TabsTrigger value="contact" aria-label={changeLabel("contact", "Contact")}>
                       Contact
-                      {changeBadge("contact")}
+                      {changeCount("contact")}
                     </TabsTrigger>
-                    <TabsTrigger value="skills">
+                    <TabsTrigger value="skills" aria-label={changeLabel("skills", "Skills")}>
                       Skills
-                      {changeBadge("skills")}
+                      {changeCount("skills")}
                     </TabsTrigger>
-                    <TabsTrigger value="experience">
+                    <TabsTrigger value="experience" aria-label={changeLabel("experience", "Experience")}>
                       Experience
-                      {changeBadge("experience")}
+                      {changeCount("experience")}
                     </TabsTrigger>
-                    <TabsTrigger value="projects">
+                    <TabsTrigger value="projects" aria-label={changeLabel("projects", "Projects")}>
                       Projects
-                      {changeBadge("projects")}
+                      {changeCount("projects")}
                     </TabsTrigger>
-                    <TabsTrigger value="education">
+                    <TabsTrigger value="education" aria-label={changeLabel("education", "Education")}>
                       Education
-                      {changeBadge("education")}
+                      {changeCount("education")}
                     </TabsTrigger>
-                    <TabsTrigger value="certifications">
+                    <TabsTrigger value="certifications" aria-label={changeLabel("certifications", "Certifications")}>
                       Certifications
-                      {changeBadge("certifications")}
+                      {changeCount("certifications")}
                     </TabsTrigger>
-                    <TabsTrigger value="extra">
+                    <TabsTrigger value="extra" aria-label={changeLabel("extra", "Other sections")}>
                       Other sections
-                      {changeBadge("extra")}
+                      {changeCount("extra")}
                     </TabsTrigger>
                   </TabsList>
 

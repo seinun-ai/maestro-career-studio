@@ -227,12 +227,36 @@ def test_the_content_script_is_the_split_modules_in_dependency_order(content_scr
         # salary rule is the policy's own pattern, never a second copy), and
         # autofill.js spreads its patterns into the rule table that fills them.
         "shared/profile-fields.js",
+        # The fill engine (fill-engine plan Tasks 2-4), in dependency order:
+        # the field reader, the primitives that read its control rule, the
+        # shapes, the inventory over them, the generic mechanics, and the
+        # page operations agent.js's fill_* handlers call. Each reads the
+        # previous ones off the namespace at call time; after policy.js,
+        # because the inventory and the mechanics refuse never-fill fields and
+        # options through `ns.isPolicyBlocked`.
+        "content/field-reader.js",
+        "content/fill-base.js",
+        "content/shapes.js",
+        # A widget's recipe keys (fill-engine revision Task 11): read by the
+        # inventory at call time, beside the shapes it is handed.
+        "content/recipes.js",
+        "content/inventory.js",
+        "content/fill-core.js",
+        "content/fill-ops.js",
+        # Repeating sections and their own Add (fill-engine revision Task 7):
+        # after fill-ops.js, whose `sections`/`add` reach it at call time, and
+        # after inventory.js, whose frame id it mints section ids under.
+        "content/sections.js",
         "content/job-posting.js",
         "content/eeo.js",
         "content/autofill.js",
         "content/open-questions.js",
         "content/detect.js",
         "content/agent.js",
+        # Last, and it reads `ns.onFieldTouched`'s caller (inventory.js) and
+        # `ns.frameMayReceiveUserData` (agent.js) only at call time: it is the one
+        # content script that SENDS (a value-free "you changed a field" to the panel).
+        "content/touch-notice.js",
     ]
 
 

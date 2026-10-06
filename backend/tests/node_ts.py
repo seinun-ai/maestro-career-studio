@@ -23,8 +23,7 @@ def _unavailable(why: str) -> None:
     pytest.skip(why)
 
 
-def ts_map(module: str, export: str, values: list) -> list:
-    """`values.map(module[export])`, computed by node, as JSON."""
+def _node_with_typescript() -> str:
     node = shutil.which("node")
     if node is None:
         _unavailable("node is not installed")
@@ -32,6 +31,18 @@ def ts_map(module: str, export: str, values: list) -> list:
                            capture_output=True, text=True, check=False)
     if probe.stdout.strip() != "true":
         _unavailable("this node cannot strip TypeScript types")
+    return node
+
+
+def run_node_test(test_file: str) -> subprocess.CompletedProcess[str]:
+    """Run a frontend node:test file with node's built-in TypeScript support."""
+    return subprocess.run([_node_with_typescript(), "--test", test_file], cwd=FRONTEND,
+                          capture_output=True, text=True, check=False)
+
+
+def ts_map(module: str, export: str, values: list) -> list:
+    """`values.map(module[export])`, computed by node, as JSON."""
+    node = _node_with_typescript()
     script = (
         f"import({json.dumps(module)}).then((m) => process.stdout.write("
         f"JSON.stringify({json.dumps(values)}.map((v) => m[{json.dumps(export)}](v)))))"

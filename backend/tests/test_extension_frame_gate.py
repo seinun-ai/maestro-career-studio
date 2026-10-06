@@ -68,15 +68,31 @@ const fileInputs = (spec.fileInputs ?? []).map((f) => {
   });
   return input;
 });
+// Fillable-field fakes for `detect_page`'s `controls` count: {tag, type?,
+// name?, role?, visible, disabled?, inSearch?}.
+const controls = (spec.controls ?? []).map((c) => ({
+  tagName: c.tag.toUpperCase(),
+  disabled: c.disabled === true,
+  readOnly: c.readOnly === true,
+  getAttribute: (name) => ({ type: c.type, name: c.name, role: c.role, id: c.id,
+                             "aria-label": c.label, placeholder: c.placeholder,
+                             "aria-disabled": c.ariaDisabled })[name] ?? null,
+  offsetWidth: c.visible ? 120 : 0,
+  offsetHeight: c.visible ? 24 : 0,
+  getClientRects: () => (c.visible ? [{}] : []),
+  closest: (sel) => (c.inSearch && sel === '[role="search"]' ? {} : null),
+}));
 global.document = {
   title: "",
   body: { innerText: "" },
-  querySelectorAll: (sel) => (String(sel).includes("file") ? fileInputs : []),
+  querySelectorAll: (sel) => (String(sel).includes("file") ? fileInputs
+    : String(sel).includes("textarea") ? controls : []),
   querySelector: () => null,
   createElement: () => ({ set innerHTML(_v) {}, get innerText() { return ""; } }),
 };
-// Node has File but no DataTransfer; attach_resume_pdf builds one before it
-// ever looks at the DOM, so the ALLOWED path needs it to reach the loop.
+// Node has File but no DataTransfer; attach_resume_pdf snapshots each box's
+// widget first (these fakes have none) and then builds ONE DataTransfer PER
+// BOX for its write, so the ALLOWED path needs it to reach the loop.
 // A DataTransfer that really COLLECTS, for the reason the `files` property
 // above is real: `attachResumePdf` checks `input.files?.length === 1` — exactly
 // one file, the one we put in — so a stub whose `add` dropped the file on the
@@ -84,7 +100,8 @@ global.document = {
 global.DataTransfer = class {
   constructor() { this.files = []; this.items = { add: (file) => this.files.push(file) }; }
 };
-global.location = { ...global.location, href: "https://jobs.example.test/x" };
+global.location = { ...global.location, href: "https://jobs.example.test/x",
+                    origin: spec.origin ?? "https://jobs.example.test" };
 global.window.top = spec.topFrame ? global.window : { other: true };
 global.window.self = global.window;
 
@@ -104,15 +121,37 @@ ns.fillFormFromProfile = (...args) => {
 ns.collectOpenQuestions = () => { calls.push(["collectOpenQuestions", 0]); return { questions: [{ qid: "q1" }], excluded: [], host: "x" }; };
 ns.fillAnswersByQid = () => { calls.push(["fillAnswersByQid", 0]); return ["q1"]; };
 ns.applyGuidedChoices = () => { calls.push(["applyGuidedChoices", 0]); return []; };
+// The fill engine's page operations need a real DOM (tests/browser drives
+// them), so this world stubs them: what is asserted here is the gate.
+ns.fillOps = {
+  inventory: (opts) => { calls.push(["fillOps.inventory", opts]); return { frame: "f", host: "x", fields: [{ fid: "f-1" }] }; },
+  explore: (requests) => { calls.push(["fillOps.explore", requests]); return { "f-1": { options: [] } }; },
+  apply: (actions) => { calls.push(["fillOps.apply", actions]); return [{ fid: "f-1", outcome: "verified" }]; },
+  stepState: (r) => { calls.push(["fillOps.stepState", r]); return { version: 1, candidates: [{ mid: "give_up" }] }; },
+  sweep: () => { calls.push(["fillOps.sweep", 0]); return [{ fid: "f-1", outcome: "verified" }]; },
+  focus: (fid) => { calls.push(["fillOps.focus", fid]); return true; },
+  sections: () => { calls.push(["fillOps.sections", 0]); return [{ sid: "f-s1", heading: "Websites", entries: 0, filled: [], add: "Add" }]; },
+  add: (r) => { calls.push(["fillOps.add", r]); return { sid: "f-s1", outcome: "added", entries: 1 }; },
+  cancel: () => { calls.push(["fillOps.cancel", 0]); },
+};
 
 main(async () => {
+  // The gate itself, as `content/touch-notice.js` asks it at send time.
+  if (spec.type === "gate") { emit({ calls, data: ns.frameMayReceiveUserData({}) }); return; }
   const handler = ns.pageHandlers[spec.type];
   const data = await handler({
     type: spec.type, profile: { personal: { email: "a@b.test" } }, employment: [],
     skills: [], pairs: [], b64: "", filename: "resume.pdf",
+    consentForms: true, runId: "run-2", requests: [{ fid: "f-1", fp: "p" }],
+    actions: [{ fid: "f-1", fp: "p", op: "write", value: "x" }], fid: "f-1", fp: "p", value: "v",
+    sid: "f-s1", heading: "Websites", entries: 0,
     // Only when the fixture states one — `undefined` is the shape the floating
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
+    ...(spec.peek ? { peek: true } : {}),
+    ...(spec.readOnly ? { readOnly: true } : {}),
+    // The origin the panel vouches for (`withFlowOrigin`), only when stated.
+    ...(spec.flowOrigin === undefined ? {} : { flowOrigin: spec.flowOrigin }),
   });
   emit({ calls, data });
 });
@@ -120,13 +159,21 @@ main(async () => {
 
 
 def _run(tmp_path, *, type_, top_frame, form=False, detect_throws=False, file_inputs=(),
-         expect=None):
+         expect=None, peek=False, flow_origin=None, origin=None, controls=None,
+         read_only=False):
+    extra = {}
+    if controls is not None:
+        extra["controls"] = list(controls)
+    if flow_origin is not None:
+        extra["flowOrigin"] = flow_origin
+    if origin is not None:
+        extra["origin"] = origin
     return run_node(
         _GATE_DRIVER_JS,
         {
             "type": type_, "topFrame": top_frame, "form": form,
             "detectThrows": detect_throws, "fileInputs": list(file_inputs),
-            "expect": expect,
+            "expect": expect, "peek": peek, "readOnly": read_only, **extra,
         },
         tmp_path,
         source=page_runtime_source(),
@@ -163,6 +210,44 @@ def test_a_subframe_holding_an_application_form_is_allowed(tmp_path, type_):
     out = _run(tmp_path, type_=type_, top_frame=False, form=True)
 
     assert out["calls"] != [], f"{type_} was refused in a real application subframe"
+
+
+# ---------- a later step of an application the panel already confirmed ----------
+#
+# iCIMS, live 2026-10-01: Candidate Questions and EEO are a few selects and a
+# Submit in the page's own iframe, so the frame's own detect says no and every
+# write was refused after step one. The panel vouches for the one exact origin
+# whose frame already held a confirmed form in this tab (`withFlowOrigin`).
+
+VOUCHED_TYPES = FAN_OUT_TYPES + ["fill_inventory", "fill_apply", "fill_sweep", "fill_sections"]
+ICIMS = "https://careers-acme.icims.com"
+
+
+@pytest.mark.parametrize("type_", VOUCHED_TYPES)
+def test_a_subframe_on_the_vouched_origin_takes_the_fill(tmp_path, type_):
+    out = _run(tmp_path, type_=type_, top_frame=False, form=False,
+               flow_origin=ICIMS, origin=ICIMS)
+
+    assert out["calls"] != [], f"{type_} was refused on the origin the panel vouched for"
+
+
+@pytest.mark.parametrize("flow_origin, origin", [
+    ("https://careers-other.icims.com", ICIMS),   # a sibling subdomain is another party
+    ("https://icims.com", ICIMS),                 # a parent domain is not the origin
+    ("http://careers-acme.icims.com", ICIMS),     # another scheme is another origin
+    ("https://careers-acme.icims.com:8443", ICIMS),
+    ("", ICIMS),                                  # an empty vouch is no vouch
+    # A sandboxed or opaque frame's origin is the string "null": a vouch for it
+    # would admit every such frame, so only an http(s) origin can be vouched.
+    ("null", "null"),
+])
+def test_a_vouch_for_any_other_origin_is_refused(tmp_path, flow_origin, origin):
+    """Exact origin or nothing. An ad or chat frame beside the form is on
+    another origin, and it still has to earn the data with its own detect."""
+    out = _run(tmp_path, type_="profile_fill", top_frame=False, form=False,
+               flow_origin=flow_origin, origin=origin)
+
+    assert out["calls"] == []
 
 
 def test_a_refused_frame_returns_an_empty_result_not_an_error(tmp_path):
@@ -283,11 +368,11 @@ def test_a_box_that_discards_the_file_on_a_later_render_is_not_counted(tmp_path)
 def test_a_box_the_widget_re_rendered_away_is_not_counted(tmp_path):
     """`valueHolds`' FIRST check, and the same argument: a detached node keeps
     whatever we assigned it forever, so `files` alone would report a box the
-    user cannot see. The known cost is written on `attachResumePdf` — an
-    uploader that accepts the file and then replaces its own input is
-    under-counted, and the panel then says "attach it by hand" over a page where
-    it worked. That is the safe direction; over-counting is the claim this
-    readback exists to stop.
+    user cannot see. A detached input counts only by its widget's own new file
+    row (`attachResumePdf`; tests/browser/test_attach.py drives that on a real
+    page), and this fake has no widget, so its `files` is all there is and it
+    does not count. Under-counting is the safe direction; over-counting is the
+    claim this readback exists to stop.
     """
     out = _run(tmp_path, type_="attach_resume_pdf", top_frame=True,
                file_inputs=[{"visible": True, "detaches": True}, {"visible": True}])
@@ -319,7 +404,7 @@ def test_detect_page_answers_the_verdict_and_nothing_of_the_page(tmp_path):
     """The side panel's only way to ask "does this tab hold a form?" — it runs
     in no page, so detection is not a function it can call.
 
-    FOUR keys, pinned. `detectPage` also returns `signals`, which names the
+    FIVE keys, pinned. `detectPage` also returns `signals`, which names the
     selectors, hosts and phrases that fired on this document; that is page
     content by another route, and the panel has no use for it. The smallest
     honest answer is the one that crosses the boundary.
@@ -328,17 +413,65 @@ def test_detect_page_answers_the_verdict_and_nothing_of_the_page(tmp_path):
     three — a count of controls this document renders, nothing derived from the
     user — which is what keeps this handler ungated. It is a COUNT and never the
     inputs: what the panel decides with it is whether to OFFER an attach.
+    `uploads` is the fifth, per counted box a kind word and a boolean
+    (`uploadBoxOf`): what Autofill's own attach decides with, never a label
+    or a filename.
+
+    `origin` and `controls` are the sixth and seventh (2026-10-01), for the
+    application-flow rule: the frame's own origin, which the service worker
+    already holds as the frame's url, and a COUNT of fillable fields, capped.
+    Neither carries a label, a value or anything the user typed.
 
     Ungated for `extract_job_posting`'s reason and no other: it reads the frame
     it already runs in and returns nothing derived from the user.
     """
     out = _run(tmp_path, type_="detect_page", top_frame=False, form=True)
 
-    assert set(out["data"]) == {"tier", "form", "score", "fileInputs"}
+    assert set(out["data"]) == {
+        "tier", "form", "score", "fileInputs", "uploads", "origin", "controls"}
     assert out["data"]["form"] is True
     # …and the verdict is the page's own, not re-derived from `score` here.
-    assert _run(tmp_path, type_="detect_page", top_frame=True, form=False)["data"] == {
-        "tier": "none", "form": False, "score": 0, "fileInputs": 0}
+    top = _run(tmp_path, type_="detect_page", top_frame=True, form=False)["data"]
+    assert {key: top[key] for key in ("tier", "form", "score", "fileInputs", "uploads")} == {
+        "tier": "none", "form": False, "score": 0, "fileInputs": 0, "uploads": []}
+    assert isinstance(top["origin"], str)
+    assert isinstance(top["controls"], int) and top["controls"] >= 0
+
+
+def test_detect_page_counts_the_fields_a_fill_could_answer_and_no_search_box(tmp_path):
+    """`controls` decides one thing: whether a later step of an application
+    already confirmed on this host is a form. So a careers search page reached
+    after the last step must count nothing: a search-typed input, one named
+    like a query, one inside a search landmark. Hidden, disabled, password and
+    button inputs are not fields a fill answers either."""
+    def count(controls):
+        return _run(tmp_path, type_="detect_page", top_frame=True,
+                    controls=controls)["data"]["controls"]
+
+    assert count([{"tag": "select", "visible": True},
+                  {"tag": "input", "type": "radio", "visible": True},
+                  {"tag": "textarea", "visible": True}]) == 3
+    assert count([{"tag": "input", "type": "search", "visible": True},
+                  {"tag": "input", "name": "keywords", "visible": True},
+                  {"tag": "input", "name": "q", "visible": True},
+                  {"tag": "input", "visible": True, "inSearch": True},
+                  {"tag": "input", "type": "hidden", "visible": True},
+                  {"tag": "input", "type": "password", "visible": True},
+                  {"tag": "input", "type": "submit", "visible": True},
+                  {"tag": "select", "visible": False},
+                  {"tag": "select", "visible": True, "disabled": True},
+                  # Named any other way, a search box is still one.
+                  {"tag": "input", "id": "keywordSearchInput", "visible": True},
+                  {"tag": "input", "label": "Search jobs", "visible": True},
+                  {"tag": "input", "placeholder": "Search by keyword", "visible": True},
+                  {"tag": "input", "role": "searchbox", "visible": True},
+                  {"tag": "input", "readOnly": True, "visible": True},
+                  {"tag": "div", "role": "combobox", "ariaDisabled": "true",
+                   "visible": True}]) == 0
+    # The widgets a fill answers by role count; the count stops at its cap.
+    assert count([{"tag": "div", "role": "combobox", "visible": True},
+                  {"tag": "div", "role": "checkbox", "visible": True}]) == 2
+    assert count([{"tag": "select", "visible": True}] * 25) == 20
 
 
 def test_the_offer_counts_exactly_the_boxes_the_attach_would_write_to(tmp_path):
@@ -359,3 +492,74 @@ def test_the_offer_counts_exactly_the_boxes_the_attach_would_write_to(tmp_path):
                    file_inputs=boxes)["data"]
 
     assert counted == written == 2
+
+
+# The fill engine's page operations: every one that reads or writes the page is
+# gated exactly like guided_write, and a refused frame answers the operation's
+# EMPTY shape rather than an error.
+FILL_GATED = {
+    "fill_inventory": None,  # its empty shape carries the host: checked field by field
+    "fill_explore": {},
+    "fill_apply": [],
+    "fill_step_state": None,  # broadcast: every frame but the fid's own answers null
+    "fill_sweep": [],
+    "fill_focus": False,
+    "fill_sections": [],
+    "fill_add": None,  # broadcast: every frame but the sid's own answers null
+}
+
+
+@pytest.mark.parametrize("type_", sorted(FILL_GATED))
+def test_fill_operations_are_gated_by_frame(tmp_path, type_):
+    refused = _run(tmp_path, type_=type_, top_frame=False, form=False)
+    assert refused["calls"] == [], f"{type_} ran the engine in an unqualified subframe"
+    empty = FILL_GATED[type_]
+    if type_ == "fill_inventory":
+        assert refused["data"]["frame"] is None and refused["data"]["fields"] == []
+    else:
+        assert refused["data"] == empty
+    for top_frame, form in ((True, False), (False, True)):
+        out = _run(tmp_path, type_=type_, top_frame=top_frame, form=form)
+        assert out["calls"] != [], f"{type_} was refused in a frame that may receive user data"
+
+
+def test_fill_inventory_forwards_the_standing_consent_and_the_run_id(tmp_path):
+    """A new runId is what releases a latched Stop, and consent is per call.
+    `peek` (the fids only, after a commit) is forwarded, and only a literal true."""
+    out = _run(tmp_path, type_="fill_inventory", top_frame=True)
+    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2", "peek": False, "readOnly": False}]]
+    out = _run(tmp_path, type_="fill_inventory", top_frame=True, peek=True)
+    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2", "peek": True, "readOnly": False}]]
+    # The answer receipt's read of the page after a run: `readOnly` is forwarded, only as a literal true.
+    out = _run(tmp_path, type_="fill_inventory", top_frame=True, read_only=True)
+    assert out["calls"][0][1]["readOnly"] is True
+
+
+def test_fill_step_state_forwards_the_field_and_nothing_else(tmp_path):
+    """One field's id, its fingerprint and the value the step is after — not
+    the rest of whatever message carried them."""
+    out = _run(tmp_path, type_="fill_step_state", top_frame=True)
+    assert out["calls"] == [["fillOps.stepState", {"fid": "f-1", "fp": "p", "value": "v"}]]
+
+
+def test_fill_add_forwards_the_section_and_the_view_it_was_decided_on(tmp_path):
+    """One section's id, the heading and the entry count the loop decided from
+    (the page refuses the press when either changed) — nothing else."""
+    out = _run(tmp_path, type_="fill_add", top_frame=True)
+    assert out["calls"] == [["fillOps.add", {"sid": "f-s1", "heading": "Websites", "entries": 0}]]
+
+
+def test_fill_cancel_reaches_every_frame(tmp_path):
+    """Stop carries nothing and only stops work in flight — a gate could only
+    make it miss the frame that is working."""
+    out = _run(tmp_path, type_="fill_cancel", top_frame=False, form=False)
+    assert out["calls"] == [["fillOps.cancel", 0]] and out["data"] is True
+
+
+@pytest.mark.parametrize(("top_frame", "form", "detect_throws", "allowed"), [
+    (True, False, False, True), (False, True, False, True),
+    (False, False, False, False), (False, True, True, False)])
+def test_the_published_gate_is_the_one_the_handlers_use(tmp_path, top_frame, form, detect_throws, allowed):
+    """`touch-notice.js` sends only where this says yes: the top frame, or a subframe with a form."""
+    out = _run(tmp_path, type_="gate", top_frame=top_frame, form=form, detect_throws=detect_throws)
+    assert out["data"] is allowed

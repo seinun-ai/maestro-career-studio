@@ -114,7 +114,8 @@
     // which happened is this token still being current.
     const token = store.token();
     store.write({
-      application: { id: chosen.id, status: chosen.status ?? "draft" },
+      application: { id: chosen.id, status: chosen.status ?? "draft",
+                     base_resume: chosen.base_resume ?? null },
       job: {
         id: chosen.job_id,
         company: chosen.job_company,
@@ -122,9 +123,9 @@
       },
       match: "exact",
       claimed: true,
-      // The application's own base is the user's earlier choice, so Score
-      // completes by data rather than asking them to pick again. Without
-      // this, Fill stays locked behind a ranking they already made.
+      // The application's own base is the user's earlier choice, so the Job
+      // step's base question is answered by data rather than asked again, and
+      // the Base ring compares against the resume the draft came from.
       baseSlug: chosen.base_resume || facts.baseSlug,
       baseSelected: Boolean(chosen.base_resume) || facts.baseSelected === true,
       // The attach belonged to the application being replaced. Without this the
@@ -172,6 +173,7 @@
       application: {
         id: chosen.id,
         status: detail.status ?? chosen.status ?? "draft",
+        base_resume: chosen.base_resume ?? null,
       },
       note: { text: `Using ${chosen.job_company} · ${chosen.job_title}.` },
     });

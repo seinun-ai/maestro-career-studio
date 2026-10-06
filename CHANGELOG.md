@@ -22,11 +22,266 @@ with the qualification that version 0 actually carries:
 - **Patch releases (`0.1.1`) never change the schema or the `.env` contract.**
   They are safe to take without reading anything.
 
-Version numbers appear in seven places that must agree — the git tag (`v0.2.0`)
-and six files listed in [`docs/RELEASING.md`](docs/RELEASING.md). The published
+Version numbers appear in eight places that must agree — the git tag (`v0.2.0`)
+and seven files listed in [`docs/RELEASING.md`](docs/RELEASING.md). The published
 image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
+
+### Added
+
+- The **Agent inbox dashboard**: readiness marks on open rows, an arrivals strip
+  and **Recent runs** with each automation's counts, digest and job links. Queued
+  jobs ready to apply sort first. Automations cards show **Last ran**. New MCP
+  tool `record_run` keeps the latest 200 run reports.
+- The **Automations** page: copy a prompt into Claude Desktop, Codex or any MCP
+  agent, which asks when to run and then does the job with Maestro. New
+  `mail-status`, `referral-pages` and `tailor-run` skills join `job-hunt`,
+  `apply-session` and `customize-job-skills`; the skills now live in
+  `backend/app/automations/skills/` (`docs/skills/` is their index).
+- Autofill keeps a private record of how it decided each field (which answer it
+  chose, demographic questions included, how sure it was, what the page did),
+  for diagnosing and tuning it. It holds no typed answer or profile text, stays
+  on your machine, keeps your last 50 runs, turns off with the same opt-out as
+  field telemetry, and goes when you press Clear data.
+- **What was submitted**: the job page keeps a record of every answer the
+  Companion or a connected agent filled into the application form, page by page,
+  with a small pill saying where each came from (Profile, Resume, Custom,
+  Written, Inferred, You, Upload). Answers worth a second look (a screening
+  question answered by a guess, every option ticked, an answer unlike your
+  profile, a voluntary question with nothing saved) are flagged before you
+  submit, in the Companion's new **Check before you submit** group and in the
+  agent's final review, and the tab shows them with their reason. Diversity
+  answers are kept only with your consent, are cleared when you withdraw it,
+  and are never sent to an agent. New MCP tool `record_filled_answers`.
+- The knock-out check on a job also compares an on-site or hybrid office with
+  where you live and whether you would relocate, and the Companion shows its
+  verdict above the form before you fill.
+
+### Changed
+
+- Jobs `job-hunt` saves are marked as found by an agent and keep the job's
+  link. They wait in the Agent inbox alongside jobs from referral pages, and
+  later hunts recognize jobs already saved.
+- Agents record each form page's answers instead of attaching a screenshot of
+  every page; the final-review and submission screenshots stay.
+
+### Fixed
+
+- Agent inbox History says **Applied yourself** for jobs you applied to, with
+  the Applied badge, counts and filter grouping; their stored status is unchanged.
+- A page of screening questions with nothing else on it (iCIMS's Candidate
+  Questions step: age, work authorization, sponsorship) is recognised as an
+  application form, so Autofill is offered there and can fill it.
+- The later steps of a multi-step application (iCIMS's EEO and questions
+  pages, any wizard's short steps) no longer say "No application form here".
+  Once a form is confirmed on a site in a tab, a later page there with a field
+  to fill counts as the form for the next hour, and the employer's own embedded
+  form frame on that site accepts the fill. On the next step after a fill, the
+  Fill step opens by itself with Autofill.
+- Autofill answers more of iCIMS's later steps:
+  - a veteran self-identification asked in a paragraph ("please indicate by
+    checking the appropriate box below");
+  - a follow-up box such as "If applicable, please provide info." (it now
+    reads the question it follows);
+  - "Are you able to work on-site at our … location?", from your relocation
+    answer;
+  - with Agreements on, a "Signature" box that signs the form.
+
+  A "please specify referral name" box no longer takes your how-heard answer.
+
+## [0.7.1] — 2026-10-01
+
+### Breaking changes
+
+- None. No migrations and no `.env` changes. MCP list tools return fewer rows
+  by default (see Changed); every one of them still takes `limit` and `offset`.
+
+### Added
+
+- **A listing on the official MCP Registry.** `server.json` describes the
+  server as `io.github.seinun-ai/maestro-career-studio`, and the Claude Desktop
+  extension is attached to each GitHub Release so the registry, and the
+  directories that copy from it, can point at a checked download.
+- **A privacy policy.** [`PRIVACY.md`](PRIVACY.md) says what the app stores,
+  every place your data can go (the AI provider you configure, optional
+  Langfuse tracing, the assistant you connect over MCP), and how to delete it.
+  The README, the Claude plugin and the Claude Desktop extension link to it.
+- **The Claude plugin has its own README and license**, with example prompts,
+  what it runs and what it sends. The Claude Desktop extension gains an icon.
+- **Every MCP tool has a title and read-only / destructive hints**, so Claude
+  can show a readable name and ask before a tool changes your data.
+
+### Changed
+
+- **MCP tool descriptions say what a tool does instead of telling the agent
+  what to do**, and the `next` hints after a tool describe the available next
+  steps. Consent still works the same: approving points, consenting to an
+  application and marking it submitted record your own decision.
+- **MCP lists return less at once.** `list_jobs` returns 50 rows by default,
+  `kb_list_points` 50 (at most 100, without the per-resume usage history),
+  `list_proposals` 20 (new `limit`/`offset`), and `export_jobs` 10 (new
+  `limit`/`offset`, without the raw posting text). `list_tailoring_sessions`
+  returns a summary per session; `get_tailoring_session` has the detail.
+- **MCP errors are shorter and readable**, a timeout on a write says the write
+  may still have finished, and capturing career notes gets the same long wait
+  as other AI calls.
+- **Next.js telemetry is off** in the images built from this release.
+- **The plugin and extension descriptions no longer say a local model keeps
+  everything on your machine.** Local models can be configured but are
+  untested ([`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)), so the descriptions now say
+  only that AI features use the provider you configure.
+
+### Fixed
+
+- **`attach_evidence_file` finds screenshots saved on your computer** when the
+  MCP server runs inside Docker (the Claude plugin and Desktop extension).
+- **A tool whose change was saved no longer reports an error** when only its
+  follow-up hint could not be loaded.
+- **Hints no longer suggest tools the active tool profile does not have.**
+
+## [0.7.0] — 2026-10-01
+
+### Breaking changes
+
+- **Four migrations run by themselves at startup.** One stores health-check
+  results with the rubric that judged them, and a table for your disputes.
+  Two refresh the built-in tailoring prompts (tailoring rules, gap
+  tailoring and the Assistant's instructions) and the built-in health-check
+  prompts. A built-in prompt moves to the new default only if you never
+  edited it; one you changed in Settings › AI & models › Prompts is left
+  as it is. The fourth clears saved health-check results for bullets the
+  check marked down by mistake, so the next health check reads those
+  bullets again; a rating you set by hand is kept.
+- **Agree again to let the Companion fill agreements and signatures.** The
+  permission now covers more (see Changed), so a yes given before this
+  release is off until you give it again. Profile › Autofill says so beside
+  the switch: "This now covers more than when you agreed. Turn it on again
+  to allow it." Your diversity consent is unchanged.
+- API routes and MCP tools: none removed or renamed. The health report gains
+  `next_grade` and a question on each finding, and `get_autofill_profile`
+  gains `languages`.
+
+### Added
+
+- **A new Fill in the Companion.** "Saved answers + AI" now works a form the
+  way you would, Workday-style dropdowns, searches and checkboxes included,
+  and counts a field filled only once it has checked what the page actually
+  kept. When it finishes it lists what it filled, the closest matches it
+  picked, what it answered for you and what still needs your answer; select
+  a row to jump to that field. Stop ends a run at any time. "Saved answers
+  only" still runs the earlier fill.
+- **Autofill also attaches your resume** when the page has an empty resume
+  upload box. It never replaces a file already there and never uses a
+  cover-letter or other document box. Attach resume is still there for
+  those.
+- **Answers come from your saved answers.** With a Jev key saved and Jev
+  chosen in Settings › AI & models › Form filling, Jev picks first and your
+  fast model decides where Jev is unsure.
+  Without Jev, your fast model does it all.
+- **Yes/No questions worded in reverse are read correctly**, such as "I do
+  not require sponsorship". Fill first works out whether the question asks
+  the same thing as your answer or the opposite, and leaves the field to you
+  when it can't tell. "Now or in the future" sponsorship questions are
+  answered from both of your sponsorship answers.
+- **Fill adds entries** for the jobs, schools, languages and websites your
+  profile holds, using the section's own Add button, and fills each one.
+- **Fill remembers which clicks worked** for each kind of box, so the next
+  form with the same widgets goes faster. No labels, values or page
+  addresses are kept. "Forget learned widget moves" in the Fill step clears
+  it.
+- **Answer low-stakes questions for me** (Profile › Autofill, off by
+  default): questions none of your answers covers and whose answer barely
+  matters, like willingness to travel or a preferred contact method, are
+  answered in the job's favor. Never work authorization, sponsorship,
+  diversity questions, salary, background checks or signatures.
+- **Languages** in Profile › Autofill: reading, speaking and writing levels
+  (Basic, Intermediate, Fluent), plus separate Native and Fluent answers.
+  The Companion adds a language to a form only when all three levels are
+  set.
+- **Health check v3.**
+  - Each bullet gets its own question, a number only where one fits the
+    work, always with a way to answer without one. A result stated clearly
+    in words now earns full credit.
+  - "Start the questions" opens a question pass: every question on one page,
+    answered all at once or row by row, saved to the resume as one change
+    you can undo.
+  - **Not right?** on a finding tells the check why it's wrong, and it reads
+    that bullet again with your note. A level never rises without words from
+    the bullet itself, and "no number exists" is remembered for that text.
+  - A wording checklist flags spelling and grammar slips, clichés and filler
+    words, with Apply or Remove where the fix reads cleanly. The cliché and
+    filler lists, and a Never flag list, are yours to edit.
+  - A summary band on top: the grade, the points to the next one, and "No
+    numbers anywhere" when no bullet has a number (a note, not a penalty).
+    Findings sit under tabs by what they need.
+- **Windows**, through Docker Desktop's WSL 2 engine: install, update and
+  the Claude extension work with the clone in your WSL home
+  ([On Windows: use WSL](docs/GETTING_STARTED.md#on-windows-use-wsl)).
+- **Drag to reorder** bullets, sections and section order in the resume
+  editor, by mouse or keyboard. Each bullet's ⋯ menu has Move to top, Move
+  up, Move down and Delete.
+
+### Changed
+
+- **The Companion panel has four steps: Job, Resume, Fill, Track.** Save job
+  also scores your base resumes and picks the best match, in the same press.
+- **A shorter Resume step**: use your base resume or tailor to this job. An
+  application whose resume has no PDF yet gets **Create PDF**.
+- **Refresh** in the panel reads this page's job and applications again, so
+  a PDF you made in Maestro CS shows up. What you typed and the Fill report
+  stay.
+- The panel's fill button is now **Autofill**, and the note under the panel
+  sits on its own line instead of under the buttons.
+- **Letting the Companion fill agreements and signatures now covers every
+  field**, including signatures, initials, typed-name attestations and
+  salary history. It still never moves to the next page and never submits.
+- Tailoring writes bullets by the health check's rule: a concrete result,
+  with a number only where you gave one, not a number in every line.
+- Health checks judge each bullet again under the new rubric the next time
+  they run, so a score or grade can move.
+- Score and tailor: each card has one button, **Analyze gaps**; Restart gap
+  analysis and Mark applied without tailoring are in the card's ⋯ menu.
+- Career opens on your history: Quick capture rests as one line, and each
+  profile section (Contact, Summary, Skills, Notes for the AI) has its own
+  Edit.
+
+### Fixed
+
+- The panel no longer asks you to tailor again when you come back to a job
+  whose tailored resume is ready.
+- Long steps in the panel scroll instead of being cut off.
+- Fill no longer types your phone number into a phone extension box, or your
+  street address into a second address line.
+- Workday application steps are recognized as forms, so Fill is offered on
+  them.
+- An application form embedded from another site (such as a Greenhouse form
+  inside a company's careers page) is found, so Autofill is offered for it,
+  including when the form only appears after you select Apply.
+- Forms whose labels aren't linked to their fields (such as Gem's) are read:
+  the Companion takes the short label just before a field, and groups Yes/No
+  buttons that belong to one question.
+- A resume upload counts as attached when the page lists the file, even on
+  pages that clear the upload box (Workday), and never when the page refused
+  it.
+- On Workday, Attach resume is offered on the step with the resume upload
+  box, not one step later.
+- The "I currently work here" box is ticked for your current job on Workday.
+- Fill no longer adds an empty second website entry.
+- Military status is answered from your veteran answer.
+- With Agreements on, terms and consent boxes are ticked.
+- The Companion reads a job description shown inside an embedded frame
+  (iCIMS), and no longer saves a blank job when it can't read one.
+- An application form inside the page's own embedded frame (iCIMS) is found,
+  so Autofill is offered.
+- Dropdowns showing "Make a Selection" (iCIMS) are treated as empty and filled.
+- Month, Day and Year boxes get only their own part, and a current job never
+  gets an end date.
+
+### Security
+
+- Dependency bumps for published advisories: PyJWT 2.15.1 and urllib3 2.8.0
+  (backend); brace-expansion, DOMPurify and ip-address (frontend lockfile).
 
 ## [0.6.0] — 2026-09-24
 

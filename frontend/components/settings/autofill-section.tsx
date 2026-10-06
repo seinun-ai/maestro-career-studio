@@ -32,7 +32,19 @@ import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
-import type { EeoConsent, KBProfileOut, SettingEnvelope } from "@/lib/types";
+import type {
+  AutofillOptions,
+  EeoConsent,
+  EeoConsentUpdate,
+  KBProfileOut,
+  SettingEnvelope,
+} from "@/lib/types";
+
+/** The policy whose wording the agreement confirm (setConsentFormsEnabled)
+ *  describes. Bump it with CURRENT_POLICY_VERSION
+ *  (backend/app/schemas/eeo_consent.py) whenever that wording changes; the
+ *  server grants the agreement only under its current policy. */
+const AGREEMENT_POLICY = "2";
 
 type FieldDef = {
   key: string;
@@ -262,9 +274,20 @@ type EducationEntry = {
   start_year?: string;
   end_year?: string;
 };
+/** One language, stored as the fact catalog reads it
+ *  (backend/app/services/autofill_catalog.py `_languages`). */
+type LanguageEntry = {
+  language?: string;
+  read?: string;
+  speak?: string;
+  write?: string;
+  native?: boolean;
+  fluent?: boolean;
+};
 type Profile = {
   custom?: CustomQA[];
   education?: EducationEntry[] | EducationEntry;
+  languages?: LanguageEntry[];
   [group: string]: unknown;
 };
 
@@ -276,6 +299,88 @@ const EDUCATION_FIELDS: { key: keyof EducationEntry; label: string }[] = [
   { key: "start_year", label: "Start year" },
   { key: "end_year", label: "Graduation year" },
 ];
+
+/** The levels in the words application forms offer, stored as those words. */
+const LANGUAGE_LEVELS = ["Basic", "Intermediate", "Fluent"].map((level) => ({
+  value: level,
+  label: level,
+}));
+/** A language select's way back to no answer: the key is removed, never stored as "". */
+const NOT_SET = { value: "not_set", label: "Not set" };
+
+/** Native and fluent are separate answers: forms ask them apart. */
+const LANGUAGE_FIELDS: FieldDef[] = [
+  { key: "language", label: "Language" },
+  { key: "read", label: "Reading", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] },
+  { key: "speak", label: "Speaking", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] },
+  { key: "write", label: "Writing", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] },
+  { key: "native", label: "Native speaker", type: "select", boolean: true, options: [NOT_SET, ...YES_NO] },
+  { key: "fluent", label: "Fluent", type: "select", boolean: true, options: [NOT_SET, ...YES_NO] },
+];
+
+function withAnswer(
+  entry: LanguageEntry,
+  key: string,
+  value: string | boolean | undefined,
+): LanguageEntry {
+  const next: Record<string, unknown> = { ...entry };
+  if (value === undefined || value === "") delete next[key];
+  else next[key] = value;
+  return next as LanguageEntry;
+}
+
+/** What a language answer's control shows. A select is case-blind (a stored
+ *  "fluent" shows as Fluent) and shows "Not set" rather than "Choose" when
+ *  nothing, or nothing it offers, is stored. */
+function languageValue(field: FieldDef, stored: unknown): string {
+  const value = fieldValue(field, stored);
+  if (field.type !== "select") return value;
+  return field.options?.find((o) => o.value.toLowerCase() === value.toLowerCase())?.value || NOT_SET.value;
+}
+
+/** One answer's control: a select over its options, or a text box. `onChange`
+ *  gets what to store; undefined ("Not set") removes the key. */
+function FieldControl({
+  id,
+  field,
+  value,
+  hintId,
+  onChange,
+}: {
+  id: string;
+  field: FieldDef;
+  value: string;
+  hintId?: string;
+  onChange: (next: string | boolean | undefined) => void;
+}) {
+  return field.type === "select" ? (
+    <Select
+      value={value}
+      onValueChange={(v) => onChange(v === NOT_SET.value ? undefined : storedFieldValue(field, v))}
+    >
+      <SelectTrigger id={id} size="sm" className="w-full" aria-describedby={hintId}>
+        <SelectValue placeholder="Choose">
+          {field.options?.find((o) => o.value === value)?.label}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {field.options?.map((o) => (
+          <SelectItem key={o.value} value={o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  ) : (
+    <Input
+      id={id}
+      className="h-8 text-body-medium"
+      value={value}
+      aria-describedby={hintId}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
 
 function educationList(profile: Profile): EducationEntry[] {
   const value = profile.education;
@@ -525,6 +630,7 @@ function AutofillEditor({
 
   const custom: CustomQA[] = Array.isArray(profile.custom) ? profile.custom : [];
   const education = educationList(profile);
+  const languages: LanguageEntry[] = Array.isArray(profile.languages) ? profile.languages : [];
 
   const updateProfile = (updater: (current: Profile) => Profile) => {
     editRevision.current += 1;
@@ -565,6 +671,11 @@ function AutofillEditor({
     updateProfile((current) => ({ ...current, education: next }));
   };
 
+  const setLanguages = (next: LanguageEntry[]) => {
+    setDirty(true);
+    updateProfile((current) => ({ ...current, languages: next }));
+  };
+
   const declineAllEeo = () => {
     const eeo = groupValues(profileRef.current, "eeo");
     const eeoFields = GROUPS.find((group) => group.key === "eeo")?.fields ?? [];
@@ -585,7 +696,7 @@ function AutofillEditor({
   };
 
   const saveConsent = useMutation({
-    mutationFn: (value: EeoConsent) =>
+    mutationFn: (value: EeoConsentUpdate) =>
       apiFetch<SettingEnvelope<EeoConsent>>("/api/settings/eeo-consent", {
         method: "PUT",
         body: JSON.stringify({ value }),
@@ -608,9 +719,9 @@ function AutofillEditor({
         description:
           "The Companion will fill race, ethnicity, gender, veteran and "
           + "disability questions using only your exact answers below. It never "
-          + "guesses and never uses AI for these. Tax-credit questions, "
-          + "signatures and legal statements stay with you. You can turn this "
-          + "off anytime.",
+          + "guesses and never uses AI for these. Tax-credit questions stay "
+          + "with you, and this doesn't cover signatures or legal statements. "
+          + "You can turn this off anytime.",
         confirmLabel: "Allow",
         consent: true,
       });
@@ -635,31 +746,31 @@ function AutofillEditor({
     );
   };
 
-  /** The second permission in the same record: may the extension tick the
-   *  application's OWN agreement boxes — "Yes, I have read and consent to the
-   *  terms and conditions" and its family.
+  /** The second permission in the same record: with it on, the extension's
+   *  label policy (extension/shared/policy.js) refuses nothing, so a fill may
+   *  complete every field — the application's own agreement boxes, and also
+   *  signatures, initials and typed-name attestations (owner's decision,
+   *  2026-09-26).
    *
    *  Asked for separately from the EEO opt-in on purpose. They are one thing
    *  to the user — what may this fill answer for me — and two decisions, and
    *  folding them into one switch would make enabling EEO fill also enable
    *  agreeing to terms, which nobody chose.
    *
-   *  What it does NOT unlock is in the confirm text, because it is the part
-   *  worth knowing: signatures and initials stay manual (producing your name
-   *  is an act, not an agreement), and passwords and government identifiers
-   *  are never filled at any setting. */
+   *  What it never does, at any setting, is in the confirm text: it never
+   *  moves to the next page and never submits. */
   const setConsentFormsEnabled = async (consentForms: boolean) => {
     if (consentForms) {
       const acknowledged = await confirm({
-        title: "Let the Companion tick agreement boxes?",
-        // Every family extension/shared/policy.js's CONSENT_FORMS unlocks.
+        title: "Let the Companion fill agreements and signatures?",
+        // Every family extension/shared/policy.js refuses without it.
         description:
-          "This covers an application's own agreement boxes: terms, "
-          + "acknowledgements, certifications, arbitration and waivers. It "
-          + "ticks a box. It never signs and never submits. "
-          + "Signatures, initials, passwords and government ID numbers are "
-          + "never filled, whatever you choose here. Check every form before "
-          + "you submit it. You can turn this off anytime.",
+          "With this on, the Companion can fill every field on an application "
+          + "form, including terms, acknowledgements, certifications, "
+          + "arbitration and waivers, signatures, initials and typed-name "
+          + "attestations. It never moves to the next page and never submits. "
+          + "Check every form before you submit it. You can turn this off "
+          + "anytime.",
         confirmLabel: "Allow",
         consent: true,
       });
@@ -671,14 +782,23 @@ function AutofillEditor({
         consent_forms: consentForms,
         acknowledged_at: consentForms ? null : consent.acknowledged_at,
         policy_version: consent.policy_version,
+        // The policy the confirm above describes; the server grants nothing else.
+        agreed_policy: consentForms ? AGREEMENT_POLICY : undefined,
       },
       {
-        onSuccess: () =>
-          toast.success(
-            consentForms
-              ? "The Companion can now tick agreement boxes"
-              : "The Companion won't tick agreement boxes",
-          ),
+        // The server may hold a yes off (it names an older policy than the
+        // server's), so the toast reads the saved value, not the request.
+        onSuccess: (result) => {
+          if (!consentForms) {
+            toast.success("The Companion won't fill agreements and signatures");
+          } else if (result.value.consent_forms) {
+            toast.success("The Companion can now fill agreements and signatures");
+          } else {
+            toast.warning(
+              "Agreements and signatures weren't turned on. Reload the page and try again.",
+            );
+          }
+        },
       },
     );
   };
@@ -738,6 +858,7 @@ function AutofillEditor({
   // focus goes to the Add button below the list.
   const armFocus = useFocusOnNextCommit();
   const addEducationRef = useRef<HTMLButtonElement>(null);
+  const addLanguageRef = useRef<HTMLButtonElement>(null);
   const addQuestionRef = useRef<HTMLButtonElement>(null);
   const fillHintId = useId();
   const declineHintId = useId();
@@ -794,12 +915,12 @@ function AutofillEditor({
           </legend>
           {/* A disabled button's reason is text, not a hover. */}
           {group.key === "personal" && !contactReady ? (
-            <p id={fillHintId} className="text-muted-foreground text-xs">
+            <p id={fillHintId} className="text-muted-foreground text-body-small">
               {resumeDisabledReason}
             </p>
           ) : null}
           {group.key === "eeo" ? (
-            <p id={declineHintId} className="text-muted-foreground text-xs">
+            <p id={declineHintId} className="text-muted-foreground text-body-small">
               Fills your blank diversity questions with “Decline to answer”. Select Save answers to keep it.
             </p>
           ) : null}
@@ -810,7 +931,7 @@ function AutofillEditor({
             // different KIND of act from typing one in, and a row that looks
             // like every other row does not say so.
             <CardSection className="border-primary/40 grid gap-3 border-l-2 px-3 py-2.5">
-              <p className="text-xs font-medium tracking-wide uppercase">
+              <p className="text-title-small">
                 Permission
               </p>
               <div className="flex items-center justify-between gap-4">
@@ -818,9 +939,9 @@ function AutofillEditor({
                   <Label htmlFor="eeo-standing-consent">
                     Let the Companion fill these answers
                   </Label>
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground text-body-small">
                     Uses only your exact answers below. Off by default. Tax-credit
-                    questions and signatures are always yours to fill.
+                    questions are always yours to fill.
                   </p>
                 </div>
                 <Switch
@@ -850,43 +971,17 @@ function AutofillEditor({
                     {field.label}
                   </Label>
                   {field.hint ? (
-                    <p id={hintId} className="text-muted-foreground text-xs">
+                    <p id={hintId} className="text-muted-foreground text-body-small">
                       {field.hint}
                     </p>
                   ) : null}
-                  {field.type === "select" ? (
-                    <Select
-                      value={value}
-                      onValueChange={(v) =>
-                        setField(
-                          group.key,
-                          field.key,
-                          storedFieldValue(field, v),
-                        )
-                      }
-                    >
-                      <SelectTrigger id={id} size="sm" className="w-full" aria-describedby={hintId}>
-                        <SelectValue placeholder="Choose">
-                          {field.options?.find((o) => o.value === value)?.label}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {field.options?.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>
-                            {o.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      id={id}
-                      className="h-8 text-sm"
-                      value={value}
-                      aria-describedby={hintId}
-                      onChange={(e) => setField(group.key, field.key, e.target.value)}
-                    />
-                  )}
+                  <FieldControl
+                    id={id}
+                    field={field}
+                    value={value}
+                    hintId={hintId}
+                    onChange={(next) => setField(group.key, field.key, next)}
+                  />
                 </div>
               );
             })}
@@ -897,7 +992,7 @@ function AutofillEditor({
 
       <fieldset className="space-y-4">
         <legend className={LEGEND}>Education</legend>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-body-small">
           Most recent first.
         </p>
         {education.map((entry, i) => (
@@ -910,7 +1005,7 @@ function AutofillEditor({
                     <Label htmlFor={id}>{field.label}</Label>
                     <Input
                       id={id}
-                      className="h-8 text-sm"
+                      className="h-8 text-body-medium"
                       value={entry[field.key] ?? ""}
                       onChange={(e) =>
                         setEducation(
@@ -945,8 +1040,58 @@ function AutofillEditor({
       </fieldset>
 
       <fieldset className="space-y-4">
+        <legend className={LEGEND}>Languages</legend>
+        <p className="text-muted-foreground text-body-small">
+          Most important first. The first four are used, and the Companion adds a
+          language to a form only when its reading, speaking and writing levels are all set.
+        </p>
+        {languages.map((entry, i) => (
+          <CardSection key={i} className="flex items-start gap-2">
+            <div className="grid flex-1 items-end gap-4 @xl/setting:grid-cols-3">
+              {LANGUAGE_FIELDS.map((field) => {
+                const id = `af-languages-${i}-${field.key}`;
+                return (
+                  <div key={field.key} className="grid gap-1.5">
+                    <Label htmlFor={id}>{field.label}</Label>
+                    <FieldControl
+                      id={id}
+                      field={field}
+                      value={languageValue(field, entry[field.key as keyof LanguageEntry])}
+                      onChange={(next) =>
+                        setLanguages(
+                          languages.map((entry2, j) =>
+                            j === i ? withAnswer(entry2, field.key, next) : entry2,
+                          ),
+                        )
+                      }
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <RemoveButton
+              label={`Remove language ${i + 1}`}
+              onClick={() => {
+                setLanguages(languages.filter((_, j) => j !== i));
+                armFocus(addLanguageRef);
+              }}
+            />
+          </CardSection>
+        ))}
+        <Button
+          ref={addLanguageRef}
+          variant="outline"
+          size="sm"
+          onClick={() => setLanguages([...languages, {}])}
+        >
+          <Plus className="size-4" />
+          Add language
+        </Button>
+      </fieldset>
+
+      <fieldset className="space-y-4">
         <legend className={LEGEND}>Your own questions</legend>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-body-small">
           Questions you get often, with your usual answers.
         </p>
         {custom.map((qa, i) => (
@@ -956,7 +1101,7 @@ function AutofillEditor({
                 <Label htmlFor={`af-custom-${i}-question`}>Question</Label>
                 <Input
                   id={`af-custom-${i}-question`}
-                  className="h-8 text-sm"
+                  className="h-8 text-body-medium"
                   aria-label={`Custom question ${i + 1}`}
                   value={qa.question}
                   onChange={(e) =>
@@ -972,7 +1117,7 @@ function AutofillEditor({
                 <Label htmlFor={`af-custom-${i}-answer`}>Answer</Label>
                 <Textarea
                   id={`af-custom-${i}-answer`}
-                  className="text-sm"
+                  className="text-body-medium"
                   rows={2}
                   aria-label={`Answer to custom question ${i + 1}`}
                   value={qa.answer}
@@ -1026,7 +1171,7 @@ function AutofillEditor({
 function AgreedOn({ consent }: { consent: EeoConsent }) {
   if (!consent.acknowledged_at) return null;
   return (
-    <p className="text-muted-foreground text-[11px]">
+    <p className="text-muted-foreground text-body-small">
       You agreed on {formatAbsoluteDateTime(consent.acknowledged_at)}
       {consent.policy_version ? ` (policy ${consent.policy_version})` : ""}
     </p>
@@ -1048,29 +1193,122 @@ function CompanionPermissions({
   pending: boolean;
   onChange: (consentForms: boolean) => void;
 }) {
+  const hintId = useId();
+  const lapsedId = useId();
   return (
     <CardSection className="border-primary/40 grid gap-3 border-l-2 px-3 py-2.5">
-      <p className="text-xs font-medium tracking-wide uppercase">
+      <p className="text-title-small">
         Companion permissions
       </p>
       <div className="flex items-center justify-between gap-4">
         <div className="grid gap-1">
           <Label htmlFor="consent-forms">
-            Let the Companion tick agreement boxes
+            Let the Companion fill agreements and signatures
           </Label>
-          <p className="text-muted-foreground text-xs">
-            Terms, certifications, arbitration and waiver boxes. It never signs
-            or submits, and never fills signatures, passwords or ID numbers.
+          <p id={hintId} className="text-muted-foreground text-body-small">
+            The Companion can fill every field, including terms boxes,
+            certifications, signatures and typed-name attestations. It never
+            moves to the next page or submits.
           </p>
+          {/* An agreement given under an older, narrower policy is served
+              off (consent_forms_lapsed); a yes now records the current one. */}
+          {consent.consent_forms_lapsed ? (
+            <p id={lapsedId} className="text-label-medium">
+              This now covers more than when you agreed. Turn it on again to
+              allow it.
+            </p>
+          ) : null}
         </div>
         <Switch
           id="consent-forms"
+          aria-describedby={
+            consent.consent_forms_lapsed ? `${hintId} ${lapsedId}` : hintId
+          }
           checked={consent.consent_forms}
           disabled={pending}
           onCheckedChange={onChange}
         />
       </div>
       {consent.consent_forms ? <AgreedOn consent={consent} /> : null}
+      <LowStakesSwitch />
     </CardSection>
+  );
+}
+
+/** Questions no answer of yours covers and whose answer barely matters, which
+ *  the Companion answers in the job's favor while this is on (off by
+ *  default). Its own setting, not the consent record: it is a preference,
+ *  not a permission to disclose or agree. The server re-reads it on every
+ *  fill (/map, /pick and /step), so this switch is the only way to turn it on. The
+ *  kinds, and the never list, are the backend's (`_LOW_STAKES`,
+ *  `_NEVER_LOW_STAKES` in backend/app/services/autofill_map.py). */
+function LowStakesSwitch() {
+  const qc = useQueryClient();
+  const hintId = useId();
+  const options = useQuery({
+    queryKey: ["settings", "autofill-options"],
+    queryFn: () => apiFetch<AutofillOptions>("/api/settings/autofill-options"),
+  });
+  const saveOptions = useMutation({
+    mutationFn: (value: AutofillOptions) =>
+      apiFetch<AutofillOptions>("/api/settings/autofill-options", {
+        method: "PUT",
+        body: JSON.stringify(value),
+      }),
+    onSuccess: (result) => {
+      qc.setQueryData(["settings", "autofill-options"], result);
+      toast.success(
+        result.low_stakes
+          ? "The Companion now answers low-stakes questions"
+          : "The Companion won't answer low-stakes questions",
+      );
+    },
+    onError: (err: Error) => toast.error(couldnt("save this setting", err)),
+  });
+  const saveOnce = useSingleFlight(saveOptions.mutate);
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="grid gap-1">
+        <Label htmlFor="low-stakes">Answer low-stakes questions for me</Label>
+        <div id={hintId} className="text-muted-foreground grid gap-1 text-body-small">
+          <p>
+            When none of your answers covers a question, the Companion answers
+            it in the job&apos;s favor. It does this for:
+          </p>
+          <ul className="list-disc ps-4">
+            <li>how you heard about the job and how to contact you</li>
+            <li>whether you&apos;d relocate, travel, work on site, or work shifts or overtime</li>
+            <li>whether you&apos;d take a drug test</li>
+            <li>openness to other roles</li>
+            <li>whether you&apos;re related to or used to work for the company</li>
+            <li>what you would do if you become employed by the company</li>
+            <li>consent to text and marketing messages</li>
+            <li>whether you have the experience and education the job description asks for</li>
+          </ul>
+          <p>It lists them under Answered for you, so you can check each one.</p>
+          <p>
+            It never guesses your education and work history, work
+            authorization, sponsorship, age, diversity questions, background
+            checks, security clearance, salary, or signatures.
+          </p>
+          <p>
+            Whether this is on or off, Fill may also answer some questions
+            from your work history. These ask about past employment by a kind
+            of organization (such as a government agency), a security clearance
+            or years of experience. Fill lists those for you to check too.
+          </p>
+        </div>
+        {options.isError ? (
+          <p className="text-label-medium">Couldn&apos;t load this setting.</p>
+        ) : null}
+      </div>
+      <Switch
+        id="low-stakes"
+        aria-describedby={hintId}
+        checked={options.data?.low_stakes ?? false}
+        disabled={!options.data}
+        onCheckedChange={(low_stakes) => saveOnce({ low_stakes })}
+      />
+    </div>
   );
 }

@@ -6,6 +6,9 @@
     "scripts.ats_calibration",
     "scripts.ats_snapshot",
     "scripts.backfill_work_auth",
+    "scripts.eval_fill_decisions",
+    "scripts.fill_trace",
+    "scripts.health_golden",
     "scripts.template_parity",
     "migrations.env",
     "app.tools.backup_db"

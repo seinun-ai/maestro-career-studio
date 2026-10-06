@@ -108,8 +108,17 @@ main(async () => {
     release();
     await settle();
   }
+  // A row opened again from the rail after everything landed.
+  let reopened = null;
+  if (spec.reopen !== undefined) {
+    const door = findById(REGIONS.rail, `stg-open-${spec.reopen}`);
+    if (!door) throw new Error(`no way back into the ${spec.reopen} row`);
+    door.click();
+    await settle();
+    reopened = regions();
+  }
   const facts = ns.panel.actionStore().read();
-  emit({ loaded, clicked, settled: regions(), sent, writes,
+  emit({ loaded, clicked, settled: regions(), reopened, sent, writes,
          statuses: statusButtons().map((button) => button.textContent),
          facts: {
            claimed: facts.claimed === true,
@@ -170,7 +179,7 @@ def _patches(out):
 def _track_body(regions):
     """The Track row's body, or None when the row has none."""
     rows = _by_class(regions["rail"], "stg")
-    bodies = _by_class(rows[4], "stg-body")
+    bodies = _by_class(rows[3], "stg-body")
     return bodies[0] if bodies else None
 
 
@@ -193,7 +202,7 @@ def test_the_journey_ends_on_the_track_row_and_the_body_says_where_you_are(draft
     """
     rows = _rows(_rail_rows({"regions": drafted["loaded"]}))
     assert rows["track"]["state"] == "active"
-    for done in ("job", "score", "resume", "fill"):
+    for done in ("job", "resume", "fill"):
         assert rows[done]["state"] == "done", done
     body = _track_body(drafted["loaded"])
     assert "Still a draft" in _text(body)
@@ -406,7 +415,7 @@ def test_the_track_this_state_is_not_contradicted_by_the_footer(tmp_path):
     assert loaded_rows["track"]["state"] == "active"
     # …and NOT ticked: a draft is on the Track step with the press still ahead
     # of it, which is what stops the tick from being "Track is always done".
-    assert loaded_rows["track"]["numeral"] == "5"
+    assert loaded_rows["track"]["numeral"] == "4"
     assert "not tracked yet" in _text(_track_body(out["loaded"]))
     assert _by_class(out["loaded"]["foot"], "cta") == []
     assert out["statuses"] == []
@@ -416,7 +425,7 @@ def test_the_track_this_state_is_not_contradicted_by_the_footer(tmp_path):
 
 def test_marking_it_applied_ends_the_rail(tmp_path):
     """The other half of "the whole surface moves", and the half it used to get
-    wrong: before `railModel` grew `ticked` the Track row kept its blue "5"
+    wrong: before `railModel` grew `ticked` the Track row kept its blue numeral
     forever, so finishing the entire journey looked like stopping half-way
     through the last step.
 
@@ -428,7 +437,7 @@ def test_marking_it_applied_ends_the_rail(tmp_path):
     settled = _track(tmp_path, press="Applied")["settled"]
     rows = _rows(_rail_rows({"regions": settled}))
     assert [rows[key]["numeral"] for key in
-            ("job", "score", "resume", "fill", "track")] == ["✓"] * 5
+            ("job", "resume", "fill", "track")] == ["✓"] * 4
     assert rows["track"]["state"] == "active"
 
 
@@ -714,6 +723,29 @@ def test_track_this_is_one_post_and_the_page_is_the_users_claim(tmp_path):
     assert written["jobId"] == "job-lightning"
     assert written["tenant"] == LIGHTNING_TENANT
     assert written["status"] == "draft"
+
+
+def test_armed_filled_then_tracked_stays_at_track(tmp_path):
+    """The rail never goes back to Resume once this extension filled the page
+    with an application bound (owner decision, 2026-09-27). Track-this makes
+    an application from the base with no PDF; the ladder used to read that as
+    "Resume not done" and send the user back to a step they had finished by
+    filling. Resume is skipped — never done — and Track stays the step."""
+    out = _track_this(tmp_path, reopen="resume")
+    rows = _rows(_rail_rows({"regions": out["settled"]}))
+    assert rows["track"]["state"] == "active"
+    assert rows["resume"]["state"] == "skipped"
+    assert rows["resume"]["numeral"] != "✓"
+    assert rows["fill"]["state"] == "done"
+    # The skipped row is a DOOR: the application still has no PDF, and Create
+    # PDF and Tailor in Maestro CS live in its body. Reopening ticks nothing.
+    reopened = out["reopened"]
+    body = next(n for n in _walk(reopened["rail"]) if n.get("id") == "stg-body-resume")
+    assert "This application's resume has no PDF yet." in _text(body)
+    assert _by_class(reopened["foot"], "cta")[0]["text"] == "Create PDF"
+    again = _rows(_rail_rows({"regions": reopened}))
+    assert (again["resume"]["state"], again["resume"]["numeral"]) == ("skipped", "2")
+    assert again["track"]["state"] == "active"
 
 
 def test_the_track_this_button_is_offered_when_the_job_is_already_in_the_library(

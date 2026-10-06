@@ -181,8 +181,43 @@ function detectPage() {
   if (SELF_ID_TEXT.test(text)) evidence.push(["self-identification", 2]);
   else if (EEO_BOILERPLATE.test(text)) evidence.push(["eeo-boilerplate", 0]);
 
+  // The knockout questions — age, work authorization, sponsorship — decisive
+  // on their own for the self-identification block's reason: they are asked of
+  // an applicant and nobody else. iCIMS's Candidate Questions step is three of
+  // them and a Submit button in the page's own iframe, and every other signal
+  // here is blind to it, so it scored 0 and the frame refused its own writes
+  // (live, Global Medical Response, 2026-10-01).
+  //
+  // ASKED, not mentioned. A job description's requirements carry every one of
+  // these words as statements ("must be authorized to work", "unable to offer
+  // sponsorship"), so the match is a question to "you" — opened by are / will /
+  // do / would / can you, with the subject reached before the sentence ends,
+  // and closed by a question mark. The tail may cross a period, because
+  // "(e.g., H-1B visa status)?" sits between the subject and the mark. No new
+  // read: this is the string the self-identification test already took.
+  const SCREENING_QUESTION = new RegExp(
+    String.raw`\b(?:are|will|do|would|can)\s+you\b[^.?!]{0,160}?`
+    + String.raw`\b(?:(?:eligible|authori[sz]ed|permitted)\s+(?:for\s+employment|to\s+work)`
+    + String.raw`|sponsorship|1[68]\s+years)\b[^?]{0,120}\?`, "i");
+  if (SCREENING_QUESTION.test(text)) evidence.push(["screening-question", 2]);
+
   if (present('#application_form, [data-ui="job-post"], [data-automation-id]')) {
     evidence.push(["ats-dom-marker", 1]);
+  }
+
+  // Workday's apply flow, by its ROUTE. Every step after Apply lives under
+  // `…/apply/…`, and nothing else on a tenant does — search and posting pages
+  // never carry it — so this is the flow and not the host, and the
+  // host-is-never-enough rule above still holds. It exists because the other
+  // signals cannot see these steps: Workday renders no <form> and no <select>
+  // (so the text gate below never opens and the self-identification block
+  // cannot count), its phone box is `type="text"` and My Information asks no
+  // email (so the identity cluster stops at two), and its button says "Save
+  // and Continue". Every step but the résumé upload used to score 1, and the
+  // panel withheld Fill over a full form (live, pg.wd5, 2026-09-25). A
+  // location read, not a DOM read, and only on a Workday host.
+  if (vendor === "workday" && /\/apply(\/|$)/i.test(location.pathname || "")) {
+    evidence.push(["workday-apply-route", 1]);
   }
 
   // Anchored at the start of the control's own text, so this means "the
@@ -190,9 +225,9 @@ function detectPage() {
   // reading fires on every "How to apply" heading on the web.
   //
   // `continue` is deliberately NOT here. It is the label on every wizard,
-  // checkout and onboarding step ever built, and it buys nothing: an ATS
-  // application step that says Continue also carries its vendor's DOM marker
-  // and its identity fields, so the page is already recognised without it.
+  // checkout and onboarding step ever built. An ATS application step that says
+  // Continue is recognised another way — its vendor's marker plus its identity
+  // fields, or, on Workday, where neither of those is enough, the apply route.
   const APPLY_TEXT = /^\s*(apply|submit application)\b/i;
   let affordance = false;
   for (const el of document.querySelectorAll(
@@ -226,6 +261,38 @@ function detectPage() {
 }
 // ---- end detectPage ----
 
+/** How many on-screen fields this frame has that a fill could answer.
+ *
+ * NOT PART OF `detectPage`, and never on its miss path: the panel asks for it
+ * (`detect_page`, content/agent.js) to decide one thing, whether a later step
+ * of an application already confirmed on this host is a form (`askDetect`'s
+ * flow rule, panel.js). Those steps, iCIMS's EEO and Candidate Questions, are
+ * a few selects and a Submit and score nothing above. Search boxes do not
+ * count, so a careers search page reached after the last step does not offer
+ * Autofill over its keyword box. Capped: the answer only has to be "more than
+ * none". */
+function fillableControls() {
+  const CAP = 20;
+  const SEARCH_NAME = /^(q|query)$|search|keyword/i;
+  const SKIPPED_TYPES = ["hidden", "submit", "button", "reset", "image", "search", "password"];
+  let count = 0;
+  for (const el of document.querySelectorAll(
+    'input, select, textarea, [role="combobox"], [role="radio"], [role="checkbox"]')) {
+    const type = (el.getAttribute("type") || "text").toLowerCase();
+    if (el.tagName === "INPUT" && SKIPPED_TYPES.includes(type)) continue;
+    const words = ["name", "id", "aria-label", "placeholder"].map((key) => el.getAttribute(key) || "");
+    if (words.some((word) => SEARCH_NAME.test(word))
+        || el.getAttribute("role") === "searchbox"
+        || el.closest?.('[role="search"]')) continue;
+    const onScreen = el.offsetWidth || el.offsetHeight || el.getClientRects?.().length;
+    if (el.disabled || el.readOnly || el.getAttribute("aria-disabled") === "true"
+        || !onScreen) continue;
+    count += 1;
+    if (count >= CAP) break;
+  }
+  return count;
+}
+
 
 // ============================================================
 // WHAT THIS FILE PUBLISHES
@@ -257,4 +324,5 @@ function detectPage() {
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   ns.detectPage = detectPage;
+  ns.fillableControls = fillableControls;
 })();

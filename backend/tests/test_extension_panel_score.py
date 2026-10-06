@@ -1,11 +1,13 @@
-"""The SCORE stage: every base ranked, and one of them picked.
+"""The Job step's BASE QUESTION (the Score stage until it merged into Job,
+2026-09-27): every base ranked, the best one chosen, and another one picked.
 
-The ranked list is the RANKING and never the library order; the pick is the
-user's answer and completes the stage, is written down scoped to the tenant it
-was made on, and comes back on the next page of the wizard; `sessionEntryFrom`
-is driven as a table against the widget's own field list, because the two
-surfaces read ONE entry; and `scoreAllBases` is driven through its busy,
-failure, race and success paths.
+The ranked list is the RANKING and never the library order; the scored best is
+preselected and closes the step, visibly, on the Job row's summary; a pick is
+the user's override, is written down scoped to the tenant it was made on, and
+comes back on the next page of the wizard; `sessionEntryFrom` is driven as a
+table against the widget's own field list, because the two surfaces read ONE
+entry; and `scoreAllBases` is driven through the save, the open, the retry, and
+its busy, failure, race and success paths.
 
 THE APPARATUS IS `tests/extension_panel_harness.py` — the faked `chrome`, the
 faked document tree, the DOM readers and the spec starters every stage driver
@@ -38,6 +40,7 @@ from tests.extension_panel_harness import (
     SCORE_RESUMES,
     SCORE_ROWS,
     SETTINGS_REPLY,
+    _armed_entry,
     _by_class,
     _load,
     _PANEL_FAKES_JS,
@@ -51,10 +54,10 @@ from tests.extension_panel_harness import (
 
 # Read for ONE assertion: that the ranked list is fed by the SHARED ranking
 # rather than by a second copy that happened to arrive sorted.
-SCORE_BODY_CODE = js_code(_panel_script("stages/score.js"))
+SCORE_BODY_CODE = js_code(_panel_script("stages/job.js"))
 
 
-# ---------- the Score stage: every base ranked, and one of them picked ----------
+# ---------- the base list: every base ranked, and one of them picked ----------
 #
 # Three separable things again: what the list SHOWS (the shared ranking, whose
 # order is presentation and whose numbers are the backend's), what a pick DOES
@@ -62,20 +65,34 @@ SCORE_BODY_CODE = js_code(_panel_script("stages/score.js"))
 # compute call this surface makes does while it is open.
 
 _SCORE_STAGE_DRIVER_JS = _PANEL_FAKES_JS + r"""
-loadModules();
+const ns = loadModules();
 const baseRows = () => withClass(REGIONS.rail, "baserow");
 main(async () => {
   await settle();
+  // A done row opened again from the rail, by the id the rail stamps on it:
+  // a scored job's Job step is done on arrival, so its base list is a reopen
+  // away.
+  if (spec.reopen !== undefined) {
+    const door = findById(REGIONS.rail, `stg-open-${spec.reopen}`);
+    if (!door) throw new Error(`no way back into the ${spec.reopen} row`);
+    door.click();
+    await settle();
+  }
   const loaded = regions();
   let picked = null;
+  let focusedAfterPick = null;
   if (spec.pick !== undefined) {
     // Clicked by INDEX in the rendered order, which is the only order a user
     // has: naming the slug here would let a wrongly ordered list still pass.
     const row = baseRows()[spec.pick];
     if (!row) throw new Error(`no base row at index ${spec.pick}`);
+    // FOCUSED, then pressed, as a browser does: the pick closes the body the
+    // row lived in, so where focus goes next is part of what a pick does.
+    row.focus();
     row.click();
     await settle();
     picked = regions();
+    focusedAfterPick = document.activeElement?.id ?? null;
   }
   let clicked = null;
   if (spec.click === true) {
@@ -84,21 +101,24 @@ main(async () => {
     // before its first await, so this is the surface as the user sees it while
     // the scoring is open.
     clicked = regions();
-    if (spec.switchTo !== undefined) {
-      await onActivated({ tabId: spec.switchTo });
-      await settle();
-    }
-    release();
+  }
+  // A held scorer — pressed, or asked on open — and the user free to leave
+  // while it is out.
+  if (spec.switchTo !== undefined) {
+    await onActivated({ tabId: spec.switchTo });
     await settle();
   }
-  emit({ loaded, picked, clicked, settled: regions(), sent, writes });
+  release();
+  await settle();
+  emit({ loaded, picked, focusedAfterPick, clicked, settled: regions(), sent, writes,
+         scores: ns.panel.actionStore().read().scores, warnings });
 });
 """
 
 
 def _score(tmp_path, **spec):
-    """Boot on a posting the library already knows, with nothing picked yet —
-    which is exactly what the Score stage is."""
+    """Boot on a posting the library already knows, with nothing picked yet:
+    the Job step's base question, answered by the ranking's scored best."""
     spec.setdefault("tabs", [{"id": 7, "url": POSTING_URL}])
     spec.setdefault("replies", {"read_settings": SETTINGS_REPLY})
     api = {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
@@ -125,7 +145,7 @@ def test_the_ranked_list_is_the_ranking_and_never_the_library_order(tmp_path):
     last — "not scored yet" is not a bad score, and sorting it as one would be
     the panel inventing a judgement.
     """
-    out = _score(tmp_path)
+    out = _score(tmp_path, reopen="job")
     assert _base_rows(out["loaded"]["rail"]) == [
         ("AI/ML Engineer 72", "score good"),   # 71.8, rounded, and the best
         ("Data Scientist 64", "score"),        # 63.6
@@ -151,8 +171,8 @@ def test_the_ranked_list_is_fed_by_the_shared_ranking(tmp_path):
     accident: a list that happened to arrive sorted would pass the test above
     while owning a second, drifting copy of the ranking rule. There is one
     ranking, it lives in `shared/decisions.js`, and the body reads it."""
-    body = SCORE_BODY_CODE[SCORE_BODY_CODE.index("function scoreBody("):
-                           SCORE_BODY_CODE.index("ns.panelStageScore")]
+    body = SCORE_BODY_CODE[SCORE_BODY_CODE.index("function baseBody("):
+                           SCORE_BODY_CODE.index("ns.panelStageJob")]
     assert "rankBaseResumes(ctx.facts.resumes, ctx.facts.scores)" in body
 
 
@@ -161,29 +181,35 @@ def picked(tmp_path_factory):
     """The second row clicked: `data_scientist`, which is neither the library's
     first row nor the ranking's best. Every assertion below distinguishes the
     user's answer from both."""
-    return _score(tmp_path_factory.mktemp("panel_pick"), pick=1)
+    return _score(tmp_path_factory.mktemp("panel_pick"), reopen="job", pick=1)
 
 
 def test_a_pick_is_the_users_answer_and_the_ranking_never_argues_with_it(picked):
-    """Clicking a row is the Score stage's whole point, and the stage completes
-    BECAUSE the user answered — not because the numbers arrived.
+    """The ranking's best answers the Job step's base question on arrival; a
+    click on another row in the reopened list is the user overriding it.
 
     `loadBaseScores` moves `baseSlug` by ranking and leaves `baseSelected`
-    alone for exactly this reason; the click is what sets it. So the rail moves
-    on, the Before ring becomes the picked resume's composite (72 is the
-    ranking's answer and 64 is the user's — the two are different numbers on
-    purpose), and the list goes with the step it belonged to.
+    alone; the click is what sets it, so the next score read cannot slide off
+    it. The Before ring and the Job row's summary become the picked resume's
+    composite (72 is the ranking's answer and 64 is the user's — the two are
+    different numbers on purpose), and the reopened list closes: the question
+    it was reopened to ask is answered.
     """
     ring = _by_class(picked["loaded"]["identity"], "ring")[0]["text"]
     assert ring == "72"                                    # before the click
     after = picked["picked"]
     assert _by_class(after["identity"], "ring")[0]["text"] == "64"
     rows = _rows(_rail_rows({"regions": after}))
-    assert rows["score"]["state"] == "done"
+    assert rows["job"]["state"] == "done"
+    assert rows["job"]["summary"] == "Data Scientist · 64"
     assert rows["resume"]["state"] == "active"
     # A done row is a tick and a summary: nothing offers the choice again one
     # line under the panel's own claim that it was made.
     assert _by_class(after["rail"], "baserow") == []
+    # The row the user pressed went with the body, so focus is handed to the
+    # Job row's door, the control that opened it, rather than dropped on the
+    # document.
+    assert picked["focusedAfterPick"] == "stg-open-job"
 
 
 def test_the_pick_is_written_down_scoped_to_the_tenant_it_was_made_on(picked):
@@ -257,6 +283,234 @@ def test_a_base_picked_on_another_company_is_refused_on_this_one(picked, tmp_pat
     assert _by_class(out["regions"]["identity"], "title")[0]["text"] == (
         "job-boards.greenhouse.io")
     assert [ring["text"] for ring in _by_class(out["regions"]["identity"], "ring")] == ["–"]
+
+
+# ---------- Job saves and scores: the base question answered in one step ------
+#
+# Score is merged into Job (owner decision, 2026-09-27). The Job step is done
+# when the job is saved AND a base is chosen, and the ranking's scored best,
+# preselected, counts as chosen: it is on the Job row's summary, and the row
+# reopens onto the ranked list to pick another.
+
+
+def _posted(out):
+    return [msg["path"] for msg in out["sent"] if msg["type"] == "api"
+            and (msg.get("init") or {}).get("method") == "POST"]
+
+
+def test_a_scored_job_opens_with_the_best_base_chosen_and_the_job_step_done(tmp_path):
+    out = _score(tmp_path)
+    rows = _rows(_rail_rows({"regions": out["loaded"]}))
+    assert list(rows) == ["job", "resume", "fill", "track"]
+    assert [row["numeral"] for row in rows.values()] == ["✓", "2", "3", "4"]
+    assert rows["job"]["state"] == "done"
+    assert rows["job"]["summary"] == "AI/ML Engineer · 72"
+    assert rows["resume"]["state"] == "active"
+    # Already scored, so nothing is computed on open.
+    assert _posted(out) == []
+
+
+def test_an_automatic_score_that_fails_is_quiet_and_asked_once(tmp_path):
+    """Nobody pressed anything, so a failure is not a red sentence: the list
+    says it is not scored and names the retry, the footer's Update scores. A
+    re-read that finds no scores again must not ask again (one POST)."""
+    out = _score(tmp_path, api={"GET /api/ats-scores": _reply([])})
+    assert _posted(out) == ["/api/ats-scores"]
+    settled = out["settled"]
+    assert _rows(_rail_rows({"regions": settled}))["job"]["state"] == "active"
+    [cta] = _by_class(settled["foot"], "cta")
+    assert (cta["text"], cta["disabled"]) == ("Update scores", False)
+    [note] = _by_class(settled["foot"], "note")
+    assert (note["text"], note["class"]) == ("", "note")
+    assert _by_class(settled["rail"], "sub")[0]["text"] == (
+        "Not scored for this job yet. Select Update scores below.")
+
+
+_AUTO_SCORE_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+const posts = () => sent.filter((msg) => (msg.init || {}).method === "POST"
+                                && msg.path === "/api/ats-scores").length;
+main(async () => {
+  await settle();
+  const out = { loadPosts: posts() };
+  if (spec.noteWhileHeld !== undefined) {
+    // A note already in the slot while the automatic score is out.
+    ns.panel.actionStore().write({ note: { text: spec.noteWhileHeld } });
+    release();
+    await settle();
+    out.note = withClass(REGIONS.foot, "note")[0].textContent;
+  }
+  if (spec.roundTrip === true) {
+    await onActivated({ tabId: 42 });
+    await settle();
+    await onActivated({ tabId: 7 });
+    await settle();
+    out.roundTripPosts = posts();
+  }
+  if (spec.busyLoad === true) {
+    const store = ns.panel.actionStore();
+    store.write({ busy: "fill" });
+    await store.loadBaseScores(store.token());
+    await settle();
+    out.busyPosts = posts();
+  }
+  out.warnings = warnings;
+  emit(out);
+});
+"""
+
+
+def _auto(tmp_path, **spec):
+    tmp_path.mkdir(exist_ok=True)
+    spec.setdefault("tabs", [{"id": 7, "url": POSTING_URL}])
+    spec.setdefault("replies", {"read_settings": SETTINGS_REPLY})
+    api = {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                  "application": None}),
+           "/api/base-resumes": _reply(SCORE_RESUMES),
+           "GET /api/ats-scores": _reply([])}
+    api.update(spec.pop("api", {}))
+    return run_node(_AUTO_SCORE_DRIVER_JS, {**spec, "api": api}, tmp_path,
+                    source=PANEL_SOURCE)
+
+
+def test_an_automatic_score_never_wipes_a_note_already_there(tmp_path):
+    failed = _auto(tmp_path / "failed", hold=["POST /api/ats-scores"],
+                   noteWhileHeld="Kept.")
+    scored = _auto(tmp_path / "scored", hold=["POST /api/ats-scores"],
+                   noteWhileHeld="Kept.",
+                   api={"POST /api/ats-scores": _reply(SCORE_ROWS)})
+    assert failed["note"] == "Kept."
+    assert scored["note"] == "Kept."
+
+
+def test_leaving_and_coming_back_does_not_score_the_job_again(tmp_path):
+    """Once per panel, not once per page: the job's id is remembered across a
+    tab round trip, so a failing scorer is not asked on every return."""
+    out = _auto(tmp_path, roundTrip=True, tabUrls={"42": "chrome://settings",
+                                                   "7": POSTING_URL})
+    assert out["loadPosts"] == 1
+    assert out["roundTripPosts"] == 1
+
+
+def test_nothing_is_scored_automatically_beside_an_application_an_armed_base_or_a_run(
+        tmp_path):
+    bound = _auto(tmp_path / "bound", api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft"}}),
+        "/api/applications/app-1": _reply({"pdf_path": "r.pdf", "status": "draft"})})
+    armed = _auto(tmp_path / "armed", stored={"widget.session": _armed_entry()})
+    # The load's own scores read fails (so nothing is asked then); the second
+    # read, made while a fill runs, finds no scores and must still not ask.
+    busy = _auto(tmp_path / "busy", busyLoad=True, api={"GET /api/ats-scores": [
+        {"ok": False, "error": "boom", "status": 500}, _reply([])]})
+    assert bound["loadPosts"] == 0
+    assert armed["loadPosts"] == 0
+    assert busy["busyPosts"] == 0
+
+
+BOUND_TO_DATA_SCIENTIST = _reply({
+    "match": "exact", "job": LIGHTNING_JOB,
+    "application": {"id": "app-1", "status": "draft", "base_resume": "data_scientist"}})
+
+
+def test_a_bound_applications_job_row_is_read_only_and_names_its_own_base(tmp_path):
+    """With an application bound, its own base answered the question, so the
+    reopened Job row says which base it was tailored from and the ranked list
+    is information only: no pick, and the Before ring does not move. The
+    ranking's best (AI/ML Engineer, 72) is not what the application used."""
+    out = _score(tmp_path, reopen="job", api={
+        "lightningai": BOUND_TO_DATA_SCIENTIST,
+        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
+                                           "status": "draft"})})
+    body = _by_class(out["loaded"]["rail"], "stg-body")[0]
+    # Neutral: the panel cannot tell a tailored resume from the base unchanged
+    # (a track-this application), so it names the base and nothing more.
+    assert _by_class(body, "sub")[0]["text"] == "Resume from Data Scientist · 64"
+    rows = _by_class(body, "baserow")
+    assert [_text(row) for row in rows] == [
+        "AI/ML Engineer 72", "Data Scientist 64", "Backend Engineer not scored"]
+    # Information, not a control: no button, no radio, nothing to press (the
+    # harness's fake refuses a click on a node with no listener, so a row
+    # that grew one would be caught by any driver that pressed it).
+    assert {row["tag"] for row in rows} == {"DIV"}
+    assert all("role" not in row["attrs"] for row in rows)
+    assert all(node["tag"] != "BUTTON" for row in rows for node in _walk(row))
+    assert _by_class(out["loaded"]["identity"], "ring")[0]["text"] == "64"
+
+
+def test_with_no_application_the_reopened_list_is_still_a_pick(tmp_path):
+    """The other case: nothing bound, so the list is a radiogroup of buttons
+    and a click is the user's choice."""
+    out = _score(tmp_path, reopen="job")
+    body = _by_class(out["loaded"]["rail"], "stg-body")[0]
+    rows = _by_class(body, "baserow")
+    assert {row["tag"] for row in rows} == {"BUTTON"}
+    assert {row["attrs"]["role"] for row in rows} == {"radio"}
+    assert "Resume from" not in _text(body)
+
+
+_PAINTS_DRIVER_JS = _PANEL_FAKES_JS + r"""
+loadModules();
+// Every rail paint, with the chip the header painted in the same render and
+// the row that was active in it.
+const paints = [];
+const replace = REGIONS.rail.replaceChildren.bind(REGIONS.rail);
+REGIONS.rail.replaceChildren = (...kids) => {
+  replace(...kids);
+  const keys = ["job", "resume", "fill", "track"];
+  const rows = withClass(REGIONS.rail, "stg");
+  const active = rows.findIndex((row) => row.className.split(" ").includes("active"));
+  const chip = withClass(REGIONS.identity, "chip")[0];
+  const text = (node) => [node.textContent, ...node.children.map(text)].join(" ");
+  paints.push({ chip: chip ? chip.textContent : null, active: keys[active] ?? null,
+                noPdf: text(REGIONS.rail).includes("no PDF yet") });
+};
+main(async () => {
+  await settle();
+  emit({ paints });
+});
+"""
+
+
+def test_a_saved_and_scored_job_never_paints_the_job_step_as_current(tmp_path):
+    """Scores are a stage input (`baseChosen`), so a saved, unbound job's
+    scores are read BEFORE the render that follows the match: without that,
+    the rail showed Job for one round trip and then jumped to Resume. The only
+    earlier paint is the pre-match one, which knows nothing about the page
+    yet and carries no chip."""
+    out = run_node(_PAINTS_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "api": {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                       "application": None}),
+                "/api/base-resumes": _reply(SCORE_RESUMES),
+                "GET /api/ats-scores": _reply(SCORE_ROWS)},
+    }, tmp_path, source=PANEL_SOURCE)
+    matched = [paint for paint in out["paints"] if paint["chip"] is not None]
+    assert matched, out["paints"]
+    assert {paint["active"] for paint in matched} == {"resume"}, out["paints"]
+
+
+def test_a_bound_application_with_its_pdf_never_paints_a_no_pdf_resume_step(tmp_path):
+    """The application's detail read is what says it has a PDF, so it lands
+    before the render that paints the matched page: painted first, the rail
+    showed Resume with "no PDF yet" and a live Create PDF for one round trip,
+    then jumped to Fill."""
+    out = run_node(_PAINTS_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "api": {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                       "application": {"id": "app-1", "status": "draft",
+                                                       "base_resume": "data_scientist"}}),
+                "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
+                                                   "status": "draft"}),
+                "/api/base-resumes": _reply(SCORE_RESUMES),
+                "GET /api/ats-scores": _reply(SCORE_ROWS)},
+    }, tmp_path, source=PANEL_SOURCE)
+    matched = [paint for paint in out["paints"] if paint["chip"] is not None]
+    assert matched, out["paints"]
+    assert {paint["active"] for paint in matched} == {"fill"}, out["paints"]
+    assert not any(paint["noPdf"] for paint in out["paints"]), out["paints"]
 
 
 # ---------- restorableSession: may this memory be used on THIS page? --------
@@ -572,7 +826,7 @@ def test_provenance_rides_the_application_id_and_never_a_field_of_its_own(entrie
 
 
 def test_an_entry_with_no_application_is_still_a_wholeentry(entries):
-    """The Score stage's ordinary case: a base picked BEFORE anything has been
+    """The Job step's ordinary case: a base picked BEFORE anything has been
     tailored. `applicationId` is null and every other field still says what it
     knows — the pick, the job it was made for, and the tenant it belongs to."""
     assert entries["picked"]["applicationId"] is None
@@ -590,46 +844,46 @@ def test_a_url_with_no_tenant_identity_is_not_written_at_all(entries):
 
 
 def test_score_all_bases_is_the_one_compute_call_and_it_says_what_it_found(tmp_path):
-    """The only thing on this surface that asks the backend to COMPUTE, which
-    is why it is a button: scoring every base resume against this job on every
-    panel open would spend the user's backend on a question they had not asked.
-
-    Its answer IS the scores — `POST` and `GET /api/ats-scores` both return the
-    same rows — so nothing is re-read afterwards, which is the one place this
-    action diverges from `addJob`'s shape.
+    """The only thing on this surface that asks the backend to COMPUTE, and a
+    cheap one: the deterministic ATS engine, one local pass per base resume.
+    A saved job that no base has a score for is scored when its Job step
+    opens, with no press, and its answer IS the scores — `POST` and `GET
+    /api/ats-scores` return the same rows — so nothing is re-read afterwards.
     """
-    out = _score(tmp_path, click=True, hold=["POST /api/ats-scores"], api={
+    out = _score(tmp_path, hold=["POST /api/ats-scores"], api={
         "GET /api/ats-scores": _reply([]),
         "POST /api/ats-scores": _reply(SCORE_ROWS)})
-    # Before: the job is in the library and NOTHING is scored, which is the
-    # state the button exists for. Every row says so in words, never as a zero.
-    assert _base_rows(out["loaded"]["rail"]) == [
+    # While it is open: the job is in the library and NOTHING is scored yet.
+    # Every row says so in words, never as a zero, the line under them says
+    # the scorer is running, and the step's primary spins out of reach.
+    loaded = out["loaded"]
+    assert _rows(_rail_rows({"regions": loaded}))["job"]["state"] == "active"
+    assert _base_rows(loaded["rail"]) == [
         ("Backend Engineer not scored", "score"),
         ("Data Scientist not scored", "score"),
         ("AI/ML Engineer not scored", "score"),
     ]
-    assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
-        "Not scored for this job yet. Select Score base resumes below.")
-    # While it is open: out of reach, and saying so.
-    [cta] = _by_class(out["clicked"]["foot"], "cta")
-    assert cta["disabled"] is True
-    assert cta["class"] == "cta spin"
+    assert _by_class(loaded["rail"], "sub")[0]["text"] == (
+        "Scoring your base resumes for this job.")
+    [cta] = _by_class(loaded["foot"], "cta")
+    assert (cta["text"], cta["class"], cta["disabled"]) == (
+        "Update scores", "cta spin", True)
     # The widget's endpoint and body, unchanged — a panel that invented a route
     # would 404 in the browser and pass here.
     [post] = [msg for msg in out["sent"] if msg["type"] == "api"
               and (msg.get("init") or {}).get("method") == "POST"]
     assert post["path"] == "/api/ats-scores"
     assert json.loads(post["init"]["body"]) == {"job_id": "job-lightning"}
-    # After: the answer is the ranking, and the note names what it found.
+    # After: the best base is chosen, named on the Job row and in the note,
+    # and the rail moves on with no press.
     settled = out["settled"]
-    assert _base_rows(settled["rail"])[0] == ("AI/ML Engineer 72", "score good")
+    rows = _rows(_rail_rows({"regions": settled}))
+    assert rows["job"]["summary"] == "AI/ML Engineer · 72"
+    assert rows["resume"]["state"] == "active"
     assert _by_class(settled["identity"], "ring")[0]["text"] == "72"
     [note] = _by_class(settled["foot"], "note")
     assert note["text"] == "Best match: AI/ML Engineer (ATS score 72)."
     assert note["class"] == "note"
-    # Scoring is not answering: the stage still asks, because the pick is the
-    # user's and the numbers only make it an informed one.
-    assert _rows(_rail_rows({"regions": settled}))["score"]["state"] == "active"
 
 
 def test_a_score_that_fails_hands_the_button_back_and_says_why(tmp_path):
@@ -675,6 +929,68 @@ def test_a_refused_score_says_the_next_step_by_status(tmp_path, status, error, s
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == f"Couldn't score your base resumes. {step}"
     assert note["class"] == "note error"
+
+
+
+# The backend's two refusals of a job it cannot score yet (both 422): no
+# skills in the description (`normalize_jd`), or no description read at all
+# (`get_scorable_job`). Both are ordinary states of a saved job, so the panel
+# explains them and does not log them as faults.
+NO_SKILLS = ("No skills were found in this job's description. Check the description, "
+             "then choose Refresh details.")
+NOT_READ = "This job's description hasn't been read yet. Choose Refresh details on the job page."
+REFRESH_STEP = "Open the job in Maestro CS and choose Refresh details."
+
+
+@pytest.mark.parametrize("error", [NO_SKILLS, NOT_READ])
+def test_a_job_the_scorer_cannot_read_says_where_to_refresh_it(tmp_path, error):
+    """"Choose Refresh details" names a control the panel does not have, so the
+    panel says where it is. An expected refusal is not a warning: Chrome lists
+    an extension page's warnings under chrome://extensions → Errors."""
+    out = _score(tmp_path, click=True, api={
+        "GET /api/ats-scores": _reply([]),
+        "POST /api/ats-scores": {"ok": False, "error": error, "status": 422}})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == f"Couldn't score your base resumes. {REFRESH_STEP}"
+    assert out["warnings"] == []
+
+
+def test_an_unexpected_score_failure_is_still_logged(tmp_path):
+    out = _score(tmp_path, click=True, api={
+        "GET /api/ats-scores": _reply([]),
+        "POST /api/ats-scores": {"ok": False, "error": "boom", "status": 500}})
+    assert len(out["warnings"]) == 1
+    assert "boom" in out["warnings"][0]
+
+
+def test_the_automatic_score_is_silent_about_a_job_it_cannot_read(tmp_path):
+    """The on-open score is nobody's press: no note and no warning."""
+    out = _auto(tmp_path, api={
+        "POST /api/ats-scores": {"ok": False, "error": NO_SKILLS, "status": 422}})
+    assert out["loadPosts"] == 1
+    assert out["warnings"] == []
+
+
+def test_the_panel_recognises_the_backends_own_unreadable_job_sentences():
+    """ONE sentence, two languages: the panel matches the backend's refusal
+    text, so the pin reads it from the backend rather than from a copy."""
+    from app.services.ats.jd_normalizer import normalize_jd
+    from app.services.ats_score import get_scorable_job
+
+    with pytest.raises(ValueError) as no_skills:
+        normalize_jd({"skills": []})
+
+    class _Session:
+        def get(self, _model, _id):
+            return type("Job", (), {"extracted_json": None})()
+
+    with pytest.raises(ValueError) as not_read:
+        get_scorable_job(_Session(), "job-1")
+    job_js = (EXTENSION / "panel" / "actions" / "job.js").read_text(encoding="utf-8")
+    literal = _regex_literal(job_js, "UNREADABLE_JOB")
+    pattern = re.compile(literal[1:literal.rindex("/")])
+    for sentence in (str(no_skills.value), str(not_read.value), NO_SKILLS, NOT_READ):
+        assert pattern.search(sentence), sentence
 
 
 def _regex_literal(source, name):
@@ -738,10 +1054,8 @@ def test_a_score_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_path
     assert [n for n in _walk(settled["foot"]) if "spin" in str(n.get("class"))] == []
 
 
-# The state the merge exists for: a job with a TAILORED application whose base
-# has not been picked. `stageFor` puts that on Score — the pick is missing, and
-# nothing about having tailored once answers it — so the Score-all button is in
-# reach on a page that is already showing a Before -> After pair.
+# A tailored application's score row beside the base rows, as the GET returns
+# it, and a re-score that answers for the bases alone.
 TAILORED_ROW = {"target_type": "application", "target_id": "app-1",
                 "phase": "tailored", "composite": 84.2, "engine_version": "ats-2.3.0"}
 RESCORED_ROWS = [
@@ -752,35 +1066,27 @@ RESCORED_ROWS = [
 ]
 
 
-def test_scoring_the_bases_again_never_costs_the_tailored_ring(tmp_path):
+def test_scoring_the_bases_again_never_costs_the_tailored_row(tmp_path):
     """`card.scores` has TWO consumers where the widget's had one.
 
     `POST /api/ats-scores` runs `score_all_bases`, which returns BASE rows only
-    (backend/app/services/ats_score.py:128 — one `score_target(…,
-    "base_resume", …)` per slug). The GET returns `latest_scores` for every
-    target on the job, the tailored application included. The two are
-    schema-equal and the POST's answer is a SUBSET — which is exactly why "the
-    POST's answer IS the scores" reads true and is not: the ranking is one
-    reader of that array and `renderAts`' After ring is the other. Replacing it
-    wholesale deletes the tailored composite and puts "tailor to raise it"
-    beside an application that already was, until the next navigation.
+    (backend/app/services/ats_score.py — one `score_target(…, "base_resume",
+    …)` per slug). The GET returns `latest_scores` for every target on the
+    job, a tailored application included. The POST's answer is a SUBSET, so
+    replacing the array wholesale would delete the tailored composite the
+    After ring reads. Update scores is offered only with no application bound
+    (a bound one's Job row is read-only), so the row is asserted in the store.
     """
-    out = _score(tmp_path, click=True, api={
-        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
-                               "application": {"id": "app-1", "status": "draft"}}),
-        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
-                                           "status": "draft"}),
+    out = _score(tmp_path, reopen="job", click=True, api={
         "GET /api/ats-scores": _reply([*SCORE_ROWS, TAILORED_ROW]),
         "POST /api/ats-scores": _reply(RESCORED_ROWS)})
-    assert [ring["text"] for ring in _by_class(out["loaded"]["identity"], "ring")] == [
-        "72", "84"]
     settled = out["settled"]
     # The base number moved, because that is what was re-scored…
     assert _base_rows(settled["rail"])[0] == ("AI/ML Engineer 75", "score good")
-    # …and the tailored one survived, because nothing re-scored it.
-    assert [ring["text"] for ring in _by_class(settled["identity"], "ring")] == ["75", "84"]
-    assert _by_class(settled["identity"], "delta")[0]["text"] == "+9"
-    assert "tailor to raise it" not in _text(settled["identity"])
+    # …and the tailored row survived, because nothing re-scored it.
+    assert TAILORED_ROW in out["scores"]
+    assert [row for row in out["scores"] if row["target_type"] == "base_resume"] == (
+        RESCORED_ROWS)
 
 
 def test_the_count_is_of_the_rows_the_ranking_shows(tmp_path):
@@ -792,7 +1098,7 @@ def test_the_count_is_of_the_rows_the_ranking_shows(tmp_path):
     listing it. Those rows are not counted, are not rendered, and cannot be
     picked, so a count over them would name a number nobody can see.
     """
-    out = _score(tmp_path, api={"GET /api/ats-scores": _reply([
+    out = _score(tmp_path, reopen="job", api={"GET /api/ats-scores": _reply([
         *SCORE_ROWS,
         # Retired from the library, still scored, and scored by an older
         # engine — the exact row a wider scan would trip over.
@@ -835,12 +1141,12 @@ def test_an_unscored_header_says_so_as_a_sentence(tmp_path):
     assert [hint["text"] for hint in _by_class(ats, "hint")] == ["Not scored yet."]
 
 
-def test_the_score_step_explains_the_ats_score_once(tmp_path):
+def test_the_base_list_explains_the_ats_score_once(tmp_path):
     """The glossary's rule: ATS score is spelled out once per surface, as the
     app's own estimate, where the numbers first appear. In the Companion that
-    is the Score step, which lists one number per base resume; the web app's
-    Score and tailor tab says the same sentence (`ATS_SCORE_LEAD`)."""
-    out = _score(tmp_path)
+    is the Job step's base list, which shows one number per base resume; the
+    web app's Score and tailor tab says the same sentence (`ATS_SCORE_LEAD`)."""
+    out = _score(tmp_path, reopen="job")
     lines = [line["text"] for line in _by_class(out["loaded"]["rail"], "sub")]
     assert lines.count(ATS_LEAD) == 1
     assert _text(out["loaded"]["rail"]).count("our estimate") == 1

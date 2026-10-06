@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import os
 import tempfile
@@ -16,6 +17,25 @@ from app.write_origin import encode_detail
 
 DEFAULT_BASE_URL = "http://localhost:8000"
 
+# Client-side request windows. The default (60s) fits a plain read or write.
+# The backend's own caps are longer for two kinds of call, and a client window
+# shorter than the server's leaves the server finishing work the caller has
+# already been told timed out:
+#   - LLM calls: the backend's provider timeout is 120s (services/llm.py).
+#   - renders/compiles: pdf_render and typst_compiler each kill a compile at
+#     60s, and a request can fall back to a second engine.
+_LLM_TIMEOUT = 300.0
+_RENDER_TIMEOUT = 150.0
+
+# An echoed error body is for diagnosis, not a data channel: a 422 can carry the
+# caller's whole payload back, and one tool result must stay proportionate.
+_ERROR_BODY_MAX_CHARS = 1000
+_ERROR_ITEMS_MAX = 8
+
+# Heavy per-row fields left out of list views; the detail tool carries them.
+_KB_POINT_LIST_OMIT = frozenset({"usage", "merge_sources"})
+_JOB_EXPORT_OMIT = frozenset({"raw_text", "raw_text_hash", "extracted_json"})
+
 logger = logging.getLogger(__name__)
 
 # Opt-in page images: default longest side, and a hard cap on the base64 payload
@@ -27,6 +47,18 @@ _PAGE_IMAGE_B64_CAP = 1_000_000
 
 def _drop_none(**kwargs: Any) -> dict[str, Any]:
     return {k: v for k, v in kwargs.items() if v is not None}
+
+
+def _without_eeo_values(review: Any) -> Any:
+    """The client's own strip, beside the server's (two gates, the `get_autofill_profile`
+    precedent): an EEO answer's value never reaches an agent (SYSTEM.md
+    {#inv-filled-answers-local})."""
+    if not isinstance(review, dict):
+        return review
+    for flag in review.get("flags") or []:
+        if isinstance(flag, dict) and flag.get("eeo"):
+            flag.pop("answer", None)
+    return review
 
 
 def _origin_headers(origin_detail: str | None) -> dict[str, str]:
@@ -198,6 +230,90 @@ def _host_visible(path: Path, upload_root: Path) -> str:
     return str(root.joinpath(*path.relative_to(upload_root).parts))
 
 
+def _upload_root() -> Path:
+    return Path(
+        os.environ.get("MAESTRO_CS_UPLOAD_DIR")
+        or os.environ.get("CAREER_STUDIO_UPLOAD_DIR")
+        or _default_upload_root()
+    )
+
+
+_PLAYWRIGHT_DIR = ".playwright-mcp"
+
+
+def _mounted_playwright_path(file_path: str) -> Path | None:
+    """Map a HOST path under a `.playwright-mcp/` directory onto this process's
+    own copy of that tree, or None when the path has no such segment or the
+    mapping would leave the tree.
+
+    The Playwright browser runs on the host and reports host paths; this server
+    may run inside the backend container (`docker exec`), where the same tree is
+    bind-mounted at the PARENT of the upload dir (compose: `/app/.playwright-mcp`,
+    with MAESTRO_CS_UPLOAD_DIR=/app/.playwright-mcp/uploads). Like _host_visible
+    this follows the host path's own flavour, since the host may be Windows.
+    Nothing here widens what can be read: a `..` component is refused outright
+    and the resolved result (symlinks included) must stay inside the mount.
+    """
+    windows = "\\" in file_path or (len(file_path) > 1 and file_path[1] == ":")
+    parts = (PureWindowsPath(file_path) if windows else PurePosixPath(file_path)).parts
+    if _PLAYWRIGHT_DIR not in parts:
+        return None
+    suffix = parts[parts.index(_PLAYWRIGHT_DIR) + 1 :]
+    if not suffix or any(part in {"..", "."} or "/" in part or "\\" in part for part in suffix):
+        return None
+    mount = _upload_root().parent.resolve()
+    if mount.name != _PLAYWRIGHT_DIR:
+        return None
+    candidate = mount.joinpath(*suffix).resolve()
+    return candidate if candidate.is_relative_to(mount) else None
+
+
+_SESSION_SUMMARY_KEYS = (
+    "id", "job_id", "base_resume", "status", "application_id", "user_prompt",
+    "stale_reason", "created_at", "updated_at",
+)
+
+
+def _session_summary(session: dict[str, Any]) -> dict[str, Any]:
+    summary = {k: session[k] for k in _SESSION_SUMMARY_KEYS if k in session}
+    gaps = session.get("gaps_json")
+    if isinstance(gaps, dict):
+        summary["gap_count"] = sum(
+            len(category.get("gaps") or [])
+            for category in gaps.get("categories") or []
+            if isinstance(category, dict)
+        )
+    resolutions = session.get("resolutions_json")
+    if isinstance(resolutions, list):
+        summary["resolution_count"] = len(resolutions)
+    return summary
+
+
+def _format_error_body(body: Any) -> str:
+    """One readable line for an error body: FastAPI's `detail` (a string, or a
+    pydantic list shown as `loc.path: message`), never the echoed `input`, and
+    capped. The full structured body stays on BackendError.body."""
+    detail = body.get("detail") if isinstance(body, dict) and "detail" in body else body
+    if isinstance(detail, list):
+        lines = []
+        for item in detail[:_ERROR_ITEMS_MAX]:
+            if isinstance(item, dict) and "msg" in item:
+                loc = ".".join(str(part) for part in item.get("loc") or [])
+                lines.append(f"{loc}: {item['msg']}" if loc else str(item["msg"]))
+            else:
+                lines.append(str(item))
+        if len(detail) > _ERROR_ITEMS_MAX:
+            lines.append(f"... and {len(detail) - _ERROR_ITEMS_MAX} more")
+        text = "; ".join(lines)
+    elif isinstance(detail, str):
+        text = detail
+    else:
+        text = json.dumps(detail, default=str) if detail is not None else ""
+    if len(text) > _ERROR_BODY_MAX_CHARS:
+        text = text[:_ERROR_BODY_MAX_CHARS] + f"... [truncated, {len(text)} chars]"
+    return text
+
+
 def _atomic_write_bytes(destination: Path, content: bytes) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(
@@ -228,16 +344,29 @@ class BackendClient:
         self.base_url = (base_url or os.environ.get("BACKEND_URL") or DEFAULT_BASE_URL).rstrip("/")
         self._timeout = timeout
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+    def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """One HTTP round trip with the shared error mapping."""
         url = f"{self.base_url}{path}"
         try:
             with httpx.Client(timeout=self._timeout) as client:
                 response = client.request(method, url, **kwargs)
-        except httpx.ConnectError as exc:
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            # The request never left this process (no connection / no pooled
+            # connection), so no write can have landed: same message as refused.
             raise BackendError(
                 f"Could not reach the maestro-career-studio backend at {self.base_url}. "
-                "Is it running on :8000?",
+                "Check that it is running; the BACKEND_URL environment variable sets "
+                "the address this server uses."
             ) from exc
+        except httpx.TimeoutException as exc:
+            seconds = kwargs.get("timeout") or self._timeout
+            message = f"{method} {path} timed out after {seconds:g}s."
+            if method.upper() not in {"GET", "HEAD"}:
+                message += (
+                    " The backend may still have completed the write; read the "
+                    "current state (the matching list_/get_ tool) before repeating it."
+                )
+            raise BackendError(message) from exc
         except httpx.HTTPError as exc:
             raise BackendError(f"HTTP error talking to backend: {exc}") from exc
 
@@ -247,10 +376,14 @@ class BackendClient:
             except ValueError:
                 body = response.text
             raise BackendError(
-                f"Backend returned {response.status_code}: {body}",
+                f"Backend returned {response.status_code}: {_format_error_body(body)}",
                 status_code=response.status_code,
                 body=body,
             )
+        return response
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        response = self._send(method, path, **kwargs)
         if response.status_code == 204 or not response.content:
             return None
         return response.json()
@@ -258,31 +391,7 @@ class BackendClient:
     def _request_raw_response(
         self, method: str, path: str, **kwargs: Any
     ) -> httpx.Response:
-        url = f"{self.base_url}{path}"
-        try:
-            with httpx.Client(timeout=self._timeout) as client:
-                response = client.request(method, url, **kwargs)
-        except httpx.ConnectError as exc:
-            raise BackendError(
-                f"Could not reach the maestro-career-studio backend at {self.base_url}. "
-                "Is it running on :8000?",
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise BackendError(f"HTTP error talking to backend: {exc}") from exc
-        if response.status_code >= 400:
-            try:
-                body = response.json()
-            except ValueError:
-                body = response.text
-            raise BackendError(
-                f"Backend returned {response.status_code}: {body}",
-                status_code=response.status_code,
-                body=body,
-            )
-        return response
-
-    def _request_raw(self, method: str, path: str, **kwargs: Any) -> bytes:
-        return self._request_raw_response(method, path, **kwargs).content
+        return self._send(method, path, **kwargs)
 
     # ---- read ----
     def list_base_resumes(self) -> Any:
@@ -330,14 +439,25 @@ class BackendClient:
     def list_kb_points(
         self,
         state: str | None = None,
-        limit: int = 500,
+        limit: int = 50,
         offset: int = 0,
     ) -> Any:
-        return self._request(
+        points = self._request(
             "GET",
             "/api/kb/points",
             params=_drop_none(state=state, limit=limit, offset=offset),
         )
+        # `usage` (per-resume port history) and `merge_sources` (consolidation
+        # provenance) are ~60% of a row and no use for picking points to approve;
+        # kb_get_entity and the web app carry them.
+        if isinstance(points, list):
+            return [
+                {k: v for k, v in p.items() if k not in _KB_POINT_LIST_OMIT}
+                if isinstance(p, dict)
+                else p
+                for p in points
+            ]
+        return points
 
     # ---- Career KB writes ----
     def kb_capture(
@@ -346,11 +466,15 @@ class BackendClient:
         entity_id: str | None = None,
         origin_detail: str | None = None,
     ) -> Any:
+        # The backend matches the text to an entity with an LLM call (provider
+        # timeout 120s), so the 60s default would time out a call the backend
+        # then finishes, and a retry would draft the same points twice.
         return self._request(
             "POST",
             "/api/kb/capture",
             json=_drop_none(text=text, entity_id=entity_id),
             headers=_origin_headers(origin_detail),
+            timeout=_LLM_TIMEOUT,
         )
 
     def kb_edit_point(
@@ -461,6 +585,7 @@ class BackendClient:
                 include_summary=include_summary,
                 summary=summary,
             ),
+            timeout=_RENDER_TIMEOUT,
         )
 
     def get_autofill_context(
@@ -539,7 +664,7 @@ class BackendClient:
     # ---- health check ----
     def run_health_check(self, kind: str, key: str) -> Any:
         # Runs an LLM classification pass over every bullet; can exceed the 60s default.
-        return self._request("POST", f"/api/resume-lint/{kind}/{key}/run", timeout=300.0)
+        return self._request("POST", f"/api/resume-lint/{kind}/{key}/run", timeout=_LLM_TIMEOUT)
 
     def get_health_report(self, kind: str, key: str) -> Any:
         return self._request("GET", f"/api/resume-lint/{kind}/{key}")
@@ -588,16 +713,24 @@ class BackendClient:
         payload: dict[str, Any] = {"data": data}
         if display_name is not None:
             payload["display_name"] = display_name
-        return self._request("PUT", f"/api/base-resumes/{slug}", json=payload)
+        return self._request(
+            "PUT", f"/api/base-resumes/{slug}", json=payload, timeout=_RENDER_TIMEOUT
+        )
 
     def edit_base_resume(self, slug: str, ops: list[dict]) -> Any:
-        return self._request("PATCH", f"/api/base-resumes/{slug}/edits", json={"ops": ops})
+        return self._request(
+            "PATCH",
+            f"/api/base-resumes/{slug}/edits",
+            json={"ops": ops},
+            timeout=_RENDER_TIMEOUT,
+        )
 
     def create_base_resume(self, slug: str, display_name: str, data: dict) -> Any:
         return self._request(
             "POST",
             "/api/base-resumes",
             json={"slug": slug, "display_name": display_name, "data": data},
+            timeout=_RENDER_TIMEOUT,
         )
 
     def duplicate_base_resume(
@@ -606,7 +739,12 @@ class BackendClient:
         payload: dict[str, Any] = {"new_slug": new_slug}
         if new_display_name is not None:
             payload["new_display_name"] = new_display_name
-        return self._request("POST", f"/api/base-resumes/{slug}/duplicate", json=payload)
+        return self._request(
+            "POST",
+            f"/api/base-resumes/{slug}/duplicate",
+            json=payload,
+            timeout=_RENDER_TIMEOUT,
+        )
 
     def list_resume_versions(self, kind: str, key: str) -> Any:
         return self._request("GET", f"/api/resume-versions/{kind}/{key}")
@@ -616,7 +754,9 @@ class BackendClient:
 
     def restore_resume_version(self, kind: str, key: str, number: int) -> Any:
         return self._request(
-            "POST", f"/api/resume-versions/{kind}/{key}/{number}/restore"
+            "POST",
+            f"/api/resume-versions/{kind}/{key}/{number}/restore",
+            timeout=_RENDER_TIMEOUT,
         )
 
     def archive_base_resume(self, slug: str) -> Any:
@@ -634,7 +774,12 @@ class BackendClient:
         return self._request("POST", "/api/applications/from-base", json=payload)
 
     def edit_application(self, application_id: str, ops: list[dict]) -> Any:
-        return self._request("PATCH", f"/api/applications/{application_id}/edits", json={"ops": ops})
+        return self._request(
+            "PATCH",
+            f"/api/applications/{application_id}/edits",
+            json={"ops": ops},
+            timeout=_RENDER_TIMEOUT,
+        )
 
     def update_application(
         self,
@@ -655,7 +800,7 @@ class BackendClient:
             "POST",
             "/api/qa",
             json={"application_id": application_id, "questions": questions},
-            timeout=300.0,
+            timeout=_LLM_TIMEOUT,
         )
 
     def generate_cover_letter(self, application_id: str, tone: str) -> Any:
@@ -663,16 +808,23 @@ class BackendClient:
             "POST",
             "/api/qa",
             json={"application_id": application_id, "cover_letter": {"tone": tone}},
-            timeout=300.0,
+            timeout=_LLM_TIMEOUT,
         )
 
     def render_base_resume(self, slug: str, template_id: str | None = None) -> Any:
         params = {"template_id": template_id} if template_id else {}
-        return self._request("POST", f"/api/base-resumes/{slug}/render", params=params)
+        return self._request(
+            "POST", f"/api/base-resumes/{slug}/render", params=params, timeout=_RENDER_TIMEOUT
+        )
 
     def render_application(self, application_id: str, template_id: str | None = None) -> Any:
         params = {"template_id": template_id} if template_id else {}
-        return self._request("POST", f"/api/applications/{application_id}/render", params=params)
+        return self._request(
+            "POST",
+            f"/api/applications/{application_id}/render",
+            params=params,
+            timeout=_RENDER_TIMEOUT,
+        )
 
     # ---- templates ----
     def list_templates(self) -> Any:
@@ -700,6 +852,7 @@ class BackendClient:
                 "engine": engine,
             },
             params={"validate": validate},
+            timeout=_RENDER_TIMEOUT,
         )
 
     def update_template_draft(
@@ -719,10 +872,13 @@ class BackendClient:
             f"/api/templates/{template_id}",
             json=payload,
             params={"validate": validate},
+            timeout=_RENDER_TIMEOUT,
         )
 
     def validate_template(self, template_id: str) -> Any:
-        return self._request("POST", f"/api/templates/{template_id}/validate")
+        return self._request(
+            "POST", f"/api/templates/{template_id}/validate", timeout=_RENDER_TIMEOUT
+        )
 
     def get_rendered_pdf(self, target_type: str, target_id: str) -> Any:
         paths = {
@@ -832,11 +988,7 @@ class BackendClient:
         canonical_filename = _response_filename(
             response, f"{application_id}.pdf"
         )
-        upload_root = Path(
-            os.environ.get("MAESTRO_CS_UPLOAD_DIR")
-            or os.environ.get("CAREER_STUDIO_UPLOAD_DIR")
-            or _default_upload_root()
-        )
+        upload_root = _upload_root()
         upload_path = upload_root / application_id / canonical_filename
         _atomic_write_bytes(upload_path, content)
         inspection = _inspect_pdf(upload_path)
@@ -950,11 +1102,18 @@ class BackendClient:
             "POST",
             "/api/tailoring-sessions",
             json={"job_id": job_id, "base_resume": base_resume, "enrich": enrich},
-            timeout=300.0,
+            timeout=_LLM_TIMEOUT,
         )
 
     def list_tailoring_sessions(self, job_id: str) -> Any:
-        return self._request("GET", "/api/tailoring-sessions", params={"job_id": job_id})
+        sessions = self._request("GET", "/api/tailoring-sessions", params={"job_id": job_id})
+        # The REST rows carry the whole frozen gap list and every saved
+        # resolution (~28k chars for ONE session); this is the "find a session
+        # id" view, so project a summary and leave get_tailoring_session as the
+        # detail path.
+        if isinstance(sessions, list):
+            return [_session_summary(s) if isinstance(s, dict) else s for s in sessions]
+        return sessions
 
     def get_tailoring_session(self, session_id: str) -> Any:
         return self._request("GET", f"/api/tailoring-sessions/{session_id}")
@@ -988,7 +1147,7 @@ class BackendClient:
             "POST",
             f"/api/tailoring-sessions/{session_id}/tailor",
             json=_drop_none(user_prompt=user_prompt, ops=ops),
-            timeout=300.0,
+            timeout=_LLM_TIMEOUT,
         )
 
     def export_jobs(
@@ -997,9 +1156,24 @@ class BackendClient:
         level: str | None = None,
         since: str | None = None,
         skill: str | None = None,
+        limit: int = 10,
+        offset: int = 0,
     ) -> Any:
-        params = _drop_none(role_category=role_category, level=level, since=since, skill=skill)
-        return self._request("GET", "/api/jobs/export", params=params)
+        params = _drop_none(
+            role_category=role_category, level=level, since=since, skill=skill,
+            limit=limit, offset=offset,
+        )
+        rows = self._request("GET", "/api/jobs/export", params=params)
+        # raw_text, its hash and extracted_json are ~80% of a row (and duplicate the
+        # flat extracted fields); get_job has them for the one posting that needs it.
+        if isinstance(rows, list):
+            return [
+                {k: v for k, v in r.items() if k not in _JOB_EXPORT_OMIT}
+                if isinstance(r, dict)
+                else r
+                for r in rows
+            ]
+        return rows
 
     def propose_application(
         self,
@@ -1023,8 +1197,10 @@ class BackendClient:
             "POST", "/api/proposals", json=payload, headers=_origin_headers(origin_detail),
         )
 
-    def list_proposals(self, status: str | None = None) -> Any:
-        params = _drop_none(status=status)
+    def list_proposals(
+        self, status: str | None = None, limit: int = 20, offset: int = 0
+    ) -> Any:
+        params = _drop_none(status=status, limit=limit, offset=offset)
         return self._request("GET", "/api/proposals", params=params)
 
     def get_proposal(self, proposal_id: str) -> Any:
@@ -1072,8 +1248,6 @@ class BackendClient:
         image_base64: str,
         kind: str = "step",
     ) -> Any:
-        import base64
-
         data_bytes = base64.b64decode(image_base64)
         files = {"file": ("evidence.png", data_bytes, "image/png")}
         data = {"step": str(step), "label": label, "kind": kind}
@@ -1091,11 +1265,19 @@ class BackendClient:
         # context: the browser tool saves to disk, only the path string flows
         # through the agent. Magic-byte check limits what a caller can pull
         # off the host to actual PNG/JPEG images.
-        from pathlib import Path
-
+        if "\x00" in file_path:
+            raise BackendError("evidence file path contains a NUL byte")
         p = Path(file_path).expanduser().resolve()
         if not p.is_file():
-            raise BackendError(f"evidence file not found: {p}")
+            # Under `docker exec` the browser's HOST path does not exist here;
+            # the same file is in this process's mount of the .playwright-mcp tree.
+            mapped = _mounted_playwright_path(file_path)
+            if mapped is None or not mapped.is_file():
+                raise BackendError(
+                    f"evidence file not found: {p}"
+                    + (f" (also tried {mapped})" if mapped is not None else "")
+                )
+            p = mapped
         data_bytes = p.read_bytes()
         if len(data_bytes) > 5 * 1024 * 1024:
             raise BackendError("evidence file exceeds 5 MB")
@@ -1137,4 +1319,25 @@ class BackendClient:
         )
 
     def get_final_review(self, proposal_id: str) -> Any:
-        return self._request("GET", f"/api/proposals/{proposal_id}/final-review")
+        return _without_eeo_values(
+            self._request("GET", f"/api/proposals/{proposal_id}/final-review")
+        )
+
+    def record_filled_answers(
+        self, job_id: str, fields: list[dict[str, Any]], **page: Any
+    ) -> Any:
+        """`page` is the run's optional step (sent as text), application_id and base_resume."""
+        if page.get("step") is not None:
+            page["step"] = str(page["step"])
+        body = {"channel": "agent", "fields": fields, **_drop_none(**page)}
+        return self._request("POST", f"/api/jobs/{job_id}/filled-answers", json=body)
+
+    def record_run(
+        self, automation: str, outcome: str, report: dict[str, Any] | None,
+        origin_detail: str | None = None,
+    ) -> Any:
+        """`report` is the run's optional counts, digest and job_ids, sent flat."""
+        body = {"automation": automation, "outcome": outcome, **_drop_none(**(report or {}))}
+        return self._request(
+            "POST", "/api/agent-runs", json=body, headers=_origin_headers(origin_detail)
+        )

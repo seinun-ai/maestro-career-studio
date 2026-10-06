@@ -1,0 +1,43 @@
+<label id="lbl" for="country">Country*</label>
+<div class="select__container"><div class="select__control"><div class="select__value-container">
+  <div class="select__placeholder">Select...</div>
+  <input id="country" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="lbl">
+</div></div></div>
+<div id="menu-root"></div>
+<script>
+(() => {
+  // __oracle.country is what the fake app HOLDS (react-select's own state,
+  // set by an accepted option click only); the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.country = "";
+  const OPTIONS = ["United States", "United Kingdom", "India", "Canada"];
+  const input = document.getElementById("country");
+  const menuRoot = document.getElementById("menu-root");
+  const valueBox = input.parentElement;
+  window.rejectClicks = false;
+  const closeMenu = () => { menuRoot.innerHTML = ""; input.removeAttribute("aria-controls"); input.setAttribute("aria-expanded", "false"); };
+  const pick = (text) => {
+    valueBox.querySelector(".select__placeholder, .select__single-value").outerHTML = `<div class="select__single-value">${text}</div>`;
+    input.value = "";
+    oracle.country = text;
+    closeMenu();
+  };
+  const renderMenu = () => {
+    const q = input.value.toLowerCase();
+    menuRoot.innerHTML = `<div id="country-menu" role="listbox">${OPTIONS.filter((o) => o.toLowerCase().includes(q))
+      .map((o) => `<div role="option">${o}</div>`).join("")}</div>`;
+    input.setAttribute("aria-controls", "country-menu");
+    input.setAttribute("aria-expanded", "true");
+    for (const opt of menuRoot.querySelectorAll("[role=option]")) {
+      // react-select commits on the option's click (its onClick).
+      opt.addEventListener("click", () => { if (!window.rejectClicks) pick(opt.textContent); });
+    }
+  };
+  // Pressing on the menu must not blur the input, or blur would close it first.
+  menuRoot.addEventListener("mousedown", (e) => e.preventDefault());
+  input.addEventListener("mousedown", renderMenu);
+  input.addEventListener("input", renderMenu);
+  input.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+  input.addEventListener("blur", () => { input.value = ""; setTimeout(closeMenu, 0); });
+})();
+</script>

@@ -48,14 +48,14 @@ def test_job_market_captions_are_accurate():
     market = _read("components/explore/explore-overview.tsx")
     assert "Sorted from each job description into one of these levels." in market
     assert "As written in each job." not in market
-    assert '{r.n} {r.n === 1 ? "job" : "jobs"} with pay listed' in market
+    assert '`${r.n} ${r.n === 1 ? "job" : "jobs"} with pay listed`' in market
 
 
 def test_job_market_money_has_one_format():
     market = _read("components/explore/explore-overview.tsx")
     assert "const fmtK" not in market
     assert "formatSalary(min, max, null, currency ?? null)" in market
-    assert "{payRange(r.avg_min, r.avg_max, r.currency)}" in market
+    assert "value={payRange(r.avg_min, r.avg_max, r.currency)}" in market
     assert "payRange(o.meta.salary_year_avg_min, o.meta.salary_year_avg_max, o.meta.salary_year_currency)" in market
 
 
@@ -77,7 +77,7 @@ def test_skill_names_are_cased_one_way(rel: str):
     shown = {
         "components/charts/top-skills-chart.tsx": "{skillName(skill.skill_name)}\n",
         "components/charts/heatmap-chart.tsx": "{skillName(skill)}\n",
-        "components/analytics/gap-tiers-panel.tsx": '<span className="text-sm font-medium">{skillName(row.skill)}</span>',
+        "components/analytics/gap-tiers-panel.tsx": '<span className="text-title-small">{skillName(row.skill)}</span>',
     }
     assert shown[rel] in _read(rel)
 

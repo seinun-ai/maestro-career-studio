@@ -52,10 +52,39 @@ def test_a_rate_limit_is_retried_once(db_session):
 
 
 @respx.mock
-def test_a_second_overload_gives_up(db_session):
-    respx.post(URL).mock(side_effect=[httpx.Response(529), httpx.Response(529)])
+@pytest.mark.parametrize("status", [429, 503, 529])
+def test_a_busy_provider_is_retried_twice_then_given_up(db_session, status):
+    route = respx.post(URL).mock(side_effect=[httpx.Response(status)] * 3)
     with pytest.raises(LLMProviderError):
         jev.decide(QUESTIONS, "s", db_session)
+    assert route.call_count == 3
+
+
+@respx.mock
+def test_no_retry_is_started_that_the_budget_cannot_cover(db_session, monkeypatch):
+    monkeypatch.setattr(jev, "_BACKOFF_S", jev.TIMEOUT_S)
+    route = respx.post(URL).mock(side_effect=[httpx.Response(529)] * 3)
+    with pytest.raises(LLMProviderError):
+        jev.decide(QUESTIONS, "s", db_session)
+    assert route.call_count == 1
+
+
+def test_every_call_goes_through_one_pooled_client(db_session, monkeypatch):
+    """Two calls per fill, back to back: a connection per call would pay a TLS
+    handshake each time, about what Jev's whole answer costs."""
+    used = []
+
+    class Recording(httpx.Client):
+        def post(self, url, **kwargs):
+            used.append(self)
+            return httpx.Response(200, json={"answers": ANSWER},
+                                  request=httpx.Request("POST", url))
+
+    client = Recording()
+    monkeypatch.setattr(jev, "_CLIENT", client)
+    jev.decide(QUESTIONS, "s", db_session)
+    jev.decide(QUESTIONS, "s", db_session)
+    assert used == [client, client]
 
 
 @respx.mock
@@ -72,15 +101,29 @@ def test_an_unreadable_body_is_a_provider_error(db_session):
         jev.decide(QUESTIONS, "s", db_session)
 
 
+OFFERED = {"a": "A", "b": "B"}
+
+
 def test_choice_of_reads_the_chosen_options_probability():
-    picked = jev.choice_of(ANSWER["q1"])
+    picked = jev.choice_of(ANSWER["q1"], OFFERED)
     assert (picked.choice, picked.probability, picked.confidence) == ("a", 0.9, 0.8)
 
 
-def test_choice_of_falls_back_to_confidence_and_refuses_junk():
-    assert jev.choice_of({"choice": "a", "confidence": 0.7}).probability == 0.7
-    assert jev.choice_of(None) is None
-    assert jev.choice_of({"choice": 3}) is None
+@pytest.mark.parametrize("answer", [
+    None,
+    {"choice": "a", "probabilities": {"a": 0.9, "b": 0.1}},                   # no confidence
+    {"choice": "c", "probabilities": {"a": 0.9, "b": 0.1}, "confidence": 0.8},  # not offered
+    {"choice": "a", "probabilities": {"a": 1.0}, "confidence": 0.8},            # key missing
+    {"choice": "a", "probabilities": {"a": 0.8, "b": 0.1, "c": 0.1},
+     "confidence": 0.8},                                                        # key extra
+    {"choice": "a", "probabilities": {"a": 0.6, "b": 0.1}, "confidence": 0.8},  # sums to 0.7
+    {"choice": "b", "probabilities": {"a": 0.9, "b": 0.1}, "confidence": 0.8},  # not the max
+    {"choice": "a", "probabilities": {"a": 1.5, "b": -0.5}, "confidence": 0.8}, # out of range
+    {"choice": "a", "probabilities": {"a": True, "b": 0}, "confidence": 0.8},   # a bool
+    {"choice": 3, "probabilities": {"a": 0.9, "b": 0.1}, "confidence": 0.8},
+])
+def test_choice_of_refuses_anything_but_a_distribution_over_the_offered_keys(answer):
+    assert jev.choice_of(answer, OFFERED) is None
 
 
 @respx.mock
@@ -89,3 +132,16 @@ def test_the_call_log_keeps_metadata_only(db_session, tmp_path):
     jev.decide(QUESTIONS, {"secret": "Ada Lovelace"}, db_session)
     [logged] = list((tmp_path / "llm_calls").iterdir())
     assert "Ada Lovelace" not in logged.read_text()
+
+
+@pytest.mark.parametrize("answer, expected", [
+    ({"type": "noul", "noul": 0.93}, 0.93), ({"noul": 0}, 0.0),
+    ({"type": "noul", "noul": 1.2}, None), ({"type": "noul", "noul": True}, None),
+    ({"type": "choice", "noul": 0.5}, None), ({"type": "noul"}, None), ("yes", None),
+])
+def test_noul_of_accepts_only_a_probability(answer, expected):
+    assert jev.noul_of(answer) == expected
+
+
+def test_noul_question_shape():
+    assert jev.noul_question("Is it?") == {"type": "noul", "instructions": "Is it?"}

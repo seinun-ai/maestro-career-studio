@@ -110,7 +110,7 @@ def test_a_role_hint_sits_between_its_label_and_its_picker():
     # Mutant: the hint packed into the label again ("Chat model · needs streaming tool calls").
     for fn in ("function FreeTextModel(", "function ModelSelect("):
         body = _slice(_MODELS, fn, "\nfunction ")
-        hint = body.index('<p id={hintId} className="text-muted-foreground text-xs">')
+        hint = body.index('<p id={hintId} className="text-muted-foreground text-body-small">')
         assert body.index("<Label htmlFor={id}>") < hint < body.index("aria-describedby={hintId}"), fn
 
 
@@ -121,7 +121,7 @@ def test_the_catalog_reads_words_not_keys():
     assert "providerLabel(option.provider)} · {sourceLabel(option.source)}" in _CATALOG
     for src in (_CATALOG, _MODELS):
         assert "showsModelId(option) ?" in src
-    assert "rounded-lg border p-3" not in _CATALOG  # second containment level is tonal
+    assert "rounded-corner-md border p-3" not in _CATALOG  # second containment level is tonal
     assert "discovery —" not in _CATALOG
 
 
@@ -186,10 +186,10 @@ def test_a_long_model_id_truncates_inside_the_card():
     assert '<ul ref={listRef} tabIndex={-1} aria-label="Available models" className="min-w-0 divide-y' in _CATALOG
     row = _slice(_CATALOG, "function CatalogRow(", "\n}\n")
     assert '<div className="min-w-0 flex-1">' in row
-    assert '<p className="truncate text-sm font-medium" title={option.label}>' in row
-    assert 'className="text-muted-foreground truncate font-mono text-xs" title={option.id}>' in row
+    assert '<p className="truncate text-title-small" title={option.label}>' in row
+    assert 'className="text-muted-foreground truncate font-mono text-body-small" title={option.id}>' in row
     # The provider label and Remove never shrink; the name column does.
-    assert '<span className="text-muted-foreground shrink-0 text-xs">' in row
+    assert '<span className="text-muted-foreground shrink-0 text-body-small">' in row
     # The discovered list is a grid child too.
     assert '<CardSection className="grid min-w-0 gap-3">' in _CATALOG
     assert 'className="min-w-0 flex-1 truncate font-mono" title={model.id}>' in _CATALOG
@@ -291,6 +291,53 @@ def test_autofill_removes_are_named_and_hand_focus_to_add():
     assert "ref={addQuestionRef}" in _button_at(src, "onClick={() => setCustom([...custom, {")
 
 
+def test_languages_are_edited_like_education_and_saved_in_the_same_body():
+    """Fill-engine plan Task 10: one entry per language, most important first,
+    with the levels forms offer (Basic / Intermediate / Fluent) and native and
+    fluent as separate Yes/No answers, stored under `languages` in the profile
+    the one Save PUTs."""
+    src = _read("components/settings/autofill-section.tsx")
+    fieldset = _slice(src, "<legend className={LEGEND}>Languages</legend>", "</fieldset>")
+    from app.services.autofill_catalog import MAX_LANGUAGES
+
+    # The catalog serves the first MAX_LANGUAGES, and a language missing a level
+    # is never added to a form (Workday requires all three;
+    # app/services/autofill_sections._NEEDS): the editor says both.
+    assert MAX_LANGUAGES == 4
+    assert ("Most important first. The first four are used, and the Companion adds a language to a form "
+            "only when its reading, speaking and writing levels are all set.") in " ".join(fieldset.split())
+    assert "{LANGUAGE_FIELDS.map((field) => {" in fieldset
+    assert "id = `af-languages-${i}-${field.key}`" in fieldset
+    fields = _slice(src, "const LANGUAGE_FIELDS: FieldDef[] = [", "\n];")
+    assert re.findall(r'key: "(\w+)", label: "([^"]+)"', fields) == [
+        ("language", "Language"), ("read", "Reading"), ("speak", "Speaking"), ("write", "Writing"),
+        ("native", "Native speaker"), ("fluent", "Fluent")]
+    assert fields.count("boolean: true") == 2  # native and fluent: Yes/No, stored as booleans
+    levels = _slice(src, "const LANGUAGE_LEVELS = [", "]")
+    assert re.findall(r'"(\w+)"', levels) == ["Basic", "Intermediate", "Fluent"]
+    # Add and Remove as Education has them: a named Remove that hands focus to Add.
+    assert "label={`Remove language ${i + 1}`}" in fieldset and "armFocus(addLanguageRef);" in fieldset
+    add = _button_at(src, "onClick={() => setLanguages([...languages, {}])}")
+    assert "ref={addLanguageRef}" in add and "Add language" in add
+    # The same profile, the same Save: the list is a key of the PUT body.
+    set_languages = _slice(src, "const setLanguages = (", "\n  };")
+    assert "setDirty(true);" in set_languages and "languages: next" in set_languages
+    # A cleared answer removes its key, never stores "" …
+    with_answer = _slice(src, "function withAnswer(", "\n}\n")
+    assert 'if (value === undefined || value === "") delete next[key];' in with_answer
+    assert "else next[key] = value;" in with_answer
+    assert "withAnswer(entry2, field.key, next)" in fieldset
+    # … and "Not set" is what clears a select: it stores nothing.
+    control = _slice(src, "function FieldControl(", "\n}\n")
+    assert "onChange(v === NOT_SET.value ? undefined : storedFieldValue(field, v))" in control
+    # The select shows "Not set", not "Choose", once chosen; a level stored in
+    # another case ("fluent") shows as its option, never blank.
+    shown = _slice(src, "function languageValue(", "\n}\n")
+    assert "o.value.toLowerCase() === value.toLowerCase()" in shown and "|| NOT_SET.value" in shown
+    assert "value={languageValue(field, entry[field.key as keyof LanguageEntry])}" in fieldset
+    assert "<FieldControl" in fieldset
+
+
 def test_a_custom_question_has_a_visible_label():
     # Only an aria-label named it; a sighted user saw an unlabelled box.
     src = _read("components/settings/autofill-section.tsx")
@@ -312,10 +359,10 @@ def test_an_advanced_prompt_key_wraps_inside_its_row():
     # Wave-1 browser pass, 375 with Advanced prompts open: a key is one unbreakable word
     # (`resume_finding_verify`), so its row ran 262px in a 239px body and Expand left the card.
     src = _read("components/settings/prompts-section.tsx")
-    assert '<p className="font-mono text-sm wrap-anywhere">{prompt.key}</p>' in src
+    assert '<p className="font-mono text-body-medium wrap-anywhere">{prompt.key}</p>' in src
     # Only a key PROMPT_TITLES lacks is shown at all (appendix D6.1); a titled one hides it.
-    assert '<p className="text-muted-foreground font-mono text-xs wrap-anywhere">{prompt.key}</p>' not in src
-    assert '<span className="text-muted-foreground shrink-0 text-xs">' in src  # Expand keeps its width
+    assert '<p className="text-muted-foreground font-mono text-body-small wrap-anywhere">{prompt.key}</p>' not in src
+    assert '<span className="text-muted-foreground shrink-0 text-body-small">' in src  # Expand keeps its width
 
 
 def test_switch_rows_and_about_rows_share_their_geometry():
@@ -323,7 +370,7 @@ def test_switch_rows_and_about_rows_share_their_geometry():
     row = _slice(layout, "export function SwitchRow(", "\n}\n")
     assert '<div className="flex min-h-11 items-center justify-between">' in row
     # The label fills the row (height, width and the gap), so a tap anywhere on it toggles.
-    assert '<Label htmlFor={htmlFor} className="flex-1 self-stretch py-1.5 pr-4 leading-snug">' in row
+    assert '<Label htmlFor={htmlFor} className="flex-1 self-stretch py-1.5 pr-4">' in row
     for rel in ("quick-tailor-section.tsx", "mcp-workflow-section.tsx", "appearance-section.tsx"):
         assert "<SwitchRow" in _read(f"components/settings/{rel}"), rel
     about = _read("components/settings/about-section.tsx")
@@ -433,3 +480,57 @@ def test_a_header_action_renders_nowhere_until_the_slot_exists():
     # Mutant: the action rendered inline in the body for a frame, then jumped into the header.
     action = _slice(_CARD, "export function SettingCardAction(", "\n}\n")
     assert "return slot ? createPortal(children, slot) : null;" in action
+
+
+# --- The low-stakes switch (fill-engine plan Task 9) -----------------------------
+
+_AUTOFILL = _read("components/settings/autofill-section.tsx")
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def test_the_low_stakes_switch_sits_beside_the_agreement_switch():
+    boxes = _slice(_AUTOFILL, "function CompanionPermissions(", "\n}\n")
+    assert boxes.index('id="consent-forms"') < boxes.index("<LowStakesSwitch />")
+    switch = _slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n")
+    assert '<Label htmlFor="low-stakes">Answer low-stakes questions for me</Label>' in switch
+    assert 'id="low-stakes"' in switch and "aria-describedby={hintId}" in switch
+    # Off until the server says otherwise, and never trusted from here: /map
+    # and /pick read the setting server-side.
+    assert "checked={options.data?.low_stakes ?? false}" in switch
+
+
+def test_the_low_stakes_switch_reads_and_writes_its_own_setting():
+    switch = _slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n")
+    assert 'queryKey: ["settings", "autofill-options"]' in switch
+    assert 'apiFetch<AutofillOptions>("/api/settings/autofill-options")' in switch
+    assert 'method: "PUT"' in switch and "body: JSON.stringify(value)" in switch
+    assert 'qc.setQueryData(["settings", "autofill-options"], result);' in switch
+    assert 'toast.error(couldnt("save this setting", err))' in switch
+    assert "const saveOnce = useSingleFlight(saveOptions.mutate);" in switch
+    assert "onCheckedChange={(low_stakes) => saveOnce({ low_stakes })}" in switch
+    types = _read("lib/types.ts")
+    assert "export interface AutofillOptions {\n  low_stakes: boolean;\n}" in types
+
+
+def test_the_low_stakes_help_names_the_widened_kinds_and_the_never_list():
+    switch = _flat(_slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n"))
+    for kind in ("how you heard about the job", "how to contact you", "relocate", "travel", "on site",
+                 "shifts or overtime", "drug test", "other roles", "related to", "used to work for",
+                 "text and marketing messages", "experience and education the job description asks for"):
+        assert kind in switch, kind
+    for kind in ("your education and work history", "work authorization", "sponsorship", "age",
+                 "diversity questions", "background checks", "security clearance", "salary", "signatures"):
+        assert kind in switch, kind
+    assert "Answered for you" in switch
+    assert "what you would do if you become employed by the company" in switch
+
+
+def test_the_low_stakes_help_says_the_work_history_answers_some_questions_at_any_setting():
+    switch = _flat(_slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n"))
+    assert ("Whether this is on or off, Fill may also answer some questions from your work history. These ask "
+            "about past employment by a kind of organization (such as a government agency), a security clearance "
+            "or years of experience. Fill lists those for you to check too.") in switch
+    assert "(/map, /pick and /step)" in _slice(_AUTOFILL, "/** Questions no answer of yours covers", "function LowStakesSwitch(")

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -23,9 +24,10 @@ from app.schemas.proposal import (
     ProposalListResponse,
     ProposalReasonBody,
     ProposalRead,
+    ProposalSummaryResponse,
     ProposalTransition,
 )
-from app.services import artifacts, auto_apply_settings, proposal_evidence
+from app.services import artifacts, auto_apply_settings, inbox_readiness, proposal_evidence
 from app.services import proposals as svc
 from app.write_origin import WriteOrigin, get_write_origin
 
@@ -212,7 +214,9 @@ def list_proposals(
     stmt = stmt.order_by(ApplicationProposal.created_at.desc()).offset(offset).limit(limit)
 
     results = db.execute(stmt).all()
-    items = [ProposalRead(**_read_fields(prop, job)) for prop, job in results]
+    readiness = inbox_readiness.for_proposals(db, [(prop, job) for prop, job in results])
+    items = [ProposalRead(**_read_fields(prop, job), readiness=readiness.get(prop.id))
+             for prop, job in results]
     return ProposalListResponse(items=items, total=total)
 
 
@@ -271,6 +275,16 @@ def get_proposals_funnel(db: Annotated[Session, Depends(get_db)]):
         needs_human=prop_counts.get("needs_human", 0),
         expired=prop_counts.get("expired", 0),
     )
+
+
+@router.get("/summary", response_model=ProposalSummaryResponse)
+def get_proposals_summary(
+    db: Annotated[Session, Depends(get_db)],
+    since: Annotated[datetime | None, Query()] = None,
+):
+    """The Agent inbox's arrivals strip. Read-only."""
+    svc.expire_stale(db)
+    return inbox_readiness.summary(db, since)
 
 
 @router.get("/{proposal_id}", response_model=ProposalDetail)

@@ -16,7 +16,7 @@ const STATUS_COPY: Record<
     label: "You may not qualify",
     detail: "The job lists a requirement your profile doesn't meet.",
     icon: <ShieldAlert />,
-    tone: "border-destructive/40 bg-destructive/5 text-destructive",
+    tone: "border border-destructive/40 bg-destructive/5 text-destructive",
   },
   // `clear` is any pass or warning (knockout.py): a warning row can sit under it, and a check the
   // profile could not answer is left out, so it claims only that nothing conflicts.
@@ -24,20 +24,20 @@ const STATUS_COPY: Record<
     label: "Nothing rules you out",
     detail: "Nothing the job lists conflicts with your profile.",
     icon: <CircleCheck />,
-    tone: "border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
+    tone: "bg-success-container text-on-success-container",
   },
   incomplete_profile: {
     label: "Your profile is missing an answer",
     detail: "Add it to your profile to check this job.",
     icon: <CircleHelp />,
-    tone: "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400",
+    tone: "bg-warning-container text-on-warning-container",
   },
   // Deliberately NOT phrased as a pass: nothing the job lists could be checked.
   unstated: {
     label: "No requirements listed",
     detail: "Nothing here to check. That doesn't mean you qualify.",
     icon: <CircleHelp />,
-    tone: "border-border bg-muted/40 text-muted-foreground",
+    tone: "border border-border bg-surface-container-low text-muted-foreground",
   },
 };
 
@@ -52,6 +52,7 @@ const CHECK_GROUP: Partial<Record<KnockoutCheck["kind"], string>> = {
   work_authorization: "work_auth",
   opt: "work_auth",
   salary: "preferences",
+  on_site: "preferences",
 };
 
 /** Deep-link at the group holding the gap, not the section.
@@ -130,20 +131,24 @@ export function JobKnockoutCard({
   const copy = notChecked
     ? { ...STATUS_COPY.unstated, label: uncheckedLabel(unchecked), detail: missing }
     : STATUS_COPY[scan.status];
+  // Secondary lines inherit the card's text. Only the conflict card, whose text is
+  // destructive, mutes them: muted-foreground is not pinned on the success or
+  // warning containers (it measures 3.7 to 3.9:1 there in dark).
+  const quiet = scan.status === "conflict" && "text-muted-foreground";
   const rows = scan.checks.filter((c) => ROW_RESULTS.has(c.result) && c.message);
 
   return (
     <div
       role="status"
-      className={cn("rounded-lg border px-4 py-3 text-sm", copy.tone)}
+      className={cn("rounded-corner-md px-4 py-3 text-body-medium", copy.tone)}
     >
       <div className="flex items-center gap-2 font-medium [&>svg]:size-4">
         {copy.icon}
         {copy.label}
       </div>
-      <p className="text-muted-foreground mt-1 text-xs">{copy.detail}</p>
+      <p className={cn("mt-1 text-body-small", quiet)}>{copy.detail}</p>
       {rows.length > 0 && (
-        <ul className="mt-2 space-y-1 text-xs">
+        <ul className="mt-2 space-y-1 text-body-small">
           {rows.map((c) => (
             <li key={c.kind} className="flex items-start gap-1.5">
               <AlertTriangle className="mt-0.5 size-3 shrink-0" />
@@ -152,12 +157,12 @@ export function JobKnockoutCard({
           ))}
         </ul>
       )}
-      {missing && !notChecked ? <p className="text-muted-foreground mt-1 text-xs">{missing}</p> : null}
+      {missing && !notChecked ? <p className={cn("mt-1 text-body-small", quiet)}>{missing}</p> : null}
       {unchecked.map((item) => (
         <Link
           key={item.what}
           href={item.href}
-          className="mt-2 mr-3 inline-block text-xs underline underline-offset-2"
+          className="mt-2 mr-3 inline-block text-body-small underline underline-offset-2"
         >
           {item.link}
         </Link>
@@ -165,7 +170,7 @@ export function JobKnockoutCard({
       {scan.status === "incomplete_profile" && (
         <Link
           href={autofillHref(scan)}
-          className="mt-2 inline-block text-xs underline underline-offset-2"
+          className="mt-2 inline-block text-body-small underline underline-offset-2"
         >
           Complete your profile
         </Link>

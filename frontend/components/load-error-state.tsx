@@ -62,14 +62,14 @@ export function LoadErrorState({
       ref={rootRef}
       role="alert"
       className={cn(
-        "flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center",
+        "flex flex-col items-center gap-3 rounded-corner-md border border-dashed py-16 text-center",
         className,
       )}
     >
       <TriangleAlert className="text-muted-foreground/50 size-8" />
       <div className="min-w-0 px-6">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="text-title-small">{title}</p>
+        <p className="text-muted-foreground mt-1 text-body-medium">
           {shownDetail ?? "Something went wrong. Try again."}
         </p>
       </div>

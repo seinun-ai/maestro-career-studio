@@ -10,13 +10,35 @@ from pathlib import Path
 # database. Per process, so two sessions running the suite at once cannot
 # trip over each other the way the shared Postgres test database used to.
 _OWNED_TMP: str | None = None
-if not os.environ.get("TEST_DATABASE_URL"):
+# pytest-xdist: the controller imports this module first and mints the URL
+# below, and every worker inherits it through the environment, so all of them
+# would migrate and delete from ONE file ("table ... already exists"). A worker
+# therefore mints its own; MAESTRO_TEST_DB_MINTED tells a URL the controller
+# minted apart from one the shell supplied, which cannot be split per worker.
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
+_MINTED_BY_CONTROLLER = bool(_XDIST_WORKER and os.environ.get("MAESTRO_TEST_DB_MINTED"))
+if _XDIST_WORKER and os.environ.get("TEST_DATABASE_URL") and not _MINTED_BY_CONTROLLER:
+    raise RuntimeError(
+        "TEST_DATABASE_URL names one file, and every pytest-xdist worker would delete from it "
+        "at once. Unset it to give each worker its own throwaway file, or run without -n."
+    )
+if not os.environ.get("TEST_DATABASE_URL") or _MINTED_BY_CONTROLLER:
     _OWNED_TMP = tempfile.mkdtemp(prefix="maestro_cs_test_")
     os.environ["TEST_DATABASE_URL"] = f"sqlite:///{Path(_OWNED_TMP) / 'maestro_cs_test.sqlite3'}"
+    os.environ["MAESTRO_TEST_DB_MINTED"] = "1"
     # The session fixture removes the dir on a normal run. This covers
     # `--collect-only` and a collection-time abort, where no fixture ever runs
     # and every invocation would otherwise leave an empty dir behind.
     atexit.register(shutil.rmtree, _OWNED_TMP, ignore_errors=True)
+
+# No real model key ever reaches a test. A library that calls python-dotenv's
+# load_dotenv() at import (litellm is one) walks UP from the cwd when the process
+# was not started from a script file, which is every pytest-xdist worker; from
+# backend/ that finds the repo root's .env (from a worktree under .claude/worktrees/,
+# the main checkout's) and exports the developer's live keys, so tests that do not
+# stub the model make real, billed calls. An empty value wins over a .env line.
+for _secret in ("OPENAI_API_KEY", "GEMINI_API_KEY"):
+    os.environ[_secret] = ""
 
 # Same reason, same timing: `app.main` installs TrustedHostMiddleware from
 # `settings.allowed_hosts` at import, and starlette's TestClient sends
@@ -63,6 +85,17 @@ def _hermetic_embedder(request, monkeypatch):
     from app.services.ats import embeddings
 
     monkeypatch.setattr(embeddings, "embed_texts", fake_embed_texts)
+
+
+@pytest.fixture(autouse=True)
+def _no_remembered_polarity():
+    """autofill_polarity remembers confident answers per process: every test
+    starts, and leaves, with nothing remembered."""
+    from app.services import autofill_polarity
+
+    autofill_polarity.forget()
+    yield
+    autofill_polarity.forget()
 
 
 # Tests delete from every table. Refuse anything that could be real data: the

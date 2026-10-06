@@ -55,8 +55,25 @@ NON_FORM_KINDS = frozenset({"signal"})
 # rendered option, count exactly like a first-attempt fill for this rate.
 # ai_abstained and filled_unverified are NOT here — both are neutral by
 # omission, picked up by the derived NEUTRAL_OUTCOMES below.
+#
+# The fill loop's: a verified write and the two written-to-check ones
+# (closest_filled, assumed_filled) are successes; cannot_operate and
+# unsupported — a control the engine could not work, or one that ignored every
+# synthetic input — and unconfirmed — a value the page never confirmed — are
+# its failures, the coverage gap this card exists to show. partial,
+# needs_answer, prefilled, blocked and user_edited are neutral: nothing
+# answered the field, or the loop rightly left it alone.
 SUCCESS_OUTCOMES = frozenset(
-    {"filled", "corrected", "filled_normalized", "retry_filled", "match_recovered"}
+    {
+        "filled",
+        "corrected",
+        "filled_normalized",
+        "retry_filled",
+        "match_recovered",
+        "verified",
+        "closest_filled",
+        "assumed_filled",
+    }
 )
 FAILURE_OUTCOMES = frozenset(
     {
@@ -65,6 +82,9 @@ FAILURE_OUTCOMES = frozenset(
         "not_stuck",
         "ai_unanswered",
         "ai_no_stick",
+        "cannot_operate",
+        "unconfirmed",
+        "unsupported",
     }
 )
 # Everything the contract declares and neither set claims. Derived on purpose:

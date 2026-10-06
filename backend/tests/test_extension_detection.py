@@ -286,6 +286,68 @@ def test_the_hiring_vocabulary_is_read_at_two_strengths(tmp_path, text, signal, 
     assert result["score"] == weight
 
 
+def test_an_icims_screening_questions_step_is_a_form(tmp_path):
+    """iCIMS's Candidate Questions step, live (Global Medical Response,
+    2026-10-01): three knockout selects and a Submit button in the page's own
+    iframe. No upload, no identity field, no vendor marker, and "Submit" is not
+    an apply control, so it scored 0, the panel said there was no form, and
+    the frame's own write gate refused every write. The questions are the
+    evidence: they are asked of an applicant and nobody else."""
+    page = {
+        "url": "https://careers-acme.icims.com/jobs/701/analyst/candidate?in_iframe=1",
+        "text": ("Candidate Questions. Please answer the following questions: "
+                 "* Required field. Are you at least 18 years of age?* "
+                 "Are you legally eligible for employment in the United States?* "
+                 "Will you now or in the future require sponsorship for employment "
+                 "visa status (e.g., H-1B visa status)?* Finish Later Submit"),
+        "elements": [
+            {"tag": "form", "attrs": {}},
+            {"tag": "select", "attrs": {"name": "q1"}},
+            {"tag": "input", "attrs": {"type": "submit", "value": "Submit"}},
+        ],
+    }
+    result = run_detect(tmp_path, page=page)
+
+    assert result["form"] is True
+    assert result["tier"] == "B"
+    assert _signals(result) == {"ats:icims", "screening-question"}
+
+
+# Each alternative alone, asked as a question; then the same words as the
+# statements a job description makes, which must not score.
+@pytest.mark.parametrize("text,fires", [
+    ("Are you at least 18 years of age?", True),
+    ("Are you 16 years or older? Are you at least 16 years old?", True),
+    ("Are you legally eligible for employment in the United States?", True),
+    ("Are you legally authorized to work in the country where this job is located?", True),
+    ("Are you authorised to work in the UK?", True),
+    ("Will you now or in the future require sponsorship for employment visa status "
+     "(e.g., H-1B visa status)?", True),
+    ("Do you now, or will you in the future, require visa sponsorship?", True),
+    # Statements: the job description's own sentences about the same things.
+    ("Candidates must be legally authorized to work in the United States.", False),
+    ("We are unable to offer visa sponsorship for this role.", False),
+    ("You must be at least 18 years of age to apply.", False),
+    # A question elsewhere does not borrow a keyword across a sentence.
+    ("Do you love data? We do not offer sponsorship.", False),
+    ("Are you ready to grow your career?", False),
+])
+def test_a_screening_question_is_the_question_not_the_words(tmp_path, text, fires):
+    """A posting page carries every one of these words in its requirements
+    section; only an application ASKS them. So the signal is a question
+    addressed to "you" whose subject is age, work authorization or
+    sponsorship, within one sentence that ends in a question mark."""
+    page = {
+        "url": "https://example-co.test/careers",
+        "text": text,
+        "elements": [{"tag": "select", "attrs": {"name": "answer"}}],
+    }
+    result = run_detect(tmp_path, page=page)
+
+    assert ("screening-question" in _signals(result)) is fires
+    assert result["form"] is fires
+
+
 @pytest.mark.parametrize("attrs", [
     # A drag-and-drop uploader declaring no `accept` at all: the name is the
     # only thing left saying what it wants, which is why the design calls the
@@ -654,3 +716,62 @@ def test_an_ats_posting_page_with_an_apply_button_reads_as_a_form(tmp_path):
 
     assert result["tier"] == "B"
     assert _signals(result) == {"ats:workday", "ats-dom-marker", "apply-affordance"}
+
+
+# ---------- Workday's apply flow ----------
+#
+# Every Workday apply step but one used to score 1 and read as no form, so the
+# panel withheld Fill over a full form (live, pg.wd5, 2026-09-25): Workday
+# renders no <form> and no <select> (so the page text is never read and the
+# self-identification block cannot count), its phone box is `type="text"`
+# named `phoneNumber` and My Information asks no email (so the identity
+# cluster stops at two), and its button says "Save and Continue". Only My
+# Experience, with its résumé upload, reached 2. The apply ROUTE is the one
+# thing every step shares, and it is Workday's alone: search and posting pages
+# never carry it, so the host-is-never-enough rule above still holds.
+
+_WORKDAY_MY_INFORMATION = {
+    "url": "https://pg.wd5.myworkdayjobs.com/en-GB/1000/job/CINCINNATI-GENERAL-OFFICES/"
+           "Data-Scientist_R000001/apply/applyManually",
+    "text": "My Information. Legal Name. First Name. Last Name. Phone Number.",
+    "elements": [
+        {"tag": "div", "attrs": {"data-automation-id": "applyFlowMyInfoPage"}},
+        {"tag": "input", "attrs": {"type": "text", "name": "legalName--firstName"}},
+        {"tag": "input", "attrs": {"type": "text", "name": "legalName--lastName"}},
+        {"tag": "input", "attrs": {"type": "text", "name": "phoneNumber"}},
+        {"tag": "button", "attrs": {"data-automation-id": "pageFooterNextButton"},
+         "text": "Save and Continue"},
+    ],
+}
+
+
+@pytest.mark.parametrize("path", [
+    "/apply/applyManually", "/apply/autofillWithResume", "/apply/useMyLastApplication", "/apply",
+])
+def test_every_step_of_a_workday_apply_flow_is_a_form(tmp_path, path):
+    url = _WORKDAY_MY_INFORMATION["url"].rsplit("/apply", 1)[0] + path
+    result = run_detect(tmp_path, page={**_WORKDAY_MY_INFORMATION, "url": url})
+
+    assert result["form"] is True
+    assert result["tier"] == "B"
+    assert _signals(result) >= {"ats:workday", "ats-dom-marker", "workday-apply-route"}
+
+
+def test_a_workday_posting_is_not_on_the_apply_route(tmp_path):
+    """The route is the apply flow's, not the job's: a posting URL that merely
+    contains the word must not count."""
+    url = "https://pg.wd5.myworkdayjobs.com/en-GB/1000/job/Remote/Apply-Scientist_R000002"
+    result = run_detect(tmp_path, page={**_WORKDAY_MY_INFORMATION, "url": url})
+
+    assert "workday-apply-route" not in _signals(result)
+    assert result["form"] is False
+
+
+def test_an_apply_route_off_workday_scores_nothing(tmp_path):
+    """Workday's alone: the same path and marker on any other host is the
+    ordinary one point it always was."""
+    url = "https://careers.example.test/jobs/42/apply/applyManually"
+    result = run_detect(tmp_path, page={**_WORKDAY_MY_INFORMATION, "url": url})
+
+    assert "workday-apply-route" not in _signals(result)
+    assert result["form"] is False

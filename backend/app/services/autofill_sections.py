@@ -1,0 +1,261 @@
+"""/sections — which profile list does each repeating section hold, and how
+many of its entries can the profile fill?
+
+A repeating section (Work Experience, Education, Websites…) grows only when
+its own Add button is pressed, and an added entry's fields are REQUIRED
+(notes §5): an entry the profile cannot fill blocks the page. So the loop adds
+entries only up to `wanted` — the profile entries of the section's kind that
+hold every fact the new entry would require.
+
+One batched Jev Choice per section over code-owned KIND keys (the heading is
+page text, offered as data); the fast model does the same job in JSON with a
+confidence that must clear the same floor, when the engine is `fast` or a Jev
+call fails. Below the floor, refused or unreadable: `none`, and nothing is
+added. The model sees headings and entry counts only; the counts come from the
+fact catalog here, so no value leaves the machine.
+
+PLACED BY WHAT THE ENTRIES HOLD. An entry already holding data keeps it, and
+is matched to the profile entry it holds — on the employer (a job; and its
+title, when two jobs share an employer), the school, the language or the
+URL (a website: the profile's website, then its GitHub), normalized by
+`name_key` (case and punctuation; the company suffixes it drops, Inc or LLC,
+matter only for an employer) or, for a URL, `url_key`. Empty entries (and entries to add)
+take the profile entries no entry holds, lowest first, in page order. `order`
+says so per entry, and /map writes each entry's facts from ITS profile entry
+(`MapField.profile_entry`), so an entry pre-filled out of profile order is
+never given a job the page already shows. An Add is safe only when every entry
+holding data holds a different profile entry. An entry holding something the
+profile does not have may be a profile entry spelled another way, so its WHOLE
+section is placed nowhere and nothing is added (`held_unmatched`, reported
+even when nothing was to be added); two entries holding the same one add
+nothing (`held_twice`). The plan says why, value-free. What the entries hold
+(`held`) comes to this local backend for that match only.
+
+TWO SECTIONS OF ONE PLACED KIND (a "Volunteer Experience" read as work
+experience above the real one): which is misread cannot be told, so neither
+is placed nor grows — every entry null, nothing to add (`ambiguous_kind`).
+Sections of other kinds are planned as ever.
+"""
+
+import json
+import logging
+import re
+from typing import NamedTuple
+
+from sqlalchemy.orm import Session
+
+from app.schemas.autofill_fill import PageSection, SectionKind, SectionPlan
+from app.services import jev, llm, model_settings
+from app.services.autofill_catalog import Fact, name_key, url_key, websites
+from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, SLOT_FLOOR
+from app.services.autofill_map import fast_json
+
+logger = logging.getLogger(__name__)
+
+NONE: SectionKind = "none"
+KINDS: dict[SectionKind, str] = {
+    "experience": "Work experience or employment history: one entry per job the applicant held",
+    "education": "Education: one entry per school, college or university the applicant attended",
+    "languages": "Languages: one entry per language the applicant speaks",
+    "websites": "Websites or links: one entry per personal website, portfolio or GitHub profile",
+    "certifications": "Certifications or licenses: one entry per certificate the applicant holds",
+    NONE: "None of these: not a list of the applicant's jobs, schools, languages, websites or "
+          "certifications, or the heading does not say which",
+}
+# The facts an added entry cannot be saved without (its REQUIRED fields), per
+# kind. An entry missing one is not wanted: Add would leave a required box empty.
+# A language's Read / Speak / Write popups are required on Workday; its
+# "I am fluent in this language." box is not.
+_NEEDS: dict[str, tuple[str, ...]] = {"experience": ("employer", "title"), "education": ("school",),
+                                      "languages": ("language", "read", "speak", "write")}
+_LLM_PROMPT = """You classify the repeating sections of a job-application form. {rule}
+Return JSON {{"sections": {{"<section id>": {{"key": "<key>", "confidence": <0..1>}}}}}} using ONLY these keys:
+{kinds}
+Sections:
+{sections}
+"""
+
+
+# What names a profile entry, per kind: the value an entry holding it must show.
+# A Websites entry is named by its URL: profile entry k is the k-th URL the
+# profile holds (`autofill_catalog.websites`), so the kinds placed by profile
+# entry are these and websites. Certifications have no facts yet: none is added.
+_NAMED_BY = {"experience": "employer", "education": "school", "languages": "language"}
+PLACED = (*_NAMED_BY, "websites")
+
+
+def _entries(kind: str, facts: dict[str, Fact]) -> list[int]:
+    """The profile's entries of `kind`, by catalog index."""
+    if kind == "websites":
+        return list(range(len(websites(facts))))
+    return sorted({int(m[1]) for slot in facts if (m := re.fullmatch(rf"{kind}\.(\d+)\..+", slot))})
+
+
+def _names(kind: str, facts: dict[str, Fact]) -> list[tuple[int, str]]:
+    """Each profile entry of `kind` that has a name, with its name."""
+    if kind == "websites":
+        return [(k, str(facts[slot].value)) for k, slot in enumerate(websites(facts))]
+    return [(i, str(name.value)) for i in _entries(kind, facts)
+            if (name := facts.get(f"{kind}.{i}.{_NAMED_BY[kind]}")) is not None]
+
+
+def _key(kind: str, text: str) -> str:
+    return url_key(text) if kind == "websites" else name_key(text)
+
+
+def _complete(kind: str, i: int, facts: dict[str, Fact]) -> bool:
+    return all(f"{kind}.{i}.{need}" in facts for need in _NEEDS.get(kind, ()))
+
+
+def _match(kind: str, values: set[str], facts: dict[str, Fact], taken: set[int]) -> int | None:
+    """The profile entry an entry holding `values` (normalized) holds, by the
+    value that names it: the first not already `taken` when several do. When
+    every hit is taken, a TAKEN one is returned — not None — so the caller
+    sees a second holding of one entry (a duplicate) rather than a foreign
+    entry. None: the profile has no such entry."""
+    hits = []
+    for i, name in _names(kind, facts):
+        if _key(kind, name) not in values:
+            continue
+        # Two profile jobs at one employer: the employer cannot say which one
+        # the entry holds, so its title must match too.
+        if kind == "experience" and _shares_employer(i, facts):
+            title = facts.get(f"experience.{i}.title")
+            if title is None or name_key(str(title.value)) not in values:
+                continue
+        hits.append(i)
+    return next((i for i in hits if i not in taken), hits[0] if hits else None)
+
+
+class Placement(NamedTuple):
+    """Per page entry, the profile entry it holds or is given (None: a second
+    holding of one, past the profile, a Websites entry holding the applicant's
+    LinkedIn, or every entry of a section holding a foreign one); the profile entries no entry holds or is given, left for
+    entries to add; whether every entry holding data holds a different
+    profile entry; and whether one holds something the profile does not have."""
+
+    order: list[int | None]
+    free: list[int]
+    safe: bool
+    foreign: bool
+
+
+def _held_elsewhere(kind: str, keys: set[str], facts: dict[str, Fact]) -> bool:
+    """A Websites entry holding the applicant's own LinkedIn (resume-parsed
+    Workday puts it there): theirs, so not foreign, and no Websites entry's."""
+    linkedin = facts.get("personal.linkedin")
+    return kind == "websites" and linkedin is not None and url_key(str(linkedin.value)) in keys
+
+
+def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> Placement:
+    held: dict[int, int | None] = {}
+    taken: set[int] = set()
+    foreign = twice = False
+    for j in range(section.entries):
+        values = section.held[j] if j < len(section.held) else []
+        if not ((section.filled[j] if j < len(section.filled) else False) or values):
+            continue
+        # A value that normalizes to nothing ("Inc.") names nothing.
+        keys = {_key(kind, v) for v in values} - {""}
+        if _held_elsewhere(kind, keys, facts):
+            held[j] = None
+            continue
+        i = _match(kind, keys, facts, taken)
+        foreign = foreign or i is None
+        twice = twice or i in taken
+        if i is None or i in taken:
+            held[j] = None
+        else:
+            held[j] = i
+            taken.add(i)
+    if foreign:
+        return Placement([None] * section.entries, [], False, True)
+    free = [i for i in _entries(kind, facts) if i not in taken]
+    order: list[int | None] = []
+    for j in range(section.entries):
+        if j in held:
+            order.append(held[j])
+        elif free:
+            order.append(free[0])
+            free = free[1:]
+        else:
+            order.append(None)
+    return Placement(order, free, not twice, False)
+
+
+def _shares_employer(j: int, facts: dict[str, Fact]) -> bool:
+    employers = {slot: name_key(str(f.value)) for slot, f in facts.items()
+                 if re.fullmatch(r"experience\.\d+\.employer", slot)}
+    mine = employers.get(f"experience.{j}.employer")
+    return sum(e == mine for e in employers.values()) > 1
+
+
+def _payload(sections: list[PageSection]) -> list[dict]:
+    return [{"id": s.sid, "heading": s.heading, "entries": s.entries} for s in sections]
+
+
+def _with_jev(sections: list[PageSection], session: Session) -> dict[str, tuple[str, float]]:
+    questions = {
+        s.sid: jev.choice_question(
+            f"Which list of the applicant's does the repeating form section {s.sid} (headed "
+            f"{json.dumps(s.heading)}) hold? Each entry of it holds one item of that kind. Answer none "
+            "unless the heading names one. " + _PAGE_TEXT_IS_DATA, dict(KINDS))
+        for s in sections
+    }
+    answers = jev.decide(questions, {"sections": _payload(sections)}, session)
+    out = {}
+    for s in sections:
+        if picked := jev.choice_of(answers.get(s.sid), KINDS):
+            out[s.sid] = (picked.choice, picked.probability)
+    return out
+
+
+def _with_llm(sections: list[PageSection], session: Session) -> dict[str, tuple[str, float]]:
+    raw = fast_json(session, _LLM_PROMPT.format(
+        rule=_PAGE_TEXT_IS_DATA, kinds="\n".join(f"- {k}: {v}" for k, v in KINDS.items()),
+        sections=json.dumps(_payload(sections))), "autofill-sections")
+    got = raw.get("sections") if isinstance(raw, dict) else None
+    asked = {s.sid for s in sections}
+    out = {}
+    for sid, entry in (got.items() if isinstance(got, dict) else ()):
+        if sid not in asked or not isinstance(entry, dict):
+            continue
+        key, conf = entry.get("key"), entry.get("confidence")
+        if isinstance(key, str) and key in KINDS and jev._unit(conf):
+            out[sid] = (key, float(conf))
+    return out
+
+
+def plan(sections: list[PageSection], facts: dict[str, Fact], session: Session) -> dict[str, SectionPlan]:
+    picked = None
+    if model_settings.get_autofill_engine(session) == "jev":
+        try:
+            picked = _with_jev(sections, session)
+        except llm.LLMProviderError:
+            logger.warning("jev sections failed; the fast model classifies them")
+    if picked is None:
+        picked = _with_llm(sections, session)
+    kinds = {s.sid: kind if p >= SLOT_FLOOR else NONE for s in sections
+             for kind, p in [picked.get(s.sid, (NONE, 0.0))]}
+    twice = {k for k in PLACED if sum(kind == k for kind in kinds.values()) > 1}
+    out = {}
+    for s in sections:
+        kind = kinds[s.sid]
+        if kind in twice:
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="ambiguous_kind", order=[None] * s.entries)
+            continue
+        if kind not in PLACED:
+            out[s.sid] = SectionPlan(kind=kind, wanted=0)
+            continue
+        placed = place(s, kind, facts)
+        # Added entries take the free profile entries that hold every fact an
+        # entry requires, in order: one missing a fact is skipped (placed by
+        # profile entry, a gap is no wall).
+        add = [i for i in placed.free if _complete(kind, i, facts)]
+        if placed.foreign:
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_unmatched", order=placed.order)
+        elif add and not placed.safe:
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_twice", order=placed.order)
+        else:
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries + len(add), order=placed.order + add)
+    return out

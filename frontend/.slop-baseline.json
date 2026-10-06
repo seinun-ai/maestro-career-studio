@@ -22,21 +22,21 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 1.11,
-    "duplicated_lines": 518,
-    "clones": 43,
+    "percentage": 0.74,
+    "duplicated_lines": 444,
+    "clones": 37,
     "allowlisted_clones": 0,
     "worst_files": [
       [
-        "components/resume-editor/editor-body.tsx",
-        9
+        "components/resume-health/finding-cards.tsx",
+        10
       ],
       [
-        "components/resume-editor/tailored-resume-studio.tsx",
+        "components/resume-editor/editor-body.tsx",
         6
       ],
       [
-        "components/resume-editor/experience-editor.tsx",
+        "components/resume-editor/tailored-resume-studio.tsx",
         6
       ],
       [
@@ -48,12 +48,12 @@
         4
       ],
       [
-        "lib/resume-schema.ts",
+        "components/resume-editor/experience-editor.tsx",
         4
       ],
       [
-        "components/career/points-list.tsx",
-        3
+        "lib/resume-schema.ts",
+        4
       ],
       [
         "components/resume-editor/extra-sections-editor.tsx",
@@ -64,19 +64,15 @@
         3
       ],
       [
-        "app/jobs/[id]/page.tsx",
-        2
-      ],
-      [
-        "app/jobs/[id]/tailor/[sessionId]/page.tsx",
-        2
+        "components/resume-health/health-report-page.tsx",
+        3
       ],
       [
         "app/referrals/page.tsx",
         2
       ],
       [
-        "components/career/new-entity-dialog.tsx",
+        "components/analytics/analytics-overview.tsx",
         2
       ],
       [
@@ -84,7 +80,11 @@
         2
       ],
       [
-        "components/career/profile-panel.tsx",
+        "components/resume-editor/diff-review.tsx",
+        2
+      ],
+      [
+        "components/role-picker.tsx",
         2
       ]
     ]
@@ -133,9 +133,9 @@
     "test_loc": 0,
     "modules": 0,
     "orphan_loc": 0,
-    "duplication_pct": 1.11,
-    "duplicated_lines": 518,
-    "clone_count": 43,
+    "duplication_pct": 0.74,
+    "duplicated_lines": 444,
+    "clone_count": 37,
     "complexity_hotspots": 0,
     "error_masking": 0,
     "imports_per_module": 0.0

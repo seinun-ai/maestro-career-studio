@@ -126,7 +126,7 @@ export default function BaseResumesListPage() {
         subtitle="One resume for each kind of job you apply for."
         actions={
           <>
-            <label className="text-muted-foreground mr-2 flex items-center gap-2 text-sm">
+            <label className="text-muted-foreground mr-2 flex items-center gap-2 text-body-medium">
               <Switch
                 checked={showArchived}
                 onCheckedChange={setShowArchived}
@@ -184,7 +184,7 @@ export default function BaseResumesListPage() {
               )}
             />
           ) : (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-body-medium">
               No base resumes yet. Create one to start.
             </p>
           )}
@@ -245,7 +245,7 @@ export default function BaseResumesListPage() {
           {/* A soft delete (routers/base_resumes.delete_base_resume): the row
               leaves every list and nothing in the app brings it back; its files
               stay on disk. An archived resume is already out of the way. */}
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             This removes the resume from your base resumes. You can&apos;t undo this.
             {deleteTarget?.archived_at ? null : " To keep it out of the way instead, archive it."}
           </p>

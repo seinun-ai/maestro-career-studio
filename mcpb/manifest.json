@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "maestro-career-studio",
   "display_name": "Maestro Career Studio",
-  "version": "0.6.0",
+  "version": "0.7.1",
   "description": "Tailor resumes and track applications, from your own machine",
-  "long_description": "Drive Maestro Career Studio from Claude: capture and score jobs, tailor resumes against a job description, render PDFs, and track applications. Requires the Maestro CS stack running locally (docker compose up -d) — this extension talks to your own backend over Docker, and nothing leaves the machine.",
+  "long_description": "Drive Maestro Career Studio from Claude: capture and score jobs, tailor resumes against a job description, render PDFs, and track applications. Requires the Maestro CS stack running locally (docker compose up -d) — this extension talks only to your own local backend over Docker. AI features send content to the model provider you configure in the app.",
   "author": {
     "name": "Ajey Dhayashanker Loganathan"
   },
@@ -16,6 +16,8 @@
   "documentation": "https://github.com/seinun-ai/maestro-career-studio/blob/main/backend/mcp_server/README.md",
   "support": "https://github.com/seinun-ai/maestro-career-studio/issues",
   "license": "Apache-2.0",
+  "icon": "icon.png",
+  "privacy_policies": ["https://github.com/seinun-ai/maestro-career-studio/blob/main/PRIVACY.md"],
   "keywords": ["resume", "job-search", "ats", "career", "mcp"],
   "server": {
     "type": "node",
@@ -48,7 +50,7 @@
     "profile": {
       "type": "string",
       "title": "Tool profile",
-      "description": "full (83 tools) or a scoped set: hunt, apply, explore, templates, career. Enable one at a time — the scoped profiles are subsets of full, so more than one costs context without adding capability.",
+      "description": "full (85 tools) or a scoped set: hunt, apply, explore, templates, career. Enable one at a time — the scoped profiles are subsets of full, so more than one costs context without adding capability.",
       "default": "full",
       "required": false
     }

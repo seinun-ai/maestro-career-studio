@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
 import { GuardedLink as Link } from "@/components/guarded-link";
@@ -19,6 +19,7 @@ import { CompanyMonogram } from "@/components/company-monogram";
 import { EmptyState } from "@/components/empty-state";
 import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
+import { FilterChips } from "@/components/filter-chips";
 import { ListToolbar } from "@/components/list-toolbar";
 import { useRoleLabel } from "@/components/role-category-picker";
 import {
@@ -26,11 +27,12 @@ import {
   DeclineDialog,
   useProposalActions,
 } from "@/components/proposals/triage-actions";
+import { ReadinessMarks } from "@/components/proposals/readiness-marks";
 import { IconButton } from "@/components/icon-button";
 import { humanizeEnum } from "@/components/job-extracted-fields";
 import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -69,6 +71,7 @@ import {
   needsYouLine,
   selectedAmong,
 } from "@/lib/inbox-lanes";
+import { historyLabel, historyStatusOf, isNew, readyFirst } from "@/lib/inbox-readiness";
 import { jobMetaLine } from "@/lib/job-meta";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
@@ -79,6 +82,8 @@ import {
 } from "@/lib/types";
 
 const PROPOSALS_KEY = ["proposals"] as const;
+// The dashboard can open History before a tile scrolls; standalone inboxes keep local state.
+export const InboxHistoryContext = createContext<readonly [boolean, Dispatch<SetStateAction<boolean>>] | null>(null);
 // The API's max page (routers/proposals.py: le=500); `total` counts them all.
 const PROPOSALS_LIMIT = 500;
 const SEQUENCE_STORE_KEY = "cs-proposals-seq";
@@ -173,7 +178,7 @@ function sortProposals(items: Proposal[], sort: SortKey): Proposal[] {
   return list;
 }
 
-export function ProposalsSection() {
+export function ProposalsSection({ since = null }: { since?: string | null } = {}) {
   const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: PROPOSALS_KEY,
     queryFn: () =>
@@ -186,10 +191,10 @@ export function ProposalsSection() {
   const [board, setBoard] = useState("all");
   const [minScore, setMinScore] = useState<ScoreFloor | null>(null);
   const roleLabel = useRoleLabel();
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyStatus, setHistoryStatus] = useState<"all" | ProposalStatus>(
-    "all",
-  );
+  const localHistory = useState(false);
+  const [historyOpen, setHistoryOpen] = useContext(InboxHistoryContext) ?? localHistory;
+  // The History statuses that are on; none on shows them all (FilterChips has no "All").
+  const [historyStatus, setHistoryStatus] = useState<ReadonlySet<ProposalStatus>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string> | null>(null);
   const [declineTarget, setDeclineTarget] = useState<
     { mode: "single"; id: string } | { mode: "bulk" } | null
@@ -263,7 +268,7 @@ export function ProposalsSection() {
     [filtered, sort],
   );
   const queued = useMemo(
-    () => sortProposals(inLane(filtered, "queued"), sort),
+    () => readyFirst(sortProposals(inLane(filtered, "queued"), sort)),
     [filtered, sort],
   );
   const inFlight = useMemo(
@@ -273,9 +278,9 @@ export function ProposalsSection() {
   const historyAll = useMemo(() => inLane(filtered, "history"), [filtered]);
   const history = useMemo(() => {
     const scoped =
-      historyStatus === "all"
+      historyStatus.size === 0
         ? historyAll
-        : historyAll.filter((p) => p.status === historyStatus);
+        : historyAll.filter((p) => historyStatus.has(historyStatusOf(p.status, p.reason)));
     return sortProposals(scoped, sort);
   }, [historyAll, historyStatus, sort]);
 
@@ -391,7 +396,7 @@ export function ProposalsSection() {
         icon={Bot}
         title="No proposals yet"
         // The page header carries the consent line (no submit without your yes); once is enough.
-        description="Proposals come from an AI agent you connect, such as Claude, Codex or the ChatGPT desktop app, using MCP (the standard way AI apps connect to tools). The app never proposes jobs itself."
+        description="Proposals come from an AI agent you connect, such as Claude, Codex or the ChatGPT desktop app. It connects through MCP (the standard way AI apps connect to tools). The app never proposes jobs itself."
         action={
           <div className="flex max-w-full flex-col items-center gap-2 px-4">
             {/* Links styled as buttons, not Buttons rendered as links: Base UI's Button
@@ -417,6 +422,7 @@ export function ProposalsSection() {
   }
 
   const rowProps = {
+    since,
     duplicateKeys,
     pending: actions.pending,
     onAct: (p: Proposal, action: RowAction, from: HTMLElement) => {
@@ -456,7 +462,7 @@ export function ProposalsSection() {
             value={sort}
             onValueChange={(v) => setSort((v as SortKey) ?? "score")}
           >
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Sort">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Sort">
               <SelectValue>{SORT_LABELS[sort]}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -468,7 +474,7 @@ export function ProposalsSection() {
             </SelectContent>
           </Select>
           <Select value={role} onValueChange={(v) => setRole(v ?? "all")}>
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
               <SelectValue>{role === "all" ? "All roles" : roleLabel(role)}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -481,7 +487,7 @@ export function ProposalsSection() {
             </SelectContent>
           </Select>
           <Select value={board} onValueChange={(v) => setBoard(v ?? "all")}>
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Job board">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[10rem]" aria-label="Job board">
               <SelectValue>{board === "all" ? "All boards" : board}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -499,7 +505,7 @@ export function ProposalsSection() {
               setMinScore(v && v !== "any" ? (Number(v) as ScoreFloor) : null)
             }
           >
-            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[8rem]" aria-label="Minimum score">
+            <SelectTrigger className="h-8 shrink-0 grow sm:grow-0 sm:min-w-[8rem]" aria-label="Minimum score">
               <SelectValue>{scoreLabel(minScore)}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[10rem]">
@@ -525,6 +531,7 @@ export function ProposalsSection() {
             <Lane
               title={`Needs you · ${needsYou.length}`}
               help={needsYouHelp(needsYou.map((p) => p.status))}
+              anchor="inbox-needs-you"
             >
               {needsYou.map((p) => (
                 <ProposalRow
@@ -537,9 +544,9 @@ export function ProposalsSection() {
             </Lane>
           ) : null}
 
-          <Lane ref={toReview} title={`To review · ${triage.length}`}>
+          <Lane ref={toReview} title={`To review · ${triage.length}`} anchor="inbox-to-review">
             {dayBatches.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Nothing to review.</p>
+              <p className="text-muted-foreground text-body-medium">Nothing to review.</p>
             ) : (
               dayBatches.map(({ day, items: dayItems }) => {
                 const open = effectiveExpandedDays.has(day);
@@ -550,7 +557,7 @@ export function ProposalsSection() {
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        className="text-muted-foreground inline-flex items-center gap-1 text-xs font-medium"
+                        className="text-muted-foreground inline-flex items-center gap-1 text-label-medium"
                         onClick={() => {
                           setExpandedDays((prev) => {
                             const base =
@@ -573,7 +580,7 @@ export function ProposalsSection() {
                         {dayItems.length === 1 ? "proposal" : "proposals"}
                       </button>
                       {open ? (
-                        <label className="text-muted-foreground ml-auto inline-flex items-center gap-1.5 text-xs">
+                        <label className="text-muted-foreground ml-auto inline-flex items-center gap-1.5 text-body-small">
                           <Checkbox checked={allSelected && ids.length > 0} onCheckedChange={(next) =>
                               selectAllShown(ids, next)} />
                           Select all shown
@@ -600,7 +607,7 @@ export function ProposalsSection() {
           </Lane>
 
           {queued.length > 0 ? (
-            <Lane title={`Queued · ${queued.length}`}>
+            <Lane title={`Queued · ${queued.length}`} anchor="inbox-queued">
               {queued.map((p) => (
                 <ProposalRow key={p.id} proposal={p} lane="queued" {...rowProps} />
               ))}
@@ -620,11 +627,12 @@ export function ProposalsSection() {
             </Lane>
           ) : null}
 
-          <section tabIndex={-1} aria-labelledby={historyId} className="flex flex-col gap-2 outline-none">
+          <section tabIndex={-1} aria-labelledby={historyId} id="inbox-history" className="flex flex-col gap-2 outline-none tall:scroll-mt-28">
             <button
               id={historyId}
               type="button"
-              className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide"
+              aria-expanded={historyOpen}
+              className="text-muted-foreground inline-flex items-center gap-1.5 text-title-small"
               onClick={() => setHistoryOpen((v) => !v)}
             >
               <ChevronDown
@@ -638,32 +646,20 @@ export function ProposalsSection() {
             </button>
             {historyOpen ? (
               <>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="History status">
-                  {(
-                    [
-                      "all", ...INBOX_LANES.history,
-                    ] as const
-                  ).map((status) => {
-                    const active = historyStatus === status;
-                    const label =
-                      status === "all" ? "All" : STATUS_LABELS[status];
-                    return (
-                      <Button
-                        key={status}
-                        size="xs"
-                        variant={active ? "tonal" : "outline"}
-                        aria-pressed={active}
-                        className="rounded-full"
-                        onClick={() => setHistoryStatus(status)}
-                      >
-                        {active && <Check />}
-                        {label}
-                      </Button>
-                    );
-                  })}
-                </div>
+                <FilterChips
+                  label="History status"
+                  value={historyStatus}
+                  onChange={setHistoryStatus}
+                  options={INBOX_LANES.history.map((status) => ({
+                    value: status,
+                    label: STATUS_LABELS[status],
+                    count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length,
+                  }))}
+                />
                 {history.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No history yet.</p>
+                  <p className="text-muted-foreground text-body-medium">
+                    {historyAll.length > 0 ? "No history with these statuses." : "No history yet."}
+                  </p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {history.map((p) => (
@@ -733,23 +729,25 @@ function Lane({
   help = [],
   children,
   ref,
+  anchor,
 }: {
   title: string;
   /** How this lane's rows are answered, under its heading (the Needs-you lane). */
   help?: string[];
   children: React.ReactNode;
   ref?: React.Ref<HTMLElement>;
+  anchor?: string;
 }) {
   const headingId = useId();
   return (
     // tabIndex={-1}: named by its heading, it takes focus when the last row acted on, or the bulk
     // bar, leaves it. Its rows sit in their own list, so a row's neighbours are rows.
-    <section ref={ref} tabIndex={-1} aria-labelledby={headingId} className="flex flex-col gap-2 overflow-x-auto outline-none">
-      <h2 id={headingId} className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+    <section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor} className="flex flex-col gap-2 overflow-x-auto outline-none tall:scroll-mt-28">
+      <h2 id={headingId} className="text-muted-foreground text-title-small">
         {title}
       </h2>
       {help.map((line) => (
-        <p key={line} className="text-muted-foreground max-w-[65ch] text-sm">
+        <p key={line} className="text-muted-foreground max-w-[65ch] text-body-medium">
           {line}
         </p>
       ))}
@@ -763,6 +761,7 @@ type LaneKind = "needs_you" | "triage" | "queued" | "in_flight" | "history";
 function ProposalRow({
   proposal,
   lane,
+  since,
   duplicateKeys,
   selected,
   onToggleSelected,
@@ -771,6 +770,7 @@ function ProposalRow({
 }: {
   proposal: Proposal;
   lane: LaneKind;
+  since: string | null;
   duplicateKeys: Set<string>;
   selected: Set<string>;
   onToggleSelected: (id: string, next: boolean) => void;
@@ -825,17 +825,17 @@ function ProposalRow({
             // and squeezed the title to a few letters at 768 and to nothing at
             // 375. Narrow, the chips wrap under the text and the decorative
             // monogram steps aside.
-            className="hover:bg-muted/40 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl p-3 text-left transition-colors sm:p-4"
+            className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-corner-md p-3 text-left transition-colors sm:p-4"
           >
             <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
             <div className="min-w-0 grow basis-[10rem]">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-sm font-medium">
+                <span className="truncate text-title-small">
                   {job.title ?? "Untitled role"}
                 </span>
-                {job.disqualifying_for_opt ? (
+                {job.disqualifying_for_opt && proposal.readiness?.knockout !== "opt" ? (
                   <span
-                    className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"
+                    className="text-warning inline-flex items-center gap-1 text-body-small"
                     title="OPT is the US student work permit"
                   >
                     <AlertTriangle className="size-3.5" aria-hidden="true" />
@@ -843,30 +843,37 @@ function ProposalRow({
                   </span>
                 ) : null}
                 {isDup ? (
-                  <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-400">
+                  <span className="inline-flex items-center rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
                     Possible duplicate
                   </span>
                 ) : null}
+                {isNew(proposal.created_at, since) ? (
+                  <span className="inline-flex items-center gap-1 text-label-small text-primary">
+                    <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
+                    New
+                  </span>
+                ) : null}
+                <ReadinessMarks readiness={proposal.readiness} />
               </div>
-              <div className="text-muted-foreground truncate text-xs">
+              <div className="text-muted-foreground truncate text-body-small">
                 {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
               </div>
-              <div className="text-muted-foreground truncate text-xs" title={meta}>
+              <div className="text-muted-foreground truncate text-body-small" title={meta}>
                 {meta}
               </div>
-              {needs ? <p className="mt-1 text-xs break-words">{needs}</p> : null}
+              {needs ? <p className="mt-1 text-body-small break-words">{needs}</p> : null}
             </div>
             {base ? (
-              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-muted/70 px-2 py-0.5 text-xs sm:inline-flex">
+              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-body-small dark:bg-surface-container-highest sm:inline-flex">
                 {baseName}
                 {score != null ? ` · ATS score ${score}` : ""}
               </span>
             ) : null}
             <Badge
-              className={cn("shrink-0", STATUS_BADGE_CLASS[proposal.status])}
+              className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
               variant="secondary"
             >
-              {STATUS_LABELS[proposal.status]}
+              {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
             </Badge>
           </Link>
           <div className="flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">

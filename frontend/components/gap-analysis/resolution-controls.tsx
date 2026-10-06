@@ -263,7 +263,7 @@ export function ActionSegment({
     <div
       role="group"
       aria-label="How to handle this gap"
-      className="bg-muted inline-flex w-fit items-center gap-0.5 rounded-lg p-[3px]"
+      className="bg-muted inline-flex w-fit items-center gap-0.5 rounded-full p-[3px]"
     >
       {manual.map((action) => (
         <button
@@ -273,9 +273,9 @@ export function ActionSegment({
           aria-disabled={locked || undefined}
           onClick={locked ? undefined : () => onSelect(action)}
           className={cn(
-            "h-6 rounded-md px-2 text-xs font-medium transition-colors aria-disabled:opacity-50",
+            "h-6 rounded-full px-2 text-label-medium transition-colors aria-disabled:opacity-50",
             value === action
-              ? "bg-background text-foreground shadow-sm"
+              ? "bg-background text-foreground"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -313,7 +313,7 @@ export function Chip({
       onClick={locked ? undefined : onClick}
       className={cn(
         // Wraps instead of truncating: at 375 "Harbor Loop Logistics, Senior ML Engin…" lost the role.
-        "inline-flex min-h-6 max-w-full items-center gap-1 rounded-full border px-2.5 py-0.5 text-left text-xs font-medium transition-colors aria-disabled:opacity-50",
+        "inline-flex min-h-6 max-w-full items-center gap-1 rounded-full border px-2.5 py-0.5 text-left text-label-medium transition-colors aria-disabled:opacity-50",
         selected
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -325,7 +325,7 @@ export function Chip({
       {date && (
         <span
           className={cn(
-            "shrink-0 text-[10px] tabular-nums",
+            "shrink-0 text-label-small tabular-nums",
             selected ? "text-primary-foreground" : "text-muted-foreground",
           )}
         >
@@ -335,7 +335,7 @@ export function Chip({
       {recent && (
         <span
           className={cn(
-            "shrink-0 rounded px-1 text-[10px] font-medium",
+            "shrink-0 rounded-corner-xs px-1 text-label-small",
             selected
               ? "bg-primary-foreground/10 text-primary-foreground"
               : "bg-muted text-muted-foreground",
@@ -384,10 +384,10 @@ export function AddKeywordControls({
   const locked = use(GapLocked);
   if (targets === null) {
     if (loadError) {
-      return <p className="text-destructive text-xs">{LOAD_ERROR_MESSAGE}</p>;
+      return <p className="text-destructive text-body-small">{LOAD_ERROR_MESSAGE}</p>;
     }
     return (
-      <p className="text-muted-foreground text-xs">Loading…</p>
+      <p className="text-muted-foreground text-body-small">Loading…</p>
     );
   }
   let skillsItems = targets.filter((t) => t.section === "skills");
@@ -420,14 +420,14 @@ export function AddKeywordControls({
   return (
     <div className="space-y-2">
       {unverified && (
-        <div className="text-destructive bg-destructive/10 rounded-md p-2 text-xs">
+        <div className="text-destructive bg-destructive/10 rounded-corner-md p-2 text-body-small">
           {UNVERIFIED_WARNING}
         </div>
       )}
-      <p className="text-muted-foreground text-xs">Where should it go?</p>
+      <p className="text-muted-foreground text-body-small">Where should it go?</p>
       {groups.map((group) => (
         <div key={group.key} className="flex flex-wrap items-baseline gap-1.5">
-          <span className="text-muted-foreground w-20 shrink-0 text-xs">
+          <span className="text-muted-foreground w-20 shrink-0 text-body-small">
             {group.title}
           </span>
           {group.items.map((target) => (
@@ -444,7 +444,7 @@ export function AddKeywordControls({
         </div>
       ))}
       <div className="grid gap-1.5">
-        <Label htmlFor={wordingId} className="text-muted-foreground text-xs">
+        <Label htmlFor={wordingId} className="text-muted-foreground text-label-medium">
           Exact wording
         </Label>
         <Input
@@ -481,12 +481,12 @@ export function UserInputControls({
   const locked = use(GapLocked);
   return (
     <div className="space-y-2">
-      <p id={questionId} className="text-sm">
+      <p id={questionId} className="text-body-medium">
         {question}
       </p>
       {/* The constraint has to stay on screen. It used to live in the
           placeholder, so it disappeared the moment you started writing. */}
-      <p id={`${questionId}-hint`} className="text-muted-foreground text-xs">
+      <p id={`${questionId}-hint`} className="text-muted-foreground text-body-small">
         Only what you write here is used.
       </p>
       <Textarea
@@ -499,7 +499,7 @@ export function UserInputControls({
       {targets && targets.length > 0 && (
         <div className="space-y-1">
           {/* Names the chip group; the chips are the control, so no htmlFor. */}
-          <Label id={whereId} optional className="text-muted-foreground text-xs font-normal">
+          <Label id={whereId} optional className="text-muted-foreground text-body-small">
             Where did you do this?
           </Label>
           <div role="group" aria-labelledby={whereId} className="flex flex-wrap gap-1.5">
@@ -582,7 +582,7 @@ export function LibraryCandidateChips({
   if (candidates.length === 0) return null;
   return (
     <div className="space-y-1.5">
-      <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+      <p className="text-muted-foreground flex items-center gap-1.5 text-body-small">
         <Library className="size-3.5 shrink-0" />
         Found in your resumes and career history
       </p>
@@ -601,7 +601,7 @@ export function LibraryCandidateChips({
           );
         })}
       </div>
-      <p className="text-muted-foreground/80 text-xs">
+      <p className="text-muted-foreground/80 text-body-small">
         Pick one to use it. If it can&apos;t be added directly, its text goes
         into your answer to edit.
       </p>
@@ -626,13 +626,13 @@ export function AttachProjectControls({
 }) {
   if (projects === null) {
     if (loadError) {
-      return <p className="text-destructive text-xs">{LOAD_ERROR_MESSAGE}</p>;
+      return <p className="text-destructive text-body-small">{LOAD_ERROR_MESSAGE}</p>;
     }
-    return <p className="text-muted-foreground text-xs">Loading projects…</p>;
+    return <p className="text-muted-foreground text-body-small">Loading projects…</p>;
   }
   if (projects.length === 0) {
     return (
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-body-small">
         No projects on this base resume. Try answering instead.
       </p>
     );
@@ -640,7 +640,7 @@ export function AttachProjectControls({
   const candidateSet = new Set(candidates.map((name) => name.toLowerCase()));
   return (
     <div className="space-y-2">
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-body-small">
         Pick a project that shows this skill.
       </p>
       <div className="flex flex-wrap gap-1.5">

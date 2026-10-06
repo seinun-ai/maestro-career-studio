@@ -11,14 +11,17 @@ from app.origin_guard import OriginGuardMiddleware
 
 from app.routers import (
     role_categories,
+    agent_runs,
     applications,
     ats,
+    automations,
     autofill,
     base_resumes,
     career_kb,
     chat,
     explore,
     exports,
+    filled_answers,
     jobs,
     proposals,
     qa,
@@ -31,6 +34,7 @@ from app.routers import (
     templates,
     version,
 )
+from app.services import automations as automation_prompts
 from app.services import seeding, tracing
 from app.services.llm import LLMProviderError
 
@@ -111,6 +115,7 @@ def _log_llm_config() -> None:
 async def lifespan(app: FastAPI):
     seeding.run_startup()
     _log_llm_config()
+    automation_prompts.load_cards()  # a malformed skill file fails startup, not a page
     yield
     tracing.shutdown()
 
@@ -202,6 +207,9 @@ app.include_router(resume_lint.router)
 app.include_router(chat.router)
 app.include_router(exports.router)
 app.include_router(version.router)
+app.include_router(automations.router)
+app.include_router(filled_answers.router)
+app.include_router(agent_runs.router)
 
 
 @app.get("/health")

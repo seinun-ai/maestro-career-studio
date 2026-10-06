@@ -10,6 +10,7 @@ drift from that value before we refuse to write it:
 - any:   preferences — the best available option is the answer.
 """
 
+import re
 from typing import Any, Literal
 
 Policy = Literal["any", "flag", "exact"]
@@ -17,13 +18,25 @@ Policy = Literal["any", "flag", "exact"]
 FREE_TEXT = "free_text"
 NO_SLOT = "none"
 
+# Slots whose policy is not their section's: derived facts (autofill_catalog)
+# sit in their own `derived` section, but US citizenship is a knockout answer
+# and the full name a fact about the applicant — as is having worked for the
+# job's company (a "Former Associate" option is a flagged near miss of Yes).
+# An entry's slot is looked up without its index: a language's NAME is exact
+# (a near-miss language is a different one), its levels its section's flag.
+_SLOT_POLICY: dict[str, Policy] = {"derived.us_citizen": "exact", "derived.sponsorship_now_or_future": "exact",
+                                   "derived.agrees_to_terms": "exact",
+                                   "derived.full_name": "flag",
+                                   "derived.previously_employed_here": "flag", "languages.language": "exact"}
 _EXACT_SECTIONS = frozenset({"work_auth", "eligibility", "eeo"})
-_FLAG_SECTIONS = frozenset({"education", "personal"})
+_FLAG_SECTIONS = frozenset({"education", "personal", "experience", "languages", "skills", "custom"})
 
 
 def policy_for(slot: str | None) -> Policy:
     if slot is None:
         return "flag"
+    if (unindexed := re.sub(r"\.\d+\.", ".", slot)) in _SLOT_POLICY:
+        return _SLOT_POLICY[unindexed]
     section = slot.split(".", 1)[0]
     if section in _EXACT_SECTIONS:
         return "exact"

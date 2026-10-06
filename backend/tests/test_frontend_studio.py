@@ -693,21 +693,23 @@ def test_a_chip_edit_that_closes_hands_focus_to_the_add_row():
     assert "ref={addRowRef}" in add_row[: add_row.index("/>")]
 
 
-def test_a_rename_that_closes_hands_focus_to_its_button():
+def test_a_section_edit_that_closes_hands_focus_to_its_button():
+    """A section's name is edited in the section's own edit mode (Edit, then Done), like the other
+    cards: Done and Enter close it and hand focus back to Edit, which unmounted while it was open.
+    Escape puts the name back and leaves the section open; a name that collides with a core header
+    holds Done (focusable while it waits) instead of being silently reverted."""
     sections = _read("components/resume-editor/extra-sections-editor.tsx")
-    _blur_arms_only_without_a_destination(sections, "commitRename", "focusNext(renameButtonRef);")
-    commit = _body(sections, "const commitRename = (refocus = true) =>")
-    assert "setRenaming(false);\n    if (refocus) focusNext(renameButtonRef);" in commit
-    assert "onClick={() => (renaming ? commitRename() : startRename())}" in sections
+    finish = _body(sections, "const finishEditing = () =>")
+    assert "setEditing(false);\n    focusNext(editButtonRef);" in finish
+    assert "ref={editButtonRef}" in sections and "onClick={startEditing}" in sections
     escape = _squash(sections[sections.index('if (e.key === "Escape") {') :])
     escape = escape[: escape.index("} else if")]
-    assert "setRenaming(false); focusNext(renameButtonRef);" in escape
-    # Focus lands on the button during Enter's keydown; without this, Enter's
-    # activation pressed it and reopened the rename.
-    enter = _squash(sections[sections.index('} else if (e.key === "Enter" && !titleCollides) {') :])
-    assert "e.preventDefault(); commitRename();" in enter[: enter.index("}", 1)]
-    button = sections[sections.index("ref={renameButtonRef}") :]
-    assert button.index('aria-label={renaming ? "Done renaming" : "Rename section"}') < 200
+    assert "onChange({ ...section, title: originalTitleRef.current });" in escape
+    assert "setEditing" not in escape
+    enter = _squash(sections[sections.index('} else if (e.key === "Enter") {') :])
+    assert "e.preventDefault(); if (!titleCollides) finishEditing();" in enter
+    done = sections[sections.index("disabled={titleCollides}") - 300 : sections.index("disabled={titleCollides}")]
+    assert "focusableWhenDisabled" in done
 
 
 def test_the_title_input_hands_focus_back_to_its_pencil():
@@ -722,3 +724,42 @@ def test_the_title_input_hands_focus_back_to_its_pencil():
     assert "setEditing(false); focusNext(pencilRef);" in escape[: escape.index("}", 1)]
     pencil = title[title.index("<IconButton") :]
     assert "ref={pencilRef}" in pencil[: re.search(r"\n\s*/>", pencil).end()]
+
+
+def test_every_drag_has_a_keyboard_path_and_a_click_path():
+    """Rows reorder by their grip (dnd-kit: pointer and keyboard, announced), and every list that drags
+    also offers a click-only move beside it, as WCAG 2.5.7 asks: bullets and sections from their ⋯,
+    the section order from its up/down buttons."""
+    sortable = _read("components/ui/sortable-list.tsx")
+    assert "useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })" in sortable
+    assert "activationConstraint: { distance: 4 }" in sortable
+    for hook in ("onDragStart", "onDragOver", "onDragEnd", "onDragCancel"):
+        assert f"{hook}: (" in sortable, hook
+    assert "id={contextId}" in sortable  # a stable context id: no hydration mismatch on aria-describedby
+    assert "touch-none" in sortable
+    bullets = _read("components/resume-editor/bullet-list.tsx")
+    assert "<SortableList ids={ids}" in bullets and "key={ids[i]}" in bullets
+    for item in ("Move to top", "Move up", "Move down", "Delete {noun}"):
+        assert item in bullets, item
+    sections = _read("components/resume-editor/extra-sections-editor.tsx")
+    assert "<SortableItem id={section.key}>" in sections
+    assert "onClick={onMoveUp}" in sections and "onClick={onMoveDown}" in sections
+    order = _read("components/resume-editor/formatting-panel.tsx")
+    assert "<SortableList" in order and "aria-label={`Move ${name(section)} ${direction}`}" in order
+
+
+def test_a_simple_list_section_reads_until_edit():
+    """A Simple list section rendered its bullets as open text boxes while every other tab read as
+    the resume shows it until Edit."""
+    sections = _read("components/resume-editor/extra-sections-editor.tsx")
+    body = sections[sections.index('{section.type === "entries" ? (') :]
+    body = body[: body.index("{editing && (")]
+    assert ") : editing ? (" in body and "<BulletsRead bullets={section.bullets} />" in body
+    # The header's switch, rename and arrows went into Edit and ⋯.
+    assert "<Switch" not in sections and "Rename section" not in sections
+
+
+def test_the_slider_thumb_is_not_clipped_by_its_track():
+    slider = _read("components/ui/slider.tsx")
+    track = slider[slider.index("<SliderPrimitive.Track") : slider.index("<SliderPrimitive.Indicator")]
+    assert "overflow-hidden" not in track.replace("No overflow-hidden", "")

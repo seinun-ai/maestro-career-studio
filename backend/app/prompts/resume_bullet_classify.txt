@@ -1,30 +1,64 @@
-You are classifying resume bullet points (and the summary) onto a 5-level evidence ladder.
-Judge ONLY what the text establishes. Do not reward adjectives. Do not do arithmetic.
+You judge resume bullets (and the summary) the way a careful recruiter reads them. Judge ONLY what
+the text establishes. Do not reward adjectives. Give no scores.
+
+A bullet earns its place with a SPECIFIC ACTION and a CONCRETE RESULT. The result may be a number,
+or a clearly stated qualitative fact: a decision and what it made possible, who adopted or used the
+work, a launch to named users, recognition and who gave it, a problem solved and its consequence.
+A number is one kind of result, not the only kind.
 
 Levels:
-- "direct": strong ownership verb + specific scope + a quantified OUTCOME (%, $, time saved,
-  rate, delta). The number measures a result, not just size.
-- "analogue": strong ownership verb + a concrete SCALE metric (rows, users, requests, latency,
-  criteria, rank). Real, checkable evidence — but the number measures the thing, not the outcome.
-- "adjacent": strong verb + specific technical scope, but NO genuine number.
-- "implied": vague or team-level; the reader cannot tell what this person actually did.
-- "unaddressed": a duty statement or weak opener ("Responsible for", "Worked on", "Helped").
+- "direct": specific action + a concrete result (measured OR clearly stated in words).
+- "analogue": specific action + a result that is only partly stated (size without effect, or an
+  effect without who or what).
+- "adjacent": specific action and scope, no result at all.
+- "implied": vague or team-level; the reader can't tell what this person did.
+- "unaddressed": a duty statement ("responsible for", "worked on", "helped") or a list of tools.
 
-What counts as a genuine metric: a digit paired with a unit, magnitude, or scale noun.
-NOT a metric: a year (2024), a version (Python 3, Airflow 2.8), a GPA. "Built a pipeline using
-Spark 3.5" has NO metric.
+"evidence": 1-3 short quotes copied EXACTLY from the text that justify the level (the action, the
+result). Quote, never paraphrase.
 
-Each item may carry deterministic hints: "weak_opener" (starts with a duty phrase) or
-"passive" (passive-voice opening). Treat a weak_opener hint as strong evidence for
-"unaddressed" unless the rest of the text clearly establishes ownership and evidence.
+"question": if the level is below "direct", ONE short question (<= 15 words) asking for the single
+thing that would most strengthen THIS bullet: what came of it, who used it, why this approach,
+what problem it solved, or a number. Null when the level is "direct".
 
-Confidence: 0.0-1.0. If you genuinely cannot decide between two adjacent levels, pick the LOWER
-one and set confidence below 0.6 — the system turns low confidence into a question for the
-candidate instead of a guess.
+Ask for a number ONLY when a number is natural for this result (speed, cost, volume, accuracy,
+revenue, patients, users, time) AND the text already names the thing to measure. Then set
+"ask_kind": "measure", "measure_target" to that thing (<= 6 words), and "alt_question" to a
+no-number version of the question. Otherwise "ask_kind": "detail" and measure_target/alt_question
+null. Research, design decisions, recognition, care quality, confidential work and ongoing work
+usually need detail, not a number.
+
+Examples across roles:
+- "Chose event sourcing over CDC so auditors could replay any change, which cleared the SOC 2
+  finding" -> direct (qualitative result).
+- "Triaged 30+ ED patients per shift using ESI, escalating two sepsis cases the attending confirmed"
+  -> direct.
+- "Redesigned the onboarding flow in Figma" -> adjacent; question: "What changed for new users after
+  the redesign?"; ask_kind detail.
+- "Reduced invoice processing time by automating reconciliation" -> analogue; ask_kind measure;
+  measure_target "invoice processing time"; alt_question "What did finance stop doing by hand?"
+- "Responsible for vendor relationships" -> unaddressed; question: "What did you achieve with
+  these vendors?"
+
+Hints may accompany an item: "weak_opener" or "passive". Treat weak_opener as strong evidence for
+"unaddressed" unless the text clearly shows an action and a result.
+
+If an item has a "note" from the candidate, use it only to understand what the text means.
+Never credit a result the text does not show. If the note states a fact that is not in the
+text, copy that fact into "new_fact". If the note says a number does not exist, was never
+measured, or cannot be shared, set "metric_unavailable": true. Items without a note: null
+and false.
+
+"language": up to 3 clear spelling or grammar slips as {"span": "<exact text>", "fix": "<corrected>"}.
+Technical terms, names and abbreviations are NOT slips. [] when unsure.
+
+Confidence 0.0-1.0. If torn between two levels, pick the LOWER and set confidence below 0.6.
 
 Items (JSON): $items_json
 
-Return JSON only — an object whose "classifications" value is a JSON array with
-one entry per input item, each entry shaped exactly:
-  {"id": "<item id>", "level": "<one of the five>", "reason": "<= 12 words>", "confidence": 0.0}
-Return exactly one entry per input item, same ids.
+Return JSON only: {"classifications": [one entry per input item, same ids]}, each entry:
+  {"id": "...", "level": "...", "evidence": ["..."], "reason": "<= 12 words",
+   "question": "..." | null, "ask_kind": "measure" | "detail" | null,
+   "measure_target": "..." | null, "alt_question": "..." | null,
+   "confidence": 0.0, "language": [],
+   "new_fact": "..." | null, "metric_unavailable": true | false}

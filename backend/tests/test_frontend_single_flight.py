@@ -66,7 +66,7 @@ _SITES = [
     ("components/proposals/triage-actions.tsx", "bulk"),
     ("components/proposals/triage-actions.tsx", "remove"),
     # The job workspace (IA wave 3 first read): a double click on Update scores sent a second POST
-    # that failed after the first succeeded, Create PDF rendered twice, Find gaps and tailor started
+    # that failed after the first succeeded, Create PDF rendered twice, Analyze gaps started
     # two gap analyses, and Use resume as is made two applications for one job.
     ("components/ats-score-panel.tsx", "run"),
     ("components/ats-score-panel.tsx", "createSession"),
@@ -81,7 +81,17 @@ _SITES = [
     ("components/resume-health/finding-cards.tsx", "unwaive"),
     ("components/resume-health/finding-cards.tsx", "draft"),
     ("components/resume-health/finding-cards.tsx", "apply"),
-    ("components/resume-health/health-report-page.tsx", "analyze"),
+    ("components/resume-health/dispute-box.tsx", "send"),
+    ("components/resume-health/wording-checklist.tsx", "apply"),
+    ("components/resume-health/wording-checklist.tsx", "ignore"),
+    ("components/resume-health/word-list-dialog.tsx", "save"),
+    # The question pass: a double click on Write N new wordings drafted every row twice. Accept and
+    # Accept all shown share one write (a second batch would read the same version to undo to), and
+    # the toast's Undo restores once.
+    ("components/resume-health/question-pass.tsx", "writeAll"),
+    ("components/resume-health/use-pass-writes.ts", "save"),
+    ("components/resume-health/use-pass-writes.ts", "undo"),
+    ("components/resume-health/use-health-runs.ts", "analyze"),
     ("components/resume-editor/tailored-resume-studio.tsx", "rescore"),
     ("components/career/inbox-panel.tsx", "update"),
     ("components/career/inbox-panel.tsx", "discard"),
@@ -90,6 +100,8 @@ _SITES = [
     ("components/resume-editor/kb-import-drawer.tsx", "importMutation"),
     ("app/templates/[id]/page.tsx", "recompileM"),
     ("components/resume-versions/version-history-sheet.tsx", "restore"),
+    # The low-stakes switch (a double click flipped it twice).
+    ("components/settings/autofill-section.tsx", "saveOptions"),
 ]
 
 

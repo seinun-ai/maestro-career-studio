@@ -320,7 +320,7 @@ function ReferralsTable({ rows }: { rows: Referral[] }) {
       <TableFrame>
         <Table minWidth="48rem" stickyHeader className="table-fixed">
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
+            <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
               <TableHead>Company</TableHead>
               <TableHead>Careers page</TableHead>
               <TableHead>Contact</TableHead>

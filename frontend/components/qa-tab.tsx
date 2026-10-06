@@ -195,7 +195,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
           <CardTitle>Application questions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <p id={questionsHintId} className="text-muted-foreground text-xs">
+          <p id={questionsHintId} className="text-muted-foreground text-body-small">
             One question per line.
           </p>
           <Textarea
@@ -250,7 +250,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
       {/* tabIndex={-1}: where focus lands when the error below recovers. Named
           by its heading, since it can hold focus. */}
       <section tabIndex={-1} aria-labelledby={historyHeadingId} className="space-y-3 outline-none">
-        <h3 id={historyHeadingId} className="text-sm font-semibold">History</h3>
+        <h3 id={historyHeadingId} className="text-title-small">History</h3>
         {isLoadFailure({ data: entries, isError, fetchStatus, errorUpdateCount }) ? (
           <LoadErrorState
             className="py-8"
@@ -260,7 +260,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
             onRetry={() => void refetch()}
           />
         ) : !entries || entries.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No answers yet.</p>
+          <p className="text-muted-foreground text-body-medium">No answers yet.</p>
         ) : (
           entries.map((entry, i) => {
             const isRegenerating =
@@ -370,7 +370,7 @@ function QAEntryCard({
       data-pending={isRegenerating || isRendering || isSaving || undefined}
     >
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <CardTitle className="text-sm">
+        <CardTitle className="text-title-small">
           {isDocument ? KIND_LABELS[entry.kind] : entry.prompt}
         </CardTitle>
         <div className="flex shrink-0 gap-1">
@@ -444,7 +444,7 @@ function QAEntryCard({
               // Keys typed after Save would be dropped when the editor closes.
               readOnly={isSaving}
               rows={10}
-              className="text-sm"
+              className="text-body-medium"
             />
             <div className="flex gap-2">
               <Button
@@ -471,7 +471,7 @@ function QAEntryCard({
             </div>
           </>
         ) : (
-          <p className="text-sm whitespace-pre-wrap">{entry.answer}</p>
+          <p className="text-body-medium whitespace-pre-wrap">{entry.answer}</p>
         )}
       </CardContent>
     </Card>

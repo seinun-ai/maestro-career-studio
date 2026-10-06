@@ -152,6 +152,34 @@
   unprobed model passes (the Assistant is gated on tools this way). JSON mode is capability-gated:
   `response_format=json_object` goes out only when `llm._json_mode_supported()` (other servers may hard-400
   on the field), and `llm._extract_json_object` salvages fenced JSON.
+- **Form-filling engines (`/choose`)**: two engines, `fast` and `jev` (`llm.autofill_engine`, Settings › AI & models › **Form filling**,
+  `GET/PUT /api/settings/jev` + `/jev/probe`; `jev` only while a Jev key exists; a new endpoint HOST
+  forgets the key, which is never sent to another company). `fast` is the batched prompt SYSTEM.md §7 (Guided
+  fill) describes. `jev`
+  (`autofill_choose._choose_with_jev`): one Jev call maps each field's LABEL to an `autofill_slots`
+  slot (no values sent), code reads the value, a second call picks the option that states it; the
+  slot's policy (`exact` work_auth/eligibility/eeo/a language's name, `flag` `_FLAG_SECTIONS` facts,
+  `any` the rest) makes it `matched`, `closest` (flag only, never from a list at the 30-option cap:
+  written, then named in the finished note and listed under **Closest matches to check**) or abstain.
+  Free-text, unmapped, shakily-mapped (an `exact` slot maps only at its write floor), `exact`-slot
+  text boxes (codes) and failed-call fields go to the fast prompt unchanged; if THAT fails, Jev's
+  answers are kept. `jev.choice_of` accepts only a distribution over exactly the offered keys (choice
+  offered and most probable, every key present, numbers in [0, 1], sum ≈ 1) — anything else places
+  nothing. Options are offered under code-owned keys (`o1…`, `none`), never page text, and every
+  question says page text is data. One pooled `httpx.Client` serves every call (a TLS handshake per
+  call costs about Jev's whole answer); 429/503/529 retry with doubling backoff inside the 2 s budget.
+- **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
+  compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
+  persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
+  import-first message.
+- **In-app chat: pinned-resume resolution** (SYSTEM.md §7): the pin is a HINT, not a guard — it reaches the model as one line of the
+  ephemeral context block; the enforced guard is `check_ops_in_scope` over selection PATHS (which needs a
+  pin only because the scope picker is fed the pinned resume). The composer resolves it once per session —
+  session `context_json.target_key` if stored, else the most recently updated base resume — and must READ
+  `context_json` back on reopen, not only write it on send (write-only silently dropped the pin). The pin
+  FOLLOWS whichever base actually changed via both landing paths: the streamed `change_card` and an applied
+  `propose_edits` card (which PATCHes directly and emits no stream event — `EditProposalCard` takes
+  `onApplied`). Selections drop on a real switch: they are paths into the resume they came from.
 - **Setup status** (`GET /api/setup/status`): a derived, **read-only**
   six-step onboarding view — no wizard-progress state; guidance is
   dismissible and recomputed from existing data (the `FirstRunImportCard`
@@ -343,66 +371,119 @@
   `entity_timeline` emits `point_captured` **only** for `mcp`/`chat` points (a
   hand-typed KB grows no timeline entry per bullet). `patch_point` clears
   `approved_at` when a point leaves `approved`.
-- **ResumeLintReport** (health check, framework v2): gates are `tier:
-  "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
-  (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived
-  gate BLOCKS tailoring-session creation — but only a FRESH one: a stale report
-  (its `resume_version_number` no longer the latest version) counts as NO
-  report for the block and only sets a re-analyze `health_warning`.
-  Report reads carry `stale`, `insufficient_evidence` (fewer
-  scoreable bullets than `MIN_SCOREABLE_ITEMS = 4` — grade withheld in the UI),
-  and `score_breakdown` (`raw_score`/`e_hot`/`n_scoreable`/`capped_by`, from
-  `features_json`). `replace_bullet`/`replace_summary` ops accept
-  `expected_content_hash` (the classifier hash of the text being replaced);
-  a mismatch — or a vanished target when a hash was sent — is 409 "content
-  changed since analysis", and ask-answer applies the same guard. C2 escalates
-  ask→fail only when the resume CHANGED since the prior report, and
-  `guarded_rewrite` permits numbers the candidate's answer supplies
-  (`guard_violations(..., supplied=)`). Unattended (context="") strengthen
-  rewrites are cached on `bullet_rewrites` by `content_hash` — a row with
-  NULL text is "tried, ask", absence is "never tried"; answered rewrites
-  persist on `health_ask_answers` (written before the LLM call;
-  `GET /api/resume-lint/{kind}/{key}/answers` rehydrates). **Finding ids are frozen
-  keys**: `_fid` hashes the finding's type, location and issue text, and saved ask
-  answers key on that id, so a finding whose `issue` is reworded passes its OLD text
-  as `id_key` (`LADDER_COPY`'s `id_key`, the `_ID_KEY_*` constants and `_id_key_*`
-  builders in `resume_lint.py`); never edit one, or every saved answer is orphaned.
-  Gate words are one table, `health_gates.GATE_LABELS`, re-stamped on every READ
-  (`with_current_labels`), so a relabel needs no re-run and no frontend map.
-  `POST .../draft-rewrite`
-  is the generic guarded-draft path (`objective=strengthen|condense`, optional
-  `expected_content_hash`, always returns the hash of the text drafted FROM).
-  `skills.undemonstrated` is a token-boundary match (alphanumeric lookarounds,
-  not `\\b`, so C++ still matches; ≤2-char tokens cannot hit inside "for").
-  **The `HealthGateWaiver` table is the
-  authority on waivers**, never a stored report's statuses: waiving writes a row
-  and nothing else, so a snapshot says `fail` until the next RUN folds waivers
-  in. Readers go through `resume_lint.gate_waivers(db, kind, key)` — reading
-  statuses kept MCP's `waive_health_gate` escape hatch shut (waive → retry →
-  same 409), and only the web's re-run after waiving hid it. The evidence ladder covers summary +
-  experience/projects/**custom-section** bullets (locations `extra:<key>`), so
-  an extras-heavy resume (academic CV, licenses) scores on its real content
-  instead of 0/F; extras are never hot zones and never get rewrite
-  suggestions — no bullet-scoped `/edits` op exists for them (§11 item 20), so
-  both frontend cards render extras suggestions copy-only. Stale `extra:`
-  locations (section renamed/deleted between runs) degrade to empty text, never
-  raise. Each gate carries backend-owned static `why` and `fix_hint` separately
-  from factual per-run `detail`; failed and waived cards disclose that coaching,
-  and waived gates include the stored reason when available. Static gate
-  findings remain for verbatim MCP report consumers. Bullet classification overrides (with
-  reason) let the user overrule an evidence tier from the health report page.
-  **Attention zones are a SCORING input, not a UI layer** (owner decision).
-  `health_zones.hot_locations` returns the summary plus whichever ONE section
-  carries that candidate's evidence — the most recent enabled ROLE for
-  `experienced`/`unknown`, the first enabled PROJECT for `early` (with no
-  employment history the projects ARE the experience). One choice, never both:
-  marking both made most of a junior document hot, and `cost()` can only order
-  the fix list if some content is cold. There is no three-bullet cap — an
-  entry's bullets are one unit of evidence. Editors render no amber zone wash
-  and make no "read first by a recruiter" claim (a fixed positional heuristic
-  must not be stated as fact about a reader); the marker survives ONLY on the
-  health report, labelled `weighted higher` — which is what it actually is.
-  `lib/health-zones.ts` mirrors the Python; update both together.
+- **ResumeLintReport** (health check): the [health rubric](../health-check-rubric.md) says what each
+  level, flag and word-bank default means and why; this entry is the code's contract. Gates are `tier:
+  "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"` (`health_gates.py:3`), scored by
+  `health_score.py` (the plain mean of experience, project and custom-section bullet levels; the
+  summary is judged, never scored); a failing fatal, unwaived gate BLOCKS tailoring-session creation
+  — but only a FRESH one: a stale report (its `resume_version_number` no longer the latest version)
+  counts as NO report for the block and only sets a re-analyze `health_warning`. Report reads carry
+  `stale`, `insufficient_evidence` (fewer scoreable bullets than `MIN_SCOREABLE_ITEMS = 4` — grade
+  withheld in the UI), `score_breakdown` (`raw_score`/`e_hot`/`n_scoreable`/`capped_by`, from
+  `features_json`) and `next_grade` (`{grade, points}` to the next band's floor; null at A, and when
+  a failed gate's cap sits below that floor, so a raw 50 under the fatal 54 cap gets no "5 points to C"). Every ask and fix on a scored bullet carries `gain`: the points one
+  level up is worth (`100 × step / n_scored`), never a promised jump to full credit; summary asks and
+  every note carry 0.
+- **The health evaluator** (`bullet_classify.py`, prompt `resume_bullet_classify`) judges; code
+  validates and does all arithmetic. One batched smart-model call for the texts nothing stored
+  answers returns, per text, a level, 1–3 `evidence` quotes, one `question`, `ask_kind`
+  (`measure`|`detail`), `measure_target`, `alt_question`, up to three `language` slips
+  (`{span, fix}`), a reason and a confidence. `_validate` is STRUCTURAL: a quote must be verbatim
+  (case, whitespace, curly quotes, dashes and any wrapping quote marks aside) and at least three words, and `analogue`/`direct` without one drops to
+  `adjacent`; a `measure` ask survives only when its target names the bullet's own words (half its
+  content words, as whole words) AND its alternative asks for no number — otherwise it becomes a
+  detail ask carrying that alternative (or none, and the report falls back to static per-level copy,
+  `FALLBACK_QUESTION`); a detail question that demands a number is swapped the same way; `direct`
+  asks nothing; a slip's span must occur verbatim. A text the model skips reads `implied` + uncertain
+  and is not stored. Results cache on `bullet_classifications` by `content_hash` and are reused only
+  under the current `RUBRIC_VERSION` AND smart model, so a prompt-contract change bumps the version
+  (SYSTEM.md §12); overrides survive both. Findings carry `ask_kind` (`reword` on a fix, and on the
+  ask a ≤0.30 bullet gets when no safe rewrite exists), `measure_target` and `alt_question` (measure
+  asks only), verbatim `evidence`, `classification_source` (which of override, dispute or evaluation
+  rated it) and the question itself, which also reaches every rewrite of that bullet as context
+  (`guarded_rewrite(question=)`). `evaluate_uncached` never touches the cache: disputes and
+  `scripts/health_golden.py` (the rubric's pilot gate, run by hand) rely on that.
+- **Health disputes** (`health_disputes.py`; `POST /{kind}/{key}/dispute`, `GET /{kind}/{key}/disputes`,
+  `DELETE /disputes/{content_hash}`) are the **Not right?** control: the evaluator re-run uncached on
+  one bullet with the user's note (≤1000 chars). The note changes how the text is READ; the level
+  may not rise without a verbatim quote (`dispute` keeps the earlier reading, whatever `_validate`
+  allowed). A fact the note adds comes back only as a `guarded_rewrite` `suggestion`, dropped when the
+  model's `new_fact` carries a number neither the note nor the bullet gave ("Add it to the bullet in
+  your own words."). The reply is written in code from the before/after comparison, quoting the UI's
+  level labels. One `bullet_disputes` row per text, never on `bullet_classifications`;
+  `classify_items` precedence is **override > dispute (same rubric version and model) > evaluation**,
+  and a disputed finding says `classification_source="dispute"`. `metric_unavailable` ("no number
+  exists") persists: later disputes keep it, and it demotes number asks at READ time on every
+  evaluation of that text (`without_number_ask`), whatever the model or rubric, until DELETE
+  reopens it. Errors: 409 for changed text (the `expected_content_hash` guard, including a vanished
+  bullet) and for a hand-set rating ("You set this rating yourself. Set it back to automatic first.",
+  before any model call); 422 for a blank note or no text; 502 when the answer fails validation
+  (nothing stored) or the provider is down. Custom-section (`extra:`) bullets are disputable, their
+  text read with `_text_at`. GET lists disputes whose text is still in the resume, one row per
+  location; DELETE is 204 and idempotent. The write lock is taken only after every model call.
+- **`evidence.no_numbers`** is a zero-score `note` at `{"section": "resume"}` (no index), from
+  `_shape_notes`: it fires when 4+ scored bullets exist and none has a number (`_has_metric`, which
+  ignores versions and years); a highlighted flag, never a penalty or a quota.
+- **Wording notes** are `language.cliche` / `language.filler` (code-matched against the user's word
+  bank, `health_wording.py`, from `_advisories`, so `rule_notes` and the coherence check carry them)
+  and `language.slip` (the stored `language` field, built in `assemble`; not in the coherence check),
+  over the summary and every scored bullet: one note per location and word or span, zero score, never
+  skipped under a ladder ask, with `subject` (the word or span) and the ORIGINAL text's
+  `content_hash`. A cliché never has a `suggestion` (a rewrite by hand); a filler's is the text with
+  every whole-word occurrence cut, and a slip's the fix swapped in only when the span occurs once —
+  each only when `health_wording` finds the seam clean (the Remove safety net: rubric, "Remove and
+  Apply") and `guard_violations` is empty. The bank is two `Setting` rows: `health.word_bank`
+  (absent = defaults; reset deletes it) and `health.ignored_words` (Never flag, which also silences a
+  slip; reset keeps it), edited through `GET`/`PUT /api/resume-lint/wording` and `POST
+  /wording/reset`, all three answering `{cliche, filler, ignored, defaults}`; entries are trimmed,
+  lower-cased and deduped (1–40 chars, ≤200 per list, else 422) and an unreadable row reads as the
+  default. Tailoring avoids the same words: `prompt_assembly._skill_preamble` appends one "Never use
+  these words: …" line (clichés then filler, minus Never flag).
+- **Health finding ids are frozen keys**: `_fid` hashes the finding's type, location and issue text,
+  and saved ask answers key on that id, so a finding whose `issue` is reworded passes its OLD text as
+  `id_key` (`LADDER_COPY`'s and `ASK_ISSUE`'s `id_key`, the `_ID_KEY_*` constants and `_id_key_*`
+  builders in `resume_lint.py`); never edit one, or every saved answer is orphaned. Which asks kept
+  their keys: SYSTEM.md §12.
+- **Health rewrites and answers**: `replace_bullet`/`replace_summary` ops accept `expected_content_hash`
+  (the classifier hash of the text being replaced); a mismatch — or a vanished target when a hash was
+  sent — is 409 "content changed since analysis", and ask-answer applies the same guard. C2 escalates
+  ask→fail only when the resume CHANGED since the prior report, and `guarded_rewrite` permits numbers
+  the candidate's answer supplies (`guard_violations(..., supplied=)`). Unattended (context="")
+  strengthen rewrites are cached on `bullet_rewrites` by `content_hash` — a row with NULL text is
+  "tried, ask", absence is "never tried"; answered rewrites persist on `health_ask_answers` (written
+  before the LLM call; `GET /api/resume-lint/{kind}/{key}/answers` rehydrates). `POST
+  .../draft-rewrite` is the generic guarded-draft path (`objective=strengthen|condense`, optional
+  `expected_content_hash`, always returns the hash of the text drafted FROM). Base `PATCH /edits`
+  answers with `version_number`, the version it left latest (the question pass's Undo:
+  [resume-version.md](resume-version.md)). `skills.undemonstrated` is a token-boundary match
+  (alphanumeric lookarounds, not `\\b`, so C++ still matches; ≤2-char tokens cannot hit inside "for").
+- **Health gates and waivers**: gate words are one table, `health_gates.GATE_LABELS`, re-stamped on
+  every READ (`with_current_labels`), so a relabel needs no re-run and no frontend map. **The
+  `HealthGateWaiver` table is the authority on waivers**, never a stored report's statuses: waiving
+  writes a row and nothing else, so a snapshot says `fail` until the next RUN folds waivers in. Readers
+  go through `resume_lint.gate_waivers(db, kind, key)` — reading statuses kept MCP's
+  `waive_health_gate` escape hatch shut (waive → retry → same 409), and only the web's re-run after
+  waiving hid it. Each gate carries backend-owned static `why` and `fix_hint` separately from factual
+  per-run `detail`; failed and waived cards disclose that coaching, and waived gates include the
+  stored reason when available. Static gate findings remain for verbatim MCP report consumers.
+  Bullet classification overrides (with reason, `POST /classification-override`) let the user
+  overrule a level from the report.
+- **Health coverage and attention zones**: the evidence ladder covers summary +
+  experience/projects/**custom-section** bullets (locations `extra:<key>`), so an extras-heavy resume
+  (academic CV, licenses) scores on its real content instead of 0/F; extras are never hot zones and
+  never get rewrite suggestions — no bullet-scoped `/edits` op exists for them (SYSTEM.md §11 item
+  20), so every extras suggestion (fix, dispute, wording) renders copy-only. Stale `extra:` locations
+  (section renamed/deleted between runs) degrade to empty text, never raise. **Attention zones govern
+  severity, ordering and C1; the score is a plain mean.** `health_zones.hot_locations` returns the
+  summary plus whichever ONE section carries that candidate's evidence — the most recent enabled
+  ROLE for `experienced`/`unknown`, the first enabled PROJECT for `early` (with no employment history
+  the projects ARE the experience). One choice, never both: marking both made most of a junior
+  document hot, and `cost()` can only order the fix list if some content is cold. There is no
+  three-bullet cap — an entry's bullets are one unit of evidence. A strong (`analogue`) cold bullet
+  gets no ask. Editors render no amber zone wash and make no "read first by a recruiter" claim (a
+  fixed positional heuristic must not be stated as fact about a reader); the marker survives ONLY on
+  the health report, labelled `Higher priority`. `lib/health-zones.ts` mirrors the Python; update both
+  together.
 - **ApplicationProposal + ConsentEvent** (auto-apply ledger; migrations
   `56ade310b259` + `11b61fe1ace9`, lifecycle fields `0c677ba4cbcb`, filer
   `9a5744f9b9d9`, the one revision after the SQLite baseline): the
@@ -511,6 +592,55 @@
   browser, and final submit consent stays in that session. Funnel: `GET
   /api/proposals/funnel` (declared before `/{proposal_id}` — path shadowing).
   Playbook: `docs/playbooks/agent-apply.md`; execution skill:
-  `docs/skills/agent-apply-execution/SKILL.md`; consent-gated constraint in
+  `backend/app/automations/skills/agent-apply-execution/SKILL.md`; consent-gated constraint in
   `docs/agentic-job-search.md`.
 
+  **Inbox readiness**: `GET /api/proposals` computes `readiness` at read time, never stores
+  it, and only marks open rows (`pending_review`, `needs_decision`, `accepted`, `approved`,
+  `needs_human`); History rows receive null. `services/inbox_readiness.py` reads the scan
+  profile once per batch and shares a consent-gated answer profile for jobs with receipts.
+  `tailored` is the linked application's `bool(pdf_path)`, or null when the application
+  is unlinked or gone. `knockout` is the first conflicting check's kind only when the scan
+  status is `conflict`, otherwise null. `to_check` counts latest receipt fields carrying
+  any flag (one count per field, even with several flags), or 0 without recorded answers.
+  A row failure is logged and gives that row null; a batch-level read failure gives every
+  open row null while the list still returns. `inbox_readiness.is_ready` is phase 4's shared
+  rule: `tailored is True`, `knockout is None`, `to_check == 0`; null readiness is not ready.
+  Frontend twin `lib/inbox-readiness.ts` words the marks **Tailored**, **Not tailored**,
+  **Knock-out: …**, **N to check**. Ready rows sort first in Queued (`accepted`), keeping
+  the user's chosen sort within each group. Marks and sorting do not move rows between lanes.
+
+  **Arrivals summary**: `GET /api/proposals/summary?since=` returns `since` and four counts
+  across the ledger, independently of the list's pagination or filters: `new` counts all
+  proposals with `created_at > since` (default last 24 hours); `ready` counts Queued
+  (`accepted`) rows satisfying `inbox_readiness.is_ready`; `needs_you` counts
+  `needs_decision` plus `needs_human`, the sidebar badge's same statuses; `applied_this_week`
+  counts `submitted` or `rejected` with reason `applied manually`, where `updated_at` is
+  within the last 7 days, including the boundary. Naive `since` is interpreted as UTC.
+  The browser remembers the previous visit in `cs-inbox-last-visit`, reads it once on mount,
+  then stores now; absent, invalid or blocked storage falls back to the last 24 hours.
+  Rows created strictly after that visit get a **New** dot. The four tiles above Recent runs
+  and the lanes read **New since your last visit**, **Ready to apply**, **Needs you**,
+  **Applied this week**, and jump to their lanes. Recent runs reads the newest run per
+  automation ([agent-runs.md](agent-runs.md)), not every record in the run log.
+
+  **Applied yourself in History**: `rejected` with reason `applied manually` reads
+  **Applied yourself**, uses the Applied badge and counts/filters under Applied. This is
+  label and grouping only; the stored status, transition guards and consent rules stay unchanged.
+
+  **Phase 4 limits**: the readiness PDF mark does not check that the file is on disk;
+  auto-submit must check before uploading. `incomplete_profile` and `warning` knock-out
+  scans count as no knock-out; this dashboard rule cannot establish a complete profile.
+  The run digest is unverified agent text, including the prompt's claim that it has no email
+  text. There is no overdue logic because Maestro does not know the user's schedule.
+
+- **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. DB-free `GET /api/automations`
+  (`services/automations.py` parses `app/automations/skills/<name>/SKILL.md`; card-only fields sit under frontmatter
+  `metadata:`) returns the cards and the **agent apps**: Claude Desktop, Codex, Any MCP agent, plus Claude web and
+  ChatGPT web, shown unreachable because MCP here is local-only (the ChatGPT desktop app works via Any MCP agent).
+  **Copy prompt** puts the app's wrapper plus the skill body on the clipboard. Maestro runs NO scheduler: a scheduled
+  card's wrapper has the agent ask the user when to run. Apply is attended (`apply_kind()`) until full automation
+  mode. `load_cards()` is strict and runs at startup, so a malformed skill file fails boot.
+  Each run prompt ends with MCP `record_run`. Cards read `GET /api/agent-runs/latest` and
+  show **Last ran** or **Not run yet** after data arrives; a read that never produced data
+  shows no line, while a failed background refetch keeps the cached line ([agent-runs.md](agent-runs.md)).

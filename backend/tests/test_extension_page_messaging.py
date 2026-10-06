@@ -77,6 +77,10 @@ DECISIONS_JS = (ROOT / "extension" / "shared" / "decisions.js").read_text(encodi
 # sent from here, from a module loaded by both worlds. A scan over callers
 # that does not read it reports two live page handlers as dead code.
 GUIDED_RUN_JS = (ROOT / "extension" / "shared" / "guided-run.js").read_text(encoding="utf-8")
+# Fill-engine Task 8: the panel runs the fill loop, which sends the engine's
+# page operations (`fill_inventory` … `fill_sweep`) from this shared module; the
+# panel itself sends `fill_focus` (a report row's jump) and `fill_cancel` (Stop).
+FILL_LOOP_JS = (ROOT / "extension" / "shared" / "fill-loop.js").read_text(encoding="utf-8")
 
 # `sw.js` is not in EXTENSION_SOURCES' job — it never runs in a page — and is
 # read here on its own so `extract` can slice the fan-out out of it. decisions.js
@@ -178,14 +182,17 @@ global.unwrapPageReply = extract(
 // silenced: the warning is the diagnostic that tells three different failures
 // apart during a browser check, so it is part of what this file pins.
 let warnings = [];
-global.console = { ...console, warn: (...args) => warnings.push(args.map(String).join(" ")) };
+let debugs = [];
+global.console = { ...console,
+  warn: (...args) => warnings.push(args.map(String).join(" ")),
+  debug: (...args) => debugs.push(args.map(String).join(" ")) };
 
 let addressed = [];
 global.chrome = {
   webNavigation: {
     getAllFrames: async ({ tabId }) => (spec.frames === null
       ? null
-      : spec.frames.map((f) => ({ frameId: f.frameId, tabId }))),
+      : spec.frames.map((f) => ({ frameId: f.frameId, tabId, url: f.url }))),
   },
   tabs: {
     // One reply per frame, declared by the spec. `throws` models a frame with
@@ -201,7 +208,7 @@ global.chrome = {
 };
 
 main(async () => {
-  const frames = await broadcastToFrames(spec.tabId, { type: "profile_fill" });
+  const frames = await broadcastToFrames(spec.tabId, { type: spec.messageType });
 
   // The aggregation the widget actually performs, run here rather than
   // asserted in Python: the point is that THIS expression still works against
@@ -216,7 +223,7 @@ main(async () => {
     { data: f.result === undefined ? null : f.result, error: f.error ?? null },
   ]));
 
-  emit({ frames, filled, hosts, perFrame, addressed, warnings });
+  emit({ frames, filled, hosts, perFrame, addressed, warnings, debugs });
 });
 """
 
@@ -236,10 +243,10 @@ main(async () => {
 """
 
 
-def run_fanout(tmp_path, frames, tab_id=7) -> dict:
+def run_fanout(tmp_path, frames, tab_id=7, message_type="profile_fill") -> dict:
     out = run_node(
         _FANOUT_DRIVER_JS,
-        {"tabId": tab_id, "frames": frames},
+        {"tabId": tab_id, "frames": frames, "messageType": message_type},
         tmp_path,
         source=_FANOUT_SOURCE,
     )
@@ -359,6 +366,36 @@ def test_the_reason_a_frame_failed_is_kept_and_logged(tmp_path):
     assert "error" not in out["frames"][0]
 
 
+@pytest.mark.parametrize("message_type", ["extract_job_posting", "detect_page"])
+def test_a_silent_frame_on_a_read_only_fan_out_logs_no_warning(tmp_path, message_type):
+    """The two READ fan-outs run on most pages the panel is bound to (and on
+    every retry rung), and nearly every page carries a frame with no content
+    script. A warning per silent frame filled chrome://extensions → Errors,
+    which Chrome shows every extension warning in. The reason is still kept on
+    the frame's record, and still logged at debug level."""
+    out = run_fanout(tmp_path, _GREENHOUSE, message_type=message_type)
+
+    assert out["warnings"] == []
+    assert out["frames"][2]["error"] == (
+        "Could not establish connection. Receiving end does not exist.")
+    assert len(out["debugs"]) == 1
+
+
+def test_each_frames_url_travels_with_its_result(tmp_path):
+    """The posting read takes a subframe's answer only from the top
+    document's own site, so the frame's url (from `getAllFrames`) rides on its
+    record — including the record of a frame that did not answer."""
+    out = run_fanout(tmp_path, [
+        {"frameId": 0, "url": "https://careers.acme.com/jobs/1",
+         "reply": {"ok": True, "data": {"filled": []}}},
+        {"frameId": 4, "url": "https://ads.example.test/slot",
+         "throws": "Could not establish connection."},
+    ], message_type="extract_job_posting")
+
+    assert [(f["frameId"], f["url"]) for f in out["frames"]] == [
+        (0, "https://careers.acme.com/jobs/1"), (4, "https://ads.example.test/slot")]
+
+
 def test_reaching_nobody_is_distinguishable_from_a_page_with_nothing_on_it(tmp_path):
     """The discriminator behind "Can't reach this page".
 
@@ -408,9 +445,11 @@ def test_every_consumer_of_the_fan_out_asks_whether_it_reached_anybody():
     found", "N could not be written" — and each is a lie when nothing answered.
     So the rule is: every fan-out call site consults reachedness.
 
-    FIVE consumers, every one reporting. (The applied-detection watcher was
-    the sixth, the one that reported nothing; it is retired, and every fan-out
-    left ends in a sentence a dead page would make false.)
+    SIX consumers, every one reporting. (The applied-detection watcher was
+    a seventh, the one that reported nothing; it is retired, and every fan-out
+    left ends in a sentence a dead page would make false.) The sixth is the
+    answer receipt's post-run read (`recordReceipt`, `fill_inventory`): a frame
+    that never answered contributes no field, which is its reachedness check.
 
     `scroll_to_field` is deliberately NOT one of them, and the pattern below
     excludes it by shape rather than by name: it travels inside a
@@ -435,7 +474,7 @@ def test_every_consumer_of_the_fan_out_asks_whether_it_reached_anybody():
     fanned |= set(re.findall(r'ask\("(attach_pdf)"', callers))
     assert fanned == {
         "profile_fill", "collect_open_questions", "fill_answers", "attach_pdf",
-        "guided_write",
+        "guided_write", "fill_inventory",
     }, f"a fan-out consumer was renamed or removed: {sorted(fanned)}"
 
     # One guard per REPORTING consumer. profile_fill's is `!result.reached` —
@@ -492,13 +531,14 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
     find. Kept as an assertion rather than deleted: `called` being EMPTY is now
     the claim, and a new in-page caller should have to come and change it.
 
-    The scan reads every caller: both the panel's files and
-    `shared/guided-run.js`, which is where two of these messages are sent from.
-    A typo in any `type:` string is a feature that is silently dead.
+    The scan reads every caller: the panel's files, `shared/guided-run.js`
+    and `shared/fill-loop.js`, which is where the rule pass's and the fill
+    engine's page messages are sent from. A typo in any `type:` string is a
+    feature that is silently dead.
     """
-    sent = set(re.findall(
-        r'\btype:\s*"([a-z_]+)"', SW_JS + PANEL_JS + GUIDED_RUN_JS))
-    called = set(re.findall(r"ns\.pageHandlers\.([a-z_]+)\(", PANEL_JS + GUIDED_RUN_JS))
+    callers = SW_JS + PANEL_JS + GUIDED_RUN_JS + FILL_LOOP_JS
+    sent = set(re.findall(r'\btype:\s*"([a-z_]+)"', js_code(callers)))
+    called = set(re.findall(r"ns\.pageHandlers\.([a-z_]+)\(", callers))
     handled = set(_page_handler_keys())
 
     reachable = sent | called
@@ -512,6 +552,10 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
         # no page — so the scroll is a message, fanned out because the control
         # can be in the application's subframe.
         "scroll_to_field",
+        # The fill engine's page operations (content/fill-ops.js).
+        "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
+        # Repeating sections: read them, and press one section's own Add.
+        "fill_sections", "fill_add",
     }
     assert called == set(), (
         "something calls a page handler in-frame again — see this test's "
@@ -568,11 +612,18 @@ def test_the_listener_keeps_the_channel_open():
     the caller sees "no reply from the page" and the fill silently does nothing
     it can report. Nothing else in this repo would notice."""
     listener = re.search(
-        r"chrome\.runtime\.onMessage\.addListener\(\(msg, sender, sendResponse\) => \{"
-        r"(.*?)\n  \}\);", AGENT_JS, re.S)
+        r"function onPageMessage\(msg, sender, sendResponse\) \{"
+        r"(.*?)\n  \}\n", AGENT_JS, re.S)
     assert listener, "agent.js's onMessage listener is not where this test expects it"
 
     assert listener.group(1).rstrip().endswith("return true;")
+    # …and it is registered ONCE per isolated world: panel_prepare re-injects
+    # agent.js into a world that already runs it (driven in tests/browser).
+    assert re.findall(r"onMessage\.addListener\(([A-Za-z]+)\)", js_code(AGENT_JS)) == ["onPageMessage"]
+    # Guarded by the LIVENESS of the runtime that registered it, so a listener
+    # left by a reloaded (dead) extension never blocks the live one.
+    assert "if (!alive(ns.listenerRuntime)) {" in AGENT_JS
+    assert "ns.listenerRuntime = chrome.runtime;" in AGENT_JS
 
 
 @pytest.mark.parametrize(

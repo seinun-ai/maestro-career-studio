@@ -24,6 +24,7 @@ from app.services import (
     health_guards,
     health_score,
     health_verify,
+    health_wording,
     health_zones,
     model_settings,
     pdf_render,
@@ -62,6 +63,7 @@ LADDER_COPY: dict[str, dict[str, str]] = {
         "why": "The contribution is vague or team-level, so your role is unclear.",
         "how": "Rewrite to name the specific action you personally took.",
     },
+    # adjacent/analogue: read only for id_key (asks use ASK_ISSUE); keep them, the id_keys are frozen.
     "adjacent": {
         "issue": "Specific, but has no number.",
         "id_key": "Specific, but carries no number.",  # frozen, see _fid
@@ -73,7 +75,7 @@ LADDER_COPY: dict[str, dict[str, str]] = {
         "issue": "Has a number for size, but not for the result.",
         "id_key": "Has a scale metric, but not a business outcome.",  # frozen, see _fid
         "why": "The number measures the thing, not the result it produced.",
-        "how": "Add the outcome if you have it; otherwise this bullet is already strong.",
+        "how": "Add the outcome if you have it. If you don't, it's already strong.",
         "question": "Do you know what this saved, earned, or improved?",
     },
 }
@@ -167,6 +169,8 @@ def _finding(ftype: str, location: Location, label: str, issue: str, why: str, h
              *, severity: str = "minor", level: float | None = None, cost: float = 0.0,
              zone: str | None = None, suggestion: str | None = None,
              question: str | None = None, source: str = "rule",
+             ask_kind: str | None = None, measure_target: str | None = None,
+             alt_question: str | None = None, evidence: list[str] | None = None,
              content_hash: str | None = None,
              classification_level: str | None = None,
              classification_source: str | None = None,
@@ -199,6 +203,8 @@ def _finding(ftype: str, location: Location, label: str, issue: str, why: str, h
         "zone": zone,                # hot | cold | None
         "suggestion": suggestion,
         "question": question,
+        "ask_kind": ask_kind, "measure_target": measure_target, "alt_question": alt_question,
+        "evidence": evidence or [], "gain": 0,
         "source": source,
     }
     if content_hash is not None:
@@ -238,6 +244,7 @@ def _classification_fields(resume: dict, loc: Location, result: dict) -> dict[st
         "classification_level": result["level"],
         "classification_source": result.get("source"),
         "classification_reason": result.get("reason") or None,
+        "evidence": result.get("evidence") or [],
     }
 
 
@@ -498,6 +505,33 @@ def _gate_findings(gates: list[dict], resume: dict, c2_hit: dict | None,
     return findings
 
 
+ASK_ISSUE = {
+    "measure": {"issue": "Specific, but has no number.",
+                "id_key": LADDER_COPY["adjacent"]["id_key"],  # one frozen key, see _fid
+                "why": "This result is usually measured; a number makes it checkable.",
+                "how": "Add the number, or answer the no-number question instead."},
+    "detail": {"issue": "Says what you did, not what came of it.",
+               "why": "Every strong bullet ends in a result; it doesn't have to be a number.",
+               "how": "Answer the question below in a few words."},
+}
+FALLBACK_QUESTION = {
+    "analogue": "What came of this: what changed, or who used it?",
+    "adjacent": "What came of this work: what changed, or who used it?",
+    "implied": "What did you personally do here?",
+    "unaddressed": "What did you personally do here, and what changed because of it?",
+}
+
+
+def _question_fields(result: dict) -> dict:
+    question = result.get("question")
+    kind = result.get("ask_kind") or "detail"
+    target, alt = result.get("measure_target"), result.get("alt_question")
+    if kind != "measure" or not (question and target and alt):
+        kind, target, alt = "detail", None, None
+    return {"question": question or FALLBACK_QUESTION[result["level"]],
+            "ask_kind": kind, "measure_target": target, "alt_question": alt}
+
+
 def _ladder_findings(
     resume: dict, levels_by_loc: dict[Location, dict], hot: set,
     rewrite_fn: Callable[[str], str | None] | None,
@@ -514,34 +548,24 @@ def _ladder_findings(
         label = _label_at(resume, loc)
         classification = _classification_fields(resume, loc, r)
 
-        if r.get("uncertain"):
-            copy = LADDER_COPY["adjacent"]
-            findings.append(_finding(
-                "ask", loc, label, _ISSUE_AMBIGUOUS,
-                "We couldn't tell how strong this is. Usually a number is almost there.",
-                copy["how"], severity=sev, level=value, cost=cost, zone=zone,
-                question="Is there a number attached to this that you left out?", source="llm",
-                id_key=_ID_KEY_AMBIGUOUS, **classification))
-            continue
         if value >= 1.0:
-            continue  # direct accomplishment — nothing to say
-        if value >= 0.80:
-            if not is_hot:
-                continue  # stop nagging strong cold bullets
-            copy = LADDER_COPY["analogue"]
-            findings.append(_finding(
-                "ask", loc, label, copy["issue"], copy["why"], copy["how"],
-                severity=sev, level=value, cost=cost, zone=zone,
-                question=copy["question"], source="llm", id_key=copy.get("id_key"),
-                **classification))
             continue
-        if value >= 0.50:
-            copy = LADDER_COPY["adjacent"]
+        if r.get("uncertain") or value >= 0.50:
+            if value >= 0.80 and not is_hot and not r.get("uncertain"):
+                continue
+            fields = _question_fields(r)
+            copy = ASK_ISSUE[fields["ask_kind"]]
+            id_key = copy.get("id_key")
+            if value >= 0.80 and any(re.search(r"\d", span) for span in r.get("evidence") or []):
+                id_key = LADDER_COPY["analogue"]["id_key"]
+            issue, why = copy["issue"], copy["why"]
+            if r.get("uncertain"):
+                issue, id_key = _ISSUE_AMBIGUOUS, _ID_KEY_AMBIGUOUS
+                why = "We couldn't tell how strong this is. Your answer can clarify the work."
             findings.append(_finding(
-                "ask", loc, label, copy["issue"], copy["why"], copy["how"],
-                severity=sev, level=value, cost=cost, zone=zone,
-                question=copy["question"], source="llm", id_key=copy.get("id_key"),
-                **classification))
+                "ask", loc, label, issue, why, copy["how"],
+                severity=sev, level=value, cost=cost, zone=zone, source="llm",
+                id_key=id_key, **fields, **classification))
             continue
         # value <= 0.30 → fix candidate (rewrite), deferred so we can rank by cost
         fix_candidates.append((loc, r))
@@ -567,13 +591,13 @@ def _ladder_findings(
             findings.append(_finding(
                 "fix", loc, label, copy["issue"], copy["why"], copy["how"],
                 severity=sev, level=value, cost=cost, zone=zone,
-                suggestion=suggestion, source="llm", **classification))
+                suggestion=suggestion, source="llm", ask_kind="reword", **classification))
         else:
             findings.append(_finding(
                 "ask", loc, label, copy["issue"], copy["why"], copy["how"],
                 severity=sev, level=value, cost=cost, zone=zone,
-                question="What did you personally do here, and what changed because of it?",
-                source="llm", **classification))
+                question=r.get("question") or FALLBACK_QUESTION[r["level"]],
+                source="llm", ask_kind="reword", **classification))
     return findings
 
 
@@ -611,7 +635,9 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
              waivers: set[str] | Mapping[str, str] | None = None,
              gap_hits: list[dict] | None = None,
              c2_hit: dict | None = None,
-             rewrite_fn: Callable[[str], str | None] | None = None) -> dict[str, Any]:
+             rewrite_fn: Callable[[str], str | None] | None = None,
+             word_bank: health_wording.WordBank = health_wording.DEFAULT_BANK,
+             ) -> dict[str, Any]:
     """Turn classified levels + gates into a scored report with typed findings.
 
     This is the Health Report ASSEMBLY INTERFACE — the pure seam the test suite
@@ -621,6 +647,8 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
     `rewrite_fn(text) -> str | None` produces a guarded rewrite (None = ask). It is
     called for at most MAX_REWRITES fix candidates, ranked by cost.
     `resume_changed_since_prior` defaults on to preserve existing direct callers.
+    `word_bank` is the user's cliché/filler bank and Never flag list
+    (`health_wording.load`); it defaults to the built-in bank.
     """
     gates, e_hot = _final_gates(
         levels_by_loc,
@@ -647,9 +675,21 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
         *_gap_findings(gap_hits or []),
     ]
 
+    # A gain is the next achievable level, never a promised jump to full credit.
+    for finding in findings:
+        value = finding.get("level")
+        section = finding["location"].get("section", "")
+        if finding["type"] in ("ask", "fix") and value is not None and score_levels and (
+            section in ("experience", "projects") or section.startswith("extra:")
+        ):
+            next_value = min((v for v in health_score.LEVEL_VALUES.values() if v > value), default=value)
+            finding["gain"] = round(100 * (next_value - value) / len(score_levels))
+
     # 4) shape notes + advisories — all type=note, weight 0.
     # A per-bullet advisory (length, etc.) must not duplicate a bullet that
     # already carries a ladder fix/ask; the ladder finding is the primary signal.
+    # Wording notes are the exception: a cliché or a slip is a different defect
+    # from a weak result, and the ask does not fix it.
     covered = {
         (f["location"].get("section"), f["location"].get("index"),
          f["location"].get("bullet_index"))
@@ -657,13 +697,14 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
         if f["type"] in ("fix", "ask") and f["location"].get("bullet_index") is not None
     }
     findings.extend(_shape_notes(resume, levels_by_loc, tier, hot))
-    for note in _advisories(resume):
+    for note in _advisories(resume, word_bank=word_bank):
         nloc = note["location"]
-        if nloc.get("bullet_index") is not None and (
+        if not _is_wording(note) and nloc.get("bullet_index") is not None and (
             nloc.get("section"), nloc.get("index"), nloc.get("bullet_index")
         ) in covered:
             continue
         findings.append(note)
+    findings.extend(_slip_notes(resume, levels_by_loc, word_bank))
 
     findings.sort(key=_sort_key)
 
@@ -677,6 +718,7 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
 
     report = {
         "score": score, "grade": grade, "tier": tier,
+        "next_grade": _next_grade(score, gates),
         "gates": gates, "counts": counts, "findings": findings,
         "insufficient_evidence": len(score_levels) < MIN_SCOREABLE_ITEMS,
     }
@@ -690,6 +732,23 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
     return {"report": report, "features": features}
 
 
+def _next_grade(score: int, gates: list[dict]) -> dict | None:
+    """The next band up and the points to it; None when a failed gate's cap blocks it.
+
+    The cap blocks it whenever the next band's floor sits above the cap: a score the
+    cap lowered, and a raw 50 under the fatal 54 cap, which can never reach C.
+    """
+    nxt = next(((floor, letter) for floor, letter in reversed(health_score.GRADE_BANDS)
+                if floor > score), None)
+    if nxt is None:
+        return None
+    cap = {"fatal": health_score.FATAL_CAP, "serious": health_score.SERIOUS_CAP}.get(
+        health_score.gate_cap_tier(gates) or "")
+    if cap is not None and nxt[0] > cap:
+        return None
+    return {"grade": nxt[1], "points": nxt[0] - score}
+
+
 _TYPE_RANK = {"gate": 0, "fix": 1, "ask": 1, "note": 2}
 
 
@@ -700,6 +759,39 @@ def _sort_key(f: dict) -> tuple:
 
 # --------------------------------------------------------------------------- #
 # shape notes + advisories (deterministic, weight 0)
+
+# Versions are stripped first: a capitalised name followed by a dotted number ("Python 3.11",
+# "Spark 3.5.1") or a v-number ("v2.1"). Years are excluded by the lookahead.
+# Known limits (docs/health-check-rubric.md): a bare "Python 3" counts as a number, and
+# "AUC 0.789" reads as a version. Both only affect the zero-score evidence.no_numbers note.
+_VERSION = re.compile(r"\b[A-Z][A-Za-z+#.-]*\s+v?\d+(?:\.\d+)+\b|\bv\d+(?:\.\d+)*\b")
+_METRIC = re.compile(
+    r"(?<![\w.])(?!(?:19|20)\d\d\b)\d[\d,]*(?:\.\d+)?"
+    r"|\b(?:two|three|four|five|six|seven|eight|nine|ten|dozens?|hundreds?|thousands?|millions?)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_metric(text: str) -> bool:
+    return bool(_METRIC.search(_VERSION.sub(" ", text)))
+
+
+def _no_numbers_note(resume: dict) -> dict | None:
+    """`evidence.no_numbers`: no scored bullet (experience, projects, extras) has a
+    number. A highlighted flag, never a penalty: zero score, and no count of how many
+    numbers are "enough". The summary is not a scored bullet, so it neither counts
+    toward MIN_SCOREABLE_ITEMS nor silences the flag."""
+    scored = [text for loc, text in _ladder_items(resume) if loc[0] != "summary"]
+    if len(scored) < MIN_SCOREABLE_ITEMS or any(_has_metric(t) for t in scored):
+        return None
+    return _finding(
+        "note", ("resume", None, None), "No numbers anywhere",
+        "None of your bullets has a number.",
+        "Hiring managers often pass over a resume with no measured results at all. "
+        "Bullets without numbers are fine; a resume with none reads as unmeasured.",
+        "Add a real number to one or two bullets where one exists.",
+        source="rule", rule="evidence.no_numbers")
+
 
 def _shape_notes(resume: dict, levels_by_loc: dict, tier: str, hot: set) -> list[dict]:
     notes: list[dict] = []
@@ -736,6 +828,10 @@ def _shape_notes(resume: dict, levels_by_loc: dict, tier: str, hot: set) -> list
                 "A screener may never reach it in the first pass.",
                 "Move it into the summary or the top of the first role.", source="rule",
                 id_key=_ID_KEY_BURIED))
+
+    no_numbers = _no_numbers_note(resume)
+    if no_numbers is not None:
+        notes.append(no_numbers)
 
     return notes
 
@@ -780,8 +876,85 @@ def _skill_demonstrated(token: str, blob: str) -> bool:
     return re.search(rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])", blob) is not None
 
 
-def _advisories(resume: dict) -> list[dict]:
+# --------------------------------------------------------------------------- #
+# wording (clichés, filler, slips) — weight 0, never suppressed by a ladder ask
+
+_WORDING_COPY = {
+    "cliche": ("'{w}' is a cliché.",
+               "Hiring managers rate words like this as meaningless: they claim a trait "
+               "without showing it.",
+               "Rewrite this phrase in your own words, or cut it."),
+    "filler": ("'{w}' adds nothing.",
+               "It makes the line longer without telling the reader anything.",
+               "Remove it."),
+}
+
+
+def _is_wording(note: dict) -> bool:
+    return str(note.get("rule") or "").startswith("language.")
+
+
+def _guarded(original: str, edited: str | None) -> str | None:
+    """The code-edited text, only when the rewrite guards accept it (None in, None out)."""
+    if edited is None or not edited.strip() or edited == original:
+        return None
+    return edited if not health_guards.guard_violations(original, edited) else None
+
+
+def _wording_notes(resume: dict, bank: health_wording.WordBank) -> list[dict]:
+    """`language.cliche` / `language.filler`: one note per (location, bank word)
+    over the summary and every scored bullet. A cliché never carries a
+    `suggestion`: it is a noun or adjective the sentence needs, so it is
+    rewritten by hand. A filler word's `suggestion` is the text with it cut,
+    when that reads cleanly (`health_wording.removal`) and the guards accept it.
+    `subject` is the bank word."""
     notes: list[dict] = []
+    for loc, text in _ladder_items(resume):
+        for kind, word in health_wording.matches(text, bank):
+            issue, why, how = _WORDING_COPY[kind]
+            notes.append(_finding(
+                "note", loc, _label_at(resume, loc), issue.format(w=word), why, how,
+                suggestion=(_guarded(text, health_wording.removal(text, word))
+                            if kind == "filler" else None),
+                source="rule", rule=f"language.{kind}", subject=word,
+                content_hash=bullet_classify.content_hash(text)))
+    return notes
+
+
+def _slip_notes(resume: dict, levels_by_loc: dict[Location, dict],
+                bank: health_wording.WordBank) -> list[dict]:
+    """`language.slip`: one note per stored classifier `language` entry
+    ({span, fix}), across every classified ladder item. A span on the Never flag
+    list, or no longer in the text as a whole word, is skipped. Apply text is
+    offered only for a span that occurs once (`health_wording.apply_fix`)."""
+    notes: list[dict] = []
+    for loc, result in levels_by_loc.items():
+        entries = result.get("language") or []
+        if not entries:
+            continue
+        text = _text_at(resume, loc)
+        seen: set[str] = set()
+        for entry in entries:
+            span, fix = str(entry.get("span") or ""), str(entry.get("fix") or "")
+            if (not span or not fix or span in seen or not health_wording.span_count(text, span)
+                    or health_wording.is_ignored(span, bank)):
+                continue
+            seen.add(span)
+            fixed = health_wording.apply_fix(text, span, fix)
+            notes.append(_finding(
+                "note", loc, _label_at(resume, loc),
+                f"'{span}' looks like a slip: '{fix}'.",
+                "Recruiters notice spelling and grammar slips, and read them as carelessness.",
+                "Apply the fix, or correct it in your own words.",
+                suggestion=_guarded(text, fixed),
+                source="llm", rule="language.slip", subject=span,
+                content_hash=bullet_classify.content_hash(text)))
+    return notes
+
+
+def _advisories(resume: dict, *,
+                word_bank: health_wording.WordBank = health_wording.DEFAULT_BANK) -> list[dict]:
+    notes: list[dict] = list(_wording_notes(resume, word_bank))
     if not (resume.get("summary") or "").strip():
         notes.append(_finding(
             "note", ("summary", None, None), "Summary", "No summary.",
@@ -888,14 +1061,17 @@ def _advisories(resume: dict) -> list[dict]:
     return notes
 
 
-def rule_notes(resume: dict) -> list[dict]:
+def rule_notes(resume: dict, *,
+               word_bank: health_wording.WordBank = health_wording.DEFAULT_BANK) -> list[dict]:
     """Deterministic, JD-independent rule notes for a resume dict.
 
     Public because the post-tailoring coherence check reuses these rules
     (design 2026-08-12). Pure — no DB, no LLM, no template. `_shape_notes` is
-    deliberately NOT included: it reads LLM-classified evidence levels.
+    deliberately NOT included: it reads LLM-classified evidence levels. Nor are
+    `language.slip` notes, which read the classifier's `language` field.
+    `word_bank` is passed in (callers with a Session use `health_wording.load`).
     """
-    return _advisories(resume)
+    return _advisories(resume, word_bank=word_bank)
 
 
 # --------------------------------------------------------------------------- #
@@ -919,6 +1095,7 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
     items = _ladder_items(resume)
     levels_by_loc: dict[Location, dict] = {}
     model = None
+    classified: dict[str, dict] = {}
     if use_llm and items:
         model = model_settings.get_smart_model(db)
         classified = bullet_classify.classify_items(
@@ -946,7 +1123,10 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
 
     def _rewrite(text: str) -> str | None:
         try:
-            return health_guards.guarded_rewrite(db, text, context="")
+            return health_guards.guarded_rewrite(
+                db, text, context="",
+                question=classified.get(bullet_classify.content_hash(text), {}).get("question") or "",
+            )
         except Exception:  # noqa: BLE001 — a failed rewrite just degrades to ask
             logger.exception("guarded_rewrite failed")
             return None
@@ -959,6 +1139,7 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
         gap_hits=gap_hits,
         c2_hit=c2_hit,
         rewrite_fn=_rewrite if use_llm else None,
+        word_bank=health_wording.load(db),
     )
     result["features"]["verifier"] = verifier_cache
 

@@ -52,7 +52,7 @@ export function FitDistributionChart() {
 
   if (isLoading) return <Skeleton className="h-80 w-full" />;
   if (!data || data.length === 0) {
-    return <p className="text-muted-foreground text-sm">No data yet.</p>;
+    return <p className="text-muted-foreground text-body-medium">No data yet.</p>;
   }
 
   const caption = [
@@ -69,7 +69,7 @@ export function FitDistributionChart() {
   return (
     <div>
       {caption ? (
-        <p className="text-muted-foreground mb-2 text-xs">{caption}</p>
+        <p className="text-muted-foreground mb-2 text-body-small">{caption}</p>
       ) : null}
       <ResponsiveContainer width="100%" height={320}>
         <BarChart data={chartData}>

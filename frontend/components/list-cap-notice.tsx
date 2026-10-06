@@ -18,7 +18,7 @@ export function ListCapNotice({ className, ...cap }: ListCap & { className?: str
   return (
     <p
       data-slot="list-cap-notice"
-      className={cn("text-muted-foreground flex items-start gap-2 text-sm", className)}
+      className={cn("text-muted-foreground flex items-start gap-2 text-body-medium", className)}
     >
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <span>{sentence}</span>

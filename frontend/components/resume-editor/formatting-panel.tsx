@@ -10,6 +10,7 @@ import {
 
 import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
+import { DragHandle, SortableItem, SortableList } from "@/components/ui/sortable-list";
 import {
   Select,
   SelectContent,
@@ -139,12 +140,12 @@ export function FormattingPanel({
         <span className="grid gap-0.5">
           <span
             id={labelId}
-            className={cn("text-sm", disabled && "text-muted-foreground/60")}
+            className={cn("text-body-medium", disabled && "text-muted-foreground/60")}
           >
             {label}
           </span>
           {hint ? (
-            <span id={hintId} className="text-muted-foreground text-xs">
+            <span id={hintId} className="text-muted-foreground text-body-small">
               {hint}
             </span>
           ) : null}
@@ -168,7 +169,7 @@ export function FormattingPanel({
         role="group"
         aria-labelledby={labelId}
         aria-describedby={hintId}
-        className="border-input inline-flex rounded-md border p-0.5"
+        className="border-input inline-flex rounded-full border p-0.5"
       >
         {options.map((o) => (
           <button
@@ -179,7 +180,7 @@ export function FormattingPanel({
             disabled={disabled}
             onClick={() => onSelect(o.value)}
             className={cn(
-              "rounded px-2 py-0.5 text-xs transition-colors disabled:pointer-events-none disabled:opacity-50",
+              "rounded-full px-2 py-0.5 text-body-small transition-colors disabled:pointer-events-none disabled:opacity-50",
               current === o.value
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -204,10 +205,10 @@ export function FormattingPanel({
     return (
       <div className={cn("grid gap-1", disabled && "opacity-50")}>
         <div className="flex items-center justify-between">
-          <span id={labelId} className="text-sm">
+          <span id={labelId} className="text-body-medium">
             {label}
           </span>
-          <span className="text-muted-foreground text-xs tabular-nums">
+          <span className="text-muted-foreground text-body-small tabular-nums">
             {display(current)}
           </span>
         </div>
@@ -233,61 +234,73 @@ export function FormattingPanel({
     );
   };
 
-  // A fourth control shape: an ordered list, reordered with up/down buttons
-  // rather than drag-and-drop (no new dependency, and it is keyboard-reachable
-  // by construction). `null` means "the template's own order", so the rows show
-  // the inherited order and the first move stores the whole explicit list —
-  // there is no half-specified state to reason about.
+  // A fourth control shape: an ordered list. Rows drag by their grip (pointer or keyboard,
+  // `SortableList`), and the up/down buttons stay as the click-only path WCAG 2.5.7 asks for;
+  // they repeat on every row, so they show on hover or focus (always on a coarse pointer).
+  // `null` means "the template's own order", so the rows show the inherited order and the
+  // first move stores the whole explicit list — there is no half-specified state to reason about.
   const sectionOrderRow = () => {
     const key: keyof ResumeFormatting = "section_order";
     const disabled = isDisabled(key);
     const labelId = rowLabelId(key);
     const order: SectionKey[] = shownSectionOrder(effective.section_order);
+    const name = (section: SectionKey) => SECTION_ORDER_LABELS[section] ?? section;
     return (
       <div className={cn("grid gap-1", disabled && "opacity-50")}>
-        <span id={labelId} className="text-sm">
+        <span id={labelId} className="text-body-medium">
           Section order
         </span>
         {withTooltip(
           key,
-          <ul className="border-input grid gap-0.5 rounded-md border p-1">
-            {order.map((section, index) => (
-              <li
-                key={section}
-                className="flex items-center justify-between gap-2 rounded px-1.5 text-xs"
-              >
-                <span className="min-w-0 truncate">
-                  {SECTION_ORDER_LABELS[section] ?? section}
-                </span>
-                <span className="flex shrink-0 items-center">
-                  {(
-                    [
-                      ["up", ChevronUp, index - 1, index > 0],
-                      ["down", ChevronDown, index + 1, index < order.length - 1],
-                    ] as const
-                  ).map(([direction, Icon, target, enabled]) => (
-                    // icon-xs: 24px (44px on a coarse pointer). These are
-                    // the only pointer reorder path, and two adjacent 18px
-                    // buttons failed WCAG 2.5.8's target spacing.
-                    <Button
-                      key={direction}
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      disabled={disabled || !enabled}
-                      aria-label={`Move ${
-                        SECTION_ORDER_LABELS[section] ?? section
-                      } ${direction}`}
-                      onClick={() => setKey(key, move(order, index, target))}
-                      className="text-muted-foreground disabled:opacity-30"
-                    >
-                      <Icon className="size-3.5" />
-                    </Button>
-                  ))}
-                </span>
-              </li>
-            ))}
-          </ul>,
+          <div role="list" aria-labelledby={labelId} className="border-input grid gap-0.5 rounded-corner-md border p-1">
+            <SortableList
+              ids={order}
+              itemLabel={(i) => name(order[i])}
+              onMove={(from, to) => setKey(key, move(order, from, to))}
+              disabled={disabled}
+            >
+              {order.map((section, index) => (
+                <SortableItem
+                  key={section}
+                  id={section}
+                  role="listitem"
+                  className="group/row flex items-center justify-between gap-2 px-0.5 text-body-small"
+                >
+                  {(handle) => (
+                    <>
+                      <span className="flex min-w-0 items-center gap-1">
+                        <DragHandle {...handle} label={`Drag ${name(section)} to move it`} className="size-6" />
+                        <span className="min-w-0 truncate">{name(section)}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+                        {(
+                          [
+                            ["up", ChevronUp, index - 1, index > 0],
+                            ["down", ChevronDown, index + 1, index < order.length - 1],
+                          ] as const
+                        ).map(([direction, Icon, target, enabled]) => (
+                          // icon-xs: 24px (44px on a coarse pointer). Two adjacent 18px
+                          // buttons failed WCAG 2.5.8's target spacing.
+                          <Button
+                            key={direction}
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            disabled={disabled || !enabled}
+                            aria-label={`Move ${name(section)} ${direction}`}
+                            onClick={() => setKey(key, move(order, index, target))}
+                            className="text-muted-foreground disabled:opacity-30"
+                          >
+                            <Icon className="size-3.5" />
+                          </Button>
+                        ))}
+                      </span>
+                    </>
+                  )}
+                </SortableItem>
+              ))}
+            </SortableList>
+          </div>,
         )}
       </div>
     );
@@ -301,13 +314,13 @@ export function FormattingPanel({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="hover:bg-muted/50 flex w-full items-center justify-between px-3 py-2 text-sm font-medium transition-colors"
+          className="hover:bg-surface-container-low flex w-full items-center justify-between px-3 py-2 text-label-large transition-colors"
         >
           <span className="flex items-center gap-2">
             <SlidersHorizontal className="size-3.5" />
             Formatting
             {customized && (
-              <span className="bg-secondary-container text-on-secondary-container rounded-full px-1.5 py-0.5 text-[0.65rem] font-medium">
+              <span className="bg-secondary-container text-on-secondary-container rounded-full px-1.5 py-0.5 text-label-small">
                 Changed
               </span>
             )}
@@ -321,7 +334,7 @@ export function FormattingPanel({
       {showContent && (
         <div tabIndex={-1} className="space-y-4 px-3 pt-1 pb-3 outline-none">
           {baseline.status === "loading" && (
-            <p role="status" className="text-muted-foreground text-xs">
+            <p role="status" className="text-muted-foreground text-body-small">
               Loading {baseline.what}…
             </p>
           )}
@@ -335,7 +348,7 @@ export function FormattingPanel({
             />
           )}
           {onRevertToBase && (
-            <div className="text-muted-foreground bg-muted/40 flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs">
+            <div className="text-muted-foreground bg-surface-container-low flex items-center justify-between gap-2 rounded-corner-md px-2 py-1.5 text-body-small">
               <span>
                 {inherited && !customized
                   ? "Same as base resume"
@@ -514,7 +527,7 @@ export function FormattingPanel({
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="space-y-1">
-      <div className="text-muted-foreground text-[0.7rem] font-semibold tracking-wide uppercase">
+      <div className="text-muted-foreground text-title-small">
         {title}
       </div>
       {children}

@@ -15,8 +15,8 @@ import { cn } from "@/lib/utils";
  * **A narrow reading measure is a BODY concern, not a shell concern.** A page
  * whose prose wants ~65 characters wraps that prose itself (or, for a
  * scanning layout, applies `max-w-[65ch]` inside cards). `PageMeasure` remains
- * for a single reading column; the health report is two-pane above 1024px and
- * does not wrap the page in it.
+ * for a single reading column; the health report is a scanning layout (a
+ * summary band and tabs) and does not wrap the page in it.
  */
 export function PageShell({
   children,
@@ -68,8 +68,8 @@ export function PageMeasure({
  * to their own line instead of squeezing the title toward zero width (the job
  * page shipped that bug: `truncate` on a zero-width box renders nothing).
  *
- * Type scale is fixed here on purpose — page title `text-[22px] font-medium
- * tracking-tight`, subtitle `text-sm text-muted-foreground`, one clause. Call
+ * Type scale is fixed here on purpose — page title `text-title-large font-medium
+ * tracking-tight`, subtitle `text-body-medium text-muted-foreground`, one clause. Call
  * sites do not get to restate or override it.
  */
 export function PageHeader({
@@ -92,14 +92,14 @@ export function PageHeader({
     >
       {leading}
       <div className="min-w-0 grow basis-[16rem]">
-        <h1 className="text-[22px] font-medium tracking-tight">{title}</h1>
+        <h1 className="text-title-large font-medium tracking-tight">{title}</h1>
         {/* A div, not a <p>: the subtitle slot takes NODES, not just prose
             (both studios put their save-status line here). A <div> inside a
             <p> is invalid HTML, and React reported it as a hydration error on
             every load of the base resume page when its header held a role
             chip. Prose subtitles render identically. */}
         {subtitle ? (
-          <div className="text-muted-foreground text-sm">{subtitle}</div>
+          <div className="text-muted-foreground text-body-medium">{subtitle}</div>
         ) : null}
       </div>
       {/* Right-aligned by the header's justify-between, NOT by ml-auto here.

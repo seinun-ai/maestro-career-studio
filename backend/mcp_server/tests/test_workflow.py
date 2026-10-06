@@ -1,6 +1,9 @@
+import json
+import re
+
 import pytest
 
-from mcp_server import workflow
+from mcp_server import profiles, workflow
 
 
 def _score(slug, composite, subscores=None, coverage=None):
@@ -353,9 +356,10 @@ def test_apply_hint_names_upload_and_consent_tools_not_the_playbook():
     assert "record_consent" in offer
     assert "mark_submitted" in offer
     assert "agent-apply.md" not in offer
-    assert "headless" in offer.lower()
-    assert "stealth" in offer.lower()
-    assert "captcha" in offer.lower()
+    # Consent semantics survive the rewording: the tools RECORD the user's
+    # decisions; the prose says so as a statement of what they do.
+    assert "record_consent records the user's" in offer
+    assert "mark_submitted records the user's" in offer
 
 
 def test_apply_hint_reports_ready_when_setup_is_complete():
@@ -506,7 +510,7 @@ def test_ingest_hint_prose_drops_tools_the_profile_filtered_out():
     )
     assert set(_by_tool(hint)) == {"kb_ingest_resume"}
     assert "kb_approve_points" not in hint["offer"]
-    assert "ingest another resume" in hint["offer"]
+    assert "kb_ingest_resume" in hint["offer"]
 
 
 def test_ingest_hint_says_nothing_when_every_option_is_filtered_out():
@@ -634,7 +638,7 @@ def test_base_from_kb_hint_drops_render_when_the_profile_lacks_it():
         hints_enabled=True,
     )
     assert hint["options"] == []
-    assert "switch to apply or full" in hint["offer"]
+    assert "registers no render tool" in hint["offer"]
 
 
 def test_base_from_kb_hint_says_nothing_without_a_slug():
@@ -651,3 +655,157 @@ def test_onboarding_hints_suppress_when_the_switch_is_off():
         [], requested_state="approved", allowed_tools=None, hints_enabled=False) is None
     assert workflow.next_after_base_from_kb(
         {"slug": "x"}, allowed_tools=None, hints_enabled=False) is None
+
+
+# ---- hint prose: profile invariant and neutral wording ----------------------
+#
+# SYSTEM.md §7: "A hint never names a tool the active profile did not register."
+# The options were always filtered; the PROSE (offer / ask_user / label /
+# detail) was not, so render hints under templates/career advertised the apply
+# handoff tools and the career base-from-KB hint advertised score_ats.
+
+_ALL_TOOL_NAMES = frozenset().union(
+    *(a for a in profiles.PROFILE_ALLOWLISTS.values() if a is not None)
+)
+
+_PROFILES = ["hunt", "apply", "explore", "templates", "career", "full"]
+
+
+def _every_hint(allow):
+    """Every composer, every branch that changes which tools get named."""
+    kw = {"allowed_tools": allow, "hints_enabled": True}
+    ok = {"id": "p1", "ok": True, "state": "approved", "detail": None}
+    bad = {"id": "p2", "ok": False, "state": None, "detail": "not found"}
+    no_points = {**_INGEST_REPORT, "points": []}
+    hints = {
+        "scores": workflow.next_after_scores(
+            _ranking(), job_id="j1", quick_profile={"mirror_wording": True}, **kw),
+        "session_pending": workflow.next_after_session(
+            _session(gap_ids=["g1", "g2"], resolved_ids=["g1"]), **kw),
+        "session_resolved": workflow.next_after_session(
+            _session(gap_ids=["g1"], resolved_ids=["g1"]), **kw),
+        "tailor": workflow.next_after_tailor(application_id="a1", **kw),
+        "render_ready": workflow.next_after_render(
+            setup_status=_autofill_setup_status(ready=True), **kw),
+        "render_blocked": workflow.next_after_render(
+            setup_status=_autofill_setup_status(ready=False), **kw),
+        "ingest": workflow.next_after_kb_ingest(_INGEST_REPORT, **kw),
+        "ingest_no_points": workflow.next_after_kb_ingest(no_points, **kw),
+        "bulk_approved": workflow.next_after_bulk_state(
+            [ok], requested_state="approved", **kw),
+        "bulk_retired": workflow.next_after_bulk_state(
+            [{**ok, "state": "retired"}], requested_state="retired", **kw),
+        "bulk_failed": workflow.next_after_bulk_state(
+            [bad], requested_state="approved", **kw),
+        "bulk_partial": workflow.next_after_bulk_state(
+            [ok, bad], requested_state="approved", **kw),
+        "base_from_kb": workflow.next_after_base_from_kb({"slug": "ds"}, **kw),
+    }
+    return {name: h for name, h in hints.items() if h is not None}
+
+
+def _strings(node):
+    """Every string VALUE in a hint (offer, ask_user, labels, details, notes)."""
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for v in node.values():
+            yield from _strings(v)
+    elif isinstance(node, (list, tuple)):
+        for v in node:
+            yield from _strings(v)
+
+
+def _named_tools(hint):
+    text = json.dumps(hint)
+    return {n for n in _ALL_TOOL_NAMES if re.search(rf"\b{re.escape(n)}\b", text)}
+
+
+@pytest.mark.parametrize("profile", _PROFILES)
+def test_no_hint_prose_or_option_names_a_tool_outside_the_profile(profile):
+    allow = profiles.allowed_tools(profile)
+    permitted = _ALL_TOOL_NAMES if allow is None else allow
+    for name, hint in _every_hint(allow).items():
+        outside = _named_tools(hint) - permitted
+        assert not outside, f"{profile}/{name} names unregistered {sorted(outside)}: {hint}"
+
+
+def test_render_hint_names_the_apply_handoff_only_where_it_is_registered():
+    for profile in ("templates", "career"):
+        hint = workflow.next_after_render(
+            setup_status=_autofill_setup_status(ready=True),
+            allowed_tools=profiles.allowed_tools(profile), hints_enabled=True,
+        )
+        assert hint["offer"] is None
+        assert hint["readiness"]["autofill_ready"] is True  # facts still ride along
+    apply_hint = workflow.next_after_render(
+        setup_status=_autofill_setup_status(ready=True),
+        allowed_tools=profiles.allowed_tools("apply"), hints_enabled=True,
+    )
+    assert _named_tools(apply_hint) == {
+        "prepare_application_pdf_upload", "record_consent", "mark_submitted",
+    }
+
+
+def test_career_base_from_kb_hint_does_not_mention_scoring():
+    hint = workflow.next_after_base_from_kb(
+        {"slug": "ds"}, allowed_tools=profiles.allowed_tools("career"),
+        hints_enabled=True,
+    )
+    assert "score_ats" not in hint["offer"]
+    assert "render_pdf" in hint["offer"]
+
+
+def test_scoring_hint_prose_follows_the_visible_options():
+    only_quick = workflow.next_after_scores(
+        _ranking(), job_id="j1", quick_profile={},
+        allowed_tools=frozenset({"quick_tailor"}), hints_enabled=True,
+    )
+    assert "quick_tailor" in only_quick["offer"]
+    assert "create_tailoring_session" not in only_quick["offer"]
+
+
+# Phrases that address the calling model or issue it a command. Hints describe
+# state and the next steps that exist; the server does not instruct the model.
+# `ask_user` KEYS are fine (the question is data the client may show the user);
+# this scans string VALUES only.
+_STEERING = re.compile(
+    r"tell the user|report (them|it) to the user|show the user|"
+    r"with the user\b|safe to ignore|ignore (it|this)|"
+    r"check before|rather than|\bnever\b|\bmust\b|only if|"
+    r"\bsupply\b|\bpass\b|nothing else required|nothing here requires|"
+    r"\bswitch to\b|\bauthor\b.*\bthen call\b|\bread resolutions_json\b|"
+    r"\bmake sure\b|\bdo not\b|\bdon't\b",
+    re.IGNORECASE,
+)
+
+
+@pytest.mark.parametrize("profile", _PROFILES)
+def test_hint_prose_describes_state_and_never_instructs_the_model(profile):
+    allow = profiles.allowed_tools(profile)
+    for name, hint in _every_hint(allow).items():
+        for text in _strings(hint):
+            match = _STEERING.search(text)
+            assert not match, f"{profile}/{name}: {match.group(0)!r} in {text!r}"
+
+
+def test_consent_tools_are_described_as_recording_the_users_decisions():
+    hint = workflow.next_after_render(
+        setup_status={}, allowed_tools=profiles.allowed_tools("apply"),
+        hints_enabled=True,
+    )
+    assert "user's" in hint["offer"]
+    approve = workflow.next_after_kb_ingest(
+        _INGEST_REPORT, allowed_tools=None, hints_enabled=True,
+    )
+    assert "user" in approve["offer"]
+
+
+def test_pending_gaps_question_states_the_decision_without_naming_tools():
+    hint = workflow.next_after_session(
+        _session(gap_ids=["g1", "g2"], resolved_ids=["g1"]),
+        allowed_tools=None, hints_enabled=True,
+    )
+    assert hint["ask_user"].startswith("1 gap(s)")
+    assert hint["ask_user"].endswith("?")
+    assert _named_tools({"q": hint["ask_user"]}) == set()

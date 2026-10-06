@@ -289,9 +289,10 @@ def _reworded_rules_report():
     # Ten words a bullet, so no "Very short bullet" note shares a location.
     resume["projects"] = [{"name": "P", "bullets": [f"p{i} " + "word " * 9 for i in range(4)]}]
     levels = {
-        ("experience", 0, 0): _lv(0.8),                  # analogue ask (hot)
+        ("experience", 0, 0): dict(_lv(0.8), evidence=["processed 80 invoices each week"]),  # numeric analogue
         ("experience", 0, 1): _lv(0.5, uncertain=True),  # ambiguous ask
-        ("experience", 0, 2): _lv(0.5),
+        ("experience", 0, 2): dict(_lv(0.5), ask_kind="measure", question="How much time?",
+                                       measure_target="processing time", alt_question="What became easier?"),
         ("projects", 0, 0): _lv(1.0),                    # strongest, not hot: buried
     }
     hot = {("experience", 0, 0), ("experience", 0, 1), ("experience", 0, 2)}
@@ -335,8 +336,8 @@ def test_a_finding_id_survives_its_issue_being_reworded(monkeypatch):
     """The proof the key does its job: reword every display text, and each
     finding still carries the id a saved answer was stored under."""
     before = {key: _finding_at(_reworded_rules_report(), *key)["id"] for key in _OLD_ISSUES}
-    monkeypatch.setitem(rl.LADDER_COPY["analogue"], "issue", "Reworded analogue.")
-    monkeypatch.setitem(rl.LADDER_COPY["adjacent"], "issue", "Reworded adjacent.")
+    monkeypatch.setitem(rl.ASK_ISSUE["detail"], "issue", "Reworded detail.")
+    monkeypatch.setitem(rl.ASK_ISSUE["measure"], "issue", "Reworded measure.")
     monkeypatch.setattr(rl, "_ISSUE_AMBIGUOUS", "Reworded ambiguous.")
     monkeypatch.setattr(rl, "_ISSUE_BURIED", "Reworded buried.")
     monkeypatch.setattr(rl, "_gap_issue", lambda *_a: "Reworded gap.")
@@ -1056,3 +1057,168 @@ def test_c2_keys_on_the_detectors_float_claim_as_it_read_before():
     assert ask["issue"] == "Your summary says 8+ years, but your dates add up to about 3."
     assert ask["id"] == rl._fid("ask", ("summary", None, None),
                                 "Summary claims 8.0+ years; the dates support ~3.0.")
+
+
+# V3 asks follow the evaluator instead of inferring missing numbers from a level.
+def test_per_bullet_questions_gain_and_summary_exclusion():
+    levels = {
+        ("experience", 0, 0): dict(_lv(0.5), question="Who used this?", ask_kind="detail", evidence=["a concrete action"]),
+        ("experience", 0, 1): dict(_lv(0.8), question="How much time?", ask_kind="measure", measure_target="processing time", alt_question="What became easier?", evidence=["processed 80 invoices"]),
+        ("experience", 0, 2): _lv(1.0),
+        ("summary", None, None): _lv(0.5),
+    }
+    report = rl.assemble(_resume(), levels, PASS_GATES, "experienced", FULL_HOT)["report"]
+    detail = _finding_at(report["findings"], "ask", ("experience", 0, 0))
+    measure = _finding_at(report["findings"], "ask", ("experience", 0, 1))
+    summary = _finding_at(report["findings"], "ask", ("summary", None, None))
+    assert detail["question"] == "Who used this?" and detail["ask_kind"] == "detail"
+    assert detail["gain"] == 10 and measure["gain"] == 7 and summary["gain"] == 0
+    assert detail["evidence"] == ["a concrete action"]
+    assert measure["measure_target"] == "processing time"
+    assert measure["alt_question"] == "What became easier?"
+    assert measure["id"] == rl._fid("ask", ("experience", 0, 1), "Has a scale metric, but not a business outcome.")
+    assert report["next_grade"] == {"grade": "A", "points": 8}
+
+
+def test_fallbacks_never_demand_a_number_and_direct_is_silent_even_if_uncertain():
+    assert all(not bullet_classify._NUMBER_ASK.search(q) for q in rl.FALLBACK_QUESTION.values())
+    levels = {("experience", 0, 0): _lv(1.0, uncertain=True),
+              ("experience", 0, 1): _lv(0.5, uncertain=True),
+              ("experience", 0, 2): _lv(0.8)}
+    report = rl.assemble(_resume(), levels, PASS_GATES, "experienced", set())["report"]
+    asks = [f for f in report["findings"] if f["type"] == "ask"]
+    assert len(asks) == 1
+    assert asks[0]["ask_kind"] == "detail"
+    assert not bullet_classify._NUMBER_ASK.search(asks[0]["question"])
+
+
+def test_measure_without_its_question_uses_detail_fallback():
+    levels = {("experience", 0, 0): dict(_lv(0.5), ask_kind="measure", measure_target="users", alt_question="Who used it?")}
+    report = rl.assemble(_resume(), levels, PASS_GATES, "experienced", set())["report"]
+    ask = next(f for f in report["findings"] if f["type"] == "ask")
+    assert ask["ask_kind"] == "detail"
+    assert ask["measure_target"] is None and ask["alt_question"] is None
+
+
+def test_next_grade_is_absent_for_capped_or_top_grade():
+    levels = {("experience", 0, i): _lv(1.0) for i in range(3)}
+    for gates in (PASS_GATES, [dict(g, status="fail") for g in PASS_GATES]):
+        assert rl.assemble(_resume(), levels, gates, "experienced", set())["report"]["next_grade"] is None
+
+
+def _next_grade_under(values, failed=()):
+    resume = _resume()
+    resume["experience"][0]["bullets"] = [f"b{i}" for i in range(len(values))]
+    levels = {("experience", 0, i): _lv(v) for i, v in enumerate(values)}
+    gates = [dict(g, status="fail") if g["id"] in failed else g for g in PASS_GATES]
+    out = rl.assemble(resume, levels, gates, "experienced", set())
+    return out["features"]["raw_score"], out["report"]["next_grade"]
+
+
+def test_next_grade_is_absent_when_a_gate_cap_blocks_the_next_band():
+    # Fatal cap 54: a raw 50 is not lowered, but C (55) is out of reach.
+    assert _next_grade_under([0.5, 0.5], failed={"S1"}) == (50, None)
+    # Serious cap 69: C (55) is reachable from 50, B (70) is not from 60 or 66.
+    assert _next_grade_under([0.5, 0.5], failed={"S4"}) == (50, {"grade": "C", "points": 5})
+    assert _next_grade_under([1.0, 0.5, 0.5, 0.5, 0.5], failed={"S4"}) == (60, None)
+    assert _next_grade_under([1.0, 0.8, 0.5, 0.5, 0.5], failed={"S4"}) == (66, None)
+    # No cap: unchanged.
+    assert _next_grade_under([0.5, 0.5]) == (50, {"grade": "C", "points": 5})
+    assert _next_grade_under([1.0, 0.8, 0.5, 0.5, 0.5]) == (66, {"grade": "B", "points": 4})
+
+
+def test_measure_ask_and_adjacent_ladder_share_one_frozen_id_key():
+    key = "Specific, but carries no number."
+    assert rl.ASK_ISSUE["measure"]["id_key"] == rl.LADDER_COPY["adjacent"]["id_key"] == key
+    levels = {("experience", 0, 0): dict(_lv(0.5), ask_kind="measure", question="How much time?",
+                                         measure_target="processing time", alt_question="What became easier?")}
+    report = rl.assemble(_resume(), levels, PASS_GATES, "experienced", set())["report"]
+    ask = _finding_at(report["findings"], "ask", ("experience", 0, 0))
+    assert ask["ask_kind"] == "measure"
+    assert ask["id"] == rl._fid("ask", ("experience", 0, 0), key)
+
+
+def test_weak_bullet_rewrite_keeps_reword_kind_and_next_level_gain():
+    levels = {("experience", 0, 0): dict(_lv(0.3), question="What did you build?")}
+    report = rl.assemble(_resume(), levels, PASS_GATES, "experienced", set(), rewrite_fn=lambda text: "Built the tool.")["report"]
+    fix = next(f for f in report["findings"] if f["type"] == "fix")
+    assert fix["ask_kind"] == "reword" and fix["gain"] == 20
+
+
+# --------------------------------------------------------------------------- #
+# evidence.no_numbers: a highlighted flag, zero score, no count of "enough"
+
+@pytest.mark.parametrize("text, expected", [
+    ("Python 3.11 in 2024", False),
+    ("Built with Airflow 2.8 and Spark 3.5.1", False),
+    ("Shipped v2.1 of the SDK", False),
+    ("Cut latency 40%", True),
+    ("Led 3 engineers", True),
+    ("Raised AUC from 0.759 to 0.789", True),
+    ("Mentored two interns", True),
+    ("Grew revenue $1.2M", True),
+])
+def test_has_metric_table(text, expected):
+    assert rl._has_metric(text) is expected
+
+
+_NUMBER_FREE = ["Owned the vendor onboarding checklist", "Rebuilt the triage rota",
+                "Wrote the escalation runbook", "Chose Postgres over Mongo for audit needs",
+                "Trained new hires on the ticket queue"]
+
+
+def _no_numbers(resume, n_levels=None):
+    bullets = resume["experience"][0]["bullets"]
+    levels = {("experience", 0, i): _lv(0.5) for i in range(n_levels or len(bullets))}
+    report = rl.assemble(resume, levels, PASS_GATES, "experienced", set(levels))["report"]
+    return [f for f in report["findings"] if f.get("rule") == "evidence.no_numbers"]
+
+
+def test_five_number_free_bullets_fire_the_no_numbers_flag():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = list(_NUMBER_FREE)
+    [flag] = _no_numbers(resume)
+    assert flag["type"] == "note" and flag["severity"] == "minor"
+    assert flag["location"] == {"section": "resume"}
+    assert flag["level"] is None and flag["cost"] == 0 and flag["gain"] == 0
+    assert flag["issue"] == "None of your bullets has a number."
+    assert flag["why"] == ("Hiring managers often pass over a resume with no measured results at all. "
+                           "Bullets without numbers are fine; a resume with none reads as unmeasured.")
+    assert flag["how"] == "Add a real number to one or two bullets where one exists."
+
+
+def test_one_number_silences_the_no_numbers_flag():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = [*_NUMBER_FREE[:4], "Cut latency 40%"]
+    assert _no_numbers(resume) == []
+
+
+def test_a_number_in_an_extras_bullet_silences_the_no_numbers_flag():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = list(_NUMBER_FREE)
+    resume["extra_sections"] = [{"key": "awards", "title": "Awards", "type": "bullets",
+                                 "enabled": True, "bullets": ["Top 3 of 200 entrants"]}]
+    assert _no_numbers(resume) == []
+
+
+def test_fewer_than_min_scoreable_bullets_never_fire_the_no_numbers_flag():
+    # A number-free summary is on the ladder but is not a scored bullet.
+    resume = _resume()
+    resume["summary"] = "Support lead who builds calm, repeatable processes."
+    resume["experience"][0]["bullets"] = _NUMBER_FREE[:rl.MIN_SCOREABLE_ITEMS - 1]
+    assert _no_numbers(resume) == []
+    resume["experience"][0]["bullets"] = _NUMBER_FREE[:rl.MIN_SCOREABLE_ITEMS]
+    assert len(_no_numbers(resume)) == 1
+
+
+def test_a_number_in_the_summary_alone_does_not_silence_the_no_numbers_flag():
+    resume = _resume()
+    resume["summary"] = "Support lead with 8 years in fintech operations."
+    resume["experience"][0]["bullets"] = list(_NUMBER_FREE)
+    assert len(_no_numbers(resume)) == 1
+
+
+def test_versions_alone_do_not_silence_the_no_numbers_flag():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = [*_NUMBER_FREE[:4], "Migrated jobs to Airflow 2.8"]
+    assert len(_no_numbers(resume)) == 1

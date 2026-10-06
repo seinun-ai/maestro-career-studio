@@ -69,6 +69,9 @@ const limbs = () => withClass(REGIONS.rail, "fork").flatMap((row) => row.childre
 const press = (label) => {
   const found = limbs().find((limb) => limb.textContent === label);
   if (!found) throw new Error(`no fork limb reads "${label}"`);
+  // FOCUSED, then pressed, as a browser does: where focus lands after a press
+  // that rebuilds the rail is part of what the press does.
+  found.focus();
   found.click();
 };
 main(async () => {
@@ -82,11 +85,12 @@ main(async () => {
   const loaded = regions();
   let opened = null;
   if (spec.open === true) {
-    press("Tailor");
+    press("Tailor to this job");
     await settle();
     opened = regions();
   }
   let clicked = null;
+  let focusedAfter = null;
   if (spec.press !== undefined || spec.pressCta === true) {
     if (spec.pressCta === true) withClass(REGIONS.foot, "cta")[0].click();
     else press(spec.press);
@@ -95,6 +99,7 @@ main(async () => {
     // tailor is open.
     clicked = regions();
     await settle();
+    focusedAfter = document.activeElement?.id ?? null;
     // …and the user is free to leave while the POST is still on the wire.
     if (spec.switchTo !== undefined) {
       await onActivated({ tabId: spec.switchTo });
@@ -115,7 +120,7 @@ main(async () => {
     await settle();
     reopened = regions();
   }
-  emit({ loaded, opened, clicked, reopened, settled: regions(), sent, writes,
+  emit({ loaded, opened, clicked, focusedAfter, reopened, settled: regions(), sent, writes,
          limbs: limbs().map((limb) => limb.textContent) });
 });
 """
@@ -138,14 +143,12 @@ TAILORED_REPLY = _reply({"application_id": "app-quick", "session_id": "sess-1",
                          "health_warning": None})
 
 
-# What each choice says it does, one short line each (Task 25).
-BASE_LINE = ("Use base resume as is: fill the application from your base "
-             "resume, unchanged.")
-TAILOR_LINE = "Tailor: fit your resume to this job first."
-QUICK_LINE = "Quick tailor: tailors your resume to this job here and creates its PDF."
-CUSTOM_LINE = ("Tailor in Maestro CS: opens this job in Maestro CS to start a "
-               "gap analysis. The Companion picks up the tailored resume when "
-               "its PDF is ready.")
+# What the choices do: one short muted line under each level (2026-09-27).
+FORK_LINE = "Base: your resume unchanged. Tailor: fit it to this job first."
+OPTIONS_LINE = ("Quick tailor makes the PDF here. A PDF you make in Maestro CS "
+                "shows up here when you select Refresh.")
+# With no link to Maestro CS there is nothing to promise about it.
+OPTIONS_LINE_HERE = "Quick tailor makes the PDF here."
 
 
 def _resume(tmp_path, **spec):
@@ -180,12 +183,12 @@ def test_the_fork_belongs_to_the_step_you_are_on_and_asks_one_question_first(tmp
     """
     out = _resume(tmp_path)
     rows = _by_class(out["loaded"]["rail"], "stg")
-    assert rows[2]["class"] == "stg active"
-    # One level, two limbs, and the Score row above it carries no body of its
+    assert rows[1]["class"] == "stg active"
+    # One level, two limbs, and the Job row above it carries no body of its
     # own: a done row is a tick and a summary.
-    assert _limbs(out["loaded"]["rail"]) == ["Use base resume as is", "Tailor"]
+    assert _limbs(out["loaded"]["rail"]) == ["Use my base resume", "Tailor to this job"]
     assert len(_by_class(out["loaded"]["rail"], "stg-body")) == 1
-    assert _by_class(rows[1], "stg-body") == []
+    assert _by_class(rows[0], "stg-body") == []
     # Nothing is pre-selected. Picking a tailoring path on the user's behalf is
     # the thing this fork exists to stop.
     assert [limb["class"] for limb in _by_class(out["loaded"]["rail"], "fork")[0]["children"]] == [
@@ -197,7 +200,7 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     making up their mind, so it must cost nothing and claim nothing."""
     out = _resume(tmp_path, open=True)
     before = len(out["sent"])
-    assert out["limbs"] == ["Use base resume as is", "Tailor",
+    assert out["limbs"] == ["Use my base resume", "Tailor to this job",
                             "Quick tailor", "Tailor in Maestro CS ↗"]
     # The branch the user is standing in, said in words as well as in colour.
     [_base, tailor] = _by_class(out["opened"]["rail"], "fork")[0]["children"]
@@ -212,7 +215,7 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     [region] = [found for found in _walk(out["opened"]["rail"])
                 if found["id"] == tailor["attrs"]["aria-controls"]]
     assert _limbs(region) == ["Quick tailor", "Tailor in Maestro CS ↗"]
-    assert [line["text"] for line in _by_class(region, "sub")] == [QUICK_LINE, CUSTOM_LINE]
+    assert [line["text"] for line in _by_class(region, "sub")] == [OPTIONS_LINE]
     # Closed, there is no region — this loop renders what is true — so the
     # button says only that it is closed. A pointer kept across the collapse
     # would be the same broken promise as a link to a guessed address.
@@ -221,12 +224,12 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     # Not one message, and certainly not a POST: opening a menu is not a choice.
     assert len(out["sent"]) == before
     assert _posts({"sent": out["sent"]}) == []
-    # Each choice says what it does, one short line each: the first level's
-    # two before anything is opened, the second level's two inside the region.
+    # Each level says what its choices do in one short muted line: the first
+    # before anything is opened, the second inside the region.
     assert [line["text"] for line in _by_class(out["loaded"]["rail"], "sub")] == [
-        BASE_LINE, TAILOR_LINE]
+        FORK_LINE]
     assert [line["text"] for line in _by_class(out["opened"]["rail"], "sub")] == [
-        BASE_LINE, TAILOR_LINE, QUICK_LINE, CUSTOM_LINE]
+        FORK_LINE, OPTIONS_LINE]
 
 
 def test_custom_in_studio_is_a_link_out_and_never_an_api_call(tmp_path):
@@ -259,9 +262,9 @@ def test_a_panel_that_does_not_know_where_the_studio_is_offers_no_way_there(tmp_
     the user leaves and there is nothing to leave through.
     """
     out = _resume(tmp_path, open=True, replies={})
-    assert out["limbs"] == ["Use base resume as is", "Tailor", "Quick tailor"]
+    assert out["limbs"] == ["Use my base resume", "Tailor to this job", "Quick tailor"]
     assert [line["text"] for line in _by_class(out["opened"]["rail"], "sub")] == [
-        BASE_LINE, TAILOR_LINE, QUICK_LINE]
+        FORK_LINE, OPTIONS_LINE_HERE]
 
 
 def _described_by(region, control):
@@ -271,43 +274,115 @@ def _described_by(region, control):
     return reason["text"]
 
 
-def test_base_as_is_is_visibly_off_beside_a_draft_whose_resume_has_no_pdf(tmp_path):
-    """THE DEAD BUTTON (Task 25's first read). The page is tied to a draft
-    application whose tailored resume has no PDF, so the stage is Resume — and
-    "Use base resume as is" armed a claim `stageFor` ignores beside an
-    application (`fillFromBase` needs `!hasApplication`): a click that changed
-    nothing. Now it is disabled, and the sentence it points at says why and
-    what to do."""
-    out = _resume(tmp_path, pickBase=0, api={
+NO_PDF_LINE = "This application's resume has no PDF yet."
+BOUND_REASON = "This job already has a draft application, so it uses that resume."
+
+
+def test_a_draft_whose_resume_has_no_pdf_offers_create_pdf_and_never_a_fresh_tailor(tmp_path):
+    """The application's tailored resume exists and only its PDF is missing, so
+    the answer is to create the PDF, never Quick tailor: that runs a fresh
+    tailor ("asks to tailor again"). The base is visibly off, with one short
+    sentence saying why (THE DEAD BUTTON, Task 25's first read: armed beside an
+    application, the claim changed nothing). No base click first: the
+    application answers the base question, so the rail opens on Resume."""
+    out = _resume(tmp_path, api={
         "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
                                "application": {"id": "app-1", "status": "draft"}}),
         "/api/applications/app-1": _reply({"pdf_path": None, "status": "draft"})})
-    assert _rows(_rail_rows({"regions": out["loaded"]}))["resume"]["state"] == "active"
-    [base, tailor] = _by_class(out["loaded"]["rail"], "fork")[0]["children"]
-    assert base["text"] == "Use base resume as is"
-    assert base["disabled"] is True
-    assert tailor["disabled"] is False
-    assert _described_by(out["loaded"]["rail"], base) == (
-        "This job has a draft application, so your base resume can't be used "
-        "here. Open the application in Maestro CS and select Create PDF.")
-    # The line that would explain an offer it cannot make is gone with it.
-    assert BASE_LINE not in _text(out["loaded"]["rail"])
+    loaded = out["loaded"]
+    assert _rows(_rail_rows({"regions": loaded}))["resume"]["state"] == "active"
+    body = _body(loaded)
+    assert NO_PDF_LINE in [line["text"] for line in _by_class(body, "sub")]
+    [base, link] = _by_class(body, "fork")[0]["children"]
+    assert base["text"] == "Use my base resume"
+    assert base["attrs"]["aria-disabled"] == "true"
+    assert _described_by(loaded["rail"], base) == BOUND_REASON
+    assert "Quick tailor" not in _text(loaded["rail"])
+    assert FORK_LINE not in _text(loaded["rail"])
+    # …and the way to tailor it, in Maestro CS, where the web app asks before
+    # replacing anything.
+    assert (link["tag"], link["text"]) == ("A", "Tailor in Maestro CS ↗")
+    assert link["href"] == f"{APP_URL}/jobs/job-lightning?tab=fit"
+    [cta] = _by_class(loaded["foot"], "cta")
+    assert cta["text"] == "Create PDF"
 
 
-def test_an_application_with_a_tailored_pdf_says_which_resume_the_companion_uses(tmp_path):
-    """The same limb over a reopened Resume row whose application HAS its PDF:
-    the answer is not "create it" but which document goes into the form."""
+def test_create_pdf_renders_the_applications_pdf_and_the_rail_moves_on(tmp_path):
+    """`POST /api/applications/{id}/render` renders the tailored draft that is
+    already stored — no tailor, no model call — and the PDF is what Resume
+    was waiting on, so the rail moves to Fill."""
+    out = _resume(tmp_path, pressCta=True, hold=["/render"], api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft"}}),
+        "/api/applications/app-1/render": _reply(
+            {"tex_path": "r/app-1.tex", "pdf_path": "renders/app-1.pdf"}),
+        "/api/applications/app-1": _reply({"pdf_path": None, "status": "draft"})})
+    [cta] = _by_class(out["clicked"]["foot"], "cta")
+    assert (cta["text"], cta["class"], cta["disabled"]) == ("Create PDF", "cta spin", True)
+    [post] = _posts(out)
+    assert post["path"] == "/api/applications/app-1/render"
+    assert "quick-tailor" not in json.dumps(out["sent"])
+    settled = out["settled"]
+    rows = _rows(_rail_rows({"regions": settled}))
+    assert rows["resume"]["state"] == "done"
+    assert rows["fill"]["state"] == "active"
+    [note] = _by_class(settled["foot"], "note")
+    assert note["text"] == "PDF created."
+    assert out["writes"][-1]["widget.session"]["pdfReady"] is True
+
+
+def test_a_create_pdf_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
+    """The generation rule on the render round trip: the user may leave while
+    the PDF is made, and "PDF created." (and a session entry saying so) about
+    the page they left must not land on the one they are on."""
+    out = _resume(tmp_path, pressCta=True, hold=["/render"], switchTo=42,
+                  tabUrls={"42": "chrome://settings"}, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft"}}),
+        "/api/applications/app-1/render": _reply(
+            {"tex_path": "r/app-1.tex", "pdf_path": "renders/app-1.pdf"}),
+        "/api/applications/app-1": _reply({"pdf_path": None, "status": "draft"})})
+    assert [msg["path"] for msg in _posts(out)] == ["/api/applications/app-1/render"]
+    settled = out["settled"]
+    assert "PDF created" not in _text(settled["foot"])
+    assert [n for n in _walk(settled["foot"]) if "spin" in str(n.get("class"))] == []
+    assert not any(write.get("widget.session", {}).get("pdfReady")
+                   for write in out["writes"])
+
+
+def test_a_create_pdf_that_fails_says_so_and_keeps_the_step(tmp_path):
+    out = _resume(tmp_path, pressCta=True, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft"}}),
+        "/api/applications/app-1/render": {"ok": False, "error": "boom", "status": 500},
+        "/api/applications/app-1": _reply({"pdf_path": None, "status": "draft"})})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "Couldn't create the PDF. Open the application in Maestro CS to see why.")
+    assert note["class"] == "note error"
+    assert _rows(_rail_rows({"regions": out["settled"]}))["resume"]["state"] == "active"
+
+
+def test_a_tailored_pdf_makes_the_step_done_and_reopens_onto_one_small_link(tmp_path):
+    """With its PDF the step is simply done ("Tailored resume ready"). Reopened,
+    it offers one small way to tailor again, in Maestro CS, where replacing a
+    tailored draft asks first. No fork and no paragraph about it, and no
+    footer primary: Quick tailor here would replace the draft unasked."""
     out = _resume(tmp_path, api={
         "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
                                "application": {"id": "app-1", "status": "draft"}}),
         "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
                                            "status": "draft"})},
         reopen="resume")
-    [base, _tailor] = _by_class(out["reopened"]["rail"], "fork")[0]["children"]
-    assert base["disabled"] is True
-    assert _described_by(out["reopened"]["rail"], base) == (
-        "This application already has a tailored resume, so the Companion uses "
-        "that one.")
+    rows = _rows(_rail_rows({"regions": out["reopened"]}))
+    assert rows["resume"]["summary"] == "Resume ready"
+    body = _body(out["reopened"])
+    assert _by_class(body, "fork") == []
+    [again] = [n for n in _walk(body) if n["tag"] == "A"]
+    assert again["text"] == "Tailor in Maestro CS ↗"
+    assert again["href"] == f"{APP_URL}/jobs/job-lightning?tab=fit"
+    assert _text(body) == "Tailor in Maestro CS ↗"
+    assert _by_class(out["reopened"]["foot"], "cta") == []
 
 
 def test_use_base_as_is_skips_the_rest_visibly_and_outlives_the_page(tmp_path):
@@ -321,7 +396,7 @@ def test_use_base_as_is_skips_the_rest_visibly_and_outlives_the_page(tmp_path):
     apply page: `resetPageFacts` clears `baseArmed` on every page load, so
     without the entry the shortcut would exist for exactly one page.
     """
-    out = _resume(tmp_path, press="Use base resume as is",
+    out = _resume(tmp_path, press="Use my base resume",
                   page={"detect_page": _reply({"tier": "A", "form": True, "score": 3})})
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["resume"]["state"] == "skipped"
@@ -349,7 +424,7 @@ def test_an_arming_made_on_the_posting_is_still_armed_on_the_apply_page(tmp_path
     nothing about the url. Without the remembered arming the panel would open
     that page at Job and ask them to add a posting they had already saved.
     """
-    armed = _resume(tmp_path, press="Use base resume as is",
+    armed = _resume(tmp_path, press="Use my base resume",
                     page={"detect_page": _reply({"tier": "A", "form": True, "score": 3})})
     out = _load(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
                 stored={"widget.session": armed["writes"][0]["widget.session"]},
@@ -382,7 +457,7 @@ def test_arming_a_base_on_a_page_with_no_form_moves_the_rail_and_says_where(tmp_
     fields in it and report "0 filled" — the button the old `hasForm` gate
     existed to withhold, withheld at the button (panel.js `primaryRefused`).
     """
-    out = _resume(tmp_path, press="Use base resume as is")
+    out = _resume(tmp_path, press="Use my base resume")
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["resume"]["state"] == "skipped"
     assert rows["resume"]["summary"] == "Using your base resume as is."
@@ -432,22 +507,25 @@ def test_quick_tailor_creates_the_application_and_the_rings_say_so(tmp_path):
     # VISIBLY either, which is how a user comes to distrust the whole surface.
     # The two limbs that only read stay live: a disclosure claims nothing, and
     # a link to the Studio is a way out of a tailor that is taking too long.
-    assert {_text(limb): limb["disabled"] for limb in
+    # `aria-disabled` and not `disabled`: the limb the user just pressed is
+    # rebuilt by the render its own busy causes, and a `disabled` button
+    # cannot take focus back (`withPlaceKept`), so focus would fall to the
+    # document (the conventions' GapLocked rule).
+    def locked(limb):
+        return (limb["disabled"], limb["attrs"].get("aria-disabled"))
+    assert {_text(limb): locked(limb) for limb in
             _by_class(out["clicked"]["rail"], "fork")[0]["children"]} == {
-        "Use base resume as is": True, "Tailor": False}
-    assert {_text(limb): limb["disabled"] for limb in
+        "Use my base resume": (False, "true"), "Tailor to this job": (False, None)}
+    assert {_text(limb): locked(limb) for limb in
             _by_class(out["clicked"]["rail"], "fork")[1]["children"]} == {
-        "Quick tailor": True, "Tailor in Maestro CS ↗": False}
-    # …and it LOOKS out of reach, which `disabled` alone does not deliver here:
-    # `.fork button` sets `background`, `color` and `cursor: pointer`
-    # explicitly, and an author declaration beats the UA stylesheet's disabled
-    # defaults — so without this rule the limb renders at full contrast under a
-    # pointer cursor while swallowing every click, which is the whole failure
-    # the attribute above was added to prevent. A source pin because appearance
-    # is not in the DOM: the fake node carries the attribute, and no assertion
-    # over it can tell a styled disabled control from an unstyled one.
-    assert re.search(r"\.fork button:disabled\s*\{[^}]*opacity:\s*\.6[^}]*\}",
-                     PANEL_CSS), "a disabled fork limb must not look pressable"
+        "Quick tailor": (False, "true"), "Tailor in Maestro CS ↗": (False, None)}
+    assert out["focusedAfter"] == "resume-quick"
+    # …and it LOOKS out of reach: `.fork button` sets `background`, `color`
+    # and `cursor: pointer` explicitly, so without this rule the limb renders
+    # at full contrast under a pointer cursor while swallowing every click. A
+    # source pin because appearance is not in the DOM.
+    assert re.search(r'\.fork button\[aria-disabled="true"\][^{]*\{[^}]*opacity:\s*\.6',
+                     PANEL_CSS), "a locked fork limb must not look pressable"
     # The widget's endpoint and body, unchanged — a panel that invented a route
     # would 404 in the browser and pass here.
     [post] = _posts(out)
@@ -553,14 +631,15 @@ def test_a_tailor_that_renders_no_pdf_says_so_and_still_keeps_the_application(tm
     # The health warning rides the sentence rather than being said first and
     # overwritten a line later, which is what the card does with it.
     assert note["text"] == ("⚠ Base resume health is C Tailored, but couldn't "
-                            "create the PDF. Open it in Maestro CS and select "
-                            "Create PDF.")
+                            "create the PDF. Select Create PDF to try again.")
     assert note["class"] == "note error"
     assert out["writes"][-1]["widget.session"]["applicationId"] == "app-quick"
     assert out["writes"][-1]["widget.session"]["pdfReady"] is False
     # Still at Resume: `stageFor` reads a PDF-less application as not done, so
-    # the panel keeps offering the thing that would fix it.
+    # the panel keeps offering the thing that would fix it — Create PDF, never
+    # a second tailor.
     assert _rows(_rail_rows({"regions": out["settled"]}))["resume"]["state"] == "active"
+    assert _text(_by_class(out["settled"]["foot"], "cta")[0]) == "Create PDF"
 
 
 def test_nothing_to_tailor_claims_no_application_at_all(tmp_path):
@@ -624,10 +703,109 @@ def test_a_tailor_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_pat
     assert out["writes"] == []
 
 
+# ---------- switching base from the reopened Score row ----------------------
+#
+# Standing on Resume, the user reopens Job to switch base and picks one. The
+# stage does not move — Resume is still the open question, only about another
+# base — so `openRow`'s "the rail moved on" limb never fires. Reported live:
+# the base list stayed open under a Resume row that was active and had no way
+# in, so the tailoring fork never came back.
+
+_SWITCH_BASE_DRIVER_JS = _PANEL_FAKES_JS + r"""
+loadModules();
+const door = (key) => findById(REGIONS.rail, `stg-open-${key}`);
+main(async () => {
+  await settle();
+  const loaded = regions();
+  door("job").click();
+  await settle();
+  const reopened = regions();
+  if (spec.back === true) {
+    // Not picking at all: the user presses the row they are ON to go back.
+    const back = door("resume");
+    if (!back) throw new Error("the active Resume row is not a way back");
+    back.click();
+    await settle();
+    emit({ loaded, reopened, back: regions(), writes });
+    return;
+  }
+  // By the name the user reads: the fake's `textContent` is the node's own
+  // text, so the name is looked for on the row's children.
+  const row = withClass(REGIONS.rail, "baserow")
+    .find((one) => one.children.some((child) => child.textContent === spec.pick));
+  if (!row) throw new Error(`no base row reads "${spec.pick}"`);
+  row.click();
+  await settle();
+  emit({ loaded, reopened, picked: regions(), writes });
+});
+"""
+
+
+def _switch_base(tmp_path, pick=None, back=False):
+    api = {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                  "application": None}),
+           "/api/base-resumes": _reply(SCORE_RESUMES),
+           "GET /api/ats-scores": _reply(SCORE_ROWS)}
+    return run_node(_SWITCH_BASE_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "stored": {"widget.session": {**PICKED_ENTRY, "at": int(time.time() * 1000)}},
+        "api": api,
+        "pick": pick,
+        "back": back,
+    }, tmp_path, source=PANEL_SOURCE)
+
+
+def _open_bodies(region):
+    return [node["id"].removeprefix("stg-body-") for node in _by_class(region, "stg-body")]
+
+
+def test_a_base_picked_from_the_reopened_job_row_returns_to_the_tailoring_fork(tmp_path):
+    """The pick answers the question the Job row was reopened to ask, so the
+    view closes and the body goes back to the step the user is on: the fork,
+    now for the base they just chose."""
+    out = _switch_base(tmp_path, "Data Scientist")
+    assert _rows(_rail_rows({"regions": out["loaded"]}))["resume"]["state"] == "active"
+    assert _open_bodies(out["reopened"]["rail"]) == ["job"]
+    picked = out["picked"]
+    assert _rows(_rail_rows({"regions": picked}))["resume"]["state"] == "active"
+    assert _open_bodies(picked["rail"]) == ["resume"]
+    assert _limbs(picked["rail"]) == ["Use my base resume", "Tailor to this job"]
+    # The footer follows the open row, so it is the fork's primary again and
+    # not a re-score of the list the user just chose from.
+    assert _text(_by_class(picked["foot"], "cta")[0]) == "Quick tailor"
+    assert _by_class(picked["rail"], "baserow") == []
+    # …and the pick itself is what the fork now builds on, remembered for the
+    # next page of the wizard.
+    assert out["writes"][-1]["widget.session"]["baseSlug"] == "data_scientist"
+
+
+def test_repicking_the_same_base_from_the_reopened_row_also_closes_it(tmp_path):
+    """Clicking the base that was already chosen is the same answer as clicking
+    another one: the user looked, confirmed, and wants the fork back."""
+    out = _switch_base(tmp_path, "AI/ML Engineer")
+    assert _open_bodies(out["picked"]["rail"]) == ["resume"]
+
+
+def test_the_step_you_are_on_is_a_way_back_while_another_row_is_open(tmp_path):
+    """Reopened Job, then changed their mind without picking: the active row
+    is the natural thing to press, and before this it was not a control at
+    all, so the only way back was the ▾ on the row they had opened."""
+    out = _switch_base(tmp_path, back=True)
+    reopened = out["reopened"]["rail"]
+    door = next(node for node in _walk(reopened) if node["id"] == "stg-open-resume")
+    assert door["tag"] == "BUTTON"
+    assert door["attrs"]["aria-expanded"] == "false"
+    back = out["back"]
+    assert _open_bodies(back["rail"]) == ["resume"]
+    assert _limbs(back["rail"]) == ["Use my base resume", "Tailor to this job"]
+    # Back on the step it is on, the active row has no door: its body is open.
+    assert [node for node in _walk(back["rail"]) if node["id"] == "stg-open-resume"] == []
+
 
 # ---------- the base-as-is claim can be withdrawn ---------------------------
 #
-# "Use base resume as is" finishes the Resume stage by SKIPPING it, and a skipped row
+# "Use my base resume" finishes the Resume stage by SKIPPING it, and a skipped row
 # was a wall: the Resume row read "Using your base resume as is." and there was no
 # way back to the tailoring fork short of unbinding the whole page (reported
 # live on an Itron wizard). The un-pick round already settled the grammar — a
@@ -649,7 +827,7 @@ main(async () => {
   // Which rows offer a door AT ALL, asked of the rendered rail rather than of
   // the model: the door is a real <button> with a stable id, and "the rail
   // drew one" is the only version of this question the user can see.
-  const doors = ["job", "score", "resume", "fill", "track"]
+  const doors = ["job", "resume", "fill", "track"]
     .filter((key) => opener(key) !== null);
   const door = opener("resume");
   if (door) door.click();
@@ -657,7 +835,7 @@ main(async () => {
   if (spec.openTailor === true) {
     const tailor = withClass(REGIONS.rail, "fork")
       .flatMap((row) => row.children)
-      .find((limb) => limb.textContent === "Tailor");
+      .find((limb) => limb.textContent === "Tailor to this job");
     if (!tailor) throw new Error("the reopened body offers no Tailor limb");
     tailor.click();
     await settle();
@@ -731,20 +909,18 @@ def _body(painted):
 
 
 def test_the_row_you_skipped_by_choice_is_a_door_and_the_ones_the_path_skipped_are_not(tmp_path):
-    """THE DISTINCTION, rendered. All three of Job, Score and Resume are greyed
-    and dashed on this page, and exactly one of them opens.
+    """THE DISTINCTION, rendered. Both Job and Resume are greyed and dashed on
+    this page, and exactly one of them opens.
 
     The user pressed one button, and it answered the RESUME stage's own
-    question ("tailor, or not?"). Score is skipped because nothing needs a
-    ranking when nothing is being tailored and Job because the shortcut never
-    asked the library — neither is a decision anybody made, so neither has
-    anything to withdraw. A door on those two would be a rail offering to undo
-    arithmetic.
+    question ("tailor, or not?"). Job is skipped because the shortcut never
+    asked the library — not a decision anybody made, so nothing to withdraw.
+    A door there would be a rail offering to undo arithmetic.
     """
     out = _armed(tmp_path)
     rows = _rows(_rail_rows({"regions": out["armed"]}))
-    assert [rows[key]["state"] for key in ("job", "score", "resume")] == [
-        "skipped", "skipped", "skipped"]
+    assert [rows[key]["state"] for key in ("job", "resume")] == [
+        "skipped", "skipped"]
     assert rows["fill"]["state"] == "active"
     assert out["doors"] == ["resume"]
     # …and the door says so the way every other one does, rather than by being
@@ -759,14 +935,14 @@ def test_the_reopened_base_as_is_row_names_the_choice_and_offers_both_ways_on(tm
     """What the door opens onto: the claim in the user's own words, the whole
     tailoring fork, and the way out.
 
-    The "Use base resume as is" limb is GONE, and that is the one edit rather than a
+    The "Use my base resume" limb is GONE, and that is the one edit rather than a
     trimmed-down body: pressing it would re-assert a claim already in force,
     which is a control that cannot do anything.
     """
     out = _armed(tmp_path)
     body = _body(out["reopened"])
     assert "Using AI/ML Engineer as is" in _text(body)
-    assert _limbs(body) == ["Tailor"]
+    assert _limbs(body) == ["Tailor to this job"]
     assert [n["text"] for n in _by_class(body, "unpick")] == ["Stop using the base resume"]
     # Nothing was asked of the backend to open a body.
     assert out["askedAfterBoot"] == []
@@ -796,7 +972,7 @@ def test_the_second_fork_level_still_discloses_under_the_reopened_claim(tmp_path
     discloses Quick tailor and Custom in Studio, and the withdraw stays last —
     it is the way OUT of the stage, not one of the ways through it."""
     body = _body(_armed(tmp_path, matched=True, openTailor=True)["reopened"])
-    assert _limbs(body) == ["Tailor", "Quick tailor", "Tailor in Maestro CS ↗"]
+    assert _limbs(body) == ["Tailor to this job", "Quick tailor", "Tailor in Maestro CS ↗"]
     assert _text(body["children"][-1]) == "Stop using the base resume"
 
 
@@ -810,7 +986,7 @@ def test_a_tailor_from_the_reopened_door_takes_the_claim_off_the_body(tmp_path):
     door stays open (correctly), and a body still reading "Using ⟨base⟩ as-is"
     over a withdraw that moves nothing would be a false sentence about which
     document is going into the form — beside a control that cannot do anything,
-    which is the very thing this body drops the "Use base resume as is" limb to avoid.
+    which is the very thing this body drops the "Use my base resume" limb to avoid.
     """
     out = _armed(tmp_path, matched=True, openTailor=True, quickTailor=True,
                  api={"quick-tailor": TAILORED_REPLY})
@@ -819,10 +995,9 @@ def test_a_tailor_from_the_reopened_door_takes_the_claim_off_the_body(tmp_path):
     body = _body(out["reopened"])
     assert "Using AI/ML Engineer as is" not in _text(body)
     assert _by_class(body, "unpick") == []
-    # …and it is the ORDINARY fork again, arming limb and all: with no
-    # application in the way that limb means something once more.
-    assert _limbs(body) == ["Use base resume as is", "Tailor", "Quick tailor",
-                            "Tailor in Maestro CS ↗"]
+    # …and it is the done step's body: a resume with its PDF, and one small
+    # way to tailor in Maestro CS.
+    assert _text(body) == "Tailor in Maestro CS ↗"
 
 
 def test_stop_using_base_as_is_returns_the_rail_to_the_ladder(tmp_path):
@@ -866,14 +1041,14 @@ def test_withdrawing_on_a_page_the_backend_knows_lands_on_the_resume_fork(tmp_pa
     """The other half of "back to the ladder", and the reason the rung is not
     hard-coded: with the job matched and a base already chosen, the ladder's
     own order puts the user at Resume — where the fork asks the question again,
-    with "Use base resume as is" back on it.
+    with "Use my base resume" back on it.
     """
     out = _armed(tmp_path, matched=True, withdraw=True)
     rows = _rows(_rail_rows({"regions": out["withdrawn"]}))
     assert rows["resume"]["state"] == "active"
     assert rows["job"]["state"] == "done"
     body = _body(out["withdrawn"])
-    assert _limbs(body) == ["Use base resume as is", "Tailor"]
+    assert _limbs(body) == ["Use my base resume", "Tailor to this job"]
     assert _by_class(body, "unpick") == []
     assert "Using AI/ML Engineer as is" not in _text(body)
 
@@ -906,6 +1081,14 @@ def test_withdrawing_stops_the_bridge_from_rearming_the_claim(tmp_path):
     assert "stg-open-resume" not in [n["id"] for n in _walk(later["regions"]["rail"])]
 
 
+def test_choosing_the_base_hands_focus_to_the_row_it_finished(tmp_path):
+    """"Use my base resume" finishes the step by skipping it, so the button
+    leaves with the body. Focus goes to the Resume row's door — the way back
+    to the choice — rather than falling to the document."""
+    out = _resume(tmp_path, press="Use my base resume")
+    assert out["focusedAfter"] == "stg-open-resume"
+
+
 def test_the_arming_page_offers_the_way_out_too(tmp_path):
     """The claim is armed before any form is in front of the user, and the way
     back is the same door as everywhere else.
@@ -917,7 +1100,7 @@ def test_the_arming_page_offers_the_way_out_too(tmp_path):
     door — and the body behind it is the same body, because it is keyed on the
     CLAIM rather than on which row it is under.
     """
-    out = _resume(tmp_path, press="Use base resume as is", reopen="resume")
+    out = _resume(tmp_path, press="Use my base resume", reopen="resume")
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["resume"]["state"] == "skipped"
     body = _body(out["reopened"])
@@ -925,4 +1108,133 @@ def test_the_arming_page_offers_the_way_out_too(tmp_path):
     assert [n["text"] for n in _by_class(body, "unpick")] == ["Stop using the base resume"]
     # The limb that re-asserts a claim already in force is not offered here
     # either — the reopened body drops it wherever it is opened.
-    assert "Use base resume as is" not in _limbs(out["reopened"]["rail"])
+    assert "Use my base resume" not in _limbs(out["reopened"]["rail"])
+
+
+# ---------- a bound application answers the base question ----------
+#
+# THE "asks to tailor again" BUG, driven. A job tailored in the web app or over
+# MCP, opened on its posting: the backend's `/api/jobs/match` binds the
+# application, so no base is clicked, no session is restored and no draft is
+# picked. The rail stuck on the base step in front of a tailored application
+# with its PDF, and Fill stayed locked. The application's own `base_resume` is
+# the answer, and it is also the base the rings compare against.
+
+BOUND_APPLICATION = {"id": "app-1", "status": "draft", "base_resume": "data_scientist"}
+BOUND_TAILORED_ROW = {"target_type": "application", "target_id": "app-1",
+                      "phase": "tailored", "composite": 77.0}
+
+
+def _bound(tmp_path, scores):
+    tmp_path.mkdir(exist_ok=True)
+    return _load(tmp_path, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": BOUND_APPLICATION}),
+        "/api/base-resumes": _reply(SCORE_RESUMES),
+        "/api/ats-scores": scores,
+        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
+                                           "status": "draft",
+                                           "base_resume": "data_scientist"}),
+    })
+
+
+def _journey(out):
+    rows = _rows(_rail_rows(out))
+    return {key: (row["state"], row["numeral"]) for key, row in rows.items()}
+
+
+def test_a_bound_application_with_its_pdf_opens_at_fill_with_no_base_click(tmp_path):
+    out = _bound(tmp_path, _reply([*SCORE_ROWS, BOUND_TAILORED_ROW]))
+    journey = _journey(out)
+    assert journey["job"] == ("done", "✓")
+    assert journey["resume"] == ("done", "✓")
+    assert journey["fill"][0] == "active"
+    # What each done row settled: the application's base and its score, and
+    # the tailored resume with its own.
+    rows = _rows(_rail_rows(out))
+    assert rows["job"]["summary"] == "Data Scientist · 64"
+    assert rows["resume"]["summary"] == "Resume ready · 77"
+    # The Base ring is the base the application was tailored from (64), not
+    # the ranking's best (72), so the "+N" says what tailoring did.
+    identity = out["regions"]["identity"]
+    assert [ring["text"] for ring in _by_class(identity, "ring")] == ["64", "77"]
+    assert _by_class(identity, "delta")[0]["text"] == "+13"
+
+
+def test_the_bound_application_answers_even_when_the_scores_read_fails(tmp_path):
+    failed = _bound(tmp_path / "failed", {"ok": False, "error": "boom", "status": 500})
+    empty = _bound(tmp_path / "empty", _reply([]))
+    for out in (failed, empty):
+        journey = _journey(out)
+        assert journey["job"] == ("done", "✓")
+        assert journey["resume"] == ("done", "✓")
+        assert journey["fill"][0] == "active"
+        # No score to print, so the summaries say only what is known.
+        rows = _rows(_rail_rows(out))
+        assert rows["job"]["summary"] == "Data Scientist"
+        assert rows["resume"]["summary"] == "Resume ready"
+
+
+# ---------- the base limb acts only when it can mean something ----------
+
+_BASE_GUARD_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+const byId = (id) => findById(REGIONS.rail, id);
+main(async () => {
+  await settle();
+  const loaded = regions();
+  if (spec.tailorFirst === true) {
+    byId("resume-tailor").click();
+    await settle();
+    byId("resume-quick").click();       // held open: the tailor is running
+  }
+  const writesBefore = writes.length;
+  byId("resume-base").click();
+  await settle();
+  const facts = ns.panel.actionStore().read();
+  const after = { baseArmed: facts.baseArmed === true,
+                  writesDuring: writes.length - writesBefore };
+  release();
+  await settle();
+  emit({ loaded, after });
+});
+"""
+
+
+def test_the_base_limb_does_nothing_while_a_tailor_runs(tmp_path):
+    """`actingLimb` locks with `aria-disabled` so focus survives the rebuild,
+    which means the click still arrives. The action refuses while `busy`, as
+    `stopUsingBaseAsIs` does, or the base would arm under a running tailor."""
+    out = run_node(_BASE_GUARD_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "stored": {"widget.session": {**PICKED_ENTRY, "at": int(time.time() * 1000)}},
+        "hold": ["quick-tailor"],
+        "tailorFirst": True,
+        "api": {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                       "application": None}),
+                "/api/base-resumes": _reply(SCORE_RESUMES),
+                "GET /api/ats-scores": _reply(SCORE_ROWS),
+                "quick-tailor": TAILORED_REPLY},
+    }, tmp_path, source=PANEL_SOURCE)
+    assert out["after"] == {"baseArmed": False, "writesDuring": 0}
+
+
+def test_the_base_limb_beside_an_application_is_focusable_and_does_nothing(tmp_path):
+    """Off for good beside an application, so `aria-disabled` rather than
+    `disabled`: a keyboard user can reach it and hear its reason. Pressed, it
+    changes nothing."""
+    out = run_node(_BASE_GUARD_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "api": {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                       "application": {"id": "app-1", "status": "draft"}}),
+                "/api/applications/app-1": _reply({"pdf_path": None, "status": "draft"}),
+                "/api/base-resumes": _reply(SCORE_RESUMES),
+                "GET /api/ats-scores": _reply(SCORE_ROWS)},
+    }, tmp_path, source=PANEL_SOURCE)
+    base = next(n for n in _walk(out["loaded"]["rail"]) if n["id"] == "resume-base")
+    assert base["disabled"] is False
+    assert base["attrs"]["aria-disabled"] == "true"
+    assert base["attrs"]["aria-describedby"] == "base-off-note"
+    assert out["after"] == {"baseArmed": False, "writesDuring": 0}

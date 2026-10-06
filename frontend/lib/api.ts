@@ -33,6 +33,8 @@ import type {
   TailoringSession,
   TailorResult,
   UUID,
+  WordingBody,
+  WordingRead,
 } from "@/lib/types";
 
 /**
@@ -376,13 +378,19 @@ export function getResumeVersion(
   );
 }
 
+/**
+ * Restore `version` as a new version. With `ifLatest` it is an undo: the server restores only while
+ * version `ifLatest` is still the latest (the check and the restore under one write lock), else 409.
+ */
 export function restoreResumeVersion(
   kind: "base" | "application",
   key: string,
   version: number,
+  { ifLatest }: { ifLatest?: number } = {},
 ) {
+  const query = ifLatest != null ? `?if_latest=${ifLatest}` : "";
   return apiFetch<import("@/lib/types").ResumeVersionRestoreResult>(
-    `/api/resume-versions/${kind}/${encodeURIComponent(key)}/${version}/restore`,
+    `/api/resume-versions/${kind}/${encodeURIComponent(key)}/${version}/restore${query}`,
     { method: "POST" },
   );
 }
@@ -764,6 +772,52 @@ export function draftRewrite(
   );
 }
 
+/** The health check's word bank (clichés, filler) and its Never flag list. */
+export function getWording() {
+  return apiFetch<WordingRead>("/api/resume-lint/wording");
+}
+
+/** Replace all three lists; 422 when a list holds more than 200 words or a word is outside 1 to 40 characters. */
+export function putWording(body: WordingBody) {
+  return apiFetch<WordingRead>("/api/resume-lint/wording", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Tell the check why a flag is wrong; 409 when the bullet changed since the report. */
+export function disputeBullet(
+  kind: "base" | "application",
+  key: string,
+  body: {
+    location: {
+      section: string;
+      index?: number | null;
+      bullet_index?: number | null;
+    };
+    expected_content_hash: string;
+    note: string;
+  },
+) {
+  return apiFetch<import("@/lib/types").DisputeResult>(
+    `/api/resume-lint/${kind}/${encodeURIComponent(key)}/dispute`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export function getDisputes(kind: "base" | "application", key: string) {
+  return apiFetch<import("@/lib/types").StoredDispute[]>(
+    `/api/resume-lint/${kind}/${encodeURIComponent(key)}/disputes`,
+  );
+}
+
+/** Reopen a dispute (the Done tab's Undo), including a stored "no number exists". */
+export function reopenDispute(contentHash: string) {
+  return apiFetch(`/api/resume-lint/disputes/${encodeURIComponent(contentHash)}`, {
+    method: "DELETE",
+  });
+}
+
 /**
  * PATCH the base-or-application `/edits` pair — the one write behind every
  * one-click apply (health findings, batch ask, demonstrate-a-skill, and the
@@ -784,7 +838,8 @@ export function applyResumeEdits(
     kind === "base"
       ? `/api/base-resumes/${encodeURIComponent(key)}/edits`
       : `/api/applications/${encodeURIComponent(key)}/edits`;
-  return apiFetch<RenderNoted>(path, {
+  // A base edit also says which version it left latest (the question pass's Undo reads it).
+  return apiFetch<RenderNoted & { version_number?: number | null }>(path, {
     method: "PATCH",
     body: JSON.stringify({ ops }),
   });

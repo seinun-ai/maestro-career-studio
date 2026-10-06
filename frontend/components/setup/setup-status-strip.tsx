@@ -11,14 +11,14 @@ import { cn } from "@/lib/utils";
 import type { SetupStatus } from "@/lib/types";
 
 const PILL =
-  "inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-label-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 function pillClass(done: boolean) {
   return cn(
     PILL,
     done
       ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
-      : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+      : "bg-muted text-muted-foreground hover:bg-surface-container-high hover:text-foreground",
   );
 }
 
@@ -60,7 +60,7 @@ export function SetupStatusStrip({
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Getting started progress">
         {/* Says what the chips are. Each carries its state as a mark, not only a colour: a check
             when done, an empty circle when not (first-read pass: which were done was a guess). */}
-        <span className="text-muted-foreground text-xs font-medium">Setup steps:</span>
+        <span className="text-muted-foreground text-label-medium">Setup steps:</span>
         {steps.map((step) => {
           const icon = step.done ? (
             <Check aria-hidden="true" className="size-3" />

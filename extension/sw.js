@@ -255,7 +255,7 @@ function unwrapPageReply(reply) {
 }
 // ---- end unwrapPageReply ----
 
-/** Ask EVERY frame of one tab, and return `[{frameId, result, error?}]`.
+/** Ask EVERY frame of one tab, and return `[{frameId, url, result, error?}]`.
  *
  * The array shape is the FIRST side panel's `callAllFrames`, deliberately, and
  * it has now outlived two consumers: that panel (deleted at Task 19, this
@@ -279,20 +279,36 @@ function unwrapPageReply(reply) {
  * failure a "nobody answered" rather than a TypeError. */
 async function broadcastToFrames(tabId, message) {
   const frames = (await chrome.webNavigation.getAllFrames({ tabId })) ?? [];
+  // A READ asked of every frame on most pages the panel is bound to, and on
+  // every retry rung. Nearly every page has a frame with no content script, so
+  // a warning per silent frame filled chrome://extensions → Errors (Chrome
+  // lists every extension warning there). The reason stays on the record.
+  const readOnly = ["detect_page", "extract_job_posting"].includes(message?.type);
+  const log = readOnly ? console.debug : console.warn;
   return Promise.all(frames.map(async (frame) => {
+    // `url` is the frame's own address from `getAllFrames`: the panel's
+    // posting read takes a subframe's answer only from the tab's own site.
+    const { frameId, url } = frame;
     try {
-      const reply = await chrome.tabs.sendMessage(tabId, message, { frameId: frame.frameId });
+      const reply = await chrome.tabs.sendMessage(tabId, message, { frameId });
       // Swallowed below rather than allowed to abort the fan-out: an ATS page
       // carries ad and analytics iframes that will never answer.
-      return { frameId: frame.frameId, result: unwrapPageReply(reply) };
+      return { frameId, url, result: unwrapPageReply(reply) };
     } catch (err) {
       const error = String(err?.message ?? err);
-      console.warn(`frame ${frame.frameId} did not answer ${message?.type}:`, error);
-      return { frameId: frame.frameId, result: undefined, error };
+      log(`frame ${frameId} did not answer ${message?.type}:`, error);
+      return { frameId, url, result: undefined, error };
     }
   }));
 }
 // ---- end broadcastToFrames ----
+
+// A cut can land inside an emoji's surrogate pair, and a lone surrogate is not
+// text: pydantic refuses it and the whole batch or run is lost. So the cut is
+// followed by stripping every unpaired half (which also cleans a page's own
+// broken text). The regex, not `toWellFormed`, so nothing depends on the runtime.
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const cutText = (text, max) => String(text).slice(0, max).replace(LONE_SURROGATE, "");
 
 /** Defense in depth, at the only place an observation can leave the browser.
  *
@@ -306,15 +322,173 @@ function scrubObservation(observation) {
   for (const key of TELEMETRY_KEYS) {
     if (observation?.[key] !== undefined) out[key] = observation[key];
   }
-  out.label = String(out.label ?? "").slice(0, 160);
+  out.label = cutText(out.label ?? "", 160);
   if (Array.isArray(out.options)) {
-    out.options = out.options.slice(0, 30).map((text) => String(text).slice(0, 160));
+    out.options = out.options.slice(0, 30).map((text) => cutText(text, 160));
   } else {
     delete out.options;
   }
   return out;
 }
 // ---- end scrubObservation ----
+
+// ---- the run trace's gate: a whitelist at run, field and step level ----
+//
+// Every name, pattern, cap and vocabulary below is `app/schemas/autofill_trace.py`'s
+// (and `autofill_fill.py`'s), and `test_the_trace_whitelist_mirrors_the_backends_schema`
+// fails when either side moves. The schema is `extra="forbid"` and range-checked,
+// so ONE odd key or word would 422 the whole run and lose it silently: a value
+// that does not fit is dropped here, not forwarded. The page's own texts (label, section, options)
+// are kept, cut to length; the loop is what keeps a typed answer out of them.
+const TRACE_FIELDS = 200;
+const TRACE_STEPS = 40;
+const TRACE_OPTIONS = 30;
+const TRACE_TEXT = 200;
+const TRACE_ROUNDS = 10;
+const TRACE_MS = 600000;
+const TRACE_PICKS = 250;
+const TRACE_COUNT_MAX = 5000;
+const TRACE_UNIT_MIN = 0;
+const TRACE_UNIT_MAX = 1;
+const TRACE_SLOT_MAX = 120;
+const TRACE_MOVE_MAX = 40;
+const TRACE_SOURCE_MAX = 40;
+const TRACE_FAMILY_MAX = 32;
+const TRACE_WORD = /^[a-z_]{1,40}$/;
+const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
+const TRACE_MOVE = /^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$/;
+const TRACE_FID = /^[A-Za-z0-9_-]{1,64}$/;
+const TRACE_HOST = /^[a-z0-9.-]{1,253}(:\d{1,5})?$/;
+const TRACE_FAMILY = /^f:[0-9a-z]{1,24}$/;
+const TRACE_SOURCE = /^[a-z-]+$/;
+const TRACE_RUN_ID = /^[0-9a-z-]{8,64}$/;
+const TRACE_TIME = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d{1,9})?(?:Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
+const TRACE_OPS = new Set(["map", "polarity", "pick", "step", "explore", "choose", "set", "write", "move",
+  "sweep", "recipe"]);
+const TRACE_EFFECTS = new Set(["progress", "no_effect", "unexpected", "reverted", "unconfirmed", "refused",
+  "late", "error"]);
+const TRACE_SHAPES = new Set(["text", "date", "select", "group", "search", "popup"]);
+const TRACE_ROUTES = new Set(["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]);
+const TRACE_WHYS = new Set(["unclear_job"]);
+const TRACE_ENGINES = new Set(["jev", "fast"]);
+const TRACE_SECONDS = new Set(["asked", "decided"]);
+const TRACE_WAYS = new Set(["same", "opposite", "neither", "unsure"]);
+const TRACE_REASONS = new Set(["matched", "closest", "assumed", "progress", "abstained"]);
+const TRACE_MODES = new Set(["assist"]);
+const TRACE_HALTS = new Set(["stopped", "timeout"]);
+
+// A coercer answers the value to post, or undefined to drop the key.
+const traceText = (max) => (v) => (typeof v === "string" ? cutText(v, max) : undefined);
+const traceMatch = (re, max = Infinity) => (v) => (typeof v === "string" && v.length <= max && re.test(v) ? v : undefined);
+const traceOneOf = (set) => (v) => (typeof v === "string" && set.has(v) ? v : undefined);
+const traceBool = (v) => (typeof v === "boolean" ? v : undefined);
+// A number and nothing else: a typed value is a string, so a numeric string is
+// the likeliest shape for one to ride in a number slot.
+const traceNumber = (v) => (typeof v === "number" ? v : NaN);
+// An integer inside the schema's range, else dropped: a clamped round or count
+// would record something that never happened.
+const traceInt = (max) => (v) => {
+  const n = traceNumber(v);
+  return Number.isInteger(n) && n >= 0 && n <= max ? n : undefined;
+};
+// `ms` alone is clamped: a slow call is still a fact, just capped.
+const traceClamped = (max) => (v) => {
+  const n = traceNumber(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(0, Math.round(n))) : undefined;
+};
+const traceUnit = (v) => {
+  const n = traceNumber(v);
+  return n >= TRACE_UNIT_MIN && n <= TRACE_UNIT_MAX ? n : undefined;
+};
+// Strict as pydantic's AwareDatetime is: the fields must survive a round trip
+// through a Date, so 2026-02-30 and T24:00:00 (which a Date rolls over) drop.
+const traceTime = (v) => {
+  const parts = typeof v === "string" ? TRACE_TIME.exec(v) : null;
+  if (!parts) return undefined;
+  const [year, month, day, hour, minute, second] = parts.slice(1, 7).map(Number);
+  const at = new Date(0);
+  at.setUTCFullYear(year, month - 1, day);
+  at.setUTCHours(hour, minute, second);
+  const same = [at.getUTCFullYear(), at.getUTCMonth() + 1, at.getUTCDate(), at.getUTCHours(), at.getUTCMinutes(),
+    at.getUTCSeconds()].every((part, i) => part === [year, month, day, hour, minute, second][i]);
+  return same && year >= 1 ? v : undefined;
+};
+const traceList = (scrub, max) => (v) => (Array.isArray(v) ? v.map(scrub).filter(Boolean).slice(0, max) : undefined);
+const traceKeep = (spec, source) => {
+  const out = {};
+  for (const [key, coerce] of Object.entries(spec)) {
+    const value = coerce(source?.[key]);
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+};
+
+const TRACE_STEP = {
+  op: traceOneOf(TRACE_OPS),
+  ms: traceClamped(TRACE_MS),
+  effect: traceOneOf(TRACE_EFFECTS),
+  word: traceMatch(TRACE_WORD),
+  route: traceOneOf(TRACE_ROUTES),
+  slot: traceMatch(TRACE_SLOT, TRACE_SLOT_MAX),
+  why: traceOneOf(TRACE_WHYS),
+  engine: traceOneOf(TRACE_ENGINES),
+  p: traceUnit,
+  floor: traceUnit,
+  second: traceOneOf(TRACE_SECONDS),
+  first_p: traceUnit,
+  first_same: traceBool,
+  chose_none: traceBool,
+  way: traceOneOf(TRACE_WAYS),
+  remembered: traceBool,
+  option: traceInt(TRACE_PICKS - 1),
+  reason: traceOneOf(TRACE_REASONS),
+  move: traceMatch(TRACE_MOVE, TRACE_MOVE_MAX),
+};
+const TRACE_FIELD = {
+  fid: traceMatch(TRACE_FID),
+  label: traceText(TRACE_TEXT),
+  label_source: traceMatch(TRACE_SOURCE, TRACE_SOURCE_MAX),
+  shape: (v) => (TRACE_SHAPES.has(v) ? v : "unknown"),
+  section: traceText(TRACE_TEXT),
+  required: traceBool,
+  options: (v) => (Array.isArray(v)
+    ? v.slice(0, TRACE_OPTIONS).map((text) => (typeof text === "string" ? cutText(text, TRACE_TEXT) : ""))
+    : undefined),
+  option_count: traceInt(TRACE_COUNT_MAX),
+  family: traceMatch(TRACE_FAMILY, TRACE_FAMILY_MAX),
+  steps: traceList((step) => {
+    const kept = traceKeep(TRACE_STEP, step);
+    return kept.op ? kept : null;
+  }, TRACE_STEPS),
+  outcome: traceMatch(TRACE_WORD),
+  round: traceInt(TRACE_ROUNDS),
+};
+const TRACE_RUN = {
+  run_id: traceMatch(TRACE_RUN_ID),
+  host: (v) => traceMatch(TRACE_HOST)(typeof v === "string" ? v.toLowerCase() : v),
+  started_at: traceTime,
+  ended_at: traceTime,
+  mode: traceOneOf(TRACE_MODES),
+  halted: traceOneOf(TRACE_HALTS),
+  rounds: traceInt(TRACE_ROUNDS),
+  fields: traceList((field) => {
+    const kept = traceKeep(TRACE_FIELD, field);
+    return kept.fid && kept.outcome ? kept : null;
+  }, TRACE_FIELDS),
+};
+
+/** The trace to post, or null when there is nothing the schema would take.
+ *
+ * Null for `trace: null` (the loop could not build one) and for a run whose own
+ * identity is unusable (`run_id`, `host`, either time, or no `fields` list):
+ * forwarding half a run would only 422. A bad FIELD is dropped alone, and a
+ * step needs only its `op`. */
+function scrubTrace(trace) {
+  if (!trace || typeof trace !== "object" || Array.isArray(trace)) return null;
+  const out = traceKeep(TRACE_RUN, trace);
+  return ["run_id", "host", "started_at", "ended_at", "fields"].every((key) => out[key] !== undefined) ? out : null;
+}
+// ---- end scrubTrace ----
 
 // ---------- reaching the UI ----------
 //
@@ -549,6 +723,21 @@ const HANDLERS = {
     return { posted: observations.length };
   },
 
+  /** One run's value-free trace, gated and scrubbed in one place.
+   *
+   * `telemetry`'s switch, read the same way and for the same reason (this is
+   * the only context that can fetch), and `scrubTrace` is the whitelist. The
+   * panel sends it fire-and-forget after the loop reports; a run that built no
+   * trace posts nothing. */
+  async fill_trace(msg) {
+    const { telemetryEnabled } = await getSettings();
+    if (telemetryEnabled === false) return { posted: 0 };
+    const trace = scrubTrace(msg.trace);
+    if (!trace) return { posted: 0 };
+    await api("/api/autofill/runs", { method: "POST", body: JSON.stringify(trace) });
+    return { posted: 1 };
+  },
+
   /** Fetch a resume PDF and hand it to every frame of the sender's tab.
    *
    * The bytes never travel through the UI: a Blob does not survive a
@@ -591,6 +780,12 @@ const HANDLERS = {
       // `expect: "1"` must not quietly become "no check", which is the shape
       // that turns a refusal into an unguarded write.
       expect: Number.isInteger(msg.expect) ? msg.expect : undefined,
+      // Autofill's own attach (`attachResumePdf`): only a literal true.
+      resumeOnly: msg.resumeOnly === true,
+      // The origin the panel vouches for (`frameMayReceiveUserData`): a later
+      // step's iCIMS frame takes the attach like every other write. A string
+      // or nothing, never a coerced value.
+      ...(typeof msg.flowOrigin === "string" ? { flowOrigin: msg.flowOrigin } : {}),
     });
   },
 
@@ -604,10 +799,7 @@ const HANDLERS = {
    * copy, because `attach_pdf` asks the same question.
    *
    * The type is allow-listed, not merely checked for existence in
-   * PAGE_HANDLERS. `extract_job_posting` is deliberately absent: a posting's
-   * JSON-LD is in the top document, so broadcasting it would read every
-   * subframe on the page for nothing. The panel, which runs in no page,
-   * reaches that one through `panel_frame0` rather than by widening this list.
+   * PAGE_HANDLERS.
    *
    * `scroll_to_field` is the fifth and it is the cheapest thing on the list:
    * the panel's residue rows are jumps to controls the fill could not answer,
@@ -619,10 +811,34 @@ const HANDLERS = {
    * answered a collect holds none and scrolls nothing. Keep it that way — a
    * label, a value or an answer added to this message would be user data
    * travelling to every frame of the tab, which is what the fan-out gate on
-   * the receiving side exists to prevent. */
+   * the receiving side exists to prevent.
+   *
+   * The nine `fill_*` types are the fill engine's page operations (content/
+   * fill-ops.js; `fill_sections`/`fill_add` for repeating sections). They fan
+   * out for the same reason `scroll_to_field` does — a field can be in any
+   * frame — and they are safe to broadcast for the
+   * reason the rest are: every one but `fill_cancel` is gated on the
+   * receiving side by `frameMayReceiveUserData`, and a frame acts only on
+   * fids (and section sids) it minted itself.
+   * `fill_cancel` carries nothing and only stops work already in flight.
+   *
+   * `detect_page` is the form verdict asked of EVERY frame, which the panel
+   * does when frame 0 has no form: an embedded cross-origin application form
+   * (Greenhouse's embed on block.xyz) lives in a subframe, and the fill already
+   * reaches it through the types above. It carries nothing from the user and
+   * returns only `detectPage()`'s verdict.
+   *
+   * `extract_job_posting` is the posting read asked of EVERY frame, which the
+   * panel does only when frame 0's answer is not a job description: iCIMS
+   * serves the posting in a same-origin iframe (`#icims_content_iframe`) under
+   * a top document that is the careers site's chrome. It carries nothing from
+   * the user and returns each frame's own page text — the public posting, the
+   * same thing `panel_frame0` returns for the top document. */
   async page_broadcast(msg, frame, sender) {
     const BROADCASTABLE = ["profile_fill", "collect_open_questions", "fill_answers",
-      "guided_write", "scroll_to_field"];
+      "guided_write", "scroll_to_field",
+      "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
+      "fill_sections", "fill_add", "detect_page", "extract_job_posting"];
     const tabId = fanoutTab(msg, frame, sender);
     if (!BROADCASTABLE.includes(msg.message?.type)) {
       throw new Error(`not broadcastable: ${JSON.stringify(msg.message?.type)}`);
@@ -633,8 +849,10 @@ const HANDLERS = {
   /** Make sure the content scripts exist in the panel's tab before a fill or
    * extract. A tab open since before the extension was installed or reloaded
    * has none, and every route into it simply fails there — this is the only
-   * thing that closes that gap now. Idempotent, because every content module
-   * is an IIFE that re-publishes onto the same namespace.
+   * thing that closes that gap now. Idempotent: it re-runs every module in
+   * the isolated world that already has them, where the plain modules only
+   * re-publish onto the same namespace, and the ones with state (the fill
+   * engine) and agent.js's listener registration load once (`ns.loadedOnce`).
    *
    * Panel-only, and the guard comes FIRST — before any field of `msg` is read
    * — because the whole of the panel's extra reach is "it may name a tab". A
@@ -648,9 +866,10 @@ const HANDLERS = {
     return { injected: true };
   },
 
-  /** Frame 0 only, for reads that live in the top document (a posting's
-   * JSON-LD). The panel runs in no page at all, so this is its door to
-   * handlers that a content script would simply call.
+  /** Frame 0 only, for reads asked of the top document first (a posting's
+   * JSON-LD; the other frames are asked through `page_broadcast` only when
+   * this answer has none). The panel runs in no page at all, so this is its
+   * door to handlers that a content script would simply call.
    *
    * Allow-listed for the same reason `page_broadcast`'s types are, and the two
    * lists are deliberately not one: this one may name a frame, so a type added

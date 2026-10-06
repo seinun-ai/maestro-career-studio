@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID as UUIDType
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,9 +14,11 @@ from app.models.health_ask_answer import HealthAskAnswer
 from app.models.health_gate_waiver import HealthGateWaiver
 from app.services import (
     bullet_classify,
+    health_disputes,
     health_gates,
     health_guards,
     health_score,
+    health_wording,
     resume_lint,
     resume_versions,
 )
@@ -64,6 +66,75 @@ class DraftRewriteBody(BaseModel):
     expected_content_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{16}$")
 
 
+class DisputeBody(BaseModel):
+    location: LocationBody
+    expected_content_hash: str = Field(pattern=r"^[0-9a-f]{16}$")
+    note: str = Field(max_length=1000)
+
+    @field_validator("note")
+    @classmethod
+    def note_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Tell us why before you send it.")
+        return value.strip()
+
+
+class DisputeBefore(BaseModel):
+    level: str
+    question: str | None
+
+
+class DisputeAfter(DisputeBefore):
+    ask_kind: str | None
+
+
+class DisputeRead(BaseModel):
+    before: DisputeBefore
+    after: DisputeAfter
+    reply: str
+    suggestion: str | None
+    content_hash: str
+
+
+class StoredDispute(BaseModel):
+    content_hash: str
+    location: dict[str, Any]
+    label: str
+    text: str
+    note: str
+    reply: str
+    suggestion: str | None
+    metric_unavailable: bool
+    before: DisputeBefore
+    after: DisputeAfter
+    created_at: datetime
+
+
+class WordingBody(BaseModel):
+    """The user's word bank. Each list is trimmed, lower-cased and deduped;
+    an entry outside 1–40 characters, or more than 200 entries, is a 422."""
+    cliche: list[str]
+    filler: list[str]
+    ignored: list[str]
+
+    @field_validator("cliche", "filler", "ignored")
+    @classmethod
+    def normalize_words(cls, value: list[str]) -> list[str]:
+        return health_wording.normalize(value)
+
+
+class WordingDefaults(BaseModel):
+    cliche: list[str]
+    filler: list[str]
+
+
+class WordingRead(BaseModel):
+    cliche: list[str]
+    filler: list[str]
+    ignored: list[str]
+    defaults: WordingDefaults
+
+
 class AskAnswerRead(BaseModel):
     suggestion: str
 
@@ -97,6 +168,11 @@ class ScoreBreakdown(BaseModel):
     capped_by: Literal["fatal", "serious"] | None = None
 
 
+class NextGrade(BaseModel):
+    grade: str
+    points: int
+
+
 class LintReportRead(BaseModel):
     id: UUIDType
     resume_kind: str
@@ -111,6 +187,7 @@ class LintReportRead(BaseModel):
     stale: bool = False
     insufficient_evidence: bool = False
     score_breakdown: ScoreBreakdown | None = None
+    next_grade: NextGrade | None = None
     model: str | None = None
     created_at: datetime
 
@@ -177,6 +254,24 @@ def _load_resume(db: Session, kind: Kind, key: str) -> tuple[dict, str | None]:
             detail=NO_TAILORED_RESUME,
         )
     return application.customized_json, application.template_id
+
+
+@router.get("/wording", response_model=WordingRead)
+def get_wording(db: Annotated[Session, Depends(get_db)]):
+    """The cliché and filler word bank, the Never flag list, and the defaults."""
+    return health_wording.load(db).payload()
+
+
+@router.put("/wording", response_model=WordingRead)
+def put_wording(body: WordingBody, db: Annotated[Session, Depends(get_db)]):
+    return health_wording.save(
+        db, cliche=body.cliche, filler=body.filler, ignored=body.ignored).payload()
+
+
+@router.post("/wording/reset", response_model=WordingRead)
+def reset_wording(db: Annotated[Session, Depends(get_db)]):
+    """Default clichés and filler again; the Never flag list is kept."""
+    return health_wording.reset(db).payload()
 
 
 @router.post("/{kind}/{key}/run", response_model=LintReportRead)
@@ -349,7 +444,9 @@ def answer_ask(kind: Kind, key: str, finding_id: str, body: AnswerBody,
         answer=body.answer,
         suggestion=None,
     )
-    suggestion = health_guards.guarded_rewrite(db, text, context=body.answer)
+    suggestion = health_guards.guarded_rewrite(
+        db, text, context=body.answer, question=finding.get("question") or "",
+    )
     if suggestion is None:
         raise HTTPException(status_code=422,
                             detail="Couldn't produce a safe rewrite from that answer")
@@ -386,3 +483,46 @@ def draft_rewrite(
             status_code=422, detail="Couldn't produce a safe rewrite from that answer"
         )
     return DraftRewriteRead(suggestion=suggestion, content_hash=content_hash)
+
+
+def _dispute_text(resume: dict, location: LocationBody, expected_hash: str) -> str:
+    """A dispute reads text and never edits it, so custom-section (`extra:`) bullets, which
+    have no rewrite op, are disputable too; everything else resolves like answer_ask."""
+    if not location.section.startswith("extra:"):
+        return _bullet_text(resume, location.model_dump(), expected_hash)
+    if location.bullet_index is None or min(location.bullet_index, location.index or 0) < 0:
+        raise HTTPException(status_code=422, detail="Location does not map to a bullet")
+    # A vanished extra resolves to "", so the hash check below answers 409.
+    return resume_lint._text_at(resume, (location.section, location.index, location.bullet_index))
+
+
+@router.post("/{kind}/{key}/dispute", response_model=DisputeRead)
+def dispute_bullet(kind: Kind, key: str, body: DisputeBody,
+                   db: Annotated[Session, Depends(get_db)]):
+    """Re-read one bullet with the user's note (the same CONTENT_CHANGED guard as answer_ask)."""
+    resume, _ = _load_resume(db, kind, key)
+    text = _dispute_text(resume, body.location, body.expected_content_hash)
+    _require_hash(text, body.expected_content_hash)
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="There is no text here to re-read.")
+    try:
+        return health_disputes.dispute(db, text, body.note)
+    except health_disputes.DisputeOverridden as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except health_disputes.DisputeUnreadable as e:
+        # A provider outage (llm.LLMProviderError) is left to app.main's central 502 handler.
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.get("/{kind}/{key}/disputes", response_model=list[StoredDispute])
+def list_disputes(kind: Kind, key: str, db: Annotated[Session, Depends(get_db)]):
+    """Disputes whose text is still in the resume; an edited bullet's dispute drops out."""
+    resume, _ = _load_resume(db, kind, key)
+    return health_disputes.for_resume(db, resume)
+
+
+@router.delete("/disputes/{content_hash}", status_code=204)
+def reopen_dispute(content_hash: Annotated[str, Path(pattern=r"^[0-9a-f]{16}$")],
+                   db: Annotated[Session, Depends(get_db)]):
+    """Reopen: drop the dispute, including a stored "no number exists". Idempotent."""
+    health_disputes.reopen(db, content_hash)

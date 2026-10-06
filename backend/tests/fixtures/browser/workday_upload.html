@@ -1,0 +1,44 @@
+<!-- Workday file upload (field notes §7). The file input is hidden inside a
+     visible uploader. The upload WORKS, but Workday empties the input at once,
+     so `input.files` is no proof: the proof is the uploaded file's row. -->
+<div data-automation-id="formField-resume">
+  <h4 id="resume-heading">Resume/CV</h4>
+  <div data-automation-id="attachments-FileUpload" aria-labelledby="resume-heading">
+    <p>Drop file here</p>
+    <button type="button" id="select-files">Select files</button>
+    <input type="file" data-automation-id="file-upload-input-ref" multiple style="display:none">
+    <div id="uploaded"></div>
+  </div>
+</div>
+<script>
+(() => {
+  // __oracle.files is what the fake app HOLDS: the names of the files it
+  // finished uploading. The engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.files = [];
+  const input = document.querySelector('[data-automation-id="file-upload-input-ref"]');
+  const uploaded = document.getElementById("uploaded");
+  document.getElementById("select-files").addEventListener("click", () => input.click());
+  input.addEventListener("change", () => {
+    const names = [...input.files].map((f) => f.name);
+    // Emptied in the same tick: a readback of input.files right after the
+    // change sees 0 files, as the extension's did on the live page (§7).
+    input.value = "";
+    if (!names.length) return;
+    setTimeout(() => {
+      for (const name of names) {
+        const item = document.createElement("div");
+        item.setAttribute("data-automation-id", "file-upload-item");
+        const label = document.createElement("div");
+        label.setAttribute("data-automation-id", "file-upload-item-name");
+        label.textContent = name;
+        const status = document.createElement("div");
+        status.textContent = "Successfully Uploaded!";
+        item.append(label, status);
+        uploaded.append(item);
+        oracle.files.push(name);
+      }
+    }, 200);
+  });
+})();
+</script>

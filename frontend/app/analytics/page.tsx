@@ -139,28 +139,31 @@ function AnalyticsContent() {
     </div>
   );
 
-  const filterRow = (
+  // Three panels show this row and every panel stays mounted, so each one prefixes the control ids
+  // with its own tab: a bare `role_category` would be three ids on one page, and a label's `htmlFor`
+  // would resolve to the first (hidden) panel's trigger and leave the visible ones unnamed.
+  const filterRow = (panel: TabValue) => (
     <div className="flex flex-wrap items-end gap-3">
       {filterSelect(
-        "role_category",
+        `${panel}-role_category`,
         "Role",
         roleCategory,
         setRoleCategory,
         options.roles,
         label,
       )}
-      {filterSelect("level", "Level", level, setLevel, options.levels, enumLabel)}
+      {filterSelect(`${panel}-level`, "Level", level, setLevel, options.levels, enumLabel)}
       {filterSelect(
-        "employment_type",
+        `${panel}-employment_type`,
         "Employment type",
         employmentType,
         setEmploymentType,
         options.employment,
         enumLabel,
       )}
-      {filterSelect("country", "Country", country, setCountry, options.countries)}
+      {filterSelect(`${panel}-country`, "Country", country, setCountry, options.countries)}
       {filterSelect(
-        "salary_currency",
+        `${panel}-salary_currency`,
         "Currency",
         salaryCurrency,
         setSalaryCurrency,
@@ -178,7 +181,7 @@ function AnalyticsContent() {
       />
 
       <Tabs value={tab} onValueChange={changeTab} className="gap-5">
-        <TabsList className="h-auto flex-wrap rounded-full bg-muted/70 p-1">
+        <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="market">Job market</TabsTrigger>
           <TabsTrigger value="fit">Resume fit</TabsTrigger>
@@ -190,13 +193,13 @@ function AnalyticsContent() {
         </TabsContent>
 
         <TabsContent value="market" className="grid gap-4">
-          {filterRow}
+          {filterRow("market")}
           <ExploreOverview filters={filters} />
           <div className="grid gap-4">
             <Card>
               <CardHeader>
                 <CardTitle>Top skills</CardTitle>
-                <p className="text-muted-foreground text-sm font-normal">
+                <p className="text-muted-foreground text-body-medium">
                   Skills ranked by how many jobs ask for them.
                 </p>
               </CardHeader>
@@ -225,14 +228,14 @@ function AnalyticsContent() {
 
         <TabsContent value="fit" className="grid gap-4">
           {/* "ATS score" spelled out once, above the tab's first card. */}
-          <p className="text-muted-foreground max-w-[60ch] text-sm">{ATS_SCORE_LEAD_ALL_JOBS}</p>
+          <p className="text-muted-foreground max-w-[60ch] text-body-medium">{ATS_SCORE_LEAD_ALL_JOBS}</p>
           <BaseSummaryCards />
-          {filterRow}
+          {filterRow("fit")}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>ATS score over time</CardTitle>
-                <p className="text-muted-foreground text-sm font-normal">
+                <p className="text-muted-foreground text-body-medium">
                   Weekly average ATS score.
                 </p>
               </CardHeader>
@@ -243,7 +246,7 @@ function AnalyticsContent() {
             <Card>
               <CardHeader>
                 <CardTitle>Score gain from tailoring</CardTitle>
-                <p className="text-muted-foreground text-sm font-normal">
+                <p className="text-muted-foreground text-body-medium">
                   Average ATS score before and after tailoring, by role.
                 </p>
               </CardHeader>
@@ -263,11 +266,11 @@ function AnalyticsContent() {
         </TabsContent>
 
         <TabsContent value="gaps" className="grid gap-4">
-          {filterRow}
+          {filterRow("gaps")}
           <Card>
             <CardHeader>
               <CardTitle>Skill gaps</CardTitle>
-              <p className="text-muted-foreground text-sm font-normal">
+              <p className="text-muted-foreground text-body-medium">
                 Skills to learn, and skills to show better. Based on your
                 best-scoring resume for each job.
               </p>

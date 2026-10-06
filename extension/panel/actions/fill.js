@@ -17,7 +17,10 @@
  * - NOTHING HERE REACHES FOR ANYTHING: no `card`, no `chrome`, no `document`,
  *   no `fetch`, no timers.
  *
- * WHAT THIS FILE PUBLISHES BESIDES ITS ACTION: `ns.panelFillFinished`. The
+ * WHAT THIS FILE PUBLISHES BESIDES ITS ACTION: `ns.panelRecordReceipt` and
+ * `ns.panelRecordEdits` (the answer receipt's posts, below; the pause row, Mark
+ * applied and the panel's rebind post through them too) and
+ * `ns.panelFillFinished`. The
  * "is this page's fill finished" predicate belongs to the Fill stage and is
  * READ by the pause row (`panel/actions/pause.js`), because the last pause row
  * closing has to mark the page done exactly as a clean run would. One function
@@ -27,7 +30,13 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const duringAction = ns.panelDuringAction;
-  const { reconcileFill } = ns.decisions;
+  const { reconcileFill, sameApplication } = ns.decisions;
+
+  /** The attach, when it belongs to the application bound now
+   * (`sameApplication`): Refresh can carry one made for another. */
+  const attachedHere = (facts) =>
+    (sameApplication(facts.attached?.applicationId, facts.application)
+      ? facts.attached : null);
   // The guided-fill runner, read off the namespace for the shared modules'
   // reason: the Fill stage below calls it with this panel's bound tab's
   // transport, and the runner itself knows nothing about which world it is in.
@@ -179,12 +188,33 @@
    * different file since Task 15's split, and a predicate two files agree about
    * is a predicate that eventually does not.
    */
-  function fillFinished({ fill, writeResults, residue, essays, attached }) {
+  function fillFinished({ fill, writeResults, residue, essays, attached, loop }) {
     const written = writtenQids(writeResults, residue);
+    const tally = loopTally(loop);
     const wrote = (fill?.counts?.filled ?? 0) + (fill?.counts?.corrected ?? 0)
-      + written.length + (attached?.count ?? 0);
-    const open = (residue?.length ?? 0) + (essays?.length ?? 0);
-    return wrote > 0 && open === 0;
+      + written.length + (attached?.count ?? 0) + tally.wrote;
+    const open = (residue?.length ?? 0) + (essays?.length ?? 0) + tally.open;
+    // A stopped or timed-out loop has not looked at everything it would have.
+    const cut = loop?.stopped === true || loop?.timedOut === true;
+    // Entries of a repeating section left for the user to add are work left.
+    const short = loop ? ns.fillLoop.sectionLines(loop).length > 0 : false;
+    return wrote > 0 && open === 0 && !cut && !short;
+  }
+
+  /** The loop report's statuses that WROTE (a value the engine committed and
+   * verified: the Filled count and the two check-it lists) and the ones left
+   * OPEN for the user (the not-confirmed, Needs-your-answer and
+   * Couldn't-operate lists). `unconfirmed` shows on the page but was never
+   * confirmed, so it is never a write: a run that leaves one is not finished.
+   * `already`, `blocked` and `yours` are neither: the loop left them alone. */
+  const LOOP_WROTE = new Set(["verified", "closest", "assumed"]);
+  const LOOP_OPEN = new Set(["needs_answer", "partial", "unconfirmed", "cannot_operate", "unsupported"]);
+  function loopTally(loop) {
+    const fields = loop?.fields ?? [];
+    return {
+      wrote: fields.filter((row) => LOOP_WROTE.has(row.status)).length,
+      open: fields.filter((row) => LOOP_OPEN.has(row.status)).length,
+    };
   }
 
   /** What is still left on the page, in one sentence, or null when nothing is.
@@ -238,34 +268,13 @@
   const AI_OFF = "AI help is off until you add an API key in Maestro CS under "
     + "Settings › AI & models.";
 
-  /** Is there no API key at all, and no custom AI server to use instead?
-   *
-   * Asked after an AI run whose `/choose` did not fail, because a form whose
-   * open fields are all essays or rule territory never calls it: the AI was
-   * "on" and nothing said it could not have answered (Task 25). Read off
-   * `GET /api/settings/openai`'s booleans (never key material), and only a
-   * plain "none at all" counts: which key a given model needs is the server's
-   * business, so this never claims more than the settings say. A failed read
-   * claims nothing. */
-  async function noKeyAtAll(store) {
-    try {
-      const info = await store.api("/api/settings/openai");
-      return info?.api_key_configured === false
-        && info?.gemini_api_key_configured === false
-        && info?.custom_endpoint !== true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /** What the AI pass could not do, in the Fill body's words, or null.
-   *
-   * The runner residues every field a failed `/choose` would have answered
-   * (its rule 3), and the open list already shows them; what was missing is
-   * WHY. The key words come from the same matching every failure note uses
-   * (`ns.panelKeyProblem`, panel/actions/during.js). */
-  function aiNoteFor(failure, keyless) {
-    if (!failure) return keyless ? AI_OFF : null;
+  /** What the AI could not do on a loop run, in the Fill body's words, or
+   * null. The loop leaves every field it could not map or pick open, and the
+   * lists already show them; what was missing is WHY. The key words come from
+   * the same matching every failure note uses (`ns.panelKeyProblem`,
+   * panel/actions/during.js). */
+  function aiNoteFor(failure) {
+    if (!failure) return null;
     const key = ns.panelKeyProblem(failure);
     if (key === "missing") return AI_OFF;
     if (key === "refused") return `AI help didn't answer. ${ns.panelKeySteps.refused}`;
@@ -273,8 +282,232 @@
       + "listed below.";
   }
 
-  /** Start fill: the deterministic pass, then — unless the user said rules only
-   * — the model on what is left.
+  /** "Fill finished" after a loop run: every value it chose rather than read
+   * straight off the profile (a closest match, an answer given for the user)
+   * is named, because the tick that follows takes the lists off screen. */
+  function loopFinishedSentence(check) {
+    if (!check.length) return "Fill finished. Review before you submit.";
+    // The first three by name: past that the sentence stops being read, and
+    // the lists (on screen until the tick) hold them all.
+    const named = check.slice(0, 3).map((row) => `${row.question || "a field"} (${row.answer})`).join(", ");
+    const more = check.length > 3 ? ` and ${check.length - 3} more` : "";
+    const these = check.length === 1 ? "this answer" : "these answers";
+    return `Fill finished. Check ${these} before you submit: ${named}${more}.`;
+  }
+
+  /** The loop run's one sentence: how it ended, then what is left. "Filled"
+   * is the body's Filled count (verified values); the values to check are in
+   * the lists below it. A run that wrote nothing and left nothing open never
+   * says "Fill finished": there was nothing on the page for it to do. */
+  function loopNote(loop, plural) {
+    const { wrote, open } = loopTally(loop);
+    if (loop.stopped && !loop.fields.length) return "Stopped before any field was filled.";
+    if (loop.stopped || loop.timedOut) {
+      const filled = loop.fields.filter((row) => row.status === "verified").length;
+      const how = loop.stopped ? "Stopped." : "Filling took too long, so it stopped.";
+      return `${how} ${plural(filled, "field")} filled. The rest are listed below.`;
+    }
+    const short = ns.fillLoop.sectionLines(loop).length > 0;
+    if (!wrote && !open && !short) return "Nothing left to fill here. Review before you submit.";
+    return leftSentence({ open, blank: 0 }, plural)
+      ?? (short ? "Some items weren't added. Add them yourself, then fill again." : null)
+      ?? loopFinishedSentence(loop.fields.filter((row) => row.status === "closest"
+        || row.status === "assumed"));
+  }
+
+  /** The answer receipt (`shared/receipt.js`): one row per capture, posted for
+   * a MATCHED job only, since the receipt keys on `job_id`.
+   *
+   * The page's own read is a `fill_inventory` fan-out (`readOnly`, so it starts
+   * no run and leaves the engine's standing consent alone), so only a frame
+   * that earns the user's data answers it (SYSTEM.md {#inv-frame-earns-data});
+   * a refused frame's empty list adds nothing. `consentForms` is the run's
+   * standing consent, so a consent tick the run made under it is judged by the
+   * policy the run used. The post goes through the generic `api` door and never
+   * `telemetry` or `fill_trace`: the receipt carries values, so the telemetry
+   * setting neither gates nor carries it (SYSTEM.md {#inv-filled-answers-local}).
+   * `inventory: false` is the pause row's: its one answer needs no read.
+   *
+   * `base_resume` is the base the fill used (the application's own, else the
+   * panel's pick): the server links a receipt to an application by job + base.
+   *
+   * `leaving` is a capture made as the panel lets go of this page (a rebind):
+   * its broadcast leaves before the store resets, and nothing is written back
+   * to a store that is about to describe another page.
+   *
+   * Returns the flag rows "Check before you submit" lists, or null. NEVER
+   * THROWS: a lost receipt costs the record, never the fill. */
+  async function recordReceipt(store, facts, token, build, opts = {}) {
+    const { inventory = true, consentForms, leaving = false } = opts;
+    const jobId = facts.job?.id;
+    if (!jobId || (!leaving && !store.current(token))) return null;
+    try {
+      const frames = inventory
+        ? await store.broadcast({ type: "fill_inventory", readOnly: true, consentForms: consentForms === true }) : [];
+      // A frame that never answered read nothing: only what the run reported stands.
+      const built = build(frames.filter((frame) => frame.result !== undefined));
+      if (!built.fields.length || (!leaving && !store.current(token))) return null;
+      // Re-read past the check: a load may have landed while the page was read.
+      const now = leaving ? facts : store.read();
+      const posted = await store.api(`/api/jobs/${encodeURIComponent(jobId)}/filled-answers`, {
+        method: "POST",
+        body: JSON.stringify({ channel: "companion", ...ns.receipt.pageOf(now.url),
+                               application_id: now.application?.id ?? null,
+                               base_resume: now.application?.base_resume ?? now.baseSlug ?? null,
+                               fields: built.fields }),
+      });
+      if (!leaving) rememberPosted(store, token, built, consentForms);
+      return flagRows(posted, built.fids);
+    } catch (err) {
+      // The status only: a message may quote the request.
+      console.warn("[maestro-cs] the answer record was not saved:", err?.status ?? "no status");
+      return null;
+    }
+  }
+
+  /** What the page was told, by field id, so a later edit posts under the same
+   * source (`receiptSeen`; page-shaped, cleared with the page). */
+  function rememberPosted(store, token, built, consentForms) {
+    if (!store.current(token)) return;
+    const before = store.read().receiptSeen;
+    // A run brings its own consent; an edit capture or a pause answer keeps the consent
+    // the last run left. `receiptSeen` is cleared only with the page (`resetPageFacts`),
+    // so the next run restates what an earlier one posted.
+    const standing = consentForms ?? before?.consentForms ?? false;
+    store.write({ receiptSeen: { consentForms: standing, fids: { ...before?.fids, ...ns.receipt.seenOf(built) } } });
+  }
+
+  /** The fields you typed or changed since the last post, posted as they stand
+   * now: at "Mark applied", and (`leaving`) as the panel lets go of the page.
+   * Nothing is posted when nothing changed or no run has posted yet. */
+  function recordEdits(store, facts, token, { leaving = false } = {}) {
+    const seen = facts.receiptSeen;
+    if (!seen) return Promise.resolve(null);
+    return recordReceipt(store, facts, token,
+      (frames) => ns.receipt.fromEdits(frames, seen.fids), { consentForms: seen.consentForms, leaving });
+  }
+
+  /** The fids you had already changed on the page, read before a rule-pass run
+   * (the loop never writes a field you changed; the rule pass can). Empty when
+   * nothing is recorded for this page or the read fails. */
+  async function touchedBefore(store, facts) {
+    if (!facts.job?.id) return new Set();
+    try {
+      const frames = await store.broadcast({ type: "fill_inventory", readOnly: true });
+      return new Set(frames.flatMap((frame) => frame.result?.fields ?? [])
+        .filter((field) => field.touched).map((field) => field.fid));
+    } catch {
+      return new Set();
+    }
+  }
+
+  /** The POST's flagged fields as the Fill body lists them: by the field id the
+   * run knew (null for an uploaded file or a pause-row answer), with every reason in one line. */
+  const flagRows = (posted, fids) => (posted?.flags ?? []).map((row) => ({
+    fid: fids[row.index] ?? null,
+    question: row.question,
+    reason: (row.flags ?? []).map((flag) => flag.reason).join(" "),
+  }));
+
+  /** "Saved answers + AI": the fill loop (`shared/fill-loop.js`) — the page's
+   * fields listed, their meaning mapped by the AI, each one written and
+   * checked, the report grouped by what happened to each field.
+   *
+   * THE GENERATION RULE IS CARRIED INTO THE LOOP, not only around it. The run
+   * is many round trips long and the store's `broadcast` follows the panel's
+   * CURRENT tab, so a loop outliving a tab switch would inventory — and fill —
+   * the page the user moved to. `cancelled` therefore answers yes the moment
+   * the generation moves, and the fan-out refuses to leave for a newer page.
+   *
+   * STOP is two halves: `stopRequested` (read by the loop before every page
+   * action) and `fill_cancel` (sent by the footer's button, `stopFill` in
+   * panel.js, to cancel the operation in flight). */
+  async function startLoopFill(store, facts) {
+    const token = store.token();
+    const live = () => store.current(token);
+    // `startFill`'s per-run clear, plus the loop's own run state.
+    store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
+                  closest: null, writeResults: null, blank: null, aiNote: null,
+                  loop: null, receiptFlags: null, fillRound: 0, stopRequested: false });
+    const stopped = () => !live() || store.read().stopRequested === true;
+    let auto = null;
+    const done = await duringAction(store, "fill", async () => {
+      await store.prepare();
+      const report = await ns.fillLoop.runFill({
+        broadcast: (message) => (live() ? store.broadcast(message) : Promise.resolve([])),
+        api: store.api,
+        // Which of the engine's own moves worked, per kind of control: tried
+        // first next time, value-free (`recipeDoor` in panel.js).
+        recipes: store.recipes(),
+        cancelled: stopped,
+        // The resume, BEFORE the loop's final sweep and once (`runFill`'s
+        // `beforeSweep`): Lever and Ashby parse an upload into the form's
+        // fields, and the sweep then re-reads every field the engine verified.
+        // A written file asks for a settle before that sweep (`ATTACH_SETTLE_MS`).
+        beforeSweep: async () => {
+          auto = await autoAttachResume(store, token, stopped);
+          return wroteFile(auto) ? ATTACH_SETTLE_MS : 0;
+        },
+        onProgress: (update) => {
+          if (update.phase !== "round" || !live()) return;
+          store.write({ fillRound: update.round });
+          store.render();
+        },
+      }, {
+        applicationId: facts.application?.id ?? null,
+        base: facts.application ? null : facts.baseSlug,
+        sourceHint: ns.fillLoop.sourceHintOf(facts.url),
+      });
+      // After the run's own attach (`beforeSweep` set `auto`), so the upload is on the receipt.
+      const flags = await recordReceipt(store, facts, token,
+        (frames) => ns.receipt.fromLoop(report, frames, auto, store.read().receiptSeen?.fids),
+        { consentForms: report.consentForms === true });
+      return { report, flags };
+    }, "Couldn't fill this form.");
+    if (!done) {
+      if (live()) {
+        store.write({ fillRound: null, stopRequested: false });
+        store.render();
+      }
+      return;
+    }
+    const { report: loop, flags } = done.out;
+    // Value-free: labels, shapes and outcomes, never an answer (fill-loop.js).
+    store.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(loop));
+    if (loop.trace) store.trace(loop.trace);
+    // A Stop or the run's clock after the attach skipped the sweep that would
+    // have re-read the fields verified before it: the report does not vouch
+    // for them. A note rather than demoting each one, since nothing SEEN
+    // changed and the fields say what was verified when it was.
+    const unswept = wroteFile(auto) && (loop.stopped || loop.timedOut);
+    const attachLine = unswept ? uncheckedLine(auto) : landAutoAttach(store, auto);
+    if (unswept) landAutoAttach(store, auto);
+    const after = store.read();
+    const finished = fillFinished({ loop, attached: attachedHere(after) });
+    store.write({
+      loop,
+      fillRound: null,
+      stopRequested: false,
+      receiptFlags: flags,
+      aiNote: aiNoteFor(loop.aiFailure),
+      note: { text: [loopNote(loop, store.build.plural), attachLine].filter(Boolean).join(" ") },
+    });
+    endRun(store, finished);
+  }
+
+  /** A run's last three moves: tick the step when it is finished, paint, and
+   * write the tick down. `touched` is the bit that outlives this page: an ATS
+   * wizard is six page loads and `resetPageFacts` clears the store on every
+   * one of them, so without the write the rail would ask for this fill again
+   * on the next step of a form the extension has already finished. */
+  function endRun(store, finished) {
+    if (finished) store.write({ touched: true });
+    store.render();
+    if (finished) store.remember();
+  }
+
+  /** Start fill. "Saved answers + AI" runs the loop (`startLoopFill`, above);
+   * "Saved answers only" runs the deterministic pass and lists what is left.
    *
    * THE ONE PLACE THIS PANEL INJECTS. A click is a user gesture, and
    * `panel_prepare` is what makes a tab that was already open when the
@@ -324,6 +557,9 @@
   async function startFill(store) {
     const facts = store.read();
     if (facts.busy !== null) return;
+    // "Saved answers + AI" is the fill loop now; "Saved answers only" keeps
+    // the rule pass below until the loop replaces it too (fill-engine Task 10).
+    if (facts.fillMode === "assist") return startLoopFill(store, facts);
     // TAKEN BEFORE `duringAction`, which takes the same value a line later
     // (nothing awaits in between). It is read out here because `onProgress`
     // needs it: that callback WRITES the store from inside the run, so it
@@ -348,11 +584,14 @@
     // press starts from nothing known, which is also what the body should show
     // while the run is open.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
-                  closest: null, writeResults: null, blank: null, aiNote: null });
-    const aiAssist = facts.fillMode === "assist";
+                  closest: null, writeResults: null, blank: null, aiNote: null,
+                  loop: null, receiptFlags: null });
     let noSavedAnswers = false;
+    let auto = null;
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
+      // What you had already changed, so a rule that writes over it is not called yours.
+      const before = await touchedBefore(store, facts);
       let run;
       try {
         run = await runGuidedFill({
@@ -384,7 +623,8 @@
             if (update.phase === "residue") store.write({ residue: update.residue });
             store.render();
           },
-        }, { aiAssist, applicationId: facts.application?.id ?? null });
+        // Rules only: "Saved answers + AI" never reaches this runner now.
+        }, { aiAssist: false, applicationId: facts.application?.id ?? null });
       } catch (err) {
         // A THROW HERE IS NOT ALWAYS A PAGE NOBODY REACHED, and the difference
         // is two fields sitting in the form. The run is a sequence, so a
@@ -404,12 +644,17 @@
         throw ns.guidedRun.shown(
           "Couldn't finish filling this page. Reload the tab to fill the rest.");
       }
-      // Inside the span, like every await an action makes (during.js).
-      const keyless = aiAssist && !run.aiFailure && await noKeyAtAll(store);
-      return { ...run, keyless };
+      // "Saved answers only" attaches too: the file is the user's own.
+      auto = await autoAttachResume(store, token, () => !store.current(token));
+      const flags = await recordReceipt(store, facts, token,
+        (frames) => ns.receipt.fromRulePass(store.read().fill, frames, auto,
+          { seen: store.read().receiptSeen?.fids, before }),
+        { consentForms: store.read().eeoConsent?.consent_forms === true });
+      return { run, flags };
     }, "Couldn't fill this form.");
     if (!done) return;
-    const { out } = done;
+    const { run: out, flags } = done.out;
+    const attachLine = landAutoAttach(store, auto);
     // RE-READ for the rule pass's own result: it landed in the store from
     // inside the run, which is where the progress rows want it.
     const after = store.read();
@@ -417,12 +662,12 @@
     // The SAME predicate a pause-row submit will ask, over this run's numbers.
     // Written as one function so the two paths converge rather than agree — see
     // `fillFinished`.
-    // `after.attached` and not null: an attach made BEFORE this run is still on
+    // The attach and not null: an attach made BEFORE this run is still on
     // this page, and a fill that answered nothing over a page already carrying
     // the résumé has not un-attached it.
     const finished = fillFinished({ fill: after.fill, writeResults: out.writeResults,
                                     residue: out.residue, essays: out.essays,
-                                    attached: after.attached });
+                                    attached: attachedHere(after) });
     const blank = out.blank ?? 0;
     store.write({
       residue: out.residue,
@@ -430,31 +675,24 @@
       closest: out.closest ?? [],
       writeResults: out.writeResults,
       blank,
-      aiNote: aiNoteFor(out.aiFailure, out.keyless),
+      receiptFlags: flags,
       // The counts are the rows'; this slot gets the one sentence. "Needs you"
       // counts the essays with the residue because the user's question is what
       // is still open, and an unanswered essay is exactly that — they are kept
       // apart in the store because they are ANSWERED differently, not because
       // they are different news.
-      note: { text: fillNote({ open, blank, finished, noSavedAnswers, closest: out.closest },
-                             store.build.plural) },
+      note: { text: [fillNote({ open, blank, finished, noSavedAnswers, closest: out.closest },
+                              store.build.plural), attachLine].filter(Boolean).join(" ") },
     });
-    if (finished) store.write({ touched: true });
-    store.render();
-    // `touched` is the bit that outlives this page: an ATS wizard is six page
-    // loads and `resetPageFacts` clears the store on every one of them, so
-    // without the write the rail would ask for this fill again on the next step
-    // of a form the extension has already finished.
-    if (finished) store.remember();
+    endRun(store, finished);
   }
 
   /** Put the tailored PDF into this page's upload box.
    *
-   * USER-PRESSED, ALWAYS. This is not a step of `startFill` and must not become
-   * one: a fill writes text into fields the user can read back at a glance,
-   * and an upload is a whole document leaving for an employer. The body offers
-   * the control and the user decides; nothing here runs on a load, a detect or
-   * the end of a run.
+   * USER-PRESSED, ALWAYS: nothing attaches on a load or a detect. Autofill is
+   * the other press that attaches, under narrower rules (`autoAttachResume`,
+   * the owner's request of 2026-09-30); this is the one for every other case:
+   * a box of unknown kind, a page the run left alone, or another page.
    *
    * IT ASKS THE PAGE FOR NOTHING AND CHOOSES NOTHING. Which boxes exist was
    * settled by the detect pass (`card.fileInputs`), and the BODY refuses to
@@ -478,8 +716,10 @@
    * exactly as a fill is.
    *
    * THE COUNT IS THE ENGINE'S READBACK. `attachResumePdf` re-reads
-   * `input.files` after the assignment, so a page that refused the write
-   * contributes nothing and this reports zero rather than a success. The two
+   * `input.files` after the assignment — or, for an uploader that empties its
+   * input as Workday's does, looks for the page's own new file row — so a page
+   * that refused the write contributes nothing and this reports zero rather
+   * than a success. The two
    * zero cases are told apart the way the fill path tells them apart: a frame
    * that ANSWERED and found nothing is a fact about the page, and no frame
    * answering at all is a fact about our reach.
@@ -503,62 +743,9 @@
     const token = store.token();
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
-      const detail = await store.api(`/api/applications/${applicationId}`);
-      if (!detail.pdf_path) {
-        // The store is corrected on the way past: `pdfReady` is what put this
-        // control on screen, and leaving it true would keep offering an attach
-        // for a document that is gone. The render in `duringAction`'s catch is
-        // what takes the control away.
-        //
-        // PAST THE GUARD, and this is the write the rule exists for. Two awaits
-        // stand above it, so a user who switches tabs across either of them
-        // gets this answer about the application they LEFT stamped onto the one
-        // they are now looking at: the new page's `pdfReady` goes false, its
-        // Resume stage re-offers a tailor for an application whose PDF is
-        // perfectly good, and its attach offer disappears. `duringAction`'s own
-        // check discards the ERROR on a stale generation and cannot help here,
-        // because by then this write has already landed.
-        if (store.current(token)) store.write({ pdfReady: false });
-        throw ns.guidedRun.shown("Couldn't find the tailored PDF. Open it in "
-          + "Maestro CS and select Create PDF.");
-      }
-      const filename = detail.pdf_path.split(/[\\/]/).pop() || "tailored-resume.pdf";
-      // THE OFFER'S OWN BELIEF, sent with the write. `facts.fileInputs` is what
-      // put this control on screen in the state it is in — one box means the
-      // button was live, several means it was dead — and the engine refuses the
-      // whole write in any frame whose list no longer says the same thing.
-      //
-      // WITHOUT IT THE REFUSAL WAS DECORATION. The count is frame 0's and is
-      // taken at DETECT time; the write runs at PRESS time across every gated
-      // frame. A Workday step that reveals a cover-letter uploader when the
-      // résumé section expands moved from one box to two in between, and the
-      // résumé went into both — the report said so honestly afterwards, which
-      // is not the same as the refusal having held.
-      const expect = facts.fileInputs;
-      const frames = await store.attachPdf(
-        `/api/applications/${applicationId}/pdf`, filename, expect);
-      const count = frames.reduce((total, frame) => total + (frame.result ?? 0), 0);
-      if (!count) {
-        if (!frames.some((frame) => frame.result !== undefined)) {
-          throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
-        }
-        // ZERO HAS TWO CAUSES and they are different news, so the panel asks
-        // rather than guessing: the boxes refused the file, or the page grew
-        // one and the refusal above fired. The fresh count answers it, and
-        // WRITING IT BACK is what makes the row itself say why — it flips to
-        // the several-boxes refusal, in the same words the offer would have
-        // used had the page looked like this when we first asked.
-        const now = await store.detectFileInputs();
-        if (store.current(token)) store.write({ fileInputs: now });
-        throw ns.guidedRun.shown(now === expect
-          ? "Couldn't attach your resume. No upload box took it, so attach it "
-            + "yourself."
-          : "Couldn't attach your resume. The page's upload boxes changed, so "
-            + "check them and try again.");
-      }
-      return { filename, count };
+      return sendResume(store, applicationId, facts.fileInputs, token);
     }, "Couldn't attach your resume.");
-    if (!done) return;
+    if (!done?.out) return;
     const attached = done.out;
     const after = store.read();
     // A RUN HAS TO HAVE HAPPENED, and this clause belongs here rather than in
@@ -576,28 +763,227 @@
     // because the rules reached the page, and the attach then finishes the step
     // exactly as it should.
     const ranHere = after.fill !== null || after.residue !== null
-      || after.essays !== null;
+      || after.essays !== null || after.loop !== null;
     const finished = ranHere && fillFinished({
       fill: after.fill, writeResults: after.writeResults,
-      residue: after.residue, essays: after.essays, attached,
+      residue: after.residue, essays: after.essays, attached, loop: after.loop,
     });
     store.write({
       attached,
       // NAMED, and hedged on purpose. The extension set `input.files` and the
-      // page took it; whether the employer's own uploader has processed it is
-      // not a thing this can see, and "Attached" full stop would be a stronger
-      // claim than the evidence.
+      // page took it (it held the file, or showed a new row naming it);
+      // whether the employer's own uploader has processed it is not a thing
+      // this can see, and "Attached" full stop would be a stronger claim than
+      // the evidence.
       note: { text: `Attached ${attached.filename}. Check the upload before you submit.` },
     });
-    if (finished) store.write({ touched: true });
-    store.render();
-    // The session entry, for `startFill`'s reason: an ATS wizard is six page
-    // loads and `resetPageFacts` clears the store on every one of them.
-    if (finished) store.remember();
+    endRun(store, finished);
+  }
+
+  /** The write itself, shared by the button and Autofill's own attach: the
+   * PDF re-read, the fan-out through the service worker, and the readback.
+   * Returns `{filename, count, applicationId}`, or throws a shown sentence.
+   *
+   * `expect` is the box count the caller's decision was made on, and every
+   * frame refuses the whole write unless its own list still says the same
+   * (see below). `resumeOnly` is Autofill's: each frame writes only its one
+   * empty resume box (`attachResumePdf`), answers `{written, proven}`, and a
+   * zero where nothing was written throws `LEFT_FOR_YOU` rather than the
+   * hedge. Called INSIDE a `duringAction` span, whose token it is handed;
+   * `wanted` is asked again right before the write, after the PDF read, and
+   * a no returns null with nothing sent (a tab left, a Stop). */
+  async function sendResume(store, applicationId, expect, token,
+                            { resumeOnly = false, wanted = () => store.current(token) } = {}) {
+    const detail = await store.api(`/api/applications/${applicationId}`);
+    if (!detail.pdf_path) {
+      // The store is corrected on the way past: `pdfReady` is what put this
+      // control on screen, and leaving it true would keep offering an attach
+      // for a document that is gone. The render in `duringAction`'s catch is
+      // what takes the control away.
+      //
+      // PAST THE GUARD, and this is the write the rule exists for. Two awaits
+      // stand above it, so a user who switches tabs across either of them
+      // gets this answer about the application they LEFT stamped onto the one
+      // they are now looking at: the new page's `pdfReady` goes false, its
+      // Resume stage re-offers a tailor for an application whose PDF is
+      // perfectly good, and its attach offer disappears. `duringAction`'s own
+      // check discards the ERROR on a stale generation and cannot help here,
+      // because by then this write has already landed.
+      if (store.current(token)) store.write({ pdfReady: false });
+      throw ns.guidedRun.shown("Couldn't find the tailored PDF. Open it in "
+        + "Maestro CS and select Create PDF.");
+    }
+    const filename = detail.pdf_path.split(/[\\/]/).pop() || "tailored-resume.pdf";
+    // THE OFFER'S OWN BELIEF, sent with the write. `expect` is what
+    // put this control on screen in the state it is in — one box means the
+    // button was live, several means it was dead — and the engine refuses the
+    // whole write in any frame whose list no longer says the same thing.
+    //
+    // WITHOUT IT THE REFUSAL WAS DECORATION. The count is frame 0's and is
+    // taken at DETECT time; the write runs at PRESS time across every gated
+    // frame. A Workday step that reveals a cover-letter uploader when the
+    // résumé section expands moved from one box to two in between, and the
+    // résumé went into both — the report said so honestly afterwards, which
+    // is not the same as the refusal having held.
+    if (!wanted()) return null;
+    let frames;
+    try {
+      frames = await store.attachPdf(
+        `/api/applications/${applicationId}/pdf`, filename, expect, resumeOnly);
+    } catch (err) {
+      // A status is the backend refusing the PDF, before any page was sent
+      // anything; with none the channel failed after the send (Autofill).
+      if (resumeOnly && err?.status === undefined) throw lostReply();
+      throw err;
+    }
+    const count = frames.reduce((total, frame) => total + provenOf(frame.result), 0);
+    if (!count) {
+      if (!frames.some((frame) => frame.result !== undefined)) {
+        // Sent and the answer lost (the page navigated during the proof wait)
+        // is not "never delivered", which Chrome words as no receiving end.
+        if (resumeOnly && frames.some((frame) => !UNDELIVERED.test(frame.error ?? ""))) {
+          throw lostReply();
+        }
+        throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
+      }
+      if (resumeOnly && !frames.some((frame) => (frame.result?.written ?? 0) > 0)) {
+        throw ns.guidedRun.shown(LEFT_FOR_YOU);
+      }
+      // ZERO HAS TWO CAUSES and they are different news, so the panel asks
+      // rather than guessing: the boxes refused the file, or the page grew
+      // one and the refusal above fired. The fresh count answers it, and
+      // WRITING IT BACK is what makes the row itself say why — it flips to
+      // the several-boxes refusal, in the same words the offer would have
+      // used had the page looked like this when we first asked.
+      //
+      // THE SAME-BOXES ZERO IS HEDGED, not "no box took it". The engine's
+      // zero means it could not CONFIRM the upload — no file held, no new
+      // row naming it in time — and a page can take the file with neither
+      // (an uploader whose row is slower than the wait, or shaped in a way
+      // the proof does not read). Telling the user to attach it again on
+      // such a page is how Workday's `multiple` uploader ends up with two
+      // copies, so the sentence sends them to look first.
+      const now = await store.detectFileInputs();
+      if (store.current(token)) store.write({ fileInputs: now });
+      // `written`: the file reached a box, so a second automatic copy is out.
+      throw Object.assign(ns.guidedRun.shown(now === expect
+        ? "Couldn't confirm the upload. Check the upload box, and attach your "
+          + "resume only if it isn't listed."
+        : "Couldn't attach your resume. The page's upload boxes changed, so "
+          + "check them and try again."), { written: true });
+    }
+    // STAMPED with its application, so a Refresh that binds another one
+    // cannot show this PDF as that one's (`sameApplication`).
+    return { filename, count, applicationId };
+  }
+
+  const UNDELIVERED = /could not establish connection|receiving end does not exist/i;
+  const lostReply = () => Object.assign(ns.guidedRun.shown(
+    "Couldn't confirm the upload. Check the upload box, and attach your resume only if "
+    + "it isn't listed."), { written: true });
+
+  /** A frame's attach answer as a proven count: the button's write answers a
+   * number, Autofill's `{written, proven}`. */
+  const provenOf = (result) => (typeof result === "number" ? result : result?.proven ?? 0);
+  const LEFT_FOR_YOU = "The Companion left the upload box for you.";
+  // How long the loop waits after a written file before its final sweep: an
+  // ATS that parses the upload into the form (Lever, Ashby) does it 1-3 s
+  // after the file row appears.
+  const ATTACH_SETTLE_MS = 3000;
+  const CHECK_FIELDS = "Check the filled fields, since the page may have changed them.";
+  const wroteFile = (auto) => auto?.outcome === "attached" || auto?.outcome === "unconfirmed";
+  const uncheckedLine = (auto) => (auto.outcome === "attached"
+    ? `Resume attached: ${auto.filename}. ${CHECK_FIELDS}` : `${auto.text} ${CHECK_FIELDS}`);
+
+  /** Autofill's own attach: the owner's request (2026-09-30) that a run
+   * also put the resume in the page's upload box, which until then only the
+   * Attach resume press did. Called inside the run's `busy` span, after the
+   * fields: "Saved answers + AI" calls it through the loop's `beforeSweep`,
+   * so the final sweep re-reads every field the engine verified (an ATS that
+   * parses the upload into the form, as Lever and Ashby do, or Workday
+   * re-rendering the upload section); "Saved answers only" calls it last.
+   *
+   * THE PRESS IS AUTOFILL'S, AND THE RULES ARE NARROWER THAN THE BUTTON'S:
+   * - the button's own source only, the application's tailored PDF (a base
+   *   used as is has no PDF here, so nothing is attached and nothing said);
+   * - a FRESH detect, since the run may have moved the page: exactly one box
+   *   must read as a resume box (`uploadBoxOf`, content/agent.js), and only it
+   *   is written, so a cover-letter or "additional documents" box is never
+   *   auto-attached (beside a resume box, as on Greenhouse, it is simply not
+   *   the target) and a page whose boxes cannot be told apart is left to the
+   *   button;
+   * - never over a file already there, and never twice on one page: not after
+   *   this panel attached here, and not after an attach it could not confirm
+   *   (that file may be on the page, and a second copy is what the hedge is
+   *   for);
+   * - the write re-checks all of it in each frame (`resumeOnly`);
+   * - both fill modes: the file is the user's own, not an AI answer.
+   *
+   * Returns the report `{outcome, text, filename, count}` or null for "said
+   * nothing"; `startFill` writes it. Never throws: a failure is its line. */
+  async function autoAttachResume(store, token, stopped) {
+    const facts = store.read();
+    if (!facts.application || facts.pdfReady !== true) return null;
+    if (attachedHere(facts)) return null;
+    const applicationId = facts.application.id;
+    // Once written here, never again: "attached" and "unconfirmed" block the
+    // page's later runs; "skipped" and "left" (nothing reached the page) do not.
+    const before = sameApplication(facts.autoAttach?.applicationId, facts.application)
+      ? facts.autoAttach : null;
+    if (before && (before.outcome === "attached" || before.outcome === "unconfirmed")) return null;
+    const page = await store.detectUploads().catch(() => null);
+    if (!page || !store.current(token) || stopped()) return null;
+    store.write({ fileInputs: page.fileInputs });
+    const { uploads, fileInputs } = page;
+    if (!uploads || !fileInputs || uploads.length !== fileInputs) return null;
+    const resumes = uploads.filter((box) => box.kind === "resume");
+    const skipped = (text, reason = null) => ({ outcome: "skipped", text, reason, applicationId });
+    const one = fileInputs === 1;
+    if (resumes.length === 1 && resumes[0].occupied) {
+      return skipped("A file is already attached. The Companion left it.", "occupied");
+    }
+    if (!resumes.length && uploads.every((box) => box.kind === "other")) {
+      return skipped(one ? "The upload box isn't for a resume, so the Companion left it."
+        : "None of the upload boxes is for a resume, so the Companion left them.");
+    }
+    if (resumes.length !== 1) {
+      return skipped(one
+        ? "Couldn't tell if the upload box is for a resume. Attach it yourself if it is."
+        : "Couldn't tell which upload box is for a resume. Attach it yourself.");
+    }
+    try {
+      const sent = await sendResume(store, applicationId, fileInputs, token, {
+        resumeOnly: true, wanted: () => store.current(token) && !stopped() });
+      if (!sent) return null;
+      return { outcome: "attached", ...sent,
+               text: `Resume attached: ${sent.filename}. Check the upload before you submit.` };
+    } catch (err) {
+      // Written and not proven is the hedge; anything else (a refusal at
+      // write time, no PDF, no frame, a failed round trip) wrote nothing.
+      return err?.written === true
+        ? { outcome: "unconfirmed", text: err.message, applicationId }
+        : { outcome: "left", text: LEFT_FOR_YOU, applicationId };
+    }
+  }
+
+  /** The run's report of its attach, written past the run's own guard:
+   * `autoAttach` for the Fill body's row, `attached` when it landed (which is
+   * what `fillFinished` counts and what takes the button away), and the
+   * sentence that follows the run's own. */
+  function landAutoAttach(store, auto) {
+    if (!auto) return null;
+    // Stamped with the application the attach itself used (`sendResume`).
+    const { outcome, text, filename, count, applicationId, reason } = auto;
+    store.write({ autoAttach: { applicationId, outcome, text, reason: reason ?? null,
+                                filename: filename ?? null } });
+    if (outcome === "attached") store.write({ attached: { filename, count, applicationId } });
+    return text;
   }
 
   ns.panelActionsFill = { startFill, attachResume };
   ns.panelFillFinished = fillFinished;
   ns.panelLeftSentence = leftSentence;
+  ns.panelRecordReceipt = recordReceipt;
+  ns.panelRecordEdits = recordEdits;
   ns.panelFinishedSentence = finishedSentence;
 })();

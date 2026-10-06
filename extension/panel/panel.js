@@ -105,9 +105,15 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
-  const { stageFor, rankBaseResumes, restorableSession, sessionTenant } = ns.decisions;
+  const { stageFor, rankBaseResumes, restorableSession, sessionTenant,
+          sameApplication, describesJob, sameSite } = ns.decisions;
 
-  // `chrome.storage.local`. ONE key, holding the bridge entry that carries a
+  // `chrome.storage.local` holds TWO keys, and they hold different kinds of
+  // thing: `widget.session`, the session pick (everything down to the
+  // `fill.recipes` paragraph is about it), and `fill.recipes`, the recipe
+  // book (that paragraph).
+  //
+  // SESSION PICKS HAVE ONE KEY, holding the bridge entry that carries a
   // user's pick from the page it was made on to the next page of the same
   // wizard — which is a different page LOAD, and therefore a different panel
   // boot with an empty store.
@@ -123,22 +129,33 @@
   // placement and its two levels of dismissal. Nothing writes those now; see
   // `ORPHAN_KEYS` below, which sweeps them.)
   //
-  // ONE KEY RATHER THAN TWO, which is worth keeping written down because the
-  // second one existed and the reason it went is a rule about this store.
-  // Task 8 parked application-less entries on a separate key, and with two keys
-  // populated `restoreSession` preferred by KEY — so an older entry beat a
+  // ONE SESSION KEY RATHER THAN TWO, which is worth keeping written down
+  // because a second session key existed and the reason it went is a rule
+  // about session picks. Task 8 parked application-less entries on a separate
+  // key, and with two keys populated `restoreSession` preferred by KEY — so an older entry beat a
   // fresher one for the whole TTL. One key cannot shadow itself, so the
   // recency tie-break that split needed is not written at all. `panel.pick` is
   // its remains, swept below.
   //
-  // WHAT MAKES ONE KEY SAFE is the `if (entry.applicationId)` guard in
-  // `restoreSession`. A pick made at the Score stage usually has NO application
-  // behind it — that is what the Score stage IS, and "use base as-is" is the
-  // same shape — and restoring `{id: undefined}` as an application, then
+  // WHAT MAKES ONE SESSION KEY SAFE is the `if (entry.applicationId)` guard in
+  // `restoreSession`. A base picked in the Job step usually has NO application
+  // behind it — that is what choosing a base before tailoring IS, and "use base
+  // as-is" is the same shape — and restoring `{id: undefined}` as an application, then
   // forcing `match = "exact"`, is a surface claiming an application that does
   // not exist on every page load of that tenant. That guard is not optional
   // decoration on this key; it is the condition of sharing it.
-  const KEY = { session: "widget.session" };
+  //
+  // `fill.recipes` IS THE SECOND KEY, and no session pick, so the one-key rule
+  // above does not reach it: not a pick carried between page loads but the
+  // book of which of the fill engine's own moves worked for
+  // which KIND of form control (`shared/recipe-book.js` is its one reader and
+  // writer, through `recipeDoor`). It holds hashed widget families, known move
+  // words, states, counts and day numbers — no label, no value, no URL —
+  // bounded to 200 entries, each gone after 60 days unused, and the Fill
+  // body's "Forget learned widget moves" removes the key whole
+  // (`forgetLearnedMoves`). Local, never `sync`: what worked in this browser
+  // is this browser's.
+  const KEY = { session: "widget.session", recipes: "fill.recipes" };
 
   // EVERY KEY THIS EXTENSION HAS EVER WRITTEN TO `chrome.storage.local` AND NO
   // LONGER READS. R-C's storage pass, and the documented set: if it is not
@@ -178,7 +195,6 @@
   // stage renamed there fails to render rather than rendering blank.
   const STAGES = [
     { key: "job", name: "Job" },
-    { key: "score", name: "Score" },
     { key: "resume", name: "Resume" },
     { key: "fill", name: "Fill" },
     { key: "track", name: "Track" },
@@ -204,16 +220,12 @@
    * in. So the door is the exit from a state the session bridge is keeping
    * true, not from a store that forgot to reset.
    *
-   * Score and Resume are the same shape one step earlier — a base picked in
-   * haste, a tailor worth re-running — and reopening either is how a user takes
-   * that back without the panel guessing that they want to.
-   *
-   * JOB IS ON IT ONLY FOR A CLAIM. A pick the user made is theirs to
-   * withdraw, so a done Job row is a door when `claimed === true`. A backend
-   * exact-match is the page being that posting; the web app is where a wrong
-   * JD gets fixed, and that Job row stays a wall. Re-offering "Save job" under
-   * a backend-matched row that reads "✓ in library" is still the panel
-   * offering to add a job it has just said is added — that case gets no door.
+   * Job and Resume are the same shape earlier on — a base preselected or
+   * picked in haste, a tailor worth re-running — and reopening either is how a
+   * user takes that back without the panel guessing that they want to. A done
+   * Job row opens onto the ranked base list (the job is saved, so the Save job
+   * preview is never offered again) or, for a draft the user picked by hand
+   * (`claimed`), onto the switcher and the un-pick.
    *
    * TRACK IS NOT ON IT EITHER, for a duller reason: Track is never done while
    * the user is looking at it (`done.track` and `stage === "track"` are the
@@ -222,23 +234,29 @@
    *
    * AND A SKIPPED ROW CAN BE A DOOR TOO, which is the list's other half and
    * why this function is not simply `REOPENABLE.includes`. A done row is a
-   * door because the work can be redone; a SKIPPED row is a door only when the
+   * door because the work can be redone; a SKIPPED row is a door when the
    * skip is a claim the user made — "use base as-is" — because then there is
-   * something to withdraw. `stageFor`'s `choiceSkipped` is the provenance and
+   * something to withdraw, or when it is a Resume row filled past with its
+   * application's PDF still missing, because Create PDF is behind it. `stageFor`'s `choiceSkipped` is the provenance and
    * `railModel` carries it onto the row as `skipChoice`; a row skipped by the
-   * path's own arithmetic (Score under the shortcut, Job on an unmatched apply
-   * url) stays a wall, exactly as a backend-matched Job row does. Reported
+   * path's own arithmetic (Job on an unmatched apply url) stays a wall.
+   * Reported
    * live on an Itron wizard: the user armed the base, the Resume row read
    * "Using your base resume as is.", and the only way back to the tailoring fork
    * was to unbind the whole page.
    */
-  const REOPENABLE = ["score", "resume", "fill"];
+  const REOPENABLE = ["job", "resume", "fill"];
 
   function isReopenable(row) {
-    if (row.state === "skipped") return row.skipChoice === true;
-    if (row.state !== "done") return false;
-    if (row.key === "job") return card.claimed === true;
-    return REOPENABLE.includes(row.key);
+    // A skipped row is a door for the user's own claim, and for a Resume row
+    // the rail filled past (`stageFor`, track-this) while its application
+    // still has no PDF: Create PDF and Tailor in Maestro CS are in its body.
+    // A view, so reopening it ticks nothing.
+    if (row.state === "skipped") {
+      return row.skipChoice === true || (row.key === "resume"
+        && card.application !== null && card.pdfReady !== true);
+    }
+    return row.state === "done" && REOPENABLE.includes(row.key);
   }
 
   /** The two stable ids the rail builds, and they are stable for two different
@@ -249,6 +267,8 @@
    * pattern one layer down. */
   const REVISIT_ID = (key) => `stg-open-${key}`;
   const STAGE_BODY_ID = (key) => `stg-body-${key}`;
+  // The header's Refresh, stable for the focus restore alone.
+  const REFRESH_ID = "refresh-page";
 
   /** The ONE primary action per stage — the design's "one primary at a time,
    * always in the footer". The map is here rather than inside the footer
@@ -272,18 +292,19 @@
    * stage, and a rename costs every reference to it — worth paying once, with
    * the move that took a sibling into its own file. */
   const STAGE_LABELS = {
+    // Before the save. Once the job is saved the Job step's question is the
+    // base, and its primary scores the bases again (`stageAction`).
     job: "Save job",
-    score: "Score base resumes",
     // The words the stage body's own Quick limb uses, and deliberately the
     // same words: they run one function, and two labels for one behaviour is
     // how a user comes to believe there are two.
     resume: "Quick tailor",
-    // Was "Autofill this form" while this primary was inert. The Fill body's
-    // own limb reads the same two words for the Resume stage's reason — one
-    // function, one label — and they are deliberately short, because this fill
-    // is not only a form fill: the mode control above the button is what says
-    // which pass is about to run.
-    fill: "Fill this form",
+    // One word, and short on purpose (owner decision, 2026-09-27): "Fill this
+    // form" wrapped onto three lines beside the status chips. "Autofill" is
+    // the app's own word for the answers it fills from (Profile › Autofill),
+    // and the mode control above the button says which pass is about to run.
+    // The STEP is still "Fill".
+    fill: "Autofill",
     // AND NO `track`, which is a decision rather than an omission — this map is
     // documented above as one a stage may be absent from, and Track is the
     // stage that is.
@@ -329,8 +350,8 @@
   // so it is one object several loads share — and a stray write to it would be
   // a default that quietly became the last question anyone typed. Every writer
   // below spreads it into a new object rather than touching it.
-  const EMPTY_QNA = Object.freeze(
-    { open: false, question: "", answered: null, answer: null, copied: false });
+  const EMPTY_QNA = Object.freeze({ open: false, question: "", answered: null,
+                                    answer: null, applicationId: null, copied: false });
 
   /** Everything the panel renders. Nothing here is derived: `stageFor` derives
    * the stage from these facts on every render, and no field below caches that
@@ -420,12 +441,39 @@
      * claim about a page nothing was ever written to.
      *
      * The COUNT is the engine's readback and not the number of frames asked —
-     * `attachResumePdf` re-reads `input.files` after the assignment, so this is
-     * how many boxes really hold the file.
+     * `attachResumePdf` re-reads `input.files` after the assignment, or finds
+     * the page's own new file row when the uploader empties its input (Workday),
+     * so this is how many boxes really took the file.
      */
     attached: null,
+    /** What Autofill's own attach did on this page, or null when it did not
+     * look (no PDF, no box, a stopped run): `{applicationId, outcome, text,
+     * reason, filename}`, `outcome` "attached", "unconfirmed" (written, not
+     * proven), "left" (nothing was written) or "skipped" (`reason`
+     * "occupied" when the box already held a file). Page-shaped like
+     * `attached`, and read beside the application it was made for. */
+    autoAttach: null,
+    /** The flags the last run's answer receipt came back with
+     * (`POST /api/jobs/{id}/filled-answers`): `[{fid, question, reason}]`, or
+     * null before a run. Page-shaped like `loop`: `resetPageFacts` and each
+     * run's own clear empty it. */
+    receiptFlags: null,
+    /** What the answer receipt has posted for THIS page, by field id:
+     * `{consentForms, fids: {fid: {source, slot, eeo, edited, answer}}}`, or
+     * null before a post. It is what lets a later edit (Mark applied, leaving
+     * the page) post under the source the run gave the field. Page-shaped. */
+    receiptSeen: null,
+    /** The matched job's knock-out scan (`knockout` on `/api/jobs/match`), or
+     * null: a backend fact about the job, re-read with every match. */
+    knockout: null,
     baseSlug: null,
     baseSelected: false,
+    /** The base came from the bound application's own `base_resume`
+     * (`applyMatch`), not from a pick. It keeps the ranking off `baseSlug`
+     * as a pick does, and — unlike `baseSelected` — it is not a claim: the
+     * backend named this page, so Refresh does not write it down as one. A
+     * backend fact, so re-read rather than carried (`PAGE_WORK`). */
+    baseFromApplication: false,
     baseArmed: false,   // the base-resume shortcut, restored from the session
     resumes: null,      // the base-resume library; null = not asked, [] = none
     /** Recent draft applications, for the Job-stage picker.
@@ -528,7 +576,7 @@
      * DATA WINS, which is what the second key is for. `over` is the stage the
      * row was opened over, so `openRow` can tell "the rail is where it was" from
      * "the rail has moved on" and drop the view when it has: a re-pick that
-     * sends the journey back to Score, a tailor that lands a PDF, a page change
+     * sends the journey back to Job, a tailor that lands a PDF, a page change
      * that resets the facts. View state must never outlive the facts it was
      * opened over. One field rather than two because the pair is meaningless
      * apart — a `revisit` with no `over` cannot yield, and an `over` with no
@@ -556,6 +604,12 @@
      * like every other setting, because a second copy is the one that drifts.
      */
     fillMode: "assist",
+    /** How many entries the recipe book holds (`KEY.recipes`): read at boot,
+     * rewritten when a fill run writes the book and when the user forgets it.
+     * The Fill body offers "Forget learned widget moves" only while it is not
+     * zero. A fact about this BROWSER, not the page, so `resetPageFacts`
+     * leaves it alone. */
+    learnedMoves: 0,
     /** The RULE pass's reconciliation, or null until one has run.
      *
      * `reconcileFill`'s own return, unchanged (`shared/decisions.js`) — the
@@ -598,6 +652,19 @@
      * null. The runner degrades a `/choose` failure to the open list, which is
      * right, and used to do it silently, which was not. */
     aiNote: null,
+    /** The fill loop's report (`shared/fill-loop.js`), or null until a "Saved
+     * answers + AI" run has finished on this page: `{fields: [{fid, question,
+     * required, shape, status, answer, …}], stopped, timedOut, …}`. The Fill
+     * body groups its rows by `status`. PAGE-SHAPED: a fid is a token this
+     * page's inventory minted. */
+    loop: null,
+    /** How many rounds the running loop has finished, or null when no loop is
+     * running. Non-null is also what puts Stop in the footer: `busy` alone
+     * cannot say it, because the attach runs under the same key. */
+    fillRound: null,
+    /** Stop was pressed on the running loop. The loop reads it before every
+     * page action; reset at every start. */
+    stopRequested: false,
     /** The per-qid outcomes of the run's ONE `guided_write`. The Application
      * questions row counts what was written from this and the residue, which
      * is the run's own reconciliation rather than a second reading of the
@@ -673,7 +740,8 @@
   };
 
   /** Everything above that is a claim about the PAGE, forgotten when the page
-   * changes. Called at the top of `onTab`, before anything is loaded.
+   * changes. Called at the top of `bindPage` (a tab switch, and Refresh),
+   * before anything is loaded.
    *
    * The render loop's full rebuild protects the DOM, not the store: a region
    * rebuilt from a fact that belongs to the tab you just left is still the
@@ -716,8 +784,10 @@
     // employer's filename under another employer's posting.
     store.fileInputs = 0;
     store.attached = null;
+    store.autoAttach = null;
     store.baseSlug = null;
     store.baseSelected = false;
+    store.baseFromApplication = false;
     store.baseArmed = false;
     store.scores = null;
     // The fork the user opened belonged to the posting they opened it on.
@@ -742,6 +812,16 @@
     store.blank = null;
     store.aiNote = null;
     store.writeResults = null;
+    // The loop's report with them, and its run state. A loop still running on
+    // the page the user left has been told to stop there (`onTab` sends that
+    // tab `fill_cancel`) and its generation check ends the panel half, so Stop
+    // has nothing left to stop here.
+    store.loop = null;
+    store.receiptFlags = null;
+    store.receiptSeen = null;
+    store.knockout = null;
+    store.fillRound = null;
+    store.stopRequested = false;
     // The half-typed answers with them: a qid is a token the collect stamped
     // into THAT page's DOM, so a draft that outlived its page names a control
     // nothing can find.
@@ -754,7 +834,7 @@
     // next page would be this panel asking a question nobody typed.
     store.qna = EMPTY_QNA;
     // Cleared HERE is what lets a stale action simply RETURN without unwinding
-    // anything: `generation` is bumped in `onTab` immediately after this runs,
+    // anything: `generation` is bumped in `bindPage` immediately after this runs,
     // so by the time an in-flight `addJob` finds its token stale, its `busy`
     // has already been cleared by the page change that made it stale. Every
     // action gets that for free — `scoreAllBases` inherited it whole — and it
@@ -798,7 +878,7 @@
    * reasons. `undefined` there is "we do not know", which is exactly what the
    * bridge's offline tolerance is built on. */
   async function ask(type, payload = {}) {
-    const reply = await chrome.runtime.sendMessage({ type, ...payload });
+    const reply = await chrome.runtime.sendMessage({ type, ...withFlowOrigin(type, payload) });
     if (reply?.ok) return reply.data;
     const err = new Error(reply?.error ?? `no answer to ${type}`);
     if (Number.isInteger(reply?.status)) err.status = reply.status;
@@ -824,9 +904,10 @@
    * ask with defaults, and treat a failed read as "nothing remembered" rather
    * than as an error the user has to see. A storage read that fails must not
    * cost anyone the panel. */
-  // ONE key, because there is one. The orphans are not read back here — they
-  // are removed once at boot (`sweepOrphanKeys`) and never consulted.
-  const STORE_DEFAULTS = { [KEY.session]: null };
+  // The session key and the recipe book (see `KEY`). The orphans are not read
+  // back here — they are removed once at boot (`sweepOrphanKeys`) and never
+  // consulted.
+  const STORE_DEFAULTS = { [KEY.session]: null, [KEY.recipes]: null };
 
   async function readStore() {
     try {
@@ -872,7 +953,7 @@
    * THE DEFAULTS ARE ALREADY EVERYWHERE, which is what makes silence honest
    * here rather than a swallow. `sw.js`'s `DEFAULTS` owns the real values and
    * every reader of this answer already has a rule for not having it: no
-   * `appUrl`, no link (`deepLink`, `customLink`); an unreadable `fillMode`
+   * `appUrl`, no link (`deepLink`, `fitLink`); an unreadable `fillMode`
    * narrows to `"assist"` (`boot`). A backend that is genuinely unreachable is
    * still said out loud on every page, by `applyMatch`, in the words of the
    * question the user actually asked.
@@ -926,9 +1007,9 @@
    *
    * SKIPPED is "not required on the path you took", which is why it is tested
    * BEFORE locked and never merged into done. The base-resume shortcut reaches
-   * Fill without Score or Resume, and — when the job is not in the library at
-   * all — without Job either: that row is greyed and still re-askable, never
-   * ticked (decisions.js: "the rail greys the row and still offers Add job").
+   * Fill without Resume, and — when the job is not in the library at all —
+   * without Job either: that row is greyed and still re-askable, never ticked
+   * (decisions.js: "the rail greys the row and still offers Save job").
    *
    * LOCKED is the remainder: a later stage, visible but not yet reachable.
    *
@@ -946,7 +1027,7 @@
    * READ OFF `done` DIRECTLY, for every stage, which is why this is not a
    * Track special case. It is also why it changes nothing anywhere else: walk
    * the ladder in `stageFor` and every other rung is guarded by the negation of
-   * its own done-ness — `!jobDone ? "job"`, `!scoreDone ? "score"`,
+   * its own done-ness — `!jobDone ? "job"`,
    * `!resumeDone ? "resume"`, `!fillDone ? "fill"` (and `fillFromBase`'s short
    * rail takes the same shape, `fillDone ? "track" : "fill"`). Track is the
    * only stage the ladder can reach while its own `done` is true, so "read the
@@ -961,7 +1042,7 @@
    * nothing at all. Where the user IS is still not merely a thing they
    * finished; it is now also allowed to be a thing they finished.
    */
-  function railModel(decision) {
+  function railModel(decision, summaries = {}) {
     return STAGES.map((stage, index) => {
       const state =
         decision.stage === stage.key ? "active"
@@ -988,9 +1069,38 @@
         // done or active has not been skipped by anyone.
         skipChoice: state === "skipped"
           && decision.choiceSkipped.includes(stage.key),
-        summary: state === "skipped" ? SKIPPED_SUMMARY : "",
+        // What a DONE row settled, in a few words (`stageSummaries`): the
+        // base and its score on Job, the tailored resume on Resume.
+        // The base-as-is words only under the shortcut: a Resume row skipped
+        // because the page was filled past it (`stageFor`) says nothing it
+        // does not know.
+        summary: state === "skipped" ? (decision.fillFromBase ? SKIPPED_SUMMARY : "")
+          : state === "done" ? summaries[stage.key] ?? "" : "",
       };
     });
+  }
+
+  /** The done rows' summaries, out of the store: `railModel` stays a function
+   * of its arguments, and this is the one reader of the facts it prints.
+   *
+   * JOB names the chosen base and its score for this job ("AI/ML Engineer ·
+   * 72"), which is what makes a preselected best an answer the user can see
+   * rather than one made for them. RESUME says the application's resume is
+   * ready, with its own score when one is stored — never "tailored", which the
+   * panel cannot tell from a base resume unchanged (a track-this application). A base with no name in the library
+   * (archived since) prints nothing: the slug is an API key, not a word. */
+  function stageSummaries() {
+    const withScore = (words, score) => (score === null ? words : `${words} · ${score}`);
+    const base = (card.resumes ?? []).find((resume) => resume.slug === card.baseSlug);
+    const tailored = card.application
+      ? compositeFor(card.scores, "application", card.application.id, "tailored") : null;
+    return {
+      job: base?.display_name
+        ? withScore(base.display_name,
+                    compositeFor(card.scores, "base_resume", card.baseSlug, "base"))
+        : "",
+      resume: withScore("Resume ready", tailored),
+    };
   }
 
   /** Where the identity block's link goes, or null when there is nowhere
@@ -1029,18 +1139,30 @@
     };
   }
 
-  const stageAction = (stage) => STAGE_LABELS[stage] ?? null;
+  /** The open row's primary label. A constant per stage but one: a SAVED job's
+   * step is the base question, and its primary scores the bases (the retry
+   * after a failed score, and the re-run on a reopened row). */
+  function stageAction(stage) {
+    // "Update scores", the glossary's word for scoring every base again.
+    if (stage === "job" && card.match === "exact") return "Update scores";
+    // An application's tailored resume is stored; only its PDF can be missing.
+    if (stage === "resume" && card.application) return "Create PDF";
+    return STAGE_LABELS[stage] ?? null;
+  }
 
   /** Would this stage's primary be a button that cannot do what it says?
    *
-   * TWO REFUSALS, and they are one rule: a label in `STAGE_LABELS` is a
-   * CONSTANT, so a stage whose primary is only sometimes possible has to say
-   * so here rather than by rewording itself. Both cases are a control that
-   * would run into nothing.
+   * THREE REFUSALS, and they are one rule: a stage whose primary is only
+   * sometimes possible says so here rather than by rewording itself. Each is
+   * a control that would run into nothing, or into harm.
    *
-   * - JOB, when the binding is the user's own claim. "Save job" under a row the
-   *   user has already bound by hand is an offer to add what is added; the
-   *   body offers the switcher and the un-pick instead.
+   * - JOB, when an application is bound. A claimed binding's body offers the
+   *   switcher and the un-pick; a backend-bound one's is read-only (the
+   *   application's own base answered the question), so Update scores there
+   *   would re-rank a list nobody can pick from.
+   * - RESUME, when the application already has its PDF (a reopened done row).
+   *   Quick tailor would replace the tailored draft unasked; the body's link
+   *   tailors again in Maestro CS, which asks first.
    * - FILL, without a form on the page. This is where the shortcut's old
    *   `hasForm` gate went (`stageFor`'s note): the stage is now decided by
    *   whose question is still open, and "can it run HERE" is decided by the
@@ -1054,7 +1176,12 @@
    * change at all — the repaint is the whole of it.
    */
   function primaryRefused(stage) {
-    if (stage === "job") return card.claimed === true;
+    // A bound application answered the base question, so its reopened Job row
+    // is information only: nothing to save, nothing to re-rank.
+    if (stage === "job") return card.claimed === true || card.application !== null;
+    // A reopened done Resume row: Quick tailor would replace the tailored
+    // draft unasked, so its one way on is the body's link to Maestro CS.
+    if (stage === "resume") return card.application !== null && card.pdfReady === true;
     if (stage === "fill") return card.hasForm !== true;
     return false;
   }
@@ -1079,7 +1206,9 @@
       // which re-asks.
       store.match = null;
       store.job = null;
+      store.knockout = null;
       store.application = null;
+      store.baseFromApplication = false;
       store.claimed = false;
       store.pdfReady = false;
       // One line, and never a login-shaped card, because there is no account
@@ -1109,6 +1238,13 @@
       ? { id: result.job.id, company: result.job.company, title: result.job.title }
       : null;
     store.application = result.application ?? null;
+    store.knockout = result.knockout ?? null;
+    // The application's base is the base question's answer: the Base ring
+    // and the "+N" compare against the resume it came from, and the ranking
+    // must not move off it. Its own flag, not `baseSelected`: the backend
+    // named this page, which is not a pick the user made.
+    store.baseFromApplication = Boolean(store.application?.base_resume);
+    if (store.baseFromApplication) store.baseSlug = store.application.base_resume;
     // The backend named this page (or named nothing). That is not a claim
     // the user made, so a leftover `claimed` from a pick on the previous
     // posting must not open an un-pick door here.
@@ -1321,6 +1457,12 @@
    * "we have at least one row", not "we asked": null and [] mean different
    * things everywhere else in this file too.
    *
+   * `baseChosen` is the user's pick (`baseSelected`) OR a selected base that
+   * has a score for this job, which is the ranking's best preselected by
+   * `loadBaseScores`/`scoreAllBases`: the owner's rule (2026-09-27) that the
+   * preselected best counts as chosen. It is named on the Job row's summary
+   * and the row reopens onto the list, so the choice is never silent.
+   *
    * Takes the store rather than closing over it, like `resetPageFacts` and
    * `applyMatch` — this section is "the pure parts", and a function that reads
    * a module-level `card` is not one of them however pure its arithmetic. */
@@ -1334,7 +1476,8 @@
       hasForm: store.hasForm,
       baseArmed: store.baseArmed,
       hasScores: Array.isArray(store.scores) && store.scores.length > 0,
-      baseSelected: store.baseSelected,
+      baseChosen: store.baseSelected === true || (store.baseSlug !== null
+        && compositeFor(store.scores, "base_resume", store.baseSlug, "base") !== null),
     };
   }
 
@@ -1406,8 +1549,8 @@
    *
    * `baseArmed` IS REMEMBERED AND NOT DERIVED. The tempting derivation is
    * `application === null && Boolean(baseSlug)`, which arms the shortcut for
-   * every user who owns a base resume and skips Score and Resume for people who
-   * never asked. Here it is a deliberate answer ("use base as-is"), made on the
+   * every user who owns a base resume and skips Resume for people who never
+   * asked. Here it is a deliberate answer ("use base as-is"), made on the
    * posting and spent on the apply page — a different page load, which is
    * exactly what this entry exists to cross.
    */
@@ -1515,7 +1658,7 @@
     return parent;
   }
 
-  /** The footer's primary, and the ONLY caller left.
+  /** The footer's primary, and the header's Refresh (`refreshControl`).
    *
    * `comingSoon` LIVED HERE as this function's default `onClick`, and it is
    * gone rather than kept: the primaries landed one task at a time and it stood
@@ -1605,7 +1748,8 @@
       // and still have no score, and the hint must stay true then too. With a
       // number, the ring says whose score it is and the hint is a sentence —
       // "60 Base — tailor to raise it" joined two clauses with a dash (Task 25).
-      // What an ATS score IS is said once, in the Score step (`stages/score.js`).
+      // What an ATS score IS is said once, in the Job step's base list
+      // (`stages/job.js`).
       attach(ats, ringColumn(before, "var(--cs-primary)",
                              before === null ? "ATS score" : "Base resume score"),
              node("span", "hint",
@@ -1639,16 +1783,41 @@
     // it explains what the rail is about to skip, so it belongs beside what it
     // is about.
     if (decision.shortcutNote) children.push(node("div", "sub", decision.shortcutNote));
-    // THE LINK IS LAST, on a line of its own, and it took a measurement to get
-    // there. Beside the chip in `row1` was the obvious home and the wrong one:
+    // THE LINK IS LAST, on a line only Refresh shares, and it took a
+    // measurement to get there. Beside the chip in `row1` was the obvious home and the wrong one:
     // `who` and a `flex: none` link compete for one axis, and at the widths a
     // side panel is actually dragged to (measured at 320/360/400) the job title
     // was left 104px and five wrapped lines — a header that pushed the rail off
     // screen to make room for a link. Down here it competes with nothing, and
     // the block's bottom-right is where a card's one way out belongs anyway.
+    // Refresh sits at that line's left: the link keeps its right edge, and
+    // neither competes with the title.
+    const refresh = refreshControl();
     const link = deepLinkAnchor();
-    if (link) children.push(link);
+    if (refresh || link) children.push(attach(node("div", "id-foot"), refresh, link));
     region("identity").replaceChildren(...children);
+  }
+
+  /** Refresh (`refreshPage`), or nothing on a page the panel reads nothing
+   * about. Disabled while any action runs, `statusSegment`'s rule: a re-read
+   * resets the store that action is writing. While its OWN load runs it is
+   * `aria-disabled` instead, the web app's lock for a control the user is in
+   * (`GapLocked`): a `disabled` button drops focus to the body, and the user
+   * pressed this one a moment ago. Its id is how focus comes back to it across
+   * the repaints its own load causes (`withPlaceKept`).
+   *
+   * Named for where it reads from: what it re-reads is Maestro CS's side of
+   * the page (job, application, drafts, base resumes), not the page itself. */
+  function refreshControl() {
+    if (card.tabId === null || !isWebPage(card.url)) return null;
+    const button = actionButton("refresh", "Refresh", () => {
+      refreshPage().catch((err) => console.warn("[maestro-cs] panel could not refresh:", err));
+    });
+    button.id = REFRESH_ID;
+    button.setAttribute("aria-label", "Refresh from Maestro CS");
+    button.disabled = card.busy !== null;
+    if (refreshing) button.setAttribute("aria-disabled", "true");
+    return button;
   }
 
   // ---- what a stage body is handed ----
@@ -1680,8 +1849,8 @@
    *   user nobody read the copy.
    *
    * DESIGNED FROM THREE BODIES rather than from the first one: Job needs
-   * free-text fields plus a write on every keystroke, Score needs a list plus
-   * a selection callback, Resume needs an anchor's href plus three triggers.
+   * free-text fields plus a write on every keystroke, the base list needs a
+   * list plus a selection callback, Resume needs an anchor's href plus three triggers.
    * The groups are what all three have in common; the KEYS grow with the
    * bodies, and a body that wants something not on this list adds it here
    * rather than reaching for the store.
@@ -1698,6 +1867,9 @@
         scores: card.scores,
         baseSlug: card.baseSlug,
         job: card.job,
+        // Is the job in Maestro CS? Then the Job step's question is the base,
+        // and its body is the ranked list rather than the Save job preview.
+        jobSaved: card.match === "exact",
         // `hasForm` IS BACK ON THIS SNAPSHOT, with ONE reader, and the reader
         // is the change. It was dropped when the Job picker stopped gating on
         // it — a fact handed to five bodies that none of them wants is an
@@ -1764,7 +1936,11 @@
         // second home for a stage decision.
         pdfReady: card.pdfReady === true,
         fileInputs: card.fileInputs,
-        attached: card.attached,
+        // Only beside the application it was made for (`sameApplication`).
+        attached: sameApplication(card.attached?.applicationId, card.application)
+          ? card.attached : null,
+        autoAttach: sameApplication(card.autoAttach?.applicationId, card.application)
+          ? card.autoAttach : null,
         // The REAL filename, which the panel already knows: `evidenceFrom`
         // takes it off the application detail's `pdf_path`. Handed over so the
         // offer can name the document rather than saying "your resume" about a
@@ -1778,6 +1954,14 @@
         closest: card.closest,
         aiNote: card.aiNote,
         eeoConsent: card.eeoConsent,
+        // The loop's report and, while it runs, how far it has got.
+        loop: card.loop,
+        // The last run's flagged answers, and the matched job's knock-out scan.
+        receiptFlags: card.receiptFlags,
+        knockout: card.knockout,
+        // Whether the recipe book holds anything to forget.
+        learnedMoves: card.learnedMoves,
+        fillRound: card.fillRound,
         // The pause rows' drafts. Handed over whole rather than per row: a body
         // renders the whole list in one pass, and a per-row lookup callback
         // would be a second way to read one store field.
@@ -1785,11 +1969,14 @@
         // The composer, whole: open-ness, the draft question, the answer and
         // the question it answers. One object rather than five keys because
         // the body renders them as one control and they are written together.
-        qna: card.qna,
+        // The answer only beside the application it was grounded in: the draft
+        // question and the open drawer are the page's, and stay either way.
+        qna: sameApplication(card.qna.applicationId, card.application)
+          ? card.qna : { ...card.qna, answered: null, answer: null, copied: false },
       },
       act: { editPreview, pickApplication, unpickApplication, pickBase, useBaseAsIs,
              stopUsingBaseAsIs, openTailor, quickTailor,
-             setFillMode, startFill, attachResume, scrollToField, editAnswer,
+             setFillMode, forgetLearnedMoves, startFill, attachResume, scrollToField, focusField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis },
       build: { node, attach, plural, statusLabel, dayLabel },
@@ -1910,13 +2097,13 @@
 
   /** Take this base resume, and remember it.
    *
-   * THE PICK IS THE USER'S. `baseSelected` is what `stageFor` reads to call
-   * the Score stage done, and only this function and a restore ever set it —
-   * `loadBaseScores` moves `baseSlug` by ranking and leaves `baseSelected`
-   * alone on purpose, because a panel that ticked the step off by sorting a
-   * list would be answering on the user's behalf. It follows that this is also
-   * the one place the ranking may be overridden: clicking the second row means
-   * the second row, and the next score read must not slide off it.
+   * THE PICK IS THE USER'S. `baseSelected` says so, and only this function,
+   * a restore and an application's own base ever set it — `loadBaseScores`
+   * moves `baseSlug` by ranking and leaves `baseSelected` alone. The ranking's
+   * best does close the Job step (`cardFacts`' `baseChosen`), visibly, on the
+   * row's summary; this is the one place it may be overridden: clicking the
+   * second row means the second row, and the next score read must not slide
+   * off it.
    *
    * The write is what makes the pick outlive the page. An ATS wizard is six
    * page loads and each one rebuilds this panel's facts from scratch
@@ -1926,6 +2113,12 @@
   function pickBase(slug) {
     card.baseSlug = slug;
     card.baseSelected = true;
+    // A pick made in a REOPENED Job row answers the question it was reopened
+    // to ask, so the view closes. It has to be said here because a switch made
+    // from Resume leaves the stage on Resume, and `openRow`'s "the rail moved
+    // on" limb never fires: the base list stayed open under an active Resume
+    // row, and the tailoring fork never came back (reported live).
+    card.revisit = null;
     // Painted BEFORE the write, and the order is the point: the store is the
     // truth this surface renders, storage is only where it survives. A picked
     // row that waited for a storage round trip to look picked would be a
@@ -1937,8 +2130,8 @@
   /** Write down what this panel is armed with, under the bridge key.
    *
    * IT WRITES AN APPLICATION-LESS ENTRY, which is the whole of Task 9's session
-   * decision and the thing to be careful about. A base picked at the Score
-   * stage and a base-as-is arming are choices made BEFORE any application
+   * decision and the thing to be careful about. A base picked in the Job
+   * step and a base-as-is arming are choices made BEFORE any application
    * exists, and they are exactly what has to survive the next page of a wizard
    * — so refusing to write them (the older behaviour) loses the user's answer
    * at the page boundary. `restoreSession`'s `if (entry.applicationId)` guard
@@ -1958,8 +2151,10 @@
     const entry = sessionEntryFrom(card, Date.now());
     // No tenant, nothing to scope a memory to. See `sessionEntryFrom`: this is
     // a refusal, not a fallback.
-    if (!entry) return;
-    writeStore({ [KEY.session]: entry });
+    if (!entry) return Promise.resolve();
+    // Returned for the one caller that waits on it (`refreshPage`); a write
+    // that fails is `writeStore`'s warning, never a rejection.
+    return writeStore({ [KEY.session]: entry });
   }
 
   /** Open the second fork level. A disclosure and nothing else: it asks the
@@ -1992,6 +2187,48 @@
     writeSyncSetting({ fillMode: mode });
   }
 
+  /** The fill loop's `deps.recipes` for one run: the recipe book
+   * (`shared/recipe-book.js`) over `KEY.recipes`, with `readStore`'s and
+   * `writeStore`'s posture — a failed read is an empty book, a failed write
+   * costs the memory and never the fill. A fresh door per run, so a Forget
+   * between two runs is never undone by a book one of them had read. */
+  function recipeDoor() {
+    return ns.recipeBook.store({
+      read: async () => (await readStore())[KEY.recipes],
+      write: async (book) => {
+        await writeStore({ [KEY.recipes]: book });
+        card.learnedMoves = ns.recipeBook.size(book);
+      },
+    });
+  }
+
+  /** "Forget learned widget moves": the recipe book's key removed whole —
+   * a `remove`, never a `set` to null, which would leave the key behind.
+   * SUCCESS IS SAID ONLY ONCE THE REMOVE HAS LANDED: then the count goes to
+   * zero, the control leaves, and focus goes to a stable control of the
+   * stage (the Fill row's door when it is one, else the chosen fill mode)
+   * rather than falling to the body with the button. A refused remove keeps
+   * the count and the control, and says so in `failureNote`'s shape.
+   * UNDER THE BOOK'S LOCK (`fill.recipes`, the one `recipeBook.store`'s
+   * record holds), so a run finishing in another tab cannot write the old
+   * book back across the remove; unlocked where `navigator.locks` is absent. */
+  async function forgetLearnedMoves() {
+    const remove = () => chrome.storage.local.remove(KEY.recipes);
+    try {
+      await (navigator.locks?.request ? navigator.locks.request("fill.recipes", remove) : remove());
+    } catch (err) {
+      console.warn("[maestro-cs] storage remove failed:", err);
+      card.note = { text: "Couldn't forget the learned moves. Try again.", error: true };
+      render();
+      return;
+    }
+    card.learnedMoves = 0;
+    card.note = { text: "The Companion forgot the moves it learned." };
+    render();
+    (document.getElementById(REVISIT_ID("fill")) ?? document.getElementById(`fill-mode-${card.fillMode}`))
+      ?.focus({ preventScroll: true });
+  }
+
   /** Put a residue field in front of the user, in whichever frame holds it.
    *
    * The panel is in no page, so the scroll is a message; it is a FAN-OUT
@@ -2008,6 +2245,29 @@
     ask("page_broadcast", {
       tabId: card.tabId, message: { type: "scroll_to_field", qid },
     }).catch((err) => console.warn(`[maestro-cs] could not scroll to ${qid}:`, err));
+  }
+
+  /** Put a field the loop reported in front of the user: scrolled to and
+   * focused, in whichever frame minted its fid (`fill_focus`; every other frame
+   * answers false). The fid and nothing else crosses, `scrollToField`'s rule,
+   * and it is fire-and-forget for the same reason. */
+  function focusField(fid) {
+    ask("page_broadcast", {
+      tabId: card.tabId, message: { type: "fill_focus", fid },
+    }).catch((err) => console.warn(`[maestro-cs] could not focus ${fid}:`, err));
+  }
+
+  /** Stop the running fill: the loop reads `stopRequested` before every page
+   * action, and `fill_cancel` stops the page operation already in flight (it
+   * latches until the next run's inventory), so a Stop never waits out a slow
+   * widget. What the run had already done stays, and its report says so. */
+  function stopFill() {
+    if (card.fillRound === null || card.stopRequested) return;
+    card.stopRequested = true;
+    render();
+    ask("page_broadcast", {
+      tabId: card.tabId, message: { type: "fill_cancel" },
+    }).catch((err) => console.warn("[maestro-cs] could not stop the fill:", err));
   }
 
   /** The stage bodies, from the roster that gathers them.
@@ -2031,17 +2291,18 @@
    * THE TWO WAYS A REOPENED ROW DIES, and both are the same rule: the view may
    * not outlive the facts it was opened over.
    *
-   * - THE RAIL MOVED ON (`over`). The user reopened Score while standing at
+   * - THE RAIL MOVED ON (`over`). The user reopened Job while standing at
    *   Fill; a tailor lands a PDF, or a pick sends the journey back, and the
    *   stage the row was opened beside is not the stage any more. Yielding is
    *   what "data always wins" means here — the alternative is a panel showing a
    *   step the user chose two facts ago.
    * - THE ROW IS NO LONGER A DOOR. Narrower and still reachable: under the base
    *   shortcut the stage is pinned to `fill`/`track` by the shortcut rung, so
-   *   `done.score` can fall (a score re-read that comes back empty) while the
-   *   stage sits exactly where it was. Without this limb the rail would then
-   *   render the Score body under a row it has just re-drawn as SKIPPED, which
-   *   is the un-skip feature arriving by accident rather than by decision.
+   *   `done.job` can fall (a Refresh whose match no longer names the job)
+   *   while the stage sits exactly where it was. Without this limb the rail
+   *   would then render the Job body under a row it has just re-drawn as
+   *   SKIPPED, which is the un-skip feature arriving by accident rather than
+   *   by decision.
    *
    *   IT IS `isReopenable`'S OWN ANSWER, over the rows the rail is about to
    *   draw, and asking it here rather than re-stating "still done" is what lets
@@ -2097,7 +2358,7 @@
   }
 
   function renderRail(decision, open) {
-    region("rail").replaceChildren(...railModel(decision).map((row) => {
+    region("rail").replaceChildren(...railModel(decision, stageSummaries()).map((row) => {
       const stage = node("li", `stg ${row.state}`);
       // Announced, not merely coloured: the rail IS "where am I", and a screen
       // reader gets none of the border, the tick, or the opacity. `aria-current`
@@ -2117,13 +2378,17 @@
       // prints a ✓ in it, which is what a rail that has ENDED looks like.
       const numeral = node("span", "stg-num", row.ticked ? "✓" : row.n);
       numeral.setAttribute("aria-label", row.stateLabel);
-      // A DONE ROW IS A DOOR — for Score/Resume/Fill always, and for Job when
-      // the binding is a user claim; so is a row SKIPPED by a claim, which is
-      // the base-as-is Resume row. `isReopenable` carries which and why. A REAL BUTTON rather than a click handler on the
+      // A DONE ROW IS A DOOR — Job, Resume and Fill; so is a row SKIPPED by a
+      // claim, which is the base-as-is Resume row. `isReopenable` carries which and why. A REAL BUTTON rather than a click handler on the
       // row: the whole line is the target, it has to be reachable and pressable
       // from the keyboard, and `aria-expanded` is how a screen reader is told
       // that this is a thing that opens rather than a heading that moved.
-      const reopenable = isReopenable(row);
+      // THE WAY BACK: while another row's body is open, the ACTIVE row is a door
+      // too, and pressing it closes that view. It is the row a user presses to
+      // return to the step they are on, and as a plain `div` it did nothing —
+      // the only way back was the ▾ on the reopened row.
+      const wayBack = row.state === "active" && row.key !== open;
+      const reopenable = isReopenable(row) || wayBack;
       const line = node(reopenable ? "button" : "div", "stg-row");
       if (reopenable) {
         line.type = "button";
@@ -2140,7 +2405,9 @@
         // (`stages/resume.js`) and the same reasoning: `aria-controls` naming
         // an id nothing carries offers a jump that goes nowhere.
         if (row.key === open) line.setAttribute("aria-controls", STAGE_BODY_ID(row.key));
-        line.addEventListener("click", () => toggleRevisit(row.key));
+        // The way back closes the OPEN row's view; `toggleRevisit` on the key
+        // that is open is exactly that close.
+        line.addEventListener("click", () => toggleRevisit(wayBack ? open : row.key));
       }
       attach(line, numeral,
              node("span", "stg-name", row.name),
@@ -2183,9 +2450,11 @@
    * BY ID, and only by id. `document.activeElement` is a live node that this
    * rebuild is about to throw away, so the identity that survives it has to be
    * a string: the controls worth restoring carry a stable one for exactly this
-   * (`stg-open-<stage>`, `tailor-options`, `preview-<key>`, `answer-<qid>`,
-   * `qna-question`). A control with no id gets no restore, which is the honest
-   * behaviour rather than a gap — there is nothing to find it by, and guessing
+   * (`stg-open-<stage>`, `tailor-options`, `preview-<key>`, `base-<slug>`,
+   * `resume-<choice>`, `answer-<qid>`, `qna-question`, `fill-mode-<mode>`, and
+   * the header's `refresh-page`). A
+   * control with no id gets no restore, which is the honest behaviour rather
+   * than a gap — there is nothing to find it by, and guessing
    * by position is how focus lands on the wrong control after a list reorders.
    *
    * FOCUS IS NEVER TAKEN, only given back: with nothing focused,
@@ -2195,7 +2464,8 @@
    *
    * THE LOOKUP IS DOCUMENT-WIDE and the restore happens BETWEEN the rail's
    * rebuild and the footer's, which is a constraint rather than a detail: it
-   * works today because every stable id on this surface belongs to the rail. A
+   * works today because every stable id on this surface belongs to the header
+   * or the rail, and `render` rebuilds both inside `rebuild`. A
    * footer control that gained one would be found here and focused a moment
    * before `renderFoot` replaced it, which is a restore onto a node about to be
    * thrown away. Scoping the search to the rail is the fix IF that day comes;
@@ -2219,8 +2489,23 @@
     // halves of this function fight: the scroll is put back and then thrown
     // away, every time, invisibly. Asking for focus without scrolling is what
     // makes the restore authoritative.
-    if (focused) document.getElementById(focused)?.focus({ preventScroll: true });
+    if (!focused) return;
+    // THE HANDOFF. A control that went with its body — a base picked in a
+    // reopened Job row, a Resume choice that finished the step — has nothing to
+    // come back to, so focus goes to that row's door rather than the document:
+    // the control that opens what the user was just in.
+    const row = CONTROL_ROWS.find(([prefix]) => focused.startsWith(prefix))?.[1];
+    const target = document.getElementById(focused)
+      ?? (row ? document.getElementById(REVISIT_ID(row)) : null);
+    target?.focus({ preventScroll: true });
   }
+
+  /** Which row's body a stable control id belongs to, by its prefix. */
+  const CONTROL_ROWS = [
+    ["preview-", "job"], ["draft-pick", "job"], ["base-", "job"],
+    ["tailor-options", "resume"], ["resume-", "resume"],
+    ["fill-mode-", "fill"], ["answer-", "fill"], ["qna-", "fill"],
+  ];
 
   /** The two statuses this panel WRITES, which is not the two it can read.
    *
@@ -2326,6 +2611,14 @@
     const controls = [];
     const segment = statusSegment();
     if (segment) controls.push(segment);
+    // STOP, beside the spinning primary, for as long as a loop runs. Pressed
+    // once, it stays on screen, disabled, until the run hands back its report.
+    if (card.busy === "fill" && card.fillRound !== null) {
+      const stop = actionButton("stop", card.stopRequested ? "Stopping…" : "Stop", stopFill);
+      stop.setAttribute("aria-label", "Stop filling");
+      stop.disabled = card.stopRequested;
+      controls.push(stop);
+    }
     // THE PRIMARY BELONGS TO THE OPEN ROW, not to the inferred stage, and the
     // two are the same thing until a done row is reopened. It has to be this
     // way for the feature to be one: the design's promise is "one primary at a
@@ -2350,7 +2643,7 @@
       // week" path at best, and the click that starts it is the click the user
       // makes when nothing on screen says the first one is still going.
       const cta = actionButton(card.busy === open ? "cta spin" : "cta",
-                               label, STAGE_RUN[open]);
+                               label, stageRun(open));
       cta.disabled = card.busy !== null;
       controls.push(cta);
     }
@@ -2363,11 +2656,14 @@
     // is the call that drops a stale `revisit`, so a second one would be a
     // second place the store can change during a paint.
     const open = openRow(decision);
-    renderIdentity(decision);
-    // AROUND THE RAIL AND NOTHING ELSE. The other two regions hold no scroll
-    // and — bar the footer's primary, which is where a press LEAVES the user
-    // rather than where it takes them from — nothing worth keeping a place in.
-    withPlaceKept(() => renderRail(decision, open));
+    // AROUND THE HEADER AND THE RAIL, and not the footer. The header holds one
+    // control worth keeping a place in (Refresh, whose own load repaints it
+    // several times); the footer's primary is where a press LEAVES the user
+    // rather than where it takes them from.
+    withPlaceKept(() => {
+      renderIdentity(decision);
+      renderRail(decision, open);
+    });
     renderFoot(open);
   }
 
@@ -2387,6 +2683,7 @@
     // note is the panel's one line about the page in front of the user, and an
     // apology about a tab they have already left is not that. The next
     // activation rebinds, which is the recovery.
+    chrome.runtime.onMessage.addListener(onFieldsTouched);
     chrome.tabs.onActivated.addListener(({ tabId }) => {
       chrome.tabs.get(tabId)
         .then((activated) => onTab(tabId, activated.url ?? ""))
@@ -2399,7 +2696,9 @@
     chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
       if (tabId !== card.tabId) return;
       if (changeInfo.url) {
-        onTab(tabId, changeInfo.url).catch(
+        // IN PLACE: the tab changed its address, and on an SPA (a Workday
+        // step) the page still shows the step being left for a moment.
+        onTab(tabId, changeInfo.url, { inPlace: true }).catch(
           (err) => console.warn(`[maestro-cs] panel could not reload tab ${tabId}:`, err));
         return;
       }
@@ -2414,19 +2713,101 @@
       healPosting(generation).catch(
         (err) => console.warn(`[maestro-cs] panel could not re-read tab ${tabId}:`, err));
     });
+    // A SUBFRAME of the bound tab finished loading, which is how an embedded
+    // application form arrives with no url change (`scheduleFrameDetect`).
+    // Frame 0's own loads are `onUpdated`'s above. `webNavigation` is already
+    // a permission (the SW's frame fan-out lists frames with it).
+    chrome.webNavigation.onCompleted.addListener(({ tabId, frameId }) => {
+      if (tabId !== card.tabId || frameId === 0) return;
+      scheduleFrameDetect();
+    });
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (tab) await onTab(tab.id, tab.url ?? "");
   }
 
-  async function onTab(tabId, url) {
+  /** "You changed a field", from the bound tab's content script
+   * (`content/touch-notice.js`): fids only, no values, at most one per two
+   * seconds. It is a HINT, not data: after the user has been quiet for
+   * `EDIT_CAPTURE_MS` the panel re-reads the page through the gated
+   * `fill_inventory` and posts what changed since the last post
+   * (`ns.panelRecordEdits`), so an edit lands on the answer record without a
+   * press of Mark applied. Heard only from our own content script in the tab
+   * this panel is bound to, and only once a run has posted for a matched job
+   * (`receiptSeen`): a page the Companion never filled is never read for this. */
+  const EDIT_CAPTURE_MS = 3000;
+  let editCaptureTimer = null;
+
+  function onFieldsTouched(msg, sender) {
+    if (msg?.type !== "fields_touched" || sender?.id !== chrome.runtime.id) return false;
+    if (sender.tab?.id !== card.tabId || !card.receiptSeen || !card.job?.id) return false;
+    clearTimeout(editCaptureTimer);
+    const token = generation;
+    editCaptureTimer = setTimeout(async () => {
+      // A run in flight posts its own receipt, which restates what is posted.
+      if (!current(token) || card.busy !== null) return;
+      const flags = await ns.panelRecordEdits(actionStore(), { ...card }, token);
+      // The post answers with the flags of the form as it stands now: "Check before you
+      // submit" follows a hand fix. Null is "nothing was posted": the list stays.
+      if (flags !== null && current(token)) {
+        card.receiptFlags = flags;
+        render();
+      }
+    }, EDIT_CAPTURE_MS);
+    return false;
+  }
+
+  async function onTab(tabId, url, { inPlace = false } = {}) {
+    // A LOOP STILL RUNNING is two halves. The panel half ends with the
+    // generation bump below (its `cancelled()` reads it); the page half — a
+    // popup it holds open, a set half-written — ends only when the page is
+    // told, so the tab being LEFT gets `fill_cancel` (the same tab on a
+    // same-tab url change, as the rule pass's run ended there too).
+    // Fire-and-forget, `stopFill`'s rule; nothing reaches the new tab.
+    if (card.busy === "fill" && card.fillRound !== null && card.tabId !== null) {
+      ask("page_broadcast", { tabId: card.tabId, message: { type: "fill_cancel" } })
+        .catch((err) => console.warn("[maestro-cs] could not stop the fill on the tab left:", err));
+    }
+    await bindPage(tabId, url, {}, { inPlace });
+  }
+
+  /** Forget everything about the page and read it again: the whole of a tab
+   * switch past the fill cancel, and the whole of Refresh. ONE path, so the
+   * button re-reads exactly what a tab switch reads and nothing a switch
+   * would not.
+   *
+   * `carry` is what survives the reset: nothing for a tab switch, and for
+   * Refresh the work done on a page it is not leaving (`PAGE_WORK`).
+   * `inPlace` is a url change inside the bound tab (`loadHasForm`). */
+  async function bindPage(tabId, url, carry = {}, { inPlace = false } = {}) {
+    // The answer receipt's last word on the page being LEFT, started before the
+    // reset: its read of the page leaves now, on the tab bound now, and what it
+    // posts is about the facts as they stand now. Nothing waits for it. A
+    // Refresh (same tab, same url) is not leaving. Its read is bound to the tab
+    // being left HERE, in the panel that owns the binding, so an `await` added
+    // to the capture later can never read the tab bound next.
+    if (card.tabId !== null && (card.tabId !== tabId || card.url !== url)) {
+      const left = card.tabId;
+      ns.panelRecordEdits(
+        { ...actionStore(), broadcast: (message) => ask("page_broadcast", { tabId: left, message }) },
+        { ...card }, null, { leaving: true });
+    }
+    clearTimeout(editCaptureTimer);
     // FIRST, and before anything is loaded: everything the store holds is
     // about the page we are leaving.
     resetPageFacts(card);
+    Object.assign(card, carry);
     card.tabId = tabId;
     card.url = url;
     // Every load still in flight is now about a tab the user has left. See
     // `current` for what that costs and what stops it.
     generation += 1;
+    const token = generation;
+    // A new page binding: the late re-detect's cap starts again.
+    frameDetects = 0;
+    // Only a step reached INSIDE the tab opens the Fill row by itself
+    // (`noteForm`): a panel opened on, or a tab switched back to, a page
+    // already filled is not a new step.
+    boundInPlace = inPlace;
     // A settings tab, a new tab, a PDF viewer, `about:blank`. The panel is open
     // across all of them and the user tabs through them constantly, so asking
     // the backend about a `chrome://` url would be a round trip per glance for
@@ -2436,9 +2817,90 @@
     // confident lie `resetPageFacts` exists to prevent.
     if (!isWebPage(url)) {
       render();
+      return token;
+    }
+    await loadContext(token, { inPlace });
+    return token;
+  }
+
+  /** What Refresh keeps across its reset, by one rule: a fact about this
+   * page's DOM or the user's typing is CARRIED, because Refresh does not leave
+   * the page; a fact from the backend (the match, the application and its PDF,
+   * the scores) is RE-READ, which is the point of pressing it. The typed Job
+   * fields, the Fill report, half-typed pause answers, the QnA drawer, the
+   * attach, a reopened row: all still true of this page. `previewTyped` rides
+   * with the preview, and `loadPosting`'s guard keeps extraction off it. The
+   * attach and the drawer's answer are also about an APPLICATION, which the
+   * re-read may change, so they are stamped and shown only beside the one they
+   * were made for (`sameApplication`).
+   *
+   * NOT CARRIED besides the backend's: `busy` and the fill's run state
+   * (`fillRound`, `stopRequested`), since nothing can be running; and `note`,
+   * which Refresh writes. `hasForm` and `fileInputs` are carried and read
+   * again, so the Fill primary does not blink out while the detect is asked.
+   * `baseSlug` travels only as the user's pick (`refreshPage`): the library's
+   * default is re-derived from the re-read library. */
+  const PAGE_WORK = [
+    "touched", "hasForm", "fileInputs", "attached", "autoAttach", "baseSelected",
+    "baseArmed", "tailorOpen", "revisit", "fill", "eeoConsent", "residue", "essays",
+    "closest", "blank", "aiNote", "writeResults", "loop", "receiptFlags", "receiptSeen",
+    "answers", "qna",
+    "preview", "previewTyped", "prepared",
+  ];
+
+  /** True while a Refresh's own load runs: a second press is ignored rather
+   * than starting a second load (`refreshControl` marks it `aria-disabled`). */
+  let refreshing = false;
+
+  /** Refresh: a tab switch's read of the backend, for the page the panel is
+   * already on. A job or a draft added in the web app, or by a connected
+   * agent, reaches the panel no other way short of leaving the tab and coming
+   * back. What the user did on the page stays (`PAGE_WORK`).
+   *
+   * REFUSED WHILE ANY ACTION RUNS, here and by the disabled control. The reset
+   * clears `busy` and the generation bump ends a running fill's panel half, so
+   * a Refresh mid-fill would abandon the run without the `fill_cancel` a tab
+   * switch sends, and a mid-POST one would drop the answer the user is waiting
+   * for. This path never sends `fill_cancel`: it cannot run beside anything
+   * that would need one.
+   *
+   * The two tab-independent lists are forgotten too, because they are exactly
+   * what the owner added elsewhere: the drafts the picker offers and the base
+   * resumes. A switch keeps them; a request to re-read does not.
+   *
+   * A PICK IS WRITTEN DOWN AGAIN FIRST. It comes back through
+   * `restoreSession`, which trusts the memory for `SESSION_TTL_MS` from when it
+   * was written, and only while this tab's entry is the one under the key: a
+   * pick 31 minutes old, or one another tab's pick has overwritten, would be
+   * dropped by the very button meant to show more. Awaited, so the load reads
+   * the new entry. A draft deleted in the web app is still dropped: the detail
+   * read's 404 does that whatever the memory says.
+   *
+   * Says so in the note, the panel's one live region, only when the load left
+   * it empty: a sentence the load wrote (an unreachable backend) is the news. */
+  async function refreshPage() {
+    if (refreshing || card.busy !== null || card.tabId === null || !isWebPage(card.url)) {
       return;
     }
-    await loadContext(generation);
+    refreshing = true;
+    render();
+    try {
+      const pressedOn = generation;
+      if (card.claimed || card.baseSelected || card.baseArmed) await rememberSession();
+      // Re-checked after the await: the user may have switched tabs during it
+      // (that switch has already read the tab it went to), or started an action.
+      if (!current(pressedOn) || card.busy !== null) return;
+      const carry = Object.fromEntries(PAGE_WORK.map((key) => [key, card[key]]));
+      if (card.job) autoScored.delete(card.job.id);
+      if (card.baseSelected) carry.baseSlug = card.baseSlug;
+      forgetLibraryLists();
+      const token = await bindPage(card.tabId, card.url, carry);
+      if (!current(token) || card.busy !== null || card.note !== null) return;
+      card.note = { text: "Refreshed." };
+    } finally {
+      refreshing = false;
+      render();
+    }
   }
 
   // ---------- loading, and whose answers are allowed to land ----------
@@ -2455,7 +2917,7 @@
   // offers a fill and a PDF attach aimed at a job the user is not looking at.
   // The SW would pass both, because a stale `card.tabId` is a valid tab id.
   //
-  // `generation` is bumped at `onTab`, once, beside the binding it protects.
+  // `generation` is bumped at `bindPage`, once, beside the binding it protects.
   //
   // THE RULE, for EVERY async function in this file that writes the store —
   // not just the loaders below. Tasks 7 and 8 add user-initiated actions (add
@@ -2481,6 +2943,13 @@
   let generation = 0;
   const current = (token) => token === generation;
 
+  /** The job ids the scorer has been asked about in this panel's lifetime, by
+   * any way in (`scoreAllBases` records each). The automatic score on open
+   * skips these, so a failing or empty scorer is asked once per panel rather
+   * than on every return to the tab; Refresh forgets the page's job, because
+   * pressing it is the user asking to re-read. */
+  const autoScored = new Set();
+
   // WHEN THIS PAINTS: after every landing, not once at the end. A surface
   // whose loads run before it is on screen can afford one render at the end;
   // this panel is already open and being read while these are in flight, so a
@@ -2498,7 +2967,7 @@
    * `pdfReady` is what `stageFor` reads to decide Resume-is-done, so without
    * it the rail asks a user with a rendered PDF to tailor one.
    */
-  async function loadContext(token) {
+  async function loadContext(token, { inPlace = false } = {}) {
     // Paint the binding BEFORE the first round trip. `resetPageFacts` has just
     // emptied the store, so without this the panel shows an empty identity for
     // as long as the match takes — and the tab's host is a fact we already
@@ -2512,7 +2981,6 @@
     }
     if (!current(token)) return;
     applyMatch(result, card);
-    render();
 
     // The backend did not put an application on this page. Before falling back
     // to "nothing armed", see whether this browser remembers one being picked
@@ -2520,14 +2988,35 @@
     // one of them is what makes a surface look like it forgot what it was
     // doing.
     // `restorableSession` owns whether the memory may be used; the backend's
-    // own answer always wins over it.
+    // own answer always wins over it. A storage read, so it costs the paint
+    // below no round trip.
     if (!card.application) await restoreSession(token);
     if (!current(token)) return;
 
-    // AWAITED, where the scores are not: this one decides a STAGE. A rail that
-    // shows Score and then jumps to Fill a beat later is stage navigation by
-    // accident, which is the one thing this design says it never does.
-    await loadHasForm(token);
+    // THE SCORES ARE A STAGE INPUT for a saved job with no application: the
+    // ranking's best is what closes the Job step (`baseChosen`). So they are
+    // read BEFORE the render that paints the matched page — painted first, the
+    // rail showed Job for one round trip and then jumped to Resume. An
+    // application answers the base question itself, and then the read stays
+    // unawaited below. `paint: false` keeps the read's own renders out of the
+    // way; the one render after it paints what it found.
+    const scoresFirst = card.match === "exact" && card.application === null;
+    if (scoresFirst) {
+      await loadBaseScores(token, { paint: false });
+      if (!current(token)) return;
+    }
+    // THE SAME FOR AN APPLICATION, whose PDF decides Resume: its detail read
+    // lands before the render (see `loadApplicationDetail`).
+    if (card.application) {
+      await loadApplicationDetail(token);
+      if (!current(token)) return;
+    }
+    render();
+
+    // AWAITED: this one decides whether filling can happen here. A rail whose
+    // Fill primary appears a beat after the rail settles is a control arriving
+    // by accident, which is the one thing this design says it never does.
+    await loadHasForm(token, { inPlace });
     if (!current(token)) return;
     render();
 
@@ -2535,7 +3024,8 @@
     // one: the Job stage is what the user is on only once the match, the
     // remembered pick and the form verdict have all had their say. Reading a
     // posting off a page whose stage is Fill would be a read nobody asked for.
-    if (stageFor(cardFacts(card)).stage === "job") await loadPosting(token);
+    // Nor off a SAVED job: its Job step asks for the base, not the posting.
+    if (previewShown(card)) await loadPosting(token);
     if (!current(token)) return;
 
     // The picker is a Job-stage cost, and only when a form is in front of the
@@ -2546,76 +3036,76 @@
     if (shouldLoadApplications(card)) await loadApplications(token);
     if (!current(token)) return;
 
-    // Cheap, and it makes the base list a ranking rather than a guess. NOT
-    // awaited: the ranking is presentation (design §4.2), so a slow or failed
-    // read costs the ordering and nothing else — no stage waits on it.
-    loadBaseScores(token);
+    // Cheap, and it makes the base list a ranking rather than a guess — and,
+    // since Score merged into Job, the ranking's best closes the Job step. NOT
+    // awaited all the same: an application (its detail read above) answers the
+    // base question without it, and a slow or failed read leaves the Job step
+    // open on its list with its own primary, never a stage claimed wrongly.
+    if (!scoresFirst) loadBaseScores(token);
+  }
 
-    // THE READ THAT IS ALSO A VALIDATION, and since the ghost-binding round it
-    // is named as one. `restoreSession` above deliberately makes no round trip
-    // — it arms from what this browser remembers — so on a wizard's second page
-    // the binding on screen has never been checked against the backend at all.
-    // This GET is already being made for the PDF and the status, and it is
-    // aimed at the application's own resource, so a 404 from it is the backend
-    // saying the row is gone: authoritative, free, and the only place the panel
-    // can learn it. See the catch for the rule about what is NOT authoritative.
-    if (card.application) {
-      try {
-        const detail = await api(`/api/applications/${card.application.id}`);
-        if (!current(token)) return;
-        card.pdfReady = Boolean(detail.pdf_path);
-        // The Track stage's evidence line, out of the read that was already
-        // being made: `pdf_path` is here for `pdfReady` anyway, and
-        // `applied_at` costs nothing beside it.
-        card.evidence = evidenceFrom(detail);
-        // The status may have moved on since the pick — marked applied in the
-        // web app, or in another tab. The row is truth; the memory is a cache.
-        card.application = { ...card.application, status: detail.status ?? "draft" };
-      } catch (err) {
-        if (!current(token)) return;
-        // A 404 IS THE ONE FAILURE THAT MEANS SOMETHING, and the whole
-        // discrimination is this line. The user deleted the draft in the web
-        // app; the bridge restored it anyway, because a restore reads disk and
-        // asks nothing. Below this branch is every other failure — the SW
-        // asleep, no network, a 500, a message that got no answer — and each
-        // one says nothing whatever about whether the application exists. They
-        // must keep the binding: the bridge's tolerance of an unreachable
-        // backend is a deliberate design (a wizard is six page loads and a
-        // flaky connection must not cost the user their pick), and unbinding on
-        // one of them would be this panel forgetting a real application while
-        // OFFLINE — the same lie in the mirror.
-        //
-        // WHICH bindings may be dropped is not decided here.
-        // `dropDeletedApplication` owns that rule — a claim, never the
-        // backend's own match, and its docstring is where the reasoning lives
-        // — so this call is a REQUEST and the line after it reads the answer.
-        // One owner, because two places agreeing about which bindings are
-        // droppable is two places free to stop agreeing.
-        if (err?.status === 404) {
-          dropDeletedApplication();
-          if (!card.application) {
-            // The user is unbound on a page that still has a form in front of
-            // them, so the way back is offered rather than left for the next
-            // page load: this is the door `shouldLoadApplications` describes,
-            // and a restored pick never went through it (the binding was
-            // already there when it was asked).
-            //
-            // A list ALREADY READ is not re-read, and does not need to be:
-            // `dropDeletedApplication` has taken the dead row out of it, which
-            // is the one thing this panel has learned about it. A round trip
-            // to hear the rest of the same list again is a fetch the user did
-            // not ask for.
-            if (shouldLoadApplications(card)) await loadApplications(token);
-            return;
-          }
+  /** The bound application's detail: its PDF, its evidence, its status.
+   *
+   * THE READ THAT IS ALSO A VALIDATION, and since the ghost-binding round it
+   * is named as one. `restoreSession` deliberately makes no round trip
+   * — it arms from what this browser remembers — so on a wizard's second page
+   * the binding on screen has never been checked against the backend at all.
+   * This GET is already being made for the PDF and the status, and it is
+   * aimed at the application's own resource, so a 404 from it is the backend
+   * saying the row is gone: authoritative, free, and the only place the panel
+   * can learn it. See the catch for the rule about what is NOT authoritative.
+   *
+   * AWAITED BEFORE THE STAGE RENDER (`loadContext`): `pdfReady` decides
+   * Resume, so painted first, a bound application with its PDF flashed Resume
+   * with "no PDF yet" and a live Create PDF for one round trip.
+   */
+  async function loadApplicationDetail(token) {
+    try {
+      const detail = await api(`/api/applications/${card.application.id}`);
+      if (!current(token)) return;
+      card.pdfReady = Boolean(detail.pdf_path);
+      // The Track stage's evidence line, out of the read that was already
+      // being made: `pdf_path` is here for `pdfReady` anyway, and
+      // `applied_at` costs nothing beside it.
+      card.evidence = evidenceFrom(detail);
+      // The status may have moved on since the pick — marked applied in the
+      // web app, or in another tab. The row is truth; the memory is a cache.
+      card.application = { ...card.application, status: detail.status ?? "draft" };
+    } catch (err) {
+      if (!current(token)) return;
+      // A 404 IS THE ONE FAILURE THAT MEANS SOMETHING, and the whole
+      // discrimination is this line. The user deleted the draft in the web
+      // app; the bridge restored it anyway, because a restore reads disk and
+      // asks nothing. Below this branch is every other failure — the SW
+      // asleep, no network, a 500, a message that got no answer — and each
+      // one says nothing whatever about whether the application exists. They
+      // must keep the binding: the bridge's tolerance of an unreachable
+      // backend is a deliberate design (a wizard is six page loads and a
+      // flaky connection must not cost the user their pick), and unbinding on
+      // one of them would be this panel forgetting a real application while
+      // OFFLINE — the same lie in the mirror.
+      //
+      // WHICH bindings may be dropped is not decided here.
+      // `dropDeletedApplication` owns that rule — a claim, never the
+      // backend's own match, and its docstring is where the reasoning lives
+      // — so this call is a REQUEST and the line after it reads the answer.
+      // One owner, because two places agreeing about which bindings are
+      // droppable is two places free to stop agreeing.
+      if (err?.status === 404) {
+        dropDeletedApplication();
+        if (!card.application) {
+          // Unbound now, so the rest of `loadContext` runs as for any
+          // unmatched page: the Job step, and the draft picker's offer
+          // (`shouldLoadApplications`) — whose list, if already read, has had
+          // the dead row taken out by `dropDeletedApplication`.
+          return;
         }
-        card.pdfReady = false; // unknown reads as not-ready: it offers to tailor.
-        // And nothing to show, for the same reason: a read that failed told us
-        // nothing about what this application holds, and the last page's
-        // answer is not an answer about this one.
-        card.evidence = null;
       }
-      render();
+      card.pdfReady = false; // unknown reads as not-ready: it offers Create PDF.
+      // And nothing to show, for the same reason: a read that failed told us
+      // nothing about what this application holds, and the last page's
+      // answer is not an answer about this one.
+      card.evidence = null;
     }
   }
 
@@ -2646,7 +3136,7 @@
       matchedJobId: card.job?.id ?? null,
       ttlMs: SESSION_TTL_MS,
     };
-    // ONE KEY, ONE SET OF GUARDS, and no tie-break — see `KEY` for the
+    // ONE SESSION KEY, ONE SET OF GUARDS, and no tie-break — see `KEY` for the
     // decision that collapsed Task 8's second key. What was a choice between
     // two entries is a single read: one key cannot shadow itself, so the
     // "an older entry beats a fresher pick for the whole TTL" hazard is gone
@@ -2654,7 +3144,7 @@
     const entry = restorableSession(stored[KEY.session], scope);
     if (!entry) return;
     // GUARDED: an entry may name no application at all. This panel writes
-    // exactly those — a base picked at the Score stage, and the base-as-is
+    // exactly those — a base picked in the Job step, and the base-as-is
     // arming — where the whole point is a choice made BEFORE an application
     // exists, and `{id: undefined}` restored as an application is the "ready
     // state claiming an application" bug in the shape that produced it. This
@@ -2733,15 +3223,25 @@
    * Failing is not a note. "This tab has no content scripts" is a fact about
    * our own reach, not about the page and not about anything the user did; the
    * panel's one sentence belongs to what they just asked for. */
-  async function loadHasForm(token) {
+  async function loadHasForm(token, { inPlace = false } = {}) {
     const verdict = await askDetectPrepared(token);
     if (!current(token)) return;
     card.hasForm = verdict?.form === true;
-    card.fileInputs = countFileInputs(verdict);
-    // AN IMMEDIATE YES IS THE WHOLE ANSWER. A Greenhouse-class page whose form
-    // is in the first paint costs exactly the one round trip it always did —
-    // the retry below is for the pages that answered no, and nothing else.
-    if (!card.hasForm) retryHasForm(token);
+    if (card.hasForm && !inPlace) noteForm(verdict);
+    // After an in-place url change this read is the step being left, so its
+    // count is not shown: the ladder's first rung (a second on) says.
+    card.fileInputs = inPlace ? 0 : countFileInputs(verdict);
+    // AN IMMEDIATE YES IS THE WHOLE ANSWER on a page the panel was opened or
+    // switched onto: a Greenhouse-class page whose form is in the first paint
+    // costs exactly the one round trip it always did.
+    //
+    // NOT AFTER AN IN-PLACE URL CHANGE. An SPA step (Workday) changes the url
+    // before it renders, so this first read is the step being LEFT, and every
+    // Workday apply step answers `form: true` (the apply route) whatever it
+    // shows. The upload count taken here was held for the whole step: the
+    // attach offer was one step late in both directions (CarMax, 2026-09-30).
+    // So the ladder runs there too, and re-reads the count on every rung.
+    if (!card.hasForm || inPlace) retryHasForm(token, { allRungs: inPlace });
   }
 
   /** The upload-box count off a detect verdict, defensively.
@@ -2793,15 +3293,252 @@
   }
 
   /** The one detection ask, so the first attempt and every retry are the same
-   * message with the same silence-is-no reading. */
+   * message with the same silence-is-no reading.
+   *
+   * FRAME 0 FIRST, then EVERY FRAME when frame 0 has no form. An application
+   * form can live in a subframe — Greenhouse's cross-origin embed on block.xyz,
+   * inserted when the Apply tab opens, or iCIMS's candidate profile in the
+   * page's own iframe (`#icims_content_iframe`) — where frame 0 scores below
+   * the bar. A subframe on the tab's OWN SITE (`sameSite`, on the frame url
+   * `broadcastToFrames` attaches) is the page itself, so its `form` counts as
+   * frame 0's would (score 2). A frame from ANOTHER site counts only at a
+   * score of at least `SUBFRAME_FORM_SCORE`: the embed scores 3, and an ad or
+   * offer iframe with identity fields and an "Apply now" button can reach 2.
+   * Only this offer reads the stricter bar; the write gate
+   * (`frameMayReceiveUserData`, content/agent.js) is each frame's own verdict,
+   * unchanged, so every frame the offer counts is one the fill can reach. `tier` and
+   * `fileInputs` stay frame 0's (the attach offer is unchanged), and the
+   * answer is null only when no frame answered at all, which is what sends
+   * `askDetectPrepared` to inject. The fan-out carries no user data. */
+  const SUBFRAME_FORM_SCORE = 3;
+
   async function askDetect() {
+    let top = null;
     try {
-      return await ask("panel_frame0", {
+      top = await ask("panel_frame0", {
         tabId: card.tabId, message: { type: "detect_page" },
       });
     } catch (_) {
+      top = null;
+    }
+    if (top?.form === true) {
+      return { ...top, formOrigin: top.origin || originOf(card.url), formAtTop: true };
+    }
+    let frames = [];
+    try {
+      frames = await ask("page_broadcast", {
+        tabId: card.tabId, message: { type: "detect_page" },
+      });
+    } catch (_) {
+      frames = [];
+    }
+    const answered = (Array.isArray(frames) ? frames : [])
+      .filter((one) => one?.result !== undefined && one.result !== null);
+    if (top === null && answered.length === 0) return null;
+    const base = top ?? { tier: "none", form: false, score: 0, fileInputs: 0 };
+    const frameOrigin = (one) => one.result?.origin
+      || originOf(one.url ?? (one.frameId === 0 ? card.url : ""));
+    const formFrame = answered.find((one) => one.result?.form === true
+      && (one.frameId === 0 || sameSite(one.url, card.url)
+        || Number(one.result?.score) >= SUBFRAME_FORM_SCORE));
+    if (formFrame) {
+      return { ...base, form: true, formOrigin: frameOrigin(formFrame),
+               formAtTop: formFrame.frameId === 0 };
+    }
+    // A LATER STEP of an application already confirmed on this host (owner
+    // decision 2026-10-01). iCIMS's Candidate Questions and EEO steps, and
+    // every wizard's review page, are a few selects and a Submit: nothing the
+    // detector can score, so each one said "No application form here" after
+    // the first step filled. A frame on the confirmed origin with at least one
+    // fillable field is the form, while the tab stays on the employer the flow
+    // began on (`flowFor`). Search boxes never count, and the hour
+    // (`FLOW_TTL_MS`) runs from the last step found, so an abandoned
+    // application does not keep a site claimed.
+    const flowOrigin = flowFor(card.tabId)?.origin;
+    if (flowOrigin) {
+      const candidates = [
+        ...(top ? [{ frameId: 0, url: card.url, result: top }] : []), ...answered];
+      if (candidates.some((one) => Number(one.result?.controls) > 0
+          && frameOrigin(one) === flowOrigin)) {
+        return { ...base, form: true, formOrigin: flowOrigin, flow: true };
+      }
+    }
+    return { ...base, form: false };
+  }
+
+  /** WHERE AN APPLICATION IS UNDER WAY, per tab: the origin of the frame
+   * whose form was confirmed, the EMPLOYER it was confirmed under (the top
+   * page's `flowScope`), and when. It does two things:
+   *
+   * - `askDetect` counts a later step on that origin as a form (above);
+   * - `ask` VOUCHES for the origin on every gated page message
+   *   (`withFlowOrigin`), and `frameMayReceiveUserData` (content/agent.js)
+   *   lets a subframe on exactly that origin take the fill. That is what lets
+   *   an iCIMS iframe on its EEO step be written to at all: its own detect
+   *   says no.
+   *
+   * SCOPED TO THE EMPLOYER, not the origin alone: Greenhouse, Lever and Ashby
+   * serve every employer from one host, so a flow begun on one company's
+   * board must not vouch for that host's frame on another company's page in
+   * the same tab. `flowScope` is the top page's origin and first path segment
+   * (`sessionTenant`'s tenant without the posting): one employer across an
+   * iCIMS, Workday or Greenhouse wizard, a different one on the next company.
+   *
+   * IN `chrome.storage.session`, so closing and reopening the panel mid-
+   * application keeps it, and a browser restart forgets it. Written per tab
+   * (read, merge, prune the lapsed, write), because every window's panel
+   * shares the key. Total: a failed read or write is "no flow", which is the
+   * behaviour without one, never an error. */
+  const FLOW_TTL_MS = 60 * 60 * 1000;
+  const FLOW_KEY = "applicationFlows";
+  const flows = new Map();
+  const isWebOrigin = (origin) => /^https?:\/\//.test(origin ?? "");
+  const fresh = (entry, now) => now - Number(entry?.at) <= FLOW_TTL_MS;
+
+  function flowScope(url) {
+    try {
+      const u = new URL(url);
+      return `${u.origin}/${u.pathname.split("/")[1] ?? ""}`;
+    } catch {
       return null;
     }
+  }
+
+  /** The tab's flow while it is fresh and the tab is still on the employer it
+   * began on, or null. Only the bound tab has a page to compare. */
+  function flowFor(tabId) {
+    const entry = flows.get(tabId);
+    if (!entry || tabId !== card.tabId) return null;
+    if (!fresh(entry, Date.now())) {
+      flows.delete(tabId);
+      return null;
+    }
+    return entry.scope === flowScope(card.url) ? entry : null;
+  }
+
+  /** Confirm (or renew) the bound tab's flow. A form frame 0 answered never
+   * REPLACES a live flow's origin under the same employer: the top frame
+   * passes the gate without a vouch, and the subframe the vouch exists for
+   * (iCIMS's own iframe) would lose it to a careers page's sign-up form. */
+  function rememberFlow(verdict) {
+    const tabId = card.tabId;
+    const scope = flowScope(card.url);
+    if (tabId === null || !scope || !isWebOrigin(verdict?.formOrigin)) return;
+    const live = flowFor(tabId);
+    const origin = live && verdict.formAtTop ? live.origin : verdict.formOrigin;
+    const entry = { origin, scope, at: Date.now() };
+    flows.set(tabId, entry);
+    persistFlow(tabId, entry).catch(
+      (err) => console.warn("[maestro-cs] could not keep the application flow:", err));
+  }
+
+  async function persistFlow(tabId, entry) {
+    const area = chrome.storage.session;
+    if (!area) return;
+    const now = Date.now();
+    const kept = Object.fromEntries(Object.entries(
+      (await area.get(FLOW_KEY))?.[FLOW_KEY] ?? {}).filter(([, one]) => fresh(one, now)));
+    await area.set({ [FLOW_KEY]: { ...kept, [tabId]: entry } });
+  }
+
+  async function loadFlows() {
+    try {
+      const stored = (await chrome.storage.session?.get(FLOW_KEY))?.[FLOW_KEY] ?? {};
+      const now = Date.now();
+      for (const [tabId, entry] of Object.entries(stored)) {
+        if (isWebOrigin(entry?.origin) && typeof entry?.scope === "string" && fresh(entry, now)) {
+          flows.set(Number(tabId), entry);
+        }
+      }
+    } catch (_) {
+      // Nothing remembered: a later step then needs its own evidence.
+    }
+  }
+
+  /** The vouch, on the two message types that reach a page's frames, and only
+   * for the inner types the gate reads: an ungated read or a Stop needs none.
+   * Added here, at the panel's one door to the service worker, so no caller
+   * can forget it and none has to know about it. */
+  const UNGATED_PAGE_TYPES = ["detect_page", "extract_job_posting", "fill_cancel"];
+
+  function withFlowOrigin(type, payload) {
+    if (type !== "page_broadcast" && type !== "attach_pdf") return payload;
+    if (UNGATED_PAGE_TYPES.includes(payload.message?.type)) return payload;
+    const origin = flowFor(payload.tabId)?.origin;
+    if (!origin) return payload;
+    return type === "attach_pdf"
+      ? { ...payload, flowOrigin: origin }
+      : { ...payload, message: { ...payload.message, flowOrigin: origin } };
+  }
+
+  /** A form was confirmed on this page: keep the flow alive for the next
+   * step, and on a later step of an application the panel already filled,
+   * open the Fill row so Autofill is in front of the user.
+   *
+   * WHY THE ROW HAS TO BE OPENED: the session bridge keeps `touched` across
+   * a wizard's page loads (see `revisit`'s note), so the rail stands at Track
+   * from step two on and the Fill body was a door the user had to find. This
+   * is that door opened for them, as a VIEW (`revisit`), never a stage: no
+   * tick moves. Only where nothing has run on THIS page (`fill`, `loop`), only
+   * on a draft (an applied application is finished), only on a page reached
+   * by navigating inside the tab (`boundInPlace`), and once per page url, so a
+   * Refresh or a re-detect never reopens a row the user closed. NEVER ON THE
+   * FIRST READ after an in-place url change, which is the step being LEFT
+   * (`loadHasForm`): a Workday Submit would otherwise open Fill over the
+   * confirmation page. The ladder's rungs read the new step and call this. */
+  let fillOpenedFor = null;
+  let boundInPlace = false;
+
+  function noteForm(verdict) {
+    rememberFlow(verdict);
+    const pageKey = `${card.tabId} ${card.url}`;
+    if (!boundInPlace || fillOpenedFor === pageKey) return false;
+    if (card.revisit || card.fill !== null || card.loop != null || card.busy !== null) return false;
+    const decision = stageFor(cardFacts(card));
+    if (decision.stage !== "track" || decision.done.fill !== true || decision.done.track) return false;
+    fillOpenedFor = pageKey;
+    card.revisit = { row: "fill", over: decision.stage };
+    return true;
+  }
+
+  /** A subframe of the bound tab finished loading: ask again, once per burst.
+   *
+   * The late case the retry ladder cannot reach: a page that inserts its
+   * application iframe when the user opens an Apply tab does it with no url
+   * change, long after the 1/2/4 s schedule has run out. Debounced, because a
+   * page loads several frames at once; only while there is no form yet, never
+   * while an action runs, and under the generation rule — the answer lands
+   * only on the page that asked. Refresh covers the same case by hand.
+   *
+   * CAPPED at `FRAME_DETECT_MAX` asks per page binding: a page rotating ad
+   * iframes finishes a subframe load every few seconds, and asking every frame
+   * each time would be a cost with no end. `bindPage` (a tab switch, Refresh)
+   * starts the count again. */
+  const FRAME_DETECT_MS = 500;
+  const FRAME_DETECT_MAX = 5;
+  let frameDetectTimer = null;
+  let frameDetects = 0;
+
+  function scheduleFrameDetect() {
+    clearTimeout(frameDetectTimer);
+    const token = generation;
+    frameDetectTimer = setTimeout(() => {
+      detectLateFrame(token).catch(
+        (err) => console.warn("[maestro-cs] panel could not re-detect a frame:", err));
+    }, FRAME_DETECT_MS);
+  }
+
+  async function detectLateFrame(token) {
+    if (!current(token) || card.hasForm || card.busy !== null || !isWebPage(card.url)) return;
+    if (frameDetects >= FRAME_DETECT_MAX) return;
+    frameDetects += 1;
+    const verdict = await askDetect();
+    if (!current(token) || card.hasForm || card.busy !== null) return;
+    if (verdict?.form !== true) return;
+    card.hasForm = true;
+    card.fileInputs = countFileInputs(verdict);
+    noteForm(verdict);
+    render();
   }
 
   /** How long the panel keeps re-asking a page that has not finished rendering.
@@ -2838,9 +3575,10 @@
    * buy an answer it already has.
    *
    * ONE CADENCE, TWO LADDERS, and the constant is the only thing they share.
-   * `retryHasForm` starts only when the first answer was no and stops at the
-   * first yes; `retryPosting` starts on every Job-stage page and stops when an
-   * answer stops improving. They do not even begin together — a page with a
+   * `retryHasForm` starts when the first answer was no and stops at the
+   * first yes, or after an in-place url change and then runs every rung to
+   * settle the upload count (`loadHasForm`); `retryPosting` starts on every
+   * Job-stage page and stops when an answer stops improving. They do not even begin together — a page with a
    * form the user has armed no base for sits at Job, so the posting ladder runs
    * there while the form ladder never started, and a page that is not a posting
    * at all runs the form ladder alone — so folding them into one loop would be
@@ -2851,7 +3589,7 @@
    */
   const PAGE_RETRY_MS = [1000, 2000, 4000];
 
-  async function retryHasForm(token) {
+  async function retryHasForm(token, { allRungs = false } = {}) {
     for (const delay of PAGE_RETRY_MS) {
       await sleep(delay);
       // Before the ASK, because `askDetect` names `card.tabId` and that field
@@ -2883,7 +3621,14 @@
         if (card.fileInputs !== before) render();
       }
       if (verdict?.form !== true) continue;
+      // A yes already known is the in-place ladder settling the count — and
+      // the first read of the NEW step, which is the one `noteForm` may act on.
+      if (card.hasForm) {
+        if (allRungs && noteForm(verdict)) render();
+        continue;
+      }
       card.hasForm = true;
+      noteForm(verdict);
       // A REPAINT IS THE WHOLE OF IT, and that is a shrink rather than an
       // oversight. A late yes MOVES NO STAGE any more — `stageFor` stopped
       // reading the form when the shortcut's gate went to the button — so what
@@ -2901,7 +3646,8 @@
       // whole point is worse than no call: it reads as the mechanism keeping
       // the picker alive, and the picker no longer needs one.
       render();
-      return;
+      // After an in-place url change the count is still settling: every rung.
+      if (!allRungs) return;
     }
   }
 
@@ -2909,11 +3655,10 @@
 
   /** The posting on the page, for the Job stage's editable preview.
    *
-   * The same door `loadHasForm` uses and for the same reason: extraction is a
-   * page function and this document is in no page. `extract_job_posting` reads
-   * the TOP frame only — a posting's JSON-LD is in the top document, and the
-   * subframes are the application FORM's business, not the posting's — which
-   * is exactly what `panel_frame0` addresses.
+   * The same doors `loadHasForm` uses and for the same reason: extraction is a
+   * page function and this document is in no page. `askPosting` reads the TOP
+   * frame first and the other frames only when the top frame's answer is not a
+   * job description (an iCIMS posting lives in an iframe).
    *
    * A failure is not a note and not a fault. The panel asked the page a
    * question about itself and got nothing; three empty boxes say that, and they
@@ -2941,15 +3686,59 @@
   /** The one extraction ask, so the first attempt and every retry are the same
    * message read the same way — `askDetect`'s twin, and split out for the same
    * reason: two copies of a silence-is-nothing rule would eventually disagree
-   * about what a page that did not answer means. */
+   * about what a page that did not answer means.
+   *
+   * FRAME 0 FIRST, then EVERY FRAME when frame 0's answer is not a job
+   * description (`describesJob`). A posting can live in a subframe: iCIMS
+   * serves the careers site's chrome in the top document and the posting, its
+   * JobPosting JSON-LD included, in a same-origin iframe
+   * (`#icims_content_iframe`, `in_iframe=1`). Frame 0 then answers with its
+   * own navigation as `body` text, and saving that stored a job with no title
+   * and no skills (careers-gmr.icims.com, 2026-09-30).
+   *
+   * A SUBFRAME'S ANSWER WINS ONLY WHEN IT IS A JOB DESCRIPTION FROM THE TAB'S
+   * OWN SITE (`sameSite`, on the frame url `broadcastToFrames` attaches), and
+   * the richest one wins: `landPosting`'s own order, provenance then size. A
+   * vendor's "similar jobs" widget carries its own JobPosting JSON-LD, and an
+   * ad frame can hold a description-like container; neither is this tab's
+   * posting, so frame 0's answer stands over them. Frame 0 is asked first and
+   * alone wherever it has the posting, which is every page that worked before
+   * this. The fan-out
+   * reads page text only and carries nothing from the user. The answer is null
+   * only when frame 0 was silent and no subframe had a posting, which is what
+   * sends `askPostingPrepared` to inject. */
   async function askPosting() {
+    let top = null;
     try {
-      return await ask("panel_frame0", {
+      top = await ask("panel_frame0", {
         tabId: card.tabId, message: { type: "extract_job_posting" },
       });
     } catch (_) {
-      return null;
+      top = null;
     }
+    if (describesJob(top)) return top;
+    let frames = [];
+    try {
+      frames = await ask("page_broadcast", {
+        tabId: card.tabId, message: { type: "extract_job_posting" },
+      });
+    } catch (_) {
+      frames = [];
+    }
+    return (Array.isArray(frames) ? frames : [])
+      .filter((one) => one?.frameId !== 0 && sameSite(one?.url, card.url)
+        && describesJob(one?.result))
+      .map((one) => one.result)
+      .reduce((best, one) => (best === null || richerPosting(one, best) ? one : best), null)
+      ?? top;
+  }
+
+  /** Whether extraction `a` outranks `b`: better provenance, or the same
+   * provenance and more of it — `landPosting`'s order, on raw answers. */
+  function richerPosting(a, b) {
+    const [left, right] = [previewFrom(a), previewFrom(b)];
+    const rank = sourceRank(left) - sourceRank(right);
+    return rank > 0 || (rank === 0 && postingWeight(left) > postingWeight(right));
   }
 
   /** Ask the page for its posting, and if it does not answer, put our scripts
@@ -3214,14 +4003,15 @@
    *
    * A READ, and cheap: `GET /api/ats-scores?job_id=`
    * returns whatever has already been computed and computes nothing. Failure is
-   * silent on purpose — a panel without the ranking is the panel that shipped
-   * at Task 5, so an outage costs the ordering and nothing else.
+   * silent on purpose — the Job step stays open on its list, with its own
+   * primary to score. An answer with no scored base, on a Job step, is what
+   * asks the scorer once (`shouldScoreOnOpen`).
    */
-  async function loadBaseScores(token) {
+  async function loadBaseScores(token, { paint = true } = {}) {
     // The library first: the ranking is OVER base resumes, and the default
     // pick — which is what the identity card's "Before" ring reads — comes out
     // of that list.
-    await loadBaseResumes(token);
+    await loadBaseResumes(token, { paint });
     if (!current(token) || !card.job) return;
     let rows;
     try {
@@ -3239,33 +4029,56 @@
     } catch (_) {
       if (!current(token)) return;
       card.scores = null;   // "we do not know", which is what null means here.
-      render();
+      if (paint) render();
       return;
     }
     if (!current(token)) return;
     card.scores = rows;
     // Move the selection onto the best resume, unless the user has picked one:
     // a ranking that quietly overrode an explicit choice would be the panel
-    // arguing with them. It moves `baseSlug` and NEVER `baseSelected` — the
-    // Score stage completes when the USER picks (`pickBase`), and a panel that
-    // ticked it off by ranking would be answering on their behalf.
-    if (!card.baseSelected) {
+    // arguing with them. It moves `baseSlug` and NEVER `baseSelected`, which
+    // stays the user's own pick (`pickBase`); the moved `baseSlug` is the
+    // preselected best that closes the Job step (`cardFacts`' `baseChosen`).
+    if (!card.baseSelected && !card.baseFromApplication) {
       const best = rankBaseResumes(card.resumes, card.scores)[0];
       if (best && best.score !== null) card.baseSlug = best.slug;
     }
-    render();
+    if (paint) render();
+    // The Job step opening on a saved job that no base has a score for is
+    // scored now, with no press (owner decision, 2026-09-27). Synchronous to
+    // the guard above, so it starts for this page or not at all; the action
+    // holds the generation rule for its own round trip.
+    if (shouldScoreOnOpen(card)) scoreAllBases({ quiet: true });
   }
 
-  /** The base-resume library, asked for once per panel rather than once per
-   * tab: it is not a fact about a page, which is why `resetPageFacts` keeps it.
-   * `resumesRequest` is a latch held as a promise, so two quick tab switches
-   * spend one round trip rather than two. */
+  /** Score the bases WITHOUT a press? Only when the Job step is what the user
+   * is on, the job is saved, nothing is running, the library has a resume to
+   * score, no base in it has a score for this job, and this panel has not
+   * asked the scorer about this job before (`autoScored`, so a failure or an
+   * empty answer is asked once, not on every read or every return). No
+   * application and no armed base: either answers the base question itself. The cost is the deterministic
+   * ATS engine, one local pass per base resume and no model call, and the web
+   * app's Score and tailor tab spends it the same way on a first visit. */
+  function shouldScoreOnOpen(store) {
+    if (store.busy !== null || !store.job || store.match !== "exact") return false;
+    if (store.application !== null || store.baseArmed === true) return false;
+    if (autoScored.has(store.job.id) || !store.resumes?.length) return false;
+    if (rankBaseResumes(store.resumes, store.scores)[0]?.score != null) return false;
+    return stageFor(cardFacts(store)).stage === "job";
+  }
+
+  /** The base-resume library, asked for once per panel (or per Refresh)
+   * rather than once per tab: it is not a fact about a page, which is why
+   * `resetPageFacts` keeps it. `resumesRequest` is a latch held as a promise,
+   * so two quick tab switches spend one round trip rather than two; Refresh
+   * replaces it (`forgetLibraryLists`). */
   let resumesRequest = null;
 
-  async function loadBaseResumes(token) {
+  async function loadBaseResumes(token, { paint = true } = {}) {
     if (card.resumes === null) {
+      const request = (resumesRequest ??= api("/api/base-resumes"));
+      let rows;
       try {
-        resumesRequest ??= api("/api/base-resumes");
         // The ONE settle-time write in this file that is deliberate, and it is
         // safe for a reason that does not generalise: this list is
         // TAB-INDEPENDENT. The library is the same rows whichever posting the
@@ -3274,11 +4087,16 @@
         // about the previous page, it is the same fact arriving late. Nothing
         // reads it as a claim about a posting. `card.scores`, which IS read
         // that way, lands in a local and waits for the guard.
-        card.resumes = await resumesRequest;
+        rows = await request;
       } catch (_) {
-        resumesRequest = null; // a transient failure may retry on the next tab.
+        // A transient failure may retry on the next tab.
+        if (resumesRequest === request) resumesRequest = null;
         return;
       }
+      // …unless Refresh has asked again since (`forgetLibraryLists`): then
+      // this answer is the OLDER copy of the fact, and the newer read owns it.
+      if (resumesRequest !== request) return;
+      card.resumes = rows;
     }
     if (!current(token)) return;
     // The first row is the default, and it is VISIBLE rather than implied:
@@ -3294,11 +4112,12 @@
     // resumes yet, and a panel that threw on the empty library would take the
     // whole load down for the one user who needs the empty state most.
     if (!card.baseSlug) card.baseSlug = card.resumes?.[0]?.slug ?? null;
-    render();
+    if (paint) render();
   }
 
-  /** Recent drafts, asked for once per panel rather than once per tab: the
-   * list is not a fact about a page, which is why `resetPageFacts` keeps it.
+  /** Recent drafts, asked for once per panel (or per Refresh) rather than once
+   * per tab: the list is not a fact about a page, which is why
+   * `resetPageFacts` keeps it.
    *
    * THE WIRE is `GET /api/applications?status=draft`, and both halves are
    * decisions:
@@ -3308,8 +4127,8 @@
    *   already submitted. (A "change target across every status" picker is a
    *   different feature and would need a different sentence on the row.)
    * - Lazy: loaded when Job is active and nothing has matched the page, which
-   *   is the only state that renders the list — and once per panel, not once
-   *   per tab, which is what the latch below is for.
+   *   is the only state that renders the list — and once per panel (or per
+   *   Refresh), not once per tab, which is what the latch below is for.
    *
    * THE SETTLE-TIME WRITE is `loadBaseResumes`'s exception, taken for the
    * same reason: this list is TAB-INDEPENDENT, so an answer arriving after a
@@ -3353,7 +4172,7 @@
    * which application the user is here about. A wrong offer costs a glance. A
    * wrong guess would autofill somebody else's form.
    *
-   * THE `http(s)` GUARD IS `onTab`'s, not restated here. Both callers descend
+   * THE `http(s)` GUARD IS `bindPage`'s, not restated here. Both callers descend
    * from it — `loadContext` is the only thing that calls this, and it is only
    * reached past that early return — so a `chrome://` tab never reaches this
    * function at all and a conjunct for it would be an `if` that cannot fail,
@@ -3361,22 +4180,42 @@
    * `test_a_chrome_page_is_offered_nothing_and_asks_for_nothing` pins it.
    */
   function shouldLoadApplications(store) {
-    return store.application == null
-      && stageFor(cardFacts(store)).stage === "job";
+    return store.application == null && previewShown(store);
+  }
+
+  /** Is the Job step showing the posting preview (and the draft picker)? It
+   * is the Job stage on a job Maestro CS does not have; a SAVED job's Job
+   * step is the base list instead, and asks for neither read. */
+  function previewShown(store) {
+    return store.match !== "exact" && stageFor(cardFacts(store)).stage === "job";
   }
 
   async function loadApplications(token) {
     if (card.applications !== null) return;
+    const request = (applicationsRequest ??= api("/api/applications?status=draft&limit=100"));
+    let rows;
     try {
-      applicationsRequest ??= api("/api/applications?status=draft&limit=100");
-      const rows = await applicationsRequest;
-      card.applications = Array.isArray(rows) ? rows : [];
+      rows = await request;
     } catch (_) {
-      applicationsRequest = null;
+      if (applicationsRequest === request) applicationsRequest = null;
       return;
     }
+    // A Refresh since this went out asked again; the newer list owns the slot.
+    if (applicationsRequest !== request) return;
+    card.applications = Array.isArray(rows) ? rows : [];
     if (!current(token)) return;
     render();
+  }
+
+  /** Refresh's half that a tab switch does not do: both tab-independent lists
+   * forgotten, latches and all, so the next load reads them again. A read
+   * still in flight finds its latch replaced and drops its answer, rather than
+   * landing an older list over the newer one. */
+  function forgetLibraryLists() {
+    card.resumes = null;
+    resumesRequest = null;
+    card.applications = null;
+    applicationsRequest = null;
   }
 
   // ---------- the actions' seam: the handle they write the store through -----
@@ -3431,7 +4270,9 @@
    *   rule (the actions files get the one door this file uses and never a
    *   `fetch` of its own); `broadcast` and `prepare` are the fill's fan-out and
    *   its one sanctioned injection; `telemetry` is fire-and-forget and stamps
-   *   the page host from the same bound url.
+   *   the page host from the same bound url. `trace` is `telemetry`'s sibling
+   *   (one value-free record per fill run) and rides in this group, but it
+   *   carries its OWN host, the run's, so it is the one door not stamped here.
    * - THE FLOWS an action ends with — `remember` writes the session entry,
    *   `loadContext`/`loadBaseScores` are the two re-reads that CONFIRM what an
    *   action just claimed. They take the action's own token, which is why they
@@ -3479,8 +4320,8 @@
        * receiving frames still go through `frameMayReceiveUserData` — a résumé
        * is the user's PII and is gated exactly as a fill is. The tab is bound
        * here like the other three, so an action cannot name one. */
-      attachPdf: (path, filename, expect) =>
-        ask("attach_pdf", { tabId: card.tabId, path, filename, expect }),
+      attachPdf: (path, filename, expect, resumeOnly = false) =>
+        ask("attach_pdf", { tabId: card.tabId, path, filename, expect, resumeOnly }),
       /** The page's upload-box count, asked FRESH.
        *
        * The same frame-0 detect `loadHasForm` runs, exposed because the attach
@@ -3492,6 +4333,16 @@
        * Bound to this panel's tab like every other door here, and it carries no
        * user data in either direction — it is a count of controls. */
       detectFileInputs: async () => countFileInputs(await askDetect()),
+      /** The same fresh detect, with the per-box `uploads` Autofill's attach
+       * decides with (`uploadBoxOf`, content/agent.js): `{fileInputs, uploads}`,
+       * `uploads` null from a content script that predates it, and null when
+       * the page did not answer. */
+      detectUploads: async () => {
+        const verdict = await askDetect();
+        if (!verdict) return null;
+        return { fileInputs: countFileInputs(verdict),
+                 uploads: Array.isArray(verdict.uploads) ? verdict.uploads : null };
+      },
       // Fire-and-forget and swallowed, which is telemetry's rule everywhere:
       // it may never surface an error or delay a fill. The opt-in check and the
       // key scrub are the service worker's — this is only the hand-off.
@@ -3499,7 +4350,16 @@
         ask("telemetry", { action, observations, page_host: hostOf(card.url) })
           .catch((err) => console.warn("[maestro-cs] telemetry failed:", err));
       },
+      // The run's value-free trace, with telemetry's rules: swallowed, and the
+      // opt-in check and the scrub are the service worker's.
+      trace: (trace) => {
+        ask("fill_trace", { trace }).catch((err) => console.warn("[maestro-cs] trace failed:", err));
+      },
       remember: rememberSession,
+      // Record that the scorer was asked about this job (`autoScored`).
+      scored: (jobId) => autoScored.add(jobId),
+      // The recipe book's door for one fill run (`recipeDoor`).
+      recipes: recipeDoor,
       loadContext,
       loadBaseScores,
       // `evidenceFrom` rides here for `ingestBodyFrom`'s reason: the Track
@@ -3516,7 +4376,7 @@
    * fault, and the one a user would have to notice for us. */
   const { addJob, pickApplication, unpickApplication, dropDeletedApplication,
           scoreAllBases, quickTailor, useBaseAsIs,
-          stopUsingBaseAsIs, startFill,
+          stopUsingBaseAsIs, createPdf, startFill,
           attachResume, submitAnswer, askQuestion, setStatus, trackThis } =
     ns.panelActions(actionStore());
 
@@ -3533,8 +4393,16 @@
    * there is exactly one primary and it is always in the same place. One
    * function means one `busy` key, so pressing both cannot open two tailors,
    * and the labels are the same words so nobody reads them as two features. */
-  const STAGE_RUN = { job: addJob, score: scoreAllBases, resume: quickTailor,
-                      fill: startFill };
+  const STAGE_RUN = { job: addJob, resume: quickTailor, fill: startFill };
+
+  /** `STAGE_RUN`, read the way `stageAction` reads the labels: a saved job's
+   * primary scores the bases. The two functions branch on the same fact, so
+   * the label and the behaviour cannot part. */
+  function stageRun(stage) {
+    if (stage === "job" && card.match === "exact") return () => scoreAllBases();
+    if (stage === "resume" && card.application) return () => createPdf();
+    return STAGE_RUN[stage];
+  }
 
   /** Remove the keys nothing reads any more. Once per panel open, and it is
    * the only thing in this file that touches them.
@@ -3579,7 +4447,10 @@
     // without it — means the assist pass. The narrowing is the choice; a
     // value we cannot read is not a user who made it.
     card.fillMode = card.settings?.fillMode === "rules" ? "rules" : "assist";
+    // Whether there is a recipe book to offer to forget (`readStore` never throws).
+    card.learnedMoves = ns.recipeBook.size((await readStore())[KEY.recipes]);
     render();
+    await loadFlows();
     await bindActiveTab();
   }
 

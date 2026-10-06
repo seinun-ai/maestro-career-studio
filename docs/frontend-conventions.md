@@ -7,6 +7,10 @@
 >
 > Every rule here was paid for by a defect. Read the matching one before
 > changing layout, tokens, focus behaviour, or user-facing copy.
+>
+> **Supported widths: desktop, 1024px and up** (SYSTEM.md §8). Check a change
+> at 1280 and 1024. Rules below that name 768 or 375 record what those widths
+> taught; keep their markup, but don't hold a change for a width under 1024.
 
 
 - Next.js 16 App Router, React 19, Tailwind v4 tokens in `app/globals.css`
@@ -36,24 +40,25 @@
   the referral careers URL's `text-blue-600` had no dark variant and read
   3.77:1 on the dark page. `test_underlined_links_take_a_colour_role` refuses a
   palette `text-*` in any underlined class, and the referral link is measured on
-  the page, a card and a hovered or selected row in both modes. **Palette
-  text is measured wherever it is written.** A -600 shade is not text in light
-  mode (emerald-600 read 3.42:1 and amber-600 2.98:1 on the page): plain text
-  is -700 with a `dark:` -400, and text on its own palette tint is -800 where
-  -700 falls short (amber-700 on `amber-500/10` read 4.38:1 on the page, and
-  the grade chips, version-source chips and diff rows sat under it too).
-  `test_every_palette_text_meets_aa_on_page_card_and_popover` computes every
-  class string that sets a palette `text-*`, over its tint, on the page, a card
-  and a popover in both modes (an icon, a class with `size-N`, at 3:1); text
-  that sits on a hovered row, a selected history row or the thumbnail's chip
-  is measured there too (`test_placed_palette_text_meets_aa_where_it_sits`).
+  the page, a card and a hovered or selected row in both modes. **No palette
+  shade is written anywhere.** A status colour is a role, so it
+  needs no `dark:` twin: the -600 shades it replaced read 2.98 to 3.42:1 on
+  the light page, and -700 on its own tint read 4.38:1.
+  `test_no_palette_class_is_written` lists file:line for any `text-`, `bg-`,
+  `border-`, `ring-`, `from-` or similar utility with a palette hue and a
+  shade, with no exemption. `test_status_sites_take_their_role` keeps the
+  formerly palette sites on their role.
   **Selected
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
-  `Check` plus `aria-pressed` (health-report filters, Review changes,
-  SourceToggle, the Agent inbox's history filter, the zoom presets, employment types,
+  `Check` plus `aria-pressed` (Review changes,
+  SourceToggle, `FilterChips` (the Agent inbox's History statuses), the zoom presets, employment types,
   section presets, and the template picker): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
-  `test_selected_tonal_toggles_show_a_check` pins the first four. Three exceptions carry the state
+  `test_selected_tonal_toggles_show_a_check` pins the first three. **`FilterChips`**
+  (`components/filter-chips.tsx`) is one field of about six values or fewer, every value with its count, several
+  on at once, none on meaning no filter, so it never has an "All" chip; a filter with more values than fit on one
+  line stays a Select (the Jobs status filter, measured, and the inbox's Role and Job board), and a
+  single-valued control (a sort order, a score floor) is a Select, not chips. Three exceptions carry the state
   without a Check: the formatting panel's segmented buttons are solid
   `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
   and a Check would widen every segment in a narrow pane), Career history's
@@ -69,19 +74,87 @@
   (ring against primary is 1.49:1 light, 1.70:1 dark). **Current in a list or nav**
   (a sidebar row, the open chat) is secondary container, semibold, and
   `aria-current`, with no Check. **A create or secondary action** is
-  `Button variant="tonal"`. **A non-interactive status chip** is
+  `Button variant="tonal"`, the one low-emphasis filled button (there is no
+  grey `secondary` Button variant; a Badge keeps its own for plain metadata;
+  `test_frontend_design_tokens.py` pins the Button side). **A non-interactive status chip** is
   `Badge variant="tonal"` or the secondary-container pair on a custom-sized
   chip. `bg-primary/N text-primary` is retired as a component fill. Callout
   containers (`border-primary/25 bg-primary/5` with foreground text) are not
   component states and stay.
+- **Shared tokens name every repeated choice** (`app/globals.css`; the
+  reference is `docs/design-system/`: its `README.md` is the brand book, each
+  `components/<Name>/` holds a component's guidelines and a static preview,
+  and `migration.md` maps every old class to its token). New code takes a
+  token, never a raw value.
+  **Status** is a role with a container pair, cut at M3's tones from the hue
+  the app already used, with chroma held near the primary container's: `success` (accepted, passed, added text), `warning`
+  (interviewing, a caution), `attention` (Needs you), `tertiary` (an offer,
+  an Ask), the `error-container` pair beside `--destructive`, and the primary
+  container for information (Applied, Proposed). A chip is
+  `bg-success-container text-on-success-container`; text or a dot on a
+  surface is `text-success` / `bg-success`. The hand-paired palette classes
+  (`bg-amber-500/10 text-amber-800 dark:…`) needed a dark twin at every call
+  site and are not written in new code. **Surfaces** are the five
+  `surface-container-*` tones (lowest is `--card`, container is `--muted`,
+  highest is `--canvas`); `bg-muted/N` resolved to a different grey on the
+  page, a card and the sidebar. **Type** is M3's scale as one utility
+  (`text-title-large` for a page title, `text-title-medium` a card title,
+  `text-body-medium` body, `text-label-medium` a chip or field label): size,
+  line height and weight travel together, tracking stays Geist's. A raw size
+  (`text-sm`, `text-[11px]`), an `uppercase` class, and a `font-medium` or
+  `font-semibold` beside a scale utility are not written: `test_frontend_design_tokens.py`
+  fails on each, and `docs/design-system/migration.md` maps the old class to the new one.
+  The sanctioned weight overrides are the page title and the stat tile's value
+  (`text-title-large font-medium`), the current nav row (600: the sidebar row and the open
+  chat row) and the health grade letter (`text-headline-small font-semibold`). A scale
+  utility sets its own weight on the element that carries it, so a weight written on a
+  parent does not reach a child that has its own scale class: put it on the child. Long
+  reading text (the chat reply, notes, the profile summary, judged text) keeps
+  `leading-6` or `leading-7`; no other `leading-*` sits beside a scale utility.
+  **Corners** are `rounded-corner-xs` (menus, tooltips, the checkbox, code and
+  grade chips), `-sm` (controls: buttons, inputs, selects, option tiles), `-md` (any
+  container: cards, tiles, callouts, wells, list boxes, dropzones, a popover
+  that is a panel), `-lg` (the FAB, sheets), `-xl` (dialogs), and `rounded-full`
+  for pills (chips, badges, tracks, segmented toggles and their segments, every sidebar row); a Button, SelectTrigger or Tab never passes `rounded-full`, and a tab nests in its list at `-xs`. One corner per kind of
+  thing, picked by what the element is, never by its old size: a container
+  nested in a container keeps the container's corner, and a side form
+  (`rounded-t-corner-md`) takes the same kind. Tailwind's own `rounded`,
+  `rounded-md`, `rounded-xl` and a bracketed radius are not written
+  (`test_frontend_design_tokens.py` fails on each; the one allow-listed literal
+  is the tooltip arrow's `rounded-[2px]`). `docs/design-system/migration.md`
+  maps each old class. A primitive's corner is overridden by a caller's
+  `className` (tailwind-merge knows `rounded-corner-*`), so a call site does not
+  restate the default: `Card` takes no `rounded-*`.
+  **Elevation** is `shadow-level1` to `shadow-level3`, for what floats
+  (level1 a hovered FAB or chip, a focused skip link, a modal sheet; level2
+  menus, popovers, rich (chart) tooltips, sticky bars, the PDF page pill and a
+  dragged row; level3 dialogs and toasts); tone separates everything else, so
+  a card, tile, table, plain tooltip, input or tab rests flat. A toast's level
+  is `shadow-level3!` with a `focus-visible:ring-2 ring-ring`: Sonner's CSS is
+  unlayered, so the utility needs `!`, and Sonner's focus indicator is a
+  box-shadow the important one would replace.
+  `test_frontend_design_tokens.py` fails on any other `shadow-*`, `drop-shadow-*`,
+  `inset-shadow-*` or `text-shadow-*` utility, on a bracketed one (one allow-listed
+  literal: the sticky table header's inset hairline), on a stylesheet `@apply`
+  shadow, and on any shadow passed to a `Card`, `GalleryCard`, `StatTile`,
+  `TableFrame` or `EmptyState`. **Motion** is `ease-standard`,
+  `ease-emphasized-decelerate` and `ease-emphasized-accelerate` with the
+  `--duration-*` variables. `test_frontend_design_tokens.py` pins every
+  status pair and every text role at 4.5:1 on every surface in both modes,
+  the ladder's order and its anchors. **A scale name added to `@theme` is
+  registered in `lib/utils.ts` in the same change**: tailwind-merge files an
+  unknown `text-*` as a colour, so `cn("text-title-medium",
+  "text-muted-foreground")` dropped the size; the same test keeps the two
+  lists equal. The existing call sites move over in the order
+  `docs/plans/2026-10-02-design-system-tokens.md` gives.
 - **A focus indicator is the solid ring, never a translucent one.**
   `ring-ring/50` and `outline-ring/60` measure about 1.8 to 2.6:1 against the
   page, under WCAG 1.4.11's 3:1, so a ring, outline or border on a `focus:`,
   `focus-visible:`, `focus-within:` or `has-[…:focus-visible]:` variant carries
   no alpha. The rule has one structural allowance and no per-file exemptions:
   a 3px `/50` halo beside a solid 1px `focus-visible:border-ring` on the same
-  element (the primitives: Button, Input, Select, Textarea, Checkbox, Tabs,
-  Badge), where the border carries the 3:1 and the halo decorates it. A
+  element (the primitives: Button, Input, Select, Textarea, Checkbox,
+  Badge; a tab draws a solid 2px inset outline instead), where the border carries the 3:1 and the halo decorates it. A
   translucent focus BORDER is never allowed (the destructive Button's was /40,
   about 2.1:1 in light mode). A variant that sets its own dark border (the
   outline Button's `dark:border-input`) also sets `dark:focus-visible:border-ring`:
@@ -123,16 +196,72 @@
   and a Check before its name, and says so with `aria-pressed`. The card's
   accessible name is only the template's name, so the default mark and the
   Needs setup badge and the ATS warning line are its `aria-describedby`.
+- **Judged resume text** (the text a check rates: a health row's bullet, a pass row, a wording row)
+  is upright `text-body-medium text-foreground`, wrapped within `max-w-[65ch]`, with a `border-l-2
+  border-border pl-3` quote rule (`judged-text.tsx`). A compact quote uses `line-clamp-3` and a
+  visible Show all toggle with `aria-expanded`; it is never italic, grey or cut to one line. Metadata
+  alone uses muted text; location, level and attention are plain text, never colour alone.
+- **One filled button per health view.** The report's is **Start the questions** (the summary band);
+  every card action is tonal or text-style (Write new wording and Apply suggestion included). The
+  question pass's is **Write N new wordings** until nothing is left to write, then **Accept all
+  shown**; a modal's own confirm is filled, since it is a view of its own. Pinned by
+  `test_one_filled_button_per_view` and `test_one_filled_button_in_view`.
+- **The health report** is one column (owner decision: no rail): the header's stamp ("Checked 2
+  minutes ago · Version 28") with an icon Check again, a full-width summary band (grade, the bar to
+  the server's `next_grade`, composition, the "No numbers anywhere" callout, the stale banner, Start
+  the questions), the checks, then tabs by ACTION (`actionTabOf`: Needs a number, Needs detail,
+  Reword, Shorten, Notes, then Done) with plain counts. `?tab=` is read with `useSearchParams`; with
+  none, the tab whose findings gain the most opens, chosen once per visit. Every panel is
+  `keepMounted`, so drafts survive a switch. In a tab, rows group by the rule they break
+  (`ruleGroups`), whose header states the rule and its points once; a row is the entry and bullet,
+  the clamped quote, the bullet's own question, one text-style action and ⋯. Ask controls read
+  `ask_kind` (a legacy stored report falls back to the question's wording); a measure ask names its
+  target and offers its number-free alternative. Re-runs run one at a time (`runLatest`'s queue),
+  and the page adopts no report older than the last one it adopted. Done lists this session's
+  fixes, disputes (Reopen) and hand-set ratings still in the report (Back to automatic). A rated
+  bullet offers a quiet **Not right?** (a free-text dispute, `dispute-box.tsx`) unless the user set
+  its rating by hand; the page keeps the reply per content hash, so it survives the re-run a moved
+  rating triggers and opens the tab the bullet moved to (`disputeTabMove`); a bullet the dispute
+  lifts out of the report carries the reply, and any suggestion as wording to copy, on its Fixed
+  entry, which takes focus. A suggestion applies through the same hash-guarded Apply, one per card
+  (the dispute's replaces the card's own).
+- **The Wording checklist** (`wording-checklist.tsx`) holds the `language.*` notes (slips, clichés,
+  filler; zero score) inside Notes, shown with every report ("No wording issues." with no hits) so
+  **Edit word list** is always reachable. A row shows the bullet as judged text, the slip as a word
+  diff (else the issue), and text-style **Apply**/**Remove** (the backend's guarded `suggestion`
+  through `bulletEditOp`, hash-guarded; copy-only for Other sections; with no suggestion, a cliché
+  row says to rewrite it in your own words and any other says to edit it in the resume) and
+  **Ignore** (adds the word to Never flag, then re-runs). One word list change
+  runs at a time (GET, PUT, re-run). **Edit word list** (`word-list-dialog.tsx`) edits Clichés,
+  Filler words and Never flag as a draft that Cancel drops; Reset to defaults fills the draft only;
+  Save commits a typed-but-unadded word (or stops on its error), sends all three and re-runs.
+- **The question pass** (`/base-resumes/[slug]/health/questions`, `question-pass.tsx`; `?from=<tab>`,
+  read with `useSearchParams`, sends Back to that tab) puts every ask on one page, rows fixed when it
+  opens: each the full bullet, its own question and field (a measure ask's labelled number fields with
+  the number-free swap, a detail ask's two-line box), **Not right?** (only while the check still
+  rates the row as it stands, `passRowDisputable`) and **Skip for now** (this visit only; the row
+  still counts in "2 of 6 answered"). Write drafts three `answerAsk` calls at a time, rows filling in
+  as each lands; a queued row's fields, Skip and Not right? are shut until its draft lands. Accept all
+  shown first lists the rows with a checkbox each (`accept-all-dialog.tsx`); wording that equals its
+  bullet says "No change to save" and is never sent. Every accept, one row or all, is ONE
+  hash-guarded `/edits` call and one version (`saveBatch` in `lib/health-report.ts`, wired by
+  `use-pass-writes.ts`); a 409 marks the rows whose text no longer matches ("This bullet changed.
+  Write it again?", which re-runs the check for that row) and sends the rest once. Undo is offered
+  only when the write is the version right after the one read before it (`/edits` answers with
+  `version_number`) and restores only while that write is still the latest (`if_latest`; a 409 says
+  to use Version history, and focus lands on the row's Saved line). At 1280 and up a context pane
+  shows the active row's item with its bullet highlighted; below that, its dates and the bullets
+  above and below sit on the row. Typed answers and open edits register the leave guard; leaving
+  re-runs the check in the background, adopts its report only if none newer is cached, and says what
+  the pass did in one toast (`passOutcomeWords`).
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or
   rhythms: the shell is `mx-auto`, so a narrower cap indents the whole column.
   **A narrow reading measure is a BODY concern (`PageMeasure` or
-  `max-w-[65ch]` on the sentences), never a shell concern.** The health
-  report is two-pane at ≥1024px: a sticky ~300px rail (grade, composition,
-  jump list, filters, batch number-asks, Check again) and a finding stream; the ~65ch measure
-  lives inside card prose, not as `PageMeasure` around the page. Below 1024px
-  the rail stacks above the stream. `PageHeader` owns the type scale; call sites pass
+  `max-w-[65ch]` on the sentences), never a shell concern.** The one-column
+  health report keeps its ~65ch measure inside card prose, not as `PageMeasure` around the page.
+  `PageHeader` owns the type scale; call sites pass
   `title`/`subtitle`/`actions`/`leading` and do not restate classes; its
   actions cluster sits in a wrapping row under `justify-between` so a long
   title never squeezes the title block to zero width, and so a toolbar that
@@ -491,8 +620,8 @@
 - **Studio panes need `min-w-0` and their toolbars need `flex-wrap`.** A flex
   item defaults to `min-width: auto`, so a pane refuses to shrink below its
   content's min-content width and pushes the page wider instead. The seven
-  section tabs are ~590px in a fractional pane, so their `TabsList` carries
-  `h-auto flex-wrap` too. **The SHELL needs it too**: `SidebarInset` and
+  section tabs are ~590px in a fractional pane, so their row scrolls sideways
+  inside itself. **The SHELL needs it too**: `SidebarInset` and
   `SidebarGutter` carry `min-w-0` — without it the same `min-width: auto` lets
   any wide descendant push the whole page past the viewport instead of
   scrolling inside its own container, and inner `overflow-x-auto` regions can
@@ -503,14 +632,15 @@
   that content. A chip that renders a resume-derived string needs a width cap
   plus `truncate`, its row's trailing controls need `shrink-0` so they hold
   their place, and if a heading already names the thing, render only the part
-  the heading does not (`shortFindingLabel`). Also: `truncate` inside a TABLE
+  the heading does not; a label that must show whole (a health row's "<entry> · bullet N", under a
+  rule heading) wraps with `break-words` instead. Also: `truncate` inside a TABLE
   needs `table-fixed` — auto layout sizes the cell to its longest content, so
   the cell never shrinks and the ellipsis never engages.
 - **The 768–1023px band is the layout's worst case.** `MOBILE_BREAKPOINT =
   768` (`hooks/use-mobile.ts`), so the sidebar becomes a sheet only BELOW
   768 — at exactly 768 the 256px rail is still pinned and a `max-w-6xl` page
-  has 462px of usable width. Test tables and toolbars at 768, not just 1280
-  and 375. The Jobs table carries `minWidth="52rem"` because
+  has 462px of usable width. Below 1024 is best-effort (see the header): the
+  wrap rules here stay, but a change isn't held for 768. The Jobs table carries `minWidth="52rem"` because
   `table-fixed` cannot grow a starved column. The base studio's Contact
   block is the worked case: its read grid is `@xs:grid-cols-[8rem_minmax(0,1fr)]`
   with `wrap-anywhere`, and below 20rem each label/value pair stacks, so a
@@ -742,19 +872,26 @@
   (`overflow-y-auto`, the chat scope picker) keeps a solid inset outline
   instead, because an absolute overlay scrolls with the content. A call site
   never passes `outline-*`, `after:hidden` or another `overflow-*` to a panel
-  (pinned). Settings and Profile pass `keepMounted` (through `SettingsTabs`),
-  so every panel mounts at load and none unmounts on a switch: unsaved text
-  and leave-guard registrations survive a hidden tab. `TabsList` scrolls
-  sideways inside itself instead of widening the page (`max-w-full
-  overflow-x-auto justify-center-safe`, scrollbar hidden, `relative` so Base
-  UI's arrow-key scroll-into-view measures from the row, `scroll-px-1`
-  so an end tab keeps room for its focus ring); the `Tabs` root is
-  `min-w-0`, or a Tabs that is a grid item (a dialog body) takes the row's
-  full label width as its minimum. A row that wraps (`h-auto flex-wrap`)
-  never scrolls: the overflow is scoped to `not-[.flex-wrap]` (`overflow-x:
-  auto` makes `overflow-y` auto too, which clipped the second line) and its
-  triggers are `h-auto` (a percentage height spilled over the next card), so
-  it grows to fit every line (pinned).
+  (pinned). Every panel stays mounted: `TabsContent` defaults `keepMounted`, so a
+  panel mounts at load and none unmounts on a switch (unsaved text and leave-guard
+  registrations survive a hidden tab, a deep link has its target; pinned). The accepted cost is that
+  hidden panels load up front (Analytics' queries, the template editor's Monaco, the chat scope
+  picker's career history), and that anything repeated across panels exists once per panel: give a
+  shared control's id a per-panel prefix (Analytics' filter row), or its label names the wrong one.
+  **Tabs are one style, the line tabs** (`docs/design-system/components/Tabs`): a 40px
+  full-width row with a hairline under it, `title-small` labels, `foreground` when current and
+  `muted-foreground` otherwise, and a 2px `primary` underline inside the current tab (inside it,
+  because the row scrolls and `overflow-x: auto` clips what hangs below; the trigger has no border,
+  so the underline lies on the hairline). A count is a plain muted number, never a Badge, and the
+  trigger's `aria-label` says it in one phrase. The focus ring is a solid 2px outline drawn inside the
+  trigger. There is no variant and no filled strip: a call site passes no fill, padding, corner or
+  wrap, and a two- or three-way view switch is a SegmentedToggle (all pinned in
+  `test_frontend_design_tokens.py`). The row never wraps; it scrolls sideways inside itself instead
+  of widening the page (`max-w-full overflow-x-auto`, start-aligned, scrollbar hidden, `relative` so
+  Base UI's arrow-key scroll-into-view measures from the row), and a click on a partly hidden tab
+  scrolls it into view. The row is `shrink-0`, so a column that overflows never squeezes it under its
+  panel. The `Tabs` root is `min-w-0`, or a Tabs that is a grid item (a dialog body) takes the row's
+  full label width as its minimum.
 - **Landmarks: the PAGE owns `<main>`, the shell owns layout.**
   `SidebarInset` is a `<div>` (shadcn ships it as `<main>`, which nests a
   second main landmark). Every route must render exactly one `<main>` in EVERY
@@ -776,15 +913,21 @@
   picker is read by its placeholder, and by nothing once a role is set.
   `RoleCategoryPicker` defaults to "Target role"; a caller that knows more
   (the import dialog's per-resume rows) passes its own.
-- **Reordering is up/down buttons, not drag-and-drop** (`move()` from
-  `lib/utils`, as in `editor-scaffold.tsx` and the formatting panel's
-  `section_order` list, which has no drag path either). No dependency, and it
-  is keyboard- and screen-reader-reachable by construction rather than by extra
-  work; each button carries an `aria-label` naming the row AND the direction,
-  because the icon alone announces nothing. The section-order buttons are the
-  shared ghost `icon-xs` (24px, 44px on a coarse pointer): they are that list's
-  only pointer path, and two adjacent 18px buttons failed WCAG 2.5.8's target
-  spacing. A list-shaped knob also needs an order-sensitive
+- **A list that drags always has a click-only move too** (WCAG 2.5.7).
+  `components/ui/sortable-list.tsx` (dnd-kit) drags a row by its grip with a
+  pointer or the keyboard (Space, arrows, Space; Escape cancels), announcing
+  each step. Bullets (`BulletList`) and custom sections pair it with ⋯ items
+  (Move to top/up/down, Delete); the formatting panel's `section_order` pairs
+  it with up/down buttons, shown on row hover or focus (always on a coarse
+  pointer). Rows key by a STABLE id (`section.key`, a section name, or
+  `useRowIds` for bare strings) so a moved row keeps its field and focus; a
+  removed row hands focus on with `rowSuccessor`, never `focusSuccessor`
+  (dnd-kit's hidden instructions and live region are the list's last
+  children). Entry cards (`editor-scaffold.tsx`) still move from their ⋯
+  only (`move()` from `lib/utils`). Every move control's `aria-label` names
+  the row AND the direction, because the icon alone announces nothing. The
+  section-order buttons are the shared ghost `icon-xs` (24px, 44px on a coarse
+  pointer): two adjacent 18px buttons failed WCAG 2.5.8's target spacing. A list-shaped knob also needs an order-sensitive
   equality in `lib/formatting.ts` `diffFrom` — `!==` on a rebuilt array is always
   true, so reference compare stores a redundant "override" on every render.
   `section_order` compares what the control shows (`shownSectionOrder`: `null`
@@ -831,8 +974,8 @@
   need waits for `open` (`useBaseResumes(false, { enabled: open })`,
   `useRoleCategories({ enabled: open })`). The page around a kept dialog
   stays mounted: a failed background refetch keeps it (`useLoadFailureError`,
-  not `query.error`), and a filter hides the section that holds kept dialogs
-  instead of unmounting it (the health report's notes). A kept LLM proposal that edits
+  not `query.error`), and a tab that holds kept dialogs stays mounted when it
+  is not shown (the health report's Notes, `keepMounted`). A kept LLM proposal that edits
   by index carries the basis it was made against (`serverKey` of the saved
   copy): once the resume moves on, the proposal is described without names,
   says so, and Apply is disabled. On Referrals the inline empty-state form
@@ -848,22 +991,30 @@
 - react-query keys: `["applications"]`, `["jobs"]`,
   `["jobs","without-application", source]`, `["job-detail", jobId]`,
   `["ats-scores", jobId]`, `["ats-compare", appId]`,
-  `["tailoring-session", id]`, `["referrals"]`, `["qa", appId]`, … —
-  invalidate job-detail alongside applications when status changes.
+  `["tailoring-session", id]`, `["referrals"]`, `["qa", appId]`,
+  `["filled-answers", jobId]`, … — invalidate job-detail alongside applications
+  when status changes. Window-focus refetch is off app-wide (`app/providers.tsx`);
+  a query turns it on itself only when its data changes in another window: the
+  job detail and What was submitted, since the Companion fills in a tab beside
+  this one. The tab's query also sets `staleTime: 0`, because tab panels stay
+  mounted and the app's 30 s freshness would show a receipt from before the fill.
 - Shared components: `StatusChip`/`SavedChip` (`components/status-chip.tsx` —
-  the ONLY status vocabulary/color source in the UI), `CompanyMonogram`,
+  the ONLY status vocabulary/color source in the UI), `CompanyMonogram` (a hash of the company name
+  picks one of four tones: primary, tertiary and secondary container, and
+  `surface-container-highest` with `text-foreground`; never a status container,
+  because StatusChip is the only place a state is coloured and the tint is
+  identity. `test_company_monogram_tones_are_not_statuses` pins it),
   `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
-  you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object:
-  `text-orange-800` on `bg-orange-500/10`, `dark:text-orange-400`; "Submission
-  uncertain" is its own entry with the same classes. Light-mode chip text is
-  800 on amber, green, sky, emerald and orange tints (the monogram's green,
-  amber, rose and cyan too) and 700 on blue, violet and red.
-  `test_frontend_color_roles.py` finds every chip literal in `status-chip.tsx`,
-  `career/entity-card.tsx` and `company-monogram.tsx` and computes it over the
-  page, a card, `--muted` and a hovered row in both modes; the three amber
-  template labels (Needs setup, the ATS warning line, Unsaved changes) are computed over the
-  page, a card and the popover. A new shade must be copied into its
-  `_TAILWIND` table.
+  you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object, the
+  `attention` container pair; "Submission uncertain" is its own entry with the
+  same pair. Every status and grade chip is a role container pair (Applied
+  and Proposed primary, Interviewing warning, Offer tertiary, Offer accepted
+  success, Rejected error, Queued secondary; grades A and B success, C
+  warning, D attention, F error), so no chip carries a `dark:` twin. The KB
+  entity chips are role pairs too (ongoing primary container, completed
+  success). `test_frontend_color_roles.py` finds every chip literal in
+  `status-chip.tsx` and `career/entity-card.tsx` and computes it over the
+  page, a card, `--muted` and a hovered row in both modes.
 - **Card galleries**: Templates and Base resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and
@@ -887,9 +1038,11 @@
   for the z-10-link/z-20-actions layering, overriding `pt-0` with `pt-4`. Reach
   for this shell whenever a card's whole face is a link AND it carries an
   actions menu — that pairing is the invariant, a preview image is not.
-- **Sidebar: one create action, and a current page you can see and hear.** Above
-  the nav groups, Add job is M3's extended FAB (`variant: "fab"`,
-  `rounded-[16px]`, since this theme's `rounded-2xl` is 18px). On `/new` it is
+- **Sidebar: one create action, and a current page you can see and hear.** Every
+  row (`SidebarMenuButton`, its sub-menu row, skeleton and count) is
+  `rounded-full`, so hover and the current row share one pill shape
+  (`test_frontend_design_tokens.py` pins it). Above the nav groups, Add job is M3's extended FAB (`variant: "fab"`,
+  `rounded-corner-lg`, 16px). On `/new` it is
   current and renders with the `default` (primary) variant, keeping that
   geometry; it stays `fab` on every other route. It rests flat
   and hover raises it one level: a resting shadow read as permanently hovered.
@@ -923,7 +1076,7 @@
   what a press does, never the mechanism: "Hide sidebar" in the sidebar,
   "Show sidebar" on the reveal pill, and `SidebarTrigger`'s own name follows
   the open state. Groups:
-  **Job search** (Jobs, Agent inbox, Referrals), **Career library** (Career history,
+  **Job search** (Jobs, Agent inbox, Automations, Referrals), **Career library** (Career history,
   Base resumes, Templates), **Tools** (Assistant, Analytics); the pinned button
   above the groups is **Add job**; Profile + Settings
   pinned in `SidebarFooter`. The Agent inbox item carries a Needs-you count:
@@ -932,7 +1085,7 @@
   is `aria-hidden` and the link's `aria-label` reads "Agent inbox, N need you"
   (an sr-only span, out of flow, made Chrome's name "Agent inbox , N…"); it
   polls every 60 s (a connected agent changes proposals outside the tab), and
-  its orange is measured on all four row states
+  its `attention` pair is measured on all four row states
   (`test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state`). Add new routes to the right group in
   `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list. Pinned by
   `test_frontend_sidebar_nav.py` and `test_frontend_first_run.py`.
@@ -963,12 +1116,22 @@
 - Design language: tonal fills over borders, pill chips, 8px rhythm,
   `ease-out` micro-interactions ≤200ms, `active:scale-[0.97]` on pressables,
   `prefers-reduced-motion` respected globally, `pointer-coarse:` variants for
-  hover-revealed controls.
-- Type scale (canonical): page title `text-[22px] font-medium
-  tracking-tight`; page subtitle `text-sm text-muted-foreground` (one
+  hover-revealed controls. Hover-reveal is for controls that REPEAT on every
+  row or card of a list (a bullet's actions, a card's ⋯). A page or section's
+  one Edit stays visible: the Career profile's per-section Edit, an item's
+  Edit details and its notes' Edit hid until hover and read as read-only.
+- A panel with nothing to do is one line, not an empty-state card: Drafts to
+  review with no drafts, and Quick capture at rest (it opens while focused,
+  typed in, sending, reading a file or under a dragged file).
+- Type scale (canonical): page title `text-title-large font-medium
+  tracking-tight`; page subtitle `text-body-medium text-muted-foreground` (one
   clause); section/card title = CardTitle default (don't override sizes);
-  centered state headings `text-lg font-medium`; body `text-sm`; meta/labels
-  `text-xs`. Never `text-2xl font-semibold` for page titles.
+  centered state headings are a page's `h1`, so `text-title-large font-medium`;
+  a name or row heading `text-title-small`; body `text-body-medium`; meta
+  `text-body-small`; a chip, badge or small control `text-label-medium`; a button
+  or field label `text-label-large`; a count or grade chip `text-label-small`.
+  Group headings are sentence case `text-title-small text-muted-foreground`,
+  never uppercase or tracked. Never `text-2xl font-semibold` for page titles.
 - Form conventions: optionality lives on the LABEL as a muted "(optional)"
   (`<Label optional>`, one definition in `components/ui/label.tsx`; GOV.UK's
   wording), never a placeholder, a hand-written span or a "· optional"
@@ -997,7 +1160,7 @@
   768 and 295px at 375, so every card is one column at 768: a viewport
   `sm:grid-cols-2` gave each API key 208px, too narrow for its label and
   status. One field is `grid gap-1.5`: a `Label` at its default size (no
-  `text-xs` or colour override), then a hint, then the control. A list of
+  size or colour override), then a hint, then the control. A list of
   switches is a `divide-y` of `SwitchRow` (44px tall, the label toggles it).
   Save and its siblings are the body's last row, `ACTION_ROW`: right-aligned,
   secondary first (Discard, Reset to default, then Save). A second containment
@@ -1008,7 +1171,7 @@
 - **A long form is divided by group headings, not rules.** A group is a
   `<fieldset>` whose `<legend>` uses `GROUP_HEADING`
   (`components/settings/setting-layout.tsx`, the career history read view's
-  uppercase tracked style). Groups sit `gap-8` apart. The fieldset stays in
+  sentence-case `text-title-small text-muted-foreground`). Groups sit `gap-8` apart. The fieldset stays in
   block flow (`space-y-4`): a rendered legend is not a grid or flex item, so
   `gap` never separates it from the first field. If a rule is ever needed, it
   goes on the legend, because the browser clips a fieldset's block-start
@@ -1044,14 +1207,19 @@
     colon, or cut the clause. The `—` CHARACTER stays correct for the
     empty-cell convention (`{value ?? "—"}`) and inside composed labels
     (`${company} — ${role}`); those are typography, not prose.
+  - *Sentence length*: no sentence a user reads runs past 25 words (the
+    ASD-STE100 cap for a description; an instruction aims for 20). Split it
+    or cut a clause. `backend/tests/test_frontend_sentence_length.py` reads
+    the same strings as the vocabulary ratchet. A long series reads as a
+    list (the low-stakes hint in Settings › Autofill), not a run-on.
   - *Canonical terms* (one word per thing, on every surface: the web app, the
-    Companion panel and the server messages the app shows;
-    `backend/tests/test_frontend_vocabulary.py` refuses most banned variants
-    in every string a user can read, including the Companion panel; Send to
-    resume, blocker, extra or custom sections, session, Submitted and
-    Accepted have no rule yet, so review catches those). This is the one
-    glossary: other bullets point here. Each canonical term, then what it
-    replaces:
+    Companion panel, the Companion manifest's name, description and titles,
+    and the server messages the app shows;
+    `backend/tests/test_frontend_vocabulary.py` refuses the banned variants
+    in every string a user can read on the first three. "submit" stays a
+    verb: only the label Submitted and a bare "Accepted" are refused).
+    This is the one glossary: other bullets point here. Each canonical term,
+    then what it replaces:
     **Career history** (the page; "your career history" in prose), never
     Career KB, KB, Knowledge Base, library, career record or career data; the
     sidebar group stays **Career library** and the file-size unit KB stays.
@@ -1078,6 +1246,9 @@
     **Add job** (the sidebar, the tracker, `/new`'s title "Add a job") and
     **Save job** (its submit and the Companion's), never New application or
     Extract job: a job becomes an application when you tailor or apply.
+    **Autofill** is the Companion's Fill-step button that fills the form in
+    front of you (never Fill this form or Start fill); it is distinct from the
+    web app's **Autofill** settings tab, which holds the answers it fills from.
     **Jobs** (the page at `/applications` and its sidebar item, which list
     saved jobs as well as applications), never Applications as a page name
     (the ratchet's "Applications page" rule; a count of actual applications
@@ -1099,9 +1270,15 @@
     the group is **Checks**; a fatal check's badge is **Must fix** and the
     other tier **Serious**; **Mark as OK** and **Undo**, never gate, blocker
     or waive; **Check health**, **Check again**, **Health report**; **Check
-    template**, never certify. **Version 12** and **Version history**.
+    template**, never certify. **Version 12** and **Version history**: "version" is only ever the
+    resume's. A bullet's drafted text is its **wording** (**Write new wording**, **Write 3 new
+    wordings**, **Accept 2 new wordings**), never a new version.
     **skill group**, **School**, **On-site**, **Role**, **Employment type**,
-    **Offer**, **Diversity questions (voluntary)**. **Persona** keeps its
+    **Offer**, **Diversity questions (voluntary)**. **What was submitted** is
+    the job page's tab holding the answer receipt; its source pills are
+    **Profile**, **Resume**, **Custom**, **Written**, **Inferred**, **You** and
+    **Upload**, and the Companion's group of flagged answers is **Check before
+    you submit**. **Persona** keeps its
     name. The model roles are **Fast model**, **Smart model** and
     **Assistant model**, never Chat model. **One word per kind of agent**:
     **Assistant** (the in-app chat and its sidebar item; one conversation is
@@ -1109,12 +1286,16 @@
     Settings tab, whose first card says what one is and what it cannot do),
     **Companion** (the browser extension; a proper name in a label that is a
     name, "Open Companion", and "the Companion" in running sentences and in a
-    label that reads as one, "Let the Companion tick agreement boxes"). **Suggested edits** ("Suggested edit"
+    label that reads as one, "Let the Companion fill agreements and signatures"). **Suggested edits** ("Suggested edit"
     for one: the Assistant's edit card and the studio's Ask for changes
     sheet) and **Suggested project** (the Assistant's project card).
     "Proposal" means only a job a connected agent filed, and a filer is named
     through `lib/agent-name.ts`, never printed raw. Bare "Agent" appears only
-    in Agent inbox, the source toggle's "Agents" and Agent pipeline. **Agent
+    in Agent inbox, the source toggle's "Agents" and Agent pipeline. The
+    **Automations** page calls the app a user runs a prompt in an **agent app**
+    (Claude Desktop, Codex, Any MCP agent) and each card **Scheduled** or
+    **Attended** (or Custom); it copies a prompt and never promises to run one.
+    **Agent
     inbox** (`/proposals`), never Agent proposals; its lanes are **Needs
     you**, **To review**, **Queued**, **Applying** and **History** (one table,
     `lib/inbox-lanes.ts`); its verbs **Queue** and **Skip** in the inbox and

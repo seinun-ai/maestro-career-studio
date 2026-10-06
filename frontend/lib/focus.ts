@@ -48,7 +48,7 @@ export function focusReturnPoint(el: Element | null): () => HTMLElement | null {
  * Where focus goes when a list item disappears: the next item's first field or tabbable while it is still there,
  * else the previous one's, else the list's nearest `tabIndex={-1}` ancestor (else the main area). With `control`
  * (a selector), the neighbour's element matching it comes first: the same control the user was on in the item
- * that left. The siblings and the landmark are read NOW, while the item is attached; the item itself is never
+ * that left. A neighbour with nothing that can take focus (a row with no action) sends it to that ancestor too. The siblings and the landmark are read NOW, while the item is attached; the item itself is never
  * the answer, because a caller can ask while the item is still on its way out.
  */
 export function focusSuccessor(item: Element | null | undefined, control?: string): () => HTMLElement | null {
@@ -59,7 +59,9 @@ export function focusSuccessor(item: Element | null | undefined, control?: strin
   return () => {
     const sibling = siblings.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected);
     if (!sibling) return landmark();
-    return (control ? sibling.querySelector<HTMLElement>(control) : null) ?? focusTarget(sibling);
+    const target = (control ? sibling.querySelector<HTMLElement>(control) : null) ?? focusTarget(sibling);
+    // A neighbour with nothing that takes focus (a row with no action): its focus() would do nothing.
+    return canTakeFocus(target) ? target : landmark();
   };
 }
 
@@ -79,6 +81,11 @@ export function finalFocusOn(target: HTMLElement | null): HTMLElement | boolean 
   if (target.tabIndex >= 0) return target;
   queueMicrotask(() => focusIfDropped(target));
   return false;
+}
+
+/** A tabbable element, or one that opted into script focus (`tabIndex={-1}`). */
+function canTakeFocus(el: HTMLElement): boolean {
+  return el.matches(TABBABLE) || el.matches('[tabindex="-1"]');
 }
 
 /** The element when it takes focus itself, else its first text field, else its first tabbable. */

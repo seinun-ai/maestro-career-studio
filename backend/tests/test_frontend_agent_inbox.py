@@ -120,11 +120,38 @@ def test_the_toolbar_is_one_row_like_applications():
         r'<SelectTrigger\s+className="([^"]*)"\s+aria-label="([^"]+)"', toolbar
     )
     assert [label for _, label in triggers] == ["Sort", "Role", "Job board", "Minimum score"]
-    assert all("h-8" in cls.split() and "rounded-full" in cls.split() for cls, _ in triggers)
+    # The same 32px select as Applications', at the select's own 8px corner (not a pill).
+    assert all("h-8" in cls.split() and "rounded-full" not in cls.split() for cls, _ in triggers)
     # No caption stacked over a control, and no free-number field.
     assert "grid gap-1" not in toolbar
     assert "<Input" not in toolbar
     assert 'placeholder="e.g. 50"' not in _SECTION
+
+
+def test_the_toolbar_keeps_its_four_selects_none_is_a_chip_group():
+    """FilterChips are for a filter of about six values or fewer, several of which can be on. None of
+    these qualifies: Sort and Minimum score are single-valued (a sort order, a floor; two floors on
+    at once mean nothing), Role has a value per role category that appears (six in the owner's data)
+    and Job board one per host (thirty-odd). The History status filter below the lanes is the chip
+    group (docs/design-system/components/FilterChips)."""
+    assert "<FilterChips" not in _toolbar()
+    assert _toolbar().count("<Select\n") + _toolbar().count("<Select ") == 4
+
+
+def test_the_history_statuses_are_filter_chips_with_counts_and_no_all():
+    """A set of statuses, each chip with how many proposals it would show; none on shows them all."""
+    start = _SECTION.index("<FilterChips")
+    chips = _SECTION[start : _SECTION.index("/>", _SECTION.index("count:", start)) + 2]
+    assert 'label="History status"' in chips
+    assert "value={historyStatus}" in chips and "onChange={setHistoryStatus}" in chips
+    assert "count: historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length," in chips
+    assert "useState<ReadonlySet<ProposalStatus>>(new Set())" in _SECTION
+    assert "historyStatus.size === 0" in _SECTION
+    assert "historyStatus.has(historyStatusOf(p.status, p.reason))" in _SECTION
+    # The hand-built chips (xs Buttons, an "All" chip, no counts) are gone.
+    assert '"all", ...INBOX_LANES.history' not in _SECTION
+    assert 'status === "all" ? "All"' not in _SECTION
+    assert 'useState<"all" | ProposalStatus>' not in _SECTION
 
 
 def test_the_sort_values_describe_themselves():
@@ -134,18 +161,6 @@ def test_the_sort_values_describe_themselves():
     # It sorts by job title, not by the Role filter's role category: its label says so.
     assert 'case "title":\n        return (a.job.title ?? "").localeCompare(b.job.title ?? "");' in _SECTION
     assert "Role A–Z" not in _SECTION
-
-
-def test_the_filters_share_a_line_on_a_phone_where_they_fit():
-    """At 375 min-w-[10rem] put the four pills one per line. Below sm they
-    take their own width and grow into the line: two to a line at 375, and a
-    long value (a board's host) wraps to its own line instead of clipping."""
-    toolbar = _toolbar()
-    assert '<div className="flex flex-wrap items-center gap-1.5">' in toolbar
-    for cls, label in re.findall(r'<SelectTrigger\s+className="([^"]*)"\s+aria-label="([^"]+)"', toolbar):
-        classes = cls.split()
-        assert {"shrink-0", "grow", "sm:grow-0"} <= set(classes), label
-        assert not [c for c in classes if c.startswith("min-w-")], label  # only from sm up
 
 
 def test_the_search_box_is_the_shared_one():
@@ -279,7 +294,7 @@ def test_every_proposal_surface_names_who_filed_it():
     assert "const byLine = proposalByLine(proposal.proposed_by, proposal.status);" in row
     assert 'const meta = [byLine, formatTimeAgo(proposal.created_at)].filter(Boolean).join(" · ");' in row
     # It truncates in a narrow row: the whole of it on hover.
-    assert '<div className="text-muted-foreground truncate text-xs" title={meta}>' in row
+    assert '<div className="text-muted-foreground truncate text-body-small" title={meta}>' in row
     assert '<CardTitle>{proposalByLine(data.proposed_by, data.status) ?? "Agent inbox"}</CardTitle>' in _PANEL
     assert "Proposed {formatShortDate(data.created_at)}" in _PANEL and '<Fact label="Proposed">' not in _PANEL
     assert "? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;" in _JOB
@@ -568,7 +583,7 @@ def test_the_lanes_are_read_from_the_one_table():
     """Each lane filters through `inLane`, never its own list (M6)."""
     for lane in ("needs_you", "triage", "queued", "in_flight", "history"):
         assert _SECTION.count(f'inLane(filtered, "{lane}")') == 1, lane
-    assert '"all", ...INBOX_LANES.history' in _SECTION  # the History filter's chips
+    assert "options={INBOX_LANES.history.map((status) => ({" in _SECTION  # the History filter's chips
     for old in ("const NEEDS_YOU", "const TRIAGE", "const QUEUED", "const IN_FLIGHT", "const HISTORY",
                 "export const STATUS_ORDER", ".includes(p.status)"):
         assert old not in _SECTION, old
@@ -763,6 +778,60 @@ def test_keep_it_patches_to_review_without_consent():
     assert '...(status === "pending_review" ? {} : { consent: { channel: "frontend" } }),' in _TRIAGE
     assert "...(applicationId ? { application_id: applicationId } : {})," in _TRIAGE
     assert "const needs = needsYouLine(data.status, data.reason);" in _PANEL
+
+
+# ── Dashboard rows: readiness, arrivals and manual applies ─────────────────
+
+_MARKS = _read("components/proposals/readiness-marks.tsx")
+
+
+def test_rows_show_readiness_marks_and_queued_puts_ready_first():
+    assert "<ReadinessMarks readiness={proposal.readiness} />" in _SECTION
+    assert 'readyFirst(sortProposals(inLane(filtered, "queued"), sort))' in _SECTION
+    assert "readinessMarks(readiness)" in _MARKS
+
+
+def test_history_says_applied_yourself_and_new_rows_are_marked():
+    assert "historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])" in _SECTION
+    assert "isNew(proposal.created_at, since)" in _SECTION
+
+
+def test_the_visit_time_reaches_every_row_and_unknown_readiness_shows_no_marks():
+    assert "export function ProposalsSection({ since = null }: { since?: string | null } = {})" in _SECTION
+    row_props = _block(_SECTION, "const rowProps = {", "\n  };")
+    assert re.search(r"^    since,$", row_props, re.M)
+    assert "since: string | null;" in _row()
+    assert "if (marks.length === 0) return null;" in _MARKS
+    new_mark = _block(_row(), "{isNew(proposal.created_at, since) ? (", ") : null}")
+    assert 'aria-hidden="true"' in new_mark and "New" in new_mark
+
+
+def test_the_arrivals_anchors_keep_lane_titles_and_focus_attributes_in_order():
+    for title, anchor in (("Needs you", "inbox-needs-you"), ("To review", "inbox-to-review"),
+                          ("Queued", "inbox-queued")):
+        opening = re.search(
+            rf'<Lane\s+(?:ref=\{{\w+\}}\s+)?title=\{{`{title} · .*?anchor="([^"]+)"\s*>',
+            _SECTION, re.S,
+        )
+        assert opening.group(1) == anchor
+    assert "anchor?: string;" in _SECTION
+    assert "<section ref={ref} tabIndex={-1} aria-labelledby={headingId} id={anchor}" in _SECTION
+    assert '<section tabIndex={-1} aria-labelledby={historyId} id="inbox-history"' in _SECTION
+
+
+_READINESS = _read("lib/inbox-readiness.ts")
+
+
+def test_history_filter_counts_and_selection_use_the_applied_yourself_group():
+    assert "historyStatusOf(p.status, p.reason)" in _SECTION
+    assert "historyAll.filter((p) => historyStatusOf(p.status, p.reason) === status).length" in _SECTION
+    assert "historyStatus.has(historyStatusOf(p.status, p.reason))" in _SECTION
+    assert 'STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)]' in _SECTION
+    assert 'status === "rejected" && reason === APPLIED_MANUALLY ? "submitted" : status' in _READINESS
+
+
+def test_the_opt_warning_stays_when_readiness_is_unknown_and_dedupes_when_known():
+    assert "job.disqualifying_for_opt && proposal.readiness?.knockout !== \"opt\"" in _SECTION
 
 
 def test_the_needs_you_help_says_where_a_stop_is_answered():

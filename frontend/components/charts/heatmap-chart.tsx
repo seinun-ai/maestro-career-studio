@@ -54,22 +54,22 @@ export function HeatmapChart({
 
   if (isLoading) return <Skeleton className="h-80 w-full" />;
   if (!data || data.length === 0) {
-    return <p className="text-muted-foreground text-sm">No data yet.</p>;
+    return <p className="text-muted-foreground text-body-medium">No data yet.</p>;
   }
 
   return (
     <div className="overflow-x-auto">
-      <p className="text-muted-foreground mb-3 text-xs">
+      <p className="text-muted-foreground mb-3 text-body-small">
         Share of jobs in each role that ask for each skill. Shows the top 30% of skills, the ones jobs ask for most.
       </p>
-      <table className="border-separate border-spacing-0.5 text-xs">
+      <table className="border-separate border-spacing-0.5 text-body-small">
         <thead>
           <tr>
             <th className="sticky left-0 bg-background p-1"></th>
             {roles.map((role) => (
               <th
                 key={role}
-                className="max-w-28 p-1 text-left align-bottom font-medium"
+                className="max-w-28 p-1 text-left align-bottom text-label-medium"
               >
                 {label(role)}
               </th>
@@ -79,7 +79,7 @@ export function HeatmapChart({
         <tbody>
           {skills.map((skill) => (
             <tr key={skill}>
-              <th className="sticky left-0 bg-background pr-2 text-left font-medium whitespace-nowrap">
+              <th className="sticky left-0 bg-background pr-2 text-left text-label-medium whitespace-nowrap">
                 {skillName(skill)}
               </th>
               {roles.map((role) => {
@@ -88,7 +88,7 @@ export function HeatmapChart({
                   <td
                     key={role}
                     title={`${skillName(skill)} · ${label(role)}: ${pct}%`}
-                    className="h-8 min-w-12 rounded text-center align-middle text-[10px]"
+                    className="h-8 min-w-12 rounded-corner-xs text-center align-middle text-label-small"
                     style={{ backgroundColor: cellColor(pct) }}
                   >
                     {pct > 0 ? `${pct.toFixed(0)}%` : ""}

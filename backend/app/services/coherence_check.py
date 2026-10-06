@@ -13,6 +13,7 @@ touched:
   ...), with any defect already present in the base resume suppressed — it
   isn't the tailoring's doing. Tailoring injects keywords straight into the
   skills list, which is exactly where this class of defect gets introduced.
+  Clichés and filler words use the user's own word bank (`health_wording`).
 - ``gates``: the health check's structural gates (parse fidelity, contact
   reachability, headers, dates, placeholders), run against the tailored
   artifact — tailoring changes pagination, so a tailored PDF can fail parse
@@ -25,7 +26,15 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.services import health_gates, llm, model_settings, prompt_assembly, resume_diff, resume_lint
+from app.services import (
+    health_gates,
+    health_wording,
+    llm,
+    model_settings,
+    prompt_assembly,
+    resume_diff,
+    resume_lint,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -157,10 +166,11 @@ def _hygiene_entry(note: dict[str, Any], customized_json: dict[str, Any]) -> dic
 
 
 def _hygiene(
-    base_json: dict[str, Any], customized_json: dict[str, Any], hunks: list[dict[str, Any]]
+    base_json: dict[str, Any], customized_json: dict[str, Any], hunks: list[dict[str, Any]],
+    word_bank: health_wording.WordBank = health_wording.DEFAULT_BANK,
 ) -> list[dict[str, Any]]:
-    base_ids = {note["id"] for note in resume_lint.rule_notes(base_json)}
-    tailored_notes = resume_lint.rule_notes(customized_json)
+    base_ids = {note["id"] for note in resume_lint.rule_notes(base_json, word_bank=word_bank)}
+    tailored_notes = resume_lint.rule_notes(customized_json, word_bank=word_bank)
     # A defect present in both base and tailored is not the tailoring's doing.
     new_notes = [note for note in tailored_notes if note["id"] not in base_ids]
     sections, entries = _changed(hunks)
@@ -190,6 +200,6 @@ def run(
     hunks = resume_diff.diff_resume(base_json, customized_json)
     return {
         "flags": _flags(customized_json, session, hunks),
-        "hygiene": _hygiene(base_json, customized_json, hunks),
+        "hygiene": _hygiene(base_json, customized_json, hunks, health_wording.load(session)),
         "gates": _gates(session, template_id, customized_json),
     }

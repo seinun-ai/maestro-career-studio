@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-5%2C695%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-8%2C081%20passing-brightgreen" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
   <a href="https://maestrocareerstudio.com"><img src="https://img.shields.io/badge/site-maestrocareerstudio.com-1a3a5c" alt="Project site"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/pkgs/container/maestro-career-studio-backend"><img src="https://img.shields.io/badge/ghcr.io-multi--arch-blue" alt="Container images"></a>
@@ -18,11 +18,22 @@
      test-count badge are refreshed from the release checklist in
      docs/RELEASING.md; edit them there, not here. -->
 
-**Maestro Career Studio helps you adapt your existing resumes to each job you
-want to apply for.** Save a job posting, compare its requirements with your
-experience, review suggested changes, and download a resume PDF. Your career
-record and application tracker are stored on your computer. When you use AI
-features, resume and job information is sent to the AI service you choose.
+### Tailor your resume to every job, without the AI making things up.
+
+Maestro Career Studio is a free, open-source job application studio that runs on
+your computer. Every resume is built from things you actually did, every AI edit
+is a change you accept or undo, and the result is a real LaTeX or Typst PDF.
+
+- **Same score, every time.** The match score uses fixed rules and runs on your
+  computer with no AI service involved, so the same resume and job always get
+  the same score.
+- **Every AI edit is a diff.** Suggested changes arrive as a before/after you
+  accept or undo, one by one.
+- **Fills job applications for you.** The browser Companion fills Workday-style
+  forms from your saved answers and attaches your resume. You review and submit.
+
+Your career record and application tracker are stored on your computer. When you
+use AI features, resume and job information is sent to the AI service you choose.
 
 **Get started:** [install it](#quickstart) → add your resumes → save a job and
 get your tailored resume. New to this? The
@@ -38,7 +49,7 @@ get your tailored resume. New to this? The
 
 ![Score, tailor, see every AI edit, download the PDF — end to end](docs/assets/hero.gif)
 
-**Works with Claude, Codex or the ChatGPT desktop app** (83 tools) ·
+**Works with Claude, Codex or the ChatGPT desktop app** (85 tools) ·
 **bring your own AI key** — OpenAI or Gemini; scoring, PDFs and tracking work
 without one · **runs on your computer, no account** · **take everything with
 you** — your whole record exports to one `career.md` file
@@ -116,7 +127,7 @@ gone stale):
 | See what the AI changed | No history | No | **Every change shown, undoable** |
 | PDF output | House web templates | HTML → PDF | **LaTeX and Typst, bring your own template** |
 | Career record | None (per document) | Plain markdown/YAML files | **Organized, versioned — exports to one `career.md`** |
-| Works with AI assistants | No | Command-line skill files | **83 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
+| Works with AI assistants | No | Command-line skill files | **85 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
 | Submits applications for you | N/A | Never (stated) | **Never without your yes, per application** |
 | Cost | $15–75/month | Free + AI usage | **Free (Apache 2.0) + your own AI usage — [≈1¢ per application](#do-you-need-an-api-key)** |
 
@@ -429,16 +440,29 @@ prints a ready-to-paste config for each one (needs **Python 3.12+**):
 Or open Claude Code or the Codex CLI in this folder and ask it to run the
 script for you.
 
-**Tool sets.** All 83 tools are on by default (`full`). Smaller sets — `hunt`,
+**Things to ask once it's connected:**
+
+- "Here's a job posting: `<paste>`. Save it, score it against my base resumes,
+  and tell me what it asks for that my resume doesn't show."
+- "Tailor my Data Scientist resume to that job, show me what changed, then make
+  the PDF."
+- "Mark the Acme application as applied, and list everything still waiting on a
+  reply."
+- "Across the jobs I've saved, which skills keep showing up as gaps?"
+
+**Tool sets.** All 85 tools are on by default (`full`). Smaller sets — `hunt`,
 `apply`, `explore`, `templates`, `career` — keep a chat focused; pick one in the
 Claude extension's **Tool profile** setting or with
 `setup-mcp.sh --profile`. Use one set at a time.
 
 **Skills.** [`docs/skills/`](docs/skills/) has ready-made skills for a daily job
-hunt and an apply run that works on its own and asks you only for what the app
-doesn't know, plus one yes before each submit. `customize-job-skills` suggests
-skills from what your agent knows about you, asks a few questions, and builds
-them with your assistant's own skill creator and scheduler.
+hunt, an apply run that asks you only for what the app doesn't know (plus one
+yes before each submit), mail-status, referral pages and a tailor run.
+`customize-job-skills` suggests skills from what your agent knows about you,
+asks a few questions, and builds them with your assistant's own skill creator
+and scheduler. The **Automations** page in the app puts each one on the
+clipboard: copy a prompt into Claude Desktop, Codex or any MCP agent, and your
+agent asks when to run it.
 
 Keep the connection type **STDIO** (the default). The HTTP option would expose
 the app, which has no login — don't. (ChatGPT on the *web* can't reach a local
@@ -518,9 +542,9 @@ evidence for can only go in your skills list, never into an invented bullet.
 ![The Companion on a job page](docs/assets/extension.gif)
 
 The **Companion** is a side panel in Chrome: save a job from the job board you're reading, score
-it, and fill application forms from your saved answers (**Profile › Autofill**). It never fills
-signatures, passwords or government IDs, only ticks agreement boxes if you turn
-that on in Profile, and never submits.
+it, and fill application forms from your saved answers (**Profile › Autofill**). It leaves
+signatures, agreement boxes, passwords and government IDs to you unless you turn
+on the agreement permission in Profile, and it never moves to the next page or submits.
 
 To improve form filling, it records *which* fields it met and whether they
 filled — never what you typed. That data stays on your computer, but it does
@@ -550,8 +574,10 @@ app, finds postings on whatever sites it can use, saves and scores them against
 your resumes, and hands back a ranked shortlist for you to review. There's no
 job-board integration to be locked into.
 
-Ready-made **`job-hunt`** and **`apply-session`** skills are in
-[`docs/skills/`](docs/skills/) — copy them into your assistant's skills folder
+Ready-made skills (`job-hunt`, `apply-session`, `mail-status`, `referral-pages`,
+`tailor-run`) are in [`docs/skills/`](docs/skills/) — copy a prompt from the
+app's **Automations** page into Claude Desktop, Codex or any MCP agent (your
+agent asks when to run it), copy the skills into your assistant's skills folder
 as-is, or run **`customize-job-skills`** to make them yours or build new ones
 (batch tailoring, referral-first hunting, a weekly digest) from your own data.
 
@@ -644,14 +670,25 @@ report is one of the most valuable contributions right now.
 - **Getting Started:** [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — install to first tailored PDF, step by step.
 - **Updating:** [`docs/UPDATING.md`](docs/UPDATING.md) — updating by hand, backups, rolling back.
 - **Known issues:** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — what works well, what's rough, and what's a deliberate limitation.
-- **Skills for your AI assistant:** [`docs/skills/`](docs/skills/) — job hunt, apply run, and a skill that builds your own.
+- **Skills for your AI assistant:** [`docs/skills/`](docs/skills/) — job hunt, apply run, mail status, referral pages, tailor run, and a skill that builds your own; the app's **Automations** page copies each as a prompt.
 - **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — development setup, tests, development mode and LLM tracing, and where help is wanted.
 - **How it's built:** [`SYSTEM.md`](SYSTEM.md) — the architecture reference for contributors and coding agents; read the relevant part before changing behaviour.
 - **Glossary:** [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — the project's vocabulary, worth ten minutes before your first contribution.
 - **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — what changed in each release; read any **Breaking changes** heading before [updating](#updating).
 - **Releasing (maintainers):** [`docs/RELEASING.md`](docs/RELEASING.md).
-- **Security & privacy:** [`SECURITY.md`](SECURITY.md) — the local-only rule and how to report a vulnerability.
+- **Security & privacy:** [`SECURITY.md`](SECURITY.md) — the local-only rule and how to report a vulnerability. [`PRIVACY.md`](PRIVACY.md) — what is stored, and what leaves your computer.
 - **License:** [`LICENSE`](LICENSE) — Apache License 2.0, plus [`NOTICE`](NOTICE).
+
+---
+
+## Privacy Policy
+
+There is no Maestro CS server or account, and the author never receives your
+data. Your career record stays in files on your computer; it goes to an AI
+service only when you add a key and use an AI feature, and to the assistant you
+connect over MCP when it calls a tool. With a model on your own computer, the
+app sends nothing out. [`PRIVACY.md`](PRIVACY.md) has the full policy: what is stored, every
+place data can go, retention, and how to ask a question.
 
 ---
 

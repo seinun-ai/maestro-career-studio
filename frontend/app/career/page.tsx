@@ -72,13 +72,13 @@ export default function CareerPage() {
                 later would have no path. */}
             <Button
               variant="outline"
-              className="rounded-full px-4"
+              className="px-4"
               onClick={() => setImportOpen(true)}
             >
               <Upload aria-hidden="true" /> Import resumes and documents
             </Button>
             <Button
-              className="rounded-full px-4"
+              className="px-4"
               onClick={() => openNewEntity(activeKind)}
             >
               <Plus aria-hidden="true" /> Add item
@@ -106,15 +106,18 @@ export default function CareerPage() {
 
       {/* Anchor: the "Import resumes" setup step links here. */}
       <Tabs id="kb-entities" value={activeTab} onValueChange={setActiveTab} className="gap-5">
-        <TabsList className="h-auto flex-wrap rounded-full bg-muted/70 p-1">
+        <TabsList>
           <TabsTrigger value="basics">Basics</TabsTrigger>
           {ENTITY_TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="gap-1.5"
+              aria-label={countFor(tab.kind) > 0 ? `${tab.title} ${countFor(tab.kind)}` : undefined}
+            >
               {tab.title}
               {countFor(tab.kind) > 0 ? (
-                <Badge variant="secondary" className="px-1.5">
-                  {countFor(tab.kind)}
-                </Badge>
+                <span className="tabular-nums text-muted-foreground">{countFor(tab.kind)}</span>
               ) : null}
             </TabsTrigger>
           ))}
@@ -198,10 +201,10 @@ function CustomSectionsTab({
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body-medium">
           Publications, awards, volunteering and more.
         </p>
-        <Button className="rounded-full" size="sm" variant="secondary" onClick={onAdd}>
+        <Button size="sm" variant="tonal" onClick={onAdd}>
           <Plus aria-hidden="true" /> Add section
         </Button>
       </div>
@@ -213,20 +216,20 @@ function CustomSectionsTab({
           ))}
         </div>
       ) : error ? (
-        <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
-          <p className="text-sm font-medium">Couldn&apos;t load other sections.</p>
+        <div role="alert" className="rounded-corner-md bg-destructive/10 p-5">
+          <p className="text-title-small">Couldn&apos;t load other sections.</p>
           <LoadDetail error={error} />
           <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
             Try again
           </Button>
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl bg-muted/45 p-10 text-center">
-          <p className="text-sm font-medium">No other sections yet</p>
-          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-xs">
+        <div className="rounded-corner-md bg-surface-container-low p-10 text-center">
+          <p className="text-title-small">No other sections yet</p>
+          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-body-small">
             Add publications, awards, talks and more.
           </p>
-          <Button className="mt-4 rounded-full" size="sm" onClick={onAdd}>
+          <Button className="mt-4" size="sm" onClick={onAdd}>
             <Plus aria-hidden="true" /> Add section
           </Button>
         </div>
@@ -235,13 +238,13 @@ function CustomSectionsTab({
           {groups.map((group) => (
             <div key={group.key} className="space-y-3">
               <div className="flex items-center gap-2 border-b pb-1.5">
-                <h3 className="text-sm font-semibold tracking-tight text-foreground">
+                <h3 className="text-title-small tracking-tight text-foreground">
                   {group.title}
                 </h3>
-                <Badge variant="outline" className="text-[11px] font-normal">
+                <Badge variant="outline" className="text-label-small">
                   {SECTION_TYPE_LABELS[group.type] ?? SECTION_TYPE_LABELS.entries}
                 </Badge>
-                <span className="text-xs text-muted-foreground ml-auto">
+                <span className="text-body-small text-muted-foreground ml-auto">
                   {group.entities.length} {group.entities.length === 1 ? "item" : "items"}
                 </span>
               </div>
@@ -278,7 +281,7 @@ function EntityTab({
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-end gap-3">
-        <Button className="rounded-full" size="sm" variant="secondary" onClick={onAdd}>
+        <Button size="sm" variant="tonal" onClick={onAdd}>
           <Plus aria-hidden="true" /> Add {singular}
         </Button>
       </div>
@@ -290,20 +293,20 @@ function EntityTab({
           ))}
         </div>
       ) : error ? (
-        <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
-          <p className="text-sm font-medium">Couldn&apos;t load {title.toLowerCase()}.</p>
+        <div role="alert" className="rounded-corner-md bg-destructive/10 p-5">
+          <p className="text-title-small">Couldn&apos;t load {title.toLowerCase()}.</p>
           <LoadDetail error={error} />
           <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
             Try again
           </Button>
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl bg-muted/45 p-10 text-center">
-          <p className="text-sm font-medium">No {title.toLowerCase()} yet</p>
-          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-xs">
+        <div className="rounded-corner-md bg-surface-container-low p-10 text-center">
+          <p className="text-title-small">No {title.toLowerCase()} yet</p>
+          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-body-small">
             Use Quick capture above, or add one yourself.
           </p>
-          <Button className="mt-4 rounded-full" size="sm" onClick={onAdd}>
+          <Button className="mt-4" size="sm" onClick={onAdd}>
             <Plus aria-hidden="true" /> Add {singular}
           </Button>
         </div>
@@ -321,5 +324,5 @@ function EntityTab({
 /** A failed load's reason, only when the server wrote a plain sentence. */
 function LoadDetail({ error }: { error: Error }) {
   const detail = errorDetail(error);
-  return detail ? <p className="text-muted-foreground mt-1 text-xs">{detail}</p> : null;
+  return detail ? <p className="text-muted-foreground mt-1 text-body-small">{detail}</p> : null;
 }

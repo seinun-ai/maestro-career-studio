@@ -14,7 +14,7 @@
  * - NOTHING HERE REACHES FOR ANYTHING: an action reads through the handle,
  *   writes through the handle, and asks the handle to paint.
  *
- * THREE ACTIONS, AND TWO OF THEM ASK THE BACKEND FOR NOTHING. `useBaseAsIs`
+ * FOUR ACTIONS, AND TWO OF THEM ASK THE BACKEND FOR NOTHING. `useBaseAsIs`
  * and its withdrawal `stopUsingBaseAsIs` have no round trip and therefore no
  * `duringAction` and no token — they are still actions rather than body
  * callbacks because of what they COMMIT to, which their own docstrings explain.
@@ -118,8 +118,8 @@
         ? { text: applied
           ? `${warning}Tailored. ${store.build.plural(applied, "change")} applied.`
           : `${warning}Tailored.` }
-        : { text: `${warning}Tailored, but couldn't create the PDF. Open `
-          + "it in Maestro CS and select Create PDF.", error: true },
+        : { text: `${warning}Tailored, but couldn't create the PDF. Select `
+          + "Create PDF to try again.", error: true },
     });
     store.render();
     // WRITTEN DOWN NOW, on the failure path as much as the success one:
@@ -158,6 +158,11 @@
    */
   function useBaseAsIs(store) {
     const facts = store.read();
+    // Both limbs that fire this lock with `aria-disabled` (focus survives the
+    // rebuild), so the click still arrives: refused while anything runs, and
+    // beside an application, whose own resume `stageFor` uses whatever the
+    // flag says (`fillFromBase` needs `!hasApplication`).
+    if (facts.busy !== null || facts.application) return;
     if (!facts.baseSlug) {
       // Nothing to be as-is. `loadBaseResumes` names the library's first row
       // as the default, so this is an EMPTY library rather than an unmade
@@ -222,5 +227,43 @@
     store.render();
   }
 
-  ns.panelActionsResume = { quickTailor, useBaseAsIs, stopUsingBaseAsIs };
+  /** Create PDF: render the bound application's stored tailored resume.
+   *
+   * THE STEP'S PRIMARY when an application has no PDF yet, and the reason it
+   * exists: Quick tailor there runs a FRESH tailor from the base (the "asks to
+   * tailor again" report), while the tailored draft is already stored and only
+   * its PDF is missing. `POST /api/applications/{id}/render` is the web app's
+   * own Create PDF endpoint (`application_render.render_resume`: the stored
+   * `customized_json`, or the base when none is stored), deterministic, no
+   * model call; the SW proxies it like every other backend path.
+   *
+   * Its answer names the PDF, so the store takes `pdfReady` and the evidence
+   * line from it rather than re-reading the application; the session entry is
+   * rewritten so the next wizard page arrives with the PDF known. Everything
+   * else is `duringAction`'s: busy on the Resume step, a note on failure, the
+   * generation check on both limbs.
+   */
+  async function createPdf(store) {
+    const facts = store.read();
+    if (facts.busy !== null || !facts.application) return;
+    const id = facts.application.id;
+    const done = await duringAction(store, "resume", () =>
+      store.api(`/api/applications/${encodeURIComponent(id)}/render`, { method: "POST" }), {
+      what: "Couldn't create the PDF.",
+      answered: "Couldn't create the PDF. Open the application in Maestro CS to see why.",
+    });
+    if (!done) return;
+    const pdfReady = Boolean(done.out?.pdf_path);
+    store.write({
+      pdfReady,
+      evidence: store.build.evidenceFrom({ pdf_path: done.out?.pdf_path }),
+      note: pdfReady ? { text: "PDF created." }
+        : { text: "Couldn't create the PDF. Open the application in Maestro CS to see why.",
+            error: true },
+    });
+    store.render();
+    store.remember();
+  }
+
+  ns.panelActionsResume = { quickTailor, useBaseAsIs, stopUsingBaseAsIs, createPdf };
 })();

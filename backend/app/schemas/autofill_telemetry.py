@@ -101,6 +101,30 @@ ObservationOutcome = Literal[
     # rows still move no fill-success rate on the Analytics coverage card.
     "applied_detected",
     "applied_dismissed",
+    # The fill loop's report statuses (shared/fill-loop.js
+    # `buildLoopObservations`, action "loop_fill"), one per field. `verified`
+    # is a value the page confirmed; `closest_filled` and `assumed_filled` wrote
+    # the nearest option, or an answer given for the user, for them to check;
+    # `partial` added some of a list's items. `needs_answer` and
+    # `cannot_operate` are left for the user (nothing answered it; the control
+    # could not be worked); `prefilled`, `blocked` and `user_edited` are fields
+    # the loop left alone (already answered, never-fill policy, the user's own
+    # edit). `unconfirmed` is a value the page shows but never confirmed (or
+    # that reverted after its one re-commit); `unsupported` is a control that
+    # ignored every synthetic input the engine sent. A value that landed
+    # without being chosen as the answer (a group click that committed one, a
+    # search that picked while exploring) reuses `filled_unverified`.
+    "verified",
+    "closest_filled",
+    "assumed_filled",
+    "partial",
+    "needs_answer",
+    "cannot_operate",
+    "user_edited",
+    "prefilled",
+    "blocked",
+    "unconfirmed",
+    "unsupported",
 ]
 
 # The kind of THING an observation is about. Six form controls plus one value
@@ -159,5 +183,7 @@ class TelemetryBatch(BaseModel):
     # checkboxes the profile pass could not drive, dispatched by shape, some of
     # them through a model choice. Not ai_fill — part of this pass runs no model
     # at all, so a single action label has to cover both.
-    action: Literal["profile_fill", "ai_fill", "rest_fill", "applied_detection"]
+    # loop_fill is the fill loop (fill engine): one observation per field it
+    # reported, with the loop's own outcomes above.
+    action: Literal["profile_fill", "ai_fill", "rest_fill", "applied_detection", "loop_fill"]
     observations: list[TelemetryObservation] = Field(max_length=MAX_OBSERVATIONS)

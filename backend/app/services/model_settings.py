@@ -249,6 +249,21 @@ def set_autofill_engine(session: Session, value: str) -> str:
     return value
 
 
+AUTOFILL_LOW_STAKES_KEY = "autofill.low_stakes"
+
+
+def get_autofill_low_stakes(session: Session | None = None) -> bool:
+    """Whether the fill may answer low-stakes preference questions (how you heard,
+    travel, relocation…) that no profile fact answers. Default off; read by the
+    server on every /map and /pick, never taken from the client."""
+    return _read(session, AUTOFILL_LOW_STAKES_KEY) == "on"
+
+
+def set_autofill_low_stakes(session: Session, enabled: bool) -> None:
+    # Off is the default, so store nothing rather than a redundant row.
+    _set_raw_value(session, AUTOFILL_LOW_STAKES_KEY, "on" if enabled else None)
+
+
 def using_custom_endpoint(session: Session | None = None) -> bool:
     """True when the OpenAI-compatible client points somewhere we do not curate.
 

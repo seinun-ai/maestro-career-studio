@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { StatTile } from "@/components/analytics/stat-tile";
 import {
   CHART_COLORS as COLORS,
   ChartCard,
@@ -39,24 +40,6 @@ function kindLabel(kind: string): string {
   return KIND_LABEL[kind] ?? "Other";
 }
 
-function Tile({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-xl bg-muted/40 p-4">
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="text-foreground mt-0.5 text-xl font-medium">{value}</p>
-      {sub ? <p className="text-muted-foreground mt-0.5 text-xs">{sub}</p> : null}
-    </div>
-  );
-}
-
 function RateTooltip({
   active,
   payload,
@@ -69,7 +52,7 @@ function RateTooltip({
   const row = active ? payload?.[0]?.payload : undefined;
   if (!row) return null;
   return (
-    <div className="bg-background rounded-md border p-2 text-xs shadow-sm">
+    <div className="bg-background rounded-corner-xs border p-2 text-body-small shadow-level2">
       <p className="font-medium">{row.kind}</p>
       <p className="text-muted-foreground">
         {row.rate.toFixed(0)}% · {row.success} filled, {row.failure} missed
@@ -89,14 +72,14 @@ export function AutofillCoverageCard() {
 
   const clear = useMutation({
     mutationFn: () =>
-      apiFetch<{ deleted: number }>("/api/autofill/telemetry", {
+      apiFetch<{ deleted: number; runs_deleted?: number }>("/api/autofill/telemetry", {
         method: "DELETE",
       }),
-    onSuccess: ({ deleted }) => {
+    onSuccess: ({ deleted, runs_deleted = 0 }) => {
       qc.invalidateQueries({ queryKey: ["autofill-telemetry-summary"] });
-      toast.success(
-        deleted === 1 ? "Cleared 1 captured field" : `Cleared ${deleted} captured fields`
-      );
+      const fields = deleted === 1 ? "1 captured field" : `${deleted} captured fields`;
+      const runs = runs_deleted === 1 ? "1 run record" : `${runs_deleted} run records`;
+      toast.success(`Cleared ${fields} and ${runs}`);
     },
     onError: (err: Error) => toast.error(couldnt("clear the data", err)),
   });
@@ -114,6 +97,7 @@ export function AutofillCoverageCard() {
       description:
         `This deletes what was recorded about ${signatures} form ${signatures === 1 ? "field" : "fields"}` +
         ` on ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were on and when.` +
+        " It also deletes the stored records of how Autofill decided each field's answer." +
         " You can't undo this." +
         // The Companion has no switch for capture (extension/README.md), so
         // the confirm names none.
@@ -157,9 +141,9 @@ export function AutofillCoverageCard() {
       {!data ? null : (
         <div className="grid gap-4">
           <div className="grid grid-cols-3 gap-3">
-            <Tile label="Unique fields" value={String(data.totals.signatures)} />
-            <Tile label="Times seen" value={String(data.totals.observations)} />
-            <Tile label="Sites" value={String(data.totals.hosts)} />
+            <StatTile label="Unique fields" value={String(data.totals.signatures)} />
+            <StatTile label="Times seen" value={String(data.totals.observations)} />
+            <StatTile label="Sites" value={String(data.totals.hosts)} />
           </div>
 
           {rates.length > 0 ? (
@@ -196,14 +180,14 @@ export function AutofillCoverageCard() {
 
           {data.top_failures.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-body-medium">
                 <thead>
-                  <tr className="text-muted-foreground text-left text-xs">
-                    <th className="py-1.5 pr-3 font-normal">Field</th>
-                    <th className="py-1.5 pr-3 font-normal">Type</th>
-                    <th className="py-1.5 pr-3 font-normal">Site</th>
-                    <th className="py-1.5 pr-3 text-right font-normal">Seen</th>
-                    <th className="py-1.5 text-right font-normal">Missed</th>
+                  <tr className="text-muted-foreground text-left text-body-small">
+                    <th className="py-1.5 pr-3 text-body-small">Field</th>
+                    <th className="py-1.5 pr-3 text-body-small">Type</th>
+                    <th className="py-1.5 pr-3 text-body-small">Site</th>
+                    <th className="py-1.5 pr-3 text-right text-body-small">Seen</th>
+                    <th className="py-1.5 text-right text-body-small">Missed</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -244,7 +228,7 @@ export function AutofillCoverageCard() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-body-small">
                 New questions, last {data.novelty.length} forms.{" "}
                 {data.recommendation}
               </p>

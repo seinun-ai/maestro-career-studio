@@ -5,16 +5,17 @@ at to your local Maestro CS app.
 
 ## What it does
 
-- **Save the job.** Grab the title, company and job description from the page
-  you are reading. You can correct them before saving.
-- **Score it.** See how each of your base resumes scores against this job, best
-  first, or score them all with one click.
+- **Save the job and pick a base resume.** Grab the title, company and job
+  description from the page you are reading, and correct them before saving.
+  Saving scores each of your base resumes against the job and picks the best
+  one; you can pick another.
 - **Pick or tailor a resume.** Use a base resume as is, run Quick tailor, or
   open the job in the app for a custom tailoring session.
 - **Fill the application.** Fill the form from your saved answers (Profile ›
   Autofill in the app), with optional AI help for the questions they cannot
-  answer. Fields it could not fill are listed so you can finish them, and it can
-  attach your tailored resume PDF when you ask.
+  answer. Fields it could not fill are listed so you can finish them. Autofill
+  also attaches your tailored resume PDF to an empty resume upload box, and
+  Attach resume does it by hand.
 - **Track it.** Mark the application Draft or Applied from the panel.
 
 Open the panel with the toolbar icon or `Alt+Shift+J` (change it at
@@ -44,14 +45,16 @@ Otherwise the backend refuses the old id and the panel cannot reach it.
 
 ## What it never does
 
-- **Never fills** signatures or initials, passwords, or government IDs (Social
-  Security, passport or driver's licence numbers). No setting unlocks these.
-- **Never fills salary history** (current or past pay). It can fill a salary
-  *expectation* from your profile.
-- **Agreement and consent boxes** ("I have read and agree to the terms",
-  attestations, arbitration or waiver boxes) are left alone unless you have
-  turned on the standing agreement consent in **Profile** in the web app. Even
-  then it only ticks a box and never unticks one you already ticked.
+- **Without the agreement permission** (off by default), it never fills
+  signatures or initials, passwords, government IDs (Social Security, passport
+  or driver's licence numbers), salary history (current or past pay), or
+  agreement and consent boxes ("I have read and agree to the terms",
+  attestations, arbitration or waiver boxes). It can fill a salary
+  *expectation* from your profile either way.
+- **With the agreement permission** turned on in **Profile** in the web app, it
+  may fill every field, signatures and typed-name attestations included. It
+  never unticks a box you already ticked. A password box is still skipped by
+  its type.
 - **Voluntary EEO questions** are skipped unless you have turned on the EEO
   consent in **Profile**.
 - **Never submits** a form or moves a multi-step application to the next page.
@@ -65,12 +68,17 @@ itself makes.
 
 When you run a fill, the extension records **which fields it found and whether
 they filled** (the field's label, its type, the outcome, and a dropdown's
-option texts). It **never records what you typed** or any value on the page.
+option texts). It **never records what you typed** or what a field held.
 Each record does carry the site's hostname and a timestamp, so over time it
 amounts to **a list of where you applied and when**.
 
+A fill that uses AI also keeps a **run trace**: a private, local record of how
+Autofill decided each field. It includes the page's own option texts and which
+option was chosen, demographic (EEO) questions included, and never anything you
+typed or any text from your profile. The last 50 runs are kept.
+
 - **Clear it:** in the web app, **Analytics → Autofill coverage → Clear data**.
-  This deletes the records but does not turn recording off.
+  This deletes the records and the run traces but does not turn recording off.
 - **Turn it off:** there is no switch in the panel. On `chrome://extensions`,
   click the **service worker** link on the Maestro CS Companion card, open its
   **Console** tab, and run:
@@ -79,7 +87,16 @@ amounts to **a list of where you applied and when**.
   chrome.storage.sync.set({ telemetryEnabled: false })
   ```
 
-  Run it again with `true` to turn it back on.
+  Run it again with `true` to turn it back on. This turns off run traces too.
+
+### Learned widget moves
+
+Separately from telemetry, the Companion remembers, in this browser only,
+**which clicks and keys worked on each kind of form control**, so the next fill
+tries them first. It keeps no answers and no web addresses, but someone with
+access to this browser could still work out which employers' application sites
+you used, roughly when you last used each, and how often. **Forget learned
+widget moves**, in the panel's Fill step, clears it.
 
 ## Different ports
 
@@ -110,6 +127,6 @@ in `DEFAULTS` at the top of `sw.js`.)
   close button.
 - **Multi-step applications** may still need some fields entered by hand. The
   application you picked is remembered for 30 minutes as you move through the
-  steps, so press **Fill this form** again on each page.
+  steps, so press **Autofill** again on each page.
 
 How it works inside: [INTERNALS.md](INTERNALS.md).

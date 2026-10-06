@@ -1,0 +1,108 @@
+<!--
+  Gem's application form (jobs.gem.com), observed live 2026-09-27 by a
+  read-only probe, when every label the Companion read there came back empty.
+  A hand-written copy of the STRUCTURE only: the class names are made up in
+  Gem's hashed style.
+  - No <form>, no iframe, no shadow root.
+  - A text box is a bare <input type=text>: no id, name, aria-* or placeholder.
+    Its label is a sibling <span> one level above the box's wrapper chain —
+    the input's 4th ancestor (the row) holds the span:
+      div.flex (row)
+        span.bodyImportant "First name" > span.requiredAsterisk "*"
+        div.textField > div.inputWrapper > div.inputElementAndIconWrapper > input[type=text]
+  - A Yes/No question is two <input type=radio id=…> with NO name, no fieldset
+    and no radiogroup; each has a label[for]. The question <span> sits five
+    ancestors above each input, in a row div:
+      div.flex (row)
+        div.flex > span.bodyImportant "Are you graduating…?" > span.requiredAsterisk "*"
+        div > div.flex > div.flex > div.flex >
+          div > input[type=radio id] + label[for] "Yes" + div.helpTextContainer (empty)
+          div > input[type=radio id] + label[for] "No"  + div.helpTextContainer (empty)
+  Where the observation is silent (how the app takes a value), this page does
+  the simplest thing a React app does: a text box's app value follows its
+  input events, and a question holds one answer that sets `checked` on both
+  of its radios (nameless radios are not exclusive on their own).
+  __oracle keys: gem_first_name, gem_last_name, gem_email, gem_linkedin
+  (null until typed into), gem_graduating, gem_cs_degree ("" until picked).
+-->
+<div id="gem-form" class="applicationForm-38">
+  <div class="flex-30 column-31">
+    <span class="bodyImportant-47 primary-51">First name<span class="requiredAsterisk-76">*</span></span>
+    <div class="textField-77"><div class="inputWrapper-80"><div class="inputElementAndIconWrapper-81">
+      <input data-1p-ignore="true" class="input-84" type="text">
+    </div></div></div>
+  </div>
+  <div class="flex-30 column-31">
+    <span class="bodyImportant-47 primary-51">Last name<span class="requiredAsterisk-76">*</span></span>
+    <div class="textField-77"><div class="inputWrapper-80"><div class="inputElementAndIconWrapper-81">
+      <input data-1p-ignore="true" class="input-84" type="text">
+    </div></div></div>
+  </div>
+  <div class="flex-30 column-31">
+    <span class="bodyImportant-47 primary-51">Email<span class="requiredAsterisk-76">*</span></span>
+    <div class="textField-77"><div class="inputWrapper-80"><div class="inputElementAndIconWrapper-81">
+      <input data-1p-ignore="true" class="input-84" type="text">
+    </div></div></div>
+  </div>
+  <div class="flex-30 column-31">
+    <span class="bodyImportant-47 primary-51">LinkedIn URL</span>
+    <div class="textField-77"><div class="inputWrapper-80"><div class="inputElementAndIconWrapper-81">
+      <input data-1p-ignore="true" class="input-84" type="text">
+    </div></div></div>
+  </div>
+  <div class="flex-30 row-32">
+    <div class="flex-30 column-31">
+      <span class="bodyImportant-47 primary-51">Are you graduating in 2027?<span class="requiredAsterisk-116">*</span></span>
+    </div>
+    <div><div class="flex-30 column-31"><div class="flex-30 row-32"><div class="flex-30 row-32">
+      <div>
+        <input class="radioInput-117" id="r7c1f0-yes" type="radio">
+        <label for="r7c1f0-yes" class="label-118"><span class="outerCircle-120"><div class="innerCircle-121"></div></span><div class="body-48 primary-51">Yes</div></label>
+        <div class="helpTextContainer-127"></div>
+      </div>
+      <div>
+        <input class="radioInput-117" id="r7c1f0-no" type="radio">
+        <label for="r7c1f0-no" class="label-118"><span class="outerCircle-120"><div class="innerCircle-121"></div></span><div class="body-48 primary-51">No</div></label>
+        <div class="helpTextContainer-127"></div>
+      </div>
+    </div></div></div></div>
+  </div>
+  <div class="flex-30 row-32">
+    <div class="flex-30 column-31">
+      <span class="bodyImportant-47 primary-51">Is your degree in Computer Science?<span class="requiredAsterisk-116">*</span></span>
+    </div>
+    <div><div class="flex-30 column-31"><div class="flex-30 row-32"><div class="flex-30 row-32">
+      <div>
+        <input class="radioInput-117" id="r2e9b4-yes" type="radio">
+        <label for="r2e9b4-yes" class="label-118"><span class="outerCircle-120"><div class="innerCircle-121"></div></span><div class="body-48 primary-51">Yes</div></label>
+        <div class="helpTextContainer-127"></div>
+      </div>
+      <div>
+        <input class="radioInput-117" id="r2e9b4-no" type="radio">
+        <label for="r2e9b4-no" class="label-118"><span class="outerCircle-120"><div class="innerCircle-121"></div></span><div class="body-48 primary-51">No</div></label>
+        <div class="helpTextContainer-127"></div>
+      </div>
+    </div></div></div></div>
+  </div>
+</div>
+<script>
+(() => {
+  const oracle = (window.__oracle = window.__oracle || {});
+  const form = document.getElementById("gem-form");
+  const TEXT = ["gem_first_name", "gem_last_name", "gem_email", "gem_linkedin"];
+  form.querySelectorAll('input[type="text"]').forEach((input, i) => {
+    oracle[TEXT[i]] = null;
+    input.addEventListener("input", () => { oracle[TEXT[i]] = input.value; });
+  });
+  for (const [key, prefix] of [["gem_graduating", "r7c1f0"], ["gem_cs_degree", "r2e9b4"]]) {
+    const radios = [...form.querySelectorAll(`input[type="radio"][id^="${prefix}-"]`)];
+    oracle[key] = "";
+    for (const radio of radios) {
+      radio.addEventListener("change", () => {
+        oracle[key] = radio.labels[0].textContent.trim();
+        for (const r of radios) r.checked = r === radio;
+      });
+    }
+  }
+})();
+</script>

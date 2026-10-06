@@ -5,7 +5,7 @@ the pure decisions the panel renders from. Tests here run the real functions
 via the node harness, under this repo's standing rule for extension tests:
 behavioural tables over source pins wherever the code can be executed.
 
-THE SUBJECT IS NOW SIX FILES, and this docstring is the map of all of them. A
+THE SUBJECT IS NOW SEVEN FILES, and this docstring is the map of all of them. A
 section that is not on this list is a section the next author will not find.
 
 THIS FILE — everything that is true before any one stage is:
@@ -15,7 +15,8 @@ THIS FILE — everything that is true before any one stage is:
  3. the panel DOCUMENT — its load order, the tab binding that is the panel's
     own guard, and the render loop, driven through `loadModules()` against a
     faked `chrome` and a faked document tree;
- 4. `railModel` — the four rail states over real `stageFor` decisions;
+ 4. `railModel` — the four rail states over real `stageFor` decisions, on a
+    four-step rail (Job, Resume, Fill, Track; Score merged into Job);
  5. `resetPageFacts` — which facts a page change clears, handed over whole;
  6. what the panel LOADS, and for which tab — `applyMatch`, the four round
     trips, and what each degrades to;
@@ -32,6 +33,9 @@ THIS FILE — everything that is true before any one stage is:
     the data takes the view back. It is item 4's twin and sits at the end of
     the file rather than beside it because it is DRIVEN — every claim is a real
     press through the real render loop — where `railModel`'s section is a table.
+12. REFRESH — the header's re-read of the bound tab: the tab switch's own
+    reset and load, the two tab-independent lists read again, refused while
+    an action runs, stale landings dropped, the pick and the focus kept.
 
 THE STAGE FILES — one per rail stage, each holding the body AND the actions
 behind it, because a body and the round trip it fires are two halves of one
@@ -41,14 +45,20 @@ claim:
                                     the store, and saved; plus the application
                                     picker (form + no match → recent drafts,
                                     one pick arms the rail and the session);
-  `test_extension_panel_score.py`   the ranked list, the pick, the entry the
-                                    two surfaces share, and `scoreAllBases`;
+  `test_extension_panel_score.py`   the Job step's base question: the ranked
+                                    list, the preselected best, the pick, the
+                                    entry the two surfaces share, and
+                                    `scoreAllBases` (on save, on open, retry);
   `test_extension_panel_resume.py`  the two-level fork, the base-as-is
                                     shortcut end to end, and `quickTailor`;
   `test_extension_panel_fill.py`    the pass, the report, the pause row and
                                     the QnA drawer — three sections of ONE
                                     subject, because `fillBody` renders all of
                                     it;
+  `test_extension_panel_attach.py`  the attach beyond its button: the offer
+                                    following a wizard's in-page steps, and
+                                    Autofill attaching the resume (cut from
+                                    the Fill file by the trigger below);
   `test_extension_panel_track.py`   the status in words, the evidence line and
                                     its honest absence, and the one PATCH this
                                     extension makes.
@@ -132,10 +142,12 @@ from tests.extension_panel_harness import (
     SETTINGS_REPLY,
     _armed_entry,
     _by_class,
+    _gets,
     _load,
     _PANEL_FAKES_JS,
     _panel_script,
     _rail_rows,
+    _refresh,
     _reply,
     _rows,
     _text,
@@ -147,9 +159,6 @@ from tests.extension_panel_harness import (
 # that `fillAnswersByQid` has to carry, pinned identical to the shared one.
 OPEN_QUESTIONS_JS = (
     EXTENSION / "content" / "open-questions.js").read_text(encoding="utf-8")
-# Read for ONE assertion, section 11's: that the ranked list is fed by the
-# SHARED ranking rather than by a second copy that happened to arrive sorted.
-SCORE_BODY_CODE = js_code(_panel_script("stages/score.js"))
 
 
 # `loadModules()` runs the real file — the IIFE, the namespace join, the
@@ -171,47 +180,48 @@ _CARDS = {
     # exists (resolvePrimary's rule, with the rung order preserved).
     "unreachable": {"match": None, "hasApplication": False, "pdfReady": False,
                     "status": None, "touched": False, "hasForm": True,
-                    "baseArmed": False, "hasScores": False, "baseSelected": False},
+                    "baseArmed": False, "hasScores": False, "baseChosen": False},
     "fresh_posting": {"match": "none", "hasApplication": False, "pdfReady": False,
                       "status": None, "touched": False, "hasForm": False,
-                      "baseArmed": False, "hasScores": False, "baseSelected": False},
+                      "baseArmed": False, "hasScores": False, "baseChosen": False},
     "in_library_unscored": {"match": "exact", "hasApplication": False, "pdfReady": False,
                             "status": None, "touched": False, "hasForm": False,
-                            "baseArmed": False, "hasScores": False, "baseSelected": False},
+                            "baseArmed": False, "hasScores": False, "baseChosen": False},
     "scored_and_picked": {"match": "exact", "hasApplication": False, "pdfReady": False,
                           "status": None, "touched": False, "hasForm": False,
-                          "baseArmed": False, "hasScores": True, "baseSelected": True},
-    # Score needs BOTH halves — the scores exist AND a base is chosen. Each
-    # half alone leaves the stage at Score.
+                          "baseArmed": False, "hasScores": True, "baseChosen": True},
+    # The saved job's base question needs BOTH halves — the scores exist AND a
+    # base is chosen (picked, or the scored best preselected). Each half alone
+    # leaves the Job step open.
     "scored_unpicked": {"match": "exact", "hasApplication": False, "pdfReady": False,
                         "status": None, "touched": False, "hasForm": False,
-                        "baseArmed": False, "hasScores": True, "baseSelected": False},
+                        "baseArmed": False, "hasScores": True, "baseChosen": False},
     "picked_unscored": {"match": "exact", "hasApplication": False, "pdfReady": False,
                         "status": None, "touched": False, "hasForm": False,
-                        "baseArmed": False, "hasScores": False, "baseSelected": True},
+                        "baseArmed": False, "hasScores": False, "baseChosen": True},
     "tailored_pdf_ready": {"match": "exact", "hasApplication": True, "pdfReady": True,
                            "status": "draft", "touched": False, "hasForm": True,
-                           "baseArmed": False, "hasScores": True, "baseSelected": True},
+                           "baseArmed": False, "hasScores": True, "baseChosen": True},
     "filled_here": {"match": "exact", "hasApplication": True, "pdfReady": True,
                     "status": "draft", "touched": True, "hasForm": True,
-                    "baseArmed": False, "hasScores": True, "baseSelected": True},
+                    "baseArmed": False, "hasScores": True, "baseChosen": True},
     "applied": {"match": "exact", "hasApplication": True, "pdfReady": True,
                 "status": "applied", "touched": False, "hasForm": True,
-                "baseArmed": False, "hasScores": True, "baseSelected": True},
+                "baseArmed": False, "hasScores": True, "baseChosen": True},
     # Attached via track-this, then marked applied — an application that
     # was never tailored, so it has no PDF. The record says the journey is
     # over; the ladder must not send it back to Resume.
     "applied_no_pdf": {"match": "exact", "hasApplication": True, "pdfReady": False,
                        "status": "applied", "touched": False, "hasForm": True,
-                       "baseArmed": False, "hasScores": True, "baseSelected": True},
+                       "baseArmed": False, "hasScores": True, "baseChosen": True},
     # The base-resume shortcut: form + base armed + no application skips
     # Score/Resume visibly rather than hiding them.
     "base_shortcut": {"match": "exact", "hasApplication": False, "pdfReady": False,
                       "status": None, "touched": False, "hasForm": True,
-                      "baseArmed": True, "hasScores": False, "baseSelected": False},
+                      "baseArmed": True, "hasScores": False, "baseChosen": False},
     "base_shortcut_filled": {"match": "exact", "hasApplication": False, "pdfReady": False,
                              "status": None, "touched": True, "hasForm": True,
-                             "baseArmed": True, "hasScores": False, "baseSelected": False},
+                             "baseArmed": True, "hasScores": False, "baseChosen": False},
     # THE LIVE ONE (Yum, 2026-08-19): the claim is made on a posting page and
     # there is no form on it. The user has answered the Resume stage's
     # question, so the rail must not sit on Resume — it goes where the
@@ -221,16 +231,41 @@ _CARDS = {
     # the shortcut still has.
     "armed_no_form": {"match": "exact", "hasApplication": False, "pdfReady": False,
                       "status": None, "touched": False, "hasForm": False,
-                      "baseArmed": True, "hasScores": False, "baseSelected": False},
+                      "baseArmed": True, "hasScores": False, "baseChosen": False},
     "armed_but_applied": {"match": "exact", "hasApplication": True, "pdfReady": True,
                           "status": "applied", "touched": False, "hasForm": True,
-                          "baseArmed": True, "hasScores": True, "baseSelected": True},
+                          "baseArmed": True, "hasScores": True, "baseChosen": True},
     # The escape hatch: base armed over a form, job NOT in the library (or the
     # backend unreachable). The page can still be filled; the library must not
     # gate it (widget.js:800-810). Job is skipped-not-done: the rail re-asks.
     "base_shortcut_unmatched": {"match": None, "hasApplication": False, "pdfReady": False,
                                 "status": None, "touched": False, "hasForm": True,
-                                "baseArmed": True, "hasScores": False, "baseSelected": False},
+                                "baseArmed": True, "hasScores": False, "baseChosen": False},
+    # A job tailored in the web app or over MCP, bound by the backend's own
+    # match: nothing was clicked here, and the scores may not be read yet. The
+    # application answers the base question with the base it was tailored from.
+    "bound_unscored": {"match": "exact", "hasApplication": True, "pdfReady": True,
+                       "status": "draft", "touched": False, "hasForm": True,
+                       "baseArmed": False, "hasScores": False, "baseChosen": False},
+    "bound_no_pdf": {"match": "exact", "hasApplication": True, "pdfReady": False,
+                     "status": "draft", "touched": False, "hasForm": True,
+                     "baseArmed": False, "hasScores": True, "baseChosen": False},
+    # Filled HERE, then an application with no PDF bound to the page (track
+    # this, from the base): the fill is what the user did, so the rail does not
+    # go back to Resume for a PDF.
+    "filled_then_bound_no_pdf": {"match": "exact", "hasApplication": True,
+                                 "pdfReady": False, "status": "draft",
+                                 "touched": True, "hasForm": True,
+                                 "baseArmed": True, "hasScores": False,
+                                 "baseChosen": False},
+    # The same, but NOT from the base: filled with one draft, then switched to
+    # a draft whose resume has no PDF. `touched` survives the switch, and the
+    # new draft's PDF is still the open question.
+    "filled_then_switched_no_pdf": {"match": "exact", "hasApplication": True,
+                                    "pdfReady": False, "status": "draft",
+                                    "touched": True, "hasForm": True,
+                                    "baseArmed": False, "hasScores": True,
+                                    "baseChosen": True},
 }
 
 
@@ -269,26 +304,60 @@ def test_the_return_contract_is_the_whole_of_what_a_renderer_reads(stages):
     assert set(stages["applied"]) == {
         "stage", "done", "skipped", "choiceSkipped", "fillFromBase",
         "shortcutNote", "nudge"}
-    assert set(stages["applied"]["done"]) == {
-        "job", "score", "resume", "fill", "track"}
+    assert set(stages["applied"]["done"]) == {"job", "resume", "fill", "track"}
 
 
 def test_the_journey_opens_where_the_data_says(stages):
     assert stages["unreachable"]["stage"] == "job"      # re-asks; never lies
     assert stages["fresh_posting"]["stage"] == "job"
-    assert stages["in_library_unscored"]["stage"] == "score"
+    assert stages["in_library_unscored"]["stage"] == "job"
     assert stages["scored_and_picked"]["stage"] == "resume"
     assert stages["tailored_pdf_ready"]["stage"] == "fill"
     assert stages["filled_here"]["stage"] == "track"
     assert stages["applied"]["stage"] == "track"
 
 
-def test_score_needs_both_the_scores_and_a_chosen_base(stages):
-    assert stages["scored_unpicked"]["stage"] == "score"
-    assert stages["scored_unpicked"]["done"]["score"] is False
-    assert stages["picked_unscored"]["stage"] == "score"
-    assert stages["picked_unscored"]["done"]["score"] is False
-    assert stages["scored_and_picked"]["done"]["score"] is True
+def test_the_job_step_needs_the_save_the_scores_and_a_chosen_base(stages):
+    """Score merged into Job: `done.job` is the job saved AND a base chosen.
+    A saved job alone leaves the step open on its base list."""
+    for name in ("in_library_unscored", "scored_unpicked", "picked_unscored"):
+        assert stages[name]["stage"] == "job", name
+        assert stages[name]["done"]["job"] is False, name
+    assert stages["scored_and_picked"]["done"]["job"] is True
+
+
+def test_a_bound_application_answers_the_base_question(stages):
+    """THE "asks to tailor again" BUG, as the stage table sees it.
+
+    The base question used to be answered only by a click, a restore or a pick,
+    all of which a backend-matched application skips. The rail then stuck on
+    the base step in front of a tailored application with its PDF, and Fill
+    stayed locked. The application's own base is the answer.
+    """
+    assert stages["bound_unscored"]["stage"] == "fill"
+    assert stages["bound_unscored"]["done"]["resume"] is True
+    assert stages["bound_no_pdf"]["stage"] == "resume"
+
+
+def test_a_page_filled_here_never_sends_the_rail_back_to_resume(stages):
+    """Resume without a PDF is SKIPPED (never done) once the page was filled
+    with an application bound, and the ladder moves on: fill done, so Track."""
+    out = stages["filled_then_bound_no_pdf"]
+    assert out["stage"] == "track"
+    assert out["done"]["resume"] is False
+    assert out["skipped"] == ["resume"]
+    # Not the user's claim to withdraw: nobody chose it, the path did.
+    assert out["choiceSkipped"] == []
+
+
+def test_only_a_page_filled_from_the_base_skips_resume(stages):
+    """The rule is track-this's and nobody else's: `touched` also comes from
+    an attach or a pause answer and survives a draft switch, Refresh and later
+    wizard pages. Filled, then switched to a draft with no PDF, the open
+    question is that draft's PDF — so Resume, not Track."""
+    out = stages["filled_then_switched_no_pdf"]
+    assert out["stage"] == "resume"
+    assert out["skipped"] == []
 
 
 def test_done_marks_only_the_steps_the_data_supports(stages):
@@ -305,7 +374,9 @@ def test_the_base_shortcut_skips_visibly_not_secretly(stages):
     short = stages["base_shortcut"]
     assert short["stage"] == "fill"
     assert short["fillFromBase"] is True
-    assert short["skipped"] == ["score", "resume"]
+    assert short["skipped"] == ["resume"]
+    # The armed base answers the Job step's base question on a saved job.
+    assert short["done"]["job"] is True
     assert short["shortcutNote"] == SHORTCUT_NOTE
     # Filling from base then landing on track offers to write it down.
     assert stages["base_shortcut_filled"]["stage"] == "track"
@@ -322,18 +393,18 @@ def test_a_skip_the_user_chose_is_told_apart_from_a_skip_the_path_computed(stage
 
     `baseArmed` is a claim — the user pressed "use base as-is" — and a claim is
     theirs to withdraw, so the row that holds it is a door back (panel.js
-    `isReopenable`). The rest of the short rail is arithmetic: Score is skipped
-    because nothing needs a ranking when nothing is being tailored, Job because
-    the shortcut is a page-and-session fact that never asked the library.
-    Nobody chose either, so there is nothing there to take back.
+    `isReopenable`). The rest of the short rail is arithmetic: Job is skipped
+    on an unmatched page because the shortcut is a page-and-session fact that
+    never asked the library. Nobody chose that, so there is nothing to take
+    back.
 
     RESUME AND ONLY RESUME, because the claim answered the RESUME stage's own
     question. Naming the whole skipped list here would put a withdraw door on
-    three rows for one claim.
+    two rows for one claim.
     """
     assert stages["base_shortcut"]["choiceSkipped"] == ["resume"]
     # Even when the shortcut is also carrying the user past Job.
-    assert stages["base_shortcut_unmatched"]["skipped"] == ["job", "score", "resume"]
+    assert stages["base_shortcut_unmatched"]["skipped"] == ["job", "resume"]
     assert stages["base_shortcut_unmatched"]["choiceSkipped"] == ["resume"]
     for name, out in stages.items():
         # A subset of `skipped`, always: a row that is not being skipped cannot
@@ -376,7 +447,7 @@ def test_an_armed_claim_on_a_form_less_page_is_still_a_finished_choice(stages):
     no_form = stages["armed_no_form"]
     assert no_form["fillFromBase"] is True
     assert no_form["stage"] == "fill"
-    assert no_form["skipped"] == ["score", "resume"]
+    assert no_form["skipped"] == ["resume"]
     assert no_form["done"]["fill"] is False
 
 
@@ -429,7 +500,7 @@ def test_the_library_never_gates_filling_the_page_in_front_of_you(stages):
     assert hatch["stage"] == "fill"
     assert hatch["shortcutNote"] == SHORTCUT_NOTE
     # Job is SKIPPED, never done — the rail still shows Add job and re-asks.
-    assert hatch["skipped"] == ["job", "score", "resume"]
+    assert hatch["skipped"] == ["job", "resume"]
     assert hatch["done"]["job"] is False
 
 
@@ -764,10 +835,13 @@ def test_the_panel_binds_to_the_active_tab_and_stays_bound(booted):
     `fanoutTab` verifies WHO may name a tab, never WHICH — a service worker
     cannot know which tab the user is looking at. So a `card.tabId` left stale
     across a tab switch would aim a fill, or a PDF attach, at the wrong tab and
-    the SW would pass it. These three listeners are that guard.
+    the SW would pass it. The three tab listeners are that guard; the fourth, the
+    runtime listener, hears the content script's value-free `fields_touched` hint
+    (it is accepted only from the bound tab: `test_extension_panel_receipt.py`).
     """
     assert booted["queries"] == [{"active": True, "lastFocusedWindow": True}]
-    assert booted["listeners"] == ["onActivated", "onUpdated"]
+    assert booted["listeners"] == ["runtime.onMessage", "onActivated", "onUpdated",
+                                   "webNavigation.onCompleted"]
     # The url is the only fact the panel has about a page it has not asked the
     # backend about yet, so it is what the identity line shows — which makes it
     # the visible proof of which tab the panel is bound to.
@@ -851,26 +925,26 @@ def test_the_deleted_bands_styles_went_with_it_and_the_link_got_its_own_line():
     assert "0 auto" in block.group(1)
 
 
-def test_the_rail_renders_five_stages_and_marks_the_one_you_are_on(booted):
+def test_the_rail_renders_four_stages_and_marks_the_one_you_are_on(booted):
     rows = _by_class(booted["opened"]["rail"], "stg")
     # The ROW line, not the whole `<li>`: since Task 7 the active row also
     # carries a stage body, and reading the subtree whole would make this
     # assertion about the Job preview's labels as well.
     assert [_text(_by_class(row, "stg-row")[0]) for row in rows] == [
-        "1 Job", "2 Score", "3 Resume", "4 Fill", "5 Track"]
+        "1 Job", "2 Resume", "3 Fill", "4 Track"]
     assert [row["class"] for row in rows] == [
-        "stg active", "stg locked", "stg locked", "stg locked", "stg locked"]
-    # Five steps in order, so the rail is a LIST — the position and the count
+        "stg active", "stg locked", "stg locked", "stg locked"]
+    # Four steps in order, so the rail is a LIST — the position and the count
     # are then announced without the render loop having to say them.
     assert booted["opened"]["rail"]["tag"] == "OL"
     assert {row["tag"] for row in rows} == {"LI"}
     # Announced as a step, not merely coloured: the rail is the whole of "where
     # am I", and a screen reader gets none of the border.
     assert [row["attrs"].get("aria-current") for row in rows] == [
-        "step", None, None, None, None]
+        "step", None, None, None]
     # …and the tick, the numeral and the greying carry their state in words.
     assert [_by_class(row, "stg-num")[0]["attrs"].get("aria-label") for row in rows] == [
-        "current step", "not yet", "not yet", "not yet", "not yet"]
+        "current step", "not yet", "not yet", "not yet"]
 
 
 def test_the_footer_carries_one_primary_and_it_refuses_an_empty_page(booted):
@@ -1058,19 +1132,19 @@ def rail(tmp_path_factory):
     cards = {
         "fresh_posting": {"match": "none", "hasApplication": False, "pdfReady": False,
                           "status": None, "touched": False, "hasForm": False,
-                          "baseArmed": False, "hasScores": False, "baseSelected": False},
+                          "baseArmed": False, "hasScores": False, "baseChosen": False},
         "scored_and_picked": {"match": "exact", "hasApplication": False, "pdfReady": False,
                               "status": None, "touched": False, "hasForm": False,
-                              "baseArmed": False, "hasScores": True, "baseSelected": True},
+                              "baseArmed": False, "hasScores": True, "baseChosen": True},
         "base_shortcut": {"match": "exact", "hasApplication": False, "pdfReady": False,
                           "status": None, "touched": False, "hasForm": True,
-                          "baseArmed": True, "hasScores": False, "baseSelected": False},
+                          "baseArmed": True, "hasScores": False, "baseChosen": False},
         "base_shortcut_unmatched": {"match": None, "hasApplication": False, "pdfReady": False,
                                     "status": None, "touched": False, "hasForm": True,
-                                    "baseArmed": True, "hasScores": False, "baseSelected": False},
+                                    "baseArmed": True, "hasScores": False, "baseChosen": False},
         "applied": {"match": "exact", "hasApplication": True, "pdfReady": True,
                     "status": "applied", "touched": True, "hasForm": True,
-                    "baseArmed": False, "hasScores": True, "baseSelected": True},
+                    "baseArmed": False, "hasScores": True, "baseChosen": True},
         # THE DISCRIMINATOR for the tick, and the reason it is a card rather
         # than an assertion: everything is finished EXCEPT the applied press,
         # so Track is the active row with `done.track` false. Without it "the
@@ -1079,7 +1153,7 @@ def rail(tmp_path_factory):
                                "pdfReady": True, "status": "draft",
                                "touched": True, "hasForm": True,
                                "baseArmed": False, "hasScores": True,
-                               "baseSelected": True},
+                               "baseChosen": True},
     }
     return run_node(_RAIL_MODEL_DRIVER_JS, {"cards": cards},
                     tmp_path_factory.mktemp("panel_rail"), source=PANEL_SOURCE)
@@ -1112,8 +1186,8 @@ def test_every_stage_is_on_the_rail_whatever_the_card_says(rail):
     for name, out in rail.items():
         rows = out["rows"]
         assert [row["key"] for row in rows] == [
-            "job", "score", "resume", "fill", "track"], name
-        assert [row["n"] for row in rows] == [1, 2, 3, 4, 5], name
+            "job", "resume", "fill", "track"], name
+        assert [row["n"] for row in rows] == [1, 2, 3, 4], name
 
 
 def test_the_rail_marks_exactly_one_stage_active(rail):
@@ -1143,14 +1217,13 @@ def test_skipped_is_rendered_as_skipped_and_never_as_done(rail):
     them: "not required on the path you took" is not "we did it"."""
     rows = _rows(_model(rail, "base_shortcut"))
     assert rows["fill"]["state"] == "active"
-    assert rows["score"]["state"] == "skipped"
     assert rows["resume"]["state"] == "skipped"
     # The path in the user's own words, with no "Skipped." in front of it: that
     # word reads as declined, and it is the Agent inbox's word for a rejected
     # job.
-    assert rows["score"]["summary"] == "Using your base resume as is."
-    # A done row carries no invented summary; the stage bodies (Tasks 7-9) are
-    # what will fill those in from real data.
+    assert rows["resume"]["summary"] == "Using your base resume as is."
+    # A done row carries no invented summary: its words come from the store
+    # (`stageSummaries`), and a bare decision has none.
     assert rows["job"]["state"] == "done"
     assert rows["job"]["summary"] == ""
     # The escape hatch: no library entry at all, so Job is SKIPPED — greyed and
@@ -1181,7 +1254,7 @@ def test_the_rail_carries_which_skip_was_a_choice_and_never_invents_one(rail):
             assert row["skipChoice"] is expected, f"{name}/{row['key']}"
     short = _rows(_model(rail, "base_shortcut"))
     assert short["resume"]["skipChoice"] is True
-    assert short["score"]["skipChoice"] is False
+    assert short["job"]["skipChoice"] is False
     hatch = _rows(_model(rail, "base_shortcut_unmatched"))
     assert hatch["job"]["skipChoice"] is False
     assert hatch["resume"]["skipChoice"] is True
@@ -1204,9 +1277,9 @@ def test_the_tick_is_read_from_done_for_every_stage_on_every_card(rail):
 
 
 def test_the_finished_rail_ticks_every_row_including_the_one_you_are_on(rail):
-    """The end of the journey: five ticks and nothing left asking."""
+    """The end of the journey: four ticks and nothing left asking."""
     applied = _model(rail, "applied")
-    assert [row["ticked"] for row in applied] == [True] * 5
+    assert [row["ticked"] for row in applied] == [True] * 4
     assert [row["key"] for row in applied if row["state"] == "active"] == ["track"]
 
 
@@ -1218,16 +1291,16 @@ def test_a_track_row_reached_but_not_applied_carries_its_numeral(rail):
     assert rows["track"]["state"] == "active"
     assert rows["track"]["ticked"] is False
     assert rows["track"]["stateLabel"] == "current step"
-    # …and the four behind it are ticked, so the difference really is the last
+    # …and the three behind it are ticked, so the difference really is the last
     # row rather than a card that finished nothing.
-    assert [rows[key]["ticked"] for key in ("job", "score", "resume", "fill")] == [True] * 4
+    assert [rows[key]["ticked"] for key in ("job", "resume", "fill")] == [True] * 3
 
 
 def test_no_stage_but_track_can_be_active_and_done_at_once(rail):
     """WHY THIS IS A GENERAL RULE AND NOT A TRACK SPECIAL CASE, pinned rather
     than argued: every other rung of `stageFor`'s ladder is guarded by the
-    negation of its own done-ness (`!jobDone ? "job"`, `!scoreDone ? "score"`,
-    and so on, plus `fillFromBase`'s `fillDone ? "track" : "fill"`), so reading
+    negation of its own done-ness (`!jobDone ? "job"`, `!resumeDone ?
+    "resume"`, and so on, plus `fillFromBase`'s `fillDone ? "track" : "fill"`), so reading
     the tick from `done` cannot change any row but the terminal one. If a future
     stage becomes reachable while done, it ticks — which is the answer this rule
     already gives rather than one someone has to remember to add.
@@ -1326,7 +1399,11 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # show one employer's filename under another employer's posting, which
         # is `evidence`'s failure by a second route.
         "fileInputs": 2, "attached": {"filename": "tailored.pdf", "count": 1},
-        "baseSelected": True, "baseArmed": True, "scores": [{"composite": 72}],
+        # Autofill's own attach report is the same page's claim.
+        "autoAttach": {"applicationId": "app-1", "outcome": "skipped",
+                       "text": "A file is already attached. The Companion left it."},
+        "baseSelected": True, "baseFromApplication": True, "baseArmed": True,
+        "scores": [{"composite": 72}],
         "busy": "tailor", "note": {"text": "Tailored — 84"},
         # A disclosure rather than a claim, and still the page's: the fork the
         # user opened on one posting must not be open on the next.
@@ -1363,13 +1440,23 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # The run's two plain-words facts (Task 25): how many fields were
         # blank, and why the AI answered nothing. Both about THIS form.
         "blank": 9, "aiNote": "AI help is off until you add an API key.",
+        # The fill loop's report and run state: a fid is a token THIS page's
+        # inventory minted, and Stop has nothing to stop on the next tab.
+        "loop": {"fields": [{"fid": "f1", "status": "needs_answer"}]},
+        "fillRound": 2, "stopRequested": True,
+        # The answer receipt's flags and the matched job's knock-out scan: both
+        # are about THIS form and THIS job, so neither may reach the next tab.
+        "receiptFlags": [{"fid": "f1", "question": "Relocate?", "reason": "Every option is ticked."}],
+        # What the receipt posted, by field id: the next page's edits must not inherit it.
+        "receiptSeen": {"consentForms": False, "fids": {"f1": {"source": "profile"}}},
+        "knockout": {"status": "conflict", "checks": []},
         "eeoConsent": {"enabled": True, "consent_forms": False},
         # The QnA drawer, both halves. The question was asked about this posting
         # and the answer is grounded in this application, so a drawer that
         # survived the tab would offer a paragraph about a job the user has left
         # — ready to be copied into a different employer's form.
         "qna": {"open": True, "question": "Why us?", "answered": "Why us?",
-                "answer": "Because…", "copied": True},
+                "answer": "Because…", "applicationId": "app-1", "copied": True},
         # Not about the posting, and so not cleared: where the app is, which
         # tab we are bound to, the resume library — and `fillMode`, which is a
         # standing choice about HOW to fill rather than a fact about what was.
@@ -1391,16 +1478,18 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "match": None, "job": None, "application": None, "pdfReady": False,
         "claimed": False,
         "evidence": None, "touched": False, "hasForm": False,
-        "fileInputs": 0, "attached": None, "baseSlug": None,
-        "baseSelected": False, "baseArmed": False, "scores": None,
-        "busy": None, "note": None, "preview": None, "previewTyped": False,
+        "fileInputs": 0, "attached": None, "autoAttach": None, "baseSlug": None,
+        "baseSelected": False, "baseFromApplication": False, "baseArmed": False,
+        "scores": None, "busy": None, "note": None, "preview": None, "previewTyped": False,
         "prepared": False, "tailorOpen": False,
         "revisit": None,
         "fill": None, "writeResults": None, "residue": None, "essays": None,
         "closest": None, "blank": None, "aiNote": None,
+        "loop": None, "fillRound": None, "stopRequested": False,
+        "receiptFlags": None, "receiptSeen": None, "knockout": None,
         "eeoConsent": None, "answers": {},
         "qna": {"open": False, "question": "", "answered": None, "answer": None,
-                "copied": False},
+                "applicationId": None, "copied": False},
         "settings": {"appUrl": APP_URL}, "tabId": 7, "url": POSTING_URL,
         "resumes": [{"slug": "ai_ml_engineer"}], "fillMode": "rules",
         "fault": {"text": "the backend is unreachable", "error": True},
@@ -1451,7 +1540,8 @@ def applied_match(tmp_path_factory):
             # shape the panel's own rather than the endpoint's.
             "job": {"id": "j9", "company": "Lightning AI", "title": "Research Engineer",
                     "description": "a whole posting nobody asked for"},
-            "application": {"id": "a9", "status": "draft"}}},
+            "application": {"id": "a9", "status": "draft"},
+            "knockout": {"status": "clear", "checks": []}}},
         "none": {"result": {"match": "none", "job": None, "application": None}},
         "exact_no_application": {"result": {
             "match": "exact", "job": {"id": "j9", "company": "Lightning AI",
@@ -1474,6 +1564,7 @@ def test_a_match_writes_the_panels_own_shape_and_not_the_endpoints(applied_match
     # Three keys, projected — never the row the endpoint happened to return.
     assert store["job"] == {"id": "j9", "company": "Lightning AI", "title": "Research Engineer"}
     assert store["application"] == {"id": "a9", "status": "draft"}
+    assert store["knockout"] == {"status": "clear", "checks": []}
     # The backend named this page. That is not a claim the user made, so the
     # Job row gets no un-pick door. A leftover `claimed` from the previous
     # posting would open one on a match the user cannot withdraw.
@@ -1484,7 +1575,25 @@ def test_a_match_writes_the_panels_own_shape_and_not_the_endpoints(applied_match
     assert applied_match["exact_no_application"]["store"]["claimed"] is False
     assert applied_match["none"]["store"] == {**STALE, "match": "none", "job": None,
                                              "application": None, "claimed": False,
+                                             "knockout": None,
+                                             "baseFromApplication": False,
                                              "settings": None}
+
+
+def test_an_applications_own_base_is_its_own_flag_and_never_a_pick(tmp_path):
+    """The base a bound application came from answers the base question and
+    holds the Before ring, but the backend named it: `baseSelected` (a pick,
+    which Refresh writes down as a claim) stays untouched."""
+    out = run_node(_APPLY_MATCH_DRIVER_JS, {"populated": {"baseSelected": False},
+                                            "cases": {"based": {"result": {
+        "match": "exact", "job": {"id": "j9", "company": "L", "title": "R"},
+        "application": {"id": "a9", "status": "draft",
+                        "base_resume": "data_scientist"}}}}},
+                   tmp_path, source=PANEL_SOURCE)
+    store = out["based"]["store"]
+    assert store["baseSlug"] == "data_scientist"
+    assert store["baseFromApplication"] is True
+    assert store["baseSelected"] is False
 
 
 def test_an_unreachable_backend_clears_every_fact_it_could_no_longer_vouch_for(applied_match):
@@ -1560,7 +1669,7 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     assert _by_class(identity, "delta")[0]["text"] == "+12"
     # …and the header link now has something more specific than the job. It
     # lives in the identity block since the brand row's deletion — LAST, on a
-    # line of its own.
+    # line only Refresh shares.
     [link] = _by_class(out["regions"]["identity"], "linkish")
     assert link["href"] == f"{APP_URL}/applications/app-1"
     assert link["text"] == "Open application ↗"
@@ -1573,8 +1682,11 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     # the chip was the first home and a measured mistake: `.who` and a nowrap
     # link share one axis there, so at 400px — a NORMAL side-panel width — the
     # job title was cut to 104px and wrapped five times to buy the link its
-    # 129. Last child of the block, alone, competing with nothing.
-    assert identity["children"][-1]["class"] == "linkish"
+    # 129. The block's last line, shared only with Refresh at its left, so it
+    # competes with nothing that wraps.
+    last = identity["children"][-1]
+    assert last["class"] == "id-foot"
+    assert [kid["class"] for kid in last["children"]] == ["refresh", "linkish"]
     [row1] = _by_class(identity, "row1")
     assert [kid["class"] for kid in row1["children"]] == ["who", "chip app"]
     # Every endpoint is the widget's, unchanged — a panel that invented a route
@@ -1602,7 +1714,7 @@ def test_a_tab_that_is_not_a_web_page_costs_no_round_trip(tmp_path):
     assert [msg for msg in out["sent"] if msg["type"] == "api"] == []
     assert [msg for msg in out["sent"] if msg["type"] == "panel_frame0"] == []
     # Rendered, not dead: five rail rows and nothing claimed about the page.
-    assert len(_by_class(out["regions"]["rail"], "stg")) == 5
+    assert len(_by_class(out["regions"]["rail"], "stg")) == 4
     assert _by_class(out["regions"]["identity"], "chip") == []
     assert _text(out["regions"]["foot"]).strip() == "Save job"
 
@@ -1617,7 +1729,7 @@ def test_a_load_that_fails_leaves_a_rendered_panel_rather_than_a_dead_one(tmp_pa
     assert "Couldn't reach Maestro CS" in note["text"]
     assert note["class"] == "note error"
     # Still a whole panel: five rail rows, an identity line, a primary.
-    assert len(_by_class(out["regions"]["rail"], "stg")) == 5
+    assert len(_by_class(out["regions"]["rail"], "stg")) == 4
     assert "job-boards.greenhouse.io" in _text(out["regions"]["identity"])
     assert _by_class(out["regions"]["foot"], "cta")[0]["text"] == "Save job"
 
@@ -1746,10 +1858,10 @@ def test_a_late_score_read_never_becomes_the_next_tabs_number(raced_scores):
     assert [ring["text"] for ring in _by_class(late["identity"], "ring")] == ["–"]
     assert _by_class(late["identity"], "ring")[0]["class"] == "ring empty"
     # …and the rail did not move: tab B's job is not in the library, so it is
-    # still at Job, whatever tab A's scores would have implied about Score.
+    # still at Job, whatever tab A's scores would have implied about its base.
     rows = _rows(_rail_rows({"regions": late}))
     assert rows["job"]["state"] == "active"
-    assert rows["score"]["state"] == "locked"
+    assert rows["resume"]["state"] == "locked"
 
 
 # ---------- the remembered pick, read from the store the widget writes ----------
@@ -1894,7 +2006,7 @@ def test_a_tab_with_no_url_restores_nothing_and_does_not_die_trying(tmp_path):
     assert _restored(out) is None
     # A whole panel, rendered: the failure mode this guards against is a load
     # that throws and leaves the surface half-painted.
-    assert len(_by_class(out["regions"]["rail"], "stg")) == 5
+    assert len(_by_class(out["regions"]["rail"], "stg")) == 4
 
 
 def test_the_backend_always_wins_over_the_memory(tmp_path):
@@ -1943,7 +2055,7 @@ def test_the_panel_asks_the_page_whether_it_has_a_form_and_never_injects_to_do_i
     # rail is where that shows.
     rows = _rows(_rail_rows(out))
     assert rows["fill"]["state"] == "active"
-    assert rows["score"]["state"] == "skipped"
+    assert rows["resume"]["state"] == "skipped"
 
 
 def test_a_tab_the_scripts_never_reached_reports_no_form_rather_than_a_failure(tmp_path):
@@ -2107,12 +2219,14 @@ def test_a_profile_with_no_orphans_is_not_written_to(tmp_path):
 
 def _revisit_api():
     """A page with everything behind it: a matched job, a draft application with
-    a rendered PDF, the library and its scores. Nothing is picked yet, so the
-    journey opens at Score and ONE press (a base row) completes three steps at
-    once — which is what puts done rows on the rail to reopen."""
+    a rendered PDF, the library and its scores. The application answers the
+    base question with its own base, so the journey opens at Fill with done
+    rows on the rail to reopen — no click needed (the "asks to tailor again"
+    fix)."""
     return {
         "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
-                               "application": {"id": "app-1", "status": "draft"}}),
+                               "application": {"id": "app-1", "status": "draft",
+                                               "base_resume": "data_scientist"}}),
         "/api/base-resumes": _reply(BASE_RESUMES),
         "/api/ats-scores": _reply(SCORES),
         # A LIST: the first read is the load's, the second is the status PATCH's
@@ -2143,18 +2257,19 @@ const press = (key) => {
 };
 main(async () => {
   await settle();
-  const atScore = regions();
-  // The user picks a base. The ordinary way the Score step completes, and it
-  // completes Resume with it — the application already has its PDF.
-  withClass(REGIONS.rail, "baserow")[0].click();
+  const loaded = regions();
+  // Opened and closed again, which is a view change and nothing else.
+  opener("job").click();
+  await settle();
+  opener("job").click();
   await settle();
   const atFill = regions();
-  // …and goes back to Score. The rail is scrolled, because a done row is
+  // …and goes back to Job. The rail is scrolled, because a done row is
   // halfway down a list that scrolls and the press rebuilds all of it.
   REGIONS.rail.scrollTop = 137;
-  const pressed = press("score");
+  const pressed = press("job");
   await settle();
-  const scoreOpen = regions();
+  const jobOpen = regions();
   const kept = {
     scrollTop: REGIONS.rail.scrollTop,
     focusedId: document.activeElement ? document.activeElement.id : null,
@@ -2167,23 +2282,26 @@ main(async () => {
     // has to have landed on the REBUILT control. Both halves are needed: the id
     // alone cannot tell a restore that found the new node from one that never
     // let go of the old one.
-    focusedIsFresh: document.activeElement === opener("score")
+    focusedIsFresh: document.activeElement === opener("job")
       && document.activeElement.uid !== pressed.uid,
   };
-  press("score");
+  press("job");
   await settle();
-  const scoreClosed = regions();
+  const jobClosed = regions();
   press("resume");
   await settle();
   const resumeOpen = regions();
-  press("score");
+  press("job");
   await settle();
   const swapped = regions();
-  // AN ACTION STARTED FROM THE REOPENED ROW, with its round trip HELD open —
+  // AN ACTION STARTED WHILE A ROW IS REOPENED, with its round trip HELD open —
   // which is the only moment in which "every door is shut" can be observed.
-  // TWO doors exist here (Score reopened, Resume done beside it), and that is
-  // the point: a guard written as "the open one" leaves the other live.
-  withClass(REGIONS.foot, "cta")[0].click();
+  // TWO doors exist here (Job reopened, Resume done beside it), and that is
+  // the point: a guard written as "the open one" leaves the other live. The
+  // action is the footer's status segment (a bound application's reopened Job
+  // row has no primary), and its PATCH fails, so the rail stays where it was.
+  withClass(REGIONS.foot, "status-seg")[0].children
+    .find((button) => button.textContent === "Applied").click();
   const duringRun = regions();
   release();
   await settle();
@@ -2192,10 +2310,10 @@ main(async () => {
   // focus back and must never take it. The clicks below move nothing, because
   // this fake focuses on `focus()` alone.
   ACTIVE = null;
-  opener("score").click();
+  opener("job").click();
   await settle();
   const unfocused = document.activeElement;
-  emit({ atScore, atFill, scoreOpen, scoreClosed, resumeOpen, swapped, kept,
+  emit({ loaded, atFill, jobOpen, jobClosed, resumeOpen, swapped, kept,
          duringRun, afterRun,
          unfocusedAfterRender: unfocused === null, writes, sent });
 });
@@ -2208,11 +2326,15 @@ def revisited(tmp_path_factory):
         "tabs": [{"id": 7, "url": POSTING_URL}],
         "replies": {"read_settings": SETTINGS_REPLY,
                     "panel_frame0": _reply({"tier": "A", "form": True, "score": 3})},
-        "api": _revisit_api(),
-        # The re-score's POST only, so the load's GET of the same path still
+        # The status PATCH only, so the load's GET of the same path still
         # lands: "while an action is open" is a state the driver has to be able
-        # to stand in, and a held reply is the only way to stand in it.
-        "hold": ["POST /api/ats-scores"],
+        # to stand in, and a held reply is the only way to stand in it. It is
+        # FIRST in the map, because the GET's needle matches the PATCH's wire
+        # too and the first needle that matches answers.
+        "api": {"PATCH /api/applications/app-1": {"ok": False, "error": "boom",
+                                                  "status": 500},
+                **_revisit_api()},
+        "hold": ["PATCH /api/applications/app-1"],
     }, tmp_path_factory.mktemp("panel_revisit"), source=PANEL_SOURCE)
 
 
@@ -2234,87 +2356,82 @@ def _open_body(regions_):
 def test_the_journey_reaches_a_rail_with_done_rows_on_it(revisited):
     """The fixture's own premise, pinned before anything is asked of it.
 
-    One press on a base row completes Score AND Resume — the application's PDF
-    was already rendered — so the rail this section reopens rows on is real
-    rather than arranged: three done rows, one active, and the body under the
-    active one.
+    The backend-matched application answers the base question and already has
+    its PDF, so the rail opens on Fill with nothing clicked: two done rows,
+    one active, and the body under the active one. Opening and closing the
+    Job row leaves the rail where it was.
     """
-    assert _rows(_rail_rows({"regions": revisited["atScore"]}))["score"]["state"] == "active"
-    rows = _rows(_rail_rows({"regions": revisited["atFill"]}))
-    assert [rows[key]["state"] for key in ("job", "score", "resume", "fill", "track")] == [
-        "done", "done", "done", "active", "locked"]
-    assert _open_body(revisited["atFill"]) == "fill"
+    for phase in ("loaded", "atFill"):
+        rows = _rows(_rail_rows({"regions": revisited[phase]}))
+        assert [rows[key]["state"] for key in ("job", "resume", "fill", "track")] == [
+            "done", "done", "active", "locked"], phase
+        assert _open_body(revisited[phase]) == "fill", phase
 
 
 def test_a_done_row_is_a_door_and_only_for_the_three_stages_that_have_one(revisited):
-    """Score, Resume, Fill — and never Job, on a backend match.
-
-    This fixture's Job row is done because the backend named the posting, not
-    because the user claimed a draft. A claimed binding is a different door
-    (pinned in test_extension_panel_job.py); a backend exact-match is the page
-    being that posting, and the web app is where a wrong JD gets fixed. Track
-    is absent for a duller reason — it is never done while you are standing on
-    it, so the control could not render even if it existed.
+    """Job, Resume, Fill — Job on a backend match too, since Score merged into
+    it: a saved job's Job body is the ranked base list, never the Save job
+    preview, so reopening it offers nothing already done. Track is absent for a
+    duller reason — it is never done while you are standing on it, so the
+    control could not render even if it existed.
     """
     at_fill = _openers(revisited["atFill"])
-    assert sorted(at_fill) == ["resume", "score"]
-    # …and the row that is DONE but not reopenable carries no control at all,
-    # rather than a disabled one: a door that is drawn and refuses is worse
-    # than a wall.
-    assert "job" not in at_fill
-    job_row = _by_class(revisited["atFill"]["rail"], "stg")[0]
-    assert [node["tag"] for node in _walk(job_row) if node["tag"] == "BUTTON"] == []
+    assert sorted(at_fill) == ["job", "resume"]
     # Fill is the third, and it appears the moment Fill is done rather than
     # being special: here it is the ACTIVE row, which is its own body already.
     assert "fill" not in at_fill
+    # …and the Track row, locked, carries no control at all rather than a
+    # disabled one: a door that is drawn and refuses is worse than a wall.
+    track_row = _by_class(revisited["atFill"]["rail"], "stg")[3]
+    assert [node["tag"] for node in _walk(track_row) if node["tag"] == "BUTTON"] == []
 
 
 def test_reopening_shows_that_stages_body_without_moving_the_rail(revisited):
     """THE WHOLE FEATURE, and the whole of what it may not do.
 
-    The body under the reopened row is that stage's own — the Score body's
-    ranked list, not a summary of it — and the rail is untouched: Fill is still
+    The body under the reopened row is that stage's own — the Job body's
+    ranked base list, not a summary of it — and the rail is untouched: Fill is still
     the active row, still `aria-current`, still bordered. The step the user is
     ON is a fact about their application; the body they are LOOKING AT is not,
     and a rail that moved its active mark to follow the view would be reporting
     the second as the first.
     """
-    opened = revisited["scoreOpen"]
-    assert _open_body(opened) == "score"
+    opened = revisited["jobOpen"]
+    assert _open_body(opened) == "job"
     # The real body, from the real roster: the ranked library with a row per
     # base resume.
     assert len(_by_class(opened["rail"], "baserow")) == len(BASE_RESUMES)
     rows = _rows(_rail_rows({"regions": opened}))
     assert rows["fill"]["state"] == "active"
-    assert rows["score"]["state"] == "done"
+    assert rows["job"]["state"] == "done"
     rail_rows = _by_class(opened["rail"], "stg")
     assert [row["attrs"].get("aria-current") for row in rail_rows] == [
-        None, None, None, "step", None]
+        None, None, "step", None]
     # …and the tick did not move either. Reopening is not rewinding: nothing
     # about the application changed because the user looked at a step again.
     assert [_by_class(row, "stg-num")[0]["text"] for row in rail_rows] == [
-        "✓", "✓", "✓", "4", "5"]
+        "✓", "✓", "3", "4"]
 
 
 def test_pressing_an_open_header_again_closes_it(revisited):
     """A disclosure, so it discloses both ways. Without this the only way back
     to the inferred view is a page change, which is the panel deciding when the
     user is finished looking."""
-    assert _open_body(revisited["scoreClosed"]) == "fill"
-    assert _openers(revisited["scoreClosed"])["score"]["attrs"]["aria-expanded"] == "false"
+    assert _open_body(revisited["jobClosed"]) == "fill"
+    assert _openers(revisited["jobClosed"])["job"]["attrs"]["aria-expanded"] == "false"
 
 
 def test_exactly_one_body_is_open_at_a_time(revisited):
-    """Opening Resume closes Score; opening Score closes Resume. Two bodies on a
+    """Opening Resume closes Job; opening Job closes Resume. Two bodies on a
     400px rail is a surface where the footer's single primary sits under one of
     them and belongs to the other — `_open_body` asserts the count for every
     phase this file reads."""
     assert _open_body(revisited["resumeOpen"]) == "resume"
-    assert _open_body(revisited["swapped"]) == "score"
+    assert _open_body(revisited["swapped"]) == "job"
     # The one that lost the press says so, rather than being left expanded with
     # nothing under it.
     assert _openers(revisited["swapped"])["resume"]["attrs"]["aria-expanded"] == "false"
-    assert _openers(revisited["swapped"])["score"]["attrs"]["aria-expanded"] == "true"
+    assert _openers(revisited["swapped"])["job"]["attrs"]["aria-expanded"] == "true"
 
 
 def test_the_reopen_control_is_a_real_button_that_names_what_it_opened(revisited):
@@ -2326,20 +2443,20 @@ def test_the_reopen_control_is_a_real_button_that_names_what_it_opened(revisited
     region ONLY while it exists (the Tailor fork's rule): an id nothing carries
     offers a jump that goes nowhere.
     """
-    button = _openers(revisited["scoreOpen"])["score"]
+    button = _openers(revisited["jobOpen"])["job"]
     assert button["tag"] == "BUTTON"
     assert button["attrs"]["aria-expanded"] == "true"
-    assert button["attrs"]["aria-controls"] == "stg-body-score"
-    assert [node["id"] for node in _by_class(revisited["scoreOpen"]["rail"], "stg-body")] == [
-        "stg-body-score"]
+    assert button["attrs"]["aria-controls"] == "stg-body-job"
+    assert [node["id"] for node in _by_class(revisited["jobOpen"]["rail"], "stg-body")] == [
+        "stg-body-job"]
     # Closed: the state is the whole story, and the address is withheld because
     # there is nothing at it.
-    closed = _openers(revisited["scoreClosed"])["score"]
+    closed = _openers(revisited["jobClosed"])["job"]
     assert closed["attrs"]["aria-expanded"] == "false"
     assert "aria-controls" not in closed["attrs"]
     # The row still reads as the row: the numeral, its state in words, and the
     # name are inside the button rather than replaced by it.
-    assert _text(button).startswith("✓ Score")
+    assert _text(button).startswith("✓ Job")
     assert _by_class(button, "stg-num")[0]["attrs"]["aria-label"] == "done"
     # And the state is VISIBLE too, because `aria-expanded` reaches nobody
     # looking at the screen: a done row that opens looks exactly like one that
@@ -2362,15 +2479,19 @@ def test_a_reopened_row_brings_its_primary_with_it(revisited):
     to act on it — and the alternative, a second Start fill inside the body, is
     the two-writers-for-one-behaviour that footer exists to prevent.
     """
-    assert _by_class(revisited["atFill"]["foot"], "cta")[0]["text"] == "Fill this form"
-    assert _by_class(revisited["scoreOpen"]["foot"], "cta")[0]["text"] == "Score base resumes"
-    assert _by_class(revisited["resumeOpen"]["foot"], "cta")[0]["text"] == "Quick tailor"
+    assert _by_class(revisited["atFill"]["foot"], "cta")[0]["text"] == "Autofill"
+    # A bound application's Job row is read-only: its own base answered the
+    # question, so there is nothing to save and nothing to re-rank.
+    assert _by_class(revisited["jobOpen"]["foot"], "cta") == []
+    # A done Resume row with its PDF has no primary at all: Quick tailor there
+    # would replace the tailored draft unasked (`primaryRefused`).
+    assert _by_class(revisited["resumeOpen"]["foot"], "cta") == []
     # Closing gives it back to the data — the two are the same answer whenever
     # nothing is reopened.
-    assert _by_class(revisited["scoreClosed"]["foot"], "cta")[0]["text"] == "Fill this form"
+    assert _by_class(revisited["jobClosed"]["foot"], "cta")[0]["text"] == "Autofill"
     # The status segment is NOT the primary and does not move with it: it
     # belongs to the application, which is the same application either way.
-    assert len(_by_class(revisited["scoreOpen"]["foot"], "status-seg")) == 1
+    assert len(_by_class(revisited["jobOpen"]["foot"], "status-seg")) == 1
 
 
 def test_the_rail_keeps_your_place_across_the_rebuild_your_press_caused(revisited):
@@ -2387,11 +2508,11 @@ def test_the_rail_keeps_your_place_across_the_rebuild_your_press_caused(revisite
     # and a tidy-up that dropped the wrong line would unguard the whole rider.
     # The id alone is INERT: the fake keeps `activeElement` pointing at the
     # detached node the rebuild discarded, and that node's `id` still reads
-    # `stg-open-score`, so this line passes with the restore deleted. It stays
+    # `stg-open-job`, so this line passes with the restore deleted. It stays
     # because it names WHICH control the user was in; the line under it is the
     # one that fails, because only a restore that went looking for the id can
     # land on the node the rebuild built.
-    assert revisited["kept"]["focusedId"] == "stg-open-score"
+    assert revisited["kept"]["focusedId"] == "stg-open-job"
     assert revisited["kept"]["focusedIsFresh"] is True
     # …and it asked NOT to scroll. Without that, focusing a control the browser
     # judges out of view scrolls the rail to reveal it and throws away the
@@ -2428,7 +2549,7 @@ def test_the_door_looks_like_what_it_is_in_both_states_the_dom_cannot_show(revis
                      PANEL_CSS), PANEL_CSS[-400:]
     # The control the rules are about is real, and is the one this fixture
     # presses — so the pair above cannot drift into styling nothing.
-    assert _openers(revisited["atFill"])["score"]["class"] == "stg-row"
+    assert _openers(revisited["atFill"])["job"]["class"] == "stg-row"
 
 
 def test_the_rail_numeral_is_centered_without_a_clipped_line_box():
@@ -2458,6 +2579,54 @@ def test_the_rail_numeral_is_centered_without_a_clipped_line_box():
     # And the pill is still what the rail paints — the CSS cannot drift
     # onto a class nothing uses.
     assert "stg-num" in PANEL_SOURCE
+
+
+def test_the_footer_note_has_its_own_line_above_the_actions():
+    """The note overlapped the Draft/Applied chips ("Attached Ajey_…pdf. Check
+    the upload before you submit.") and the primary wrapped onto three lines
+    (owner's screenshot, 2026-09-27). The footer is a column: the note is a
+    full-width line of its own that wraps a long filename rather than running
+    under the controls, and the action row below it holds the status segment
+    and a primary that never wraps. The live region keeps the whole sentence."""
+    foot = re.search(r'<div id="foot"[^>]*>(.*?)\n</div>', PANEL_HTML, re.S).group(1)
+    # The note first, then the row of controls: two separate rows, in order.
+    assert re.findall(r'<div id="([a-z-]+)"', foot) == ["note", "foot-controls"]
+    def rule(selector):
+        found = re.search(rf"^{re.escape(selector)}\s*\{{([^}}]+)\}}", PANEL_CSS, re.M)
+        assert found, f"no {selector} rule"
+        return found.group(1)
+    assert re.search(r"flex-direction:\s*column", rule(".p-foot"))
+    assert re.search(r"overflow-wrap:\s*anywhere", rule(".note"))
+    controls = rule(".foot-controls")
+    assert "margin-left: auto" not in controls
+    # Measured at 320px: Draft, Applied, Stop and a spinning primary are 29px
+    # wider than the row, so the row wraps rather than overflowing the panel.
+    assert re.search(r"flex-wrap:\s*wrap", controls)
+    cta = rule(".cta")
+    assert re.search(r"white-space:\s*nowrap", cta)
+    assert re.search(r"flex:\s*none", cta)
+    assert re.search(r"min-width:", cta)
+    assert re.search(r"white-space:\s*nowrap", rule(".status-seg button"))
+
+
+def test_a_step_never_shrinks_so_a_long_one_scrolls_the_rail():
+    """The Resume and Fill bodies were cut off mid-sentence (owner's
+    screenshots, 2026-09-27).
+
+    `.rail` is a flex column with `overflow-y: auto`, and a flex item's
+    `flex-shrink` defaults to 1: when the open step's body is taller than the
+    rail, the browser shrinks every step to fit instead of overflowing, and
+    `.stg { overflow: hidden }` (it rounds the body's corners) then clips the
+    bottom of the open one. `flex: none` keeps each step at its content height,
+    so the rail overflows and scrolls. The fake DOM has no layout, so this is
+    the stylesheet's claim rather than a measurement.
+    """
+    rail = re.search(r"^\.rail\s*\{([^}]+)\}", PANEL_CSS, re.M)
+    assert rail and re.search(r"overflow-y:\s*auto", rail.group(1))
+    assert re.search(r"flex-direction:\s*column", rail.group(1))
+    step = re.search(r"^\.stg\s*\{([^}]+)\}", PANEL_CSS, re.M)
+    assert step, "the .stg rule moved"
+    assert re.search(r"(?:^|;|\s)flex:\s*none\s*;", step.group(1)), step.group(1)
 
 
 _TYPING_DRIVER_JS = _PANEL_FAKES_JS + r"""
@@ -2523,21 +2692,44 @@ def test_a_load_landing_while_you_type_does_not_take_the_field_away(tmp_path):
     assert out["value"] == "Staff Research Engineer"
 
 
-def test_which_body_is_open_is_never_written_down(revisited):
-    """`revisit` is view state, and the session entry is what the OTHER surface
-    reads: a card restoring "the user was looking at Score" would be the panel
-    telling the floating card where to point its attention."""
-    assert revisited["writes"], "the pick should have written a session entry"
-    assert "revisit" not in json.dumps(revisited["writes"])
+def test_which_body_is_open_is_never_written_down(revisited, tmp_path):
+    """`revisit` is view state, and the session entry is what the next page
+    load reads: restoring "the user was looking at Job" would be the panel
+    carrying a view across a page as if it were a fact.
+
+    The write is made at the one moment it can carry the view: a draft the
+    user picked (a claim, which Refresh writes down again) and its Job row
+    reopened, so `revisit` is set when `refreshPage` writes the entry."""
+    out = _picked_then_refreshed(tmp_path, reopen="job")
+    assert _open_body(out["beforePress"]) == "job"
+    entries = [write["widget.session"] for write in out["writesAfter"]
+               if write.get("widget.session")]
+    assert entries, "Refresh should have written the claim down again"
+    assert "revisit" not in json.dumps(entries)
     # AND NOT OVER THE WIRE EITHER, which is the same rule aimed at the other
     # destination. `sent` is every message this panel put on the SW's door,
-    # request bodies included, so a view field folded into any POST — a score
-    # run, a status PATCH, an ingest — shows up here. The non-empty guard is not
-    # ceremony: an assertion that "revisit" is absent from nothing passes on a
-    # driver that sent nothing at all.
+    # request bodies included, so a view field folded into any request — a
+    # score run, a status PATCH, an ingest — shows up here. The non-empty guard
+    # is not ceremony: an assertion that "revisit" is absent from nothing
+    # passes on a driver that sent nothing at all.
     assert [msg for msg in revisited["sent"] if msg["type"] == "api"], (
         "the drive should have reached the backend at all")
     assert "revisit" not in json.dumps(revisited["sent"])
+
+
+def test_refresh_never_saves_a_backend_match_as_a_pick(tmp_path):
+    """The backend named this page and its application: that is not a choice
+    the user made, so Refresh writes no session entry for it (the bridge is
+    for a pick, a claim or an armed base)."""
+    out = _refresh(tmp_path, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft",
+                                               "base_resume": "data_scientist"}}),
+        "/api/applications/app-1": _reply({"pdf_path": "r.pdf", "status": "draft"}),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+    })
+    assert [write for write in out["writesAfter"] if write.get("widget.session")] == []
 
 
 def test_nothing_can_be_started_from_a_door_while_an_action_is_open(revisited):
@@ -2546,28 +2738,30 @@ def test_nothing_can_be_started_from_a_door_while_an_action_is_open(revisited):
     The reopen is `statusSegment`'s rule applied to a new control: every control
     on this surface reads `busy`, because a round trip that some control does
     not know about is one the user can interrupt. The failure a narrower guard
-    allows is specific — reopen Score at Fill, press Score-all, then press the
+    allows is specific — reopen Job at Fill, press Applied, then press the
     RESUME door beside it — and what it does is swap the body out from under a
     running action, replacing the progress the user is waiting on with another
     stage's step while the action is still writing.
 
     So the claim is over the whole rail: with a run open, no door is pressable.
-    Two of them exist in this fixture, which is what makes the "open one" answer
-    and the "every one" answer different assertions.
+    Three of them exist in this fixture — Job reopened, Resume done beside it,
+    and the active Fill row as the way back — which is what makes the "open one"
+    answer and the "every one" answer different assertions.
     """
     doors = _openers(revisited["duringRun"])
-    assert sorted(doors) == ["resume", "score"]
+    assert sorted(doors) == ["fill", "job", "resume"]
     assert {key: door["disabled"] for key, door in doors.items()} == {
-        "score": True, "resume": True}
-    # The footer's own primary greys with them — one action at a time is the
+        "job": True, "resume": True, "fill": True}
+    # The footer's controls grey with them — one action at a time is the
     # rule they are all reading.
-    assert _by_class(revisited["duringRun"]["foot"], "cta")[0]["disabled"] is True
+    segment = _by_class(revisited["duringRun"]["foot"], "status-seg")[0]
+    assert {button["disabled"] for button in segment["children"]} == {True}
     # …and they come back when the round trip lands, rather than staying shut.
     assert {key: door["disabled"] for key, door in _openers(revisited["afterRun"]).items()} == {
-        "score": False, "resume": False}
+        "job": False, "resume": False, "fill": False}
     # The run was the reopened row's, and the view it was started from survived
     # it: the report lands under the body the user opened.
-    assert _open_body(revisited["afterRun"]) == "score"
+    assert _open_body(revisited["afterRun"]) == "job"
 
 
 # ---- and the two ways the data takes the view back ----
@@ -2586,8 +2780,6 @@ const statusButton = (label) => withClass(REGIONS.foot, "status-seg")
   .flatMap((segment) => segment.children)
   .filter((button) => button.textContent === label)[0];
 main(async () => {
-  await settle();
-  withClass(REGIONS.rail, "baserow")[0].click();
   await settle();
   opener("resume").click();
   await settle();
@@ -2672,15 +2864,19 @@ const opener = (key) => findById(REGIONS.rail, `stg-open-${key}`);
 main(async () => {
   await settle();
   const armed = regions();
-  opener("score").click();
+  opener("job").click();
   await settle();
   const reopened = regions();
-  // Re-scored from the reopened body's own primary, and the scorer comes back
-  // with nothing it can rank. `done.score` falls; the STAGE does not move,
-  // because the base-resume shortcut pins it.
+  // Re-scored from the reopened body's own primary.
   withClass(REGIONS.foot, "cta")[0].click();
   await settle();
-  emit({ armed, reopened, rescored: regions(),
+  // …then Refresh, and the backend no longer names this url. `done.job` falls
+  // (the job is not known here), the STAGE does not move, because the
+  // base-resume shortcut pins it, and Refresh carries the reopened view.
+  Object.assign(spec.api, spec.apiAfter);
+  document.getElementById("refresh-page").click();
+  await settle();
+  emit({ armed, reopened, refreshed: regions(),
          posts: sent.filter((msg) => (msg.init || {}).method === "POST") });
 });
 """
@@ -2688,9 +2884,9 @@ main(async () => {
 
 @pytest.fixture(scope="module")
 def undone(tmp_path_factory):
-    """The base-resume shortcut, with a base picked before it: `fillFromBase`
-    pins the stage to Fill whatever Score and Resume say, which is the one state
-    where a done row can stop being done while the rail stands still."""
+    """The base-resume shortcut on a saved job: `fillFromBase` pins the stage
+    to Fill whatever the Job row says, which is the one state where a done row
+    can stop being done while the rail stands still."""
     return run_node(_UNDONE_DRIVER_JS, {
         "tabs": [{"id": 7, "url": POSTING_URL}],
         "stored": {"widget.session": _armed_entry()},
@@ -2700,44 +2896,353 @@ def undone(tmp_path_factory):
             "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
                                    "application": None}),
             "/api/base-resumes": _reply(BASE_RESUMES),
-            # Base rows only, so a re-score that ranks nothing empties the
-            # array outright — `scoreAllBases` MERGES, and a tailored row left
-            # in it would keep `hasScores` true for a reason this test is not
-            # about.
-            "/api/ats-scores": [_reply(SCORE_ROWS), _reply([])],
+            "/api/ats-scores": _reply(SCORE_ROWS),
         },
+        "apiAfter": {"lightningai": _reply({"match": "none", "job": None,
+                                            "application": None})},
     }, tmp_path_factory.mktemp("panel_revisit_undone"), source=PANEL_SOURCE)
 
 
 def test_a_row_that_stops_being_done_takes_its_body_with_it(undone):
     """THE NARROW LIMB, and it is reachable rather than defensive.
 
-    Under the shortcut the stage is pinned by `fillFromBase`, so `done.score`
-    can fall — a re-score that ranks nothing — while the stage sits exactly
-    where it was and `over` still matches. Without the doneness check the rail
-    would then render the Score body under a row it has just re-drawn as
-    SKIPPED, which is the un-skip feature arriving by accident rather than by
-    decision.
+    Under the shortcut the stage is pinned by `fillFromBase`, so `done.job`
+    can fall — a Refresh whose match no longer names the job — while the stage
+    sits exactly where it was and `over` still matches. Without the doneness
+    check the rail would then render the Job body under a row it has just
+    re-drawn as SKIPPED, which is the un-skip feature arriving by accident
+    rather than by decision.
     """
     armed = _rows(_rail_rows({"regions": undone["armed"]}))
     assert armed["fill"]["state"] == "active"
-    assert armed["score"]["state"] == "done"
-    assert _open_body(undone["reopened"]) == "score"
-    rescored = _rows(_rail_rows({"regions": undone["rescored"]}))
+    assert armed["job"]["state"] == "done"
+    assert _open_body(undone["reopened"]) == "job"
+    refreshed = _rows(_rail_rows({"regions": undone["refreshed"]}))
     # The stage did not move — which is what makes this the doneness limb and
     # not the `over` one.
-    assert rescored["fill"]["state"] == "active"
-    assert rescored["score"]["state"] == "skipped"
-    assert _open_body(undone["rescored"]) == "fill"
-    assert "score" not in _openers(undone["rescored"])
+    assert refreshed["fill"]["state"] == "active"
+    assert refreshed["job"]["state"] == "skipped"
+    assert _open_body(undone["refreshed"]) == "fill"
+    assert "job" not in _openers(undone["refreshed"])
 
 
 def test_the_reopened_bodys_primary_is_the_one_that_actually_runs(undone):
     """The other half of the footer's move, and the half a label cannot show:
-    pressing it sends the OPEN row's round trip. A footer that read "Score all
-    bases" and ran the Fill stage's runner would pass every assertion about the
-    text on it."""
-    assert _by_class(undone["reopened"]["foot"], "cta")[0]["text"] == "Score base resumes"
+    pressing it sends the OPEN row's round trip. A footer that read "Score base
+    resumes" and ran the Fill stage's runner would pass every assertion about
+    the text on it."""
+    assert _by_class(undone["reopened"]["foot"], "cta")[0]["text"] == "Update scores"
     assert [msg["path"] for msg in undone["posts"]] == ["/api/ats-scores"]
     assert json.loads(undone["posts"][0]["init"]["body"]) == {"job_id": "job-lightning"}
 
+
+
+# ---------- 12. REFRESH: the tab switch's re-read, on demand ----------
+#
+# The panel reads the page's job, the applications and the drafts list when
+# the tab changes or the page reloads, and at no other time. A job the owner
+# adds in the web app, or through a connected agent, therefore stayed invisible
+# until they left the tab and came back. Refresh is that same re-read for the
+# tab the panel is already on: `bindPage`, which `onTab` also runs, plus the
+# two tab-independent lists forgotten first so they are read again too. It
+# re-reads what the BACKEND says and keeps the work done on this page: the Job
+# and Fill stage files hold the typed fields and the fill report surviving it.
+# The driver is the harness's (`_refresh`), because those two files press it too.
+
+
+def _refresh_button(region):
+    found = [node for node in _walk(region) if node["id"] == "refresh-page"]
+    return found[0] if found else None
+
+
+_UNMATCHED = _reply({"match": "none", "job": None, "application": None})
+_REFRESH_APPLY_PAGE = {
+    "detect_page": _reply({"tier": "B", "form": True, "score": 2}),
+    "extract_job_posting": _reply(
+        {"url": APPLY_URL, "title": "Apply — Acme", "text": "", "source": "body"}),
+}
+
+
+def _refresh_draft(i):
+    return {"id": f"app-{i}", "job_id": f"job-{i}", "base_resume": "ai_ml_engineer",
+            "status": "draft", "job_company": f"Acme {i}",
+            "job_title": f"Research Engineer {i}"}
+
+
+def _draft_names(region):
+    selects = [node for node in _walk(region) if node["tag"] == "SELECT"]
+    if not selects:
+        return []
+    return [_text(option) for option in selects[0]["children"] if option.get("value")]
+
+
+def test_refresh_re_runs_the_job_match_and_the_loaders(tmp_path):
+    """The owner's case: the job was added in the web app while the panel sat
+    on its posting. Before Refresh the page is "Not saved yet"; after it the
+    panel shows the saved job, from one more match and one more library read,
+    and says in the live note that it re-read."""
+    out = _refresh(tmp_path, api={
+        "lightningai": _UNMATCHED,
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+    }, apiAfter={"lightningai": _reply(
+        {"match": "exact", "job": LIGHTNING_JOB, "application": None})})
+    before = out["beforePress"]["identity"]
+    assert _by_class(before, "chip")[0]["text"] == "Not saved yet"
+    after = out["refreshed"]["identity"]
+    assert _by_class(after, "title")[0]["text"] == "Research Engineer"
+    assert _by_class(after, "co")[0]["text"] == "Lightning AI"
+    assert _by_class(after, "chip")[0]["text"] == "Saved"
+    assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1
+    # The base-resume library is tab-independent but cheap, so it is read again.
+    assert len(_gets(out["sentAfter"], "/api/base-resumes")) == 1
+    [note] = _by_class(out["refreshed"]["foot"], "note")
+    assert note["text"] == "Refreshed."
+    # Saved and already scored, so the best base is chosen and the rail moves
+    # on past Job.
+    rows = _rows(_rail_rows({"regions": out["refreshed"]}))
+    assert (rows["job"]["state"], rows["resume"]["state"]) == ("done", "active")
+
+
+def test_refresh_asks_the_scorer_again_for_a_job_it_already_tried(tmp_path):
+    """The automatic score is once per panel and job, so leaving and coming
+    back never re-asks a failing scorer. Refresh is the user asking to re-read,
+    so it may: one more POST after the press."""
+    out = _refresh(tmp_path, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": None}),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "GET /api/ats-scores": _reply([]),
+    })
+    posts = [msg for msg in out["sentAfter"]
+             if (msg.get("init") or {}).get("method") == "POST"]
+    assert [msg["path"] for msg in posts] == ["/api/ats-scores"]
+
+
+def test_a_newly_added_application_appears_in_the_picker_after_refresh(tmp_path):
+    """The drafts list survives a tab switch on purpose (it is not about the
+    page), which is exactly why a draft created elsewhere never reached the
+    picker. Refresh forgets it and asks again."""
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": APPLY_URL}],
+                   page=_REFRESH_APPLY_PAGE, api={
+                       "myworkdayjobs": _UNMATCHED,
+                       "GET /api/applications?": _reply([_refresh_draft(1)]),
+                       "/api/base-resumes": _reply(BASE_RESUMES),
+                       "/api/ats-scores": _reply(SCORES),
+                   }, apiAfter={"GET /api/applications?": _reply(
+                       [_refresh_draft(2), _refresh_draft(1)])})
+    assert _draft_names(out["beforePress"]["rail"]) == ["Acme 1 · Research Engineer 1"]
+    assert _draft_names(out["refreshed"]["rail"]) == [
+        "Acme 2 · Research Engineer 2", "Acme 1 · Research Engineer 1"]
+    assert len(_gets(out["sentAfter"], "/api/applications?")) == 1
+
+
+def test_a_drafts_list_read_superseded_by_refresh_never_replaces_the_newer_one(tmp_path):
+    """The drafts list is written when its read settles, whatever the tab (it
+    is not about the page), so the generation cannot stop an older read. Its
+    latch does: Refresh replaces it, and the read it replaced drops its answer
+    rather than putting the list without the new draft back."""
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": APPLY_URL}],
+                   page=_REFRESH_APPLY_PAGE, hold=["GET /api/applications?"], api={
+                       "myworkdayjobs": _UNMATCHED,
+                       "GET /api/applications?": _reply([_refresh_draft(1)]),
+                       "/api/base-resumes": _reply(BASE_RESUMES),
+                       "/api/ats-scores": _reply(SCORES),
+                   }, apiAfter={"GET /api/applications?": _reply(
+                       [_refresh_draft(2), _refresh_draft(1)])})
+    assert _draft_names(out["finished"]["rail"]) == [
+        "Acme 2 · Research Engineer 2", "Acme 1 · Research Engineer 1"]
+
+
+def test_refresh_is_disabled_while_a_fill_runs_and_never_cancels_it(tmp_path):
+    """Refresh resets the page facts and bumps the generation, which is how a
+    tab switch ends a running fill. So it must never run during an action:
+    the control is disabled, and a press that reaches it anyway (this fake
+    dispatches clicks at disabled controls) sends nothing, no `fill_cancel`,
+    and leaves the run to land its own report."""
+    verified = {"fid": "v1", "frameId": 0, "question": "First name", "section": "",
+                "required": False, "shape": "text", "status": "verified",
+                "answer": "Ada", "route": "slot", "slot": "personal.first_name",
+                "lastOutcome": None}
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
+                   stored={"widget.session": _armed_entry()}, startFill=True,
+                   fillFields=[verified],
+                   replies={"read_settings": SETTINGS_REPLY,
+                            "panel_frame0": _reply({"tier": "B", "form": True, "score": 2}),
+                            "panel_prepare": _reply({"injected": True}),
+                            "telemetry": _reply({"posted": 0})},
+                   api={"lightningai": _UNMATCHED,
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "/api/ats-scores": _reply(SCORES)})
+    button = _refresh_button(out["beforePress"]["identity"])
+    assert button is not None
+    assert button["disabled"] is True
+    assert _by_class(out["beforePress"]["foot"], "stop"), "the fill was not running"
+    assert [msg for msg in out["broadcasts"]
+            if msg["message"]["type"] == "fill_cancel"] == []
+    assert _gets(out["sentAfter"], "/api/jobs/match") == []
+    # The store was not reset: the run is still on screen after the press…
+    assert _by_class(out["refreshed"]["foot"], "stop")
+    assert _by_class(out["refreshed"]["foot"], "cta")[0]["class"] == "cta spin"
+    # …and its report lands, which a bumped generation would have discarded.
+    [note] = _by_class(out["finished"]["foot"], "note")
+    assert note["text"] == "Fill finished. Review before you submit."
+    assert _rows(_rail_rows({"regions": out["finished"]}))["fill"]["numeral"] == "✓"
+    assert not _refresh_button(out["finished"]["identity"])["disabled"]
+
+
+def test_a_load_in_flight_when_refresh_is_pressed_never_paints_over_it(tmp_path):
+    """The first load's match is still on the wire when the owner presses
+    Refresh. Refresh's own load answers first; the superseded one lands after
+    it with the old "not saved" answer and must be discarded."""
+    out = _refresh(tmp_path, hold=["lightningai"], api={
+        "lightningai": _UNMATCHED,
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+    }, apiAfter={"lightningai": _reply(
+        {"match": "exact", "job": LIGHTNING_JOB, "application": None})})
+    # Mid-load when pressed: nothing but the host.
+    assert "Lightning AI" not in _text(out["beforePress"]["identity"])
+    after = out["finished"]["identity"]
+    assert _by_class(after, "title")[0]["text"] == "Research Engineer"
+    assert _by_class(after, "chip")[0]["text"] == "Saved"
+    assert "Not saved yet" not in _text(after)
+
+
+def test_the_selected_application_survives_a_refresh(tmp_path):
+    """A draft picked by hand lives in this browser's memory, not in the
+    backend's match, so Refresh keeps it the way a wizard's next page does:
+    `restoreSession` re-arms it and the detail read confirms it."""
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": APPLY_URL}], pick=0,
+                   page=_REFRESH_APPLY_PAGE, api={
+                       "myworkdayjobs": _UNMATCHED,
+                       "GET /api/applications?": _reply([_refresh_draft(1)]),
+                       "GET /api/applications/app-1": _reply(
+                           {"id": "app-1", "pdf_path": "renders/app-1.pdf",
+                            "status": "draft"}),
+                       "/api/base-resumes": _reply(BASE_RESUMES),
+                       "/api/ats-scores": _reply(SCORES),
+                   })
+    for phase in ("beforePress", "refreshed"):
+        identity = out[phase]["identity"]
+        assert _by_class(identity, "chip")[0]["text"] == "Draft application", phase
+        assert f"{APP_URL}/applications/app-1" in [
+            link["href"] for link in _by_class(identity, "linkish")], phase
+    assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1
+
+
+def test_refresh_keeps_focus_and_is_named_for_what_it_does(tmp_path):
+    """Visible text "Refresh", an accessible name that says what it re-reads,
+    and a stable id so the render loop hands focus back to the rebuilt control
+    after every repaint the refresh causes."""
+    out = _refresh(tmp_path, api={
+        "lightningai": _UNMATCHED,
+        "/api/base-resumes": _reply(BASE_RESUMES),
+    })
+    button = _refresh_button(out["loaded"]["identity"])
+    assert button["tag"] == "BUTTON"
+    assert button["text"] == "Refresh"
+    assert button["attrs"]["aria-label"] == "Refresh from Maestro CS"
+    assert out["focus"] == {"id": "refresh-page", "fresh": True}
+
+
+def test_a_page_that_is_not_a_web_page_offers_no_refresh(tmp_path):
+    """`onTab` asks nothing about a `chrome://` tab, so there is nothing for
+    Refresh to re-read there either."""
+    out = _refresh(tmp_path, tabs=[{"id": 7, "url": "chrome://settings"}], api={})
+    assert out["hadButton"] is False
+    assert [node for node in _walk(out["loaded"]["identity"]) if node["tag"] == "BUTTON"] == []
+
+
+def test_a_base_resume_read_superseded_by_refresh_never_replaces_the_newer_one(tmp_path):
+    """The base-resume latch's twin of the drafts-list test: the read Refresh
+    replaced lands last with the older library and drops it."""
+    newer = [*BASE_RESUMES, {"slug": "staff_ml", "display_name": "Staff ML"}]
+    out = _refresh(tmp_path, hold=["/api/base-resumes"], api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB, "application": None}),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "/api/ats-scores": _reply(SCORES),
+    }, apiAfter={"/api/base-resumes": _reply(newer)})
+    # The Job step is done (the scored best is chosen), so the list is off
+    # screen: the store is where the newer library shows once the older read
+    # has landed.
+    assert [row["slug"] for row in out["finishedLists"]["resumes"]] == [
+        "data_scientist", "ai_ml_engineer", "staff_ml"]
+
+
+def _picked_then_refreshed(tmp_path, **spec):
+    return _refresh(tmp_path, tabs=[{"id": 7, "url": APPLY_URL}], pick=0,
+                    page=_REFRESH_APPLY_PAGE, api={
+                        "myworkdayjobs": _UNMATCHED,
+                        "GET /api/applications?": _reply([_refresh_draft(1)]),
+                        "GET /api/applications/app-1": _reply(
+                            {"id": "app-1", "pdf_path": "renders/app-1.pdf",
+                             "status": "draft"}),
+                        "/api/base-resumes": _reply(BASE_RESUMES),
+                        "/api/ats-scores": _reply(SCORES),
+                    }, **spec)
+
+
+def test_a_pick_older_than_the_memory_lasts_survives_a_refresh(tmp_path):
+    """The pick lives in this browser's memory for 30 minutes from when it was
+    written. Refresh writes it again first, so a draft picked 31 minutes ago
+    is still armed afterwards rather than silently dropped."""
+    out = _picked_then_refreshed(tmp_path, advanceMs=31 * 60 * 1000)
+    identity = out["refreshed"]["identity"]
+    assert _by_class(identity, "chip")[0]["text"] == "Draft application"
+    assert f"{APP_URL}/applications/app-1" in [
+        link["href"] for link in _by_class(identity, "linkish")]
+
+
+def test_a_picked_draft_deleted_in_the_web_app_is_dropped_by_refresh(tmp_path):
+    """Writing the memory again does not keep a dead pick alive: the detail
+    read's 404 still unbinds it, and the picker is offered again."""
+    out = _picked_then_refreshed(tmp_path, apiAfter={
+        "GET /api/applications/app-1": {
+            "ok": False, "error": "Application not found", "status": 404},
+        "GET /api/applications?": _reply([_refresh_draft(2)])})
+    identity = out["refreshed"]["identity"]
+    assert "Draft application" not in _text(identity)
+    assert "app-1" not in json.dumps(identity)
+    assert _draft_names(out["refreshed"]["rail"]) == ["Acme 2 · Research Engineer 2"]
+    assert _rows(_rail_rows({"regions": out["refreshed"]}))["job"]["state"] == "active"
+
+
+def test_a_second_press_while_refreshing_is_ignored_and_keeps_focus(tmp_path):
+    """While its load runs, Refresh is marked `aria-disabled` rather than
+    `disabled`, so the focus the user pressed it with stays on it, and a
+    second press is ignored rather than starting a second load."""
+    out = _refresh(tmp_path, pressTwice=True, hold=["lightningai"], api={
+        "lightningai": _UNMATCHED,
+        "/api/base-resumes": _reply(BASE_RESUMES),
+    })
+    pressed = _refresh_button(out["pressed"]["identity"])
+    assert pressed["attrs"].get("aria-disabled") == "true"
+    assert pressed["disabled"] is False
+    assert len(_gets(out["sentAfter"], "/api/jobs/match")) == 1
+    after = _refresh_button(out["finished"]["identity"])
+    assert after["attrs"].get("aria-disabled") in (None, "false")
+    assert out["focus"]["id"] == "refresh-page"
+
+
+def test_a_tab_switch_while_refresh_writes_the_pick_ends_that_refresh(tmp_path):
+    """Refresh writes the pick down before it re-reads, and the user can
+    switch tabs during that write. The switch has already read the new tab;
+    the Refresh pressed on the old one must not then run against it."""
+    out = _picked_then_refreshed(tmp_path, holdPressWrite=True, switchDuringPress=42,
+                                 tabUrls={"42": POSTING_URL},
+                                 apiAfter={"lightningai": _UNMATCHED})
+    assert "job-boards.greenhouse.io" in _text(out["finished"]["identity"])
+    assert len(_gets(out["sentAfter"], "lightningai")) == 1
+    assert _gets(out["sentAfter"], "myworkdayjobs") == []
+
+
+def test_a_refresh_in_flight_looks_as_unpressable_as_a_disabled_one():
+    """`aria-disabled` keeps focus where `disabled` would drop it, and the
+    stylesheet has to dim it the same way and give it no hover, or the
+    control looks live while it ignores presses."""
+    dimmed = re.search(r'([^{}]*)\{\s*opacity: \.6; cursor: default; \}', PANEL_CSS[
+        PANEL_CSS.index(".identity .refresh:disabled"):])
+    assert dimmed and '.identity .refresh[aria-disabled="true"]' in dimmed.group(1)
+    hover = re.search(r"\.refresh:hover[^{]*\{", PANEL_CSS)
+    assert hover and ':not([aria-disabled="true"])' in hover.group(0)

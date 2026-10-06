@@ -108,21 +108,21 @@ export function EditProposalCard({
         : "the tailored resume";
 
   return (
-    <div className="rounded-xl border border-dashed px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Badge variant="outline" className="gap-1 text-xs">
+    <div className="rounded-corner-md border border-dashed px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 text-body-medium">
+        <Badge variant="outline" className="gap-1">
           <Sparkles className="size-3" aria-hidden="true" />
           {`Suggested ${proposal.ops_count === 1 ? "edit" : "edits"}`}
         </Badge>
         {proposal.summary ? (
           <span className="font-medium">{proposal.summary}</span>
         ) : null}
-        <span className="text-muted-foreground text-xs">For {targetLabel}</span>
+        <span className="text-muted-foreground text-body-small">For {targetLabel}</span>
       </div>
       <EditWordsList edits={edits} />
       <div className="mt-2 flex justify-end gap-2">
         {resolution ? (
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-body-small">
             {resolution === "applied" ? "Applied" : "Discarded"}
           </span>
         ) : (
@@ -130,7 +130,6 @@ export function EditProposalCard({
             <Button
               variant="ghost"
               size="sm"
-              className="rounded-full"
               onClick={() => {
                 setFrozen(edits);
                 setResolution("discarded");
@@ -141,7 +140,7 @@ export function EditProposalCard({
             </Button>
             <Button
               size="sm"
-              className="rounded-full px-4"
+              className="px-4"
               disabled={apply.isPending}
               onClick={() => apply.mutate()}
             >

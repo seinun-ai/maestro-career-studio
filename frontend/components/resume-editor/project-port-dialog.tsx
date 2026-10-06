@@ -89,7 +89,7 @@ export function ProjectPortDialog({
         <DialogHeader>
           <DialogTitle>Copy project to another resume</DialogTitle>
         </DialogHeader>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body-medium">
           <strong>{projectName || "This project"}</strong> is added hidden, so
           you can check it before showing it.
         </p>
@@ -122,7 +122,7 @@ export function ProjectPortDialog({
             </SelectContent>
           </Select>
           {targets.length === 0 && (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground text-body-small">
               No other base resumes available.
             </p>
           )}

@@ -10,10 +10,10 @@ employer something the resume beside it does not say."""
 
 import hashlib
 import logging
-import re
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -24,97 +24,40 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.application import Application
 from app.models.autofill_field_observation import AutofillFieldObservation
+from app.models.autofill_run import AutofillRun
+from app.models.job import Job
 from app.schemas.autofill_choose import ChooseRequest, ChooseResponse
+from app.schemas.autofill_fill import (
+    MapRequest,
+    MapResponse,
+    PickRequest,
+    PickResponse,
+    SectionsRequest,
+    SectionsResponse,
+    StepRequest,
+    StepResponse,
+)
 from app.schemas.autofill_telemetry import TelemetryBatch, TelemetryObservation
+from app.schemas.autofill_trace import RunTrace
 from app.services import (
+    autofill_catalog,
     autofill_choose,
+    autofill_map,
+    autofill_pick,
     autofill_profile,
+    autofill_sections,
+    autofill_step,
     autofill_telemetry,
+    autofill_trace,
     base_resume_data,
     eeo_consent,
+    model_settings,
 )
+from app.services.autofill_context import employment_blocks, resume_skills
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/autofill", tags=["autofill"])
-
-_CURRENT_TOKENS = {"present", "current", "now"}
-
-
-def _clean_line(bullet: str) -> str:
-    # Strip inline ** bold and backtick spans BEFORE trimming leading bullet
-    # markers (the lstrip below would otherwise eat a leading "**"). __ is left
-    # intact so dunder identifiers survive (mirrors qa._plain_text, fix B7).
-    cleaned = re.sub(r"\*\*(.+?)\*\*", r"\1", bullet, flags=re.DOTALL).replace("`", "")
-    return cleaned.strip().lstrip("-*•").strip()
-
-
-def _employment_blocks(resume_json: dict[str, Any]) -> list[dict[str, Any]]:
-    blocks = []
-    for entry in resume_json.get("experience", []):
-        if not isinstance(entry, dict) or not entry.get("enabled", True):
-            continue
-        end = (entry.get("end_date") or "").strip()
-        current = not end or end.lower() in _CURRENT_TOKENS
-        blocks.append(
-            {
-                "employer": entry.get("company") or "",
-                "title": entry.get("role") or "",
-                # Workday renders a Location box in every work-experience block
-                # and it was the block's most-observed unfilled field. The
-                # resume model has always carried it; only this payload dropped
-                # it, so the extension's rule had nothing to write.
-                "location": entry.get("location") or "",
-                "start_date": entry.get("start_date") or "",
-                "end_date": None if current else end,
-                "current": current,
-                # Sentence-per-line plain text: no bullet markers, no separators,
-                # no title/company prefixes — pasted verbatim into Description
-                # textareas by the extension.
-                "description": "\n".join(
-                    cleaned
-                    for bullet in entry.get("bullets") or []
-                    if isinstance(bullet, str) and (cleaned := _clean_line(bullet))
-                ),
-            }
-        )
-    return blocks
-
-
-def _resume_skills(resume_json: dict[str, Any]) -> list[str]:
-    """Every skill on the resume, flat, in resume order.
-
-    The stored shape is a list of `{category, items}` groups — the resume
-    renders them grouped, an ATS skills picker takes them one at a time — so the
-    grouping is dropped here rather than in the extension, which has no reason
-    to know the resume's section model.
-
-    Order is the resume's own, and it is load-bearing: the extension writes only
-    the first N (a master resume carries 75 skills and no application wants all
-    of them), so the first group is the one that survives the cap. That is the
-    same order the reader of the resume sees first.
-
-    Deliberately NOT capped here. The extension has to report how many it
-    skipped, and it can only count that against the true total — a server-side
-    cap would make "10 of 14" out of a resume that actually holds 75.
-
-    De-duplicated case-insensitively, first spelling wins: "Python" listed under
-    both Languages and ML would otherwise be typed into the form twice.
-    """
-    skills: list[str] = []
-    seen: set[str] = set()
-    for group in resume_json.get("skills", []):
-        if not isinstance(group, dict):
-            continue
-        for item in group.get("items") or []:
-            if not isinstance(item, str) or not (cleaned := item.strip()):
-                continue
-            if (key := cleaned.casefold()) in seen:
-                continue
-            seen.add(key)
-            skills.append(cleaned)
-    return skills
-
 
 def _signature_hash(
     host: str, label: str, kind: str, options: list[str] | None
@@ -204,6 +147,13 @@ def post_telemetry(
     return Response(status_code=204)
 
 
+@router.post("/runs", status_code=204)
+def post_run(payload: RunTrace, db: Annotated[Session, Depends(get_db)]):
+    """Store one Companion run's value-free trace and fold it into the mechanism counters."""
+    autofill_trace.store_run(db, payload)
+    return Response(status_code=204)
+
+
 @router.get("/telemetry/summary")
 def get_telemetry_summary(db: Annotated[Session, Depends(get_db)]):
     return autofill_telemetry.build_summary(db)
@@ -211,7 +161,7 @@ def get_telemetry_summary(db: Annotated[Session, Depends(get_db)]):
 
 @router.delete("/telemetry")
 def clear_telemetry(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
-    """Delete every stored observation. Returns how many rows went.
+    """Delete every stored observation and every stored run trace. Returns how many rows went.
 
     The privacy argument for this table has always been that it has no value
     column — true, and not the whole picture. Each row carries `host` and
@@ -225,12 +175,16 @@ def clear_telemetry(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
     first is the kind of helpfulness nobody consents to. The toggle stays where
     it is (extension card → `⋯`), and the next batch stores normally.
 
+    The run traces carry `host` and a start time too, so they go with it. The mechanism counters
+    stay: their keys hold no host and no label (SYSTEM.md {#inv-autofill-telemetry-no-values}).
+
     Returns a count rather than 204 because a destructive control that cannot
     say what it destroyed is one the user has to take on faith.
     """
     deleted = db.execute(delete(AutofillFieldObservation)).rowcount
+    runs_deleted = db.execute(delete(AutofillRun)).rowcount
     db.commit()
-    return {"deleted": deleted}
+    return {"deleted": deleted, "runs_deleted": runs_deleted}
 
 
 def _selected_resume(
@@ -318,8 +272,8 @@ def get_autofill_context(
     ]
     if resume_json is not None:
         computations += [
-            ("employment", lambda: _employment_blocks(resume_json)),
-            ("skills", lambda: _resume_skills(resume_json)),
+            ("employment", lambda: employment_blocks(resume_json)),
+            ("skills", lambda: resume_skills(resume_json)),
         ]
     # One guard per section — that, and not the order, is what buys the
     # independent degradation: any single feed can raise and the other two still
@@ -374,3 +328,112 @@ def post_choose(
     return ChooseResponse(
         choices=autofill_choose.choose(payload.fields, application_id, db)
     )
+
+
+# ---------- the fill loop's asks: /map, /pick, /step and /sections ----------
+
+
+def _today(theirs: date | None) -> date:
+    """The applicant's date: the browser's, when it is within a day of the
+    server's, else the server's. A browser's local date is at most a day from
+    the UTC date a container's clock gives (UTC−12 to UTC+14), and the same
+    as a server on the applicant's own machine."""
+    ours = date.today()
+    return theirs if theirs is not None and abs((theirs - ours).days) <= 1 else ours
+
+
+def _facts(
+    db: Session, application_id: UUID | None, base: str | None, today: date | None = None
+) -> tuple[dict[str, autofill_catalog.Fact], bool]:
+    """The fact catalog and whether EEO answers may be disclosed.
+
+    Built from the CONSENT-GATED profile (inv-eeo-standing-consent): without
+    standing consent there is no `eeo.*` fact, so no model is ever offered one,
+    and without the agreement permission (`consent_forms`, as served: a lapsed
+    one is off) there is no `derived.agrees_to_terms`. The resume is the one the panel points at — `_selected_resume`, as /context,
+    so an unknown application stays a 404 — and neither selector is a
+    profile-only fill."""
+    resume = (
+        None
+        if application_id is None and base is None
+        else _selected_resume(db, application_id, base)
+    )
+    try:
+        consent = eeo_consent.get_consent(db)
+        consented, agrees = consent.enabled, consent.consent_forms
+    except Exception:  # noqa: BLE001 — fail closed, as withhold_unconsented does
+        logger.exception("eeo consent could not be read; the fill treats it as not given")
+        consented = agrees = False
+    # The job's company, so "previously employed here" can be read off the
+    # history for THIS application (autofill_catalog._worked_here).
+    application = db.get(Application, application_id) if application_id is not None else None
+    job = db.get(Job, application.job_id) if application is not None else None
+    facts = autofill_catalog.build(
+        eeo_consent.disclosable_profile(db),
+        employment_blocks(resume) if resume else [],
+        resume_skills(resume) if resume else [],
+        today=_today(today),
+        company=job.company if job else None,
+    )
+    # Served: an agreement given under an older policy reads off (lapsed).
+    return autofill_catalog.with_agreement(facts, agrees), consented
+
+
+def _job_hint(
+    db: Session, application_id: UUID | None, source_hint: str | None
+) -> autofill_pick.JobHint | None:
+    """What a low-stakes pick may lean on: the job, and where it was found (the
+    apply page's ?source=, else the tracked job URL's)."""
+    job = None
+    if application_id is not None and (row := db.get(Application, application_id)) is not None:
+        job = db.get(Job, row.job_id)
+    source = source_hint
+    if not source and job and job.source_url:
+        query = parse_qs(urlsplit(job.source_url).query)
+        source = next((query[k][0] for k in ("source", "utm_source", "src") if query.get(k)), None)
+    if job is None and not source:
+        return None
+    return autofill_pick.JobHint(
+        title=job.title if job else None,
+        company=job.company if job else None,
+        source=(source or "").lower()[:60] or None,
+    )
+
+
+@router.post("/map", response_model=MapResponse)
+def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> MapResponse:
+    """Which applicant fact each field asks for; labels only reach the model.
+
+    Low-stakes comes from the server-side setting, never the request."""
+    facts, consented = _facts(db, payload.application_id, payload.base, payload.today)
+    return MapResponse(fields=autofill_map.map_fields(
+        payload.fields, facts, db, eeo_consented=consented,
+        low_stakes=model_settings.get_autofill_low_stakes(db)))
+
+
+@router.post("/pick", response_model=PickResponse)
+def post_pick(payload: PickRequest, db: Annotated[Session, Depends(get_db)]) -> PickResponse:
+    """Which live option states each field's fact."""
+    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
+    return PickResponse(picks=autofill_pick.pick(
+        payload.fields, facts, db, _job_hint(db, payload.application_id, payload.source_hint)))
+
+
+@router.post("/step", response_model=StepResponse)
+def post_step(payload: StepRequest, db: Annotated[Session, Depends(get_db)]) -> StepResponse:
+    """The next move for a field the generic path could not finish, chosen from
+    the moves the page's code generated. The fact comes from the slot."""
+    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
+    return autofill_step.step(payload, facts, db, _job_hint(db, payload.application_id, payload.source_hint))
+
+
+@router.post("/sections", response_model=SectionsResponse)
+def post_sections(payload: SectionsRequest, db: Annotated[Session, Depends(get_db)]) -> SectionsResponse:
+    """Which profile list each repeating section holds, and how many of its
+    entries the profile can fill (the loop presses Add up to that many), and
+    which profile entry each page entry holds or is given (`order`). Headings,
+    counts and what entries hold in; kinds, counts and entry NUMBERS out: the
+    counts and the match come from the fact catalog here, so no value reaches
+    the model or the response."""
+    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
+    return SectionsResponse(sections=autofill_sections.plan(payload.sections, facts, db))

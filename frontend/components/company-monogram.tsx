@@ -2,17 +2,21 @@
 
 import { cn } from "@/lib/utils";
 
-/** Deterministic tonal hue per company so rows stay recognizable at a glance.
- *  Light text is -800 where -700 missed AA on its own tint (green, amber, rose,
- *  cyan measured 3.7 to 4.5:1); `test_frontend_color_roles.py` computes every
- *  tone over the page, a card, --muted and a hovered row in both modes. */
+/** A company's tint is identity, not state: the name hashes to one of four
+ *  tones so a row stays recognisable at a glance. StatusChip is the only place
+ *  a state is named and coloured, so the status containers (success, warning,
+ *  attention, error) are not in this list: a monogram's tint is never read as a
+ *  state, and the initial and the row's own chip say the state. Each tone holds
+ *  AA on its own solid fill (the container pairs are pinned in
+ *  test_frontend_color_roles.py, foreground on the ladder in
+ *  test_frontend_design_tokens.py). The order is fixed because it is the
+ *  hash's modulo: a company keeps its tone. The neutral tone is the ladder's
+ *  highest step so it stays visible on a hovered row (dark rows hover to -high). */
 const TONES = [
-  "bg-blue-600/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
-  "bg-violet-600/10 text-violet-700 dark:bg-violet-400/15 dark:text-violet-300",
-  "bg-green-600/10 text-green-800 dark:bg-green-400/15 dark:text-green-300",
-  "bg-amber-500/15 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300",
-  "bg-rose-600/10 text-rose-800 dark:bg-rose-400/15 dark:text-rose-300",
-  "bg-cyan-600/10 text-cyan-800 dark:bg-cyan-400/15 dark:text-cyan-300",
+  "bg-primary-container text-on-primary-container",
+  "bg-tertiary-container text-on-tertiary-container",
+  "bg-secondary-container text-on-secondary-container",
+  "bg-surface-container-highest text-foreground",
 ];
 
 export function CompanyMonogram({
@@ -33,7 +37,7 @@ export function CompanyMonogram({
     <span
       aria-hidden
       className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-medium",
+        "flex size-8 shrink-0 items-center justify-center rounded-full text-label-large",
         tone,
         className,
       )}

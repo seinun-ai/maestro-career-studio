@@ -4,7 +4,7 @@ import type { EditWords } from "@/lib/describe-edit";
  *  Chat's suggestion card and the studio's Ask for changes sheet share it. */
 export function EditWordsList({ edits }: { edits: EditWords[] }) {
   return (
-    <ul className="mt-2 space-y-1.5 text-xs">
+    <ul className="mt-2 space-y-1.5 text-body-small">
       {edits.map((edit, i) => (
         <li key={i} className="min-w-0">
           {edit.action}

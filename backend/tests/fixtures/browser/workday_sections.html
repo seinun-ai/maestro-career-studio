@@ -1,0 +1,133 @@
+<!-- Workday repeating sections (field notes §5, §4). A section is a
+     role=group labelled by its <h4>; its entries are "<Section> <n>" groups; its
+     own add-button reads "Add" with no entries and "Add Another" after. Each
+     entry has a Delete button with NO accessible name — never to be pressed.
+     Ticking "I currently work here" removes the entry's To date a frame later. -->
+<div role="group" aria-labelledby="Work-Experience-section" id="sec-work">
+  <h4 id="Work-Experience-section">Work Experience</h4>
+  <div class="entries"></div>
+  <button type="button" data-automation-id="add-button">Add Another</button>
+</div>
+<div role="group" aria-labelledby="Education-section" id="sec-edu">
+  <h4 id="Education-section">Education</h4>
+  <div class="entries"></div>
+  <button type="button" data-automation-id="add-button">Add Another</button>
+</div>
+<div role="group" aria-labelledby="Websites-section" id="sec-web">
+  <h4 id="Websites-section">Websites</h4>
+  <div class="entries"></div>
+  <button type="button" data-automation-id="add-button">Add</button>
+</div>
+<style>
+  /* The delete button's glyph is drawn, not named (§5). Its automation id is
+     illustrative: the notes record only that it has no accessible name. */
+  [data-automation-id="panel-set-delete-button"] { width: 20px; height: 20px; }
+  /* The empty alt text ("/ ''") keeps the glyph out of the accessible name. */
+  [data-automation-id="panel-set-delete-button"]::before { content: "\1F5D1" / ""; }
+</style>
+<script>
+(() => {
+  // __oracle is what the fake app HOLDS: `entries` per section, `deleted`
+  // (entries removed by their Delete button), and each committed value keyed
+  // "<entry title>/<question>". The engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.entries = {};
+  oracle.deleted = 0;
+  const slug = (s) => s.replace(/\W+/g, "-");
+
+  // Text boxes commit the way workday_text.html's do (§1): on a real leave.
+  const textField = (entry, question, autoId) => {
+    const id = `${slug(entry)}-${slug(question)}`;
+    const box = document.createElement("div");
+    box.setAttribute("data-automation-id", `formField-${autoId}`);
+    box.innerHTML = `<label for="${id}"></label><input id="${id}" type="text" aria-required="true">`;
+    box.querySelector("label").textContent = `${question}*`;
+    const input = box.querySelector("input");
+    let draft = "";
+    input.addEventListener("input", () => { draft = input.value; });
+    input.addEventListener("focusout", () => { if (document.activeElement !== input) oracle[`${entry}/${question}`] = draft; });
+    return box;
+  };
+  // Month/Year sections that commit when focus has left the wrapper (§6);
+  // workday_date.html carries the error behaviour, this one only the value.
+  const dateField = (entry, question, autoId) => {
+    const id = `${slug(entry)}-${slug(question)}`;
+    const box = document.createElement("div");
+    box.setAttribute("data-automation-id", `formField-${autoId}`);
+    box.innerHTML = `<fieldset><legend>${question}*</legend><div data-automation-id="dateInputWrapper" role="group">
+      <div data-automation-id="dateSectionMonth"><input id="${id}-m" type="text" data-automation-id="dateSectionMonth-input"
+        role="spinbutton" aria-label="Month"></div>
+      <div data-automation-id="dateSectionYear"><input id="${id}-y" type="text" data-automation-id="dateSectionYear-input"
+        role="spinbutton" aria-label="Year"></div></div></fieldset>`;
+    const wrapper = box.querySelector('[data-automation-id="dateInputWrapper"]');
+    const [m, y] = wrapper.querySelectorAll("input");
+    wrapper.addEventListener("focusout", () => setTimeout(() => {
+      if (wrapper.contains(document.activeElement)) return;
+      oracle[`${entry}/${question}`] = m.value && y.value ? `${y.value}-${m.value.padStart(2, "0")}` : "";
+    }, 0));
+    return box;
+  };
+  const currentBox = (entry, entryEl) => {
+    const id = `${slug(entry)}-current`;
+    const box = document.createElement("div");
+    box.setAttribute("data-automation-id", "formField-currentlyWorkHere");
+    // Every entry's box has the SAME name (live CarMax, 2026-09-30).
+    box.innerHTML = `<input type="checkbox" name="currentlyWorkHere" id="${id}"><label for="${id}">I currently work here</label>`;
+    const tick = box.querySelector("input");
+    let to = null;
+    tick.addEventListener("change", () => {
+      oracle[`${entry}/I currently work here`] = tick.checked;
+      // The To date goes (or comes back) on the next frame (§4).
+      requestAnimationFrame(() => {
+        if (tick.checked) {
+          to = entryEl.querySelector('[data-automation-id="formField-endDate"]');
+          to?.remove();
+        } else if (to) {
+          entryEl.append(to);
+          to = null;
+        }
+      });
+    });
+    return box;
+  };
+
+  const SECTIONS = {
+    "sec-work": { name: "Work Experience", start: 1, fields: (entry, el) => [
+      textField(entry, "Job Title", "jobTitle"), textField(entry, "Company", "companyName"),
+      currentBox(entry, el), dateField(entry, "From", "startDate"), dateField(entry, "To", "endDate")] },
+    // The live School box is the search widget (workday_search.html); here a
+    // plain box — this page is about sections, not widgets.
+    "sec-edu": { name: "Education", start: 1, fields: (entry) => [textField(entry, "School or University", "school")] },
+    "sec-web": { name: "Websites", start: 0, fields: (entry) => [textField(entry, "URL", "url")] },
+  };
+
+  for (const [sid, spec] of Object.entries(SECTIONS)) {
+    const section = document.getElementById(sid);
+    const entries = section.querySelector(".entries");
+    const add = section.querySelector('[data-automation-id="add-button"]');
+    let made = 0;
+    const count = () => entries.children.length;
+    const sync = () => {
+      oracle.entries[spec.name] = count();
+      add.textContent = count() ? "Add Another" : "Add";
+    };
+    const append = () => {
+      made += 1;
+      const title = `${spec.name} ${made}`;
+      const el = document.createElement("div");
+      el.setAttribute("role", "group");
+      el.setAttribute("aria-labelledby", `${slug(title)}-panel`);
+      el.innerHTML = `<h4 id="${slug(title)}-panel"></h4>
+        <button type="button" data-automation-id="panel-set-delete-button"></button>`;
+      el.querySelector("h4").textContent = title;
+      el.querySelector("button").addEventListener("click", () => { el.remove(); oracle.deleted += 1; sync(); });
+      el.append(...spec.fields(title, el));
+      entries.append(el);
+      sync();
+    };
+    for (let i = 0; i < spec.start; i += 1) append();
+    sync();
+    add.addEventListener("click", append);
+  }
+})();
+</script>

@@ -84,10 +84,10 @@ function EndpointDisclosure(props: EndpointProps) {
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground min-w-0 text-sm wrap-anywhere">
+        <p className="text-muted-foreground min-w-0 text-body-medium wrap-anywhere">
           {info.base_url ? (
             <>
-              Using <code className="font-mono text-xs">{info.base_url}</code>
+              Using <code className="font-mono text-body-small">{info.base_url}</code>
             </>
           ) : (
             "Not set. Models run on OpenAI and Gemini."
@@ -131,7 +131,7 @@ function EndpointControls({ info, draft, onDraft, saving, onSave }: EndpointProp
         {/* Names only servers that run on this computer. A hosted service is
             not local: it receives the key and the resume, which the warning
             below says whenever the address is not local. */}
-        <p id={endpointHintId} className="text-muted-foreground text-xs">
+        <p id={endpointHintId} className="text-muted-foreground text-body-small">
           The address of a model server on your computer, such as Ollama or LM
           Studio. It usually ends in /v1. Leave empty to use OpenAI and Gemini.
         </p>
@@ -156,7 +156,7 @@ function EndpointControls({ info, draft, onDraft, saving, onSave }: EndpointProp
           </Button>
         </div>
         {isRemoteEndpoint(value) && (
-          <p className="text-xs text-amber-700 dark:text-amber-500">
+          <p className="text-warning text-body-small">
             Your API key and resume will be sent to this server. Use one you
             trust.
           </p>
@@ -166,7 +166,7 @@ function EndpointControls({ info, draft, onDraft, saving, onSave }: EndpointProp
         {/* json_mode: Auto sends response_format only to OpenAI's own API; Off never
             sends it, which is what a server that rejects the field needs. */}
         <Label htmlFor={jsonModeId}>Strict reply format</Label>
-        <p id={jsonModeHintId} className="text-muted-foreground text-xs">
+        <p id={jsonModeHintId} className="text-muted-foreground text-body-small">
           Asks the model to reply in the exact format the app reads. Leave on Auto. If your
           server shows errors, choose Off.
         </p>

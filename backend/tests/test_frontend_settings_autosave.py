@@ -140,7 +140,7 @@ def test_every_autosave_status_renders_in_the_card_header(rel):
 def test_the_status_reserves_its_width():
     # Beside a title the auto column's width follows the status, so the
     # description re-wrapped on every save.
-    assert "inline-flex min-w-36 items-center justify-end gap-2 text-xs" in _STATUS
+    assert "inline-flex min-w-36 items-center justify-end gap-2 text-body-small" in _STATUS
 
 
 def test_persona_draft_is_a_header_action_with_its_reason_read():

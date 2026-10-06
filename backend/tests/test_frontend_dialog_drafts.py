@@ -187,7 +187,7 @@ def test_a_stale_proposal_says_so_and_cannot_apply():
     note = _flat(_between(_SHEET, "{stale ? (", ") : null}"))
     # The whole note: the second sentence says what to do about it.
     assert note.endswith(
-        '<p className="text-muted-foreground mt-2 text-xs"> The resume changed since these edits'
+        '<p className="text-muted-foreground mt-2 text-body-small"> The resume changed since these edits'
         " were suggested. Suggest again to get edits for this version. </p>"
     ), note
 
@@ -281,11 +281,13 @@ def test_a_failed_refresh_keeps_the_career_item_page():
 
 
 def test_the_findings_filter_hides_notes_instead_of_unmounting_them():
-    """The notes table holds the kept Demonstrate-skill drafts."""
+    """The notes table holds the kept Demonstrate-skill drafts: its tab is kept mounted (Task 11)."""
     flat = _flat(_HEALTH_PAGE)
     assert "showNotes && notes.length > 0" not in flat
-    assert "{notes.length > 0 && ( <NotesTable hidden={!showNotes}" in flat
-    assert "<section ref={sectionRef} id=\"notes\" tabIndex={-1} hidden={hidden}" in _FINDINGS
+    # Always there with a report (Task 10b review): the Wording group's Edit word list needs it.
+    assert '<TabsContent value="notes" keepMounted data-health-tab="notes">' in flat
+    assert flat.index('<TabsContent value="notes"') < flat.index("<NotesTable notes={tabs.notes}")
+    assert "<section ref={sectionRef} id=\"notes\" tabIndex={-1} className=" in _FINDINGS
 
 
 def test_new_entity_keeps_its_draft():

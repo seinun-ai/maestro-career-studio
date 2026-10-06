@@ -46,8 +46,8 @@
    * read; here it is `base` on the QA body, and sending it is what makes the
    * sentence this action prints ("Answered from your base resume and this
    * posting") a true one. Without it the route grounds on a generic default
-   * resume the user never picked — the document the whole Score stage exists to
-   * have them choose against — so the panel would be filling an essay box from
+   * resume the user never picked — the document the Job step's base question
+   * exists to have them choose — so the panel would be filling an essay box from
    * one resume while the fill beside it wrote from another.
    *
    * `null` is the third rung and it now has TWO ways of being reached: nothing
@@ -130,7 +130,10 @@
       // `answered` is the question this paragraph belongs to and `question` is
       // left alone — the box keeps what the user has since typed, and the
       // answer says out loud which question it is for.
-      qna: { ...after.qna, answered: question, answer, copied: false },
+      // STAMPED with what grounded it, so it is shown only beside that
+      // application (`sameApplication`); null for the job-and-base grounding.
+      qna: { ...after.qna, answered: question, answer, copied: false,
+             applicationId: grounding.application_id ?? null },
       note: { text: grounding.application_id
         ? "Saved to this application's Q&A history."
         : "Answered from your base resume and this job." },

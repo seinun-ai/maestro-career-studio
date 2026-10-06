@@ -1,0 +1,88 @@
+<!-- ADVERSARIAL, not a reproduction: a Workday-style search box (§2 markup)
+     whose search for "Other" returns two options with the SAME text under
+     DIFFERENT visible categories. Unlike §2's two identical LinkedIn leaves,
+     a person can tell these apart, so taking "the first" would be a guess. -->
+<div data-automation-id="formField-referralSource"><label for="referral">Referral Source*</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="referral" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+<div id="portal"></div>
+<style>
+  [data-automation-id="activeListContainer"] { min-height: 30px; width: 420px; border: 1px solid #888; }
+</style>
+<script>
+(() => {
+  // __oracle.referral is what the fake app HOLDS ("<category> / <option>");
+  // the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.referral = "";
+  const TREE = { "Job Board": ["Indeed", "Other"], "Social Media": ["Facebook", "Other"] };
+  const input = document.getElementById("referral");
+  const portal = document.getElementById("portal");
+  const pills = input.closest('[data-automation-id="multiSelectContainer"]').querySelector('[data-automation-id="selectedItemList"]');
+  let box = null;
+  const close = () => { box = null; portal.replaceChildren(); };
+  const commit = (category, text) => {
+    oracle.referral = `${category} / ${text}`;
+    const li = document.createElement("li");
+    li.innerHTML = `<div data-automation-id="selectedItem" role="option"><div data-automation-id="DELETE_charm"></div>
+      <p data-automation-id="promptOption"></p></div>`;
+    li.querySelector("p").textContent = text;
+    li.firstElementChild.setAttribute("aria-label", `${text}, press delete to clear value.`);
+    pills.replaceChildren(li);
+    input.value = "";
+    close();
+  };
+  input.addEventListener("mousedown", () => {
+    if (box) return;
+    requestAnimationFrame(() => {
+      box = document.createElement("div");
+      box.setAttribute("data-automation-id", "activeListContainer");
+      box.setAttribute("role", "listbox");
+      portal.replaceChildren(box);
+    });
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+  input.addEventListener("keyup", (e) => {
+    if (e.key !== "Enter" || !box) return;
+    const q = input.value.trim().toLowerCase();
+    if (!q) return;
+    setTimeout(() => {
+      if (!box) return;
+      box.replaceChildren();
+      for (const [category, leaves] of Object.entries(TREE)) {
+        const hits = leaves.filter((t) => t.toLowerCase().includes(q));
+        if (!hits.length) continue;
+        // Each category is a visible header above its options.
+        const group = document.createElement("div");
+        group.setAttribute("role", "group");
+        group.setAttribute("aria-label", category);
+        const header = document.createElement("div");
+        header.className = "category-header";
+        header.textContent = category;
+        group.append(header);
+        for (const text of hits) {
+          const row = document.createElement("div");
+          row.setAttribute("role", "option");
+          row.setAttribute("data-automation-id", "menuItem");
+          row.setAttribute("aria-selected", "false");
+          row.innerHTML = `<div data-automation-id="promptLeafNode"><input type="radio" data-automation-id="radioBtn" tabindex="-1">
+            <div data-automation-id="promptOption"></div></div>`;
+          row.querySelector('[data-automation-id="promptOption"]').textContent = text;
+          row.addEventListener("click", (ev) => {
+            if (ev.target.matches("input")) commit(category, text);
+            else row.setAttribute("aria-selected", "true");
+          });
+          group.append(row);
+        }
+        box.append(group);
+      }
+    }, 150);
+  });
+  document.addEventListener("mousedown", (e) => {
+    if (box && !portal.contains(e.target) && e.target !== input) close();
+  });
+})();
+</script>

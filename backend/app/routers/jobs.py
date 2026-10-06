@@ -35,9 +35,11 @@ from app.schemas.job_search_brief import JobSearchBriefResponse
 from app.services import (
     artifacts,
     base_resume_data,
+    filled_answers,
     jd_extraction,
     job_search_brief,
     job_url_match,
+    knockout,
     market_settings,
     quick_tailor,
     role_categories,
@@ -406,6 +408,10 @@ def export_jobs(
     level: str | None = None,
     since: date | None = None,
     skill: str | None = None,
+    # Paging is opt-in: no limit is the whole export, as before. The MCP tool
+    # always passes one (a full library is ~1.7M chars).
+    limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     stmt = select(Job)
     if role_category:
@@ -422,7 +428,11 @@ def export_jobs(
                 select(JobSkill.job_id).where(JobSkill.skill_name.ilike(f"%{skill}%"))
             )
         )
-    jobs = db.scalars(stmt.order_by(Job.created_at.desc())).all()
+    # id is a deterministic tiebreak so pages never overlap or skip.
+    stmt = stmt.order_by(Job.created_at.desc(), Job.id.desc()).offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    jobs = db.scalars(stmt).all()
 
     skills_by_job: dict = defaultdict(list)
     job_ids = [j.id for j in jobs]
@@ -502,6 +512,7 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
         match="exact",
         job=JobSummary.model_validate(job),
         application=summary,
+        knockout=knockout.scan_for(db, job),
     )
 
 
@@ -540,18 +551,12 @@ def get_job_detail(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     # Same derived proposal_status / proposal_id / proposal_proposed_by as the list endpoint
     # (transient attrs) so the job page can triage and load proposal detail.
     _with_newest_proposal(db, job)
-    from app.services import autofill_profile, job_preferences, knockout
-
-    scan = knockout.scan_job(
-        job,
-        autofill_profile.get_work_auth(db),
-        autofill_profile.get_profile(db).get("preferences"),
-        years_experience=job_preferences.get_preferences(db).years_experience,
-    )
+    scan = knockout.scan_for(db, job)
     return JobDetail(
         job=JobRead.model_validate(job),
         application=ApplicationRead.model_validate(application) if application else None,
         knockout=scan,
+        has_filled_answers=filled_answers.has_any(db, job_id),
     )
 
 

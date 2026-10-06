@@ -277,7 +277,7 @@ def test_job_market_bars_and_filters_print_words():
     for field in ("o.work_mode", "o.level_breakdown", "o.work_auth.opt", "o.work_auth.sponsorship"):
         assert f"toEnumBars({field})" in market, field
     page = _read("app/analytics/page.tsx")
-    assert '{filterSelect("level", "Level", level, setLevel, options.levels, enumLabel)}' in page
+    assert '{filterSelect(`${panel}-level`, "Level", level, setLevel, options.levels, enumLabel)}' in page
     assert '"Employment type",' in page and "options.employment,\n        enumLabel," in page
 
 
@@ -353,7 +353,7 @@ def test_longer_words_wrap_instead_of_squeezing():
     word per line beside Update score."""
     page = _read(_GAP_PAGE)
     assert 'className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2"' in page
-    assert "shrink-0 text-sm whitespace-nowrap tabular-nums" in page
+    assert "shrink-0 text-body-medium whitespace-nowrap tabular-nums" in page
     compare = _read("components/ats-compare-panel.tsx")
     assert 'CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2"' in compare
 
@@ -367,9 +367,10 @@ def test_a_bullet_label_is_singular_in_its_slot():
     src = _read("components/resume-editor/bullet-list.tsx")
     assert 'label = "Bullets",' in src and 'itemLabel = "Bullet",' in src
     assert "aria-label={`${itemLabel} ${i + 1} of ${value.length}`}" in src
-    for verb in ("Move ${itemLabel.toLowerCase()} ${i + 1} up", "Move ${itemLabel.toLowerCase()} ${i + 1} down",
-                 "Delete ${itemLabel.toLowerCase()} ${i + 1}"):
-        assert f"aria-label={{`{verb}`}}" in src, verb
+    # The row's handle and ⋯ carry its singular name and position; the menu's items then act on it.
+    assert "const noun = itemLabel.toLowerCase();" in src
+    for name in ("Drag ${noun} ${i + 1} to move it", "More actions for ${noun} ${i + 1}"):
+        assert f"`{name}`" in src, name
     assert "${label} ${i + 1}" not in src
     assert "label.toLowerCase()" not in src.replace("itemLabel.toLowerCase()", "")
 
@@ -416,7 +417,7 @@ def test_health_counts_agree_with_their_nouns():
     cards = _read("components/resume-health/finding-cards.tsx")
     assert '{ key: "ask", one: "question", many: "questions",' in _flat(cards)
     assert "const noun = meta ? (count === 1 ? meta.one : meta.many) : key;" in cards
-    assert "{countWords(key, count)}" in _read("components/resume-health/health-report-page.tsx")
+    # (The report page's count chips went with its left rail, Task 11: its tabs show plain counts.)
     badges = _read("components/resume-health/health-badges.tsx")
     assert "[countWords(key, count)]" in badges
     assert "${count} ${key}" not in badges

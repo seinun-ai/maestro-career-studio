@@ -23,7 +23,7 @@ export function LowSampleBadge({
   return (
     <span
       className={cn(
-        "text-muted-foreground text-[10px] font-medium tabular-nums",
+        "text-muted-foreground text-label-small tabular-nums",
         className,
       )}
       title={lowSampleLabel(n, unit)}
@@ -44,7 +44,7 @@ export function LowSampleCaption({
 }) {
   if (!lowSample) return null;
   return (
-    <p className="text-muted-foreground mb-2 text-xs">
+    <p className="text-muted-foreground mb-2 text-body-small">
       {lowSampleLabel(n, unit)}
     </p>
   );

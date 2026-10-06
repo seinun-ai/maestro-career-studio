@@ -26,7 +26,7 @@ These have real coverage and are unlikely to move under you.
 - **The Career KB → resume → application chain.** Approved evidence composes
   verbatim; rewriting is a separate, consented step. Resume versions are
   recorded, so nothing is one-way.
-- **The MCP server.** 83 tools across six profiles, cold-install tested in CI
+- **The MCP server.** 85 tools across six profiles, cold-install tested in CI
   against the exact command the README gives you.
 - **Data stays local.** No telemetry leaves your machine — see the extension
   section of the README for what the one telemetry endpoint stores and how to
@@ -38,10 +38,17 @@ These have real coverage and are unlikely to move under you.
   stops at 500.
 - **No single "ready to apply" check on the final PDF.** A knock-out pre-scan
   compares the posting's stated requirements (work authorization, OPT policy,
-  salary) against your profile on the job Overview and in the agent final
-  review — but health, page-count, em-dash and contact checks still don't run
-  against the *exact rendered PDF* in one pass, so it is still possible to send
-  something a check would have caught.
+  salary, an on-site or hybrid office away from where you live) against your
+  profile on the job Overview and in the agent final review — but health,
+  page-count, em-dash and contact checks still don't run against the *exact
+  rendered PDF* in one pass, so it is still possible to send something a check
+  would have caught.
+- **The record of what was filled can miss a late edit.** What was submitted
+  is read from the page while the Companion is open beside it. A change you
+  make just before the page is replaced by a full-page navigation, and a
+  resume you attach by hand with Attach resume, are not on it. A wizard whose
+  pages share one web address shows as one page, and a question repeated on
+  two of them keeps only its latest answer.
 - **Scores can go stale.** Scores derived from a base resume are not re-scored
   when that base resume changes, so a score can quietly describe an older
   document.
@@ -124,7 +131,9 @@ does not.
   this was assembled".
 - **The tracker records state but does not manage follow-through.** No next
   action, due date, reminder, status history, or snapshot of the exact artifact
-  you actually submitted.
+  you actually submitted. Moving statuses from your mail is an external agent
+  run (the `mail-status` prompt on the Automations page), not something the app
+  does or schedules itself.
 - **Import auto-approves more than you might expect.** Unchanged bullets from a
   file you wrote are approved on import; only merged or AI-generated points land
   in the review inbox. Defensible, but the result dialog does not say so.

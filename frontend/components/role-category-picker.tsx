@@ -77,7 +77,7 @@ export function RoleBadge({
   const { data: options } = useRoleCategories();
   const undeclared = role === "unknown" && !label;
   return (
-    <Badge variant={undeclared ? "outline" : "secondary"} className="font-normal">
+    <Badge variant={undeclared ? "outline" : "secondary"} className="text-body-small">
       {undeclared ? "Role not set" : displayRoleTag(role, label, options)}
     </Badge>
   );
@@ -160,7 +160,7 @@ export function RoleCategoryPicker({
         readOnly={save.isPending}
         disabled={!options}
         className={cn(
-          "border-input focus-within:ring-ring flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2",
+          "border-input focus-within:ring-ring flex min-h-9 flex-wrap items-center gap-1.5 rounded-corner-sm border bg-transparent px-2 py-1.5 text-body-medium focus-within:ring-2",
           className,
           guessing && "border-dashed",
         )}

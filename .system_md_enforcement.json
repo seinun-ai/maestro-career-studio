@@ -53,7 +53,34 @@
       {"path": "backend/app/services/eeo_consent.py", "symbol": "def withhold_unconsented"},
       {"path": "backend/tests/test_autofill_router.py", "symbol": "test_context_withholds_eeo_values_without_consent"},
       {"path": "backend/tests/test_autofill_choose.py", "symbol": "test_without_consent_no_diversity_answer_reaches_the_model"},
-      {"path": "backend/tests/test_autofill_choose_jev.py", "symbol": "test_eeo_values_never_reach_jev_without_consent"}
+      {"path": "backend/tests/test_autofill_choose_jev.py", "symbol": "test_eeo_values_never_reach_jev_without_consent"},
+      {"path": "backend/tests/test_autofill_fill_router.py", "symbol": "test_agreeing_to_terms_is_a_fact_only_while_the_agreement_permission_is_on"}
+    ],
+    "inv-autofill-telemetry-no-values": [
+      {"path": "backend/tests/test_extension_sw_router.py", "symbol": "test_a_trace_carries_none_of_the_keys_injected_at_any_level"},
+      {"path": "backend/tests/test_extension_sw_router.py", "symbol": "test_a_trace_is_not_posted_when_the_user_turned_telemetry_off"},
+      {"path": "backend/tests/test_autofill_trace_router.py", "symbol": "test_an_unknown_key_in_the_body_is_a_422"},
+      {"path": "backend/tests/test_autofill_trace_router.py", "symbol": "test_no_counter_key_or_count_holds_a_host_or_label"},
+      {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_no_value_reaches_the_trace"},
+      {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_what_the_trace_keeps_of_the_page_is_its_labels_and_options"}
+    ],
+    "inv-filled-answers-local": [
+      {"path": "backend/tests/test_filled_answers_invariant.py", "symbol": "test_telemetry_and_trace_never_read_the_receipt"},
+      {"path": "backend/tests/test_filled_answers_invariant.py", "symbol": "test_no_export_serves_a_recorded_answer"},
+      {"path": "backend/tests/test_filled_answers_invariant.py", "symbol": "test_the_companion_posts_the_receipt_through_the_api_door_only"},
+      {"path": "backend/tests/test_extension_panel_receipt.py", "symbol": "test_the_receipt_goes_through_the_api_door_even_with_telemetry_off"},
+      {"path": "backend/tests/test_extension_panel_receipt.py", "symbol": "test_a_refused_frame_sends_nothing"},
+      {"path": "backend/tests/test_extension_panel_receipt.py", "symbol": "test_a_typed_id_number_is_not_recorded_even_under_standing_consent"},
+      {"path": "backend/tests/browser/test_touch_notice.py", "symbol": "test_a_frame_that_has_not_earned_the_data_says_nothing"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_an_eeo_value_does_not_outlive_the_consent"},
+      {"path": "backend/tests/test_filled_answers_agent.py", "symbol": "test_an_eeo_answer_reaches_the_agent_without_its_value_even_under_consent"},
+      {"path": "backend/mcp_server/tests/test_client_filled_answers.py", "symbol": "test_no_mcp_path_reads_the_receipt_endpoint"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_an_eeo_answer_without_consent_keeps_only_the_question"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_withdrawing_consent_clears_the_stored_eeo_answers_not_just_the_read"},
+      {"path": "backend/tests/test_filled_answers_api.py", "symbol": "test_granting_consent_again_does_not_bring_a_cleared_answer_back"},
+      {"path": "backend/app/services/filled_answers.py", "symbol": "def _consented"},
+      {"path": "backend/app/services/filled_answers.py", "symbol": "def clear_eeo_answers"},
+      {"path": "backend/mcp_server/client.py", "symbol": "_without_eeo_values"}
     ],
     "inv-single-dialect": [
       {"path": "backend/tests/test_db_portability.py", "symbol": "test_no_dialect_imports_outside_types_module"},
@@ -65,7 +92,6 @@
     "ids": [
       "inv-honesty",
       "inv-tailor-vs-edit",
-      "inv-autofill-telemetry-no-values",
       "inv-pdf-word-spacing"
     ]
   }

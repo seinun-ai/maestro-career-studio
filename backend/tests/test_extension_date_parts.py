@@ -35,7 +35,7 @@ from tests.extension_harness import (
 
 # One job, ended — so both ends of the range have an answer and a wrong one is
 # visible. "Mon YYYY" because that is what /api/autofill/employment-blocks
-# returns (routers/autofill._employment_blocks passes the resume field through
+# returns (services/autofill_context.employment_blocks passes the resume field through
 # verbatim, and the resume model is "Mon YYYY").
 _ONE_JOB = [
     {

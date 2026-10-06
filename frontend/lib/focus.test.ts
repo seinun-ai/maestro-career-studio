@@ -353,3 +353,20 @@ test("focusIfStranded takes focus from <body> or an inert panel, never from a li
   focusIfStranded(asEl(shownPanel));
   assert.equal(doc.activeElement, shownPanel);
 });
+
+test("a neighbour with nothing focusable hands focus to the list instead", () => {
+  const rows = ["a", "b"].map((id) => h("li", { id }, h("p")));
+  const list = h("ul", { tabindex: "-1" }, ...rows);
+  const main = h("main", { id: "main-content", tabindex: "-1" }, list);
+  doc.body.append(main);
+  const back = focusSuccessor(asEl(rows[0]), "[data-action]");
+  rows[0].remove();
+  assert.equal(back(), list, "not the bare row, whose focus() would drop to <body>");
+  // A neighbour that opted into script focus still counts.
+  const own = h("li", { tabindex: "-1" });
+  const kept = h("ul", {}, h("li"), own);
+  doc.body.append(kept);
+  const back2 = focusSuccessor(asEl(kept.children[0]));
+  kept.children[0].remove();
+  assert.equal(back2(), own);
+});

@@ -30,11 +30,11 @@ function DeltaBar({ label, value }: { label: string; value: number }) {
   return (
     <div className="space-y-0.5">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-muted-foreground text-xs">{label}</span>
+        <span className="text-muted-foreground text-body-small">{label}</span>
         <span
           className={cn(
-            "text-xs font-medium tabular-nums",
-            positive ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+            "text-label-medium tabular-nums",
+            positive ? "text-success" : "text-destructive",
           )}
         >
           {positive ? "+" : ""}
@@ -45,7 +45,7 @@ function DeltaBar({ label, value }: { label: string; value: number }) {
         <div
           className={cn(
             "h-full rounded-full transition-[width]",
-            positive ? "bg-emerald-500" : "bg-destructive",
+            positive ? "bg-success" : "bg-destructive",
           )}
           style={{ width: `${width}%` }}
         />
@@ -65,7 +65,7 @@ function SkillStateCell({ row }: { row: AtsSkillRow | null }) {
       {row.matched ? (
         <Badge
           variant="outline"
-          className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
+          className="border-transparent bg-success-container text-on-success-container"
         >
           Matched
         </Badge>
@@ -74,7 +74,7 @@ function SkillStateCell({ row }: { row: AtsSkillRow | null }) {
           Missing
         </Badge>
       )}
-      {note ? <span className="text-muted-foreground text-xs">{note}</span> : null}
+      {note ? <span className="text-muted-foreground text-body-small">{note}</span> : null}
     </span>
   );
 }
@@ -142,7 +142,7 @@ export function AtsComparePanel({
           <CardTitle>ATS score before and after</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-muted-foreground text-sm">{couldnt("compare the scores", err)}</p>
+          <p className="text-muted-foreground text-body-medium">{couldnt("compare the scores", err)}</p>
           {recoverable ? (
             <Button
               variant="outline"
@@ -188,16 +188,16 @@ export function AtsComparePanel({
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-baseline gap-2 text-2xl font-semibold tabular-nums">
-          <span className="text-muted-foreground font-normal">
+        <div className="flex items-baseline gap-2 text-headline-small tabular-nums">
+          <span className="text-muted-foreground">
             {data.base.composite.toFixed(1)}
           </span>
           <MoveRight className="text-muted-foreground size-4 self-center" />
           <span>{data.tailored.composite.toFixed(1)}</span>
           <span
             className={cn(
-              "text-sm font-medium",
-              deltaPositive ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+              "text-title-small",
+              deltaPositive ? "text-success" : "text-destructive",
             )}
           >
             ({deltaPositive ? "+" : ""}
@@ -226,20 +226,8 @@ export function AtsComparePanel({
             </TableHeader>
             <TableBody>
               {data.skill_diff.map((row) => {
-                const gained =
-                  !(row.before?.matched ?? false) &&
-                  (row.after?.matched ?? false);
-                const lost =
-                  (row.before?.matched ?? false) &&
-                  !(row.after?.matched ?? false);
                 return (
-                  <TableRow
-                    key={row.jd_skill}
-                    className={cn(
-                      gained && "bg-emerald-500/5",
-                      lost && "bg-destructive/5",
-                    )}
-                  >
+                  <TableRow key={row.jd_skill}>
                     <TableCell className="font-medium whitespace-normal">
                       {row.jd_skill}
                     </TableCell>
@@ -255,7 +243,7 @@ export function AtsComparePanel({
             </TableBody>
           </Table>
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body-medium">
             No skill changes.
           </p>
         )}

@@ -13,7 +13,8 @@
  * that used to be split across two files is written out below in full.
  *
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
- * postingId, sessionTenant, restorableSession, reconcileFill, sanitizeAnswer }.
+ * postingId, sessionTenant, restorableSession, reconcileFill, sanitizeAnswer,
+ * sameApplication, describesJob, sameSite }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -38,11 +39,39 @@
    *   which re-asks. The shortcut sitting above that check does not bend the
    *   rule: its copy claims a fill from base is possible — a page-and-session
    *   fact — never that the job exists. `done.job` stays false and the rail's
-   *   Job row still offers Add job.
-   * - The shortcut skips Score/Resume VISIBLY: `skipped` NAMES them, and it
-   *   means "not required on the current path", never "done". `choiceSkipped`
-   *   then names the one of them the user actually chose, because a skip they
+   *   Job row still offers Save job.
+   * - The shortcut skips Resume VISIBLY: `skipped` NAMES it, and it means
+   *   "not required on the current path", never "done". `choiceSkipped` then
+   *   names the rows the user actually chose to skip, because a skip they
    *   chose is a door back and a skip the path computed is not.
+   * - FOUR STEPS, and the first one asks two questions: is the job saved, and
+   *   which base resume goes with it (Score was merged into Job, 2026-09-27).
+   *   `done.job` is both answered. `baseChosen` is a pick the user made OR the
+   *   ranking's scored best, preselected: the owner's call, and honest because
+   *   it is not silent — the Job row's summary names the base and its score,
+   *   and the done row reopens onto the ranked list. `hasScores` still has to
+   *   be true beside it, so a base clicked in an unscored list does not close
+   *   the step while its own primary can still score it.
+   * - AN APPLICATION ANSWERS THE BASE QUESTION with the base it was made from,
+   *   and so does the base-as-is claim with the base it armed. A
+   *   backend-matched application arrives with no click, restore or pick, and
+   *   demanding one parked the rail in front of a tailored PDF with Fill
+   *   locked (the "asks to tailor again" bug, 2026-09-27).
+   * - A PAGE FILLED FROM THE BASE NEVER SENDS THE RAIL BACK TO RESUME
+   *   (owner decision, 2026-09-27). The case is track-this: armed base,
+   *   filled, then an application made from the base with no PDF, which used
+   *   to send the user back to "tailor" a step they had finished by filling.
+   *   With an application bound and no PDF, `touched` AND `baseArmed` make
+   *   Resume SKIPPED — never done, because no PDF exists — and the ladder
+   *   moves on (fill done, so Track). BOTH, because `touched` alone is too
+   *   wide: it also comes from an attach or a pause answer and survives a
+   *   draft switch, Refresh and later wizard pages, so filling with one draft
+   *   and switching to one with no PDF would jump to Track past that draft's
+   *   open question. `baseArmed` beside an application is track-this's
+   *   signature: `useBaseAsIs` refuses to arm beside one, and track-this
+   *   leaves the arming standing. Not a claim, so not in `choiceSkipped`; the
+   *   row is still a door (panel.js `isReopenable`), because Create PDF and
+   *   Tailor in Maestro CS live in its body.
    * - `mark-applied` requires only a draft application (the 2026-08-16
    *   lesson: the confirmation page is where it is most wanted);
    *   `track-this` keeps the `touched` requirement, because before a
@@ -63,12 +92,16 @@
    */
   function stageFor({
     match, hasApplication, pdfReady, status, touched, hasForm,
-    baseArmed, hasScores, baseSelected,
+    baseArmed, hasScores, baseChosen,
   }) {
-    const jobDone = match === "exact";
+    const saved = match === "exact";
     const fillFromBase = baseArmed === true && !hasApplication;
-    const scoreDone = jobDone && hasScores === true && baseSelected === true;
-    const resumeDone = jobDone && hasApplication === true && pdfReady === true;
+    const baseAnswered = hasApplication === true || fillFromBase
+      || (hasScores === true && baseChosen === true);
+    const jobDone = saved && baseAnswered;
+    const resumeDone = saved && hasApplication === true && pdfReady === true;
+    const resumeFilledPast = saved && hasApplication === true && !resumeDone
+      && touched === true && baseArmed === true;
     const isDraft = (status ?? "draft") === "draft";
     const trackDone = hasApplication === true && !isDraft;
     // `touched` and nothing else: `done.fill` is this extension's own claim
@@ -82,26 +115,24 @@
     // `done`'s: without the `trackDone` rung an application attached via
     // track-this and then marked applied — so `pdfReady` is false, it was
     // never tailored — fell through to "resume" and asked the user to tailor a
-    // resume for a job they had already applied to.
+    // resume for a job they had already applied to. (`trackDone` implies an
+    // application, which answers the base question, so it can sit below Job.)
     const stage =
       fillFromBase ? (fillDone ? "track" : "fill")
         : !jobDone ? "job"
           : trackDone ? "track"
-            : !scoreDone ? "score"
-              : !resumeDone ? "resume"
-                : !fillDone ? "fill"
-                  : "track";
+            : !resumeDone && !resumeFilledPast ? "resume"
+              : !fillDone ? "fill"
+                : "track";
 
     return {
       stage,
-      done: { job: jobDone, score: scoreDone, resume: resumeDone,
-              fill: fillDone, track: trackDone },
+      done: { job: jobDone, resume: resumeDone, fill: fillDone, track: trackDone },
       // What the current path does not REQUIRE — never what is done. An
       // unmatched shortcut names Job here while `done.job` stays false, so the
-      // rail greys the row and still offers Add job.
-      skipped: fillFromBase
-        ? (jobDone ? ["score", "resume"] : ["job", "score", "resume"])
-        : [],
+      // rail greys the row and still offers Save job.
+      skipped: fillFromBase ? (saved ? ["resume"] : ["job", "resume"])
+        : resumeFilledPast ? ["resume"] : [],
       // WHOSE skip it is — the same rows as `skipped`, filtered down to the
       // ones a user can take back. A skip has two provenances and they are not
       // interchangeable: `baseArmed` is a CLAIM the user made ("use base
@@ -112,13 +143,11 @@
       // the answer stays per-row.
       //
       // ONLY `resume`, and that is the honest reading rather than a narrowing.
-      // The claim was made in answer to the RESUME stage's own question — the
-      // fork asks "tailor, or not?" and "use base as-is" is the no — so Resume
-      // is the row that holds it. Score is skipped because nothing needs a
-      // ranking when nothing is being tailored, and Job because the shortcut
-      // is a page-and-session fact that never asked the library: neither is a
-      // decision anybody made, and putting a withdraw door on either would be
-      // a second entrance to one claim.
+      // The claim was made in answer to the RESUME stage's own question — "tailor,
+      // or not?" and "use my base resume" is the no — so Resume is the row that
+      // holds it. Job is skipped on an unmatched page because the shortcut is a
+      // page-and-session fact that never asked the library: nobody decided
+      // that, and a withdraw door there would be a second entrance to one claim.
       //
       // The empty list when `fillFromBase` is false is not "no claim exists" —
       // `baseArmed` may still be true beside an application that has overtaken
@@ -440,8 +469,77 @@
       .trim();
   }
 
+  /** Whether a record the panel stamped at write time (`stamp`, an
+   * application id or null) belongs beside the application bound NOW.
+   *
+   * The attach and the QnA answer are about this page AND about the
+   * application they were made for: the PDF is that application's, the answer
+   * was grounded in it. Refresh keeps the page's work, and the backend may
+   * since have linked a different application to the page, so both are read
+   * through this rather than trusted because they survived. `pickApplication`
+   * clears the attach for the same reason; this is the rule for a change of
+   * application the panel did not make itself.
+   *
+   * Null matches null: an answer grounded in the job and a base resume, with
+   * no application, is still that answer while no application is bound. An
+   * attach always has an application (`attachResume` refuses without one), so
+   * it never stamps null. */
+  function sameApplication(stamp, application) {
+    return stamp === (application?.id ?? null);
+  }
+
+  /** The extractor's sources that ARE a job description: a JobPosting record,
+   * or a job-description container (`extractJobPosting` in content/agent.js).
+   * `page` (a long <main>) and `body` (the whole page) are only the page's
+   * text: a recipe page, or a careers site's navigation around a posting that
+   * lives in an iframe (iCIMS). */
+  const JOB_SIGNALS = new Set(["json-ld", "content"]);
+
+  /** Whether an extraction, or a preview made from one, holds a job
+   * description: text, found by a job signal. THREE readers, one rule: the
+   * Job step's sub line claims "Job description found" only for this; the
+   * posting read asks the other frames of the tab when frame 0's answer is not
+   * this, and takes a subframe's answer only when it is; and Save job refuses
+   * a save that has neither this nor a title. */
+  function describesJob(posting) {
+    return Boolean(String(posting?.text ?? "").trim()) && JOB_SIGNALS.has(posting?.source);
+  }
+
+  /** The site a url belongs to: its registrable domain, APPROXIMATED as the
+   * last two labels of the host ("careers-gmr.icims.com" → "icims.com"). There
+   * is no public-suffix list in this extension, so a two-label suffix
+   * ("co.uk") makes its whole registry one site; the approximation errs toward
+   * SAME, and each reader of `sameSite` holds a second bar: the posting read
+   * also requires a job description, and the form offer the frame's own
+   * Tier B verdict, which is the write gate too. An IP literal or a one-label
+   * host is its own site; a url with no host (about:blank, about:srcdoc,
+   * data:) has none. */
+  function siteOf(url) {
+    let host;
+    try {
+      host = new URL(String(url)).hostname;
+    } catch (_) {
+      return null;
+    }
+    if (!host) return null;
+    if (/^[\d.]+$/.test(host) || host.includes(":")) return host;
+    return host.split(".").slice(-2).join(".");
+  }
+
+  /** Whether two urls are on the same site (`siteOf`). TWO READERS. The
+   * panel takes a subframe's posting only from the tab's own site: a vendor's
+   * "similar jobs" widget carries its own JobPosting JSON-LD, and an ad frame
+   * can hold a description-like container, and neither is the posting the tab
+   * shows. And a same-site subframe's form verdict counts at frame 0's score
+   * (iCIMS's own iframe), where another site's needs a higher one. A frame
+   * whose url is unknown is never the same site. */
+  function sameSite(a, b) {
+    const site = siteOf(a);
+    return site !== null && site === siteOf(b);
+  }
+
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession,
-    reconcileFill, sanitizeAnswer,
+    reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
   };
 })();

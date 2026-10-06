@@ -27,6 +27,13 @@ def test_the_policy_is_by_section():
     assert slots.policy_for(None) == "flag"
 
 
+def test_a_languages_name_is_exact_and_the_rest_of_its_entry_flag():
+    """Whatever the entry's index: a near-miss language is a different language."""
+    assert [slots.policy_for(f"languages.{i}.language") for i in (0, 3, 12)] == ["exact"] * 3
+    for key in ("read", "speak", "write", "native", "fluent"):
+        assert slots.policy_for(f"languages.1.{key}") == "flag"
+
+
 def test_criteria_offer_every_slot_plus_free_text_and_none():
     criteria = slots.slot_criteria({"education.discipline": "Business analytics"})
     assert set(criteria) == {"education.discipline", slots.FREE_TEXT, slots.NO_SLOT}

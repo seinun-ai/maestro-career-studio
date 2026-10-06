@@ -54,7 +54,8 @@
  * THE CUT IS THE ONE THE OLD HEADER MARKED, plus one. Its three
  * `// ---------- … ----------` boundaries became `actions/fill.js`,
  * `actions/pause.js` and `actions/qna.js`; the unmarked head split by STAGE —
- * `actions/job.js`, `actions/score.js`, `actions/resume.js` — because those are
+ * `actions/job.js`, `actions/score.js` (merged into `job.js` with its stage,
+ * 2026-09-27), `actions/resume.js` — because those are
  * three subjects rather than one, and because mirroring `panel/stages/` is the
  * whole point of the two cuts landing together. The cut commit was the MOVE
  * and nothing else; `actions/track.js` arrived with the Track stage in the
@@ -87,13 +88,13 @@
  * candidate. TRIGGER for cutting it: a SECOND full-page pipeline beside
  * `runGuidedFill`. Do not cut it because it is the longest file here.
  *
- * SIZES: during 88 · job 81 · pick 257 · score 112 · resume 214 · fill 337 ·
- * pause 333 · qna 143 · track 180, this roster. Stated because a threshold
+ * SIZES: during 158 · job 187 · pick 266 · resume 269 · fill 720 ·
+ * pause 360 · qna 145 · track 179, this roster. Stated because a threshold
  * nobody can measure against is not one.
  *
  * WHAT THIS FILE PUBLISHES: ns.panelActions = (store) => ({ addJob,
  * pickApplication, unpickApplication, dropDeletedApplication, scoreAllBases,
- * quickTailor, useBaseAsIs, stopUsingBaseAsIs, startFill, submitAnswer,
+ * quickTailor, useBaseAsIs, stopUsingBaseAsIs, createPdf, startFill, submitAnswer,
  * askQuestion, setStatus, trackThis }).
  */
 (() => {
@@ -116,7 +117,6 @@
 
   const job = need("actions/job.js", ns.panelActionsJob);
   const pick = need("actions/pick.js", ns.panelActionsPick);
-  const score = need("actions/score.js", ns.panelActionsScore);
   const resume = need("actions/resume.js", ns.panelActionsResume);
   const fill = need("actions/fill.js", ns.panelActionsFill);
   const pause = need("actions/pause.js", ns.panelActionsPause);
@@ -145,10 +145,11 @@
     // second copy of the unbinding, which is the whole reason it lives beside
     // `unpickApplication` instead of inside panel.js's `loadContext`.
     dropDeletedApplication: () => pick.dropDeletedApplication(store),
-    scoreAllBases: () => score.scoreAllBases(store),
+    scoreAllBases: (options) => job.scoreAllBases(store, options),
     quickTailor: () => resume.quickTailor(store),
     useBaseAsIs: () => resume.useBaseAsIs(store),
     stopUsingBaseAsIs: () => resume.stopUsingBaseAsIs(store),
+    createPdf: () => resume.createPdf(store),
     startFill: () => fill.startFill(store),
     attachResume: () => fill.attachResume(store),
     submitAnswer: (qid) => pause.submitAnswer(store, qid),

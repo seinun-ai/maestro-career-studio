@@ -37,6 +37,9 @@ WHAT IS IN HERE, in four groups:
 - THE SPEC STARTERS. `SETTINGS_REPLY`, the two job rows, the base-resume
   library and the score rows that every stage's driver builds its `api` map
   from — and `_load`, the plain boot that four of the five files use.
+- THE REFRESH DRIVER. `_REFRESH_DRIVER_JS`/`_refresh` press the header's
+  Refresh after whatever the spec says a user did first; the shell, Job and
+  Fill files each claim a different half of what it must keep or re-read.
 
 `_PANEL_FAKES_JS`'S OWN CONTRACT is written inside it, at the top of the
 string. Read that before adding a message type to the fake: the rule is that a
@@ -105,13 +108,27 @@ PANEL_OWN_SRCS = [src for src in PANEL_SCRIPT_SRCS if not src.startswith("../")]
 _PANEL_FAKES_JS = r"""
 let onActivated = null;
 let onUpdated = null;
+let onRuntimeMessage = null;
+const heard = (msg, sender) => onRuntimeMessage(msg, sender);
+// A frame of some tab finished loading (`chrome.webNavigation.onCompleted`):
+// how the panel hears that an iframe was added with no url change, such as
+// an embedded application form a page inserts when its Apply tab opens.
+let onNavCompleted = null;
+const navCompleted = async (details) => { if (onNavCompleted) await onNavCompleted(details); };
 const queries = [];
 const listeners = [];
 const sent = [];
 const writes = [];
 const removals = [];
 const syncWrites = [];
+const sessionWrites = [];
 const broadcasts = [];
+// Every `console.warn` the panel wrote. A warning is not private: Chrome lists
+// an extension page's warnings under chrome://extensions → Errors, so a
+// refusal the panel expected and explained must not land there as a fault.
+// Recorded here and not printed; a driver that has a claim to make emits it.
+const warnings = [];
+console.warn = (...args) => { warnings.push(args.map(String).join(" ")); };
 
 // The SW's `api` handler, as a fixture. Keys are matched as SUBSTRINGS of
 // `"<METHOD> <path>"`, so a test names `/api/base-resumes` — or the tenant slug
@@ -181,8 +198,11 @@ const release = (order) => {
 // which is a real state (a tab whose scripts never loaded), not a broken
 // harness, so it is the default rather than a throw.
 const broadcastReply = (message) => {
-  const canned = (spec.frames ?? {})[message.type];
+  let canned = (spec.frames ?? {})[message.type];
   if (canned === undefined) return { ok: false, error: "no frame answered" };
+  // `{"__seq": [first, second, ...]}`: consumed in order, the last repeating: a
+  // page that changes between two reads of the same message type.
+  if (canned && canned.__seq) canned = canned.__seq.length > 1 ? canned.__seq.shift() : canned.__seq[0];
   if (message.type !== "guided_write") return { ok: true, data: canned };
   // The engine answers PER PAIR, so the fixture declares outcomes BY QID and
   // the frame reports about exactly the pairs it was sent. A canned result
@@ -230,6 +250,11 @@ global.chrome = {
     onActivated: { addListener: (fn) => { listeners.push("onActivated"); onActivated = fn; } },
     onUpdated: { addListener: (fn) => { listeners.push("onUpdated"); onUpdated = fn; } },
   },
+  webNavigation: {
+    onCompleted: {
+      addListener: (fn) => { listeners.push("webNavigation.onCompleted"); onNavCompleted = fn; },
+    },
+  },
   // The panel reads its remembered pick straight from storage and writes one
   // back. `writes` is the whole record of that — what was stored, under which
   // KEY — and `removals` is the record of the orphan sweep, which is a
@@ -257,7 +282,10 @@ global.chrome = {
         return { ...query, ...stored };
       },
       set: async (patch) => { writes.push(patch); },
-      remove: async (keys) => { removals.push(keys); },
+      remove: async (keys) => {
+        if (spec.removeThrows) throw new Error("storage is unavailable");
+        removals.push(keys);
+      },
     },
     // The SETTINGS store, and a different list on purpose: `sync` follows the
     // profile to every browser the user signs into, `local` does not. A test
@@ -266,8 +294,21 @@ global.chrome = {
     sync: {
       set: async (patch) => { syncWrites.push(patch); },
     },
+    // The SESSION store: the application flow (`FLOW_KEY`, panel.js) lives
+    // here, so a browser restart forgets it. `spec.sessionStored` seeds it.
+    session: {
+      get: async (key) => {
+        const stored = spec.sessionStored ?? {};
+        return Object.hasOwn(stored, key) ? { [key]: stored[key] } : {};
+      },
+      set: async (patch) => { sessionWrites.push(patch); },
+    },
   },
   runtime: {
+    id: "test-extension",
+    // The content script's `fields_touched` hint reaches the panel here: a driver
+    // calls `heard(message, sender)` to play one.
+    onMessage: { addListener: (fn) => { listeners.push("runtime.onMessage"); onRuntimeMessage = fn; } },
     sendMessage: async (msg) => {
       sent.push(msg);
       if (msg.type === "api") {
@@ -276,7 +317,14 @@ global.chrome = {
                        && msg.path === "/api/settings/autofill")
           ? profileReply(msg)
           : apiReply(wire);
+        // `holdSkip` lets the first N matching requests through: the load
+        // and a later action can ask the same path (an application's detail),
+        // and a test about the action must not stall the load.
         if ((spec.hold ?? []).some((needle) => wire.includes(needle))) {
+          if ((spec.holdSkip ?? 0) > 0) {
+            spec.holdSkip -= 1;
+            return reply;
+          }
           return new Promise((resolve) => held.push(() => resolve(reply)));
         }
         return reply;
@@ -653,7 +701,7 @@ def _rail_rows(out):
          # that had merely stopped on its last step.
          "numeral": _by_class(row, "stg-num")[0]["text"],
          "summary": _by_class(row, "stg-sum")[0]["text"]}
-        for key, row in zip(["job", "score", "resume", "fill", "track"],
+        for key, row in zip(["job", "resume", "fill", "track"],
                             _by_class(out["regions"]["rail"], "stg"), strict=True)
     ]
 
@@ -714,3 +762,176 @@ def _posts(out):
     """
     return [msg for msg in out["sent"]
             if msg["type"] == "api" and (msg.get("init") or {}).get("method") == "POST"]
+
+
+# THE REFRESH DRIVER, here rather than in the shell's file because three files
+# press Refresh: the shell (the re-read itself), the Job stage (typed fields
+# survive it) and the Fill stage (a report and typed answers survive it). What
+# happens BEFORE the press is chosen by the spec, in the order a user would do
+# it: pick a draft, run a fill, type, let time pass.
+_REFRESH_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+// A BROWSER BLURS A REMOVED NODE: focus falls to the body when the focused
+// control leaves the document. The shared fake models no removal, so without
+// this a restore captured AFTER the header's rebuild would still read the
+// thrown-away button's id and pass.
+const holds = (node, target) => node === target
+  || node.children.some((kid) => holds(kid, target));
+for (const root of Object.values(REGIONS)) {
+  const replace = root.replaceChildren.bind(root);
+  root.replaceChildren = (...kids) => {
+    if (ACTIVE && root.children.some((kid) => holds(kid, ACTIVE))) ACTIVE = null;
+    replace(...kids);
+  };
+}
+// STORAGE THAT REMEMBERS what the panel wrote. The shared fake records writes
+// and reads back only `spec.stored`, which is right for one page load and
+// wrong for this one: a pick made before Refresh must be the pick
+// `restoreSession` finds after it, exactly as it would be in a browser.
+// `holdPressWrite` holds the write a press makes, so "the user switched tabs
+// while Refresh was still writing the pick down" is a state the driver can
+// stand in.
+const writeLocal = chrome.storage.local.set;
+let pressing = false;
+let releaseWrite = null;
+chrome.storage.local.set = async (patch) => {
+  if (pressing && spec.holdPressWrite) {
+    await new Promise((resolve) => { releaseWrite = resolve; });
+  }
+  await writeLocal(patch);
+  spec.stored = { ...(spec.stored ?? {}), ...patch };
+};
+// A CLOCK THE DRIVER CAN MOVE, for the session memory's time limit.
+let skew = 0;
+const realNow = Date.now;
+Date.now = () => realNow() + skew;
+// A loop fill the driver holds open, so "while a fill runs" is a state it can
+// stand in and press Refresh from. ("Saved answers only" runs the rule pass,
+// which this does not touch.)
+let finishRun = null;
+ns.fillLoop.runFill = async (deps) => {
+  deps.onProgress({ phase: "round", round: 1 });
+  await new Promise((resolve) => { finishRun = resolve; });
+  return { runId: "r", host: "job-boards.greenhouse.io", fields: spec.fillFields ?? [],
+           aiFailure: null, stopped: deps.cancelled(), timedOut: false };
+};
+const findTag = (node, tag) => [
+  ...(node.tagName === tag ? [node] : []),
+  ...node.children.flatMap((kid) => findTag(kid, tag)),
+];
+// A user typing: the characters go on the element and reach the panel through
+// the `input` event alone.
+const typeInto = (prefix, edits) => {
+  for (const [key, text] of Object.entries(edits ?? {})) {
+    const input = document.getElementById(`${prefix}${key}`);
+    if (!input) throw new Error(`no input #${prefix}${key}`);
+    input.value = text;
+    input.dispatch("input");
+  }
+};
+// The store as the actions see it: the two lists are written when their read
+// settles and repaint nothing when the answer is stale, so the DOM alone
+// cannot show a late write.
+const lists = () => {
+  const facts = ns.panel.actionStore().read();
+  return { resumes: facts.resumes, applications: facts.applications };
+};
+main(async () => {
+  await settle();
+  const loaded = regions();
+  if (spec.pick !== undefined) {
+    const select = findTag(REGIONS.rail, "SELECT")[0];
+    select.value = select.children.filter((option) => option.value)[spec.pick].value;
+    select.dispatch("change");
+    await settle();
+  }
+  // A done row reopened before the press, so Refresh runs with a view open.
+  if (spec.reopen !== undefined) {
+    document.getElementById(`stg-open-${spec.reopen}`).click();
+    await settle();
+  }
+  if (spec.startFill) {
+    withClass(REGIONS.foot, "cta")[0].click();
+    await settle();
+  }
+  if (spec.attach) {
+    const box = withClass(REGIONS.rail, "attach")[0];
+    if (!box) throw new Error("no attach offer to press");
+    withClass(box, "save")[0].click();
+    await settle();
+  }
+  if (spec.ask !== undefined) {
+    const drawer = withClass(REGIONS.rail, "qna")[0];
+    withClass(drawer, "linkish")[0].click();
+    await settle();
+    typeInto("", { "qna-question": spec.ask });
+    withClass(withClass(REGIONS.rail, "qna")[0], "save")[0].click();
+    await settle();
+  }
+  typeInto("preview-", spec.type);
+  typeInto("answer-", spec.answers);
+  skew = spec.advanceMs ?? 0;
+  // What changed in Maestro CS, or on the page, while the panel sat on it.
+  Object.assign(spec.api, spec.apiAfter ?? {});
+  if (spec.pageAfter) spec.page = { ...(spec.page ?? {}), ...spec.pageAfter };
+  const sentBefore = sent.length;
+  const writesBefore = writes.length;
+  const button = document.getElementById("refresh-page");
+  const beforePress = regions();
+  // FOCUSED, then pressed: the control a user acts through is the one they
+  // are in, and this fake moves focus on `focus()` alone.
+  if (button) {
+    button.focus();
+    pressing = true;
+    button.click();
+    pressing = false;
+  }
+  const pressed = regions();
+  if (spec.switchDuringPress !== undefined) {
+    await onActivated({ tabId: spec.switchDuringPress });
+    await settle();
+    if (releaseWrite) releaseWrite();
+    await settle();
+  }
+  // A second press while the first is still loading.
+  if (button && spec.pressTwice) {
+    const again = document.getElementById("refresh-page");
+    again.focus();
+    again.click();
+  }
+  // Refresh's own load answers and finishes FIRST, and only then does the
+  // load it superseded land: the order in which a missing guard would paint
+  // the stale answer over the fresh one and leave it there.
+  const newest = held.pop();
+  if (newest) newest();
+  await settle();
+  const refreshedLists = lists();
+  release();
+  await settle();
+  const focus = {
+    id: document.activeElement ? document.activeElement.id : null,
+    fresh: Boolean(button && document.activeElement
+                   && document.activeElement.uid !== button.uid),
+  };
+  const refreshed = regions();
+  if (finishRun) finishRun();
+  await settle();
+  emit({ loaded, beforePress, pressed, refreshed, finished: regions(), focus,
+         refreshedLists, finishedLists: lists(),
+         hadButton: Boolean(button), sentAfter: sent.slice(sentBefore), broadcasts,
+         writesAfter: writes.slice(writesBefore) });
+});
+"""
+
+
+def _refresh(tmp_path, **spec):
+    """Boot, do what the spec says a user did, press Refresh, and report."""
+    spec.setdefault("tabs", [{"id": 7, "url": POSTING_URL}])
+    spec.setdefault("replies", {"read_settings": SETTINGS_REPLY})
+    return run_node(_REFRESH_DRIVER_JS, spec, tmp_path, source=PANEL_SOURCE)
+
+
+def _gets(sent, needle):
+    """Every backend GET in `sent` whose path holds `needle`."""
+    return [msg for msg in sent if msg["type"] == "api" and needle in msg["path"]
+            and (msg.get("init") or {}).get("method", "GET") == "GET"]

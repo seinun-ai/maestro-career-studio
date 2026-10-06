@@ -1,6 +1,6 @@
 /* Maestro CS Companion — the Resume stage's body.
  *
- * One of five files behind `ns.panelStages`; `panel/stages.js` is the joiner
+ * One of four files behind `ns.panelStages`; `panel/stages.js` is the joiner
  * and carries the whole contract. Read it before adding anything here.
  *
  * THE RULE, restated because a file that only POINTS at it is a file that
@@ -20,112 +20,70 @@
    * is built the same way for the same reason. */
   const TAILOR_OPTIONS_ID = "tailor-options";
 
-  /** One fork limb. A button, `sel` when it is the branch the user is standing
-   * in — which on this fork means "the choice you have opened", never "the
-   * choice we made for you": nothing here is pre-selected, because picking a
-   * tailoring path on the user's behalf is the Base/Tailored toggle this fork
-   * replaced (the mockup's caption records why it had to go). */
-  function forkButton({ build }, label, onClick, selected = false) {
-    const button = build.node("button", selected ? "sel" : null, label);
-    button.type = "button";
-    button.addEventListener("click", onClick);
-    return button;
-  }
+  /** The step's words, in one place (owner-approved, 2026-09-27). One short
+   * muted line per level: the choices first, and what the two tailoring paths
+   * do once Tailor is open. */
+  const WORDS = {
+    base: "Use my base resume",
+    tailor: "Tailor to this job",
+    fork: "Base: your resume unchanged. Tailor: fit it to this job first.",
+    // The second sentence is about the link, so it goes with it.
+    quick: "Quick tailor makes the PDF here.",
+    // The panel reads the backend on load and on Refresh, never on a timer.
+    custom: "A PDF you make in Maestro CS shows up here when you select Refresh.",
+    // Neutral: an application's resume may be tailored or the base unchanged
+    // (track-this), and the panel cannot tell which.
+    noPdf: "This application's resume has no PDF yet.",
+    link: "Tailor in Maestro CS ↗",
+  };
 
-  /** A limb that DOES something, out of reach while anything else is running.
-   *
-   * The footer's primary greys and spins for the length of an action, and this
-   * fork stands directly above it with one of the same labels on it: a twin
-   * that stayed pressable would swallow the click — guarded, so nothing bad
-   * happens, and silent, which is the Jobscan failure this surface keeps
-   * naming (a user cannot tell a broken control from a busy one). The
-   * disclosure and the link are NOT disabled: neither claims anything, and
-   * reading the options while a tailor runs is free.
-   */
-  function actingLimb(ctx, label, onClick, selected = false) {
-    const button = forkButton(ctx, label, onClick, selected);
-    button.disabled = ctx.facts.busy === true;
-    return button;
-  }
-
-  /** Where a custom pass happens, or nothing at all.
-   *
-   * The job's own page in the web app, on the tab that starts a custom
-   * tailoring session ("Score & Tailor"). NOT the session route: that one
-   * needs a session id, and the only way to have one is to create it — which
-   * is the API call this limb exists not to make.
-   *
-   * `null` rather than a dead anchor when we cannot build a real address: no
-   * `appUrl` means the SW never told us where the web app is, and a link to a
-   * guess is the failure this project keeps naming. The header's `deepLink`
-   * refuses on exactly the same terms.
-   */
-  function customLink({ facts, build }) {
-    if (!facts.appUrl || !facts.job?.id) return null;
-    const anchor = build.node("a", null, "Tailor in Maestro CS ↗");
-    anchor.href = `${facts.appUrl}/jobs/${facts.job.id}?tab=fit`;
-    anchor.target = "_blank";
-    anchor.rel = "noopener noreferrer";
-    return anchor;
-  }
-
-  /** What each choice does, one short line each, under the level it is on.
-   * The first level's two are there before anything is pressed, because
-   * "tailor, or not?" is a question a user can only answer knowing what each
-   * answer does; the second level's two appear with the limbs they explain. */
-  const CHOICE_LINES = {
-    base: "Use base resume as is: fill the application from your base resume, "
-      + "unchanged.",
-    tailor: "Tailor: fit your resume to this job first.",
-    quick: "Quick tailor: tailors your resume to this job here and creates its PDF.",
-    custom: "Tailor in Maestro CS: opens this job in Maestro CS to start a gap "
-      + "analysis. The Companion picks up the tailored resume when its PDF is "
-      + "ready.",
+  /** Why the base is off beside an application: one sentence, by who bound
+   * it. `stageFor`'s `fillFromBase` needs `!hasApplication`, so armed beside
+   * one the claim changed nothing on screen (Task 25's dead button). */
+  const BASE_OFF = {
+    matched: "This job already has a draft application, so it uses that resume.",
+    claimed: "You picked a draft for this page, so it uses that resume.",
   };
 
   /** The id the disabled base limb's `aria-describedby` names. */
   const BASE_OFF_ID = "base-off-note";
 
-  /** Why "Use base resume as is" is off, or null when it is on.
-   *
-   * ANY APPLICATION TURNS IT OFF, because `stageFor`'s `fillFromBase` needs
-   * `!hasApplication`: armed beside one, the claim is inert and the click
-   * changed nothing on screen (Task 25's first read found exactly that dead
-   * button on a picked draft whose resume had no PDF). So the limb is
-   * disabled and says why, in one of three sentences:
-   *
-   * - the application HAS its tailored PDF: that is the document the Fill
-   *   stage attaches, so the sentence says which resume the Companion uses;
-   * - it has none yet, and the binding is the user's own claim (a picked
-   *   draft): the way to the base is the Job row's Stop using this draft, and
-   *   the way forward is Create PDF;
-   * - it has none yet, and the backend named it: only Create PDF is offered,
-   *   because nothing in the panel may un-bind the backend's own match.
-   */
-  function baseOffReason({ facts }) {
-    if (!facts.application) return null;
-    if (facts.pdfReady) {
-      return "This application already has a tailored resume, so the Companion "
-        + "uses that one.";
-    }
-    if (facts.claimed) {
-      return "This page is tied to a draft application, so your base resume "
-        + "can't be used here. Select Stop using this draft under Job to use "
-        + "it, or open the application in Maestro CS and select Create PDF.";
-    }
-    return "This job has a draft application, so your base resume can't be "
-      + "used here. Open the application in Maestro CS and select Create PDF.";
+  /** One fork limb. A button, `sel` when it is the branch the user is standing
+   * in — which on this fork means "the choice you have opened", never "the
+   * choice we made for you": nothing here is pre-selected. `id` is stable
+   * across the rebuild a press causes (panel.js `withPlaceKept`). */
+  function forkButton({ build }, id, label, onClick, selected = false) {
+    const button = build.node("button", selected ? "sel" : null, label);
+    button.type = "button";
+    button.id = id;
+    button.addEventListener("click", onClick);
+    return button;
   }
 
-  /** The first level's "Use base resume as is" limb, disabled with its reason
-   * wired to it when an application has overtaken the claim. */
-  function baseLimb(ctx, reason) {
-    const limb = actingLimb(ctx, "Use base resume as is", ctx.act.useBaseAsIs);
-    if (reason) {
-      limb.disabled = true;
-      limb.setAttribute("aria-describedby", BASE_OFF_ID);
-    }
-    return limb;
+  /** A limb that DOES something, locked while any action runs — with
+   * `aria-disabled`, not `disabled`: the limb the user just pressed is rebuilt
+   * by the render its own busy causes, and a `disabled` button cannot take
+   * focus back, so focus would fall to the document (the conventions'
+   * GapLocked rule). Every action refuses to start while `busy`, so the click
+   * a locked limb still receives does nothing. The disclosure and the link are
+   * never locked: neither claims anything. */
+  function actingLimb(ctx, id, label, onClick) {
+    const button = forkButton(ctx, id, label, onClick);
+    if (ctx.facts.busy === true) button.setAttribute("aria-disabled", "true");
+    return button;
+  }
+
+  /** The job's Fit tab in the web app, or nothing: no `appUrl` means the SW
+   * never said where the web app is, and a link to a guess is the failure
+   * this project keeps naming (`deepLink` refuses on the same terms). NOT the
+   * gap-analysis route, which needs a session the panel would have to create. */
+  function fitLink({ facts, build }, label) {
+    if (!facts.appUrl || !facts.job?.id) return null;
+    const anchor = build.node("a", null, label);
+    anchor.href = `${facts.appUrl}/jobs/${facts.job.id}?tab=fit`;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    return anchor;
   }
 
   /** The chosen base resume's name, as the web app shows it, or null: the
@@ -135,15 +93,9 @@
       ?.display_name || null;
   }
 
-  /** The way out of the base-as-is claim, and the twin of the claimed Job
-   * body's "Stop using this draft" — same control, same class, same grammar: a
-   * claim the user made is theirs to withdraw.
-   *
-   * Withdrawing is not un-picking a resume. `baseSlug` survives (the withdraw's
-   * own docstring lists what it leaves alone), so the rail comes back to the
-   * library ladder with the user's base still chosen — the sentence above this
-   * button becomes the fork again, not a blank slate.
-   */
+  /** The way out of the base-as-is claim, the twin of the claimed Job body's
+   * "Stop using this draft": a claim the user made is theirs to withdraw.
+   * `baseSlug` survives it, so the rail comes back with the base still chosen. */
   function withdrawLimb(ctx) {
     const { facts, act, build } = ctx;
     const stop = build.node("button", "unpick", "Stop using the base resume");
@@ -153,134 +105,95 @@
     return stop;
   }
 
-  /** The Resume stage: three ways forward, on two levels.
+  /** Quick tailor and the link to Maestro CS, with their one line — shown once
+   * Tailor is open. ONE region, so `aria-controls` has one thing to point at. */
+  function tailorOptions(ctx) {
+    const { node, attach } = ctx.build;
+    const custom = fitLink(ctx, "Tailor in Maestro CS ↗");
+    const options = node("div");
+    options.id = TAILOR_OPTIONS_ID;
+    return attach(options,
+                  attach(node("div", "fork"),
+                         actingLimb(ctx, "resume-quick", "Quick tailor", ctx.act.quickTailor),
+                         custom),
+                  node("div", "sub",
+                       custom ? `${WORDS.quick} ${WORDS.custom}` : WORDS.quick));
+  }
+
+  /** "Tailor to this job": a disclosure. It asks the backend for nothing,
+   * which is why it can be pressed by someone still making up their mind, and
+   * it names the region it opens only while that region exists. */
+  function tailorLimb(ctx) {
+    const { facts, act } = ctx;
+    const tailor = forkButton(ctx, "resume-tailor", WORDS.tailor, act.openTailor,
+                              facts.tailorOpen);
+    tailor.setAttribute("aria-expanded", facts.tailorOpen ? "true" : "false");
+    if (facts.tailorOpen) tailor.setAttribute("aria-controls", TAILOR_OPTIONS_ID);
+    return tailor;
+  }
+
+  /** The Resume step, in four shapes, each keyed on what is TRUE:
    *
-   *   [ Use base resume as is ]  [ Tailor ]
-   *   [ Quick tailor   ]  [ Tailor in Maestro CS ↗ ]     ← only once Tailor is open
+   * - An application WITH its PDF: the step is done ("Resume ready" on the
+   *   row). Reopened, one small link to tailor in Maestro CS, where replacing
+   *   a draft asks first. No fork: Quick tailor here would replace it unasked.
+   * - An application WITHOUT a PDF: its resume is stored and only the PDF is
+   *   missing, so the step's primary (the footer) is Create PDF, never Quick
+   *   tailor — that runs a fresh tailor — beside the same link. The base is
+   *   shown off, with its one-sentence reason. "Tailored" is never said: the
+   *   application may hold the base unchanged (track-this).
+   * - The base-as-is claim, reopened from its skipped row: the claim in the
+   *   user's own words, the tailoring choice, and the withdraw. The base limb
+   *   is dropped: pressing it would re-assert a claim already in force.
+   * - Otherwise, two choices — Use my base resume (acts, and finishes the
+   *   step by skipping it visibly) and Tailor to this job (discloses Quick
+   *   tailor and the link) — with one line saying what each does.
    *
-   * AND ONE MORE SHAPE, once the base is ARMED — which is this body reopened
-   * from a rail row that reads "Using your base resume as is.", on a page with a
-   * form and on a posting page alike:
-   *
-   *   Using AI/ML Engineer as is
-   *   [ Tailor ]
-   *   [ Quick tailor ] [ Tailor in Maestro CS ↗ ]        ← only once Tailor is open
-   *   [ Stop using the base resume ]
-   *
-   * TWO EDITS AND NOT A SECOND BODY. The claim is NAMED (the user's own words
-   * back to them, with the resume they armed), the withdraw is offered at the
-   * bottom, and the "Use base resume as is" limb is dropped — pressing it would
-   * re-assert a claim that is already in force, which is a control that cannot
-   * do anything and therefore cannot be honest. Everything else composes
-   * unchanged, which is the point: the tailoring fork is exactly what the user
-   * came back here for, and a reopened row offering a lesser version of the
-   * stage would be a second Resume stage to keep in step with this one.
-   *
-   * KEYED ON THE CLAIM, NOT ON "the row is skipped", and that stays right for
-   * a duller reason than it once had. The two used to come apart on the
-   * posting page — `stageFor` skipped nothing there, because the shortcut was
-   * gated on a form — and they no longer do: the claim skips the same rows
-   * wherever it is made. What is still true is the rule, which is what this
-   * body is keyed on: a body renders what is TRUE, and which rail row it is
-   * under is the rail's question. `armed` below is what "the claim" means
-   * precisely, and the second half of it is the part that is easy to miss.
-   *
-   * TWO LEVELS rather than three buttons in a row, which is the mockup's shape
-   * and its reasoning: the first question is whether to tailor at all, and
-   * "quick or custom" is only a question for the user who said yes. Flattening
-   * it would put three equal-weight choices in front of someone who has not
-   * been asked the one that matters.
-   *
-   * WHAT EACH LIMB IS, because they are three different KINDS of control and
-   * the difference is the honest part:
-   *
-   * - "Use base resume as is" ACTS, and finishes the stage: the shortcut arms, the
-   *   rail skips Score and Resume visibly, and the user lands on Fill.
-   * - "Tailor" DISCLOSES. It asks nothing of the backend, which is why it can
-   *   be pressed by someone still making up their mind.
-   * - "Quick tailor" ACTS, and it is the same function the footer's primary
-   *   runs (see `STAGE_RUN` for why one behaviour is offered twice).
-   * - "Tailor in Maestro CS ↗" LEAVES: a real `<a target="_blank">` to the web app
-   *   and never an API call. The custom pass is a gap-filling conversation
-   *   that belongs in a full page, and the panel has no business creating a
-   *   tailoring session behind the user's back to open one — it picks the
-   *   result up on the next load instead, which is what the sub line promises.
+   * An application overrides the claim by DATA (`fillFromBase` needs
+   * `!hasApplication`), so `armed` is the flag AND no application: reading the
+   * flag alone put "Using ⟨base⟩ as is" over a reopened row the user had just
+   * tailored from.
    */
   function resumeBody(ctx) {
     const { facts, act, build } = ctx;
     const { node, attach } = build;
-    const tailor = forkButton(ctx, "Tailor", act.openTailor, facts.tailorOpen);
-    // The only limb that discloses anything, so the only one that says so —
-    // and it names WHAT it discloses as well as whether it is open. Expanded
-    // without `aria-controls` announces a state and leaves the region
-    // unidentified: the two controls that appeared are somewhere after this
-    // button, and "somewhere after" is what a rebuilt rail makes expensive to
-    // find (see the render-cost block in panel.js — the same activation drops
-    // keyboard focus to the document, which Round B owns).
-    //
-    // `id` on the region rather than a wrapper class, because it is an address
-    // and not a style. It is also the handle the eventual focus restore will
-    // use, which is the other reason it is stable.
-    //
-    // ONLY WHILE IT EXISTS. This loop renders what is true and nothing else, so
-    // the closed fork has no region in the document — and `aria-controls`
-    // naming an id nothing carries is worse than saying nothing: it offers a
-    // jump that goes nowhere, which is the same broken promise as a link to a
-    // guessed address. `aria-expanded: false` is the whole of the closed
-    // state's story, and it is enough of one.
-    tailor.setAttribute("aria-expanded", facts.tailorOpen ? "true" : "false");
-    if (facts.tailorOpen) tailor.setAttribute("aria-controls", TAILOR_OPTIONS_ID);
-    // THE CLAIM, AND WHETHER IT IS STILL IN FORCE — two conditions, because
-    // `baseArmed` alone is only the first. An application overrides it by
-    // DATA: `stageFor`'s `fillFromBase` requires `!hasApplication`, so the
-    // moment a tailor commits one the shortcut stops firing, the flag goes
-    // inert, and Fill attaches the tailored PDF rather than the base. Reading
-    // the flag alone put "Using ⟨base⟩ as is" over the reopened row for a user
-    // who had just pressed Quick tailor from it — a false sentence about which
-    // document is going into the form — beside a withdraw that flips a flag
-    // nothing reads. That is the same sin this body names when it drops the
-    // "Use base resume as is" limb: a control that cannot do anything cannot be
-    // honest. Data wins over a claim here exactly as it wins over a reopened
-    // view in `openRow`.
-    const armed = facts.baseArmed === true && !facts.application;
-    const reason = armed ? null : baseOffReason(ctx);
-    const why = reason ? node("div", "sub", reason) : null;
-    if (why) why.id = BASE_OFF_ID;
-    const body = attach(node("div", "stg-body"),
-                        // The claim in the user's own words, and the resume it
-                        // names — `useBaseAsIs` refuses without one, so the
-                        // fallback is for a bridge entry that lost it rather
-                        // than for a choice nobody made.
-                        armed ? node("div", "sub",
-                                     `Using ${baseName(ctx) || "your base resume"} as is`)
-                          : null,
-                        attach(node("div", "fork"),
-                               armed ? null : baseLimb(ctx, reason),
-                               tailor),
-                        // One line per first-level choice. A disabled limb's
-                        // line is its reason instead, and an armed claim has
-                        // no base limb to explain.
-                        armed ? null : why ?? node("div", "sub", CHOICE_LINES.base),
-                        node("div", "sub", CHOICE_LINES.tailor));
-    // The withdraw goes LAST on every path, under the second level when it is
-    // open: it is the way out of the stage, not one of the ways through it.
-    if (!facts.tailorOpen) return armed ? attach(body, withdrawLimb(ctx)) : body;
-    const custom = customLink(ctx);
-    // ONE region, so `aria-controls` has one thing to point at: the second
-    // level is the two limbs AND the sentence that explains one of them, and a
-    // reader sent to the limbs alone would be sent past the explanation.
-    const options = node("div");
-    options.id = TAILOR_OPTIONS_ID;
-    attach(options,
-           attach(node("div", "fork"),
-                  actingLimb(ctx, "Quick tailor", act.quickTailor),
-                  custom),
-           node("div", "sub", CHOICE_LINES.quick),
-           // The sentence belongs to the link: it promises what happens after
-           // the user leaves, so with no link to leave through there is
-           // nothing to promise.
-           custom ? node("div", "sub", CHOICE_LINES.custom) : null);
-    attach(body, options);
+    const body = node("div", "stg-body");
+    if (facts.application && facts.pdfReady) {
+      const again = fitLink(ctx, WORDS.link);
+      if (again) {
+        again.id = "resume-again";
+        again.className = "linkish";
+      }
+      return attach(body, again);
+    }
+    if (facts.application) {
+      // `aria-disabled`, not `disabled`: off for good here, so a keyboard user
+      // can still reach it and hear why. `useBaseAsIs` ignores the press.
+      const base = forkButton(ctx, "resume-base", WORDS.base, act.useBaseAsIs);
+      base.setAttribute("aria-disabled", "true");
+      base.setAttribute("aria-describedby", BASE_OFF_ID);
+      const why = node("div", "sub", facts.claimed ? BASE_OFF.claimed : BASE_OFF.matched);
+      why.id = BASE_OFF_ID;
+      // Create PDF is the footer's primary; tailoring it is Maestro CS's,
+      // where replacing a draft asks first.
+      return attach(body, node("div", "sub", WORDS.noPdf),
+                    attach(node("div", "fork"), base, fitLink(ctx, WORDS.link)), why);
+    }
+    const armed = facts.baseArmed === true;
+    if (armed) {
+      // `useBaseAsIs` refuses without a base, so the fallback is for a bridge
+      // entry that lost it rather than for a choice nobody made.
+      attach(body, node("div", "sub", `Using ${baseName(ctx) || "your base resume"} as is`),
+             attach(node("div", "fork"), tailorLimb(ctx)));
+    } else {
+      attach(body,
+             attach(node("div", "fork"),
+                    actingLimb(ctx, "resume-base", WORDS.base, act.useBaseAsIs),
+                    tailorLimb(ctx)),
+             node("div", "sub", WORDS.fork));
+    }
+    if (facts.tailorOpen) attach(body, tailorOptions(ctx));
+    // The withdraw goes LAST: it is the way out of the step, not a way through.
     return armed ? attach(body, withdrawLimb(ctx)) : body;
   }
 

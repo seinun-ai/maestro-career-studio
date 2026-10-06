@@ -1,0 +1,66 @@
+<!-- ADVERSARIAL, not a reproduction: models the unexplained revert of field
+     notes §8a (picks that displayed, then went back to "Select One"). The
+     FIRST pick shows its text but the app does not take it (the backing input
+     stays empty); the button text goes back to "Select One" when the TEST says
+     so (`window.__revertNow()`), never on a clock the engine's timing could
+     race. A later pick cancels that pending take-back and behaves like
+     workday_listbox.html. -->
+<div data-automation-id="formField-relocate">
+  <fieldset><legend><div id="rich-label-relocate"><div data-automation-id="richText"><p>Are you willing to relocate?</p></div><abbr title="required">*</abbr></div></legend>
+    <div><button id="relocate" type="button" aria-haspopup="listbox" aria-label=" Select One Required" aria-controls="relocate-list"
+      aria-expanded="false">Select One</button>
+      <input type="text" class="hidden-backing" style="display:none"></div></fieldset></div>
+<div id="portal"></div>
+<script>
+(() => {
+  // __oracle.relocate is what the fake app HOLDS; the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.relocate = "";
+  const btn = document.getElementById("relocate");
+  const backing = btn.parentElement.querySelector(".hidden-backing");
+  const portal = document.getElementById("portal");
+  let picks = 0;
+  let revert = null;   // the first pick's pending take-back, run by __revertNow()
+  const show = (text) => { btn.textContent = text; btn.setAttribute("aria-label", ` ${text} Required`); };
+  const ul = document.createElement("ul");
+  ul.id = "relocate-list";
+  ul.setAttribute("role", "listbox");
+  ul.style.display = "none";
+  for (const text of ["Select One", "Yes", "No"]) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    li.textContent = text;
+    li.addEventListener("click", (e) => {
+      e.stopPropagation();
+      ul.style.display = "none";
+      btn.setAttribute("aria-expanded", "false");
+      revert = null;   // a later pick is not undone by the first one's take-back
+      show(text);
+      picks += 1;
+      if (picks === 1) {
+        revert = () => show("Select One");
+        return;
+      }
+      backing.value = text === "Select One" ? "" : "f00dfeedcafebeef0badc0dedeadbeef";
+      oracle.relocate = text === "Select One" ? "" : text;
+    });
+    ul.append(li);
+  }
+  portal.append(ul);
+  // Runs the first pick's pending take-back, if one is still pending.
+  window.__revertNow = () => {
+    const r = revert;
+    revert = null;
+    if (r) r();
+    return Boolean(r);
+  };
+  btn.addEventListener("click", () => {
+    const opening = ul.style.display === "none";
+    ul.style.display = opening ? "block" : "none";
+    btn.setAttribute("aria-expanded", String(opening));
+  });
+  document.addEventListener("click", (e) => {
+    if (!ul.contains(e.target) && !btn.contains(e.target)) ul.style.display = "none";
+  });
+})();
+</script>

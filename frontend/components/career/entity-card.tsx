@@ -28,12 +28,12 @@ import { cn } from "@/lib/utils";
 // Colours only: the words come from career-labels (one table for every surface).
 const STATUS_STYLES: Record<KBEntityStatus, { chip: string; dot: string }> = {
   ongoing: {
-    chip: "bg-blue-600/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
-    dot: "bg-blue-600 dark:bg-blue-400",
+    chip: "bg-primary-container text-on-primary-container",
+    dot: "bg-primary",
   },
   completed: {
-    chip: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
-    dot: "bg-emerald-600 dark:bg-emerald-400",
+    chip: "bg-success-container text-on-success-container",
+    dot: "bg-success",
   },
   archived: {
     chip: "bg-muted text-muted-foreground",
@@ -58,11 +58,11 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
     <GalleryCard
       href={`/career/${entity.id}`}
       ariaLabel={`Open ${entity.title}`}
-      className="h-full bg-muted/45 pt-4 shadow-none ring-0 transition-[transform,background-color,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:bg-primary/5 hover:shadow-sm has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring has-[a:active]:scale-[0.97]"
+      className="h-full bg-surface-container-low pt-4 ring-0 transition-[transform,background-color,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:bg-primary/5 has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring has-[a:active]:scale-[0.97]"
     >
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
         <div className="min-w-0">
-          <p className="text-muted-foreground mb-1 text-[0.7rem] font-medium uppercase tracking-[0.14em]">
+          <p className="text-muted-foreground mb-1 text-label-small">
             {entity.kind === "extra" && entity.section_title
               ? entity.section_title
               : KB_KIND_LABELS[entity.kind]}
@@ -71,12 +71,12 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
           {/* No organization and no dates: no second line. Independent was
               a claim the user never made. */}
           {entity.org || dateRange ? (
-            <p className="text-muted-foreground mt-0.5 truncate text-sm">
+            <p className="text-muted-foreground mt-0.5 truncate text-body-medium">
               {entity.org || dateRange}
             </p>
           ) : null}
           {entity.org && dateRange ? (
-            <p className="text-muted-foreground mt-0.5 truncate text-xs">{dateRange}</p>
+            <p className="text-muted-foreground mt-0.5 truncate text-body-small">{dateRange}</p>
           ) : null}
         </div>
         <GalleryCardActions>
@@ -108,10 +108,10 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
         </GalleryCardActions>
       </CardHeader>
       <CardContent className="mt-auto space-y-3">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-body-small">
           <span
             className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 font-medium",
+              "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-label-medium",
               status.chip,
             )}
           >
@@ -125,7 +125,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
           <Metric icon={FileText} value={entity.document_count} one="document" many="documents" />
         </div>
         <p
-          className="text-muted-foreground text-xs"
+          className="text-muted-foreground text-body-small"
           title={formatAbsoluteDateTime(entity.last_activity)}
         >
           Updated {formatTimeAgo(entity.last_activity)}

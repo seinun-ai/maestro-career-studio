@@ -51,7 +51,7 @@ export function AutosaveStatus({
     if (!failed) focusIfDropped(statusRef.current);
   }, [failed, pending]);
   return (
-    <span className={`inline-flex min-w-36 items-center justify-end gap-2 text-xs ${className ?? ""}`}>
+    <span className={`inline-flex min-w-36 items-center justify-end gap-2 text-body-small ${className ?? ""}`}>
       <span
         ref={statusRef}
         tabIndex={-1}

@@ -72,6 +72,8 @@ def test_all_tools_registered():
         "mark_submitted",
         "record_triage",
         "report_failure",
+        "record_filled_answers",
+        "record_run",
     }
     expected |= KB_TOOL_NAMES
     assert expected <= names
@@ -593,10 +595,12 @@ def test_engine_availability_is_documented_on_the_template_and_render_tools():
     assert "engine_available" in srv.create_template_draft.__doc__
 
 
-def test_prepare_application_pdf_upload_docstring_forbids_manual_copy():
-    doc = srv.prepare_application_pdf_upload.__doc__ or ""
+def test_prepare_application_pdf_upload_docstring_names_the_upload_source():
+    doc = " ".join((srv.prepare_application_pdf_upload.__doc__ or "").split())
+    # States which copy is the upload source; the model is not instructed.
     assert "upload_path" in doc
-    assert "Do NOT" in doc and "copy" in doc.lower()
+    assert "staged copy" in doc.lower()
+    assert "canonical" in doc.lower() and "not an upload source" in doc.lower()
 
 
 def test_create_template_draft_tool(monkeypatch):
@@ -792,14 +796,17 @@ def test_get_health_report_tool_calls_client(monkeypatch):
     assert seen == {"kind": "application", "key": "a1"}
 
 
-def test_health_waiver_docstrings_require_explicit_human_decision():
-    waive_doc = (srv.waive_health_gate.__doc__ or "").lower()
-    unwaive_doc = (srv.unwaive_health_gate.__doc__ or "").lower()
+def test_health_waiver_docstrings_record_an_explicit_user_decision():
+    waive_doc = " ".join((srv.waive_health_gate.__doc__ or "").lower().split())
+    unwaive_doc = " ".join((srv.unwaive_health_gate.__doc__ or "").lower().split())
     for doc in (waive_doc, unwaive_doc):
         assert "409" in doc
         assert "create_tailoring_session" in doc
-        assert "explicit human decision" in doc
-        assert "user has said to waive" in doc
+        assert "user" in doc and "decision" in doc
+    # Consent semantics: the value means the user's decision, and the server
+    # says plainly that it does not verify who made it.
+    assert "explicit user decision" in waive_doc
+    assert "does not verify" in waive_doc
 
 
 def test_validate_template_docstring_documents_parse_certified():
@@ -1072,7 +1079,8 @@ def test_entry_field_edits_point_at_replace_entry_not_full_put():
     doc = srv.edit_base_resume.__doc__
     assert "replace_entry" in doc
     assert "dates" in doc
-    assert "LAST RESORT" in doc
+    # update_base_resume is named as the whole-resume alternative.
+    assert "update_base_resume" in doc and "whole resume body" in doc
     for name in ("tailor_application", "edit_application"):
         assert "replace_entry" in getattr(srv, name).__doc__, name
 
@@ -1127,3 +1135,448 @@ async def test_registered_tool_docstrings_fit_client_truncation_budget():
         "tool descriptions exceed the ~2048-char client truncation budget "
         f"(cap {_DOCSTRING_CLIENT_BUDGET}): {over}"
     )
+
+
+# ---------- directory-readiness: annotations and description voice ----------
+# The listing reviewer reads annotations off the LIVE server, and spec defaults
+# are the dangerous ones (destructive=true, openWorld=true when omitted), so every
+# tool states all four hints. A tool description says what the tool does and what
+# the server enforces; it does not instruct the calling model.
+
+
+async def test_every_tool_carries_a_title_and_explicit_hints():
+    tools = await srv.mcp.list_tools()
+    assert len(tools) >= 85
+    for tool in tools:
+        assert tool.title, tool.name
+        ann = tool.annotations
+        assert ann is not None, tool.name
+        assert ann.title == tool.title, tool.name
+        for hint in ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"):
+            assert isinstance(getattr(ann, hint), bool), (tool.name, hint)
+        if ann.readOnlyHint:
+            assert ann.destructiveHint is False, tool.name
+        assert len(tool.name) <= 64, tool.name
+
+
+# (readOnly, destructive, idempotent, openWorld) for the judgment calls, so a
+# later edit to a decorator cannot flip one without this test saying so.
+_PINNED_HINTS = {
+    # Read-only despite incidental housekeeping: time-based expiry, derived
+    # score backfill, temp files, a content-hash-keyed export cache.
+    "list_proposals": (True, False, True, False),
+    "get_proposal": (True, False, True, False),
+    "compare_ats": (True, False, True, False),
+    "get_rendered_pdf": (True, False, True, False),
+    "get_rendered_pdf_page_image": (True, False, True, False),
+    "get_career_export": (True, False, True, False),
+    # A reversible flag; nothing is removed.
+    "archive_base_resume": (False, False, True, False),
+    "unarchive_base_resume": (False, False, True, False),
+    # The six tools that can reach the configured LLM provider.
+    "run_health_check": (False, False, False, True),
+    "kb_capture": (False, False, False, True),
+    "generate_qa_answers": (False, False, False, True),
+    "generate_cover_letter": (False, True, False, True),
+    "create_tailoring_session": (False, True, False, True),
+    "tailor_session": (False, True, False, True),
+    # Overwrite user-authored or user-decided state.
+    "update_base_resume": (False, True, True, False),
+    # Each call appends a version row, so repeating it is not a no-op.
+    "restore_resume_version": (False, True, False, False),
+    "kb_edit_profile": (False, True, True, False),
+    "kb_approve_points": (False, True, True, False),
+    "record_consent": (False, True, False, False),
+    "mark_submitted": (False, True, False, False),
+    # Purely additive.
+    "record_filled_answers": (False, False, False, False),
+    "kb_create_entity": (False, False, False, False),
+    "attach_evidence": (False, False, False, False),
+}
+
+
+async def test_pinned_annotation_decisions():
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    for name, expected in _PINNED_HINTS.items():
+        ann = tools[name].annotations
+        got = (ann.readOnlyHint, ann.destructiveHint, ann.idempotentHint, ann.openWorldHint)
+        assert got == expected, name
+
+
+async def test_only_the_llm_calling_tools_are_open_world():
+    tools = await srv.mcp.list_tools()
+    open_world = {t.name for t in tools if t.annotations.openWorldHint}
+    assert open_world == {
+        "run_health_check",
+        "kb_capture",
+        "generate_qa_answers",
+        "generate_cover_letter",
+        "create_tailoring_session",
+        "tailor_session",
+    }
+
+
+# Model-directed phrasing in a tool description is steering from a tool the
+# model has no reason to trust that way; state the fact instead ("approved
+# points are the only ones on composed resumes", not "call only after the user
+# approved"). Applies to input-schema descriptions too.
+_BANNED_VOICE = re.compile(
+    r"only after|call only|call ONLY|never call|you must|do not retry|don't retry|"
+    r"confirm with the user|ask the user|tell the user|report (?:them|failures) to the user|"
+    r"relay .{0,40}to the user|surface this to the user|\bprefer\b|\bPREFER\b|"
+    r"do not (?:copy|invent|ask)|never reach|never re-propose|"
+    r"call this tool|check (?:it )?first|walk the user",
+    re.IGNORECASE,
+)
+# Shouted imperatives; lower-case "never" is often a plain fact ("never guessed").
+_SHOUTED_VOICE = re.compile(r"\bNEVER\b|\bDo NOT\b|\bMUST\b|\bPREFER\b")
+
+
+def _schema_descriptions(node):
+    """Every `description` string anywhere in a JSON schema."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "description" and isinstance(value, str):
+                yield value
+            else:
+                yield from _schema_descriptions(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _schema_descriptions(item)
+
+
+async def test_tool_text_describes_instead_of_instructing():
+    offenders = {}
+    for tool in await srv.mcp.list_tools():
+        texts = [tool.description or "", *_schema_descriptions(tool.inputSchema)]
+        hits = {
+            m.group(0)
+            for text in texts
+            for pattern in (_BANNED_VOICE, _SHOUTED_VOICE)
+            for m in pattern.finditer(text)
+        }
+        if hits:
+            offenders[tool.name] = sorted(hits)
+    assert not offenders, offenders
+
+
+def test_update_application_docstring_states_the_proposal_side_effect():
+    doc = " ".join((srv.update_application.__doc__ or "").lower().split())
+    assert "closes" in doc and "proposal" in doc
+    assert "applied" in doc and "interviewing" in doc
+
+
+# ---------- directory-readiness D: schemas, paging and landed-write hints ----------
+
+
+async def _tool_schemas():
+    return {t.name: t.inputSchema for t in await srv.mcp.list_tools()}
+
+
+def _enum_of(prop: dict) -> list[str]:
+    if "enum" in prop:
+        return prop["enum"]
+    return [v for branch in prop.get("anyOf", []) for v in branch.get("enum", [])]
+
+
+async def test_health_and_score_enums_are_in_the_machine_readable_schema():
+    schemas = await _tool_schemas()
+    for name in ("run_health_check", "get_health_report"):
+        assert _enum_of(schemas[name]["properties"]["kind"]) == ["base", "application"], name
+    assert _enum_of(schemas["score_ats"]["properties"]["target_type"]) == [
+        "base_resume",
+        "application",
+    ]
+
+
+async def test_list_tools_expose_bounded_paging_with_proportionate_defaults():
+    schemas = await _tool_schemas()
+    expected = {
+        "list_proposals": 20,
+        "kb_list_points": 50,
+        "export_jobs": 10,
+        "list_jobs": 50,
+    }
+    for name, default in expected.items():
+        props = schemas[name]["properties"]
+        assert props["limit"]["default"] == default, name
+        assert "offset" in props, name
+        # A bounded range travels in the schema, so an over-large limit is
+        # refused by the client library rather than by a backend 422.
+        limit = props["limit"]
+        bounds = [limit.get("maximum")] + [b.get("maximum") for b in limit.get("anyOf", [])]
+        assert any(b is not None for b in bounds), name
+
+
+def test_paged_tools_forward_limit_and_offset(monkeypatch):
+    seen = {}
+
+    def spy(name):
+        def fn(**kwargs):
+            seen[name] = kwargs
+            return []
+
+        return fn
+
+    for client_method in ("list_proposals", "export_jobs", "list_jobs"):
+        monkeypatch.setattr(srv._client, client_method, spy(client_method))
+    srv.list_proposals(status="accepted,pending_review", limit=5, offset=10)
+    srv.export_jobs(skill="sql", limit=7, offset=14)
+    srv.list_jobs()
+    assert seen["list_proposals"] == {"status": "accepted,pending_review", "limit": 5, "offset": 10}
+    assert seen["export_jobs"] == {
+        "role_category": None, "level": None, "since": None, "skill": "sql",
+        "limit": 7, "offset": 14,
+    }
+    assert seen["list_jobs"]["limit"] == 50
+
+
+def test_paging_is_described_in_the_docstrings_factually():
+    for name in ("list_proposals", "export_jobs", "kb_list_points", "list_jobs"):
+        doc = " ".join((getattr(srv, name).__doc__ or "").split()).lower()
+        assert "limit" in doc and "offset" in doc, name
+    list_proposals_doc = srv.list_proposals.__doc__
+    assert "comma" in list_proposals_doc  # status takes a comma-separated set
+    assert "total" in list_proposals_doc
+    sessions_doc = srv.list_tailoring_sessions.__doc__
+    assert "gap_count" in sessions_doc and "get_tailoring_session" in sessions_doc
+    export_doc = srv.export_jobs.__doc__
+    assert "raw_text" in export_doc and "get_job" in export_doc
+
+
+class _SettingsDown:
+    """Make the hint's settings lookup fail the way a flaky backend would."""
+
+    @staticmethod
+    def install(monkeypatch):
+        from mcp_server.client import BackendError
+
+        def boom(*a, **k):
+            raise BackendError("Backend returned 500: settings unavailable", status_code=500)
+
+        monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", boom)
+        monkeypatch.setattr(srv._client, "get_quick_tailor_profile", boom)
+        monkeypatch.setattr(srv._client, "get_setup_status", boom)
+
+
+_SESSION = {"id": "s1", "gaps_json": {"categories": []}, "resolutions_json": []}
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "kb_ingest_resume",
+        "kb_approve_points",
+        "create_base_resume_from_kb",
+        "create_tailoring_session",
+        "resolve_gaps",
+        "quick_tailor",
+        "tailor_session",
+        "render_pdf",
+        "score_ats",
+    ],
+)
+def test_a_landed_write_is_not_reported_as_an_error_when_only_the_hint_fails(monkeypatch, case):
+    """The write committed; the follow-up hint lookup failing must not turn the
+    whole tool into a ToolError, or a retry duplicates the write."""
+    _SettingsDown.install(monkeypatch)
+    c = srv._client
+    monkeypatch.setattr(c, "kb_ingest_resume", lambda *a, **k: {"entities_created": 1, "point_ids": []})
+    monkeypatch.setattr(c, "kb_approve_points", lambda *a, **k: {"results": [{"id": "p1", "ok": True}]})
+    monkeypatch.setattr(c, "create_base_resume_from_kb", lambda *a, **k: {"slug": "other"})
+    monkeypatch.setattr(c, "create_tailoring_session", lambda *a, **k: dict(_SESSION))
+    monkeypatch.setattr(c, "apply_quick_tailor_profile", lambda *a, **k: dict(_SESSION))
+    monkeypatch.setattr(c, "resolve_gaps", lambda *a, **k: dict(_SESSION))
+    monkeypatch.setattr(c, "tailor_session", lambda *a, **k: {"session": {"application_id": "a1"}, "compare": None})
+    monkeypatch.setattr(c, "render_application", lambda *a, **k: {"pdf_path": "/x.pdf"})
+    monkeypatch.setattr(
+        c, "score_ats",
+        lambda *a, **k: [{"target_type": "base_resume", "target_id": "alpha", "composite": 70.0,
+                          "subscores_json": {}, "coverage_warning": None}],
+    )
+    calls = {
+        "kb_ingest_resume": lambda: srv.kb_ingest_resume("r", {"contact": {}}),
+        "kb_approve_points": lambda: srv.kb_approve_points(["p1"]),
+        "create_base_resume_from_kb": lambda: srv.create_base_resume_from_kb(["e1"], role_label="x"),
+        "create_tailoring_session": lambda: srv.create_tailoring_session("j1", "hybrid"),
+        "resolve_gaps": lambda: srv.resolve_gaps("s1", []),
+        "quick_tailor": lambda: srv.quick_tailor("j1", "hybrid"),
+        "tailor_session": lambda: srv.tailor_session("s1", ops=[]),
+        "render_pdf": lambda: srv.render_pdf("application", "a1"),
+        "score_ats": lambda: srv.score_ats("j1"),
+    }
+    out = calls[case]()
+    assert out["next"] is None
+    # ...and the write's own result is still in the envelope.
+    payload_keys = set(out) - {"next"}
+    assert payload_keys, case
+
+
+def test_a_failing_write_is_still_an_error(monkeypatch):
+    """Only the HINT is best-effort; the write's own failure must still raise."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from mcp_server.client import BackendError
+
+    def boom(*a, **k):
+        raise BackendError("Backend returned 409: gate", status_code=409)
+
+    monkeypatch.setattr(srv._client, "create_tailoring_session", boom)
+    with pytest.raises(ToolError):
+        srv.create_tailoring_session("j1", "hybrid")
+
+
+def test_the_hint_helper_swallows_only_backend_errors():
+    from mcp_server.client import BackendError
+
+    assert srv._best_effort_hint(lambda: {"state": "x"}) == {"state": "x"}
+
+    def backend_down():
+        raise BackendError("down")
+
+    assert srv._best_effort_hint(backend_down) is None
+
+    def bug():
+        raise KeyError("not a backend problem")
+
+    with pytest.raises(KeyError):
+        srv._best_effort_hint(bug)
+
+
+def test_record_filled_answers_forwards_to_client(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client,
+        "record_filled_answers",
+        lambda job_id, fields, **kw: seen.update(job_id=job_id, fields=fields, **kw) or {"id": "r1"},
+    )
+    fields = [{"question": "Q", "answer": 5, "source": "profile"}]
+    assert srv.record_filled_answers("j1", fields, step=2, base_resume="swe") == {"id": "r1"}
+    assert seen == {"job_id": "j1", "fields": fields, "step": 2, "application_id": None,
+                    "base_resume": "swe"}
+
+
+async def test_record_filled_answers_accepts_page_numbers_and_numeric_answers():
+    """A model sends step as the page number and a numeric answer as a number."""
+    args = {"job_id": "j1", "step": 2, "fields": [
+        {"question": "Years of experience", "answer": 5, "source": "profile"},
+        {"question": "Rate", "answer": 12.5, "source": "you"}]}
+    seen = {}
+    original = srv._client.record_filled_answers
+    srv._client.record_filled_answers = lambda *a, **kw: seen.update(args=a, kw=kw) or {"id": "r1"}
+    try:
+        await srv.mcp.call_tool("record_filled_answers", args)
+    finally:
+        srv._client.record_filled_answers = original
+    assert seen["kw"]["step"] == 2
+    assert [f["answer"] for f in seen["args"][1]] == [5, 12.5]
+
+
+def test_record_run_forwards_to_client(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "record_run",
+        lambda automation, outcome, report, origin_detail=None: seen.update(
+            automation=automation, outcome=outcome, report=report) or {"id": "r1"},
+    )
+    assert srv.record_run("mail-status", "ok", {"counts": {"updated": 1}}) == {"id": "r1"}
+    assert seen == {"automation": "mail-status", "outcome": "ok",
+                    "report": {"counts": {"updated": 1}}}
+
+
+def test_record_run_attributes_the_run_to_the_mcp_client(monkeypatch):
+    from types import SimpleNamespace
+
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "record_run",
+        lambda automation, outcome, report, origin_detail=None: seen.update(
+            report=report, origin_detail=origin_detail) or {"id": "r1"},
+    )
+    ctx = SimpleNamespace(session=SimpleNamespace(
+        client_params=SimpleNamespace(clientInfo=SimpleNamespace(name="codex"))
+    ))
+    assert srv.record_run("job-hunt", "failed", ctx=ctx) == {"id": "r1"}
+    assert seen == {"report": None, "origin_detail": "codex"}
+
+
+@pytest.mark.parametrize("profile", ["hunt", "apply"])
+def test_record_run_is_available_in_the_automation_profiles(profile):
+    from mcp_server.profiles import allowed_tools
+
+    assert "record_run" in allowed_tools(profile)
+
+
+async def test_record_run_exposes_its_signature_and_write_hints():
+    tool = next(tool for tool in await srv.mcp.list_tools() if tool.name == "record_run")
+    schema = tool.inputSchema
+    assert schema["required"] == ["automation", "outcome"]
+    assert schema["properties"]["outcome"]["enum"] == ["ok", "partial", "failed"]
+    assert schema["properties"]["report"]["default"] is None
+    assert "ctx" not in schema["properties"]
+    ann = tool.annotations
+    assert (ann.readOnlyHint, ann.destructiveHint, ann.idempotentHint, ann.openWorldHint) == (
+        False, False, False, False
+    )
+
+
+async def test_record_run_exposes_optional_report_shapes():
+    tool = next(tool for tool in await srv.mcp.list_tools() if tool.name == "record_run")
+    schema = tool.inputSchema
+    assert set(schema["$defs"]["RunReport"]["properties"]) == {"counts", "digest", "job_ids"}
+    assert set(schema["$defs"]["RunCounts"]["properties"]) == {
+        "found", "proposed", "skipped", "tailored", "updated", "needs_you"
+    }
+    assert "required" not in schema["$defs"]["RunReport"]
+    assert "required" not in schema["$defs"]["RunCounts"]
+
+
+@pytest.mark.parametrize("report", [
+    {"counts": {"found": 3, "applied": 1}},
+    {"counts": {"found": 3}, "digset": "typo"},
+])
+async def test_record_run_refuses_unknown_report_or_count_keys(monkeypatch, report):
+    import json
+
+    import httpx
+    import respx
+    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp_server.client import BackendClient
+
+    def backend_response(request):
+        body = json.loads(request.read())
+        if "applied" in body.get("counts", {}) or "digset" in body:
+            return httpx.Response(422, json={"detail": "unknown report key"})
+        return httpx.Response(201, json={"id": "r1"})
+
+    monkeypatch.setattr(srv, "_client", BackendClient("http://test-backend"))
+    monkeypatch.setattr(srv, "_client_label", lambda ctx: "codex")
+    with respx.mock:
+        route = respx.post("http://test-backend/api/agent-runs").mock(side_effect=backend_response)
+        with pytest.raises(ToolError):
+            await srv.mcp.call_tool("record_run", {
+                "automation": "job-hunt", "outcome": "ok", "report": report,
+            })
+    assert not route.called
+
+
+async def test_record_run_omits_null_report_fields_before_posting(monkeypatch):
+    import json
+
+    import httpx
+    import respx
+    from mcp_server.client import BackendClient
+
+    monkeypatch.setattr(srv, "_client", BackendClient("http://test-backend"))
+    monkeypatch.setattr(srv, "_client_label", lambda ctx: "codex")
+    with respx.mock:
+        route = respx.post("http://test-backend/api/agent-runs").mock(
+            return_value=httpx.Response(201, json={"id": "r1"})
+        )
+        await srv.mcp.call_tool("record_run", {
+            "automation": "job-hunt", "outcome": "failed",
+            "report": {"counts": None, "digest": None},
+        })
+
+    request = route.calls.last.request
+    assert json.loads(request.read()) == {"automation": "job-hunt", "outcome": "failed"}

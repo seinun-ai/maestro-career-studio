@@ -18,6 +18,13 @@ export const ATS_SCORE_LEAD =
 export const ATS_SCORE_LEAD_ALL_JOBS =
   "An ATS score (0 to 100) is our estimate of how an applicant tracking system would rate a resume for a job.";
 
+/**
+ * The Score tab's banner when EVERY resume draws the engine's low-coverage warning (`ats/engine.py`:
+ * under LOW_COVERAGE_THRESHOLD, a quarter, of the job's skills). It replaces the same line on each card.
+ */
+export const LOW_COVERAGE_ON_EVERY_RESUME =
+  "Each of your resumes shows fewer than a quarter of this job's skills, so none of them is a close match yet.";
+
 /** The ATS score's parts, in the order both score cards draw them. */
 export const SUBSCORE_LABELS: {
   key: "keyword" | "placement_recency" | "semantic_fit" | "title" | "format";

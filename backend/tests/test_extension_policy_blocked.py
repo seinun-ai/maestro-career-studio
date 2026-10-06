@@ -16,6 +16,10 @@ leaves the failure metric as well as the fill path, so an over-broad pattern
 does not merely fail to fill "Middle Initial", it deletes the evidence that
 nothing filled it. Every label in the not-blocked lists below is one an
 ordinary applicant meets, and each sits a character away from a pattern.
+
+Every case here runs WITHOUT the standing `consent_forms` permission, the
+default. With it the policy refuses no label at all; that half lives in
+tests/test_extension_consent_forms.py.
 """
 
 import re
@@ -622,11 +626,11 @@ def test_both_copies_of_the_policy_deny_list_stay_identical():
                   + sorted((extension / "shared").glob("*.js"))
                   + sorted((extension / "panel").glob("*.js")))
     sources = "\n".join(path.read_text(encoding="utf-8") for path in everything)
-    # The deny list is now TWO lists with different standing, and the split is
-    # the point: NEVER_FILLED is absolute — signatures, passwords, government
-    # identifiers — while CONSENT_FORMS is refused by default and unlocked by a
-    # standing consent the user gives in Profile. Each must exist exactly once,
-    # in this module, for the same reason the single list did.
+    # The deny list is TWO lists — NEVER_FILLED (signatures, passwords,
+    # government identifiers) and CONSENT_FORMS (agreement boxes) — both
+    # refused without the standing `consent_forms` permission and neither
+    # refused with it. Each must exist exactly once, in this module, for the
+    # same reason the single list did.
     assert len(re.findall(r"const NEVER_FILLED = \[", sources)) == 1
     assert len(re.findall(r"const CONSENT_FORMS = \[", sources)) == 1
     policy = module.read_text(encoding="utf-8")

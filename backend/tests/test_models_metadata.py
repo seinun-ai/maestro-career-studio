@@ -4,17 +4,22 @@ from app import models  # noqa: F401
 
 def test_all_planned_tables_are_registered():
     assert set(Base.metadata.tables) == {
+        "agent_runs",
         "application_proposals",
         "applications",
         "ats_scores",
         "autofill_field_observations",
+        "autofill_mechanism_stats",
+        "autofill_runs",
         "base_resumes",
         "bullet_classifications",
+        "bullet_disputes",
         "bullet_rewrites",
         "chat_attachments",
         "chat_messages",
         "chat_sessions",
         "consent_events",
+        "filled_answers",
         "health_ask_answers",
         "health_gate_waivers",
         "jobs",
