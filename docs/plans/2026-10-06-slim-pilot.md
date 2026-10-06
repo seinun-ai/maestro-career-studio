@@ -12,29 +12,39 @@ if it can run it freely over there, and then plan about building sync?" The agen
 640 MB available, no swap, and its own browser on top during runs. Phase 4b (split-ownership sync,
 `docs/plans/2026-10-06-split-ownership-sync-design.md`) waits on this pilot's numbers.
 
-**What we know (measured 2026-10-06):** the backend uses ~155 MB right after startup on macOS
-(importing every service adds nothing); the live Docker backend sits at ~400 MB after a day of
-use; one MCP server process is ~56–64 MB. Typst PDF compiles already run in a short-lived spawned
-process (`services/typst_compiler.py`). The app does not import litellm (it calls the OpenAI
-client and Gemini over HTTP). So the growth is runtime memory the process keeps after peaks;
-glibc's per-thread arenas and unreturned freed memory are the usual cause on Linux.
+**What we know (measured 2026-10-06, Linux arm64, python:3.12-slim, `--cycles 5`):**
+
+| run | startup | after 1st ATS score | end of cycle 5 | peak |
+|---|---|---|---|---|
+| default allocator | 144 MB | 412 | 435 | 435 |
+| `MALLOC_ARENA_MAX=2` | 144 | 393 | 390 | 405 |
+| `MALLOC_ARENA_MAX=2` + a malloc_trim middleware | 144 | 406 | 356 | 406 |
+
+One MCP server process: 76 MB. The growth is the ATS semantic layer's embedding model
+(fastembed ONNX, `BAAI/bge-small-en-v1.5`, ~260 MB), loaded on the first score by
+`services/ats/embeddings._model` (an `lru_cache`) and held for the process lifetime. The trim
+middleware saved 8.6 % (under this plan's 10 % bar), so it is dropped. Typst compiles already run
+in a spawned process. **Owner decision (2026-10-06): on small machines, ATS scoring embeds in a
+short-lived helper process,** so the model's memory is freed after each scoring call, and scores
+stay identical everywhere.
 
 **Architecture:**
 - `GET /health/memory` reports the process's current and peak resident memory.
-- `scripts/memory_profile.py` starts a throwaway backend and runs a typical, AI-free cycle over
-  HTTP, sampling memory after each step. It is both the measuring tool and the budget test's
-  engine.
-- `app/services/memory.py` returns freed memory to the OS on Linux (`malloc_trim(0)` via ctypes,
-  a no-op elsewhere) after requests that grew memory; the native start script sets
-  `MALLOC_ARENA_MAX=2` and runs one worker.
-- `scripts/native/` installs and runs the backend from a home-directory venv with plain
-  `setup`, `start`, `stop`, `health` commands any supervisor can call.
+- `backend/scripts/memory_profile.py` starts a throwaway backend and runs a typical, AI-free cycle
+  over HTTP, sampling memory after each step: the measuring tool and the budget test's engine.
+- `EMBEDDINGS_OUT_OF_PROCESS` (setting, default off): when on, `embed_texts` computes its cache
+  misses in a spawned helper process that loads the model, embeds the batch, returns the vectors
+  and exits (the `services/typst_compiler.py` pattern). The vector cache stays in the backend
+  (small). Off by default, so the Docker laptop keeps today's speed.
+- `backend/scripts/native/` installs and runs the backend from a home-directory venv with plain
+  `setup`, `start`, `stop`, `health` commands any supervisor can call; `start` sets
+  `MALLOC_ARENA_MAX=2`, one worker, and `EMBEDDINGS_OUT_OF_PROCESS=1`.
 - No sync, no web app on the pilot machine. The MCP server is started on demand by the agent.
 
 **Tech stack:** FastAPI, Python 3.12 stdlib (`resource`, `ctypes`, `subprocess`), bash.
 
 **Freedom:** endpoint path `/health/memory`, its keys (`rss_mb`, `peak_mb`, `platform`), script
-paths and command names, the env var `MAESTRO_HOME` are **fixed**. Helper decomposition is yours
+paths and command names, the env vars `MAESTRO_HOME` and `EMBEDDINGS_OUT_OF_PROCESS` are **fixed**. Helper decomposition is yours
 (cc < 10, ≤ 50 lines, ≤ 5 params). **Stop and report** before changing tailoring, filling, the
 Companion, or any behavior beyond memory handling. The repo is PUBLIC: no real company names; the
 agent app is described generically ("an always-on agent machine").
@@ -58,7 +68,6 @@ implementer without Docker writes the code and the reviewer measures.
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services import memory
 
 client = TestClient(app)
 
@@ -66,33 +75,22 @@ client = TestClient(app)
 def test_health_memory_reports_current_and_peak_megabytes():
     body = client.get("/health/memory").json()
     assert set(body) == {"rss_mb", "peak_mb", "platform"}
-    assert 0 < body["rss_mb"] <= body["peak_mb"] + 1
+    assert body["rss_mb"] > 0 and body["peak_mb"] > 0  # ru_maxrss can lag VmRSS on Linux
 
 
 def test_health_stays_tiny_for_container_healthchecks():
     assert client.get("/health").json() == {"status": "ok"}
 
 
-def test_trim_is_safe_everywhere():
-    memory.trim()  # a no-op off glibc, never raises
 ```
 
 **Implementation** (`services/memory.py`):
 
 ```python
-"""Resident memory: report it, and on Linux hand freed memory back to the OS.
+"""Resident memory of this process, for /health/memory (docs/plans/2026-10-06-slim-pilot.md)."""
 
-glibc keeps freed heap in per-thread arenas instead of returning it, so a Python service's
-resident memory ratchets up to its peaks; malloc_trim(0) releases what is free. Elsewhere trim
-is a no-op. See docs/plans/2026-10-06-slim-pilot.md.
-"""
-
-import ctypes
-import ctypes.util
-import gc
 import resource
 import sys
-from functools import lru_cache
 from pathlib import Path
 
 
@@ -110,21 +108,6 @@ def peak_mb() -> float:
     return round(peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024, 1)
 
 
-@lru_cache(maxsize=1)
-def _malloc_trim():
-    name = ctypes.util.find_library("c")
-    if not name or not sys.platform.startswith("linux"):
-        return None
-    return getattr(ctypes.CDLL(name), "malloc_trim", None)
-
-
-def trim() -> None:
-    gc.collect()
-    fn = _malloc_trim()
-    if fn is not None:
-        fn(0)
-
-
 def readout() -> dict:
     return {"rss_mb": rss_mb(), "peak_mb": peak_mb(), "platform": sys.platform}
 ```
@@ -137,10 +120,14 @@ def readout() -> dict:
 
 ### Task 2: `scripts/memory_profile.py` (the measuring tool)
 
-**Files:** Create `scripts/memory_profile.py` (stdlib + `httpx`, which the backend already
-depends on); Test `backend/tests/test_memory_profile.py`.
+**Files:** Create `backend/scripts/memory_profile.py` (stdlib + `httpx`), run as
+`python -m scripts.memory_profile` from `backend/`; add `scripts.memory_profile` to
+`backend/.slopconfig.json` `entry_points`; register the `slow` marker in
+`backend/pyproject.toml` `[tool.pytest.ini_options].markers` and the root `pytest.ini`
+(`slow: starts a real backend or installs a venv; skipped when MAESTRO_SKIP_SLOW is set`);
+Test `backend/tests/test_memory_profile.py`.
 
-**Behavior:** `python scripts/memory_profile.py [--port 8711] [--json out.json] [--cycles 3]`:
+**Behavior:** `python -m scripts.memory_profile [--port 8711] [--json out.json] [--cycles 3]`:
 1. Makes a temp `MAESTRO_HOME` with `data/ applications/ settings/ base_resumes/ kb_documents/
    logs/ exports/`, copies `base_resumes/example.json` in, runs `alembic upgrade head` against it.
 2. Starts `uvicorn app.main:app --workers 1 --port <port>` from `backend/` with `DATA_DIR` etc.
@@ -153,61 +140,78 @@ depends on); Test `backend/tests/test_memory_profile.py`.
 4. Prints a table (step, rss_mb, peak_mb) and writes `--json`; stops the server and removes the
    temp home (also on Ctrl-C and on failure).
 
-Use the real endpoints (read the routers; name each in the script). No AI key is needed: if a step
-needs one, pick the AI-free route or leave the step out and say so in the docstring.
+The dry run found these AI-free endpoints: `POST /api/jobs/ingest` (MCP `store_extracted_jd`),
+`POST /api/ats-scores` (`score_ats`), `POST /api/applications/from-base`,
+`POST /api/applications/{id}/render`, `POST`/`GET /api/jobs/{id}/filled-answers`,
+`GET /api/proposals?limit=500`, `GET /api/automations`. The ATS steps load the embedding model
+(downloaded once into `FASTEMBED_CACHE_PATH`). Write the startup poll as a helper returning a
+bool (a bare `except ...: pass` trips the error-masking ratchet). Expect ±3 % run-to-run noise.
 
 **Tests:** the module imports with no side effects; `build_env(home)` returns the expected keys;
 `parse_args` defaults; and one end-to-end run marked `@pytest.mark.slow` that starts the server on a
 free port with `--cycles 1` and asserts every step produced a reading (skipped when
 `MAESTRO_SKIP_SLOW` is set).
 
-**Then measure (reviewer, Linux):** run it inside the backend image with and without
-`MALLOC_ARENA_MAX=2`, `--cycles 5`, and record the numbers in the commit message.
+**Then measure (reviewer, Linux):** inside the backend image, `--cycles 5`, with
+`MALLOC_ARENA_MAX=2`, record the numbers in the commit message (Task 3 re-measures with the
+helper process).
 
 **Commit:** `feat(scripts): measure the backend's memory across a typical cycle`
 
 ---
 
-### Task 3: Hand memory back after heavy requests
+### Task 3: ATS embeddings in a short-lived helper process
 
-**Files:** Modify `backend/app/main.py` (a small middleware), `backend/app/services/memory.py`;
-Test `backend/tests/test_health_memory.py`.
+**Files:** Modify `backend/app/config.py` (`embeddings_out_of_process: bool = False`, env
+`EMBEDDINGS_OUT_OF_PROCESS`), `backend/app/services/ats/embeddings.py`; Test
+`backend/tests/ats/test_embeddings_out_of_process.py` (use the existing `embeddings_internals`
+fixture conventions in `tests/conftest.py`: the suite patches `embed_texts` with
+`fake_embed_texts`, so tests of this path stub the model loader, never download it).
 
-A middleware reads `rss_mb()` before and after each request; when a request grew resident memory
-by more than `TRIM_THRESHOLD_MB = 16`, it calls `memory.trim()` after the response is sent
-(`BackgroundTask` or `asyncio.to_thread`, never blocking the response). The threshold and the
-choice to trim only on growth keep the common request free of a `gc.collect()`.
+When the setting is on, `embed_texts` sends its cache misses (one batch) to a `spawn`
+multiprocessing child that imports fastembed, loads the pinned model, embeds the batch and returns
+the vectors through a pipe, then exits; a join timeout (60 s) kills a stuck child and raises a
+clear error. The parent keeps the vector cache exactly as today. When off, behavior is unchanged
+(in-process `_model`). The child module stays import-light (stdlib + the deferred fastembed
+import), like `typst_compiler`.
 
-**Tests:** with `memory.rss_mb` monkeypatched to grow by 20 MB across a request, `trim` is called
-once; with 4 MB it is not; a raising `trim` never fails the request.
+**Tests:** with the setting on and the child's loader stubbed to a deterministic fake, vectors equal
+the in-process path's for the same stub; cache hits never spawn; a child that dies raises the
+clear error; with the setting off, no child is spawned. A `slow`, Linux-only test runs Task 2's
+cycle with the setting on and asserts the backend's last reading is below the in-process
+reading by at least 150 MB (it downloads the real model; skipped under `MAESTRO_SKIP_SLOW`).
 
-**Measure (reviewer, Linux):** Task 2's script with and without the middleware; the trimmed run
-must end the cycle lower. If the gain is under 10 %, report it; the owner decides whether to keep
-the middleware.
+**Measure (reviewer, Linux):** Task 2's script with `MALLOC_ARENA_MAX=2` and the setting on;
+record startup, after first score, end of cycle 5, peak, and the per-score time cost.
 
-**Commit:** `feat(memory): return freed memory to the OS after requests that grew it (Linux)`
+**Commit:** `feat(ats): embed in a short-lived helper process when EMBEDDINGS_OUT_OF_PROCESS is on`
 
 ---
 
 ### Task 4: Native install and run scripts
 
-**Files:** Create `scripts/native/setup.sh`, `start.sh`, `stop.sh`, `health.sh`,
-`scripts/native/maestro.env.example`; Test `backend/tests/test_native_scripts.py`.
+**Files:** Create `backend/scripts/native/common.sh` (sourced: env export, pidfile probe, a
+python-based GET so curl is not required), `setup.sh`, `start.sh`, `stop.sh`, `health.sh`,
+`maestro.env.example`; Test `backend/tests/test_native_scripts.py`.
 
 - `setup.sh` (idempotent): needs `MAESTRO_HOME` (default `~/maestro`); creates the directory
   layout of Task 2; creates `$MAESTRO_HOME/venv` with the `python3.12` found on PATH (or
-  `$PYTHON`); `pip install` the repo's `backend/`; copies `maestro.env.example` to
+  `$PYTHON`); `pip install -e "$REPO/backend[mcp]"` (editable: startup resolves `alembic.ini`
+  beside the `app` package; `[mcp]` so `python -m mcp_server.server` imports); copies `maestro.env.example` to
   `$MAESTRO_HOME/maestro.env` if absent (mode 0600); runs `alembic upgrade head`.
 - `start.sh`: refuses if already running (pidfile `$MAESTRO_HOME/backend.pid` with a live pid);
   sources `maestro.env`; exports `DATA_DIR` etc. into `$MAESTRO_HOME`, `MALLOC_ARENA_MAX=2`,
-  `ALLOWED_HOSTS=localhost,127.0.0.1`; starts `uvicorn app.main:app --host 127.0.0.1 --port
+  `ALLOWED_HOSTS=localhost,127.0.0.1`, `EMBEDDINGS_OUT_OF_PROCESS=1`,
+  `FASTEMBED_CACHE_PATH=$MAESTRO_HOME/fastembed_cache` (the default `/tmp` is often RAM-backed on a
+  small VM); starts `uvicorn app.main:app --host 127.0.0.1 --port
   ${MAESTRO_PORT:-8001} --workers 1` in the background with logs to `$MAESTRO_HOME/logs/backend.log`;
   writes the pidfile; waits up to 30 s for `/health`.
 - `stop.sh`: TERM, wait, KILL after 10 s, remove the pidfile; succeeds when not running.
 - `health.sh`: prints `/health/memory`; exit 0 when healthy, 1 when not running or unhealthy.
   A supervisor (systemd, a watchdog cron, launchd) restarts with `health.sh || start.sh`.
 - `maestro.env.example`: the AI key lines commented out, a note that secrets come from the
-  machine's own secret store, never a chat.
+  machine's own secret store, never a chat. `maestro.env` is created under `umask 077` and
+  `chmod 600`; `MAESTRO_HOME` is 700; no script uses `set -x` (a test pins it).
 - The MCP server is not started here: the agent starts `python -m mcp_server.server` on demand
   with `BACKEND_URL=http://127.0.0.1:8001` (documented in Task 6).
 
@@ -224,10 +228,12 @@ readout → start again refuses → stop → health exits 1. Use the current int
 **Files:** Test `backend/tests/test_memory_budget.py`.
 
 Linux only (`skipif not sys.platform.startswith("linux")`) and marked `slow`: run Task 2's cycle
-three times with `MALLOC_ARENA_MAX=2` and Task 3's middleware, and assert the last reading is at
-most `BUDGET_MB`. **Set `BUDGET_MB` from the reviewer's Task 2/3 measurements plus 15 % headroom;
+three times with `MALLOC_ARENA_MAX=2` and `EMBEDDINGS_OUT_OF_PROCESS=1`, and assert the last
+reading is at most `BUDGET_MB`. **Set `BUDGET_MB` from the reviewer's Task 2/3 measurements plus 15 % headroom;
 the implementer leaves it as a named constant with the measurement in a comment, and stops to ask
-if no measurement is available.** CI's backend job runs on Linux, so this pins it there.
+if no measurement is available.** The real model download is a third-party dependency CI already
+avoids (`tests/ats/test_golden.py`), so CI sets `MAESTRO_SKIP_SLOW=1` and the budget is pinned by
+the reviewer's Linux run and the pilot, not by CI.
 
 **Commit:** `test(memory): pin the backend's resident memory after a typical cycle`
 
@@ -252,5 +258,7 @@ for secrets).
 
 ### Task 7: Verification
 
-Full backend suite (with and without `frontend/node_modules`), both slop ratchets, the SYSTEM.md
-gate, and on Linux (Docker image) the Task 2 profile and Task 5 budget test. Report the numbers.
+Full backend suite (with and without `frontend/node_modules`), ruff, both slop ratchets (a
+`complexity_hotspots` count bump is re-baselined with a reason, per SYSTEM.md §9), the SYSTEM.md
+gate, and on Linux (Docker image) the Task 2 profile and Task 5 budget test. Report the numbers,
+and whether backend + one MCP server fits beside a browser in ~640 MB.

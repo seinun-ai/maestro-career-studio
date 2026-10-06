@@ -681,19 +681,20 @@ with the failure mode that bought it. Code citing "§8" lands here.
 - **A USER updates instead** — `./scripts/update.sh`: online SQLite snapshot
   (`app.tools.backup_db --stdout` through the running backend container, else the checkout's own image tag —
   `.env`'s `latest` can predate the tool; 0600, magic-byte checked) → ff-only to the newest `v*` tag → images pinned to that tag →
-  health poll → extension/MCP reminders (README "Updating"; `docs/RELEASING.md` cuts one). The tree is runtime here
-  (unpacked extension, host MCP venv), so checkout and images move TOGETHER — a bare `docker compose pull`
-  skews an install. Contributors build. **Pre-v0.4.0 guard:** a `<project>_pgdata` volume with no
-  `data/.migrated-from-postgres.json` is a v0.3.0-or-older install whose data never moved; `--check` warns
-  and an update exits before touching anything, printing the import-through-v0.4.0 steps (docs/UPDATING.md).
-  A v0.3.0 user's OWN old script cannot run the guard — it jumps straight to the newest tag, and the app
-  comes up empty on a demo database; the same steps recover it (the data stays in the volume).
+  health poll → extension/MCP reminders (README "Updating"; `docs/RELEASING.md` cuts one). Checkout and images
+  move TOGETHER: a bare `docker compose pull` skews an install (docs/UPDATING.md). Contributors build. **Pre-v0.4.0 guard:** a `<project>_pgdata` volume with no
+  `data/.migrated-from-postgres.json` makes `--check` warn and an update exit before touching anything; a
+  v0.3.0 user's OWN old script skips the guard (recovery steps: docs/UPDATING.md, which holds both rules).
 - **Windows = WSL.** The supported route is Docker Desktop's WSL 2 engine with the clone in the WSL home, never
   `/mnt/c` (SQLite WAL over the Windows share is untrusted; the scripts are bash). `.gitattributes` forces LF
   so a Git-for-Windows clone cannot CRLF the scripts or `.env`. The `.mcpb` shim searches Docker Desktop's
   Windows paths, then PATH (`dockerCandidates`/`onPath`, `mcpb/tests/shim.test.js`); `setup-mcp.sh` is not
   a Windows route. The upload host root is `${PWD}` (compose falls back to its own cwd; `update.sh` pins it
   to the repo) unless `MAESTRO_CS_UPLOAD_HOST_ROOT` says otherwise; a Windows-shaped root joins with `\`.
+- **Native run (no Docker)** — `docs/native-install.md`: `backend/scripts/native/*.sh` run one loopback worker from
+  `$MAESTRO_HOME`; `GET /health/memory` reports memory. `slow` tests (real backend, venv or model; the 200 MB budget
+  test) skip when `MAESTRO_SKIP_SLOW` is set — set it in CI. With `EMBEDDINGS_OUT_OF_PROCESS` at most ONE embedding
+  helper runs per process (`embeddings._HELPER_LOCK`): two ~290 MB helpers OOM a small machine.
 - **Version identity**: the tag bakes into both images as `APP_VERSION`, served by `GET /api/version` with
   the live alembic revision; the frontend warns when its baked copy disagrees, unless either side STARTS
   WITH `dev` (local or dispatch build) = do not compare — which also keeps it off contributors.
@@ -705,10 +706,9 @@ with the failure mode that bought it. Code citing "§8" lands here.
   button.
 - **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors (what
   `pip install -e ".[dev,mcp]"` resolves); `backend/requirements.lock` is hash-pinned and is what the
-  **container image** installs, so a published image is reproducible. After changing a dependency,
-  regenerate the lock **on the target platform** (command in `backend/Dockerfile`; pip-compile on macOS/3.13
-  produces wrong pins). CI's `dependency-audit` runs `pip-audit` against the lock — a new advisory failing
-  an unrelated PR is intended.
+  **container image** installs, so a published image is reproducible. After changing a dependency, regenerate
+  the lock **on the target platform** (command in `backend/Dockerfile`; macOS/3.13 pip-compile gives wrong
+  pins). CI's `dependency-audit` (`pip-audit` on the lock) failing an unrelated PR on a new advisory is intended.
 - **No Langfuse stack ships here** (the bundled compose file had fixed default secrets).
   `services/tracing.py` and the three `LANGFUSE_*` settings stay: tracing points at any instance the user
   runs; `langfuse_host` defaults to empty (the SDK falls back to Cloud).
