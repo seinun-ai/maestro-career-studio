@@ -631,7 +631,7 @@
     "duplication_pct": 0.56,
     "duplicated_lines": 381,
     "clone_count": 43,
-    "complexity_hotspots": 664,
+    "complexity_hotspots": 663,
     "error_masking": 12,
     "imports_per_module": 4.5
   }

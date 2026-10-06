@@ -5,11 +5,9 @@ import { Combobox } from "@base-ui/react/combobox";
 import { useQuery } from "@tanstack/react-query";
 import { CheckIcon, XIcon } from "lucide-react";
 
+import { PICKER_ITEM_CLASS, PickerPopup } from "@/components/role-picker";
 import { apiFetch } from "@/lib/api";
 import type { Country } from "@/lib/types";
-
-const COUNTRY_ITEM_CLASS =
-  "flex cursor-default items-center justify-between gap-2 rounded-corner-xs px-2 py-1.5 text-body-medium outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground";
 
 /** The country list, fetched once. It lives in backend/app/services/data/countries.yaml and is not
  *  copied here, for the reason `useRoleCategories` gives. */
@@ -108,31 +106,24 @@ export function CountryPicker(props: {
           />
         </Combobox.Chips>
       </div>
-      <Combobox.Portal>
-        <Combobox.Positioner anchor={chipsRef} sideOffset={4} className="isolate z-50">
-          <Combobox.Popup
-            ref={popupRef}
-            className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) min-w-56 overflow-y-auto overscroll-contain rounded-corner-xs p-1 shadow-level2 ring-1"
-          >
-            <Combobox.List>
-              {(country: Country) => (
-                <Combobox.Item key={country.code} value={country} className={COUNTRY_ITEM_CLASS}>
-                  <span className="truncate">{country.name}</span>
-                  <Combobox.ItemIndicator>
-                    <CheckIcon className="size-4 shrink-0" />
-                  </Combobox.ItemIndicator>
-                </Combobox.Item>
-              )}
-            </Combobox.List>
-            {/* Stays mounted to announce reliably, so the message is what is conditional. */}
-            <Combobox.Empty>
-              <div className="text-muted-foreground px-2 py-1.5 text-body-medium">
-                {query.trim() ? "No country matches." : "No countries to show."}
-              </div>
-            </Combobox.Empty>
-          </Combobox.Popup>
-        </Combobox.Positioner>
-      </Combobox.Portal>
+      <PickerPopup anchor={chipsRef} popupRef={popupRef}>
+        <Combobox.List>
+          {(country: Country) => (
+            <Combobox.Item key={country.code} value={country} className={PICKER_ITEM_CLASS}>
+              <span className="truncate">{country.name}</span>
+              <Combobox.ItemIndicator>
+                <CheckIcon className="size-4 shrink-0" />
+              </Combobox.ItemIndicator>
+            </Combobox.Item>
+          )}
+        </Combobox.List>
+        {/* Stays mounted to announce reliably, so the message is what is conditional. */}
+        <Combobox.Empty>
+          <div className="text-muted-foreground px-2 py-1.5 text-body-medium">
+            {query.trim() ? "No country matches." : "No countries to show."}
+          </div>
+        </Combobox.Empty>
+      </PickerPopup>
     </Combobox.Root>
   );
 }

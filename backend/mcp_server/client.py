@@ -731,27 +731,11 @@ class BackendClient:
             "PUT", f"/api/base-resumes/{slug}", json=payload, timeout=_RENDER_TIMEOUT
         )
 
-    def set_base_resume_identity(
-        self,
-        slug: str,
-        display_name: str | None = None,
-        role_category: str | None = None,
-        role_label: str | None = None,
-        countries: list[str] | None = None,
-        company: str | None = None,
-        focus: str | None = None,
-    ) -> Any:
-        # None is "not sent"; "" and [] are real values (they clear), so only
-        # None is dropped.
-        payload = _drop_none(
-            display_name=display_name,
-            role_category=role_category,
-            role_label=role_label,
-            countries=countries,
-            company=company,
-            focus=focus,
-        )
-        return self._request("PATCH", f"/api/base-resumes/{slug}/identity", json=payload)
+    def set_base_resume_identity(self, slug: str, **fields: Any) -> Any:
+        """PATCH /identity with the fields the tool was given (display_name, role_category,
+        role_label, countries, company, focus). None is "not sent"; "" and [] are real values
+        (they clear), so only None is dropped."""
+        return self._request("PATCH", f"/api/base-resumes/{slug}/identity", json=_drop_none(**fields))
 
     def edit_base_resume(self, slug: str, ops: list[dict]) -> Any:
         return self._request(

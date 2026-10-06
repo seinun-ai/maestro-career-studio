@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Combobox } from "@base-ui/react/combobox";
 import { useQuery } from "@tanstack/react-query";
 import { CheckIcon, XIcon } from "lucide-react";
@@ -19,8 +19,40 @@ type RoleGroup = { key: string; label: string; items: FavoredRole[] };
  *  truncated, so the user would lose the entry rather than a few characters. */
 export const MAX_ROLE_LABEL_CHARS = 80;
 
-const ROLE_ITEM_CLASS =
+/** One row of a picker's list; `CountryPicker` shares it. */
+export const PICKER_ITEM_CLASS =
   "flex cursor-default items-center justify-between gap-2 rounded-corner-xs px-2 py-1.5 text-body-medium outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground";
+
+/**
+ * A picker's popup, anchored to its chips box rather than the input, which wraps under the chips.
+ * `CountryPicker` shares it.
+ *
+ * min-w: the anchor is the CHIPS BOX, which in the base-resume header is a compact w-fit chip — about
+ * 100px, that being the width of the word it holds. Sized to that, every role in the list truncated to
+ * two syllables and the list was unreadable, which matters more now that clearing a role is a row in it.
+ */
+export function PickerPopup({
+  anchor,
+  popupRef,
+  children,
+}: {
+  anchor: RefObject<HTMLDivElement | null>;
+  popupRef: RefObject<HTMLDivElement | null>;
+  children: ReactNode;
+}) {
+  return (
+    <Combobox.Portal>
+      <Combobox.Positioner anchor={anchor} sideOffset={4} className="isolate z-50">
+        <Combobox.Popup
+          ref={popupRef}
+          className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) min-w-56 overflow-y-auto overscroll-contain rounded-corner-xs p-1 shadow-level2 ring-1"
+        >
+          {children}
+        </Combobox.Popup>
+      </Combobox.Positioner>
+    </Combobox.Portal>
+  );
+}
 
 /** The identity the server dedups on: the role key, else the folded label. */
 export function roleIdentity(entry: FavoredRole) {
@@ -119,7 +151,7 @@ function AddCustomRoleItem({
   if (!label || alreadyAdded || isCatalogLabel) return null;
   const entry: FavoredRole = { role: null, label, category: null };
   return (
-    <Combobox.Item value={entry} className={ROLE_ITEM_CLASS}>
+    <Combobox.Item value={entry} className={PICKER_ITEM_CLASS}>
       <span className="truncate">
         Add <span className="font-medium">&ldquo;{label}&rdquo;</span>
       </span>
@@ -456,87 +488,71 @@ export function RolePicker(props: RolePickerProps) {
         />
       </Combobox.Chips>
       </div>
-      <Combobox.Portal>
-        <Combobox.Positioner
-          anchor={chipsRef}
-          sideOffset={4}
-          className="isolate z-50"
-        >
-          <Combobox.Popup
-            ref={popupRef}
-            /* min-w: the anchor is the CHIPS BOX, which in the base-resume
-               header is a compact w-fit chip — about 100px, that being the
-               width of the word it holds. Sized to that, every role in the
-               list truncated to two syllables and the list was unreadable,
-               which matters more now that clearing a role is a row in it. */
-            className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) min-w-56 overflow-y-auto overscroll-contain rounded-corner-xs p-1 shadow-level2 ring-1"
-          >
-            <Combobox.List>
-              <Combobox.Collection>
-                {(group: RoleGroup) => (
-                  <Combobox.Group
-                    key={group.key}
-                    items={group.items}
-                    className="scroll-my-1"
-                  >
-                    <Combobox.GroupLabel className="text-muted-foreground px-2 py-1 text-body-small">
-                      {group.label}
-                    </Combobox.GroupLabel>
-                    <Combobox.Collection>
-                      {(entry: FavoredRole) => (
-                        <Combobox.Item
-                          key={entry.role}
-                          value={entry}
-                          className={ROLE_ITEM_CLASS}
-                        >
-                          <span className="truncate">
-                            {/* The first item of every group IS its
-                                category. Saying so beats repeating the
-                                group label verbatim one line below it. */}
-                            {entry.role === group.key
-                              ? `Any ${group.label} role`
-                              : entry.label}
-                          </span>
-                          <Combobox.ItemIndicator>
-                            <CheckIcon className="size-4 shrink-0" />
-                          </Combobox.ItemIndicator>
-                        </Combobox.Item>
-                      )}
-                    </Combobox.Collection>
-                  </Combobox.Group>
-                )}
-              </Combobox.Collection>
-              <AddCustomRoleItem
-                label={typed}
-                alreadyAdded={alreadyAdded}
-                isCatalogLabel={isCatalogLabel}
-              />
-              {/* The only way to un-set a role with the mouse, so it is
-                  offered whatever is typed — a filter that could hide it
-                  would make the state unreachable. */}
-              {props.mode === "single" && props.value && (
-                <Combobox.Item value={CLEAR_ROLE} className={ROLE_ITEM_CLASS}>
-                  <span className="text-muted-foreground truncate">
-                    {CLEAR_ROLE.label}
-                  </span>
-                </Combobox.Item>
-              )}
-            </Combobox.List>
-            {/* Must stay mounted to announce reliably, so the message is
-                what is conditional — and the padding rides on the message,
-                not the wrapper, or the empty case leaves a blank strip.
-                Covers only what the item above cannot: nothing typed and
-                no catalog to show. */}
-            <Combobox.Empty>
-              {typed ? null : (
-                <div className="text-muted-foreground px-2 py-1.5 text-body-medium">
-                  No roles to show.
-                </div>
-              )}
-            </Combobox.Empty>
-          </Combobox.Popup>
-        </Combobox.Positioner>
-      </Combobox.Portal>
+      <PickerPopup anchor={chipsRef} popupRef={popupRef}>
+        <Combobox.List>
+          <Combobox.Collection>
+            {(group: RoleGroup) => (
+              <Combobox.Group
+                key={group.key}
+                items={group.items}
+                className="scroll-my-1"
+              >
+                <Combobox.GroupLabel className="text-muted-foreground px-2 py-1 text-body-small">
+                  {group.label}
+                </Combobox.GroupLabel>
+                <Combobox.Collection>
+                  {(entry: FavoredRole) => (
+                    <Combobox.Item
+                      key={entry.role}
+                      value={entry}
+                      className={PICKER_ITEM_CLASS}
+                    >
+                      <span className="truncate">
+                        {/* The first item of every group IS its
+                            category. Saying so beats repeating the
+                            group label verbatim one line below it. */}
+                        {entry.role === group.key
+                          ? `Any ${group.label} role`
+                          : entry.label}
+                      </span>
+                      <Combobox.ItemIndicator>
+                        <CheckIcon className="size-4 shrink-0" />
+                      </Combobox.ItemIndicator>
+                    </Combobox.Item>
+                  )}
+                </Combobox.Collection>
+              </Combobox.Group>
+            )}
+          </Combobox.Collection>
+          <AddCustomRoleItem
+            label={typed}
+            alreadyAdded={alreadyAdded}
+            isCatalogLabel={isCatalogLabel}
+          />
+          {/* The only way to un-set a role with the mouse, so it is
+              offered whatever is typed — a filter that could hide it
+              would make the state unreachable. */}
+          {props.mode === "single" && props.value && (
+            <Combobox.Item value={CLEAR_ROLE} className={PICKER_ITEM_CLASS}>
+              <span className="text-muted-foreground truncate">
+                {CLEAR_ROLE.label}
+              </span>
+            </Combobox.Item>
+          )}
+        </Combobox.List>
+        {/* Must stay mounted to announce reliably, so the message is
+            what is conditional — and the padding rides on the message,
+            not the wrapper, or the empty case leaves a blank strip.
+            Covers only what the item above cannot: nothing typed and
+            no catalog to show. */}
+        <Combobox.Empty>
+          {typed ? null : (
+            <div className="text-muted-foreground px-2 py-1.5 text-body-medium">
+              No roles to show.
+            </div>
+          )}
+        </Combobox.Empty>
+      </PickerPopup>
     </>
   );
 

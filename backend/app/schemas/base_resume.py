@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict
 from app.schemas.resume import ResumeData
 
 
-class BaseResumeSummary(BaseModel):
+class _BaseResumeIdentityRead(BaseModel):
+    """What names a base resume and what it is written for (its anchors), shared by both reads."""
+
     model_config = ConfigDict(from_attributes=True)
 
     slug: str
@@ -16,6 +18,9 @@ class BaseResumeSummary(BaseModel):
     countries: list[str] = []
     company: str | None = None
     focus: str | None = None
+
+
+class BaseResumeSummary(_BaseResumeIdentityRead):
     updated_at: datetime
     pdf_rendered_at: datetime | None = None
     # Both drive the gallery card: render_error picks the thumbnail state,
@@ -24,16 +29,7 @@ class BaseResumeSummary(BaseModel):
     archived_at: datetime | None = None
 
 
-class BaseResumeDetail(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    slug: str
-    display_name: str | None = None
-    role_category: str
-    role_label: str | None = None
-    countries: list[str] = []
-    company: str | None = None
-    focus: str | None = None
+class BaseResumeDetail(_BaseResumeIdentityRead):
     data: ResumeData
     pdf_path: str | None = None
     tex_path: str | None = None
