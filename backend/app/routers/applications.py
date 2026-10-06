@@ -203,8 +203,11 @@ def list_applications(
         stmt = stmt.where(Application.created_at <= created_before)
     stmt = stmt.order_by(Application.created_at.desc()).offset(offset).limit(limit)
     summaries: list[ApplicationSummary] = []
-    for application, job, base_name in db.execute(stmt):
+    rows = db.execute(stmt).all()
+    scores = ats_score.tracker_scores(db, [row[0] for row in rows])
+    for application, job, base_name in rows:
         summary = ApplicationSummary.model_validate(application)
+        summary.ats_score = scores.get(application.id)
         summary.job_title = job.title
         summary.job_company = job.company
         summary.job_location = job.location
