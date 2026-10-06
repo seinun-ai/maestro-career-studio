@@ -632,7 +632,7 @@ function ApplicationsContent() {
       </ListToolbar>
 
       {!loadFailed && !loading && needsStrip.length > 0 ? (
-        <div role="group" aria-label="What needs you" className="flex flex-wrap items-center gap-2">
+        <div role="group" aria-label="Quick filters" className="flex flex-wrap items-center gap-2">
           {needsStrip.map(({ filter: f, label, count }) => {
             const on = filter === f;
             return (

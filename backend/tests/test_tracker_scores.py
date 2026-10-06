@@ -9,6 +9,7 @@ from app.db import get_db
 from app.main import app
 from app.models.application import Application
 from app.models.ats_score import AtsScore
+from app.models.base_resume import BaseResume
 from app.models.job import Job
 
 
@@ -110,3 +111,21 @@ def test_listing_never_writes_scores(client, db_session):
     client.get("/api/applications")
     client.get("/api/jobs")
     assert db_session.query(AtsScore).count() == 0
+
+
+def test_best_score_ignores_archived_bases_but_an_application_keeps_its_own(client, db_session):
+    job = _job(db_session)
+    saved = _job(db_session)
+    application = _application(db_session, job, base_resume="old")
+    for slug in ("old", "kept"):
+        db_session.add(BaseResume(slug=slug, role_category="data_scientist", data_json={}))
+    db_session.commit()
+    _score(db_session, job, target_type="base_resume", target_id="old", phase="base", composite=72.0)
+    _score(db_session, job, target_type="base_resume", target_id="kept", phase="base", composite=60.0)
+    _score(db_session, saved, target_type="base_resume", target_id="old", phase="base", composite=72.0)
+    _score(db_session, saved, target_type="base_resume", target_id="kept", phase="base", composite=60.0)
+    db_session.query(BaseResume).filter_by(slug="old").update({"archived_at": datetime.now(UTC)})
+    db_session.commit()
+    assert _job_row(client, saved)["best_ats_score"] == 60.0
+    # An application outlives its base: its own base row still shows.
+    assert _app_row(client, application)["ats_score"] == 72.0

@@ -323,7 +323,7 @@ def tracker_scores(session: Session, applications: list[Application]) -> dict[UU
     for app_id, composite in session.execute(
         select(AtsScore.application_id, AtsScore.composite)
         .where(AtsScore.phase == "tailored", AtsScore.application_id.in_(ids))
-        .order_by(AtsScore.created_at.desc())
+        .order_by(AtsScore.created_at.desc(), AtsScore.id.desc())
     ):
         out.setdefault(app_id, float(composite))
     missing = [a for a in applications if a.id not in out]
@@ -353,7 +353,15 @@ def best_base_scores(session: Session, job_ids: list[UUID]) -> dict[UUID, float]
         job_id: float(best)
         for job_id, best in session.execute(
             select(AtsScore.job_id, func.max(AtsScore.composite))
-            .where(AtsScore.phase == "base", AtsScore.job_id.in_(job_ids))
+            .where(
+                AtsScore.phase == "base",
+                AtsScore.job_id.in_(job_ids),
+                # Same set as latest_scores (the job header's Best): archived or
+                # soft-deleted bases are not picks, so they do not score the row.
+                AtsScore.target_id.not_in(
+                    select(BaseResume.slug).where(not_(base_resume_data.selectable_filter()))
+                ),
+            )
             .group_by(AtsScore.job_id)
         )
     }
