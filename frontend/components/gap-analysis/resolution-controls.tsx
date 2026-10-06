@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, use, useId, type ReactNode } from "react";
-import { Ban, Check, Eye, Info, SkipForward, Tag, type LucideIcon } from "lucide-react";
+import { Ban, Check, Eye, Info, Tag, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,32 +74,30 @@ export const ACTION_ICONS: Record<GapAction, LucideIcon> = {
   add_keyword: Tag,
   user_input: CONCEPT_ICONS.you,
   attach_project: CONCEPT_ICONS.project,
-  skip: SkipForward,
+  skip: CONCEPT_ICONS.skip,
   enable_entry: Eye,
   port_kb_point: CONCEPT_ICONS.careerHistory,
   cannot_confirm: Ban,
 };
 
 /** What each action does, said once: the segment's tooltip and its `aria-describedby` (see `ActionHints`). */
-export const ACTION_HINTS: Record<GapAction, string> = {
+export const ACTION_HINTS: Partial<Record<GapAction, string>> = {
   add_keyword: "Uses the job's exact words, in the place you pick.",
   user_input: "Adds your real experience.",
   attach_project: "Points to a project on your resume.",
   skip: "Leaves this gap as it is.",
-  enable_entry: "Shows an item hidden on your resume.",
-  port_kb_point: "Adds a point from your career history.",
   cannot_confirm: CANNOT_CONFIRM_EXPLANATION,
 };
 
 /** The id every control describing itself with an action's hint points at. */
 export const actionHintId = (action: GapAction) => `gap-action-hint-${action}`;
 
-/** One visually hidden `<span id>` per action. Render it ONCE per page, or the ids repeat. */
+/** One hidden `<span id>` per described action (`aria-describedby` still resolves hidden nodes). Render it ONCE per page, or the ids repeat. */
 export function ActionHints() {
   return (
     <>
       {(Object.keys(ACTION_HINTS) as GapAction[]).map((action) => (
-        <span key={action} id={actionHintId(action)} className="sr-only">
+        <span key={action} id={actionHintId(action)} hidden>
           {ACTION_HINTS[action]}
         </span>
       ))}
@@ -658,7 +656,7 @@ export function LibraryCandidateChips({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                aria-label="About this field"
+                aria-label="About these suggestions"
                 aria-describedby={hintId}
               >
                 <Info className="size-3.5" aria-hidden="true" />
@@ -668,7 +666,7 @@ export function LibraryCandidateChips({
           <TooltipContent>{LIBRARY_HINT}</TooltipContent>
         </Tooltip>
       </p>
-      <span id={hintId} className="sr-only">
+      <span id={hintId} hidden>
         {LIBRARY_HINT}
       </span>
       <div className="flex flex-wrap gap-1.5">

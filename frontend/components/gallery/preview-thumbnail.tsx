@@ -70,8 +70,13 @@ export function PreviewThumbnail({
             src={src}
             alt={alt}
             loading="lazy"
-            // A cached image can finish before hydration, and then onLoad never fires.
-            ref={(img) => { if (img?.complete && img.naturalWidth > 0) setLoadedSrc(src); }}
+            // A cached image (success or failure) can settle before hydration, and then neither onLoad nor
+            // onError fires. Both states are keyed by SRC, so a new URL starts from the skeleton again.
+            ref={(img) => {
+              if (!img?.complete) return;
+              if (img.naturalWidth > 0) setLoadedSrc(src);
+              else setFailedSrc(src);
+            }}
             onLoad={() => setLoadedSrc(src)}
             onError={() => setFailedSrc(src)}
             className={cn("h-full w-full bg-white object-cover object-top", loading && "opacity-0")}

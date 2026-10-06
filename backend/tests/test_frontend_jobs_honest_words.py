@@ -62,11 +62,13 @@ def test_an_unrun_knockout_names_the_check_and_its_salary_field():
     src = Path(knockout.__file__).read_text(encoding="utf-8")
     card = _read("components/job-knockout-card.tsx")
     assert "uncheckedLabel" not in card and "check: not run yet" not in card
-    assert 'const NOT_RUN: Summary = { icon: CircleDashed, word: "Not run"' in card  # replaces the sentence
+    assert 'const NOT_RUN: Summary = { icon: NotRunIcon, word: "Not run"' in card  # replaces the sentence
     assert 'label: "Not checked yet"' not in card
     assert '(preferences or {}).get("desired_salary")' in src
-    assert 'field: "desired salary (Profile › Autofill)",' in card
-    assert 'field: "years of experience (Profile › About you)",' in card
+    # The chip's action names the field it opens: Autofill's desired salary, About you's years.
+    assert 'href: anchorHref("/profile", "autofill-preferences"),' in card
+    assert 'link: "Add your desired salary",' in card
+    assert 'link: "Add your years of experience",' in card
 
 
 # --- The gap page ---------------------------------------------------------------

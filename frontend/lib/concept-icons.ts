@@ -6,7 +6,7 @@ import {
   BarChart3, BookOpen, BookPlus, Bot, BriefcaseBusiness, CalendarClock, CircleCheck, CircleDashed,
   CircleHelp, CircleX, Ellipsis, FileInput, FileOutput, FilePen, FileText, FolderGit2, Handshake,
   HeartPulse, IdCard, Inbox, LayoutTemplate, Layers, Lock, Merge, MessageSquare, Minus, Paperclip,
-  RefreshCw, RotateCcw, ScanSearch, School, SendHorizontal, Settings, Sparkles, Tags, TextQuote,
+  RefreshCw, RotateCcw, ScanSearch, School, SendHorizontal, Settings, SkipForward, Sparkles, Tags, TextQuote,
   ThumbsUp, TrendingDown, TrendingUp, TriangleAlert, UserRound, Wand2, Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -58,6 +58,7 @@ export const CONCEPT_ICONS = {
   restore: RotateCcw,
   queue: SendHorizontal,
   approve: ThumbsUp,
+  skip: SkipForward,
   analyzeGaps: ScanSearch,
   tailor: Wand2,
   more: Ellipsis,

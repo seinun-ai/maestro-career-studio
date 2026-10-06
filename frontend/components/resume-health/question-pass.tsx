@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CircleCheck, CircleX, Clock, Loader2, Minus, SkipForward } from "lucide-react";
+import { ArrowLeft, CircleX, Loader2, Minus } from "lucide-react";
 import { toast } from "sonner";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
@@ -26,6 +26,7 @@ import {
 } from "@/components/resume-health/pass-rows";
 import { usePassWrites } from "@/components/resume-health/use-pass-writes";
 import { ProgressCount } from "@/components/visual";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -57,6 +58,10 @@ import { cn } from "@/lib/utils";
 import type { DisputeResult, LintReport } from "@/lib/types";
 
 /** Drafts written at once: each is a model call. */
+const NotRunIcon = CONCEPT_ICONS.notRun;
+const SkipIcon = CONCEPT_ICONS.skip;
+const DraftsIcon = CONCEPT_ICONS.drafts;
+
 const POOL = 3;
 
 /**
@@ -344,10 +349,10 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
             ))}
           </ol>
           <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-corner-md border px-3 py-2 text-body-medium shadow-level2">
-            <p aria-live="polite" className="flex flex-wrap items-center gap-2">
-              {progress.words}
+            <div className="flex flex-wrap items-center gap-2">
+              <p aria-live="polite">{progress.words}</p>
               <ProgressCount done={progress.answered} total={progress.total} noun="answered" showText={false} />
-            </p>
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
@@ -478,7 +483,7 @@ function PassRowView({
         <p className="text-foreground mt-1 line-clamp-2 max-w-[65ch] text-body-medium">{row.original ?? row.finding.issue}</p>
         <div className="mt-1 flex items-center gap-2">
           <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
-            <SkipForward className="size-3.5" aria-hidden="true" />Skipped for now.
+            <SkipIcon className="size-3.5" aria-hidden="true" />Skipped for now.
           </p>
           <Button
             ref={answerItRef}
@@ -558,7 +563,7 @@ function PassRowView({
           )}
           {row.status === "queued" && (
             <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
-              <Clock className="size-3.5" aria-hidden="true" />Waiting to write…
+              <NotRunIcon className="size-3.5" aria-hidden="true" />Waiting to write…
             </p>
           )}
           {row.status === "drafting" && (
@@ -578,7 +583,7 @@ function PassRowView({
         <div className="space-y-2 border-t pt-2">
           {row.status === "drafted" && (
             <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
-              <CircleCheck className="text-success size-3.5" aria-hidden="true" />New wording ready
+              <DraftsIcon className="size-3.5" aria-hidden="true" />New wording ready
             </p>
           )}
           {copyOnly(row) || row.original == null ? (

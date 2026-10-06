@@ -1,16 +1,9 @@
 "use client";
 
-import {
-  CircleCheck,
-  CircleDashed,
-  CircleHelp,
-  CircleX,
-  Minus,
-  TriangleAlert,
-  type LucideIcon,
-} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { Job, KnockoutCheck, KnockoutScan } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -24,18 +17,21 @@ const LABEL_BY_KIND: Record<KnockoutCheck["kind"], string> = {
   on_site: "On-site",
 };
 
+const { done: DoneIcon, fails: FailsIcon, warning: WarningIcon, unknown: UnknownIcon, none: NoneIcon, notRun: NotRunIcon } =
+  CONCEPT_ICONS;
+
 type Summary = { icon: LucideIcon; word: string; tone: string; iconTone?: string };
 
 /** One chip per check result. Icons are the register's (lib/concept-icons.ts): done, fails, warning, unknown,
  *  none, notRun. Colour never stands alone: every chip carries its word. A pass stays neutral ("good news is quiet"). */
 const SUMMARY_BY_RESULT: Record<KnockoutCheck["result"], Summary> = {
-  pass: { icon: CircleCheck, word: "OK", tone: "bg-surface-container", iconTone: "text-success" },
-  conflict: { icon: CircleX, word: "Conflict", tone: "bg-error-container text-on-error-container" },
-  warning: { icon: TriangleAlert, word: "Warning", tone: "bg-warning-container text-on-warning-container" },
-  profile_missing: { icon: CircleHelp, word: "Add answer", tone: "bg-surface-container" },
-  job_unstated: { icon: Minus, word: "Not listed", tone: "bg-surface-container text-muted-foreground" },
+  pass: { icon: DoneIcon, word: "OK", tone: "bg-surface-container", iconTone: "text-success" },
+  conflict: { icon: FailsIcon, word: "Conflict", tone: "bg-error-container text-on-error-container" },
+  warning: { icon: WarningIcon, word: "Warning", tone: "bg-warning-container text-on-warning-container" },
+  profile_missing: { icon: UnknownIcon, word: "Add answer", tone: "bg-surface-container" },
+  job_unstated: { icon: NoneIcon, word: "Not listed", tone: "bg-surface-container text-muted-foreground" },
 };
-const NOT_RUN: Summary = { icon: CircleDashed, word: "Not run", tone: "bg-surface-container" };
+const NOT_RUN: Summary = { icon: NotRunIcon, word: "Not run", tone: "bg-surface-container" };
 
 /** Rows worth a line of their own; passes and unstated checks are covered by their chip. */
 const ROW_RESULTS = new Set(["conflict", "warning", "profile_missing"]);
@@ -64,7 +60,7 @@ function autofillHref(kind: KnockoutCheck["kind"] | undefined): string {
   return anchorHref("/profile", group ? `autofill-${group}` : "autofill");
 }
 
-type Unchecked = { kind: KnockoutCheck["kind"]; what: string; field: string; href: string; link: string };
+type Unchecked = { kind: KnockoutCheck["kind"]; href: string; link: string };
 
 /**
  * What the job lists that the scan could not compare. knockout.py leaves the salary check out when the
@@ -82,9 +78,7 @@ function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
   if (yearly && !has("salary")) {
     items.push({
       kind: "salary",
-      what: "pay",
       // Autofill's Desired salary (knockout._salary_check), not Job preferences' Minimum salary.
-      field: "desired salary (Profile › Autofill)",
       href: anchorHref("/profile", "autofill-preferences"),
       link: "Add your desired salary",
     });
@@ -92,8 +86,6 @@ function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
   if (job.years_experience_min != null && !has("experience")) {
     items.push({
       kind: "experience",
-      what: "experience",
-      field: "years of experience (Profile › About you)",
       href: anchorHref("/profile", "job-preferences-years"),
       link: "Add your years of experience",
     });
@@ -110,6 +102,7 @@ function CheckChip({ label, summary, href, hint }: { label: string; summary: Sum
     <>
       <Icon aria-hidden className={iconTone} />
       {`${label}: ${word}`}
+      {hint ? <span className="sr-only">{` — ${hint}`}</span> : null}
     </>
   );
   return href ? (
@@ -177,7 +170,7 @@ export function JobKnockoutCard({
 
   if (scan.status === "conflict" || scan.status === "incomplete_profile") {
     const isConflict = scan.status === "conflict";
-    const Icon = isConflict ? CircleX : CircleHelp;
+    const Icon = isConflict ? FailsIcon : UnknownIcon;
     return (
       <div role="status" className="space-y-2">
         <div
@@ -214,10 +207,10 @@ export function JobKnockoutCard({
   // `clear` is any pass or warning (knockout.py): a warning chip can sit under it, and a check the
   // profile could not answer is left out, so the line claims only that nothing conflicts.
   const line = notChecked
-    ? { icon: <CircleDashed aria-hidden className="size-4" />, label: "Checks not run yet" }
+    ? { icon: <NotRunIcon aria-hidden className="size-4" />, label: "Checks not run yet" }
     : scan.status === "clear"
-      ? { icon: <CircleCheck aria-hidden className="size-4 text-success" />, label: "No knock-outs" }
-      : { icon: <Minus aria-hidden className="size-4" />, label: "No requirements listed" };
+      ? { icon: <DoneIcon aria-hidden className="size-4 text-success" />, label: "No knock-outs" }
+      : { icon: <NoneIcon aria-hidden className="size-4" />, label: "No requirements listed" };
   return (
     <div role="status" className="rounded-corner-md border border-border px-3 py-2 text-body-medium">
       <div className={cn("flex items-center gap-2 font-medium", scan.status !== "clear" && "text-muted-foreground")}>

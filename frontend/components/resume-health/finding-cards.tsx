@@ -543,9 +543,12 @@ function LevelChip({ finding }: { finding: LintFinding }) {
   if (!name) return null;
   const label = EVIDENCE_LABELS[name as EvidenceLevel] ?? name;
   // Place on the ladder: the list runs best first, so direct fills 5 and unaddressed 1.
-  const filled = EVIDENCE_LEVELS.length - EVIDENCE_LEVELS.findIndex((level) => level.value === name);
+  const at = EVIDENCE_LEVELS.findIndex((level) => level.value === name);
+  // A level the ladder does not know has no place on it: the word alone, never a full meter.
+  if (at < 0) return <span className="text-muted-foreground text-label-medium">{label}</span>;
+  const filled = EVIDENCE_LEVELS.length - at;
   return (
-    <DotMeter name="How well it is shown" filled={Math.min(filled, EVIDENCE_LEVELS.length)} total={EVIDENCE_LEVELS.length}
+    <DotMeter name="How well it is shown" filled={filled} total={EVIDENCE_LEVELS.length}
       word={label} className="text-muted-foreground" />
   );
 }

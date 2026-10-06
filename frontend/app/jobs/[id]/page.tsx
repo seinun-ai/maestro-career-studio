@@ -90,8 +90,8 @@ function JobTabsList({
   reasonId: string;
   className?: string;
 }) {
-  // A greyed tab with no stated reason is a dead end for a first-time user: the
-  // reason is visible beside the tabs (below) and each locked tab points at it.
+  // A greyed tab with no stated reason is a dead end for a first-time user: each
+  // locked tab carries the reason as its title and points at it with aria-describedby.
   // The base trigger styles set pointer-events-none while disabled, which
   // suppresses the native title tooltip too; re-enable it on the locked pair
   // only. The disabled attribute still swallows the click.
@@ -550,13 +550,13 @@ export default function JobDetailPage({
             ) : null}
             {best ? (
               <span className="bg-surface-container-low inline-flex h-7 min-w-0 items-center gap-2 rounded-full px-2.5 text-label-medium">
-                <span className="text-muted-foreground">Best</span>
+                <span aria-hidden="true" className="text-muted-foreground">Best</span>
                 <ScoreBar
                   value={best.composite}
                   valueText={best.composite.toFixed(1)}
                   label={`Best score, ${baseName(best.target_id)}`}
                 />
-                <span className="text-muted-foreground truncate">{baseName(best.target_id)}</span>
+                <span aria-hidden="true" className="text-muted-foreground truncate">{baseName(best.target_id)}</span>
               </span>
             ) : null}
             {hasApp && application ? (

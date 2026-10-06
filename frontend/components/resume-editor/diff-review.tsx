@@ -25,8 +25,8 @@ import { cn } from "@/lib/utils";
  * undo machinery, no second write path.
  */
 
-// Each provenance as its register chip. "llm" is the AI glyph (Sparkles): it exists only for the legend,
-// since ProvenanceChip draws nothing for an llm hunk.
+// Each provenance as its register chip. The "llm" entry is never drawn: ProvenanceChip returns null for an
+// llm hunk (an unattributed change), and the entry only completes the Record over every provenance.
 const PROVENANCE_CHIPS: Record<
   ResumeDiffHunk["provenance"],
   { kind: "careerHistory" | "you" | "ai"; name?: string; title: string }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CircleAlert, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import { Check, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -52,6 +52,7 @@ import {
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const MoreIcon = CONCEPT_ICONS.more;
+const WarningIcon = CONCEPT_ICONS.warning;
 const AnalyzeGapsIcon = CONCEPT_ICONS.analyzeGaps;
 
 /** "ATS score" spelled out once, where the tab first shows one (conventions: Canonical terms). */
@@ -73,7 +74,7 @@ function SubscoreBar({ label, value, weakest }: { label: string; value: number; 
   return (
     <div className="space-y-0.5">
       <div className="flex items-center gap-2">
-        <span className="text-muted-foreground text-body-small">{label}</span>
+        <span aria-hidden="true" className="text-muted-foreground text-body-small">{label}</span>
         {/* A word only (D4): no colour, no threshold; the arrow icon means Lost elsewhere. */}
         {weakest && (
           <span className="inline-flex h-4 items-center rounded-full bg-surface-container px-1.5 text-label-small">Weakest</span>
@@ -272,8 +273,8 @@ function AtsScoreCard({
         {(gateWarnings.length > 0 || coverage) && (
           <ul className="space-y-1 text-body-small">
             {gateWarnings.map((warning) => (
-              <li key={warning} className="text-destructive flex gap-1.5">
-                <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+              <li key={warning} className="text-warning flex gap-1.5">
+                <WarningIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
                 {warning}
               </li>
             ))}
