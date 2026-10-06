@@ -104,7 +104,12 @@ only for job-site accounts.
   check of the switch, dialog and password field.
 - **Public repo:** examples use made-up companies (Acme, Globex), never real ones.
 
-## Part 4: A bot-run copy and sync — UNDECIDED (deferred 2026-10-05)
+## Part 4: A bot-run copy and sync — moved to phase 4b
+
+Decided 2026-10-06: split-ownership sync, designed in
+`docs/plans/2026-10-06-split-ownership-sync-design.md`. The notes below are the history.
+
+### History (deferred 2026-10-05)
 
 The owner deferred this: "leave the sync mechanism alone undecided, we will figure out later."
 Parts 1–3 work from any one machine and do not depend on it. What was learned, for the later
