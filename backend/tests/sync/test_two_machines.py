@@ -602,11 +602,33 @@ def raw_request(machines, head, body=b""):
     return sock
 
 
+def _read_whole_reply(sock):
+    """The status line, headers and the declared body. One recv can end after the headers alone."""
+    raw = b""
+    while b"\r\n\r\n" not in raw:
+        chunk = sock.recv(4096)
+        if not chunk:
+            return raw.decode("latin-1")
+        raw += chunk
+    head, _, body = raw.partition(b"\r\n\r\n")
+    length = 0
+    for line in head.decode("latin-1").split("\r\n")[1:]:
+        name, _, value = line.partition(":")
+        if name.strip().lower() == "content-length":
+            length = int(value)
+    while len(body) < length:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        body += chunk
+    return (head + b"\r\n\r\n" + body).decode("latin-1")
+
+
 def test_real_oversized_body_is_a_413_before_it_is_read(machines):
     declared = 100 * 1024 * 1024 + 1
     sock = raw_request(machines, "POST /api/sync/jobs HTTP/1.1\r\nContent-Length: %d" % declared)
     with sock:
-        reply = sock.recv(4096).decode("latin-1")
+        reply = _read_whole_reply(sock)
     assert reply.startswith("HTTP/1.1 413")
     assert "too large" in reply
     assert machines.home.http.get("/api/sync/hello", headers=headers_for(machines)).status_code == 200
