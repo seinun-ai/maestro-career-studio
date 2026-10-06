@@ -52,7 +52,7 @@
   extraction, wrong for a typo). Deliberately no required create field: the documented onboarding path
   drops JSON into `base_resumes/` and reaches `seeding.py` without touching the
   API, so a REST-only validator would not hold. `PATCH
-  /api/base-resumes/{slug}/identity` sets role/display_name WITHOUT rewriting
+  /api/base-resumes/{slug}/identity` sets role/display_name and the anchors below WITHOUT rewriting
   `data_json`, recording a version, rewriting the disk file, or recompiling the
   PDF — unlike the full PUT. Artifact filenames resolve their role label from
   this column (`base_resume_data.declared_role` →
@@ -62,6 +62,34 @@
   successful one-click base→KB sync (`GET/POST
   /api/base-resumes/{slug}/kb-sync-status` / `kb-sync`; MCP `kb_sync_base`; on
   screen the studio's **Add to career history (N)** pill and its **Add now**).
+
+  **Anchors** say what a base is written for: `countries` (upper-case ISO 3166-1 codes, NOT NULL,
+  default `[]` = anywhere), `company` and `focus` (free text, at most 80 characters), plus the role pair
+  above. They are written ONLY by `PATCH /api/base-resumes/{slug}/identity` (MCP
+  `set_base_resume_identity`): an omitted field is unchanged, `null`/`""`/`[]` clear, and every value is
+  validated before any lands, so a 422 saves none. `services/countries.normalize` is the one parser
+  (codes in any case, "UK" as GB, English short names; anything else is unknown); the list is vendored in
+  `services/data/countries.yaml` and served by `GET /api/countries`. Create, import, `from-kb`, PUT and
+  edits never take anchors; duplicate copies `countries`, `company` and `focus` once, like the role pair.
+  Anchors are metadata like role: no ResumeVersion, no disk rewrite, no render, no score change.
+  `base_resume_data.anchors(row)` returns `{countries, role, company, focus}` (role is `role_label`, else
+  the category's label, null when undeclared) or null for no row, a soft-deleted row or all four empty;
+  it feeds `TailoringSession.base_anchors` (a model property over a viewonly `base_row`, on every session
+  response, null for a soft-deleted base) and the base summaries in the hunt brief (`anchors`).
+  **Only countries decide anything.** `services/base_eligibility.py` owns the rule: a job whose country
+  is unknown (`countries.normalize` finds no code, "Remote" included) keeps every selectable base; a
+  known country keeps the bases listing it plus those with no countries; when none qualify every
+  selectable base stays and `fallback` is true; `include_other_countries` keeps all.
+  `candidates`/`candidates_for_country` return `slugs`, `job_country`, `fallback` and `skipped` (the
+  selectable bases the country dropped). Readers drop only `skipped`: `ats_score.score_all_bases`,
+  `latest_scores` and `best_base`, `explore_gaps._best_base_gap_rows`, `GET /api/ats-scores/candidates`
+  and the `include_other_countries` flag on GET/POST `/api/ats-scores`. `is_eligible(job, slug)` (own
+  countries pass, OR fallback, OR no row) gates the inbox readiness `base_country` mark and final
+  review's `base_country`. Role, company and focus never filter or rank. Two prompts read the anchors,
+  as a `RESUME ANCHORS` line from `prompt_assembly.anchor_block` placed after the persona: gap tailoring
+  (the job variant adds that the anchor company is not this application's employer) and Ask for changes
+  (`base_resume_instruct`). They are emphasis hints, never evidence; with none set both prompts are
+  unchanged.
 - **Resume edit ops** are one source (`schemas/resume_edit.py`: a 16-kind discriminated union with
   `op_kinds()` / `op_scope()` / `render_ops_brief()` / `render_ops_shapes()`); chat imports those, MCP builds
   `edit_base_resume` from `render_ops_shapes()` at import, and `test_resume_edit_reference.py` holds the
@@ -603,11 +631,17 @@
   is unlinked or gone. `knockout` is the first conflicting check's kind only when the scan
   status is `conflict`, otherwise null. `to_check` counts latest receipt fields carrying
   any flag (one count per field, even with several flags), or 0 without recorded answers.
+  `base_country` is the job's country code when the linked application's base resume is not
+  eligible for it (`base_eligibility`'s rule, batched), otherwise null: also null for no
+  application, no job country, a base with no row, or a job in `fallback`.
   A row failure is logged and gives that row null; a batch-level read failure gives every
   open row null while the list still returns. `inbox_readiness.is_ready` is phase 4's shared
-  rule: `tailored is True`, `knockout is None`, `to_check == 0`; null readiness is not ready.
+  rule: `tailored is True`, `knockout is None`, `to_check == 0`, `base_country is None`; null
+  readiness is not ready. `get_final_review` carries the same check as `base_country:
+  {job_country, base, eligible}` on the resume that would be sent (the application's, else the fit's
+  `chosen_base`; null without a job or a base).
   Frontend twin `lib/inbox-readiness.ts` words the marks **Tailored**, **Not tailored**,
-  **Knock-out: …**, **N to check**. Ready rows sort first in Queued (`accepted`), keeping
+  **Knock-out: …**, **N to check**, **Resume for another country**. Ready rows sort first in Queued (`accepted`), keeping
   the user's chosen sort within each group. Marks and sorting do not move rows between lanes.
 
   **Arrivals summary**: `GET /api/proposals/summary?since=` returns `since` and four counts

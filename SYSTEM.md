@@ -82,10 +82,10 @@ backend/
                        ats, base_resumes, templates, qa, resume_versions,
                        resume_lint, career_kb, exports, chat, explore, referrals,
                        settings, autofill, proposals, automations, setup, role_categories,
-                       version, agent_runs)
+                       version, agent_runs, countries)
     services/          business logic (ats/, tailoring_session, gap_analysis,
-                       role_categories, kb_import, exports, gap_enrichment,
-                       placement_targets, ats_score, application_writes,
+                       role_categories, countries, kb_import, exports, gap_enrichment,
+                       placement_targets, ats_score, base_eligibility, application_writes,
                        artifacts, application_render, engines (the ONE probe),
                        pdf_render (dual-engine: pdflatex + typst), pdf_preview,
                        jd_extraction, resume_lint, health_*, career_kb,
@@ -185,12 +185,11 @@ file to open.
    `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
    warns (pay is negotiable). Informational like G11 tier 2: it flags; the
    consent/submit decision stays human.
-4. **Score** — Score and tailor auto-scores all active bases on first visit; per-base
-   cards → **Analyze gaps** creates a session (one filled button, on the best match;
-   Restart gap analysis and Mark applied without tailoring sit in each card's ⋯).
-   When every card draws the low-coverage warning, one banner says it instead.
-   With no base resume the tab
-   offers Import resumes and documents instead, and scores once that dialog closes.
+4. **Score** — Score and tailor auto-scores the bases set for the job's country (all when
+   unknown) on first visit; per-base cards → **Analyze gaps** creates a session (one filled
+   button, on the best match; Restart gap analysis and Mark applied without tailoring sit in
+   each card's ⋯). When every card draws the low-coverage warning, one banner says it instead.
+   With no base resume the tab offers Import resumes and documents instead, and scores once that dialog closes.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions
    (add_keyword / user_input / attach_project / skip + enable_entry /
    port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for the
@@ -480,32 +479,33 @@ file to open.
   origin headers, percent-encoded so any name files, and an agent can never file as "you"; a create takes SQLite's
   write lock, `db.begin_write`, so a job keeps one open proposal. `app/services/agent_names.py` is the server twin of
   `lib/agent-name.ts`, pinned by `tests/test_agent_names.py`: add a known client to BOTH), base resumes
-  (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, a restore
-  is a new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those
-  five are **full-profile only** this round), health (run/get + waivers; a finding carries its bullet's own `question`,
-  `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a report `next_grade`; disputes and the word bank
-  are web-only), the full tailoring workflow (session tools take **`tailoring_session_id`** — breaking rename, no
-  legacy alias; `resolve_gaps`' evidence-carrying actions are gated server-side — §4; `quick_tailor` is the
-  profile-driven fast path), render + slim PDF inspection (`get_rendered_pdf` has **no** `page_images_b64`;
-  `get_rendered_pdf_page_image` is the opt-in one-page visual, `max_dimension_px` default 1024 with a ~1MB encoded cap;
-  `prepare_application_pdf_upload` stages a disposable Playwright copy under `.playwright-mcp/uploads/`), application
-  tracking, `record_run` (finished automation reports; `docs/entities/agent-runs.md`), the apply package,
-  templates (draft/validate only; Typst constraints in `create_template_draft`'s
-  docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile` (`profile.eeo` consent-gated),
-  and `get_career_context` (read-only; anti-fabrication framing in the docstring). The Career KB is writable via MCP:
-  reads carry IDs the context prose does not; entity/profile writes land directly, but POINTS go through the user's
-  gate — ingest lands drafts, `kb_sync_base` drafts new/drifted base-resume items (no LLM, no auto-approve), and
-  `kb_approve_points` is the ONE approval path (`approved|retired`), its gate a convention the docstring states (the
-  value is the user's decision), not server enforcement (`record_consent` precedent). `kb_edit_point` has no `state`
-  param; a text change forces `state="draft"`. No delete tool; document upload stays web-only. **Scoped profiles**
-  (`MAESTRO_CS_MCP_PROFILE`, default `full`): one binary, filtered tool sets — `hunt` / `apply` / `explore` /
-  `templates` / `career`; allowlists in `mcp_server/profiles.py`; enable ONE profile per chat (`full` already carries
-  the KB writes). Stdio config examples live in `mcp_server/`; ChatGPT.com cannot be a client — `mcp.run()` is stdio
-  only. **Apply executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
-  autofill/attach; direct MCP + browser fill/upload is the supported fallback. The agent calls
-  `record_filled_answers` per page, which replaces per-page screenshots; `final_review` and `submission_receipt`
-  evidence stay, and every flag goes into the "Submit now?" question. Never headless / stealth / CAPTCHA
-  bypass. **Directory listing** = plugin bundle `plugins/maestro-career-studio/`, not `.mcpb`; policy `PRIVACY.md`.
+  (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, a restore is a
+  new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those five are
+  **full-profile only**, like `set_base_resume_identity`, a base's only anchor writer: `""`/`[]` clear), health (run/get +
+  waivers; a finding carries its bullet's own `question`, `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`,
+  a report `next_grade`; disputes and the word bank are web-only), the full tailoring workflow (session tools take
+  **`tailoring_session_id`** — breaking rename, no legacy alias — and carry `base_anchors`; `resolve_gaps`' evidence-carrying
+  actions are gated server-side — §4; `quick_tailor` is the profile-driven fast path; `score_ats(include_other_countries)`
+  returns a `countries` block naming bases skipped for the job's country), render + slim PDF inspection (`get_rendered_pdf`
+  has **no** `page_images_b64`; `get_rendered_pdf_page_image` is the opt-in one-page visual, `max_dimension_px` default 1024
+  with a ~1MB encoded cap; `prepare_application_pdf_upload` stages a disposable Playwright copy under
+  `.playwright-mcp/uploads/`), application tracking, `record_run` (finished automation reports;
+  `docs/entities/agent-runs.md`), the apply package, templates (draft/validate only; Typst constraints in
+  `create_template_draft`'s docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile`
+  (`profile.eeo` consent-gated), and `get_career_context` (read-only; anti-fabrication framing in the docstring). The Career
+  KB is writable via MCP: reads carry IDs the context prose does not; entity/profile writes land directly, but POINTS go
+  through the user's gate — ingest lands drafts, `kb_sync_base` drafts new/drifted base-resume items (no LLM, no
+  auto-approve), and `kb_approve_points` is the ONE approval path (`approved|retired`), its gate a convention the docstring
+  states (the value is the user's decision), not server enforcement (`record_consent` precedent). `kb_edit_point` has no
+  `state` param; a text change forces `state="draft"`. No delete tool; document upload stays web-only. **Scoped profiles**
+  (`MAESTRO_CS_MCP_PROFILE`, default `full`): one binary, filtered tool sets — `hunt` / `apply` / `explore` / `templates` /
+  `career`; allowlists in `mcp_server/profiles.py`; enable ONE profile per chat (`full` already carries the KB writes). Stdio
+  config examples live in `mcp_server/`; ChatGPT.com cannot be a client — `mcp.run()` is stdio only. **Apply executor:**
+  Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can autofill/attach; direct MCP + browser
+  fill/upload is the supported fallback. The agent calls `record_filled_answers` per page, which replaces per-page
+  screenshots; `final_review` and `submission_receipt` evidence stay, and every flag goes into the "Submit now?" question.
+  Never headless / stealth / CAPTCHA bypass. **Directory listing** = plugin bundle `plugins/maestro-career-studio/`, not
+  `.mcpb`; policy `PRIVACY.md`.
 - **Guided tailoring workflow** (`mcp_server/workflow.py`): wrapped tools carry a `next` envelope
   (`state`/`blocking`/`offer`/`ask_user`/`options`/`call`) that walks §5's arc — score all bases → recommend →
   quick|custom → tailor → render → apply readiness — unnarrated. `workflow.py` is PURE (no httpx/DB/LLM), a
@@ -914,8 +914,8 @@ citation. Priority lives in the item text, not in the ordinal.
 - **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the same PK in one flush both INSERT (no
   dedup) → IntegrityError. Dedupe in Python first (see `_insert_skills`).
 - **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch it FIRST or 422s become 400s.
-- **Transient response attrs**: `already_existed` (Job) and `health_warning` (TailoringSession) are instance attrs set
-  after refresh, never columns — don't "fix" them into the ORM.
+- **Transient response attrs**: `already_existed` (Job), `health_warning` (TailoringSession) are instance attrs set after
+  refresh; `base_anchors` (TailoringSession) is a model property. None is a column — don't "fix" them into the ORM.
 - **score_target(result=...)**: passes a precomputed engine result to persist; the double-run it replaced was audit
   finding C18 — don't re-add a second run.
 - **The query cache keeps old key order** (2026-09-22): structural sharing made a refetch's `JSON.stringify` differ from

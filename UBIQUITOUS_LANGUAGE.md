@@ -33,6 +33,7 @@ and the screen speaks plainly ("item", "bullet", "Career history"). Do not
 | **Extra Section** | A user-defined resume section beyond the fixed core ones | Other sections | custom section, additional section |
 | **Slug** | The stable identifier of a base resume, used in URLs and on disk | resume ID ("Copy ID for connected agents") | id, key, name |
 | **Role Category** | The canonical role a resume or job belongs to, drawn from a fixed vocabulary | Role | title family, family, role, category |
+| **Anchor** | An optional label on a base resume. Countries restrict which jobs it is scored for; role, company and focus steer the AI | Target (Countries, Role, Company, Focus) | tag, filter, region |
 
 ## Application pipeline
 
@@ -107,7 +108,7 @@ and the screen speaks plainly ("item", "bullet", "Career history"). Do not
 - A **Career KB** holds many **KB Entities**; each entity holds many **KB Points**
 - A **KB Profile** is exactly one per Career KB
 - A **Port** moves **KB Points** into exactly one **Base Resume**
-- A **Base Resume** declares exactly one **Role Category** and renders through exactly one **Template**
+- A **Base Resume** declares exactly one **Role Category**, optionally carries **Anchors**, and renders through exactly one **Template**
 - A **Template** targets exactly one **Engine**
 - One **Job** may have many **Applications**; each **Application** targets exactly one **Job**
 - An **Application** is produced from one **Base Resume**, optionally via a **Tailoring Session**
