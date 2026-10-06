@@ -338,8 +338,7 @@ file to open.
   `customized_json` wholesale from the BASE resume; the latter applies ops to the
   CURRENT draft — docstrings lead with this; keep them unmistakable. Edit indices are
   **0-based into the full JSON section array**, including `enabled: false` rows (PDF
-  render omits those — never display ordinals). Successful PATCH `/edits` responses
-  echo `applied[]`.
+  render omits those — never display ordinals). Successful PATCH `/edits` responses echo `applied[]`.
 - **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}`
   `POST /api/autofill/telemetry` stores label, kind, rule id, option texts, outcome, host — never what was typed, was
   there before, or any AI answer: no value column, `extra="forbid"`, sw re-filters to six keys. `POST /runs` stores one
@@ -416,8 +415,7 @@ file to open.
 - **Em-dash rule** `{#inv-em-dash}`: generated Q&A answers and cover letters are scrubbed of
   U+2014/U+2013 at store time (`qa.scrub_typographic_dashes`); rendered PDFs must not contain
   em-dashes (ATS parsers). The MCP client's slim `get_rendered_pdf` scan remains a resume-PDF
-  backstop (metadata + page paths; no `page_images_b64` — use `get_rendered_pdf_page_image` for one
-  page).
+  backstop (metadata + page paths; no `page_images_b64` — use `get_rendered_pdf_page_image` for one page).
 - **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record
   (`settings/eeo_consent.json`, `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`),
   TWO permissions kept apart on purpose: `enabled` authorizes disclosing protected characteristics,
@@ -700,8 +698,7 @@ with the failure mode that bought it. Code citing "§8" lands here.
   with data-dir env overrides (its own sqlite file, never `data/`); frontend `API_PROXY_BACKEND=... npm run
   dev`. TeX is optional (`services/engines` searches the TeX homes itself, and
   `MAESTRO_CS_PDFLATEX=/nonexistent` simulates a TeX-less host). Full recipe: the maintainer's local
-  `verify` skill (not shipped). Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send
-  button.
+  `verify` skill (not shipped). Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send button.
 - **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors (what
   `pip install -e ".[dev,mcp]"` resolves); `backend/requirements.lock` is hash-pinned and is what the
   **container image** installs, so a published image is reproducible. After changing a dependency,
@@ -818,8 +815,7 @@ citation. Priority lives in the item text, not in the ordinal.
     latest, and a foreign template-only change reads as an unsaved local edit.
 27. `FullscreenEditorPage` is `h-dvh` (both studios, the template editor), and `VersionBanner` renders above it in
     `SidebarGutter`, so the page overflows by the banner's height whenever the banner shows.
-28. Dark `--ring` on `--primary-container` (the FAB) is 2.88:1 (WCAG 1.4.11), which is why that surface is not in
-    `_RING_SURFACES`.
+28. Dark `--ring` on `--primary-container` (the FAB) is 2.88:1, so that surface is not in `_RING_SURFACES` (1.4.11).
 29. Focus lands on `<body>` on Escape from the <768px sidebar sheet (which stays open after a nav tap) and after any
     client-side link navigation. `Button nativeButton={false} render={<a>}` announces a link as a button (~40 sites,
     21 files): use `buttonVariants` on a plain `<a>` or `GuardedLink`, the sidebar's pattern.
@@ -863,8 +859,9 @@ citation. Priority lives in the item text, not in the ordinal.
 
 ## 12. Gotchas that have bitten before
 
-- **Retry keys must identify controls** (2026-09-25): rule attempts use composite labels, collection clean questions, so
-  `country | field-12` never reaches the `country` retry → use element identity; a model cannot repair fields never sent (§11 item 40).
+- **Retry keys must identify controls** (2026-09-25): rule attempts use composite labels, collection uses clean
+  questions, so `country | field-12` never reaches the `country` retry → use element identity and stable descriptors;
+  a model upgrade cannot repair fields collection never sends (§11 item 40).
 - **Same page is not same URL** (2026-09-23): the leave guard stopped every popstate to the same pathname, so Back
   between `?tab=` or `?session=` entries changed the URL and not the screen → `samePage` decides what asks, the URL
   decides what renders (`lib/leave-guard.ts`).
@@ -879,15 +876,18 @@ citation. Priority lives in the item text, not in the ordinal.
   `id_key` (`resume_lint.py`). v3 kept the measure, digit-quoting analogue and uncertain keys; detail asks are new.
 - **A prompt-contract change bumps `RUBRIC_VERSION`** (2026-09-25): cache rows key on text + rubric version + model,
   so unchanged text kept its old judgment → bump it and resync the prompt row; overrides and "no number" survive.
-- **A GUI-launched process has no shell `PATH`** (2026-09-20): MacTeX's `/Library/TeX/texbin` is invisible to a Claude
-  Desktop child → `engines.find_pdflatex` searches the TeX homes after PATH; every run spawns the ABSOLUTE path.
+- **A GUI-launched process has no shell `PATH`** (2026-09-20): MacTeX at `/Library/TeX/texbin` is invisible to the
+  desktop shell and to a Claude Desktop child, so a bare `pdflatex` does not resolve. `engines.find_pdflatex` searches
+  the TeX homes after PATH, and every run spawns the resolved ABSOLUTE path.
 - **A seeded template copies its source only on INSERT** (2026-09-20): v0.4.0's Postgres import landed rows AFTER
   migrations ran, so a migration-time rewrite hit an empty file and the importer re-landed old bytes →
   `template_registry.SUPERSEDED_SEED_DIGESTS` resyncs at SEED time.
-- **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): it, `synchronous` and `busy_timeout` reset every
-  connect, so 21 `ondelete=` cascades silently stopped → every SQLite engine goes through `app.db.make_engine`.
+- **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): `journal_mode` persists in the file; `foreign_keys`,
+  `synchronous` and `busy_timeout` reset every connect, so 21 `ondelete=` cascades silently stopped → every SQLite
+  engine goes through `app.db.make_engine`.
 - **Autogenerate fully qualifies a TypeDecorator** (2026-09-19): `app.models.types.UTCDateTime()` is unimportable in a
-  revision → use the impl type by hand; `alembic check` skips server defaults (parity test: `compare_server_default=True`).
+  revision → use the impl type by hand. Alembic compares compiled DDL (no `compare_type` hook); `alembic check` skips
+  server defaults (the parity test passes `compare_server_default=True`).
 - **A Boolean `server_default="false"` is TEXT on SQLite** (2026-09-19): `'false'` is truthy in Python, so every
   user template read as the default → use `expression.false()` (pinned by `test_db_portability`).
 - **`Session.commit()` flushes first** (2026-09-19): a teardown that deletes rows and commits also lands a
@@ -897,16 +897,18 @@ citation. Priority lives in the item text, not in the ordinal.
 - **SQLite's `CURRENT_TIMESTAMP` has no microseconds** (2026-09-19): same-second rows tied against the ORM's `.ffffff`
   binds and "oldest wins" fell to a uuid4 tie-break → the APP writes every timestamp; never test `updated_at ==
   created_at` for "never edited".
-- **One path, every job** (2026-09-01): LinkedIn rewrites only `?currentJobId=` and the matcher dropped the query, so
-  every job was the first saved → a query-keyed board needs its key in BOTH `posting_id` tables (§7); an SPA's JSON-LD is the PREVIOUS job's.
+- **One path, every job** (2026-09-01): LinkedIn's list rewrites only `?currentJobId=` and the matcher dropped the
+  query string, so every job was the first one saved. A query-keyed board needs its key in BOTH `posting_id` tables
+  (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's until checked.
 - **A starter that fails its own gate** (2026-09-01): the from-scratch template certified `false` on an untouched
   draft. What the app mints AND validates in one request must clear every probe.
 - **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers, no MIME types. Every
   picker reads `frontend/lib/upload-accept.ts`.
 - **A guard test mocked away the guard** (2026-08-25): a green suite hid a 100%-failing rewrite path because it replaced
   `guarded_rewrite` → when a guard or validator is the subject, fake `llm.call_openai`, never the guard.
-- **The FAST model quietly caps score honesty** (2026-08-24): flash-lite missed conceptual JD skills → base ATS scores
-  inflated ~9 pts. Fast drives coverage/honesty/latency; Smart barely moves outcomes → re-benchmark FAST before changing defaults.
+- **The FAST model quietly caps score honesty** (2026-08-24): flash-lite extractions missed conceptual JD skills →
+  base ATS scores inflated ~9 pts vs fuller extractors. Fast tier drives coverage/honesty/latency; Smart barely moves
+  outcomes — re-benchmark FAST before changing model defaults.
 - **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the same PK in one flush both INSERT (no
   dedup) → IntegrityError. Dedupe in Python first (see `_insert_skills`).
 - **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch it FIRST or 422s become 400s.
@@ -924,19 +926,20 @@ citation. Priority lives in the item text, not in the ordinal.
   fires after the SSE headers are out and reaches the browser as a truncated stream. Capabilities are probed on save
   (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`; unprobed models are never blocked.
 - **A probe must issue the SAME call as the surface it measures**: same client (`llm.get_chat_client`), same kwargs
-  from `llm.completion_extras`. A re-implemented call's row SHADOWS reality: a false tools=No once 422'd every chat.
+  from `llm.completion_extras` (the one site for such rules). A re-implemented call's stored row SHADOWS reality — a false tools=No once 422'd every
+  chat message.
 - **LLM provider outages are ONE exception type**: `llm.py` normalizes them to `llm.LLMProviderError`; `app.main` maps
   it to 502 + its `str()`, a user sentence; plain `RuntimeError` is LOCAL and stays a 500. Never catch `openai.*` in
   routers; classify a provider failure on `provider_detail`, never `str(exc)` — a user sentence once replaced the text
   the capability probe matched on (2026-09-24).
 - **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` moving children off a parent leaves its loaded
   collection stale, so `session.delete(parent)` cascades away the moved rows → expire the parent between (`career_kb.merge_entities`).
-- **Workday apply steps read as "no form"** (2026-09-25): no `<form>`/`<select>`, a `type="text"` phone and no email
-  on My Information, so Fill was withheld → measure `detectPage`'s signals on the live page; the fix is `workday-apply-route`.
-- **A Tailwind v4 variant on a plain class compiles to nothing** (2026-10-06): `data-confirm:animate-confirm` did
-  nothing until `animate-confirm` became an `@utility` → a class meant to take a variant is registered in `globals.css`.
-- **`transition-[…transform]` does not animate `translate-*`/`scale-*`** (2026-10-06): v4 sets the `translate`, `scale`
-  and `rotate` properties, so the move jumped → name those properties in the list, never `transform`.
+- **Workday apply steps read as "no form"** (2026-09-25): Workday has no `<form>`/`<select>`, a `type="text"` phone
+  and no email on My Information, so every step but the résumé upload scored 1 and Fill was withheld. Measure
+  `detectPage`'s signals on the live page before blaming timing; the fix is `workday-apply-route`.
+- **Tailwind v4 variants and transitions** (2026-10-06): a variant on a plain class compiles to nothing
+  (`data-confirm:animate-confirm` worked only once it was an `@utility`), and `translate-*`/`scale-*` set the `translate`
+  and `scale` properties, so `transition-[…transform]` jumps → register a class that takes a variant; name those properties.
 - **`border-outline` is not a token here** (2026-10-06): M3 role names are not all `--color-*`, and the class compiled
   to nothing → check `--color-*` in `globals.css` first (`border-border`, `border-primary` exist).
 
@@ -984,8 +987,7 @@ survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a n
   projection of the typed reader, not a storage-migration blocker.
 - `job-location-raw`: `JobSummary` exposes ONLY the old field (no `location_raw`), so the list endpoint is
   the hardest blocker to dropping the column.
-- `explore-redirect`: contradicts a recorded decision to keep it. Needs an explicit overrule, not a silent
-  delete.
+- `explore-redirect`: contradicts a recorded decision to keep it. Needs an explicit overrule, not a silent delete.
 
 **Not migrations — do not re-file these here** (each was proposed as a row and rejected): the 4-way
 application-status vocabulary and the 3-way `quick_tailor_profile` shape are hand-synced by design; the

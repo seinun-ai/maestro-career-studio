@@ -791,7 +791,8 @@
     focus and ignored presses (`pending` sets `focusableWhenDisabled` for you). A locked button
     that must keep its hover title adds `data-disabled:pointer-events-auto` (`LOCKED_BTN`).
     Queue in Agent inbox (a tracker row's and the job header's) and the tailored studio's
-    Create draft are `pending` buttons too; each leaves once its
+    Create draft keep focus while they run too: the job header's Queue through `pending`, the others
+    through `focusableWhenDisabled`; each leaves once its
     request lands, so focus is handed on: the row's ⋯, the header's first
     control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
     field a submit would disable goes `readOnly` instead (Add item's,
@@ -1665,12 +1666,14 @@ Every action answers. The answer depends on where the effect lands:
 - **Runs in the background** (an agent's work, a render, a score refresh): a toast names the object on success
   ("Template deleted") and the surface that shows the result updates; a running job shows its own state where the
   work is shown, never a global spinner.
-- **Which busy buttons change their label.** `pending` always adds the spinner. The label also changes when
-  the work is worth naming: a Save says "Saving…", and Update scores, Approve, Adapt and preview, Answer
-  questions, Write cover letter and Write new wording say "Updating scores…", "Approving…", "Adapting…",
-  "Answering…" and "Writing…". Every other `pending` button (Queue, Save job, Create draft) keeps its label and
-  shows the spinner only.
-- **Undo only where the server can reverse the change**: Approve on a draft bullet (PATCH back to `draft`) and
+- **Which busy buttons change their label.** `pending` always adds the spinner. These also swap the label
+  while they run: Save job ("Saving…"), the job header's Queue in Agent inbox ("Queueing…"), Update scores
+  ("Updating scores…"), Approve ("Approving…"), Adapt and preview ("Adapting…"), Answer questions
+  ("Answering…"), Write cover letter, the question pass's write-all and Write new wording ("Writing…") and
+  Apply suggestion ("Applying…"). These keep their label and show the spinner only: the studios' Save
+  (`StudioSaveButton`), the Agent inbox bulk bar's Queue and the Skip confirm in its dialog. A Save button
+  that is merely `disabled` while it saves (Career history, Settings) says "Saving…" without a spinner.
+- **Undo only where the server can reverse the change**, for example Approve on a draft bullet (PATCH back to `draft`) and
   Archive on a base resume (`/unarchive`). Skip keeps its reason dialog and a success toast; Queue gets a toast.
   Neither gets an Undo, because reversing them would change the proposal state machine.
 - **Never empty before loaded.** A list or card shows a skeleton (or its previous data, dimmed with `data-pending`)
@@ -1681,8 +1684,8 @@ Every action answers. The answer depends on where the effect lands:
 - **Motion budget.** Nothing runs longer than 400ms except the 1.2s confirmation hold; no bounce. The timings
   are `CONFIRM_HOLD_MS`, `CONFIRM_MS` and `ROW_EXIT_MS` in `lib/motion.ts`; import them. A variant (`data-x:`)
   applies only to a registered `@utility` in `globals.css` (`animate-confirm` is one); a transition list names
-  `translate` or `scale`, never `transform`; reduced motion is the global rule in `globals.css`, with no
-  per-component switch.
+  `translate` or `scale`, never `transform`; reduced motion is the global rule in `globals.css` for CSS motion, and
+  `useCountUp` checks `prefers-reduced-motion` itself in JS.
 - **A button, an input, every state.** Rest, hover, focus (solid ring), pressed (0.97), `pending`, disabled
   (with the reason tied by `aria-describedby`), and for a field `aria-invalid` (error) or `data-warning`
   (warning, never blocks a save).

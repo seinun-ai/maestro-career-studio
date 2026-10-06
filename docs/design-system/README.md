@@ -84,7 +84,7 @@ One corner per kind of thing: `radius-corner-xs` (4px) menus, tooltips, the chec
 - **Current in a list or nav** (a sidebar row, the open chat): `secondary-container`, weight 600 and `aria-current`, with no Check.
 - **One filled button per view.** Everything else is tonal, outline, ghost or text-style. A dialog's confirm is filled because the dialog is its own view.
 - **Focus is the solid `ring`**, never a translucent one: a solid 1px `ring` border with a 3px halo on controls, or a 2px `ring` outline. A ring offset names its surface.
-- **A button whose request is running** takes `pending`: a spinner replaces its icon, `aria-busy` is set, presses are ignored and focus stays on it (a natively disabled button would drop focus to the page). Some of these swap the label too ("Saving…", "Updating scores…", "Approving…", "Adapting…", "Answering…", "Writing…"); the rest keep it and show the spinner only.
+- **A button whose request is running** takes `pending`: a spinner replaces its icon, `aria-busy` is set, presses are ignored and focus stays on it (a natively disabled button would drop focus to the page). Some of these swap the label too (Save job "Saving…", the job header's Queue "Queueing…", "Updating scores…", "Approving…", "Adapting…", "Answering…", "Writing…", "Applying…"); the rest keep it and show the spinner only (the studios' Save, the bulk Queue, the Skip confirm).
 - **A field warning** is the amber sibling of an error: an icon and words under the control (`TriangleAlert` in `warning` for a warning, `CircleX` in `destructive` for an error), and `data-warning` turns the border and halo amber. It never blocks a save and shows on blur. See TextField.
 - Pending work dims its section (`data-pending`); a pressed button scales to 0.97.
 - Disabled is 50% opacity and no pointer events.
@@ -107,7 +107,7 @@ One corner per kind of thing: `radius-corner-xs` (4px) menus, tooltips, the chec
 - **A number that changes** counts to its new value with `useCountUp` (400ms; no counting when reduced motion is on).
 - **Budget:** nothing runs longer than 400ms except the 1.2s hold of a confirmation ("Copied", "Saved") before it settles. No bounce, no overshoot. The three timings live in `lib/motion.ts` (`CONFIRM_HOLD_MS`, `CONFIRM_MS`, `ROW_EXIT_MS`); import them, never re-declare.
 - Transition lists name the CSS `translate`, `scale` and `rotate` properties (`transition-[opacity,translate]`), never `transform`: Tailwind v4's `translate-*` and `scale-*` set those properties, so a `transform` list jumps.
-- With reduced motion requested, transforms and animations stop and opacity changes stay; the global rule in `globals.css` is the one switch.
+- With reduced motion requested, the global rule in `globals.css` stops CSS transforms and animations and opacity changes stay; `useCountUp` checks `prefers-reduced-motion` itself in JS and jumps to the value.
 
 ## Iconography
 
@@ -135,7 +135,7 @@ Each component page has a live preview in light and dark, what you provide, and 
 - Containment: Card, StatTile
 - Navigation: Sidebar, PageHeader, Tabs
 - Data: JobsTable, HealthSummary
-- Visual primitives (eight, from `components/visual/` plus `StatusDot` and `LaneDot` in `status-chip.tsx`): DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, StatusDot
+- Visual primitives (eight): DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip and Sparkline from `components/visual/`, and StatusDot from `status-chip.tsx`, which also exports `LaneDot` for proposal statuses
 - Communication: Callout, EmptyState, JudgedText, Dialog
 
 ## Not synced
