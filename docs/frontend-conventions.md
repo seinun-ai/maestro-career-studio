@@ -787,10 +787,11 @@
     and Apply, Adapt and preview, Add as is and Add N to resume on Add to a resume, Add
     item, a base resume's Delete), `/new`'s Save job and Quick
     capture's Add document. The Button primitive dims `data-disabled` itself, and
-    its `pending` prop is the loading state: a spinner, `aria-busy`, kept focus and
-    ignored presses. A locked button that must keep its hover title adds
-    `data-disabled:pointer-events-auto` (`LOCKED_BTN`). So are Queue in Agent inbox (a tracker row's and the job
-    header's) and the tailored studio's Create draft; each leaves once its
+    its `pending` prop is the loading state: a spinner in place of the icon, `aria-busy`, kept
+    focus and ignored presses (`pending` sets `focusableWhenDisabled` for you). A locked button
+    that must keep its hover title adds `data-disabled:pointer-events-auto` (`LOCKED_BTN`).
+    Queue in Agent inbox (a tracker row's and the job header's) and the tailored studio's
+    Create draft are `pending` buttons too; each leaves once its
     request lands, so focus is handed on: the row's ⋯, the header's first
     control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
     field a submit would disable goes `readOnly` instead (Add item's,
@@ -1615,3 +1616,73 @@
   SURVIVED the panel merge (chat, MCP and the Overview teaser still call it) —
   only its chart COMPONENT was deleted.
 
+## Visual encodings
+
+Goal: state reads from shape and colour with fewer words. The words stay (an icon or a colour never stands
+alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot beside a short word.
+
+- **Which primitive for which data** (`components/visual/`, one page each under `docs/design-system/components/`):
+  | Data | Primitive |
+  | --- | --- |
+  | An ordinal step on a short ladder (health evidence, inbox readiness) | `DotMeter` |
+  | One value on a fixed scale (an ATS score, skills covered) | `ScoreBar` |
+  | A whole split into counted parts (a lane's jobs by state) | `SegmentedBar` with its legend |
+  | How far through a set (3 of 5 answered) | `ProgressCount` |
+  | A signed change (+6.2, −1.4, 0.0) | `DeltaChip` |
+  | Who or what a thing came from (you, AI, the Assistant, a connected agent, Career history) | `ActorChip` |
+  | A trend with no axes | `Sparkline` |
+  | A status's own colour where no chip fits (filters, analytics, a lane) | `StatusDot` (application) or `LaneDot` (proposal), from `status-chip.tsx` |
+- **Icons come from the register.** `lib/concept-icons.ts` (`CONCEPT_ICONS`) owns one glyph per concept, and
+  `test_frontend_concept_icons.py` pins that each concept maps to its own icon, that banned or alias icons are
+  not imported, that no text glyph stands in for an icon, and that the sidebar draws from the register. Never add a second `Bot` key (connected agents are the Agent inbox's `Bot`
+  plus the name from `lib/agent-name.ts`, never a logo). Done is `CircleCheck` in `text-success`; `Check` is
+  selected only. Older `CircleCheck text-primary` done sites and non-selected `Check` uses are a ratchet,
+  converted when their file is touched.
+- **The accessible-text contract.** Every primitive that draws a shape also exposes one spoken sentence: a
+  `DotMeter` is a `role="img"` ("Evidence 3 of 5: Specific, no result"), a `ScoreBar` a `role="meter"` with
+  `aria-valuetext`, a `ProgressCount` a `role="progressbar"` whose `aria-label` holds the full sentence even with
+  `showText={false}`, a `DeltaChip` a `role="img"` ("up to +6.2 points"), a `Sparkline` a `role="img"` named by
+  its `label`. The glyphs and dots inside are `aria-hidden`, so the sentence is read once. A `SegmentedBar` is
+  decoration: its legend, a named list of "3 Applied", carries the text. A dot beside a status word is hidden
+  and the word is not.
+- **Colour is a role and repeats a word.** A status colour is the role its chip uses (one table, `status-chip.tsx`);
+  a score has no threshold or warning colour; the lowest subscore alone wears the word Weakest; a conflict is
+  loud and good news is quiet (a pass is one line on a neutral surface, never a success banner).
+- **Words get shorter by deleting repeats**, and a teaching sentence moves into a tooltip or an
+  `aria-describedby` hint; a label a task needs never goes.
+
+## States and feedback
+
+Every action answers. The answer depends on where the effect lands:
+
+- **Navigates** (a link, a row open, Back): the page change is the feedback; no toast. A route's own loading
+  state is a `Skeleton` in the shape of the content.
+- **Changes something in place** (a save, a toggle, a status pick, Copy): the control confirms where the user is
+  looking. A button runs `pending` while its request is in flight; Copy swaps to "Copied" (`CircleCheck`) for
+  1.2s (`useCopy`, `CopyButton`); an autosave line reads Saving, then Saved for 1.2s (`useSavedHold`,
+  `AutosaveStatus`); a changed status chip pulses once (`animate-confirm`); a number that moves counts to its
+  value (`useCountUp`). A failure is a toast through `couldnt(...)` or an inline error, never silence.
+- **Runs in the background** (an agent's work, a render, a score refresh): a toast names the object on success
+  ("Template deleted") and the surface that shows the result updates; a running job shows its own state where the
+  work is shown, never a global spinner.
+- **Which busy buttons change their label.** `pending` always adds the spinner. The label also changes when
+  the work is worth naming: a Save says "Saving…", and Update scores, Approve, Adapt and preview, Answer
+  questions, Write cover letter and Write new wording say "Updating scores…", "Approving…", "Adapting…",
+  "Answering…" and "Writing…". Every other `pending` button (Queue, Save job, Create draft) keeps its label and
+  shows the spinner only.
+- **Undo only where the server can reverse the change**: Approve on a draft bullet (PATCH back to `draft`) and
+  Archive on a base resume (`/unarchive`). Skip keeps its reason dialog and a success toast; Queue gets a toast.
+  Neither gets an Undo, because reversing them would change the proposal state machine.
+- **Never empty before loaded.** A list or card shows a skeleton (or its previous data, dimmed with `data-pending`)
+  until the query settles; a failed load is its own error state with Try again, never an empty one; a count
+  is not drawn as 0 while it loads.
+- **A leaving row collapses**, it does not vanish: `.collapse-exit` with `data-leaving` (200ms), then the row
+  unmounts after `ROW_EXIT_MS`.
+- **Motion budget.** Nothing runs longer than 400ms except the 1.2s confirmation hold; no bounce. The timings
+  are `CONFIRM_HOLD_MS`, `CONFIRM_MS` and `ROW_EXIT_MS` in `lib/motion.ts`; import them. A variant (`data-x:`)
+  applies only to a registered `@utility` in `globals.css` (`animate-confirm` is one); a transition list names
+  `translate` or `scale`, never `transform`; reduced motion is the global rule in `globals.css`, with no
+  per-component switch.
+- **A button, an input, every state.** Rest, hover, focus (solid ring), pressed (0.97), `pending`, disabled
+  (with the reason tied by `aria-describedby`), and for a field `aria-invalid` (error) or `data-warning`
+  (warning, never blocks a save).

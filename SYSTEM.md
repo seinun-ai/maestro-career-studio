@@ -157,7 +157,7 @@ file to open.
 2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their
    names): the tracker. Two queries (summary list with server-joined job fields + saved jobs of the
    toggle's source), a grouped status `Select` with counts, inline `StatusChip` per row (PATCHes
-   directly), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
+   directly), a read-only ATS column (`ats_score` / `best_ats_score`), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
    toggle; `?source=` deep-linkable; Analytics' copy reads All, as it counts every application).
    "Saved" = job with no application — agent-captured jobs stay out unless the toggle is `Agents`,
    which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,
@@ -818,9 +818,8 @@ citation. Priority lives in the item text, not in the ordinal.
     latest, and a foreign template-only change reads as an unsaved local edit.
 27. `FullscreenEditorPage` is `h-dvh` (both studios, the template editor), and `VersionBanner` renders above it in
     `SidebarGutter`, so the page overflows by the banner's height whenever the banner shows.
-28. Contrast (WCAG 1.4.11): the agent-pipeline data bar (`analytics/agent-pipeline-card.tsx`, `bg-primary/10` on a
-    `bg-muted/50` track) is ~1.16:1 (solid `bg-primary`: ~6:1); dark `--ring` on `--primary-container` (the FAB) is
-    2.88:1, which is why that surface is not in `_RING_SURFACES`.
+28. Dark `--ring` on `--primary-container` (the FAB) is 2.88:1 (WCAG 1.4.11), which is why that surface is not in
+    `_RING_SURFACES`.
 29. Focus lands on `<body>` on Escape from the <768px sidebar sheet (which stays open after a nav tap) and after any
     client-side link navigation. `Button nativeButton={false} render={<a>}` announces a link as a button (~40 sites,
     21 files): use `buttonVariants` on a plain `<a>` or `GuardedLink`, the sidebar's pattern.
@@ -864,9 +863,8 @@ citation. Priority lives in the item text, not in the ordinal.
 
 ## 12. Gotchas that have bitten before
 
-- **Retry keys must identify controls** (2026-09-25): rule attempts use composite labels, collection uses clean
-  questions, so `country | field-12` never reaches the `country` retry → use element identity and stable descriptors;
-  a model upgrade cannot repair fields collection never sends (§11 item 40).
+- **Retry keys must identify controls** (2026-09-25): rule attempts use composite labels, collection clean questions, so
+  `country | field-12` never reaches the `country` retry → use element identity; a model cannot repair fields never sent (§11 item 40).
 - **Same page is not same URL** (2026-09-23): the leave guard stopped every popstate to the same pathname, so Back
   between `?tab=` or `?session=` entries changed the URL and not the screen → `samePage` decides what asks, the URL
   decides what renders (`lib/leave-guard.ts`).
@@ -881,18 +879,15 @@ citation. Priority lives in the item text, not in the ordinal.
   `id_key` (`resume_lint.py`). v3 kept the measure, digit-quoting analogue and uncertain keys; detail asks are new.
 - **A prompt-contract change bumps `RUBRIC_VERSION`** (2026-09-25): cache rows key on text + rubric version + model,
   so unchanged text kept its old judgment → bump it and resync the prompt row; overrides and "no number" survive.
-- **A GUI-launched process has no shell `PATH`** (2026-09-20): MacTeX at `/Library/TeX/texbin` is invisible to the
-  desktop shell and to a Claude Desktop child, so a bare `pdflatex` does not resolve. `engines.find_pdflatex` searches
-  the TeX homes after PATH, and every run spawns the resolved ABSOLUTE path.
+- **A GUI-launched process has no shell `PATH`** (2026-09-20): MacTeX's `/Library/TeX/texbin` is invisible to a Claude
+  Desktop child → `engines.find_pdflatex` searches the TeX homes after PATH; every run spawns the ABSOLUTE path.
 - **A seeded template copies its source only on INSERT** (2026-09-20): v0.4.0's Postgres import landed rows AFTER
   migrations ran, so a migration-time rewrite hit an empty file and the importer re-landed old bytes →
   `template_registry.SUPERSEDED_SEED_DIGESTS` resyncs at SEED time.
-- **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): `journal_mode` persists in the file; `foreign_keys`,
-  `synchronous` and `busy_timeout` reset every connect, so 21 `ondelete=` cascades silently stopped → every SQLite
-  engine goes through `app.db.make_engine`.
+- **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): it, `synchronous` and `busy_timeout` reset every
+  connect, so 21 `ondelete=` cascades silently stopped → every SQLite engine goes through `app.db.make_engine`.
 - **Autogenerate fully qualifies a TypeDecorator** (2026-09-19): `app.models.types.UTCDateTime()` is unimportable in a
-  revision → use the impl type by hand. Alembic compares compiled DDL (no `compare_type` hook); `alembic check` skips
-  server defaults (the parity test passes `compare_server_default=True`).
+  revision → use the impl type by hand; `alembic check` skips server defaults (parity test: `compare_server_default=True`).
 - **A Boolean `server_default="false"` is TEXT on SQLite** (2026-09-19): `'false'` is truthy in Python, so every
   user template read as the default → use `expression.false()` (pinned by `test_db_portability`).
 - **`Session.commit()` flushes first** (2026-09-19): a teardown that deletes rows and commits also lands a
@@ -902,18 +897,16 @@ citation. Priority lives in the item text, not in the ordinal.
 - **SQLite's `CURRENT_TIMESTAMP` has no microseconds** (2026-09-19): same-second rows tied against the ORM's `.ffffff`
   binds and "oldest wins" fell to a uuid4 tie-break → the APP writes every timestamp; never test `updated_at ==
   created_at` for "never edited".
-- **One path, every job** (2026-09-01): LinkedIn's list rewrites only `?currentJobId=` and the matcher dropped the
-  query string, so every job was the first one saved. A query-keyed board needs its key in BOTH `posting_id` tables
-  (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's until checked.
+- **One path, every job** (2026-09-01): LinkedIn rewrites only `?currentJobId=` and the matcher dropped the query, so
+  every job was the first saved → a query-keyed board needs its key in BOTH `posting_id` tables (§7); an SPA's JSON-LD is the PREVIOUS job's.
 - **A starter that fails its own gate** (2026-09-01): the from-scratch template certified `false` on an untouched
   draft. What the app mints AND validates in one request must clear every probe.
 - **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers, no MIME types. Every
   picker reads `frontend/lib/upload-accept.ts`.
 - **A guard test mocked away the guard** (2026-08-25): a green suite hid a 100%-failing rewrite path because it replaced
   `guarded_rewrite` → when a guard or validator is the subject, fake `llm.call_openai`, never the guard.
-- **The FAST model quietly caps score honesty** (2026-08-24): flash-lite extractions missed conceptual JD skills →
-  base ATS scores inflated ~9 pts vs fuller extractors. Fast tier drives coverage/honesty/latency; Smart barely moves
-  outcomes — re-benchmark FAST before changing model defaults.
+- **The FAST model quietly caps score honesty** (2026-08-24): flash-lite missed conceptual JD skills → base ATS scores
+  inflated ~9 pts. Fast drives coverage/honesty/latency; Smart barely moves outcomes → re-benchmark FAST before changing defaults.
 - **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the same PK in one flush both INSERT (no
   dedup) → IntegrityError. Dedupe in Python first (see `_insert_skills`).
 - **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch it FIRST or 422s become 400s.
@@ -931,17 +924,22 @@ citation. Priority lives in the item text, not in the ordinal.
   fires after the SSE headers are out and reaches the browser as a truncated stream. Capabilities are probed on save
   (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`; unprobed models are never blocked.
 - **A probe must issue the SAME call as the surface it measures**: same client (`llm.get_chat_client`), same kwargs
-  from `llm.completion_extras` (the one site for such rules). A re-implemented call's stored row SHADOWS reality — a false tools=No once 422'd every
-  chat message.
+  from `llm.completion_extras`. A re-implemented call's row SHADOWS reality: a false tools=No once 422'd every chat.
 - **LLM provider outages are ONE exception type**: `llm.py` normalizes them to `llm.LLMProviderError`; `app.main` maps
   it to 502 + its `str()`, a user sentence; plain `RuntimeError` is LOCAL and stays a 500. Never catch `openai.*` in
   routers; classify a provider failure on `provider_detail`, never `str(exc)` — a user sentence once replaced the text
   the capability probe matched on (2026-09-24).
 - **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` moving children off a parent leaves its loaded
   collection stale, so `session.delete(parent)` cascades away the moved rows → expire the parent between (`career_kb.merge_entities`).
-- **Workday apply steps read as "no form"** (2026-09-25): Workday has no `<form>`/`<select>`, a `type="text"` phone
-  and no email on My Information, so every step but the résumé upload scored 1 and Fill was withheld. Measure
-  `detectPage`'s signals on the live page before blaming timing; the fix is `workday-apply-route`.
+- **Workday apply steps read as "no form"** (2026-09-25): no `<form>`/`<select>`, a `type="text"` phone and no email
+  on My Information, so Fill was withheld → measure `detectPage`'s signals on the live page; the fix is `workday-apply-route`.
+- **A Tailwind v4 variant on a plain class compiles to nothing** (2026-10-06): `data-confirm:animate-confirm` did
+  nothing until `animate-confirm` became an `@utility` → a class meant to take a variant is registered in `globals.css`.
+- **`transition-[…transform]` does not animate `translate-*`/`scale-*`** (2026-10-06): v4 sets the `translate`, `scale`
+  and `rotate` properties, so the move jumped → name those properties in the list, never `transform`.
+- **`border-outline` is not a token here** (2026-10-06): M3 role names are not all `--color-*`, and the class compiled
+  to nothing → check `--color-*` in `globals.css` first (`border-border`, `border-primary` exist).
+
 ## 13. Active migrations & deprecation ledger
 
 **The rule.** A row is born the moment work lands that SUPERSEDES something without deleting it; it dies

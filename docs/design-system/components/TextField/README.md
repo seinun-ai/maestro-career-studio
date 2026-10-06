@@ -3,6 +3,7 @@ Text fields, selects and text areas share one outlined shape: a visible label ab
 **You provide:** a visible `Label` (sentence case, no colon), an `id` from `useId()`, and optionally one short hint tied with `aria-describedby`. For an error, set `aria-invalid` and say how to fix it under the control.
 
 - 32px tall, `radius-corner-sm`, 1px `input` border, transparent fill, value in `body-medium`, label in `label-large`, hint and error in `body-small`.
+- A warning is not an error: the line under the control carries `TriangleAlert` in `warning` (an error carries `CircleX` in `destructive`) and the control gets `data-warning="true"`, which draws the amber border and halo. A warning never blocks a save. `FieldMessage` and `useFieldMessage` in `components/resume-editor/field.tsx` wire the icon, the message id and `aria-describedby`; an error wins when both are set.
 - Focus: the border turns solid `ring` with a 3px halo. Invalid: `destructive` border and halo.
 - No placeholder in a blank field: no example value, no instruction, no restated label. A format or a consequence is hint text. The one exception is a short "…" prompt in a search box.
 - Delete a hint that only restates the label.

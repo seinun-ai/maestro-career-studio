@@ -84,6 +84,8 @@ One corner per kind of thing: `radius-corner-xs` (4px) menus, tooltips, the chec
 - **Current in a list or nav** (a sidebar row, the open chat): `secondary-container`, weight 600 and `aria-current`, with no Check.
 - **One filled button per view.** Everything else is tonal, outline, ghost or text-style. A dialog's confirm is filled because the dialog is its own view.
 - **Focus is the solid `ring`**, never a translucent one: a solid 1px `ring` border with a 3px halo on controls, or a 2px `ring` outline. A ring offset names its surface.
+- **A button whose request is running** takes `pending`: a spinner replaces its icon, `aria-busy` is set, presses are ignored and focus stays on it (a natively disabled button would drop focus to the page). Some of these swap the label too ("Saving…", "Updating scores…", "Approving…", "Adapting…", "Answering…", "Writing…"); the rest keep it and show the spinner only.
+- **A field warning** is the amber sibling of an error: an icon and words under the control (`TriangleAlert` in `warning` for a warning, `CircleX` in `destructive` for an error), and `data-warning` turns the border and halo amber. It never blocks a save and shows on blur. See TextField.
 - Pending work dims its section (`data-pending`); a pressed button scales to 0.97.
 - Disabled is 50% opacity and no pointer events.
 
@@ -100,14 +102,23 @@ One corner per kind of thing: `radius-corner-xs` (4px) menus, tooltips, the chec
 - `ease-standard` with `duration-short3` (150ms) for hover and selection, `duration-short4` (200ms) for a control changing shape.
 - Things entering use `ease-emphasized-decelerate`; leaving, `ease-emphasized-accelerate`.
 - Lists rise in with `animate-fade-rise`; skeletons use `animate-shimmer`.
-- With reduced motion requested, transforms and animations stop and opacity changes stay.
+- **Confirm in place** with `animate-confirm`: one soft `ring` pulse (400ms) on the thing that changed, such as a status chip after its value changed. It is a registered `@utility`, so it takes variants (`data-confirm:animate-confirm`); a plain class under a variant compiles to nothing.
+- **A row that leaves its list** wraps in `.collapse-exit` with one child and sets `data-leaving`: it fades and its height closes (200ms, `ease-emphasized-accelerate`), so the rows below slide up.
+- **A number that changes** counts to its new value with `useCountUp` (400ms; no counting when reduced motion is on).
+- **Budget:** nothing runs longer than 400ms except the 1.2s hold of a confirmation ("Copied", "Saved") before it settles. No bounce, no overshoot. The three timings live in `lib/motion.ts` (`CONFIRM_HOLD_MS`, `CONFIRM_MS`, `ROW_EXIT_MS`); import them, never re-declare.
+- Transition lists name the CSS `translate`, `scale` and `rotate` properties (`transition-[opacity,translate]`), never `transform`: Tailwind v4's `translate-*` and `scale-*` set those properties, so a `transform` list jumps.
+- With reduced motion requested, transforms and animations stop and opacity changes stay; the global rule in `globals.css` is the one switch.
 
 ## Iconography
 
 - Lucide icons (`lucide-react`), outline style, 2px stroke, drawn in `currentColor`.
 - 16px beside text, 14px in small buttons, 12px in chips and extra-small buttons, 32px in an empty state.
 - An icon-only button has an `aria-label`; an icon beside its label is `aria-hidden`.
-- An icon never carries meaning alone; a word sits beside it or in its accessible name.
+- An icon never carries meaning alone; a word sits beside it or in its accessible name. Colour never carries it alone either.
+- **One concept, one glyph.** `frontend/lib/concept-icons.ts` (`CONCEPT_ICONS`) is the register: each concept owns one icon app-wide, no two concepts share one, and `test_frontend_concept_icons.py` pins it. Reach for the register before importing a Lucide icon at a call site; a new meaning is a new key.
+- Meanings that are easy to confuse: `none` (`Minus`) is "nothing here / no change" (not listed, not stated, same, flat); `cannot` (`Ban`) is "can't confirm / they can't"; `unknown` (`CircleHelp`) is only unknown; `increase` / `decrease` (`TrendingUp` / `TrendingDown`) are "went up / went down", while sort direction is `ArrowUp` / `ArrowDown` and not a concept; `email` (`Mail`) is an address and `coverLetter` (`ScrollText`) a cover letter; `FileText` means a resume only and a document or attachment is `Paperclip`; `queue` is `SendHorizontal`, `approve` (Keep it, Approve) `ThumbsUp`, `skip` `SkipForward`.
+- `agentInbox` (`Bot`) is the Agent inbox and also connected agents, always with the agent's name and never a logo. `ai` (`Sparkles`) is AI-made, `you` the person, `assistant` the Assistant.
+- **Done is `CircleCheck` in `text-success`.** `Check` means selected, and only that. A few older done sites still draw `CircleCheck` in `text-primary` (the setup checklist's row icon, the Career history timeline, the gap page's closed-session state) and some non-selected `Check` uses remain; they are a ratchet, converted when their file is touched, not swept.
 
 ## Logo
 
@@ -124,9 +135,9 @@ Each component page has a live preview in light and dark, what you provide, and 
 - Containment: Card, StatTile
 - Navigation: Sidebar, PageHeader, Tabs
 - Data: JobsTable, HealthSummary
-- Visual primitives: DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, StatusDot
+- Visual primitives (eight, from `components/visual/` plus `StatusDot` and `LaneDot` in `status-chip.tsx`): DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, StatusDot
 - Communication: Callout, EmptyState, JudgedText, Dialog
 
 ## Not synced
 
-Matches the app after all eight token steps and the six approved interface changes in `docs/plans/2026-10-02-design-system-tokens.md` (branch `claude/ds-steps`, on `main` at `5baf568c`); the repo's tests pin each rule. Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Components: previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open. Not previewed: the eight visual primitives (DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, StatusDot) have a README and no `preview.html`. Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.
+Matches the app after all eight token steps and the six approved interface changes in `docs/plans/2026-10-02-design-system-tokens.md` (branch `claude/ds-steps`, on `main` at `5baf568c`); the repo's tests pin each rule. Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Components: previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open. Not previewed: the eight visual primitives (DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, StatusDot) have a README and no `preview.html`, and the Button `pending` state and the field warning appear in their READMEs only; the new component pages and the motion utilities are not in the browsable artifact until it is republished. Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.
