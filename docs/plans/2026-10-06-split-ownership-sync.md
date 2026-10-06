@@ -270,12 +270,21 @@ events. Either convert it to ORM, or call `hooks.touch_job(session, job_id)` /
   home, so are rows of a job with `handover == "offered"`, except a flush whose only change is
   clearing `handover` (that's Keep it here).
 - **Profile rows on the remote:** UPDATE and DELETE are refused. INSERTs are refused too, except:
-  - `Setting` rows. Lazy first reads insert defaults (`text_settings.get_text`,
-    `prompts.get_prompt`, `model_settings._set_value`); home's value wins at the next profile apply.
+  - A `Setting` INSERT made by a lazy first read: `text_settings.get_text` and `prompts.get_prompt`
+    set `session.info["setting_seed"] = True` around their add + commit (try/finally), and only
+    those INSERTs pass; home's value wins at the next profile apply. Every other `Setting` INSERT
+    is refused (a remote `PUT` of a never-seeded setting would otherwise slip through until the next
+    apply).
   - Rows written by startup seeding. `seeding.run_startup()` (`seed_base_resumes`, `seed_prompts`,
-    `seed_templates`, `ensure_persona`, `seed_career_kb`) and the re-seed inside
-    `GET /api/templates` (`routers/templates.py:49`) run with `session.info["sync_apply"] = True`.
-    The next profile apply upserts over them by primary key and deletes the rest.
+    `seed_templates`, `ensure_persona`) and the re-seed inside `GET /api/templates`
+    (`routers/templates.py:49`) run with `session.info["sync_apply"] = True`, set and cleared
+    (try/finally) around the seeding call only, never for the whole request.
+    `_bootstrap_default` (`template_registry.py:231`) may then update `is_default`; home's flags
+    return at the next apply. The next profile apply upserts over all of it by primary key and
+    deletes the rest.
+  - `seed_career_kb` is skipped entirely when `status.is_remote()`: its `kb.seeded` gate is a
+    local setting and the remote's base resumes are replicas, so it would run the LLM
+    consolidation on every boot.
   - A new `KBPoint` with `provenance == "user_cannot_confirm"`, plus the archived "Unconfirmed
     claims" `KBEntity` holder that `_record_cannot_confirm` creates when absent
     (`tailoring_session.py:721`). Add one `SyncRequest(kind="profile_addition",
@@ -284,7 +293,10 @@ events. Either convert it to ORM, or call `hooks.touch_job(session, job_id)` /
 - **Tailoring on the remote** must not write draft career-history points: `tailor()`'s
   gap-elicitation write-back (`KBPoint` with `origin="gap_elicitation"`,
   `tailoring_session.py:725/781/1090`) is skipped when `status.is_remote()`, and reported in
-  `kb_writeback_skips` with reason `profile_owned_elsewhere`. Test that a remote tailor completes
+  `kb_writeback_skips` with reason `profile_owned_elsewhere`. Add that value to the
+  `KBWritebackSkip.reason` Literal (`schemas/tailoring_session.py:87`) and its TypeScript mirror
+  (`frontend/lib/types.ts:1534`), with a toast sentence: "Your laptop keeps your career history, so
+  this wasn't added to it here." Test that a remote tailor completes
   and reports the skip.
 - **Message:** `NotOwnedHere("This job is with your bot. Your change will be sent to it at the
   next sync." | "This job is on your laptop. …" | "Your laptop keeps your profile. Change it there.")`.
@@ -294,9 +306,13 @@ events. Either convert it to ORM, or call `hooks.touch_job(session, job_id)` /
 
 **Routes with file side effects before their commit** call `hooks.require_owned(session, job_id)`
 first, so a refusal can't leave a half-done change on disk: `PATCH /api/qa/{id}` (deletes the PDF at
-`routers/qa.py:151-153` before committing), `POST /api/qa/{id}/render`, application render, and
-proposal evidence upload. `hooks.require_profile_writable(session)` does the same for profile
-routes with file side effects (base resume edits write `<slug>.json`).
+`routers/qa.py:151-153` before committing), `DELETE /api/qa/{id}` (deletes files at `qa.py:164`
+before its commit), `POST /api/qa/{id}/render`, application render, and proposal evidence upload.
+`hooks.require_profile_writable(session)` does the same for profile routes with file side effects:
+`POST /api/career-kb/documents` (`career_kb.py:540` writes the file, commits at 557) and the base
+resume routes `POST ""`, `PUT`, `PATCH /{slug}/edits`, `/from-kb`, `/import`, `/duplicate`,
+`/render`, plus `resume_versions` restore for kind `base` (`resume_versions.py:122`). The
+post-commit `remove_files` sites are already safe: a refused commit raises before them.
 
 `NotOwnedHere` subclasses `Exception` directly, not `ValueError` (several routers map `ValueError`
 to 400).
@@ -412,6 +428,7 @@ pack and unpack. The per-job default is 25 MB. Evidence is at most 5 MB a file.
 local job, is handled by Task 10's rule. Here, raise `DuplicateJob(local_id)`.
 
 **Tests:**
+- (Row comparisons below exclude `sync_rev`, `owner_machine` and `handover`: the receiver restamps them.)
 - Export then apply into a second, empty schema (a second SQLite file through `make_engine` and its
   own `sessionmaker`; models are shared, so this works in-process) gives row-for-row equality,
   except the rewritten paths.
