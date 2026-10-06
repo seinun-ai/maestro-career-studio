@@ -98,6 +98,18 @@ def _no_remembered_polarity():
     autofill_polarity.forget()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_seed_validation_attempts():
+    """template_registry remembers which seed templates it already tried to validate,
+    per process: without a reset the set leaks between tests (and xdist-worker
+    neighbours), so a seed's certification test fails after an earlier test ran it."""
+    from app.services import template_registry
+
+    template_registry.reset_seed_validation_attempts()
+    yield
+    template_registry.reset_seed_validation_attempts()
+
+
 # Tests delete from every table. Refuse anything that could be real data: the
 # app's own database, a file under the repo's data/ mount, or a file named
 # like the dev database.

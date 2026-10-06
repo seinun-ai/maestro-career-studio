@@ -250,3 +250,27 @@ def test_wave5_review_one_glyph_per_meaning_and_honest_marks():
     for path in ("components/ats-score-panel.tsx", "components/resume-health/question-pass.tsx"):
         src = _read(path)
         assert not any(w in src for w in ("TriangleAlert", "CircleX", "Minus")), path
+
+
+# --- Final review fixes ----------------------------------------------------------------
+
+
+def test_no_subscore_is_weakest_when_all_are_equal():
+    src = _read("components/ats-score-panel.tsx")
+    body = src[src.index("function lowestIndex("): src.index("The card's rarer actions")]
+    assert "Math.max(...values) === Math.min(...values)) return -1" in body
+    assert "weakestAt = lowestIndex(subscoreValues)" in src
+
+
+def test_show_full_job_description_uses_the_job_words_icon_not_file_text():
+    src = _read("components/job-extracted-fields.tsx")
+    assert "CONCEPT_ICONS.jobWords" in src and "<JobWordsIcon />" in src
+    assert "FileText" not in src  # FileText means a resume
+
+
+def test_chat_composer_keeps_the_thread_layout_while_an_old_chat_loads():
+    chat = _read("components/chat/chat-page.tsx")
+    assert "const threadLayout = hasThread || (sessionId !== null && detail.isPending);" in chat
+    assert "rows={threadLayout ? 1 : 2}" in chat
+    assert 'threadLayout && "mt-3"' in chat
+    assert "{!threadFailed && !threadLayout ?" in chat

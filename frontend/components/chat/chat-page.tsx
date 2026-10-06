@@ -618,6 +618,9 @@ export function ChatPage() {
   // Gemini-style: while the thread is empty the composer floats centered
   // under a greeting; once messages exist it docks to the bottom.
   const hasThread = (detail.data?.messages.length ?? 0) > 0 || !!streaming;
+  // An old chat still loading already has the thread's layout, so the composer does not sit
+  // centred and then jump.
+  const threadLayout = hasThread || (sessionId !== null && detail.isPending);
   const threadFailed = sessionId !== null && isLoadFailure(detail);
   // The message being sent, until the saved thread holds it: shown once, never twice.
   // The newest tool is the only one that can still be running.
@@ -654,7 +657,7 @@ export function ChatPage() {
         </div>
       )}
       <Textarea
-        rows={hasThread ? 1 : 2}
+        rows={threadLayout ? 1 : 2}
         aria-label="Message"
         placeholder="Ask the Assistant…"
         value={input}
@@ -922,7 +925,7 @@ export function ChatPage() {
             each branch, so the first message (empty layout to thread)
             remounted it and focus fell to <body>. */}
         {!threadFailed && (
-          <div className={cn("mx-auto w-full max-w-3xl", hasThread && "mt-3")}>
+          <div className={cn("mx-auto w-full max-w-3xl", threadLayout && "mt-3")}>
             {setupProblem ? (
               <p role="alert" className="text-destructive mb-2 px-3 text-body-medium">
                 {setupProblem}{" "}
@@ -934,7 +937,7 @@ export function ChatPage() {
             {composer}
           </div>
         )}
-        {!threadFailed && !hasThread ? <div aria-hidden="true" className="flex-1" /> : null}
+        {!threadFailed && !threadLayout ? <div aria-hidden="true" className="flex-1" /> : null}
       </main>
 
       <ScopePickerDialog

@@ -53,8 +53,9 @@ export function FieldMessage({
   const text = error || warning;
   const Icon = error ? ErrorIcon : WarningIcon;
   // Always mounted, so a message that appears while typing is announced; the id stays put.
+  // `empty:absolute` takes it out of the parent grid while empty, so it adds no gap row.
   return (
-    <div id={id} aria-live="polite">
+    <div id={id} aria-live="polite" className="empty:absolute">
       {text ? (
         <p className={`flex items-start gap-1.5 text-body-small ${error ? "text-destructive" : "text-warning"}`}>
           <Icon aria-hidden className="mt-0.5 size-3.5 shrink-0" />

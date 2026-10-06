@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, DollarSign, FileText, GraduationCap, ListChecks, MapPin } from "lucide-react";
+import { Clock, DollarSign, GraduationCap, ListChecks, MapPin } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useRoleLabel } from "@/components/role-category-picker";
@@ -13,6 +13,7 @@ import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const JobFactsIcon = CONCEPT_ICONS.jobFacts;
 const SkillsIcon = CONCEPT_ICONS.skills;
+const JobWordsIcon = CONCEPT_ICONS.jobWords;
 const WorkAuthorizationIcon = CONCEPT_ICONS.workAuthorization;
 const StudentPermitIcon = CONCEPT_ICONS.studentPermit;
 
@@ -376,7 +377,7 @@ export function JobExtractedFields({
 
       <div className="mt-5 space-y-3">
         <Button variant="outline" size="sm" onClick={() => setShowRaw((s) => !s)}>
-          <FileText />
+          <JobWordsIcon />
           {showRaw ? "Hide full job description" : "Show full job description"}
         </Button>
         {showRaw && (

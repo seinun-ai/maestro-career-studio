@@ -37,6 +37,9 @@ def test_answer_questions_is_disabled_while_the_box_is_empty():
 def test_field_message_is_a_live_region_with_a_stable_id():
     field = _src("components/resume-editor/field.tsx")
     body = field[field.index("export function FieldMessage("): field.index("Labelled text input")]
-    assert '<div id={id} aria-live="polite">' in body
+    # `empty:absolute` keeps the live region mounted but out of the parent grid while empty (no 6px gap row);
+    # `hidden` would drop it from the accessibility tree.
+    assert '<div id={id} aria-live="polite" className="empty:absolute">' in body
+    assert "className=\"hidden\"" not in body
     assert "if (!text) return null" not in body  # the wrapper stays mounted
     assert "{text ? (" in body

@@ -85,8 +85,9 @@ function SubscoreBar({ label, value, weakest }: { label: string; value: number; 
   );
 }
 
-/** The index of the lowest value; ties go to the first. */
+/** The index of the lowest value (ties go to the first); -1 when all are equal, since none is weakest. */
 function lowestIndex(values: number[]): number {
+  if (Math.max(...values) === Math.min(...values)) return -1;
   return values.reduce((low, v, i) => (v < values[low] ? i : low), 0);
 }
 

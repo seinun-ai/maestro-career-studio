@@ -1,7 +1,5 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import { useModKey } from "@/hooks/use-mod-key";
 import { useSaveShortcut } from "@/hooks/use-save-shortcut";
@@ -40,14 +38,12 @@ export function StudioSaveButton({
       disabled={!canSave}
       // Stays focusable while disabled: Save turns itself off on every save,
       // and a disabled <button> drops focus to <body>, which lost a keyboard
-      // user's place. Dimmed on data-disabled because `disabled:` only matches
-      // the native attribute.
+      // user's place. The Button dims on data-disabled itself.
       focusableWhenDisabled
-      className="data-disabled:pointer-events-none data-disabled:opacity-50"
+      pending={pending}
       title={`Save (${shortcutLabel(mod, "S")})`}
       aria-keyshortcuts="Meta+S Control+S"
     >
-      {pending && <Loader2 className="animate-spin" aria-hidden="true" />}
       Save
     </Button>
   );
