@@ -2648,3 +2648,64 @@ or keep (superpowers:finishing-a-development-branch). Nothing is pushed before t
 - Job header meta-line icon chips. Low value next to the score pill; revisit after Wave 4's browser pass.
 - Health report tab icons. The tab words are abstract and the research advises against icon-only tabs; the
   words stay as they are.
+
+---
+
+## Execution rulings (architect, cloud run)
+
+A pre-flight scan of this plan found these conflicts. Each ruling below overrides the task text it names; the
+implementer of task N reads the "Task N" bullets as part of its brief.
+
+- **Task 1.** Add `increase: TrendingUp` and `decrease: TrendingDown` to the register (States). They mean "went
+  up / went down" everywhere: DeltaChip (14) and the Gained/Lost column (22). Sort direction keeps
+  ArrowUp/ArrowDown (Task 3) and is not a register concept. `Minus` is one meaning, "nothing here / no change"
+  (not listed, not stated, same, flat, not needed).
+- **Task 3.** D3 applies everywhere: export `SkillGroup` from `job-extracted-fields.tsx` (with an optional cap and
+  "+N more"), reuse it in `job-extraction-summary.tsx` instead of copying it, and set Preferred = `tonal` in both.
+- **Task 4.** A Strong match is good news, so it stays quiet: a neutral surface (`bg-surface-container`) with
+  `CircleCheck text-success` and the word, not a `bg-success-container` banner.
+- **Task 6.** The pin uses `re.findall(r"(?<![-\w])pending=\{", src)` and asserts the count per file is at least
+  the number of labels that file owns (`data-pending={` must not count).
+- **Task 8.** The row collapse uses Task 15's `.collapse-exit` utility, not a hand-written class string.
+- **Tasks 10, 11 and 28 (D2).** A done/confirmed state uses `CircleCheck`, never `Check`: the "Copied" chip and
+  CopyButton icon (10), "Saved" (11) and the Companion rail's done tick (`circle-check` in `icons.js`, 28).
+- **Task 10.** `useCopy` takes an optional `onError` that replaces its default toast, so a failed Copy prompt shows
+  one message and opens the fallback. Rewrite `test_frontend_automations.py`'s `Promise.resolve()` / `.catch(` pin
+  to assert `setOpen(true)` on the `false` branch.
+- **Tasks 11 and 23 (D9).** A static state hold is not motion, but it keeps one rhythm: "Saved" (11) and the tool
+  chip's `CircleCheck` (23) both hold 1200ms. Task 11's pin asserts `1200`.
+- **Task 12.** Extract `FieldMessage` (icon, hint id, `data-warning` / `aria-invalid` wiring) in `field.tsx`; `Field`
+  and both inline call sites (autofill section, contact form) use it. Pins: `emailWarning(` in
+  `autofill-section.tsx` and `contact-form.tsx`, `data-[warning=true]` in `input.tsx`, and `disabled=` plus "Type at
+  least one question." in `qa-tab.tsx`.
+- **Task 13.** The chat pin asserts `Skeleton` inside the `detail.isPending` branch (slice the source), since
+  `detail.isPending` alone already exists at base.
+- **Task 14.** `ActorChip` props: `kind` (adds `"ai"` → `CONCEPT_ICONS.ai`, default word "AI"), `name?: string |
+  null` (null falls back to the default word), `title?: string`, `children?: ReactNode` (a trailing part inside the
+  chip). `ProgressCount` takes `showText?: boolean` (default true; false = the bar only, the sentence moves to
+  `aria-label`). `status-chip.tsx` gains a `dot` class on `NEEDS_YOU` and on every `PROPOSAL_STATUS_CHIP` entry
+  (role colours) and exports `LaneDot({ status })`; Tasks 21 and 25 consume it.
+- **Task 15.** `useCountUp` has one rAF path: `const dur = reduce ? 0 : ms` and `t = dur === 0 ? 1 : (now - t0) /
+  dur`, so setState only happens inside the rAF callback (lint: `react-hooks/set-state-in-effect`). Replace
+  `.animate-row-exit` with one `.collapse-exit` utility (grid-rows 1fr→0fr plus opacity under `[data-leaving]`,
+  `--duration-short4`, emphasized-accelerate easing); the pin names it, and Tasks 8 and 19 use it.
+- **Task 16.** "Requirements not stated" uses `Minus` on both the card line and the strip chip. The pin asserts
+  `SUMMARY_BY_RESULT` plus `CircleX` / `TriangleAlert` in the card (the old assert is already true after Task 2).
+- **Task 18.** Drop the `'"> of 100"'` clause from the pin: that literal never exists.
+- **Task 19.** llm provenance is `ActorChip kind="ai"` (Sparkles), not the Assistant chip. Collapse uses
+  `.collapse-exit`. Prefer the register's concept icon where one exists (user_input = `CONCEPT_ICONS.you`).
+- **Task 21.** The pin asserts `DotMeter` in `readiness-marks.tsx` and `ActorChip` / `ScoreBar` in
+  `proposals-section.tsx`. The attention dot is Task 14's `LaneDot`. `ProgressCount showText={false}` beside the
+  pinned cap sentence. Ready is quiet (see Task 4). The run-outcome map is a component,
+  `components/proposals/run-outcome.tsx` (`RunOutcome`: CircleCheck / CircleAlert / CircleX + the word);
+  `lib/agent-runs.ts` stays import-free and keeps only the words.
+- **Task 20.** The question-pass progress uses `ProgressCount showText={false}` beside the pinned
+  `{progress.words}`.
+- **Task 22.** Gained / Lost use `CONCEPT_ICONS.increase` / `.decrease` (TrendingUp / TrendingDown); Same uses
+  `Minus`.
+- **Task 25.** Filter dots are Task 14's `LaneDot`; reuse, don't copy.
+- **Task 27.** The run-outcome glyph imports `RunOutcome` from `components/proposals/run-outcome.tsx`. "They can"
+  items carry no glyph (a capability is not a done state); "can't" keeps `Ban` ("cannot" is one meaning, shared
+  with Task 19's cannot_confirm).
+- **Task 28.** The glyph test strips `/* … */` comments like Task 1's `_strip_comments`, and the replacement list
+  adds `stages/track.js` ↗ → `external-link`.
