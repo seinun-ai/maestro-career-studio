@@ -9,6 +9,7 @@ in the parent, and fastembed is deferred until the chosen process embeds.
 """
 import hashlib
 import multiprocessing
+import threading
 import time
 from functools import lru_cache
 
@@ -16,6 +17,10 @@ from app.services.embedding_worker import embed_batch
 
 
 EMBEDDINGS_TIMEOUT_S: float = 60.0
+
+# At most one helper (~290 MB while it holds the model) per process: the scoring route is a
+# sync def, so concurrent requests run in threads and would otherwise start helpers together.
+_HELPER_LOCK = threading.Lock()
 
 
 def load_config():
@@ -80,7 +85,8 @@ def _embed_batch(model_id: str, texts: list[str]):
     from app.config import settings
 
     if settings.embeddings_out_of_process:
-        return _embed_out_of_process(model_id, texts)
+        with _HELPER_LOCK:  # held only while the helper lives; cache lookups stay outside
+            return _embed_out_of_process(model_id, texts)
     return list(_model(model_id).embed(texts))
 
 

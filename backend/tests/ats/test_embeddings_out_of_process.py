@@ -7,6 +7,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -195,6 +196,110 @@ def test_large_vector_batch_is_drained_before_joining_the_child(spawned, monkeyp
     assert embeddings.embed_texts(texts) == _FakeModel().embed(texts)
     assert spawned.create.call_count == 1
     assert spawned.processes[0].exitcode == 0
+
+
+class _FakeConn:
+    def poll(self, timeout=None):
+        return True
+
+    def recv(self):
+        return "ok", [[0.5] * 3]
+
+    def close(self):
+        pass
+
+
+class _FakeHelpers:
+    """Fake spawn context: counts helpers alive at once; `fail_first` makes the first start raise."""
+
+    def __init__(self, fail_first=False):
+        self.guard = threading.Lock()
+        self.active = 0
+        self.peak = 0
+        self.starts = 0
+        self.fail_first = fail_first
+
+    def Pipe(self, duplex=False):
+        return _FakeConn(), _FakeConn()
+
+    def Process(self, **kwargs):
+        return _FakeProcess(self)
+
+
+class _FakeProcess:
+    pid = 1
+    exitcode = 0
+
+    def __init__(self, helpers):
+        self.helpers = helpers
+        self.running = False
+
+    def start(self):
+        helpers = self.helpers
+        with helpers.guard:
+            helpers.starts += 1
+            if helpers.fail_first and helpers.starts == 1:
+                raise RuntimeError("helper failed to start")
+            helpers.active += 1
+            helpers.peak = max(helpers.peak, helpers.active)
+        self.running = True
+        time.sleep(0.2)  # long enough for a second thread to start unless it is serialized
+
+    def join(self, timeout=None):
+        if self.running:
+            self.running = False
+            with self.helpers.guard:
+                self.helpers.active -= 1
+
+    def is_alive(self):
+        return False
+
+    def kill(self):
+        pass
+
+
+def _fake_helpers(monkeypatch, **kwargs):
+    helpers = _FakeHelpers(**kwargs)
+    monkeypatch.setattr(settings, "embeddings_out_of_process", True)
+    monkeypatch.setattr(embeddings.multiprocessing, "get_context", lambda name: helpers)
+    return helpers
+
+
+def test_concurrent_callers_never_run_two_helpers_at_once(isolated_embeddings, monkeypatch):
+    helpers = _fake_helpers(monkeypatch)
+    errors = []
+
+    def call(text):
+        try:
+            embeddings.embed_texts([text])
+        except Exception as error:  # surfaced below; a thread must not swallow it
+            errors.append(error)
+
+    threads = [threading.Thread(target=call, args=(text,)) for text in ("first", "second")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+    assert not errors
+    assert helpers.starts == 2  # the waiting caller still spawns its own helper
+    assert helpers.peak == 1
+
+
+def test_failing_helper_releases_the_lock_for_the_next_call(isolated_embeddings, monkeypatch):
+    helpers = _fake_helpers(monkeypatch, fail_first=True)
+    with pytest.raises(RuntimeError, match="failed to start"):
+        embeddings.embed_texts(["first"])
+    done = threading.Event()
+    result = []
+
+    def second():
+        result.append(embeddings.embed_texts(["second"]))
+        done.set()
+
+    threading.Thread(target=second, daemon=True).start()
+    assert done.wait(5), "lock was not released after the helper failed"
+    assert result == [[[0.5] * 3]]
+    assert helpers.starts == 2
 
 
 def test_child_module_imports_only_stdlib_before_embedding(tmp_path):
