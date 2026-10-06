@@ -41,7 +41,9 @@ everything else yourself.
    `get_final_review`, attach a screenshot of the filled form
    as `final_review` evidence, and show the user one short summary (company,
    role, PDF, key answers, every flag in `flags` with its reason, and any
-   duplicate warning). Only after their yes for *this* application:
+   duplicate warning).
+   When `get_final_review`'s `base_country.eligible` is false, name the resume and the job's country in the Submit-now question.
+   Only after their yes for *this* application:
    `record_consent`, click submit once, attach the confirmation as
    `submission_receipt`, and `mark_submitted`. If you can't tell whether it went
    through, say so and never click again.

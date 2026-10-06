@@ -94,6 +94,7 @@ types/selects/clicks; the agent never relay-enters answers.
 - Fresh full-form resnapshot intact.
 - Every page recorded with `record_filled_answers`; final-review evidence attached.
 - `get_final_review`'s `flags` read; each one goes into the question.
+- When `get_final_review`'s `base_country.eligible` is false, name the resume and the job's country in the Submit-now question.
 
 Give one consolidated final review naming company/role and every flag with its reason, and ask, “Submit now?” Only its affirmative reply authorizes final `record_consent(approved)` plus immediate submission; unrelated “yes” is not consent. Do not ask twice.
 

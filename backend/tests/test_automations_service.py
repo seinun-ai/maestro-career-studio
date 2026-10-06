@@ -53,6 +53,12 @@ def test_remote_only_apps_are_shown_but_unreachable():
     assert all(apps[i].note for i in ("claude-web", "chatgpt", "codex"))
 
 
+_BASE_COUNTRY_LINE = (
+    "When `get_final_review`'s `base_country.eligible` is false, name the resume "
+    "and the job's country in the Submit-now question."
+)
+
+
 @pytest.mark.parametrize("card_id, sentence", [
     pytest.param("mail-status", "Never send, reply to, archive, label or delete email.",
                  id="mail-never-send"),
@@ -74,12 +80,18 @@ def test_remote_only_apps_are_shown_but_unreachable():
     pytest.param("mail-status", "The digest you show the user stays as it is.",
                  id="mail-user-digest-unchanged"),
     pytest.param("job-hunt", '`store_extracted_jd` with `source="agent"`', id="hunt-marks-agent"),
+    pytest.param("apply-session", _BASE_COUNTRY_LINE, id="apply-session-base-country"),
     pytest.param("customize-job-skills", "call `record_run` with the automation's own name",
                  id="custom-records"),
 ])
 def test_guardrails_survive_rewording(card_id, sentence):
     cards = {c.id: c.body for c in automations.catalog().cards}
     assert sentence in cards[card_id]
+
+
+def test_apply_execution_technique_names_the_base_country_in_the_question():
+    skills = Path(__file__).resolve().parent.parent / "app" / "automations" / "skills"
+    assert _BASE_COUNTRY_LINE in (skills / "agent-apply-execution" / "SKILL.md").read_text()
 
 
 def _card_text(name, **meta):

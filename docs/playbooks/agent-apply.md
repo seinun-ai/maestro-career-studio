@@ -270,6 +270,8 @@ asking** — a same-company+title proposal was already submitted; the user
 decides whether this is a genuinely different role or a cross-board duplicate
 to decline (`reason="duplicate"`).
 
+When `get_final_review`'s `base_country.eligible` is false, name the resume and the job's country in the Submit-now question.
+
 Capture the completed final-review state and silently attach its file path with
 `attach_evidence_file(..., kind="final_review")` before asking for consent.
 This final-review evidence is required in addition to the per-page answer
