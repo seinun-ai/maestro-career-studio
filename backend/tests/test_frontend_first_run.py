@@ -114,7 +114,8 @@ def test_score_tab_skeleton_never_hides_a_failed_fetch():
     so an idle run over that `[]` must not hold the skeleton: the error state
     and its Retry would never render."""
     panel = _panel()
-    assert "run.isIdle && scores.isSuccess && scores.data.length === 0" in panel
+    assert "run.isIdle && noBaseRows" in panel
+    assert "const noBaseRows = scores.isSuccess && baseRows.length === 0;" in panel
     assert "scores.data?.length === 0" not in panel
 
 

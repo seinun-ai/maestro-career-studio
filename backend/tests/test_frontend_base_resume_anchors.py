@@ -271,3 +271,14 @@ def test_target_is_a_canonical_term():
         "**Target** (the base resume's dialog for countries, role, company and focus; "
         "anchors is the agent and code word, never on screen)"
     ) in conventions
+
+
+def test_first_visit_scores_when_no_base_card_shows():
+    """A base scored before it was set for another country is hidden, and an application's
+    tailored row is no card: the first-visit run counts the visible BASE rows, so the bases set
+    for the job's country still get scored."""
+    panel = _squash(_PANEL)
+    assert "const noBaseRows = scores.isSuccess && baseRows.length === 0;" in panel
+    effect = _squash(_between(_PANEL, "const autoRan = useRef(false);", "}, [noBaseRows, runOnce, readOnly]);"))
+    assert "if (noBaseRows && !autoRan.current) {" in effect
+    assert "scores.data.length" not in effect

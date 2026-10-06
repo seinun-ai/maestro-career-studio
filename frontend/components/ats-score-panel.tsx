@@ -494,15 +494,23 @@ export function AtsScorePanel({
     if (ok) markAppliedOnce(baseResume);
   };
 
-  // First visit: no persisted scores yet — run the (fast, deterministic) engine once.
+  const baseRows = (scores.data ?? [])
+    .filter((s) => s.phase === "base")
+    .sort((a, b) => b.composite - a.composite);
+
+  // First visit: no base score to show yet — run the (fast, deterministic) engine once. Counted on the
+  // BASE rows the read returns, not every row: an application's tailored score is no card, and a base
+  // scored before it was set for another country is hidden, so either alone left the empty state with
+  // no run (the bases set for the job's country were never scored).
   const autoRan = useRef(false);
+  const noBaseRows = scores.isSuccess && baseRows.length === 0;
   useEffect(() => {
     if (readOnly) return;
-    if (scores.isSuccess && scores.data.length === 0 && !autoRan.current) {
+    if (noBaseRows && !autoRan.current) {
       autoRan.current = true;
       runOnce();
     }
-  }, [scores.isSuccess, scores.data, runOnce, readOnly]);
+  }, [noBaseRows, runOnce, readOnly]);
 
   // A resume imported from the prompt below lands in ["base-resumes"] (the
   // import dialog invalidates it). Score against it once the dialog closes,
@@ -540,10 +548,6 @@ export function AtsScorePanel({
     }
   };
 
-  const baseRows = (scores.data ?? [])
-    .filter((s) => s.phase === "base")
-    .sort((a, b) => b.composite - a.composite);
-
   function renderBody() {
     if (isLoadFailure(scores)) {
       return (
@@ -563,7 +567,7 @@ export function AtsScorePanel({
     if (
       scores.isLoading ||
       (baseRows.length === 0 &&
-        (run.isPending || (!readOnly && run.isIdle && scores.isSuccess && scores.data.length === 0)))
+        (run.isPending || (!readOnly && run.isIdle && noBaseRows)))
     ) {
       return (
         <div className="@container">
