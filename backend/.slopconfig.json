@@ -9,6 +9,7 @@
     "scripts.eval_fill_decisions",
     "scripts.fill_trace",
     "scripts.health_golden",
+    "scripts.memory_profile",
     "scripts.template_parity",
     "migrations.env",
     "app.tools.backup_db"
