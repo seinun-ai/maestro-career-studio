@@ -114,6 +114,7 @@ def build_profile(db, roots):
     _write(kbd / str(ids.doc) / "cv.pdf", b"%PDF kb")
     db.add_all([
         models.BaseResume(slug="data_scientist", display_name="DS", data_json={"name": "db copy"},
+                          countries=["GB", "IN"], company="Example employer", focus="payments",
                           pdf_path=str(base / "pdfs" / "data_scientist.pdf"),
                           tex_path=str(base / "tex" / "data_scientist.tex"),
                           pdf_rendered_at=WHEN, created_at=WHEN, updated_at=WHEN),
@@ -452,6 +453,34 @@ def test_round_trip_is_row_for_row_and_files_arrive(home, recv, roots, remote, w
     pdf = recv.get(models.BaseResume, "data_scientist").pdf_path
     assert pdf == str(base / "pdfs" / "data_scientist.pdf")
     assert bundle["files"]
+
+
+def test_base_resume_anchors_arrive_and_the_country_rule_reads_them_on_the_remote(
+        home, recv, roots, remote, world):
+    """Anchors are base_resumes columns, so they travel as profile rows; the always-on copy's
+    scoring and readiness filter by them on its own jobs and on read-only replicas alike."""
+    from app.services import base_eligibility
+    from app.services.sync import hooks
+
+    ship(home, recv, roots, remote)
+    roots.use("recv")
+    row = recv.get(models.BaseResume, "data_scientist")
+    assert (row.countries, row.company, row.focus) == (["GB", "IN"], "Example employer", "payments")
+    remote.on()
+    try:
+        for owner in (None, "laptop-machine"):  # this copy's own job, then a replica it only reads
+            job = models.Job(id=uuid.uuid4(), raw_text="Example role", raw_text_hash=uuid.uuid4().hex,
+                             title="Engineer", company="Example employer", country="United States",
+                             owner_machine=owner)
+            with hooks.standing_aside(recv):  # a replica lands only through the sync's own writes
+                recv.add(job)
+                recv.flush()
+            found = base_eligibility.candidates(recv, job)
+            assert "data_scientist" in found.skipped and "data_scientist" not in found.slugs
+            assert not base_eligibility.is_eligible(recv, job, "data_scientist")
+    finally:
+        remote.off()
+        roots.use("home")
 
 
 def test_the_base_resume_file_arrives_and_load_returns_the_new_content(home, recv, roots, remote, world):

@@ -518,6 +518,9 @@ PROFILE_PATHS = [
     ("POST", "/api/base-resumes/guard_base/duplicate", {"new_slug": "new_base"}),
     ("POST", "/api/base-resumes/guard_base/render", None),
     ("POST", "/api/resume-versions/base/guard_base/1/restore", None),
+    # The Target dialog's save: anchors are profile metadata, refused on the always-on copy.
+    ("PATCH", "/api/base-resumes/guard_base/identity", {"countries": ["GB"]}),
+    ("PATCH", "/api/base-resumes/guard_base/identity", {"company": "Example employer", "focus": "payments"}),
 ]
 
 
