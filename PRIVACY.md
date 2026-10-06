@@ -49,6 +49,17 @@ files can. See [`SECURITY.md`](SECURITY.md) §5.
 There is no login. The app listens only on `127.0.0.1`; do not expose it to a
 network.
 
+**Optional: a second, always-on copy.** If you set up sync
+([`docs/sync-setup.md`](docs/sync-setup.md)), a second Maestro on a machine you
+choose holds a read-only copy of your profile. That includes your resumes and
+career history, your settings with your AI key, any EEO answers you saved, and
+your job-site login. It also holds the jobs, applications and files that copy
+owns, and the laptop holds replicas of them. The data moves only inside an SSH
+connection that the always-on machine opens to your laptop, and it is never
+logged. Nothing goes to the author or to a Maestro server. The agent that runs on
+the always-on machine, and its provider, can read what that copy holds, under
+that provider's privacy policy. Without a sync key, none of this exists.
+
 ## What leaves your machine
 
 ### AI services you choose

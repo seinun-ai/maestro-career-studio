@@ -119,6 +119,44 @@
       {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_submission_uncertain_can_be_confirmed_by_the_agents_word"},
       {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_the_agents_word_is_refused_once_full_automation_is_off"},
       {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_consent_cannot_submit_without_attestation_even_with_a_receipt"}
+    ],
+    "inv-one-writer-ownership": [
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_write_paths"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_keep_here_only_and_sync_apply_pass"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_remote_profile_refused"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_remote_cannot_confirm_queues_one_addition"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_offered_job_message_points_at_keep_it_here"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_every_route_is_a_404_with_sync_off"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_the_always_on_copy_has_no_home_routes"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_bundle_for_a_job_this_copy_owns_is_refused"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_requests_for_jobs_the_remote_owns_are_sent_and_marked"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_take_over_sent_to_home_is_refused_and_changes_nothing"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_commit_gives_an_offered_job_to_the_remote"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_job_text_clash_with_nothing_started_keeps_the_laptops"}
+    ],
+    "inv-flush-guard": [
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_guard_blocks_flush"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_unresolved_rows_fail_closed"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_close_and_reuse_clears_transaction_state"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_assistant_edit"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_refused_qa_keeps_pdf"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_remote_profile_uploads_leave_no_files"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_document_ingest_checks_before_llm_and_disk"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_core_writers_have_explicit_touches"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_deleted_previous_application_can_be_repaired"},
+      {"path": "backend/tests/sync/test_guard.py", "symbol": "test_stale_proposal_read_skips_replicas"}
+    ],
+    "inv-sync-channel": [
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_an_origin_is_refused_before_the_key_is_read"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_an_origin_is_refused_with_the_right_key_too"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_wrong_or_missing_key_is_a_401_that_echoes_nothing"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_the_key_is_checked_before_the_version"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_second_request_while_one_runs_is_a_409"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_body_over_the_cap_is_a_413"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_stalled_peer_gets_a_408_and_the_lock_is_released"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_every_route_is_a_404_with_sync_off"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_the_always_on_copy_has_no_home_routes"},
+      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_nothing_secret_reaches_a_log_line"}
     ]
   },
   "unpinned": {

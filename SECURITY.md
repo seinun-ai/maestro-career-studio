@@ -240,6 +240,32 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
 - The browser extension's telemetry records *which* fields it encountered and
   whether they filled — never a value you typed. The schema has no column for
   one.
+- **A second, always-on copy holds your profile.** Only if you set up sync
+  ([docs/sync-setup.md](docs/sync-setup.md)). That copy keeps a read-only copy of
+  your profile, and it includes your AI key, your EEO answers if you saved
+  them, and your job-site login. Treat the machine that holds it like your
+  laptop: anything that can read its files or its database has all of that.
+  The profile travels only inside an SSH channel you open from the always-on
+  machine to the laptop. Nothing in sync logs a key, a login, a bundle or a
+  request body. Errors are fixed sentences plus a status code.
+  - **The sync endpoints refuse by default.** With no sync key file they answer
+    404, for every route. On the always-on copy they answer 404 too: only the
+    laptop serves them.
+  - **A browser can never reach them.** Any request with an `Origin` header is
+    refused with 403, before the key is read, even with the right key.
+  - **They need the key, checked in constant time.** The key is a bearer token
+    from a 0600 file in a 0700 folder. A wrong or missing key is a 401 that
+    echoes nothing. The key is checked before the version.
+  - **They listen on the laptop's loopback only.** The always-on machine
+    reaches them through an SSH forward. Restrict that SSH key to one forward
+    (`restrict,port-forwarding,permitopen="127.0.0.1:8001"`), and use a private
+    network. Never expose the port. Request bodies are capped, a stalled sender
+    times out, and one sync request runs at a time.
+  - **One writer per job.** The always-on copy cannot change your profile or
+    your jobs, and the laptop cannot change a job the bot owns. A write to a
+    row the other copy owns is refused at the database flush.
+  - The key is shown once, by `sync_key show`, for your own terminal and your
+    vault. Do not paste it into a chat.
 
 ---
 

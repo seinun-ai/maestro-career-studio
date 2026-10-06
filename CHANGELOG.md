@@ -32,9 +32,20 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 - **Run Maestro without Docker** on a small always-on Linux machine. Four
   commands (`setup`, `start`, `stop`, `health`) install and run the backend
-  from one folder, with one loopback worker. No sync and no web app there
-  yet: a connected agent starts the MCP server on demand. See
-  `docs/native-install.md`.
+  from one folder, with one loopback worker. No web app there: a connected
+  agent starts the MCP server on demand. See `docs/native-install.md`.
+- **A second, always-on copy** of Maestro that keeps working while your laptop
+  is off. Your laptop keeps your profile; each job has one owner, so nothing
+  merges. Job cards show **With your bot**, **On your laptop** or **Going to
+  your bot**, with **Keep it here** and **Work on it here**. A queue, skip,
+  status or note change on the other copy's job waits as **Sent at the next
+  sync**. With full automation on, a job you queue on the laptop is offered to
+  the always-on copy. It is off until you create a sync key
+  (`python -m scripts.sync_key create`); without one nothing changes. The MCP
+  tool `sync_now` runs a round, and `sync.sh` runs one from cron. The always-on
+  copy holds a read-only copy of your profile, including the AI key and the
+  job-site login, carried only inside an SSH tunnel. See `docs/sync-setup.md`.
+
 - **`/health/memory`** reports how much memory the backend is using now and at
   its peak, so you can watch a small machine. `health.sh` prints it too.
 - **Lighter ATS scoring on small machines.** Set `EMBEDDINGS_OUT_OF_PROCESS=1`

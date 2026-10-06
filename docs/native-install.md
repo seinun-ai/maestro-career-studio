@@ -1,8 +1,9 @@
 # Run Maestro without Docker on a small always-on machine
 
 This guide installs the Maestro backend straight onto a Linux machine, with no
-Docker, and keeps its memory small. It is a pilot: single machine, no sync, no web
-app on that machine.
+Docker, and keeps its memory small. It is a pilot: no web app on that machine.
+To pair it with your laptop, so your agent can work while the laptop is off, see
+[sync-setup.md](sync-setup.md). It is optional, and nothing here needs it.
 
 ## Who this is for
 
@@ -163,6 +164,13 @@ keeps the pause, because the `@reboot` line also uses `--watchdog`.
 - **Swap the database:** `stop.sh`, replace `$MAESTRO_HOME/data/maestro_cs.sqlite3`
   and delete its `-wal` and `-shm` files, then `start.sh`.
 - **Update:** `stop.sh`, then `git pull` in the repository, `setup.sh`, and `start.sh`.
+
+## Keep it in step with your laptop (optional)
+
+A second copy on its own is a complete Maestro with its own jobs and profile.
+To make it the always-on copy of your laptop's Maestro, follow
+[sync-setup.md](sync-setup.md). It adds a sync key file, one line in
+`maestro.env`, an SSH tunnel and a cron line for `sync.sh`.
 
 ## Connect an agent
 
