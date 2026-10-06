@@ -40,7 +40,7 @@ _PENDING_SITES = {
     "components/resume-health/question-pass.tsx": ["Write N new wordings"],
     "components/career/send-to-resume-dialog.tsx": ["Adapt and preview"],
     "app/jobs/[id]/page.tsx": ["Queue in Agent inbox"],
-    "components/proposals/triage-actions.tsx": ["Skip (dialog)", "Queue (bulk)", "Skip (bulk)"],
+    "components/proposals/triage-actions.tsx": ["Skip (dialog)", "Queue (bulk)"],
     "components/career/inbox-panel.tsx": ["Approve"],
 }
 
@@ -54,3 +54,11 @@ def test_slow_actions_show_pending():
 def test_approve_does_not_say_saving():
     row = _read("components/career/inbox-panel.tsx").split("function DraftRow(", 1)[1]
     assert "Approving…" in row and '"Saving…"' not in row
+
+
+def test_only_the_bulk_queue_spins():
+    bar = _read("components/proposals/triage-actions.tsx").split("export function BulkBar(", 1)[1]
+    queue = bar.split("onClick={onQueue}", 1)[1].split("</Button>", 1)[0]
+    skip = bar.split("onClick={onDecline}", 1)[1].split("</Button>", 1)[0]
+    assert "pending={queuePending}" in queue
+    assert "pending={" not in skip and "disabled={pending}" in skip

@@ -185,6 +185,8 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
     remove: removeOnce,
     // Any of them running: every triage control waits, focusable and dimmed.
     pending: transition.isPending || bulk.isPending || remove.isPending,
+    // Only the bulk Queue spins: a bulk Skip runs from the dialog, whose own button spins.
+    queuePending: bulk.isPending && bulk.variables?.status === "accepted",
   };
 }
 
@@ -266,8 +268,6 @@ export function DeclineDialog({
             variant="destructive"
             onClick={submit}
             pending={pending}
-            focusableWhenDisabled
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
             Skip
           </Button>
@@ -283,12 +283,16 @@ export function BulkBar({
   onDecline,
   onClear,
   pending,
+  queuePending,
 }: {
   selectedCount: number;
   onQueue: () => void;
   onDecline: () => void;
   onClear: () => void;
+  /** Any triage action runs: every button waits, focusable and dimmed. */
   pending?: boolean;
+  /** The bulk Queue itself runs: its button spins. */
+  queuePending?: boolean;
 }) {
   if (selectedCount <= 0) return null;
 
@@ -306,9 +310,9 @@ export function BulkBar({
         <Button
           type="button"
           size="sm"
-          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onQueue}
-          pending={pending}
+          pending={queuePending}
+          disabled={pending}
           focusableWhenDisabled
         >
           Queue
@@ -319,7 +323,7 @@ export function BulkBar({
           variant="outline"
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onDecline}
-          pending={pending}
+          disabled={pending}
           focusableWhenDisabled
         >
           Skip

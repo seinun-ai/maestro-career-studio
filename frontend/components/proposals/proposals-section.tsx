@@ -686,6 +686,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
       <BulkBar
         selectedCount={selectedShown.length}
         pending={actions.pending}
+        queuePending={actions.queuePending}
         onQueue={() => {
           leaveBar();
           actions.bulk({ ids: selectedShown, status: "accepted" });

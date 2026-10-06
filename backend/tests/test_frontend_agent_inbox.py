@@ -664,12 +664,12 @@ def test_the_bulk_bar_hands_focus_to_the_lane_when_it_leaves():
     assert '<Lane ref={toReview} title={`To review · ' in _SECTION
     bar = _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
     assert bar.count("focusableWhenDisabled") == 3
-    assert bar.count("data-disabled:pointer-events-none data-disabled:opacity-50") == 3
+    assert bar.count("data-disabled:pointer-events-none data-disabled:opacity-50") == 2  # Queue spins via pending
 
 
 def test_the_skip_dialog_keeps_focus_and_hands_it_on():
     dialog = _TRIAGE[_TRIAGE.index("export function DeclineDialog(") : _TRIAGE.index("export function BulkBar(")]
-    assert dialog.count("focusableWhenDisabled") == 2  # Cancel and Skip
+    assert dialog.count("focusableWhenDisabled") == 1  # Cancel; Skip is `pending`, which keeps focus itself
     assert "<DialogContent size=\"sm\" finalFocus={finalFocus}>" in dialog
     final = _SECTION[_SECTION.index("finalFocus={() => {") :]
     final = final[: final.index("}}")]
