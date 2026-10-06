@@ -190,6 +190,29 @@ On a machine near 640 MB, the order of your work matters more than any setting.
   batch. Reopen the browser for the next round.
 - **Applying.** This already fits. Prepare and tailor a job first, then open the
   browser to fill its form.
+- **Skip untailored jobs while applying.** The apply prompt can tailor a job that
+  has no PDF yet, and that scores with the browser open. On a small machine,
+  skip such a job and leave it for the next tailor batch.
+
+### Run the work in batches
+
+Maestro's automations are already separate prompts, so each can run as its own
+batch. Ask your agent to schedule them in sequence, each one finishing before the
+next starts. Maestro schedules nothing itself.
+
+| Batch | Browser | What happens |
+|---|---|---|
+| 1. Job hunt | Open | Browse job sites and collect postings (link and description). |
+| 2. Save and score | Closed | Save each job, score it, and file the good ones for you to review. |
+| You | — | Queue or skip jobs in the app, or by messaging your agent. |
+| 3. Tailor run | Closed | Tailor the queued jobs and make their PDFs. |
+| 4. Apply | Open | Fill forms, check the final review, submit. No scoring here. |
+
+The mail check reads your mail through your agent's own connection and scores
+nothing, so it can run at any time.
+
+An example hourly rhythm: hunt on the hour, save and score right after it,
+tailor at :20, apply at :40. Pick times that leave each batch room to finish.
 
 ## Measured footprint
 
