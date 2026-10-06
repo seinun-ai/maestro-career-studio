@@ -27,7 +27,7 @@ from app.schemas.proposal import (
     ProposalSummaryResponse,
     ProposalTransition,
 )
-from app.services.sync import hooks
+from app.services.sync import hooks, requests as sync_requests
 from app.services import artifacts, auto_apply_settings, inbox_readiness, proposal_evidence
 from app.services import proposals as svc
 from app.write_origin import WriteOrigin, get_write_origin
@@ -224,22 +224,26 @@ def list_proposals(
 @router.post("/bulk-transition", response_model=ProposalBulkResponse)
 def bulk_transition(payload: ProposalBulkTransition, db: Annotated[Session, Depends(get_db)]):
     """Mass triage: per-row guard checks, per-row ConsentEvent, honest per-id
-    report — a mixed selection partially succeeds instead of all-or-nothing."""
-    results = []
-    for pid in payload.ids:
-        prop = db.get(ApplicationProposal, pid)
-        if prop is None:
-            results.append(ProposalBulkResult(id=pid, ok=False, detail="not found"))
-            continue
-        try:
-            svc.transition(db, prop, payload.status,
-                           consent=payload.consent.model_dump(),
-                           reason=payload.reason)
-            results.append(ProposalBulkResult(id=pid, ok=True, status=prop.status))
-        except svc.TransitionError as e:
-            db.rollback()
-            results.append(ProposalBulkResult(id=pid, ok=False, detail=str(e)))
-    return ProposalBulkResponse(results=results)
+    report — a mixed selection partially succeeds instead of all-or-nothing.
+    With sync on, rows on the other copy's jobs are queued ("Sent at the next
+    sync", status unchanged) and an offered job's row reports why it was refused."""
+    return ProposalBulkResponse(results=[_bulk_row(db, payload, pid) for pid in payload.ids])
+
+
+def _bulk_row(db: Session, payload: ProposalBulkTransition, pid: UUID) -> ProposalBulkResult:
+    prop = db.get(ApplicationProposal, pid)
+    if prop is None:
+        return ProposalBulkResult(id=pid, ok=False, detail="not found")
+    try:
+        queued = sync_requests.bulk_row_detail(db, prop, payload)
+        if queued is not None:
+            return ProposalBulkResult(id=pid, ok=True, detail=queued)
+        svc.transition(db, prop, payload.status,
+                       consent=payload.consent.model_dump(), reason=payload.reason)
+        return ProposalBulkResult(id=pid, ok=True, status=prop.status)
+    except (svc.TransitionError, hooks.NotOwnedHere) as e:
+        db.rollback()
+        return ProposalBulkResult(id=pid, ok=False, detail=str(e))
 
 
 @router.get("/funnel", response_model=ProposalFunnelResponse)
@@ -338,6 +342,9 @@ def transition_proposal(
     prop = db.get(ApplicationProposal, proposal_id)
     if prop is None:
         raise HTTPException(404, detail="Proposal not found")
+    queued = sync_requests.queue_proposal_transition(db, prop, payload)
+    if queued is not None:
+        return queued
     try:
         if payload.status == "pending_review" and prop.status == "needs_decision":
             svc.record_decision(

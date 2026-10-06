@@ -10,7 +10,7 @@ from pydantic import AwareDatetime, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.services.sync import hooks
+from app.services.sync import hooks, requests as sync_requests
 from app.db import get_db
 from app.models.application import Application
 from app.models.base_resume import BaseResume
@@ -315,6 +315,10 @@ def patch_application(
         raise HTTPException(status_code=404, detail="Application not found")
 
     fields = payload.model_fields_set
+    queued = sync_requests.queue_application_patch(
+        db, application, {name: getattr(payload, name) for name in fields})
+    if queued is not None:
+        return queued
     stale: list[Path] = []
     for field in fields:
         if field == "customized_json":
