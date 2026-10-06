@@ -14,7 +14,7 @@ from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
-from app.services import auto_apply_settings, filled_answers
+from app.services import auto_apply_settings, filled_answers, job_site_login
 
 
 class TransitionError(Exception):
@@ -55,6 +55,24 @@ CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp", "auto")
 # through, labelled so the ledger can tell them from the user's. The server checks only the
 # switch (and that a confirmation is named); eligibility is the agent's prompt.
 AUTO_CHANNEL = "auto"
+
+LOGIN_STATUSES = frozenset({"accepted", "approved"})
+
+
+def share_job_site_login(session: Session, prop: ApplicationProposal,
+                         agent: str | None) -> dict[str, str]:
+    """{email, password} for an open job in full automation mode; one audit row per call
+    (never the value). SYSTEM.md {#inv-job-site-password-local}."""
+    if not auto_apply_settings.get_settings(session).full_automation:
+        raise TransitionError("the job-site login needs full automation turned on in Settings")
+    if prop.status not in LOGIN_STATUSES:
+        raise TransitionError("the job-site login is for a queued or approved job")
+    email, password = job_site_login.read()
+    if not email or not password:
+        raise LookupError("No job-site login is saved in Settings")
+    session.add(ConsentEvent(proposal_id=prop.id, action="login_shared", channel="mcp", note=agent))
+    session.commit()
+    return {"email": email, "password": password}
 
 
 def _company_is_blocked(session: Session, prop: ApplicationProposal,

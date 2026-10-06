@@ -68,6 +68,7 @@ def test_all_tools_registered():
         "get_proposal",
         "record_decision",
         "record_consent",
+        "get_job_site_login",
         "attach_evidence",
         "mark_submitted",
         "record_triage",
@@ -1146,7 +1147,7 @@ async def test_registered_tool_docstrings_fit_client_truncation_budget():
 
 async def test_every_tool_carries_a_title_and_explicit_hints():
     tools = await srv.mcp.list_tools()
-    assert len(tools) >= 85
+    assert len(tools) >= 86
     for tool in tools:
         assert tool.title, tool.name
         ann = tool.annotations

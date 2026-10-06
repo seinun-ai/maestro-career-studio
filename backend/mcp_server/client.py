@@ -1206,6 +1206,23 @@ class BackendClient:
     def get_proposal(self, proposal_id: str) -> Any:
         return self._request("GET", f"/api/proposals/{proposal_id}")
 
+    def get_job_site_login(self, proposal_id: str, origin_detail: str | None = None) -> Any:
+        # Unlike ordinary errors, a login response must never be copied into
+        # BackendError.body or a message/traceback surfaced by the MCP guard.
+        try:
+            return self._request(
+                "POST", f"/api/proposals/{proposal_id}/job-site-login",
+                headers=_origin_headers(origin_detail),
+            )
+        except BackendError as exc:
+            raise BackendError(
+                "Could not retrieve the job-site login. Full automation must be on, "
+                "the proposal queued or approved, and a login saved in Settings.",
+                status_code=exc.status_code,
+            ) from None
+        except ValueError:
+            raise BackendError("The backend returned an unreadable job-site login response.") from None
+
     def transition_proposal(
         self,
         proposal_id: str,

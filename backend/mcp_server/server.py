@@ -1893,6 +1893,17 @@ def record_consent(
     return _client.transition_proposal(proposal_id, action, consent=consent)
 
 
+@mcp.tool(**_write("Get Job-Site Login", destructive=False, idempotent=True))
+@_guard
+def get_job_site_login(proposal_id: str, ctx: Context | None = None) -> Any:
+    """The email and password the user saved for job-site accounts, for creating an account or
+    signing in on this proposal's application site. Available only while full automation is on
+    and only for a queued or approved proposal; each call is recorded (never the value). The
+    value passes through the agent's AI provider, which is why it is a password the user keeps
+    for job sites alone. Returns {email, password}."""
+    return _client.get_job_site_login(proposal_id, origin_detail=_client_label(ctx))
+
+
 @mcp.tool(**_write("Attach Evidence Image", destructive=False, idempotent=False))
 @_guard
 def attach_evidence(
