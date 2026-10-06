@@ -1878,7 +1878,7 @@ def record_run(
 def record_consent(
     proposal_id: str,
     action: Literal["approved", "rejected"],
-    channel: Literal["chat", "slack", "mcp"],
+    channel: Literal["chat", "slack", "mcp", "auto"],
     note: str | None = None,
 ) -> Any:
     """Record the user's explicit approve/reject decision for this proposal as an
@@ -1887,7 +1887,8 @@ def record_consent(
     verify it came from them. `approved` is accepted only when the proposal has
     final_review evidence, the linked application is not already applied, and a
     daily-cap slot is free, and it reserves that slot. `rejected` is a
-    posting-scoped decline and is terminal."""
+    posting-scoped decline and is terminal. `auto` is the agent's own yes in full
+    automation mode: accepted only for `approved` and only while full automation is on."""
     consent = {"channel": channel, "note": note}
     return _client.transition_proposal(proposal_id, action, consent=consent)
 
@@ -1938,7 +1939,7 @@ def attach_evidence_file(
 def mark_submitted(
     proposal_id: str,
     user_attested: bool = False,
-    channel: Literal["chat", "slack", "mcp"] = "chat",
+    channel: Literal["chat", "slack", "mcp", "auto"] = "chat",
     note: str | None = None,
 ) -> Any:
     """Flip an approved proposal to submitted (terminal; links the application to
@@ -1947,8 +1948,11 @@ def mark_submitted(
     submission_uncertain proposal went through, e.g. a confirmation email or
     portal check) as an attested consent event with their words in `note`.
     `user_attested` substitutes for receipt evidence and the server does not
-    verify it; it is the user's attestation, not the caller's."""
-    if user_attested:
+    verify it; it is the user's attestation, not the caller's. In full automation mode,
+    channel `auto` records the agent's own word that the application went through, with
+    `note` naming what confirmed it (the confirmation page or a confirmation email);
+    no receipt is needed, and it is accepted only while full automation is on."""
+    if user_attested or channel == "auto":
         return _client.transition_proposal(
             proposal_id, "submitted", attested=True,
             consent={"channel": channel, "note": note},

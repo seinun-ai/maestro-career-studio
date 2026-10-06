@@ -49,7 +49,22 @@ STATUS_CHIP_WORDS = {
 }
 
 CONSENT_REQUIRED = {"accepted", "approved", "rejected"}
-CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp")
+CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp", "auto")
+
+# Full automation mode (phase 4): the agent's own yes, and its own word that a job went
+# through, labelled so the ledger can tell them from the user's. The server checks only the
+# switch (and that a confirmation is named); eligibility is the agent's prompt.
+AUTO_CHANNEL = "auto"
+
+
+def _check_auto_consent(session: Session, new_status: str, consent: dict,
+                        attested: bool) -> None:
+    if not (new_status == "approved" or (new_status == "submitted" and attested)):
+        raise TransitionError("the auto channel only approves a job or confirms it went through")
+    if new_status == "submitted" and not (consent.get("note") or "").strip():
+        raise TransitionError("an automatic submit needs a note saying what confirmed it")
+    if not auto_apply_settings.get_settings(session).full_automation:
+        raise TransitionError("the auto channel needs full automation turned on in Settings")
 
 EVIDENCE_KINDS = frozenset({"step", "final_review", "submission_receipt"})
 
@@ -137,12 +152,14 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
     if new_status in CONSENT_REQUIRED:
         if not consent or consent.get("channel") not in CONSENT_CHANNELS:
             raise TransitionError(f"{new_status} requires consent with a valid channel")
+    if consent and consent.get("channel") == AUTO_CHANNEL:
+        _check_auto_consent(session, new_status, consent, attested)
     if new_status == "approved" and not _evidence_has_kind(prop, "final_review"):
         raise TransitionError("approved requires final_review evidence")
     if new_status == "submitted":
-        # Receipt is the agent-verified path; attestation is the user saying
-        # so themselves (design §4, 2026-08-01). The agent alone can never
-        # self-certify a submit: no receipt and no user statement -> refused.
+        # Receipt is the agent-verified path; attestation is the user's own word,
+        # or the agent's word with a named confirmation while full automation is On
+        # (channel auto, checked above).
         if prop.status == "submission_uncertain" and not attested:
             raise TransitionError(
                 "submission_uncertain -> submitted requires user attestation")

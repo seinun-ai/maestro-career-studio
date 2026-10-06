@@ -370,3 +370,166 @@ def test_approve_is_refused_past_the_daily_cap(db_session):
     with pytest.raises(svc.TransitionError, match="daily submission cap reached"):
         svc.transition(db_session, second, "approved", consent={"channel": "chat", "note": "yes"})
     assert second.status == "pending_review"
+
+
+def _full_automation(db_session, on):
+    from app.schemas.auto_apply import AutoApplySettings
+    from app.services import auto_apply_settings
+
+    auto_apply_settings.set_settings(AutoApplySettings(full_automation=on), db_session)
+
+
+def test_auto_consent_is_refused_while_full_automation_is_off(db_session):
+    _full_automation(db_session, False)
+    prop = _mk_proposal(db_session)
+    prop.evidence_json = _final_review_evidence()
+    with pytest.raises(svc.TransitionError, match="full automation"):
+        svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
+    assert prop.status == "pending_review" and prop.cap_reserved_at is None
+    assert db_session.query(ConsentEvent).filter_by(proposal_id=prop.id).count() == 0
+
+
+def test_auto_consent_approves_while_on_and_is_recorded_as_auto(db_session):
+    _full_automation(db_session, True)
+    prop = _mk_proposal(db_session)
+    prop.evidence_json = _final_review_evidence()
+    svc.transition(db_session, prop, "approved", consent={"channel": "auto", "note": "clean review"})
+    event = db_session.query(ConsentEvent).filter_by(proposal_id=prop.id).one()
+    assert (prop.status, event.channel) == ("approved", "auto")
+    assert event.action == "approved" and event.note == "clean review"
+    assert event.evidence_manifest_json == _final_review_evidence()
+    assert prop.cap_reserved_at is not None
+
+
+@pytest.mark.parametrize("status", ["accepted", "rejected"])
+def test_auto_consent_only_approves_or_confirms(db_session, status):
+    _full_automation(db_session, True)
+    prop = _mk_proposal(db_session)
+    with pytest.raises(svc.TransitionError, match="approves a job or confirms"):
+        svc.transition(db_session, prop, status, consent={"channel": "auto"})
+
+
+def _approved_auto(db_session):
+    _full_automation(db_session, True)
+    prop = _mk_proposal(db_session)
+    prop.evidence_json = _final_review_evidence()
+    svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
+    return prop
+
+
+def test_in_full_automation_the_agents_word_marks_it_submitted(db_session):
+    prop = _approved_auto(db_session)
+    svc.transition(db_session, prop, "submitted", attested=True,
+                   consent={"channel": "auto", "note": "Confirmation email: application received"})
+    events = db_session.query(ConsentEvent).filter_by(proposal_id=prop.id, action="submitted").all()
+    assert prop.status == "submitted" and [e.channel for e in events] == ["auto"]
+    assert events[0].note == "Confirmation email: application received"
+    assert events[0].evidence_manifest_json == _final_review_evidence()
+    app_row = db_session.get(Application, prop.application_id)
+    assert app_row.status == "applied" and app_row.applied_at is not None
+
+
+@pytest.mark.parametrize("note", [None, "", "  ", "\t\n"])
+def test_the_agents_word_needs_a_note_naming_the_confirmation(db_session, note):
+    prop = _approved_auto(db_session)
+    with pytest.raises(svc.TransitionError, match="what confirmed it"):
+        svc.transition(db_session, prop, "submitted", attested=True,
+                       consent={"channel": "auto", "note": note})
+    assert prop.status == "approved"
+    assert db_session.query(ConsentEvent).filter_by(proposal_id=prop.id, action="submitted").count() == 0
+
+
+def test_the_agents_word_is_refused_once_full_automation_is_off(db_session):
+    prop = _approved_auto(db_session)
+    _full_automation(db_session, False)
+    with pytest.raises(svc.TransitionError, match="full automation"):
+        svc.transition(db_session, prop, "submitted", attested=True,
+                       consent={"channel": "auto", "note": "Confirmation page"})
+    assert prop.status == "approved"
+
+
+@pytest.mark.parametrize("status", ["needs_human", "needs_decision"])
+def test_auto_consent_cannot_accompany_other_transitions(db_session, status):
+    _full_automation(db_session, True)
+    prop = _mk_proposal(db_session)
+    with pytest.raises(svc.TransitionError, match="approves a job or confirms"):
+        svc.transition(db_session, prop, status, consent={"channel": "auto"})
+
+
+def test_auto_consent_cannot_submit_without_attestation_even_with_a_receipt(db_session):
+    _full_automation(db_session, True)
+    prop = _mk_proposal(db_session)
+    _approve(db_session, prop)
+    prop.evidence_json = _final_review_evidence() + _receipt_evidence()
+    with pytest.raises(svc.TransitionError, match="approves a job or confirms"):
+        svc.transition(db_session, prop, "submitted",
+                       consent={"channel": "auto", "note": "Confirmation page"})
+
+
+def test_auto_consent_still_requires_final_review_evidence(db_session):
+    _full_automation(db_session, True)
+    prop = _mk_proposal(db_session)
+    with pytest.raises(svc.TransitionError, match="final_review"):
+        svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
+
+
+@pytest.mark.parametrize("status", ["applied", "interviewing", "offered", "accepted"])
+def test_auto_consent_still_refuses_an_already_applied_application(db_session, status):
+    _full_automation(db_session, True)
+    prop = _mk_proposal(db_session)
+    app_row = db_session.get(Application, prop.application_id)
+    app_row.status = status
+    db_session.commit()
+    prop.evidence_json = _final_review_evidence()
+    with pytest.raises(svc.TransitionError, match="already applied"):
+        svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
+
+
+def test_auto_consent_still_refuses_past_the_daily_cap(db_session):
+    from app.schemas.auto_apply import AutoApplySettings
+    from app.services import auto_apply_settings
+
+    auto_apply_settings.set_settings(
+        AutoApplySettings(full_automation=True, max_submissions_per_day=1), db_session)
+    first, second = _mk_proposal(db_session), _mk_proposal(db_session)
+    for prop in (first, second):
+        prop.evidence_json = _final_review_evidence()
+    svc.transition(db_session, first, "approved", consent={"channel": "auto"})
+    with pytest.raises(svc.TransitionError, match="daily submission cap reached"):
+        svc.transition(db_session, second, "approved", consent={"channel": "auto"})
+    assert second.status == "pending_review" and second.cap_reserved_at is None
+    assert db_session.query(ConsentEvent).filter_by(proposal_id=second.id).count() == 0
+
+
+@pytest.mark.parametrize("on, expected_status", [(False, 409), (True, 200)])
+def test_auto_consent_reaches_the_rest_gate(db_session, on, expected_status):
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    _full_automation(db_session, on)
+    prop = _mk_proposal(db_session)
+    prop.evidence_json = _final_review_evidence()
+    db_session.commit()
+    response = TestClient(app).patch(f"/api/proposals/{prop.id}", json={
+        "status": "approved", "consent": {"channel": "auto"},
+    })
+    assert response.status_code == expected_status, response.text
+    if on:
+        assert response.json()["status"] == "approved"
+    else:
+        assert "full automation" in response.json()["detail"]
+
+
+def test_the_agents_word_can_mark_submitted_over_rest(db_session):
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    prop = _approved_auto(db_session)
+    response = TestClient(app).patch(f"/api/proposals/{prop.id}", json={
+        "status": "submitted", "attested": True,
+        "consent": {"channel": "auto", "note": "Confirmation page"},
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "submitted"
+    event = db_session.query(ConsentEvent).filter_by(proposal_id=prop.id, action="submitted").one()
+    assert event.channel == "auto" and event.note == "Confirmation page"

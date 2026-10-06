@@ -242,3 +242,49 @@ def test_attach_evidence_file_rejects_non_image(monkeypatch, tmp_path):
     from mcp.server.fastmcp.exceptions import ToolError
     with _pytest.raises(ToolError):
         srv.attach_evidence_file("p1", 1, "x", str(bad), kind="step")
+
+
+async def test_automatic_consent_channels_are_exposed_in_tool_schemas():
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    for name in ("record_consent", "mark_submitted"):
+        assert tools[name].inputSchema["properties"]["channel"]["enum"] == [
+            "chat", "slack", "mcp", "auto",
+        ]
+
+
+def test_mark_submitted_auto_forwards_the_agents_attestation(monkeypatch):
+    import json
+    import httpx
+    import respx
+    from mcp_server.client import BackendClient
+
+    monkeypatch.setattr(srv, "_client", BackendClient("http://test-backend"))
+    with respx.mock() as mock:
+        route = mock.patch("http://test-backend/api/proposals/p1").mock(
+            return_value=httpx.Response(200, json={"id": "p1", "status": "submitted"}))
+        result = srv.mark_submitted("p1", channel="auto", note="Confirmation email received")
+    assert result["status"] == "submitted"
+    assert json.loads(route.calls.last.request.read()) == {
+        "status": "submitted", "attested": True,
+        "consent": {"channel": "auto", "note": "Confirmation email received"},
+    }
+
+
+async def test_record_consent_accepts_auto_through_an_mcp_session(monkeypatch):
+    import json
+    import httpx
+    import respx
+    from mcp_server.client import BackendClient
+
+    monkeypatch.setattr(srv, "_client", BackendClient("http://test-backend"))
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.patch("http://test-backend/api/proposals/p1").mock(
+            return_value=httpx.Response(200, json={"id": "p1", "status": "approved"}))
+        async with create_connected_server_and_client_session(srv.mcp) as session:
+            result = await session.call_tool("record_consent", {
+                "proposal_id": "p1", "action": "approved", "channel": "auto", "note": "clean review",
+            })
+    assert not result.isError, result.content
+    assert json.loads(route.calls.last.request.read()) == {
+        "status": "approved", "consent": {"channel": "auto", "note": "clean review"},
+    }
