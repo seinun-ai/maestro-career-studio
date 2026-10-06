@@ -66,6 +66,8 @@ def test_remote_only_apps_are_shown_but_unreachable():
                  id="tailor-no-own-claims"),
     pytest.param("tailor-run", "Never answer them yourself.", id="tailor-no-self-answers"),
     pytest.param("tailor-run", "Never call `resolve_gaps`", id="tailor-no-resolve-gaps"),
+    pytest.param("tailor-run", "only while it is still among `score_ats`'s scores",
+                 id="tailor-chosen-base-still-scored"),
     *[pytest.param(card, f"Call `record_run` with automation `{card}`", id=f"{card}-records")
       for card in ("mail-status", "job-hunt", "referral-pages", "tailor-run", "apply-session")],
     pytest.param("mail-status", "never email text", id="mail-digest-no-email-text"),

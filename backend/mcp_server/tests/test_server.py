@@ -32,6 +32,7 @@ def test_all_tools_registered():
         "get_career_context",
         "get_career_export",
         "update_base_resume",
+        "set_base_resume_identity",
         "edit_base_resume",
         "create_base_resume",
         "create_base_resume_from_kb",
@@ -1146,7 +1147,7 @@ async def test_registered_tool_docstrings_fit_client_truncation_budget():
 
 async def test_every_tool_carries_a_title_and_explicit_hints():
     tools = await srv.mcp.list_tools()
-    assert len(tools) >= 85
+    assert len(tools) >= 86
     for tool in tools:
         assert tool.title, tool.name
         ann = tool.annotations
@@ -1173,6 +1174,8 @@ _PINNED_HINTS = {
     # A reversible flag; nothing is removed.
     "archive_base_resume": (False, False, True, False),
     "unarchive_base_resume": (False, False, True, False),
+    # Re-sets anchors on the same row; the same call twice is a no-op.
+    "set_base_resume_identity": (False, False, True, False),
     # The six tools that can reach the configured LLM provider.
     "run_health_check": (False, False, False, True),
     "kb_capture": (False, False, False, True),
@@ -1393,6 +1396,9 @@ def test_a_landed_write_is_not_reported_as_an_error_when_only_the_hint_fails(mon
         c, "score_ats",
         lambda *a, **k: [{"target_type": "base_resume", "target_id": "alpha", "composite": 70.0,
                           "subscores_json": {}, "coverage_warning": None}],
+    )
+    monkeypatch.setattr(
+        c, "ats_candidates", lambda *a, **k: {"job_country": None, "fallback": False, "skipped": []}
     )
     calls = {
         "kb_ingest_resume": lambda: srv.kb_ingest_resume("r", {"contact": {}}),

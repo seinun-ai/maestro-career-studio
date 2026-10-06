@@ -22,8 +22,8 @@ waive a health gate; list a 409 in the digest instead.
 
 1. **Queue.** `list_proposals(status="accepted")`, paging with `offset` until you
    have `total`. Each item gives `job_id`, `application_id` and `fit_json`.
-2. **Base.** Use `fit_json.chosen_base`. If it is empty, take `recommended` from
-   `score_ats(job_id)`; on a `close_call`, leave the job for the digest.
+2. **Base.** Call `score_ats(job_id)`. Use `fit_json.chosen_base` only while it is still among `score_ats`'s scores;
+   otherwise take `recommended`. On a `close_call`, leave the job for the digest.
 3. **Check.** Skip a job when `get_job(job_id)` shows its latest `application`
    already has a `customized_json`, or `list_tailoring_sessions(job_id)` has an
    `open` session or a `tailored` one for the chosen base. That work is the user's:

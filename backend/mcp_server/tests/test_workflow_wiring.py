@@ -7,7 +7,17 @@ wrapped envelope. Every _client method is monkeypatched — no httpx, no DB.
 """
 import inspect
 
+import pytest
+
 import mcp_server.server as srv
+
+_COUNTRIES = {"job_country": "US", "fallback": False, "skipped": ["uk_base"]}
+
+
+@pytest.fixture(autouse=True)
+def _candidates(monkeypatch):
+    """score_ats reads the country rule once after scoring; keep it off the network."""
+    monkeypatch.setattr(srv._client, "ats_candidates", lambda job_id: dict(_COUNTRIES))
 
 # ---------- score_ats ----------
 
@@ -23,7 +33,7 @@ def _score(slug, composite=70.0):
 
 
 def test_score_ats_wraps_scores_recommendation_and_hint(monkeypatch):
-    monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None: [
+    monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None, include_other_countries=False: [
         _score("alpha", 80.0), _score("beta", 60.0),
     ])
     monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
@@ -38,11 +48,77 @@ def test_score_ats_wraps_scores_recommendation_and_hint(monkeypatch):
     assert quick["args"] == {"job_id": "job1", "base_resume": "alpha"}
 
 
+def test_score_ats_reports_the_countries_block_between_recommendation_and_next(monkeypatch):
+    monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None, include_other_countries=False: [_score("alpha")])
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+
+    out = srv.score_ats("job1")
+
+    assert out["countries"] == _COUNTRIES
+    assert list(out) == ["scores", "recommendation", "countries", "next"]
+    assert list(srv.score_ats("job1", brief=True)) == ["scores", "recommendation", "countries", "next"]
+
+
+def test_score_ats_omits_countries_for_an_explicit_target(monkeypatch):
+    monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None, include_other_countries=False: [_score("alpha")])
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+    monkeypatch.setattr(
+        srv._client, "ats_candidates",
+        lambda job_id: pytest.fail("a target_id scores that target; the country rule is not consulted"),
+    )
+
+    out = srv.score_ats("job1", target_type="base_resume", target_id="alpha")
+
+    assert "countries" not in out
+    assert list(out) == ["scores", "recommendation", "next"]
+
+
+def test_score_ats_forwards_include_other_countries(monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        srv._client, "score_ats",
+        lambda job_id, target_type=None, target_id=None, include_other_countries=False: seen.append(include_other_countries) or [_score("alpha")],
+    )
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+
+    srv.score_ats("job1", include_other_countries=True)
+    srv.score_ats("job1")
+
+    assert seen == [True, False]
+
+
+def test_score_ats_country_lookup_failing_after_the_scores_landed_is_null(monkeypatch):
+    from mcp_server.client import BackendError
+
+    def down(job_id):
+        raise BackendError("Backend returned 500", status_code=500)
+
+    monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None, include_other_countries=False: [_score("alpha")])
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+    monkeypatch.setattr(srv._client, "ats_candidates", down)
+
+    out = srv.score_ats("job1")
+
+    assert out["countries"] is None
+    assert out["scores"] and out["recommendation"]["recommended"] == "alpha"
+
+
+def test_set_base_resume_identity_tool_forwards_only_what_was_given(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "set_base_resume_identity", lambda slug, **kw: seen.update(slug=slug, **{k: v for k, v in kw.items() if v is not None}) or {"slug": slug}
+    )
+
+    srv.set_base_resume_identity("uk_ds", countries=["GB"], company="")
+
+    assert seen == {"slug": "uk_ds", "countries": ["GB"], "company": ""}
+
+
 def test_score_ats_brief_never_reads_settings_or_profile(monkeypatch):
     # The whole point of `brief` is a triage loop paying no extra HTTP round
     # trip. If either settings call fires, the mutation is invisible to a
     # test that only checks the return value — assert the calls never happen.
-    monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None: [_score("alpha")])
+    monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None, include_other_countries=False: [_score("alpha")])
 
     def _boom_settings():
         raise AssertionError("get_mcp_workflow_settings must not be called when brief=True")
@@ -65,7 +141,7 @@ def test_score_ats_wraps_even_when_hints_are_off(monkeypatch):
     # The envelope must be the SAME SHAPE whether or not a hint was actually
     # composed — a bare dict here would mean an agent has to branch on
     # whether "next" exists at all, not just whether it's null.
-    monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None: [_score("alpha")])
+    monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None, include_other_countries=False: [_score("alpha")])
     monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
     monkeypatch.setattr(srv._client, "get_quick_tailor_profile", lambda: {})
 
@@ -307,7 +383,7 @@ def test_score_ats_skips_the_profile_fetch_when_hints_are_off(monkeypatch):
     is the trap this pins."""
     monkeypatch.setattr(
         srv._client, "score_ats",
-        lambda job_id, target_type=None, target_id=None: [_score("alpha", 80.0)],
+        lambda job_id, target_type=None, target_id=None, include_other_countries=False: [_score("alpha", 80.0)],
     )
     monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
     calls = []
@@ -329,7 +405,7 @@ def test_score_ats_skips_the_profile_fetch_when_quick_tailor_is_unregistered(mon
     monkeypatch.setattr(srv, "_active_allowed_tools", lambda: HUNT_TOOLS)
     monkeypatch.setattr(
         srv._client, "score_ats",
-        lambda job_id, target_type=None, target_id=None: [_score("alpha", 80.0)],
+        lambda job_id, target_type=None, target_id=None, include_other_countries=False: [_score("alpha", 80.0)],
     )
     monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
     calls = []

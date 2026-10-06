@@ -717,6 +717,28 @@ class BackendClient:
             "PUT", f"/api/base-resumes/{slug}", json=payload, timeout=_RENDER_TIMEOUT
         )
 
+    def set_base_resume_identity(
+        self,
+        slug: str,
+        display_name: str | None = None,
+        role_category: str | None = None,
+        role_label: str | None = None,
+        countries: list[str] | None = None,
+        company: str | None = None,
+        focus: str | None = None,
+    ) -> Any:
+        # None is "not sent"; "" and [] are real values (they clear), so only
+        # None is dropped.
+        payload = _drop_none(
+            display_name=display_name,
+            role_category=role_category,
+            role_label=role_label,
+            countries=countries,
+            company=company,
+            focus=focus,
+        )
+        return self._request("PATCH", f"/api/base-resumes/{slug}/identity", json=payload)
+
     def edit_base_resume(self, slug: str, ops: list[dict]) -> Any:
         return self._request(
             "PATCH",
@@ -1083,12 +1105,23 @@ class BackendClient:
         job_id: str,
         target_type: str | None = None,
         target_id: str | None = None,
+        include_other_countries: bool = False,
     ) -> Any:
         return self._request(
             "POST",
             "/api/ats-scores",
-            json=_drop_none(job_id=job_id, target_type=target_type, target_id=target_id),
+            json=_drop_none(
+                job_id=job_id,
+                target_type=target_type,
+                target_id=target_id,
+                # Sent only when true: the backend's default is the country rule.
+                include_other_countries=True if include_other_countries else None,
+            ),
         )
+
+    def ats_candidates(self, job_id: str) -> Any:
+        """How the country rule treats a job: {job_country, fallback, skipped}."""
+        return self._request("GET", "/api/ats-scores/candidates", params={"job_id": job_id})
 
     def compare_ats(self, application_id: str) -> Any:
         return self._request("GET", f"/api/applications/{application_id}/ats-compare")

@@ -135,6 +135,7 @@ def test_base_summaries_full_row(db_session):
     assert row["applications_submitted"] == 1
     assert row["in_flight"] == 1
     assert row["last_activity"] is not None
+    assert row["anchors"] is None
 
 
 def test_base_summaries_latest_tailored_row_wins(db_session):
@@ -216,3 +217,21 @@ def test_base_summaries_omits_archived(db_session):
     db_session.commit()
 
     assert [s["slug"] for s in base_summaries(db_session)] == ["kept"]
+
+
+def test_base_summaries_carry_each_resumes_anchors(db_session):
+    base = _seed_base(db_session, "uk_ds")
+    base.countries = ["GB"]
+    base.company = "Acme"
+    _seed_base(db_session, "plain")
+    db_session.commit()
+
+    rows = {row["slug"]: row for row in base_summaries(db_session)}
+
+    assert rows["uk_ds"]["anchors"] == {
+        "countries": ["GB"],
+        "role": None,
+        "company": "Acme",
+        "focus": None,
+    }
+    assert rows["plain"]["anchors"] is None

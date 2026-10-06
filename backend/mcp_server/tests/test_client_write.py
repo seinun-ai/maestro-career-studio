@@ -236,3 +236,59 @@ def test_unarchive_base_resume_posts_unarchive():
     )
     assert BackendClient(BASE).unarchive_base_resume("other")["archived_at"] is None
     assert route.called
+
+
+@respx.mock
+def test_set_base_resume_identity_sends_only_supplied_keys():
+    route = respx.patch(f"{BASE}/api/base-resumes/uk_ds/identity").mock(
+        return_value=httpx.Response(200, json={"slug": "uk_ds"})
+    )
+    client = BackendClient(BASE)
+    client.set_base_resume_identity("uk_ds", countries=["GB"], role_label="Data scientist")
+    import json as _json
+    assert _json.loads(route.calls.last.request.read()) == {
+        "countries": ["GB"],
+        "role_label": "Data scientist",
+    }
+
+
+@respx.mock
+def test_set_base_resume_identity_sends_clearing_values_as_given():
+    route = respx.patch(f"{BASE}/api/base-resumes/uk_ds/identity").mock(
+        return_value=httpx.Response(200, json={"slug": "uk_ds"})
+    )
+    client = BackendClient(BASE)
+    client.set_base_resume_identity("uk_ds", company="", focus="", countries=[])
+    import json as _json
+    assert _json.loads(route.calls.last.request.read()) == {
+        "company": "",
+        "focus": "",
+        "countries": [],
+    }
+
+
+@respx.mock
+def test_score_ats_posts_include_other_countries_only_when_true():
+    route = respx.post(f"{BASE}/api/ats-scores").mock(return_value=httpx.Response(200, json=[]))
+    client = BackendClient(BASE)
+    import json as _json
+    client.score_ats("j1")
+    assert _json.loads(route.calls.last.request.read()) == {"job_id": "j1"}
+    client.score_ats("j1", include_other_countries=True)
+    assert _json.loads(route.calls.last.request.read()) == {
+        "job_id": "j1",
+        "include_other_countries": True,
+    }
+
+
+@respx.mock
+def test_ats_candidates_gets_the_country_rule_for_a_job():
+    route = respx.get(f"{BASE}/api/ats-scores/candidates").mock(
+        return_value=httpx.Response(
+            200, json={"job_country": "US", "fallback": False, "skipped": ["uk_ds"]}
+        )
+    )
+    client = BackendClient(BASE)
+    out = client.ats_candidates("j1")
+    assert out["skipped"] == ["uk_ds"]
+    assert route.calls.last.request.url.params["job_id"] == "j1"

@@ -141,6 +141,7 @@ def base_summaries(db: Session) -> list[dict[str, Any]]:
                 "applications_submitted": app_submitted.get(base.slug, 0),
                 "in_flight": app_in_flight.get(base.slug, 0),
                 "last_activity": last_activity.isoformat() if last_activity else None,
+                "anchors": base_resume_data.anchors(base),
             }
         )
     return summaries

@@ -857,6 +857,37 @@ def update_base_resume(slug: str, data: dict, display_name: str | None = None) -
     return _client.update_base_resume(slug, data=data, display_name=display_name)
 
 
+@mcp.tool(**_write("Set resume target", destructive=False, idempotent=True))
+@_guard
+def set_base_resume_identity(
+    slug: str,
+    display_name: str | None = None,
+    role_category: str | None = None,
+    role_label: str | None = None,
+    countries: list[str] | None = None,
+    company: str | None = None,
+    focus: str | None = None,
+) -> Any:
+    """Set what a base resume is written for. Only the fields passed change.
+    `countries` (ISO codes) restricts which jobs the resume is scored and
+    recommended for: a job in another country skips it, and a resume sent to
+    one is flagged. `role_category`/`role_label` name the role, `company` and
+    `focus` are free-text emphasis hints for tailoring (at most 80 characters
+    each), and `display_name` renames the resume. `[]` clears countries and
+    `""` clears company or focus. An unknown country or an over-long value is a
+    422 that saves none of the fields. Resume content, versions and the PDF
+    are never touched."""
+    return _client.set_base_resume_identity(
+        slug,
+        display_name=display_name,
+        role_category=role_category,
+        role_label=role_label,
+        countries=countries,
+        company=company,
+        focus=focus,
+    )
+
+
 # The docstring IS the agent's API reference, so its op block is RENDERED from
 # the schema-side registry (a hand-copied block once listed 8 of 16 kinds).
 # Set via __doc__ before decoration: _guard's functools.wraps propagates it to
@@ -1425,6 +1456,7 @@ def score_ats(
     target_type: Literal["base_resume", "application"] | None = None,
     target_id: str | None = None,
     brief: bool = False,
+    include_other_countries: bool = False,
 ) -> Any:
     """Deterministic hybrid ATS score (no LLM): deterministic lexical layers +
     anchored pinned-model semantic matching + section-level semantic_fit. Omit
@@ -1434,12 +1466,15 @@ def score_ats(
     Same inputs always give the same score; use it to compare bases and to
     verify an edit actually moved the number.
 
-    Response is {scores, recommendation, next}. `scores` is the raw per-target
+    Response is {scores, recommendation, countries, next}. `scores` is the raw per-target
     list: composite (0-100), per-layer subscores (incl. semantic_fit), gate
     warnings, and a per-skill diagnostic table with fix_hints. `recommendation`
     is a deterministic ranking of the base-resume rows (order, recommended slug,
     margin, close_call, reasons, coverage_warning) — always present, cheap, and
-    useful during triage even with hints off. `next` is an optional next-step
+    useful during triage even with hints off. Bases set for other countries are
+    not scored for this job unless `include_other_countries` is true; the
+    `countries` block ({job_country, fallback, skipped}) names them and is
+    omitted when a target_id is given. `next` is an optional next-step
     hint (null when suppressed or unavailable) naming quick_tailor / create_tailoring_session
     against the recommended base.
 
@@ -1447,10 +1482,23 @@ def score_ats(
     suppresses ONLY `next` (never `recommendation`) and is checked before any
     settings lookup, so a twenty-posting triage loop pays no extra HTTP
     round-trip for a hint nobody will read."""
-    scores = _client.score_ats(job_id, target_type=target_type, target_id=target_id)
+    scores = _client.score_ats(
+        job_id,
+        target_type=target_type,
+        target_id=target_id,
+        include_other_countries=include_other_countries,
+    )
     recommendation = workflow.rank_bases(scores)
+    # With a target_id the caller named the resume, so the country rule did not
+    # choose anything and there is nothing to report. The lookup is read-only
+    # and follows scores that already landed, so a failure is `null`, not an error.
+    countries: dict[str, Any] = (
+        {}
+        if target_id
+        else {"countries": _best_effort_hint(lambda: _client.ats_candidates(job_id))}
+    )
     if brief:
-        return {"scores": scores, "recommendation": recommendation, "next": None}
+        return {"scores": scores, "recommendation": recommendation, **countries, "next": None}
     # Fetch the quick-tailor profile ONLY when it can actually be shown. It fills
     # exactly one thing — the quick_tailor option's `detail` — so fetching it with
     # hints off, or under a profile that never registers quick_tailor (hunt), is a
@@ -1472,6 +1520,7 @@ def score_ats(
     return {
         "scores": scores,
         "recommendation": recommendation,
+        **countries,
         "next": _best_effort_hint(compose),
     }
 
@@ -1516,7 +1565,9 @@ def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = False
     it never changes scores or which gaps exist.
 
     Response is the session plus a `next` next-step hint (null when hints are off
-    or unavailable)."""
+    or unavailable). `base_anchors` are the base's emphasis hints (countries,
+    role, company, focus), not evidence; the anchor company is not this
+    application's employer."""
     session = _client.create_tailoring_session(job_id, base_resume, enrich=enrich)
     return {**session, "next": _session_hint(session)}
 
@@ -1605,7 +1656,9 @@ def get_tailoring_session(tailoring_session_id: str) -> Any:
     hand-made resolutions never do): verified evidence the resolver pre-applied.
     To retract one, resend its gap_id with action "skip" via resolve_gaps.
     Unresolved gaps are those in gaps_json with no entry in resolutions_json;
-    tailor_session consumes the saved resolutions."""
+    tailor_session consumes the saved resolutions. `base_anchors` are the base's
+    emphasis hints (countries, role, company, focus), not evidence; the anchor
+    company is not this application's employer."""
     return _client.get_tailoring_session(tailoring_session_id)
 
 
@@ -1825,7 +1878,8 @@ def get_final_review(proposal_id: str) -> Any:
     same-company+title proposal was already submitted (relevant to the user's
     approval decision). `flags` lists the job's recorded form answers worth a second look
     (record_filled_answers): question, source, answer (an EEO one carries eeo_answered
-    instead) and each flag's reason."""
+    instead) and each flag's reason. `base_country.eligible` is false when the resume being
+    sent is set for other countries than the job's."""
     return _client.get_final_review(proposal_id)
 
 
