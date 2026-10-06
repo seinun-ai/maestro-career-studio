@@ -1,12 +1,28 @@
 #!/usr/bin/env bash
 # Background one loopback worker, with a disk-backed model cache.
+# --watchdog is for supervisors: it declines while stop.sh has paused maintenance.
 set +x
 set -euo pipefail
 umask 077
 # shellcheck source=common.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
 
+watchdog=0
+for arg in "$@"; do
+    case "$arg" in
+        --watchdog) watchdog=1 ;;
+        *) native_error 'Usage: start.sh [--watchdog]' ;;
+    esac
+done
+
 native_private_home
+if paused_since="$(native_paused_since)"; then
+    if (( watchdog )); then
+        printf '%s\n' "Maestro is paused for maintenance since $paused_since; not starting. Run start.sh to resume."
+        exit 0
+    fi
+    native_clear_pause  # a manual start resumes
+fi
 if native_running; then
     native_error 'Native backend is already running.'
 fi

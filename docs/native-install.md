@@ -37,19 +37,22 @@ REPO="$HOME/maestro-career-studio"          # your clone
 "$REPO/backend/scripts/native/setup.sh"     # install, once; safe to rerun
 "$REPO/backend/scripts/native/start.sh"     # start in the background
 "$REPO/backend/scripts/native/health.sh"    # print memory; exit 0 when healthy
-"$REPO/backend/scripts/native/stop.sh"      # stop, including any helper
+"$REPO/backend/scripts/native/stop.sh"      # stop, including any helper; pauses the watchdog
 ```
 
 - **setup** creates `MAESTRO_HOME` (mode 700) with its folders, a Python
   environment in `$MAESTRO_HOME/venv`, and a `maestro.env` file if none exists.
   It installs the backend with the MCP extra, then migrates the database.
   Set `PYTHON` if `python3.12` is not on your PATH. Rerunning keeps your keys.
-- **start** refuses to run twice. It loads `maestro.env`, starts one backend on
+- **start** refuses to run twice. `start.sh --watchdog` is for supervisors: it
+  declines while maintenance is paused (see "Maintenance"). It loads `maestro.env`, starts one backend on
   `127.0.0.1:8001` (change it with `MAESTRO_PORT`), writes `backend.pid`, and
   waits up to 30 seconds for `/health`. Logs go to `$MAESTRO_HOME/logs/backend.log`.
 - **stop** sends TERM, waits 10 seconds, then KILL. It succeeds when nothing runs.
+  It also pauses the watchdog; `stop.sh --no-pause` stops without that.
 - **health** prints the backend's memory as one line of JSON and exits 0. It
-  exits 1 when the backend is stopped or unhealthy.
+  exits 1 when the backend is stopped or unhealthy, and says so when it is
+  paused for maintenance.
 
 ## What the slim settings do
 
@@ -85,16 +88,17 @@ REPO="$HOME/maestro-career-studio"          # your clone
 
 ## Keep it running
 
-`start.sh` returns as soon as the backend is up, and `health.sh || start.sh` is
-safe to repeat: `start.sh` refuses when it is already running. Any supervisor
-can use that pair.
+`start.sh` returns as soon as the backend is up, and `health.sh || start.sh --watchdog`
+is safe to repeat: `start.sh` refuses when it is already running, and
+`--watchdog` makes it wait while you do maintenance. Any supervisor can use that
+pair.
 
 ### Watchdog cron (works where systemd is unavailable)
 
 ```cron
 MAESTRO_HOME=/home/agent/maestro
-*/5 * * * * /home/agent/maestro-career-studio/backend/scripts/native/health.sh >/dev/null 2>&1 || /home/agent/maestro-career-studio/backend/scripts/native/start.sh >/dev/null 2>&1
-@reboot /home/agent/maestro-career-studio/backend/scripts/native/start.sh >/dev/null 2>&1
+*/5 * * * * /home/agent/maestro-career-studio/backend/scripts/native/health.sh >/dev/null 2>&1 || /home/agent/maestro-career-studio/backend/scripts/native/start.sh --watchdog >/dev/null 2>&1
+@reboot /home/agent/maestro-career-studio/backend/scripts/native/start.sh --watchdog >/dev/null 2>&1
 ```
 
 ### systemd (user unit)
@@ -112,13 +116,17 @@ Type=forking
 Environment=MAESTRO_HOME=%h/maestro
 PIDFile=%h/maestro/backend.pid
 ExecStart=%h/maestro-career-studio/backend/scripts/native/start.sh
-ExecStop=%h/maestro-career-studio/backend/scripts/native/stop.sh
+ExecStop=%h/maestro-career-studio/backend/scripts/native/stop.sh --no-pause
 Restart=on-failure
 RestartSec=10
 
 [Install]
 WantedBy=default.target
 ```
+
+systemd is the supervisor here, so the unit does not use `--watchdog`, and its
+stop uses `--no-pause` so a reboot does not leave the pause marker behind. For
+maintenance, run `systemctl --user stop maestro`, then `systemctl --user start maestro`.
 
 Then `systemctl --user enable --now maestro`. Run `loginctl enable-linger $USER`
 once so it starts at boot without a login.
@@ -137,11 +145,21 @@ Save as `~/Library/LaunchAgents/maestro.backend.plist`, then
   <dict><key>MAESTRO_HOME</key><string>/Users/agent/maestro</string></dict>
   <key>ProgramArguments</key>
   <array><string>/bin/bash</string><string>-c</string>
-  <string>R=/Users/agent/maestro-career-studio/backend/scripts/native; $R/health.sh || $R/start.sh</string></array>
+  <string>R=/Users/agent/maestro-career-studio/backend/scripts/native; $R/health.sh || $R/start.sh --watchdog</string></array>
   <key>RunAtLoad</key><true/>
   <key>StartInterval</key><integer>300</integer>
 </dict></plist>
 ```
+
+### Maintenance: swap the database or update
+
+`stop.sh` pauses the watchdog. It leaves a marker file, `$MAESTRO_HOME/maintenance`
+(mode 0600, holding the UTC time), so the next watchdog tick prints that Maestro is
+paused and starts nothing. `start.sh` removes the marker and starts, so a manual
+start resumes. To swap the database, run `stop.sh`, swap the file, then run
+`start.sh`. For a plain restart that should not pause, run
+`stop.sh --no-pause && start.sh`. While paused, `health.sh` says so and still
+exits 1. A reboot keeps the pause, because the `@reboot` line also uses `--watchdog`.
 
 ## Connect an agent
 
@@ -245,7 +263,7 @@ VM has about 640 MB available, no swap, and a browser the agent drives during ru
 1. **Install.** The agent clones the repository, then runs `setup.sh` with
    `MAESTRO_HOME=$HOME/maestro`. If `python3.12` is missing, install it first.
 2. **Base resumes.** A fresh install has none. Copy your base resume JSON files
-   into `$MAESTRO_HOME/base_resumes/`, then restart with `stop.sh` and `start.sh`.
+   into `$MAESTRO_HOME/base_resumes/`, then restart with `stop.sh --no-pause` and `start.sh`.
    The backend reads that folder at startup. Each file name, without `.json`,
    becomes the resume's name. Or have the agent create one with the
    `create_base_resume` MCP tool, which needs no restart.
@@ -254,7 +272,8 @@ VM has about 640 MB available, no swap, and a browser the agent drives during ru
    typed into a chat or a command line.
 4. **Supervision.** User systemd may be unavailable on the VM, so the watchdog
    cron line above does the job. It also restarts the backend after an
-   out-of-memory kill.
+   out-of-memory kill. For an update or a database swap, `stop.sh` pauses it and
+   `start.sh` resumes (see "Maintenance").
 5. **Connect.** The app registers the stdio command above as an MCP server. The
    agent starts it for a run and kills it afterward.
 6. **Browser.** Attended applications open the browser on the same machine. It is
