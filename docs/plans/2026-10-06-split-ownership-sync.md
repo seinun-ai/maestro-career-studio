@@ -537,6 +537,9 @@ FastAPI's default 422 echoes the request `input`, which here would be bundle con
   no application, answer `kept: "laptop"` and store nothing; the remote then drops its job
   (Task 11). Otherwise store the replica with
   `raw_text_hash = sha256("replica:" + job_id)` and answer `kept: "both"`.
+  `apply_job` raises `DuplicateJob` again on every later re-apply of a kept-both replica (the hash
+  column is unique), so rewrite the bundle's hash the same way before every apply of a job already
+  stored with a rewritten hash (Task 8 review).
 - `POST /api/sync/ownership` with `{job_ids}` → `{job_id: owner_label}` for reconcile, where
   owner_label is "home", "remote" or "gone".
 - `GET /api/sync/requests` → home's `origin="local"` pending requests for jobs the remote owns.
@@ -600,7 +603,10 @@ FastAPI's default 422 echoes the request `input`, which here would be bundle con
 6. **Push own jobs:** owned here with `sync_rev > acked_own`, in pages, then `POST jobs`. On
    `kept: "laptop"` duplicates, delete the local job and its files. `acked_own` becomes the highest
    local `sync_rev` among the bundles pushed, read before the POST, and is saved only after a 2xx.
-7. **Pull home jobs:** `GET jobs?since=since_home` in pages, then `apply_job` as replicas, then
+7. **Pull home jobs** (a `DuplicateJob` on pull — a home job whose hash matches a remote-owned
+   job — follows the same rule from the remote's side: the laptop's job wins unless the remote's has
+   progressed, then keep both with the replica's hash rewritten; a job too large to export or apply
+   (over 25 MB) is skipped with a counted reason and never stops the round; Task 8 review): `GET jobs?since=since_home` in pages, then `apply_job` as replicas, then
    advance `since_home`.
 8. **Requests both ways** (Task 6 review: a local pending request for a job that became owned here,
    e.g. after a take-over, is applied locally instead of sent; a request on a job the laptop has
