@@ -795,7 +795,7 @@ def test_a_done_setup_step_says_done_in_words():
 
 _ALPHA_FILL = re.compile(r"(?<![:\w-])(bg|border|ring)-(primary|destructive)/[\d\[]")
 # A ratchet, not a sweep (visual-language plan, Task 4): the count can only go down.
-_ALPHA_FILL_CEILING = 40
+_ALPHA_FILL_CEILING = 39
 
 
 def test_alpha_fills_of_primary_and_destructive_only_shrink():

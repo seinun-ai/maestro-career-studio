@@ -191,3 +191,12 @@ def test_preview_thumbnail_shows_a_skeleton_until_the_image_loads():
     assert "<Skeleton" in src and "onLoad" in src and "onError" in src and "No PDF yet" not in src
     # A cached image settles before hydration: handle its cached failure as well as its cached success.
     assert "else setFailedSrc(src)" in src and "img.naturalWidth > 0" in src
+
+
+def test_analytics_draws_status_mix_and_trend():
+    src = _read("components/analytics/analytics-overview.tsx")
+    assert "SegmentedBar" in src and "Sparkline" in src
+    assert 'name="Applications by status"' in src and "ScoreBar" in src
+    assert 'label="Applied per day, last 28 days"' in src
+    assert "bg-primary/10" not in _read("components/analytics/agent-pipeline-card.tsx")
+    assert "bg-primary h-full rounded-full" in _read("components/analytics/agent-pipeline-card.tsx")

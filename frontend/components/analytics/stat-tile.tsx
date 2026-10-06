@@ -21,6 +21,7 @@ export function StatTile({
   value,
   sub,
   icon,
+  children,
   className,
 }: {
   label: string;
@@ -28,6 +29,8 @@ export function StatTile({
   sub?: string;
   /** A glyph that already means this tile's thing, beside the label. Decorative: the label names it. */
   icon?: ReactNode;
+  /** A graphic under the sub line (a Sparkline); it carries its own accessible name. */
+  children?: ReactNode;
   className?: string;
 }) {
   return (
@@ -42,6 +45,7 @@ export function StatTile({
       {sub ? (
         <p className="text-body-small text-muted-foreground mt-0.5">{sub}</p>
       ) : null}
+      {children ? <div className="mt-2">{children}</div> : null}
     </div>
   );
 }
