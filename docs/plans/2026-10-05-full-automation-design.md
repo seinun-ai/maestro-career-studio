@@ -9,8 +9,8 @@ merged.
 
 The owner's end state: "our application should support a fully automated job application if
 that's user's wish, with appropriate settings to enable or disable." Phase 4 lets the user's own
-agent apply without a per-application yes when a job passes every check, and lets that agent run
-24/7 on another machine with its own copy of Maestro as the main copy, mirrored to the laptop.
+agent apply without a per-application yes when a job passes every check, Running the agent 24/7 on another
+machine is part of the goal, but its sync mechanism is deferred (Part 4).
 
 ## Owner decisions
 
@@ -33,7 +33,7 @@ agent apply without a per-application yes when a job passes every check, and let
 - **Out of the design on purpose:** how the agent handles CAPTCHAs, mail, sign-in codes or how it
   reaches the user. That happens outside Maestro. The prompt only says: park the job and ask the
   user.
-- **Bot copy:** inside phase 4. Transport is a shared folder the user picks.
+- **Bot copy and sync:** deferred, undecided (Part 4).
 
 ## Part 1: The switch and the job-site login
 
@@ -96,7 +96,7 @@ only for job-site accounts.
 - **Copy that changes on purpose:** the Connected agents explainer (the full-automation
   exception), the Apply card's never line when On, `agent-apply-execution` (points unattended runs
   to `apply-auto`), the agent-apply playbook (an unattended section), SECURITY.md and PRIVACY.md
-  (the password file; snapshots).
+  (the password file).
 - **Tests:** first a pin that the server refuses past the daily cap (none exists today). Then the
   setting round trip; the password file (mode, never in a GET, absent from exports and
   snapshots); `get_job_site_login` and `auto` refused while Off; `apply_kind` flips;
@@ -104,41 +104,24 @@ only for job-site accounts.
   check of the switch, dialog and password field.
 - **Public repo:** examples use made-up companies (Acme, Globex), never real ones.
 
-## Part 4: The bot's copy is the main one; the laptop mirrors it
+## Part 4: A bot-run copy and sync — UNDECIDED (deferred 2026-10-05)
 
-**On the bot (the working copy):**
-- `SNAPSHOT_DIR` (env; mounted into Docker) names the shared folder (any synced folder: Google
-  Drive, Dropbox, iCloud).
-- After each `record_run`, at most once per 15 minutes, and from a **Create snapshot now** button
-  in Settings, the backend writes `maestro-snapshot-<UTC>/` there:
-  - `maestro_cs.sqlite3` made with SQLite's own backup (consistent under WAL);
-  - `applications/`, `base_resumes/`, `kb_documents/`, and `settings/` except `settings/secrets/`;
-  - `manifest.json`: schema revision, app version, created time, source host name, sha256 of
-    every file.
-- The newest 3 snapshots are kept; a snapshot is written to a temp name and renamed when complete,
-  so a reader never sees a half-written one.
+The owner deferred this: "leave the sync mechanism alone undecided, we will figure out later."
+Parts 1–3 work from any one machine and do not depend on it. What was learned, for the later
+design:
 
-**On the laptop (the mirror):**
-- `scripts/pull-snapshot.sh` (and `scripts/install-pull-agent.sh`, a macOS LaunchAgent running it
-  every 15 minutes while the laptop is awake). For a snapshot newer than the last import it:
-  1. verifies every checksum;
-  2. refuses a schema revision newer than the laptop's code ("update this Maestro first");
-  3. if the laptop's database changed since the last import, keeps it as
-     `data/backups/laptop-edits-<time>.sqlite3` and says so;
-  4. backs up the current database (keeping one previous copy), stops the backend, swaps the
-     files in, starts the backend (its startup migration upgrades an older snapshot), and records
-     the import in `data/mirror.json` (snapshot time, source host).
-- **Mirror banner:** while `data/mirror.json` exists, `/api/version` reports it and the web app
-  shows "This is a copy of your bot's Maestro, last synced …. Changes here are replaced at the
-  next sync."
-
-**Privacy:** a snapshot is a whole-database backup the user sends to a folder they choose; filled
-answers and EEO answers travel with it, and that folder's provider can read them.
-`{#inv-filled-answers-local}` gains this as its one named exception; PRIVACY.md says it plainly.
-The job-site password never leaves the bot.
-
-**Docs:** "Run Maestro next to an always-on agent" (Docker on the bot's machine, `SNAPSHOT_DIR`,
-MCP on that machine, the pull agent on the laptop).
+- The always-on agent's VM accepts no inbound connections, runs no Docker (native Python and Node
+  only; only its home directory persists), uses MCP over stdio or HTTP, keeps a real browser with
+  a credential vault, and can make an outgoing SSH connection once the user allows it in the
+  agent app's permissions.
+- Options explored: (a) snapshots to a shared folder and a laptop mirror; (b) one copy on the bot
+  reached by a reverse SSH tunnel (puts all Maestro data on the bot's machine); (c) the laptop
+  keeps the only copy, the bot connects in when reachable, and hunting buffers into an add-only
+  outbox; (d) for applying while the laptop sleeps: a bot working copy with a read-only profile
+  replica, jobs checked out to the bot and checked back in, and add-only found jobs and mail
+  events. The owner leaned to (d) but left it undecided.
+- Known prerequisite for any remote-agent setup: the resume upload step stages the PDF on the
+  machine running the backend; a browser on another machine needs it staged on its own side.
 
 ## Out of scope
 

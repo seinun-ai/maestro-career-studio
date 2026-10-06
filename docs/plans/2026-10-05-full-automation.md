@@ -5,13 +5,11 @@
 
 **Goal:** An opt-in Off/On setting lets the user's own agent submit an application without a
 per-application yes when its final review is clean; a job-site login is kept in a local file and
-handed to the agent over MCP; and a 24/7 agent's own Maestro copy writes snapshots to a shared
-folder that the laptop imports as a mirror.
+handed to the agent over MCP. (The 24/7 bot-copy sync is deferred: design Part 4.)
 
 **Owner's goal (2026-10-05), phase 4 of four:** "our application should support a fully automated
 job application if that's user's wish, with appropriate settings to enable or disable." Plus:
-an always-on agent app may "install a copy of this application and work 24/7", and "whenever my
-laptop is on it takes a safe snapshot of the database … and copies it over."
+the always-on agent app setup is deferred (design Part 4).
 
 **Design:** `docs/plans/2026-10-05-full-automation-design.md` (approved; approach 2, the prompt
 decides). It is the source of truth for scope.
@@ -25,10 +23,6 @@ decides). It is the source of truth for scope.
   does not judge eligibility; it keeps enforcing the daily cap, the blocklist and the
   already-applied check on every `approved`, as today.
 - The job-site login lives in `settings/secrets/job-site-login.json` (mode 0600), never in the DB.
-- Snapshots: `services/snapshots.py` writes `SNAPSHOT_DIR/maestro-snapshot-<UTC>/` (SQLite backup
-  + files + manifest) after a recorded run (throttled) or on demand. `scripts/pull_snapshot.py`
-  imports the newest one on the laptop; `/api/version` reports `mirror` and the web app shows a
-  banner.
 
 **Tech stack:** FastAPI + Pydantic v2 + SQLAlchemy 2 (SQLite) + alembic; FastMCP + httpx (respx in
 tests); Next.js 16 + React 19 + react-query; frontend pinned by `backend/tests/test_frontend_*.py`
@@ -40,7 +34,7 @@ and `node --test` for pure `lib/*.test.ts`; host scripts in Python 3 stdlib + ba
 
 | Area | Freedom | Rule |
 |---|---|---|
-| Setting name `full_automation`, channel `auto`, MCP tool `get_job_site_login`, file path `settings/secrets/job-site-login.json`, env `SNAPSHOT_DIR`, snapshot folder name `maestro-snapshot-<UTC>`, `manifest.json` keys, `data/mirror.json`, the apply-auto skill id, invariant ids, every pinned UI/prompt string below | **Fixed** | Tests, docs and the owner's decisions depend on them. |
+| Setting name `full_automation`, channel `auto`, MCP tool `get_job_site_login`, file path `settings/secrets/job-site-login.json`, the apply-auto skill id, invariant ids, every pinned UI/prompt string below | **Fixed** | Tests, docs and the owner's decisions depend on them. |
 | Layout inside the design system, helper decomposition, private names, comment wording | **Moderate** | Each new function under cc 10, ≤ 50 lines, ≤ 5 params (`self`/`ctx` count). Prefer parametrized tests. Add, never replace, a pin the plan names. |
 | Anything that touches the Companion (`extension/`), tailoring, filling, knock-out verdicts, or loosens a test you did not write beyond the pins named here | **Stop and report** | Prepare the patch, do not apply it. |
 
@@ -97,14 +91,7 @@ and `node --test` for pure `lib/*.test.ts`; host scripts in Python 3 stdlib + ba
 4. `GET /api/automations` now reads one setting (`peek_settings`, which never writes). The
    "DB-free" wording in its docstring and in `docs/entities/others.md` becomes "reads only the
    full-automation switch".
-5. The laptop always keeps the database it is about to replace (`data/backups/laptop-before-sync-<time>.sqlite3`,
-   newest 3), instead of detecting edits: WAL checkpoints change bytes without edits, so detection
-   would be unreliable. The banner says changes here are replaced at the next sync.
-6. Snapshots run in a FastAPI `BackgroundTasks` after `POST /api/agent-runs`, throttled to one per
-   15 minutes by the newest snapshot's time; `POST /api/snapshots` (Create snapshot now) ignores
-   the throttle. Both are no-ops returning 409 when `SNAPSHOT_DIR` is unset.
-7. A snapshot newer than the laptop's code = its `schema_revision` has no file in the laptop's
-   `backend/migrations/versions/`. The pull refuses it.
+5–7. (Removed with Tasks 7–9: snapshots and the laptop mirror are deferred.)
 
 ---
 
@@ -424,7 +411,7 @@ class JobSiteLoginStatus(BaseModel):
 """The job-site login: one email and password used only for job-site accounts.
 
 SYSTEM.md {#inv-job-site-password-local}: kept in settings/secrets/job-site-login.json (0600,
-directory 0700), never in the database, exports, telemetry, logs or snapshots. The web API
+directory 0700), never in the database, exports, telemetry or logs. The web API
 reports only whether a password is set; the agent gets it over MCP only while full automation is
 on (routers/proposals.py job-site-login).
 """
@@ -787,277 +774,15 @@ eligibility check; everything else here still applies."
 
 ---
 
-### Task 7: Snapshots on the bot
+### Tasks 7–9: REMOVED (2026-10-05)
 
-**Files:**
-- Modify: `backend/app/config.py` (`snapshot_dir: Path | None = None`, env `SNAPSHOT_DIR`)
-- Create: `backend/app/services/snapshots.py`, `backend/app/routers/snapshots.py`
-- Modify: `backend/app/main.py` (router), `backend/app/routers/agent_runs.py` (BackgroundTasks)
-- Test: `backend/tests/test_snapshots.py`
-
-**Step 1: Failing tests**
-
-```python
-"""Snapshots for a bot-run main copy (design Part 4)."""
-
-import hashlib
-import json
-import sqlite3
-
-import pytest
-from fastapi.testclient import TestClient
-
-from app.config import settings
-from app.main import app
-from app.services import job_site_login, snapshots
-
-client = TestClient(app)
-
-
-@pytest.fixture
-def dirs(tmp_path, monkeypatch):
-    for name in ("applications_dir", "base_resumes_dir", "kb_documents_dir", "settings_dir"):
-        (tmp_path / name).mkdir()
-        monkeypatch.setattr(settings, name, tmp_path / name)
-    (tmp_path / "applications_dir" / "a.pdf").write_bytes(b"%PDF-1")
-    (tmp_path / "settings_dir" / "auto_apply.json").write_text("{}")
-    job_site_login.write("ada@example.com", "pw-one-long")
-    monkeypatch.setattr(settings, "snapshot_dir", tmp_path / "shared")
-    return tmp_path
-
-
-def test_a_snapshot_has_a_consistent_db_files_and_a_manifest_but_no_secrets(dirs):
-    folder = snapshots.create()
-    manifest = json.loads((folder / "manifest.json").read_text())
-    assert {"schema_revision", "app_version", "created_at", "source_host", "files"} <= set(manifest)
-    for rel, digest in manifest["files"].items():
-        assert hashlib.sha256((folder / rel).read_bytes()).hexdigest() == digest
-    db = sqlite3.connect(folder / "maestro_cs.sqlite3")
-    assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-    assert db.execute("SELECT version_num FROM alembic_version").fetchone()[0] == manifest["schema_revision"]
-    assert (folder / "applications" / "a.pdf").exists()
-    assert not any("secrets" in rel for rel in manifest["files"])
-    assert not (folder / "settings" / "secrets").exists()
-
-
-def test_only_the_newest_three_are_kept(dirs, monkeypatch):
-    for _ in range(5):
-        snapshots.create()
-    assert len(list((dirs / "shared").glob("maestro-snapshot-*"))) == 3
-
-
-def test_the_run_trigger_is_throttled(dirs):
-    assert snapshots.maybe_snapshot() is not None
-    assert snapshots.maybe_snapshot() is None  # within 15 minutes
-
-
-def test_create_now_is_409_without_a_snapshot_dir(monkeypatch):
-    monkeypatch.setattr(settings, "snapshot_dir", None)
-    assert client.post("/api/snapshots").status_code == 409
-    assert client.get("/api/snapshots/status").json()["enabled"] is False
-```
-
-(Folder names must sort by time and stay unique within a second: use
-`maestro-snapshot-<YYYYMMDDTHHMMSS.ffffffZ>`.)
-
-**Step 2: Run** — FAIL.
-
-**Step 3: Implement** `services/snapshots.py` (≤ 5 params per function, cc < 10 each):
-
-```python
-"""Snapshots: a bot-run main copy writes itself to a shared folder the laptop imports
-(docs/plans/2026-10-05-full-automation-design.md, Part 4).
-
-A snapshot is a whole-database backup the user sends to a folder they chose (SYSTEM.md
-{#inv-filled-answers-local} names this exception). The job-site login never goes into one.
-"""
-
-import hashlib
-import json
-import os
-import shutil
-import socket
-import sqlite3
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
-
-from sqlalchemy import text
-
-from app.config import DB_FILENAME, settings
-from app.db import engine, sqlite_path
-
-KEEP = 3
-THROTTLE = timedelta(minutes=15)
-PREFIX = "maestro-snapshot-"
-TREES = {"applications": "applications_dir", "base_resumes": "base_resumes_dir",
-         "kb_documents": "kb_documents_dir", "settings": "settings_dir"}
-
-
-def enabled() -> bool:
-    return settings.snapshot_dir is not None
-
-
-def _copy_db(dest: Path) -> None:
-    # The live database is the engine's, not data_dir/DB_FILENAME (DATABASE_URL may point
-    # elsewhere, and the test suite's engine does).
-    src = sqlite3.connect(sqlite_path(str(engine.url)))
-    dst = sqlite3.connect(dest)
-    with dst:
-        src.backup(dst)
-    src.close()
-    dst.close()
-
-
-def _copy_trees(dest: Path) -> None:
-    for name, attr in TREES.items():
-        source = Path(getattr(settings, attr))
-        if source.exists():
-            shutil.copytree(source, dest / name,
-                            ignore=shutil.ignore_patterns("secrets") if name == "settings" else None)
-
-
-def _manifest(folder: Path) -> dict:
-    files = {str(p.relative_to(folder)): hashlib.sha256(p.read_bytes()).hexdigest()
-             for p in sorted(folder.rglob("*")) if p.is_file()}
-    with engine.connect() as conn:
-        revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    return {"schema_revision": revision, "app_version": os.environ.get("APP_VERSION", "dev"),
-            "created_at": datetime.now(UTC).isoformat(), "source_host": socket.gethostname(),
-            "files": files}
-
-
-def _prune(root: Path) -> None:
-    for old in sorted(root.glob(f"{PREFIX}*"))[:-KEEP]:
-        shutil.rmtree(old, ignore_errors=True)
-
-
-def create() -> Path:
-    """Write one complete snapshot (temp name, renamed when complete) and prune old ones."""
-    root = Path(settings.snapshot_dir)
-    root.mkdir(parents=True, exist_ok=True)
-    name = PREFIX + datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
-    work = root / f".{name}.partial"
-    work.mkdir()
-    _copy_db(work / DB_FILENAME)
-    _copy_trees(work)
-    (work / "manifest.json").write_text(json.dumps(_manifest(work), indent=2))
-    final = root / name
-    work.rename(final)
-    _prune(root)
-    return final
-
-
-def latest_time() -> datetime | None:
-    if not enabled():
-        return None
-    folders = sorted(Path(settings.snapshot_dir).glob(f"{PREFIX}*"))
-    if not folders:
-        return None
-    stamp = folders[-1].name.removeprefix(PREFIX)
-    return datetime.strptime(stamp, "%Y%m%dT%H%M%S.%fZ").replace(tzinfo=UTC)
-
-
-def maybe_snapshot() -> Path | None:
-    """After a recorded run: a snapshot unless one was written in the last 15 minutes."""
-    if not enabled():
-        return None
-    last = latest_time()
-    if last is not None and datetime.now(UTC) - last < THROTTLE:
-        return None
-    return create()
-```
-
-(Verify `DB_FILENAME` and the engine import against `app/config.py` and `app/db.py`; the manifest
-must exclude itself, which holds because it is written after `_manifest` runs.)
-
-`routers/snapshots.py`: `GET /api/snapshots/status` → `{enabled, last_at}`; `POST /api/snapshots`
-→ 409 "Set SNAPSHOT_DIR to turn snapshots on." when disabled, else `{path_name, created_at}`
-(folder name only, never the host path).
-
-`routers/agent_runs.py` `post_agent_run` gains `background: BackgroundTasks` and
-`background.add_task(snapshots.safe_maybe_snapshot)`, where `safe_maybe_snapshot` wraps
-`maybe_snapshot` in `try/except Exception` + `logger.warning` (a failed snapshot never fails the
-run record).
-
-**Step 4: Run** the new tests and `tests/test_agent_runs_router.py` — PASS.
-
-**Step 5: Commit** — `feat(snapshots): a bot copy writes snapshots to SNAPSHOT_DIR`
+Snapshots, the `/api/version` mirror field and the laptop pull script are out: the owner left the
+bot-copy sync mechanism undecided (design Part 4). Task numbers below are kept so the dry-run
+notes still line up.
 
 ---
 
-### Task 8: `/api/version` reports a mirror
-
-**Files:** Modify `backend/app/routers/version.py`; Test `backend/tests/test_version_router.py` (append)
-
-**Step 1: Failing test**
-
-```python
-def test_version_reports_a_mirror_when_data_mirror_json_exists(tmp_path, monkeypatch):
-    from app.config import settings
-    monkeypatch.setattr(settings, "data_dir", tmp_path)
-    assert client.get("/api/version").json()["mirror"] is None
-    (tmp_path / "mirror.json").write_text(
-        '{"source_host": "bot", "snapshot_at": "2026-10-05T10:00:00+00:00", '
-        '"synced_at": "2026-10-05T10:05:00+00:00"}')
-    assert client.get("/api/version").json()["mirror"]["source_host"] == "bot"
-```
-
-(Use the file's existing `client`; if `data_dir` also moves the DB, monkeypatch a dedicated
-`mirror_path()` helper instead.)
-
-**Step 3: Implement** — `class MirrorInfo(BaseModel): source_host: str; snapshot_at: str;
-synced_at: str`; `VersionInfo.mirror: MirrorInfo | None = None`; read
-`settings.data_dir / "mirror.json"` (missing or malformed → `None`).
-
-**Step 5: Commit** — `feat(version): report a laptop mirror`
-
----
-
-### Task 9: The laptop pull (`scripts/pull_snapshot.py`) and its login agent
-
-**Files:**
-- Create: `scripts/pull_snapshot.py` (Python 3 stdlib only), `scripts/install-pull-agent.sh`
-- Test: `backend/tests/test_pull_snapshot.py`
-
-**Behavior** (`python3 scripts/pull_snapshot.py --source <shared folder> [--repo <repo>] [--dry-run]`):
-1. Newest complete `maestro-snapshot-*` in `--source` (ignore `.partial`); if its `created_at`
-   is not newer than `data/mirror.json`'s `snapshot_at`, exit 0 "up to date".
-2. Verify every sha256 in `manifest.json`; any mismatch → exit 1, nothing touched.
-3. Refuse when `backend/migrations/versions/<schema_revision>_*.py` is missing → exit 2
-   "This snapshot comes from a newer Maestro; update this copy first (scripts/update.sh)."
-4. Back up the current DB with SQLite's backup API to
-   `data/backups/laptop-before-sync-<UTC>.sqlite3`; keep the newest 3 of that prefix.
-5. `docker compose stop backend` (skipped with `--no-docker`, used by tests).
-6. Remove `data/maestro_cs.sqlite3{,-wal,-shm}`, copy the snapshot DB in; replace
-   `applications/`, `base_resumes/`, `kb_documents/` with the snapshot's; copy `settings/`
-   files from the snapshot without touching `settings/secrets/`.
-7. Write `data/mirror.json` `{source_host, snapshot_at, synced_at}`.
-8. `docker compose start backend` (skipped with `--no-docker`).
-
-Functions ≤ 50 lines, cc < 10; `main()` only parses args and calls them.
-
-**Tests** (call the module's functions via `importlib` from `scripts/`; build a fake snapshot in
-`tmp_path` with a real tiny SQLite DB and a manifest; `--no-docker`):
-- imports a valid snapshot: files replaced, `mirror.json` written, a `laptop-before-sync-*` backup made;
-- a tampered file → exit 1 and the laptop DB unchanged;
-- an unknown schema revision → exit 2 and nothing changed;
-- an older-or-equal snapshot → "up to date", nothing changed;
-- `settings/secrets/` on the laptop survives an import;
-- only the newest 3 backups are kept.
-
-`scripts/install-pull-agent.sh <shared folder>`: writes
-`~/Library/LaunchAgents/com.maestro-cs.pull-snapshot.plist` running
-`/usr/bin/python3 <repo>/scripts/pull_snapshot.py --source <folder>` every 900 s
-(`StartInterval`) and at load, logs to `<repo>/logs/pull-snapshot.log`, then
-`launchctl bootstrap gui/$(id -u)` it; `--uninstall` removes it. Prints what it did. A pytest
-checks the script is valid bash (`bash -n`) and that the plist template names `StartInterval`
-900 and the log path.
-
-**Commit** — `feat(mirror): pull the newest snapshot onto the laptop, plus a login agent`
-
----
-
-### Task 10: Settings — the full-automation card, the job-site login, snapshots
+### Task 10: Settings — the full-automation card and the job-site login
 
 **Files:**
 - Create: `frontend/components/settings/full-automation-section.tsx`
@@ -1082,34 +807,25 @@ checks the script is valid bash (`bash -n`) and that the plist template names `S
   **Save** (PUT; send `password` only when typed), **Clear** (DELETE). Hint:
   "Used only for job-site accounts. Your agent gets it while full automation is on, so it passes
   through your agent's AI provider. Use it for nothing else."
-- **Snapshots**: from `GET /api/snapshots/status`: when `enabled`, "Last snapshot: <time ago>" or
-  "No snapshot yet" and **Create snapshot now** (POST); when not, "Off. Set SNAPSHOT_DIR to have
-  this copy write snapshots for a mirror."
 
 **Pins** (source tests, style of `test_frontend_automations.py`): the PUT path and
 `full_automation`; the dialog title and **Turn on** (use the design system's `useConfirm`
 dialog if it fits, else `Dialog`); `"placeholder=" not in` the card; `type="password"` and
 `autoComplete="new-password"`; the password is never rendered back (no `value={...password`
-from the GET); the snapshot status path and both copies; vocabulary, design-token, leave-guard and
+from the GET); vocabulary, design-token, leave-guard and
 query-error-state ratchets pass (pin any `LoadErrorState` caller in
 `test_frontend_query_error_states.py`).
 
-**Commit** — `feat(web): the full automation card, the job-site login and snapshots`
+**Commit** — `feat(web): the full automation card and the job-site login`
 
 ---
 
-### Task 11: The mirror banner and the Connected agents copy
+### Task 11: The Connected agents copy
 
 **Files:**
-- Create: `frontend/components/mirror-banner.tsx`; Modify `frontend/app/layout.tsx` (next to
-  `VersionBanner`), `frontend/lib/types.ts` (`VersionInfo.mirror`)
 - Modify: `frontend/components/settings/connected-agents-card.tsx`
 - Modify: `backend/tests/test_frontend_agent_words.py` (the `_CAN` item and the honesty-nuance
-  pins, updated on purpose), new pins for the banner
-
-**Banner** (`role="status"`, the version banner's tokens): "This is a copy of your bot's Maestro,
-last synced {time ago}. Changes here are replaced at the next sync." Renders nothing while
-loading, on error, or when `mirror` is null.
+  pins, updated on purpose)
 
 **Connected agents copy:**
 - `_CAN` item becomes "Fill in and submit applications you queued, after your yes, or on their
@@ -1122,7 +838,7 @@ loading, on error, or when `mirror` is null.
 Update the pins in `test_frontend_agent_words.py` to exactly these strings (and the comment above
 `_CAN`).
 
-**Commit** — `feat(web): the mirror banner; agents can submit on their own in full automation mode`
+**Commit** — `feat(web): agents can submit on their own in full automation mode`
 
 ---
 
@@ -1130,7 +846,7 @@ Update the pins in `test_frontend_agent_words.py` to exactly these strings (and 
 
 **Files:** `CONTRIBUTING.md`, `SYSTEM.md`, `SECURITY.md`, `PRIVACY.md`,
 `docs/playbooks/agent-apply.md`, `docs/entities/others.md` (auto-apply, consent, Automations
-paragraph), new `docs/always-on-agent.md`, `CHANGELOG.md`, tool count 85 → 86 everywhere it is
+paragraph), `CHANGELOG.md`, tool count 85 → 86 everywhere it is
 stated (`git grep -n "85 tools\|all 85\|Every tool (85)"` outside `docs/plans` must come back
 empty). Known mentions: KNOWN_ISSUES.md:29, README.md:52/130/453, SYSTEM.md:118,
 backend/mcp_server/README.md:24/144, backend/mcp_server/codex_config.example.toml:27,
@@ -1142,20 +858,15 @@ mcpb/manifest.json:53.
 - **SYSTEM.md** (groom first, moving verbatim detail that already has a home in `docs/entities/*`,
   never dropping a rule-bearing clause; gate must pass at ≤ 1000):
   - §6 new `{#inv-job-site-password-local}` and `{#inv-auto-consent-gated}` (with their pinning
-    tests named), `{#inv-filled-answers-local}` gains its one exception: snapshots the user sends
-    to `SNAPSHOT_DIR`.
+    tests named).
   - §7 MCP bullet: `record_consent` stores the user's yes/no, or in full automation mode the
     agent's automatic yes (channel `auto`); `get_job_site_login`.
 - **SECURITY.md / PRIVACY.md:** where the job-site login lives, how it reaches the agent (through
-  its AI provider), and that snapshots carry the whole database to the user's chosen folder.
+  its AI provider).
 - **Playbook:** an "Unattended (full automation)" section pointing to `apply-auto`.
-- **`docs/always-on-agent.md`:** run Maestro next to an always-on agent: Docker on that machine,
-  `SNAPSHOT_DIR` (a `docker-compose.override.yml` example mounting the shared folder at
-  `/app/snapshots` and setting `SNAPSHOT_DIR=/app/snapshots`), MCP on that machine, turning on
-  full automation, and on the laptop `scripts/install-pull-agent.sh <shared folder>`.
 - **CHANGELOG** under Unreleased, user-facing.
 
-**Commit** — `docs: full automation mode, the job-site login, snapshots and the laptop mirror`
+**Commit** — `docs: full automation mode and the job-site login`
 
 ---
 
@@ -1178,9 +889,5 @@ mcpb/manifest.json:53.
      returns the login and writes a `login_shared` event; without the header 403.
    - With On, `mark_submitted` channel `auto` with a note marks an approved job submitted; with
      Off it 409s; without a note it 409s.
-   - Snapshots: with `SNAPSHOT_DIR` set, POST a run → a snapshot appears; Create snapshot now
-     works; `settings/secrets` is absent from it. Run `scripts/pull_snapshot.py --no-docker`
-     against a second throwaway repo layout → files swapped, `mirror.json` written; that stack's
-     web app shows the mirror banner.
    - Screenshots at 1280 and 1024, light and dark.
 5. Scope: `git diff <base>..HEAD --stat` shows nothing under `extension/`.
