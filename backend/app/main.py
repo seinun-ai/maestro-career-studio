@@ -19,6 +19,7 @@ from app.routers import (
     base_resumes,
     career_kb,
     chat,
+    countries,
     explore,
     exports,
     filled_answers,
@@ -188,6 +189,7 @@ async def llm_provider_error_handler(request: Request, exc: LLMProviderError):
 
 
 app.include_router(role_categories.router)
+app.include_router(countries.router)
 app.include_router(jobs.router)
 app.include_router(ats.router)
 app.include_router(tailoring_sessions.router)
