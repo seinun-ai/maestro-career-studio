@@ -153,6 +153,8 @@ def temporary_backend(port: int, base_resume: Path):
 def require_free_port(port: int) -> None:
     """Refuse to profile or mutate an unrelated backend already on this port."""
     with socket.socket() as probe:
+        # A just-stopped backend leaves TIME_WAIT sockets; a live listener still fails.
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(("127.0.0.1", port))
         except OSError:

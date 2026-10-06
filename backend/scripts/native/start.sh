@@ -14,21 +14,26 @@ native_load_env
 [[ -x "$NATIVE_PYTHON" ]] || native_error 'Native venv is missing; run setup.sh.'
 native_free_port || native_error 'Native backend port is unavailable; check MAESTRO_PORT locally.'
 cd -- "$NATIVE_BACKEND"
-: > "$MAESTRO_HOME/logs/backend.log"
-chmod 600 "$MAESTRO_HOME/logs/backend.log"
+log="$MAESTRO_HOME/logs/backend.log"
+# Keep the last run's log: a watchdog restart must not wipe the crash traceback.
+if [[ -e "$log" || -L "$log" ]]; then
+    mv -f -- "$log" "$log.1"
+fi
+: > "$log"
+chmod 600 "$log"
 # exec keeps the pidfile's PID; the session also owns any spawned helpers.
 nohup "$NATIVE_PYTHON" -c \
     'import os, sys; os.setsid(); os.execv(sys.executable, [sys.executable, "-m", "uvicorn", *sys.argv[1:]])' \
     app.main:app --host 127.0.0.1 --port "$MAESTRO_PORT" --workers 1 \
-    > "$MAESTRO_HOME/logs/backend.log" 2>&1 < /dev/null &
+    > "$log" 2>&1 < /dev/null &
 NATIVE_PID=$!
-trap 'native_stop; exit 1' INT TERM
+trap 'native_abort_launch; exit 1' INT TERM
 if ! printf '%s\n' "$NATIVE_PID" > "$MAESTRO_HOME/backend.pid"; then
     native_signal KILL
     native_error 'Cannot create the native pidfile.'
 fi
 if ! native_wait_for_health; then
-    native_stop
+    native_abort_launch
     native_error 'Native backend did not become healthy within 30 seconds.'
 fi
 trap - INT TERM

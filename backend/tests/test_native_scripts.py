@@ -50,14 +50,13 @@ def dependency(kind):
 '''
 
 FAKE_VENV = '''
-import shlex, sys
+import sys
 from pathlib import Path
 from native_test_support import record
 record("venv")
 target = Path(sys.argv[-1]) / "bin/python"
 target.parent.mkdir(parents=True)
-target.write_text("#!/bin/bash\\nexec " + shlex.quote(sys.executable) + ' "$@"\\n')
-target.chmod(0o700)
+target.symlink_to(sys.executable)  # argv[0] stays the venv path, as in a real venv
 '''
 
 FAKE_UVICORN = '''
@@ -111,10 +110,14 @@ def build_opener(*handlers):
     return Opener()
 
 class PortProbe:
+    options = ()
     def __enter__(self): return self
     def __exit__(self, *args): return False
+    def setsockopt(self, level, name, value):
+        self.options += ((level, name, value),)
     def bind(self, address):
         assert address[0] == '127.0.0.1' and 0 < address[1] <= 65535
+        assert (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) in self.options
         record('port')
         if os.environ.get('NATIVE_TEST_FAIL') == 'port':
             raise OSError(os.environ.get('OPENAI_API_KEY', ''))
@@ -139,6 +142,11 @@ if sys.argv[1:3] == ['-o', 'stat=']:
     if not alive(int(sys.argv[-1])):
         raise SystemExit(1)
     print('S')
+elif sys.argv[1:3] == ['-o', 'args=']:
+    import subprocess
+    real = subprocess.run(['/bin/ps', *sys.argv[1:]], capture_output=True, text=True)
+    sys.stdout.write(real.stdout)
+    raise SystemExit(real.returncode)
 else:
     assert sys.argv[1:] == ['-eo', 'pgid=,stat=']
     records = Path(os.environ['NATIVE_TEST_RECORDS'])
@@ -390,6 +398,98 @@ def test_stale_pidfile_is_replaced_on_start(native_home):
     assert result.returncode == 0, result.stderr
     wait_for_file(ctx.records / "uvicorn.json")
     assert (ctx.home / "backend.pid").read_text().strip() == str(read_record(ctx, "uvicorn")["pid"])
+
+
+def time_wait_port():
+    """A loopback port with no listener whose last connection sits in TIME_WAIT."""
+    with socket.socket() as server:
+        # Like uvicorn: Linux only lets a rebind reuse TIME_WAIT left by a SO_REUSEADDR listener.
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+        client = socket.create_connection(("127.0.0.1", port))
+        accepted, _ = server.accept()
+        accepted.close()
+        client.recv(1)
+        client.close()
+    return port
+
+
+def probe_free_port(port):
+    env = {"PATH": os.defpath, "HOME": str(NATIVE), "MAESTRO_PORT": str(port),
+           "NATIVE_PYTHON": sys.executable}
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; native_free_port', "native-port-probe", str(NATIVE / "common.sh")],
+        env=env, capture_output=True, text=True).returncode
+
+
+def test_free_port_check_ignores_time_wait_but_still_sees_a_live_listener():
+    assert probe_free_port(time_wait_port()) == 0
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        assert probe_free_port(listener.getsockname()[1]) == 1
+
+
+@pytest.fixture
+def unrelated_process():
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                               start_new_session=True)
+    yield process
+    process.kill()
+    process.wait()
+
+
+def test_start_treats_a_reused_pid_as_stale_and_leaves_that_process_alone(native_home, unrelated_process):
+    ctx = native_home
+    setup_home(ctx)
+    (ctx.home / "backend.pid").write_text(f"{unrelated_process.pid}\n")
+    result = run_script("start.sh", ctx.env)
+    assert result.returncode == 0, result.stderr
+    wait_for_file(ctx.records / "uvicorn.json")
+    assert (ctx.home / "backend.pid").read_text().strip() == str(read_record(ctx, "uvicorn")["pid"])
+    assert unrelated_process.poll() is None
+
+
+def test_stop_and_health_never_signal_a_reused_pid(native_home, unrelated_process):
+    ctx = native_home
+    setup_home(ctx)
+    pidfile = ctx.home / "backend.pid"
+    pidfile.write_text(f"{unrelated_process.pid}\n")
+    assert run_script("health.sh", ctx.env).returncode == 1
+    assert not pidfile.exists(), "health.sh must drop a pidfile that is not ours"
+    pidfile.write_text(f"{unrelated_process.pid}\n")
+    assert run_script("stop.sh", ctx.env).returncode == 0
+    assert not pidfile.exists()
+    assert unrelated_process.poll() is None  # neither the process nor its group was signalled
+
+
+@pytest.mark.skipif(Path("/proc").exists(), reason="/proc supplies the command line without ps")
+def test_missing_ps_without_proc_fails_with_a_clear_message(native_home, tmp_path):
+    ctx = native_home
+    setup_home(ctx)
+    (ctx.home / "backend.pid").write_text(f"{os.getpid()}\n")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "dirname").symlink_to(shutil.which("dirname"))
+    env = {**ctx.env, "PATH": str(tools)}
+    result = subprocess.run([shutil.which("bash"), str(NATIVE / "health.sh")], env=env,
+                            capture_output=True, text=True)
+    assert result.returncode == 1 and "ps" in result.stderr
+
+
+def test_start_keeps_the_previous_log_as_backend_log_1(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    log = ctx.home / "logs/backend.log"
+    log.write_text("Traceback: previous crash\n")
+    result = run_script("start.sh", ctx.env)
+    assert result.returncode == 0, result.stderr
+    wait_for_file(ctx.records / "uvicorn.json")
+    assert (ctx.home / "logs/backend.log.1").read_text() == "Traceback: previous crash\n"
+    assert "previous crash" not in log.read_text()
+    assert log.stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.parametrize("failure", ["uvicorn", "port"])

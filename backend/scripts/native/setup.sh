@@ -19,7 +19,7 @@ fi
     >/dev/null 2>&1 || native_error 'The native venv needs a working Python 3.12+.'
 
 # Installer/migration output can contain authenticated URLs or env values.
-"$NATIVE_PYTHON" -m pip install -e "$NATIVE_BACKEND[mcp]" >/dev/null 2>&1 \
+"$NATIVE_PYTHON" -m pip install -e "${NATIVE_BACKEND}[mcp]" >/dev/null 2>&1 \
     || native_error 'Native dependency installation failed; check package access locally.'
 cd -- "$NATIVE_BACKEND"
 "$NATIVE_PYTHON" -m alembic upgrade head >/dev/null 2>&1 \

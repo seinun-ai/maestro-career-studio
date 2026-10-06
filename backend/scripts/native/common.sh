@@ -5,6 +5,7 @@ set -euo pipefail
 umask 077
 
 NATIVE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC2034  # read by setup.sh and start.sh, which source this file
 NATIVE_BACKEND="$(cd -- "$NATIVE_DIR/../.." && pwd)"
 MAESTRO_HOME="${MAESTRO_HOME:-$HOME/maestro}"
 case "$MAESTRO_HOME" in
@@ -62,6 +63,7 @@ native_load_env() {
         || native_error 'Cannot load maestro.env; check its shell syntax locally.'
     set -a
     # Local, trusted bash assignments. Suppress even syntax-error diagnostics.
+    # shellcheck source=/dev/null
     if ! source "$home/maestro.env" >/dev/null 2>&1; then
         set +a
         native_error 'Cannot load maestro.env; check its shell syntax locally.'
@@ -85,16 +87,47 @@ native_read_pid() {
     (( NATIVE_PID > 1 && NATIVE_PID <= 2147483647 ))
 }
 
+native_require_ps() {
+    command -v ps >/dev/null 2>&1 \
+        || native_error 'This system has no /proc and no ps command; install procps.'
+}
+
+native_inspect_pid() {
+    # Sets NATIVE_PID_STATE and NATIVE_PID_ARGS from /proc, else ps; fails if the pid is gone.
+    NATIVE_PID_STATE="" NATIVE_PID_ARGS=""
+    if [[ -d "/proc/$NATIVE_PID" ]]; then
+        local key value
+        while read -r key value _; do
+            if [[ "$key" == State: ]]; then NATIVE_PID_STATE="$value"; break; fi
+        done < "/proc/$NATIVE_PID/status" 2>/dev/null || return 1
+        NATIVE_PID_ARGS="$(tr '\0' ' ' < "/proc/$NATIVE_PID/cmdline" 2>/dev/null)" || return 1
+    else
+        native_require_ps
+        NATIVE_PID_STATE="$(ps -o stat= -p "$NATIVE_PID" 2>/dev/null)" || return 1
+        NATIVE_PID_ARGS="$(ps -o args= -p "$NATIVE_PID" 2>/dev/null)" || return 1
+        NATIVE_PID_STATE="${NATIVE_PID_STATE//[[:space:]]/}"
+    fi
+}
+
 native_pid_alive() {
     kill -0 "$NATIVE_PID" 2>/dev/null || return 1
-    local state
-    state="$(ps -o stat= -p "$NATIVE_PID" 2>/dev/null)" || return 1
-    state="${state//[[:space:]]/}"
-    [[ -n "$state" && "$state" != Z* ]]
+    native_inspect_pid || return 1
+    [[ -n "$NATIVE_PID_STATE" && "$NATIVE_PID_STATE" != Z* ]]
+}
+
+native_pid_ours() {
+    # After a reboot a pidfile can name an unrelated process; only our uvicorn counts.
+    native_pid_alive || return 1
+    local home
+    home="$(cd -- "$MAESTRO_HOME" 2>/dev/null && pwd)" || home="$MAESTRO_HOME"
+    [[ "$NATIVE_PID_ARGS" == "$home/venv/bin/python -m uvicorn app.main:app"* ]]
 }
 
 native_running() {
-    native_read_pid && native_pid_alive
+    native_read_pid || return 1
+    native_pid_ours && return 0
+    rm -f -- "$MAESTRO_HOME/backend.pid" 2>/dev/null || true  # stale: never signal it
+    return 1
 }
 
 native_group_alive() {
@@ -109,18 +142,33 @@ native_signal() {
         || kill "-$1" "$NATIVE_PID" 2>/dev/null || true
 }
 
-native_stop() {
-    if native_read_pid; then
-        native_signal TERM
-        local deadline=$((SECONDS + 10))
-        while native_group_alive || native_pid_alive; do
-            (( SECONDS < deadline )) || break
-            sleep 0.2
-        done
-        native_signal KILL
-    fi
+native_terminate() {
+    # TERM the group of a pid the caller has proven is ours, then KILL after ten seconds.
+    native_signal TERM
+    local deadline=$((SECONDS + 10))
+    while native_group_alive || native_pid_alive; do
+        (( SECONDS < deadline )) || break
+        sleep 0.2
+    done
+    native_signal KILL
+}
+
+native_remove_pidfile() {
     rm -f -- "$MAESTRO_HOME/backend.pid" 2>/dev/null \
         || native_error 'Cannot remove the native pidfile.'
+}
+
+native_abort_launch() {
+    # start.sh's own child: trusted even before it has exec'd into uvicorn.
+    native_terminate
+    native_remove_pidfile
+}
+
+native_stop() {
+    if native_read_pid && native_pid_ours; then
+        native_terminate
+    fi
+    native_remove_pidfile
 }
 
 native_free_port() {
@@ -130,6 +178,8 @@ import sys
 
 try:
     with socket.socket() as probe:
+        # A just-stopped backend leaves TIME_WAIT sockets; a live listener still fails.
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         probe.bind(("127.0.0.1", int(sys.argv[1])))
 except OSError:
     raise SystemExit(1) from None
@@ -178,9 +228,9 @@ PY
 native_wait_for_health() {
     local deadline=$((SECONDS + 30))
     while (( SECONDS < deadline )); do
-        native_running || return 1
+        native_pid_alive || return 1  # our own launch: not yet exec'd uvicorn is fine
         if native_get /health >/dev/null; then
-            native_running
+            native_pid_alive
             return
         fi
         sleep 0.2

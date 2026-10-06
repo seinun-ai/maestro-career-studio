@@ -30,14 +30,14 @@ def memory_sources(monkeypatch, tmp_path):
     return memory, status
 
 
-def test_health_memory_reads_linux_current_rss_even_when_peak_lags(memory_sources):
+def test_health_memory_never_reports_a_peak_below_the_current_rss(memory_sources):
     _, status = memory_sources
     status.write_text("Name:\tpython\nVmPeak:\t2097152 kB\nVmRSS:\t  157337 kB\n")
 
     response = client.get("/health/memory")
 
     assert response.status_code == 200
-    assert response.json() == {"rss_mb": 153.6, "peak_mb": 128.5, "platform": "linux"}
+    assert response.json() == {"rss_mb": 153.6, "peak_mb": 153.6, "platform": "linux"}
 
 
 @pytest.mark.parametrize("contents", [None, "Name:\tpython\nVmSize:\t2097152 kB\n"])

@@ -20,4 +20,6 @@ def peak_mb() -> float:
 
 
 def readout() -> dict:
-    return {"rss_mb": rss_mb(), "peak_mb": peak_mb(), "platform": sys.platform}
+    rss = rss_mb()
+    # ru_maxrss can lag VmRSS on Linux, so the peak is never reported below the current reading.
+    return {"rss_mb": rss, "peak_mb": max(peak_mb(), rss), "platform": sys.platform}

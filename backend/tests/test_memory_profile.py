@@ -321,6 +321,27 @@ def test_occupied_port_is_refused_before_contacting_an_existing_backend(monkeypa
         module.run_profile(port=8711, cycles=1)
 
 
+def test_free_port_check_ignores_time_wait_but_still_sees_a_live_listener():
+    module = profiler()
+    with socket.socket() as server:
+        # Like uvicorn: Linux only lets a rebind reuse TIME_WAIT left by a SO_REUSEADDR listener.
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+        client = socket.create_connection(("127.0.0.1", port))
+        accepted, _ = server.accept()
+        accepted.close()  # the closing side keeps the port in TIME_WAIT
+        client.recv(1)
+        client.close()
+    module.require_free_port(port)  # a just-freed port must not look busy
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        with pytest.raises(RuntimeError, match="port"):
+            module.require_free_port(listener.getsockname()[1])
+
+
 def test_main_prints_table_and_writes_only_readings(tmp_path, monkeypatch, capsys):
     module = profiler()
     rows = [{"cycle": 0, "step": "startup", "rss_mb": 144.0, "peak_mb": 150.0,
