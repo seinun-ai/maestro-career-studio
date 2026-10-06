@@ -46,7 +46,7 @@ def _home_env(root, key_file):
     """Neither migrations nor the backend may inherit the test worker's database."""
     env = os.environ.copy()
     env.pop("TEST_DATABASE_URL", None)
-    for name in ("data", "settings", "applications", "base_resumes", "kb_documents", "logs"):
+    for name in ("data", "settings", "applications", "base_resumes", "kb_documents", "logs", "exports"):
         directory = root / name
         directory.mkdir(parents=True, exist_ok=True)
         env[f"{name.upper()}_DIR"] = str(directory)

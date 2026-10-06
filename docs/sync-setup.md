@@ -181,8 +181,10 @@ and the Companion follow the same rule.
 
 If Full automation is On in Settings, queuing a job on the laptop offers it to
 the bot. The job shows "Going to your bot" until the next round. If you do not
-press **Keep it here**, the bot takes it and owns it from then on. A job you
-queue while full automation is Off stays on the laptop. The bot hunts and
+press **Keep it here**, the bot takes it and owns it from then on. Only the
+laptop offers, only for a job you queue (accepted) there, and only while Full
+automation is On. A job you queue while it is Off stays on the laptop, and
+switching it Off takes back every offer the bot has not picked up yet. The bot hunts and
 applies to its own jobs whether or not the laptop is awake.
 
 ## 7. Your agent and `sync_now`

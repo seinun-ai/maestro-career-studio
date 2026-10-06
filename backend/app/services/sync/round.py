@@ -344,7 +344,8 @@ def _apply_pairing_profile(ctx: _Ctx) -> None:
             row.value = json.dumps(state)
         for job_id in ctx.shared_jobs:
             job = db.get(Job, job_id)
-            job.owner_machine, job.handover = ctx.home_id, None
+            if job is not None:  # deleted here since the pairing check
+                job.owner_machine, job.handover = ctx.home_id, None
         staged = True
 
     event.listen(ctx.db, "before_commit", stage)

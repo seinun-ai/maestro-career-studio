@@ -9,6 +9,7 @@ import socket
 import time
 import uuid
 from datetime import timedelta
+from select import select as wait_readable
 from types import SimpleNamespace
 
 import pytest
@@ -141,6 +142,22 @@ def test_unworked_shared_jobs_become_replicas_without_an_overwrite_flag(world, h
     result = first(world)
     assert result["ok"] and result["steps"]["push"]["sent"] == 0
     assert result["steps"]["push"]["refused"] == 0
+    assert world.remote.get(models.Job, shared).owner_machine == world.machine_id("home")
+
+
+def test_pairing_skips_a_shared_job_that_vanished_before_the_commit(world, home, clock,
+                                                                   monkeypatch):
+    shared = uuid.uuid4()
+    with world.building("home"):
+        simple_job(world.home, job_id=shared)
+    with world.building("remote"):
+        simple_job(world.remote, job_id=shared)
+    found = sync_round._shared_jobs
+    monkeypatch.setattr(sync_round, "_shared_jobs", lambda ctx: [*found(ctx), uuid.uuid4()])
+
+    result = first(world)
+
+    assert result["ok"]
     assert world.remote.get(models.Job, shared).owner_machine == world.machine_id("home")
 
 
@@ -366,6 +383,64 @@ def test_real_keep_here_cancels_an_offer_before_the_round(machines):
         assert job.owner_machine is None and job.handover is None
 
 
+def home_job_state(machines, job_id):
+    with machines.home.session() as db:
+        job = db.get(models.Job, job_id)
+        return job.owner_machine, job.handover
+
+
+def assert_handed_to_remote(machines, job_id, result):
+    assert result["ok"] and result["steps"]["handovers"]["taken"] == 1
+    job = machines.db.get(models.Job, job_id)
+    assert (job.owner_machine, job.handover) == (None, None)
+    assert home_job_state(machines, job_id) == (status.machine_id(machines.db), None)
+
+
+def test_real_switching_full_automation_off_withdraws_an_offer_before_the_round(machines):
+    ids = real_job(machines, "home")
+    queue_on_home(machines, ids.job)
+    assert home_job_state(machines, ids.job) == (None, "offered")
+    off = machines.home.http.put("/api/settings/full-automation", json={"value": False})
+    assert require_ok(off)["value"]["full_automation"] is False
+    assert home_job_state(machines, ids.job) == (None, None)
+    editable = machines.home.http.patch(f"/api/applications/{ids.application}",
+                                        json={"notes": "Still mine"})
+    assert editable.status_code == 200
+    result = machines.round()
+    assert result["ok"] and result["steps"]["handovers"]["taken"] == 0
+    assert home_job_state(machines, ids.job) == (None, None)
+    assert machines.db.get(models.Job, ids.job).owner_machine != status.machine_id(machines.db)
+
+
+def test_real_a_queue_request_from_the_remote_is_offered_and_handed_over_in_one_round(machines):
+    assert machines.round()["ok"]
+    ids = real_job(machines, "home")
+    require_ok(machines.home.http.put("/api/settings/full-automation", json={"value": True}))
+    proposal = require_ok(machines.home.http.post("/api/proposals", json={"job_id": str(ids.job)}), 201)
+    assert machines.round()["ok"]
+    queued = machines.remote_http.patch(f"/api/proposals/{proposal['id']}", json={
+        "status": "accepted", "consent": {"channel": "frontend"}})
+    require_ok(queued, 202)
+    assert home_job_state(machines, ids.job) == (None, None)
+
+    assert_handed_to_remote(machines, ids.job, machines.round())
+
+    with machines.home.session() as db:
+        assert db.get(models.ApplicationProposal, uuid.UUID(proposal["id"])).status == "accepted"
+
+
+def test_real_a_bulk_queue_on_home_is_offered_and_handed_over_at_the_next_round(machines):
+    ids = real_job(machines, "home")
+    require_ok(machines.home.http.put("/api/settings/full-automation", json={"value": True}))
+    proposal = require_ok(machines.home.http.post("/api/proposals", json={"job_id": str(ids.job)}), 201)
+    bulk = require_ok(machines.home.http.post("/api/proposals/bulk-transition", json={
+        "ids": [proposal["id"]], "status": "accepted", "consent": {"channel": "frontend"}}))
+    assert bulk["results"][0]["ok"] and bulk["results"][0]["status"] == "accepted"
+    assert home_job_state(machines, ids.job) == (None, "offered")
+
+    assert_handed_to_remote(machines, ids.job, machines.round())
+
+
 def test_real_work_here_returns_a_remote_job(machines):
     assert machines.round()["ok"]
     ids = real_job(machines)
@@ -517,17 +592,32 @@ def test_real_oversized_body_is_a_413_before_it_is_read(machines):
     assert machines.home.http.get("/api/sync/hello", headers=headers_for(machines)).status_code == 200
 
 
-def test_real_busy_home_is_a_409_and_the_round_says_so(machines):
-    assert machines.round()["ok"]
-    stalled = raw_request(machines, "POST /api/sync/runs HTTP/1.1\r\nContent-Length: 50", b'{"runs"')
-    try:
-        deadline = time.monotonic() + 10
-        busy = None
+def _stall_home(machines):
+    """Open a request that is accepted and then holds home's lock while its body never finishes.
+
+    A poll can take the lock before the stalled request does; the stalled request is then
+    refused as busy and answers at once. A reply on its socket means it holds nothing, so it
+    is closed and opened again until one is waiting on the lock while a poll sees 409.
+    """
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        stalled = raw_request(machines, "POST /api/sync/runs HTTP/1.1\r\nContent-Length: 50",
+                              b'{"runs"')
         while time.monotonic() < deadline:
             busy = machines.home.http.get("/api/sync/hello", headers=headers_for(machines))
+            if wait_readable([stalled], [], [], 0)[0]:
+                break  # refused as busy before it held the lock
             if busy.status_code == 409:
-                break
-            time.sleep(0.05)
+                return stalled, busy
+            wait_readable([stalled], [], [], 0.05)  # waits for an event, not a fixed sleep
+        stalled.close()
+    pytest.fail("Home never reported busy while a request was stalled.")
+
+
+def test_real_busy_home_is_a_409_and_the_round_says_so(machines):
+    assert machines.round()["ok"]
+    stalled, busy = _stall_home(machines)
+    try:
         assert busy.status_code == 409 and busy.json()["reason"] == "busy"
         result = machines.round()
         assert result["outcome"] == "transient"

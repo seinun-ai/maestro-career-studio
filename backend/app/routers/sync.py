@@ -36,7 +36,7 @@ from app.models.job import Job
 from app.models.sync import SyncRequest, SyncState, SyncTombstone
 from app.models.types import utcnow
 from app.schemas.agent_runs import MAX_DIGEST, MAX_JOB_IDS, RunCountKey, RunOutcome
-from app.services.sync import duplicates, hooks, jobs_bundle, profile_bundle, request_apply, requests, status
+from app.services.sync import duplicates, hooks, jobs_bundle, offers, profile_bundle, request_apply, requests, status
 from app.services.sync import round as sync_round
 
 logger = logging.getLogger(__name__)
@@ -495,6 +495,8 @@ def post_request_results(peer: Peer, db: DB, body: Body):
 
 @router.get("/handover/offers")
 def get_offers(peer: Peer, db: DB):
+    if not offers.offers_open(db):
+        return {"bundles": [], "skipped": 0}
     ids = list(db.scalars(select(Job.id).where(
         jobs_bundle.owned_clause(db), Job.handover == "offered").order_by(Job.sync_rev, Job.id)))
     bundles, skipped = _export(db, ids)

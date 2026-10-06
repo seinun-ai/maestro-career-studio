@@ -20,7 +20,8 @@ from app.config import settings
 from app.db import Base, get_db, make_engine
 from app.main import app
 from app.routers import sync as sync_router
-from app.services import job_site_login, proposals
+from app.schemas.auto_apply import AutoApplySettings
+from app.services import auto_apply_settings, job_site_login, proposals
 from app.services.sync import duplicates, files, jobs_bundle, request_apply, status
 from tests.sync.test_jobs_bundle import SENTINEL, WHEN, build_job
 
@@ -1073,7 +1074,8 @@ def test_a_result_with_another_status_is_a_422(client, auth):
 # --------------------------------------------------------------------------------- handovers
 
 
-def _offer(db, roots, tag="offer"):
+def _offer(db, roots, tag="offer", switch=True):
+    auto_apply_settings.set_settings(AutoApplySettings(full_automation=switch), db)
     ids = home_job(db, roots, tag=tag)
     db.get(models.Job, ids.job).handover = "offered"
     db.commit()
@@ -1086,6 +1088,13 @@ def test_offers_are_the_bundles_of_offered_jobs_only(client, auth, db_session, r
     body = client.get("/api/sync/handover/offers", headers=auth).json()
     assert [b["job_id"] for b in body["bundles"]] == [offered.job.hex]
     assert body["bundles"][0]["handover"] == "offered"
+
+
+def test_no_offers_are_made_while_full_automation_is_off(client, auth, db_session, roots):
+    offered = _offer(db_session, roots, switch=False)
+    body = client.get("/api/sync/handover/offers", headers=auth).json()
+    assert body == {"bundles": [], "skipped": 0}
+    assert db_session.get(models.Job, offered.job).handover == "offered"
 
 
 def test_commit_gives_an_offered_job_to_the_remote(client, auth, db_session, roots, remote_id):

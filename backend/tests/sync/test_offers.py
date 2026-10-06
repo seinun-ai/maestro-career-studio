@@ -3,13 +3,16 @@
 import uuid
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.db import get_db
+from app.main import app
 from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
 from app.schemas.auto_apply import AutoApplySettings
 from app.services import auto_apply_settings, proposals
-from app.services.sync import status
+from app.services.sync import hooks, status
 
 CONSENT = {"channel": "frontend"}
 
@@ -87,3 +90,57 @@ def test_only_queueing_offers(db_session, sync_on, to):
     proposals.transition(db_session, proposal, to, consent=CONSENT)
     db_session.refresh(job)
     assert job.handover is None
+
+
+@pytest.fixture
+def client(db_session):
+    def override():
+        yield db_session
+    app.dependency_overrides[get_db] = override
+    yield TestClient(app)
+    app.dependency_overrides.pop(get_db, None)
+
+
+def _switch(client, on):
+    response = client.put("/api/settings/full-automation", json={"value": on})
+    assert response.status_code == 200 and response.json()["value"]["full_automation"] is on
+
+
+def test_switching_full_automation_on_then_queueing_offers_the_job(client, db_session, sync_on):
+    _switch(client, True)
+    assert _queue(db_session, _job(db_session)) == "offered"
+
+
+def test_switching_full_automation_off_withdraws_the_offer(client, db_session, sync_on):
+    _switch(client, True)
+    job = _job(db_session)
+    assert _queue(db_session, job) == "offered"
+    with pytest.raises(hooks.NotOwnedHere):
+        hooks.require_owned(db_session, job.id)
+    before = job.sync_rev
+
+    _switch(client, False)
+
+    db_session.refresh(job)
+    assert job.handover is None and job.owner_machine is None
+    assert job.sync_rev > before
+    hooks.require_owned(db_session, job.id)  # editable again
+    assert "sync_apply" not in db_session.info
+    assert auto_apply_settings.peek_settings(db_session).full_automation is False
+
+
+def test_switching_off_leaves_unoffered_jobs_alone(client, db_session, sync_on):
+    _switch(client, True)
+    plain, offered = _job(db_session), _job(db_session)
+    _queue(db_session, offered)
+    before = plain.sync_rev
+
+    _switch(client, False)
+
+    db_session.refresh(plain)
+    assert (plain.handover, plain.sync_rev) == (None, before)
+
+
+def test_switching_off_with_sync_off_changes_nothing_else(client, db_session):
+    _switch(client, True)
+    _switch(client, False)

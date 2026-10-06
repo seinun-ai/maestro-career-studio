@@ -26,7 +26,8 @@ from app.config import settings
 from app.db import Base, get_db, make_engine
 from app.main import app
 from app.routers import sync as sync_router
-from app.services import application_status, http_client
+from app.schemas.auto_apply import AutoApplySettings
+from app.services import application_status, auto_apply_settings, http_client
 from app.services.sync import duplicates, hooks, jobs_bundle, request_apply, requests, status
 from app.services.sync import round as sync_round
 from tests.sync.test_jobs_bundle import SENTINEL, WHEN, build_job
@@ -541,11 +542,17 @@ def test_a_deleted_home_job_is_deleted_here_but_never_an_own_job(world, home, cl
 # ---------------------------------------------------------------------------------- handovers
 
 
+def offer_from_home(world, job_id):
+    """Offered the way the laptop offers: full automation on, then the job flagged."""
+    with world.building("home"):
+        auto_apply_settings.set_settings(AutoApplySettings(full_automation=True), world.home)
+        world.home.get(models.Job, job_id).handover = "offered"
+        world.home.commit()
+
+
 def test_an_offer_committed_at_home_is_healed_when_the_reply_is_lost(world, home, clock):
     offered = lone_job(world, "home")
-    with world.building("home"):
-        world.home.get(models.Job, offered).handover = "offered"
-        world.home.commit()
+    offer_from_home(world, offered)
     home.lose_reply.add(("POST", "/api/sync/handover/commit"))
 
     assert go(world)["ok"] is False
@@ -565,9 +572,7 @@ def test_an_offer_committed_at_home_is_healed_when_the_reply_is_lost(world, home
 
 def test_an_offer_is_taken_and_owned_in_one_round(world, home, clock):
     offered = lone_job(world, "home")
-    with world.building("home"):
-        world.home.get(models.Job, offered).handover = "offered"
-        world.home.commit()
+    offer_from_home(world, offered)
 
     summary = go(world)
 
@@ -694,9 +699,7 @@ def test_a_request_on_a_job_the_laptop_has_offered_is_refused_and_the_job_still_
     assert go(world)["ok"]
     application = _application_of(world, "home", theirs)
     request_id = _notes_request(world, "remote", theirs, application.id, "too late")
-    with world.building("home"):
-        world.home.get(models.Job, theirs).handover = "offered"
-        world.home.commit()
+    offer_from_home(world, theirs)
 
     summary = go(world)
 

@@ -132,7 +132,7 @@ inv-flush-guard). Resume JSON/rendered files stay on disk (`base_resumes` row + 
 (docs/entities/job.md), nothing merges (inv-one-writer-ownership). The always-on copy drives: `sync.sh` (cron) or MCP `sync_now` asks its
 backend for a round (`POST /api/sync/round`, `services/sync/round.py`), which calls the laptop's `/api/sync/*` through an SSH forward
 (inv-sync-channel), one transaction per step; failures back off 5 to 30 minutes. Changes to the other copy's job wait as `sync_requests`;
-a laptop job queued with full automation on is offered to the always-on copy (`offers.mark_when_queued`).
+a laptop job is offered only when queued `accepted` on the laptop with full automation on (`offers.mark_when_queued`); switching it off withdraws offers.
 
 ## 4. Core entities and their lifecycles
 
@@ -438,7 +438,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   the always-on copy replaces on every round and never merges. A queue, skip, status or note change on the other copy's job is a
   `sync_requests` row ("Sent at the next sync") the OWNER applies under the normal rules (state machine, forward-only statuses, daily cap);
   anything else on it is refused. Only a handover moves ownership: `offered` (laptop to bot; set by `offers.mark_when_queued` when a job is
-  queued with full automation on, cancelled by **Keep it here**) or `returning` (bot to laptop on **Work on it here**, refused while the job
+  queued with full automation on, cancelled by **Keep it here** or by switching full automation off; `GET /api/sync/handover/offers` is empty while it is off) or `returning` (bot to laptop on **Work on it here**, refused while the job
   is `approved` or `submission_uncertain`). The same JD text on both copies keeps the laptop's job (`duplicates.py`). Without a key every
   job is owned here and every `/api/sync/*` route is a 404. Pinned by `tests/sync/test_guard.py` and `tests/sync/test_home_endpoints.py`.
 - **The flush guard is the ownership check, and it runs before disk.** `{#inv-flush-guard}` One SQLAlchemy `before_flush` hook

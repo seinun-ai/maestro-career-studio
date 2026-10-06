@@ -1,11 +1,18 @@
-"""Queueing a job with full automation on offers it to the always-on copy at the next round."""
+"""Queueing a job with full automation on offers it to the always-on copy at the next round.
 
+Switching full automation off withdraws every offer that has not moved yet.
+"""
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
 from app.services import auto_apply_settings
-from app.services.sync import status
+from app.services.sync import jobs_bundle, status
 
 
 def mark_when_queued(db: Session, prop: ApplicationProposal) -> None:
@@ -16,10 +23,39 @@ def mark_when_queued(db: Session, prop: ApplicationProposal) -> None:
     """
     if prop.status != "accepted" or not status.enabled() or status.is_remote():
         return
-    if not auto_apply_settings.peek_settings(db).full_automation:
+    if not offers_open(db):
         return
     job = db.get(Job, prop.job_id)
     if job is None or job.handover is not None:
         return
     if job.owner_machine in (None, status.machine_id(db)):
         job.handover = "offered"
+
+
+def offers_open(db: Session) -> bool:
+    """Whether this copy may hand jobs over: the user's switch is on."""
+    return auto_apply_settings.peek_settings(db).full_automation
+
+
+@contextmanager
+def withdrawing(db: Session) -> Iterator[None]:
+    """Clear `offered` on this copy's own jobs; the caller's commit saves the switch with them.
+
+    The ownership guard stands aside for the commit (an offered job is otherwise read-only), and
+    the normal hook still bumps each job's rev so the withdrawal syncs.
+    """
+    if not status.enabled() or status.is_remote():
+        yield
+        return
+    previous = db.info.get("sync_apply")
+    db.info["sync_apply"] = True
+    try:
+        for job in db.scalars(select(Job).where(jobs_bundle.owned_clause(db),
+                                                Job.handover == "offered")):
+            job.handover = None
+        yield
+    finally:
+        if previous is None:
+            db.info.pop("sync_apply", None)
+        else:
+            db.info["sync_apply"] = previous

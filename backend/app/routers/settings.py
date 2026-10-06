@@ -47,6 +47,7 @@ from app.services import (
     quick_tailor,
 )
 from app.services.llm import LLMProviderError
+from app.services.sync import offers as sync_offers
 
 
 class JevInfo(BaseModel):
@@ -295,7 +296,10 @@ def put_full_automation(
 ):
     current = _lock_auto_apply_settings(db)
     value = current.model_copy(update={"full_automation": payload.value})
-    return {"key": "auto_apply", "value": auto_apply_settings.set_settings(value, db)}
+    if payload.value:
+        return {"key": "auto_apply", "value": auto_apply_settings.set_settings(value, db)}
+    with sync_offers.withdrawing(db):  # off takes back every offer in the commit that saves it
+        return {"key": "auto_apply", "value": auto_apply_settings.set_settings(value, db)}
 
 
 @job_site_login_router.get("/job-site-login", response_model=JobSiteLoginStatus)
