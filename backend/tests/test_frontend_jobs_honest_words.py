@@ -94,8 +94,9 @@ def test_gap_counts_come_from_one_helper():
 def test_the_gap_page_and_score_tab_count_with_it():
     page = _read(_GAP_PAGE)
     assert page.count("gapCounts(") == 2  # the footer and each category
-    assert "</span> answered\n" in page and "{done} of" not in page
-    assert "{counts.open > 0 ? `${counts.open} open` : \"Nothing open\"}" in page
+    # The footer is a SegmentedBar (its legend keeps the words); a category says how many are handled.
+    assert 'name="Gap progress"' in page and "{done} of" not in page
+    assert "{counts.answered + counts.skipped}/{counts.total}" in page and "Nothing open" not in page
     panel = _read("components/ats-score-panel.tsx")
     assert "gapCounts(" in panel and "resolutions_json.length" not in panel
     # The count rides on ProgressCount above the button, so the button says only what it does.
@@ -113,10 +114,16 @@ def test_auto_filled_banner_names_the_job_s_own_words():
 def test_the_gap_page_names_the_ats_score_and_every_action():
     page = _read(_GAP_PAGE)
     assert "· ATS score before tailoring:" in page
-    intro = page[page.index("These gaps need your input.") :]
-    intro = intro[: intro.index("</p>")]
-    for action in ("Add keyword", "Answer", "Attach project", "Skip", "I can&apos;t confirm this"):
-        assert f'<span className="font-medium">{action}</span>' in intro, action
+    # Each action is explained once, on its own control (the tooltip and aria-describedby), not in a page paragraph.
+    assert "These gaps need your input." not in page
+    controls = _read("components/gap-analysis/resolution-controls.tsx")
+    hints = controls[controls.index("export const ACTION_HINTS") :]
+    hints = hints[: hints.index("};")]
+    for action in ("add_keyword", "user_input", "attach_project", "skip", "cannot_confirm"):
+        assert f"{action}:" in hints, action
+    labels = controls[controls.index("export const ACTION_LABELS") :]
+    for word in ("Add keyword", "Answer", "Attach project", "Skip", "I can't confirm this"):
+        assert f'"{word}"' in labels, word
     assert "→" not in page  # the score toast says "to"
     assert "`ATS score: ${base.composite.toFixed(1)} to ${tailored.composite.toFixed(1)}" in page
 

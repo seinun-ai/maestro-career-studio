@@ -334,7 +334,7 @@ def test_the_gap_page_says_done_and_gap_analysis():
     page = _read(_GAP_PAGE)
     assert '? "Not saved"' in page
     assert "Save failed" not in page
-    assert "</span> answered\n" in page
+    assert 'label: "answered"' in page
     assert "gaps addressed" not in page
     assert "This gap analysis is out of date because {staleReason}." in page
 
@@ -353,7 +353,7 @@ def test_longer_words_wrap_instead_of_squeezing():
     word per line beside Update score."""
     page = _read(_GAP_PAGE)
     assert 'className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2"' in page
-    assert "shrink-0 text-body-medium whitespace-nowrap tabular-nums" in page
+    assert 'className="shrink-0 whitespace-nowrap tabular-nums"' in page
     compare = _read("components/ats-compare-panel.tsx")
     assert 'CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2"' in compare
 

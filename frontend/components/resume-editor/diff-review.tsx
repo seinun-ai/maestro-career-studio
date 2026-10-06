@@ -4,6 +4,7 @@ import { SpellCheck, Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActorChip } from "@/components/visual";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import type {
   CoherenceFlag,
@@ -24,16 +25,15 @@ import { cn } from "@/lib/utils";
  * undo machinery, no second write path.
  */
 
-const PROVENANCE_LABELS: Record<ResumeDiffHunk["provenance"], string> = {
-  kb_auto: "From your career history",
-  user: "You",
-  llm: "AI",
-};
-
-const PROVENANCE_STYLES: Record<ResumeDiffHunk["provenance"], string> = {
-  kb_auto: "border-transparent bg-primary-container text-on-primary-container",
-  user: "border-transparent bg-surface-container text-foreground",
-  llm: "border-transparent bg-surface-container text-muted-foreground",
+// Each provenance as its register chip. "llm" is the AI glyph (Sparkles): it exists only for the legend,
+// since ProvenanceChip draws nothing for an llm hunk.
+const PROVENANCE_CHIPS: Record<
+  ResumeDiffHunk["provenance"],
+  { kind: "careerHistory" | "you" | "ai"; name?: string; title: string }
+> = {
+  kb_auto: { kind: "careerHistory", name: "From your career history", title: "Taken from your career history" },
+  user: { kind: "you", title: "From an answer you gave" },
+  llm: { kind: "ai", title: "Wording written by AI" },
 };
 
 /**
@@ -393,21 +393,8 @@ function ProvenanceChip({ value }: { value: ResumeDiffHunk["provenance"] }) {
   // (resume_diff.attribute): an edit made here, or a change in the base resume
   // after this copy was made, read as "AI". Unknown says nothing.
   if (value === "llm") return null;
-  return (
-    <Badge
-      variant="outline"
-      className={cn("shrink-0 text-body-small", PROVENANCE_STYLES[value])}
-      title={
-        value === "kb_auto"
-          ? "Taken from your career history"
-          : value === "user"
-            ? "From an answer you gave"
-            : "Wording written by AI"
-      }
-    >
-      {PROVENANCE_LABELS[value]}
-    </Badge>
-  );
+  const { kind, name, title } = PROVENANCE_CHIPS[value];
+  return <ActorChip kind={kind} name={name} title={title} />;
 }
 
 function HunkRow({

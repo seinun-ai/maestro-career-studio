@@ -17,6 +17,7 @@ import { TriangleAlert } from "lucide-react";
 
 import { GapCard } from "@/components/gap-analysis/gap-card";
 import {
+  ActionHints,
   buildPlacementTargets,
   enabledProjectNames,
   GapLocked,
@@ -24,12 +25,12 @@ import {
 } from "@/components/gap-analysis/resolution-controls";
 import { IconButton } from "@/components/icon-button";
 import { useConfirm } from "@/components/confirm-dialog";
-import { Badge } from "@/components/ui/badge";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { SegmentedBar } from "@/components/visual";
 import { couldnt, errorDetail, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { cn } from "@/lib/utils";
@@ -173,9 +174,15 @@ function CategorySection({
           )}
         />
         <span className="text-title-small">{category.title}</span>
-        <Badge variant={counts.open === 0 ? "default" : "secondary"}>
-          {counts.open > 0 ? `${counts.open} open` : "Nothing open"}
-        </Badge>
+        {/* Handled = answered or skipped; the check says nothing is left open. */}
+        <span
+          role="img"
+          aria-label={`${counts.answered + counts.skipped} of ${counts.total} handled`}
+          className="inline-flex items-center gap-1 text-label-medium tabular-nums"
+        >
+          {counts.open === 0 && <CircleCheck className="size-3.5 text-success" aria-hidden="true" />}
+          <span aria-hidden="true">{counts.answered + counts.skipped}/{counts.total}</span>
+        </span>
         <span className="text-muted-foreground ml-auto hidden truncate text-body-small sm:inline">
           {category.description}
         </span>
@@ -744,6 +751,7 @@ export default function TailorSessionPage({
         )}
       >
         <GapLocked value={tailorBusy}>
+        <ActionHints />
         {gapsJson.coverage_warning && (
           <div className="bg-warning-container text-on-warning-container animate-fade-rise flex items-start gap-3 rounded-corner-md p-4">
             <TriangleAlert className="size-5 shrink-0 mt-0.5" />
@@ -782,16 +790,6 @@ export default function TailorSessionPage({
             </p>
           </div>
         )}
-        {autoResolved.length === 0 && !strongMatch && open > 0 && (
-          <p className="text-muted-foreground text-body-medium">
-            These gaps need your input. <span className="font-medium">Add keyword</span>{" "}
-            uses the job&apos;s exact words, <span className="font-medium">Answer</span>{" "}
-            adds your real experience, <span className="font-medium">Attach project</span>{" "}
-            points to a project on your resume, and <span className="font-medium">Skip</span>{" "}
-            leaves a gap as it is. <span className="font-medium">I can&apos;t confirm this</span>{" "}
-            means you don&apos;t have it, and we won&apos;t ask again.
-          </p>
-        )}
         {categories.map((category) => (
           <CategorySection
             key={category.key}
@@ -828,11 +826,15 @@ export default function TailorSessionPage({
         {/* Wraps at narrow widths: the counts keep one line, and the actions
             drop below them instead of squeezing the counts into a column. */}
         <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2">
-          <p className="text-muted-foreground shrink-0 text-body-medium whitespace-nowrap tabular-nums">
-            <span className="text-foreground font-medium">{addressed}</span> answered
-            · <span className="text-foreground font-medium">{skipped}</span> skipped ·{" "}
-            <span className="text-foreground font-medium">{open}</span> open
-          </p>
+          <SegmentedBar
+            name="Gap progress"
+            className="shrink-0 whitespace-nowrap tabular-nums"
+            parts={[
+              { key: "answered", label: "answered", count: addressed, tone: "primary" },
+              { key: "skipped", label: "skipped", count: skipped, tone: "muted" },
+              { key: "open", label: "open", count: open, tone: "empty" },
+            ]}
+          />
           <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
             <SaveIndicator state={saveState} onRetry={staleReason ? undefined : saveNow} />
             {addressed === 0 && (

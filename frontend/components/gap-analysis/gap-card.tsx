@@ -1,14 +1,19 @@
 "use client";
 
-import { use, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
-import { Ban, Check, Undo2 } from "lucide-react";
+import { Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ActorChip, DeltaChip } from "@/components/visual";
 import {
+  ACTION_HINTS,
+  ACTION_ICONS,
+  actionHintId,
   ActionSegment,
   GapLocked,
   AddKeywordControls,
@@ -23,6 +28,7 @@ import {
   type SavedTarget,
 } from "@/components/gap-analysis/resolution-controls";
 import { UNDATED_EVIDENCE_NOTE, placementLabel, requirementLabel, undatedEvidence } from "@/lib/ats-words";
+import { ROW_EXIT_MS } from "@/lib/motion";
 import { skillName } from "@/lib/skill-name";
 import {
   isAutoResolved,
@@ -35,6 +41,7 @@ import {
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const CareerHistoryIcon = CONCEPT_ICONS.careerHistory;
+const CannotConfirmIcon = ACTION_ICONS.cannot_confirm;
 
 function payloadTarget(payload: Record<string, unknown>): SavedTarget | null {
   const raw = payload.placement_target;
@@ -144,12 +151,12 @@ function gapTitle(gap: Gap): string {
 /**
  * F4 — a SKILL gap carries `potential_points`: a deterministic COARSE UPPER BOUND
  * (0-100 composite scale) of the headroom this fix could recover if it were the sole
- * driver of its subscore. Framed as a relative "up to +X" signal, never an exact
- * promise. Omitted when absent or rounding to zero (e.g. hygiene mirror_wording).
+ * driver of its subscore. Framed as a relative "up to +X" signal (`DeltaChip`), never an
+ * exact promise. Omitted when absent or rounding to zero (e.g. hygiene mirror_wording).
  */
-function formatPotentialPoints(value: number | undefined): string | null {
+function potentialPoints(value: number | undefined): number | null {
   if (typeof value !== "number" || !(value > 0)) return null;
-  return `up to +${value.toFixed(1)} points`;
+  return value;
 }
 
 function truncate(text: string, max: number): string {
@@ -205,24 +212,26 @@ function resolutionSummary(
 }
 
 /**
- * The one-line "where did this come from" caption on an auto-resolved card.
- * Reads `payload.provenance`, which only the resolver stamps — a hand-made
+ * The "where did this come from" chip on an auto-resolved card: the register's icon and word, the
+ * sentence as its title. Reads `payload.provenance`, which only the resolver stamps — a hand-made
  * resolution has none and never renders as auto-resolved.
  */
-function provenanceLine(resolution: Resolution): string | null {
+function ProvenanceCaption({ resolution }: { resolution: Resolution }) {
   const provenance = resolutionProvenance(resolution);
   if (!provenance) return null;
   if (provenance.source === "library_auto") {
     const name = payloadString(resolution.payload, "name");
-    return name ? `Filled in: showed ${name} from your resume` : "Filled in from your resume";
-  }
-  if (provenance.source === "kb_profile") {
-    return "Filled in from your career history";
+    return (
+      <ActorChip kind="resume"
+        title={name ? `Filled in: showed ${name} from your resume` : "Filled in from your resume"} />
+    );
   }
   if (provenance.source === "wording_auto") {
-    return "Added the job's exact words. Your resume already shows this skill.";
+    return (
+      <ActorChip kind="jobWords" title="Added the job's exact words. Your resume already shows this skill." />
+    );
   }
-  return "Filled in from your career history";
+  return <ActorChip kind="careerHistory" title="Filled in from your career history" />;
 }
 
 /**
@@ -346,6 +355,18 @@ export function GapCard({
   const handOff = () => focusNext(rootRef);
 
   const [editing, setEditing] = useState(resolution === undefined);
+  // The editing card collapses (ROW_EXIT_MS) before the resolved row replaces it.
+  const [leaving, setLeaving] = useState(false);
+  const closeEditor = () => setLeaving(true);
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = window.setTimeout(() => {
+      setEditing(false);
+      setLeaving(false);
+      focusNext(rootRef); // the card the press came from is gone now: the resolved row takes focus
+    }, ROW_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [leaving, focusNext]);
   const [action, setAction] = useState<GapAction | null>(resolution?.action ?? null);
   const [target, setTarget] = useState<SavedTarget | null>(() =>
     resolution?.action === "add_keyword" ? payloadTarget(resolution.payload) : null,
@@ -412,7 +433,7 @@ export function GapCard({
   const selectAction = (next: GapAction) => {
     setAction(next);
     if (next === "skip") {
-      setEditing(false);
+      closeEditor();
       commit("skip", {});
       handOff();
       return;
@@ -452,7 +473,7 @@ export function GapCard({
       typeof candidate.index === "number"
     ) {
       setAction("enable_entry");
-      setEditing(false);
+      closeEditor();
       handOff();
       commit("enable_entry", {
         section: candidate.section,
@@ -469,7 +490,7 @@ export function GapCard({
       candidate.placement_target
     ) {
       setAction("port_kb_point");
-      setEditing(false);
+      closeEditor();
       handOff();
       commit("port_kb_point", {
         kb_point_id: candidate.point_id,
@@ -518,8 +539,7 @@ export function GapCard({
 
   const title = gapTitle(gap);
   const isSummary = gap.kind === "summary";
-  const potentialPointsLabel =
-    gap.kind === "skill" ? formatPotentialPoints(gap.potential_points) : null;
+  const points = gap.kind === "skill" ? potentialPoints(gap.potential_points) : null;
   // Optional placement chips for user_input: a bullet lands on an experience,
   // project, or custom-section target, so drop the skills chips here. A summary is
   // its own section, so it never attaches to an entry.
@@ -538,7 +558,7 @@ export function GapCard({
         className="text-muted-foreground flex items-center justify-between gap-2 rounded-corner-md border py-2 pr-1.5 pl-4 text-body-medium"
       >
         <span className="flex min-w-0 items-start gap-2">
-          <Ban className="mt-0.5 size-4 shrink-0" />
+          <CannotConfirmIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span className="min-w-0">
             <span className="block break-words">
               Can&apos;t confirm <span className="text-foreground font-medium">{title}</span>
@@ -583,8 +603,8 @@ export function GapCard({
             {" "}
             · {resolutionSummary(resolution, targets)}
           </span>
-          <span className="text-muted-foreground block text-body-small">
-            {provenanceLine(resolution)}
+          <span className="mt-1 block">
+            <ProvenanceCaption resolution={resolution} />
           </span>
         </span>
         <Button
@@ -609,6 +629,7 @@ export function GapCard({
   }
 
   if (!editing && resolution) {
+    const ActionIcon = ACTION_ICONS[resolution.action];
     return (
       <button
         ref={rootRef}
@@ -619,7 +640,7 @@ export function GapCard({
         }}
         className="bg-card ring-foreground/10 hover:ring-primary/40 flex w-full items-center gap-2 rounded-corner-md px-4 py-2.5 text-left text-body-medium ring-1 transition-shadow"
       >
-        <Check className="text-primary size-4 shrink-0" />
+        <ActionIcon className="text-primary size-4 shrink-0" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate">
           <span className="font-medium">{title}</span>
           <span className="text-muted-foreground">
@@ -632,168 +653,170 @@ export function GapCard({
     );
   }
 
+  const HeaderIcon = resolution && resolution.action !== "skip" ? ACTION_ICONS[resolution.action] : null;
+
   return (
-    <Card ref={rootRef} size="sm">
-      <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {resolution && resolution.action !== "skip" && (
-            <Check className="text-primary size-4 shrink-0" />
-          )}
-          <span className="text-title-small">{title}</span>
-          {gap.kind === "skill" && requirementLabel(gap.requirement_level) && (
-            <Badge variant={REQUIREMENT_VARIANTS[gap.requirement_level ?? ""] ?? "outline"}>
-              {requirementLabel(gap.requirement_level)}
-            </Badge>
-          )}
-          {potentialPointsLabel && (
-            <Badge
-              variant="outline"
-              className="text-body-small"
-              title="The most this fix could add on its own. An estimate."
-            >
-              {potentialPointsLabel}
-            </Badge>
-          )}
-          {resolution && (
-            <Button
-              variant="ghost"
-              size="xs"
-              className="ml-auto"
-              onClick={() => {
-                setEditing(false);
-                handOff();
-              }}
-            >
-              Done
-            </Button>
-          )}
-        </div>
-        {gap.detail && <p className="text-muted-foreground text-body-small">{gap.detail}</p>}
-        <EvidenceLine gap={gap} />
-        {/* F6c — mirror_wording gaps split their note on score_effect: hygiene never
-            moves the score; adds_credit gains real keyword credit. */}
-        {gap.score_effect && (
-          <p className="text-muted-foreground text-body-small">
-            {gap.score_effect === "hygiene"
-              ? "Uses the job's exact words. Helps recruiter searches, but won't change your ATS score."
-              : "Your resume says this differently. Using the job's exact words raises your ATS score."}
-          </p>
-        )}
-        <ActionSegment actions={gap.actions} value={action} onSelect={selectAction} />
-        {gap.actions.includes("cannot_confirm") && (
+    // One child, so the wrapper can close its height (.collapse-exit in globals.css).
+    <div className="collapse-exit data-leaving:pointer-events-none" data-leaving={leaving || undefined}>
+      <Card ref={rootRef} size="sm">
+        <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="xs"
-              className="text-muted-foreground data-disabled:opacity-50"
-              focusableWhenDisabled
-              disabled={locked}
-              onClick={() => {
-                setAction("cannot_confirm");
-                setEditing(false);
-                commit("cannot_confirm", {});
-                handOff();
-              }}
-            >
-              <Ban /> I can&apos;t confirm this
-            </Button>
-            <span className="text-muted-foreground text-body-small">
-              {CANNOT_CONFIRM_EXPLANATION}
-            </span>
+            {HeaderIcon && <HeaderIcon className="text-primary size-4 shrink-0" aria-hidden="true" />}
+            <span className="text-title-small">{title}</span>
+            {gap.kind === "skill" && requirementLabel(gap.requirement_level) && (
+              <Badge variant={REQUIREMENT_VARIANTS[gap.requirement_level ?? ""] ?? "outline"}>
+                {requirementLabel(gap.requirement_level)}
+              </Badge>
+            )}
+            {points !== null && (
+              <span title="The most this fix could add on its own. An estimate.">
+                <DeltaChip value={points} prefix="up to" />
+              </span>
+            )}
+            {resolution && (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="ml-auto"
+                onClick={() => {
+                  closeEditor();
+                  handOff();
+                }}
+              >
+                Done
+              </Button>
+            )}
           </div>
-        )}
-        <LibraryCandidateChips
-          candidates={libraryCandidates}
-          selectedKey={selectedCandidateKey(resolution, libraryCandidates)}
-          onPick={applyCandidate}
-        />
-        {action === "add_keyword" && (
-          <AddKeywordControls
-            targets={targets}
-            loadError={baseResumeError}
-            unverified={isMissingSkill}
-            selected={target}
-            wording={wording}
-            onPick={(picked) => {
-              const saved = savedTarget(picked);
-              setTarget(saved);
-              // F2: unless the user hand-edited the wording, re-derive it for the
-              // picked section (skills → terse JD token; bullet → suggested phrasing).
-              const nextWording = wordingTouchedRef.current
-                ? wording
-                : suggestedWordingForSection(gap, saved.section);
-              if (nextWording !== wording) setWording(nextWording);
-              if (nextWording.trim()) {
-                commit("add_keyword", {
-                  placement_target: saved,
-                  wording: nextWording.trim(),
-                });
-              } else if (resolution) {
-                clear();
-              }
-            }}
-            onWordingChange={(value) => {
-              wordingTouchedRef.current = true;
-              setWording(value);
-              if (!target) return;
-              if (value.trim()) {
-                commit("add_keyword", {
-                  placement_target: target,
-                  wording: value.trim(),
-                });
-              } else if (resolution) {
-                clear();
-              }
-            }}
+          {gap.detail && <p className="text-muted-foreground text-body-small">{gap.detail}</p>}
+          <EvidenceLine gap={gap} />
+          {/* F6c — mirror_wording gaps split their note on score_effect: hygiene never
+              moves the score; adds_credit gains real keyword credit. */}
+          {gap.score_effect && (
+            <p className="text-muted-foreground text-body-small">
+              {gap.score_effect === "hygiene"
+                ? "Uses the job's exact words. Helps recruiter searches, but won't change your ATS score."
+                : "Your resume says this differently. Using the job's exact words raises your ATS score."}
+            </p>
+          )}
+          <ActionSegment actions={gap.actions} value={action} onSelect={selectAction} />
+          {gap.actions.includes("cannot_confirm") && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    className="text-muted-foreground data-disabled:opacity-50"
+                    focusableWhenDisabled
+                    disabled={locked}
+                    aria-describedby={actionHintId("cannot_confirm")}
+                    onClick={() => {
+                      setAction("cannot_confirm");
+                      closeEditor();
+                      commit("cannot_confirm", {});
+                      handOff();
+                    }}
+                  >
+                    <CannotConfirmIcon /> I can&apos;t confirm this
+                  </Button>
+                }
+              />
+              <TooltipContent>{ACTION_HINTS.cannot_confirm}</TooltipContent>
+            </Tooltip>
+          )}
+          <LibraryCandidateChips
+            candidates={libraryCandidates}
+            selectedKey={selectedCandidateKey(resolution, libraryCandidates)}
+            onPick={applyCandidate}
           />
-        )}
-        {action === "user_input" && (
-          <UserInputControls
-            question={
-              isSummary
-                ? "Rewrite your summary for this job. This replaces your current summary."
-                : gap.enrichment?.elicitation_question ??
-                  (gap.kind === "requirement"
-                    ? "How does your experience cover this responsibility?"
-                    : "What's your experience with this?")
-            }
-            text={text}
-            targets={inputTargets}
-            selected={inputTarget}
-            onTextChange={(value) => {
-              setText(value);
-              if (value.trim()) {
-                commit("user_input", userInputPayload(value.trim(), inputTarget));
-              } else if (resolution) {
-                clear();
+          {action === "add_keyword" && (
+            <AddKeywordControls
+              targets={targets}
+              loadError={baseResumeError}
+              unverified={isMissingSkill}
+              selected={target}
+              wording={wording}
+              onPick={(picked) => {
+                const saved = savedTarget(picked);
+                setTarget(saved);
+                // F2: unless the user hand-edited the wording, re-derive it for the
+                // picked section (skills → terse JD token; bullet → suggested phrasing).
+                const nextWording = wordingTouchedRef.current
+                  ? wording
+                  : suggestedWordingForSection(gap, saved.section);
+                if (nextWording !== wording) setWording(nextWording);
+                if (nextWording.trim()) {
+                  commit("add_keyword", {
+                    placement_target: saved,
+                    wording: nextWording.trim(),
+                  });
+                } else if (resolution) {
+                  clear();
+                }
+              }}
+              onWordingChange={(value) => {
+                wordingTouchedRef.current = true;
+                setWording(value);
+                if (!target) return;
+                if (value.trim()) {
+                  commit("add_keyword", {
+                    placement_target: target,
+                    wording: value.trim(),
+                  });
+                } else if (resolution) {
+                  clear();
+                }
+              }}
+            />
+          )}
+          {action === "user_input" && (
+            <UserInputControls
+              question={
+                isSummary
+                  ? "Rewrite your summary for this job. This replaces your current summary."
+                  : gap.enrichment?.elicitation_question ??
+                    (gap.kind === "requirement"
+                      ? "How does your experience cover this responsibility?"
+                      : "What's your experience with this?")
               }
-            }}
-            onPickTarget={(picked) => {
-              const saved: SavedTarget | null = picked
-                ? savedTarget(picked)
-                : null;
-              setInputTarget(saved);
-              // Placement is optional metadata on top of the answer — only commit
-              // when there's actual answer text (text is the required field).
-              if (text.trim()) {
-                commit("user_input", userInputPayload(text.trim(), saved));
-              }
-            }}
-          />
-        )}
-        {action === "attach_project" && (
-          <AttachProjectControls
-            projects={projects}
-            loadError={baseResumeError}
-            candidates={gap.enrichment?.project_candidates ?? []}
-            selected={project}
-            onPick={(name) => {
-              setProject(name);
-              commit("attach_project", { project_name: name });
-            }}
-          />
-        )}
-      </CardContent>
-    </Card>
+              text={text}
+              targets={inputTargets}
+              selected={inputTarget}
+              onTextChange={(value) => {
+                setText(value);
+                if (value.trim()) {
+                  commit("user_input", userInputPayload(value.trim(), inputTarget));
+                } else if (resolution) {
+                  clear();
+                }
+              }}
+              onPickTarget={(picked) => {
+                const saved: SavedTarget | null = picked
+                  ? savedTarget(picked)
+                  : null;
+                setInputTarget(saved);
+                // Placement is optional metadata on top of the answer — only commit
+                // when there's actual answer text (text is the required field).
+                if (text.trim()) {
+                  commit("user_input", userInputPayload(text.trim(), saved));
+                }
+              }}
+            />
+          )}
+          {action === "attach_project" && (
+            <AttachProjectControls
+              projects={projects}
+              loadError={baseResumeError}
+              candidates={gap.enrichment?.project_candidates ?? []}
+              selected={project}
+              onPick={(name) => {
+                setProject(name);
+                commit("attach_project", { project_name: name });
+              }}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -55,6 +55,10 @@
   section presets, the template picker, and the gap page's action segment and target chips, which use
   `bg-secondary-container`): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
+  The gap page's action segment draws its action icon (`ACTION_ICONS`) before the word and swaps it for the
+  `Check` when selected, so one glyph leads; each action's hint (`ACTION_HINTS`) is said once, as the
+  button's tooltip and `aria-describedby` (`ActionHints` renders the ids once per page). A suggested target
+  chip carries a "Suggested" word and a `border-muted-foreground` edge, quieter than the selected fill.
   `test_selected_tonal_toggles_show_a_check` pins the first three. **`FilterChips`**
   (`components/filter-chips.tsx`) is one field of about six values or fewer, every value with its count, several
   on at once, none on meaning no filter, so it never has an "All" chip; a filter with more values than fit on one
