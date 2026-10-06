@@ -45,6 +45,7 @@ from app.schemas.proposal import ConsentPayload
 from app.services import application_status, proposals, tailoring_session
 from app.services.ats import normalize_term
 from app.services.sync import duplicates, hooks, jobs_bundle, profile_bundle, status
+from app.services.sync import round as sync_round
 
 logger = logging.getLogger(__name__)
 
@@ -767,3 +768,34 @@ def post_runs(peer: Peer, db: DB, body: Body):
     kept = [run.id.hex for run in _parse(_RunsPush, body).runs if _keep_run(db, peer, run)]
     db.commit()
     return {"ids": kept}
+
+
+# ------------------------------------------------------------------------------------ the round
+
+
+class _RoundBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    force: bool = False
+    pair: bool = False
+    accept_profile_overwrite: bool = False
+
+
+def _require_round_caller(request: Request) -> None:
+    """Only the always-on copy runs rounds; its own loopback is the whole trust boundary, so no
+    key, but a browser's request is refused."""
+    if not status.is_remote():
+        raise HTTPException(404, detail=_NOT_FOUND)
+    if "origin" in request.headers:
+        raise HTTPException(403, detail=_NO_BROWSERS)
+
+
+@router.post("/round", dependencies=[Depends(_require_round_caller)])
+def post_round(db: DB, body: _RoundBody | None = None):
+    """Run one round now and return its per-step counts (never contents)."""
+    options = body or _RoundBody()
+    try:
+        return sync_round.run_round(db, force=options.force, pair=options.pair,
+                                    accept_profile_overwrite=options.accept_profile_overwrite)
+    except sync_round.RoundBusy:
+        raise HTTPException(409, detail=_BUSY) from None

@@ -1,5 +1,6 @@
 """Is sync set up, and which side is this? (split-ownership design, Part B)."""
 
+import json
 import logging
 import os
 import secrets
@@ -15,7 +16,14 @@ from app.config import settings
 from app.models.setting import Setting
 
 MACHINE_ID_KEY = "sync.machine_id"
+STATE_KEY = "sync.state"
 SYNC_PROTOCOL = 1
+# The always-on copy's round state (local setting, never synced). ``since_home`` is home's opaque
+# jobs cursor; ``acked_own`` is the highest local job revision home has acknowledged; times are ISO.
+STATE_DEFAULTS: dict = {
+    "paired": False, "last_ok": None, "last_error": None, "failures": 0, "next_attempt_at": None,
+    "since_home": "0", "acked_own": 0, "profile_rev": None, "runs_at": None,
+}
 _logger = logging.getLogger(__name__)
 _KEY_READ_WARNING_LOGGED = False
 _KEY_READ_WARNING_LOCK = threading.Lock()
@@ -103,3 +111,41 @@ def create_key() -> Path:
     with os.fdopen(fd, "w") as fh:
         fh.write(secrets.token_urlsafe(32) + "\n")
     return path
+
+
+def _state_value_fits(name: str, value: object) -> bool:
+    default = STATE_DEFAULTS[name]
+    if isinstance(default, bool):
+        return isinstance(value, bool)
+    if isinstance(default, int):
+        return isinstance(value, int) and not isinstance(value, bool)
+    if name == "profile_rev":
+        return value is None or (isinstance(value, int) and not isinstance(value, bool))
+    return value is None or isinstance(value, str)
+
+
+def read_state(db: Session) -> dict:
+    """The round state with defaults filled in; a damaged or unknown value reads as its default."""
+    raw = db.scalar(select(Setting.value).where(Setting.key == STATE_KEY))
+    try:
+        stored = json.loads(raw) if raw else {}
+    except ValueError:
+        stored = {}
+    stored = stored if isinstance(stored, dict) else {}
+    return {name: stored[name] if name in stored and _state_value_fits(name, stored[name])
+            else default for name, default in STATE_DEFAULTS.items()}
+
+
+def update_state(db: Session, **changes) -> dict:
+    """Merge ``changes`` into the round state and commit; returns the new state."""
+    unknown = set(changes) - set(STATE_DEFAULTS)
+    if unknown:
+        raise ValueError(f"unknown sync state field: {sorted(unknown)[0]}")
+    state = {**read_state(db), **changes}
+    row = db.get(Setting, STATE_KEY)
+    if row is None:
+        db.add(Setting(key=STATE_KEY, value=json.dumps(state)))
+    else:
+        row.value = json.dumps(state)
+    db.commit()
+    return state
