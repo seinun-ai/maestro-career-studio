@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 657,
-    "total_loc": 200098,
-    "src_loc": 56557,
-    "test_loc": 143541,
+    "modules": 659,
+    "total_loc": 200400,
+    "src_loc": 56617,
+    "test_loc": 143783,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -91,11 +91,11 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 194,
+        "line": 200,
         "name": "transition",
         "complexity": 34,
         "params": 7,
-        "lines": 70
+        "lines": 68
       },
       {
         "file": "app/services/kb_adapt.py",
@@ -155,7 +155,7 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 414,
+        "line": 418,
         "name": "get_final_review",
         "complexity": 28,
         "params": 2,
@@ -474,8 +474,8 @@
       }
     ],
     "error_masking_count": 12,
-    "internal_import_edges": 2972,
-    "imports_per_module": 4.52,
+    "internal_import_edges": 2994,
+    "imports_per_module": 4.54,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -498,9 +498,9 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.57,
-    "duplicated_lines": 387,
-    "clones": 44,
+    "percentage": 0.56,
+    "duplicated_lines": 381,
+    "clones": 43,
     "allowlisted_clones": 0,
     "worst_files": [
       [
@@ -623,16 +623,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 200098,
-    "src_loc": 56557,
-    "test_loc": 143541,
-    "modules": 657,
+    "total_loc": 200400,
+    "src_loc": 56617,
+    "test_loc": 143783,
+    "modules": 659,
     "orphan_loc": 0,
-    "duplication_pct": 0.57,
-    "duplicated_lines": 387,
-    "clone_count": 44,
+    "duplication_pct": 0.56,
+    "duplicated_lines": 381,
+    "clone_count": 43,
     "complexity_hotspots": 634,
     "error_masking": 12,
-    "imports_per_module": 4.52
+    "imports_per_module": 4.54
   }
 }
