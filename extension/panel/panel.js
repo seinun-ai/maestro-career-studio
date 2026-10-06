@@ -110,7 +110,7 @@
   // The drawings (panel/icons.js), read at load like the rosters below: a panel.html that forgot the tag fails on
   // boot naming the file, not on the first render that wants a tick.
   if (typeof ns.icon !== "function") {
-    throw new Error('panel: nothing published ns.icon — is <script src="icons.js"> in panel.html, '
+    throw new Error('panel: nothing published ns.icon. Is <script src="icons.js"> in panel.html, '
       + "before the stage scripts?");
   }
   const { icon } = ns;

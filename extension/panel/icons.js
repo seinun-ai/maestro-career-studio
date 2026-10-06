@@ -40,7 +40,7 @@
    * render that made it, not draw an empty box. */
   ns.icon = (name, { size = 14, label = null } = {}) => {
     const shapes = ICONS[name];
-    if (!shapes) throw new Error(`panel/icons: no icon named ${name}`);
+    if (!shapes) throw new Error(`icons.js has no icon named ${name}`);
     const svg = document.createElementNS(SVG_NS, "svg");
     const attrs = {
       class: "ico", width: size, height: size, viewBox: "0 0 24 24", fill: "none",
