@@ -80,6 +80,8 @@ class ProposalReadiness(BaseModel):
     tailored: bool | None = None
     knockout: str | None = None
     to_check: int = 0
+    # The job's country when the application's resume is set for another one; never ready then.
+    base_country: str | None = None
 
 
 class ProposalRead(BaseModel):

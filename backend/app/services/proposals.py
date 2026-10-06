@@ -342,6 +342,16 @@ def _knockout_scan(session: Session, job: Job | None) -> dict | None:
     return knockout.scan_for(session, job)
 
 
+def _base_country(session: Session, job: Job | None, base: object) -> dict | None:
+    """The country check on the resume that would be sent: is it set for the job's country?"""
+    if job is None or not isinstance(base, str) or not base:
+        return None
+    from app.services import base_eligibility, countries
+
+    return {"job_country": countries.normalize(job.country), "base": base,
+            "eligible": base_eligibility.is_eligible(session, job, base)}
+
+
 def get_final_review(session: Session, prop: ApplicationProposal) -> dict:
     from pathlib import Path
 
@@ -409,6 +419,9 @@ def get_final_review(session: Session, prop: ApplicationProposal) -> dict:
             "title": job.title if job else None,
         },
         "knockout": _knockout_scan(session, job),
+        # The sent resume (the application's, else the one the fit chose) against the job's country.
+        "base_country": _base_country(
+            session, job, app_row.base_resume if app_row is not None else chosen),
         # The recorded form answers worth a second look before "Submit now?" (warn only).
         # EEO entries carry `eeo_answered`, never a value.
         "flags": filled_answers.agent_flags(session, job),

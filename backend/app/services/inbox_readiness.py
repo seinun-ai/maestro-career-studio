@@ -1,8 +1,8 @@
 """Is a job in the Agent inbox ready to send? Read-only: worked out when the inbox list is read,
 never stored, so a profile edit or a new receipt shows at once.
 
-Ready means tailored (the linked application has a PDF), no knock-out conflict, and nothing to
-check in the recorded answers. Phase 4's auto-submit reads `is_ready`, so the rule lives here
+Ready means tailored, no knock-out conflict, the resume is set for the job's country, and
+nothing to check. Phase 4's auto-submit reads `is_ready`, so the rule lives here
 once. Only open-lane rows get readiness; History rows get none.
 """
 
@@ -16,10 +16,11 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
+from app.models.base_resume import BaseResume
 from app.models.filled_answer import FilledAnswer
 from app.models.job import Job
 from app.models.types import utcnow
-from app.services import eeo_consent, filled_answers, knockout
+from app.services import base_eligibility, countries, eeo_consent, filled_answers, knockout
 from app.services.proposals import APPLIED_MANUALLY, OPEN_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ def is_ready(readiness: dict[str, Any] | None) -> bool:
     if not readiness:
         return False
     return (readiness["tailored"] is True and readiness["knockout"] is None
-            and readiness["to_check"] == 0)
+            and readiness["to_check"] == 0 and readiness.get("base_country") is None)
 
 
 def _pdf_ready(session: Session, pairs: list[Pair]) -> dict[UUID, bool]:
@@ -43,6 +44,22 @@ def _pdf_ready(session: Session, pairs: list[Pair]) -> dict[UUID, bool]:
     rows = session.execute(select(Application.id, Application.pdf_path)
                            .where(Application.id.in_(ids))).all()
     return {app_id: bool(path) for app_id, path in rows}
+
+
+def _base_slugs(session: Session, pairs: list[Pair]) -> dict[UUID, str]:
+    ids = [p.application_id for p, _ in pairs if p.application_id is not None]
+    if not ids:
+        return {}
+    return dict(session.execute(select(Application.id, Application.base_resume)
+                                .where(Application.id.in_(ids))).all())
+
+
+def _base_countries(session: Session, slugs: set[str]) -> dict[str, list[str]]:
+    """Each base's own countries, archived rows too (`is_eligible` reads them whatever their state)."""
+    if not slugs:
+        return {}
+    return {slug: list(found or []) for slug, found in session.execute(
+        select(BaseResume.slug, BaseResume.countries).where(BaseResume.slug.in_(slugs))).all()}
 
 
 def _answered(session: Session, pairs: list[Pair]) -> set[UUID]:
@@ -65,14 +82,34 @@ class _Batch:
         self.session = session
         self.scan = knockout.scan_args(session)
         self.pdfs = _pdf_ready(session, pairs)
+        self.bases = _base_slugs(session, pairs)
+        self.base_countries = _base_countries(session, set(self.bases.values()))
+        self.fallback: dict[str, bool] = {}
         self.answered = _answered(session, pairs)
         self.profile = eeo_consent.disclosable_profile(session) if self.answered else None
+
+    def _in_fallback(self, code: str) -> bool:
+        if code not in self.fallback:
+            self.fallback[code] = base_eligibility.candidates_for_country(self.session, code).fallback
+        return self.fallback[code]
+
+    def _base_country(self, prop: ApplicationProposal, job: Job) -> str | None:
+        """The job's country when the linked application's base is not eligible for it; the same
+        rule as `base_eligibility.is_eligible`, batched."""
+        code = countries.normalize(job.country)
+        slug = self.bases.get(prop.application_id) if prop.application_id else None
+        if code is None or slug is None or slug not in self.base_countries:
+            return None  # no country, no application, or a base with no row: usable anywhere
+        if base_eligibility.country_eligible(self.base_countries[slug], code):
+            return None
+        return None if self._in_fallback(code) else code
 
     def row(self, prop: ApplicationProposal, job: Job) -> dict[str, Any]:
         to_check = (filled_answers.flag_count(self.session, job, self.profile)
                     if job.id in self.answered else 0)
         return {"tailored": self.pdfs.get(prop.application_id) if prop.application_id else None,
-                "knockout": _knockout(job, self.scan), "to_check": to_check}
+                "knockout": _knockout(job, self.scan), "to_check": to_check,
+                "base_country": self._base_country(prop, job)}
 
 
 def for_proposals(session: Session, pairs: list[Pair]) -> dict[UUID, dict[str, Any] | None]:

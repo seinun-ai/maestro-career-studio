@@ -1,15 +1,23 @@
 """Readiness on the Agent inbox's rows (agent-dashboard-design.md, Part 1)."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app.config import settings
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
+from app.models.base_resume import BaseResume
 from app.models.filled_answer import FilledAnswer
 from app.models.types import utcnow
-from app.services import autofill_profile, eeo_consent, filled_answers, inbox_readiness, knockout
+from app.services import (
+    autofill_profile,
+    base_eligibility,
+    eeo_consent,
+    filled_answers,
+    inbox_readiness,
+    knockout,
+)
 from tests.test_proposals_models import _mk_job
 
 TICKED_ALL = {"question": "Which languages?", "answer": ["a", "b", "c"], "options_count": 3,
@@ -21,11 +29,11 @@ def _settings_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "settings_dir", tmp_path)
 
 
-def _proposal(db_session, status="accepted", pdf=None, **job):
+def _proposal(db_session, status="accepted", pdf=None, base="swe", **job):
     job_row = _mk_job(db_session, **job)
     app_id = None
     if pdf is not None:
-        app_row = Application(job_id=job_row.id, base_resume="swe", pdf_path=pdf)
+        app_row = Application(job_id=job_row.id, base_resume=base, pdf_path=pdf)
         db_session.add(app_row)
         db_session.flush()
         app_id = app_row.id
@@ -96,6 +104,8 @@ def test_a_row_that_fails_gets_null_and_the_rest_still_read(db_session, monkeypa
     ({"tailored": 1, "knockout": None, "to_check": 0}, False),
     ({"tailored": True, "knockout": "opt", "to_check": 0}, False),
     ({"tailored": True, "knockout": None, "to_check": 2}, False),
+    ({"tailored": True, "knockout": None, "to_check": 0, "base_country": "US"}, False),
+    ({"tailored": True, "knockout": None, "to_check": 0, "base_country": None}, True),
     (None, False),
 ])
 def test_ready_means_tailored_no_knockout_nothing_to_check(readiness, ready):
@@ -113,7 +123,7 @@ def test_a_deleted_linked_application_is_not_tailored(db_session, stale_link):
         prop = ApplicationProposal(id=prop.id, job_id=job.id, status="approved",
                                    application_id=app_id)
     got = inbox_readiness.for_proposals(db_session, [(prop, job)])[prop.id]
-    assert got == {"tailored": None, "knockout": None, "to_check": 0}
+    assert got == {"tailored": None, "knockout": None, "to_check": 0, "base_country": None}
     assert inbox_readiness.is_ready(got) is False
 
 
@@ -140,7 +150,7 @@ def test_missing_work_auth_keeps_the_incomplete_verdict(db_session, profile):
     prop, job = _proposal(db_session, pdf="/x.pdf", work_authorization="citizen_or_gc_required")
     assert knockout.scan_for(db_session, job)["status"] == "incomplete_profile"
     got = inbox_readiness.for_proposals(db_session, [(prop, job)])[prop.id]
-    assert got == {"tailored": True, "knockout": None, "to_check": 0}
+    assert got == {"tailored": True, "knockout": None, "to_check": 0, "base_country": None}
     assert inbox_readiness.is_ready(got) is True
 
 
@@ -188,3 +198,102 @@ def test_one_answer_with_two_flags_counts_once(db_session):
     assert len(filled_answers.agent_flags(db_session, job)[0]["flags"]) == 2
     got = inbox_readiness.for_proposals(db_session, [(prop, job)])[prop.id]
     assert got["to_check"] == 1 == filled_answers.receipt(db_session, job)["flag_count"]
+
+
+ARCHIVED = datetime(2026, 8, 4, tzinfo=timezone.utc)
+
+
+def _bases(db_session, **by_slug):
+    for slug, countries in by_slug.items():
+        archived = slug.startswith("old_")
+        db_session.add(BaseResume(slug=slug, data_json={}, countries=countries,
+                                  archived_at=ARCHIVED if archived else None))
+    db_session.commit()
+
+
+def _base_country(db_session, base, country, **bases):
+    _bases(db_session, **bases)
+    pair = _proposal(db_session, pdf="/x.pdf", base=base, country=country)
+    return pair, inbox_readiness.for_proposals(db_session, [pair])[pair[0].id]
+
+
+def test_base_for_another_country_is_marked_and_not_ready(db_session):
+    _, got = _base_country(db_session, "india", "US", india=["IN"], us=["US"])
+    assert got["base_country"] == "US"
+    assert (got["tailored"], got["knockout"], got["to_check"]) == (True, None, 0)
+    assert inbox_readiness.is_ready(got) is False
+
+
+def test_a_base_for_the_jobs_country_is_ready(db_session):
+    _, got = _base_country(db_session, "us", "United States", india=["IN"], us=["US"])
+    assert got["base_country"] is None
+    assert inbox_readiness.is_ready(got) is True
+
+
+def test_fallback_base_is_not_marked(db_session):
+    _, got = _base_country(db_session, "india", "US", india=["IN"])
+    assert got["base_country"] is None
+    assert inbox_readiness.is_ready(got) is True
+
+
+def test_archived_base_judged_by_its_own_countries(db_session):
+    _, got = _base_country(db_session, "old_india", "US", old_india=["IN"], us=["US"])
+    assert got["base_country"] == "US"
+
+
+@pytest.mark.parametrize("country", [None, "Remote", ""])
+def test_no_job_country_no_mark(db_session, country):
+    _, got = _base_country(db_session, "india", country, india=["IN"], us=["US"])
+    assert got["base_country"] is None
+
+
+def test_no_linked_application_no_mark(db_session):
+    _bases(db_session, india=["IN"], us=["US"])
+    pair = _proposal(db_session, country="US")
+    assert inbox_readiness.for_proposals(db_session, [pair])[pair[0].id]["base_country"] is None
+
+
+@pytest.mark.parametrize("base, country, bases", [
+    ("us", "US", {"us": ["US"], "india": ["IN"]}),
+    ("india", "US", {"us": ["US"], "india": ["IN"]}),         # sibling is eligible: marked
+    ("india", "US", {"india": ["IN"]}),                       # fallback: not marked
+    ("anywhere", "US", {"anywhere": [], "us": ["US"]}),
+    ("old_india", "US", {"old_india": ["IN"], "us": ["US"]}),  # archived, own countries
+    ("old_us", "US", {"old_us": ["US"], "india": ["IN"]}),
+    ("ghost", "US", {"us": ["US"]}),                          # no row: eligible
+    ("india", "us", {"india": ["IN"], "us": ["US"]}),
+    ("india", "United States", {"india": ["IN"], "us": ["US"]}),
+    ("india", "Remote", {"india": ["IN"], "us": ["US"]}),
+    ("india", None, {"india": ["IN"], "us": ["US"]}),
+])
+def test_readiness_base_country_agrees_with_is_eligible(db_session, base, country, bases):
+    (_, job), got = _base_country(db_session, base, country, **bases)
+    assert (got["base_country"] is None) == base_eligibility.is_eligible(db_session, job, base)
+
+
+def test_readiness_batch_reads_base_countries_once(db_session, monkeypatch):
+    from sqlalchemy import event
+
+    _bases(db_session, india=["IN"], uk=["GB"], us=["US"])
+    rows = [_proposal(db_session, pdf="/x.pdf", base=b, country="US")
+            for b in ("india", "uk", "us", "india")]
+    fallbacks = []
+    real = base_eligibility.candidates_for_country
+    monkeypatch.setattr(base_eligibility, "candidates_for_country",
+                        lambda s, c, **kw: fallbacks.append(c) or real(s, c, **kw))
+    statements = []
+    engine = db_session.get_bind()
+
+    def count(conn, cursor, statement, *args):
+        if "base_resumes" in statement:
+            statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", count)
+    try:
+        got = inbox_readiness.for_proposals(db_session, rows)
+    finally:
+        event.remove(engine, "before_cursor_execute", count)
+    assert [got[p.id]["base_country"] for p, _ in rows] == ["US", "US", None, "US"]
+    assert fallbacks == ["US"]
+    # one read of the bases' countries, one fallback read for the one job country
+    assert len(statements) == 2

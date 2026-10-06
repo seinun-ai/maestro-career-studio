@@ -2,7 +2,13 @@
 // its twin for sorting and words). `node --test` loads it directly; imports are types only.
 import type { ProposalStatus } from "./types";
 
-export type Readiness = { tailored: boolean | null; knockout: string | null; to_check: number };
+export type Readiness = {
+  tailored: boolean | null;
+  knockout: string | null;
+  to_check: number;
+  /** The job's country when the application's resume is set for another one. Optional: an older backend omits it. */
+  base_country?: string | null;
+};
 export type ReadinessMark = { text: string; tone: "muted" | "warning" };
 
 const KNOCKOUT_WORDS: Record<string, string> = {
@@ -17,7 +23,7 @@ const KNOCKOUT_WORDS: Record<string, string> = {
 export const APPLIED_MANUALLY = "applied manually";
 
 export function isReady(r: Readiness | null | undefined): boolean {
-  return !!r && r.tailored === true && r.knockout == null && r.to_check === 0;
+  return !!r && r.tailored === true && r.knockout == null && r.to_check === 0 && r.base_country == null;
 }
 
 export function readinessMarks(r: Readiness | null | undefined): ReadinessMark[] {
@@ -28,6 +34,7 @@ export function readinessMarks(r: Readiness | null | undefined): ReadinessMark[]
     const word = KNOCKOUT_WORDS[r.knockout];
     marks.push({ text: word ? `Knock-out: ${word}` : "Knock-out", tone: "warning" });
   }
+  if (r.base_country) marks.push({ text: "Resume for another country", tone: "warning" });
   if (r.to_check > 0) marks.push({ text: `${r.to_check} to check`, tone: "warning" });
   return marks;
 }

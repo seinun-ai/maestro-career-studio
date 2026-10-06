@@ -1938,7 +1938,12 @@ export interface Proposal {
   job: ProposalJobSummary;
   /** Open-lane rows only (backend services/inbox_readiness.py); null in History. Optional: an
    *  older backend does not send it. */
-  readiness?: { tailored: boolean | null; knockout: string | null; to_check: number } | null;
+  readiness?: {
+    tailored: boolean | null;
+    knockout: string | null;
+    to_check: number;
+    base_country?: string | null;
+  } | null;
 }
 
 interface ProposalQAEntry {

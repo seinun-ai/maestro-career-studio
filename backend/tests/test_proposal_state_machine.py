@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.models.application import Application
+from app.models.base_resume import BaseResume
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
 from app.services import proposals as svc
@@ -349,6 +350,56 @@ def test_final_review_flags_duplicate_submitted_company_title(db_session):
     job3.title = "Analytics Engineer"
     db_session.commit()
     assert svc.get_final_review(db_session, third)["duplicate_submitted"] is False
+
+
+def _country_review(db_session, *, app_base, chosen, job_country="US", **bases):
+    for slug, countries in bases.items():
+        db_session.add(BaseResume(slug=slug, data_json={}, countries=countries))
+    job = _mk_job(db_session, source="agent", country=job_country)
+    app_id = None
+    if app_base is not None:
+        app_row = Application(job_id=job.id, base_resume=app_base, source="agent", status="draft")
+        db_session.add(app_row)
+        db_session.flush()
+        app_id = app_row.id
+    prop = svc.create_proposal(db_session, job_id=job.id, application_id=app_id,
+                               fit={"chosen_base": chosen}, plan={})
+    return svc.get_final_review(db_session, prop)
+
+
+def test_final_review_reports_base_country_for_the_sent_base(db_session):
+    # the application's base wins over a stale fit.chosen_base for another country
+    review = _country_review(db_session, app_base="india", chosen="us",
+                             india=["IN"], us=["US"])
+    assert review["base_country"] == {"job_country": "US", "base": "india", "eligible": False}
+    assert review["fit"]["chosen_base"] == "us"
+
+
+def test_final_review_base_country_eligible_and_free_text_country(db_session):
+    review = _country_review(db_session, app_base="us", chosen="india", job_country="United States",
+                             india=["IN"], us=["US"])
+    assert review["base_country"] == {"job_country": "US", "base": "us", "eligible": True}
+
+
+def test_final_review_base_country_uses_chosen_base_without_an_application(db_session):
+    review = _country_review(db_session, app_base=None, chosen="india", india=["IN"], us=["US"])
+    assert review["base_country"] == {"job_country": "US", "base": "india", "eligible": False}
+
+
+def test_final_review_base_country_in_fallback_is_eligible(db_session):
+    review = _country_review(db_session, app_base="india", chosen="india", india=["IN"])
+    assert review["base_country"] == {"job_country": "US", "base": "india", "eligible": True}
+
+
+def test_final_review_base_country_keeps_an_unknown_job_country_as_none(db_session):
+    review = _country_review(db_session, app_base="india", chosen=None, job_country="Remote",
+                             india=["IN"])
+    assert review["base_country"] == {"job_country": None, "base": "india", "eligible": True}
+
+
+def test_final_review_has_no_base_country_without_a_base(db_session):
+    review = _country_review(db_session, app_base=None, chosen=None, india=["IN"])
+    assert review["base_country"] is None
 
 
 def test_record_decision_409_when_no_matching_application(db_session):

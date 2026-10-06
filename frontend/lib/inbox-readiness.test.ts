@@ -11,8 +11,24 @@ test("ready is tailored, no knock-out, nothing to check", () => {
   assert.equal(isReady({ ...ready, tailored: null }), false);
   assert.equal(isReady({ ...ready, knockout: "opt" }), false);
   assert.equal(isReady({ ...ready, to_check: 1 }), false);
+  assert.equal(isReady({ ...ready, base_country: "US" }), false);
+  assert.equal(isReady({ ...ready, base_country: null }), true);
   assert.equal(isReady(null), false);
   assert.equal(isReady(undefined), false);
+});
+
+test("a resume for another country is flagged after the knock-out and before what to check", () => {
+  assert.deepEqual(readinessMarks({ ...ready, base_country: "US" }), [
+    { text: "Tailored", tone: "muted" },
+    { text: "Resume for another country", tone: "warning" },
+  ]);
+  assert.deepEqual(readinessMarks({ tailored: false, knockout: "opt", to_check: 2, base_country: "US" }), [
+    { text: "Not tailored", tone: "muted" },
+    { text: "Knock-out: OPT", tone: "warning" },
+    { text: "Resume for another country", tone: "warning" },
+    { text: "2 to check", tone: "warning" },
+  ]);
+  assert.deepEqual(readinessMarks({ ...ready, base_country: null }), [{ text: "Tailored", tone: "muted" }]);
 });
 
 test("marks say tailored, the knock-out and what to check", () => {

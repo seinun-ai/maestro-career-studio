@@ -41,7 +41,8 @@ def test_the_list_carries_readiness_for_open_rows_only(db_session):
     open_id = _prop(db_session, "accepted").id
     done_id = _prop(db_session, "submitted").id
     items = {i["id"]: i for i in client.get("/api/proposals").json()["items"]}
-    assert items[str(open_id)]["readiness"] == {"tailored": None, "knockout": None, "to_check": 0}
+    assert items[str(open_id)]["readiness"] == {"tailored": None, "knockout": None, "to_check": 0,
+                                                 "base_country": None}
     assert items[str(done_id)]["readiness"] is None
 
 

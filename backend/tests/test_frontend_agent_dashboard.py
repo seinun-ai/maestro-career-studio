@@ -114,3 +114,8 @@ def test_dashboard_tiles_use_the_shared_pattern_and_long_run_text_wraps():
 def test_visit_clock_uses_node_type_stripping_without_npm_packages():
     result = run_node_test("lib/inbox-visit.test.ts")
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_inbox_readiness_node():
+    result = run_node_test("lib/inbox-readiness.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
