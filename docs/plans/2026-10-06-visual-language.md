@@ -2709,3 +2709,14 @@ implementer of task N reads the "Task N" bullets as part of its brief.
   with Task 19's cannot_confirm).
 - **Task 28.** The glyph test strips `/* … */` comments like Task 1's `_strip_comments`, and the replacement list
   adds `stages/track.js` ↗ → `external-link`.
+- **Wave 1 review (applied in a wave fix commit).** The register key `notListed` is renamed `none` ("nothing here /
+  no change"); Tasks 14, 16, 20, 22 and 29 use `CONCEPT_ICONS.none` for `Minus`. `Bot` keeps the key `agentInbox`
+  and means "agents" (D1): the ActorChip agent kind uses `CONCEPT_ICONS.agentInbox`; never add a second `Bot` key.
+- **Task 19 (from the Wave 1 review).** A selected `ActionSegment` shows `Check` IN PLACE of its action icon (one
+  leading glyph, stable width; every segment's base class already carries `inline-flex items-center gap-1`). The
+  highlighted (suggested, not selected) chip loses `Sparkles` (that is the AI glyph and these are deterministic),
+  gets a visible "Suggested" word (`text-label-small text-muted-foreground`), and a border quieter than the
+  selected state (`border-outline`).
+- **Task 30 (from the Wave 1 review).** Iconography docs state "done = `CircleCheck` + `text-success`"; the
+  remaining `CircleCheck text-primary` done sites and non-selected `Check` uses are recorded as a ratchet note, not
+  swept.
