@@ -515,6 +515,10 @@ roots are process-global):
 5. A module-level `threading.Lock` acquired non-blocking (single-flight). Busy → 409 "A sync is
    already running."
 
+Cap every request body at 100 MB before parsing (413 with a fixed sentence; read the stream with
+a running count, don't trust Content-Length alone), and pass `max_bytes` to `files.unpack` for the
+sum of a request's files (Task 7 review).
+
 Give the router a sanitized validation error, like `_JobSiteLoginRoute` (`routers/settings.py:146`):
 FastAPI's default 422 echoes the request `input`, which here would be bundle contents.
 
