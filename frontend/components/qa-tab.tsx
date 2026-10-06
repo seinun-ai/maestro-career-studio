@@ -213,6 +213,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
             onClick={() => askOnce(questions)}
             pending={askQuestions.isPending}
             disabled={noQuestions}
+            focusableWhenDisabled
             aria-describedby={noQuestions ? needQuestionId : undefined}
           >
             {askQuestions.isPending ? "Answering…" : "Answer questions"}

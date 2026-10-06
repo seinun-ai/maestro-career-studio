@@ -37,7 +37,10 @@ function EmailInput({ value, onChange }: { value: string; onChange: (next: strin
         autoComplete="email"
         value={value}
         {...control}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          setWarning(null);
+          onChange(e.target.value);
+        }}
         onBlur={() => setWarning(emailWarning(value))}
       />
       {message}

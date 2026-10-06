@@ -30,5 +30,5 @@ def test_inputs_style_the_warning_state():
 
 def test_answer_questions_is_disabled_while_the_box_is_empty():
     qa = _src("components/qa-tab.tsx")
-    assert "disabled=" in qa and "Type at least one question." in qa
+    assert "disabled={noQuestions}" in qa and "focusableWhenDisabled" in qa and "Type at least one question." in qa
     assert "throw new Error(\"Type at least one question.\")" not in qa

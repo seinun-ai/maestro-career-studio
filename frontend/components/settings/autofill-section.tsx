@@ -400,7 +400,10 @@ function FieldControl({
         type={contact?.type}
         autoComplete={contact?.autoComplete}
         {...control}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          setWarning(null);
+          onChange(e.target.value);
+        }}
         onBlur={() => setWarning(contact ? contact.check(value) : null)}
       />
       {message}
