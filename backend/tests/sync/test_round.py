@@ -168,7 +168,7 @@ class FakeHome:
         try:
             ok = seal.check_header(
                 KEY, request.method, request.url.path, request.url.query.decode(),
-                request.headers.get(seal.HEADER, ""), peer)
+                request.headers.get(seal.HEADER, ""), peer, replay=None)
             plain = seal.open_request(KEY, ok, request.content)
         except seal.Broken:
             return None

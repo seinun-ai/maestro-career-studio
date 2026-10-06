@@ -489,3 +489,114 @@ def test_replay_cache_counts_one_first_sight_under_contention():
             thread.join()
         misses += found.count(False)
     assert misses == 20
+
+
+def test_check_header_requires_replay():
+    header, _wire, _rid = _seal(b"explicit")
+
+    with pytest.raises(TypeError, match="replay"):
+        check_header(SECRET, "POST", PATH, "", header, PEER, now=NOW)
+
+
+def test_two_request_seals_of_one_body_use_different_nonces_and_ciphertexts():
+    body = b'{"same":true}'
+    first, second = _seal(body), _seal(body)
+
+    assert first[0].split(".")[3] != second[0].split(".")[3]
+    assert first[1] != second[1]
+    assert first[1]
+
+
+def test_two_response_seals_of_one_body_use_different_nonces_and_ciphertexts():
+    body = b'{"same":true}'
+    one_header, one_wire = seal_response(SECRET, "rid-1", 200, body)
+    two_header, two_wire = seal_response(SECRET, "rid-1", 200, body)
+
+    assert one_header.split(".")[1] != two_header.split(".")[1]
+    assert one_wire != two_wire
+
+
+def test_a_future_skewed_seal_cannot_be_replayed_at_the_far_edge():
+    body = b"ahead"
+    header, wire, _rid = _seal(body, now=NOW + SKEW_SECONDS)
+    far = NOW + SKEW_SECONDS + SKEW_SECONDS
+    fresh = ReplayCache()
+
+    assert open_request(SECRET, _check(header, now=far, replay=fresh), wire) == body
+    spent = ReplayCache()
+    _check(header, replay=spent)
+    _broken(lambda: _check(header, now=far, replay=spent))
+
+
+@pytest.mark.parametrize(
+    "stamp",
+    ["²²²", "9" * 400, "9" * 5000],
+    ids=["superscript-digits", "four-hundred-digits", "five-thousand-digits"],
+)
+def test_a_bad_timestamp_is_broken_before_any_echo(stamp, monkeypatch):
+    header, _wire, rid = _seal(b"digits")
+    parts = header.split(".")
+    parts[1] = stamp
+    bad = ".".join(parts)
+    cache = ReplayCache()
+    calls = []
+    real = hmac.compare_digest
+
+    def spy(left, right):
+        calls.append((bytes(left), bytes(right)))
+        return real(left, right)
+
+    monkeypatch.setattr("app.services.sync.seal.hmac.compare_digest", spy)
+    exc = _broken(lambda: _check(bad, replay=cache))
+
+    assert exc.__context__ is None
+    assert stamp not in repr(exc)
+    assert len(calls) == 1
+    assert calls[0][0] != calls[0][1]
+    assert cache.seen(rid, NOW) is False
+
+
+def test_an_unexpected_parser_error_is_broken(monkeypatch):
+    header, wire, rid = _seal(b"plain")
+    ok = _check(header)
+    response_header, response_wire = seal_response(SECRET, rid, 200, b"{}")
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("SENTINEL-PARSE")
+
+    def expect(call):
+        exc = _broken(call)
+        assert exc.__context__ is None
+        assert "SENTINEL" not in repr(exc)
+
+    monkeypatch.setattr("app.services.sync.seal._parsed_header", boom)
+    expect(lambda: _check(header))
+    monkeypatch.setattr("app.services.sync.seal._decrypt", boom)
+    expect(lambda: open_request(SECRET, ok, wire))
+    monkeypatch.setattr("app.services.sync.seal._response_nonce", boom)
+    expect(lambda: open_response(SECRET, rid, 200, response_header, response_wire))
+
+
+def test_the_derived_key_cache_keeps_sixteen_and_drops_the_oldest():
+    import app.services.sync.seal as seal_mod
+
+    with seal_mod._KEYS_LOCK:
+        saved = dict(seal_mod._KEYS)
+        seal_mod._KEYS.clear()
+    try:
+        for i in range(16):
+            seal_mod._key(f"pairing-{i}", TO_HOME)
+        assert len(seal_mod._KEYS) == 16
+        assert ("pairing-0", TO_HOME) in seal_mod._KEYS
+        seal_mod._key("pairing-16", TO_HOME)
+        assert len(seal_mod._KEYS) == 16
+        assert ("pairing-0", TO_HOME) not in seal_mod._KEYS
+        assert ("pairing-1", TO_HOME) in seal_mod._KEYS
+        assert ("pairing-16", TO_HOME) in seal_mod._KEYS
+        seal_mod._key("pairing-1", TO_HOME)
+        assert ("pairing-2", TO_HOME) in seal_mod._KEYS
+        assert len(seal_mod._KEYS) == 16
+    finally:
+        with seal_mod._KEYS_LOCK:
+            seal_mod._KEYS.clear()
+            seal_mod._KEYS.update(saved)

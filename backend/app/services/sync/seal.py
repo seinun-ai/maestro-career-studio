@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass
+from typing import NoReturn
 from urllib.parse import parse_qsl, urlencode
 
 from cryptography.exceptions import InvalidTag
@@ -31,6 +32,8 @@ _NONCE_LEN = 12
 _MAC_LEN = 16
 _TAG_LEN = 16
 _REPLAY_CAP = 100_000
+_KEY_CAP = 16
+_TS_MAX = 12
 _KEYS: dict[tuple[str, bytes], bytes] = {}
 _KEYS_LOCK = threading.Lock()
 
@@ -84,10 +87,17 @@ def _key(secret: str, label: bytes) -> bytes:
     slot = (secret, label)
     with _KEYS_LOCK:
         found = _KEYS.get(slot)
-        if found is None:
-            found = derive(secret, label)
-            _KEYS[slot] = found
-        return found
+        if found is not None:
+            return found
+        return _store_key(slot, secret, label)
+
+
+def _store_key(slot: tuple[str, bytes], secret: str, label: bytes) -> bytes:
+    found = derive(secret, label)
+    _KEYS[slot] = found
+    if len(_KEYS) > _KEY_CAP:
+        del _KEYS[next(iter(_KEYS))]
+    return found
 
 
 def _mac(secret: str, label: bytes, aad: bytes) -> bytes:
@@ -113,7 +123,10 @@ def _nonce() -> bytes:
 
 
 def _shape(parts: list[str]) -> bool:
-    return len(parts) == 6 and parts[0] == VERSION and bool(parts[1]) and parts[1].isdigit()
+    if len(parts) != 6 or parts[0] != VERSION:
+        return False
+    stamp = parts[1]
+    return stamp.isascii() and stamp.isdigit() and len(stamp) <= _TS_MAX
 
 
 def _decode_piece(text: str) -> bytes | None:
@@ -151,7 +164,7 @@ def _parsed_header(header: str) -> _Parsed | None:
     return _Parsed(parts[1], parts[2], nonce, mac, boxed)
 
 
-def _reject_unverified(secret: str, label: bytes) -> None:
+def _reject_unverified(secret: str, label: bytes) -> NoReturn:
     hmac.compare_digest(_mac(secret, label, _DUMMY_AAD), _DUMMY_MAC)
     raise Broken
 
@@ -161,7 +174,6 @@ def _usable(secret: str, label: bytes, header: str, now: float) -> _Parsed:
     if parsed is not None and abs(now - int(parsed.ts)) <= SKEW_SECONDS:
         return parsed
     _reject_unverified(secret, label)
-    raise Broken
 
 
 class ReplayCache:
@@ -172,16 +184,16 @@ class ReplayCache:
         self._expiry: dict[str, float] = {}
         self._soonest = float("inf")
 
-    def seen(self, rid: str, now: float) -> bool:
+    def seen(self, rid: str, now: float, *, until: float | None = None) -> bool:
         with self._lock:
             self._prune(now)
             if rid in self._expiry:
                 return True
-            self._remember(rid, now)
+            expiry = now + REPLAY_SECONDS if until is None else until
+            self._remember(rid, expiry)
             return False
 
-    def _remember(self, rid: str, now: float) -> None:
-        expiry = now + REPLAY_SECONDS
+    def _remember(self, rid: str, expiry: float) -> None:
         self._expiry[rid] = expiry
         if expiry < self._soonest:
             self._soonest = expiry
@@ -209,8 +221,26 @@ class ReplayCache:
         self._soonest = min(self._expiry.values(), default=float("inf"))
 
 
-def _replayed(replay: ReplayCache | None, rid: str, now: float) -> bool:
-    return replay is not None and replay.seen(rid, now)
+def _hold_until(ts: str) -> float:
+    """Keep the rid through the stamp's far skew edge plus the replay window."""
+    return int(ts) + SKEW_SECONDS + REPLAY_SECONDS
+
+
+def _replayed(replay: ReplayCache | None, rid: str, now: float, ts: str) -> bool:
+    if replay is None:
+        return False
+    return replay.seen(rid, now, until=_hold_until(ts))
+
+
+def _as_broken(fn):
+    try:
+        return fn()
+    except Broken:
+        raise
+    except Exception:
+        pass
+    # Outside the handler, so a parser error is not chained: its text can echo header bytes.
+    raise Broken
 
 
 def _place(body: bytes, ciphertext: bytes) -> tuple[str, bytes]:
@@ -236,24 +266,30 @@ def seal_request(
 
 def check_header(
     secret: str, method: str, path: str, query: str, header: str, peer: str, *,
-    label: bytes = TO_HOME, now: float | None = None, replay: ReplayCache | None = None,
+    replay: ReplayCache | None, label: bytes = TO_HOME, now: float | None = None,
 ) -> HeaderOk:
-    moment = time.time() if now is None else now
-    parsed = _usable(secret, label, header, moment)
-    aad = request_aad(method, path, query, parsed.ts, parsed.rid, peer)
-    if not hmac.compare_digest(_mac(secret, label, aad), parsed.mac):
-        raise Broken
-    if _replayed(replay, parsed.rid, moment):
-        raise Broken
-    return HeaderOk(parsed.rid, parsed.nonce, aad, parsed.boxed)
+    def verify() -> HeaderOk:
+        moment = time.time() if now is None else now
+        parsed = _usable(secret, label, header, moment)
+        aad = request_aad(method, path, query, parsed.ts, parsed.rid, peer)
+        if not hmac.compare_digest(_mac(secret, label, aad), parsed.mac):
+            raise Broken
+        if _replayed(replay, parsed.rid, moment, parsed.ts):
+            raise Broken
+        return HeaderOk(parsed.rid, parsed.nonce, aad, parsed.boxed)
+
+    return _as_broken(verify)
 
 
 def open_request(
     secret: str, ok: HeaderOk, wire_body: bytes, *, label: bytes = TO_HOME,
 ) -> bytes:
-    if bool(ok.header_box) == bool(wire_body):
-        raise Broken
-    return _decrypt(secret, label, ok.nonce, ok.header_box or wire_body, ok.aad)
+    def verify() -> bytes:
+        if bool(ok.header_box) == bool(wire_body):
+            raise Broken
+        return _decrypt(secret, label, ok.nonce, ok.header_box or wire_body, ok.aad)
+
+    return _as_broken(verify)
 
 
 def _response_aad(rid: str, status: int) -> bytes:
@@ -285,7 +321,10 @@ def open_response(
     secret: str, rid: str, status: int, header: str, wire_body: bytes, *,
     label: bytes = TO_REMOTE,
 ) -> bytes:
-    nonce = _response_nonce(header)
-    if nonce is None:
-        raise Broken
-    return _decrypt(secret, label, nonce, wire_body, _response_aad(rid, status))
+    def verify() -> bytes:
+        nonce = _response_nonce(header)
+        if nonce is None:
+            raise Broken
+        return _decrypt(secret, label, nonce, wire_body, _response_aad(rid, status))
+
+    return _as_broken(verify)
