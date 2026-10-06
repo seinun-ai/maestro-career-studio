@@ -519,6 +519,10 @@ Cap every request body at 100 MB before parsing (413 with a fixed sentence; read
 a running count, don't trust Content-Length alone), and pass `max_bytes` to `files.unpack` for the
 sum of a request's files (Task 7 review).
 
+An `OSError` from `apply_job` → `files.unpack` (disk full, permissions) carries a local path and may
+leave earlier files of that bundle on disk: map it to a fixed 500 sentence ("Maestro couldn't save
+the files it received.") and never put `str(exc)` in a response or a log line (Task 7 review).
+
 Give the router a sanitized validation error, like `_JobSiteLoginRoute` (`routers/settings.py:146`):
 FastAPI's default 422 echoes the request `input`, which here would be bundle contents.
 
@@ -606,7 +610,8 @@ FastAPI's default 422 echoes the request `input`, which here would be bundle con
 11. **State:** on success, `failures = 0` and `next_attempt_at = None`. On a connection error,
     `failures += 1` and
     `next_attempt_at = now + min(30, 5 * 2 ** (failures - 1))` minutes. Return a per-step summary
-    of counts. It never includes contents. `last_error` is a status code plus a fixed sentence,
+    of counts. It never includes contents. A local `OSError` from `apply_job` in steps 7 and 9 is
+    stored the same way as a connection error, as a fixed sentence (Task 7 review). `last_error` is a status code plus a fixed sentence,
     never a response body (a 422 body would carry bundle contents into a setting).
 
 Each step commits on its own. A failed step stops the round, and the next round resumes.
