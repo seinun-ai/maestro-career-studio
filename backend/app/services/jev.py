@@ -13,6 +13,7 @@ fall back to the fast model exactly as they would on an OpenAI outage.
 import json
 import logging
 import math
+import threading
 import time
 from collections.abc import Collection
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.services import model_settings
+from app.services.http_client import new_client
 from app.services.llm import LLMProviderError, _log_call
 
 logger = logging.getLogger(__name__)
@@ -38,10 +40,22 @@ _SUM_TOLERANCE = 0.02
 # ONE pooled client for the process. A fresh connection per call pays a TLS
 # handshake that costs about what Jev's whole answer does, and the fill pass
 # makes two calls back to back. httpx.Client is safe to share across the
-# threads FastAPI runs sync endpoints on.
-_CLIENT = httpx.Client()
+# threads FastAPI runs sync endpoints on. Built on first use, not at import: a
+# malformed proxy variable must never be able to stop the backend from starting.
+_CLIENT: httpx.Client | None = None
+_CLIENT_LOCK = threading.Lock()
 
 NO_JEV_KEY_MESSAGE = "No Jev API key is set. Add one in Settings › AI & models › Form filling."
+
+
+def _client() -> httpx.Client:
+    """The process-wide pooled client, built by the first call that needs it."""
+    global _CLIENT
+    if _CLIENT is None:
+        with _CLIENT_LOCK:
+            if _CLIENT is None:
+                _CLIENT = new_client()
+    return _CLIENT
 
 
 @dataclass(frozen=True)
@@ -125,7 +139,7 @@ def decide(
     while True:
         attempt += 1
         try:
-            response = _CLIENT.post(
+            response = _client().post(
                 url,
                 json=body,
                 headers={"Authorization": f"Bearer {key}"},
