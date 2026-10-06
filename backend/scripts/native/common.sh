@@ -171,6 +171,29 @@ native_stop() {
     native_remove_pidfile
 }
 
+native_paused_since() {
+    # Prints when stop.sh paused the watchdog; fails when no maintenance marker exists.
+    local marker="$MAESTRO_HOME/maintenance" stamp=""
+    [[ -f "$marker" && ! -L "$marker" ]] || return 1
+    read -r stamp < "$marker" 2>/dev/null || true
+    # Only a well-formed UTC time is ever printed; anything else is not echoed.
+    [[ "$stamp" =~ ^[0-9]{4}(-[0-9]{2}){2}T[0-9]{2}(:[0-9]{2}){2}Z$ ]] || stamp='an unknown time'
+    printf '%s\n' "$stamp"
+}
+
+native_set_pause() {
+    local marker="$MAESTRO_HOME/maintenance"
+    rm -f -- "$marker" 2>/dev/null || native_error 'Cannot write the maintenance marker.'
+    date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null > "$marker" \
+        || native_error 'Cannot write the maintenance marker.'
+    chmod 600 "$marker" 2>/dev/null || native_error 'Cannot secure the maintenance marker.'
+}
+
+native_clear_pause() {
+    rm -f -- "$MAESTRO_HOME/maintenance" 2>/dev/null \
+        || native_error 'Cannot remove the maintenance marker.'
+}
+
 native_free_port() {
     "$NATIVE_PYTHON" - "$MAESTRO_PORT" >/dev/null 2>&1 <<'PY'
 import socket

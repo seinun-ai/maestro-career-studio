@@ -572,6 +572,185 @@ def test_env_syntax_errors_do_not_expose_key_values(native_home):
     assert_safe(result, ctx)
 
 
+def run_native(command, env):
+    """Run a shell line as a supervisor would; the scripts are reached by absolute path."""
+    return subprocess.run(["bash", "-c", command, "watchdog", str(NATIVE)], cwd="/", env=env,
+                          capture_output=True, text=True, timeout=45)
+
+
+WATCHDOG = '"$1/health.sh" >/dev/null 2>&1 || "$1/start.sh" --watchdog'
+
+
+def pause_marker(ctx):
+    return ctx.home / "maintenance"
+
+
+def test_stop_writes_a_private_maintenance_marker_with_the_utc_time(native_home):
+    ctx = native_home
+    start_home(ctx)
+    result = run_script("stop.sh", ctx.env)
+    assert result.returncode == 0, result.stderr
+    marker = pause_marker(ctx)
+    assert marker.stat().st_mode & 0o777 == 0o600
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\n", marker.read_text())
+    assert_safe(result, ctx)
+
+
+def test_stop_no_pause_leaves_no_marker_and_unknown_flags_are_rejected(native_home):
+    ctx = native_home
+    start_home(ctx)
+    bad = subprocess.run(["bash", str(NATIVE / "stop.sh"), "--bogus"], cwd="/", env=ctx.env,
+                         capture_output=True, text=True)
+    assert bad.returncode == 1 and "Usage" in bad.stderr
+    assert (ctx.home / "backend.pid").exists() and not pause_marker(ctx).exists()
+    result = subprocess.run(["bash", str(NATIVE / "stop.sh"), "--no-pause"], cwd="/",
+                            env=ctx.env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert not pause_marker(ctx).exists() and not (ctx.home / "backend.pid").exists()
+
+
+def test_start_watchdog_declines_while_paused_and_exits_zero(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    pause_marker(ctx).write_text("2026-10-06T01:02:03Z\n")
+    result = subprocess.run(["bash", str(NATIVE / "start.sh"), "--watchdog"], cwd="/",
+                            env=ctx.env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ("Maestro is paused for maintenance since 2026-10-06T01:02:03Z; "
+                             "not starting. Run start.sh to resume.\n")
+    assert not (ctx.records / "uvicorn.json").exists()
+    assert not (ctx.home / "backend.pid").exists()
+    assert pause_marker(ctx).exists()
+    assert_safe(result, ctx)
+
+
+def test_start_watchdog_starts_when_not_paused(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    result = subprocess.run(["bash", str(NATIVE / "start.sh"), "--watchdog"], cwd="/",
+                            env=ctx.env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    wait_for_file(ctx.records / "uvicorn.json")
+    assert (ctx.home / "backend.pid").exists()
+
+
+def test_plain_start_removes_the_marker_and_starts(native_home):
+    ctx = native_home
+    start_home(ctx)
+    assert run_script("stop.sh", ctx.env).returncode == 0
+    assert pause_marker(ctx).exists()
+    (ctx.records / "uvicorn.json").unlink()
+    result = run_script("start.sh", ctx.env)
+    assert result.returncode == 0, result.stderr
+    wait_for_file(ctx.records / "uvicorn.json")
+    assert not pause_marker(ctx).exists()
+    assert (ctx.home / "backend.pid").read_text().strip() == str(read_record(ctx, "uvicorn")["pid"])
+
+
+def test_a_resume_that_fails_before_the_pidfile_keeps_the_pause(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    pause_marker(ctx).write_text("2026-10-06T01:02:03Z\n")
+    (ctx.home / "maestro.env").write_text("MAESTRO_PORT='0'\n")
+    result = run_script("start.sh", ctx.env)
+    assert result.returncode == 1
+    assert pause_marker(ctx).exists()  # the watchdog must not take over a failed resume
+
+
+def test_a_resume_racing_the_watchdog_starts_one_backend(native_home):
+    ctx = native_home
+    start_home(ctx)
+    for _ in range(3):
+        assert run_script("stop.sh", ctx.env).returncode == 0
+        calls = read_record(ctx, "uvicorn")["calls"]
+        resume = subprocess.Popen(["bash", str(NATIVE / "start.sh")], cwd="/", env=ctx.env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        ticks = [run_native(WATCHDOG, ctx.env) for _ in range(5)]
+        out, err = resume.communicate(timeout=45)
+        assert resume.returncode == 0, err
+        assert all(tick.returncode in (0, 1) for tick in ticks)
+        backend = read_record(ctx, "uvicorn")
+        assert backend["calls"] == calls + 1
+        assert (ctx.home / "backend.pid").read_text().strip() == str(backend["pid"])
+        assert not pause_marker(ctx).exists()
+
+
+def test_stop_without_a_home_does_not_claim_a_pause(native_home):
+    ctx = native_home
+    env = {**ctx.env, "MAESTRO_HOME": str(ctx.home / "absent")}
+    result = run_script("stop.sh", env)
+    assert result.returncode == 0, result.stderr
+    assert "paused" not in result.stdout
+
+
+def test_start_rejects_unknown_flags(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    result = subprocess.run(["bash", str(NATIVE / "start.sh"), "--bogus"], cwd="/", env=ctx.env,
+                            capture_output=True, text=True)
+    assert result.returncode == 1 and "Usage" in result.stderr
+    assert not (ctx.records / "uvicorn.json").exists()
+
+
+def test_health_says_paused_and_still_exits_one(native_home):
+    ctx = native_home
+    start_home(ctx)
+    assert run_script("stop.sh", ctx.env).returncode == 0
+    since = pause_marker(ctx).read_text().strip()
+    result = run_script("health.sh", ctx.env)
+    assert result.returncode == 1 and not result.stdout
+    assert "paused for maintenance" in result.stderr and since in result.stderr
+    pause_marker(ctx).unlink()
+    plain = run_script("health.sh", ctx.env)
+    assert plain.returncode == 1 and "paused" not in plain.stderr
+
+
+def test_watchdog_does_not_restart_a_paused_backend(native_home):
+    ctx = native_home
+    start_home(ctx)
+    first_pid = read_record(ctx, "uvicorn")["pid"]
+    assert run_script("stop.sh", ctx.env).returncode == 0
+    tick = run_native(f"{WATCHDOG}; {WATCHDOG}", ctx.env)
+    assert tick.returncode == 0 and "paused for maintenance" in tick.stdout
+    assert read_record(ctx, "uvicorn") == {**read_record(ctx, "uvicorn"), "pid": first_pid, "calls": 1}
+    assert not (ctx.home / "backend.pid").exists()
+
+
+def test_start_after_a_pause_resumes_and_the_watchdog_then_has_nothing_to_do(native_home):
+    ctx = native_home
+    start_home(ctx)
+    assert run_script("stop.sh", ctx.env).returncode == 0
+    assert run_script("start.sh", ctx.env).returncode == 0
+    assert read_record(ctx, "uvicorn")["calls"] == 2
+    assert run_native(WATCHDOG, ctx.env).stdout == ""
+    assert read_record(ctx, "uvicorn")["calls"] == 2
+
+
+def test_stop_no_pause_then_start_restarts_and_the_watchdog_recovers_a_plain_stop(native_home):
+    ctx = native_home
+    start_home(ctx)
+    stopped = subprocess.run(["bash", str(NATIVE / "stop.sh"), "--no-pause"], cwd="/",
+                             env=ctx.env, capture_output=True, text=True)
+    assert stopped.returncode == 0
+    tick = run_native(WATCHDOG, ctx.env)
+    assert tick.returncode == 0, tick.stderr
+    wait_for_file(ctx.records / "uvicorn.json")
+    assert read_record(ctx, "uvicorn")["calls"] == 2
+
+
+def test_a_marker_that_is_not_a_time_is_never_echoed(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    pause_marker(ctx).write_text(f"{SENTINEL}\n")
+    watchdog = subprocess.run(["bash", str(NATIVE / "start.sh"), "--watchdog"], cwd="/",
+                              env=ctx.env, capture_output=True, text=True)
+    health = run_script("health.sh", ctx.env)
+    assert watchdog.returncode == 0 and "unknown time" in watchdog.stdout
+    assert health.returncode == 1 and "paused for maintenance" in health.stderr
+    assert_safe(watchdog, ctx)
+    assert_safe(health, ctx)
+
+
 def assert_real_backend_lifecycle(env):
     assert run_script("start.sh", env).returncode == 0
     health = run_script("health.sh", env)

@@ -5,6 +5,10 @@ it cannot parse raises `httpx.InvalidURL`. The usual culprit is a bracketed IPv6
 literal (`[fd8b:1234::1]`), which some VM images set. Raised at import it kept
 the whole backend from starting, so every long-lived client Maestro builds comes
 from `new_client` instead of `httpx.Client`.
+
+Clients built by libraries (the OpenAI SDK, the embedding model's first download)
+never pass through `new_client`, so the backend and the MCP server also call
+`repair_proxy_env` once at startup; the processes they start inherit the fix.
 """
 
 import logging
@@ -82,3 +86,14 @@ def new_client(**kwargs: Any) -> httpx.Client:
         return httpx.Client(**kwargs)
     except httpx.InvalidURL as exc:
         return _build_repaired(kwargs, exc)
+
+
+def repair_proxy_env() -> None:
+    """Rewrite unparseable NO_PROXY entries in this process's environment, once.
+
+    Only this process and the ones it starts see the change, never the user's shell."""
+    with _ENV_LOCK:
+        repaired = _repaired_env()
+        os.environ.update(repaired)
+    if repaired:
+        _warn_once(sorted(repaired))

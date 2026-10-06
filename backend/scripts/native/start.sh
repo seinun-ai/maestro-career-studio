@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
 # Background one loopback worker, with a disk-backed model cache.
+# --watchdog is for supervisors: it declines while stop.sh has paused maintenance.
 set +x
 set -euo pipefail
 umask 077
 # shellcheck source=common.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
 
+watchdog=0
+for arg in "$@"; do
+    case "$arg" in
+        --watchdog) watchdog=1 ;;
+        *) native_error 'Usage: start.sh [--watchdog]' ;;
+    esac
+done
+
 native_private_home
+resume=0
+if paused_since="$(native_paused_since)"; then
+    if (( watchdog )); then
+        printf '%s\n' "Maestro is paused for maintenance since $paused_since; not starting. Run start.sh to resume."
+        exit 0
+    fi
+    resume=1  # a manual start resumes, once it owns the pidfile
+fi
 if native_running; then
     native_error 'Native backend is already running.'
 fi
@@ -17,7 +34,7 @@ cd -- "$NATIVE_BACKEND"
 log="$MAESTRO_HOME/logs/backend.log"
 # Keep the last run's log: a watchdog restart must not wipe the crash traceback.
 if [[ -e "$log" || -L "$log" ]]; then
-    mv -f -- "$log" "$log.1"
+    mv -f -- "$log" "$log.1" 2>/dev/null || true
 fi
 : > "$log"
 chmod 600 "$log"
@@ -35,6 +52,11 @@ fi
 if ! native_wait_for_health; then
     native_abort_launch
     native_error 'Native backend did not become healthy within 30 seconds.'
+fi
+# Only now: before the pidfile, a watchdog tick would start a second backend,
+# and a resume that fails keeps the pause.
+if (( resume )); then
+    native_clear_pause
 fi
 trap - INT TERM
 printf '%s\n' 'Native backend started.'
