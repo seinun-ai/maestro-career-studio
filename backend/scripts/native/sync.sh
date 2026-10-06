@@ -32,6 +32,31 @@ if paused_since="$(native_paused_since)"; then
 fi
 native_load_env
 [[ -x "$NATIVE_PYTHON" ]] || native_error 'Native venv is missing; run setup.sh.'
+if [[ "$pair" == true && ! -e "$SYNC_KEY_FILE" && ! -L "$SYNC_KEY_FILE" ]]; then
+    enrollment="$(native_post /api/sync-setup/enroll '{}')" \
+        || native_error 'Native backend is not reachable; check start.sh and health.sh.'
+    enrollment_status="${enrollment%%$'\n'*}"
+    printf '%s' "${enrollment#*$'\n'}" | "$NATIVE_PYTHON" -c '
+import json
+import sys
+
+try:
+    body = json.loads(sys.stdin.read())
+except ValueError:
+    body = None
+status = int(sys.argv[1])
+if status == 200 and isinstance(body, dict) and body.get("ok") is True:
+    raise SystemExit(0)
+if isinstance(body, dict) and body.get("outcome") in ("needs_person", "transient"):
+    # The local backend returns fixed sentences, never the laptop body or a key.
+    text = body.get("detail")
+    if isinstance(text, str):
+        print(" ".join(text.split())[:300], file=sys.stderr)
+        raise SystemExit(1)
+print("This copy could not fetch the sync key. Check the laptop pairing window and tunnel.", file=sys.stderr)
+raise SystemExit(1)
+' "$enrollment_status" || exit 1
+fi
 # A person pairing or asking for --now wants the round now, even inside a backoff window; cron never forces.
 force="$pair"
 [[ "$now" == false ]] || force=true

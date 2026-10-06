@@ -48,6 +48,7 @@ from app.services import (
 )
 from app.services.llm import LLMProviderError
 from app.services.sync import offers as sync_offers
+from app.services.sync import pairing as sync_pairing
 
 
 class JevInfo(BaseModel):
@@ -142,6 +143,35 @@ class PersonaDraft(BaseModel):
 
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+def _second_copy_home():
+    if app_settings.sync_remote_url:
+        raise HTTPException(409, detail=sync_pairing.HOME_ONLY)
+    if not sync_pairing.LOCK.acquire(blocking=False):
+        raise HTTPException(409, detail="A sync is already running.")
+    try:
+        yield
+    finally:
+        sync_pairing.LOCK.release()
+
+
+@router.get("/second-copy", dependencies=[Depends(_second_copy_home)])
+def get_second_copy(db: Annotated[Session, Depends(get_db)]):
+    return sync_pairing.window_status(db)
+
+
+@router.post("/second-copy", dependencies=[Depends(_second_copy_home)])
+def allow_second_copy(db: Annotated[Session, Depends(get_db)]):
+    try:
+        return sync_pairing.open_window(db)
+    except sync_pairing.Refused as refusal:
+        raise HTTPException(refusal.status_code, detail=refusal.detail) from None
+
+
+@router.delete("/second-copy", dependencies=[Depends(_second_copy_home)])
+def stop_second_copy(db: Annotated[Session, Depends(get_db)]):
+    return sync_pairing.close_window(db)
 
 
 class _JobSiteLoginRoute(APIRoute):

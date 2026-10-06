@@ -224,6 +224,7 @@ app.include_router(automations.router)
 app.include_router(filled_answers.router)
 app.include_router(agent_runs.router)
 app.include_router(sync.router)
+app.include_router(sync.setup_router)
 
 
 @app.get("/health")

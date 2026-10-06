@@ -249,11 +249,11 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
   machine to the laptop. Nothing in sync logs a key, a login, a bundle or a
   request body. Errors are fixed sentences plus a status code.
   - **The sync endpoints refuse by default.** With no sync key file they answer
-    404, for every route. On the always-on copy they answer 404 too: only the
-    laptop serves them.
+    404, for every route. Only the laptop serves data and enrollment routes;
+    the always-on backend serves its own local round route.
   - **A browser can never reach them.** Any request with an `Origin` header is
     refused with 403, before the key is read, even with the right key.
-  - **They need the key, checked in constant time.** The key is a bearer token
+  - **Data routes need the key, checked in constant time.** The key is a bearer token
     from a 0600 file in a 0700 folder. A wrong or missing key is a 401 that
     echoes nothing. The key is checked before the version.
   - **They listen on the laptop's loopback only.** The always-on machine
@@ -264,8 +264,25 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
   - **One writer per job.** The always-on copy cannot change your profile or
     your jobs, and the laptop cannot change a job the bot owns. A write to a
     row the other copy owns is refused at the database flush.
-  - The key is shown once, by `sync_key show`, for your own terminal and your
-    vault. Do not paste it into a chat.
+  - **Pairing is an explicit, one-use approval.** Settings › Connected agents ›
+    Second copy opens a 10-minute window and creates the laptop's key if needed
+    (`POST /api/settings/second-copy`). Stop closes the window. The tunnel-only
+    `POST /api/sync/enroll` needs no bearer key during that window, checks the
+    protocol and schema, refuses any Origin before reading the key or body, and
+    shares the sync lock. Success closes the window and records the time in the
+    same transaction. Five closed-window or failed version checks in 10 minutes
+    block enrollment for 10 minutes, including after a restart or reopening.
+    Only the fixed line “A copy fetched the sync key.” is logged.
+  - **Setup stays outside `/api/sync/`.** The settings read works without a key
+    and creates nothing; only its POST opts in. On the always-on backend,
+    `POST /api/sync-setup/enroll` requires a configured loopback tunnel, refuses
+    any Origin, bypasses proxies and redirects, and installs the fetched key in
+    an exclusive 0600 file in a 0700 directory. It never returns the key to the
+    caller. An existing file or symlink is never overwritten. No-key data routes
+    remain 404. A local process reaching the restricted tunnel during an open
+    window can enroll: the SSH forward and private-network rule are the trust.
+    The manual alternative is `sync_key show` in your own terminal and a secure
+    transfer into the other key file. Never paste a key into a chat.
 
 ---
 

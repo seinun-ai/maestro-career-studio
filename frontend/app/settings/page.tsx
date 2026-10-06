@@ -18,6 +18,7 @@ import {
 import { PromptsSection } from "@/components/settings/prompts-section";
 import { QuickTailorSection } from "@/components/settings/quick-tailor-section";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { SecondCopySection } from "@/components/settings/second-copy-section";
 import { CustomEndpointSection } from "@/components/settings/llm-endpoint";
 import { ModelCatalogSection } from "@/components/settings/model-catalog-panel";
 import { Button } from "@/components/ui/button";
@@ -85,6 +86,7 @@ export default function SettingsPage({
               <FullAutomationSection />
               <McpWorkflowSection />
               <AutoApplySection />
+              <SecondCopySection />
             </>
           ),
           appearance: <AppearanceSection />,

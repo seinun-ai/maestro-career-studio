@@ -458,6 +458,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   (`trust_env=False`) and refuses a `SYNC_REMOTE_URL` whose host isn't loopback (a `needs_person` skip, no request made). The profile, the AI key and the job-site login ride only this channel; no key, bundle, body
   or exception text reaches a log or an error (fixed sentences and a status code). A received job's artifact folders and file paths must sit in their own application's folder and may not overlap another job's folder, compared case-folded and by inode (`services/sync/folders.py`: APFS ignores case), also before a tombstone removes a folder. `POST /api/sync/round` is the always-on copy's own
   loopback call (no key; 404 on the laptop, 403 for an `Origin`). Pinned by `tests/sync/test_home_endpoints.py`.
+  Settings' **Second copy** opens a one-use 10-minute window (`/api/settings/second-copy`); `/api/sync-setup/enroll` fetches the key privately through the tunnel, and `/api/sync/enroll` consumes the window with a five-failure rate limit (`tests/sync/test_pairing.py`).
 
 ## 7. Agent surfaces
 

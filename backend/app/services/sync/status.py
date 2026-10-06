@@ -134,12 +134,17 @@ def _warn_unreadable_key() -> None:
 
 def create_key() -> Path:
     """Write a fresh key, 0600 in a 0700 directory, refusing to overwrite (the CLI's job)."""
+    return save_key(secrets.token_urlsafe(32))
+
+
+def save_key(key: str) -> Path:
+    """Install a received key privately, never overwriting even an empty file or a symlink."""
     path = key_path()
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as fh:
-        fh.write(secrets.token_urlsafe(32) + "\n")
+        fh.write(key + "\n")
     return path
 
 

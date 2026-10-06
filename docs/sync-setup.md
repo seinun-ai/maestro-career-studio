@@ -39,8 +39,12 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
 ## 1. The laptop
 
 1. **Join a private network.** Use one that gives each machine a stable name,
-   such as Tailscale. Join the laptop and the VM to it. Never open the laptop to
-   the public internet.
+   such as Tailscale. On the VM, run `tailscale up` and open its interactive
+   login link yourself to join the same network as the laptop. Set up a tag
+   such as `tag:maestro-bot` in your network's policy, advertise it with
+   `tailscale up --advertise-tags=tag:maestro-bot`, and permit that tag to reach
+   only the laptop's SSH port. This path needs no auth key or secret pasted
+   into a chat. Never open the laptop to the public internet.
 2. **Turn on Remote Login** (macOS: System Settings › General › Sharing).
 3. **On the VM, make a key just for this.** Keep the private half on the VM
    (mode 0600, passphrase-free so cron can use it):
@@ -55,37 +59,17 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
    Keep `command="/usr/bin/false"`: `restrict` alone still lets the key run a
    shell. With it, this key can open one forward to Maestro's port and do
    nothing else, and port forwarding still works.
-5. **Make the sync key**, once, from your Maestro folder. On a Docker laptop:
-   ```bash
-   docker compose exec backend python -m scripts.sync_key create
-   docker compose exec backend python -m scripts.sync_key show
-   ```
-   On a native laptop, run these from the repository's `backend/` folder, with
-   the venv's Python and the key path set:
-   ```bash
-   SYNC_KEY_FILE="$MAESTRO_HOME/sync-key" "$MAESTRO_HOME/venv/bin/python" -m scripts.sync_key create
-   SYNC_KEY_FILE="$MAESTRO_HOME/sync-key" "$MAESTRO_HOME/venv/bin/python" -m scripts.sync_key show
-   ```
-   `create` prints only the file's path. `show` prints the key: copy it into
-   your vault from your own terminal, once. Never paste it into a chat or a
-   ticket. Maestro reads the key file on each request, so a running laptop
-   needs no restart. The one exception is a native backend started before
-   `start.sh` always set `SYNC_KEY_FILE`: restart that one once
-   (`stop.sh --no-pause && start.sh`). The laptop is now the home copy. Its
-   sync endpoints answer only requests that carry this key.
+5. **Wait to allow pairing until the tunnel is ready.** In step 4 below, the
+   **Second copy** card in Settings › Connected agents will create the key
+   and let your always-on copy fetch it once. Nothing to copy or paste.
+   Maestro reads the key file on each request, so a running laptop needs no
+   restart. A native backend started before `start.sh` always set
+   `SYNC_KEY_FILE` needs one restart (`stop.sh --no-pause && start.sh`).
 
 ## 2. The always-on copy
 
 1. **Install Maestro natively** by following [native-install.md](native-install.md).
-2. **Put the vault's key in a file.** Write it straight from the vault's command
-   line tool, so it never appears in your shell history:
-   ```bash
-   ( umask 077; your-vault-command-that-prints-the-key > "$MAESTRO_HOME/sync-key" )
-   chmod 600 "$MAESTRO_HOME/sync-key"
-   ```
-   **Never run `sync_key create` on this machine.** A second key would not
-   match the laptop's.
-3. **Tell Maestro where the laptop is.** In `$MAESTRO_HOME/maestro.env`, set:
+2. **Tell Maestro where the laptop is.** In `$MAESTRO_HOME/maestro.env`, set:
    ```bash
    SYNC_REMOTE_URL=http://127.0.0.1:8101
    ```
@@ -93,11 +77,11 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
    tunnel (`127.0.0.1`, `localhost` or `::1`). Maestro refuses any other address,
    and it ignores `HTTP_PROXY` and the like for this connection, because the key
    and your profile travel in it.
-4. **Restart,** because the backend reads `maestro.env` at start:
+3. **Restart,** because the backend reads `maestro.env` at start:
    ```bash
    "$REPO/backend/scripts/native/stop.sh" --no-pause && "$REPO/backend/scripts/native/start.sh"
    ```
-5. **Add the laptop to `~/.ssh/config`** (use your private network's name):
+4. **Add the laptop to `~/.ssh/config`** (use your private network's name):
    ```
    Host laptop
        HostName your-laptop.your-network.example
@@ -105,7 +89,7 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
        IdentityFile ~/.ssh/maestro-sync
        BatchMode yes
    ```
-6. **Trust the laptop's host key, once.** `BatchMode yes` refuses to ask, so
+5. **Trust the laptop's host key, once.** `BatchMode yes` refuses to ask, so
    the first tunnel would fail with "Host key verification failed." Accept the
    key once, by hand:
    ```bash
@@ -114,7 +98,7 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
    When you can, compare the fingerprint it shows with the one on the laptop:
    `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. The command ends at once with
    status 1, because the key's forced command is `/usr/bin/false`. That is fine.
-7. **Open the tunnel.** It makes the VM's `127.0.0.1:8101` reach the laptop's
+6. **Open the tunnel.** It makes the VM's `127.0.0.1:8101` reach the laptop's
    `127.0.0.1:8001`:
    ```bash
    ssh -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
@@ -130,7 +114,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8101/api/sync/hello
 ```
 
 `401` means the laptop has a key and wants it. `404` means the laptop has no
-key yet (step 1.5).
+key yet. Allow pairing in the laptop's Second copy card when you are ready.
 
 ## 3. Cron lines
 
@@ -161,9 +145,26 @@ the answer is "Synced moments ago."
 
 Do this once, at the keyboard, with the tunnel up:
 
+1. On the laptop, open **Settings › Connected agents › Second copy** and click
+   **Allow pairing for 10 minutes**. The card shows a countdown and **Stop**.
+2. On the always-on copy, run:
+
 ```bash
 "$REPO/backend/scripts/native/sync.sh" --pair
 ```
+
+When its key file is missing, the script first asks its own backend to fetch
+the key through the tunnel. The backend writes it privately (0600) and returns
+only success; no key enters the command, chat, or script output. That fetch
+closes the window immediately, and the card shows **Paired with your bot at
+<time>**. The script then runs the first pairing round. A fetch does not yet
+mean the profile round succeeded: if the round stops, use the same `--pair`
+command again; the saved key is reused. The manual key-file path still works.
+
+If the window is closed or expired, the script prints “Pairing isn't open on
+your laptop. Click Allow pairing for 10 minutes there.” and exits 1. Allow it
+again and retry. Five failed or closed-window enrollment attempts in 10 minutes
+block fetching for 10 minutes; reopening the window does not clear that limit.
 
 The first round replaces the always-on copy's profile with the laptop's. If
 that would lose something, the round stops and lists what it would lose. It
@@ -185,6 +186,36 @@ confirm this" never block pairing, and they are sent to the laptop.
 
 After pairing, a job both copies already hold is the laptop's. A job only the
 always-on copy holds stays its own.
+
+### Manual alternative: transfer the key file
+
+If your secure store can place a secret directly in a file, you can use it
+instead of the pairing window. On a Docker laptop, run these from the repository:
+
+```bash
+docker compose exec backend python -m scripts.sync_key create
+docker compose exec backend python -m scripts.sync_key show
+```
+
+On a native laptop, run from `backend/` with its venv:
+
+```bash
+SYNC_KEY_FILE="$MAESTRO_HOME/sync-key" "$MAESTRO_HOME/venv/bin/python" -m scripts.sync_key create
+SYNC_KEY_FILE="$MAESTRO_HOME/sync-key" "$MAESTRO_HOME/venv/bin/python" -m scripts.sync_key show
+```
+
+Skip `create` if a key already exists. `show` is for your own terminal only;
+put it in your secure store there, never a chat or ticket. On the always-on copy,
+write it directly from that store's command line tool:
+
+```bash
+( umask 077; your-vault-command-that-prints-the-key > "$MAESTRO_HOME/sync-key" )
+chmod 600 "$MAESTRO_HOME/sync-key"
+```
+
+Some vaults only fill website forms and cannot place a secret in a file; use
+the pairing window in that case. **Never run `sync_key create` on the always-on
+copy:** a second key would not match. Then run `sync.sh --pair` as above.
 
 ## 5. What the marks mean
 
@@ -274,12 +305,13 @@ Either machine can be rebuilt from its backup plus one sync round.
 - **"401: Sync key doesn't match."** The VM's key file differs from the laptop's.
   Copy the key from the vault again. Maestro reads the key file on each request,
   so the VM's backend needs no restart. Do not create a new key on the VM.
-- **"404: Sync isn't set up on your laptop."** The laptop has no key file. Run
-  `sync_key create` there.
+- **"404: Sync isn't set up on your laptop."** The laptop has no key file. Click
+  **Allow pairing for 10 minutes** in its Second copy card.
 - **`sync.sh` says "This copy is not set up as the always-on copy".** The VM
-  has no key file, or `SYNC_REMOTE_URL` is unset. Check steps 2.2 to 2.4.
+  has no key file, or `SYNC_REMOTE_URL` is unset. Check steps 2.2 and 2.3, then
+  allow pairing on the laptop and run `sync.sh --pair`.
 - **"The laptop's address must be this machine's own tunnel (127.0.0.1)."**
-  `SYNC_REMOTE_URL` names another host. Set it to the tunnel's address (step 2.3).
+  `SYNC_REMOTE_URL` names another host. Set it to the tunnel's address (step 2.2).
 - **"Laptop unreachable."** The tunnel is down, or the laptop is asleep or off,
   or Docker is stopped. `sync.sh` prints "Sync didn't run: Laptop unreachable. It will try again." This
   is not an error: Maestro backs off and retries.

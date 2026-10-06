@@ -1,9 +1,11 @@
 """Home's side of the sync channel (split-ownership design, Part B).
 
-The always-on copy drives every request; this copy only answers. Every route first runs
+The always-on copy drives every request; this copy only answers. Data routes first run
 ``_require_sync``: 404 while sync is off (or on the always-on copy), 403 for any request carrying
 an ``Origin``, 401 unless the bearer key matches, 409 when the peer's protocol or schema differs,
-and 409 while another request is running. Nothing here logs or echoes a key, a bundle, a request
+and 409 while another request is running. Enrollment instead needs a one-use window opened in
+Settings and the same version check and lock; no key file still means 404. Local setup is under
+the separate ``/api/sync-setup`` prefix. Nothing here logs or echoes a key, a bundle, a request
 body, the AI key or the job-site password: every response and stored reason is a fixed sentence
 or one of the rule sentences the services already use, never ``str(exc)``.
 """
@@ -13,7 +15,6 @@ import hmac
 import json
 import logging
 import re
-import threading
 import uuid
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, TypeVar
@@ -28,6 +29,7 @@ from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import ClientDisconnect
 
+from app.config import settings
 from app.db import get_db
 from app.models.agent_run import AgentRun
 from app.models.job import Job
@@ -39,6 +41,7 @@ from app.services.sync import (
     hooks,
     jobs_bundle,
     offers,
+    pairing,
     profile_bundle,
     request_apply,
     requests,
@@ -54,7 +57,7 @@ Model = TypeVar("Model", bound=BaseModel)
 MAX_BODY_BYTES = 100 * 1024 * 1024
 PAGE_BYTES = 50 * 1024 * 1024
 _CHUNK_TIMEOUT = 30.0
-_LOCK = threading.Lock()
+_LOCK = pairing.LOCK
 _MACHINE_ID = re.compile(r"[A-Za-z0-9_-]{1,32}")
 _JOB_HEX = re.compile(r"[0-9a-f]{32}")
 _CURSOR_END = "f" * 32
@@ -86,6 +89,14 @@ class _Refused(Exception):
         self.status_code, self.detail, self.reason = status_code, detail, reason
 
 
+def _refusal_reply(request: Request, refusal: _Refused | pairing.Refused) -> JSONResponse:
+    content = {"detail": refusal.detail, "reason": refusal.reason}
+    if request.url.path.startswith("/api/sync-setup/"):
+        transient = refusal.status_code >= 500 or refusal.reason == "busy"
+        content.update(ok=False, outcome="transient" if transient else "needs_person")
+    return JSONResponse(status_code=refusal.status_code, content=content)
+
+
 class _SyncRoute(APIRoute):
     """Sanitized validation errors, fixed 500s, and the single-flight lock released before the
     response goes out."""
@@ -98,9 +109,8 @@ class _SyncRoute(APIRoute):
                 return await original(request)
             except RequestValidationError:
                 raise HTTPException(422, detail=_INVALID) from None
-            except _Refused as refusal:
-                return JSONResponse(status_code=refusal.status_code,
-                                    content={"detail": refusal.detail, "reason": refusal.reason})
+            except (_Refused, pairing.Refused) as refusal:
+                return _refusal_reply(request, refusal)
             except (StarletteHTTPException, hooks.NotOwnedHere):
                 raise
             except ClientDisconnect:
@@ -118,6 +128,7 @@ class _SyncRoute(APIRoute):
 
 
 router = APIRouter(prefix="/api/sync", tags=["sync"], route_class=_SyncRoute)
+setup_router = APIRouter(prefix="/api/sync-setup", tags=["sync setup"], route_class=_SyncRoute)
 
 
 @dataclass(frozen=True)
@@ -162,6 +173,56 @@ def _require_sync(request: Request, db: Annotated[Session, Depends(get_db)]) -> 
 
 Peer = Annotated[PeerInfo, Depends(_require_sync)]
 DB = Annotated[Session, Depends(get_db)]
+
+
+def _take_lock(request: Request) -> None:
+    if not _LOCK.acquire(blocking=False):
+        raise _Refused(409, _BUSY, "busy")
+    request.state.sync_lock = True
+
+
+def _require_enrollment(request: Request) -> str:
+    path = status.key_path()
+    if not path.is_file() or path.is_symlink():
+        raise HTTPException(404, detail=_NOT_FOUND)
+    if "origin" in request.headers:
+        raise HTTPException(403, detail=_NO_BROWSERS)
+    key = status.read_key()
+    if key is None or settings.sync_remote_url:
+        raise HTTPException(404, detail=_NOT_FOUND)
+    _take_lock(request)
+    return key
+
+
+@router.post("/enroll")
+def post_enroll(request: Request, db: DB, key: Annotated[str, Depends(_require_enrollment)]):
+    try:
+        pairing.check_window(db)
+        _check_version(request, db)
+        pairing.consume_window(db)
+    except (_Refused, pairing.Refused) as refusal:
+        if refusal.status_code != 429:
+            pairing.record_failure(db)
+        raise
+    logger.info("A copy fetched the sync key.")
+    return {"key": key}
+
+
+def _require_setup_caller(request: Request) -> None:
+    if "origin" in request.headers:
+        raise HTTPException(403, detail=_NO_BROWSERS)
+    if not settings.sync_remote_url:
+        raise HTTPException(404, detail=_NOT_FOUND)
+    _take_lock(request)
+
+
+@setup_router.post("/enroll", dependencies=[Depends(_require_setup_caller)])
+def post_setup_enroll(db: DB):
+    try:
+        return pairing.enroll_here(db)
+    except pairing.Refused as refusal:
+        return JSONResponse(status_code=refusal.status_code, content={
+            "ok": False, "detail": refusal.detail, "outcome": refusal.outcome})
 
 
 async def _read_body(request: Request) -> bytes:

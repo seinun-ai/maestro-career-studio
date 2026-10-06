@@ -810,13 +810,16 @@ through a chat. The trust the copies already share is the SSH key (restricted to
 the tailnet rule; pairing by approval reuses it.
 
 **Laptop (home):**
-- `POST /api/sync/pairing-window` (a normal web-app route: same-origin web app only, the existing
+- `POST /api/settings/second-copy` (a normal web-app route: the existing web-app
   Origin allowlist; refused on the always-on copy): creates the key with `status.create_key()` if
   none exists, then opens a 10-minute window stored in the local setting `sync.pairing_until`
   (ISO time; `sync.` keys never sync). Returns `{open_until}`. `DELETE` closes it.
-  `GET /api/sync/pairing-window` → `{enabled, open_until, last_paired_at}` for the card.
-- `POST /api/sync/enroll` (reached through the tunnel; no key yet): refuses any `Origin` header
-  (403) first; 404 when no key file; 409 "Pairing isn't open on your laptop. Click Allow pairing
+  `GET /api/settings/second-copy` → `{enabled, open_until, last_paired_at}` for the card;
+  without a key it returns `{enabled: false, open_until: null, last_paired_at: null}`.
+  GET/POST/DELETE are refused on the always-on copy with 409 and a plain sentence.
+- `POST /api/sync/enroll` (reached through the tunnel; no key yet): 404 when no key file;
+  otherwise refuses any `Origin` header (403) before reading the key or body;
+  409 "Pairing isn't open on your laptop. Click Allow pairing
   for 10 minutes there." when the window is closed or expired; checks the `X-Maestro-Sync`
   protocol/schema header like the other sync routes (409 on mismatch); single-flight with the
   sync lock. On success returns `{key}` once, closes the window in the same commit, stamps
@@ -828,13 +831,13 @@ the tailnet rule; pairing by approval reuses it.
   tunnel. Nothing to copy or paste."
 
 **Always-on copy:**
-- `POST /api/sync/enroll-here` on its own backend (loopback, refuses `Origin`, works only when
+- `POST /api/sync-setup/enroll` on its own backend (loopback, refuses `Origin`, works only when
   `SYNC_REMOTE_URL` is set, loopback-only per `status.remote_is_own_tunnel()`, and no key file
   exists): calls the laptop's `/api/sync/enroll` through the tunnel with the same client rules
   as the round (`trust_env=False`), writes the key with O_EXCL 0600 to `key_path()`, returns
   `{ok}` or a fixed sentence with an outcome (`needs_person` for a closed window/mismatch,
   `transient` for unreachable).
-- `sync.sh --pair`: when the key file is missing, call `enroll-here` first; on success continue
+- `sync.sh --pair`: when the key file is missing, call `/api/sync-setup/enroll` first; on success continue
   with the pairing round; on a closed window print the laptop sentence and exit 1.
 - The manual path (place the key file yourself) keeps working.
 
@@ -845,6 +848,14 @@ SECURITY.md: the pairing window's limits. SYSTEM.md: one line under inv-sync-cha
 **Tests:** window open/close/expiry; enroll refused with Origin (before anything), with no key,
 with a closed or expired window, with a version mismatch, rate-limited; success returns the key
 once and closes the window; a second call is refused; the key never appears in logs (sentinel);
-enroll-here writes 0600 with O_EXCL and refuses when a key exists or the URL isn't loopback;
+local enrollment writes 0600 with O_EXCL and refuses when a key exists or the URL isn't loopback;
 sync.sh --pair enrolls then pairs (fake-uvicorn style); a real two-process test: click → enroll
 → pair in one go; the web card (frontend parity test + browser check by the reviewer).
+Add a test enumerating every route under `/api/sync/`: all still return 404 without a key;
+the new settings/setup routes behave as specified without a key.
+
+**Deviation approved by the owner (2026-10-06):** moved the two local setup routes out of
+`/api/sync/` so its no-key 404 rule remains literal. Only the settings POST opts the laptop in;
+normal reads, startup and sync rounds never create a key.
+The no-key 404 also precedes the Origin refusal on enrollment; with a key file the Origin
+refusal still precedes reading the key or body.
