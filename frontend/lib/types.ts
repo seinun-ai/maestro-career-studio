@@ -445,6 +445,7 @@ export interface AutoApplySettings {
   proposal_expiry_days: number;
   auto_pick_margin: number;
   auto_pick_floor: number;
+  full_automation: boolean;
 }
 
 interface SetupStep {

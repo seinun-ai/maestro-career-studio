@@ -84,6 +84,7 @@ def _work_auth_warnings(work_auth: dict[str, Any]) -> list[str]:
 def _auto_apply_block(db: Session) -> dict[str, Any]:
     cfg = auto_apply_settings.get_settings(db)
     return {
+        "full_automation": cfg.full_automation,
         "company_blocklist": cfg.company_blocklist,
         "max_proposals_per_run": cfg.max_proposals_per_run,
         "cap": proposals_svc.cap_status(db),

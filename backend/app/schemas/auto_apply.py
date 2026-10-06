@@ -17,3 +17,7 @@ class AutoApplySettings(BaseModel):
     proposal_expiry_days: int = Field(default=7, ge=1)
     auto_pick_margin: float = Field(default=5.0, ge=0)
     auto_pick_floor: float = Field(default=60.0, ge=0, le=100)
+    # Phase 4 (docs/plans/2026-10-05-full-automation-design.md): when True the user's
+    # agent may submit a job whose final review is clean without asking, records that yes
+    # with channel "auto", and may fetch the job-site login. Off by default.
+    full_automation: bool = False
