@@ -35,7 +35,7 @@ from app.routers import (
     version,
 )
 from app.services import automations as automation_prompts
-from app.services import memory, seeding, tracing
+from app.services import http_client, memory, seeding, tracing
 from app.services.llm import LLMProviderError
 
 logger = logging.getLogger(__name__)
@@ -113,6 +113,7 @@ def _log_llm_config() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    http_client.repair_proxy_env()  # before the first LLM call or model download
     seeding.run_startup()
     _log_llm_config()
     automation_prompts.load_cards()  # a malformed skill file fails startup, not a page

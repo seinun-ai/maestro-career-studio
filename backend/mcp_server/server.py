@@ -13,6 +13,7 @@ from mcp.types import ToolAnnotations
 from pydantic import ConfigDict, Field, with_config
 
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
+from app.services import http_client
 from mcp_server import workflow
 from mcp_server.client import BackendClient, BackendError
 from mcp_server.profiles import allowed_tools, apply_profile_filter
@@ -2016,6 +2017,7 @@ def list_registered_tool_names() -> list[str]:
 
 
 def main() -> None:
+    http_client.repair_proxy_env()
     mcp.run()
 
 

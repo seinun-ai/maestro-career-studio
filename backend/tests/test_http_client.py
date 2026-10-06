@@ -137,3 +137,74 @@ def test_an_invalid_url_not_caused_by_no_proxy_still_raises(monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "http://bad host:notaport")
     with pytest.raises(httpx.InvalidURL):
         http_client.new_client()
+
+
+# Libraries build their own clients (the OpenAI SDK, the embedding model's first
+# download), so new_client can't reach them: the env itself is repaired at startup.
+def test_repair_proxy_env_rewrites_both_spellings_once(monkeypatch, caplog):
+    monkeypatch.setenv("NO_PROXY", BAD)
+    monkeypatch.setenv("no_proxy", BAD)
+    monkeypatch.setenv("HTTPS_PROXY", SECRET_PROXY)
+    with caplog.at_level(logging.WARNING, logger=http_client.logger.name):
+        http_client.repair_proxy_env()
+        http_client.repair_proxy_env()
+    assert os.environ["NO_PROXY"] == os.environ["no_proxy"] == CLEAN + ",fd8b:1234::1"
+    assert os.environ["HTTPS_PROXY"] == SECRET_PROXY
+    assert len(caplog.records) == 1
+    httpx.Client().close()
+
+
+def test_repair_proxy_env_leaves_a_clean_env_alone(monkeypatch, caplog):
+    monkeypatch.setenv("NO_PROXY", CLEAN)
+    with caplog.at_level(logging.WARNING, logger=http_client.logger.name):
+        http_client.repair_proxy_env()
+    assert os.environ["NO_PROXY"] == CLEAN
+    assert "no_proxy" not in os.environ
+    assert caplog.records == []
+
+
+def test_after_the_repair_the_openai_sdk_and_a_child_process_build_their_clients():
+    code = (
+        "import subprocess, sys\n"
+        "from openai import OpenAI\n"
+        "from app.services import http_client\n"
+        "try:\n"
+        "    OpenAI(api_key='x')\n"
+        "except Exception as exc:\n"
+        "    assert type(exc).__name__ == 'InvalidURL', exc\n"
+        "else:\n"
+        "    raise SystemExit('the premise failed: the SDK accepted the bad entry')\n"
+        "http_client.repair_proxy_env()\n"
+        "OpenAI(api_key='x')\n"
+        "subprocess.run([sys.executable, '-c', 'import httpx; httpx.Client()'], check=True)\n")
+    result = _run(code, {"NO_PROXY": BAD, "no_proxy": BAD})
+    assert result.returncode == 0, result.stderr[-800:]
+
+
+def test_the_backend_repairs_the_env_before_its_startup_work(monkeypatch):
+    import asyncio
+
+    from app import main
+
+    calls = []
+    monkeypatch.setattr(http_client, "repair_proxy_env", lambda: calls.append("repair"))
+    monkeypatch.setattr(main.seeding, "run_startup", lambda: calls.append("seed"))
+    monkeypatch.setattr(main.automation_prompts, "load_cards", lambda: None)
+    monkeypatch.setattr(main.tracing, "shutdown", lambda: None)
+
+    async def run_lifespan():
+        async with main.lifespan(main.app):
+            pass
+
+    asyncio.run(run_lifespan())
+    assert calls == ["repair", "seed"]
+
+
+def test_the_mcp_server_repairs_the_env_before_it_runs(monkeypatch):
+    from mcp_server import server
+
+    calls = []
+    monkeypatch.setattr(http_client, "repair_proxy_env", lambda: calls.append("repair"))
+    monkeypatch.setattr(server.mcp, "run", lambda: calls.append("run"))
+    server.main()
+    assert calls == ["repair", "run"]
