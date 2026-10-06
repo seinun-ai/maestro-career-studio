@@ -2303,12 +2303,12 @@ def _tailor_with_anchored_base(db_session, tmp_path, monkeypatch, **anchors):
 
 def test_tailor_sends_the_anchor_line(db_session, tmp_path, monkeypatch):
     prompt = _tailor_with_anchored_base(
-        db_session, tmp_path, monkeypatch, countries=["GB"], company="Monzo"
+        db_session, tmp_path, monkeypatch, countries=["GB"], company="Example Bank"
     )
-    assert "RESUME ANCHORS: Countries: United Kingdom · Company: Monzo\n" in prompt
+    assert "RESUME ANCHORS: Countries: United Kingdom · Company: Example Bank\n" in prompt
     assert (
         "Emphasize these where relevant. They are not evidence of experience."
-        " The anchor company is not this application's employer."
+        " The anchor company is the resume's own target and may differ from this application's employer."
     ) in prompt
 
 

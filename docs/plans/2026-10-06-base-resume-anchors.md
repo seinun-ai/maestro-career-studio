@@ -195,8 +195,8 @@ def test_get_countries_route(client):  # TestClient over app, as in test_base_re
 
 ```python
 def test_identity_sets_normalizes_and_clears_anchors(db_session): ...
-    # PATCH {"countries": ["in", "IN", "us"], "company": "  Infosys ", "focus": "payments"}
-    # → countries == ["IN", "US"], company == "Infosys"
+    # PATCH {"countries": ["in", "IN", "us"], "company": "  Example Corp ", "focus": "payments"}
+    # → countries == ["IN", "US"], company == "Example Corp"
     # PATCH {"company": ""} → company is None, countries unchanged (omitted = unchanged)
     # PATCH {"countries": []} and {"countries": None} → []
 def test_identity_rejects_bad_anchor_values(db_session):
@@ -414,11 +414,11 @@ A missing key still reads ready. The mark text is "Resume for another country".
 def test_anchor_block_empty_and_listed():
     assert anchor_block(None, for_job=True) == ""
     text = anchor_block({"countries": ["IN"], "role": "Data Engineer",
-                         "company": "Infosys", "focus": None}, for_job=False)
-    assert text.startswith("RESUME ANCHORS: Countries: India · Role: Data Engineer · Company: Infosys\n")
+                         "company": "Example Corp", "focus": None}, for_job=False)
+    assert text.startswith("RESUME ANCHORS: Countries: India · Role: Data Engineer · Company: Example Corp\n")
     assert "Focus" not in text and "not this application's employer" not in text
     assert "The anchor company is not this application's employer." in anchor_block(
-        {"countries": [], "role": None, "company": "Monzo", "focus": None}, for_job=True)
+        {"countries": [], "role": None, "company": "Example Bank", "focus": None}, for_job=True)
 
 def test_anchor_text_stays_literal():   # company "$role_label ${x}" appears verbatim
 def test_gap_tailor_prompt_without_anchors_is_unchanged():

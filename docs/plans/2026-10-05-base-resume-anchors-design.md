@@ -176,7 +176,7 @@ It returns `""` when all four are empty, and an unset role counts as empty.
 Otherwise it returns one plain-text block:
 
 ```text
-RESUME ANCHORS: Countries: India · Role: Data Engineer · Company: Infosys · Focus: payments platforms
+RESUME ANCHORS: Countries: India · Role: Data Engineer · Company: Example Corp · Focus: payments platforms
 Emphasize these where relevant. They are not evidence of experience.
 ```
 
@@ -187,8 +187,8 @@ label. With `for_job=True` it adds one clause:
 The anchor company is not this application's employer.
 ```
 
-That clause stops a Monzo-anchored resume from naming Monzo as the employer
-when it is tailored for Stripe.
+That clause stops a resume anchored to one company from naming it as the
+employer when it is tailored for another.
 
 **Readers (exactly two):**
 

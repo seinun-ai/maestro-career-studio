@@ -1590,8 +1590,8 @@ def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = False
 
     Response is the session plus a `next` next-step hint (null when hints are off
     or unavailable). `base_anchors` are the base's emphasis hints (countries,
-    role, company, focus), not evidence; the anchor company is not this
-    application's employer."""
+    role, company, focus), not evidence; the anchor company is the resume's own
+    target, not necessarily this job's employer."""
     session = _client.create_tailoring_session(job_id, base_resume, enrich=enrich)
     return {**session, "next": _session_hint(session)}
 
@@ -1682,7 +1682,7 @@ def get_tailoring_session(tailoring_session_id: str) -> Any:
     Unresolved gaps are those in gaps_json with no entry in resolutions_json;
     tailor_session consumes the saved resolutions. `base_anchors` are the base's
     emphasis hints (countries, role, company, focus), not evidence; the anchor
-    company is not this application's employer."""
+    company is the resume's own target, not necessarily this job's employer."""
     return _client.get_tailoring_session(tailoring_session_id)
 
 

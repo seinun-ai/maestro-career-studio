@@ -51,10 +51,10 @@ def test_identity_sets_normalizes_and_clears_anchors(client, db_session):
     body = _identity(
         client,
         "anchored",
-        {"countries": ["in", "IN", "us"], "company": "  Infosys ", "focus": "payments"},
+        {"countries": ["in", "IN", "us"], "company": "  Example Corp ", "focus": "payments"},
     ).json()
     assert body["countries"] == ["IN", "US"]
-    assert body["company"] == "Infosys"
+    assert body["company"] == "Example Corp"
     assert body["focus"] == "payments"
 
     # Omitted means unchanged; an empty string clears a text anchor.

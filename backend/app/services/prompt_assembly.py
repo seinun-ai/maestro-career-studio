@@ -61,8 +61,9 @@ def anchor_block(anchors: dict[str, Any] | None, *, for_job: bool) -> str:
     prompt rows need no new placeholder. No anchors -> "", prompts unchanged.
 
     `anchors` is `base_resume_data.anchors(row)`. For a job application
-    (`for_job`) a set company is called out as NOT the job's employer, so the
-    model does not read the resume's own target as the posting's company."""
+    (`for_job`) a set company is called out as the resume's own target, so the
+    model takes the employer from the posting. It may be the same company: a
+    resume anchored to one is tailored for that company too."""
     if not anchors:
         return ""
     from app.services import countries
@@ -79,7 +80,8 @@ def anchor_block(anchors: dict[str, Any] | None, *, for_job: bool) -> str:
         return ""
     reminder = "Emphasize these where relevant. They are not evidence of experience."
     if for_job and anchors.get("company"):
-        reminder += " The anchor company is not this application's employer."
+        reminder += (" The anchor company is the resume's own target and may differ from this"
+                     " application's employer.")
     return f"RESUME ANCHORS: {' · '.join(parts)}\n{reminder}\n\n---\n\n"
 
 

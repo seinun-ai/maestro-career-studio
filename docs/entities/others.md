@@ -89,7 +89,7 @@
   `base_country`, and inbox readiness applies the same rule batched; both call `eligible_given`.
   Role, company and focus never filter or rank. Two prompts read the anchors,
   as a `RESUME ANCHORS` line from `prompt_assembly.anchor_block` placed after the persona: gap tailoring
-  (the job variant adds that the anchor company is not this application's employer) and Ask for changes
+  (the job variant adds that the anchor company is the resume's own target and may differ from the employer) and Ask for changes
   (`base_resume_instruct`). They are emphasis hints, never evidence; with none set both prompts are
   unchanged.
 - **Resume edit ops** are one source (`schemas/resume_edit.py`: a 16-kind discriminated union with

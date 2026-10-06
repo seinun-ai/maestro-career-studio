@@ -170,16 +170,16 @@ def test_the_prompt_is_registered_and_forbids_fabrication():
 
 def test_ask_for_changes_sends_the_anchor_line(db_session, row, monkeypatch):
     row.countries = ["IN"]
-    row.company = "Infosys"
+    row.company = "Example Corp"
     db_session.commit()
     fake = _llm(GOOD)
     monkeypatch.setattr(llm, "call_openai", fake)
     base_resume_instruct.propose(db_session, row, "tighten the summary")
     prompt = fake.calls[0]
-    assert prompt.startswith("RESUME ANCHORS: Countries: India · Company: Infosys\n")
+    assert prompt.startswith("RESUME ANCHORS: Countries: India · Company: Example Corp\n")
     assert "Emphasize these where relevant. They are not evidence of experience." in prompt
     # An Ask for changes is not for a job, so there is no employer clause.
-    assert "not this application's employer" not in prompt
+    assert "this application's employer" not in prompt
     assert "tighten the summary" in prompt
 
 
