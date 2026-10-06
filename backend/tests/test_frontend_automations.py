@@ -22,6 +22,7 @@ _SIDEBAR = _read("components/app-sidebar.tsx")
 _PAGE = _read("app/automations/page.tsx")
 _CARD = _read("components/automations/automation-card.tsx")
 _LIB = _read("lib/automations.ts")
+_LIB_RUNS = _read("lib/agent-runs.ts")
 _STORAGE = _read("hooks/use-local-storage-state.ts")
 
 
@@ -70,7 +71,8 @@ def test_the_card_copy():
 def test_last_ran_uses_cached_data_and_fails_quietly_without_it():
     assert 'apiFetch<AgentRunList>("/api/agent-runs/latest")' in _PAGE
     assert "const ran = runs.data ? latestByAutomation(runs.data.items) : null;" in _PAGE
-    assert "lastRun={ran ? (ran.get(card.id) ?? null) : undefined}" in _PAGE
+    assert "lastRun={ran ? (ran.get(card.id)?.finished_at ?? null) : undefined}" in _PAGE
+    assert "outcome={ran?.get(card.id)?.outcome}" in _PAGE
     assert 'title="Couldn\'t load runs.' not in _PAGE
     assert "isLoadFailure(runs)" not in _PAGE
 
@@ -105,3 +107,19 @@ def test_the_remembered_app_is_best_effort():
     assert "picked ??" in _PAGE
     # The hook guards both the read and the write.
     assert _STORAGE.count("catch") >= 2
+
+
+def test_small_surfaces_gain_their_glyphs():
+    card = _CARD
+    assert "CONCEPT_ICONS.scheduled" in card and "CONCEPT_ICONS.notRun" in card
+    assert "Ban" in _read("components/settings/connected-agents-card.tsx")
+    assert "MessageSquareText" in _read("components/qa-tab.tsx")
+    # The outcome glyph is Task 21's component, not a copy; lib/agent-runs.ts stays import-free.
+    assert 'from "@/components/proposals/run-outcome"' in card
+    assert "import " not in _LIB_RUNS
+
+
+def test_the_connect_note_is_a_callout_until_an_automation_has_run():
+    assert "bg-secondary-container text-on-secondary-container rounded-corner-md" in _PAGE
+    assert "const anyRan = !!ran && !!data && data.cards.some((c) => ran.has(c.id));" in _PAGE
+    assert "anyRan ? (" in _PAGE

@@ -3,8 +3,11 @@
 import { useId, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  CircleCheck,
   Download,
   Loader2,
+  Mail,
+  MessageSquareText,
   Pencil,
   RefreshCw,
   Trash2,
@@ -14,6 +17,7 @@ import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-dialog";
 import { CopyButton } from "@/components/copy-button";
 import { IconButton } from "@/components/icon-button";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -387,8 +391,19 @@ function QAEntryCard({
       data-pending={isRegenerating || isRendering || isSaving || undefined}
     >
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <CardTitle className="text-title-small">
-          {isDocument ? KIND_LABELS[entry.kind] : entry.prompt}
+        <CardTitle className="flex items-start gap-2 text-title-small">
+          {isCoverLetter ? (
+            <Mail className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          ) : (
+            <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          )}
+          <span>{isDocument ? KIND_LABELS[entry.kind] : entry.prompt}</span>
+          {isCoverLetter && entry.pdf_path ? (
+            <Badge variant="tonal" className="shrink-0">
+              <CircleCheck aria-hidden="true" />
+              PDF ready
+            </Badge>
+          ) : null}
         </CardTitle>
         <div className="flex shrink-0 gap-1">
           {isDocument && !editing ? (

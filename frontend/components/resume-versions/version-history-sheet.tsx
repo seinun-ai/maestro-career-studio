@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, History, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronRight, FilePlus2, History, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -17,6 +17,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useSingleFlight } from "@/hooks/use-single-flight";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { listResumeVersions, restoreResumeVersion } from "@/lib/api";
 import { versionSummaryWords } from "@/lib/describe-edit";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
@@ -35,6 +36,21 @@ const SOURCE_LABELS: Record<ResumeVersionSource, string> = {
   import: "Imported",
   restore: "Restored",
 };
+
+const SOURCE_ICONS: Record<ResumeVersionSource, LucideIcon> = {
+  create: FilePlus2,
+  form_edit: CONCEPT_ICONS.you,
+  edit_ops: CONCEPT_ICONS.ai,
+  chat: CONCEPT_ICONS.assistant,
+  tailor: CONCEPT_ICONS.tailor,
+  import: CONCEPT_ICONS.fromResume,
+  restore: CONCEPT_ICONS.restore,
+};
+
+function SourceGlyph({ source }: { source: ResumeVersionSource }) {
+  const Icon = SOURCE_ICONS[source];
+  return Icon ? <Icon aria-hidden="true" /> : null;
+}
 
 const SOURCE_BADGE: Partial<Record<ResumeVersionSource, string>> = {
   chat: "bg-tertiary-container text-on-tertiary-container",
@@ -172,6 +188,7 @@ export function VersionHistorySheet({
               variant="secondary"
               className={SOURCE_BADGE[v.source]}
             >
+              <SourceGlyph source={v.source} />
               {SOURCE_LABELS[v.source] ?? v.source}
             </Badge>
             {v.label && (
@@ -180,7 +197,10 @@ export function VersionHistorySheet({
               </Badge>
             )}
             {v.version_number === latestNumber && (
-              <span className="text-muted-foreground text-body-small">Current</span>
+              <span className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
+                <span className="bg-primary size-1.5 rounded-full" aria-hidden="true" />
+                Current
+              </span>
             )}
           </div>
           <span className="text-muted-foreground shrink-0 text-body-small">
@@ -207,7 +227,7 @@ export function VersionHistorySheet({
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
               >
-                <RotateCcw className="mr-1 size-3.5" />
+                <CONCEPT_ICONS.restore className="mr-1 size-3.5" aria-hidden="true" />
                 {restore.isPending ? "Restoring…" : "Restore this version"}
               </Button>
             </div>

@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { CircleCheck, Copy } from "lucide-react";
+import { AtSign, Ban, CircleCheck, Copy, Globe, Hand, Wrench, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RunOutcome } from "@/components/proposals/run-outcome";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCopy } from "@/hooks/use-copy";
 import { APPLY_CARD_ID, NEED_LABELS, promptFor } from "@/lib/automations";
 import { formatTimeAgo } from "@/lib/format-date";
-import { lastRanLine } from "@/lib/agent-runs";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+import { lastRanLine, type RunOutcome as Outcome } from "@/lib/agent-runs";
 import type { AgentApp, AutomationCard as AutomationCardData } from "@/lib/types";
 
 const KIND_LABEL = {
@@ -18,6 +20,18 @@ const KIND_LABEL = {
   attended: "Attended",
   custom: "Custom",
 } as const;
+
+const KIND_ICON: Record<keyof typeof KIND_LABEL, LucideIcon> = {
+  scheduled: CONCEPT_ICONS.scheduled,
+  attended: Hand,
+  custom: Wrench,
+};
+
+// Email gets its own glyph: Mail means a cover letter in Q&A.
+const NEED_ICON: Partial<Record<keyof typeof NEED_LABELS, LucideIcon>> = {
+  email: AtSign,
+  web: Globe,
+};
 
 /** One automation: what it does, what it needs, what it never does, and the
  * prompt to copy for the chosen app. Copy is off for an app Maestro can't
@@ -27,6 +41,7 @@ export function AutomationCard({
   app,
   disabledReasonId,
   lastRun,
+  outcome,
 }: {
   card: AutomationCardData;
   app: AgentApp;
@@ -34,6 +49,8 @@ export function AutomationCard({
   disabledReasonId?: string;
   /** Undefined while no run data is available, null when this card never ran. */
   lastRun?: string | null;
+  /** How that newest run ended; none while unknown or never run. */
+  outcome?: Outcome;
 }) {
   const [open, setOpen] = useState(false);
   const promptId = useId();
@@ -41,6 +58,7 @@ export function AutomationCard({
   const focusPromptWhenShown = useRef(false);
   const text = promptFor(card, app);
   const ranLine = lastRanLine(lastRun, formatTimeAgo);
+  const KindIcon = KIND_ICON[card.kind];
 
   // After a failed copy the prompt is the next thing to do: focus lands on it
   // (and selects it) once it is on screen.
@@ -76,21 +94,37 @@ export function AutomationCard({
         <CardTitle role="heading" aria-level={2}>
           {card.title}
         </CardTitle>
-        <Badge variant="outline">{KIND_LABEL[card.kind]}</Badge>
+        <Badge variant="outline">
+          <KindIcon aria-hidden="true" />
+          {KIND_LABEL[card.kind]}
+        </Badge>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="max-w-[65ch]">{card.summary}</p>
-        {ranLine ? <p className="text-muted-foreground text-body-small">{ranLine}</p> : null}
+        {ranLine ? (
+          <p className="text-muted-foreground flex flex-wrap items-center gap-2 text-body-small">
+            {lastRun === null ? <CONCEPT_ICONS.notRun className="size-3.5 shrink-0" aria-hidden="true" /> : null}
+            {ranLine}
+            {lastRun && outcome ? <RunOutcome outcome={outcome} /> : null}
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-muted-foreground text-label-medium">Needs</span>
-          {card.needs.map((need) => (
-            <Badge key={need} variant="tonal">
-              {NEED_LABELS[need]}
-            </Badge>
-          ))}
+          {card.needs.map((need) => {
+            const NeedIcon = NEED_ICON[need];
+            return (
+              <Badge key={need} variant="tonal">
+                {NeedIcon ? <NeedIcon aria-hidden="true" /> : null}
+                {NEED_LABELS[need]}
+              </Badge>
+            );
+          })}
         </div>
         {card.never ? (
-          <p className="text-muted-foreground max-w-[65ch]">{card.never}</p>
+          <p className="text-muted-foreground flex max-w-[65ch] items-start gap-1.5 text-body-small">
+            <Ban className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            {card.never}
+          </p>
         ) : null}
         {card.id === APPLY_CARD_ID && card.kind === "attended" ? (
           <p className="text-muted-foreground max-w-[65ch]">

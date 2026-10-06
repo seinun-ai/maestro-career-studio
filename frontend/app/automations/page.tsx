@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Bot } from "lucide-react";
 
 import { AppPicker } from "@/components/automations/app-picker";
 import { AutomationCard } from "@/components/automations/automation-card";
@@ -56,6 +57,8 @@ export default function AutomationsPage() {
   const cards = data?.cards.filter((c) => c.kind !== "custom") ?? [];
   const custom = data?.cards.find((c) => c.kind === "custom");
   const ran = runs.data ? latestByAutomation(runs.data.items) : null;
+  // Until a card has a Last ran, connecting the agent is the step that matters: it gets a callout.
+  const anyRan = !!ran && !!data && data.cards.some((c) => ran.has(c.id));
 
   return (
     <PageShell>
@@ -63,12 +66,24 @@ export default function AutomationsPage() {
         title="Automations"
         subtitle="Copy a prompt into your own agent app. It asks when to run, then does these jobs with Maestro."
       />
-      <p className="max-w-[65ch]">
-        Your agent needs to be connected to Maestro first.{" "}
-        <NewTabLink href={CONNECT_AGENT_GUIDE_URL} className="text-primary">
-          How to connect an agent
-        </NewTabLink>
-      </p>
+      {anyRan ? (
+        <p className="max-w-[65ch]">
+          Your agent needs to be connected to Maestro first.{" "}
+          <NewTabLink href={CONNECT_AGENT_GUIDE_URL} className="text-primary">
+            How to connect an agent
+          </NewTabLink>
+        </p>
+      ) : (
+        <div className="bg-secondary-container text-on-secondary-container rounded-corner-md flex max-w-[65ch] items-start gap-3 p-3">
+          <Bot className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <p>
+            Your agent needs to be connected to Maestro first.{" "}
+            <NewTabLink href={CONNECT_AGENT_GUIDE_URL} className="font-medium underline underline-offset-4">
+              How to connect an agent
+            </NewTabLink>
+          </p>
+        </div>
+      )}
       {isLoadFailure(query) ? (
         <LoadErrorState
           title="Couldn't load automations."
@@ -105,7 +120,8 @@ export default function AutomationsPage() {
                 card={card}
                 app={app}
                 disabledReasonId={noteId}
-                lastRun={ran ? (ran.get(card.id) ?? null) : undefined}
+                lastRun={ran ? (ran.get(card.id)?.finished_at ?? null) : undefined}
+                outcome={ran?.get(card.id)?.outcome}
               />
             ))}
           </div>
