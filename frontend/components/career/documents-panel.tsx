@@ -234,7 +234,7 @@ function DocumentStatus({ document }: { document: KBDocumentOut }) {
     <span
       className={cn(
         "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-label-medium",
-        failed && "bg-destructive/10 text-destructive",
+        failed && "bg-error-container text-on-error-container",
         minted && "bg-success-container text-on-success-container",
         !failed && !minted && "bg-muted text-muted-foreground",
       )}

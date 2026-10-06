@@ -16,7 +16,7 @@ const STATUS_COPY: Record<
     label: "You may not qualify",
     detail: "The job lists a requirement your profile doesn't meet.",
     icon: <ShieldAlert />,
-    tone: "border border-destructive/40 bg-destructive/5 text-destructive",
+    tone: "border border-transparent bg-error-container text-on-error-container",
   },
   // `clear` is any pass or warning (knockout.py): a warning row can sit under it, and a check the
   // profile could not answer is left out, so it claims only that nothing conflicts.

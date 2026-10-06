@@ -746,8 +746,11 @@ export default function TailorSessionPage({
           </div>
         )}
         {strongMatch && !gapsJson.coverage_warning && (
-          <div className="border-primary/30 bg-primary/5 rounded-corner-md border p-4">
-            <p className="text-foreground text-title-small">Strong match</p>
+          <div className="bg-surface-container rounded-corner-md p-4">
+            <p className="text-foreground text-title-small flex items-center gap-1.5">
+              <CONCEPT_ICONS.done className="text-success size-4 shrink-0" aria-hidden="true" />
+              Strong match
+            </p>
             <p className="text-muted-foreground text-body-medium">
               {hasSummaryGap
                 ? "This resume already fits the job well. Strengthen your summary below, then tailor."
@@ -756,7 +759,7 @@ export default function TailorSessionPage({
           </div>
         )}
         {autoResolved.length > 0 && (
-          <div className="border-primary/25 bg-primary/[0.04] animate-fade-rise flex items-center gap-2.5 rounded-corner-md border px-4 py-3">
+          <div className="bg-surface-container-low animate-fade-rise flex items-center gap-2.5 rounded-corner-md px-4 py-3">
             <CareerHistoryIcon className="text-primary size-4 shrink-0" />
             <p className="text-body-medium">
               <span className="font-medium">

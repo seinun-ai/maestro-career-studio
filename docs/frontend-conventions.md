@@ -52,7 +52,8 @@
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
   `Check` plus `aria-pressed` (Review changes,
   SourceToggle, `FilterChips` (the Agent inbox's History statuses), the zoom presets, employment types,
-  section presets, and the template picker): the tonal fill is
+  section presets, the template picker, and the gap page's action segment and target chips, which use
+  `bg-secondary-container`): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
   `test_selected_tonal_toggles_show_a_check` pins the first three. **`FilterChips`**
   (`components/filter-chips.tsx`) is one field of about six values or fewer, every value with its count, several

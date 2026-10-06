@@ -156,9 +156,9 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-const REQUIREMENT_VARIANTS: Record<string, "destructive" | "secondary" | "outline"> = {
-  required: "destructive",
-  preferred: "secondary",
+const REQUIREMENT_VARIANTS: Record<string, "default" | "tonal" | "outline"> = {
+  required: "default",
+  preferred: "tonal",
   mentioned: "outline",
 };
 
@@ -574,7 +574,7 @@ export function GapCard({
     return (
       <div
         ref={rootRef}
-        className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-corner-md border px-4 py-2.5 text-body-medium"
+        className="bg-surface-container-low flex flex-wrap items-center gap-2 rounded-corner-md px-4 py-2.5 text-body-medium"
       >
         <CareerHistoryIcon className="text-primary size-4 shrink-0" />
         <span className="min-w-0 flex-1">

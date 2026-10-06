@@ -1243,7 +1243,7 @@ function FailedGate({
           className={cn(
             "shrink-0",
             gate.tier === "fatal"
-              ? "bg-destructive/10 text-destructive"
+              ? "bg-error-container text-on-error-container"
               : "bg-warning-container text-on-warning-container",
           )}
         >

@@ -32,7 +32,7 @@ const PROVENANCE_LABELS: Record<ResumeDiffHunk["provenance"], string> = {
 
 const PROVENANCE_STYLES: Record<ResumeDiffHunk["provenance"], string> = {
   kb_auto: "border-transparent bg-primary-container text-on-primary-container",
-  user: "border-transparent bg-success-container text-on-success-container",
+  user: "border-transparent bg-surface-container text-foreground",
   llm: "border-transparent bg-surface-container text-muted-foreground",
 };
 

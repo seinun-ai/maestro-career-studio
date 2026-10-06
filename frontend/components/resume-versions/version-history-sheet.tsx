@@ -39,7 +39,7 @@ const SOURCE_LABELS: Record<ResumeVersionSource, string> = {
 const SOURCE_BADGE: Partial<Record<ResumeVersionSource, string>> = {
   chat: "bg-tertiary-container text-on-tertiary-container",
   tailor: "bg-primary-container text-on-primary-container",
-  restore: "bg-warning-container text-on-warning-container",
+  restore: "bg-surface-container text-foreground",
 };
 
 /** Consecutive manual saves collapse into one expandable group (Figma-style). */

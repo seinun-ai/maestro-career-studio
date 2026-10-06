@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, use, useId, type ReactNode } from "react";
-import { Sparkles } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -278,10 +278,11 @@ export function ActionSegment({
           className={cn(
             "h-6 rounded-full px-2 text-label-medium transition-colors aria-disabled:opacity-50",
             value === action
-              ? "bg-background text-foreground"
+              ? "bg-secondary-container text-on-secondary-container inline-flex items-center gap-1"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
+          {value === action && <Check className="size-3" aria-hidden="true" />}
           {ACTION_LABELS[action]}
         </button>
       ))}
@@ -318,18 +319,19 @@ export function Chip({
         // Wraps instead of truncating: at 375 "Harbor Loop Logistics, Senior ML Engin…" lost the role.
         "inline-flex min-h-6 max-w-full items-center gap-1 rounded-full border px-2.5 py-0.5 text-left text-label-medium transition-colors aria-disabled:opacity-50",
         selected
-          ? "border-primary bg-primary text-primary-foreground"
+          ? "border-transparent bg-secondary-container text-on-secondary-container"
           : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
-        !selected && highlighted && "border-primary/40 text-foreground ring-1 ring-primary/30",
+        !selected && highlighted && "border-primary text-foreground",
       )}
     >
+      {selected && <Check className="size-3 shrink-0" aria-hidden="true" />}
       {highlighted && !selected && <Sparkles className="text-primary size-3 shrink-0" />}
       <span className="min-w-0 break-words">{children}</span>
       {date && (
         <span
           className={cn(
             "shrink-0 text-label-small tabular-nums",
-            selected ? "text-primary-foreground" : "text-muted-foreground",
+            selected ? "text-on-secondary-container" : "text-muted-foreground",
           )}
         >
           {formatResumeMonth(date)}
@@ -340,7 +342,7 @@ export function Chip({
           className={cn(
             "shrink-0 rounded-corner-xs px-1 text-label-small",
             selected
-              ? "bg-primary-foreground/10 text-primary-foreground"
+              ? "bg-on-secondary-container/10 text-on-secondary-container"
               : "bg-muted text-muted-foreground",
           )}
         >
@@ -423,7 +425,7 @@ export function AddKeywordControls({
   return (
     <div className="space-y-2">
       {unverified && (
-        <div className="text-destructive bg-destructive/10 rounded-corner-md p-2 text-body-small">
+        <div className="bg-error-container text-on-error-container rounded-corner-md p-2 text-body-small">
           {UNVERIFIED_WARNING}
         </div>
       )}

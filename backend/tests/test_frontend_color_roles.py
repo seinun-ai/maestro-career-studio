@@ -230,7 +230,7 @@ _CHIP_SRC = _read("components/gap-analysis/resolution-controls.tsx")
 _GAP_CHIP = _CHIP_SRC[_CHIP_SRC.index("export function Chip(") : _CHIP_SRC.index("const LOAD_ERROR_MESSAGE")]
 _SELECTED_OR_NOT = re.compile(r'selected\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"')
 _TOKEN_UTIL = re.compile(
-    r"(?<![\w:/-])(bg|text)-(primary-foreground|primary|muted-foreground|muted|background)(?:/(\d+))?(?![\w/-])"
+    r"(?<![\w:/-])(bg|text)-(primary-foreground|primary|muted-foreground|muted|background|on-secondary-container|secondary-container)(?:/(\d+))?(?![\w/-])"
 )
 
 
@@ -719,7 +719,7 @@ _ROLE_SITES = [
     ("components/base-resumes/base-resume-thumbnail.tsx", 'className: "text-warning"'),
     ("components/resume-versions/version-history-sheet.tsx", 'chat: "bg-tertiary-container text-on-tertiary-container"'),
     ("components/resume-versions/version-history-sheet.tsx", 'tailor: "bg-primary-container text-on-primary-container"'),
-    ("components/resume-versions/version-history-sheet.tsx", 'restore: "bg-warning-container text-on-warning-container"'),
+    ("components/resume-versions/version-history-sheet.tsx", 'restore: "bg-surface-container text-foreground"'),
     ("components/resume-versions/version-diff-view.tsx", 'added: "bg-success-container text-on-success-container"'),
     ("components/resume-versions/version-diff-view.tsx", 'modified: "bg-warning-container text-on-warning-container"'),
 ]
@@ -792,3 +792,45 @@ def test_preferred_skills_are_tonal_in_both_places():
 def test_a_done_setup_step_says_done_in_words():
     src = (_FRONTEND / "components/setup/getting-started-card.tsx").read_text()
     assert ">Done<" in src
+
+
+_ALPHA_FILL = re.compile(r"(?<![:\w-])(bg|border|ring)-(primary|destructive)/[\d\[]")
+# A ratchet, not a sweep (visual-language plan, Task 4): the count can only go down.
+_ALPHA_FILL_CEILING = 42
+
+
+def test_alpha_fills_of_primary_and_destructive_only_shrink():
+    sites = []
+    for p in (_FRONTEND / "app").rglob("*.tsx"):
+        sites += [p.name for _ in _ALPHA_FILL.finditer(p.read_text(encoding="utf-8"))]
+    for p in (_FRONTEND / "components").rglob("*.tsx"):
+        if p.name == "button.tsx":  # the destructive Button variant: out of scope
+            continue
+        sites += [p.name for _ in _ALPHA_FILL.finditer(p.read_text(encoding="utf-8"))]
+    assert len(sites) <= _ALPHA_FILL_CEILING, f"{len(sites)}: {sorted(sites)}"
+
+
+def test_restored_and_you_are_neutral_not_status():
+    sheet = _read("components/resume-versions/version-history-sheet.tsx")
+    assert 'restore: "bg-warning-container' not in sheet
+    assert "success-container" not in _read("components/resume-editor/diff-review.tsx")
+
+
+def test_required_is_not_an_error():
+    card = _read("components/gap-analysis/gap-card.tsx")
+    assert 'required: "default"' in card
+    assert 'preferred: "tonal"' in card
+
+
+def test_selected_gap_controls_show_a_check():
+    rc = _read("components/gap-analysis/resolution-controls.tsx")
+    segment = rc.split("export function ActionSegment", 1)[1].split("export function Chip", 1)[0]
+    chip = rc.split("export function Chip", 1)[1]
+    for body in (segment, chip):
+        assert "<Check" in body and "bg-secondary-container" in body
+
+
+def test_a_strong_match_is_quiet_with_a_check():
+    page = _read("app/jobs/[id]/tailor/[sessionId]/page.tsx")
+    assert "bg-surface-container " in page and "CircleCheck" in page
+    assert "bg-success-container" not in page
