@@ -8,6 +8,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
@@ -22,7 +23,8 @@ from app.main import app
 from app.routers import sync as sync_router
 from app.schemas.auto_apply import AutoApplySettings
 from app.services import auto_apply_settings, job_site_login, proposals
-from app.services.sync import duplicates, files, jobs_bundle, request_apply, status
+from app.services.sync import duplicates, files, jobs_bundle, request_apply, seal, status
+from tests.sync.conftest import _Seal, _send_sealed, sealed
 from tests.sync.test_jobs_bundle import SENTINEL, WHEN, build_job
 
 LOGIN_SENTINEL = "SENTINEL-LOGIN-4482"
@@ -73,6 +75,53 @@ def recv(tmp_path):
     engine.dispose()
 
 
+def _header(headers, name):
+    for key, value in headers.items():
+        if key.lower() == name:
+            return value
+    return None
+
+
+def _should_seal(url, headers, content) -> bool:
+    if _header(headers, "x-maestro-seal") or _header(headers, "origin"):
+        return False
+    if not _header(headers, "x-maestro-sync") or status.read_key() is None:
+        return False
+    path = url.split("?", 1)[0]
+    if not path.startswith("/api/sync/"):
+        return False
+    if path.startswith("/api/sync/round") or path.startswith("/api/sync/enroll"):
+        return False
+    return content is None or isinstance(content, (bytes, str))
+
+
+class SealingClient(TestClient):
+    """Existing home-endpoint tests keep calling ``client``; peer calls are sealed for them."""
+
+    def transmit(self, method, url, **kwargs):
+        return TestClient.request(self, method, url, **kwargs)
+
+    def request(self, method, url, **kwargs):
+        headers = dict(kwargs.get("headers") or {})
+        if not _should_seal(url, headers, kwargs.get("content")):
+            return self.transmit(method, url, **kwargs)
+        peer = _header(headers, "x-maestro-sync")
+        json_body = kwargs.pop("json", None)
+        content = kwargs.pop("content", None)
+        params = kwargs.pop("params", None)
+        kwargs.pop("headers", None)
+        if isinstance(content, str):
+            content = content.encode()
+        response, rid, secret = _send_sealed(self, _Seal(
+            method, url, json=json_body, params=params, peer=peer, content=content,
+            headers=headers))
+        if seal.HEADER.lower() not in response.headers:
+            return response
+        plain = seal.open_response(
+            secret, rid, response.status_code, response.headers[seal.HEADER], response.content)
+        return httpx.Response(response.status_code, content=plain)
+
+
 @pytest.fixture
 def client(db_session):
     def override():
@@ -82,7 +131,7 @@ def client(db_session):
             db_session.rollback()
             raise
     app.dependency_overrides[get_db] = override
-    yield TestClient(app)
+    yield SealingClient(app)
     app.dependency_overrides.pop(get_db, None)
 
 
@@ -195,18 +244,6 @@ def test_an_unlisted_origin_is_refused_too(client, auth):
     assert client.get("/api/sync/hello", headers=headers).status_code == 403
 
 
-@pytest.mark.parametrize("header", [None, f"Bearer {BAD_KEY}", BAD_KEY, "Bearer ", "Basic abc"])
-def test_a_wrong_or_missing_key_is_a_401_that_echoes_nothing(client, auth, header):
-    headers = {"X-Maestro-Sync": auth["X-Maestro-Sync"]}
-    if header is not None:
-        headers["Authorization"] = header
-    body = {"bundles": [{"note": SENTINEL}], "tombstones": []}
-    response = client.post("/api/sync/jobs", headers=headers, json=body)
-    assert response.status_code == 401
-    assert BAD_KEY not in response.text and SENTINEL not in response.text
-    assert status.read_key() not in response.text
-
-
 @pytest.mark.parametrize("change", ["protocol", "schema", "missing", "garbled", "same_machine"])
 def test_a_version_or_identity_mismatch_is_a_409(client, auth, home_id, change):
     _, revision, remote = auth["X-Maestro-Sync"].split(":")
@@ -217,18 +254,16 @@ def test_a_version_or_identity_mismatch_is_a_409(client, auth, home_id, change):
         "same_machine": f"{status.SYNC_PROTOCOL}:{revision}:{home_id}",
         "missing": None,
     }[change]
-    headers = {"Authorization": auth["Authorization"]}
-    if value is not None:
-        headers["X-Maestro-Sync"] = value
+    if change == "missing":
+        code, body = sealed(client, "GET", "/api/sync/hello", peer="")
+        assert code == 409 and body["reason"] == "version"
+        assert remote not in json.dumps(body) and revision not in json.dumps(body)
+        return
+    headers = {"X-Maestro-Sync": value}
     response = client.get("/api/sync/hello", headers=headers)
     assert response.status_code == 409
     assert response.json()["reason"] == ("machine" if change == "same_machine" else "version")
     assert remote not in response.text and revision not in response.text
-
-
-def test_the_key_is_checked_before_the_version(client, auth):
-    headers = {"Authorization": f"Bearer {BAD_KEY}", "X-Maestro-Sync": "bad"}
-    assert client.get("/api/sync/hello", headers=headers).status_code == 401
 
 
 def test_a_second_request_while_one_runs_is_a_409(client, auth):
@@ -244,7 +279,8 @@ def test_a_second_request_while_one_runs_is_a_409(client, auth):
 def test_the_lock_is_released_after_every_outcome(client, auth):
     assert client.post("/api/sync/ownership", headers=auth, json={"job_ids": 5}).status_code == 422
     assert client.get("/api/sync/hello", headers=auth).status_code == 200
-    assert client.get("/api/sync/hello", headers={**auth, "Authorization": "x"}).status_code == 401
+    refused = client.get("/api/sync/hello", headers={**auth, seal.HEADER: "not-a-seal"})
+    assert refused.status_code == 404 and refused.content == b""
     assert not sync_router._LOCK.locked()
 
 
@@ -272,22 +308,35 @@ def test_a_body_over_the_cap_is_a_413(client, auth, monkeypatch):
 
 def test_the_cap_counts_a_stream_that_declares_no_length(client, auth, monkeypatch):
     monkeypatch.setattr(sync_router, "MAX_BODY_BYTES", 500)
+    payload = b'{"job_ids": ["' + b"x" * 600 + b'"]}'
+    peer = auth["X-Maestro-Sync"]
+    key = status.read_key()
+    header, wire, rid = seal.seal_request(key, "POST", "/api/sync/ownership", "", payload, peer)
 
     def chunks():
-        for _ in range(10):
-            yield b'{"job_ids": ["' + b"x" * 100 + b'"]}'
+        for start in range(0, len(wire), 80):
+            yield wire[start:start + 80]
 
-    response = client.post("/api/sync/ownership", headers={**auth, "Content-Type": "application/json"},
-                           content=chunks())
+    response = client.transmit(
+        "POST", "/api/sync/ownership", content=chunks(),
+        headers={seal.HEADER: header, "X-Maestro-Sync": peer})
     assert response.status_code == 413
+    plain = seal.open_response(key, rid, 413, response.headers[seal.HEADER], response.content)
+    assert json.loads(plain)["detail"] == "That request is too large."
 
 
 def test_a_body_at_the_cap_is_read(client, auth, monkeypatch):
-    body = json.dumps({"job_ids": []}).encode()
-    monkeypatch.setattr(sync_router, "MAX_BODY_BYTES", len(body))
-    response = client.post("/api/sync/ownership", headers={**auth, "Content-Type": "application/json"},
-                           content=body)
+    payload = json.dumps({"job_ids": []}).encode()
+    peer = auth["X-Maestro-Sync"]
+    key = status.read_key()
+    header, wire, rid = seal.seal_request(key, "POST", "/api/sync/ownership", "", payload, peer)
+    monkeypatch.setattr(sync_router, "MAX_BODY_BYTES", len(wire))
+    response = client.transmit(
+        "POST", "/api/sync/ownership", content=wire,
+        headers={seal.HEADER: header, "X-Maestro-Sync": peer})
     assert response.status_code == 200
+    plain = seal.open_response(key, rid, 200, response.headers[seal.HEADER], response.content)
+    assert json.loads(plain) == {}
 
 
 @pytest.mark.parametrize("payload", [

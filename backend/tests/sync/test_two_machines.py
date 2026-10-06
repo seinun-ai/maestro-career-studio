@@ -9,7 +9,6 @@ import socket
 import time
 import uuid
 from datetime import timedelta
-from select import select as wait_readable
 from types import SimpleNamespace
 
 import pytest
@@ -21,8 +20,9 @@ from app.config import settings
 from app.db import get_db
 from app.main import app
 from app.services import base_resume_data, proposals, seeding, tailoring_session
-from app.services.sync import jobs_bundle, profile_bundle, request_apply, status
+from app.services.sync import jobs_bundle, profile_bundle, request_apply, seal, status
 from app.services.sync import round as sync_round
+from tests.sync.conftest import sealed
 from tests.conftest import _clear_tables
 from tests.pdf_fixtures import text_pdf_bytes
 from tests.sync import test_round as round_tests
@@ -532,15 +532,15 @@ def test_real_daily_cap_counts_reservations_on_both_sides(machines):
         assert proposals.cap_status(db)["reserved_last_24h"] == 2
 
 
-def test_real_wrong_key_is_401_and_round_reports_a_fixed_sentence(machines, tmp_path,
-                                                               monkeypatch):
+def test_real_wrong_key_is_a_bare_404_and_the_round_cannot_verify(machines, tmp_path, monkeypatch):
     path = tmp_path / "wrong-key"
     path.write_text(uuid.uuid4().hex, encoding="utf-8")
     monkeypatch.setattr(settings, "sync_key_file", path)
     response = machines.home.http.get("/api/sync/hello", headers={"Authorization": "Bearer wrong"})
-    assert response.status_code == 401
+    assert response.status_code == 404 and response.content == b""
     result = machines.round()
-    assert result["outcome"] == "needs_person" and result["error"] == "401: Sync key doesn't match."
+    assert result["outcome"] == "transient"
+    assert result["error"] == "The laptop's answer couldn't be verified."
     assert "wrong" not in json.dumps(result)
 
 
@@ -574,81 +574,101 @@ def test_real_lost_home_after_push_keeps_commits_and_retry_finishes(machines, mo
     assert status.read_state(machines.db)["failures"] == 0
 
 
-def headers_for(machines, **extra):
-    key = settings.sync_key_file.read_text(encoding="utf-8").strip()
-    return {"Authorization": f"Bearer {key}",
-            "X-Maestro-Sync": f"{status.SYNC_PROTOCOL}:{status.schema_revision(machines.db)}:remote-1",
-            **extra}
+def peer_for(machines):
+    return f"{status.SYNC_PROTOCOL}:{status.schema_revision(machines.db)}:remote-1"
 
 
-def test_real_missing_bearer_and_browser_origin_are_refused(machines):
+def test_real_missing_seal_and_browser_origin_are_refused(machines):
     bare = machines.home.http.get("/api/sync/hello")
-    assert bare.status_code == 401 and bare.headers["www-authenticate"] == "Bearer"
+    assert bare.status_code == 404 and bare.content == b""
+    assert "www-authenticate" not in bare.headers
     basic = machines.home.http.get("/api/sync/hello", headers={"Authorization": "Basic abc"})
-    assert basic.status_code == 401
-    browser = machines.home.http.get("/api/sync/hello",
-                                     headers=headers_for(machines, Origin="http://localhost:3000"))
-    assert browser.status_code == 403
-    assert machines.home.http.get("/api/sync/hello", headers=headers_for(machines)).status_code == 200
+    assert basic.status_code == 404 and basic.content == b""
+    key = status.read_key()
+    peer = peer_for(machines)
+    header, _wire, _rid = seal.seal_request(key, "GET", "/api/sync/hello", "", b"", peer)
+    browser = machines.home.http.get("/api/sync/hello", headers={
+        seal.HEADER: header, "X-Maestro-Sync": peer, "Origin": "http://localhost:3000"})
+    assert browser.status_code == 403 and "x-maestro-seal" not in browser.headers
+    code, body = sealed(machines.home.http, "GET", "/api/sync/hello", peer=peer, key=key)
+    assert code == 200 and body["protocol"] == status.SYNC_PROTOCOL
 
 
-def raw_request(machines, head, body=b""):
-    """One request on its own socket; the caller decides how much of the body to send."""
+def _wire_of(wire, send):
+    """``prefix`` stalls after 4 bytes; a ``(body, length)`` pair declares a different length."""
+    if send == "prefix":
+        return wire[:4], len(wire)
+    if isinstance(send, tuple):
+        return send
+    return (wire if send is None else send), len(wire)
+
+
+def raw_request(machines, method, path, *, plaintext=b"", send=None):
+    """One sealed request on its own socket. ``send`` replaces what is written after the headers."""
+    key = status.read_key()
+    peer = peer_for(machines)
+    header, wire, rid = seal.seal_request(key, method, path, "", plaintext, peer)
+    sent, length = _wire_of(wire, send)
+    lines = (
+        f"{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {length}\r\n"
+        f"{seal.HEADER}: {header}\r\nX-Maestro-Sync: {peer}\r\n\r\n"
+    )
     sock = socket.create_connection(("127.0.0.1", machines.home.port), timeout=10)
-    headers = headers_for(machines)
-    lines = "".join(f"{name}: {value}\r\n" for name, value in headers.items())
-    sock.sendall(f"{head}\r\nHost: 127.0.0.1\r\n{lines}".encode() + b"Content-Type: application/json\r\n"
-                 + b"\r\n" + body)
-    return sock
+    sock.sendall(lines.encode() + sent)
+    return sock, rid, key, wire
+
+
+def _read_http(sock):
+    data = b""
+    while b"\r\n\r\n" not in data:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+    head, _, rest = data.partition(b"\r\n\r\n")
+    headers = {}
+    status_line, _, header_blob = head.partition(b"\r\n")
+    for line in header_blob.split(b"\r\n"):
+        if b":" in line:
+            name, value = line.split(b":", 1)
+            headers[name.decode("latin-1").lower()] = value.strip().decode("latin-1")
+    length = int(headers.get("content-length", "0"))
+    while len(rest) < length:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        rest += chunk
+    return status_line.decode("latin-1"), headers, rest[:length]
 
 
 def test_real_oversized_body_is_a_413_before_it_is_read(machines):
     declared = 100 * 1024 * 1024 + 1
-    sock = raw_request(machines, "POST /api/sync/jobs HTTP/1.1\r\nContent-Length: %d" % declared)
+    sock, rid, key, _wire = raw_request(
+        machines, "POST", "/api/sync/jobs", send=(b"", declared))
     with sock:
-        reply = sock.recv(4096).decode("latin-1")
-    assert reply.startswith("HTTP/1.1 413")
-    assert "too large" in reply
-    assert machines.home.http.get("/api/sync/hello", headers=headers_for(machines)).status_code == 200
+        status_line, headers, body = _read_http(sock)
+    assert status_line.startswith("HTTP/1.1 413")
+    assert b"too large" not in body
+    plain = seal.open_response(key, rid, 413, headers["x-maestro-seal"], body)
+    assert json.loads(plain)["detail"] == "That request is too large."
+    code, _hello = sealed(machines.home.http, "GET", "/api/sync/hello", peer=peer_for(machines))
+    assert code == 200
 
 
-def _stall_home(machines):
-    """Open a request that is accepted and then holds home's lock while its body never finishes.
-
-    A poll can take the lock before the stalled request does; the stalled request is then
-    refused as busy and answers at once. A reply on its socket means it holds nothing, so it
-    is closed and opened again until one is waiting on the lock while a poll sees 409.
-    """
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        stalled = raw_request(machines, "POST /api/sync/runs HTTP/1.1\r\nContent-Length: 50",
-                              b'{"runs"')
-        while time.monotonic() < deadline:
-            busy = machines.home.http.get("/api/sync/hello", headers=headers_for(machines))
-            if wait_readable([stalled], [], [], 0)[0]:
-                break  # refused as busy before it held the lock
-            if busy.status_code == 409:
-                return stalled, busy
-            wait_readable([stalled], [], [], 0.05)  # waits for an event, not a fixed sleep
-        stalled.close()
-    pytest.fail("Home never reported busy while a request was stalled.")
-
-
-def test_real_busy_home_is_a_409_and_the_round_says_so(machines):
-    assert machines.round()["ok"]
-    stalled, busy = _stall_home(machines)
+def test_real_stalled_body_does_not_hold_the_lock(machines):
+    """The body is read before the single-flight lock, so a stall cannot busy the laptop."""
+    sock, _rid, _key, _wire = raw_request(
+        machines, "POST", "/api/sync/runs", plaintext=b'{"runs":[]}', send="prefix")
     try:
-        assert busy.status_code == 409 and busy.json()["reason"] == "busy"
-        result = machines.round()
-        assert result["outcome"] == "transient"
-        assert result["error"] == "409: A sync is already running on your laptop."
+        codes = []
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            codes.append(sealed(
+                machines.home.http, "GET", "/api/sync/hello", peer=peer_for(machines))[0])
+            time.sleep(0.05)
+        assert 409 not in codes and 200 in codes
     finally:
-        stalled.close()
-    deadline = time.monotonic() + 5
-    while machines.home.http.get("/api/sync/hello", headers=headers_for(machines)).status_code == 409:
-        assert time.monotonic() < deadline
-        time.sleep(0.05)
-    assert machines.round()["ok"]
+        sock.close()
 
 
 def test_real_take_over_is_refused_while_the_bot_is_applying(machines):

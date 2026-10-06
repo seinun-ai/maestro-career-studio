@@ -152,8 +152,8 @@
     "inv-sync-channel": [
       {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_an_origin_is_refused_before_the_key_is_read"},
       {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_an_origin_is_refused_with_the_right_key_too"},
-      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_wrong_or_missing_key_is_a_401_that_echoes_nothing"},
-      {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_the_key_is_checked_before_the_version"},
+      {"path": "backend/tests/sync/test_sealed_home.py", "symbol": "test_a_bearer_only_request_is_a_bare_404"},
+      {"path": "backend/tests/sync/test_sealed_home.py", "symbol": "test_the_seal_is_checked_before_the_version"},
       {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_second_request_while_one_runs_is_a_409"},
       {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_body_over_the_cap_is_a_413"},
       {"path": "backend/tests/sync/test_home_endpoints.py", "symbol": "test_a_stalled_peer_gets_a_408_and_the_lock_is_released"},

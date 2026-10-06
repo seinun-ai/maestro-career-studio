@@ -31,7 +31,9 @@ from app.models.setting import Setting
 from app.models.sync import SyncRequest, SyncTombstone
 from app.models.types import utcnow
 from app.services import http_client
-from app.services.sync import bundle_rows, duplicates, hooks, jobs_bundle, profile_bundle, request_apply, status, wire
+from app.services.sync import (
+    bundle_rows, duplicates, hooks, jobs_bundle, profile_bundle, request_apply, seal, status, wire,
+)
 
 PAGE_BYTES = 40 * 1024 * 1024  # well under home's 100 MB request cap
 PUSH_JOBS = 20
@@ -44,7 +46,11 @@ _TIMEOUT = httpx.Timeout(120.0, connect=10.0)
 _LOCK = threading.Lock()
 
 NOT_SET_UP = "Sync isn't set up."
-NOT_OWN_TUNNEL = "The laptop's address must be this machine's own tunnel (127.0.0.1)."
+NOT_OWN_TUNNEL = (
+    "The laptop's address must be this machine's own tunnel or an https:// address."
+)
+BAD_BUNDLE = "The certificate bundle in SSL_CERT_FILE can't be read."
+_UNVERIFIED = "The laptop's answer couldn't be verified."
 NOT_PAIRED = "This copy isn't paired with your laptop yet; run the first sync with the pair option."
 VERSION_MISMATCH = "Update Maestro on both machines to the same version."
 UNREACHABLE = "Laptop unreachable."
@@ -141,25 +147,56 @@ def _refusal(response: httpx.Response) -> Exception:
     return _Stop(_SENTENCES.get(code, _GENERIC), code)
 
 
-def _call(ctx: _Ctx, method: str, path: str, *, params: dict | None = None, body=None):
+def _seal_preview(secret: str, preview: httpx.Request, payload: bytes):
+    peer = preview.headers.get("x-maestro-sync", "")
+    query = preview.url.query.decode()
+    return seal.seal_request(secret, preview.method, preview.url.path, query, payload, peer)
+
+
+def _wire_request(ctx: _Ctx, method: str, path: str, params, payload: bytes):
+    secret = status.read_key()
+    if not secret:
+        raise seal.Broken
+    preview = ctx.http.build_request(method, path, params=params)
+    header, wire, rid = _seal_preview(secret, preview, payload)
+    request = ctx.http.build_request(
+        method, path, params=params, content=wire, headers={seal.HEADER: header})
+    return request, rid, secret
+
+
+def _interpret(status_code: int, plain: bytes):
     try:
-        response = ctx.http.request(method, path, params=params, json=body)
-    except (httpx.TransportError, httpx.InvalidURL):
-        raise _Stop(UNREACHABLE) from None
-    if response.status_code >= 400:
-        raise _refusal(response)
-    try:
-        return response.json()
+        payload = json.loads(plain) if plain else None
     except ValueError:
         raise _Stop(_UNREADABLE, outcome=NEEDS_PERSON) from None
+    if status_code >= 400:
+        body = payload if payload is not None else {}
+        raise _refusal(httpx.Response(status_code, json=body))
+    if not isinstance(payload, (dict, list)):
+        raise _Stop(_UNREADABLE, outcome=NEEDS_PERSON)
+    return payload
 
 
-def _headers(db: Session, key: str) -> dict:
+def _call(ctx: _Ctx, method: str, path: str, *, params: dict | None = None, body=None):
+    payload = b"" if body is None else json.dumps(body).encode()
+    try:
+        request, rid, secret = _wire_request(ctx, method, path, params, payload)
+        response = ctx.http.send(request)
+        plain = seal.open_response(
+            secret, rid, response.status_code, response.headers.get(seal.HEADER, ""),
+            response.content)
+    except (httpx.TransportError, httpx.InvalidURL):
+        raise _Stop(UNREACHABLE) from None
+    except seal.Broken:
+        raise _Stop(_UNVERIFIED, outcome=TRANSIENT) from None
+    return _interpret(response.status_code, plain)
+
+
+def _headers(db: Session) -> dict:
     revision = status.schema_revision(db)
     mine = status.machine_id(db)
     db.commit()
-    return {"Authorization": f"Bearer {key}",
-            "X-Maestro-Sync": f"{status.SYNC_PROTOCOL}:{revision}:{mine}"}
+    return {"X-Maestro-Sync": f"{status.SYNC_PROTOCOL}:{revision}:{mine}"}
 
 
 def _chunks(items: list, size: int) -> Iterator[list]:
@@ -952,16 +989,25 @@ def _held_off(state: dict, options: _Options) -> dict | None:
     return _waiting(state)
 
 
+def _open_http(db: Session, route: str) -> httpx.Client:
+    return http_client.new_client(
+        base_url=settings.sync_remote_url, headers=_headers(db), timeout=_TIMEOUT,
+        trust_env=route == "https", verify=True)
+
+
 def _locked_round(db: Session, options: _Options) -> dict:
-    key = status.read_key()
-    if key is None or not settings.sync_remote_url:
+    if status.read_key() is None or not settings.sync_remote_url:
         return _skipped(NOT_SET_UP, NEEDS_PERSON)
-    if not status.remote_is_own_tunnel():
+    route = status.remote_route()
+    if route is None:
         return _skipped(NOT_OWN_TUNNEL, NEEDS_PERSON)
     if (held := _held_off(status.read_state(db), options)) is not None:
         return held
-    with http_client.new_client(base_url=settings.sync_remote_url, headers=_headers(db, key),
-                                timeout=_TIMEOUT, trust_env=False) as http:
+    try:
+        http = _open_http(db, route)
+    except OSError:
+        return _skipped(BAD_BUNDLE, NEEDS_PERSON)
+    with http:
         return _attempt(db, http, options)
 
 

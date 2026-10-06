@@ -29,7 +29,7 @@ from app.main import app
 from app.routers import sync as sync_router
 from app.schemas.auto_apply import AutoApplySettings
 from app.services import application_status, auto_apply_settings, http_client
-from app.services.sync import duplicates, hooks, jobs_bundle, request_apply, requests, status
+from app.services.sync import duplicates, hooks, jobs_bundle, request_apply, requests, seal, status
 from app.services.sync import round as sync_round
 from tests.sync.test_jobs_bundle import SENTINEL, WHEN, build_job
 from tests.sync.test_profile_bundle import build_profile
@@ -141,16 +141,20 @@ class FakeHome:
         self.lose_reply: set[tuple[str, str]] = set()
         self.reply: dict[tuple[str, str], httpx.Response] = {}
         self.hello_patch: dict = {}
+        self.forge = False
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         key = (request.method, request.url.path)
         self.calls.append(key)
         if key in self.unreachable:
             raise httpx.ConnectError("down", request=request)
-        if key in self.reply:
-            return self.reply[key]
         with self.world.as_("home"):
-            response = self._serve(request, key)
+            if key in self.reply:
+                response = self._canned(request, self.reply[key])
+            else:
+                response = self._serve(request, key)
+        if self.forge:
+            response = _damage(response)
         if key in self.lose_reply:
             raise httpx.ReadError("lost", request=request)
         return response
@@ -159,19 +163,45 @@ class FakeHome:
         return [call for call in self.calls
                 if call[0] == "POST" and (path is None or call[1] == path)]
 
+    def _open(self, request):
+        peer = request.headers.get("x-maestro-sync", "")
+        try:
+            ok = seal.check_header(
+                KEY, request.method, request.url.path, request.url.query.decode(),
+                request.headers.get(seal.HEADER, ""), peer)
+            plain = seal.open_request(KEY, ok, request.content)
+        except seal.Broken:
+            return None
+        return ok, plain
+
+    def _seal(self, rid, response):
+        header, wire = seal.seal_response(KEY, rid, response.status_code, response.content)
+        return httpx.Response(response.status_code, content=wire, headers={seal.HEADER: header})
+
+    def _canned(self, request, canned):
+        opened = self._open(request)
+        if opened is None:
+            return httpx.Response(404)
+        ok, _plain = opened
+        return self._seal(ok.rid, canned)
+
     def _serve(self, request, key):
-        if request.headers.get("authorization") != f"Bearer {KEY}":
-            return httpx.Response(401, json={"detail": "A sync key is needed."})
+        opened = self._open(request)
+        if opened is None:
+            return httpx.Response(404)
+        ok, plain = opened
         protocol, revision, remote_id = request.headers["x-maestro-sync"].split(":")
         with self.world.factories["home"]() as db:
             if protocol != str(status.SYNC_PROTOCOL) or revision != db.scalar(
                     text("SELECT version_num FROM alembic_version")):
-                return httpx.Response(409, json={"detail": VERSION, "reason": "version"})
+                refused = httpx.Response(409, json={"detail": VERSION, "reason": "version"})
+                return self._seal(ok.rid, refused)
             status.machine_id(db)
             db.commit()  # as the real dependency does: the first call stores home's id
-            return self._route(request, key, sync_router.PeerInfo(remote_id), db)
+            answer = self._route(request, key, sync_router.PeerInfo(remote_id), db, plain)
+            return self._seal(ok.rid, answer)
 
-    def _route(self, request, key, peer, db):
+    def _route(self, request, key, peer, db, plain):
         function = getattr(sync_router, PATH_FUNCTIONS[key])
         params = dict(request.url.params)
         try:
@@ -180,7 +210,7 @@ class FakeHome:
             elif key == ("GET", "/api/sync/jobs"):
                 answer = function(peer, db, since=params["since"], limit=int(params["limit"]))
             elif request.method == "POST":
-                answer = function(peer, db, json.loads(request.content))
+                answer = function(peer, db, json.loads(plain))
             else:
                 answer = function(peer, db)
         except HTTPException as refusal:
@@ -188,6 +218,14 @@ class FakeHome:
         if key == ("GET", "/api/sync/hello"):
             answer = {**answer, **self.hello_patch}
         return httpx.Response(200, json=answer)
+
+
+def _damage(response: httpx.Response) -> httpx.Response:
+    """Flip one ciphertext byte so the client cannot open the answer."""
+    if seal.HEADER.lower() not in response.headers or not response.content:
+        return response
+    flipped = bytes([response.content[0] ^ 1]) + response.content[1:]
+    return httpx.Response(response.status_code, content=flipped, headers=response.headers)
 
 
 @pytest.fixture
@@ -323,12 +361,14 @@ def test_a_first_round_needs_the_pair_flag(world, home, clock):
     assert go(world, pair=False)["ok"]
 
 
-NOT_LOOPBACK = "The laptop's address must be this machine's own tunnel (127.0.0.1)."
+NOT_LOOPBACK = (
+    "The laptop's address must be this machine's own tunnel or an https:// address."
+)
 
 
 @pytest.mark.parametrize("url", [
     "http://example.com:8101", "http://127.0.0.1.evil.com:8101", "http://localhost.evil.com",
-    "http://127.0.0.1@evil.com:8101", "http://10.0.0.5:8101", "https://[2001:db8::1]:8101",
+    "http://127.0.0.1@evil.com:8101", "http://10.0.0.5:8101", "https://example.com/api/sync",
     "not a url"])
 def test_a_remote_address_that_is_not_this_machines_own_tunnel_is_refused(
         world, home, clock, monkeypatch, url):
@@ -340,7 +380,10 @@ def test_a_remote_address_that_is_not_this_machines_own_tunnel_is_refused(
     assert home.calls == []
 
 
-@pytest.mark.parametrize("url", ["http://localhost:8101", "http://[::1]:8101", "http://127.0.0.1:8101"])
+@pytest.mark.parametrize("url", [
+    "http://localhost:8101", "http://[::1]:8101", "http://127.0.0.1:8101",
+    "https://127.0.0.1:8101", "https://[::1]:8101", "https://[2001:db8::1]:8101",
+])
 def test_a_loopback_remote_address_is_used(world, home, clock, monkeypatch, url):
     monkeypatch.setattr(settings, "sync_remote_url", url)
 
@@ -349,7 +392,7 @@ def test_a_loopback_remote_address_is_used(world, home, clock, monkeypatch, url)
 
 
 def test_the_round_ignores_the_proxy_environment(world, monkeypatch):
-    """With HTTP_PROXY set the bearer key and the profile would go to the proxy in cleartext."""
+    """A loopback address is the tunnel: proxies are ignored and the call goes direct."""
     with socket.socket() as spy, socket.socket() as closed:
         for sock in (spy, closed):
             sock.bind(("127.0.0.1", 0))
@@ -449,11 +492,12 @@ def test_a_422_is_reported_by_code_never_by_its_body(world, home, clock, caplog)
 
 def test_a_wrong_key_is_reported_as_a_key_problem(world, home, clock):
     world.key.write_text("a-different-key", encoding="utf-8")
-    home.reply[("GET", "/api/sync/hello")] = httpx.Response(401, json={"detail": SENTINEL})
 
     summary = go(world)
 
-    assert summary["error"] == "401: Sync key doesn't match."
+    assert summary["outcome"] == "transient"
+    assert summary["error"] == "The laptop's answer couldn't be verified."
+    assert "a-different-key" not in json.dumps(summary)
     assert state(world)["failures"] == 1
 
 

@@ -18,7 +18,7 @@ from app.models.setting import Setting
 
 MACHINE_ID_KEY = "sync.machine_id"
 STATE_KEY = "sync.state"
-SYNC_PROTOCOL = 1
+SYNC_PROTOCOL = 2
 # The always-on copy's round state (local setting, never synced). ``since_home`` is home's opaque
 # jobs cursor; ``acked_own`` is the highest local job revision the push has gone past; ``retry_own``
 # maps a job home refused to the rounds it was refused, ``stuck_own`` one refused too often to the
@@ -72,13 +72,34 @@ def is_remote() -> bool:
 LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
 
 
-def remote_is_own_tunnel() -> bool:
-    """True when ``SYNC_REMOTE_URL`` points at this machine's loopback (the SSH forward). The
-    bearer key and the whole profile ride that address in cleartext, so nothing else is used."""
+def remote_route() -> str | None:
+    """``tunnel`` for loopback http(s), ``https`` for any other https host, else None.
+
+    Anything past ``/`` in the path is None: the seal binds the path that was sent, and a
+    published mount only puts its own prefix back.
+    """
+    if not settings.sync_remote_url:
+        return None
     try:
-        return httpx.URL(settings.sync_remote_url).host in LOOPBACK_HOSTS
+        url = httpx.URL(settings.sync_remote_url)
     except httpx.InvalidURL:
-        return False
+        return None
+    return _route_of(url)
+
+
+def _route_of(url: httpx.URL) -> str | None:
+    if url.path not in ("", "/") or not url.host:
+        return None
+    if url.scheme in ("http", "https") and url.host in LOOPBACK_HOSTS:
+        return "tunnel"
+    if url.scheme == "https":
+        return "https"
+    return None
+
+
+def remote_is_own_tunnel() -> bool:
+    """True when ``remote_route()`` is the loopback tunnel. Pairing still calls this."""
+    return remote_route() == "tunnel"
 
 
 def mode() -> str:

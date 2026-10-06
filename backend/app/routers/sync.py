@@ -1,20 +1,20 @@
 """Home's side of the sync channel (split-ownership design, Part B).
 
-The always-on copy drives every request; this copy only answers. Data routes first run
-``_require_sync``: 404 while sync is off (or on the always-on copy), 403 for any request carrying
-an ``Origin``, 401 unless the bearer key matches, 409 when the peer's protocol or schema differs,
-and 409 while another request is running. Enrollment instead needs a one-use window opened in
-Settings and the same version check and lock; no key file still means 404. Local setup is under
-the separate ``/api/sync-setup`` prefix. Nothing here logs or echoes a key, a bundle, a request
-body, the AI key or the job-site password: every response and stored reason is a fixed sentence
-or one of the rule sentences the services already use, never ``str(exc)``.
+The always-on copy drives every request; this copy only answers. Peer routes under ``/api/sync/``
+(not ``/round`` or ``/enroll``) are sealed: a bare 404 while sync is off or this copy is remote,
+403 for any ``Origin``, then the seal, then the protocol check and the single-flight lock.
+A failed seal is the same bare 404. Enrollment still needs a one-use window opened in Settings.
+Local setup is under ``/api/sync-setup`` and is not sealed. Nothing here logs or echoes a key, a
+bundle, a request body, the AI key or the job-site password: every response and stored reason is
+a fixed sentence or one of the rule sentences the services already use, never ``str(exc)``.
 """
 
 import asyncio
-import hmac
 import json
 import logging
 import re
+import threading
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, TypeVar
@@ -45,6 +45,7 @@ from app.services.sync import (
     profile_bundle,
     request_apply,
     requests,
+    seal,
     status,
     wire,
 )
@@ -69,7 +70,6 @@ _TOO_LARGE = "That request is too large."
 _BUSY = "A sync is already running."
 _VERSION = "Update Maestro on both machines to the same version."
 _SAME_MACHINE = "These two copies share one machine id; give the always-on copy its own data."
-_NO_KEY = "A sync key is needed."
 _NO_BROWSERS = "Browser requests can't use this."
 _FAILED = "Maestro couldn't finish that sync request."
 _NOT_YOURS = "This job isn't yours to send."
@@ -79,6 +79,11 @@ _UNREADABLE = "This job couldn't be read."
 _NOT_HERE = "This job isn't on your laptop."
 _TIMEOUT = "The request took too long to arrive."
 _RETRY = "This job's text matches a job that is still changing; Maestro will try again."
+_REFUSED = "A sync request was refused."
+_SEAL_GAP = 60.0
+_REPLAY = seal.ReplayCache()
+_SEAL_LOCK = threading.Lock()
+_seal_seen: dict[str, float] = {}
 
 
 class _Refused(Exception):
@@ -97,32 +102,178 @@ def _refusal_reply(request: Request, refusal: _Refused | pairing.Refused) -> JSO
     return JSONResponse(status_code=refusal.status_code, content=content)
 
 
+def _release_lock(request: Request) -> None:
+    if getattr(request.state, "sync_lock", False):
+        request.state.sync_lock = False
+        _LOCK.release()
+
+
+def _peer_sealed(path: str) -> bool:
+    if not path.startswith("/api/sync/"):
+        return False
+    name = path.removeprefix("/api/sync/").split("/", 1)[0]
+    return name not in {"round", "enroll"}
+
+
+def _bare_404() -> Response:
+    return Response(status_code=404)
+
+
+def _home_key() -> str | None:
+    key = status.read_key()
+    if key is None or status.is_remote():
+        return None
+    return key
+
+
+def _drop_stale(now: float) -> None:
+    stale = [item for item, seen in _seal_seen.items() if now - seen >= _SEAL_GAP]
+    for item in stale:
+        del _seal_seen[item]
+
+
+def _due(source: str, now: float) -> bool:
+    with _SEAL_LOCK:
+        _drop_stale(now)
+        previous = _seal_seen.get(source)
+        if previous is not None and now - previous < _SEAL_GAP:
+            return False
+        _seal_seen[source] = now
+        return True
+
+
+def _note_refusal(request: Request) -> None:
+    """One fixed line per forwarded source per minute. The header value is never written."""
+    source = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    if _due(source, time.monotonic()):
+        logger.info(_REFUSED)
+
+
+def _seal_outgoing(key: str, rid: str, response: Response) -> Response:
+    header, wire = seal.seal_response(key, rid, response.status_code, response.body)
+    return Response(content=wire, status_code=response.status_code, headers={seal.HEADER: header})
+
+
+def _sealed_detail(key: str, rid: str, status_code: int, detail: str) -> Response:
+    body = json.dumps({"detail": detail}).encode()
+    return _seal_outgoing(key, rid, Response(content=body, status_code=status_code))
+
+
+def _header_ok(request: Request, key: str):
+    try:
+        return seal.check_header(
+            key, request.method, request.url.path, request.url.query,
+            request.headers.get(seal.HEADER, ""), request.headers.get("x-maestro-sync", ""),
+            replay=_REPLAY)
+    except seal.Broken:
+        _note_refusal(request)
+        return _bare_404()
+
+
+def _declared_too_big(request: Request) -> bool:
+    declared = request.headers.get("content-length", "")
+    return bool(declared.isdigit() and int(declared) > MAX_BODY_BYTES)
+
+
+def _opened_body(request: Request, key: str, ok: seal.HeaderOk, wire: bytes):
+    try:
+        return ok, seal.open_request(key, ok, wire)
+    except seal.Broken:
+        _note_refusal(request)
+        return _bare_404()
+
+
+async def _capped_body(request: Request, key: str, rid: str):
+    if _declared_too_big(request):
+        return _sealed_detail(key, rid, 413, _TOO_LARGE)
+    try:
+        return await _read_body(request)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else _INVALID
+        return _sealed_detail(key, rid, exc.status_code, detail)
+    except ClientDisconnect:
+        logger.info("A sync peer hung up.")
+        return _seal_outgoing(key, rid, Response(status_code=499))
+
+
+async def _unseal(request: Request, key: str):
+    ok = _header_ok(request, key)
+    if isinstance(ok, Response):
+        return ok
+    wire = await _capped_body(request, key, ok.rid)
+    if isinstance(wire, Response):
+        return wire
+    return _opened_body(request, key, ok, wire)
+
+
+async def _guarded(original, request: Request):
+    try:
+        return await original(request)
+    except RequestValidationError:
+        return JSONResponse(status_code=422, content={"detail": _INVALID})
+    except (_Refused, pairing.Refused) as refusal:
+        return _refusal_reply(request, refusal)
+    except hooks.NotOwnedHere as exc:
+        return JSONResponse(status_code=409, content={"detail": str(exc), "owner": exc.owner})
+    except StarletteHTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    except ClientDisconnect:
+        logger.info("A sync peer hung up.")
+        return Response(status_code=499)
+    except Exception:
+        logger.error("A sync request failed.")
+        return JSONResponse(status_code=500, content={"detail": _FAILED})
+
+
+async def _run_sealed(original, request: Request):
+    key = _home_key()
+    if key is None:
+        return _bare_404()
+    if "origin" in request.headers:
+        raise HTTPException(403, detail=_NO_BROWSERS)
+    opened = await _unseal(request, key)
+    if isinstance(opened, Response):
+        return opened
+    ok, plain = opened
+    request.state.sync_plain = plain
+    request.state.sync_opened = True
+    try:
+        response = await _guarded(original, request)
+    finally:
+        _release_lock(request)
+    return _seal_outgoing(key, ok.rid, response)
+
+
+async def _run_plain(original, request: Request):
+    try:
+        return await original(request)
+    except RequestValidationError:
+        raise HTTPException(422, detail=_INVALID) from None
+    except (_Refused, pairing.Refused) as refusal:
+        return _refusal_reply(request, refusal)
+    except (StarletteHTTPException, hooks.NotOwnedHere):
+        raise
+    except ClientDisconnect:
+        logger.info("A sync peer hung up.")
+        return Response(status_code=499)
+    except Exception:
+        logger.error("A sync request failed.")
+        raise HTTPException(500, detail=_FAILED) from None
+    finally:
+        _release_lock(request)
+
+
 class _SyncRoute(APIRoute):
     """Sanitized validation errors, fixed 500s, and the single-flight lock released before the
-    response goes out."""
+    response goes out. Peer routes are sealed; setup, round, and enroll are not."""
 
     def get_route_handler(self):
         original = super().get_route_handler()
 
         async def handler(request: Request):
-            try:
-                return await original(request)
-            except RequestValidationError:
-                raise HTTPException(422, detail=_INVALID) from None
-            except (_Refused, pairing.Refused) as refusal:
-                return _refusal_reply(request, refusal)
-            except (StarletteHTTPException, hooks.NotOwnedHere):
-                raise
-            except ClientDisconnect:
-                logger.info("A sync peer hung up.")
-                return Response(status_code=499)
-            except Exception:
-                logger.error("A sync request failed.")
-                raise HTTPException(500, detail=_FAILED) from None
-            finally:
-                if getattr(request.state, "sync_lock", False):
-                    request.state.sync_lock = False
-                    _LOCK.release()
+            if _peer_sealed(request.url.path):
+                return await _run_sealed(original, request)
+            return await _run_plain(original, request)
 
         return handler
 
@@ -134,13 +285,6 @@ setup_router = APIRouter(prefix="/api/sync-setup", tags=["sync setup"], route_cl
 @dataclass(frozen=True)
 class PeerInfo:
     machine_id: str
-
-
-def _check_key(request: Request, key: str) -> None:
-    scheme, _, token = request.headers.get("authorization", "").partition(" ")
-    supplied = token if scheme.lower() == "bearer" else ""
-    if not hmac.compare_digest(supplied.encode(), key.encode()):
-        raise HTTPException(401, detail=_NO_KEY, headers={"WWW-Authenticate": "Bearer"})
 
 
 def _check_version(request: Request, db: Session) -> PeerInfo:
@@ -158,12 +302,9 @@ def _check_version(request: Request, db: Session) -> PeerInfo:
 
 
 def _require_sync(request: Request, db: Annotated[Session, Depends(get_db)]) -> PeerInfo:
-    key = status.read_key()
-    if key is None or status.is_remote():
+    """Version and the lock. The route class has already unsealed a peer request."""
+    if not getattr(request.state, "sync_opened", False):
         raise HTTPException(404, detail=_NOT_FOUND)
-    if "origin" in request.headers:
-        raise HTTPException(403, detail=_NO_BROWSERS)
-    _check_key(request, key)
     peer = _check_version(request, db)
     if not _LOCK.acquire(blocking=False):
         raise _Refused(409, _BUSY, "busy")
@@ -242,12 +383,19 @@ async def _read_body(request: Request) -> bytes:
         chunks.append(chunk)
 
 
+def _plaintext(request: Request) -> bytes | None:
+    raw = getattr(request.state, "sync_plain", None)
+    return raw if isinstance(raw, bytes) else None
+
+
 async def _json_body(request: Request, _peer: Peer) -> dict:
-    declared = request.headers.get("content-length", "")
-    if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
-        raise HTTPException(413, detail=_TOO_LARGE)
+    raw = _plaintext(request)
+    if raw is None:
+        if _declared_too_big(request):
+            raise HTTPException(413, detail=_TOO_LARGE)
+        raw = await _read_body(request)
     try:
-        value = json.loads(await _read_body(request))
+        value = json.loads(raw)
     except (ValueError, RecursionError):
         raise HTTPException(422, detail=_INVALID) from None
     if not isinstance(value, dict):

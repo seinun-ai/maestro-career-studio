@@ -1,10 +1,13 @@
+import json as _json
 import os
 import secrets
 import socket
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 import pytest
@@ -12,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.db import make_engine
-from app.services.sync import status
+from app.services.sync import seal, status
 
 
 @pytest.fixture(autouse=True)
@@ -125,3 +128,73 @@ def home_backend(tmp_path_factory):
         yield backend
     finally:
         backend.close()
+
+
+def _transmit(client, method, path, **kwargs):
+    send = getattr(client, "transmit", None)
+    if send is None:
+        return client.request(method, path, **kwargs)
+    return send(method, path, **kwargs)
+
+
+def _target(path, params):
+    base, _, query = path.partition("?")
+    if params:
+        extra = urlencode(list(params.items()))
+        query = f"{query}&{extra}" if query else extra
+    return base, query
+
+
+@dataclass
+class _Seal:
+    """One sealed call. Bundled so the send helper stays within the parameter cap."""
+
+    method: str
+    path: str
+    json: object = None
+    params: object = None
+    key: str | None = None
+    peer: str | None = None
+    content: bytes | None = None
+    headers: dict | None = None
+
+
+def _payload(call: _Seal) -> bytes:
+    if call.json is not None:
+        return _json.dumps(call.json).encode()
+    if call.content is None:
+        return b""
+    if isinstance(call.content, bytes):
+        return call.content
+    raise TypeError("sealed content must be bytes")
+
+
+def _send_sealed(client, call: _Seal):
+    secret = status.read_key() if call.key is None else call.key
+    body = _payload(call)
+    base, query = _target(call.path, call.params)
+    header, wire, rid = seal.seal_request(secret, call.method, base, query, body, call.peer or "")
+    send = dict(call.headers or {})
+    send[seal.HEADER] = header
+    if call.peer:
+        send["X-Maestro-Sync"] = call.peer
+    url = f"{base}?{query}" if query else base
+    response = _transmit(client, call.method, url, content=wire, headers=send)
+    return response, rid, secret
+
+
+def sealed(client, method, path, *, json=None, params=None, key=None, peer=None):
+    """Seal a call, send it, and open the response. ``(status, parsed_json)``."""
+    response, rid, secret = _send_sealed(
+        client, _Seal(method, path, json=json, params=params, key=key, peer=peer))
+    if seal.HEADER.lower() not in response.headers:
+        raise AssertionError(f"response was not sealed ({response.status_code})")
+    plain = seal.open_response(secret, rid, response.status_code,
+                               response.headers[seal.HEADER], response.content)
+    parsed = _json.loads(plain) if plain else None
+    return response.status_code, parsed
+
+
+def raw(client, method, path, **kwargs):
+    """An unsealed call. The response is whatever the server sent."""
+    return _transmit(client, method, path, **kwargs)
