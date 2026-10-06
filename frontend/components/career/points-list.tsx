@@ -135,7 +135,7 @@ export function PointActorChip({
       ) : null}
       {point.provenance === "user_cannot_confirm" ? (
         <>
-          <CONCEPT_ICONS.unknown aria-hidden="true" className="size-3 shrink-0" /> Unconfirmed
+          <CONCEPT_ICONS.cannot aria-hidden="true" className="size-3 shrink-0" /> Unconfirmed
         </>
       ) : null}
     </ActorChip>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Ban, CircleCheck, Copy, Globe, Hand, Wrench, type LucideIcon } from "lucide-react";
+import { CircleCheck, Copy, Globe2, Hand, Wrench, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +29,7 @@ const KIND_ICON: Record<keyof typeof KIND_LABEL, LucideIcon> = {
 
 const NEED_ICON: Partial<Record<keyof typeof NEED_LABELS, LucideIcon>> = {
   email: CONCEPT_ICONS.email,
-  web: Globe,
+  web: Globe2,
 };
 
 /** One automation: what it does, what it needs, what it never does, and the
@@ -121,7 +121,7 @@ export function AutomationCard({
         </div>
         {card.never ? (
           <p className="text-muted-foreground flex max-w-[65ch] items-start gap-1.5 text-body-small">
-            <Ban className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            <CONCEPT_ICONS.cannot className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             {card.never}
           </p>
         ) : null}

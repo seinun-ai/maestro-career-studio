@@ -3,7 +3,7 @@
 // (backend/tests/test_frontend_concept_icons.py). An icon is never the only carrier of meaning: a word sits
 // beside it or in its accessible name (docs/design-system/README.md, Iconography).
 import {
-  BarChart3, BookOpen, BookPlus, Bot, BriefcaseBusiness, CalendarClock, CircleCheck, CircleDashed,
+  Ban, BarChart3, BookOpen, BookPlus, Bot, BriefcaseBusiness, CalendarClock, CircleCheck, CircleDashed,
   CircleHelp, CircleX, Ellipsis, FileInput, FileOutput, FilePen, FileText, FolderGit2, Handshake,
   HeartPulse, IdCard, Inbox, LayoutTemplate, Layers, Lock, Merge, MessageSquare, Minus, Paperclip,
   Mail, RefreshCw, RotateCcw, ScanSearch, School, ScrollText, SendHorizontal, Settings, SkipForward, Sparkles, Tags, TextQuote,
@@ -48,6 +48,8 @@ export const CONCEPT_ICONS = {
   warning: TriangleAlert,
   fails: CircleX,
   unknown: CircleHelp,
+  // Ban: can't — I can't confirm / they can't / never. CircleHelp stays "unknown" only.
+  cannot: Ban,
   // Minus: "nothing here / no change" (not listed, not stated, same, flat, not needed)
   none: Minus,
   locked: Lock,

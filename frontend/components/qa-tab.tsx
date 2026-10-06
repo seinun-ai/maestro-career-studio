@@ -3,7 +3,6 @@
 import { useId, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  CircleCheck,
   Download,
   Loader2,
   MessageSquareText,
@@ -16,7 +15,6 @@ import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-dialog";
 import { CopyButton } from "@/components/copy-button";
 import { IconButton } from "@/components/icon-button";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -399,10 +397,10 @@ function QAEntryCard({
           <span>{isDocument ? KIND_LABELS[entry.kind] : entry.prompt}</span>
         </CardTitle>
         {isCoverLetter && entry.pdf_path ? (
-          <Badge variant="tonal" className="shrink-0">
-            <CircleCheck aria-hidden="true" />
+          <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-surface-container px-2 text-label-medium text-foreground">
+            <CONCEPT_ICONS.done className="size-3 shrink-0 text-success" aria-hidden="true" />
             PDF ready
-          </Badge>
+          </span>
         ) : null}
         <div className="flex shrink-0 gap-1">
           {isDocument && !editing ? (

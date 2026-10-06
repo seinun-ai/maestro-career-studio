@@ -873,7 +873,7 @@ def test_empty_inbox_top_collapses():
 
 def test_run_outcome_is_a_glyph_and_a_word():
     out = _read("components/proposals/run-outcome.tsx")
-    assert "CircleCheck" in out and "CircleAlert" in out and "CircleX" in out and "outcomeWord(" in out
+    assert all(f"CONCEPT_ICONS.{c}" in out for c in ("done", "warning", "fails")) and "CircleAlert" not in out and "outcomeWord(" in out
     assert not re.search(r"^import ", _read("lib/agent-runs.ts"), re.M)
 
 

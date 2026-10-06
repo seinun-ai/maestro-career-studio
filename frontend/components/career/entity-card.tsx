@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Ellipsis, FileText, ListChecks, Merge } from "lucide-react";
+import { ArrowUpRight, Ellipsis, ListChecks, Merge } from "lucide-react";
 
 import { KB_KIND_LABELS, kbStatusLabel } from "@/components/career/career-labels";
 import { MergeEntityDialog } from "@/components/career/merge-entity-dialog";
@@ -118,7 +118,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
           {entity.draft_count > 0 ? (
             <Metric icon={DraftsIcon} value={entity.draft_count} one="draft" many="drafts" />
           ) : null}
-          <Metric icon={FileText} value={entity.document_count} one="document" many="documents" />
+          <Metric icon={CONCEPT_ICONS.attachment} value={entity.document_count} one="document" many="documents" />
         </div>
         <p
           className="text-muted-foreground text-body-small"

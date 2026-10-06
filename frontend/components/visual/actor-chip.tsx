@@ -14,7 +14,7 @@ const ACTORS: Record<ActorKind, { Icon: LucideIcon; word: string }> = {
   agent: { Icon: CONCEPT_ICONS.agentInbox, word: "Connected agent" },
   careerHistory: { Icon: CONCEPT_ICONS.careerHistory, word: "Career history" },
   resume: { Icon: CONCEPT_ICONS.baseResume, word: "Your resume" },
-  document: { Icon: CONCEPT_ICONS.attachment, word: "Document" },
+  document: { Icon: CONCEPT_ICONS.attachment, word: "Attachment" },
   jobWords: { Icon: CONCEPT_ICONS.jobWords, word: "Job's words" },
   merged: { Icon: CONCEPT_ICONS.merged, word: "Merged" },
   fromResume: { Icon: CONCEPT_ICONS.fromResume, word: "From a resume" },

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CircleX, Loader2, Minus } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
@@ -573,7 +573,7 @@ function PassRowView({
           )}
           {row.status === "failed" && (
             <p className="text-destructive inline-flex items-center gap-1 text-body-small">
-              <CircleX className="size-3.5 shrink-0" aria-hidden="true" />Couldn&apos;t write new wording for this one. Try again.
+              <CONCEPT_ICONS.fails className="size-3.5 shrink-0" aria-hidden="true" />Couldn&apos;t write new wording for this one. Try again.
             </p>
           )}
         </div>
@@ -627,7 +627,7 @@ function PassRowView({
             {!copyOnly(row) && row.original != null && row.status === "drafted" && !canSave(row) && (
               // The wording is the bullet as it stands: saving it would write no version.
               <p className="text-muted-foreground inline-flex items-center gap-1 text-body-small">
-                <Minus className="size-3.5" aria-hidden="true" />No change to save
+                <CONCEPT_ICONS.none className="size-3.5" aria-hidden="true" />No change to save
               </p>
             )}
             {!copyOnly(row) && row.original != null && row.edited == null && (

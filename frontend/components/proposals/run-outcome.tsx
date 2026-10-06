@@ -1,11 +1,10 @@
-import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
-
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { outcomeWord, type RunOutcome as Outcome } from "@/lib/agent-runs";
 
 const GLYPH = {
-  ok: { Icon: CircleCheck, tone: "text-success" },
-  partial: { Icon: CircleAlert, tone: "text-warning" },
-  failed: { Icon: CircleX, tone: "text-destructive" },
+  ok: { Icon: CONCEPT_ICONS.done, tone: "text-success" },
+  partial: { Icon: CONCEPT_ICONS.warning, tone: "text-warning" },
+  failed: { Icon: CONCEPT_ICONS.fails, tone: "text-destructive" },
 } as const;
 
 /** How an automation's run ended: the glyph and the word (Done, Partly done, Failed), on a surface chip. */

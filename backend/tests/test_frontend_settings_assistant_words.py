@@ -124,7 +124,7 @@ def test_the_assistant_names_what_it_is_doing():
     """D10.12: the working chips printed the model's tool names (`get_resume`)."""
     assert "TOOL_PHRASES" in _CHAT and '"Working…"' in _CHAT
     assert '<Wrench className="size-3" /> {name}' not in _CHAT
-    assert "toolChips(streaming.tools).map((chip) =>" in _CHAT
+    assert "toolChips(streaming.tools, target !== NO_TARGET).map((chip) =>" in _CHAT
     # Every tool the Assistant can call has words.
     tools = (_ROOT / "backend/app/services/chat_tools.py").read_text(encoding="utf-8")
     names = set(re.findall(r'"name": "(\w+)"', tools))

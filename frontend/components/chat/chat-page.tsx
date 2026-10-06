@@ -12,10 +12,8 @@ import {
   ArrowUp,
   ChevronLeft,
   ChevronRight,
-  FileText,
   History,
   Loader2,
-  Paperclip,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -100,8 +98,9 @@ const TOOL_PHRASES = new Map<string, { phrase: string; concept: ToolConcept }>([
   ["list_base_resumes", { phrase: "Looking at your resumes…", concept: "baseResume" }],
   ["get_resume", { phrase: "Reading your resume…", concept: "baseResume" }],
   ["edit_resume", { phrase: "Editing your resume…", concept: "baseResume" }],
-  ["propose_edits", { phrase: "Drafting a change for you to review…", concept: "baseResume" }],
-  ["propose_project", { phrase: "Drafting a change for you to review…", concept: "baseResume" }],
+  // Neutral (assistant) unless a base resume is pinned: `toolChip` upgrades these two then.
+  ["propose_edits", { phrase: "Drafting a change for you to review…", concept: "assistant" }],
+  ["propose_project", { phrase: "Drafting a change for you to review…", concept: "assistant" }],
   ["read_attachment", { phrase: "Reading your attachment…", concept: "attachment" }],
   ["kb_list_entities", { phrase: "Reading your career history…", concept: "careerHistory" }],
   ["kb_get_entity", { phrase: "Reading your career history…", concept: "careerHistory" }],
@@ -120,7 +119,7 @@ const TOOL_PHRASES = new Map<string, { phrase: string; concept: ToolConcept }>([
   ["delete_template", { phrase: "Deleting a template…", concept: "templates" }],
 ]);
 
-/** The concepts a tool chip can wear; each word is the one its icon carries in the sidebar. */
+/** The concepts a tool chip can wear; each word is the register concept's word. */
 type ToolConcept = Extract<Concept, "baseResume" | "careerHistory" | "analytics" | "templates" | "attachment" | "assistant">;
 
 /** The one word a chip shows; its full phrase stays the title and screen-reader text. */
@@ -133,14 +132,22 @@ const CHIP_WORDS: Record<ToolConcept, string> = {
   assistant: "Assistant",
 };
 
-/** One chip per phrase, in the order first seen: a tool that runs twice says so once. */
-function toolChip(name: string): { phrase: string; concept: ToolConcept } {
-  return TOOL_PHRASES.get(name) ?? { phrase: "Working…", concept: "assistant" };
+const PROPOSE_TOOLS = new Set(["propose_edits", "propose_project"]);
+
+function toolChip(name: string, resumePinned = false): { phrase: string; concept: ToolConcept } {
+  const chip = TOOL_PHRASES.get(name) ?? { phrase: "Working…", concept: "assistant" as const };
+  return PROPOSE_TOOLS.has(name) && resumePinned ? { ...chip, concept: "baseResume" } : chip;
 }
 
-function toolChips(tools: string[]): { phrase: string; concept: ToolConcept }[] {
-  const chips = tools.map(toolChip);
-  return chips.filter((c, i) => chips.findIndex((o) => o.phrase === c.phrase) === i);
+/** One chip per concept, in the order first seen, wearing the newest phrase: two tools of one concept say it once. */
+function toolChips(tools: string[], resumePinned = false): { phrase: string; concept: ToolConcept }[] {
+  const chips: { phrase: string; concept: ToolConcept }[] = [];
+  for (const chip of tools.map((t) => toolChip(t, resumePinned))) {
+    const at = chips.findIndex((o) => o.concept === chip.concept);
+    if (at === -1) chips.push(chip);
+    else chips[at] = chip;
+  }
+  return chips;
 }
 
 /**
@@ -615,7 +622,7 @@ export function ChatPage() {
   // The message being sent, until the saved thread holds it: shown once, never twice.
   // The newest tool is the only one that can still be running.
   const newestPhrase = streaming?.tools.length
-    ? toolChip(streaming.tools[streaming.tools.length - 1]).phrase
+    ? toolChip(streaming.tools[streaming.tools.length - 1], target !== NO_TARGET).phrase
     : null;
   const showPending =
     streaming !== null && !detail.data?.messages.some((m) => m.id === streaming.userMessageId);
@@ -640,7 +647,7 @@ export function ChatPage() {
           ))}
           {attachments.map((a) => (
             <Badge key={a.id} variant="secondary" className="gap-1 text-body-small">
-              <Paperclip className="size-3" />
+              <CONCEPT_ICONS.attachment className="size-3" />
               <span className="max-w-40 truncate">{a.filename}</span>
             </Badge>
           ))}
@@ -679,7 +686,7 @@ export function ChatPage() {
           className="text-muted-foreground"
           onClick={() => fileInputRef.current?.click()}
         >
-          <Paperclip className="size-4" />
+          <CONCEPT_ICONS.attachment className="size-4" />
         </Button>
         <Select
           value={target}
@@ -694,7 +701,7 @@ export function ChatPage() {
             title={pinnedName}
             className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 border-0 bg-transparent px-2.5 text-body-small hover:bg-muted"
           >
-            <FileText className="size-3.5" />
+            <CONCEPT_ICONS.baseResume className="size-3.5" />
             <SelectValue className="min-w-0">
               <span className="truncate">{pinnedName}</span>
             </SelectValue>
@@ -842,9 +849,9 @@ export function ChatPage() {
                     {streaming.tools.length === 0 ? (
                       <span className="sr-only">The Assistant is replying…</span>
                     ) : null}
-                    {toolChips(streaming.tools).map((chip) => (
+                    {toolChips(streaming.tools, target !== NO_TARGET).map((chip) => (
                       <ToolChip
-                        key={chip.phrase}
+                        key={chip.concept}
                         phrase={chip.phrase}
                         concept={chip.concept}
                         running={

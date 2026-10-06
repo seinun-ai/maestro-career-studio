@@ -112,7 +112,8 @@ def test_the_remembered_app_is_best_effort():
 def test_small_surfaces_gain_their_glyphs():
     card = _CARD
     assert "CONCEPT_ICONS.scheduled" in card and "CONCEPT_ICONS.notRun" in card
-    assert "<Ban " in _read("components/settings/connected-agents-card.tsx")
+    assert "<CONCEPT_ICONS.cannot " in _read("components/settings/connected-agents-card.tsx")
+    assert "CONCEPT_ICONS.cannot" in _CARD and "Globe2" in _CARD and "<Ban " not in _CARD
     assert "MessageSquareText" in _read("components/qa-tab.tsx")
     # The outcome glyph is Task 21's component, not a copy; lib/agent-runs.ts stays import-free.
     assert 'from "@/components/proposals/run-outcome"' in card
@@ -122,7 +123,9 @@ def test_small_surfaces_gain_their_glyphs():
 def test_the_connect_note_is_a_callout_until_an_automation_has_run():
     assert "bg-secondary-container text-on-secondary-container rounded-corner-md" in _PAGE
     assert "const anyRan = !!ran && !!data && data.cards.some((c) => ran.has(c.id));" in _PAGE
-    assert "{!ran ? null : anyRan ? (" in _PAGE
+    # A failed runs query still shows the callout; nothing shows only while runs or the catalog are loading.
+    assert "const noteReady = runs.isError || (!!runs.data && !!data);" in _PAGE
+    assert "{!noteReady ? null : anyRan ? (" in _PAGE
 
 
 def test_email_and_cover_letter_have_one_glyph_each():

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, use, useId, type ReactNode } from "react";
-import { Ban, Check, Eye, Info, Tag, type LucideIcon } from "lucide-react";
+import { Check, Eye, Info, Tag, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,7 +77,7 @@ export const ACTION_ICONS: Record<GapAction, LucideIcon> = {
   skip: CONCEPT_ICONS.skip,
   enable_entry: Eye,
   port_kb_point: CONCEPT_ICONS.careerHistory,
-  cannot_confirm: Ban,
+  cannot_confirm: CONCEPT_ICONS.cannot,
 };
 
 /** What each action does, said once: the segment's tooltip and its `aria-describedby` (see `ActionHints`). */

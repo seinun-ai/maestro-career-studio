@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, FilePlus2, History, type LucideIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, History, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -37,8 +37,8 @@ const SOURCE_LABELS: Record<ResumeVersionSource, string> = {
   restore: "Restored",
 };
 
-const SOURCE_ICONS: Record<ResumeVersionSource, LucideIcon> = {
-  create: FilePlus2,
+// Created has no glyph (a file-plus glyph means "added" elsewhere): its badge word carries it.
+const SOURCE_ICONS: Partial<Record<ResumeVersionSource, LucideIcon>> = {
   form_edit: CONCEPT_ICONS.you,
   edit_ops: CONCEPT_ICONS.ai,
   chat: CONCEPT_ICONS.assistant,

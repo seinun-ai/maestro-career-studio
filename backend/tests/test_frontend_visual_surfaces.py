@@ -174,7 +174,7 @@ def test_health_rows_draw_the_evidence_ladder_and_priority_chip():
 
 def test_question_pass_rows_are_glyph_and_word_and_the_footer_has_a_bar():
     src = _read("components/resume-health/question-pass.tsx")
-    for icon in ("NotRunIcon", "Loader2", "CircleX", "SkipIcon", "DraftsIcon", "Minus"):
+    for icon in ("NotRunIcon", "Loader2", "CONCEPT_ICONS.fails", "SkipIcon", "DraftsIcon", "CONCEPT_ICONS.none"):
         assert icon in src, icon
     assert "Clock" not in src and "SkipForward" not in src
     assert "CONCEPT_ICONS.notRun" in src and "CONCEPT_ICONS.skip" in src and "CONCEPT_ICONS.drafts" in src
@@ -222,3 +222,31 @@ def test_analytics_status_mix_waits_for_data_and_shares_the_status_tones():
     assert "STATUS_TONES" in src and "const STATUS_TONES" not in src
     chip = _read("components/status-chip.tsx")
     assert "export const STATUS_TONES" in chip and 'accepted: "success"' in chip
+
+
+def test_wave5_review_one_glyph_per_meaning_and_honest_marks():
+    """Wave 5 review: a knock-out reads as a conflict, `cannot` and Documents have one glyph, names are said once."""
+    marks = _read("components/proposals/readiness-marks.tsx")
+    assert "bg-error-container text-on-error-container" in marks and "CONCEPT_ICONS.fails" in marks
+    assert "label={`${steps.done} of ${steps.total} ready`}" in marks
+    assert "label ?? meterLabel(" in _read("components/visual/dot-meter.tsx")
+    reg = _read("lib/concept-icons.ts")
+    assert "cannot: Ban" in reg
+    for path in ("components/gap-analysis/resolution-controls.tsx", "components/settings/connected-agents-card.tsx",
+                 "components/automations/automation-card.tsx", "components/career/points-list.tsx"):
+        src = _read(path)
+        assert "CONCEPT_ICONS.cannot" in src and "<Ban " not in src, path
+    for path in ("components/career/documents-panel.tsx", "components/career/entity-card.tsx"):
+        src = _read(path)
+        assert "CONCEPT_ICONS.attachment" in src and "FileText" not in src, path
+    chat = _read("components/chat/chat-page.tsx")
+    assert "Paperclip" not in chat and "FileText" not in chat
+    assert 'word: "Attachment"' in _read("components/visual/actor-chip.tsx")
+    assert "findIndex((o) => o.concept === chip.concept)" in chat and "key={chip.concept}" in chat
+    assert "FilePlus2" not in _read("components/resume-versions/version-history-sheet.tsx")
+    assert '(row.matched ? "Matched" : "Missing")' in _read("components/ats-compare-panel.tsx")
+    qa = _read("components/qa-tab.tsx")
+    assert "CONCEPT_ICONS.done" in qa and 'variant="tonal"' not in qa
+    for path in ("components/ats-score-panel.tsx", "components/resume-health/question-pass.tsx"):
+        src = _read(path)
+        assert not any(w in src for w in ("TriangleAlert", "CircleX", "Minus")), path

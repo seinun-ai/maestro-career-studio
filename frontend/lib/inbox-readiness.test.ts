@@ -15,15 +15,14 @@ test("ready is tailored, no knock-out, nothing to check", () => {
   assert.equal(isReady(undefined), false);
 });
 
-test("marks say tailored, the knock-out and what to check", () => {
+test("marks say the knock-out (a conflict, error tone) and what to check (warning)", () => {
   assert.deepEqual(readinessMarks({ tailored: false, knockout: "on_site", to_check: 3 }), [
-    { text: "Not tailored", tone: "muted" },
-    { text: "Knock-out: on-site", tone: "warning" },
+    { text: "Knock-out: on-site", tone: "error" },
     { text: "3 to check", tone: "warning" },
   ]);
-  assert.deepEqual(readinessMarks(ready), [{ text: "Tailored", tone: "muted" }]);
+  assert.deepEqual(readinessMarks(ready), []);
   assert.deepEqual(readinessMarks({ tailored: null, knockout: "new_kind", to_check: 0 }), [
-    { text: "Knock-out", tone: "warning" },
+    { text: "Knock-out", tone: "error" },
   ]);
   assert.deepEqual(readinessMarks(null), []);
   assert.deepEqual(readinessMarks(undefined), []);
@@ -38,7 +37,7 @@ for (const [kind, word] of [
 ]) {
   test(`the ${kind} knock-out has a readable label`, () => {
     assert.deepEqual(readinessMarks({ tailored: null, knockout: kind, to_check: 0 }), [
-      { text: `Knock-out: ${word}`, tone: "warning" },
+      { text: `Knock-out: ${word}`, tone: "error" },
     ]);
   });
 }

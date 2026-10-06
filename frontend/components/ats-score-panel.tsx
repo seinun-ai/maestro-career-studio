@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import { Check, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -280,7 +280,7 @@ function AtsScoreCard({
             ))}
             {coverage && (
               <li className="text-warning flex gap-1.5">
-                <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                <WarningIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
                 {/* The server's sentence already gives the counts ("Your resume shows only 1 of this job's 8 skills (13%)."). */}
                 {coverage}
               </li>
@@ -607,13 +607,13 @@ export function AtsScorePanel({
         </div>
         {lowCoverageEverywhere && (
           <div className="flex gap-2 rounded-corner-md bg-warning-container p-2 text-body-medium text-on-warning-container">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <WarningIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <p>{LOW_COVERAGE_ON_EVERY_RESUME}</p>
           </div>
         )}
         {sharedWarnings.size > 0 && (
           <div className="flex gap-2 rounded-corner-md bg-warning-container p-2 text-body-medium text-on-warning-container">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <WarningIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <ul className="space-y-1">
               {[...sharedWarnings].map((warning) => (
                 <li key={warning}>{warning}</li>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { Ban, BookOpen } from "lucide-react";
+import { BookOpen } from "lucide-react";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { NewTabCue } from "@/components/new-tab-link";
@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { AGENT_APPLICATIONS_URL, CONNECT_AGENT_GUIDE_URL, JOB_HUNT_SKILL_URL } from "@/lib/agent-links";
 
 const LINKS = [
@@ -102,15 +103,15 @@ export function ConnectedAgentsCard() {
               </h3>
               <ul aria-labelledby={cantId} className="text-muted-foreground grid gap-1">
                 <li className="flex items-start gap-1.5">
-                  <Ban className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <CONCEPT_ICONS.cannot className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   <span>Go past the daily limit below.</span>
                 </li>
                 <li className="flex items-start gap-1.5">
-                  <Ban className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <CONCEPT_ICONS.cannot className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   <span>Delete an item or a bullet from your career history.</span>
                 </li>
                 <li className="flex items-start gap-1.5">
-                  <Ban className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <CONCEPT_ICONS.cannot className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   <span>Connect from claude.ai or chatgpt.com in a browser.</span>
                 </li>
               </ul>

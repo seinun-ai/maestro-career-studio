@@ -568,7 +568,7 @@ def test_career_bullets_merge_origin_and_trust():
     # Draft rows render the SAME origin chip as bullets, not a second copy.
     assert "PointActorChip" in inbox
     # Trust shows only when in doubt, as a trailing icon + word inside the one chip.
-    assert "CONCEPT_ICONS.ai" in points and "CONCEPT_ICONS.unknown" in points
+    assert "CONCEPT_ICONS.ai" in points and "CONCEPT_ICONS.cannot" in points and "CONCEPT_ICONS.unknown" not in points
     assert "Unconfirmed" in points and "AI inferred" in points
     # Usage is the register icon + count; its aria-label keeps the retired distinction.
     assert "CONCEPT_ICONS.baseResume" in points

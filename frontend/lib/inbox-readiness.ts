@@ -3,7 +3,7 @@
 import type { ProposalStatus } from "./types";
 
 export type Readiness = { tailored: boolean | null; knockout: string | null; to_check: number };
-export type ReadinessMark = { text: string; tone: "muted" | "warning" };
+export type ReadinessMark = { text: string; tone: "warning" | "error" };
 
 const KNOCKOUT_WORDS: Record<string, string> = {
   work_authorization: "work authorization",
@@ -23,10 +23,9 @@ export function isReady(r: Readiness | null | undefined): boolean {
 export function readinessMarks(r: Readiness | null | undefined): ReadinessMark[] {
   if (!r) return [];
   const marks: ReadinessMark[] = [];
-  if (r.tailored != null) marks.push({ text: r.tailored ? "Tailored" : "Not tailored", tone: "muted" });
   if (r.knockout) {
     const word = KNOCKOUT_WORDS[r.knockout];
-    marks.push({ text: word ? `Knock-out: ${word}` : "Knock-out", tone: "warning" });
+    marks.push({ text: word ? `Knock-out: ${word}` : "Knock-out", tone: "error" });
   }
   if (r.to_check > 0) marks.push({ text: `${r.to_check} to check`, tone: "warning" });
   return marks;

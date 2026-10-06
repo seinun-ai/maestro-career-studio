@@ -84,11 +84,7 @@ function ChangeCell({ change }: { change: Change }) {
 function SkillNowCell({ row }: { row: AtsSkillRow | null }) {
   if (!row) return <span className="text-muted-foreground">—</span>;
   const note = row.matched ? placementLabel(row.placement) : fixHintLabel(row.fix_hint);
-  return note ? (
-    <span className="text-muted-foreground text-body-small">{note}</span>
-  ) : (
-    <span className="text-muted-foreground">—</span>
-  );
+  return <span className="text-muted-foreground text-body-small">{note ?? (row.matched ? "Matched" : "Missing")}</span>;
 }
 
 /**
