@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useFieldMessage } from "@/components/resume-editor/field";
 import { useEditToggle } from "@/hooks/use-focus-return";
+import { emailWarning } from "@/lib/field-checks";
 import type { ContactInfo } from "@/lib/types";
 
 const FIELDS: {
@@ -21,6 +24,26 @@ const FIELDS: {
   { key: "github", label: "GitHub" },
   { key: "website", label: "Website" },
 ];
+
+/** Email's input: the type, the autofill token, and a format warning shown once the field is left. */
+function EmailInput({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const [warning, setWarning] = useState<string | null>(null);
+  const { control, message } = useFieldMessage({ warning });
+  return (
+    <>
+      <Input
+        id="contact_email"
+        type="email"
+        autoComplete="email"
+        value={value}
+        {...control}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => setWarning(emailWarning(value))}
+      />
+      {message}
+    </>
+  );
+}
 
 export function ContactForm({
   value,
@@ -47,11 +70,15 @@ export function ContactForm({
                 {label}
                 {required && <span className="text-destructive"> *</span>}
               </Label>
-              <Input
-                id={`contact_${key}`}
-                value={value[key] ?? ""}
-                onChange={(e) => update(key, e.target.value)}
-              />
+              {key === "email" ? (
+                <EmailInput value={value[key] ?? ""} onChange={(next) => update(key, next)} />
+              ) : (
+                <Input
+                  id={`contact_${key}`}
+                  value={value[key] ?? ""}
+                  onChange={(e) => update(key, e.target.value)}
+                />
+              )}
             </div>
           ))}
         </div>

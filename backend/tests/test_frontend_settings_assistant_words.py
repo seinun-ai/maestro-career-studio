@@ -672,7 +672,8 @@ def test_the_covenant_question_explains_its_legal_term():
     assert "<p id={hintId}" in renderer
     assert "hintId={hintId}" in renderer  # handed to the shared control …
     control = _between(_AUTOFILL, "function FieldControl(", "\n}\n")
-    assert control.count("aria-describedby={hintId}") == 2  # … which the select and the input both read
+    assert control.count("aria-describedby={hintId}") == 1  # … which the select reads directly …
+    assert "useFieldMessage({ warning, hintId })" in control  # … and the input through its message wiring
 
 
 def test_gender_offers_non_binary_and_self_describe():

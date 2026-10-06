@@ -197,6 +197,12 @@
   and a Check before its name, and says so with `aria-pressed`. The card's
   accessible name is only the template's name, so the default mark and the
   Needs setup badge and the ATS warning line are its `aria-describedby`.
+- **Field error and warning** (`field.tsx`): the state line under a control carries an icon beside its words:
+  an error is `CircleX` in `text-destructive` and marks the control `aria-invalid`; a warning is
+  `TriangleAlert` in `text-warning` and sets `data-warning="true"` (`Input` and `Textarea` draw the amber
+  border and ring). `useFieldMessage` wires both plus `aria-describedby`; error wins. A warning never blocks
+  a save and shows on blur (`lib/field-checks.ts`: email, phone, link). A button that cannot act yet is
+  `disabled` with a hint tied by `aria-describedby`, not an error toast.
 - **Judged resume text** (the text a check rates: a health row's bullet, a pass row, a wording row)
   is upright `text-body-medium text-foreground`, wrapped within `max-w-[65ch]`, with a `border-l-2
   border-border pl-3` quote rule (`judged-text.tsx`). A compact quote uses `line-clamp-3` and a

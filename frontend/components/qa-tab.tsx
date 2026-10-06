@@ -65,6 +65,8 @@ export function QATab({ applicationId }: { applicationId: string }) {
   const [questions, setQuestions] = useState("");
   const [tone, setTone] = useState<string>("balanced");
   const questionsHintId = useId();
+  const needQuestionId = useId();
+  const noQuestions = questions.trim().length === 0;
   const historyHeadingId = useId();
 
   const invalidate = () =>
@@ -78,7 +80,6 @@ export function QATab({ applicationId }: { applicationId: string }) {
         .split("\n")
         .map((q) => q.trim())
         .filter((q) => q.length > 0);
-      if (list.length === 0) throw new Error("Type at least one question.");
       return apiFetch<QAResponse>("/api/qa", {
         method: "POST",
         body: JSON.stringify({
@@ -210,9 +211,16 @@ export function QATab({ applicationId }: { applicationId: string }) {
           <Button
             onClick={() => askOnce(questions)}
             pending={askQuestions.isPending}
+            disabled={noQuestions}
+            aria-describedby={noQuestions ? needQuestionId : undefined}
           >
             {askQuestions.isPending ? "Answering…" : "Answer questions"}
           </Button>
+          {noQuestions ? (
+            <p id={needQuestionId} className="text-muted-foreground text-body-small">
+              Type at least one question.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 
