@@ -448,6 +448,12 @@ export interface AutoApplySettings {
   full_automation: boolean;
 }
 
+/** GET/PUT /api/settings/job-site-login: the web API never returns a password. */
+export interface JobSiteLoginStatus {
+  email: string | null;
+  password_set: boolean;
+}
+
 interface SetupStep {
   done: boolean;
   detail: Record<string, unknown>;

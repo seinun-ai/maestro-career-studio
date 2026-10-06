@@ -20,9 +20,25 @@ def _settings_dir(tmp_path, monkeypatch, db_session):
 
 def test_full_automation_is_off_by_default_and_round_trips():
     assert client.get("/api/settings/auto-apply").json()["value"]["full_automation"] is False
-    value = {**client.get("/api/settings/auto-apply").json()["value"], "full_automation": True}
-    assert client.put("/api/settings/auto-apply", json={"value": value}).status_code == 200
-    assert client.get("/api/settings/auto-apply").json()["value"]["full_automation"] is True
+    enabled = client.put("/api/settings/full-automation", json={"value": True})
+    assert enabled.status_code == 200
+    assert enabled.json()["value"]["full_automation"] is True
+    disabled = client.put("/api/settings/full-automation", json={"value": False})
+    assert disabled.status_code == 200
+    assert disabled.json()["value"]["full_automation"] is False
+
+
+@pytest.mark.parametrize("current", [False, True])
+def test_auto_apply_limits_write_cannot_change_full_automation(current):
+    assert client.put("/api/settings/full-automation", json={"value": current}).status_code == 200
+    value = client.get("/api/settings/auto-apply").json()["value"]
+    value["full_automation"] = not current
+
+    response = client.put("/api/settings/auto-apply", json={"value": value})
+
+    assert response.status_code == 200
+    assert response.json()["value"]["full_automation"] is current
+    assert client.get("/api/settings/auto-apply").json()["value"]["full_automation"] is current
 
 
 def test_the_brief_tells_agents_whether_full_automation_is_on(db_session):
@@ -32,8 +48,7 @@ def test_the_brief_tells_agents_whether_full_automation_is_on(db_session):
 def test_turning_full_automation_off_updates_the_brief(db_session):
     value = client.get("/api/settings/auto-apply").json()["value"]
     for enabled in (True, False):
-        value["full_automation"] = enabled
-        assert client.put("/api/settings/auto-apply", json={"value": value}).status_code == 200
+        assert client.put("/api/settings/full-automation", json={"value": enabled}).status_code == 200
         assert client.get("/api/settings/auto-apply").json()["value"]["full_automation"] is enabled
         assert job_search_brief.build_brief(db_session)["auto_apply"]["full_automation"] is enabled
 
@@ -63,7 +78,7 @@ def test_older_settings_stay_off_and_keep_their_guardrails(db_session, tmp_path,
 
 @pytest.mark.parametrize("value", ["yes", "on", "1", 1])
 def test_full_automation_rejects_non_boolean_values(value):
-    response = client.put("/api/settings/auto-apply", json={"value": {"full_automation": value}})
+    response = client.put("/api/settings/full-automation", json={"value": value})
     assert response.status_code == 422
 
 

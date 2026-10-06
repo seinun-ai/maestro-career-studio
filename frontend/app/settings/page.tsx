@@ -9,6 +9,7 @@ import { AppearanceSection } from "@/components/settings/appearance-section";
 import { AutoApplySection } from "@/components/settings/auto-apply-section";
 import { ConnectedAgentsCard } from "@/components/settings/connected-agents-card";
 import { FormFillingSection } from "@/components/settings/form-filling-section";
+import { FullAutomationSection } from "@/components/settings/full-automation-section";
 import { McpWorkflowSection } from "@/components/settings/mcp-workflow-section";
 import {
   ApiKeysSection,
@@ -81,6 +82,7 @@ export default function SettingsPage({
           agents: (
             <>
               <ConnectedAgentsCard />
+              <FullAutomationSection />
               <McpWorkflowSection />
               <AutoApplySection />
             </>

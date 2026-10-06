@@ -4,11 +4,12 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
+from pydantic import StrictBool
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.config import settings as app_settings
-from app.db import get_db
+from app.db import begin_write, get_db
 from app.schemas.auto_apply import AutoApplySettings
 from app.schemas.eeo_consent import EeoConsent
 from app.schemas.job_preferences import JobPreferences
@@ -267,6 +268,13 @@ def put_market(payload: SettingValueIn[MarketSetting], db: Annotated[Session, De
     }
 
 
+def _lock_auto_apply_settings(db: Session) -> AutoApplySettings:
+    auto_apply_settings.get_settings(db)  # seed before taking the SQLite write lock
+    begin_write(db)
+    db.expire_all()
+    return auto_apply_settings.get_settings(db)
+
+
 @router.get("/auto-apply", response_model=SettingEnvelope[AutoApplySettings])
 def get_auto_apply(db: Annotated[Session, Depends(get_db)]):
     return {"key": "auto_apply", "value": auto_apply_settings.get_settings(db)}
@@ -276,7 +284,18 @@ def get_auto_apply(db: Annotated[Session, Depends(get_db)]):
 def put_auto_apply(
     payload: SettingValueIn[AutoApplySettings], db: Annotated[Session, Depends(get_db)]
 ):
-    return {"key": "auto_apply", "value": auto_apply_settings.set_settings(payload.value, db)}
+    stored = _lock_auto_apply_settings(db)
+    value = payload.value.model_copy(update={"full_automation": stored.full_automation})
+    return {"key": "auto_apply", "value": auto_apply_settings.set_settings(value, db)}
+
+
+@router.put("/full-automation", response_model=SettingEnvelope[AutoApplySettings])
+def put_full_automation(
+    payload: SettingValueIn[StrictBool], db: Annotated[Session, Depends(get_db)]
+):
+    current = _lock_auto_apply_settings(db)
+    value = current.model_copy(update={"full_automation": payload.value})
+    return {"key": "auto_apply", "value": auto_apply_settings.set_settings(value, db)}
 
 
 @job_site_login_router.get("/job-site-login", response_model=JobSiteLoginStatus)
