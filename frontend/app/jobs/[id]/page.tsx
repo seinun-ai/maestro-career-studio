@@ -50,10 +50,12 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScoreBar } from "@/components/visual/score-bar";
+import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
-import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
+import { apiFetch, listAtsScores, promoteJobToAgentQueue } from "@/lib/api";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
@@ -64,6 +66,7 @@ import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const QueueIcon = CONCEPT_ICONS.queue;
 const ApproveIcon = CONCEPT_ICONS.approve;
+const LockedIcon = CONCEPT_ICONS.locked;
 
 // Tab values stay jd/fit/output/qa for deep-link compat (?tab=fit, ?tab=output); `submitted` is
 // What was submitted, shown once the job has filled answers (or when a link opens it).
@@ -106,9 +109,11 @@ function JobTabsList({
       <TabsTrigger value="jd">Overview</TabsTrigger>
       <TabsTrigger value="fit">Score and tailor</TabsTrigger>
       <TabsTrigger value="output" {...lockedProps}>
+        {hasApp ? null : <LockedIcon className="size-3.5" />}
         Resume
       </TabsTrigger>
       <TabsTrigger value="qa" {...lockedProps}>
+        {hasApp ? null : <LockedIcon className="size-3.5" />}
         Q&amp;A
       </TabsTrigger>
       {/* Not locked behind an application: a form can be filled before one exists. */}
@@ -197,6 +202,15 @@ export default function JobDetailPage({
   });
 
   const application = data?.application ?? null;
+  // The Score tab's own query (list only, never scores): the header shows its best base score.
+  const scoreRows = useQuery({
+    queryKey: ["ats-scores", id],
+    queryFn: () => listAtsScores(id),
+  });
+  const baseName = useBaseResumeLabel();
+  const best = (scoreRows.data ?? [])
+    .filter((s) => s.phase === "base")
+    .sort((a, b) => b.composite - a.composite)[0];
   // Keep it on a question links the job's application when the proposal has none: the proposal
   // says whether it has one (the same query as the Overview card's).
   const asking = data?.job.proposal_status === "needs_decision" ? data.job.proposal_id ?? null : null;
@@ -534,6 +548,17 @@ export default function JobDetailPage({
                 {promote.isPending ? "Queueing…" : "Queue in Agent inbox"}
               </Button>
             ) : null}
+            {best ? (
+              <span className="bg-surface-container-low inline-flex h-7 min-w-0 items-center gap-2 rounded-full px-2.5 text-label-medium">
+                <span className="text-muted-foreground">Best</span>
+                <ScoreBar
+                  value={best.composite}
+                  valueText={best.composite.toFixed(1)}
+                  label={`Best score, ${baseName(best.target_id)}`}
+                />
+                <span className="text-muted-foreground truncate">{baseName(best.target_id)}</span>
+              </span>
+            ) : null}
             {hasApp && application ? (
               <>
                 <StatusChip
@@ -614,7 +639,7 @@ export default function JobDetailPage({
               ) : null}
             </div>
             {hasApp ? null : (
-              <p id={lockedReasonId} className="text-muted-foreground text-body-small">
+              <p id={lockedReasonId} className="sr-only">
                 {LOCKED_REASON}
               </p>
             )}

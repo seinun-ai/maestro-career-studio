@@ -41,3 +41,13 @@ def test_knockout_requirements_not_stated_is_a_minus_not_a_question():
     assert "\"No requirements listed\"" in src
     assert "CircleHelp" in src  # only the profile_missing chip and the incomplete banner
     assert "That doesn't mean you qualify." in src  # the safety meaning rides in the line's accessible text
+
+
+# --- Task 17: the job header's best score and locked tabs ---------------------------
+
+
+def test_job_header_shows_the_best_score_and_locks_tabs_with_an_icon():
+    src = _read("app/jobs/[id]/page.tsx")
+    assert "ScoreBar" in src and "CONCEPT_ICONS.locked" in src
+    assert 'id={lockedReasonId} className="sr-only"' in src  # still the triggers' aria-describedby target
+    assert 'queryKey: ["ats-scores", id]' in src and '.filter((s) => s.phase === "base")' in src
