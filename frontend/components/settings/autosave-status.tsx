@@ -1,7 +1,7 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
-import { Check, Loader2, TriangleAlert } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Check, CircleCheck, Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { focusIfDropped } from "@/hooks/use-focus-return";
@@ -24,9 +24,31 @@ import { focusIfDropped } from "@/hooks/use-focus-return";
  * saved Try again", about 126px) and the description does not re-wrap as the
  * state changes.
  *
- * Three states: Saving…, Not saved (a failed write, with Try again where the
- * card still holds a value the server lacks), and Saves automatically.
+ * Four states: Saving…, Saved (a success says so for a moment, then settles),
+ * Not saved (a failed write, with Try again where the card still holds a value
+ * the server lacks), and Saves automatically.
  */
+
+/** How long "Saved" holds before the idle line returns; one rhythm with the Copied chip. */
+export const SAVED_HOLD_MS = 1200;
+
+/** True for SAVED_HOLD_MS after `pending` falls with no failure. State, not a ref: the
+ *  previous `pending` is compared during render, which the compiler forbids for refs. */
+function useSavedHold(pending: boolean, failed: boolean): boolean {
+  const [prevPending, setPrevPending] = useState(pending);
+  const [held, setHeld] = useState(false);
+  if (pending !== prevPending) {
+    setPrevPending(pending);
+    setHeld(prevPending && !pending && !failed);
+  }
+  useEffect(() => {
+    if (!held) return;
+    const timer = window.setTimeout(() => setHeld(false), SAVED_HOLD_MS);
+    return () => window.clearTimeout(timer);
+  }, [held]);
+  return held;
+}
+
 export function AutosaveStatus({
   pending,
   failed = false,
@@ -40,6 +62,7 @@ export function AutosaveStatus({
 }) {
   const statusRef = useRef<HTMLSpanElement>(null);
   const refocus = useRef(false);
+  const justSaved = useSavedHold(pending, failed);
   // Try again stays mounted while the retry runs (`failed` holds until a
   // success settles). Once the retry settles: a success unmounts it, and the
   // focus it dropped goes to the status. A failure leaves it, and focus, in
@@ -57,13 +80,18 @@ export function AutosaveStatus({
         tabIndex={-1}
         aria-live="polite"
         className={`inline-flex items-center gap-1.5 ${
-          failed && !pending ? "text-destructive" : "text-muted-foreground"
+          failed && !pending ? "text-destructive" : justSaved ? "text-success" : "text-muted-foreground"
         }`}
       >
         {pending ? (
           <>
             <Loader2 className="size-3 animate-spin" aria-hidden="true" />
             Saving…
+          </>
+        ) : !failed && justSaved ? (
+          <>
+            <CircleCheck className="size-3 animate-confirm" aria-hidden="true" />
+            Saved
           </>
         ) : !failed ? (
           <>

@@ -1112,11 +1112,13 @@ function StudioEditor({
           />
         }
         preview={
-          <PdfPagesPreview
-            basePath={`/api/applications/${applicationId}`}
-            version={pdfNonce}
-            emptyMessage={emptyPreviewMessage(unsaved)}
-          />
+          <div className="h-full" data-pending={render.isPending ? "true" : undefined}>
+            <PdfPagesPreview
+              basePath={`/api/applications/${applicationId}`}
+              version={pdfNonce}
+              emptyMessage={emptyPreviewMessage(unsaved)}
+            />
+          </div>
         }
       />
       <VersionHistorySheet

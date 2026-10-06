@@ -2,6 +2,7 @@
 
 import { use, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
+import { SAVED_HOLD_MS } from "@/components/settings/autosave-status";
 import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
@@ -71,6 +72,18 @@ function SaveIndicator({
   // where the compiler forbids ref reads. It keeps Try again mounted (and
   // focused) while the retry runs, since `state` flips to "saving" at once.
   const [retrying, setRetrying] = useState(false);
+  // "Saved" holds for a moment, then the line clears (compared during render: no ref reads).
+  const [prevState, setPrevState] = useState(state);
+  const [held, setHeld] = useState(false);
+  if (state !== prevState) {
+    setPrevState(state);
+    setHeld(state === "saved");
+  }
+  useEffect(() => {
+    if (!held) return;
+    const timer = window.setTimeout(() => setHeld(false), SAVED_HOLD_MS);
+    return () => window.clearTimeout(timer);
+  }, [held]);
   // Try again unmounts once the retry lands; focus it dropped goes to the status.
   // Only dropped focus: the user may already be typing in a field again. A
   // layout effect, so no frame is painted with focus on <body>.
@@ -87,7 +100,7 @@ function SaveIndicator({
         aria-live="polite"
         className={cn(
           "flex items-center gap-1",
-          state === "error" ? "text-destructive" : "text-muted-foreground",
+          state === "error" ? "text-destructive" : held ? "text-success" : "text-muted-foreground",
         )}
       >
         {state === "saving" && (
@@ -95,8 +108,13 @@ function SaveIndicator({
         )}
         {state === "saving"
           ? "Saving…"
-          : state === "saved"
-            ? "Saved"
+          : state === "saved" && held
+            ? (
+              <>
+                <CircleCheck className="size-3 animate-confirm" aria-hidden="true" />
+                Saved
+              </>
+            )
             : state === "error"
               ? "Not saved"
               : null}

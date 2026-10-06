@@ -362,11 +362,15 @@ export function AtsScorePanel({
     }
   }
 
-  const run = useMutation({
+  // The variable "manual" marks the Update scores button: a manual update confirms with a toast, an automatic run does not.
+  const run = useMutation<Awaited<ReturnType<typeof runAtsScores>>, Error, "manual" | void>({
     mutationFn: () => runAtsScores(jobId),
-    // Returned: the run stays pending until the list has refetched, so the
+    // Awaited: the run stays pending until the list has refetched, so the
     // skeleton hands straight to the cards with no empty-state frame.
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ats-scores", jobId] }),
+    onSuccess: async (_result, manual) => {
+      await qc.invalidateQueries({ queryKey: ["ats-scores", jobId] });
+      if (manual === "manual") toast.success("ATS scores updated");
+    },
     onError: (err: Error) => toast.error(couldnt("score your resumes", err)),
   });
   // One run per gesture, and one at a time: a double click on Update scores sent a second POST that
@@ -563,7 +567,7 @@ export function AtsScorePanel({
             variant="outline"
             size="sm"
             className="shrink-0 data-disabled:pointer-events-none data-disabled:opacity-50"
-            onClick={() => runOnce()}
+            onClick={() => runOnce("manual")}
             // Focusable while it runs: a natively disabled button dropped focus to <body>.
             focusableWhenDisabled
             disabled={run.isPending}

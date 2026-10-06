@@ -1438,9 +1438,11 @@
   `readOnly` fields, so focus stays), and an edit that slips through is saved
   if the tailor fails. A stale session shows no Try again (every save 409s;
   the banner's Start new gap analysis is the way out), and an edit there reads
-  Not saved and keeps the leave guard. `AutosaveStatus` reports three states:
-  Saving…, Not saved (after a failed write, with Try again where the card
-  holds a value the server lacks), and Saves automatically. A card still
+  Not saved and keeps the leave guard. `AutosaveStatus` reports four states:
+  Saving…, Saved (`CircleCheck`, `text-success`, held 1200ms after a write
+  lands, as on the gap page), Not saved (after a failed write, with Try again
+  where the card holds a value the server lacks), and Saves automatically. A
+  PDF preview carries `data-pending="true"` while its render runs. A card still
   holding a value the server lacks registers the leave guard. After a retry
   lands, both status lines move focus with `focusIfDropped` (only from
   `<body>`), and a failed retry disarms the move, so a later save never pulls

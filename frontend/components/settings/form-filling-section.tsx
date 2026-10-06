@@ -6,7 +6,8 @@ import { toast } from "sonner";
 
 import { NewTabLink } from "@/components/new-tab-link";
 import { KeyField } from "@/components/settings/models-section";
-import { SettingCard } from "@/components/settings/setting-card";
+import { AutosaveStatus } from "@/components/settings/autosave-status";
+import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -93,6 +94,9 @@ export function FormFillingSection() {
     >
       {(data) => (
         <div className="grid gap-6">
+          <SettingCardAction>
+            <AutosaveStatus pending={save.isPending} failed={save.isError} />
+          </SettingCardAction>
           <div className="grid items-end gap-4 @lg/setting:grid-cols-2">
             <KeyField
               label="Jev API key"

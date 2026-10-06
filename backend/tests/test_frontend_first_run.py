@@ -93,7 +93,7 @@ def test_score_tab_import_returns_focus_to_its_opener_while_it_is_there():
 def test_score_tab_rescore_awaits_the_refetch():
     """The run stays pending until the list refetches, so "No ATS scores yet."
     never paints between the prompt and the cards."""
-    assert re.search(r"onSuccess:\s*\(\)\s*=>\s*qc\.invalidateQueries", _panel())
+    assert re.search(r"onSuccess:\s*async\s*\(_result, manual\)\s*=>\s*\{\s*await qc\.invalidateQueries", _panel())
 
 
 def test_score_tab_rescores_in_the_same_event_as_the_close():

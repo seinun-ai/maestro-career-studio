@@ -151,3 +151,47 @@ def test_persona_draft_is_a_header_action_with_its_reason_read():
     assert "aria-describedby={draftDisabledReason ? reasonId : undefined}" in action
     assert "title={draftDisabledReason}" not in src
     assert "<p id={reasonId}" in src
+
+
+# --- "Saved" for a moment, and dimming while background work runs (visual language, Task 11) ---
+
+
+def test_autosave_says_saved_for_a_moment():
+    src = _read("components/settings/autosave-status.tsx")
+    assert "CircleCheck" in src and "Saved" in src
+    assert "1200" in src
+    body = _STATUS[_STATUS.index("return (") :]
+    assert "text-success" in body
+    # The idle line stays the !failed branch; Saved is a transient branch before it.
+    assert body.index("Saved") < body.index("Saves automatically")
+
+
+def test_gap_page_saved_holds_then_clears():
+    page = _read("app/jobs/[id]/tailor/[sessionId]/page.tsx")
+    indicator = page[page.index("function SaveIndicator(") : page.index("\n}\n", page.index("function SaveIndicator("))]
+    assert "CircleCheck" in indicator and "SAVED_HOLD_MS" in indicator and "text-success" in indicator
+    assert "1200" in _read("components/settings/autosave-status.tsx")
+
+
+def test_market_select_dims_while_saving():
+    src = _read("components/settings/market-section.tsx")
+    assert 'data-pending={save.isPending ? "true" : undefined}' in src
+
+
+def test_form_filling_saves_are_visible():
+    src = _read("components/settings/form-filling-section.tsx")
+    assert "<AutosaveStatus" in src
+    assert "pending={save.isPending}" in src and "failed={save.isError}" in src
+
+
+def test_a_rendering_pdf_preview_dims():
+    assert 'data-pending={renderPdf.isPending ? "true" : undefined}' in _read("components/application-panel.tsx")
+    studio = _read("components/resume-editor/tailored-resume-studio.tsx")
+    assert 'data-pending={render.isPending ? "true" : undefined}' in studio
+
+
+def test_manual_update_scores_confirms_but_automatic_rescore_does_not():
+    src = _read("components/ats-score-panel.tsx")
+    assert 'toast.success("ATS scores updated")' in src
+    assert 'runOnce("manual")' in src
+    assert 'if (manual === "manual")' in src
