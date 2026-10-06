@@ -465,6 +465,9 @@
   }
   .collapse-exit > * {
     min-height: 0;
+  }
+  /* Clip only while leaving, so at rest focus rings and popovers are not cut. */
+  .collapse-exit[data-leaving] > * {
     overflow: hidden;
   }
   .collapse-exit[data-leaving] {

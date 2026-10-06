@@ -25,3 +25,11 @@ def test_motion_utilities_exist_and_stay_within_budget():
 
 def test_no_bounce_curve_is_introduced():
     assert "cubic-bezier(0.34, 1.56" not in _CSS and "bounce" not in _CSS.lower()
+
+
+def test_collapse_exit_clips_only_while_leaving():
+    # At rest the child must not clip focus rings, shadows or popovers.
+    rest = re.search(r"\.collapse-exit > \*\s*\{([^}]*)\}", _UTILITIES).group(1)
+    assert "overflow" not in rest and "min-height: 0" in rest
+    leaving = re.search(r"\.collapse-exit\[data-leaving\] > \*\s*\{([^}]*)\}", _UTILITIES)
+    assert leaving and "overflow: hidden" in leaving.group(1)
