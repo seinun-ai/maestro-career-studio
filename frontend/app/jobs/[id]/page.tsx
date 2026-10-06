@@ -529,7 +529,7 @@ export default function JobDetailPage({
                 size="sm"
                 // Focusable while it queues: a disabled button dropped focus to <body>.
                 focusableWhenDisabled
-                disabled={promote.isPending}
+                pending={promote.isPending}
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => {
                   queued.current = true;

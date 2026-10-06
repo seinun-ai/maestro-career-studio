@@ -358,7 +358,8 @@ export function QuestionPass({ resumeKey }: { resumeKey: string }) {
               <Button
                 size="sm"
                 variant={primary === "write" ? "default" : "tonal"}
-                disabled={writable.length === 0 || writeAll.isPending}
+                pending={writeAll.isPending}
+                disabled={writable.length === 0}
                 // Disables itself while writing: a native `disabled` drops focus.
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"

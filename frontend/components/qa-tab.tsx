@@ -209,9 +209,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
           />
           <Button
             onClick={() => askOnce(questions)}
-            disabled={askQuestions.isPending}
-            focusableWhenDisabled
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            pending={askQuestions.isPending}
           >
             {askQuestions.isPending ? "Answering…" : "Answer questions"}
           </Button>
@@ -240,7 +238,8 @@ export function QATab({ applicationId }: { applicationId: string }) {
           </div>
           <Button
             onClick={() => void generateCoverLetter()}
-            disabled={coverLetter.isPending || letterEditing}
+            pending={coverLetter.isPending}
+            disabled={letterEditing}
             focusableWhenDisabled
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >

@@ -265,7 +265,7 @@ export function DeclineDialog({
             type="button"
             variant="destructive"
             onClick={submit}
-            disabled={pending}
+            pending={pending}
             focusableWhenDisabled
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
@@ -308,7 +308,7 @@ export function BulkBar({
           size="sm"
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onQueue}
-          disabled={pending}
+          pending={pending}
           focusableWhenDisabled
         >
           Queue
@@ -319,7 +319,7 @@ export function BulkBar({
           variant="outline"
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onDecline}
-          disabled={pending}
+          pending={pending}
           focusableWhenDisabled
         >
           Skip

@@ -519,7 +519,8 @@ export function SuggestionEditor({
         <Button
           size="sm"
           variant="tonal"
-          disabled={!canApply || apply.isPending || locked}
+          pending={apply.isPending}
+          disabled={!canApply || locked}
           title={locked ? STALE_APPLY_HINT : undefined}
           focusableWhenDisabled
           className={
@@ -939,9 +940,8 @@ export function AskCard({
           <Button
             size="sm"
             variant="tonal"
-            disabled={
-              context.length === 0 || draft.isPending || locked
-            }
+            pending={draft.isPending}
+            disabled={context.length === 0 || locked}
             title={locked ? STALE_APPLY_HINT : undefined}
             // Disables itself while writing: a native `disabled` drops focus.
             focusableWhenDisabled

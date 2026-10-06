@@ -7,6 +7,7 @@ itself, so call sites stop repeating the class by hand.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -26,3 +27,29 @@ def test_the_button_has_a_pending_state():
 def test_the_button_styles_data_disabled_itself():
     src = _read("components/ui/button.tsx")
     assert "data-disabled:pointer-events-none" in src and "data-disabled:opacity-50" in src
+
+
+# file -> the slow-action labels it owns; each one's Button passes `pending=` (the lookbehind keeps
+# `data-pending={` and `aria-pending={` from counting).
+_PENDING_SITES = {
+    "app/new/page.tsx": ["Save job"],
+    "components/qa-tab.tsx": ["Answer questions", "Write cover letter"],
+    "components/resume-health/finding-cards.tsx": ["Apply suggestion", "Write new wording"],
+    "components/resume-health/demonstrate-skill-dialog.tsx": ["Write new wording"],
+    "components/resume-health/question-pass.tsx": ["Write N new wordings"],
+    "components/career/send-to-resume-dialog.tsx": ["Adapt and preview"],
+    "app/jobs/[id]/page.tsx": ["Queue in Agent inbox"],
+    "components/proposals/triage-actions.tsx": ["Skip (dialog)", "Queue (bulk)", "Skip (bulk)"],
+    "components/career/inbox-panel.tsx": ["Approve"],
+}
+
+
+def test_slow_actions_show_pending():
+    for rel, labels in _PENDING_SITES.items():
+        found = len(re.findall(r"(?<![-\w])pending=\{", _read(rel)))
+        assert found >= len(labels), f"{rel}: {labels} need {len(labels)} pending=, found {found}"
+
+
+def test_approve_does_not_say_saving():
+    row = _read("components/career/inbox-panel.tsx").split("function DraftRow(", 1)[1]
+    assert "Approving…" in row and '"Saving…"' not in row

@@ -480,12 +480,13 @@ function DraftRow({
           className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
           size="sm"
           onClick={approve}
+          pending={update.isPending}
           disabled={!text.trim() || pending}
           // Disables itself while any draft saves: a native `disabled` drops focus.
           focusableWhenDisabled
         >
           <ApproveIcon aria-hidden="true" />
-          {update.isPending ? "Saving…" : "Approve"}
+          {update.isPending ? "Approving…" : "Approve"}
         </Button>
         <div className="min-w-44 flex-1 sm:max-w-64">
           <Label htmlFor={`draft-entity-${point.id}`} className="sr-only">
