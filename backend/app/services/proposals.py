@@ -14,7 +14,7 @@ from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
-from app.services import auto_apply_settings, filled_answers
+from app.services import auto_apply_settings, filled_answers, job_site_login
 
 
 class TransitionError(Exception):
@@ -30,8 +30,8 @@ ALLOWED = {
     "accepted": {"approved", "rejected", "needs_human"},
     "approved": {"submitted", "needs_human", "rejected", "submission_uncertain"},
     "needs_human": {"approved", "rejected", "pending_review"},
-    # One attested-only edge (guarded in transition()): the user later confirms
-    # an uncertain submit went through (confirmation email / portal check).
+    # One attested-only edge (guarded in transition()): after an uncertain
+    # submit, the user or an agent in full automation confirms it went through.
     # Never resumable, never re-clickable — that stays absolute.
     "submission_uncertain": {"submitted"},
     # submitted / rejected / expired are terminal
@@ -49,7 +49,71 @@ STATUS_CHIP_WORDS = {
 }
 
 CONSENT_REQUIRED = {"accepted", "approved", "rejected"}
-CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp")
+CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp", "auto")
+
+# Full automation mode (phase 4): the agent's own yes, and its own word that a job went
+# through, labelled so the ledger can tell them from the user's. The server checks only the
+# switch (and that a confirmation is named); eligibility is the agent's prompt.
+AUTO_CHANNEL = "auto"
+
+LOGIN_STATUSES = frozenset({"accepted", "approved"})
+
+
+def share_job_site_login(session: Session, prop: ApplicationProposal,
+                         agent: str | None) -> dict[str, str]:
+    """{email, password} for an open job in full automation mode; one audit row per call
+    (never the value). SYSTEM.md {#inv-job-site-password-local}."""
+    cfg = auto_apply_settings.get_settings(session)
+    if not cfg.full_automation:
+        raise TransitionError("the job-site login needs full automation turned on in Settings")
+    if _company_is_blocked(session, prop, cfg.company_blocklist):
+        raise TransitionError(
+            "This company is on your Companies to skip list in Settings › Connected agents"
+        )
+    if prop.status not in LOGIN_STATUSES:
+        raise TransitionError("the job-site login is for a queued or approved job")
+    email, password = job_site_login.read()
+    if not email or not password:
+        raise LookupError("No job-site login is saved in Settings")
+    session.add(ConsentEvent(proposal_id=prop.id, action="login_shared", channel="mcp", note=agent))
+    session.commit()
+    return {"email": email, "password": password}
+
+
+def _company_is_blocked(session: Session, prop: ApplicationProposal,
+                        company_blocklist: list[str]) -> bool:
+    job = session.get(Job, prop.job_id)
+    company = (job.company or "").strip().lower() if job else ""
+    blocked = {name.strip().lower() for name in company_blocklist}
+    return bool(company and company in blocked)
+
+
+def _auto_approval_is_blocked(session: Session, prop: ApplicationProposal,
+                              new_status: str, company_blocklist: list[str]) -> bool:
+    return new_status == "approved" and _company_is_blocked(session, prop, company_blocklist)
+
+
+def _has_alphanumeric_confirmation(note: str | None) -> bool:
+    return any(char.isalnum() for char in note or "")
+
+
+def _auto_transition_supported(new_status: str, attested: bool) -> bool:
+    return new_status == "approved" or (new_status == "submitted" and attested)
+
+
+def _check_auto_consent(session: Session, prop: ApplicationProposal, new_status: str,
+                        consent: dict, attested: bool) -> None:
+    if not _auto_transition_supported(new_status, attested):
+        raise TransitionError("the auto channel only approves a job or confirms it went through")
+    if new_status == "approved" and prop.status != "accepted":
+        raise TransitionError("the auto channel can only approve a user-queued proposal")
+    if new_status == "submitted" and not _has_alphanumeric_confirmation(consent.get("note")):
+        raise TransitionError("an automatic submit needs a note saying what confirmed it")
+    cfg = auto_apply_settings.get_settings(session)
+    if not cfg.full_automation:
+        raise TransitionError("the auto channel needs full automation turned on in Settings")
+    if _auto_approval_is_blocked(session, prop, new_status, cfg.company_blocklist):
+        raise TransitionError("This company is on your Companies to skip list in Settings › Connected agents")
 
 EVIDENCE_KINDS = frozenset({"step", "final_review", "submission_receipt"})
 
@@ -137,18 +201,21 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
     if new_status in CONSENT_REQUIRED:
         if not consent or consent.get("channel") not in CONSENT_CHANNELS:
             raise TransitionError(f"{new_status} requires consent with a valid channel")
+    if consent and consent.get("channel") == AUTO_CHANNEL:
+        _check_auto_consent(session, prop, new_status, consent, attested)
     if new_status == "approved" and not _evidence_has_kind(prop, "final_review"):
         raise TransitionError("approved requires final_review evidence")
     if new_status == "submitted":
-        # Receipt is the agent-verified path; attestation is the user saying
-        # so themselves (design §4, 2026-08-01). The agent alone can never
-        # self-certify a submit: no receipt and no user statement -> refused.
+        # Receipt is the agent-verified path; attestation may be the user's own
+        # word or an agent's named confirmation while full automation is On.
         if prop.status == "submission_uncertain" and not attested:
             raise TransitionError(
-                "submission_uncertain -> submitted requires user attestation")
+                "submission_uncertain -> submitted requires attestation "
+                "(the user's, or the agent's in full automation mode)")
         if not attested and not _evidence_has_kind(prop, "submission_receipt"):
             raise TransitionError(
-                "submitted requires submission_receipt evidence or user attestation")
+                "submitted requires submission_receipt evidence or attestation "
+                "(the user's, or the agent's in full automation mode)")
         if attested and (not consent or consent.get("channel") not in CONSENT_CHANNELS):
             raise TransitionError("attested submit requires consent with a valid channel")
 

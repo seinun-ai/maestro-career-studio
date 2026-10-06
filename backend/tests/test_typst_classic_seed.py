@@ -23,6 +23,14 @@ _XCHARTER_DIR = Path(
 _EXAMPLE_RESUME = Path(__file__).resolve().parents[2] / "base_resumes" / "example.json"
 
 
+@pytest.fixture(autouse=True)
+def _fresh_seed_validation_attempts():
+    # Each db_session starts with empty tables, so seed validation starts fresh too.
+    reg.reset_seed_validation_attempts()
+    yield
+    reg.reset_seed_validation_attempts()
+
+
 def _seed_source() -> str:
     return (pdf_render.TEMPLATE_DIR / "typst_classic.typ").read_text(encoding="utf-8")
 

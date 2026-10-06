@@ -27,7 +27,7 @@ export const SETTINGS_TABS = [
   {
     value: "agents",
     label: "Connected agents",
-    anchors: ["connected-agents", "agent-hints", "auto-apply"],
+    anchors: ["connected-agents", "full-automation", "agent-hints", "auto-apply"],
   },
   { value: "appearance", label: "Appearance", anchors: ["appearance"] },
   { value: "about", label: "About", anchors: ["about"] },

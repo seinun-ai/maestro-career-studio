@@ -93,7 +93,10 @@ export function ConnectedAgentsCard() {
                   this only after you say yes. That&apos;s a rule they&apos;re given, not a lock.
                 </li>
                 <li>Create, edit and tailor your resumes.</li>
-                <li>Fill in and submit applications you queued, after your yes.</li>
+                <li>
+                  Fill in and submit applications you queued, after your yes, or on their own in
+                  full automation mode.
+                </li>
               </ul>
             </div>
             <div className="grid content-start gap-1.5">
@@ -109,9 +112,9 @@ export function ConnectedAgentsCard() {
           </div>
           <p className="text-muted-foreground max-w-[65ch]">
             Maestro CS itself never looks for jobs or submits an application. Before each
-            submit, the agent asks for your yes and records it. The daily limit below counts
-            those yeses over the last 24 hours. The app records each yes but can&apos;t stop an
-            agent, so stay with it while it applies.
+            submit, the agent asks for your yes and records it, unless you turned on full
+            automation. The daily limit below counts those yeses over the last 24 hours. The
+            app records each yes but can&apos;t stop an agent, so stay with it while it applies.
           </p>
           <p className="text-muted-foreground max-w-[65ch]">
             Two helpers are part of the app, not connected agents. You talk to the Assistant

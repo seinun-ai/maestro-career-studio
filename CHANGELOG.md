@@ -30,6 +30,18 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Added
 
+- **Full automation**, Off by default in Settings › Connected agents: your
+  agent can submit queued jobs whose final review is clean without asking
+  each time. The daily limit and Companies to skip still apply; anything to
+  check goes to Needs you. On the Automations page, **Apply automatically**
+  replaces the attended Apply prompt while the switch is On. Order, batching
+  and timing stay between you and your agent.
+- **Job-site login**: save an email and a password used only for job-site
+  accounts. They stay in a private local file; Settings shows only whether a
+  password is saved. A connected agent can fetch them for a queued or approved
+  job while full automation is On. Each hand-off is recorded without the value;
+  the login passes through your agent's AI provider.
+
 - The **Agent inbox dashboard**: readiness marks on open rows, an arrivals strip
   and **Recent runs** with each automation's counts, digest and job links. Queued
   jobs ready to apply sort first. Automations cards show **Last ran**. New MCP
@@ -64,7 +76,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   link. They wait in the Agent inbox alongside jobs from referral pages, and
   later hunts recognize jobs already saved.
 - Agents record each form page's answers instead of attaching a screenshot of
-  every page; the final-review and submission screenshots stay.
+  every page; the final-review screenshot stays. In full automation, the agent
+  records what confirmed submission and a submission screenshot is optional.
 
 ### Fixed
 

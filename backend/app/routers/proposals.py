@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -428,6 +428,29 @@ def get_final_review(proposal_id: UUID, db: Annotated[Session, Depends(get_db)])
     if prop is None:
         raise HTTPException(404, detail="Proposal not found")
     return svc.get_final_review(db, prop)
+
+
+@router.post("/{proposal_id}/job-site-login")
+def share_job_site_login(
+    proposal_id: UUID,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
+):
+    """The job-site login for a connected agent in full automation mode. MCP only; audited."""
+    if "origin" in request.headers:
+        raise HTTPException(403, detail="Browser-origin requests cannot receive the job-site login.")
+    if write_origin.origin != "mcp":
+        raise HTTPException(403, detail="Only a connected agent can ask for the job-site login.")
+    prop = db.get(ApplicationProposal, proposal_id)
+    if prop is None:
+        raise HTTPException(404, detail="Proposal not found")
+    try:
+        return svc.share_job_site_login(db, prop, write_origin.detail)
+    except svc.TransitionError as exc:
+        raise HTTPException(409, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(404, detail=str(exc)) from exc
 
 
 @router.post("/{proposal_id}/evidence", status_code=201)

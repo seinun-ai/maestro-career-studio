@@ -115,7 +115,7 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP server (85 tools, thin REST wrappers)
+ extension ─┼→ jobs router → Job row  ├─ MCP server (86 tools, thin REST wrappers)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼
         ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
@@ -128,7 +128,7 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
 ```
 
 `data/maestro_cs.sqlite3` (SQLite, WAL) holds all state except resume file data (`base_resumes/<slug>.json` on
-disk — DB `base_resumes` row + file must both exist) and rendered artifacts.
+disk — DB `base_resumes` row + file must both exist), rendered artifacts and the job-site login (`settings/secrets/`, §6).
 
 ## 4. Core entities and their lifecycles
 
@@ -184,7 +184,7 @@ file to open.
    requirements (work auth, OPT, salary, on-site vs where you live and relocation) vs the profile, recomputed on every read. Verdicts are `conflict` / `clear` /
    `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
    warns (pay is negotiable). Informational like G11 tier 2: it flags; the
-   consent/submit decision stays human.
+   consent/submit decision stays human unless the user's agent follows the full-automation prompt (§7).
 4. **Score** — Score and tailor auto-scores all active bases on first visit; per-base
    cards → **Analyze gaps** creates a session (one filled button, on the best match;
    Restart gap analysis and Mark applied without tailoring sit in each card's ⋯).
@@ -314,12 +314,8 @@ file to open.
 - **Stable per-application `artifact_dir`** `{#inv-stable-artifact-dir}`: one folder per application,
   `applications/Company_Role_YYYYMMDD_<idprefix>/`, allocated once via
   `services/application_artifacts.get_dir`, persisted on `Application.artifact_dir`;
-  resume/source/PDF, previews, cover letters and proposal `evidence/` colocate there. Playwright upload constraint: a folder
-  grant on `applications/` does **not** expand `browser_file_upload` — stage a
-  disposable copy via MCP `prepare_application_pdf_upload` under
-  `.playwright-mcp/uploads/` (or `$MAESTRO_CS_UPLOAD_DIR`), pair Playwright
-  `--output-dir` with the parent `.playwright-mcp` tree, and pass the returned `upload_path` to the file chooser —
-  never copy/move with shell or filesystem tools. Details: `docs/playbooks/agent-apply.md`, `backend/mcp_server/README.md`.
+  resume/source/PDF, previews, cover letters and proposal `evidence/` colocate there.
+  Upload constraints: `docs/entities/others.md`, "PDF upload staging".
 - **Honesty invariant** `{#inv-honesty}`: an `add_keyword` on a skill the engine found NO evidence of
   (`fix_hint == "absent"`) may only land in the skills section, never as a fabricated experience/project
   bullet. Enforced server-side in `save_resolutions` (guards MCP/API callers, not just the UI).
@@ -461,6 +457,21 @@ file to open.
   timestamp (`default=utcnow`, `onupdate=utcnow`) so one format lands on disk. Pinned by
   `tests/test_db_portability.py`.
 
+- **Job-site passwords stay in their local file.** `{#inv-job-site-password-local}`
+  `settings/secrets/job-site-login.json` is 0600 (directory 0700); writes serialize and replace from unique temp files; damaged JSON/non-object files read empty.
+  Never DB, exports, telemetry or logs. Settings GET/PUT return only `{email, password_set}`; validation errors are sanitized.
+  POST `/api/proposals/{id}/job-site-login` requires NO `Origin`, MCP origin, full automation On, a Queued/approved proposal and a company off the skip list.
+  Each hand-off records `ConsentEvent(action="login_shared", channel="mcp", note=client name)`, never the value; the login passes through the agent's AI provider.
+  Pins: `tests/test_job_site_login.py`, `test_job_site_login_handoff.py`,
+  `mcp_server/tests/test_client_job_site_login.py` (symbols in `.system_md_enforcement.json`).
+
+- **Automatic consent is gated by the user's switch.** `{#inv-auto-consent-gated}` Off by default;
+  only PUT `/api/settings/full-automation` (`{value: bool}`, StrictBool) writes it; PUT `/api/settings/auto-apply` preserves it.
+  Channel `auto` approves only `accepted` (Queued), requires `final_review` evidence, re-checks the company blocklist, and keeps the daily-cap/already-applied gates.
+  An auto-attested submit, including from `submission_uncertain`, needs a note with at least one letter or digit; both auto paths require full automation On.
+  A company blocked after approval still has its submit recorded. Eligibility is the agent's `apply-auto` prompt, not a server-side review judgment.
+  Pins: `tests/test_full_automation_setting.py`, `test_proposal_state_machine.py` (symbols in `.system_md_enforcement.json`).
+
 ## 7. Agent surfaces
 
 - **MCP server** (`backend/mcp_server/`; its clients are **connected agents** on screen, Settings › Connected agents):
@@ -476,19 +487,15 @@ file to open.
   docs/agentic-job-search.md, capture-and-score only), the proposal-ledger family (consent-gated
   propose/decide/triage/resume/final-review/evidence/mark_submitted/report_failure; `record_filled_answers` records
   each form page's answers and `get_final_review` names their `flags` (inv-filled-answers-local); `record_consent` stores the user's
-  own yes/no; `propose_application` stamps `proposed_by` from the client's `clientInfo.name`, sent on the KB writes'
-  origin headers, percent-encoded so any name files, and an agent can never file as "you"; a create takes SQLite's
-  write lock, `db.begin_write`, so a job keeps one open proposal. `app/services/agent_names.py` is the server twin of
-  `lib/agent-name.ts`, pinned by `tests/test_agent_names.py`: add a known client to BOTH), base resumes
+  yes/no, or the agent's automatic yes with channel `auto` while full automation is On; `mark_submitted(auto)` records the agent's confirmation note;
+  `get_job_site_login` hands the login to a Queued/approved job's agent (§6); filer and create-lock rules: `docs/entities/others.md`, "MCP proposal filer"), base resumes
   (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, a restore
   is a new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those
   five are **full-profile only** this round), health (run/get + waivers; a finding carries its bullet's own `question`,
   `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a report `next_grade`; disputes and the word bank
   are web-only), the full tailoring workflow (session tools take **`tailoring_session_id`** — breaking rename, no
   legacy alias; `resolve_gaps`' evidence-carrying actions are gated server-side — §4; `quick_tailor` is the
-  profile-driven fast path), render + slim PDF inspection (`get_rendered_pdf` has **no** `page_images_b64`;
-  `get_rendered_pdf_page_image` is the opt-in one-page visual, `max_dimension_px` default 1024 with a ~1MB encoded cap;
-  `prepare_application_pdf_upload` stages a disposable Playwright copy under `.playwright-mcp/uploads/`), application
+  profile-driven fast path), render + PDF inspection/upload (`docs/entities/others.md`, "PDF tools"), application
   tracking, `record_run` (finished automation reports; `docs/entities/agent-runs.md`), the apply package,
   templates (draft/validate only; Typst constraints in `create_template_draft`'s
   docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile` (`profile.eeo` consent-gated),
@@ -501,11 +508,8 @@ file to open.
   (`MAESTRO_CS_MCP_PROFILE`, default `full`): one binary, filtered tool sets — `hunt` / `apply` / `explore` /
   `templates` / `career`; allowlists in `mcp_server/profiles.py`; enable ONE profile per chat (`full` already carries
   the KB writes). Stdio config examples live in `mcp_server/`; ChatGPT.com cannot be a client — `mcp.run()` is stdio
-  only. **Apply executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
-  autofill/attach; direct MCP + browser fill/upload is the supported fallback. The agent calls
-  `record_filled_answers` per page, which replaces per-page screenshots; `final_review` and `submission_receipt`
-  evidence stay, and every flag goes into the "Submit now?" question. Never headless / stealth / CAPTCHA
-  bypass. **Directory listing** = plugin bundle `plugins/maestro-career-studio/`, not `.mcpb`; policy `PRIVACY.md`.
+  only. **Apply executor:** headed real Chrome; `docs/entities/others.md`, "Attended executor", and the apply playbook's "Unattended (full automation)" section.
+  **Directory listing** = plugin bundle `plugins/maestro-career-studio/`, not `.mcpb`; policy `PRIVACY.md`.
 - **Guided tailoring workflow** (`mcp_server/workflow.py`): wrapped tools carry a `next` envelope
   (`state`/`blocking`/`offer`/`ask_user`/`options`/`call`) that walks §5's arc — score all bases → recommend →
   quick|custom → tailor → render → apply readiness — unnarrated. `workflow.py` is PURE (no httpx/DB/LLM), a
