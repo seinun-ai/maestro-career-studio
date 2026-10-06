@@ -799,3 +799,52 @@ listed in the preferences plan's Task 8.
    - kill the tunnel mid-round, then confirm the backoff and the recovery.
 4. **Review:** Opus final review of the whole diff, with a security pass on `routers/sync.py`,
    `files.py` and the guard.
+
+## Stage 5: Pairing by approval (added 2026-10-06 after setup)
+
+### Task 18: The always-on copy fetches the sync key through the tunnel, once, while the laptop allows it
+
+**Why:** the always-on agent app's vault only fills website forms; it can't place a secret in a
+file or a command, so "copy the key into the vault" doesn't work there, and the key must never go
+through a chat. The trust the copies already share is the SSH key (restricted to one forward) and
+the tailnet rule; pairing by approval reuses it.
+
+**Laptop (home):**
+- `POST /api/sync/pairing-window` (a normal web-app route: same-origin web app only, the existing
+  Origin allowlist; refused on the always-on copy): creates the key with `status.create_key()` if
+  none exists, then opens a 10-minute window stored in the local setting `sync.pairing_until`
+  (ISO time; `sync.` keys never sync). Returns `{open_until}`. `DELETE` closes it.
+  `GET /api/sync/pairing-window` → `{enabled, open_until, last_paired_at}` for the card.
+- `POST /api/sync/enroll` (reached through the tunnel; no key yet): refuses any `Origin` header
+  (403) first; 404 when no key file; 409 "Pairing isn't open on your laptop. Click Allow pairing
+  for 10 minutes there." when the window is closed or expired; checks the `X-Maestro-Sync`
+  protocol/schema header like the other sync routes (409 on mismatch); single-flight with the
+  sync lock. On success returns `{key}` once, closes the window in the same commit, stamps
+  `sync.last_paired_at`, and logs one fixed line ("A copy fetched the sync key.") — never the key.
+  Rate-limit: after 5 failed or closed-window calls in 10 minutes, refuse for 10 minutes.
+- Web app: a **Second copy** card in Settings (follow docs/design-system): one button **Allow
+  pairing for 10 minutes**, a countdown while open, a **Stop** link, and "Paired with your bot at
+  <time>" afterwards. Plain copy: "Lets your always-on copy fetch the sync key once, through its
+  tunnel. Nothing to copy or paste."
+
+**Always-on copy:**
+- `POST /api/sync/enroll-here` on its own backend (loopback, refuses `Origin`, works only when
+  `SYNC_REMOTE_URL` is set, loopback-only per `status.remote_is_own_tunnel()`, and no key file
+  exists): calls the laptop's `/api/sync/enroll` through the tunnel with the same client rules
+  as the round (`trust_env=False`), writes the key with O_EXCL 0600 to `key_path()`, returns
+  `{ok}` or a fixed sentence with an outcome (`needs_person` for a closed window/mismatch,
+  `transient` for unreachable).
+- `sync.sh --pair`: when the key file is missing, call `enroll-here` first; on success continue
+  with the pairing round; on a closed window print the laptop sentence and exit 1.
+- The manual path (place the key file yourself) keeps working.
+
+**Docs:** docs/sync-setup.md: pairing by approval is the default; the vault path becomes the
+manual alternative; Tailscale joins by an interactive login link plus tagging (no auth key).
+SECURITY.md: the pairing window's limits. SYSTEM.md: one line under inv-sync-channel.
+
+**Tests:** window open/close/expiry; enroll refused with Origin (before anything), with no key,
+with a closed or expired window, with a version mismatch, rate-limited; success returns the key
+once and closes the window; a second call is refused; the key never appears in logs (sentinel);
+enroll-here writes 0600 with O_EXCL and refuses when a key exists or the URL isn't loopback;
+sync.sh --pair enrolls then pairs (fake-uvicorn style); a real two-process test: click → enroll
+→ pair in one go; the web card (frontend parity test + browser check by the reviewer).
