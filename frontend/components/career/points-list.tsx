@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { ActorChip, type ActorKind } from "@/components/visual/actor-chip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,6 +87,60 @@ const PROVENANCE_LABELS: Record<KBPointProvenance, string> = {
   derived_unverified: "AI inferred",
   user_cannot_confirm: "You couldn't confirm this",
 };
+
+// The register's actor for each origin; ORIGIN_LABELS stays the words (the hover title).
+const ORIGIN_KINDS: Record<KBPointOut["origin"], ActorKind> = {
+  manual: "you",
+  ingested: "document",
+  chat: "assistant",
+  consolidated: "merged",
+  mcp: "agent",
+  gap_elicitation: "you",
+  base_sync: "fromResume",
+};
+
+/**
+ * Who a bullet came from and, only when trust is in doubt, how sure: ONE chip.
+ * The full origin and provenance words stay in its hover title; "From your own
+ * material", "You said it" and "Unknown source" add nothing beyond the origin.
+ */
+export function PointActorChip({
+  point,
+}: {
+  point: Pick<KBPointOut, "origin" | "origin_detail" | "provenance">;
+}) {
+  const agent = point.origin === "mcp" ? agentDisplayName(point.origin_detail) : null;
+  const name = agent ?? (point.origin === "gap_elicitation" ? ORIGIN_LABELS.gap_elicitation : null);
+  const provenanceWords = point.provenance
+    ? (PROVENANCE_LABELS[point.provenance] ?? "Unknown source")
+    : "Unknown source";
+  // "You · You said it" said one thing twice.
+  const hideProvenance = point.origin === "manual" && point.provenance === "user_stated";
+  const title = [
+    originLabel(point),
+    hideProvenance ? null : provenanceWords,
+    point.provenance ? null : "Added before we tracked where bullets come from.",
+    point.origin_detail
+      ? `Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(". ");
+  return (
+    <ActorChip kind={ORIGIN_KINDS[point.origin]} name={name} title={title}>
+      {point.provenance === "derived_unverified" ? (
+        <>
+          <CONCEPT_ICONS.ai aria-hidden="true" className="size-3 shrink-0" /> AI inferred
+        </>
+      ) : null}
+      {point.provenance === "user_cannot_confirm" ? (
+        <>
+          <CONCEPT_ICONS.unknown aria-hidden="true" className="size-3 shrink-0" /> Unconfirmed
+        </>
+      ) : null}
+    </ActorChip>
+  );
+}
 
 /**
  * The one button beside a bullet that moves it on: Approve a draft, Stop using
@@ -363,29 +418,25 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <PointStateChip state={point.state} pending={pending} onSelect={changeState} />
-        <span
-          className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-body-small dark:bg-surface-container-highest"
-          title={point.origin_detail ? `Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}` : undefined}
-        >
-          {originLabel(point)}
-        </span>
+        <PointActorChip point={point} />
         {point.usage.length > 0 ? (
           <span
-            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-primary/10 px-2 text-body-small"
+            className="text-muted-foreground inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 text-body-small"
             title={`Used in: ${usageKeys.map(resumeName).join(", ")}`}
+            // A bullet no longer offered can still sit on resumes it was
+            // added to: "Still on", so the chip never reads as offered.
+            aria-label={`${point.state === "retired" ? "Still on" : "On"} ${usageKeys.length} ${usageKeys.length === 1 ? "resume" : "resumes"}`}
           >
-            {/* A bullet no longer offered can still sit on resumes it was
-                added to: "Still on", so the chip never reads as offered. */}
-            {point.state === "retired" ? "Still on" : "On"} {usageKeys.length}{" "}
-            {usageKeys.length === 1 ? "resume" : "resumes"}
+            <CONCEPT_ICONS.baseResume aria-hidden="true" className="size-3" />
+            {usageKeys.length}
           </span>
         ) : null}
         {hasDrift ? (
           <span
-            className="inline-flex h-6 items-center gap-1 rounded-full bg-warning-container px-2 text-body-small text-on-warning-container"
+            className="inline-flex h-6 items-center gap-1 rounded-full bg-surface-container px-2 text-body-small text-foreground"
             title="A resume still uses older wording."
           >
-            <TriangleAlert className="size-3" aria-hidden="true" /> Wording differs
+            <TriangleAlert className="size-3 text-warning" aria-hidden="true" /> Wording differs
           </span>
         ) : null}
         {point.tags.map((tag) => (
@@ -393,21 +444,6 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             {tag}
           </Badge>
         ))}
-        {/* "You · You said it" said one thing twice. */}
-        {point.origin === "manual" && point.provenance === "user_stated" ? null : (
-          <span
-            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-surface-container-high px-2 text-body-small dark:bg-surface-container-highest"
-            title={
-              point.provenance
-                ? undefined
-                : "Added before we tracked where bullets come from."
-            }
-          >
-            {point.provenance
-              ? (PROVENANCE_LABELS[point.provenance] ?? "Unknown source")
-              : "Unknown source"}
-          </span>
-        )}
       </div>
     </article>
   );
@@ -435,7 +471,7 @@ function PointStateChip({
             aria-disabled={pending}
             aria-label={`Status: ${current.label}. Change status`}
             className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-label-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring aria-disabled:opacity-50",
+              "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-label-medium transition-[scale,box-shadow] duration-150 ease-out hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring aria-disabled:opacity-50",
               current.chip,
             )}
           >

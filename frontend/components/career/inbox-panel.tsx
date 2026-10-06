@@ -36,6 +36,7 @@ import { couldnt, errorDetail, isPlainSentence } from "@/lib/error-text";
 import { SECTION_ORDER_LABELS, type SectionKey } from "@/lib/formatting";
 import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
+import { PointActorChip } from "@/components/career/points-list";
 
 const DraftsIcon = CONCEPT_ICONS.drafts;
 const ApproveIcon = CONCEPT_ICONS.approve;
@@ -456,7 +457,10 @@ function DraftRow({
         </div>
       ) : (
         <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 text-body-medium">{point.text}</p>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <p className="text-body-medium">{point.text}</p>
+            <PointActorChip point={point} />
+          </div>
           <Button
             ref={editRef}
             size="icon-sm"
