@@ -152,8 +152,13 @@ def test_assistant_tool_chips_show_their_domain():
     assert "newestPhrase" in src
     badge = '<FileDiff className="size-3" aria-hidden="true" />\n            Edited'
     cards = {
-        "proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80", "<DoneIcon", "<X ", "Added", "Discarded"),
-        "edit-proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80", "<DoneIcon", "<X ", "Applied", "Discarded"),
+        # Both suggestion cards end through one CardResolution (done word or Discarded), so the
+        # glyphs live once, in card-resolution.tsx.
+        "proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80",
+                              '<CardResolution done={resolution === "merged"} doneWord="Added" />'),
+        "edit-proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80",
+                                   '<CardResolution done={resolution === "applied"} doneWord="Applied" />'),
+        "card-resolution.tsx": ("CONCEPT_ICONS.done", "<DoneIcon", "<X ", "Discarded"),
         "change-card.tsx": (badge,),
         "kb-capture-card.tsx": ("CONCEPT_ICONS.careerHistory", "<HistoryIcon", "Career history"),
     }

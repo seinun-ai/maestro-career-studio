@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import { toast } from "sonner";
 
+import { CardResolution } from "@/components/chat/card-resolution";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
@@ -19,7 +19,6 @@ import type {
 } from "@/lib/types";
 
 const AiIcon = CONCEPT_ICONS.ai;
-const DoneIcon = CONCEPT_ICONS.done;
 
 /**
  * Staged extraction result (upload → project bullets). Never added silently —
@@ -88,13 +87,7 @@ export function ProposalCard({
       </ul>
       <div className="mt-2 flex justify-end gap-2">
         {resolution ? (
-          <span className="text-muted-foreground flex items-center gap-1 text-body-small">
-            {resolution === "merged" ? (
-              <><DoneIcon className="size-3.5" aria-hidden="true" /> Added</>
-            ) : (
-              <><X className="size-3.5" aria-hidden="true" /> Discarded</>
-            )}
-          </span>
+          <CardResolution done={resolution === "merged"} doneWord="Added" />
         ) : (
           <>
             <Button

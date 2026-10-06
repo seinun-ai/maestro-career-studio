@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import { toast } from "sonner";
 
+import { CardResolution } from "@/components/chat/card-resolution";
 import { EditWordsList } from "@/components/edit-words-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,6 @@ import type {
 } from "@/lib/types";
 
 const AiIcon = CONCEPT_ICONS.ai;
-const DoneIcon = CONCEPT_ICONS.done;
 
 /**
  * Staged edit ops from propose_edits: the user approves the suggestion as one
@@ -126,13 +125,7 @@ export function EditProposalCard({
       <EditWordsList edits={edits} />
       <div className="mt-2 flex justify-end gap-2">
         {resolution ? (
-          <span className="text-muted-foreground flex items-center gap-1 text-body-small">
-            {resolution === "applied" ? (
-              <><DoneIcon className="size-3.5" aria-hidden="true" /> Applied</>
-            ) : (
-              <><X className="size-3.5" aria-hidden="true" /> Discarded</>
-            )}
-          </span>
+          <CardResolution done={resolution === "applied"} doneWord="Applied" />
         ) : (
           <>
             <Button
