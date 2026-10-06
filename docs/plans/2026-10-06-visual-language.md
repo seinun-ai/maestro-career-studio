@@ -2726,3 +2726,7 @@ implementer of task N reads the "Task N" bullets as part of its brief.
 - **Every motion task (from the Task 10 review).** Tailwind v4's `translate-*`, `scale-*` and `rotate-*` set the CSS
   `translate`, `scale` and `rotate` properties, not `transform`. A transition list names those properties
   (`transition-[opacity,translate]`), never `transform`, or the movement jumps instead of animating.
+- **Wave 2 review.** Timings live in one module, `lib/motion.ts` (`CONFIRM_HOLD_MS` 1200, `CONFIRM_MS` 400,
+  `ROW_EXIT_MS` 200) with the shared saved-hold hook; later tasks import them, never re-declare (Task 23's tool chip
+  hold included). Task 18 converts Update scores' own `RefreshCw` spin to Button `pending`. Task 30's docs state
+  which busy buttons change their label, and fix the dangling "So are…" sentence in the disabled-button paragraph.
