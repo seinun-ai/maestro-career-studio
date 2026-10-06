@@ -69,6 +69,11 @@ function chipClasses(interactive: boolean): string {
   );
 }
 
+/** A status's own dot, for places that list statuses without the chip (filters, analytics). */
+export function StatusDot({ status, className }: { status: ApplicationStatus; className?: string }) {
+  return <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", STATUS_STYLES[status].dot, className)} />;
+}
+
 /** Static pill for jobs that have no application yet ("Saved"). */
 export function SavedChip() {
   return (
@@ -92,6 +97,7 @@ export function SavedChip() {
 const NEEDS_YOU = {
   label: "Needs you",
   className: "bg-attention-container text-on-attention-container",
+  dot: "bg-attention",
 };
 
 /** Derived agent-lane state for a saved (no-application) job, from its newest
@@ -124,18 +130,25 @@ const NEEDS_YOU = {
  */
 export const PROPOSAL_STATUS_CHIP: Record<
   string,
-  { label: string; className: string }
+  { label: string; className: string; dot: string }
 > = {
-  pending_review: { label: "Proposed", className: "bg-primary-container text-on-primary-container" },
+  pending_review: { label: "Proposed", className: "bg-primary-container text-on-primary-container", dot: "bg-primary" },
   needs_decision: NEEDS_YOU,
   needs_human: NEEDS_YOU,
-  accepted: { label: "Queued", className: "bg-secondary-container text-on-secondary-container" },
-  approved: { label: "Approved", className: "bg-success-container text-on-success-container" },
-  submitted: { label: "Applied", className: "bg-success-container text-on-success-container" },
-  submission_uncertain: { label: "Check if sent", className: "bg-attention-container text-on-attention-container" },
-  rejected: { label: "Skipped", className: "text-muted-foreground bg-muted" },
-  expired: { label: "Expired", className: "text-muted-foreground bg-muted" },
+  accepted: { label: "Queued", className: "bg-secondary-container text-on-secondary-container", dot: "bg-secondary" },
+  approved: { label: "Approved", className: "bg-success-container text-on-success-container", dot: "bg-success" },
+  submitted: { label: "Applied", className: "bg-success-container text-on-success-container", dot: "bg-success" },
+  submission_uncertain: { label: "Check if sent", className: "bg-attention-container text-on-attention-container", dot: "bg-attention" },
+  rejected: { label: "Skipped", className: "text-muted-foreground bg-muted", dot: "bg-muted-foreground/60" },
+  expired: { label: "Expired", className: "text-muted-foreground bg-muted", dot: "bg-muted-foreground/60" },
 };
+
+/** A proposal status's own dot, for the inbox lanes' headings and filters (the chip is hidden there, D5). */
+export function LaneDot({ status, className }: { status: string; className?: string }) {
+  const dot = PROPOSAL_STATUS_CHIP[status]?.dot;
+  if (!dot) return null;
+  return <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", dot, className)} />;
+}
 
 /** Label-only view, for callers that bring their own container. */
 export function proposalStatusLabel(status: string): string {
