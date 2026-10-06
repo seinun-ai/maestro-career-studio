@@ -25,7 +25,8 @@ they are what the controls in §3 and §4 exist for.
 
 **The asset** is not "a hobby app's database." It is your complete employment
 history, contact details, work-authorization answers, optionally your EEO
-answers, and live API keys. Please treat a compromise as costing all of that.
+answers, live API keys, and any saved job-site login. Please treat a compromise
+as costing all of that.
 
 ### Zero authentication is a real constraint
 
@@ -153,25 +154,39 @@ What we do instead is bound what an injection can reach:
   detected: template source cannot execute code (§3), and the deny-list for
   signatures, attestations, consent, credentials and government IDs is consulted
   before a field is ever offered to a model — unless the user has turned on the
-  standing agreement permission, which lifts it; Next and Submit are never clicked.
+  standing agreement permission, which lifts it. The Companion never clicks
+  Next or Submit. A connected agent follows the apply policy below.
 
 **What the consent ledger is, precisely.** Approving or submitting a proposal
 writes an append-only consent event, approval reserves a slot against a daily
-cap you set, and a submit needs either a receipt or an explicit attestation —
-so a *buggy* agent cannot quietly submit, every action is attributable
-afterwards, and the blast radius is bounded by the cap.
+cap you set, and a submit needs either a receipt or an attestation. Outside full
+automation, that attestation is the user's own statement. With full automation
+On, channel `auto` records the agent's confirmation instead, with a note naming
+what confirmed it and containing at least one letter or digit; no receipt is
+required, including when reconciling `submission_uncertain`. Never click again
+to reconcile an uncertain submit. A company blocked after approval still has
+its submit recorded.
 
 It is **not** a channel we control to you. The agent supplies the consent
 payload when it calls the tool, so what the ledger records is that *the agent
-asserted you said yes*. An agent that has been successfully prompt-injected can
-assert that. What actually bounds an apply run: it works only on proposals you
-accepted, inside a live agent session holding a browser. It prepares and fills
-each application on its own, asks you only for what it cannot find in your
-data, and submits only after your explicit yes for that application — and the
-daily cap limits how many submissions are possible at all. Treat the ledger as
-an audit trail and a rate limit, not as a lock. If you want a hard gate,
-accept proposals in the web UI (`/proposals`) and keep agent sessions to hunting
-and drafting.
+asserted you said yes*, or supplied its own automatic yes. An agent that has
+been successfully prompt-injected can assert either. Automatic approval is
+accepted only while full automation is On and only for an `accepted` proposal
+(your Queued lane), with `final_review` evidence. It re-checks Companies to skip,
+the already-applied guard and the daily cap. The agent's `apply-auto` prompt
+judges the clean-review checks; the server does not judge their result. If
+anything needs checking, it parks the job through `report_failure` and asks you.
+The user's yes then requires final-review evidence and recorded `chat` approval
+before one submit. Order, batching and schedule are your strategy with your
+agent. These gates control the ledger; the backend cannot prevent a browser
+click. Treat the ledger as an audit trail and a rate limit. Keep agent sessions
+to hunting and drafting if you do not want them submitting applications.
+
+Full automation is Off by default. Only PUT `/api/settings/full-automation`
+with a strict boolean `{value: bool}` changes it; PUT `/api/settings/auto-apply`
+preserves the stored switch. Settings › Connected agents asks for confirmation
+before turning it On. Turning it Off refuses both channel `auto` and login
+hand-offs.
 
 **If you use the agent-driven apply lane, understand its three exposures:**
 prompt injection from postings, employers you have not verified receiving your
@@ -193,6 +208,21 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
   HTTP API never returns them (it reports only whether one is configured), but
   anything that can read those files or that database has them. Consider
   `chmod 600 .env`.
+- **The job-site login is stored in cleartext** in
+  `settings/secrets/job-site-login.json`, mode 0600 in a 0700 directory. It never
+  enters the database, exports, telemetry or logs. Writes are serialized and
+  replace from a unique 0600 temporary file; damaged JSON or a non-object file
+  reads as empty. Settings GET/PUT return only `{email, password_set}`, and
+  validation errors never echo credentials. Clear in Settings deletes both.
+  MCP `get_job_site_login(proposal_id)` hands `{email, password}` to your agent
+  through POST `/api/proposals/{id}/job-site-login`. It requires full automation
+  On, a Queued or approved proposal and a company off the skip list; ANY `Origin`
+  header is refused, even with the MCP header. `X-Maestro-CS-Origin: mcp` is also
+  required; it is provenance, not authentication against local software.
+  Each hand-off writes `ConsentEvent(action="login_shared", channel="mcp",
+  note=client name)`, never the value. MCP error messages are fixed by status
+  and never carry the response body. **The login passes through your agent's AI
+  provider. Use it only for job-site accounts.**
 - **Your API key is sent to whatever `base_url` you configure.** That is the
   point of a configurable OpenAI-compatible endpoint, and it means the endpoint
   field is a credential-disclosure decision: your key and your prompt bodies

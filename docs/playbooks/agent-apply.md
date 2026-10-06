@@ -6,16 +6,71 @@ executor. The backend never drives the browser and cannot physically prevent a
 browser click. It validates the approval, consent event, evidence, and caps and
 refuses `mark_submitted` when the ledger preconditions are absent. Agent policy
 therefore forbids clicking the irreversible submit control without successful
-final-boundary approval in the same attended turn.
+final-boundary approval immediately before the submit click.
 
 This playbook layers on top of
-[agentic-job-search.md](../agentic-job-search.md); all of its hard constraints
-(consent, EEO, bot detection, and fabrication) apply verbatim. The execution
+[agentic-job-search.md](../agentic-job-search.md); its EEO, bot-detection and
+fabrication constraints apply. Consent follows the attended flow below or the
+full-automation section. The execution
 mechanics are summarized by the
 [agent-apply-execution skill](../../backend/app/automations/skills/agent-apply-execution/SKILL.md).
 This playbook is the canonical policy owner; the skill is a concise execution
 overlay and cannot relax or override it. Strategy lives here in editable text,
 never in backend code — change a lane by editing this file.
+
+## Unattended (full automation)
+
+Turn on **Full automation** in Settings › Connected agents and copy **Apply
+automatically** from Automations. The
+[apply-auto prompt](../../backend/app/automations/skills/apply-auto/SKILL.md)
+is the unattended contract. It replaces four attended rules below: the
+per-application yes, who signs into job-site accounts, submission proof, and
+the user's presence at submit. The
+[execution skill's pointer](../../backend/app/automations/skills/agent-apply-execution/SKILL.md)
+names those same exceptions; all other execution constraints still apply.
+Maestro runs no scheduler. Order and batching are the user's strategy with
+their agent.
+
+- **Queue:** read `get_job_search_brief` each run and stop if full automation is
+  Off. Work only `list_proposals(status="accepted")` (the user's Queued lane),
+  stopping when the daily cap is used. A Needs-you job must go through the
+  user's queue before a later automatic run.
+- **Check:** record every completed page with `record_filled_answers`, naming
+  the saved fact (`slot`) behind each screening answer, then call
+  `get_final_review`. Submit without asking only when the PDF is ready, no
+  knock-out conflict exists, `flags` is empty, `duplicate_submitted` is false,
+  no blocked/manual items remain, and every screening answer names its saved
+  fact. Check the PDF is present before uploading. The agent judges these
+  checks; the server enforces evidence, queue, switch, cap, Companies to skip
+  and already-applied guards at automatic approval.
+- **Submit:** attach the filled-form screenshot as `final_review` evidence,
+  call `record_consent(proposal_id, action="approved", channel="auto")`,
+  submit once after approval succeeds, then
+  `mark_submitted(proposal_id, channel="auto", note="<what confirmed it>")`.
+  The agent's word is proof, with a note naming the confirmation and containing
+  at least one letter or digit. A confirmation screenshot is optional.
+- **Anything to check:** call `report_failure` with the reason to move the job
+  to Needs you, ask the user and move on. If the user says yes, attach
+  `final_review` evidence → `record_consent` with action `approved`, channel
+  `chat` and the user's words → submit once → `mark_submitted` with channel
+  `auto` and a note naming what confirmed it. Full automation must still be On.
+- **Uncertain submission:** call
+  `report_failure(proposal_id, reason="submission_uncertain")` and never retry
+  the click. A later confirmed outcome may be recorded with `mark_submitted`
+  channel `auto` and the confirmation note while On, including from
+  `submission_uncertain`. A company blocked after approval still has its
+  submission recorded.
+- **Accounts:** call `get_job_site_login(proposal_id)` when a site needs an
+  account or sign-in. Only while On, for a Queued/approved job off the skip
+  list, MCP receives the login from `settings/secrets/job-site-login.json`
+  (0600, directory 0700). The hand-off refuses any `Origin` header and requires
+  the MCP origin; it audits `login_shared`, never the value. The login passes
+  through the agent's AI provider: use it only for job-site accounts and never
+  copy it into notes, evidence, answer receipts or logs.
+- **Finish:** call `record_run(automation="apply-session", ...)` with submitted,
+  needs-you and skipped counts, the digest and jobs worked.
+
+The following sections describe attended operation while full automation is Off.
 
 ## Executor setup
 
@@ -317,4 +372,4 @@ End every hunt run with: postings visited, deduped hits, proposals filed,
 escalated to `needs_decision`, skipped (with cap/cooldown/blocklist reasons —
 including the `max_proposals_per_run` stop; no silent truncation), inaccessible
 postings, warnings relayed. Scheduled runs deliver the digest to the configured
-channel and exit; execution waits for a live session.
+channel and exit; attended execution waits for a live session.
