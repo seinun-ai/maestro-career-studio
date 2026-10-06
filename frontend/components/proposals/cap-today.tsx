@@ -2,6 +2,7 @@
 
 import { RotateCw } from "lucide-react";
 
+import { ProgressCount } from "@/components/visual";
 import { RetryChip } from "@/components/retry-chip";
 import { useProposalFunnel } from "@/hooks/use-proposal-funnel";
 import { isLoadFailure } from "@/lib/query-state";
@@ -38,8 +39,9 @@ export function CapToday({ className }: { className?: string }) {
   const cap = query.data?.cap;
   if (!cap) return null;
   return (
-    <p className={cn("mt-0.5 text-body-small tabular-nums", className)}>
+    <p className={cn("mt-0.5 flex items-center gap-2 text-body-small tabular-nums", className)}>
       Applications per day: {cap.reserved_last_24h} of {cap.max_per_day} used in the last 24 hours
+      <ProgressCount done={cap.reserved_last_24h} total={cap.max_per_day} noun="used in the last 24 hours" showText={false} />
     </p>
   );
 }

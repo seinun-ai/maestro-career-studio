@@ -50,7 +50,8 @@ import {
   CONNECTED_AGENTS_SETTINGS,
   JOB_HUNT_SKILL_URL,
 } from "@/lib/agent-links";
-import { proposalByLine } from "@/lib/agent-name";
+import { ActorChip, ScoreBar } from "@/components/visual";
+import { agentDisplayName, proposalByLine } from "@/lib/agent-name";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
 import { formatTimeAgo } from "@/lib/format-date";
@@ -220,8 +221,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
       if (became === "accepted" || became === "rejected") {
         const before = new Map((data?.items ?? []).map((p) => [p.id, p.status] as const));
         setLeavingIds((prev) => {
-          // Entries the refetch has dropped or moved are done: only a row still as it was is leaving.
-          const next = new Map([...prev].filter(([id, status]) => before.get(id) === status));
+          const next = new Map(prev);
           for (const id of ids) {
             const status = before.get(id);
             if (status) next.set(id, status);
@@ -247,13 +247,16 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
 
   // Clear an id once the refetched list no longer holds it as it was: gone, or in another status. A stale
   // entry would hide a row that comes back in that status (Queue, then Keep it returns it to To review).
-  useEffect(() => {
-    if (leavingIds.size === 0) return;
-    const now = new Map(items.map((p) => [p.id, p.status] as const));
-    const rest = [...leavingIds].filter(([id, status]) => now.get(id) === status);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- prunes state that mirrors the query's data
-    if (rest.length !== leavingIds.size) setLeavingIds(new Map(rest));
-  }, [items, leavingIds]);
+  // Adjusted while rendering, keyed on the list itself (React: "adjusting state when a prop changes").
+  const [prunedFor, setPrunedFor] = useState(items);
+  if (prunedFor !== items) {
+    setPrunedFor(items);
+    if (leavingIds.size > 0) {
+      const now = new Map(items.map((p) => [p.id, p.status] as const));
+      const rest = [...leavingIds].filter(([id, status]) => now.get(id) === status);
+      if (rest.length !== leavingIds.size) setLeavingIds(new Map(rest));
+    }
+  }
 
   const roles = useMemo(() => {
     const set = new Set<string>();
@@ -886,7 +889,8 @@ function ProposalRow({
                     </span>
                   ) : null}
                   {isDup ? (
-                    <span className="inline-flex items-center rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
+                      <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />
                       Possible duplicate
                     </span>
                   ) : null}
@@ -901,29 +905,39 @@ function ProposalRow({
                 <div className="text-muted-foreground truncate text-body-small">
                   {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
                 </div>
-                <div className="text-muted-foreground truncate text-body-small" title={meta}>
-                  {meta}
-                </div>
+                {byLine ? (
+                  <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-body-small" title={meta}>
+                    <ActorChip kind={proposal.proposed_by === "you" ? "you" : "agent"} name={agentDisplayName(proposal.proposed_by)} />
+                    <span className="truncate">{formatTimeAgo(proposal.created_at)}</span>
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground truncate text-body-small" title={meta}>
+                    {meta}
+                  </div>
+                )}
                 {needs ? <p className="mt-1 text-body-small break-words">{needs}</p> : null}
               </div>
               {base ? (
-                <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-body-small dark:bg-surface-container-highest sm:inline-flex">
+                <span className="text-muted-foreground hidden shrink-0 items-center gap-2 text-body-small sm:inline-flex">
                   {baseName}
-                  {score != null ? ` · ATS score ${score}` : ""}
+                  {score != null ? <ScoreBar value={score} label="ATS score" valueText={score.toFixed(1)} /> : null}
                 </span>
               ) : null}
-              <Badge
-                className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
-                variant="secondary"
-              >
-                {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
-              </Badge>
+              {/* D5: To review, Queued and Applying rows all share one status, so the lane says it. */}
+              {lane === "history" || lane === "needs_you" ? (
+                <Badge
+                  className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
+                  variant="secondary"
+                >
+                  {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
+                </Badge>
+              ) : null}
             </Link>
             <div
               className={cn(
                 "relative flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
-                // The buttons stay (focus is kept) under the spinner that answers the press.
-                acting && "opacity-100 [&_button]:opacity-0!",
+                // The buttons stay (focus is kept) under the spinner that answers the press; the focus ring moves out here.
+                acting && "rounded-full opacity-100 [&_button]:opacity-0! has-[button:focus-visible]:ring-3 has-[button:focus-visible]:ring-ring",
               )}
             >
               {acting ? (

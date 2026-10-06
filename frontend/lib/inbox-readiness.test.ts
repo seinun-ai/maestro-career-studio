@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { historyLabel, historyStatusOf, isNew, isReady, readinessMarks, readyFirst } from "./inbox-readiness.ts";
+import { historyLabel, historyStatusOf, isNew, isReady, readinessMarks, readinessSteps, readyFirst } from "./inbox-readiness.ts";
 
 const ready = { tailored: true, knockout: null, to_check: 0 };
 
@@ -93,4 +93,11 @@ test("visit comparisons use instants and do not mark equal or invalid dates new"
   assert.equal(isNew("2026-10-05T10:00:00Z", "2026-10-05T05:00:00-05:00"), false);
   assert.equal(isNew("2026-10-05T10:00:00Z", "invalid saved visit"), false);
   assert.equal(isNew("invalid created date", "2026-10-05T09:00:00Z"), false);
+});
+
+test("readiness steps count what is done", () => {
+  assert.equal(readinessSteps(null), null);
+  assert.deepEqual(readinessSteps({ tailored: true, knockout: null, to_check: 0 }), { done: 3, total: 3 });
+  assert.deepEqual(readinessSteps({ tailored: false, knockout: "opt", to_check: 2 }), { done: 0, total: 3 });
+  assert.deepEqual(readinessSteps({ tailored: null, knockout: null, to_check: 1 }), { done: 1, total: 3 });
 });

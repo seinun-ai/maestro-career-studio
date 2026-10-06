@@ -32,6 +32,13 @@ export function readinessMarks(r: Readiness | null | undefined): ReadinessMark[]
   return marks;
 }
 
+/** The three readiness steps as a meter: tailored, no knock-out, answers checked. Null without readiness. */
+export function readinessSteps(r: Readiness | null | undefined): { done: number; total: 3 } | null {
+  if (!r) return null;
+  const done = [r.tailored === true, r.knockout == null, r.to_check === 0].filter(Boolean).length;
+  return { done, total: 3 };
+}
+
 /** Ready rows first; each group keeps the order it came in (the user's chosen sort). */
 export function readyFirst<T extends { readiness?: Readiness | null }>(items: readonly T[]): T[] {
   return [...items.filter((i) => isReady(i.readiness)), ...items.filter((i) => !isReady(i.readiness))];

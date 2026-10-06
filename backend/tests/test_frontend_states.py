@@ -149,9 +149,13 @@ def test_reversible_actions_offer_undo():
 
 def test_a_leaving_entry_is_pruned_when_the_refetch_drops_it():
     section = _read("components/proposals/proposals-section.tsx")
-    effect = section.split("// Clear an id once the refetched list no longer holds it as it was", 1)[1].split("}, [items, leavingIds]);", 1)[0]
-    assert "now.get(id) === status" in effect and "setLeavingIds(new Map(rest))" in effect
+    # Adjusted during render, keyed on the refetched items: no effect, no lint escape.
+    prune = section.split("// Clear an id once the refetched list no longer holds it as it was", 1)[1].split("const roles = useMemo", 1)[0]
+    assert "now.get(id) === status" in prune and "setLeavingIds(new Map(rest))" in prune
+    assert "useEffect" not in prune and "set-state-in-effect" not in section
     assert "[&_button]:opacity-0!" in section  # beats the button's own data-disabled:opacity-50
+    # The pressed button is hidden under the spinner; its focus ring moves to the container.
+    assert "has-[button:focus-visible]:ring-3" in section
 
 
 def test_copy_uses_one_hook_with_an_error_path():

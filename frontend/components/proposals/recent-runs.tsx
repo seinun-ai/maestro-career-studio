@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown } from "lucide-react";
+import { Bot, ChevronDown } from "lucide-react";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
+import { RunOutcome } from "@/components/proposals/run-outcome";
 import { apiFetch } from "@/lib/api";
 import { agentDisplayName } from "@/lib/agent-name";
-import { AGENT_RUNS_LATEST_KEY, countsLine, outcomeWord } from "@/lib/agent-runs";
+import { AGENT_RUNS_LATEST_KEY, countsLine } from "@/lib/agent-runs";
 import { formatTimeAgo } from "@/lib/format-date";
 import type { AgentRun, AgentRunList } from "@/lib/types";
 
@@ -19,8 +20,9 @@ function RunLine({ run }: { run: AgentRun }) {
         <span className="min-w-0 max-w-full text-title-small">{run.title}</span>
         <span className="min-w-0 max-w-full text-muted-foreground text-body-small">
           {formatTimeAgo(run.finished_at)}
-          {who ? ` · ${who}` : ""} · {outcomeWord(run.outcome)}
+          {who ? ` · ${who}` : ""}
         </span>
+        <RunOutcome outcome={run.outcome} />
         <span className="min-w-0 max-w-full text-body-small">{countsLine(run.counts)}</span>
       </summary>
       {run.digest ? <p className="mt-2 max-w-[65ch] whitespace-pre-wrap text-body-medium wrap-anywhere">{run.digest}</p> : null}
@@ -51,9 +53,12 @@ export function RecentRuns() {
       {isError ? (
         <p className="text-muted-foreground text-body-medium">{"Couldn't load recent runs."}</p>
       ) : !data ? null : data.items.length === 0 ? (
-        <p className="text-muted-foreground text-body-medium">
-          No runs yet. Set one up on Automations.{" "}
-          <Link href="/automations" className="text-primary underline underline-offset-4">Open Automations</Link>
+        <p className="text-muted-foreground flex items-center gap-2 text-body-medium">
+          <Bot className="size-4 shrink-0" aria-hidden="true" />
+          <span>
+            No runs yet. Set one up on Automations.{" "}
+            <Link href="/automations" className="text-primary underline underline-offset-4">Open Automations</Link>
+          </span>
         </p>
       ) : (
         data.items.map((run) => <RunLine key={run.id} run={run} />)

@@ -293,8 +293,8 @@ def test_every_proposal_surface_names_who_filed_it():
     row = _SECTION[_SECTION.index("function ProposalRow(") :]
     assert "const byLine = proposalByLine(proposal.proposed_by, proposal.status);" in row
     assert 'const meta = [byLine, formatTimeAgo(proposal.created_at)].filter(Boolean).join(" · ");' in row
-    # It truncates in a narrow row: the whole of it on hover.
-    assert '<div className="text-muted-foreground truncate text-body-small" title={meta}>' in row
+    # The line is a chip and a time; the whole sentence stays as its title, for the narrow row.
+    assert 'title={meta}' in row and "<ActorChip" in row and "agentDisplayName(proposal.proposed_by)" in row
     assert '<CardTitle>{proposalByLine(data.proposed_by, data.status) ?? "Agent inbox"}</CardTitle>' in _PANEL
     assert "Proposed {formatShortDate(data.created_at)}" in _PANEL and '<Fact label="Proposed">' not in _PANEL
     assert "? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;" in _JOB
@@ -802,7 +802,7 @@ def test_the_visit_time_reaches_every_row_and_unknown_readiness_shows_no_marks()
     row_props = _block(_SECTION, "const rowProps = {", "\n  };")
     assert re.search(r"^    since,$", row_props, re.M)
     assert "since: string | null;" in _row()
-    assert "if (marks.length === 0) return null;" in _MARKS
+    assert "if (!steps) return null;" in _MARKS
     new_mark = _block(_row(), "{isNew(proposal.created_at, since) ? (", ") : null}")
     assert 'aria-hidden="true"' in new_mark and "New" in new_mark
 
@@ -849,3 +849,29 @@ def test_the_consent_line_is_said_once_on_the_inbox():
     empty = _SECTION[_SECTION.index("if (items.length === 0) {") : _SECTION.index("const rowProps")]
     assert "Nothing is submitted without your yes." not in empty
     assert "<p>Jobs your connected agents found. Nothing is submitted without your yes.</p>" in _PAGE
+
+
+def test_readiness_steps_node():
+    from tests.node_ts import run_node_test
+
+    result = run_node_test("lib/inbox-readiness.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_inbox_rows_use_actor_score_and_readiness_visuals():
+    src = _SECTION
+    assert "ActorChip" in src and "ScoreBar" in src
+    assert "DotMeter" in _MARKS
+    assert "ATS score ${score}" not in src and "· ATS score" not in src
+    # D5: the status chip is hidden where every row of the lane shares one status.
+    assert 'lane === "history" || lane === "needs_you"' in src
+
+
+def test_empty_inbox_top_collapses():
+    assert "Nothing new since your last visit" in _read("components/proposals/arrivals-strip.tsx")
+
+
+def test_run_outcome_is_a_glyph_and_a_word():
+    out = _read("components/proposals/run-outcome.tsx")
+    assert "CircleCheck" in out and "CircleAlert" in out and "CircleX" in out and "outcomeWord(" in out
+    assert not re.search(r"^import ", _read("lib/agent-runs.ts"), re.M)
