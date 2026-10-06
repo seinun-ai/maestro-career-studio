@@ -112,7 +112,7 @@ def test_the_remembered_app_is_best_effort():
 def test_small_surfaces_gain_their_glyphs():
     card = _CARD
     assert "CONCEPT_ICONS.scheduled" in card and "CONCEPT_ICONS.notRun" in card
-    assert "Ban" in _read("components/settings/connected-agents-card.tsx")
+    assert "<Ban " in _read("components/settings/connected-agents-card.tsx")
     assert "MessageSquareText" in _read("components/qa-tab.tsx")
     # The outcome glyph is Task 21's component, not a copy; lib/agent-runs.ts stays import-free.
     assert 'from "@/components/proposals/run-outcome"' in card
@@ -122,4 +122,10 @@ def test_small_surfaces_gain_their_glyphs():
 def test_the_connect_note_is_a_callout_until_an_automation_has_run():
     assert "bg-secondary-container text-on-secondary-container rounded-corner-md" in _PAGE
     assert "const anyRan = !!ran && !!data && data.cards.some((c) => ran.has(c.id));" in _PAGE
-    assert "anyRan ? (" in _PAGE
+    assert "{!ran ? null : anyRan ? (" in _PAGE
+
+
+def test_email_and_cover_letter_have_one_glyph_each():
+    assert "CONCEPT_ICONS.email" in _CARD and "AtSign" not in _CARD
+    assert "CONCEPT_ICONS.coverLetter" in _read("components/qa-tab.tsx")
+    assert "CONCEPT_ICONS.email" in _read("components/career/profile-panel.tsx")

@@ -6,7 +6,7 @@ import {
   BarChart3, BookOpen, BookPlus, Bot, BriefcaseBusiness, CalendarClock, CircleCheck, CircleDashed,
   CircleHelp, CircleX, Ellipsis, FileInput, FileOutput, FilePen, FileText, FolderGit2, Handshake,
   HeartPulse, IdCard, Inbox, LayoutTemplate, Layers, Lock, Merge, MessageSquare, Minus, Paperclip,
-  RefreshCw, RotateCcw, ScanSearch, School, SendHorizontal, Settings, SkipForward, Sparkles, Tags, TextQuote,
+  Mail, RefreshCw, RotateCcw, ScanSearch, School, ScrollText, SendHorizontal, Settings, SkipForward, Sparkles, Tags, TextQuote,
   ThumbsUp, TrendingDown, TrendingUp, TriangleAlert, UserRound, Wand2, Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -39,6 +39,9 @@ export const CONCEPT_ICONS = {
   workAuthorization: IdCard,
   studentPermit: School,
   docs: BookOpen,
+  // Mail is an email address; ScrollText is a cover letter (never swap them).
+  email: Mail,
+  coverLetter: ScrollText,
   // States.
   done: CircleCheck,
   notRun: CircleDashed,

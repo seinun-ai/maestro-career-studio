@@ -57,7 +57,7 @@ export default function AutomationsPage() {
   const cards = data?.cards.filter((c) => c.kind !== "custom") ?? [];
   const custom = data?.cards.find((c) => c.kind === "custom");
   const ran = runs.data ? latestByAutomation(runs.data.items) : null;
-  // Until a card has a Last ran, connecting the agent is the step that matters: it gets a callout.
+  // Nothing shows while the runs are unknown; until a card has a Last ran, connecting the agent is the step that matters: it gets a callout.
   const anyRan = !!ran && !!data && data.cards.some((c) => ran.has(c.id));
 
   return (
@@ -66,7 +66,7 @@ export default function AutomationsPage() {
         title="Automations"
         subtitle="Copy a prompt into your own agent app. It asks when to run, then does these jobs with Maestro."
       />
-      {anyRan ? (
+      {!ran ? null : anyRan ? (
         <p className="max-w-[65ch]">
           Your agent needs to be connected to Maestro first.{" "}
           <NewTabLink href={CONNECT_AGENT_GUIDE_URL} className="text-primary">

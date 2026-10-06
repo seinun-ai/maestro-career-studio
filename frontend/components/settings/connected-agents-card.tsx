@@ -102,15 +102,15 @@ export function ConnectedAgentsCard() {
               </h3>
               <ul aria-labelledby={cantId} className="text-muted-foreground grid gap-1">
                 <li className="flex items-start gap-1.5">
-                  <Ban className="text-muted-foreground relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <Ban className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   <span>Go past the daily limit below.</span>
                 </li>
                 <li className="flex items-start gap-1.5">
-                  <Ban className="text-muted-foreground relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <Ban className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   <span>Delete an item or a bullet from your career history.</span>
                 </li>
                 <li className="flex items-start gap-1.5">
-                  <Ban className="text-muted-foreground relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <Ban className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   <span>Connect from claude.ai or chatgpt.com in a browser.</span>
                 </li>
               </ul>

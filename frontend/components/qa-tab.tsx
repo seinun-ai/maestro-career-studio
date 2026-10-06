@@ -6,7 +6,6 @@ import {
   CircleCheck,
   Download,
   Loader2,
-  Mail,
   MessageSquareText,
   Pencil,
   RefreshCw,
@@ -391,20 +390,20 @@ function QAEntryCard({
       data-pending={isRegenerating || isRendering || isSaving || undefined}
     >
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <CardTitle className="flex items-start gap-2 text-title-small">
+        <CardTitle className="flex min-w-0 flex-1 items-start gap-2 text-title-small">
           {isCoverLetter ? (
-            <Mail className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <CONCEPT_ICONS.coverLetter className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           ) : (
             <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           )}
           <span>{isDocument ? KIND_LABELS[entry.kind] : entry.prompt}</span>
-          {isCoverLetter && entry.pdf_path ? (
-            <Badge variant="tonal" className="shrink-0">
-              <CircleCheck aria-hidden="true" />
-              PDF ready
-            </Badge>
-          ) : null}
         </CardTitle>
+        {isCoverLetter && entry.pdf_path ? (
+          <Badge variant="tonal" className="shrink-0">
+            <CircleCheck aria-hidden="true" />
+            PDF ready
+          </Badge>
+        ) : null}
         <div className="flex shrink-0 gap-1">
           {isDocument && !editing ? (
             <IconButton

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { AtSign, Ban, CircleCheck, Copy, Globe, Hand, Wrench, type LucideIcon } from "lucide-react";
+import { Ban, CircleCheck, Copy, Globe, Hand, Wrench, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,9 +27,8 @@ const KIND_ICON: Record<keyof typeof KIND_LABEL, LucideIcon> = {
   custom: Wrench,
 };
 
-// Email gets its own glyph: Mail means a cover letter in Q&A.
 const NEED_ICON: Partial<Record<keyof typeof NEED_LABELS, LucideIcon>> = {
-  email: AtSign,
+  email: CONCEPT_ICONS.email,
   web: Globe,
 };
 
