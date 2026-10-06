@@ -34,6 +34,8 @@ decides). It is the source of truth for scope.
 tests); Next.js 16 + React 19 + react-query; frontend pinned by `backend/tests/test_frontend_*.py`
 and `node --test` for pure `lib/*.test.ts`; host scripts in Python 3 stdlib + bash.
 
+**How this plan was checked:** Tasks 1–11 were applied to a scratch worktree (Fable 5.1, a6163e80 with Tasks 3 and 6 as amended at 0368c44e) and run: the full backend suite twice (9,202 passed, 1 skipped, with and without frontend/node_modules), every frontend ratchet (1,462), the MCP suite, `tsc`, lint, and both slop ratchets. Its eight corrections are folded in (a password echoed by a Pydantic 422, the snapshot reading the wrong DB file, one-line guardrail sentences, cache clearing, the placeholder ratchet, the settings tab anchor, the tool-count grep, the hotspot count).
+
 **How much freedom the executor has:**
 
 | Area | Freedom | Rule |
@@ -372,6 +374,14 @@ def test_delete_clears_both():
     assert not job_site_login.path().exists()
 
 
+@pytest.mark.parametrize("bad", ["short7!", "x" * 201])
+def test_a_bad_password_is_refused_without_echoing_it(bad):
+    put = client.put("/api/settings/job-site-login", json={"email": "a@x.com", "password": bad})
+    assert put.status_code == 422 and bad not in put.text
+    assert "input" not in str(put.json()["detail"])
+    assert not job_site_login.path().exists()
+
+
 def test_nothing_is_stored_in_the_database(db_session):
     from app.models.setting import Setting  # adjust if the model lives elsewhere
     client.put("/api/settings/job-site-login", json={"email": "a@x.com", "password": "pw-one-long"})
@@ -395,7 +405,12 @@ class JobSiteLoginIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     email: str | None = Field(default=None, max_length=320)
-    password: str | None = Field(default=None, min_length=8, max_length=200)
+    # No length constraint here: a Pydantic 422 echoes the rejected input, so the password
+    # would go back to the browser. The router checks the length with its own message.
+    password: str | None = None
+
+
+PASSWORD_MIN, PASSWORD_MAX = 8, 200
 
 
 class JobSiteLoginStatus(BaseModel):
@@ -468,6 +483,8 @@ def get_job_site_login():
 
 @router.put("/job-site-login", response_model=JobSiteLoginStatus)
 def put_job_site_login(payload: JobSiteLoginIn):
+    if payload.password is not None and not PASSWORD_MIN <= len(payload.password) <= PASSWORD_MAX:
+        raise HTTPException(422, detail=f"The password needs {PASSWORD_MIN} to {PASSWORD_MAX} characters.")
     job_site_login.write(payload.email, payload.password)
     return job_site_login.status()
 
@@ -678,8 +695,11 @@ def test_the_automatic_apply_guardrails(sentence):
 `settings_dir` fixture), `GET /api/automations` returns the Apply card with `kind == "scheduled"`;
 Off → `"attended"`.
 
-Update the `skills_dir` fixture in `test_automations_service.py` to write an `apply-auto` file
-too (it is now an expected skill).
+Update the `skills_dir` fixture in `test_automations_service.py` to write an `apply-auto` card
+too (with `include: [technique]`; it is now an expected skill), and to clear both caches
+(`automations.load_cards.cache_clear()` and `automations._alternate.cache_clear()`).
+Every pinned guardrail sentence sits on one line of the SKILL.md (the test does `sentence in body`).
+Spell `catalog()`'s two branches out: when on, replace ONLY the `apply-session` card.
 
 **Step 2: Run** — FAIL.
 
@@ -726,26 +746,26 @@ metadata:
 Full automation mode is on (the brief's `auto_apply.full_automation`). If it is off, stop and say
 so: this prompt is for full automation mode only.
 
-1. **Queue.** `list_proposals(status="accepted")`. Work the queue the way the user has asked you
-   to: which jobs, in what order, in batches or one by one, and how many per run. The daily cap in
-   the brief is the one fixed limit; stop when it is used up.
+1. **Queue.** `list_proposals(status="accepted")`.
+   Work the queue the way the user has asked you to: which jobs, in what order, in batches or one by one, and how many per run.
+   The daily cap in the brief is the one fixed limit; stop when it is used up.
 2. **Prepare.** Tailor or render only when the linked application or its PDF is missing.
 3. **Accounts.** When the site needs an account or a sign-in, `get_job_site_login(proposal_id)`
    gives the user's job-site email and password.
 4. **Fill.** Answer from the user's profile, career history and saved answers. Record every page
    with `record_filled_answers`. Name the saved fact (`slot`) behind every screening answer.
-5. **Check.** `get_final_review(proposal_id)`. Submit without asking only when
-   `get_final_review` shows all of these:
+5. **Check.** `get_final_review(proposal_id)`.
+   Submit without asking only when `get_final_review` shows all of these:
    - the PDF is ready;
    - no knock-out conflict;
    - `flags` is empty;
    - `duplicate_submitted` is false;
    - no blocked or manual items.
 6. **Submit.** Attach a screenshot of the filled form as `final_review` evidence, then
-   `record_consent` with channel `auto` and action `approved`. Submit. Never submit the same
-   application twice. Then `mark_submitted` with channel `auto` and a `note` naming what
-   confirmed it (the confirmation page's words, or a confirmation email). A screenshot of the
-   confirmation is optional. If you can't tell whether it went through, `report_failure` and
+   `record_consent` with channel `auto` and action `approved`. Submit.
+   Never submit the same application twice.
+   Then `mark_submitted` with channel `auto` and a `note` naming what confirmed it (the confirmation page's words, or a confirmation email).
+   A screenshot of the confirmation is optional. If you can't tell whether it went through, `report_failure` and
    don't submit again.
 7. **Everything else.** Call `request_decision` naming what blocked it, ask the user, and move on
    to the next job. If the user says yes, record it with `record_consent` channel `chat` and
@@ -812,7 +832,9 @@ def test_a_snapshot_has_a_consistent_db_files_and_a_manifest_but_no_secrets(dirs
     assert {"schema_revision", "app_version", "created_at", "source_host", "files"} <= set(manifest)
     for rel, digest in manifest["files"].items():
         assert hashlib.sha256((folder / rel).read_bytes()).hexdigest() == digest
-    assert sqlite3.connect(folder / "maestro_cs.sqlite3").execute("PRAGMA integrity_check").fetchone() == ("ok",)
+    db = sqlite3.connect(folder / "maestro_cs.sqlite3")
+    assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+    assert db.execute("SELECT version_num FROM alembic_version").fetchone()[0] == manifest["schema_revision"]
     assert (folder / "applications" / "a.pdf").exists()
     assert not any("secrets" in rel for rel in manifest["files"])
     assert not (folder / "settings" / "secrets").exists()
@@ -862,7 +884,7 @@ from pathlib import Path
 from sqlalchemy import text
 
 from app.config import DB_FILENAME, settings
-from app.db import engine  # adjust to the project's engine/session import
+from app.db import engine, sqlite_path
 
 KEEP = 3
 THROTTLE = timedelta(minutes=15)
@@ -876,7 +898,9 @@ def enabled() -> bool:
 
 
 def _copy_db(dest: Path) -> None:
-    src = sqlite3.connect(Path(settings.data_dir) / DB_FILENAME)
+    # The live database is the engine's, not data_dir/DB_FILENAME (DATABASE_URL may point
+    # elsewhere, and the test suite's engine does).
+    src = sqlite3.connect(sqlite_path(str(engine.url)))
     dst = sqlite3.connect(dest)
     with dst:
         src.backup(dst)
@@ -1037,7 +1061,9 @@ checks the script is valid bash (`bash -n`) and that the plist template names `S
 
 **Files:**
 - Create: `frontend/components/settings/full-automation-section.tsx`
-- Modify: `frontend/app/settings/page.tsx` (mount after `ConnectedAgentsCard`), `frontend/lib/types.ts`
+- Modify: `frontend/app/settings/page.tsx` (mount after `ConnectedAgentsCard`), `frontend/lib/types.ts`,
+  `frontend/lib/settings-tabs.ts` (`agents.anchors` gains `"full-automation"` after `"connected-agents"`;
+  run `node --test lib/settings-tabs.test.ts`)
 - Test: `backend/tests/test_frontend_full_automation.py`
 
 **What it shows** (design-system components: `SettingCard`, `Switch`, `Dialog`, `Input`, `Label`,
@@ -1050,8 +1076,10 @@ checks the script is valid bash (`bash -n`) and that the plist template names `S
   this off at any time." and buttons **Turn on** / **Cancel**. Off needs no dialog. It PUTs
   `/api/settings/auto-apply` with the whole value and `full_automation` changed.
 - While On, **Job-site login**: Email (`type="email"`, defaults to the stored email), Password
-  (`type="password"`, `autoComplete="new-password"`, empty placeholder "Saved" when
-  `password_set`), **Save** (PUT; send `password` only when typed), **Clear** (DELETE). Hint:
+  (`type="password"`, `autoComplete="new-password"`, no placeholder: the placeholder ratchet
+  forbids them; a hint between label and field, wired by `aria-describedby`:
+  `password_set ? "A password is saved. Type a new one to replace it." : "At least 8 characters."`),
+  **Save** (PUT; send `password` only when typed), **Clear** (DELETE). Hint:
   "Used only for job-site accounts. Your agent gets it while full automation is on, so it passes
   through your agent's AI provider. Use it for nothing else."
 - **Snapshots**: from `GET /api/snapshots/status`: when `enabled`, "Last snapshot: <time ago>" or
@@ -1059,7 +1087,8 @@ checks the script is valid bash (`bash -n`) and that the plist template names `S
   this copy write snapshots for a mirror."
 
 **Pins** (source tests, style of `test_frontend_automations.py`): the PUT path and
-`full_automation`; the dialog title and **Turn on**; `type="password"` and
+`full_automation`; the dialog title and **Turn on** (use the design system's `useConfirm`
+dialog if it fits, else `Dialog`); `"placeholder=" not in` the card; `type="password"` and
 `autoComplete="new-password"`; the password is never rendered back (no `value={...password`
 from the GET); the snapshot status path and both copies; vocabulary, design-token, leave-guard and
 query-error-state ratchets pass (pin any `LoadErrorState` caller in
@@ -1102,7 +1131,10 @@ Update the pins in `test_frontend_agent_words.py` to exactly these strings (and 
 **Files:** `CONTRIBUTING.md`, `SYSTEM.md`, `SECURITY.md`, `PRIVACY.md`,
 `docs/playbooks/agent-apply.md`, `docs/entities/others.md` (auto-apply, consent, Automations
 paragraph), new `docs/always-on-agent.md`, `CHANGELOG.md`, tool count 85 → 86 everywhere it is
-stated (`git grep -n "85 tools\|all 85\|(85)"` outside `docs/plans` must come back empty).
+stated (`git grep -n "85 tools\|all 85\|Every tool (85)"` outside `docs/plans` must come back
+empty). Known mentions: KNOWN_ISSUES.md:29, README.md:52/130/453, SYSTEM.md:118,
+backend/mcp_server/README.md:24/144, backend/mcp_server/codex_config.example.toml:27,
+mcpb/manifest.json:53.
 
 - **CONTRIBUTING #1** → "**Unchecked volume auto-apply or bulk blast.**" plus one sentence: full
   automation mode is opt-in, capped, limited to jobs the user queued and to answers that pass every
@@ -1133,7 +1165,10 @@ stated (`git grep -n "85 tools\|all 85\|(85)"` outside `docs/plans` must come ba
    `frontend/node_modules`** (the phase-3 lesson).
 2. Frontend: `node --test` for touched libs, `npx tsc --noEmit`, `npm run lint`, `npm run build`
    (`--webpack` if a symlinked `node_modules` breaks Turbopack).
-3. SYSTEM.md gate; slop ratchet backend and frontend.
+3. SYSTEM.md gate; slop ratchet backend and frontend. The dry run saw backend
+   `complexity_hotspots` 586 → 589 (three new functions over threshold; `transition` cc 33 → 34).
+   Split the new functions until the count is back at 586 (the `transition` +1 is not a new
+   hotspot). Re-baseline only if a split would hurt clarity, with the reason in the commit.
 4. Live check on a throwaway stack (spare ports, never 8001/3000):
    - Settings: switch On → dialog → On; save a job-site login; the password never appears in the
      page or any GET response; Off again.
