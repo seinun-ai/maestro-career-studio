@@ -81,8 +81,8 @@ and analytics across your saved jobs.
 
 ## Tool profiles
 
-The plugin loads the `full` profile (all 86 tools). Scoped profiles are subsets
-that keep a chat focused: `hunt` (20 tools), `apply` (48), `explore` (11),
+The plugin loads the `full` profile (all 87 tools). Scoped profiles are subsets
+that keep a chat focused: `hunt` (21 tools), `apply` (50), `explore` (11),
 `templates` (12), `career` (18). To use one, edit `MAESTRO_CS_MCP_PROFILE` in
 the plugin's `.mcp.json`, or use the setup script in the repository. Enable one
 profile at a time.

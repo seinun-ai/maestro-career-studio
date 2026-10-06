@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -64,6 +64,11 @@ class BriefAutoApply(BaseModel):
     cap: BriefCapStatus
 
 
+class BriefSync(BaseModel):
+    enabled: bool
+    role: Literal["home", "remote"] | None
+
+
 class JobSearchBriefResponse(BaseModel):
     """Server-composed context brief for an agentic job-search session.
 
@@ -79,6 +84,7 @@ class JobSearchBriefResponse(BaseModel):
     persona: str
     job_preferences: dict[str, Any]
     auto_apply: BriefAutoApply
+    sync: BriefSync
     jobs: list[BriefJob]
     base_resumes: list[dict[str, Any]]
     role_mix: list[dict[str, Any]]

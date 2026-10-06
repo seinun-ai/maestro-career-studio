@@ -422,6 +422,19 @@ class BackendClient:
     def get_job_search_brief(self) -> Any:
         return self._request("GET", "/api/jobs/search-brief")
 
+    def sync_now(self) -> Any:
+        try:
+            return self._request("POST", "/api/sync/round", json={"force": True})
+        except BackendError as exc:
+            if exc.status_code != 404:
+                raise
+            sync = self.get_job_search_brief().get("sync", {})
+            if sync.get("enabled") is False:
+                return "Sync isn't set up."
+            if sync.get("enabled") is True and sync.get("role") == "home":
+                return "This is your laptop's copy; your bot runs the sync"
+            raise
+
     def get_career_context(self) -> Any:
         return self._request("GET", "/api/kb/context")
 

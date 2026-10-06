@@ -21,7 +21,7 @@ tool below is one action your assistant can take in the app.
 ## Install
 
 Pick the route for your assistant. Every route defaults to the `full` profile
-(all 86 tools); see [Profiles](#profiles) to narrow it.
+(all 87 tools); see [Profiles](#profiles) to narrow it.
 
 ### Claude (Desktop, and Claude Code inside the Claude app)
 
@@ -141,9 +141,9 @@ chat isn't cluttered with unrelated ones.
 
 | Profile | Use when | Tools |
 | --- | --- | --- |
-| `full` | Mixed use (default) | all 86 |
-| `hunt` | Finding jobs and proposing them, no browser filling | 20 |
-| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 49 |
+| `full` | Mixed use (default) | all 87 |
+| `hunt` | Finding jobs and proposing them, no browser filling | 21 |
+| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 50 |
 | `explore` | Charts and trends across your saved jobs (`explore_*`) | 11 |
 | `templates` | Creating and testing resume templates | 12 |
 | `career` | Reading and editing your Career KB | 18 |
@@ -212,10 +212,11 @@ it.
 Each tool's own description (which your assistant sees) has the full details.
 
 **Jobs and search**
-- `get_job_search_brief`: your profile, constraints and resume summaries; call first in a job-search chat.
+- `get_job_search_brief`: your profile, constraints, resume summaries and sync status (`enabled`, `role`); call first in a job-search chat.
+- `sync_now`: ask the always-on copy to sync now; returns the round's outcome and per-step counts. On your laptop, it explains that your bot runs the sync; with sync off, it says "Sync isn't set up."
 - `find_job_by_url`: check whether a posting is already saved.
 - `store_extracted_jd`: save a job. Your assistant fills in the job's details in the format the tool describes.
-- `list_jobs`, `get_job`: saved jobs (a short paginated list, then one job in full).
+- `list_jobs`, `get_job`: saved jobs (a short paginated list, then one job in full), with ownership to identify jobs owned here and replicas.
 - `list_referrals`: referral contacts.
 
 **Tracking**

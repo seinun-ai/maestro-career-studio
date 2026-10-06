@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
+import pytest
 
 from app.db import get_db
 from app.main import app
@@ -29,6 +30,30 @@ def _assert_points_to_profile_autofill(warnings: list[str]) -> None:
     warning names that page, never Settings, and never the raw profile keys."""
     assert any("Profile › Autofill" in w for w in warnings)
     assert not [w for w in warnings if "Settings" in w or "authorized_to_work" in w]
+
+
+@pytest.mark.parametrize("case", [
+    (False, "", {"enabled": False, "role": None}),
+    (False, "http://127.0.0.1:8101", {"enabled": False, "role": None}),
+    (True, "", {"enabled": True, "role": "home"}),
+    (True, "http://127.0.0.1:8101", {"enabled": True, "role": "remote"}),
+], ids=["off", "url-without-key", "home", "remote"])
+def test_search_brief_exposes_sync_status_over_http(db_session, tmp_path, monkeypatch, case):
+    from app.services.sync import status
+
+    key_exists, remote_url, expected = case
+    key_path = tmp_path / "sync-key"
+    monkeypatch.setattr(status.settings, "settings_dir", tmp_path)
+    monkeypatch.setattr(status.settings, "sync_key_file", key_path)
+    monkeypatch.setattr(status.settings, "sync_remote_url", remote_url)
+    if key_exists:
+        key_path.write_text("test-key\n")
+
+    response = _get_brief(db_session)
+    assert response.status_code == 200
+    assert response.json()["sync"] == expected
+    if expected["role"] != "remote":
+        assert TestClient(app).post("/api/sync/round", json={"force": True}).status_code == 404
 
 
 def test_search_brief_not_captured_by_job_id_route(db_session, tmp_path, monkeypatch):

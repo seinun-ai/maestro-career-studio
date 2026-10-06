@@ -28,6 +28,7 @@ def test_all_tools_registered():
         "list_referrals",
         "store_extracted_jd",
         "get_job_search_brief",
+        "sync_now",
         "find_job_by_url",
         "get_career_context",
         "get_career_export",
@@ -78,6 +79,19 @@ def test_all_tools_registered():
     }
     expected |= KB_TOOL_NAMES
     assert expected <= names
+
+
+async def test_sync_now_is_an_annotated_hunt_and_apply_tool():
+    from mcp_server.profiles import APPLY_TOOLS, HUNT_TOOLS
+
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    tool = tools["sync_now"]
+    assert tool.title == "Sync Now"
+    assert tool.annotations.readOnlyHint is False
+    assert tool.annotations.destructiveHint is False
+    assert tool.annotations.idempotentHint is True
+    assert tool.annotations.openWorldHint is True
+    assert "sync_now" in HUNT_TOOLS & APPLY_TOOLS
 
 
 def test_resume_version_tools_forward_to_client(monkeypatch):
@@ -1204,10 +1218,11 @@ async def test_pinned_annotation_decisions():
         assert got == expected, name
 
 
-async def test_only_the_llm_calling_tools_are_open_world():
+async def test_only_llm_and_sync_tools_are_open_world():
     tools = await srv.mcp.list_tools()
     open_world = {t.name for t in tools if t.annotations.openWorldHint}
     assert open_world == {
+        "sync_now",
         "run_health_check",
         "kb_capture",
         "generate_qa_answers",

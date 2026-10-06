@@ -14,6 +14,9 @@ metadata:
 
 Full automation mode must be on in the brief; otherwise stop.
 
+Call `sync_now` at the start and end of a run when the brief's `sync.enabled` is true.
+Only work jobs whose `ownership.owned_here` is true.
+
 1. **Queue.** Call `list_proposals(status="accepted")` only.
    Work the queue the way the user has asked you to.
    Jobs in Needs you go back through the user's queue before a later automatic run.

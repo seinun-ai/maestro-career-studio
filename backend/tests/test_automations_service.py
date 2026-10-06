@@ -50,6 +50,16 @@ def test_full_automation_serves_the_automatic_apply_prompt():
     assert "\n# Agent Apply Execution" in apply.body
 
 
+@pytest.mark.parametrize("full_automation", [False, True], ids=["attended", "automatic"])
+@pytest.mark.parametrize("sentence", [
+    "Call `sync_now` at the start and end of a run when the brief's `sync.enabled` is true.",
+    "Only work jobs whose `ownership.owned_here` is true.",
+])
+def test_apply_prompts_obey_sync_ownership(full_automation, sentence):
+    cards = {c.id: c for c in automations.catalog(full_automation=full_automation).cards}
+    assert sentence in cards["apply-session"].body
+
+
 @pytest.mark.parametrize("sentence", [
     "Submit without asking only when `get_final_review` shows all of these:",
     "`record_consent` with channel `auto`",

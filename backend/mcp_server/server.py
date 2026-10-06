@@ -311,7 +311,8 @@ def list_jobs(
     employment_type, work_mode, location, salary, work_authorization,
     opt_accepted) of roughly 0.8k characters, with no raw_text or
     extracted_json; use get_job for full detail. Optionally only jobs without
-    an application."""
+    an application. Each job carries ownership (owned_here, owner, handover,
+    pending_requests), identifying replicas and jobs being handed over."""
     return _client.list_jobs(
         limit=limit, offset=offset, without_application=without_application
     )
@@ -320,7 +321,9 @@ def list_jobs(
 @mcp.tool(**_read("Get Job Details"))
 @_guard
 def get_job(job_id: str) -> Any:
-    """Get a job with its most recent application."""
+    """Get a job with its most recent application. The nested job carries
+    ownership (owned_here, owner, handover, pending_requests), identifying
+    replicas and jobs being handed over."""
     return _client.get_job(job_id)
 
 
@@ -444,8 +447,21 @@ def get_job_search_brief() -> Any:
     careers pages (company + careers_url + has_contact), and counts of jobs
     captured in the last 30 days by role category. It is the entry point of the
     agentic job-search workflow (playbook: docs/agentic-job-search.md), which
-    covers capture, scoring and proposals; applying is outside its scope."""
+    covers capture, scoring and proposals; applying is outside its scope.
+    sync carries enabled and role (home, remote, or null when sync is off)."""
     return _client.get_job_search_brief()
+
+
+@mcp.tool(**_write("Sync Now", destructive=False, idempotent=True, open_world=True))
+@_guard
+def sync_now() -> Any:
+    """Run one sync round on the always-on copy. Returns its outcome
+    (ok, transient, needs_person) and per-step counts, or a skip reason.
+    Forces a round through the backoff window; an attempt within the last
+    30 seconds is skipped with 'Synced moments ago.'. Sync off returns
+    \"Sync isn't set up.\"; home returns
+    \"This is your laptop's copy; your bot runs the sync\"."""
+    return _client.sync_now()
 
 
 @mcp.tool(**_read("Get Career Context"))

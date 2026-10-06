@@ -20,6 +20,9 @@ or Claude in Chrome).
 app, and one explicit yes per application before the final submit. Decide
 everything else yourself.
 
+Call `sync_now` at the start and end of a run when the brief's `sync.enabled` is true.
+Only work jobs whose `ownership.owned_here` is true.
+
 1. **Queue.** `list_proposals(status="accepted")` and work it in order, one
    application at a time, in this session. Results are paged: compare `items`
    to `total` and page with `offset`. Say which one you are starting.
