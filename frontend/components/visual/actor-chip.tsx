@@ -29,7 +29,7 @@ export function ActorChip({ kind, name, title, children, className }: {
     <span title={title}
       className={cn("inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-surface-container px-2 text-label-medium text-foreground", className)}>
       <Icon aria-hidden="true" className="size-3 shrink-0" />
-      {name || word}
+      <span className="min-w-0 truncate">{name || word}</span>
       {children}
     </span>
   );

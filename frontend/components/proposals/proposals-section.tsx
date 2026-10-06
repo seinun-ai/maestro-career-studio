@@ -907,7 +907,7 @@ function ProposalRow({
                 </div>
                 {byLine ? (
                   <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-body-small" title={meta}>
-                    <ActorChip kind={proposal.proposed_by === "you" ? "you" : "agent"} name={agentDisplayName(proposal.proposed_by)} />
+                    <ActorChip kind={proposal.proposed_by === "you" ? "you" : "agent"} name={agentDisplayName(proposal.proposed_by)} className="min-w-0 shrink" />
                     <span className="truncate">{formatTimeAgo(proposal.created_at)}</span>
                   </div>
                 ) : (

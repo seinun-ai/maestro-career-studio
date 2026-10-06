@@ -21,6 +21,8 @@ export function ReadinessMarks({ readiness }: { readiness: Readiness | null | un
       ) : (
         <DotMeter name="Ready" filled={steps.done} total={steps.total} word={`${steps.done} of ${steps.total} ready`} className="text-muted-foreground" />
       )}
+      {/* Which step the meter is missing; unknown (null) counts as not done but claims nothing. */}
+      {readiness?.tailored === false ? <span className="text-muted-foreground text-label-small">Not tailored</span> : null}
       {warnings.map((mark) => (
         <span key={mark.text} className="inline-flex items-center gap-1 rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
           <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />

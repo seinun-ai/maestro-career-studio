@@ -41,7 +41,10 @@ export function CapToday({ className }: { className?: string }) {
   return (
     <p className={cn("mt-0.5 flex items-center gap-2 text-body-small tabular-nums", className)}>
       Applications per day: {cap.reserved_last_24h} of {cap.max_per_day} used in the last 24 hours
-      <ProgressCount done={cap.reserved_last_24h} total={cap.max_per_day} noun="used in the last 24 hours" showText={false} />
+      {/* The sentence beside it is visible, so the bar stays out of the accessibility tree (no double reading). */}
+      <span aria-hidden="true" className="inline-flex">
+        <ProgressCount done={cap.reserved_last_24h} total={cap.max_per_day} noun="used in the last 24 hours" showText={false} />
+      </span>
     </p>
   );
 }

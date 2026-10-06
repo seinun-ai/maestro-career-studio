@@ -875,3 +875,11 @@ def test_run_outcome_is_a_glyph_and_a_word():
     out = _read("components/proposals/run-outcome.tsx")
     assert "CircleCheck" in out and "CircleAlert" in out and "CircleX" in out and "outcomeWord(" in out
     assert not re.search(r"^import ", _read("lib/agent-runs.ts"), re.M)
+
+
+def test_an_untailored_row_says_so_beside_the_meter():
+    assert 'readiness?.tailored === false ? <span className="text-muted-foreground text-label-small">Not tailored</span>' in _MARKS
+    assert "Not tailored" not in _MARKS.split("readiness?.tailored === false", 1)[0]
+    # Long agent names shrink and truncate inside the meta line; the bar beside the cap sentence is hidden from AT.
+    assert 'className="min-w-0 shrink"' in _SECTION
+    assert 'aria-hidden="true" className="inline-flex"' in _read("components/proposals/cap-today.tsx")
