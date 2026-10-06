@@ -1119,9 +1119,12 @@ class BackendClient:
             ),
         )
 
-    def ats_candidates(self, job_id: str) -> Any:
+    def ats_candidates(self, job_id: str, include_other_countries: bool = False) -> Any:
         """How the country rule treats a job: {job_country, fallback, skipped}."""
-        return self._request("GET", "/api/ats-scores/candidates", params={"job_id": job_id})
+        params = {"job_id": job_id}
+        if include_other_countries:  # sent only when true, like score_ats
+            params["include_other_countries"] = "true"
+        return self._request("GET", "/api/ats-scores/candidates", params=params)
 
     def compare_ats(self, application_id: str) -> Any:
         return self._request("GET", f"/api/applications/{application_id}/ats-compare")

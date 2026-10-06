@@ -292,3 +292,15 @@ def test_ats_candidates_gets_the_country_rule_for_a_job():
     out = client.ats_candidates("j1")
     assert out["skipped"] == ["uk_ds"]
     assert route.calls.last.request.url.params["job_id"] == "j1"
+
+
+@respx.mock
+def test_ats_candidates_sends_include_other_countries_only_when_true():
+    route = respx.get(f"{BASE}/api/ats-scores/candidates").mock(
+        return_value=httpx.Response(200, json={"job_country": "US", "fallback": False, "skipped": []})
+    )
+    client = BackendClient(BASE)
+    client.ats_candidates("j1")
+    assert "include_other_countries" not in route.calls.last.request.url.params
+    client.ats_candidates("j1", include_other_countries=True)
+    assert route.calls.last.request.url.params["include_other_countries"] == "true"

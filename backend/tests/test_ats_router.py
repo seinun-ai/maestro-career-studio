@@ -339,6 +339,13 @@ def test_candidates_route(db_session, tmp_path, monkeypatch):
     try:
         assert read("us") == {"job_country": "US", "fallback": False, "skipped": ["india"]}
         assert read("Remote") == {"job_country": None, "fallback": False, "skipped": []}
+        job.country = "us"
+        db_session.commit()
+        everything = TestClient(app).get(
+            "/api/ats-scores/candidates",
+            params={"job_id": str(job.id), "include_other_countries": True},
+        )
+        assert everything.json() == {"job_country": "US", "fallback": False, "skipped": []}
         db_session.query(BaseResume).filter(BaseResume.slug.in_(["us", "anywhere"])).delete()
         db_session.commit()
         assert read("US") == {"job_country": "US", "fallback": True, "skipped": []}

@@ -56,13 +56,18 @@ def list_ats_scores(
 
 
 @router.get("/candidates", response_model=AtsCandidatesRead)
-def ats_candidates(db: Annotated[Session, Depends(get_db)], job_id: Annotated[UUID, Query()]):
+def ats_candidates(
+    db: Annotated[Session, Depends(get_db)],
+    job_id: Annotated[UUID, Query()],
+    include_other_countries: Annotated[bool, Query()] = False,
+):
     """How the country rule treats this job: its country, which bases it skips,
-    and whether the filter fell back to every base."""
+    and whether the filter fell back to every base. With `include_other_countries`
+    nothing is skipped, matching the scores asked for the same way."""
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    found = base_eligibility.candidates(db, job)
+    found = base_eligibility.candidates(db, job, include_other_countries=include_other_countries)
     return AtsCandidatesRead(
         job_country=found.job_country, fallback=found.fallback, skipped=found.skipped
     )

@@ -17,7 +17,7 @@ _COUNTRIES = {"job_country": "US", "fallback": False, "skipped": ["uk_base"]}
 @pytest.fixture(autouse=True)
 def _candidates(monkeypatch):
     """score_ats reads the country rule once after scoring; keep it off the network."""
-    monkeypatch.setattr(srv._client, "ats_candidates", lambda job_id: dict(_COUNTRIES))
+    monkeypatch.setattr(srv._client, "ats_candidates", lambda job_id, include_other_countries=False: dict(_COUNTRIES))
 
 # ---------- score_ats ----------
 
@@ -87,10 +87,28 @@ def test_score_ats_forwards_include_other_countries(monkeypatch):
     assert seen == [True, False]
 
 
+def test_score_ats_countries_block_follows_include_other_countries(monkeypatch):
+    monkeypatch.setattr(
+        srv._client, "score_ats",
+        lambda job_id, target_type=None, target_id=None, include_other_countries=False: [_score("alpha")],
+    )
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+    monkeypatch.setattr(
+        srv._client, "ats_candidates",
+        lambda job_id, include_other_countries=False: {
+            "job_country": "US", "fallback": False,
+            "skipped": [] if include_other_countries else ["uk_base"],
+        },
+    )
+
+    assert srv.score_ats("job1")["countries"]["skipped"] == ["uk_base"]
+    assert srv.score_ats("job1", include_other_countries=True)["countries"]["skipped"] == []
+
+
 def test_score_ats_country_lookup_failing_after_the_scores_landed_is_null(monkeypatch):
     from mcp_server.client import BackendError
 
-    def down(job_id):
+    def down(job_id, include_other_countries=False):
         raise BackendError("Backend returned 500", status_code=500)
 
     monkeypatch.setattr(srv._client, "score_ats", lambda job_id, target_type=None, target_id=None, include_other_countries=False: [_score("alpha")])

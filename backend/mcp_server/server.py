@@ -1495,7 +1495,13 @@ def score_ats(
     countries: dict[str, Any] = (
         {}
         if target_id
-        else {"countries": _best_effort_hint(lambda: _client.ats_candidates(job_id))}
+        else {
+            "countries": _best_effort_hint(
+                lambda: _client.ats_candidates(
+                    job_id, include_other_countries=include_other_countries
+                )
+            )
+        }
     )
     if brief:
         return {"scores": scores, "recommendation": recommendation, **countries, "next": None}
