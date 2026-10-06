@@ -3,6 +3,9 @@
 import logging
 import os
 import stat
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
@@ -37,6 +40,48 @@ def test_an_email_change_keeps_the_password():
     client.put("/api/settings/job-site-login", json={"email": "a@x.com", "password": "pw-one-long"})
     client.put("/api/settings/job-site-login", json={"email": "b@x.com"})
     assert job_site_login.read() == ("b@x.com", "pw-one-long")
+
+
+def test_simultaneous_email_and_password_puts_preserve_both_updates(monkeypatch):
+    client.put("/api/settings/job-site-login",
+               json={"email": "ada@example.com", "password": "pw-one-long"})
+    original_read = job_site_login.read
+
+    def slow_read():
+        value = original_read()
+        time.sleep(0.05)
+        return value
+
+    monkeypatch.setattr(job_site_login, "read", slow_read)
+    start = threading.Barrier(2)
+
+    def put(payload):
+        start.wait(timeout=5)
+        return client.put("/api/settings/job-site-login", json=payload)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(put, [
+            {"email": "grace@example.com"}, {"password": "pw-two-long"},
+        ]))
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert job_site_login.read() == ("grace@example.com", "pw-two-long")
+
+
+@pytest.mark.parametrize("contents", ["[]", '"not an object"'])
+def test_get_and_put_repair_a_non_object_login_file(contents):
+    target = job_site_login.path()
+    target.parent.mkdir(mode=0o700, parents=True)
+    target.write_text(contents, encoding="utf-8")
+
+    assert client.get("/api/settings/job-site-login").json() == {
+        "email": None, "password_set": False,
+    }
+    put = client.put("/api/settings/job-site-login", json={"password": "repaired-pass"})
+
+    assert put.status_code == 200
+    assert put.json() == {"email": None, "password_set": True}
+    assert job_site_login.read() == (None, "repaired-pass")
 
 
 def test_delete_clears_both():
