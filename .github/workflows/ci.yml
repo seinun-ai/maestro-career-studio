@@ -67,6 +67,11 @@ jobs:
           node-version: "24"
 
       - name: Run backend and MCP test suites
+        env:
+          # Skips the `slow` tests (a real backend, a venv install, the Linux memory budget):
+          # the budget test downloads the same fastembed model as test_golden.py below.
+          # The reviewer and the pilot run them (docs/native-install.md).
+          MAESTRO_SKIP_SLOW: "1"
         run: |
           cd backend
           # tests/ats/test_golden.py is EXCLUDED on purpose: it pulls a fastembed
@@ -134,6 +139,9 @@ jobs:
 
       - name: Lint scripts
         run: shellcheck scripts/*.sh
+
+      - name: Lint native scripts
+        run: shellcheck --external-sources --source-path=SCRIPTDIR backend/scripts/native/*.sh
 
   update-check:
     name: update.sh --check (no stack)

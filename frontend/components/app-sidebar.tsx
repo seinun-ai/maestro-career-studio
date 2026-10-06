@@ -3,21 +3,7 @@
 import { Suspense } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { usePathname, useSearchParams } from "next/navigation";
-import {
-  Bot,
-  FilePlus2,
-  Inbox,
-  FileText,
-  BarChart3,
-  BriefcaseBusiness,
-  Handshake,
-  LayoutTemplate,
-  MessageSquare,
-  Settings as SettingsIcon,
-  UserRound,
-  Workflow,
-  type LucideIcon,
-} from "lucide-react";
+import { FilePlus2, type LucideIcon } from "lucide-react";
 
 import {
   Sidebar,
@@ -37,6 +23,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { MaestroMark } from "@/components/brand-logo";
 import { useModKey } from "@/hooks/use-mod-key";
 import { useNeedsYouCount } from "@/hooks/use-needs-you-count";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { navCurrent } from "@/lib/nav";
 import { needsYouBadge, type NavBadge } from "@/lib/needs-you";
 import { shortcutLabel } from "@/lib/shortcuts";
@@ -48,32 +35,32 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Job search",
     items: [
-      { href: "/applications", label: "Jobs", icon: Inbox },
-      { href: "/proposals", label: "Agent inbox", icon: Bot },
-      { href: "/automations", label: "Automations", icon: Workflow },
-      { href: "/referrals", label: "Referrals", icon: Handshake },
+      { href: "/applications", label: "Jobs", icon: CONCEPT_ICONS.jobs },
+      { href: "/proposals", label: "Agent inbox", icon: CONCEPT_ICONS.agentInbox },
+      { href: "/automations", label: "Automations", icon: CONCEPT_ICONS.automations },
+      { href: "/referrals", label: "Referrals", icon: CONCEPT_ICONS.referrals },
     ],
   },
   {
     label: "Career library",
     items: [
-      { href: "/career", label: "Career history", icon: BriefcaseBusiness },
-      { href: "/base-resumes", label: "Base resumes", icon: FileText },
-      { href: "/templates", label: "Templates", icon: LayoutTemplate },
+      { href: "/career", label: "Career history", icon: CONCEPT_ICONS.careerHistory },
+      { href: "/base-resumes", label: "Base resumes", icon: CONCEPT_ICONS.baseResume },
+      { href: "/templates", label: "Templates", icon: CONCEPT_ICONS.templates },
     ],
   },
   {
     label: "Tools",
     items: [
-      { href: "/chat", label: "Assistant", icon: MessageSquare },
-      { href: "/analytics", label: "Analytics", icon: BarChart3 },
+      { href: "/chat", label: "Assistant", icon: CONCEPT_ICONS.assistant },
+      { href: "/analytics", label: "Analytics", icon: CONCEPT_ICONS.analytics },
     ],
   },
 ];
 
 const ACCOUNT_ITEMS: NavItem[] = [
-  { href: "/profile", label: "Profile", icon: UserRound },
-  { href: "/settings", label: "Settings", icon: SettingsIcon },
+  { href: "/profile", label: "Profile", icon: CONCEPT_ICONS.you },
+  { href: "/settings", label: "Settings", icon: CONCEPT_ICONS.settings },
 ];
 
 // The Needs-you count wears the Needs you chip's orange (status-chip.tsx).

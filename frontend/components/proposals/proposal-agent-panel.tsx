@@ -2,14 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { GuardedLink as Link } from "@/components/guarded-link";
-import {
-  Briefcase,
-  Building2,
-  FileText,
-  Images,
-  ListChecks,
-  MessageSquareText,
-} from "lucide-react";
+import { Building2, FileText, Images, ListChecks, MessageSquareText } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +16,9 @@ import { needsYouHelp, needsYouLine } from "@/lib/inbox-lanes";
 import { isLoadFailure } from "@/lib/query-state";
 import { formatAbsoluteDateTime, formatShortDate } from "@/lib/format-date";
 import type { ProposalDetail } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const AgentInboxIcon = CONCEPT_ICONS.agentInbox;
 
 /**
  * Proposal-only fields for the job Overview tab — plan, expires, evidence.
@@ -192,7 +188,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
             href="/proposals"
             className="text-muted-foreground inline-flex items-center gap-1.5 text-body-small underline"
           >
-            <Briefcase className="size-3.5" aria-hidden="true" />
+            <AgentInboxIcon className="size-3.5" aria-hidden="true" />
             Open Agent inbox
           </Link>
         </div>

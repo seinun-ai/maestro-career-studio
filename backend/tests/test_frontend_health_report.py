@@ -64,6 +64,8 @@ def test_stale_is_surfaced_and_apply_locks():
     assert "Check again to update it." in _PAGE
     assert "STALE_APPLY_HINT" in _CARDS
     assert "disabled:pointer-events-auto" in _CARDS
+    # the Button primitive sets data-disabled:pointer-events-none; a locked button overrides the same modifier
+    assert "data-disabled:pointer-events-auto" in _CARDS
 
 
 def test_apply_sends_content_hash_and_handles_409():
@@ -116,7 +118,7 @@ def test_collapsed_row_cannot_overflow_on_a_long_entry_label():
     ("<entry> · bullet N"), wrapping inside the card rather than widening it.
     """
     row = _CARDS[_CARDS.index("function CollapsedRow("): _CARDS.index("export function FindingGroupHeader(")]
-    assert "{finding.label} · <LevelChip finding={finding} />" in row
+    assert "{finding.label}" in row and "<LevelChip finding={finding} />" in row
     assert "shortFindingLabel" not in _CARDS and "shortFindingLabel" not in _HELPERS
     assert "break-words" in row
     # The action + overflow menu hold their width instead of being squeezed,

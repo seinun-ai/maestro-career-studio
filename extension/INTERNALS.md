@@ -24,6 +24,7 @@ worker:
 | `shared/receipt.js` | the panel document | the answer receipt builder: a run's report plus the post-run `fill_inventory` become the `POST /api/jobs/{id}/filled-answers` fields, each with its source pill; every same-labelled occurrence is kept, never-fill and unrun fields are not recorded, and it names no telemetry or trace channel (SYSTEM.md `{#inv-filled-answers-local}`); posted by `panel/actions/fill.js` `recordReceipt` through the generic `api` door |
 | `shared/recipe-book.js` | the panel document | the recipe book: which of the engine's own moves worked per widget family, its lifecycle and bounds; the loop's `deps.recipes` |
 | `shared/profile-fields.js` | every frame **and** the panel document | the label patterns naming a TYPED home in the autofill profile: one table read by the rule that FILLS the field and by the pause row that decides where an answer is LEARNED |
+| `shared/status-roles.js` | the panel document | an application status's word and colour role (`ns.statusRoles`), the same table as the web `status-chip.tsx` (pinned by `test_extension_status_roles.py`); read by `matchChip` and the Track status segment; `panel.js` throws at boot naming it when the tag is missing |
 | `content/field-reader.js` | every frame | the new fill engine's one answer to "what is this field asking" (label-for → … → nearby → preceding: the visible text right before the field, when nothing names it — never a radio's or checkbox's, and only text that passes the label test: short, no sentence, no error, no heading before it, no other text or trailing label beside it), with its source. `readField(container)` runs it too, so a nameless group container or date wrapper can take its question from it; `ns.precedingLabel` is also a group's question with no container. A label that names only a part ("Month", "Day", "Year", "Type", "Number") is prefixed with its group's question, and a control holding one part of a date says which (`part`) |
 | `content/fill-base.js` | every frame | the engine's page primitives: budgets with real cancellation and a latched Stop, validation state, popup ownership, human typing, closing only popups the engine opened |
 | `content/shapes.js` | every frame | widget shapes: recognise, group (a nameless radio outside any container joins its own run of nameless radios under the nearest ancestor holding no other kind of control — cut at visible text that is no option's label, never two options reading the same; a nameless checkbox stays alone; a named checkbox's same-name set stops at its nearest grouping container, since live Workday names every work entry's "I currently work here" box alike), read what is COMMITTED, how a choice widget opens |
@@ -40,6 +41,7 @@ worker:
 | `content/detect.js` | every frame, every page | the detection read — reads, scores, returns |
 | `content/agent.js` | every frame | page RPC front door, extraction wrapper, resume attach |
 | `panel/panel.{html,css,js}` | the side panel | the store, the loaders, the generation guard, the render loop, the tab binding; sends everything through the service worker |
+| `panel/icons.js` | the side panel | `ns.icon(name, {size, label})`: inline Lucide svg built with `createElementNS` (never `innerHTML`), `aria-hidden` unless labelled, `data-icon` names it; one glyph per concept as in the web app's `lib/concept-icons.ts`; no emoji or text glyph in panel code (`test_extension_panel_icons.py`); `panel.js` throws at boot when it is missing, and stage bodies reach it as `build.icon` |
 | `panel/stages/*.js` + `panel/stages.js` | the side panel | one file per rail stage — a body is handed a per-render snapshot (`stageContext`), never the store, and `card` is never published — gathered by a roster that throws when a script tag is missing |
 | `panel/actions/*.js` + `panel/actions.js` | the side panel | one file per concern (save job and score its bases, pick a draft, quick tailor + base as is, fill this form, submit one pause-row answer, ask one question, mark draft/applied), each handed one `write(patch)` door (`actionStore` refuses a key the store lacks); `actions/during.js` is the `busy` span they all read, and `busy` covers everything an action writes including its learn tail |
 | `sw.js` | the extension | every backend call, the frame fan-out, the one sanctioned injection, the hotkey, and giving the toolbar icon to the side panel |
@@ -146,7 +148,7 @@ it armed. Three rules hold the shape up:
   than claiming the job exists. Skipping is not doing: arming a base resume skips
   Resume *visibly* — dashed, "Using your base resume as is.", never a
   tick, and never the word "Skipped" (it reads as declined, and it is the Agent
-  inbox's word for a rejected job; a screen reader hears "not needed"). And `done.fill` is this extension's own claim that it filled or
+  inbox's word for a rejected job; the row says "Not needed" in visible words with a minus). And `done.fill` is this extension's own claim that it filled or
   attached HERE, so an application marked applied inside the web app does not
   put a checkmark on a page the extension never wrote to.
 
@@ -157,9 +159,9 @@ under them (read from stored scores, never computed here; with one ring, "Base
 resume score" and "Tailoring can raise it."; with none, "Not scored yet."), and
 one deep link on the last line, right-aligned, with **Refresh** at that line's
 left. The link is labelled by the most specific thing we know — "Open
-application ↗", else "Open in Maestro CS ↗", and nothing at all until the
-service worker has said where the web app is; its `aria-label` spells the
-destination out in full, because beside a job title "Open application" would
+application", else "Open in Maestro CS" (each followed by an `external-link` icon),
+and nothing at all until the service worker has said where the web app is; its
+`aria-label` spells the destination out in full and adds "(opens in a new tab)", because beside a job title "Open application" would
 otherwise read as the posting's own apply page. It stays off the title's line
 because beside the chip it and the job title fight over one axis: at 400px — an
 ordinary side-panel width — the title was left 104px and five wrapped lines.
@@ -254,14 +256,14 @@ asking permission of itself.
   or **Tailor to this job**, with one muted line ("Base: your resume unchanged.
   Tailor: fit it to this job first."). Nothing is pre-selected. *Tailor to this
   job* discloses **Quick tailor** — the same function the footer's primary runs,
-  one behaviour and one label — and **Tailor in Maestro CS ↗**, a real link to
+  one behaviour and one label — and **Tailor in Maestro CS** (with the `external-link` icon), a real link to
   `/jobs/{id}?tab=fit` and never an API call (the panel has no business creating
   a gap analysis behind your back), with one line: "Quick tailor makes the PDF
   here. A PDF you make in Maestro CS shows up here when you select Refresh."
   (the second sentence only beside the link; the panel reads the backend on
   load and on Refresh, never on a timer). With an application and its PDF the
   step is simply done, its row reading "Resume ready · 77" (the application's
-  score when stored); reopened, it offers one small **Tailor in Maestro CS ↗**
+  score when stored); reopened, it offers one small **Tailor in Maestro CS**
   link and no footer primary, because Quick tailor there would replace the
   draft unasked. **The panel never says "tailored" about an application's
   resume**: a track-this application holds the base unchanged, and the panel
@@ -1491,7 +1493,7 @@ comma-separated.
 - **The per-application Q&A transcript is not in the panel** — a chat log is
   list-shaped, versioned and re-readable, and a 400px rail is the wrong place
   for it. The composer for the question in front of you stays; the header's
-  "Open application ↗" is the route to the rest.
+  "Open application" is the route to the rest.
 - **Two identifiers keep historical names on purpose.** The command key is still
   `toggle-widget`, because Chrome keys a user's rebinding by the command NAME and
   renaming it silently discards every custom binding anyone has made; what a user

@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     # shared-memory semantics SQLite cannot trust (some Docker Desktop bind-mount
     # backends): set DELETE there. Only these two values are accepted.
     sqlite_journal_mode: str = "WAL"
+    # Small native machines release the ATS model after each embedding batch.
+    # Default off preserves the in-process model cache for existing installs.
+    embeddings_out_of_process: bool = False
+    sync_key_file: Path | None = None
+    sync_remote_url: str = ""
     fast_model: str = "gpt-5.6-luna"
     smart_model: str = "gpt-5.6-luna"
     # Chat agent needs streaming tool calls; eligibility is the tools probe.

@@ -124,13 +124,48 @@ def test_the_assistant_names_what_it_is_doing():
     """D10.12: the working chips printed the model's tool names (`get_resume`)."""
     assert "TOOL_PHRASES" in _CHAT and '"Working…"' in _CHAT
     assert '<Wrench className="size-3" /> {name}' not in _CHAT
-    assert "toolPhrases(streaming.tools).map((phrase) =>" in _CHAT
+    assert "toolChips(streaming.tools, target !== NO_TARGET).map((chip) =>" in _CHAT
     # Every tool the Assistant can call has words.
     tools = (_ROOT / "backend/app/services/chat_tools.py").read_text(encoding="utf-8")
     names = set(re.findall(r'"name": "(\w+)"', tools))
     assert names
-    phrased = set(re.findall(r'\["(\w+)", "[^"]+…"\]', _between(_CHAT, "const TOOL_PHRASES", "]);")))
+    phrased = set(re.findall(r'\["(\w+)", \{ phrase: "[^"]+…"', _between(_CHAT, "const TOOL_PHRASES", "]);")))
     assert sorted(names - phrased) == []
+
+
+def test_assistant_tool_chips_show_their_domain():
+    """Task 23: a chip wears its domain's icon, spins while running, and holds a check once done."""
+    src = _CHAT
+    assert "Wrench" not in src and "concept:" in src and "CONCEPT_ICONS" in src
+    assert "running ? Loader2 : held ? CONCEPT_ICONS.done" in src
+    # One hold length app-wide (lib/motion.ts), never re-declared.
+    assert "CONFIRM_HOLD_MS" in src and "1200" not in src
+    # The stream has no finish event: text, a card or the end of the stream finishes the tool.
+    assert src.count("toolRunning: false") >= 7 and "toolRunning: true" in src
+    # Each chip word is the word its icon carries in the sidebar.
+    words = _between(src, "const CHIP_WORDS", "};")
+    for concept, word in (("baseResume", "Base resumes"), ("careerHistory", "Career history"),
+                          ("analytics", "Analytics"), ("templates", "Templates"),
+                          ("attachment", "Attachment"), ("assistant", "Assistant")):
+        assert f'{concept}: "{word}"' in words, concept
+    assert '?? "Working"' not in src and "{CHIP_WORDS[concept]}" in src
+    assert "newestPhrase" in src
+    badge = '<FileDiff className="size-3" aria-hidden="true" />\n            Edited'
+    cards = {
+        # Both suggestion cards end through one CardResolution (done word or Discarded), so the
+        # glyphs live once, in card-resolution.tsx.
+        "proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80",
+                              '<CardResolution done={resolution === "merged"} doneWord="Added" />'),
+        "edit-proposal-card.tsx": ("CONCEPT_ICONS.ai", "opacity-80",
+                                   '<CardResolution done={resolution === "applied"} doneWord="Applied" />'),
+        "card-resolution.tsx": ("CONCEPT_ICONS.done", "<DoneIcon", "<X ", "Discarded"),
+        "change-card.tsx": (badge,),
+        "kb-capture-card.tsx": ("CONCEPT_ICONS.careerHistory", "<HistoryIcon", "Career history"),
+    }
+    for name, needles in cards.items():
+        text = (_ROOT / "frontend/components/chat" / name).read_text(encoding="utf-8")
+        for needle in needles:
+            assert needle in text, (name, needle)
 
 
 def test_deleting_a_chat_asks_first():
@@ -672,7 +707,8 @@ def test_the_covenant_question_explains_its_legal_term():
     assert "<p id={hintId}" in renderer
     assert "hintId={hintId}" in renderer  # handed to the shared control …
     control = _between(_AUTOFILL, "function FieldControl(", "\n}\n")
-    assert control.count("aria-describedby={hintId}") == 2  # … which the select and the input both read
+    assert control.count("aria-describedby={hintId}") == 1  # … which the select reads directly …
+    assert "useFieldMessage({ warning, hintId })" in control  # … and the input through its message wiring
 
 
 def test_gender_offers_non_binary_and_self_describe():

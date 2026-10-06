@@ -13,6 +13,7 @@ from mcp.types import ToolAnnotations
 from pydantic import ConfigDict, Field, with_config
 
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
+from app.services import http_client
 from mcp_server import workflow
 from mcp_server.client import BackendClient, BackendError
 from mcp_server.profiles import allowed_tools, apply_profile_filter
@@ -308,9 +309,11 @@ def list_jobs(
     (default 50, max 500) and offset; a page shorter than limit is the last.
     Each item is a slim projection (company, title, role_category, level,
     employment_type, work_mode, location, salary, work_authorization,
-    opt_accepted) of roughly 0.8k characters, with no raw_text or
-    extracted_json; use get_job for full detail. Optionally only jobs without
-    an application."""
+    opt_accepted, best_ats_score: the best stored base-resume score, null when
+    unscored) of roughly 0.8k characters, with no raw_text or extracted_json;
+    use get_job for full detail. Optionally only jobs without an application.
+    Each job carries ownership (owned_here, owner, handover, pending_requests),
+    identifying replicas and jobs being handed over."""
     return _client.list_jobs(
         limit=limit, offset=offset, without_application=without_application
     )
@@ -319,7 +322,9 @@ def list_jobs(
 @mcp.tool(**_read("Get Job Details"))
 @_guard
 def get_job(job_id: str) -> Any:
-    """Get a job with its most recent application."""
+    """Get a job with its most recent application. The nested job carries
+    ownership (owned_here, owner, handover, pending_requests), identifying
+    replicas and jobs being handed over."""
     return _client.get_job(job_id)
 
 
@@ -443,8 +448,21 @@ def get_job_search_brief() -> Any:
     careers pages (company + careers_url + has_contact), and counts of jobs
     captured in the last 30 days by role category. It is the entry point of the
     agentic job-search workflow (playbook: docs/agentic-job-search.md), which
-    covers capture, scoring and proposals; applying is outside its scope."""
+    covers capture, scoring and proposals; applying is outside its scope.
+    sync carries enabled and role (home, remote, or null when sync is off)."""
     return _client.get_job_search_brief()
+
+
+@mcp.tool(**_write("Sync Now", destructive=False, idempotent=True, open_world=True))
+@_guard
+def sync_now() -> Any:
+    """Run one sync round on the always-on copy. Returns its outcome
+    (ok, transient, needs_person) and per-step counts, or a skip reason.
+    Forces a round through the backoff window; an attempt within the last
+    30 seconds is skipped with 'Synced moments ago.'. Sync off returns
+    \"Sync isn't set up.\"; home returns
+    \"This is your laptop's copy; your bot runs the sync.\""""
+    return _client.sync_now()
 
 
 @mcp.tool(**_read("Get Career Context"))
@@ -1442,8 +1460,8 @@ def list_applications(
 ) -> Any:
     """List your applications as a thin paginated summary array. Filter by
     status/role_category; page with limit/offset. Rows name their base resume
-    (`base_resume_name`). Use get_application(id) for the full record and
-    compare_ats for scores."""
+    (`base_resume_name`) and the stored score (`ats_score`, null when unscored).
+    Use get_application(id) for the full record and compare_ats for scores."""
     return _client.list_applications(
         status=status, role_category=role_category, limit=limit, offset=offset
     )
@@ -1938,7 +1956,7 @@ def record_run(
 def record_consent(
     proposal_id: str,
     action: Literal["approved", "rejected"],
-    channel: Literal["chat", "slack", "mcp"],
+    channel: Literal["chat", "slack", "mcp", "auto"],
     note: str | None = None,
 ) -> Any:
     """Record the user's explicit approve/reject decision for this proposal as an
@@ -1947,9 +1965,21 @@ def record_consent(
     verify it came from them. `approved` is accepted only when the proposal has
     final_review evidence, the linked application is not already applied, and a
     daily-cap slot is free, and it reserves that slot. `rejected` is a
-    posting-scoped decline and is terminal."""
+    posting-scoped decline and is terminal. `auto` is the agent's own yes in full
+    automation mode: accepted only for `approved` and only while full automation is on."""
     consent = {"channel": channel, "note": note}
     return _client.transition_proposal(proposal_id, action, consent=consent)
+
+
+@mcp.tool(**_write("Get Job-Site Login", destructive=False, idempotent=True))
+@_guard
+def get_job_site_login(proposal_id: str, ctx: Context | None = None) -> Any:
+    """The email and password the user saved for job-site accounts, for creating an account or
+    signing in on this proposal's application site. Available only while full automation is on
+    and only for a queued or approved proposal; each call is recorded (never the value). The
+    value passes through the agent's AI provider, which is why it is a password the user keeps
+    for job sites alone. Returns {email, password}."""
+    return _client.get_job_site_login(proposal_id, origin_detail=_client_label(ctx))
 
 
 @mcp.tool(**_write("Attach Evidence Image", destructive=False, idempotent=False))
@@ -1998,7 +2028,7 @@ def attach_evidence_file(
 def mark_submitted(
     proposal_id: str,
     user_attested: bool = False,
-    channel: Literal["chat", "slack", "mcp"] = "chat",
+    channel: Literal["chat", "slack", "mcp", "auto"] = "chat",
     note: str | None = None,
 ) -> Any:
     """Flip an approved proposal to submitted (terminal; links the application to
@@ -2007,8 +2037,11 @@ def mark_submitted(
     submission_uncertain proposal went through, e.g. a confirmation email or
     portal check) as an attested consent event with their words in `note`.
     `user_attested` substitutes for receipt evidence and the server does not
-    verify it; it is the user's attestation, not the caller's."""
-    if user_attested:
+    verify it; it is the user's attestation, not the caller's. In full automation mode,
+    channel `auto` records the agent's own word that the application went through, with
+    `note` naming what confirmed it (the confirmation page or a confirmation email);
+    no receipt is needed, and it is accepted only while full automation is on."""
+    if user_attested or channel == "auto":
         return _client.transition_proposal(
             proposal_id, "submitted", attested=True,
             consent={"channel": channel, "note": note},
@@ -2041,11 +2074,11 @@ def record_triage(
 @mcp.tool(**_write("Report Application Failure", destructive=True, idempotent=False))
 @_guard
 def report_failure(proposal_id: str, reason: str) -> Any:
-    """Report execution failure. From pending_review/approved, transitions to needs_human
+    """Report execution failure. From pending_review/accepted/approved, transitions to needs_human
     (resumable). reason='submission_uncertain' (for a submit click that could not be
     verified) moves the proposal to the terminal submission_uncertain status:
-    resume_proposal is refused for it, and only the user's attestation through
-    mark_submitted moves it on."""
+    resume_proposal is refused for it. The user's attestation, or the agent's
+    (channel auto) in full automation mode, through mark_submitted moves it on."""
     return _client.report_failure(proposal_id, reason=reason)
 
 
@@ -2061,6 +2094,7 @@ def list_registered_tool_names() -> list[str]:
 
 
 def main() -> None:
+    http_client.repair_proxy_env()
     mcp.run()
 
 

@@ -1,14 +1,19 @@
 "use client";
 
 import { createContext, use, useId, type ReactNode } from "react";
-import { Library, Sparkles } from "lucide-react";
+import { Check, Eye, Info, Tag, type LucideIcon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatResumeMonth } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import type { GapAction, LibraryCandidate, ResumeData } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const CareerHistoryIcon = CONCEPT_ICONS.careerHistory;
 
 interface PlacementTargetDisplay {
   index_or_category: string | number;
@@ -63,6 +68,42 @@ export const ACTION_LABELS: Record<GapAction, string> = {
 /** One-line explanation shown wherever the cannot_confirm affordance appears. */
 export const CANNOT_CONFIRM_EXPLANATION =
   "We won't ask again, and it won't go on your resume.";
+
+/** One icon per action, drawn at size-3 before its word (the word stays). The register owns the shared ones. */
+export const ACTION_ICONS: Record<GapAction, LucideIcon> = {
+  add_keyword: Tag,
+  user_input: CONCEPT_ICONS.you,
+  attach_project: CONCEPT_ICONS.project,
+  skip: CONCEPT_ICONS.skip,
+  enable_entry: Eye,
+  port_kb_point: CONCEPT_ICONS.careerHistory,
+  cannot_confirm: CONCEPT_ICONS.cannot,
+};
+
+/** What each action does, said once: the segment's tooltip and its `aria-describedby` (see `ActionHints`). */
+export const ACTION_HINTS: Partial<Record<GapAction, string>> = {
+  add_keyword: "Uses the job's exact words, in the place you pick.",
+  user_input: "Adds your real experience.",
+  attach_project: "Points to a project on your resume.",
+  skip: "Leaves this gap as it is.",
+  cannot_confirm: CANNOT_CONFIRM_EXPLANATION,
+};
+
+/** The id every control describing itself with an action's hint points at. */
+export const actionHintId = (action: GapAction) => `gap-action-hint-${action}`;
+
+/** One hidden `<span id>` per described action (`aria-describedby` still resolves hidden nodes). Render it ONCE per page, or the ids repeat. */
+export function ActionHints() {
+  return (
+    <>
+      {(Object.keys(ACTION_HINTS) as GapAction[]).map((action) => (
+        <span key={action} id={actionHintId(action)} hidden>
+          {ACTION_HINTS[action]}
+        </span>
+      ))}
+    </>
+  );
+}
 
 /** A placement target's section in words, where no entry label names it. */
 export const TARGET_SECTION_WORD: Record<SavedTarget["section"], string> = {
@@ -265,23 +306,39 @@ export function ActionSegment({
       aria-label="How to handle this gap"
       className="bg-muted inline-flex w-fit items-center gap-0.5 rounded-full p-[3px]"
     >
-      {manual.map((action) => (
-        <button
-          key={action}
-          type="button"
-          aria-pressed={value === action}
-          aria-disabled={locked || undefined}
-          onClick={locked ? undefined : () => onSelect(action)}
-          className={cn(
-            "h-6 rounded-full px-2 text-label-medium transition-colors aria-disabled:opacity-50",
-            value === action
-              ? "bg-background text-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {ACTION_LABELS[action]}
-        </button>
-      ))}
+      {manual.map((action) => {
+        const Icon = ACTION_ICONS[action];
+        return (
+          <Tooltip key={action}>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-pressed={value === action}
+                  aria-describedby={actionHintId(action)}
+                  aria-disabled={locked || undefined}
+                  onClick={locked ? undefined : () => onSelect(action)}
+                  className={cn(
+                    "inline-flex h-6 items-center gap-1 rounded-full px-2 text-label-medium transition-colors aria-disabled:opacity-50",
+                    value === action
+                      ? "bg-secondary-container text-on-secondary-container"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {/* Selected swaps the action's icon for a Check: one leading glyph, the width holds. */}
+                  {value === action ? (
+                    <Check className="size-3 shrink-0" aria-hidden="true" />
+                  ) : (
+                    <Icon className="size-3 shrink-0" aria-hidden="true" />
+                  )}
+                  {ACTION_LABELS[action]}
+                </button>
+              }
+            />
+            <TooltipContent>{ACTION_HINTS[action]}</TooltipContent>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
@@ -315,18 +372,22 @@ export function Chip({
         // Wraps instead of truncating: at 375 "Harbor Loop Logistics, Senior ML Engin…" lost the role.
         "inline-flex min-h-6 max-w-full items-center gap-1 rounded-full border px-2.5 py-0.5 text-left text-label-medium transition-colors aria-disabled:opacity-50",
         selected
-          ? "border-primary bg-primary text-primary-foreground"
+          ? "border-transparent bg-secondary-container text-on-secondary-container"
           : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
-        !selected && highlighted && "border-primary/40 text-foreground ring-1 ring-primary/30",
+        !selected && highlighted && "border-muted-foreground text-foreground",
       )}
     >
-      {highlighted && !selected && <Sparkles className="text-primary size-3 shrink-0" />}
+      {selected && <Check className="size-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 break-words">{children}</span>
+      {/* Deterministic, so a word and a quieter border, not the AI glyph. */}
+      {highlighted && !selected && (
+        <span className="shrink-0 text-label-small text-muted-foreground">Suggested</span>
+      )}
       {date && (
         <span
           className={cn(
             "shrink-0 text-label-small tabular-nums",
-            selected ? "text-primary-foreground" : "text-muted-foreground",
+            selected ? "text-on-secondary-container" : "text-muted-foreground",
           )}
         >
           {formatResumeMonth(date)}
@@ -337,7 +398,7 @@ export function Chip({
           className={cn(
             "shrink-0 rounded-corner-xs px-1 text-label-small",
             selected
-              ? "bg-primary-foreground/10 text-primary-foreground"
+              ? "bg-on-secondary-container/10 text-on-secondary-container"
               : "bg-muted text-muted-foreground",
           )}
         >
@@ -420,7 +481,7 @@ export function AddKeywordControls({
   return (
     <div className="space-y-2">
       {unverified && (
-        <div className="text-destructive bg-destructive/10 rounded-corner-md p-2 text-body-small">
+        <div className="bg-error-container text-on-error-container rounded-corner-md p-2 text-body-small">
           {UNVERIFIED_WARNING}
         </div>
       )}
@@ -569,6 +630,9 @@ export function candidateLabel(candidate: LibraryCandidate): string {
  * suggestions that route to the Answer box (the server rejects them as
  * `enable_entry`/`port_kb_point`, by design — they never passed the evidence gate).
  */
+const LIBRARY_HINT =
+  "Pick one to use it. If it can't be added directly, its text goes into your answer to edit.";
+
 export function LibraryCandidateChips({
   candidates,
   selectedKey,
@@ -579,13 +643,32 @@ export function LibraryCandidateChips({
   selectedKey: string | null;
   onPick: (candidate: LibraryCandidate) => void;
 }) {
+  const hintId = useId();
   if (candidates.length === 0) return null;
   return (
     <div className="space-y-1.5">
       <p className="text-muted-foreground flex items-center gap-1.5 text-body-small">
-        <Library className="size-3.5 shrink-0" />
+        <CareerHistoryIcon className="size-3.5 shrink-0" />
         Found in your resumes and career history
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="About these suggestions"
+                aria-describedby={hintId}
+              >
+                <Info className="size-3.5" aria-hidden="true" />
+              </Button>
+            }
+          />
+          <TooltipContent>{LIBRARY_HINT}</TooltipContent>
+        </Tooltip>
       </p>
+      <span id={hintId} hidden>
+        {LIBRARY_HINT}
+      </span>
       <div className="flex flex-wrap gap-1.5">
         {candidates.map((candidate) => {
           const key = candidateKey(candidate);
@@ -601,10 +684,6 @@ export function LibraryCandidateChips({
           );
         })}
       </div>
-      <p className="text-muted-foreground/80 text-body-small">
-        Pick one to use it. If it can&apos;t be added directly, its text goes
-        into your answer to edit.
-      </p>
     </div>
   );
 }

@@ -195,11 +195,11 @@ def test_autosave_holds_back_while_tailoring_and_resaves_if_it_fails():
 
 
 def test_the_page_locks_the_gap_controls_and_the_note():
-    region = _PAGE.index("<GapLocked value={tailorBusy}>")
+    region = _PAGE.index("<GapLocked value={tailorBusy || !ownership.canWrite}>")
     assert _PAGE.index("<CategorySection", region) < _PAGE.index("</GapLocked>", region)
     assert 'tailorBusy && "pointer-events-none opacity-60"' in _PAGE
     note = _jsx(_PAGE, '<Textarea\n            id="tailor-instructions"')
-    assert "readOnly={tailorBusy}" in note
+    assert "readOnly={tailorBusy || !ownership.canWrite}" in note
 
 
 def test_the_answer_and_wording_fields_are_readonly():

@@ -18,6 +18,7 @@ from app.schemas.template import (
 from app.services import engines, pdf_preview
 from app.services import template_registry as reg
 from app.services import template_validation as tv
+from app.services.sync import hooks
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 
@@ -46,7 +47,11 @@ def list_templates(
     """
     # validate=False: rows only. Rendering here would COMMIT this request's
     # transaction (see ensure_seed_templates) — startup owns validation.
-    reg.ensure_seed_templates(db, validate=False)
+    db.info["sync_apply"] = True
+    try:
+        reg.ensure_seed_templates(db, validate=False)
+    finally:
+        db.info.pop("sync_apply", None)
     rows = reg.list_all(db)
     if not include_archived:
         rows = [row for row in rows if row.archived_at is None]
@@ -126,6 +131,7 @@ def set_default_formatting(
     row = reg.get(db, template_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Template not found")
+    hooks.require_profile_writable(db)
     try:
         validated = validate_formatting(payload.formatting)
     except ValueError as e:

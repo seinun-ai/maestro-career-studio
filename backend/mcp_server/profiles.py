@@ -15,6 +15,7 @@ VALID_PROFILES = frozenset(
 # Job search + propose (no browser fill / PDF upload / evidence).
 HUNT_TOOLS = frozenset({
     "get_job_search_brief",
+    "sync_now",
     "list_referrals",
     "find_job_by_url",
     "store_extracted_jd",
@@ -51,6 +52,7 @@ APPLY_TOOLS = frozenset({
     "get_career_context",
     "get_autofill_profile",
     "get_job_search_brief",
+    "sync_now",
     "score_ats",
     "compare_ats",
     "create_tailoring_session",
@@ -82,6 +84,7 @@ APPLY_TOOLS = frozenset({
     "record_filled_answers",
     "record_run",
     "record_consent",
+    "get_job_site_login",
     "attach_evidence",
     "attach_evidence_file",
     "mark_submitted",

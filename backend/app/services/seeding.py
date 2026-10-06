@@ -26,6 +26,7 @@ from app.services import (
     text_settings,
     exports as career_exports,
 )
+from app.services.sync import status
 
 
 logger = logging.getLogger(__name__)
@@ -120,7 +121,7 @@ def seed_career_kb(session: Session) -> None:
     that leaves the flag unset, so startup retries after configuration; any
     other failure is logged and deferred rather than crashing startup.
     """
-    if session.get(Setting, KB_SEEDED_FLAG) is not None:
+    if status.is_remote() or session.get(Setting, KB_SEEDED_FLAG) is not None:
         return
 
     # Belt-and-suspenders for installs that seeded before this flag existed:
@@ -171,10 +172,15 @@ def seed_career_kb(session: Session) -> None:
 
 
 def seed_startup_data(session: Session) -> None:
-    seed_base_resumes(session)
-    seed_prompts(session)
-    seed_templates(session)
-    ensure_persona(session)
+    for seed in (seed_base_resumes, seed_prompts, seed_templates, ensure_persona):
+        if not status.enabled():
+            seed(session)
+            continue
+        session.info["sync_apply"] = True
+        try:
+            seed(session)
+        finally:
+            session.info.pop("sync_apply", None)
     seed_career_kb(session)
     career_exports.best_effort_refresh(session)
 

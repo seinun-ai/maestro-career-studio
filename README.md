@@ -49,7 +49,7 @@ get your tailored resume. New to this? The
 
 ![Score, tailor, see every AI edit, download the PDF — end to end](docs/assets/hero.gif)
 
-**Works with Claude, Codex or the ChatGPT desktop app** (86 tools) ·
+**Works with Claude, Codex or the ChatGPT desktop app** (88 tools) ·
 **bring your own AI key** — OpenAI or Gemini; scoring, PDFs and tracking work
 without one · **runs on your computer, no account** · **take everything with
 you** — your whole record exports to one `career.md` file
@@ -127,7 +127,7 @@ gone stale):
 | See what the AI changed | No history | No | **Every change shown, undoable** |
 | PDF output | House web templates | HTML → PDF | **LaTeX and Typst, bring your own template** |
 | Career record | None (per document) | Plain markdown/YAML files | **Organized, versioned — exports to one `career.md`** |
-| Works with AI assistants | No | Command-line skill files | **86 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
+| Works with AI assistants | No | Command-line skill files | **88 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
 | Submits applications for you | N/A | Never (stated) | **Never without your yes, per application** |
 | Cost | $15–75/month | Free + AI usage | **Free (Apache 2.0) + your own AI usage — [≈1¢ per application](#do-you-need-an-api-key)** |
 
@@ -450,7 +450,7 @@ script for you.
   reply."
 - "Across the jobs I've saved, which skills keep showing up as gaps?"
 
-**Tool sets.** All 86 tools are on by default (`full`). Smaller sets — `hunt`,
+**Tool sets.** All 88 tools are on by default (`full`). Smaller sets — `hunt`,
 `apply`, `explore`, `templates`, `career` — keep a chat focused; pick one in the
 Claude extension's **Tool profile** setting or with
 `setup-mcp.sh --profile`. Use one set at a time.

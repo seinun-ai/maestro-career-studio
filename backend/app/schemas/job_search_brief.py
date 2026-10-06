@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -58,9 +58,15 @@ class BriefAutoApply(BaseModel):
     """Hunt guardrails up front (G2, 2026-08-01) so a run never burns
     extraction on a blocklisted company or discovers the caps by 409."""
 
+    full_automation: bool
     company_blocklist: list[str]
     max_proposals_per_run: int
     cap: BriefCapStatus
+
+
+class BriefSync(BaseModel):
+    enabled: bool
+    role: Literal["home", "remote"] | None
 
 
 class JobSearchBriefResponse(BaseModel):
@@ -78,6 +84,7 @@ class JobSearchBriefResponse(BaseModel):
     persona: str
     job_preferences: dict[str, Any]
     auto_apply: BriefAutoApply
+    sync: BriefSync
     jobs: list[BriefJob]
     base_resumes: list[dict[str, Any]]
     role_mix: list[dict[str, Any]]

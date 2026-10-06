@@ -18,7 +18,7 @@
   `oklch(0.76 0.11 259)` dark; light focus ring `oklch(0.57 0.11 259)`, dark
   `oklch(0.62 0.09 259)`, so the solid ring is at least 3:1 on `--canvas`;
   the base-layer browser outline is that solid ring; motion utilities
-  `animate-fade-rise`, `animate-shimmer`, `[data-pending]`).
+  `animate-fade-rise`, `animate-shimmer`, `animate-confirm`, `collapse-exit` with `[data-leaving]`, `[data-pending]`; `hooks/use-count-up.ts` counts a number to its new value).
 - **Colour roles are M3's, pinned for contrast.** `globals.css` derives primary
   and secondary container pairs (`--primary-container`/`--on-primary-container`
   and the secondary twins) from the primary's hue, each with a `-hover` token
@@ -52,8 +52,13 @@
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
   `Check` plus `aria-pressed` (Review changes,
   SourceToggle, `FilterChips` (the Agent inbox's History statuses), the zoom presets, employment types,
-  section presets, and the template picker): the tonal fill is
+  section presets, the template picker, and the gap page's action segment and target chips, which use
+  `bg-secondary-container`): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
+  The gap page's action segment draws its action icon (`ACTION_ICONS`) before the word and swaps it for the
+  `Check` when selected, so one glyph leads; each action's hint (`ACTION_HINTS`) is said once, as the
+  button's tooltip and `aria-describedby` (`ActionHints` renders the ids once per page). A suggested target
+  chip carries a "Suggested" word and a `border-muted-foreground` edge, quieter than the selected fill.
   `test_selected_tonal_toggles_show_a_check` pins the first three. **`FilterChips`**
   (`components/filter-chips.tsx`) is one field of about six values or fewer, every value with its count, several
   on at once, none on meaning no filter, so it never has an "All" chip; a filter with more values than fit on one
@@ -196,6 +201,12 @@
   and a Check before its name, and says so with `aria-pressed`. The card's
   accessible name is only the template's name, so the default mark and the
   Needs setup badge and the ATS warning line are its `aria-describedby`.
+- **Field error and warning** (`field.tsx`): the state line under a control carries an icon beside its words:
+  an error is `CircleX` in `text-destructive` and marks the control `aria-invalid`; a warning is
+  `TriangleAlert` in `text-warning` and sets `data-warning="true"` (`Input` and `Textarea` draw the amber
+  border and ring). `useFieldMessage` wires both plus `aria-describedby`; error wins. A warning never blocks
+  a save and shows on blur (`lib/field-checks.ts`: email, phone, link). A button that cannot act yet is
+  `disabled` with a hint tied by `aria-describedby`, not an error toast.
 - **Judged resume text** (the text a check rates: a health row's bullet, a pass row, a wording row)
   is upright `text-body-medium text-foreground`, wrapped within `max-w-[65ch]`, with a `border-l-2
   border-border pl-3` quote rule (`judged-text.tsx`). A compact quote uses `line-clamp-3` and a
@@ -303,8 +314,8 @@
     true`; the Save chain passes `false`). The line also carries the words
     while a save runs: `StudioSaveButton` keeps its "Save" label and leads
     with a spinner, because a "Saving…" label widened it from 52 to 89px. It
-    is `focusableWhenDisabled` (dimmed on `data-disabled`, since `disabled:`
-    matches only the native attribute): Save disables itself on every save,
+    is `focusableWhenDisabled` (the Button primitive dims `data-disabled` itself,
+    since `disabled:` matches only the native attribute): Save disables itself on every save,
     and a disabled `<button>` drops focus to `<body>`.
   - *Empty preview*: both studios pass `emptyPreviewMessage(unsaved)`, which
     names the action enabled right now: "No PDF yet. Save to create one." with
@@ -777,9 +788,13 @@
     deletes (Suggest items and Create on New base resume, Write new wording
     and Apply, Adapt and preview, Add as is and Add N to resume on Add to a resume, Add
     item, a base resume's Delete), `/new`'s Save job and Quick
-    capture's Add document, each dimmed on
-    `data-disabled`. So are Queue in Agent inbox (a tracker row's and the job
-    header's) and the tailored studio's Create draft; each leaves once its
+    capture's Add document. The Button primitive dims `data-disabled` itself, and
+    its `pending` prop is the loading state: a spinner in place of the icon, `aria-busy`, kept
+    focus and ignored presses (`pending` sets `focusableWhenDisabled` for you). A locked button
+    that must keep its hover title adds `data-disabled:pointer-events-auto` (`LOCKED_BTN`).
+    Queue in Agent inbox (a tracker row's and the job header's) and the tailored studio's
+    Create draft keep focus while they run too: the job header's Queue through `pending`, the others
+    through `focusableWhenDisabled`; each leaves once its
     request lands, so focus is handed on: the row's ⋯, the header's first
     control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
     field a submit would disable goes `readOnly` instead (Add item's,
@@ -1347,7 +1362,14 @@
     Applications).
   - *Toasts*: a success toast names its object ("Template deleted", never
     "Deleted"); an error toast says what failed (see *Errors*). A count and
-    its noun agree ("1 bullet", "3 bullets").
+    its noun agree ("1 bullet", "3 bullets"). A toast carries an **Undo** action only where
+    the server can reverse the change: Approve on a draft bullet (PATCH back to `draft`) and
+    Archive on a base resume (`/unarchive`). Skip and Queue get no Undo. Undo answers too: a
+    failure toasts through `couldnt(...)`.
+  - *Copy*: every clipboard write goes through `useCopy` (`hooks/use-copy.ts`: holds `copied` for 1.2s;
+    a refused write toasts through `couldnt(...)`, or calls `onError` instead, never both). An icon-only
+    copy is `CopyButton` (CircleCheck, a "Copied" chip, a polite spoken status); a labelled one swaps its
+    label to "Copied"; a menu item keeps its instructive toast.
 - The Assistant page (`/chat`) is Gemini-styled: centered greeting + floating pill composer
   when empty, docked composer with an inline resume picker ("Resume to edit") otherwise;
   user messages are muted tonal bubbles, assistant text plain. The sessions
@@ -1433,9 +1455,11 @@
   `readOnly` fields, so focus stays), and an edit that slips through is saved
   if the tailor fails. A stale session shows no Try again (every save 409s;
   the banner's Start new gap analysis is the way out), and an edit there reads
-  Not saved and keeps the leave guard. `AutosaveStatus` reports three states:
-  Saving…, Not saved (after a failed write, with Try again where the card
-  holds a value the server lacks), and Saves automatically. A card still
+  Not saved and keeps the leave guard. `AutosaveStatus` reports four states:
+  Saving…, Saved (`CircleCheck`, `text-success`, held 1200ms after a write
+  lands, as on the gap page), Not saved (after a failed write, with Try again
+  where the card holds a value the server lacks), and Saves automatically. A
+  PDF preview carries `data-pending="true"` while its render runs. A card still
   holding a value the server lacks registers the leave guard. After a retry
   lands, both status lines move focus with `focusIfDropped` (only from
   `<body>`), and a failed retry disarms the move, so a later save never pulls
@@ -1605,3 +1629,75 @@
   SURVIVED the panel merge (chat, MCP and the Overview teaser still call it) —
   only its chart COMPONENT was deleted.
 
+## Visual encodings
+
+Goal: state reads from shape and colour with fewer words. The words stay (an icon or a colour never stands
+alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot beside a short word.
+
+- **Which primitive for which data** (`components/visual/`, one page each under `docs/design-system/components/`):
+  | Data | Primitive |
+  | --- | --- |
+  | An ordinal step on a short ladder (health evidence, inbox readiness) | `DotMeter` |
+  | One value on a fixed scale (an ATS score, skills covered) | `ScoreBar` |
+  | A whole split into counted parts (a lane's jobs by state) | `SegmentedBar` with its legend |
+  | How far through a set (3 of 5 answered) | `ProgressCount` |
+  | A signed change (+6.2, −1.4, 0.0) | `DeltaChip` |
+  | Who or what a thing came from (you, AI, the Assistant, a connected agent, Career history) | `ActorChip` |
+  | A trend with no axes | `Sparkline` |
+  | A status's own colour where no chip fits (filters, analytics, a lane) | `StatusDot` (application) or `LaneDot` (proposal), from `status-chip.tsx` |
+- **Icons come from the register.** `lib/concept-icons.ts` (`CONCEPT_ICONS`) owns one glyph per concept, and
+  `test_frontend_concept_icons.py` pins that each concept maps to its own icon, that banned or alias icons are
+  not imported, that no text glyph stands in for an icon, and that the sidebar draws from the register. Never add a second `Bot` key (connected agents are the Agent inbox's `Bot`
+  plus the name from `lib/agent-name.ts`, never a logo). Done is `CircleCheck` in `text-success`; `Check` is
+  selected only. Older `CircleCheck text-primary` done sites and non-selected `Check` uses are a ratchet,
+  converted when their file is touched.
+- **The accessible-text contract.** Every primitive that draws a shape also exposes one spoken sentence: a
+  `DotMeter` is a `role="img"` ("Evidence 3 of 5: Specific, no result"), a `ScoreBar` a `role="meter"` with
+  `aria-valuetext`, a `ProgressCount` a `role="progressbar"` whose `aria-label` holds the full sentence even with
+  `showText={false}`, a `DeltaChip` a `role="img"` ("up to +6.2 points"), a `Sparkline` a `role="img"` named by
+  its `label`. The glyphs and dots inside are `aria-hidden`, so the sentence is read once. A `SegmentedBar` is
+  decoration: its legend, a named list of "3 Applied", carries the text. A dot beside a status word is hidden
+  and the word is not.
+- **Colour is a role and repeats a word.** A status colour is the role its chip uses (one table, `status-chip.tsx`);
+  a score has no threshold or warning colour; the lowest subscore alone wears the word Weakest; a conflict is
+  loud and good news is quiet (a pass is one line on a neutral surface, never a success banner).
+- **Words get shorter by deleting repeats**, and a teaching sentence moves into a tooltip or an
+  `aria-describedby` hint; a label a task needs never goes.
+
+## States and feedback
+
+Every action answers. The answer depends on where the effect lands:
+
+- **Navigates** (a link, a row open, Back): the page change is the feedback; no toast. A route's own loading
+  state is a `Skeleton` in the shape of the content.
+- **Changes something in place** (a save, a toggle, a status pick, Copy): the control confirms where the user is
+  looking. A button runs `pending` while its request is in flight; Copy swaps to "Copied" (`CircleCheck`) for
+  1.2s (`useCopy`, `CopyButton`); an autosave line reads Saving, then Saved for 1.2s (`useSavedHold`,
+  `AutosaveStatus`); a changed status chip pulses once (`animate-confirm`); a number that moves counts to its
+  value (`useCountUp`). A failure is a toast through `couldnt(...)` or an inline error, never silence.
+- **Runs in the background** (an agent's work, a render, a score refresh): a toast names the object on success
+  ("Template deleted") and the surface that shows the result updates; a running job shows its own state where the
+  work is shown, never a global spinner.
+- **Which busy buttons change their label.** `pending` always adds the spinner. These also swap the label
+  while they run: Save job ("Saving…"), the job header's Queue in Agent inbox ("Queueing…"), Update scores
+  ("Updating scores…"), Approve ("Approving…"), Adapt and preview ("Adapting…"), Answer questions
+  ("Answering…"), Write cover letter, the question pass's write-all and Write new wording ("Writing…") and
+  Apply suggestion ("Applying…"). These keep their label and show the spinner only: the studios' Save
+  (`StudioSaveButton`), the Agent inbox bulk bar's Queue and the Skip confirm in its dialog. A Save button
+  that is merely `disabled` while it saves (Career history, Settings) says "Saving…" without a spinner.
+- **Undo only where the server can reverse the change**, for example Approve on a draft bullet (PATCH back to `draft`) and
+  Archive on a base resume (`/unarchive`). Skip keeps its reason dialog and a success toast; Queue gets a toast.
+  Neither gets an Undo, because reversing them would change the proposal state machine.
+- **Never empty before loaded.** A list or card shows a skeleton (or its previous data, dimmed with `data-pending`)
+  until the query settles; a failed load is its own error state with Try again, never an empty one; a count
+  is not drawn as 0 while it loads.
+- **A leaving row collapses**, it does not vanish: `.collapse-exit` with `data-leaving` (200ms), then the row
+  unmounts after `ROW_EXIT_MS`.
+- **Motion budget.** Nothing runs longer than 400ms except the 1.2s confirmation hold; no bounce. The timings
+  are `CONFIRM_HOLD_MS`, `CONFIRM_MS` and `ROW_EXIT_MS` in `lib/motion.ts`; import them. A variant (`data-x:`)
+  applies only to a registered `@utility` in `globals.css` (`animate-confirm` is one); a transition list names
+  `translate` or `scale`, never `transform`; reduced motion is the global rule in `globals.css` for CSS motion, and
+  `useCountUp` checks `prefers-reduced-motion` itself in JS.
+- **A button, an input, every state.** Rest, hover, focus (solid ring), pressed (0.97), `pending`, disabled
+  (with the reason tied by `aria-describedby`), and for a field `aria-invalid` (error) or `data-warning`
+  (warning, never blocks a save).

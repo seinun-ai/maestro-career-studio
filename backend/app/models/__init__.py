@@ -22,6 +22,7 @@ from app.models.referral import Referral
 from app.models.resume_lint_report import ResumeLintReport
 from app.models.resume_version import ResumeVersion
 from app.models.setting import Setting
+from app.models.sync import SyncRequest, SyncState, SyncTombstone
 from app.models.tailoring_session import TailoringSession
 from app.models.template import Template
 
@@ -56,6 +57,9 @@ __all__ = [
     "ResumeLintReport",
     "ResumeVersion",
     "Setting",
+    "SyncRequest",
+    "SyncState",
+    "SyncTombstone",
     "TailoringSession",
     "Template",
 ]

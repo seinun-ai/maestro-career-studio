@@ -5,7 +5,10 @@
 Raw JD text + `raw_text_hash` (sha256, unique) + `source_url` + `extracted_json`
 plus promoted scalar columns (title, company, salary + currency, work-auth, …) and
 JobSkill rows. **A Job has no status** — "Saved" (UI term) is derived as
-job-without-application (`GET /api/jobs?without_application=true`).
+job-without-application (`GET /api/jobs?without_application=true`). The list summary alone carries
+`best_ats_score`, the max `composite` over the job's `base` AtsScore rows (null
+when none; `ats_score.best_base_scores`, one grouped query per page, read-only:
+the list never scores or backfills).
 
 - **Salary is optional and often absent** (~40%+ of US postings state no
   pay; some laws let a posting hyperlink a pay page — capture that as
@@ -43,6 +46,20 @@ job-without-application (`GET /api/jobs?without_application=true`).
   `_find_existing`'s url_fallback above — so the no-raw-text capture path dedupes
   by POSTING too. Both scan newest-first and take the first hit, so overlapping
   saves resolve deterministically to the most recent capture.
+- **Ownership under sync** (`owner_machine`, `sync_rev`, `handover`; docs/sync-setup.md). `owner_machine`
+  is the machine id of the job's one writer; NULL means this machine. `sync_rev` is the job's revision
+  from a local clock: any write to the job or a row attached to it bumps it (`services/sync/hooks.py`,
+  a `before_flush` hook), and a round sends only jobs past the last acknowledged revision. `handover` is
+  `offered` (the laptop will give the job to the always-on copy at the next round; **Keep it here** clears
+  it, and it is set when a job is queued with full automation on, `offers.mark_when_queued`) or
+  `returning` (the always-on copy is giving it back after **Work on it here**), else NULL. A job in either
+  state is not writable on the side that holds it. Without a sync key every job counts as owned here.
+  The same JD text on both copies keeps the laptop's job; when both have progressed, the replica keeps a
+  hash derived from its id (`services/sync/duplicates.py`), so `raw_text_hash` stays unique.
+  The `ownership` field (`owned_here`, `owner`, `handover`, `pending_requests`, `can_keep_here`) is read
+  from each row's own columns by `services/sync/ownership.py`, in one batch per request, and rides on
+  the job, application and proposal reads; sync off (no key) is the default value, so the web app reads
+  no ownership of its own and a row without the field is owned here.
 - **Dedup response**: create/ingest return `already_existed: true` (transient
   attr → `JobRead`) on a dedup hit; the capture UI must not claim a fresh
   extraction.

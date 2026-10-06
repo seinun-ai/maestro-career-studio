@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -27,6 +27,8 @@ from app.schemas.proposal import (
     ProposalSummaryResponse,
     ProposalTransition,
 )
+from app.services.sync import hooks, requests as sync_requests
+from app.services.sync import ownership as sync_ownership
 from app.services import artifacts, auto_apply_settings, inbox_readiness, proposal_evidence
 from app.services import proposals as svc
 from app.write_origin import WriteOrigin, get_write_origin
@@ -40,7 +42,8 @@ def _job_summary(job: Job) -> JobSummary:
 
 def _read_fields(prop: ApplicationProposal, job: Job) -> dict:
     """Every ProposalRead field, shared by the list and the detail so a new
-    column cannot reach one read and miss the other."""
+    column cannot reach one read and miss the other. The caller has stamped
+    `job.ownership` (the list once for all its rows)."""
     return {
         "id": prop.id,
         "job_id": prop.job_id,
@@ -65,6 +68,7 @@ def _detail(db: Session, prop: ApplicationProposal) -> ProposalDetail:
     job = db.get(Job, prop.job_id)
     if job is None:
         raise HTTPException(404, detail="Job not found")
+    sync_ownership.stamp(db, [job])
 
     app_summary = None
     qa_entries_data = []
@@ -214,6 +218,7 @@ def list_proposals(
     stmt = stmt.order_by(ApplicationProposal.created_at.desc()).offset(offset).limit(limit)
 
     results = db.execute(stmt).all()
+    sync_ownership.stamp(db, {job.id: job for _, job in results}.values())
     readiness = inbox_readiness.for_proposals(db, [(prop, job) for prop, job in results])
     items = [ProposalRead(**_read_fields(prop, job), readiness=readiness.get(prop.id))
              for prop, job in results]
@@ -223,22 +228,26 @@ def list_proposals(
 @router.post("/bulk-transition", response_model=ProposalBulkResponse)
 def bulk_transition(payload: ProposalBulkTransition, db: Annotated[Session, Depends(get_db)]):
     """Mass triage: per-row guard checks, per-row ConsentEvent, honest per-id
-    report — a mixed selection partially succeeds instead of all-or-nothing."""
-    results = []
-    for pid in payload.ids:
-        prop = db.get(ApplicationProposal, pid)
-        if prop is None:
-            results.append(ProposalBulkResult(id=pid, ok=False, detail="not found"))
-            continue
-        try:
-            svc.transition(db, prop, payload.status,
-                           consent=payload.consent.model_dump(),
-                           reason=payload.reason)
-            results.append(ProposalBulkResult(id=pid, ok=True, status=prop.status))
-        except svc.TransitionError as e:
-            db.rollback()
-            results.append(ProposalBulkResult(id=pid, ok=False, detail=str(e)))
-    return ProposalBulkResponse(results=results)
+    report — a mixed selection partially succeeds instead of all-or-nothing.
+    With sync on, rows on the other copy's jobs are queued ("Sent at the next
+    sync", status unchanged) and an offered job's row reports why it was refused."""
+    return ProposalBulkResponse(results=[_bulk_row(db, payload, pid) for pid in payload.ids])
+
+
+def _bulk_row(db: Session, payload: ProposalBulkTransition, pid: UUID) -> ProposalBulkResult:
+    prop = db.get(ApplicationProposal, pid)
+    if prop is None:
+        return ProposalBulkResult(id=pid, ok=False, detail="not found")
+    try:
+        queued = sync_requests.bulk_row_detail(db, prop, payload)
+        if queued is not None:
+            return ProposalBulkResult(id=pid, ok=True, detail=queued)
+        svc.transition(db, prop, payload.status,
+                       consent=payload.consent.model_dump(), reason=payload.reason)
+        return ProposalBulkResult(id=pid, ok=True, status=prop.status)
+    except (svc.TransitionError, hooks.NotOwnedHere) as e:
+        db.rollback()
+        return ProposalBulkResult(id=pid, ok=False, detail=str(e))
 
 
 @router.get("/funnel", response_model=ProposalFunnelResponse)
@@ -337,6 +346,9 @@ def transition_proposal(
     prop = db.get(ApplicationProposal, proposal_id)
     if prop is None:
         raise HTTPException(404, detail="Proposal not found")
+    queued = sync_requests.queue_proposal_transition(db, prop, payload)
+    if queued is not None:
+        return queued
     try:
         if payload.status == "pending_review" and prop.status == "needs_decision":
             svc.record_decision(
@@ -430,6 +442,29 @@ def get_final_review(proposal_id: UUID, db: Annotated[Session, Depends(get_db)])
     return svc.get_final_review(db, prop)
 
 
+@router.post("/{proposal_id}/job-site-login")
+def share_job_site_login(
+    proposal_id: UUID,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
+):
+    """The job-site login for a connected agent in full automation mode. MCP only; audited."""
+    if "origin" in request.headers:
+        raise HTTPException(403, detail="Browser-origin requests cannot receive the job-site login.")
+    if write_origin.origin != "mcp":
+        raise HTTPException(403, detail="Only a connected agent can ask for the job-site login.")
+    prop = db.get(ApplicationProposal, proposal_id)
+    if prop is None:
+        raise HTTPException(404, detail="Proposal not found")
+    try:
+        return svc.share_job_site_login(db, prop, write_origin.detail)
+    except svc.TransitionError as exc:
+        raise HTTPException(409, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(404, detail=str(exc)) from exc
+
+
 @router.post("/{proposal_id}/evidence", status_code=201)
 async def upload_evidence(
     proposal_id: UUID,
@@ -442,6 +477,7 @@ async def upload_evidence(
     prop = db.get(ApplicationProposal, proposal_id)
     if prop is None:
         raise HTTPException(404, detail="Proposal not found")
+    hooks.require_owned(db, prop.job_id)
     if kind not in svc.EVIDENCE_KINDS:
         raise HTTPException(
             422,

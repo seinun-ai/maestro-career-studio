@@ -20,6 +20,7 @@ from app.services import proposals as proposals_svc
 from app.services.explore_base_summaries import base_summaries
 from app.services.explore_build_areas import build_areas
 from app.services.explore_overview import build_overview
+from app.services.sync import status as sync_status
 
 LEDGER_DAYS = 30
 # Cap on the per-job years list in the brief; the ledger's cutoff bounds it in
@@ -84,10 +85,17 @@ def _work_auth_warnings(work_auth: dict[str, Any]) -> list[str]:
 def _auto_apply_block(db: Session) -> dict[str, Any]:
     cfg = auto_apply_settings.get_settings(db)
     return {
+        "full_automation": cfg.full_automation,
         "company_blocklist": cfg.company_blocklist,
         "max_proposals_per_run": cfg.max_proposals_per_run,
         "cap": proposals_svc.cap_status(db),
     }
+
+
+def _sync_block() -> dict[str, Any]:
+    enabled = sync_status.enabled()
+    role = "remote" if sync_status.is_remote() else "home"
+    return {"enabled": enabled, "role": role if enabled else None}
 
 
 def build_brief(db: Session) -> dict[str, Any]:
@@ -175,6 +183,7 @@ def build_brief(db: Session) -> dict[str, Any]:
         "job_preferences": job_preferences.get_preferences(db).model_dump(),
         "jobs": jobs,
         "auto_apply": _auto_apply_block(db),
+        "sync": _sync_block(),
         "base_resumes": base_summaries(db),
         "role_mix": overview["role_mix"],
         "top_skills": overview["top_required_skills"],

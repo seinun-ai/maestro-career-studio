@@ -21,7 +21,7 @@ tool below is one action your assistant can take in the app.
 ## Install
 
 Pick the route for your assistant. Every route defaults to the `full` profile
-(all 86 tools); see [Profiles](#profiles) to narrow it.
+(all 88 tools); see [Profiles](#profiles) to narrow it.
 
 ### Claude (Desktop, and Claude Code inside the Claude app)
 
@@ -141,9 +141,9 @@ chat isn't cluttered with unrelated ones.
 
 | Profile | Use when | Tools |
 | --- | --- | --- |
-| `full` | Mixed use (default) | all 85 |
-| `hunt` | Finding jobs and proposing them, no browser filling | 20 |
-| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 48 |
+| `full` | Mixed use (default) | all 88 |
+| `hunt` | Finding jobs and proposing them, no browser filling | 21 |
+| `apply` | Tailor, PDF, form autofill, evidence, consent, submit | 50 |
 | `explore` | Charts and trends across your saved jobs (`explore_*`) | 11 |
 | `templates` | Creating and testing resume templates | 12 |
 | `career` | Reading and editing your Career KB | 18 |
@@ -212,10 +212,11 @@ it.
 Each tool's own description (which your assistant sees) has the full details.
 
 **Jobs and search**
-- `get_job_search_brief`: your profile, constraints and resume summaries; call first in a job-search chat.
+- `get_job_search_brief`: your profile, constraints, resume summaries and sync status (`enabled`, `role`); call first in a job-search chat.
+- `sync_now`: ask the always-on copy to sync now; returns the round's outcome and per-step counts. On your laptop, it explains that your bot runs the sync; with sync off, it says "Sync isn't set up."
 - `find_job_by_url`: check whether a posting is already saved.
 - `store_extracted_jd`: save a job. Your assistant fills in the job's details in the format the tool describes.
-- `list_jobs`, `get_job`: saved jobs (a short paginated list, then one job in full).
+- `list_jobs`, `get_job`: saved jobs (a short paginated list, then one job in full), with ownership to identify jobs owned here and replicas.
 - `list_referrals`: referral contacts.
 
 **Tracking**
@@ -265,16 +266,17 @@ date and number ranges. If `em_dash_found` is true, fix the text and re-render.
 - `generate_cover_letter`: a cover letter in the tone you ask for.
 - `list_qa_entries`: the answers and cover letters generated so far.
 
-**Proposals and consent** (nothing is submitted without your yes)
+**Proposals and consent** (your yes, or automatic approval while full automation is On)
 - `propose_application`, `list_proposals`, `get_proposal`: file a job your assistant found for your review, and read the queue.
 - `record_triage`: accept or decline proposals; accepted ones are queued for the next apply run.
 - `request_decision`, `record_decision`, `resume_proposal`, `report_failure`: handle proposals that need your input or hit a problem.
 - `get_final_review`: everything to check before you approve, including the flagged answers.
 - `record_filled_answers`: records what was filled on each form page and where each answer came from; its flags show again in `get_final_review`.
-- `record_consent`: record your approve/reject, only after you have actually answered.
+- `record_consent`: record your approve/reject after you answer, or the agent's automatic approval with channel `auto` while full automation is On. Auto approval requires a Queued proposal, final-review evidence, a company off the skip list and a daily-cap slot.
+- `get_job_site_login`: the saved job-site email and password, only while full automation is On, for a Queued or approved proposal off the skip list. Each hand-off is audited without the value; the login passes through your agent's AI provider. Use it only for job-site accounts.
 - `record_run`: record one finished automation run; it appears under Recent runs in the Agent inbox.
-- `attach_evidence`, `attach_evidence_file`: attach the screenshots your approval and the submission need (the final review and the confirmation).
-- `mark_submitted`: mark an approved proposal as submitted.
+- `attach_evidence`, `attach_evidence_file`: attach the final-review screenshot and, when using receipt evidence, the submission confirmation.
+- `mark_submitted`: mark an approved proposal as submitted with receipt evidence or the user's attestation. While full automation is On, channel `auto` records the agent's word with a note naming what confirmed submission (at least one letter or digit); a receipt is optional. It can also confirm `submission_uncertain`, without another submit click.
 
 **Career KB**
 - `get_career_context`, `get_career_export`: your full career record, as structured data or as `career.md`.

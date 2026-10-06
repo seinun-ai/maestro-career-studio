@@ -15,7 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { statusLabel } from "@/components/status-chip";
+import { STATUS_TONES, statusLabel } from "@/components/status-chip";
+import { ScoreBar, SegmentedBar, Sparkline } from "@/components/visual";
 import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
@@ -71,6 +72,13 @@ export function AnalyticsOverview({
     .filter((row) => row.tier !== "wording" && row.status === "in_kb")
     .slice(0, 3);
   const statusCounts = activity.data?.status_counts ?? {};
+  // Zeros read as real only once the data is in: not while loading, not after a failed load.
+  const hasStatusMix =
+    activity.data != null && APPLICATION_STATUSES.some((status) => statusCounts[status]);
+  // Four weeks of daily buckets: the last 28 days, oldest first.
+  const appliedPerDay = (activity.data?.series ?? []).slice(-28).map((b) => b.submitted);
+  const gapMax = Math.max(1, ...(gaps.data ?? []).map((row) => row.n_jobs));
+  const winMax = Math.max(1, ...quickWins.map((row) => row.n_jobs));
 
   return (
     <div className="grid gap-4">
@@ -100,7 +108,14 @@ export function AnalyticsOverview({
             label="Applied · last 7 days"
             value={String(totals?.submitted_last7 ?? 0)}
             sub={`${totals?.submitted ?? 0} all time`}
-          />
+          >
+            <Sparkline
+              values={appliedPerDay}
+              width={96}
+              height={32}
+              label="Applied per day, last 28 days"
+            />
+          </StatTile>
           <StatTile
             label="In progress"
             value={String(totals?.in_flight ?? 0)}
@@ -135,21 +150,17 @@ export function AnalyticsOverview({
 
       <ActivityChart source={source} />
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {APPLICATION_STATUSES.filter((status) => statusCounts[status]).map(
-          (status) => (
-            <span
-              key={status}
-              className="text-muted-foreground inline-flex h-7 items-center gap-1.5 rounded-full bg-surface-container px-3 text-body-small"
-            >
-              {statusLabel(status)}
-              <span className="text-foreground font-medium">
-                {statusCounts[status]}
-              </span>
-            </span>
-          ),
-        )}
-      </div>
+      {hasStatusMix ? (
+        <SegmentedBar
+          name="Applications by status"
+          parts={APPLICATION_STATUSES.map((status) => ({
+            key: status,
+            label: statusLabel(status),
+            count: statusCounts[status] ?? 0,
+            tone: STATUS_TONES[status],
+          }))}
+        />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -176,7 +187,13 @@ export function AnalyticsOverview({
                 <div key={row.skill} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-body-medium">{skillName(row.skill)}</span>
                   <span className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-body-small">
-                    {row.n_jobs} {row.n_jobs === 1 ? "job" : "jobs"}
+                    <ScoreBar
+                      value={row.n_jobs}
+                      max={gapMax}
+                      valueText={`${row.n_jobs} ${row.n_jobs === 1 ? "job" : "jobs"}`}
+                      label={`${skillName(row.skill)}: jobs with this gap`}
+                      width="w-16"
+                    />
                     <LowSampleBadge
                       n={row.n_jobs}
                       lowSample={row.low_sample}
@@ -221,6 +238,14 @@ export function AnalyticsOverview({
                 // The card's title says where each comes from; a tag on every row said it again.
                 <div key={row.skill} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-body-medium">{skillName(row.skill)}</span>
+                  <ScoreBar
+                    className="text-muted-foreground shrink-0"
+                    value={row.n_jobs}
+                    max={winMax}
+                    valueText={`${row.n_jobs} ${row.n_jobs === 1 ? "job" : "jobs"}`}
+                    label={`${skillName(row.skill)}: jobs asking for it`}
+                    width="w-16"
+                  />
                 </div>
               ))
             )}

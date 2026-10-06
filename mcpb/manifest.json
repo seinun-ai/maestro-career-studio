@@ -50,7 +50,7 @@
     "profile": {
       "type": "string",
       "title": "Tool profile",
-      "description": "full (85 tools) or a scoped set: hunt, apply, explore, templates, career. Enable one at a time — the scoped profiles are subsets of full, so more than one costs context without adding capability.",
+      "description": "full (88 tools) or a scoped set: hunt, apply, explore, templates, career. Enable one at a time — the scoped profiles are subsets of full, so more than one costs context without adding capability.",
       "default": "full",
       "required": false
     }

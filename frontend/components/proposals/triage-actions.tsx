@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
+import { isSyncQueued } from "@/lib/job-ownership";
 import { couldnt, isPlainSentence } from "@/lib/error-text";
 import type {
   Proposal,
@@ -58,8 +59,11 @@ type BulkStatus = "accepted" | "rejected";
  * confirmed), so focus a caller moved on at the click has nowhere to go.
  */
 export type ProposalActionEvents = {
+  /** A Queue or Skip waits this long before the lists refetch, so the row it removes can leave first. */
+  settleMs?: number;
   onDone?: (ids: string[], became: BulkStatus | "pending_review" | "deleted") => void;
   onUndone?: () => void;
+  onQueued?: (ids: string[]) => void;
 };
 
 export function useProposalActions(events: ProposalActionEvents = {}) {
@@ -71,6 +75,13 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
     void qc.invalidateQueries({ queryKey: FUNNEL_KEY });
     void qc.invalidateQueries({ queryKey: ["job-detail"] });
     void qc.invalidateQueries({ queryKey: ["proposal"] });
+    void qc.invalidateQueries({ queryKey: ["jobs"] });
+  };
+
+  // A row that is leaving is still in the lists until the refetch, so a caller with an exit asks for a pause.
+  const settle = () => {
+    if (events.settleMs) setTimeout(invalidate, events.settleMs);
+    else invalidate();
   };
 
   const transition = useMutation({
@@ -97,7 +108,20 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
         }),
       }),
     onSuccess: (_data, vars) => {
-      invalidate();
+      // Sent to the copy that owns the job (202): nothing changed here yet, so the row stays and refetches now.
+      if (isSyncQueued(_data)) {
+        invalidate();
+        toast.success("Sent at the next sync");
+        events.onQueued?.([vars.id]);
+        events.onUndone?.();
+        return;
+      }
+      if (vars.status === "pending_review") invalidate();
+      else settle();
+      // One owner for the words: the inbox and the job page say the same thing.
+      if (vars.status === "accepted") toast.success("Queued. A connected agent can apply to it now.");
+      else if (vars.status === "rejected") toast.success("Proposal skipped");
+      else toast.success("Kept. It's back in To review.");
       events.onDone?.([vars.id], vars.status);
     },
     onError: (err: Error, vars) => {
@@ -126,10 +150,27 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
         }),
       }),
     onSuccess: (data, vars) => {
-      invalidate();
-      events.onDone?.(vars.ids, vars.status);
       const failed = data.results.filter((r) => !r.ok);
-      if (failed.length === 0) return;
+      const failedIds = new Set(failed.map((r) => r.id));
+      // Rows sent to the copy that owns their job (202) change at the next sync: they stay put meanwhile.
+      const queued = data.results.filter((r) => r.ok && r.detail === "Sent at the next sync.").map((r) => r.id);
+      const done = vars.ids.filter((id) => !failedIds.has(id) && !queued.includes(id));
+      if (done.length > 0) settle();
+      else invalidate();
+      // Only the rows that changed leave the selection and the list; a failed one stays to retry.
+      if (queued.length > 0) {
+        toast.success("Sent at the next sync");
+        events.onQueued?.(queued);
+        events.onUndone?.();
+        if (done.length > 0) events.onDone?.(done, vars.status);
+      } else {
+        events.onDone?.(done, vars.status);
+      }
+      if (failed.length === 0) {
+        const n = done.length;
+        if (n > 0) toast.success(`${vars.status === "accepted" ? "Queued" : "Skipped"} ${n} ${n === 1 ? "proposal" : "proposals"}`);
+        return;
+      }
       // "queue": Accept's result is a Queued chip (the ONE status vocabulary).
       const verb = vars.status === "accepted" ? "queue" : "skip";
       // The server's reason, only when it is a sentence written for the user.
@@ -179,12 +220,21 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
   const transitionOnce = useSingleFlight(transition.mutate);
   const bulkOnce = useSingleFlight(bulk.mutate);
   const removeOnce = useSingleFlight(remove.mutate);
+  // The rows in flight, for a spinner on each: the buttons stay locked everywhere, but only these rows ask.
+  const actingIds = new Set<string>(
+    transition.isPending && transition.variables ? [transition.variables.id]
+    : bulk.isPending && bulk.variables ? bulk.variables.ids
+    : [],
+  );
   return {
     transition: transitionOnce,
     bulk: bulkOnce,
     remove: removeOnce,
     // Any of them running: every triage control waits, focusable and dimmed.
     pending: transition.isPending || bulk.isPending || remove.isPending,
+    // Only the bulk Queue spins: a bulk Skip runs from the dialog, whose own button spins.
+    queuePending: bulk.isPending && bulk.variables?.status === "accepted",
+    actingIds,
   };
 }
 
@@ -193,12 +243,15 @@ export function DeclineDialog({
   onOpenChange,
   onConfirm,
   pending,
+  blocked,
   finalFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (reason: string) => void;
   pending?: boolean;
+  /** A chosen job is on the other copy: Skip waits, Cancel still closes. */
+  blocked?: boolean;
   /** Where focus goes when it closes (Base UI's `finalFocus`): a Skip takes its opener away. */
   finalFocus?: () => HTMLElement | boolean;
 }) {
@@ -265,9 +318,8 @@ export function DeclineDialog({
             type="button"
             variant="destructive"
             onClick={submit}
-            disabled={pending}
-            focusableWhenDisabled
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            pending={pending}
+            disabled={blocked}
           >
             Skip
           </Button>
@@ -283,12 +335,16 @@ export function BulkBar({
   onDecline,
   onClear,
   pending,
+  queuePending,
 }: {
   selectedCount: number;
   onQueue: () => void;
   onDecline: () => void;
   onClear: () => void;
+  /** Any triage action runs: every button waits, focusable and dimmed. */
   pending?: boolean;
+  /** The bulk Queue itself runs: its button spins. */
+  queuePending?: boolean;
 }) {
   if (selectedCount <= 0) return null;
 
@@ -297,7 +353,7 @@ export function BulkBar({
     // while they run, and the page hands focus on when a Queue, Skip or Clear takes the bar away.
     <div
       data-slot="bulk-bar"
-      className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3"
+      className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm animate-in slide-in-from-bottom-2 fade-in-0 duration-(--duration-short4) ease-(--ease-emphasized-decelerate) fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3"
     >
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-2">
         <span className="text-title-small tabular-nums">
@@ -306,8 +362,8 @@ export function BulkBar({
         <Button
           type="button"
           size="sm"
-          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onQueue}
+          pending={queuePending}
           disabled={pending}
           focusableWhenDisabled
         >

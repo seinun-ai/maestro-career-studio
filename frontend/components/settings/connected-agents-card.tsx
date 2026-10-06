@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { AGENT_APPLICATIONS_URL, CONNECT_AGENT_GUIDE_URL, JOB_HUNT_SKILL_URL } from "@/lib/agent-links";
 
 const LINKS = [
@@ -93,25 +94,37 @@ export function ConnectedAgentsCard() {
                   this only after you say yes. That&apos;s a rule they&apos;re given, not a lock.
                 </li>
                 <li>Create, edit and tailor your resumes.</li>
-                <li>Fill in and submit applications you queued, after your yes.</li>
+                <li>
+                  Fill in and submit applications you queued, after your yes, or on their own in
+                  full automation mode.
+                </li>
               </ul>
             </div>
             <div className="grid content-start gap-1.5">
               <h3 id={cantId} className="font-medium">
                 They can&apos;t
               </h3>
-              <ul aria-labelledby={cantId} className="text-muted-foreground grid list-disc gap-1 pl-5">
-                <li>Go past the daily limit below.</li>
-                <li>Delete an item or a bullet from your career history.</li>
-                <li>Connect from claude.ai or chatgpt.com in a browser.</li>
+              <ul aria-labelledby={cantId} className="text-muted-foreground grid gap-1">
+                <li className="flex items-start gap-1.5">
+                  <CONCEPT_ICONS.cannot className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <span>Go past the daily limit below.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <CONCEPT_ICONS.cannot className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <span>Delete an item or a bullet from your career history.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <CONCEPT_ICONS.cannot className="relative top-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <span>Connect from claude.ai or chatgpt.com in a browser.</span>
+                </li>
               </ul>
             </div>
           </div>
           <p className="text-muted-foreground max-w-[65ch]">
             Maestro CS itself never looks for jobs or submits an application. Before each
-            submit, the agent asks for your yes and records it. The daily limit below counts
-            those yeses over the last 24 hours. The app records each yes but can&apos;t stop an
-            agent, so stay with it while it applies.
+            submit, the agent asks for your yes and records it, unless you turned on full
+            automation. The daily limit below counts those yeses over the last 24 hours. The
+            app records each yes but can&apos;t stop an agent, so stay with it while it applies.
           </p>
           <p className="text-muted-foreground max-w-[65ch]">
             Two helpers are part of the app, not connected agents. You talk to the Assistant

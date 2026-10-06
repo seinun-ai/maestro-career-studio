@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal } from "lucide-react";
+import { Ellipsis } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -224,7 +224,7 @@ export default function TemplatesListPage() {
                     variant="ghost"
                     aria-label={`Actions for ${templateName(t)}`}
                   >
-                    <MoreHorizontal className="size-4" />
+                    <Ellipsis className="size-4" />
                   </Button>
                 }
               />

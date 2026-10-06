@@ -85,7 +85,7 @@ export function GettingStartedCard() {
   );
   return (
     <>
-      <Card className="border-primary/20 bg-primary/[0.03]">
+      <Card className="bg-surface-container-low">
         <CardContent className="pt-6">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -119,13 +119,16 @@ export function GettingStartedCard() {
                     aria-hidden="true"
                     className={
                       row.done
-                        ? "text-primary size-4"
+                        ? "text-success size-4"
                         : "text-muted-foreground size-4"
                     }
                   />
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 text-title-small">
                       {row.title}
+                      {row.done ? (
+                        <span className="text-success text-label-medium">Done</span>
+                      ) : null}
                       {row.required && !row.done ? (
                         <Badge variant="outline" className="text-body-small">
                           Required

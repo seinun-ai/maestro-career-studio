@@ -96,9 +96,8 @@
     ].filter(Boolean);
     const line = node("div", "evi");
     if (evidence.pdfName) {
-      const clip = node("span", null, "📎");
-      clip.setAttribute("aria-hidden", "true");
-      attach(line, clip);
+      // Hidden from a screen reader (the icon helper's default); the sentence stands on its own.
+      attach(line, build.icon("paperclip", { size: 14 }));
     }
     return attach(line, node("span", null, parts.join(" · ")));
   }

@@ -3,10 +3,9 @@
 import { useId, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Copy,
   Download,
-  FileText,
   Loader2,
+  MessageSquareText,
   Pencil,
   RefreshCw,
   Trash2,
@@ -14,10 +13,12 @@ import {
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { CopyButton } from "@/components/copy-button";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -27,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
+import { ownershipControlProps } from "@/lib/job-ownership";
 import { useEditorFocusReturn } from "@/hooks/use-confirm-discard";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
@@ -35,6 +37,9 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { QAEntry, QAResponse } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const CreatePdfIcon = CONCEPT_ICONS.createPdf;
 
 const TONES = ["balanced", "enthusiastic", "formal", "concise"];
 
@@ -49,7 +54,7 @@ const KIND_LABELS: Record<string, string> = {
   cover_letter: "Cover letter",
 };
 
-export function QATab({ applicationId }: { applicationId: string }) {
+export function QATab({ applicationId, readOnly = false }: { applicationId: string; readOnly?: boolean }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: entries, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
@@ -63,6 +68,8 @@ export function QATab({ applicationId }: { applicationId: string }) {
   const [questions, setQuestions] = useState("");
   const [tone, setTone] = useState<string>("balanced");
   const questionsHintId = useId();
+  const needQuestionId = useId();
+  const noQuestions = questions.trim().length === 0;
   const historyHeadingId = useId();
 
   const invalidate = () =>
@@ -76,7 +83,6 @@ export function QATab({ applicationId }: { applicationId: string }) {
         .split("\n")
         .map((q) => q.trim())
         .filter((q) => q.length > 0);
-      if (list.length === 0) throw new Error("Type at least one question.");
       return apiFetch<QAResponse>("/api/qa", {
         method: "POST",
         body: JSON.stringify({
@@ -200,6 +206,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
           </p>
           <Textarea
             aria-label="Application questions"
+            disabled={readOnly}
             aria-describedby={questionsHintId}
             value={questions}
             onChange={(e) => setQuestions(e.target.value)}
@@ -207,12 +214,19 @@ export function QATab({ applicationId }: { applicationId: string }) {
           />
           <Button
             onClick={() => askOnce(questions)}
-            disabled={askQuestions.isPending}
+            pending={askQuestions.isPending}
+            disabled={noQuestions}
+            {...ownershipControlProps(readOnly)}
             focusableWhenDisabled
-            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            aria-describedby={noQuestions ? needQuestionId : undefined}
           >
             {askQuestions.isPending ? "Answering…" : "Answer questions"}
           </Button>
+          {noQuestions ? (
+            <p id={needQuestionId} className="text-muted-foreground text-body-small">
+              Type at least one question.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -223,7 +237,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
         <CardContent className="flex flex-wrap items-end gap-2">
           <div className="grid gap-1.5">
             <Label htmlFor="tone">Tone</Label>
-            <Select value={tone} onValueChange={(v) => setTone(v ?? "balanced")}>
+            <Select disabled={readOnly} value={tone} onValueChange={(v) => setTone(v ?? "balanced")}>
               <SelectTrigger id="tone" className="w-44">
                 <SelectValue>{TONE_LABELS[tone] ?? tone}</SelectValue>
               </SelectTrigger>
@@ -238,7 +252,9 @@ export function QATab({ applicationId }: { applicationId: string }) {
           </div>
           <Button
             onClick={() => void generateCoverLetter()}
-            disabled={coverLetter.isPending || letterEditing}
+            pending={coverLetter.isPending}
+            disabled={letterEditing}
+            {...ownershipControlProps(readOnly)}
             focusableWhenDisabled
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
@@ -259,7 +275,13 @@ export function QATab({ applicationId }: { applicationId: string }) {
             retrying={isFetching}
             onRetry={() => void refetch()}
           />
-        ) : !entries || entries.length === 0 ? (
+        ) : entries === undefined ? (
+          <div role="status" aria-busy="true" className="space-y-3">
+            <span className="sr-only">Loading answers…</span>
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        ) : entries.length === 0 ? (
           <p className="text-muted-foreground text-body-medium">No answers yet.</p>
         ) : (
           entries.map((entry, i) => {
@@ -271,6 +293,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
               renderEntry.isPending && renderEntry.variables === entry.id;
             return (
               <QAEntryCard
+                readOnly={readOnly}
                 key={entry.id}
                 entry={entry}
                 index={i}
@@ -312,6 +335,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
 }
 
 function QAEntryCard({
+  readOnly = false,
   entry,
   index,
   isDeleting,
@@ -328,6 +352,7 @@ function QAEntryCard({
   onRender,
   onSave,
 }: {
+  readOnly?: boolean;
   entry: QAEntry;
   index: number;
   isDeleting: boolean;
@@ -370,9 +395,20 @@ function QAEntryCard({
       data-pending={isRegenerating || isRendering || isSaving || undefined}
     >
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <CardTitle className="text-title-small">
-          {isDocument ? KIND_LABELS[entry.kind] : entry.prompt}
+        <CardTitle className="flex min-w-0 flex-1 items-start gap-2 text-title-small">
+          {isCoverLetter ? (
+            <CONCEPT_ICONS.coverLetter className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          ) : (
+            <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          )}
+          <span>{isDocument ? KIND_LABELS[entry.kind] : entry.prompt}</span>
         </CardTitle>
+        {isCoverLetter && entry.pdf_path ? (
+          <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-surface-container px-2 text-label-medium text-foreground">
+            <CONCEPT_ICONS.done className="size-3 shrink-0 text-success" aria-hidden="true" />
+            PDF ready
+          </span>
+        ) : null}
         <div className="flex shrink-0 gap-1">
           {isDocument && !editing ? (
             <IconButton
@@ -384,23 +420,16 @@ function QAEntryCard({
                 onEditingChange(true);
               }}
               disabled={isSaving || isRendering || isRegenerating || generating}
+              {...ownershipControlProps(readOnly)}
             />
           ) : null}
-          <IconButton
-            label="Copy"
-            icon={<Copy />}
-            onClick={() => {
-              navigator.clipboard
-                .writeText(entry.answer ?? "")
-                .then(() => toast.success("Copied"));
-            }}
-          />
+          <CopyButton text={entry.answer ?? ""} />
           {isCoverLetter ? (
             <IconButton
               label="Create PDF"
-              icon={isRendering ? <Loader2 className="animate-spin" /> : <FileText />}
+              icon={isRendering ? <Loader2 className="animate-spin" /> : <CreatePdfIcon />}
               onClick={onRender}
-              disabled={isRendering || isSaving || editing}
+              disabled={isRendering || isSaving || editing || readOnly}
             />
           ) : null}
           {isCoverLetter && entry.pdf_path ? (
@@ -422,6 +451,7 @@ function QAEntryCard({
               // A letter waits while any letter is open for editing: a new
               // one would land under the draft and the next Save overwrite it.
               disabled={regenerateBusy || isSaving || isRendering || (isCoverLetter && letterEditing)}
+              {...ownershipControlProps(readOnly)}
               focusableWhenDisabled
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
             />
@@ -430,7 +460,7 @@ function QAEntryCard({
             label="Delete"
             icon={<Trash2 />}
             onClick={onDelete}
-            disabled={isDeleting}
+            disabled={isDeleting || readOnly}
           />
         </div>
       </CardHeader>
@@ -443,13 +473,14 @@ function QAEntryCard({
               onChange={(e) => setDraft(e.target.value)}
               // Keys typed after Save would be dropped when the editor closes.
               readOnly={isSaving}
+              {...ownershipControlProps(readOnly, "readOnly")}
               rows={10}
               className="text-body-medium"
             />
             <div className="flex gap-2">
               <Button
                 size="sm"
-                disabled={isSaving}
+                disabled={isSaving || readOnly}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={async () => {

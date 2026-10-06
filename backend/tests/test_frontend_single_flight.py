@@ -194,7 +194,7 @@ def test_a_tracker_row_queue_keeps_focus_on_the_row():
 def test_the_job_header_queue_keeps_focus_in_the_header():
     job = (_FRONTEND / "app/jobs/[id]/page.tsx").read_text()
     header = _button_at(job, "promoteOnce();")
-    assert "focusableWhenDisabled" in header and "data-disabled:opacity-50" in header
+    assert "pending={promote.isPending}" in header  # the primitive keeps focus while pending
     assert "queued.current = true;" in header
     handoff = job[job.index("useLayoutEffect(() => {\n    if (!queued.current || !hasProposal) return;") :]
     assert "focusIfDropped(focusTarget(actionsRef.current));" in handoff[: handoff.index("}, [hasProposal]);")]

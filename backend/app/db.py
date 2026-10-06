@@ -198,3 +198,20 @@ def begin_write(session: Session) -> None:
 def get_db():
     with SessionLocal() as session:
         yield session
+
+
+def _before_flush(session: Session, flush_context, instances) -> None:
+    # Lazy import: models import Base from this module before their classes exist.
+    from app.services.sync.hooks import _before_flush as sync_before_flush
+
+    sync_before_flush(session, flush_context, instances)
+
+
+def _after_soft_rollback(session: Session, previous_transaction) -> None:
+    from app.services.sync.hooks import _after_rollback
+
+    _after_rollback(session)
+
+
+event.listen(Session, "before_flush", _before_flush)
+event.listen(Session, "after_soft_rollback", _after_soft_rollback)

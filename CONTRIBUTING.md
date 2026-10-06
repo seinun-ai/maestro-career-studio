@@ -51,7 +51,9 @@ These were considered and refused. A pull request implementing one will be
 declined on scope, independent of code quality — please open a discussion first
 if you think the reasoning has expired.
 
-1. **Volume auto-apply or bulk blast.** Employers now filter for applications
+1. **Unchecked volume auto-apply or bulk blast.** Full automation mode is opt-in,
+   capped, limited to jobs the user queued and to answers that pass every check;
+   unscored, uncapped or unqueued applying stays refused. Employers now filter for applications
    that read as machine-generated, and the flagship high-volume project in this
    space is archived. Shipping a blast tool would aim the product at the one
    market trend most against it.

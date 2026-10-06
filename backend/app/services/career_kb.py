@@ -31,6 +31,7 @@ from app.services import base_resume_data
 from app.services.base_resume_data import write_base_resume_json
 from app.services.resume_edit import apply_edits
 from app.services.resume_versions import record_version
+from app.services.sync import hooks
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +57,7 @@ def get_or_create_profile(session: Session) -> KBProfile:
     profile = session.get(KBProfile, 1)
     if profile is None:
         profile = KBProfile(id=1)
-        session.add(profile)
-        session.flush()
+        hooks.seed_profile(session, profile)
     return profile
 
 
@@ -648,12 +648,16 @@ def merge_entities(session: Session, source_id: uuid.UUID, target_id: uuid.UUID)
     # take them with it; after the bulk updates it owns none and the cascade is
     # a no-op.
     # `synchronize_session=False`: this UPDATE does NOT refresh already-loaded
-    # KBPoint/KBDocument/KBPortLog objects, so any the caller is holding keep a
-    # stale entity_id until it commits or expires them. Only the two ENTITY rows
-    # are left honest here (expire(source) below, expire(target) after the
-    # flush) — that is enough for this function's own contract, and the router
+    # KBPoint/KBDocument objects, so any the caller is holding keep a
+    # stale entity_id until it commits or expires them. The entity rows
+    # (expired below) and ORM-moved port logs remain current here —
+    # that is enough for this function's own contract, and the router
     # commits immediately afterwards.
-    for model in (KBPoint, KBDocument, KBPortLog):
+    # Application port logs belong to jobs: ORM writes reach the sync hook.
+    for log in session.scalars(select(KBPortLog).where(KBPortLog.entity_id == source_id)):
+        log.entity_id = target_id
+    hooks.touch_profile(session)
+    for model in (KBPoint, KBDocument):
         session.execute(
             sa_update(model)
             .where(model.entity_id == source_id)

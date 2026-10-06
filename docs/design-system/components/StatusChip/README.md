@@ -25,6 +25,7 @@ StatusChip is the only place an application's or a proposal's state is named and
 | `expired` | Expired | `muted` / `muted-foreground` |
 
 - 24px tall, `radius-full`, `label-medium`. An application chip's 6px dot is the role itself (`bg-warning`, `bg-success`); a proposal chip's dot is its own text color at 40%.
+- Every status also has a dot role for `StatusDot` and `LaneDot` (see StatusDot): Needs you and Check if sent `attention`, Proposed `primary`, Queued `on-secondary-container`, Approved and Applied `success`, Skipped and Expired `muted-foreground`.
 - The label always carries the meaning; the color only repeats it.
 - Needs you is `attention` (orange), never `warning`: Interviewing sits in the same column.
 - An interactive chip shows a chevron, lifts with a shadow on hover and takes the solid `ring` outline on focus.

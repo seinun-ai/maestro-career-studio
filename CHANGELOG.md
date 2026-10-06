@@ -30,6 +30,43 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Added
 
+- **Run Maestro without Docker** on a small always-on Linux machine. Four
+  commands (`setup`, `start`, `stop`, `health`) install and run the backend
+  from one folder, with one loopback worker. No web app there: a connected
+  agent starts the MCP server on demand. See `docs/native-install.md`.
+- **A second, always-on copy** of Maestro that keeps working while your laptop
+  is off. Your laptop keeps your profile; each job has one owner, so nothing
+  merges. Job cards show **With your bot**, **On your laptop** or **Going to
+  your bot**, with **Keep it here** and **Work on it here**. A queue, skip,
+  status or note change on the other copy's job waits as **Sent at the next
+  sync**. With full automation on, a job you queue on the laptop is offered to
+  the always-on copy. It is off until you create a sync key
+  (`python -m scripts.sync_key create`); without one nothing changes. The MCP
+  tool `sync_now` runs a round, and `sync.sh` runs one from cron. The always-on
+  copy holds a read-only copy of your profile, including the AI key and the
+  job-site login, carried only inside an SSH tunnel. See `docs/sync-setup.md`.
+
+- **`/health/memory`** reports how much memory the backend is using now and at
+  its peak, so you can watch a small machine. `health.sh` prints it too.
+- **Lighter ATS scoring on small machines.** Set `EMBEDDINGS_OUT_OF_PROCESS=1`
+  and each score loads its language model in a short-lived helper, one at a
+  time, instead of keeping it in the backend. Scores are the same; backend
+  memory after scoring drops from about 410 MB to about 170 MB, and each score
+  takes under a second longer. The native `start` command turns it on; the
+  Docker install keeps it off.
+
+- **Full automation**, Off by default in Settings › Connected agents: your
+  agent can submit queued jobs whose final review is clean without asking
+  each time. The daily limit and Companies to skip still apply; anything to
+  check goes to Needs you. On the Automations page, **Apply automatically**
+  replaces the attended Apply prompt while the switch is On. Order, batching
+  and timing stay between you and your agent.
+- **Job-site login**: save an email and a password used only for job-site
+  accounts. They stay in a private local file; Settings shows only whether a
+  password is saved. A connected agent can fetch them for a queued or approved
+  job while full automation is On. Each hand-off is recorded without the value;
+  the login passes through your agent's AI provider.
+
 - The **Agent inbox dashboard**: readiness marks on open rows, an arrivals strip
   and **Recent runs** with each automation's counts, digest and job links. Queued
   jobs ready to apply sort first. Automations cards show **Last ran**. New MCP
@@ -64,7 +101,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   link. They wait in the Agent inbox alongside jobs from referral pages, and
   later hunts recognize jobs already saved.
 - Agents record each form page's answers instead of attaching a screenshot of
-  every page; the final-review and submission screenshots stay.
+  every page; the final-review screenshot stays. In full automation, the agent
+  records what confirmed submission and a submission screenshot is optional.
 
 ### Fixed
 

@@ -193,7 +193,7 @@ def test_the_score_list_key_carries_the_country_flag_and_prefix_invalidations_st
     assert 'queryKey: ["ats-scores", jobId, "candidates"],' in _PANEL
     assert "queryFn: () => getAtsCandidates(jobId)," in _PANEL
     # A run invalidates the PREFIX, which covers both keys.
-    assert 'onSuccess: () => qc.invalidateQueries({ queryKey: ["ats-scores", jobId] }),' in _PANEL
+    assert 'await qc.invalidateQueries({ queryKey: ["ats-scores", jobId] });' in _PANEL
     # Switching the view keeps the cards on screen until the new list lands.
     assert "placeholderData: keepPreviousData," in _PANEL
     for rel in ("components/ats-compare-panel.tsx", "components/resume-editor/tailored-resume-studio.tsx",
@@ -225,14 +225,15 @@ def test_skipped_resumes_are_one_line_with_a_button_that_scores_them_anyway():
     assert '<p className="text-body-small text-muted-foreground"> {skippedCountriesLine(skipped.length, countryName(jobCountry))}{" "} <Button' in panel
     button = _squash(_between(_PANEL, "{skippedCountriesLine(", "</Button>"))
     assert "onClick={scoreOtherCountries}" in button
-    assert "focusableWhenDisabled" in button and "disabled={run.isPending}" in button
+    # Disabled while a run is in flight, and on a job this copy only reads (a replica).
+    assert "focusableWhenDisabled" in button and "disabled={run.isPending || readOnly}" in button
     assert button.endswith("Score them anyway")
     handler = _squash(_between(_PANEL, "const scoreOtherCountries = () => {", "\n  };"))
     assert "setIncludeOtherCountries(true);" in handler
     assert "focusNext(updateRef);" in handler
-    assert "runOnce(true);" in handler
+    assert 'runOnce("all");' in handler
     # The run posts the flag; Update scores in that view keeps it.
-    assert "runAtsScores(jobId, { includeOtherCountries: all === true || includeOtherCountries })" in panel
+    assert 'runAtsScores(jobId, { includeOtherCountries: gesture === "all" || includeOtherCountries })' in panel
     # Once scored anyway, the line would be untrue.
     assert "const skipped = includeOtherCountries ? [] : (candidates.data?.skipped ?? []);" in panel
 

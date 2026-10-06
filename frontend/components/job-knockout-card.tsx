@@ -1,47 +1,39 @@
 "use client";
 
-import { AlertTriangle, CircleCheck, CircleHelp, ShieldAlert } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { GuardedLink as Link } from "@/components/guarded-link";
-import type { ReactNode } from "react";
 
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { anchorHref } from "@/lib/settings-tabs";
-import type { Job, KnockoutCheck, KnockoutScan, KnockoutStatus } from "@/lib/types";
+import type { Job, KnockoutCheck, KnockoutScan } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const STATUS_COPY: Record<
-  KnockoutStatus,
-  { label: string; detail: string; icon: ReactNode; tone: string }
-> = {
-  conflict: {
-    label: "You may not qualify",
-    detail: "The job lists a requirement your profile doesn't meet.",
-    icon: <ShieldAlert />,
-    tone: "border border-destructive/40 bg-destructive/5 text-destructive",
-  },
-  // `clear` is any pass or warning (knockout.py): a warning row can sit under it, and a check the
-  // profile could not answer is left out, so it claims only that nothing conflicts.
-  clear: {
-    label: "Nothing rules you out",
-    detail: "Nothing the job lists conflicts with your profile.",
-    icon: <CircleCheck />,
-    tone: "bg-success-container text-on-success-container",
-  },
-  incomplete_profile: {
-    label: "Your profile is missing an answer",
-    detail: "Add it to your profile to check this job.",
-    icon: <CircleHelp />,
-    tone: "bg-warning-container text-on-warning-container",
-  },
-  // Deliberately NOT phrased as a pass: nothing the job lists could be checked.
-  unstated: {
-    label: "No requirements listed",
-    detail: "Nothing here to check. That doesn't mean you qualify.",
-    icon: <CircleHelp />,
-    tone: "border border-border bg-surface-container-low text-muted-foreground",
-  },
+/** The word each check answers to, on its chip and in front of its server message. */
+const LABEL_BY_KIND: Record<KnockoutCheck["kind"], string> = {
+  work_authorization: "Work auth",
+  opt: "OPT",
+  salary: "Pay",
+  experience: "Experience",
+  on_site: "On-site",
 };
 
-/** Rows worth a line of their own; passes are covered by the headline. */
+const { done: DoneIcon, fails: FailsIcon, warning: WarningIcon, unknown: UnknownIcon, none: NoneIcon, notRun: NotRunIcon } =
+  CONCEPT_ICONS;
+
+type Summary = { icon: LucideIcon; word: string; tone: string; iconTone?: string };
+
+/** One chip per check result. Icons are the register's (lib/concept-icons.ts): done, fails, warning, unknown,
+ *  none, notRun. Colour never stands alone: every chip carries its word. A pass stays neutral ("good news is quiet"). */
+const SUMMARY_BY_RESULT: Record<KnockoutCheck["result"], Summary> = {
+  pass: { icon: DoneIcon, word: "OK", tone: "bg-surface-container", iconTone: "text-success" },
+  conflict: { icon: FailsIcon, word: "Conflict", tone: "bg-error-container text-on-error-container" },
+  warning: { icon: WarningIcon, word: "Warning", tone: "bg-warning-container text-on-warning-container" },
+  profile_missing: { icon: UnknownIcon, word: "Add answer", tone: "bg-surface-container" },
+  job_unstated: { icon: NoneIcon, word: "Not listed", tone: "bg-surface-container text-muted-foreground" },
+};
+const NOT_RUN: Summary = { icon: NotRunIcon, word: "Not run", tone: "bg-surface-container" };
+
+/** Rows worth a line of their own; passes and unstated checks are covered by their chip. */
 const ROW_RESULTS = new Set(["conflict", "warning", "profile_missing"]);
 
 /** Which autofill group answers each knock-out check.
@@ -63,13 +55,12 @@ const CHECK_GROUP: Partial<Record<KnockoutCheck["kind"], string>> = {
  *  the autofill card has never lived. The `autofill-<group>` ids are the
  *  fieldsets in `settings/autofill-section.tsx`; `anchorHref` adds the Autofill
  *  tab, so the server renders the panel that holds them. */
-function autofillHref(scan: KnockoutScan): string {
-  const missing = scan.checks.find((c) => c.result === "profile_missing");
-  const group = missing ? CHECK_GROUP[missing.kind] : undefined;
+function autofillHref(kind: KnockoutCheck["kind"] | undefined): string {
+  const group = kind ? CHECK_GROUP[kind] : undefined;
   return anchorHref("/profile", group ? `autofill-${group}` : "autofill");
 }
 
-type Unchecked = { what: string; field: string; href: string; link: string };
+type Unchecked = { kind: KnockoutCheck["kind"]; href: string; link: string };
 
 /**
  * What the job lists that the scan could not compare. knockout.py leaves the salary check out when the
@@ -86,17 +77,15 @@ function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
   const items: Unchecked[] = [];
   if (yearly && !has("salary")) {
     items.push({
-      what: "pay",
+      kind: "salary",
       // Autofill's Desired salary (knockout._salary_check), not Job preferences' Minimum salary.
-      field: "desired salary (Profile › Autofill)",
       href: anchorHref("/profile", "autofill-preferences"),
       link: "Add your desired salary",
     });
   }
   if (job.years_experience_min != null && !has("experience")) {
     items.push({
-      what: "experience",
-      field: "years of experience (Profile › About you)",
+      kind: "experience",
       href: anchorHref("/profile", "job-preferences-years"),
       link: "Add your years of experience",
     });
@@ -104,16 +93,25 @@ function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
   return items;
 }
 
-function uncheckedSentence(items: Unchecked[]): string {
-  const what = items.map((i) => i.what).join(" or ");
-  const fields = items.map((i) => i.field).join(" and ");
-  return `Can't check ${what} yet: add your ${fields}.`;
-}
+const CHIP = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-label-medium [&>svg]:size-3.5";
 
-/** "Pay and experience check: not run yet": which check, not a bare "Not checked yet". */
-function uncheckedLabel(items: Unchecked[]): string {
-  const what = items.map((i) => i.what).join(" and ");
-  return `${what.charAt(0).toUpperCase()}${what.slice(1)} check: not run yet`;
+/** One check's chip. Its accessible text is "Label: word"; a chip that can be acted on links to its field. */
+function CheckChip({ label, summary, href, hint }: { label: string; summary: Summary; href?: string; hint?: string }) {
+  const { icon: Icon, word, tone, iconTone } = summary;
+  const body = (
+    <>
+      <Icon aria-hidden className={iconTone} />
+      {`${label}: ${word}`}
+      {hint ? <span className="sr-only">{` — ${hint}`}</span> : null}
+    </>
+  );
+  return href ? (
+    <Link href={href} title={hint} className={cn(CHIP, tone, "underline-offset-2 hover:underline")}>
+      {body}
+    </Link>
+  ) : (
+    <span className={cn(CHIP, tone)}>{body}</span>
+  );
 }
 
 export function JobKnockoutCard({
@@ -125,56 +123,104 @@ export function JobKnockoutCard({
 }) {
   if (!scan) return null;
   const unchecked = uncheckedItems(job, scan);
-  const missing = unchecked.length > 0 ? uncheckedSentence(unchecked) : null;
   // A job that lists pay or years the profile can't answer is not "no requirements listed".
-  const notChecked = scan.status === "unstated" && missing !== null;
-  const copy = notChecked
-    ? { ...STATUS_COPY.unstated, label: uncheckedLabel(unchecked), detail: missing }
-    : STATUS_COPY[scan.status];
-  // Secondary lines inherit the card's text. Only the conflict card, whose text is
-  // destructive, mutes them: muted-foreground is not pinned on the success or
-  // warning containers (it measures 3.7 to 3.9:1 there in dark).
-  const quiet = scan.status === "conflict" && "text-muted-foreground";
+  const notChecked = scan.status === "unstated" && unchecked.length > 0;
   const rows = scan.checks.filter((c) => ROW_RESULTS.has(c.result) && c.message);
+  const conflict = scan.checks.find((c) => c.result === "conflict");
+  const missing = scan.checks.find((c) => c.result === "profile_missing");
 
-  return (
-    <div
-      role="status"
-      className={cn("rounded-corner-md px-4 py-3 text-body-medium", copy.tone)}
-    >
-      <div className="flex items-center gap-2 font-medium [&>svg]:size-4">
-        {copy.icon}
-        {copy.label}
-      </div>
-      <p className={cn("mt-1 text-body-small", quiet)}>{copy.detail}</p>
+  const strip = (
+    <>
+      <ul aria-label="Knock-out checks" className="flex flex-wrap gap-1.5">
+        {scan.checks.map((c) => {
+          const summary = SUMMARY_BY_RESULT[c.result];
+          return (
+            <li key={c.kind}>
+              <CheckChip
+                label={LABEL_BY_KIND[c.kind]}
+                summary={summary}
+                href={c.result === "profile_missing" ? autofillHref(c.kind) : undefined}
+              />
+            </li>
+          );
+        })}
+        {unchecked.map((item) => (
+          <li key={item.kind}>
+            <CheckChip label={LABEL_BY_KIND[item.kind]} summary={NOT_RUN} href={item.href} hint={item.link} />
+          </li>
+        ))}
+      </ul>
       {rows.length > 0 && (
         <ul className="mt-2 space-y-1 text-body-small">
-          {rows.map((c) => (
-            <li key={c.kind} className="flex items-start gap-1.5">
-              <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-              <span>{c.message}</span>
-            </li>
-          ))}
+          {rows.map((c) => {
+            const Icon = SUMMARY_BY_RESULT[c.result].icon;
+            return (
+              <li key={c.kind} className="flex items-start gap-1.5">
+                <Icon aria-hidden className="mt-0.5 size-3 shrink-0" />
+                <span>{`${LABEL_BY_KIND[c.kind]}: ${c.message}`}</span>
+              </li>
+            );
+          })}
         </ul>
       )}
-      {missing && !notChecked ? <p className={cn("mt-1 text-body-small", quiet)}>{missing}</p> : null}
-      {unchecked.map((item) => (
-        <Link
-          key={item.what}
-          href={item.href}
-          className="mt-2 mr-3 inline-block text-body-small underline underline-offset-2"
+    </>
+  );
+  const hasStrip = scan.checks.length > 0 || unchecked.length > 0;
+  const stripBlock = hasStrip ? <div className="mt-2">{strip}</div> : null;
+
+  if (scan.status === "conflict" || scan.status === "incomplete_profile") {
+    const isConflict = scan.status === "conflict";
+    const Icon = isConflict ? FailsIcon : UnknownIcon;
+    return (
+      <div role="status" className="space-y-2">
+        <div
+          className={cn(
+            "rounded-corner-md px-4 py-3 text-body-medium",
+            isConflict
+              ? "border border-transparent bg-error-container text-on-error-container"
+              : "bg-warning-container text-on-warning-container",
+          )}
         >
-          {item.link}
-        </Link>
-      ))}
-      {scan.status === "incomplete_profile" && (
-        <Link
-          href={autofillHref(scan)}
-          className="mt-2 inline-block text-body-small underline underline-offset-2"
-        >
-          Complete your profile
-        </Link>
-      )}
+          <div className="flex items-center gap-2 font-medium [&>svg]:size-4">
+            <Icon aria-hidden />
+            {isConflict
+              ? `You may not qualify${conflict ? `: ${LABEL_BY_KIND[conflict.kind]}` : ""}`
+              : "Your profile is missing an answer"}
+          </div>
+          {isConflict ? null : (
+            <>
+              <p className="mt-1 text-body-small">Add it to your profile to check this job.</p>
+              <Link
+                href={autofillHref(missing?.kind)}
+                className="mt-2 inline-block text-body-small underline underline-offset-2"
+              >
+                Complete your profile
+              </Link>
+            </>
+          )}
+        </div>
+        {hasStrip ? <div className="rounded-corner-md border border-border px-3 py-2">{strip}</div> : null}
+      </div>
+    );
+  }
+
+  // `clear` is any pass or warning (knockout.py): a warning chip can sit under it, and a check the
+  // profile could not answer is left out, so the line claims only that nothing conflicts.
+  const line = notChecked
+    ? { icon: <NotRunIcon aria-hidden className="size-4" />, label: "Checks not run yet" }
+    : scan.status === "clear"
+      ? { icon: <DoneIcon aria-hidden className="size-4 text-success" />, label: "No knock-outs" }
+      : { icon: <NoneIcon aria-hidden className="size-4" />, label: "No requirements listed" };
+  return (
+    <div role="status" className="rounded-corner-md border border-border px-3 py-2 text-body-medium">
+      <div className={cn("flex items-center gap-2 font-medium", scan.status !== "clear" && "text-muted-foreground")}>
+        {line.icon}
+        {line.label}
+        {scan.status === "unstated" && !notChecked ? (
+          <span className="sr-only">{". Nothing here to check. That doesn't mean you qualify."}</span>
+        ) : null}
+      </div>
+      {stripBlock}
     </div>
   );
 }

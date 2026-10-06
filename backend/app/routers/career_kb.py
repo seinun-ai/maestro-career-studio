@@ -63,6 +63,7 @@ from app.services import kb_consolidation
 from app.services import kb_ingest
 from app.services import exports as career_exports
 from app.services.attachment_extract import UPLOAD_UNREADABLE, extract_text, plain_read_error
+from app.services.sync import hooks
 from app.write_origin import WriteOrigin, get_write_origin
 
 logger = logging.getLogger(__name__)
@@ -477,6 +478,7 @@ def ingest_document_first(
     existing entity or proposes a new one (kind/title/org/dates) and mints
     draft points for inbox review, all in one call.
     """
+    hooks.require_profile_writable(db)
     data = file.file.read()
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Document exceeds 10 MB limit")
@@ -520,6 +522,7 @@ def upload_document(
     file: UploadFile,
     db: Annotated[Session, Depends(get_db)],
 ):
+    hooks.require_profile_writable(db)
     entity = db.get(KBEntity, entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail="Entity not found")
@@ -582,6 +585,7 @@ def delete_document(document_id: UUID, db: Annotated[Session, Depends(get_db)]):
     document = db.get(KBDocument, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
+    hooks.require_profile_writable(db)
     doc_dir = Path(settings.kb_documents_dir) / str(document.id)
     if doc_dir.exists():
         shutil.rmtree(doc_dir, ignore_errors=True)

@@ -21,8 +21,23 @@ export interface RenderNoted {
   render_note?: string | null;
 }
 
+export interface JobOwnership {
+  owned_here: boolean;
+  owner: "laptop" | "bot" | null;
+  handover: string | null;
+  pending_requests: number;
+  /** True only on the laptop, for a job it offered and still holds. */
+  can_keep_here?: boolean;
+}
+
+export interface SyncQueued {
+  queued: true;
+  detail: string;
+}
+
 export interface Job {
   id: UUID;
+  ownership?: JobOwnership;
   raw_text: string;
   raw_text_hash: string;
   source_url: string | null;
@@ -62,6 +77,8 @@ export interface Job {
   /** Who filed the newest proposal: "you", an MCP client's name, or null.
    *  Optional: an older backend does not send it (reads as unknown). */
   proposal_proposed_by?: string | null;
+  /** The best base-resume score, list endpoint only; null when never scored. */
+  best_ats_score?: number | null;
 }
 
 export interface JobCreate {
@@ -125,8 +142,12 @@ export interface ApplicationSummary {
   job_title: string | null;
   job_company: string | null;
   job_location: string | null;
+  /** The job's ownership; absent when sync is off. */
+  ownership?: JobOwnership;
   /** Joined like the job fields. Optional: a backend that predates it omits it. */
   base_resume_name?: string | null;
+  /** Newest tailored score, else the base resume's; list endpoint only, null when unscored. */
+  ats_score?: number | null;
 }
 
 export type KnockoutStatus =
@@ -445,6 +466,13 @@ export interface AutoApplySettings {
   proposal_expiry_days: number;
   auto_pick_margin: number;
   auto_pick_floor: number;
+  full_automation: boolean;
+}
+
+/** GET/PUT /api/settings/job-site-login: the web API never returns a password. */
+export interface JobSiteLoginStatus {
+  email: string | null;
+  password_set: boolean;
 }
 
 interface SetupStep {
@@ -1544,7 +1572,7 @@ export interface CoherenceCheckResult {
 export interface KBWritebackSkip {
   gap_id: string;
   skill: string | null;
-  reason: "too_short" | "wrong_section" | "no_entity_match" | "duplicate";
+  reason: "too_short" | "wrong_section" | "no_entity_match" | "duplicate" | "profile_owned_elsewhere";
   /** Server-composed sentence, e.g. "no Career KB entity titled “Acme Corp”". */
   detail: string;
 }
@@ -1913,6 +1941,7 @@ export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 /** Thin job projection joined into proposal rows (backend JobSummary). */
 interface ProposalJobSummary {
   id: UUID;
+  ownership?: JobOwnership;
   source_url: string | null;
   company: string | null;
   title: string | null;
@@ -1998,6 +2027,7 @@ export interface AgentRun {
   title: string;
   outcome: "ok" | "partial" | "failed";
   agent: string | null;
+  on_bot?: boolean;
   finished_at: string;
   counts: Record<string, number>;
   digest: string;
@@ -2006,6 +2036,17 @@ export interface AgentRun {
 
 export interface AgentRunList {
   items: AgentRun[];
+  /** On `/latest` only; empty with sync off. */
+  refused_requests?: RefusedJobRequest[];
+}
+
+export interface RefusedJobRequest {
+  id: UUID;
+  job_id: UUID | null;
+  reason: string;
+  answered_at: string | null;
+  job_company: string | null;
+  job_title: string | null;
 }
 
 interface ProposalBulkResult {

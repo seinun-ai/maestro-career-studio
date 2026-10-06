@@ -97,6 +97,7 @@ app = [
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
+    "slow: starts a real backend or installs a venv; skipped when MAESTRO_SKIP_SLOW is set",
     "real_model: exercises the real pinned embedding model (skips the hermetic fake embedder; first run downloads ~100MB)",
     "embeddings_internals: tests embed_texts' own memoization/batching (stubs _model; skips the hermetic fake embedder)",
 ]

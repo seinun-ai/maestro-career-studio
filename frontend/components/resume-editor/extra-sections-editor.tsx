@@ -6,7 +6,7 @@ import {
   ArrowUp,
   Eye,
   EyeOff,
-  MoreHorizontal,
+  Ellipsis,
   Pencil,
   Plus,
   Trash2,
@@ -235,7 +235,7 @@ function SectionCard({
                         variant="ghost"
                         aria-label={`More actions for ${sectionName}`}
                       >
-                        <MoreHorizontal className="size-3.5" />
+                        <Ellipsis className="size-3.5" />
                       </Button>
                     }
                   />

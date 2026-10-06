@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useVersion } from "@/hooks/use-version";
@@ -32,7 +32,7 @@ export function VersionBanner() {
       className="bg-warning-container text-on-warning-container border-b px-4 py-2.5 text-body-medium"
     >
       <p className="mx-auto flex max-w-6xl items-start gap-2">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
         {/* The two version numbers live in Settings › About's technical
             details; its How to update says what to do for each install. */}
         <span>

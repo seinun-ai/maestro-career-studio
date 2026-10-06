@@ -132,7 +132,8 @@ def test_the_connected_agents_card_explains_before_the_limits():
 
 # Exactly what a connected agent can and can't do, checked against the MCP tools
 # (backend/mcp_server/server.py). An overclaim such as "Submit applications for
-# you." without "after your yes", or "Delete anything" when it can't, fails here.
+# you." without "after your yes" or the full-automation exception, or "Delete
+# anything" when it can't, fails here.
 _CAN = (
     "Find jobs and file them in your {AGENT_INBOX} for you to queue or skip.",
     "Read your career history and job preferences.",
@@ -143,7 +144,8 @@ _CAN = (
     "Approve bullets, or mark them Not used, in your career history. They&apos;re told to do this only"
     " after you say yes. That&apos;s a rule they&apos;re given, not a lock.",
     "Create, edit and tailor your resumes.",
-    "Fill in and submit applications you queued, after your yes.",
+    "Fill in and submit applications you queued, after your yes, or on their own in full"
+    " automation mode.",
 )
 _CANT = (
     "Go past the daily limit below.",
@@ -157,7 +159,9 @@ def _list_items(heading_id: str) -> list[str]:
     flat = " ".join(_card().split())
     ul = flat[flat.index(f"<ul aria-labelledby={{{heading_id}}}") :]
     ul = ul[ul.index(">") + 1 : ul.index("</ul>")]
-    items = re.findall(r"<li>\s*(.*?)\s*</li>", ul)
+    items = re.findall(r"<li(?: [^>]*)?>\s*(.*?)\s*</li>", ul)
+    # The "can't" rows lead with the register's cannot glyph and wrap their words in a span: the words are what is pinned.
+    items = [re.sub(r"^<CONCEPT_ICONS\.cannot [^>]*/>\s*<span>(.*)</span>$", r"\1", i) for i in items]
     return [re.sub(r"\{/\*.*?\*/\}\s*", "", i).replace('{" "}', " ").replace("  ", " ") for i in items]
 
 
@@ -170,15 +174,22 @@ def test_the_card_says_exactly_what_agents_cant_do():
 
 
 def test_the_card_keeps_the_honesty_nuance():
-    """Nothing is submitted without a yes, and that yes is a record, not a lock
-    (README, "Going all the way"): the daily limit counts the recorded yeses, so
-    an agent that skips recording isn't stopped. The app itself never hunts or
-    applies."""
+    """The agent asks for a yes unless full automation is on. Each yes is a
+    record, not a lock: the daily limit counts recorded yeses, so an agent that
+    skips recording isn't stopped. The app itself never hunts or applies."""
     flat = " ".join(_card().split())
     assert "Maestro CS itself never looks for jobs or submits an application." in flat
-    assert "Before each submit, the agent asks for your yes and records it." in flat
+    assert (
+        "Before each submit, the agent asks for your yes and records it, unless you turned on full automation."
+    ) in flat
     assert "The daily limit below counts those yeses over the last 24 hours." in flat
     assert "The app records each yes but can&apos;t stop an agent, so stay with it while it applies." in flat
+    assert (
+        "Maestro CS itself never looks for jobs or submits an application. "
+        "Before each submit, the agent asks for your yes and records it, unless you turned on full automation. "
+        "The daily limit below counts those yeses over the last 24 hours. "
+        "The app records each yes but can&apos;t stop an agent, so stay with it while it applies."
+    ) in flat
     assert "apply sessions" not in flat
 
 

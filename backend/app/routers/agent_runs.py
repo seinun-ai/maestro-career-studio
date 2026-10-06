@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.agent_runs import AgentRunCreate, AgentRunList, AgentRunRead
+from app.schemas.agent_runs import AgentRunCreate, AgentRunList, AgentRunRead, LatestAgentRuns
 from app.services import agent_runs
 from app.write_origin import WriteOrigin, get_write_origin
 
@@ -24,9 +24,9 @@ def post_agent_run(
     return agent_runs.read_one(db, agent_runs.record(db, payload, agent))
 
 
-@router.get("/latest", response_model=AgentRunList)
+@router.get("/latest", response_model=LatestAgentRuns)
 def get_latest_runs(db: Annotated[Session, Depends(get_db)]):
-    return {"items": agent_runs.latest(db)}
+    return {"items": agent_runs.latest(db), "refused_requests": agent_runs.refused_requests(db)}
 
 
 @router.get("", response_model=AgentRunList)

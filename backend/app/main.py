@@ -31,13 +31,15 @@ from app.routers import (
     resume_versions,
     setup,
     settings,
+    sync,
     tailoring_sessions,
     templates,
     version,
 )
 from app.services import automations as automation_prompts
-from app.services import seeding, tracing
+from app.services import http_client, memory, seeding, tracing
 from app.services.llm import LLMProviderError
+from app.services.sync.hooks import NotOwnedHere
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +116,11 @@ def _log_llm_config() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.services.sync import status
+
+    http_client.repair_proxy_env()  # before the first LLM call or model download
     seeding.run_startup()
+    status.ensure_machine_id()
     _log_llm_config()
     automation_prompts.load_cards()  # a malformed skill file fails startup, not a page
     yield
@@ -170,6 +176,11 @@ app.add_middleware(OriginGuardMiddleware, allowed_origins=ALLOWED_ORIGINS)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=app_settings.allowed_hosts)
 
 
+@app.exception_handler(NotOwnedHere)
+async def not_owned_here_handler(request: Request, exc: NotOwnedHere):
+    return JSONResponse(status_code=409, content={"detail": str(exc), "owner": exc.owner})
+
+
 @app.exception_handler(LLMProviderError)
 async def llm_provider_error_handler(request: Request, exc: LLMProviderError):
     """Upstream model provider failed → 502 whose `detail` is the error's user
@@ -212,11 +223,17 @@ app.include_router(version.router)
 app.include_router(automations.router)
 app.include_router(filled_answers.router)
 app.include_router(agent_runs.router)
+app.include_router(sync.router)
 
 
 @app.get("/health")
 def healthcheck():
     return {"status": "ok"}
+
+
+@app.get("/health/memory")
+def health_memory():
+    return memory.readout()
 
 
 @app.get("/api/health", include_in_schema=False)

@@ -5,17 +5,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
-  AlertTriangle,
+  TriangleAlert,
   BookOpen,
   Bot,
-  Check,
   ChevronDown,
+  Loader2,
   Settings as SettingsIcon,
   Trash2,
   X,
 } from "lucide-react";
 
 import { CompanyMonogram } from "@/components/company-monogram";
+import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
+import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { EmptyState } from "@/components/empty-state";
 import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
@@ -27,6 +29,7 @@ import {
   DeclineDialog,
   useProposalActions,
 } from "@/components/proposals/triage-actions";
+import { ROW_EXIT_MS } from "@/lib/motion";
 import { ReadinessMarks } from "@/components/proposals/readiness-marks";
 import { IconButton } from "@/components/icon-button";
 import { humanizeEnum } from "@/components/job-extracted-fields";
@@ -49,7 +52,8 @@ import {
   CONNECTED_AGENTS_SETTINGS,
   JOB_HUNT_SKILL_URL,
 } from "@/lib/agent-links";
-import { proposalByLine } from "@/lib/agent-name";
+import { ActorChip, ScoreBar } from "@/components/visual";
+import { agentDisplayName, proposalByLine } from "@/lib/agent-name";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
 import { formatTimeAgo } from "@/lib/format-date";
@@ -80,6 +84,10 @@ import {
   type ProposalListResponse,
   type ProposalStatus,
 } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const QueueIcon = CONCEPT_ICONS.queue;
+const ApproveIcon = CONCEPT_ICONS.approve;
 
 const PROPOSALS_KEY = ["proposals"] as const;
 // The dashboard can open History before a tile scrolls; standalone inboxes keep local state.
@@ -206,8 +214,24 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   const skipReturn = useRef<(() => HTMLElement | null) | null>(null);
   const toReview = useRef<HTMLElement>(null);
   const historyId = useId();
+  // Rows that were queued or skipped and are collapsing out, with the status they leave: the refetch
+  // moves a queued row to another lane (a new row there, not leaving), so an id only leaves as that status.
+  const [leavingIds, setLeavingIds] = useState<ReadonlyMap<string, ProposalStatus>>(new Map());
   const actions = useProposalActions({
-    onDone: (ids) => {
+    settleMs: ROW_EXIT_MS,
+    onQueued: () => setDeclineTarget(null),
+    onDone: (ids, became) => {
+      if (became === "accepted" || became === "rejected") {
+        const before = new Map((data?.items ?? []).map((p) => [p.id, p.status] as const));
+        setLeavingIds((prev) => {
+          const next = new Map(prev);
+          for (const id of ids) {
+            const status = before.get(id);
+            if (status) next.set(id, status);
+          }
+          return next;
+        });
+      }
       // A row queued, skipped or deleted on its own leaves the selection; so do the bar's rows.
       setSelected((prev) => {
         const copy = new Set(prev);
@@ -223,6 +247,19 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   });
 
   const items = useMemo(() => data?.items ?? [], [data]);
+
+  // Clear an id once the refetched list no longer holds it as it was: gone, or in another status. A stale
+  // entry would hide a row that comes back in that status (Queue, then Keep it returns it to To review).
+  // Adjusted while rendering, keyed on the list itself (React: "adjusting state when a prop changes").
+  const [prunedFor, setPrunedFor] = useState(items);
+  if (prunedFor !== items) {
+    setPrunedFor(items);
+    if (leavingIds.size > 0) {
+      const now = new Map(items.map((p) => [p.id, p.status] as const));
+      const rest = [...leavingIds].filter(([id, status]) => now.get(id) === status);
+      if (rest.length !== leavingIds.size) setLeavingIds(new Map(rest));
+    }
+  }
 
   const roles = useMemo(() => {
     const set = new Set<string>();
@@ -286,6 +323,10 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
 
   // Bulk actions and the bar's count see only the rows shown: never a row a filter or the search hides.
   const selectedShown = useMemo(() => selectedAmong(triage, selected), [triage, selected]);
+  const bulkBlocked = selectedShown.some((id) => {
+    const proposal = triage.find((p) => p.id === id);
+    return !jobOwnershipView(proposal?.job.ownership).canRequest;
+  });
   const barShown = selectedShown.length > 0;
 
   // In the commit that takes the row out of its lane, or the bar away, before paint. A dialog still
@@ -425,13 +466,15 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
     since,
     duplicateKeys,
     pending: actions.pending,
+    actingIds: actions.actingIds,
+    leavingIds,
     onAct: (p: Proposal, action: RowAction, from: HTMLElement) => {
       const l: Leaving = {
         kind: "row",
         id: p.id,
         lane: laneOf(p.status),
         // The next row's same control, else the previous row's, else the lane.
-        next: focusSuccessor(from.closest('[data-slot="card"]'), `[data-row-action="${action}"]`),
+        next: focusSuccessor(from.closest(".collapse-exit"), `[data-row-action="${action}"]`),
       };
       leaving.current = l;
       if (action === "queue") actions.transition({ id: p.id, status: "accepted" });
@@ -682,7 +725,8 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
 
       <BulkBar
         selectedCount={selectedShown.length}
-        pending={actions.pending}
+        pending={actions.pending || bulkBlocked}
+        queuePending={actions.queuePending}
         onQueue={() => {
           leaveBar();
           actions.bulk({ ids: selectedShown, status: "accepted" });
@@ -706,6 +750,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
           setDeclineTarget(null);
         }}
         pending={actions.pending}
+        blocked={declineTarget?.mode === "bulk" && bulkBlocked}
         finalFocus={() => {
           const next = skipReturn.current;
           skipReturn.current = null;
@@ -767,6 +812,8 @@ function ProposalRow({
   onToggleSelected,
   onAct,
   pending,
+  actingIds,
+  leavingIds,
 }: {
   proposal: Proposal;
   lane: LaneKind;
@@ -776,8 +823,15 @@ function ProposalRow({
   onToggleSelected: (id: string, next: boolean) => void;
   onAct: (proposal: Proposal, action: RowAction, from: HTMLElement) => void;
   pending?: boolean;
+  /** Ids whose Queue or Skip is in flight: this row's buttons give way to a spinner. */
+  actingIds: ReadonlySet<string>;
+  /** Ids collapsing out (with the status they leave). */
+  leavingIds: ReadonlyMap<string, ProposalStatus>;
 }) {
   const job = proposal.job;
+  const owner = job.ownership;
+  const ownership = jobOwnershipView(owner);
+  const acting = actingIds.has(proposal.id);
   const base = chosenBase(proposal);
   const baseName = useBaseResumeName(base ?? "", base !== null);
   const score = chosenScore(proposal);
@@ -806,135 +860,169 @@ function ProposalRow({
   };
 
   return (
-    <Card className="group">
-      <CardContent className="p-0">
-        <div className="flex items-stretch gap-1">
-          {showCheckbox ? (
-            <label className="flex items-center px-3">
-              <Checkbox
-                checked={selected.has(proposal.id)}
-                onCheckedChange={(next) => onToggleSelected(proposal.id, next)}
-                aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}
-              />
-            </label>
-          ) : null}
-          <Link
-            href={`/jobs/${proposal.job_id}?from=proposals`}
-            // flex-wrap + a real basis on the text, not flex-1 (the job
-            // header's fix): with basis-0 the shrink-0 chips kept their width
-            // and squeezed the title to a few letters at 768 and to nothing at
-            // 375. Narrow, the chips wrap under the text and the decorative
-            // monogram steps aside.
-            className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-corner-md p-3 text-left transition-colors sm:p-4"
-          >
-            <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
-            <div className="min-w-0 grow basis-[10rem]">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-title-small">
-                  {job.title ?? "Untitled role"}
-                </span>
-                {job.disqualifying_for_opt && proposal.readiness?.knockout !== "opt" ? (
-                  <span
-                    className="text-warning inline-flex items-center gap-1 text-body-small"
-                    title="OPT is the US student work permit"
-                  >
-                    <AlertTriangle className="size-3.5" aria-hidden="true" />
-                    May not accept OPT
-                  </span>
-                ) : null}
-                {isDup ? (
-                  <span className="inline-flex items-center rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
-                    Possible duplicate
-                  </span>
-                ) : null}
-                {isNew(proposal.created_at, since) ? (
-                  <span className="inline-flex items-center gap-1 text-label-small text-primary">
-                    <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
-                    New
-                  </span>
-                ) : null}
-                <ReadinessMarks readiness={proposal.readiness} />
-              </div>
-              <div className="text-muted-foreground truncate text-body-small">
-                {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
-              </div>
-              <div className="text-muted-foreground truncate text-body-small" title={meta}>
-                {meta}
-              </div>
-              {needs ? <p className="mt-1 text-body-small break-words">{needs}</p> : null}
-            </div>
-            {base ? (
-              <span className="text-muted-foreground hidden shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-body-small dark:bg-surface-container-highest sm:inline-flex">
-                {baseName}
-                {score != null ? ` · ATS score ${score}` : ""}
-              </span>
+    // One child, so the wrapper can close its height (.collapse-exit in globals.css).
+    <div className="collapse-exit" data-leaving={leavingIds.get(proposal.id) === proposal.status || undefined}>
+      <Card className="group" data-pending={acting ? "true" : undefined}>
+        <CardContent className="p-0">
+          <div className="flex items-stretch gap-1">
+            {showCheckbox ? (
+              <label className="flex items-center px-3">
+                <Checkbox
+                  disabled={!ownership.canRequest}
+                  checked={selected.has(proposal.id)}
+                  onCheckedChange={(next) => onToggleSelected(proposal.id, next)}
+                  aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}
+                />
+              </label>
             ) : null}
-            <Badge
-              className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
-              variant="secondary"
+            <Link
+              href={`/jobs/${proposal.job_id}?from=proposals`}
+              // flex-wrap + a real basis on the text, not flex-1 (the job
+              // header's fix): with basis-0 the shrink-0 chips kept their width
+              // and squeezed the title to a few letters at 768 and to nothing at
+              // 375. Narrow, the chips wrap under the text and the decorative
+              // monogram steps aside.
+              className="hover:bg-surface-container-low dark:hover:bg-surface-container-high flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-corner-md p-3 text-left transition-colors sm:p-4"
             >
-              {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
-            </Badge>
-          </Link>
-          <div className="flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
-            {lane === "triage" ? (
-              <>
+              <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
+              <div className="min-w-0 grow basis-[10rem]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="truncate text-title-small">
+                    {job.title ?? "Untitled role"}
+                  </span>
+                  {job.disqualifying_for_opt && proposal.readiness?.knockout !== "opt" ? (
+                    <span
+                      className="text-warning inline-flex items-center gap-1 text-body-small"
+                      title="OPT is the US student work permit"
+                    >
+                      <TriangleAlert className="size-3.5" aria-hidden="true" />
+                      May not accept OPT
+                    </span>
+                  ) : null}
+                  {isDup ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container">
+                      <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />
+                      Possible duplicate
+                    </span>
+                  ) : null}
+                  {isNew(proposal.created_at, since) ? (
+                    <span className="inline-flex items-center gap-1 text-label-small text-primary">
+                      <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
+                      New
+                    </span>
+                  ) : null}
+                  <ReadinessMarks readiness={proposal.readiness} />
+                </div>
+                <div className="text-muted-foreground truncate text-body-small">
+                  {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
+                </div>
+                {byLine ? (
+                  <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-body-small" title={meta}>
+                    <ActorChip kind={proposal.proposed_by === "you" ? "you" : "agent"} name={agentDisplayName(proposal.proposed_by)} className="min-w-0 shrink" />
+                    <span className="truncate">{formatTimeAgo(proposal.created_at)}</span>
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground truncate text-body-small" title={meta}>
+                    {meta}
+                  </div>
+                )}
+                {needs ? <p className="mt-1 text-body-small break-words">{needs}</p> : null}
+              </div>
+              {base ? (
+                <span className="text-muted-foreground hidden shrink-0 items-center gap-2 text-body-small sm:inline-flex">
+                  {baseName}
+                  {score != null ? <ScoreBar value={score} label="ATS score" valueText={score.toFixed(1)} /> : null}
+                </span>
+              ) : null}
+              {/* D5: To review, Queued and Applying rows all share one status, so the lane says it. */}
+              {lane === "history" || lane === "needs_you" ? (
+                <Badge
+                  className={cn("shrink-0", STATUS_BADGE_CLASS[historyStatusOf(proposal.status, proposal.reason)])}
+                  variant="secondary"
+                >
+                  {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
+                </Badge>
+              ) : null}
+            </Link>
+            <div
+              className={cn(
+                "relative flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
+                // The buttons stay (focus is kept) under the spinner that answers the press; the focus ring moves out here.
+                acting && "rounded-full opacity-100 [&_button]:opacity-0! has-[button:focus-visible]:ring-3 has-[button:focus-visible]:ring-ring",
+              )}
+            >
+              {acting ? (
+                <span role="status" className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <span className="sr-only">Working</span>
+                </span>
+              ) : null}
+              {lane === "triage" ? (
+                <>
+                  <IconButton
+                    label="Queue"
+                    icon={<QueueIcon />}
+                    data-row-action="queue"
+                    disabled={pending || !ownership.canRequest}
+                    focusableWhenDisabled
+                    className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                    onClick={act("queue")}
+                  />
+                  <IconButton
+                    label="Skip"
+                    icon={<X />}
+                    data-row-action="skip"
+                    disabled={pending || !ownership.canRequest}
+                    focusableWhenDisabled
+                    className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                    onClick={act("skip")}
+                  />
+                </>
+              ) : null}
+              {showKeep ? (
                 <IconButton
-                  label="Queue"
-                  icon={<Check />}
-                  data-row-action="queue"
+                  label="Keep it"
+                  icon={<ApproveIcon />}
+                  data-row-action="keep"
                   disabled={pending}
+                  {...ownershipControlProps(!ownership.canRequest)}
                   focusableWhenDisabled
                   className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                  onClick={act("queue")}
+                  onClick={act("keep")}
                 />
+              ) : null}
+              {showDecline ? (
                 <IconButton
                   label="Skip"
                   icon={<X />}
                   data-row-action="skip"
-                  disabled={pending}
+                  disabled={pending || !ownership.canRequest}
                   focusableWhenDisabled
                   className="data-disabled:pointer-events-none data-disabled:opacity-50"
                   onClick={act("skip")}
                 />
-              </>
-            ) : null}
-            {showKeep ? (
-              <IconButton
-                label="Keep it"
-                icon={<Check />}
-                data-row-action="keep"
-                disabled={pending}
-                focusableWhenDisabled
-                className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                onClick={act("keep")}
-              />
-            ) : null}
-            {showDecline ? (
-              <IconButton
-                label="Skip"
-                icon={<X />}
-                data-row-action="skip"
-                disabled={pending}
-                focusableWhenDisabled
-                className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                onClick={act("skip")}
-              />
-            ) : null}
-            {canDelete ? (
-              <IconButton
-                label="Delete proposal"
-                icon={<Trash2 />}
-                data-row-action="delete"
-                disabled={pending}
-                focusableWhenDisabled
-                className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                onClick={act("delete")}
-              />
-            ) : null}
+              ) : null}
+              {canDelete ? (
+                <IconButton
+                  label="Delete proposal"
+                  icon={<Trash2 />}
+                  data-row-action="delete"
+                  disabled={pending || !ownership.canWrite}
+                  focusableWhenDisabled
+                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                  onClick={act("delete")}
+                />
+              ) : null}
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+          {/* Under the text column: past the checkbox (2.75rem), the row's padding, the monogram and its gap. */}
+          {ownership.mark || ownership.reason ? <div className={cn("flex flex-col gap-1 pr-4 pb-3",
+            showCheckbox ? "pl-[6.5rem]" : "pl-[3.75rem]")}>
+            <JobOwnershipMark jobId={proposal.job_id} ownership={owner} />
+            <JobOwnershipNotice ownership={owner} />
+          </div> : null}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

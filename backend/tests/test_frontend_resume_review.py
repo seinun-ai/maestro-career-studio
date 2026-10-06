@@ -559,3 +559,27 @@ def test_a_sections_one_edit_is_always_shown():
     assert '<dl className="gap-x-8 sm:columns-2 xl:columns-3">' in profile
     assert 'className="mb-4 break-inside-avoid"' in profile
     assert "const FOLDED_LINES = 2;" in profile and "aria-expanded={open}" in profile
+
+
+def test_career_bullets_merge_origin_and_trust():
+    points = _read("components/career/points-list.tsx")
+    inbox = _read("components/career/inbox-panel.tsx")
+    assert "ActorChip" in points and "ActorChip" in inbox
+    # Draft rows render the SAME origin chip as bullets, not a second copy.
+    assert "PointActorChip" in inbox
+    # Trust shows only when in doubt, as a trailing icon + word inside the one chip.
+    assert "CONCEPT_ICONS.ai" in points and "CONCEPT_ICONS.cannot" in points and "CONCEPT_ICONS.unknown" not in points
+    assert "Unconfirmed" in points and "AI inferred" in points
+    # Usage is the register icon + count; its aria-label keeps the retired distinction.
+    assert "CONCEPT_ICONS.baseResume" in points
+    assert "aria-label={`${point.state === \"retired\" ? \"Still on\" : \"On\"} ${usageKeys.length}" in points
+    # A role-less span cannot carry an aria-label: the usage chip is an image with a name.
+    usage = _block(points, "Used in: ", "</span>")
+    assert 'role="img"' in usage
+    assert 'className="h-6"' in points
+    assert "origin_detail && !agent" in points
+    # Drift stays a neutral chip with only the icon warning-coloured.
+    assert 'className="size-3 text-warning"' in points
+    # The pre-existing transition bugs: translate/scale are named, never `transform`.
+    for rel in ("entity-card", "entity-detail", "points-list"):
+        assert "transition-[transform" not in _read(f"components/career/{rel}.tsx")

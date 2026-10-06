@@ -147,8 +147,12 @@ def clear_eeo_answers(session: Session) -> int:
     """Consent was withdrawn: drop every stored EEO value, keeping the question and
     `eeo_answered`. Granting consent again brings nothing back. The read-time gate stays as the
     second guard. Returns the number of rows changed."""
+    from app.services.sync import hooks
+
     changed = 0
     for row in session.scalars(select(FilledAnswer)):
+        if not hooks.owned_here(session, row.job_id):
+            continue
         if any(_is_eeo_field(f) and f.get("answer") is not None for f in row.fields):
             row.fields = [_cleared(f) if _is_eeo_field(f) else f for f in row.fields]
             changed += 1

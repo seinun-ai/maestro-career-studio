@@ -36,8 +36,8 @@ def test_a_clear_knockout_claims_no_more_than_no_conflict():
     src = Path(knockout.__file__).read_text(encoding="utf-8")
     assert 'elif results & {"pass", "warning"}:\n        status = "clear"' in src
     card = _read("components/job-knockout-card.tsx")
-    assert 'label: "Nothing rules you out",' in card
-    assert 'detail: "Nothing the job lists conflicts with your profile.",' in card
+    assert 'label: "No knock-outs" }' in card  # the quiet line says only that nothing conflicts
+    assert "Nothing rules you out" not in card and "conflicts with your profile" not in card
     assert "meet the listed" not in card and "match what the job lists" not in card
 
 
@@ -47,8 +47,9 @@ def test_an_unstated_knockout_says_what_it_could_not_check():
     assert "if desired is None:\n        return None" in src
     assert "if job.years_experience_min is None or years_experience is None:\n        return None" in src
     card = _read("components/job-knockout-card.tsx")
-    assert "\"Nothing here to check. That doesn't mean you qualify.\"" in card
-    assert '`Can\'t check ${what} yet: add your ${fields}.`' in card
+    # The unstated line carries the caution in its accessible text; the Not run chips name what was skipped.
+    assert "Nothing here to check. That doesn't mean you qualify." in card
+    assert "uncheckedSentence" not in card and "Can't check" not in card
     assert 'job.salary_period === "year" || (job.salary_period == null && ceiling >= 10000)' in card
     assert 'anchorHref("/profile", "autofill-preferences")' in card
     assert 'anchorHref("/profile", "job-preferences-years")' in card
@@ -60,11 +61,14 @@ def test_an_unrun_knockout_names_the_check_and_its_salary_field():
     preferences.desired_salary (the Autofill tab's), not Job preferences' Minimum salary."""
     src = Path(knockout.__file__).read_text(encoding="utf-8")
     card = _read("components/job-knockout-card.tsx")
-    assert "return `${what.charAt(0).toUpperCase()}${what.slice(1)} check: not run yet`;" in card
+    assert "uncheckedLabel" not in card and "check: not run yet" not in card
+    assert 'const NOT_RUN: Summary = { icon: NotRunIcon, word: "Not run"' in card  # replaces the sentence
     assert 'label: "Not checked yet"' not in card
     assert '(preferences or {}).get("desired_salary")' in src
-    assert 'field: "desired salary (Profile › Autofill)",' in card
-    assert 'field: "years of experience (Profile › About you)",' in card
+    # The chip's action names the field it opens: Autofill's desired salary, About you's years.
+    assert 'href: anchorHref("/profile", "autofill-preferences"),' in card
+    assert 'link: "Add your desired salary",' in card
+    assert 'link: "Add your years of experience",' in card
 
 
 # --- The gap page ---------------------------------------------------------------
@@ -92,11 +96,14 @@ def test_gap_counts_come_from_one_helper():
 def test_the_gap_page_and_score_tab_count_with_it():
     page = _read(_GAP_PAGE)
     assert page.count("gapCounts(") == 2  # the footer and each category
-    assert "</span> answered\n" in page and "{done} of" not in page
-    assert "{counts.open > 0 ? `${counts.open} open` : \"Nothing open\"}" in page
+    # The footer is a SegmentedBar (its legend keeps the words); a category says how many are handled.
+    assert 'name="Gap progress"' in page and "{done} of" not in page
+    assert "{counts.answered + counts.skipped}/{counts.total}" in page and "Nothing open" not in page
     panel = _read("components/ats-score-panel.tsx")
     assert "gapCounts(" in panel and "resolutions_json.length" not in panel
-    assert "` · ${answered} answered`" in panel
+    # The count rides on ProgressCount above the button, so the button says only what it does.
+    assert '<ProgressCount done={answered} total={totalGaps} noun="answered"' in panel
+    assert "` · ${answered} answered`" not in panel
 
 
 def test_auto_filled_banner_names_the_job_s_own_words():
@@ -109,10 +116,16 @@ def test_auto_filled_banner_names_the_job_s_own_words():
 def test_the_gap_page_names_the_ats_score_and_every_action():
     page = _read(_GAP_PAGE)
     assert "· ATS score before tailoring:" in page
-    intro = page[page.index("These gaps need your input.") :]
-    intro = intro[: intro.index("</p>")]
-    for action in ("Add keyword", "Answer", "Attach project", "Skip", "I can&apos;t confirm this"):
-        assert f'<span className="font-medium">{action}</span>' in intro, action
+    # Each action is explained once, on its own control (the tooltip and aria-describedby), not in a page paragraph.
+    assert "These gaps need your input." not in page
+    controls = _read("components/gap-analysis/resolution-controls.tsx")
+    hints = controls[controls.index("export const ACTION_HINTS") :]
+    hints = hints[: hints.index("};")]
+    for action in ("add_keyword", "user_input", "attach_project", "skip", "cannot_confirm"):
+        assert f"{action}:" in hints, action
+    labels = controls[controls.index("export const ACTION_LABELS") :]
+    for word in ("Add keyword", "Answer", "Attach project", "Skip", "I can't confirm this"):
+        assert f'"{word}"' in labels, word
     assert "→" not in page  # the score toast says "to"
     assert "`ATS score: ${base.composite.toFixed(1)} to ${tailored.composite.toFixed(1)}" in page
 
@@ -421,8 +434,9 @@ def test_the_score_tab_says_why_undated_jobs_score_low():
     panel = _read("components/ats-score-panel.tsx")
     assert "{datesUnreadable(score.subscores_json.format_flags) && (" in panel
     assert "<p className=\"text-muted-foreground text-body-small\">{UNREADABLE_DATES_NOTE}</p>" in panel
-    # "11 of 100", not a bare 11.
-    assert '<span className="text-body-small text-muted-foreground"> of 100</span>' in panel
+    # Each subscore is a meter out of 100 (aria-valuemax); the visible " of 100" went, the headline keeps "/ 100".
+    assert "> of 100<" not in panel and "aria-valuemax" not in panel and "<ScoreBar" in panel
+    assert '<span className="text-muted-foreground text-body-medium"> / 100</span>' in panel
 
 
 def test_a_skill_with_no_example_never_contradicts_mentioned_in():

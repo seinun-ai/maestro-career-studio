@@ -632,7 +632,10 @@ def test_a_status_change_that_filters_out_its_row_hands_focus_to_the_next_chip()
     page = _squash(_TRACKER)
     assert "const leaving = useRef<{ key: string; next: () => HTMLElement | null } | null>(null);" in page
     patch = page[page.index("const patchStatus = useMutation(") : page.index("const deleteApp = useMutation(")]
-    assert 'onError: (err: Error) => { leaving.current = null; toast.error(couldnt("change the status", err)); },' in patch
+    assert (
+        "onError: (err: Error, _vars, context) => { context?.previous.forEach(([key, rows]) => qc.setQueryData(key, rows)); "
+        'leaving.current = null; toast.error(couldnt("change the status", err)); },'
+    ) in patch
     assert (
         "useLayoutEffect(() => { const l = leaving.current; if (!l || filtered.some((r) => rowKey(r) === l.key)) return; "
         "leaving.current = null; focusIfDropped(l.next()); }, [filtered]);"

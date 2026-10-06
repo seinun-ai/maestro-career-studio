@@ -19,7 +19,7 @@ class ProposalCreate(BaseModel):
 
 
 class ConsentPayload(BaseModel):
-    channel: Literal["chat", "slack", "frontend", "mcp"]
+    channel: Literal["chat", "slack", "frontend", "mcp", "auto"]
     note: str | None = None
 
 
@@ -29,7 +29,8 @@ class ProposalTransition(BaseModel):
         "rejected", "needs_human", "submission_uncertain",
     ]
     consent: ConsentPayload | None = None
-    # True when the USER stated the submission happened (no receipt evidence);
+    # True when the user stated the submission happened, or the agent did in
+    # full automation mode with channel auto and a named confirmation (no receipt);
     # required for the submission_uncertain -> submitted edge. Recorded as an
     # append-only ConsentEvent(action="submitted") so the ledger distinguishes
     # attested from receipt-verified submits.

@@ -10,7 +10,7 @@ import type { ResumeDiffChange } from "@/lib/types";
 
 const KIND_STYLES: Record<ResumeDiffChange["kind"], string> = {
   added: "bg-success-container text-on-success-container",
-  removed: "bg-destructive/10 text-destructive",
+  removed: "bg-error-container text-on-error-container",
   modified: "bg-warning-container text-on-warning-container",
 };
 

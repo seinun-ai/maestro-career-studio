@@ -32,6 +32,7 @@ from app.services import (
     template_validation,
 )
 from app.services.resume_versions import latest_version as _latest_version
+from app.services.sync import hooks
 
 logger = logging.getLogger(__name__)
 
@@ -378,6 +379,9 @@ def structure_gates(db: Session, template_id: str | None, resume: dict) -> list[
         try:
             template_validation.validate_template(tmpl.id, db)
             db.refresh(tmpl)
+        except hooks.NotOwnedHere:
+            # The always-on copy can't certify (the laptop owns templates): assess as is.
+            logger.debug("template %s not certified here: owned by the laptop", tmpl.id)
         except Exception:  # noqa: BLE001 — never let a cert failure crash the health run
             logger.exception("lazy template certification failed for %s", tmpl.id)
     report = tmpl.parse_report_json or {}

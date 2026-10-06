@@ -34,6 +34,9 @@ def test_all_planned_tables_are_registered():
         "resume_lint_reports",
         "resume_versions",
         "settings",
+        "sync_requests",
+        "sync_state",
+        "sync_tombstones",
         "tailoring_sessions",
         "templates",
     }

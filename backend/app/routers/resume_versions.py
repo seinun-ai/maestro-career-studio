@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import begin_write, get_db
+from app.services.sync import hooks
 from app.models.application import Application
 from app.models.base_resume import BaseResume
 from app.schemas.resume_version import (
@@ -92,6 +93,8 @@ def restore_version(
     health question pass undoes its own write this way, so a write that landed since is never
     thrown away). The check and the restore are one transaction under the write lock.
     """
+    if kind == "base":
+        hooks.require_profile_writable(db)
     if if_latest is not None:
         begin_write(db)
         latest = service.latest_version(db, kind, key)

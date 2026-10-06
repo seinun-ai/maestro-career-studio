@@ -142,6 +142,10 @@ _ALLOWED: frozenset[tuple[str, str]] = frozenset(
         # resume's), not the page, which is Jobs.
         ("frontend/app/referrals/page.tsx", "Applications"),
         ("frontend/components/analytics/base-summary-cards.tsx", "Applications"),
+        # The two ownership sentences the server refuses a write with, word for word: the page's
+        # own copy must equal them (tests/sync/test_frontend_ownership.py pins that).
+        ("frontend/lib/job-ownership.ts", "t; a"),
+        ("frontend/lib/job-ownership.ts", "p; w"),
         # Load-order errors for a developer; the panel never shows them.
         ("extension/panel/actions.js", "panel/actions"),
         ("extension/panel/stages.js", "panel/stages"),

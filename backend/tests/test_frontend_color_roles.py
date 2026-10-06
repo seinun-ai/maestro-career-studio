@@ -230,7 +230,7 @@ _CHIP_SRC = _read("components/gap-analysis/resolution-controls.tsx")
 _GAP_CHIP = _CHIP_SRC[_CHIP_SRC.index("export function Chip(") : _CHIP_SRC.index("const LOAD_ERROR_MESSAGE")]
 _SELECTED_OR_NOT = re.compile(r'selected\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"')
 _TOKEN_UTIL = re.compile(
-    r"(?<![\w:/-])(bg|text)-(primary-foreground|primary|muted-foreground|muted|background)(?:/(\d+))?(?![\w/-])"
+    r"(?<![\w:/-])(bg|text)-(primary-foreground|primary|muted-foreground|muted|background|on-secondary-container|secondary-container)(?:/(\d+))?(?![\w/-])"
 )
 
 
@@ -551,15 +551,14 @@ def test_fatal_gate_containers_use_the_destructive_token():
 
 @pytest.mark.parametrize("mode", list(_MODES))
 def test_text_on_a_fatal_gate_meets_aa(mode):
-    """The gate's container is destructive/5; on it sit the Blocker badge
-    (text-destructive on bg-destructive/10), the fix hint (muted) and body."""
+    """The gate's container is destructive/5; on it sit the Must fix badge
+    (on-error-container on error-container, as in FailedGate), the fix hint (muted) and body."""
     t = _MODES[mode]
     destructive = _rgb(t, "destructive")
     for surface in ("card", "background"):
         gate = _over(destructive, _rgb(t, surface), 0.05)
-        badge = _over(destructive, gate, 0.10)
         for name, fg, bg in (
-            ("badge", destructive, badge),
+            ("badge", _rgb(t, "on-error-container"), _rgb(t, "error-container")),
             ("muted", _rgb(t, "muted-foreground"), gate),
             ("body", _rgb(t, "foreground"), gate),
         ):
@@ -711,15 +710,15 @@ _ROLE_SITES = [
     ("components/templates/template-gallery.tsx", '<p className="text-warning basis-full text-body-small">'),
     ("app/templates/[id]/page.tsx", '<span className="text-warning text-body-small">Unsaved changes</span>'),
     ("components/charts/tailoring-lift-chart.tsx", '? "text-success"\n                : "text-destructive"'),
-    ("components/ats-compare-panel.tsx", 'positive ? "text-success" : "text-destructive"'),
-    ("components/ats-compare-panel.tsx", 'className="border-transparent bg-success-container text-on-success-container"'),
+    ("components/ats-compare-panel.tsx", 'gained: { Icon: CONCEPT_ICONS.increase, word: "Gained", tone: "text-success" }'),
+    ("components/ats-compare-panel.tsx", 'lost: { Icon: CONCEPT_ICONS.decrease, word: "Lost", tone: "text-destructive" }'),
     ("components/settings/models-section.tsx", '"text-success font-medium"'),
     ("components/proposals/proposals-section.tsx", 'className="text-warning inline-flex items-center gap-1 text-body-small"'),
     ("components/proposals/proposals-section.tsx", "rounded-full bg-warning-container px-2 py-0.5 text-label-small text-on-warning-container"),
     ("components/base-resumes/base-resume-thumbnail.tsx", 'className: "text-warning"'),
     ("components/resume-versions/version-history-sheet.tsx", 'chat: "bg-tertiary-container text-on-tertiary-container"'),
     ("components/resume-versions/version-history-sheet.tsx", 'tailor: "bg-primary-container text-on-primary-container"'),
-    ("components/resume-versions/version-history-sheet.tsx", 'restore: "bg-warning-container text-on-warning-container"'),
+    ("components/resume-versions/version-history-sheet.tsx", 'restore: "bg-surface-container text-foreground"'),
     ("components/resume-versions/version-diff-view.tsx", 'added: "bg-success-container text-on-success-container"'),
     ("components/resume-versions/version-diff-view.tsx", 'modified: "bg-warning-container text-on-warning-container"'),
 ]
@@ -774,3 +773,72 @@ def test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state(mode):
     for name, under in surfaces.items():
         ratio = _text_on_tint_ratio(mode, _SIDEBAR_BADGE, under)
         assert ratio >= 4.5, f"{mode}: needs-you badge on {name} is {ratio:.2f}:1"
+
+
+def test_the_add_job_summary_names_each_requirement_group():
+    src = (_FRONTEND / "components/job-extraction-summary.tsx").read_text()
+    for word in ("Required", "Preferred", "Mentioned"):
+        assert word in src
+    assert "SkillGroup" in src and "function SkillGroup" not in src
+
+
+def test_preferred_skills_are_tonal_in_both_places():
+    for f in ("components/job-extraction-summary.tsx", "components/job-extracted-fields.tsx"):
+        src = (_FRONTEND / f).read_text()
+        assert 'variant="tonal"' in src, f
+
+
+def test_a_done_setup_step_says_done_in_words():
+    src = (_FRONTEND / "components/setup/getting-started-card.tsx").read_text()
+    assert ">Done<" in src
+
+
+_ALPHA_FILL = re.compile(r"(?<![:\w-])(bg|border|ring)-(primary|destructive)/[\d\[]")
+# A ratchet, not a sweep (visual-language plan, Task 4): the count can only go down.
+_ALPHA_FILL_CEILING = 39
+
+
+def test_alpha_fills_of_primary_and_destructive_only_shrink():
+    sites = []
+    for p in (_FRONTEND / "app").rglob("*.tsx"):
+        sites += [p.name for _ in _ALPHA_FILL.finditer(p.read_text(encoding="utf-8"))]
+    for p in (_FRONTEND / "components").rglob("*.tsx"):
+        if p.name == "button.tsx":  # the destructive Button variant: out of scope
+            continue
+        sites += [p.name for _ in _ALPHA_FILL.finditer(p.read_text(encoding="utf-8"))]
+    assert len(sites) <= _ALPHA_FILL_CEILING, f"{len(sites)}: {sorted(sites)}"
+
+
+def test_restored_and_you_are_neutral_not_status():
+    sheet = _read("components/resume-versions/version-history-sheet.tsx")
+    assert 'restore: "bg-warning-container' not in sheet
+    assert "success-container" not in _read("components/resume-editor/diff-review.tsx")
+
+
+def test_required_is_not_an_error():
+    card = _read("components/gap-analysis/gap-card.tsx")
+    assert 'required: "default"' in card
+    assert 'preferred: "tonal"' in card
+
+
+def test_selected_gap_controls_show_a_check():
+    rc = _read("components/gap-analysis/resolution-controls.tsx")
+    segment = rc.split("export function ActionSegment", 1)[1].split("export function Chip", 1)[0]
+    chip = rc.split("export function Chip", 1)[1].split("const LOAD_ERROR_MESSAGE", 1)[0]
+    for body in (segment, chip):
+        assert "<Check" in body and "bg-secondary-container" in body
+
+
+def test_a_strong_match_is_quiet_with_a_check():
+    page = _read("app/jobs/[id]/tailor/[sessionId]/page.tsx")
+    assert "bg-surface-container " in page
+    block = page.split("{strongMatch && !gapsJson.coverage_warning", 1)[1].split("Strong match", 1)[0]
+    assert "CONCEPT_ICONS.done" in block and "text-success" in block
+    assert "bg-success-container" not in page
+
+
+def test_the_best_match_card_carries_the_primary_ring():
+    """Card's edge is a ring, not a border: `border-primary` draws nothing there."""
+    panel = _read("components/ats-score-panel.tsx")
+    assert 'top && "ring-primary"' in panel
+    assert "border-primary" not in panel

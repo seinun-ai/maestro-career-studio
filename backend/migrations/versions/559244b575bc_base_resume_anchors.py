@@ -5,7 +5,7 @@ The anchors a base resume is written for: the countries it may be sent to
 focus. Metadata only, set on PATCH /{slug}/identity like the role pair.
 
 Revision ID: 559244b575bc
-Revises: 7d3c1a9e5b20
+Revises: 46b60e6ca922
 """
 from typing import Sequence, Union
 
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 
 revision: str = "559244b575bc"
-down_revision: Union[str, Sequence[str], None] = "7d3c1a9e5b20"
+down_revision: Union[str, Sequence[str], None] = "46b60e6ca922"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective 2026-10-01 · Maestro Career Studio 0.7.0 and later**
+**Effective 2026-10-05 · Maestro Career Studio 0.7.0 and later**
 
 Maestro Career Studio ("Maestro CS") is free, open-source software that you run
 on your own computer. It is published by an individual, Ajey Dhayashanker
@@ -9,9 +9,9 @@ Loganathan, at
 
 **The short version:** there is no Maestro CS server, account, or sign-up, and
 the author never receives your data. Your career record lives in files on your
-machine. It leaves only when *you* configure an AI service and use an AI
-feature, and then it goes to *that* service. If you use a model running on your
-own computer, it goes nowhere.
+machine. It leaves when you use an AI service, connect an AI assistant, or
+submit an application to an employer, going to the recipient you choose.
+A model running on your own computer processes it locally.
 
 ## What it stores, and where
 
@@ -25,6 +25,10 @@ folder, listed last:
   PDFs, per-application documents, documents you upload, and downloads such as
   `career.md`.
 - `settings/`: your profile, persona, and autofill details as text files.
+- `settings/secrets/job-site-login.json`: an optional job-site email and
+  password, stored in cleartext in a 0600 file inside a 0700 directory. They
+  never enter the database, exports, telemetry or application logs. Settings
+  returns only `{email, password_set}`; validation errors never echo credentials.
 - `logs/`: application logs, plus one small file per AI call (model name, sizes,
   and a hash, **not** the text, unless you set `LLM_LOG_CONTENT=true`).
 - `.env`: configuration, including any API keys you put there.
@@ -44,6 +48,17 @@ files can. See [`SECURITY.md`](SECURITY.md) §5.
 
 There is no login. The app listens only on `127.0.0.1`; do not expose it to a
 network.
+
+**Optional: a second, always-on copy.** If you set up sync
+([`docs/sync-setup.md`](docs/sync-setup.md)), a second Maestro on a machine you
+choose holds a read-only copy of your profile. That includes your resumes and
+career history, your settings with your AI key, any EEO answers you saved, and
+your job-site login. It also holds the jobs, applications and files that copy
+owns, and the laptop holds replicas of them. The data moves only inside an SSH
+connection that the always-on machine opens to your laptop, and it is never
+logged. Nothing goes to the author or to a Maestro server. The agent that runs on
+the always-on machine, and its provider, can read what that copy holds, under
+that provider's privacy policy. Without a sync key, none of this exists.
 
 ## What leaves your machine
 
@@ -117,6 +132,25 @@ with your standing consent. If you use the agent-driven apply lane, the browser
 tool your assistant uses is separate software, and an employer receives what
 you submit.
 
+Full automation is Off by default in Settings › Connected agents. Turning it
+On lets your agent submit queued jobs whose final review is clean without
+asking each time, within the daily cap and Companies to skip. Its automatic yes
+and its note confirming submission are labelled `auto` in the consent ledger.
+The agent checks review eligibility; Maestro records the result and enforces
+the approval gates. Jobs with anything to check go to Needs you and the agent
+asks you. Order, batching and timing stay between you and your agent.
+
+While full automation is On, MCP `get_job_site_login(proposal_id)` can return
+your saved `{email, password}` for a Queued or approved job whose company is
+off the skip list. The hand-off refuses browser requests carrying an `Origin`
+header and requires the MCP origin header. Each successful hand-off records a
+`login_shared` consent event with the proposal, time and client name, never the
+value. MCP errors never include the response body. **The login passes through
+your agent's AI provider and is processed under that provider's privacy
+policy. Use it only for job-site accounts.** Turning full automation Off
+refuses later hand-offs and automatic consent; it cannot recall data already
+sent to a provider.
+
 ### No telemetry from the author
 
 The code contains no analytics, crash-reporting, or advertising service. Maestro
@@ -146,6 +180,9 @@ Your data stays until you remove it; there is no server-side copy.
 - Removing the folder and its Docker volumes removes the software and its data.
 - Data already sent to an AI provider or assistant is kept under that provider's
   policy. Ask them to delete it.
+- **Clear** under Job-site login in Settings › Connected agents removes the
+  saved email and password file (`DELETE /api/settings/job-site-login`). Turning
+  full automation Off keeps the saved login until you clear it.
 
 ## Children, sale of data, changes
 
