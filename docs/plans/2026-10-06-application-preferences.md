@@ -95,9 +95,10 @@ def test_an_invalid_stored_value_reads_as_the_defaults(db_session, tmp_path, sou
     assert client.get("/api/settings/application-preferences").json()["value"] == DEFAULTS
 ```
 
-Check how `JsonSetting` treats a partially valid blob (`app/services/json_settings.py`) and match
-the assertion to it: `test_full_automation_setting.py::test_invalid_stored_full_automation_degrades_to_off`
-is the precedent.
+`JsonSetting.parse` returns the model's defaults on any validation error, so a partly valid blob
+reads as all defaults (the assertion above). `get` seeds the row and the mirror file on first read,
+which is why the fixture patches `settings_dir`; the "file" case works because the row is absent
+when the file is read. Don't reorder it.
 
 **Step 2:** Run: `python -m pytest tests/test_application_preferences_setting.py -q` → FAIL (404).
 
@@ -265,8 +266,11 @@ answer sets it; a PATCH with the same answer leaves it; `POST /api/qa` (regenera
 fresh entry with `edited_at is None`. Use the existing fixtures in `test_qa_router.py` for creating
 an application and stubbing the LLM.
 
-**Step 2:** Run → FAIL. **Step 3:** Add the nullable `DateTime(timezone=True)` column with
-`op.batch_alter_table`, the model field, the schema field, the PATCH line. **Step 4:** PASS, and
+**Step 2:** Run → FAIL. **Step 3:** Migration: a nullable `sa.DateTime(timezone=True)` column via
+`op.batch_alter_table`. Model: `UTCDateTime()` from `app.models.types` (a plain `sa.DateTime` on a
+model fails `tests/test_db_portability.py::test_every_datetime_column_is_utcdatetime`); stamp with
+`types.utcnow()`. Then the schema field and the PATCH line (PATCH sets `answer` unconditionally
+today, so compare the old and new answer before stamping). **Step 4:** PASS, and
 `alembic upgrade head` then `alembic downgrade -1` then `upgrade head` on a scratch copy of the
 test DB. **Step 5:** Stop for review.
 
@@ -288,13 +292,15 @@ test DB. **Step 5:** Stop for review.
    answer.
 4. None → `GET /api/settings/application-preferences`, then
    `POST /api/qa {"application_id": …, "cover_letter": {"tone": <cover_letter_tone>}}`;
-   `written = "maestro"`. Found → `written = "edited" if entry["edited_at"] else "maestro"`,
-   `reused = True`.
+   `written = "maestro"`. Found → `written = "edited" if entry.get("edited_at") else "maestro"`,
+   `reused = True` (`.get`: an older backend has no `edited_at`, and the fake-transport tests
+   needn't send it).
 5. No `pdf_path` → `POST /api/qa/{entry_id}/render`.
 6. `GET /api/qa/{entry_id}/pdf`; stage to `<upload root>/<application_id>/<filename from
    content-disposition>` with the existing `_atomic_write_bytes` and `_host_visible`.
 7. Return `{application_id, entry_id, written, reused, canonical_filename, upload_path,
-   size_bytes, sha256}`.
+   size_bytes, sha256}`. No PDF lint block (the resume tool's `_inspect_pdf`): a letter has no
+   resume-parse contract to check.
 
 A backend error at step 4 (no AI key, model error) surfaces as the backend's message (the existing
 `BackendError` → `ToolError` mapping); the skill decides what to do (Task 6).
@@ -361,6 +367,10 @@ Read `applying` in the brief before the first form, and never ask the user anyth
   When it is false, leave optional ones empty; a required one goes to the user, or in full automation mode to `report_failure` with reason `needs_answer`.
 ```
 
+`report_failure`'s `reason` is free text (`ProposalReasonBody.reason`, `schemas/proposal.py:70`), so
+the three reasons need no schema change; the test also pins the strings `needs_cover_letter`,
+`cover_letter_unavailable` and `needs_answer` so a later enum stays aligned with the skill.
+
 In `apply-auto` step 7, after "Call `report_failure` with the reason", nothing new is needed if the
 section above is included (it is: `include: [agent-apply-execution]`); only add a test that the
 apply card body contains the section heading.
@@ -397,8 +407,8 @@ apply card body contains the section heading.
 ### Task 8: Counts and docs
 
 **Files:** `backend/mcp_server/README.md` (count + tool list entry near the PDF group ~line 257 and
-the apply-profile count in the table ~line 144), root `README.md` (lines ~52, 130, 453),
-`codex_config.example.toml:27`, `KNOWN_ISSUES.md:29`, `plugins/maestro-career-studio/README.md:84`,
+the apply-profile count in the table ~line 144: 49 → 50), root `README.md` (lines ~52, 130, 453),
+`backend/mcp_server/codex_config.example.toml:27`, `KNOWN_ISSUES.md:29`, `plugins/maestro-career-studio/README.md:84`,
 `mcpb/manifest.json:53` (description text → then re-pack the committed `.mcpb` and run
 `python3 scripts/check_mcpb_bundle.py`), `docs/entities/others.md` (settings section ~595: the new
 setting and `autofill.low_stakes` now read by agents; QAEntry `edited_at` ~147), `SYSTEM.md` (one

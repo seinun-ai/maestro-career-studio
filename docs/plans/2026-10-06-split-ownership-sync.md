@@ -55,7 +55,8 @@ keeps the profile and works fully offline, and every job has exactly one owner a
 **Files:**
 - Modify: `backend/app/config.py`. Add `sync_key_file: Path | None = None` and
   `sync_remote_url: str = ""`, following the existing field patterns (`embeddings_out_of_process`, ~line 65).
-- Create: `backend/app/services/sync/__init__.py` (empty) and `backend/app/services/sync/status.py`.
+- Create: `backend/app/services/sync/__init__.py` (empty), `backend/app/services/sync/status.py`,
+  `backend/tests/sync/__init__.py` (tests are packages) and `backend/tests/sync/conftest.py`.
 - Test: `backend/tests/sync/test_status.py`.
 
 **`status.py`:**
@@ -153,7 +154,9 @@ back and re-read.
   - `reason` Text NULL, `created_at`, `answered_at` NULL;
   - `origin` String(8): `local` (made here, for the other side) or `incoming`.
 
-Use `op.batch_alter_table` for the two altered tables. Tests: upgrade, downgrade, then upgrade
+Models use `UUIDType` and `UTCDateTime` from `app.models.types` for every UUID and datetime column
+(the single-dialect invariant; `tests/test_db_portability.py` fails a plain `sa.DateTime`). Use
+`op.batch_alter_table` for the two altered tables. Tests: upgrade, downgrade, then upgrade
 again on a scratch DB file. Existing rows read `owner_machine IS NULL` and `sync_rev == 0`.
 
 ### Task 3: The table registry, one place that says what everything is
@@ -212,8 +215,10 @@ Also implement two functions:
 
 Behavior of the `before_flush` handler (`event.listen(Session, "before_flush", _before_flush)`):
 
-1. **Skip:** if `session.info.get("sync_apply")` is set, this is an import. Skip the guard, but
-   still record tombstones for deleted owned jobs.
+1. **Imports:** if `session.info.get("sync_apply")` is set, skip the guard but still bump: the
+   receiver restamps every row it writes from ITS OWN clock. `sync_rev` is always this machine's
+   clock, never the sender's; bundles carry no `sync_rev`, `owner_machine` or `handover` as row
+   data (those travel as bundle fields and are set by the importer).
 2. **Collect touched rows:** for each object in `new`, `deleted`, and `dirty` with
    `session.is_modified(obj)`, find its class through the registry (`obj.__table__.name`). Then:
    - JOB or by_kind application rows → `touched_jobs.add(job_id_of(...))`;
@@ -223,7 +228,10 @@ Behavior of the `before_flush` handler (`event.listen(Session, "before_flush", _
 4. **Bump revisions:**
    - one `UPDATE sync_state SET value = value + 1 WHERE name='clock' RETURNING value` per flush,
      inserting the row on first use;
-   - set `sync_rev` on each touched job that still exists to that value (load with `no_autoflush`);
+   - set `sync_rev` on each touched job that still exists to that value. Find the `Job` object in
+     `session.new` / `session.dirty` by id first (`session.get` does not see a pending job); fall
+     back to `session.get` under `no_autoflush` only for ids with no pending object, and treat
+     `obj in session.deleted` as deleted (no rev, a tombstone instead);
    - bump `profile_rev` to the same value when the profile was touched;
    - for a deleted `Job`, add `SyncTombstone(job_id, rev)`.
 
@@ -236,6 +244,11 @@ Behavior of the `before_flush` handler (`event.listen(Session, "before_flush", _
 - A flush with nothing modified bumps nothing.
 - The full backend suite passes. Measure that the suite's wall time doesn't grow more than about
   5% and note the number in the task report.
+
+**Known Core write:** `template_registry.py:743` (`update(Template)…is_default=False`) bypasses the
+hook, so set-default never bumps the profile. Add `hooks.touch_profile(session)` there (and, from
+Task 5, `hooks.require_profile_writable(session)`). The other Core writes found at planning
+(`autofill.py:184-185`, `autofill_trace.py:186`, `agent_runs.py:35`) are LOCAL/RUN_LOG.
 
 **Also audit Core writes.** `grep -rn "session.execute(update\|delete(\|insert(" backend/app`, and
 the `db.execute(` variants. Any bulk Core write to a job-class or profile table bypasses ORM
@@ -256,15 +269,37 @@ events. Either convert it to ORM, or call `hooks.touch_job(session, job_id)` /
 - **Job rows** of a job whose `owner_machine` is set and isn't this machine's id are refused. On
   home, so are rows of a job with `handover == "offered"`, except a flush whose only change is
   clearing `handover` (that's Keep it here).
-- **Profile rows on the remote** are refused, except new `KBPoint` rows with
-  `provenance == "user_cannot_confirm"`. For each of those, also add
-  `SyncRequest(kind="profile_addition", payload={"claim": text, …}, origin="local")` in the same
-  flush.
+- **Profile rows on the remote:** UPDATE and DELETE are refused. INSERTs are refused too, except:
+  - `Setting` rows. Lazy first reads insert defaults (`text_settings.get_text`,
+    `prompts.get_prompt`, `model_settings._set_value`); home's value wins at the next profile apply.
+  - Rows written by startup seeding. `seeding.run_startup()` (`seed_base_resumes`, `seed_prompts`,
+    `seed_templates`, `ensure_persona`, `seed_career_kb`) and the re-seed inside
+    `GET /api/templates` (`routers/templates.py:49`) run with `session.info["sync_apply"] = True`.
+    The next profile apply upserts over them by primary key and deletes the rest.
+  - A new `KBPoint` with `provenance == "user_cannot_confirm"`, plus the archived "Unconfirmed
+    claims" `KBEntity` holder that `_record_cannot_confirm` creates when absent
+    (`tailoring_session.py:721`). Add one `SyncRequest(kind="profile_addition",
+    payload={"claim": text, "holder": {...} or None}, origin="local")` in the same flush; home
+    applies it idempotently by claim text, creating the holder if it lacks one.
+- **Tailoring on the remote** must not write draft career-history points: `tailor()`'s
+  gap-elicitation write-back (`KBPoint` with `origin="gap_elicitation"`,
+  `tailoring_session.py:725/781/1090`) is skipped when `status.is_remote()`, and reported in
+  `kb_writeback_skips` with reason `profile_owned_elsewhere`. Test that a remote tailor completes
+  and reports the skip.
 - **Message:** `NotOwnedHere("This job is with your bot. Your change will be sent to it at the
   next sync." | "This job is on your laptop. …" | "Your laptop keeps your profile. Change it there.")`.
   Use the first two wordings only where Task 6 converts the write into a request. Elsewhere the
   message says what to do instead, e.g. "Ask for it back with Work on it here." Keep each message
   to one plain sentence.
+
+**Routes with file side effects before their commit** call `hooks.require_owned(session, job_id)`
+first, so a refusal can't leave a half-done change on disk: `PATCH /api/qa/{id}` (deletes the PDF at
+`routers/qa.py:151-153` before committing), `POST /api/qa/{id}/render`, application render, and
+proposal evidence upload. `hooks.require_profile_writable(session)` does the same for profile
+routes with file side effects (base resume edits write `<slug>.json`).
+
+`NotOwnedHere` subclasses `Exception` directly, not `ValueError` (several routers map `ValueError`
+to 400).
 
 **Tests (sync on; mark a job as a replica by setting `owner_machine` to another id):**
 - A replica job cannot be written through any of these:
@@ -279,8 +314,11 @@ events. Either convert it to ORM, or call `hooks.touch_job(session, job_id)` /
   Parametrize over the routes listed in the write-paths inventory (design amendments).
 - Listing proposals with a stale replica proposal does not raise and does not expire it.
 - Changing EEO consent clears answers only on owned jobs.
-- On the remote, a base resume edit is refused while a cannot-confirm point is accepted and queues
-  one addition.
+- On the remote, a base resume edit is refused while a cannot-confirm point (and its holder entity,
+  when absent) is accepted and queues one addition.
+- A refused QA PATCH on a replica leaves the replica's PDF on disk.
+- **The remote boots with sync on** (the lifespan's seeding succeeds), and a never-seeded setting
+  key reads its default without a 409.
 - With sync OFF the same routes all succeed (the parametrized twin).
 
 ### Task 6: Requests through the routes the user already uses
@@ -344,7 +382,8 @@ def unpack(files: list[dict]) -> None:
 - A path outside every root becomes None.
 - A size over the limit raises.
 
-The per-job default is 25 MB. Evidence is at most 5 MB a file.
+`ROOTS` reads the process-global `settings.*_dir`, so round-trip tests monkeypatch the dirs between
+pack and unpack. The per-job default is 25 MB. Evidence is at most 5 MB a file.
 
 ### Task 8: Export and apply a job bundle
 
@@ -395,7 +434,8 @@ local job, is handled by Task 10's rule. Here, raise `DuplicateJob(local_id)`.
 - settings rows, except local prefixes;
 - `files`: `base_resumes/*.json` (the content source: `load_base_resume` reads the file, not
   `data_json`), base resume PDFs and TeX, and kb document files;
-- `job_site_login`: `job_site_login.read()` or None. This is a secret, so it only ever travels in
+- `job_site_login`: `job_site_login.read()` or None (the service has `read()`, `write(email,
+  password)` and `clear()`). This is a secret, so it only ever travels in
   this bundle;
 - `profile_rev`.
 
@@ -406,10 +446,11 @@ Check `templates` storage: if template content lives in files, add its root to `
 - settings with a file mirror go through their service's `set` (the `JsonSetting` instances and
   `text_settings`), so the mirror files stay in step;
 - write the files;
-- `job_site_login.save(...)` or `.clear()`;
+- `job_site_login.write(email, password)` or `.clear()`;
 - never touch local-prefixed settings.
 
-**Tests:**
+**Tests** (monkeypatch `settings_dir` and the file roots between export and apply; mirrors and
+roots are process-global):
 - A round trip into a second schema.
 - A setting's mirror file is rewritten.
 - The base resume JSON file arrives, and `load_base_resume` returns the new content.
@@ -435,6 +476,9 @@ Check `templates` storage: if template content lives in files, add its root to `
    carries `X-Maestro-Sync: <protocol>:<schema_revision>:<machine_id>`.
 5. A module-level `threading.Lock` acquired non-blocking (single-flight). Busy → 409 "A sync is
    already running."
+
+Give the router a sanitized validation error, like `_JobSiteLoginRoute` (`routers/settings.py:146`):
+FastAPI's default 422 echoes the request `input`, which here would be bundle contents.
 
 **Routes (home):**
 - `GET /api/sync/hello` → `{protocol, schema_revision, machine_id, profile_rev}`.
@@ -463,7 +507,8 @@ Check `templates` storage: if template content lives in files, add its root to `
 - `POST /api/sync/handover/return` with `{bundles}` → apply each as owned here
   (`owner_machine = None`). Return the ids.
 - `POST /api/sync/runs` with `{runs}` → upsert `agent_runs` by id with `machine = remote id`.
-  Add-only: never delete.
+  Add-only per round: never delete. Home's normal `agent_runs` retention still prunes old rows,
+  remote ones included; that's intended.
 
 **Tests:** one per route, plus all of these:
 - the 404 with sync off;
@@ -482,8 +527,10 @@ Check `templates` storage: if template content lives in files, add its root to `
 - Modify: `backend/app/services/sync/status.py`. Add round state in the setting `sync.state`
   (local): `{paired, last_ok, last_error, failures, next_attempt_at, since_home, acked_own,
   profile_rev}`.
-- Test: `backend/tests/sync/test_round.py` (in-process, with home's HTTP faked by an
-  `httpx.MockTransport` wired to a second in-process schema). Task 12 does it for real.
+- Test: `backend/tests/sync/test_round.py`. Home is a hand-written fake behind an
+  `httpx.MockTransport`: it calls the `jobs_bundle` / `profile_bundle` functions against a second
+  session on a second SQLite file, never the FastAPI app (whose `get_db`, `status.enabled()`,
+  `is_remote()` and module lock are process-global). Task 12 tests the real thing.
 
 **`run_round(db, *, force=False, pair=False, accept_profile_overwrite=False) -> dict`:**
 
@@ -499,8 +546,8 @@ Check `templates` storage: if template content lives in files, add its root to `
    - "gone" → delete the replica.
 5. **Profile:** `GET profile?since=profile_rev`, then `apply_profile` if it changed.
 6. **Push own jobs:** owned here with `sync_rev > acked_own`, in pages, then `POST jobs`. On
-   `kept: "laptop"` duplicates, delete the local job and its files. Advance `acked_own` only after
-   a 2xx.
+   `kept: "laptop"` duplicates, delete the local job and its files. `acked_own` becomes the highest
+   local `sync_rev` among the bundles pushed, read before the POST, and is saved only after a 2xx.
 7. **Pull home jobs:** `GET jobs?since=since_home` in pages, then `apply_job` as replicas, then
    advance `since_home`.
 8. **Requests both ways:** `GET requests` → apply locally → `POST request-results`.
@@ -508,15 +555,17 @@ Check `templates` storage: if template content lives in files, add its root to `
 9. **Handovers:**
    - **Offers:** `GET offers` → `apply_job` (still home's) → `POST commit` → own the committed jobs.
    - **Returns:** for each own job with a `take_over` request applied in step 8, check that it
-     isn't mid-application. That means no proposal in `approved` and no unfinished autofill run
-     for it. Then set `handover = "returning"`, `POST return` with its bundle, and become a
+     isn't mid-application. ("Mid-application" is a proposal in `approved` or `submission_uncertain`;
+     `autofill_runs` holds finished traces only, so there is no "unfinished run" to check.) Then set
+     `handover = "returning"`, `POST return` with its bundle, and become a
      replica on success. Busy → refuse the request with "Your bot is applying to this one; try
      again after its run."
 10. **Runs:** `POST runs` with run rows since the last push.
 11. **State:** on success, `failures = 0` and `next_attempt_at = None`. On a connection error,
     `failures += 1` and
     `next_attempt_at = now + min(30, 5 * 2 ** (failures - 1))` minutes. Return a per-step summary
-    of counts. It never includes contents.
+    of counts. It never includes contents. `last_error` is a status code plus a fixed sentence,
+    never a response body (a 422 body would carry bundle contents into a setting).
 
 Each step commits on its own. A failed step stops the round, and the next round resumes.
 
@@ -534,9 +583,11 @@ Each step commits on its own. A failed step stops the round, and the next round 
 ### Task 12: Real two-process tests and pairing
 
 **Files:**
-- Create: `backend/tests/sync/conftest.py` fixture `home_backend` (module scope):
+- Modify: `backend/tests/sync/conftest.py` (from Task 1). Add the fixture `home_backend` (module scope):
   - temp `DATA_DIR`, `SETTINGS_DIR`, `APPLICATIONS_DIR`, `BASE_RESUMES_DIR` and `KB_DOCUMENTS_DIR`;
-  - a key file and `DATABASE_URL`;
+  - a key file and `DATABASE_URL` pointing at the home file. **Pop `TEST_DATABASE_URL`** from the
+    subprocess env and from the `alembic upgrade head` env: `tests/conftest.py` sets it and
+    `app/db.py` prefers it, so the subprocess would otherwise open the test worker's database;
   - `alembic upgrade head`, then `uvicorn app.main:app --port <free>` as a subprocess, waiting on
     `/health`;
   - teardown kills it.
@@ -568,7 +619,9 @@ Each step commits on its own. A failed step stops the round, and the next round 
 - A wrong key is a 401, and the remote reports "Sync key doesn't match".
 - Killing home mid-round leaves both databases consistent, and the next round finishes.
 
-These run in CI (not `slow`). Keep the module to one home process and under ~60 s.
+These run in CI on purpose, not marked `slow`: they download nothing, and they are the contract.
+Record that exception next to the `slow` convention in SYSTEM.md (Task 16). Keep the module to one
+home process and under ~60 s.
 
 ---
 
@@ -622,7 +675,7 @@ listed in the preferences plan's Task 8.
   - For Docker: `docker compose exec backend python -m scripts.sync_key create`.
 - Modify `backend/scripts/native/common.sh`: export `SYNC_KEY_FILE` when `$MAESTRO_HOME/sync-key`
   exists. Setup writes no key.
-- Modify `maestro.env.example`: `SYNC_REMOTE_URL=http://127.0.0.1:8101` (commented), with the
+- Modify `backend/scripts/native/maestro.env.example`: `SYNC_REMOTE_URL=http://127.0.0.1:8101` (commented), with the
   key-file note.
 - Tests: extend `tests/test_native_scripts.py` with the fake-uvicorn style:
   - `sync.sh` POSTs the round, passes `--pair` through and declines while paused;

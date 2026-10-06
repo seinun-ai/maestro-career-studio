@@ -174,9 +174,11 @@ model (one writer per piece of data, the laptop owns the profile, each job has o
   with the row; settings with a file mirror are written through their setting service.
 - **Machine-local settings never sync:** `sync.*`, model capability caches and similar.
 - **Additions from job work on the always-on copy.** Tailoring can record "I can't confirm this"
-  points in the career history, which the laptop owns. Those inserts are allowed on the always-on
-  copy and sent to the laptop as add-only additions (idempotent by claim text); nothing else in
-  the profile is writable there.
+  points in the career history, which the laptop owns. Those inserts (and the holder entry they
+  need) are allowed on the always-on copy and sent to the laptop as add-only additions (idempotent
+  by claim text). Tailoring's draft career-history points are skipped there and reported. Startup
+  seeding and first-read setting defaults may insert on the always-on copy; the next profile
+  refresh replaces them. Nothing else in the profile is writable there.
 - **First pairing.** A job both copies hold (the always-on copy was seeded from a laptop snapshot)
   is the laptop's; a job only the always-on copy holds is its own. Profile differences on the
   always-on copy are listed, and the first round refuses until they are accepted
