@@ -99,7 +99,7 @@ export const EVIDENCE_LABELS = Object.fromEntries(
 ) as Record<EvidenceLevel, string>;
 
 export const LOCKED_BTN =
-  "disabled:pointer-events-auto aria-disabled:pointer-events-auto";
+  "disabled:pointer-events-auto aria-disabled:pointer-events-auto data-disabled:pointer-events-auto";
 
 export type FindingCardShared = {
   data: ResumeData;

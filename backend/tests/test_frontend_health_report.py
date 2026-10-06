@@ -64,6 +64,8 @@ def test_stale_is_surfaced_and_apply_locks():
     assert "Check again to update it." in _PAGE
     assert "STALE_APPLY_HINT" in _CARDS
     assert "disabled:pointer-events-auto" in _CARDS
+    # the Button primitive sets data-disabled:pointer-events-none; a locked button overrides the same modifier
+    assert "data-disabled:pointer-events-auto" in _CARDS
 
 
 def test_apply_sends_content_hash_and_handles_409():

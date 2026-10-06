@@ -21,7 +21,8 @@ def test_the_button_has_a_pending_state():
     src = _read("components/ui/button.tsx")
     assert "pending?: boolean" in src
     assert "aria-busy={pending || undefined}" in src
-    assert "focusableWhenDisabled" in src and "Loader2" in src
+    assert "focusableWhenDisabled={pending || focusableWhenDisabled}" in src
+    assert "disabled={disabled || pending}" in src and "Loader2" in src
 
 
 def test_the_button_styles_data_disabled_itself():

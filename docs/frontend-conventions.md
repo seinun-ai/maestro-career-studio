@@ -302,8 +302,8 @@
     true`; the Save chain passes `false`). The line also carries the words
     while a save runs: `StudioSaveButton` keeps its "Save" label and leads
     with a spinner, because a "Saving…" label widened it from 52 to 89px. It
-    is `focusableWhenDisabled` (dimmed on `data-disabled`, since `disabled:`
-    matches only the native attribute): Save disables itself on every save,
+    is `focusableWhenDisabled` (the Button primitive dims `data-disabled` itself,
+    since `disabled:` matches only the native attribute): Save disables itself on every save,
     and a disabled `<button>` drops focus to `<body>`.
   - *Empty preview*: both studios pass `emptyPreviewMessage(unsaved)`, which
     names the action enabled right now: "No PDF yet. Save to create one." with
@@ -776,8 +776,10 @@
     deletes (Suggest items and Create on New base resume, Write new wording
     and Apply, Adapt and preview, Add as is and Add N to resume on Add to a resume, Add
     item, a base resume's Delete), `/new`'s Save job and Quick
-    capture's Add document, each dimmed on
-    `data-disabled`. So are Queue in Agent inbox (a tracker row's and the job
+    capture's Add document. The Button primitive dims `data-disabled` itself, and
+    its `pending` prop is the loading state: a spinner, `aria-busy`, kept focus and
+    ignored presses. A locked button that must keep its hover title adds
+    `data-disabled:pointer-events-auto` (`LOCKED_BTN`). So are Queue in Agent inbox (a tracker row's and the job
     header's) and the tailored studio's Create draft; each leaves once its
     request lands, so focus is handed on: the row's ⋯, the header's first
     control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
