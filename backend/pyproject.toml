@@ -38,7 +38,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=9.1.1",
-    "pytest-asyncio>=0.24",
+    "pytest-asyncio>=1.4.0",
     # Parallel workers for the suite (`pytest -n auto --dist loadfile`); see
     # tests/conftest.py for why each worker mints its own database.
     "pytest-xdist>=3.6",
