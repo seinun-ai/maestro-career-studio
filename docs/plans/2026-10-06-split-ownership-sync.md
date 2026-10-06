@@ -664,6 +664,9 @@ Each step commits on its own. A failed step stops the round, and the next round 
 - Differences other than cannot-confirm additions → refuse with the list of table names and keys,
   never values, unless `accept_profile_overwrite`.
 - Job ids on both sides → home's (the remote's copy becomes a replica at step 7).
+- Base resumes only the remote has (seeds or pre-pairing rows) are deleted by the first profile
+  apply; list them by slug in the refusal, and list remote-owned applications built from them (their
+  rebuild and Q&A routes will answer "Unknown base resume" afterwards; Task 9 review).
 - Remote-only jobs → stay the remote's.
 - Then set `paired`.
 
