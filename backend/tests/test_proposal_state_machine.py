@@ -1,11 +1,17 @@
 from datetime import UTC, datetime, timedelta
 import pytest
 
+from app.config import settings
 from app.models.application import Application
 from app.models.consent_event import ConsentEvent
 from app.models.job import Job
 from app.services import proposals as svc
 from tests.test_proposals_models import _mk_job
+
+
+@pytest.fixture(autouse=True)
+def _settings_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "settings_dir", tmp_path)
 
 
 def _mk_proposal(db_session, status="pending_review", with_app=True, **kw):
@@ -499,6 +505,48 @@ def test_auto_consent_still_refuses_past_the_daily_cap(db_session):
         svc.transition(db_session, second, "approved", consent={"channel": "auto"})
     assert second.status == "pending_review" and second.cap_reserved_at is None
     assert db_session.query(ConsentEvent).filter_by(proposal_id=second.id).count() == 0
+
+
+def test_auto_approval_refuses_company_blocked_after_proposal_was_created(db_session):
+    prop = _mk_proposal(db_session)
+    from app.schemas.auto_apply import AutoApplySettings
+    from app.services import auto_apply_settings
+
+    auto_apply_settings.set_settings(
+        AutoApplySettings(full_automation=True, company_blocklist=["  aCmE  "]), db_session)
+    prop.evidence_json = _final_review_evidence()
+    with pytest.raises(svc.TransitionError, match="Companies to skip list"):
+        svc.transition(db_session, prop, "approved", consent={"channel": "auto"})
+    assert prop.status == "pending_review" and prop.cap_reserved_at is None
+    assert db_session.query(ConsentEvent).filter_by(proposal_id=prop.id).count() == 0
+
+
+def test_auto_submission_is_recorded_if_company_blocked_after_approval(db_session):
+    prop = _approved_auto(db_session)
+    from app.schemas.auto_apply import AutoApplySettings
+    from app.services import auto_apply_settings
+
+    auto_apply_settings.set_settings(
+        AutoApplySettings(full_automation=True, company_blocklist=[" AcMe "]), db_session)
+    svc.transition(db_session, prop, "submitted", attested=True,
+                   consent={"channel": "auto", "note": "Confirmation page"})
+    event = db_session.query(ConsentEvent).filter_by(
+        proposal_id=prop.id, action="submitted").one()
+    app_row = db_session.get(Application, prop.application_id)
+    assert prop.status == "submitted" and event.channel == "auto"
+    assert event.note == "Confirmation page" and app_row.status == "applied"
+
+
+def test_manual_approval_is_unchanged_by_a_later_company_block(db_session):
+    prop = _mk_proposal(db_session)
+    from app.schemas.auto_apply import AutoApplySettings
+    from app.services import auto_apply_settings
+
+    auto_apply_settings.set_settings(
+        AutoApplySettings(company_blocklist=["  aCmE  "]), db_session)
+    prop.evidence_json = _final_review_evidence()
+    svc.transition(db_session, prop, "approved", consent={"channel": "chat", "note": "yes"})
+    assert prop.status == "approved"
 
 
 @pytest.mark.parametrize("on, expected_status", [(False, 409), (True, 200)])

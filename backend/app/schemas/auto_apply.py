@@ -1,7 +1,7 @@
 """Auto-apply lane knobs. Consumed by the proposals router (cooldown/dedup,
 submission caps, expiry) and read by hunting playbooks via GET
 /api/settings/auto-apply (per-run caps are enforced agent-side)."""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
 
 class AutoApplySettings(BaseModel):
@@ -20,4 +20,4 @@ class AutoApplySettings(BaseModel):
     # Phase 4 (docs/plans/2026-10-05-full-automation-design.md): when True the user's
     # agent may submit a job whose final review is clean without asking, records that yes
     # with channel "auto", and may fetch the job-site login. Off by default.
-    full_automation: bool = False
+    full_automation: StrictBool = False

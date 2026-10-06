@@ -57,14 +57,30 @@ CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp", "auto")
 AUTO_CHANNEL = "auto"
 
 
-def _check_auto_consent(session: Session, new_status: str, consent: dict,
-                        attested: bool) -> None:
+def _company_is_blocked(session: Session, prop: ApplicationProposal,
+                        company_blocklist: list[str]) -> bool:
+    job = session.get(Job, prop.job_id)
+    company = (job.company or "").strip().lower() if job else ""
+    blocked = {name.strip().lower() for name in company_blocklist}
+    return bool(company and company in blocked)
+
+
+def _auto_approval_is_blocked(session: Session, prop: ApplicationProposal,
+                              new_status: str, company_blocklist: list[str]) -> bool:
+    return new_status == "approved" and _company_is_blocked(session, prop, company_blocklist)
+
+
+def _check_auto_consent(session: Session, prop: ApplicationProposal, new_status: str,
+                        consent: dict, attested: bool) -> None:
     if not (new_status == "approved" or (new_status == "submitted" and attested)):
         raise TransitionError("the auto channel only approves a job or confirms it went through")
     if new_status == "submitted" and not (consent.get("note") or "").strip():
         raise TransitionError("an automatic submit needs a note saying what confirmed it")
-    if not auto_apply_settings.get_settings(session).full_automation:
+    cfg = auto_apply_settings.get_settings(session)
+    if not cfg.full_automation:
         raise TransitionError("the auto channel needs full automation turned on in Settings")
+    if _auto_approval_is_blocked(session, prop, new_status, cfg.company_blocklist):
+        raise TransitionError("This company is on your Companies to skip list in Settings › Connected agents")
 
 EVIDENCE_KINDS = frozenset({"step", "final_review", "submission_receipt"})
 
@@ -153,7 +169,7 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
         if not consent or consent.get("channel") not in CONSENT_CHANNELS:
             raise TransitionError(f"{new_status} requires consent with a valid channel")
     if consent and consent.get("channel") == AUTO_CHANNEL:
-        _check_auto_consent(session, new_status, consent, attested)
+        _check_auto_consent(session, prop, new_status, consent, attested)
     if new_status == "approved" and not _evidence_has_kind(prop, "final_review"):
         raise TransitionError("approved requires final_review evidence")
     if new_status == "submitted":

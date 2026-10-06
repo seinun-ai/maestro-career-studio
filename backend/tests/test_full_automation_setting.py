@@ -59,3 +59,23 @@ def test_older_settings_stay_off_and_keep_their_guardrails(db_session, tmp_path,
     assert response.status_code == 200
     value = response.json()["value"]
     assert value == {**json.loads(legacy), "full_automation": False}
+
+
+@pytest.mark.parametrize("value", ["yes", "on", "1", 1])
+def test_full_automation_rejects_non_boolean_values(value):
+    response = client.put("/api/settings/auto-apply", json={"value": {"full_automation": value}})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("source", ["database", "file"])
+def test_invalid_stored_full_automation_degrades_to_off(db_session, tmp_path, source):
+    invalid = json.dumps({"full_automation": "yes"})
+    if source == "database":
+        db_session.add(Setting(key="auto_apply", value=invalid))
+        db_session.commit()
+    else:
+        (tmp_path / "auto_apply.json").write_text(invalid, encoding="utf-8")
+
+    response = client.get("/api/settings/auto-apply")
+    assert response.status_code == 200
+    assert response.json()["value"]["full_automation"] is False
