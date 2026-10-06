@@ -394,6 +394,11 @@
   }
 }
 
+/* A registered utility, so variants apply (data-confirm:animate-confirm); the keyframes sit in the layer below. */
+@utility animate-confirm {
+  animation: confirm-ring var(--duration-medium4) var(--ease-standard);
+}
+
 @layer utilities {
   /* Stagger entrance: each child fades + lifts in, delayed by --stagger. */
   @keyframes fade-rise {
@@ -448,9 +453,6 @@
     to {
       box-shadow: 0 0 0 6px transparent;
     }
-  }
-  .animate-confirm {
-    animation: confirm-ring var(--duration-medium4) var(--ease-standard);
   }
 
   /* A row leaving a list it no longer belongs to (a skipped proposal): wrap it

@@ -178,19 +178,28 @@ export function StatusChip({
   const current = (status ?? "draft") as ApplicationStatus;
   const style = STATUS_STYLES[current] ?? STATUS_STYLES.draft;
 
-  // One soft ring pulse when the status changes (not on first paint).
-  const shown = useRef(current);
+  // One soft ring pulse once a change has settled: not on first paint, and not
+  // when a failed PATCH rolls the status back to what it was before.
+  const settled = useRef(current);
   const [confirm, setConfirm] = useState(false);
   useEffect(() => {
-    if (shown.current === current) return;
-    shown.current = current;
+    if (pending || settled.current === current) return;
+    settled.current = current;
     setConfirm(true);
     const t = window.setTimeout(() => setConfirm(false), 400);
     return () => window.clearTimeout(t);
-  }, [current]);
+  }, [current, pending]);
+  // A natively disabled trigger cannot take focus back when the menu closes, so
+  // the chip stays focusable (aria-disabled) and just refuses to open meanwhile.
+  const [open, setOpen] = useState(false);
 
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      open={open && !pending}
+      onOpenChange={(next) => {
+        if (!pending) setOpen(next);
+      }}
+    >
       <DropdownMenuTrigger
         render={
           // data-status-chip: what a list hands focus to when a status change
@@ -198,7 +207,7 @@ export function StatusChip({
           <button
             type="button"
             data-status-chip
-            disabled={pending}
+            aria-disabled={pending || undefined}
             data-confirm={confirm || undefined}
             aria-label={`Status: ${style.label}. Change status`}
             className={cn(chipClasses(true), style.chip, "data-confirm:animate-confirm", className)}
@@ -225,7 +234,7 @@ export function StatusChip({
             <DropdownMenuItem
               key={s}
               onClick={() => {
-                if (s !== current) onSelect(s);
+                if (!pending && s !== current) onSelect(s);
               }}
             >
               <span className={cn("size-2 rounded-full", item.dot)} />

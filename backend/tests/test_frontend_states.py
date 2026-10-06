@@ -83,10 +83,21 @@ def test_the_job_header_status_patch_is_optimistic_too():
 def test_a_pending_status_chip_cannot_be_changed_again():
     chip = _read("components/status-chip.tsx")
     body = chip.split("export function StatusChip", 1)[1]
-    assert "disabled={pending}" in body
+    # Focusable while pending: a native disabled button drops focus to <body> when the menu closes.
+    assert "aria-disabled={pending || undefined}" in body
+    assert not re.search(r"(?<![-\w])disabled=\{pending\}", body)
+    assert "open={open && !pending}" in body and "if (!pending && s !== current)" in body
 
 
 def test_the_status_chip_cross_fades_and_confirms():
     chip = _read("components/status-chip.tsx")
     assert "transition-[background-color,color" in chip
     assert "data-confirm" in chip and "animate-confirm" in chip
+    # A plain class cannot take a variant: it must be a registered utility.
+    css = _read("app/globals.css")
+    assert "@utility animate-confirm" in css and ".animate-confirm {" not in css
+
+
+def test_the_confirm_pulse_skips_a_rollback():
+    body = _read("components/status-chip.tsx").split("export function StatusChip", 1)[1]
+    assert "if (pending || settled.current === current) return;" in body

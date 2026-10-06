@@ -15,8 +15,8 @@ def test_count_up_node_suite():
 
 
 def test_motion_utilities_exist_and_stay_within_budget():
-    for name in ("animate-confirm", "collapse-exit"):
-        assert f".{name}" in _CSS
+    assert "@utility animate-confirm" in _CSS and ".collapse-exit" in _CSS
+    assert "confirm-ring var(--duration-medium4)" in _CSS
     assert ".animate-row-exit" not in _CSS
     assert "[data-leaving]" in _UTILITIES
     for ms in re.findall(r"(\d+)ms", _UTILITIES):
