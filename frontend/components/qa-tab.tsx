@@ -215,7 +215,8 @@ export function QATab({ applicationId, readOnly = false }: { applicationId: stri
           <Button
             onClick={() => askOnce(questions)}
             pending={askQuestions.isPending}
-            disabled={noQuestions || readOnly}
+            disabled={noQuestions}
+            {...ownershipControlProps(readOnly)}
             focusableWhenDisabled
             aria-describedby={noQuestions ? needQuestionId : undefined}
           >

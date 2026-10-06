@@ -11,7 +11,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 _REGISTER = _FRONTEND / "lib" / "concept-icons.ts"
