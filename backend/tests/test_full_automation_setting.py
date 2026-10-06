@@ -93,3 +93,13 @@ def test_invalid_stored_full_automation_degrades_to_off(db_session, tmp_path, so
     response = client.get("/api/settings/auto-apply")
     assert response.status_code == 200
     assert response.json()["value"]["full_automation"] is False
+
+
+def test_the_brief_over_http_carries_full_automation():
+    # Agents read the brief through GET /api/jobs/search-brief (MCP get_job_search_brief);
+    # its response model once dropped the field, so apply-auto always saw it off.
+    for enabled in (True, False):
+        assert client.put("/api/settings/full-automation", json={"value": enabled}).status_code == 200
+        brief = client.get("/api/jobs/search-brief")
+        assert brief.status_code == 200
+        assert brief.json()["auto_apply"]["full_automation"] is enabled

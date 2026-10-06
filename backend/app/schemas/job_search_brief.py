@@ -58,6 +58,7 @@ class BriefAutoApply(BaseModel):
     """Hunt guardrails up front (G2, 2026-08-01) so a run never burns
     extraction on a blocklisted company or discovers the caps by 409."""
 
+    full_automation: bool
     company_blocklist: list[str]
     max_proposals_per_run: int
     cap: BriefCapStatus
