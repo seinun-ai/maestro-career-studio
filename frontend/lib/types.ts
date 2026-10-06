@@ -449,6 +449,13 @@ export interface AutoApplySettings {
   proposal_expiry_days: number;
   auto_pick_margin: number;
   auto_pick_floor: number;
+  full_automation: boolean;
+}
+
+/** GET/PUT /api/settings/job-site-login: the web API never returns a password. */
+export interface JobSiteLoginStatus {
+  email: string | null;
+  password_set: boolean;
 }
 
 interface SetupStep {

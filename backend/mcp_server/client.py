@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from app.services.autofill_profile import canonical_identity_from_profile
+from app.services.http_client import new_client
 from app.write_origin import encode_detail
 
 DEFAULT_BASE_URL = "http://localhost:8000"
@@ -348,7 +349,7 @@ class BackendClient:
         """One HTTP round trip with the shared error mapping."""
         url = f"{self.base_url}{path}"
         try:
-            with httpx.Client(timeout=self._timeout) as client:
+            with new_client(timeout=self._timeout) as client:
                 response = client.request(method, url, **kwargs)
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
             # The request never left this process (no connection / no pooled
@@ -1205,6 +1206,29 @@ class BackendClient:
 
     def get_proposal(self, proposal_id: str) -> Any:
         return self._request("GET", f"/api/proposals/{proposal_id}")
+
+    def get_job_site_login(self, proposal_id: str, origin_detail: str | None = None) -> Any:
+        # Unlike ordinary errors, a login response must never be copied into
+        # BackendError.body or a message/traceback surfaced by the MCP guard.
+        try:
+            return self._request(
+                "POST", f"/api/proposals/{proposal_id}/job-site-login",
+                headers=_origin_headers(origin_detail),
+            )
+        except BackendError as exc:
+            messages = {
+                None: "Maestro is not reachable; try again later.",
+                403: "Only the connected agent can ask for the job-site login.",
+                404: "No such proposal or no job-site login is saved in Settings.",
+                409: "Full automation is off, the job is not queued or approved, or its company is on the skip list.",
+                422: "The proposal ID is malformed.",
+            }
+            raise BackendError(
+                messages.get(exc.status_code, "The job-site login could not be retrieved; try again later."),
+                status_code=exc.status_code,
+            ) from None
+        except ValueError:
+            raise BackendError("The backend returned an unreadable job-site login response.") from None
 
     def transition_proposal(
         self,

@@ -1,17 +1,17 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 611,
-    "total_loc": 183934,
-    "src_loc": 51026,
-    "test_loc": 132908,
+    "modules": 628,
+    "total_loc": 188001,
+    "src_loc": 51904,
+    "test_loc": 136097,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
     "complexity_hotspots": [
       {
         "file": "mcp_server/tests/test_server.py",
-        "line": 534,
+        "line": 535,
         "name": "test_audit_one_sentence_docstring_fixes",
         "complexity": 42,
         "params": 0,
@@ -90,20 +90,20 @@
         "lines": 111
       },
       {
+        "file": "app/services/proposals.py",
+        "line": 193,
+        "name": "transition",
+        "complexity": 34,
+        "params": 7,
+        "lines": 69
+      },
+      {
         "file": "app/services/kb_adapt.py",
         "line": 269,
         "name": "apply_adapted",
         "complexity": 33,
         "params": 2,
         "lines": 152
-      },
-      {
-        "file": "app/services/proposals.py",
-        "line": 129,
-        "name": "transition",
-        "complexity": 32,
-        "params": 7,
-        "lines": 66
       },
       {
         "file": "tests/test_explore_router.py",
@@ -155,7 +155,7 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 345,
+        "line": 412,
         "name": "get_final_review",
         "complexity": 28,
         "params": 2,
@@ -195,7 +195,7 @@
       },
       {
         "file": "tests/test_frontend_visual_surfaces.py",
-        "line": 108,
+        "line": 110,
         "name": "test_gap_actions_carry_icons_and_explain_once",
         "complexity": 25,
         "params": 0,
@@ -243,7 +243,7 @@
       },
       {
         "file": "tests/test_frontend_visual_surfaces.py",
-        "line": 227,
+        "line": 229,
         "name": "test_wave5_review_one_glyph_per_meaning_and_honest_marks",
         "complexity": 24,
         "params": 0,
@@ -410,7 +410,7 @@
         "lines": 31
       }
     ],
-    "hotspot_count": 608,
+    "hotspot_count": 609,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -469,8 +469,8 @@
       }
     ],
     "error_masking_count": 11,
-    "internal_import_edges": 2537,
-    "imports_per_module": 4.15,
+    "internal_import_edges": 2603,
+    "imports_per_module": 4.14,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -482,6 +482,7 @@
       "scripts.eval_fill_decisions",
       "scripts.fill_trace",
       "scripts.health_golden",
+      "scripts.memory_profile",
       "scripts.template_parity"
     ]
   },
@@ -491,7 +492,7 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.62,
+    "percentage": 0.6,
     "duplicated_lines": 381,
     "clones": 43,
     "allowlisted_clones": 0,
@@ -577,6 +578,7 @@
       "scripts.eval_fill_decisions",
       "scripts.fill_trace",
       "scripts.health_golden",
+      "scripts.memory_profile",
       "scripts.template_parity",
       "migrations.env",
       "app.tools.backup_db"
@@ -601,7 +603,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "608 function(s) over threshold. worst: mcp_server/tests/test_server.py:534 cc=42",
+      "detail": "609 function(s) over threshold. worst: mcp_server/tests/test_server.py:535 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -614,16 +616,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 183934,
-    "src_loc": 51026,
-    "test_loc": 132908,
-    "modules": 611,
+    "total_loc": 188001,
+    "src_loc": 51904,
+    "test_loc": 136097,
+    "modules": 628,
     "orphan_loc": 0,
-    "duplication_pct": 0.62,
+    "duplication_pct": 0.6,
     "duplicated_lines": 381,
     "clone_count": 43,
-    "complexity_hotspots": 608,
+    "complexity_hotspots": 609,
     "error_masking": 11,
-    "imports_per_module": 4.15
+    "imports_per_module": 4.14
   }
 }

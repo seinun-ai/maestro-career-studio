@@ -511,9 +511,19 @@
   deprecated-but-kept in `AutoApplySettings` — extra=forbid would reset
   hand-edited files). Deleting the rejected proposal is the re-propose reset.
   **Attested submit**: `submitted` requires `submission_receipt` evidence OR
-  `attested=true` + consent payload (the user's own statement — the agent can
-  never self-certify); `submission_uncertain → submitted` demands attestation
-  even with receipt evidence. **G7 guard**: `approved` 409s when the linked
+  `attested=true` + consent payload: the user's own statement, or the agent's
+  confirmation with channel `auto` while full automation is On. Auto attestation
+  needs a note naming what confirmed submission, containing at least one letter
+  or digit; a receipt is optional. `submission_uncertain → submitted` demands
+  attestation even with receipt evidence, and never permits another submit click.
+  **Automatic consent**: channel `auto` is legal only for `approved` or attested
+  `submitted`, and only while full automation is On. Auto approval requires
+  `accepted` (the user's Queued lane), `final_review` evidence, a daily-cap slot,
+  and the G7 already-applied guard; it re-checks the current `company_blocklist`
+  (trimmed, case-insensitive exact company match). A company blocked after approval
+  still has its submit recorded: the ledger must record what already happened.
+  The `apply-auto` prompt judges whether the final review is clean; the server
+  does not evaluate those eligibility checks. **G7 guard**: `approved` 409s when the linked
   application is already applied/interviewing/offered/accepted. **Manual-apply
   auto-close**: the application PATCH route, on a status entering applied+,
   transitions every OPEN proposal on that job to `rejected` (reason `applied
@@ -536,10 +546,15 @@
   idempotently reserves one daily-cap slot (`cap_reserved_at`); `submitted` /
   `submission_uncertain` keep it; pre-click reject or `resume_proposal`
   releases it. Entering approved/rejected writes an append-only `ConsentEvent`
-  (channel ∈ chat|slack|frontend|mcp) in the same transaction; `submitted`
-  additionally requires `submission_receipt` evidence and flips the linked
+  (channel ∈ chat|slack|frontend|mcp|auto) in the same transaction; `auto` is
+  approval-only here. `submitted` requires receipt evidence or the attestation
+  described above and flips the linked
   Application to `applied` with the PATCH route's `applied_at` stamping rule.
   Expiry is lazy (`expire_stale` on reads) — no scheduler exists, on purpose.
+  **MCP proposal filer:** `propose_application` stamps `proposed_by` from the client's `clientInfo.name`, sent on the KB writes'
+  origin headers, percent-encoded so any name files, and an agent can never file as "you"; a create takes SQLite's
+  write lock, `db.begin_write`, so a job keeps one open proposal. `app/services/agent_names.py` is the server twin of
+  `lib/agent-name.ts`, pinned by `tests/test_agent_names.py`: add a known client to BOTH.
   **Who filed it** (`proposed_by`): `'you'` from the web app's queue (a body
   field that accepts only `'you'`), the MCP client's self-declared
   `clientInfo.name` from the `X-Maestro-CS-Origin-Detail` header
@@ -576,11 +591,20 @@
   gitignored PII — never publish); manifest on `evidence_json` with sha256s;
   attach refuses unlinked proposals. Late application linking also via
   `ProposalTransition.application_id` / `record_decision` (only while
-  unlinked); linking stamps the application `source='agent'`. Knobs:
-  `settings/auto_apply.json` (`GET/PUT /api/settings/auto-apply`) — caps,
-  expiry, auto-pick margin/floor, blocklist; editable via Settings ›
-  Connected agents, "Auto-apply" card (deprecated `cooldown_days` hidden but preserved on save —
-  the model is extra=forbid). Web surface: `/proposals` (the Agent inbox) — summary
+  unlinked); linking stamps the application `source='agent'`.
+  **Auto-apply settings**: the `Setting("auto_apply")` DB row is the truth
+  (`services/auto_apply_settings.py`, `JsonSetting`; local JSON at
+  `settings/auto_apply.json`). GET `/api/settings/auto-apply` returns caps,
+  expiry, auto-pick margin/floor, blocklist and `full_automation` (Off by default).
+  PUT `/api/settings/auto-apply` saves the knobs while preserving the stored
+  switch. Only PUT `/api/settings/full-automation` with `{value: bool}` writes
+  the switch; `StrictBool` rejects strings/numbers. Both writers take the SQLite
+  write lock before reading the stored value. `get_job_search_brief` reports it
+  in `auto_apply.full_automation`. Settings › Connected agents has the
+  **Auto-apply** card (deprecated `cooldown_days` hidden but preserved on save;
+  the model is extra=forbid) and a **Full automation** card whose On switch
+  asks for confirmation. Turning it Off refuses auto consent and login hand-offs.
+  **Web surface**: `/proposals` (the Agent inbox) — summary
   rows link to `/jobs/[id]?from=proposals`; Queue/Skip on a row and in bulk
   (channel `frontend`) stay on the list, and the lanes are one table
   (`frontend/lib/inbox-lanes.ts`: `INBOX_LANES`, `laneOf`, `NEEDS_YOU_STATUSES`); a
@@ -594,6 +618,61 @@
   Playbook: `docs/playbooks/agent-apply.md`; execution skill:
   `backend/app/automations/skills/agent-apply-execution/SKILL.md`; consent-gated constraint in
   `docs/agentic-job-search.md`.
+
+  **PDF tools:** render + slim PDF inspection (`get_rendered_pdf` has **no** `page_images_b64`;
+  `get_rendered_pdf_page_image` is the opt-in one-page visual, `max_dimension_px` default 1024 with a ~1MB encoded cap;
+  `prepare_application_pdf_upload` stages a disposable Playwright copy under `.playwright-mcp/uploads/`).
+  **PDF upload staging:** Playwright upload constraint: a folder
+  grant on `applications/` does **not** expand `browser_file_upload` — stage a
+  disposable copy via MCP `prepare_application_pdf_upload` under
+  `.playwright-mcp/uploads/` (or `$MAESTRO_CS_UPLOAD_DIR`), pair Playwright
+  `--output-dir` with the parent `.playwright-mcp` tree, and pass the returned `upload_path` to the file chooser —
+  never copy/move with shell or filesystem tools. Details: `docs/playbooks/agent-apply.md`, `backend/mcp_server/README.md`.
+  **Attended executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
+  autofill/attach; direct MCP + browser fill/upload is the supported fallback. The agent calls
+  `record_filled_answers` per page, which replaces per-page screenshots; `final_review` and `submission_receipt`
+  evidence stay, and every flag goes into the "Submit now?" question. Never headless / stealth / CAPTCHA
+  bypass.
+
+  **Unattended executor**: the `apply-auto` prompt replaces the per-application
+  yes, job-site sign-in, submission proof and the user's presence at submit;
+  the execution skill points to those four exceptions. It works only Queued
+  (`accepted`) jobs, in the order and batches the user agrees with their agent.
+  It records each page's answers, checks `get_final_review` (PDF ready, no
+  knock-out conflict, no flags, no duplicate, no blocked/manual items, every
+  screening answer naming its saved fact `slot`), attaches `final_review`
+  evidence, records approval with channel `auto`, submits once, then calls
+  `mark_submitted(channel="auto", note=confirmation)`. Blocked jobs go to
+  **Needs you** through `report_failure`; the agent asks and moves on. A user's
+  yes follows: attach `final_review` evidence → `record_consent(channel="chat",
+  action="approved", note=user's words)` → submit once → `mark_submitted`
+  with channel `auto` and a confirmation note. A later automatic run requires
+  the user to queue a Needs-you job again. Unknown submit success means
+  `report_failure(reason="submission_uncertain")`, never a retry. Runs record
+  `automation="apply-session"`; Maestro sets neither order nor schedule.
+
+  **Job-site login**: Settings › Connected agents shows the login editor while
+  full automation is On. `settings/secrets/job-site-login.json` is a local
+  cleartext file, mode 0600 in a 0700 directory, never DB, exports, telemetry
+  or logs. Writes serialize read/update/replace under a lock and use a unique
+  0600 temporary file per write; damaged JSON or a non-object file reads as
+  empty, and a save repairs it. GET `/api/settings/job-site-login` returns only
+  `{email, password_set}`. PUT sets either field (missing/null keeps the old
+  field; password length 8–200); DELETE clears both. Validation failures use
+  sanitized errors that never echo rejected credentials. The editor never
+  receives a saved password and clears the new password after saving.
+  **Login hand-off**: MCP `get_job_site_login(proposal_id)` (full/apply profiles)
+  calls POST `/api/proposals/{id}/job-site-login`, which refuses ANY `Origin`
+  header, requires `X-Maestro-CS-Origin: mcp`, full automation On, an `accepted`
+  or `approved` proposal and a company off the current skip list. An incomplete
+  login or unknown proposal is 404; browser/non-MCP requests are 403; switch,
+  status or company refusals are 409. Each successful call returns
+  `{email, password}` and writes a `ConsentEvent(action="login_shared",
+  channel="mcp", note=client name)`, never the value and never a cap reservation.
+  MCP maps errors by status (unreachable, 403, 404, 409, 422, generic failure)
+  to fixed messages, never retaining or surfacing the response body; unreadable
+  success JSON is also sanitized. The value passes through the agent's AI
+  provider; use this login only for job-site accounts.
 
   **Inbox readiness**: `GET /api/proposals` computes `readiness` at read time, never stores
   it, and only marks open rows (`pending_review`, `needs_decision`, `accepted`, `approved`,
@@ -634,13 +713,17 @@
   The run digest is unverified agent text, including the prompt's claim that it has no email
   text. There is no overdue logic because Maestro does not know the user's schedule.
 
-- **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. DB-free `GET /api/automations`
+- **Automations page** (`/automations`, sidebar after Agent inbox): copy-only. `GET /api/automations` reads only the full-automation switch
   (`services/automations.py` parses `app/automations/skills/<name>/SKILL.md`; card-only fields sit under frontmatter
   `metadata:`) returns the cards and the **agent apps**: Claude Desktop, Codex, Any MCP agent, plus Claude web and
   ChatGPT web, shown unreachable because MCP here is local-only (the ChatGPT desktop app works via Any MCP agent).
   **Copy prompt** puts the app's wrapper plus the skill body on the clipboard. Maestro runs NO scheduler: a scheduled
-  card's wrapper has the agent ask the user when to run. Apply is attended (`apply_kind()`) until full automation
-  mode. `load_cards()` is strict and runs at startup, so a malformed skill file fails boot.
+  card's wrapper has the agent ask the user when to run. The setting read is
+  `auto_apply_settings.peek_settings`, never seeds or writes. Off serves the
+  attended **Apply session**; On serves scheduled **Apply automatically** from
+  `apply-auto`, keeping card/run id `apply-session`. `load_cards()` is strict
+  and runs at startup, including the alternate `apply-auto` body and includes,
+  so a broken alternate fails boot even while full automation is Off.
   Each run prompt ends with MCP `record_run`. Cards read `GET /api/agent-runs/latest` and
   show **Last ran** or **Not run yet** after data arrives; a read that never produced data
   shows no line, while a failed background refetch keeps the cached line ([agent-runs.md](agent-runs.md)). A

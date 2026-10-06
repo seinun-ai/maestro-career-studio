@@ -34,10 +34,56 @@ def test_the_technique_file_is_not_a_card_but_rides_on_apply():
     assert body.index("# Apply session") < body.index("\n# Agent Apply Execution")
 
 
-def test_apply_is_attended_until_full_automation_exists():
+def test_apply_is_attended_while_full_automation_is_off():
     cards = {c.id: c for c in automations.catalog().cards}
     assert cards["apply-session"].kind == "attended"
     assert cards["apply-session"].never == "Never submits without your yes."
+
+
+def test_full_automation_serves_the_automatic_apply_prompt():
+    cards = {c.id: c for c in automations.catalog(full_automation=True).cards}
+    apply = cards["apply-session"]
+    assert apply.kind == "scheduled"
+    assert apply.title == "Apply automatically"
+    assert apply.never == "Never submits a job whose final review shows anything to check."
+    assert apply.body.startswith("# Apply automatically")
+    assert "\n# Agent Apply Execution" in apply.body
+
+
+@pytest.mark.parametrize("sentence", [
+    "Submit without asking only when `get_final_review` shows all of these:",
+    "`record_consent` with channel `auto`",
+    "`mark_submitted` with channel `auto` and a `note` naming what confirmed it",
+    "Work the queue the way the user has asked you to",
+    "Never submit the same application twice.",
+    "`report_failure` with the reason",
+    "Jobs in Needs you go back through the user's queue before a later automatic run.",
+    "every screening answer you recorded names its saved fact (`slot`).",
+    "Attach the filled-form screenshot as `final_review` evidence.",
+    "Then call `record_consent` with channel `chat`, action `approved`, and the user's words.",
+    "Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.",
+    "If the user says yes:",
+    "Stop when the daily cap in the brief is used up.",
+    "Call `record_run` with automation `apply-session`",
+    "and the user being present at the submit",
+])
+def test_the_automatic_apply_guardrails(sentence):
+    body = {c.id: c for c in automations.catalog(full_automation=True).cards}["apply-session"].body
+    assert sentence in body
+
+
+def test_the_user_yes_path_records_consent_before_submitting():
+    body = {c.id: c for c in automations.catalog(full_automation=True).cards}["apply-session"].body
+    step = body[body.index("7. **Everything else.**"):]
+    ordered = [
+        "If the user says yes:",
+        "Attach the filled-form screenshot as `final_review` evidence.",
+        "Then call `record_consent` with channel `chat`, action `approved`, and the user's words.",
+        "Submit once.",
+        "Then call `mark_submitted` with channel `auto` and a note naming what confirmed it.",
+    ]
+    positions = [step.index(sentence) for sentence in ordered]
+    assert positions == sorted(positions)
 
 
 def test_scheduled_wrappers_leave_timing_to_the_user():
@@ -94,16 +140,20 @@ def _write(root, name, text):
 
 @pytest.fixture
 def skills_dir(tmp_path, monkeypatch):
-    """A minimal valid skill set (the six cards + one technique file) to break one way at a time."""
+    """A minimal valid skill set (cards + technique files) to break one way at a time."""
     for card_id in CARD_IDS:
         include = "[technique]" if card_id == "apply-session" else None
         _write(tmp_path, card_id, _card_text(card_id, include=include))
+    _write(tmp_path, "apply-auto", _card_text(
+        "apply-auto", title="Apply automatically", include="[technique]"))
     _write(tmp_path, "technique", "---\nname: technique\ndescription: x\n---\n# Technique\n")
     monkeypatch.setattr(automations, "SKILLS_DIR", tmp_path)
     automations.load_cards.cache_clear()
+    automations._alternate.cache_clear()
     yield tmp_path
     monkeypatch.undo()
     automations.load_cards.cache_clear()
+    automations._alternate.cache_clear()
 
 
 def test_the_minimal_skill_set_loads(skills_dir):
@@ -129,6 +179,16 @@ def test_the_minimal_skill_set_loads(skills_dir):
         "no-frontmatter"])
 def test_a_broken_skill_file_fails_loudly(skills_dir, name, text, match):
     _write(skills_dir, name, text)
+    with pytest.raises(ValueError, match=match):
+        automations.load_cards()
+
+
+@pytest.mark.parametrize(("text", "match"), [
+    (_card_text("apply-auto", include="[nowhere]"), "no skill file"),
+    (_card_text("apply-auto", kind="weekly"), "bad metadata"),
+], ids=["unknown-include", "bad-metadata"])
+def test_a_broken_alternate_skill_fails_at_startup(skills_dir, text, match):
+    _write(skills_dir, "apply-auto", text)
     with pytest.raises(ValueError, match=match):
         automations.load_cards()
 

@@ -115,7 +115,7 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP server (85 tools, thin REST wrappers)
+ extension ─┼→ jobs router → Job row  ├─ MCP server (86 tools, thin REST wrappers)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼
         ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
@@ -128,7 +128,7 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
 ```
 
 `data/maestro_cs.sqlite3` (SQLite, WAL) holds all state except resume file data (`base_resumes/<slug>.json` on
-disk — DB `base_resumes` row + file must both exist) and rendered artifacts.
+disk — DB `base_resumes` row + file must both exist), rendered artifacts and the job-site login (`settings/secrets/`, §6).
 
 ## 4. Core entities and their lifecycles
 
@@ -185,12 +185,11 @@ file to open.
    `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
    warns (pay is negotiable). On screen a pass is one quiet line and a conflict the loud banner, each followed by a
    per-check chip strip (OK / Conflict / Warning / Add answer / Not listed / Not run). Informational like G11 tier 2: it flags; the
-   consent/submit decision stays human.
+   consent/submit decision stays human unless the user's agent follows the full-automation prompt (§7).
 4. **Score** — Score and tailor auto-scores all active bases on first visit; per-base
    cards → **Analyze gaps** creates a session (one filled button, on the best match;
    Restart gap analysis and Mark applied without tailoring sit in each card's ⋯).
-   When every card draws the low-coverage warning, or the same gate warning, one banner says it instead;
-   the lowest subscore of a card wears a Weakest word.
+   When every card draws the low-coverage warning, or the same gate warning, one banner says it instead; the lowest subscore of a card wears a Weakest word.
    With no base resume the tab
    offers Import resumes and documents instead, and scores once that dialog closes.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions
@@ -316,12 +315,8 @@ file to open.
 - **Stable per-application `artifact_dir`** `{#inv-stable-artifact-dir}`: one folder per application,
   `applications/Company_Role_YYYYMMDD_<idprefix>/`, allocated once via
   `services/application_artifacts.get_dir`, persisted on `Application.artifact_dir`;
-  resume/source/PDF, previews, cover letters and proposal `evidence/` colocate there. Playwright upload constraint: a folder
-  grant on `applications/` does **not** expand `browser_file_upload` — stage a
-  disposable copy via MCP `prepare_application_pdf_upload` under
-  `.playwright-mcp/uploads/` (or `$MAESTRO_CS_UPLOAD_DIR`), pair Playwright
-  `--output-dir` with the parent `.playwright-mcp` tree, and pass the returned `upload_path` to the file chooser —
-  never copy/move with shell or filesystem tools. Details: `docs/playbooks/agent-apply.md`, `backend/mcp_server/README.md`.
+  resume/source/PDF, previews, cover letters and proposal `evidence/` colocate there.
+  Upload constraints: `docs/entities/others.md`, "PDF upload staging".
 - **Honesty invariant** `{#inv-honesty}`: an `add_keyword` on a skill the engine found NO evidence of
   (`fix_hint == "absent"`) may only land in the skills section, never as a fabricated experience/project
   bullet. Enforced server-side in `save_resolutions` (guards MCP/API callers, not just the UI).
@@ -461,6 +456,21 @@ file to open.
   timestamp (`default=utcnow`, `onupdate=utcnow`) so one format lands on disk. Pinned by
   `tests/test_db_portability.py`.
 
+- **Job-site passwords stay in their local file.** `{#inv-job-site-password-local}`
+  `settings/secrets/job-site-login.json` is 0600 (directory 0700); writes serialize and replace from unique temp files; damaged JSON/non-object files read empty.
+  Never DB, exports, telemetry or logs. Settings GET/PUT return only `{email, password_set}`; validation errors are sanitized.
+  POST `/api/proposals/{id}/job-site-login` requires NO `Origin`, MCP origin, full automation On, a Queued/approved proposal and a company off the skip list.
+  Each hand-off records `ConsentEvent(action="login_shared", channel="mcp", note=client name)`, never the value; the login passes through the agent's AI provider.
+  Pins: `tests/test_job_site_login.py`, `test_job_site_login_handoff.py`,
+  `mcp_server/tests/test_client_job_site_login.py` (symbols in `.system_md_enforcement.json`).
+
+- **Automatic consent is gated by the user's switch.** `{#inv-auto-consent-gated}` Off by default;
+  only PUT `/api/settings/full-automation` (`{value: bool}`, StrictBool) writes it; PUT `/api/settings/auto-apply` preserves it.
+  Channel `auto` approves only `accepted` (Queued), requires `final_review` evidence, re-checks the company blocklist, and keeps the daily-cap/already-applied gates.
+  An auto-attested submit, including from `submission_uncertain`, needs a note with at least one letter or digit; both auto paths require full automation On.
+  A company blocked after approval still has its submit recorded. Eligibility is the agent's `apply-auto` prompt, not a server-side review judgment.
+  Pins: `tests/test_full_automation_setting.py`, `test_proposal_state_machine.py` (symbols in `.system_md_enforcement.json`).
+
 ## 7. Agent surfaces
 
 - **MCP server** (`backend/mcp_server/`; its clients are **connected agents** on screen, Settings › Connected agents):
@@ -476,19 +486,15 @@ file to open.
   docs/agentic-job-search.md, capture-and-score only), the proposal-ledger family (consent-gated
   propose/decide/triage/resume/final-review/evidence/mark_submitted/report_failure; `record_filled_answers` records
   each form page's answers and `get_final_review` names their `flags` (inv-filled-answers-local); `record_consent` stores the user's
-  own yes/no; `propose_application` stamps `proposed_by` from the client's `clientInfo.name`, sent on the KB writes'
-  origin headers, percent-encoded so any name files, and an agent can never file as "you"; a create takes SQLite's
-  write lock, `db.begin_write`, so a job keeps one open proposal. `app/services/agent_names.py` is the server twin of
-  `lib/agent-name.ts`, pinned by `tests/test_agent_names.py`: add a known client to BOTH), base resumes
+  yes/no, or the agent's automatic yes with channel `auto` while full automation is On; `mark_submitted(auto)` records the agent's confirmation note;
+  `get_job_site_login` hands the login to a Queued/approved job's agent (§6); filer and create-lock rules: `docs/entities/others.md`, "MCP proposal filer"), base resumes
   (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, a restore
   is a new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those
   five are **full-profile only** this round), health (run/get + waivers; a finding carries its bullet's own `question`,
   `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a report `next_grade`; disputes and the word bank
   are web-only), the full tailoring workflow (session tools take **`tailoring_session_id`** — breaking rename, no
   legacy alias; `resolve_gaps`' evidence-carrying actions are gated server-side — §4; `quick_tailor` is the
-  profile-driven fast path), render + slim PDF inspection (`get_rendered_pdf` has **no** `page_images_b64`;
-  `get_rendered_pdf_page_image` is the opt-in one-page visual, `max_dimension_px` default 1024 with a ~1MB encoded cap;
-  `prepare_application_pdf_upload` stages a disposable Playwright copy under `.playwright-mcp/uploads/`), application
+  profile-driven fast path), render + PDF inspection/upload (`docs/entities/others.md`, "PDF tools"), application
   tracking, `record_run` (finished automation reports; `docs/entities/agent-runs.md`), the apply package,
   templates (draft/validate only; Typst constraints in `create_template_draft`'s
   docstring, `fmt.*` knobs on `get_template`), explore analytics, `get_autofill_profile` (`profile.eeo` consent-gated),
@@ -501,11 +507,8 @@ file to open.
   (`MAESTRO_CS_MCP_PROFILE`, default `full`): one binary, filtered tool sets — `hunt` / `apply` / `explore` /
   `templates` / `career`; allowlists in `mcp_server/profiles.py`; enable ONE profile per chat (`full` already carries
   the KB writes). Stdio config examples live in `mcp_server/`; ChatGPT.com cannot be a client — `mcp.run()` is stdio
-  only. **Apply executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
-  autofill/attach; direct MCP + browser fill/upload is the supported fallback. The agent calls
-  `record_filled_answers` per page, which replaces per-page screenshots; `final_review` and `submission_receipt`
-  evidence stay, and every flag goes into the "Submit now?" question. Never headless / stealth / CAPTCHA
-  bypass. **Directory listing** = plugin bundle `plugins/maestro-career-studio/`, not `.mcpb`; policy `PRIVACY.md`.
+  only. **Apply executor:** headed real Chrome; `docs/entities/others.md`, "Attended executor", and the apply playbook's "Unattended (full automation)" section.
+  **Directory listing** = plugin bundle `plugins/maestro-career-studio/`, not `.mcpb`; policy `PRIVACY.md`.
 - **Guided tailoring workflow** (`mcp_server/workflow.py`): wrapped tools carry a `next` envelope
   (`state`/`blocking`/`offer`/`ask_user`/`options`/`call`) that walks §5's arc — score all bases → recommend →
   quick|custom → tailor → render → apply readiness — unnarrated. `workflow.py` is PURE (no httpx/DB/LLM), a
@@ -678,19 +681,20 @@ with the failure mode that bought it. Code citing "§8" lands here.
 - **A USER updates instead** — `./scripts/update.sh`: online SQLite snapshot
   (`app.tools.backup_db --stdout` through the running backend container, else the checkout's own image tag —
   `.env`'s `latest` can predate the tool; 0600, magic-byte checked) → ff-only to the newest `v*` tag → images pinned to that tag →
-  health poll → extension/MCP reminders (README "Updating"; `docs/RELEASING.md` cuts one). The tree is runtime here
-  (unpacked extension, host MCP venv), so checkout and images move TOGETHER — a bare `docker compose pull`
-  skews an install. Contributors build. **Pre-v0.4.0 guard:** a `<project>_pgdata` volume with no
-  `data/.migrated-from-postgres.json` is a v0.3.0-or-older install whose data never moved; `--check` warns
-  and an update exits before touching anything, printing the import-through-v0.4.0 steps (docs/UPDATING.md).
-  A v0.3.0 user's OWN old script cannot run the guard — it jumps straight to the newest tag, and the app
-  comes up empty on a demo database; the same steps recover it (the data stays in the volume).
+  health poll → extension/MCP reminders (README "Updating"; `docs/RELEASING.md` cuts one). Checkout and images
+  move TOGETHER: a bare `docker compose pull` skews an install (docs/UPDATING.md). Contributors build. **Pre-v0.4.0 guard:** a `<project>_pgdata` volume with no
+  `data/.migrated-from-postgres.json` makes `--check` warn and an update exit before touching anything; a
+  v0.3.0 user's OWN old script skips the guard (recovery steps: docs/UPDATING.md, which holds both rules).
 - **Windows = WSL.** The supported route is Docker Desktop's WSL 2 engine with the clone in the WSL home, never
   `/mnt/c` (SQLite WAL over the Windows share is untrusted; the scripts are bash). `.gitattributes` forces LF
   so a Git-for-Windows clone cannot CRLF the scripts or `.env`. The `.mcpb` shim searches Docker Desktop's
   Windows paths, then PATH (`dockerCandidates`/`onPath`, `mcpb/tests/shim.test.js`); `setup-mcp.sh` is not
   a Windows route. The upload host root is `${PWD}` (compose falls back to its own cwd; `update.sh` pins it
   to the repo) unless `MAESTRO_CS_UPLOAD_HOST_ROOT` says otherwise; a Windows-shaped root joins with `\`.
+- **Native run (no Docker)** — `docs/native-install.md`: `backend/scripts/native/*.sh` run one loopback worker from
+  `$MAESTRO_HOME`; `GET /health/memory` reports memory. `slow` tests (real backend, venv or model; the 200 MB budget
+  test) skip when `MAESTRO_SKIP_SLOW` is set — set it in CI. With `EMBEDDINGS_OUT_OF_PROCESS` at most ONE embedding
+  helper runs per process (`embeddings._HELPER_LOCK`): two ~290 MB helpers OOM a small machine.
 - **Version identity**: the tag bakes into both images as `APP_VERSION`, served by `GET /api/version` with
   the live alembic revision; the frontend warns when its baked copy disagrees, unless either side STARTS
   WITH `dev` (local or dispatch build) = do not compare — which also keeps it off contributors.
@@ -701,10 +705,9 @@ with the failure mode that bought it. Code citing "§8" lands here.
   `verify` skill (not shipped). Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send button.
 - **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors (what
   `pip install -e ".[dev,mcp]"` resolves); `backend/requirements.lock` is hash-pinned and is what the
-  **container image** installs, so a published image is reproducible. After changing a dependency,
-  regenerate the lock **on the target platform** (command in `backend/Dockerfile`; pip-compile on macOS/3.13
-  produces wrong pins). CI's `dependency-audit` runs `pip-audit` against the lock — a new advisory failing
-  an unrelated PR is intended.
+  **container image** installs, so a published image is reproducible. After changing a dependency, regenerate
+  the lock **on the target platform** (command in `backend/Dockerfile`; macOS/3.13 pip-compile gives wrong
+  pins). CI's `dependency-audit` (`pip-audit` on the lock) failing an unrelated PR on a new advisory is intended.
 - **No Langfuse stack ships here** (the bundled compose file had fixed default secrets).
   `services/tracing.py` and the three `LANGFUSE_*` settings stay: tracing points at any instance the user
   runs; `langfuse_host` defaults to empty (the SDK falls back to Cloud).
@@ -937,12 +940,9 @@ citation. Priority lives in the item text, not in the ordinal.
 - **Workday apply steps read as "no form"** (2026-09-25): Workday has no `<form>`/`<select>`, a `type="text"` phone
   and no email on My Information, so every step but the résumé upload scored 1 and Fill was withheld. Measure
   `detectPage`'s signals on the live page before blaming timing; the fix is `workday-apply-route`.
-- **Tailwind v4 variants and transitions** (2026-10-06): a variant on a plain class compiles to nothing
-  (`data-confirm:animate-confirm` worked only once it was an `@utility`), and `translate-*`/`scale-*` set the `translate`
-  and `scale` properties, so `transition-[…transform]` jumps → register a class that takes a variant; name those properties.
-- **`border-outline` is not a token here** (2026-10-06): M3 role names are not all `--color-*`, and the class compiled
-  to nothing → check `--color-*` in `globals.css` first (`border-border`, `border-primary` exist).
-
+- **Tailwind v4 compiles some classes to nothing** (2026-10-06): a variant on a plain class (`data-confirm:animate-confirm`
+  until it was an `@utility`) and an unknown role (`border-outline`; check `--color-*` in `globals.css`); `translate-*`/`scale-*`
+  set those properties, so `transition-[…transform]` jumps → register a class that takes a variant; name those properties.
 ## 13. Active migrations & deprecation ledger
 
 **The rule.** A row is born the moment work lands that SUPERSEDES something without deleting it; it dies

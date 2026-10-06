@@ -31,8 +31,7 @@ export default function AutomationsPage() {
   const query = useQuery({
     queryKey: AUTOMATIONS_KEY,
     queryFn: () => apiFetch<AutomationCatalog>("/api/automations"),
-    // The catalog reads files shipped with the app: it changes on a restart.
-    staleTime: Infinity,
+    // The catalog reads shipped files and the full-automation setting.
   });
   const runs = useQuery({
     queryKey: AGENT_RUNS_LATEST_KEY,

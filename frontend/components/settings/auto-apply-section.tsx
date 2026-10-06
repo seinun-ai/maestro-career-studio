@@ -116,6 +116,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
   const focusNext = useFocusOnNextCommit();
 
   const save = useMutation({
+    scope: { id: "settings-auto-apply" },
     mutationFn: (next: AutoApplySettings) =>
       apiFetch<AutoApplySetting>("/api/settings/auto-apply", {
         method: "PUT",

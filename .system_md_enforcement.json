@@ -85,6 +85,40 @@
     "inv-single-dialect": [
       {"path": "backend/tests/test_db_portability.py", "symbol": "test_no_dialect_imports_outside_types_module"},
       {"path": "backend/app/models/types.py", "symbol": "UTCDateTime"}
+    ],
+    "inv-job-site-password-local": [
+      {"path": "backend/tests/test_job_site_login.py", "symbol": "test_the_password_is_stored_0600_and_never_returned"},
+      {"path": "backend/tests/test_job_site_login.py", "symbol": "test_a_stale_temporary_file_cannot_weaken_password_permissions"},
+      {"path": "backend/tests/test_job_site_login.py", "symbol": "test_simultaneous_email_and_password_puts_preserve_both_updates"},
+      {"path": "backend/tests/test_job_site_login.py", "symbol": "test_get_and_put_repair_a_non_object_login_file"},
+      {"path": "backend/tests/test_job_site_login.py", "symbol": "test_schema_errors_never_echo_the_password"},
+      {"path": "backend/tests/test_job_site_login.py", "symbol": "test_the_password_is_absent_from_every_database_table"},
+      {"path": "backend/tests/test_job_site_login.py", "symbol": "test_the_password_is_absent_from_exports"},
+      {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_refused_while_full_automation_is_off"},
+      {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_refused_without_the_mcp_origin"},
+      {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_refused_when_a_browser_origin_claims_the_mcp_header"},
+      {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_handed_over_and_audited_without_the_value"},
+      {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_job_site_login_refuses_a_company_on_the_skip_list"},
+      {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_refused_for_a_closed_proposal"},
+      {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_handoff_never_logs_or_persists_the_password"},
+      {"path": "backend/mcp_server/tests/test_client_job_site_login.py", "symbol": "test_login_failure_uses_a_fixed_status_message_without_response_body"},
+      {"path": "backend/mcp_server/tests/test_client_job_site_login.py", "symbol": "test_transport_errors_cannot_expose_a_password_in_their_message"}
+    ],
+    "inv-auto-consent-gated": [
+      {"path": "backend/tests/test_full_automation_setting.py", "symbol": "test_full_automation_is_off_by_default_and_round_trips"},
+      {"path": "backend/tests/test_full_automation_setting.py", "symbol": "test_auto_apply_limits_write_cannot_change_full_automation"},
+      {"path": "backend/tests/test_full_automation_setting.py", "symbol": "test_full_automation_rejects_non_boolean_values"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_consent_is_refused_while_full_automation_is_off"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_approval_requires_the_users_queued_lane"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_consent_still_requires_final_review_evidence"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_consent_still_refuses_an_already_applied_application"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_consent_still_refuses_past_the_daily_cap"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_approval_refuses_company_blocked_after_proposal_was_created"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_submission_is_recorded_if_company_blocked_after_approval"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_the_agents_word_needs_a_note_naming_the_confirmation"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_submission_uncertain_can_be_confirmed_by_the_agents_word"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_the_agents_word_is_refused_once_full_automation_is_off"},
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_consent_cannot_submit_without_attestation_even_with_a_receipt"}
     ]
   },
   "unpinned": {
