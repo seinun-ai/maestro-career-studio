@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.services.sync import hooks, requests as sync_requests
+from app.services.sync import ownership as sync_ownership
 from app.db import get_db
 from app.models.application import Application
 from app.models.base_resume import BaseResume
@@ -203,8 +204,11 @@ def list_applications(
         stmt = stmt.where(Application.created_at <= created_before)
     stmt = stmt.order_by(Application.created_at.desc()).offset(offset).limit(limit)
     summaries: list[ApplicationSummary] = []
-    for application, job, base_name in db.execute(stmt):
+    rows = db.execute(stmt).all()
+    sync_ownership.stamp(db, {job.id: job for _, job, _ in rows}.values())
+    for application, job, base_name in rows:
         summary = ApplicationSummary.model_validate(application)
+        summary.ownership = job.ownership
         summary.job_title = job.title
         summary.job_company = job.company
         summary.job_location = job.location

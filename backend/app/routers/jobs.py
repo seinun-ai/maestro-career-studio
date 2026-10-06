@@ -16,13 +16,11 @@ from app.db import begin_write, get_db
 from app.models.application import Application
 from app.models.job import Job
 from app.models.job_skill import JobSkill
-from app.models.sync import SyncRequest
 from app.schemas.application import ApplicationRead, ApplicationSummary
 from app.schemas.job import (
     JobCreate,
     JobExportRow,
     JobIngest,
-    JobOwnership,
     JobPatch,
     JobRead,
     JobSkillRead,
@@ -48,7 +46,7 @@ from app.services import (
     tailoring_session,
 )
 from app.services.skill_normalize import canonicalize_skill_name, coerce_skill_category
-from app.services.sync import hooks as sync_hooks
+from app.services.sync import ownership as sync_ownership
 from app.services.sync import requests as sync_requests
 from app.services.sync import status as sync_status
 
@@ -325,28 +323,8 @@ def _stamp_newest_proposal(job: Job, newest) -> None:
     job.proposal_id, job.proposal_status, job.proposal_proposed_by = newest or (None, None, None)
 
 
-def _stamp_ownership(db: Session, jobs: list[Job]) -> None:
-    if not sync_status.enabled():
-        for job in jobs:
-            job.ownership = JobOwnership()
-        return
-    local_id = sync_status.machine_id(db)
-    remote = sync_status.is_remote()
-    pending = dict(db.execute(
-        select(SyncRequest.job_id, func.count(SyncRequest.id))
-        .where(SyncRequest.job_id.in_([job.id for job in jobs]), SyncRequest.origin == "local",
-               SyncRequest.status.in_(("pending", "sent")))
-        .group_by(SyncRequest.job_id)).all())
-    for job in jobs:
-        local = job.owner_machine in (None, local_id)
-        job.ownership = JobOwnership(
-            owned_here=sync_hooks.owned_here(db, job.id),
-            owner="bot" if local == remote else "laptop",
-            handover=job.handover, pending_requests=pending.get(job.id, 0))
-
-
 def _with_ownership(db: Session, job: Job) -> Job:
-    _stamp_ownership(db, [job])
+    sync_ownership.stamp(db, [job])
     return job
 
 
@@ -362,7 +340,7 @@ def _with_newest_proposal(db: Session, job: Job) -> Job:
         .limit(1)
     ).first()
     _stamp_newest_proposal(job, newest)
-    _stamp_ownership(db, [job])
+    sync_ownership.stamp(db, [job])
     return job
 
 
@@ -410,7 +388,7 @@ def list_jobs(
             newest.setdefault(job_id, fields)
         for job in rows:
             _stamp_newest_proposal(job, newest.get(job.id))
-    _stamp_ownership(db, rows)
+    sync_ownership.stamp(db, rows)
     return rows
 
 
@@ -465,7 +443,7 @@ def export_jobs(
     if limit is not None:
         stmt = stmt.limit(limit)
     jobs = db.scalars(stmt).all()
-    _stamp_ownership(db, jobs)
+    sync_ownership.stamp(db, jobs)
 
     skills_by_job: dict = defaultdict(list)
     job_ids = [j.id for j in jobs]
@@ -525,7 +503,7 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
         return JobMatchResult(match="none")
 
     job = db.get(Job, matched_id)
-    _stamp_ownership(db, [job])
+    sync_ownership.stamp(db, [job])
     application = db.scalar(
         select(Application)
         .where(Application.job_id == job.id)
@@ -540,6 +518,7 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
         summary.job_title = job.title
         summary.job_company = job.company
         summary.job_location = job.location
+        summary.ownership = job.ownership
         summary.base_resume_name = base_resume_data.display_name_of(db, application.base_resume)
 
     return JobMatchResult(

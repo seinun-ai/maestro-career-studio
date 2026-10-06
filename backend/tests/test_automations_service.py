@@ -60,6 +60,11 @@ def test_apply_prompts_obey_sync_ownership(full_automation, sentence):
     assert sentence in cards["apply-session"].body
 
 
+def test_tailor_run_works_only_jobs_owned_here():
+    cards = {c.id: c for c in automations.catalog().cards}
+    assert "Only work jobs whose `ownership.owned_here` is true." in cards["tailor-run"].body
+
+
 @pytest.mark.parametrize("sentence", [
     "Submit without asking only when `get_final_review` shows all of these:",
     "`record_consent` with channel `auto`",

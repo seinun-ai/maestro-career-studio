@@ -1,8 +1,9 @@
 import type { JobOwnership, SyncQueued } from "./types";
 
+/** No ownership on a row means sync is off (or an older server): owned here, unmarked, nothing locked. */
 export function jobOwnershipView(ownership?: JobOwnership) {
-  if (!ownership) return { mark: null, action: null, canWrite: false, canRequest: false,
-    reason: "Check where this job is being worked on before making changes.", pending: false };
+  if (!ownership) return { mark: null, action: null, canWrite: true, canRequest: true,
+    reason: null, pending: false };
   const canWrite = ownership.owned_here;
   const owner = ownership.owner;
   const moving = ["offered", "returning"].includes(ownership.handover ?? "");
@@ -19,12 +20,12 @@ function ownershipMark(ownership?: JobOwnership): string {
 
 function ownershipAction(ownership?: JobOwnership): "keep-here" | "work-here" | null {
   if (!ownership || ownership.handover === "returning") return null;
-  if (ownership.handover === "offered") return ownership.owner === "laptop" ? "keep-here" : null;
+  if (ownership.handover === "offered") return ownership.can_keep_here ? "keep-here" : null;
   return !ownership.owned_here && ownership.owner === "bot" ? "work-here" : null;
 }
 
 function ownershipReason(ownership?: JobOwnership): string {
-  if (ownership?.handover === "offered") {
+  if (ownership?.handover === "offered" && ownership.can_keep_here) {
     return "This job is on its way to your bot. Use Keep it here to keep working on it.";
   }
   if (ownership?.handover === "returning") {
@@ -33,6 +34,16 @@ function ownershipReason(ownership?: JobOwnership): string {
   return ownership?.owner === "bot"
     ? "This job is with your bot. Ask for it back with Work on it here."
     : "This job is on your laptop. Work on it there.";
+}
+
+// The server refuses a write to a job on the other copy with one of four fixed sentences, each
+// opening with where the job is.
+const OWNERSHIP_REFUSAL =
+  /^This job is (with your bot|on your laptop|on its way to your bot|going back to your laptop)\b/;
+
+/** True when a refused write's message is the server's "this job is on the other copy" sentence. */
+export function isOwnershipRefusal(message: string | null | undefined): boolean {
+  return !!message && OWNERSHIP_REFUSAL.test(message);
 }
 
 export function isSyncQueued(value: unknown): value is SyncQueued {

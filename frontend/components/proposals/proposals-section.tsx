@@ -16,10 +16,8 @@ import {
 } from "lucide-react";
 
 import { CompanyMonogram } from "@/components/company-monogram";
-import { JobOwnershipMark, JobOwnershipNotice, JobOwnershipLoadError } from "@/components/job-ownership";
-import { useJobOwnershipMap } from "@/hooks/use-job-ownership";
+import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
-import type { JobOwnership } from "@/lib/types";
 import { EmptyState } from "@/components/empty-state";
 import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
@@ -183,8 +181,6 @@ function sortProposals(items: Proposal[], sort: SortKey): Proposal[] {
 }
 
 export function ProposalsSection({ since = null }: { since?: string | null } = {}) {
-  const ownershipQuery = useJobOwnershipMap();
-  const ownerships = ownershipQuery.data;
   const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: PROPOSALS_KEY,
     queryFn: () =>
@@ -295,7 +291,7 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   const selectedShown = useMemo(() => selectedAmong(triage, selected), [triage, selected]);
   const bulkBlocked = selectedShown.some((id) => {
     const proposal = triage.find((p) => p.id === id);
-    return !jobOwnershipView(ownerships?.get(proposal?.job_id ?? "")).canRequest;
+    return !jobOwnershipView(proposal?.job.ownership).canRequest;
   });
   const barShown = selectedShown.length > 0;
 
@@ -433,7 +429,6 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   }
 
   const rowProps = {
-    ownerships,
     since,
     duplicateKeys,
     pending: actions.pending,
@@ -462,7 +457,6 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
 
   return (
     <div className="flex flex-col gap-6 pb-20">
-      <JobOwnershipLoadError query={ownershipQuery} />
       {/* The lanes stay later siblings of the toolbar: globals.css clears a
           focused row from under the stuck toolbar (and the bulk bar) only for
           `[data-slot="list-toolbar"] ~ :focus-within`. */}
@@ -773,7 +767,6 @@ type LaneKind = "needs_you" | "triage" | "queued" | "in_flight" | "history";
 
 function ProposalRow({
   proposal,
-  ownerships,
   lane,
   since,
   duplicateKeys,
@@ -783,7 +776,6 @@ function ProposalRow({
   pending,
 }: {
   proposal: Proposal;
-  ownerships?: Map<string, JobOwnership>;
   lane: LaneKind;
   since: string | null;
   duplicateKeys: Set<string>;
@@ -793,7 +785,7 @@ function ProposalRow({
   pending?: boolean;
 }) {
   const job = proposal.job;
-  const owner = ownerships?.get(proposal.job_id);
+  const owner = job.ownership;
   const ownership = jobOwnershipView(owner);
   const base = chosenBase(proposal);
   const baseName = useBaseResumeName(base ?? "", base !== null);
@@ -953,7 +945,9 @@ function ProposalRow({
             ) : null}
           </div>
         </div>
-        {ownership.mark || ownership.reason ? <div className="px-4 pb-3">
+        {/* Under the text column: past the checkbox (2.75rem), the row's padding, the monogram and its gap. */}
+        {ownership.mark || ownership.reason ? <div className={cn("flex flex-col gap-1 pr-4 pb-3",
+          showCheckbox ? "pl-[6.5rem]" : "pl-[3.75rem]")}>
           <JobOwnershipMark jobId={proposal.job_id} ownership={owner} />
           <JobOwnershipNotice ownership={owner} />
         </div> : null}

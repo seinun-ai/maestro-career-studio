@@ -4,16 +4,19 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.config import settings
 from app.db import get_db
 from app.main import app
+from app.models.application import Application
+from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
 from app.models.sync import SyncRequest
 from app.services.sync import status
 
-OFF = {"owned_here": True, "owner": None, "handover": None, "pending_requests": 0}
+OFF = {"owned_here": True, "owner": None, "handover": None, "pending_requests": 0,
+       "can_keep_here": False}
 QUEUED = {"queued": True, "detail": "Sent at the next sync."}
 
 
@@ -53,26 +56,30 @@ def _views(client, job):
     (None, None, True, "laptop"),
     ("other-copy", None, False, "bot"),
     (None, "offered", False, "laptop"),
+    ("other-copy", "offered", False, "bot"),
 ])
 def test_home_reads_match_guard(client, db_session, sync_on, case):
     owner, handover, owned, label = case
     job = _job(db_session, owner, handover)
     for view in _views(client, job):
-        assert view["ownership"] == {"owned_here": owned, "owner": label,
-                                     "handover": handover, "pending_requests": 0}
+        assert view["ownership"] == {"owned_here": owned, "owner": label, "handover": handover,
+                                     "pending_requests": 0,
+                                     "can_keep_here": (owner is None) and handover == "offered"}
 
 
 @pytest.mark.parametrize("case", [
     (None, None, True, "bot"),
     ("other-copy", None, False, "laptop"),
     (None, "returning", False, "bot"),
+    ("other-copy", "offered", False, "laptop"),
 ])
 def test_remote_labels_are_relative(client, db_session, sync_remote, case):
     owner, handover, owned, label = case
     job = _job(db_session, owner, handover)
     for view in _views(client, job):
-        assert view["ownership"] == {"owned_here": owned, "owner": label,
-                                     "handover": handover, "pending_requests": 0}
+        assert view["ownership"] == {"owned_here": owned, "owner": label, "handover": handover,
+                                     "pending_requests": 0,
+                                     "can_keep_here": False}
 
 
 def test_counts_only_viewers_unanswered_requests(client, db_session, sync_on):
@@ -103,7 +110,8 @@ def test_keep_here_cancels_offer_and_restores_normal_writes(client, db_session, 
     response = client.post(f"/api/jobs/{job.id}/keep-here")
     assert response.status_code == 200
     assert response.json()["ownership"] == {"owned_here": True, "owner": "laptop",
-                                            "handover": None, "pending_requests": 0}
+                                            "handover": None, "pending_requests": 0,
+                                            "can_keep_here": False}
     db_session.refresh(job)
     assert job.owner_machine is None and job.handover is None and job.sync_rev > before
     assert not db_session.info.get("sync_apply")
@@ -168,3 +176,85 @@ def test_ingest_and_dedup_keep_ownership_in_the_response(client, db_session, syn
     assert duplicate.json()["already_existed"] is True
     assert duplicate.json()["ownership"]["owner"] == "bot"
     assert duplicate.json()["ownership"]["owned_here"] is False
+
+
+def _with_rows(db, job):
+    """An application and a proposal on the job, written the way a sync apply would."""
+    db.info["sync_apply"] = True
+    try:
+        db.add_all([Application(job_id=job.id, base_resume="example-base"),
+                    ApplicationProposal(job_id=job.id, status="accepted")])
+        db.commit()
+    finally:
+        db.info.pop("sync_apply", None)
+
+
+def test_application_and_proposal_reads_carry_the_jobs_ownership(client, db_session, sync_on):
+    mine, theirs, offered = _job(db_session), _job(db_session, "other-copy"), _job(db_session, handover="offered")
+    for job in (mine, theirs, offered):
+        _with_rows(db_session, job)
+    expected = {mine.id: (True, "laptop"), theirs.id: (False, "bot"), offered.id: (False, "laptop")}
+
+    def seen(items, job_of):
+        return {uuid.UUID(job_of(item)): (item["ownership"]["owned_here"], item["ownership"]["owner"])
+                for item in items}
+
+    applications = client.get("/api/applications").json()
+    assert seen(applications, lambda a: a["job_id"]) == expected
+    listed = client.get("/api/proposals").json()["items"]
+    assert seen([p["job"] for p in listed], lambda j: j["id"]) == expected
+    for proposal in listed:
+        detail = client.get(f"/api/proposals/{proposal['id']}").json()
+        assert detail["job"]["ownership"] == proposal["job"]["ownership"]
+    replica = next(p for p in listed if p["job_id"] == str(theirs.id))
+    assert replica["job"]["ownership"]["owned_here"] is False
+
+
+def test_application_and_proposal_reads_of_a_replica_stay_unmarked_with_sync_off(
+        client, db_session, monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "sync_key_file", tmp_path / "absent-key")
+    job = _job(db_session, "other-copy", "offered")
+    _with_rows(db_session, job)
+    assert client.get("/api/applications").json()[0]["ownership"] == OFF
+    proposal = client.get("/api/proposals").json()["items"][0]
+    assert proposal["job"]["ownership"] == OFF
+    assert client.get(f"/api/proposals/{proposal['id']}").json()["job"]["ownership"] == OFF
+
+
+def _count_queries(db, call):
+    seen = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        seen.append(statement)
+
+    event.listen(db.bind, "before_cursor_execute", capture)
+    try:
+        call()
+    finally:
+        event.remove(db.bind, "before_cursor_execute", capture)
+    return len(seen)
+
+
+@pytest.mark.parametrize("path", ["/api/jobs", "/api/applications", "/api/proposals"])
+def test_ownership_cost_does_not_grow_with_the_number_of_jobs(client, db_session, sync_on, monkeypatch, path):
+    reads = []
+    real = status.read_key
+    monkeypatch.setattr(status, "read_key", lambda: reads.append(1) or real())
+
+    def measure():
+        reads.clear()
+        queries = _count_queries(db_session, lambda: assert_ok(client.get(path)))
+        return queries, len(reads)
+
+    def assert_ok(response):
+        assert response.status_code == 200
+
+    for index in range(2):
+        job = _job(db_session, "other-copy" if index else None)
+        _with_rows(db_session, job)
+    measure()  # the first read creates this install's machine id
+    few = measure()
+    for index in range(8):
+        job = _job(db_session, "other-copy" if index % 2 else None)
+        _with_rows(db_session, job)
+    assert measure() == few

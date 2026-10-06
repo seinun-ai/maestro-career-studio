@@ -26,6 +26,8 @@ export interface JobOwnership {
   owner: "laptop" | "bot" | null;
   handover: string | null;
   pending_requests: number;
+  /** True only on the laptop, for a job it offered and still holds. */
+  can_keep_here?: boolean;
 }
 
 export interface SyncQueued {
@@ -138,6 +140,8 @@ export interface ApplicationSummary {
   job_title: string | null;
   job_company: string | null;
   job_location: string | null;
+  /** The job's ownership; absent when sync is off. */
+  ownership?: JobOwnership;
   /** Joined like the job fields. Optional: a backend that predates it omits it. */
   base_resume_name?: string | null;
 }
@@ -2003,6 +2007,8 @@ export interface AgentRun {
 
 export interface AgentRunList {
   items: AgentRun[];
+  /** On `/latest` only; empty with sync off. */
+  refused_requests?: RefusedJobRequest[];
 }
 
 export interface RefusedJobRequest {
@@ -2010,6 +2016,8 @@ export interface RefusedJobRequest {
   job_id: UUID | null;
   reason: string;
   answered_at: string | null;
+  job_company: string | null;
+  job_title: string | null;
 }
 
 interface ProposalBulkResult {

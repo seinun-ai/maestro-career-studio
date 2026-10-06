@@ -73,7 +73,14 @@ class RefusedJobRequest(BaseModel):
     job_id: UUID | None = None
     reason: str | None = None
     answered_at: datetime | None = None
+    job_company: str | None = None
+    job_title: str | None = None
 
 
 class AgentRunList(BaseModel):
     items: list[AgentRunRead]
+
+
+class LatestAgentRuns(AgentRunList):
+    # Refusals ride with the latest runs so the page makes one request; empty with sync off.
+    refused_requests: list[RefusedJobRequest] = []

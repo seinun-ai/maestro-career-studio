@@ -106,11 +106,14 @@ def refused_requests(session: Session) -> list[dict[str, Any]]:
     if not sync_status.enabled():
         return []
     rows = session.execute(
-        select(SyncRequest.id, SyncRequest.job_id, SyncRequest.reason, SyncRequest.answered_at)
+        select(SyncRequest.id, SyncRequest.job_id, SyncRequest.reason, SyncRequest.answered_at,
+               Job.company, Job.title)
+        .outerjoin(Job, Job.id == SyncRequest.job_id)
         .where(SyncRequest.origin == "local", SyncRequest.status == "refused")
         .order_by(SyncRequest.answered_at.desc(), SyncRequest.created_at.desc(), SyncRequest.id.desc())
         .limit(20))
     return [{"id": row.id, "job_id": row.job_id, "answered_at": row.answered_at,
+             "job_company": row.company, "job_title": row.title,
              "reason": row.reason if row.reason in _SAFE_REQUEST_REASONS else _REQUEST_FAILED}
             for row in rows]
 

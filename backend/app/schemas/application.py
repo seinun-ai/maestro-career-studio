@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import AliasChoices, AwareDatetime, BaseModel, Field, field_validator
 
-from app.schemas.job import JobRead
+from app.schemas.job import JobOwnership, JobRead
 from app.schemas.resume_edit import ResumeEdit
 
 # The one status vocabulary. The frontend renders exactly these; PATCH rejects
@@ -66,6 +66,8 @@ class ApplicationSummary(BaseModel):
     job_title: str | None = None
     job_company: str | None = None
     job_location: str | None = None
+    # The job's ownership as the viewer reads it, in the job list's shape; sync off is unmarked.
+    ownership: JobOwnership = Field(default_factory=JobOwnership)
     # The base resume's own name, joined like the job fields. Archived and
     # soft-deleted rows are included, since the application outlives both.
     # Null when it has none.

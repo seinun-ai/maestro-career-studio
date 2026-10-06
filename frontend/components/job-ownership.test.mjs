@@ -24,7 +24,7 @@ for (const extension of [".ts", ".tsx"]) {
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { QueryClient, QueryClientProvider } = require("@tanstack/react-query");
-const { JobOwnershipMark, JobOwnershipNotice, JobOwnershipLoadError } = require("./job-ownership.tsx");
+const { JobOwnershipMark, JobOwnershipNotice } = require("./job-ownership.tsx");
 const { RecentRuns } = require("./proposals/recent-runs.tsx");
 const { ConfirmDialogProvider } = require("./confirm-dialog.tsx");
 const { AppRouterContext } = require("next/dist/shared/lib/app-router-context.shared-runtime");
@@ -56,9 +56,17 @@ test("replicas show their owner and the work-here action", () => {
 });
 
 test("offers show the keep-here action beside the mark", () => {
-  const html = renderMark({ ...off, owned_here: false, owner: "laptop", handover: "offered" });
+  const html = renderMark({ ...off, owned_here: false, owner: "laptop", handover: "offered", can_keep_here: true });
   assert.match(html, /Going to your bot/);
   assert.match(html, /<button[^>]*>.*Keep it here<\/button>/);
+});
+
+test("the bot's copy of an offer shows the mark but no Keep it here", () => {
+  const html = renderMark({ ...off, owned_here: false, owner: "laptop", handover: "offered" });
+  assert.match(html, /Going to your bot/);
+  assert.doesNotMatch(html, /<button/);
+  assert.doesNotMatch(renderElement(React.createElement(JobOwnershipNotice, {
+    ownership: { ...off, owned_here: false, owner: "laptop", handover: "offered" } })), /Keep it here/);
 });
 
 test("pending requests stay visible beside the current owner", () => {
@@ -67,37 +75,35 @@ test("pending requests stay visible beside the current owner", () => {
   assert.match(html, /Sent at the next sync/);
 });
 
-test("unknown ownership explains the locked controls", () => {
+test("a row with no ownership is unmarked, unlocked and says nothing", () => {
   assert.equal(renderMark(undefined), "");
-  assert.match(renderElement(React.createElement(JobOwnershipNotice)),
-    /Check where this job is being worked on before making changes/);
-});
-
-test("failed ownership reads offer a retry and retain it while retrying", () => {
-  const query = { data: undefined, isError: true, isFetching: false, fetchStatus: "idle",
-    errorUpdateCount: 1, refetch: () => {} };
-  const html = renderElement(React.createElement(JobOwnershipLoadError, { query }));
-  assert.match(html, /role="alert"/);
-  assert.match(html, /Try again/);
-  const retry = renderElement(React.createElement(JobOwnershipLoadError, {
-    query: { ...query, isError: false, isFetching: true, fetchStatus: "fetching" },
-  }));
-  assert.match(retry, /Retrying/);
+  assert.equal(renderElement(React.createElement(JobOwnershipNotice)), "");
+  assert.equal(renderElement(React.createElement(JobOwnershipNotice, { ownership: off })), "");
 });
 
 test("Recent runs marks a bot run without jobs and shows a refused request", () => {
   const run = { id: "example-run", automation: "job-hunt", title: "Job hunt", outcome: "ok",
     agent: null, on_bot: true, finished_at: "2026-10-06T12:00:00Z", counts: {}, digest: "", jobs: [] };
   const reason = "Maestro couldn't apply this request.";
+  const request = { id: "example-request", job_id: "example-job", reason, job_company: "Example employer",
+    job_title: "Example role", answered_at: new Date(Date.now() - 3 * 3600 * 1000).toISOString() };
   // Static rendering never dispatches navigation; mount the real link and confirmation providers.
   const element = React.createElement(AppRouterContext.Provider, { value: {} },
     React.createElement(ConfirmDialogProvider, null, React.createElement(RecentRuns)));
   const html = renderElement(element, [
-    [["agent-runs", "latest"], { items: [run] }],
-    [["agent-runs", "refused-requests"], [{ id: "example-request", job_id: "example-job", reason }]],
+    [["agent-runs", "latest"], { items: [run], refused_requests: [request] }],
   ]);
   assert.match(html, /on your bot/);
   assert.match(html, /Request refused/);
   assert.match(html, /Maestro couldn/);
   assert.match(html, /href="\/jobs\/example-job"/);
+  assert.match(html, /Example role, Example employer/);
+  assert.match(html, /3 hours ago/);
+});
+
+test("Recent runs with sync off shows no refusal block", () => {
+  const element = React.createElement(AppRouterContext.Provider, { value: {} },
+    React.createElement(ConfirmDialogProvider, null, React.createElement(RecentRuns)));
+  const html = renderElement(element, [[["agent-runs", "latest"], { items: [], refused_requests: [] }]]);
+  assert.doesNotMatch(html, /Request refused/);
 });

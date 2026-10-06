@@ -14,8 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { JobOwnershipMark, JobOwnershipNotice, JobOwnershipLoadError } from "@/components/job-ownership";
-import { useJobOwnershipMap } from "@/hooks/use-job-ownership";
+import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
 import { isSyncQueued, jobOwnershipView } from "@/lib/job-ownership";
 
 import { CompanyMonogram } from "@/components/company-monogram";
@@ -202,8 +201,6 @@ function rowKey(r: Row): string {
 }
 
 function ApplicationsContent() {
-  const ownershipQuery = useJobOwnershipMap();
-  const jobOwnership = ownershipQuery.data;
   const router = useRouter();
   const searchParams = useSearchParams();
   const qc = useQueryClient();
@@ -521,7 +518,6 @@ function ApplicationsContent() {
         }
       />
 
-      <JobOwnershipLoadError query={ownershipQuery} />
       <ListToolbar>
         <ListSearch label="Search jobs" value={q} onChange={setQ} />
         <div className="flex flex-wrap items-center gap-1.5">
@@ -668,7 +664,7 @@ function ApplicationsContent() {
               {filtered.map((r) => {
                 const key = rowKey(r);
                 const jobId = r.kind === "saved" ? r.job.id : r.app.job_id;
-                const owner = r.kind === "saved" ? r.job.ownership : jobOwnership?.get(jobId);
+                const owner = r.kind === "saved" ? r.job.ownership : r.app.ownership;
                 const ownership = jobOwnershipView(owner);
                 const href =
                   r.kind === "saved"
@@ -723,14 +719,14 @@ function ApplicationsContent() {
                               </span>
                             ) : null}
                           </p>
-                          {ownership.mark ? <div className="mt-1"><JobOwnershipMark jobId={jobId} ownership={owner} /></div> : null}
-                          <JobOwnershipNotice ownership={owner} />
                           <p className="text-muted-foreground truncate text-body-small">
                             {title}
                             {r.kind === "application" && r.app.job_location
                               ? ` · ${r.app.job_location}`
                               : ""}
                           </p>
+                          {ownership.mark ? <div className="mt-1"><JobOwnershipMark jobId={jobId} ownership={owner} /></div> : null}
+                          <JobOwnershipNotice ownership={owner} />
                         </div>
                       </div>
                     </TableCell>

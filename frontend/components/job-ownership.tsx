@@ -1,12 +1,9 @@
 "use client";
 
-import { useId } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bot, Laptop } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { LoadErrorState } from "@/components/load-error-state";
-import { isLoadFailure, type LoadQuery } from "@/lib/query-state";
 import { Button } from "@/components/ui/button";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
@@ -23,6 +20,7 @@ function useOwnershipAction(jobId: string) {
       void qc.invalidateQueries({ queryKey: ["jobs"] });
       void qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       void qc.invalidateQueries({ queryKey: ["proposals"] });
+      void qc.invalidateQueries({ queryKey: ["applications"] });
     },
     onError: (error: Error) => toast.error(couldnt("change where you work on this job", error)),
   });
@@ -48,16 +46,6 @@ export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownershi
 }
 
 export function JobOwnershipNotice({ ownership }: { ownership?: JobOwnership }) {
-  const id = useId();
   const { reason } = jobOwnershipView(ownership);
-  return reason ? <p id={id} className="text-muted-foreground text-body-small">{reason}</p> : null;
-}
-
-export function JobOwnershipLoadError({ query }: {
-  query: LoadQuery & { isFetching: boolean; refetch: () => unknown };
-}) {
-  return isLoadFailure(query) ? (
-    <LoadErrorState title="Couldn't load where these jobs are being worked on."
-      retrying={query.isFetching} onRetry={() => { void query.refetch(); }} />
-  ) : null;
+  return reason ? <p className="text-muted-foreground text-body-small">{reason}</p> : null;
 }

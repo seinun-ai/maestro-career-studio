@@ -32,6 +32,7 @@ import {
 import { IconButton } from "@/components/icon-button";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
+import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -39,6 +40,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { couldnt, errorDetail, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
+import { isOwnershipRefusal, jobOwnershipView } from "@/lib/job-ownership";
 import { cn } from "@/lib/utils";
 import {
   ApiError,
@@ -219,6 +221,11 @@ export default function TailorSessionPage({
     queryKey: ["job-detail", jobId],
     queryFn: () => apiFetch<JobDetail>(`/api/jobs/${jobId}/detail`),
   });
+  // Sync off (or no ownership on the job) is owned here: nothing locks and no notice shows.
+  const jobOwnership = jobDetail.data?.job.ownership;
+  const ownership = jobOwnershipView(jobOwnership);
+  // The job moved to the other copy under an open page: re-read where it is so the lock shows.
+  const ownershipChanged = () => void qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
 
   const baseResume = useQuery({
     queryKey: ["base-resumes", slug],
@@ -295,6 +302,19 @@ export default function TailorSessionPage({
       if (editGen.current === gen) setSaveState("saved");
       return true;
     } catch (error) {
+      const refusal = error instanceof ApiError && error.status === 409 ? errorDetail(error) : undefined;
+      if (isOwnershipRefusal(refusal)) {
+        // Nothing was saved, and none of it can be: show what the server holds, never the
+        // optimistic edit, and lock the page through the job's new owner.
+        latestRef.current = null;
+        promptRef.current = null;
+        setEdited(null);
+        setPromptDraft(null);
+        setSaveState("idle");
+        toast.error(couldnt("save your answers", error));
+        ownershipChanged();
+        return false;
+      }
       if (editGen.current === gen) setSaveState("error");
       if (error instanceof ApiError && error.status === 409) {
         // Surface the SERVER detail when it is a sentence for the user (the
@@ -400,6 +420,11 @@ export default function TailorSessionPage({
         latestRef.current = null;
         void qc.invalidateQueries({ queryKey: ["tailoring-session", sessionId] });
       }
+      if (error instanceof ApiError && isOwnershipRefusal(errorDetail(error))) {
+        toast.error(couldnt("tailor your resume", error));
+        ownershipChanged();
+        return;
+      }
       if (error instanceof ApiError && error.status === 409) {
         toast.error("This gap analysis was closed. Reloading.");
         void qc.invalidateQueries({ queryKey: ["tailoring-session", sessionId] });
@@ -486,7 +511,10 @@ export default function TailorSessionPage({
       toast.success("Application created from your base resume");
       router.push(`/jobs/${jobId}?tab=output`);
     },
-    onError: (error: Error) => toast.error(couldnt("use your resume as is", error)),
+    onError: (error: Error) => {
+      toast.error(couldnt("use your resume as is", error));
+      if (isOwnershipRefusal(errorDetail(error))) ownershipChanged();
+    },
   });
   // A double click made two applications for one job: both POSTs found none to reuse.
   const applyAsIsOnce = useSingleFlight(useAsIs.mutate);
@@ -733,6 +761,8 @@ export default function TailorSessionPage({
             </span>
             <span className="text-muted-foreground"> / 100</span>
           </p>
+          {ownership.mark ? <div className="mt-2"><JobOwnershipMark jobId={jobId} ownership={jobOwnership} /></div> : null}
+          <JobOwnershipNotice ownership={jobOwnership} />
         </div>
       </header>
 
@@ -742,7 +772,7 @@ export default function TailorSessionPage({
           tailorBusy && "pointer-events-none opacity-60",
         )}
       >
-        <GapLocked value={tailorBusy}>
+        <GapLocked value={tailorBusy || !ownership.canWrite}>
         {gapsJson.coverage_warning && (
           <div className="bg-warning-container text-on-warning-container animate-fade-rise flex items-start gap-3 rounded-corner-md p-4">
             <TriangleAlert className="size-5 shrink-0 mt-0.5" />
@@ -812,7 +842,7 @@ export default function TailorSessionPage({
           <Textarea
             id="tailor-instructions"
             value={userPrompt}
-            readOnly={tailorBusy}
+            readOnly={tailorBusy || !ownership.canWrite}
             onChange={(event) => handlePromptChange(event.target.value)}
             aria-describedby={notesHintId}
             rows={3}
@@ -855,7 +885,7 @@ export default function TailorSessionPage({
                 // Focusable while it runs: a natively disabled button dropped focus to <body>.
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 focusableWhenDisabled
-                disabled={useAsIs.isPending || tailorBusy || !!staleReason}
+                disabled={useAsIs.isPending || tailorBusy || !!staleReason || !ownership.canWrite}
               >
                 {useAsIs.isPending && <Loader2 className="animate-spin" />}
                 Use resume as is
@@ -867,7 +897,7 @@ export default function TailorSessionPage({
                 className="data-disabled:opacity-50"
                 onClick={onQuickTailorClick}
                 focusableWhenDisabled
-                disabled={tailorBusy || useAsIs.isPending || !!staleReason}
+                disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite}
                 title="Fill open gaps from your Quick tailor settings, then tailor"
               >
                 <Zap />
@@ -879,7 +909,7 @@ export default function TailorSessionPage({
               className="data-disabled:opacity-50"
               onClick={onTailorClick}
               focusableWhenDisabled
-              disabled={tailorBusy || useAsIs.isPending || !!staleReason}
+              disabled={tailorBusy || useAsIs.isPending || !!staleReason || !ownership.canWrite}
             >
               {tailor.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
               {tailor.isPending ? "Tailoring… about 30 seconds" : "Tailor resume"}

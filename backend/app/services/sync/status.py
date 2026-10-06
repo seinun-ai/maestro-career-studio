@@ -68,6 +68,13 @@ def is_remote() -> bool:
     return enabled() and bool(settings.sync_remote_url)
 
 
+def mode() -> str:
+    """"off", "home" or "remote" from one read of the key file (a list of rows reads it once)."""
+    if read_key() is None:
+        return "off"
+    return "remote" if settings.sync_remote_url else "home"
+
+
 def machine_id(db: Session) -> str:
     """This install's id, created on first use; local, never synced."""
     connection = db.connection()

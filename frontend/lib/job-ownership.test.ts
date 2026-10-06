@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { jobOwnershipView, isSyncQueued, syncActionMessage } from "./job-ownership.ts";
+import { jobOwnershipView, isOwnershipRefusal, isSyncQueued, syncActionMessage } from "./job-ownership.ts";
 
 const off = { owned_here: true, owner: null, handover: null, pending_requests: 0 };
 
@@ -18,7 +18,8 @@ test("a bot replica keeps request actions and locks all other writes", () => {
 });
 
 test("an offer locks requests until kept here", () => {
-  assert.deepEqual(jobOwnershipView({ ...off, owned_here: false, owner: "laptop", handover: "offered" }), {
+  assert.deepEqual(jobOwnershipView({ ...off, owned_here: false, owner: "laptop", handover: "offered",
+    can_keep_here: true }), {
     mark: "Going to your bot", action: "keep-here", canWrite: false, canRequest: false,
     reason: "This job is on its way to your bot. Use Keep it here to keep working on it.", pending: false,
   });
@@ -51,9 +52,21 @@ test("a queued response never reports the requested change as saved", () => {
 });
 
 
-test("unknown ownership cannot silently enable writes or requests", () => {
-  const view = jobOwnershipView(undefined);
+test("no ownership on a row means sync is off: owned, unmarked and nothing locked", () => {
+  assert.deepEqual(jobOwnershipView(undefined), {
+    mark: null, action: null, canWrite: true, canRequest: true, reason: null, pending: false,
+  });
+});
+
+test("the bot's copy of an offered job never offers Keep it here, which only the laptop can do", () => {
+  const view = jobOwnershipView({ ...off, owned_here: false, owner: "laptop", handover: "offered" });
+  assert.equal(view.action, null);
   assert.equal(view.canWrite, false);
-  assert.equal(view.canRequest, false);
-  assert.equal(view.reason, "Check where this job is being worked on before making changes.");
+  assert.doesNotMatch(view.reason ?? "", /Keep it here/);
+});
+
+test("only the server's other-copy sentences count as an ownership refusal", () => {
+  assert.equal(isOwnershipRefusal("This job is with your bot; ask for it back with Work on it here."), true);
+  assert.equal(isOwnershipRefusal("This gap analysis is out of date."), false);
+  assert.equal(isOwnershipRefusal(undefined), false);
 });

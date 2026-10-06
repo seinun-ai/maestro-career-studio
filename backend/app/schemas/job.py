@@ -31,6 +31,9 @@ class JobOwnership(BaseModel):
     owner: Literal["laptop", "bot"] | None = None
     handover: str | None = None
     pending_requests: int = 0
+    # True only on your laptop, for a job it offered and still holds: the one place Keep it here
+    # works. Your bot sees the same offer but cannot cancel it.
+    can_keep_here: bool = False
 
 
 class JobRead(BaseModel):

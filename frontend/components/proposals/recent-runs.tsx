@@ -39,16 +39,26 @@ function RunLine({ run }: { run: AgentRun }) {
   );
 }
 
-/** The newest reported run for each automation. */
+function RefusedLine({ request }: { request: RefusedJobRequest }) {
+  const job = [request.job_title ?? "Untitled role", request.job_company].filter(Boolean).join(", ");
+  return (
+    <div className="rounded-corner-md bg-surface-container-low p-3 text-body-small">
+      <p className="text-title-small">
+        Request refused
+        {request.answered_at ? <span className="text-muted-foreground text-body-small"> · {formatTimeAgo(request.answered_at)}</span> : null}
+      </p>
+      {request.job_id ? <p className="mt-1 max-w-[65ch] wrap-anywhere">{job}</p> : null}
+      <p className="mt-1 max-w-[65ch]">{request.reason}</p>
+      {request.job_id ? <Link href={`/jobs/${request.job_id}`} className="text-primary underline underline-offset-4">Open job</Link> : null}
+    </div>
+  );
+}
+
+/** The newest reported run for each automation, and the requests the other copy refused. */
 export function RecentRuns() {
   const { data, isError } = useQuery({
     queryKey: AGENT_RUNS_LATEST_KEY,
     queryFn: () => apiFetch<AgentRunList>("/api/agent-runs/latest"),
-  });
-  const refusals = useQuery({
-    queryKey: ["agent-runs", "refused-requests"],
-    queryFn: () => apiFetch<RefusedJobRequest[]>("/api/agent-runs/refused-requests"),
-    refetchOnWindowFocus: true,
   });
   return (
     <section aria-labelledby="recent-runs" className="flex min-w-0 flex-col gap-2">
@@ -63,14 +73,7 @@ export function RecentRuns() {
       ) : (
         data.items.map((run) => <RunLine key={run.id} run={run} />)
       )}
-      {refusals.isError ? <p className="text-muted-foreground text-body-small">{"Couldn't load request results."}</p> : null}
-      {refusals.data?.map((request) => (
-        <div key={request.id} className="rounded-corner-md bg-surface-container-low p-3 text-body-small">
-          <p className="text-title-small">Request refused</p>
-          <p className="mt-1 max-w-[65ch]">{request.reason}</p>
-          {request.job_id ? <Link href={`/jobs/${request.job_id}`} className="text-primary underline underline-offset-4">Open job</Link> : null}
-        </div>
-      ))}
+      {data?.refused_requests?.map((request) => <RefusedLine key={request.id} request={request} />)}
     </section>
   );
 }

@@ -107,7 +107,7 @@ def test_an_encoded_client_name_round_trips():
 def test_an_empty_log_reads_as_an_empty_list(path):
     response = client.get(path)
     assert response.status_code == 200
-    assert response.json() == {"items": []}
+    assert response.json() == {"items": [], **({"refused_requests": []} if path.endswith("latest") else {})}
 
 
 def test_recent_defaults_to_twenty_runs():

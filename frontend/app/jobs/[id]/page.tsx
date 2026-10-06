@@ -617,6 +617,9 @@ export default function JobDetailPage({
                 <Button
                   size="sm"
                   disabled={!ownership.canWrite}
+                  aria-disabled={!ownership.canWrite || undefined}
+                  // A link rendered as a button: `disabled:` never matches it, `data-disabled` does.
+                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
                   nativeButton={false}
                   render={
                     <Link href={`/applications/${application.id}/resume`}>
