@@ -193,6 +193,20 @@ def test_preview_thumbnail_shows_a_skeleton_until_the_image_loads():
     assert "else setFailedSrc(src)" in src and "img.naturalWidth > 0" in src
 
 
+def test_tracker_shows_scores_dots_and_a_needs_strip():
+    src = _read("app/applications/page.tsx")
+    assert "ScoreBar" in src and "StatusDot" in src and "Drafts not applied" in src
+    # The dots are Task 14's own (reused, not copied), and the strip filters through the Status filter.
+    assert "LaneDot" in src and "setFilterAndUrl(on ? \"all\" : f)" in src
+    assert 'filter: "needs_you"' in src and 'filter: "interviewing"' in src and 'filter: "draft"' in src
+    assert "aria-pressed={on}" in src and "<Check " in src
+    # An unscored row is a dash with words, never 0; it sorts last whichever way.
+    assert "No score yet" in src and 'header("ats", "ATS"' in src
+    assert "valueText={score.toFixed(1)}" in src
+    types = _read("lib/types.ts")
+    assert "ats_score?: number | null" in types and "best_ats_score?: number | null" in types
+
+
 def test_analytics_draws_status_mix_and_trend():
     src = _read("components/analytics/analytics-overview.tsx")
     assert "SegmentedBar" in src and "Sparkline" in src

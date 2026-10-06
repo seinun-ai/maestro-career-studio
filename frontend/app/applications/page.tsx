@@ -4,7 +4,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Bot, FilePlus2, KeyRound, Inbox, SendHorizontal, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, Check, FilePlus2, KeyRound, Inbox, SendHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { CompanyMonogram } from "@/components/company-monogram";
@@ -20,7 +20,8 @@ import {
   SourceToggle,
   type SourceFilter,
 } from "@/components/source-toggle";
-import { SavedJobChip, StatusChip, statusLabel } from "@/components/status-chip";
+import { LaneDot, SavedJobChip, StatusChip, StatusDot, statusLabel } from "@/components/status-chip";
+import { ScoreBar } from "@/components/visual";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -156,7 +157,7 @@ function storeValue(key: string, value: string) {
   }
 }
 
-type SortKey = "created_at" | "role" | "status" | "applied_at";
+type SortKey = "created_at" | "role" | "status" | "applied_at" | "ats";
 type SortDir = "asc" | "desc";
 
 type Row =
@@ -175,6 +176,37 @@ function rowFilterKey(r: Row): Exclude<Filter, "all"> {
   if (ps === "needs_decision" || ps === "needs_human") return "needs_you";
   return "saved";
 }
+
+/** The score a row shows: an application's own, a saved job's best base score. Null = never scored. */
+function rowScore(r: Row): number | null {
+  return (r.kind === "saved" ? r.job.best_ats_score : r.app.ats_score) ?? null;
+}
+
+// The inbox lane each agent-lane filter stands for, so its dot is the lane chip's own (LaneDot).
+const AGENT_LANE_DOT_STATUS: Record<AgentLaneFilter, string> = {
+  proposed: "pending_review",
+  queued: "accepted",
+  needs_you: "needs_decision",
+  skipped: "rejected",
+};
+
+/** A filter's own dot: a status dot, a lane dot, or none for All and Saved. */
+function FilterDot({ value }: { value: Filter }) {
+  if ((APPLICATION_STATUSES as readonly string[]).includes(value)) {
+    return <StatusDot status={value as ApplicationStatus} />;
+  }
+  if ((AGENT_LANE_FILTERS as readonly string[]).includes(value)) {
+    return <LaneDot status={AGENT_LANE_DOT_STATUS[value as AgentLaneFilter]} />;
+  }
+  return null;
+}
+
+// "What needs me" strip: each is a shortcut to one Status filter value.
+const NEEDS_STRIP: { filter: Filter; label: string }[] = [
+  { filter: "needs_you", label: "Needs you" },
+  { filter: "interviewing", label: "Interviewing" },
+  { filter: "draft", label: "Drafts not applied" },
+];
 
 function formatDate(value: string | null): string {
   return (value && formatShortDate(value)) || "—";
@@ -358,6 +390,7 @@ function ApplicationsContent() {
   const countOf = (f: Filter) => (stale ? "…" : String(counts.get(f) ?? 0));
   const filterOption = (f: Filter) => (
     <SelectItem key={f} value={f}>
+      <FilterDot value={f} />
       {`${filterLabel(f)} · ${countOf(f)}`}
     </SelectItem>
   );
@@ -390,6 +423,15 @@ function ApplicationsContent() {
       }
     };
     return [...list].sort((a, b) => {
+      if (sortKey === "ats") {
+        // Unscored rows sit last whichever way it sorts: no score is not a low score.
+        const as = rowScore(a);
+        const bs = rowScore(b);
+        if (as === bs) return 0;
+        if (as === null) return 1;
+        if (bs === null) return -1;
+        return (as - bs) * dir;
+      }
       const av = pick(a);
       const bv = pick(b);
       if (av === bv) return 0;
@@ -399,6 +441,10 @@ function ApplicationsContent() {
 
   // Kept rows are only worth keeping when there are some: an empty kept list would say "Nothing
   // matches" about rows that are still on their way.
+  // The strip counts what the Status filter counts (source-scoped, nothing while the other source loads).
+  const needsStrip = stale
+    ? []
+    : NEEDS_STRIP.map((s) => ({ ...s, count: Number(countOf(s.filter)) })).filter((s) => s.count > 0);
   const loading = apps.isLoading || savedJobs.isLoading || (stale && filtered.length === 0);
   // Checked BEFORE the empty state, which is the whole bug: with `data`
   // undefined after a failure, `filtered.length === 0` is true and the branch
@@ -541,6 +587,7 @@ function ApplicationsContent() {
             >
               {/* "Status:" on screen: the toolbar has no captions, and "All · 21" alone named nothing. */}
               <SelectValue>
+                <FilterDot value={filter} />
                 {`Status: ${filterLabel(filter)} · ${countOf(filter)}`}
               </SelectValue>
             </SelectTrigger>
@@ -583,6 +630,27 @@ function ApplicationsContent() {
           />
         </div>
       </ListToolbar>
+
+      {!loadFailed && !loading && needsStrip.length > 0 ? (
+        <div role="group" aria-label="What needs you" className="flex flex-wrap items-center gap-2">
+          {needsStrip.map(({ filter: f, label, count }) => {
+            const on = filter === f;
+            return (
+              <Button
+                key={f}
+                type="button"
+                size="sm"
+                variant="tonal"
+                aria-pressed={on}
+                onClick={() => setFilterAndUrl(on ? "all" : f)}
+              >
+                {on ? <Check className="size-3.5" aria-hidden="true" /> : null}
+                {`${label} · ${count}`}
+              </Button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {loadFailed ? (
         <LoadErrorState
@@ -658,11 +726,12 @@ function ApplicationsContent() {
           <Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
               <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
-                {header("role", "Role", "w-[42%]")}
-                <TableHead className="w-[16%]">Resume</TableHead>
+                {header("role", "Role", "w-[34%]")}
+                <TableHead className="w-[14%]">Resume</TableHead>
+                {header("ats", "ATS", "w-[12%]")}
                 {header("status", "Status", "w-[14%]")}
-                {header("applied_at", "Applied", "w-[12%]")}
-                {header("created_at", "Added", "w-[12%]")}
+                {header("applied_at", "Applied", "w-[11%]")}
+                {header("created_at", "Added", "w-[11%]")}
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -733,6 +802,24 @@ function ApplicationsContent() {
                     </TableCell>
                     <TableCell className="text-muted-foreground max-w-0 truncate text-body-small">
                       {r.kind === "saved" ? "—" : r.app.base_resume_name || baseName(r.app.base_resume)}
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const score = rowScore(r);
+                        return score === null ? (
+                          <span className="text-muted-foreground text-body-small">
+                            <span aria-hidden="true">—</span>
+                            <span className="sr-only">No score yet</span>
+                          </span>
+                        ) : (
+                          <ScoreBar
+                            value={score}
+                            label={r.kind === "saved" ? "Best ATS score" : "ATS score"}
+                            valueText={score.toFixed(1)}
+                            width="w-10"
+                          />
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       {r.kind === "saved" ? (
