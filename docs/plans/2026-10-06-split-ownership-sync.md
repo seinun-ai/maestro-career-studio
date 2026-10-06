@@ -770,6 +770,12 @@ listed in the preferences plan's Task 8.
   - what "With your bot" means;
   - backups with Litestream to a synced folder;
   - troubleshooting: version mismatch, wrong key, a laptop asleep for days.
+- Key placement (Task 15 review, verified): the laptop (Docker) runs `docker compose exec backend
+  python -m scripts.sync_key create`, then `show` once into the vault; CLI and backend both use
+  `/app/settings/secrets/sync-key`. The always-on copy (native) writes the vault's key to
+  `$MAESTRO_HOME/sync-key` (0600), sets `SYNC_REMOTE_URL` in maestro.env and restarts
+  (`stop.sh --no-pause && start.sh`) because `SYNC_KEY_FILE` is exported at start; never run
+  `create` there. A native CLI run needs `SYNC_KEY_FILE="$MAESTRO_HOME/sync-key"` set explicitly.
 - Modify `docs/native-install.md`: a pointer to the guide.
 - Modify `SECURITY.md` and `PRIVACY.md`. The always-on copy holds a read-only copy of the profile,
   including the AI key and the job-site login, carried only inside the SSH channel and never logged.
