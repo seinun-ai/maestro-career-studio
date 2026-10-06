@@ -99,10 +99,10 @@
   }
 
   // done = the register's circle-check; needs you = the dot and NOT an alert icon, because attention means
-  // "you act" only; skipped = circle-minus, "nothing happened here".
+  // "you act" only; skipped = skip-forward (the register's `skip`), "left alone".
   const DONE = { icon: "circle-check", word: "Done", tone: "done" };
   const OPEN = { icon: null, word: "Needs you", tone: "open" };
-  const SKIPPED = { icon: "circle-minus", word: "Skipped", tone: "skipped" };
+  const SKIPPED = { icon: "skip-forward", word: "Skipped", tone: "skipped" };
 
   /** What the rule pass did, from `reconcileFill`'s own counts.
    *
@@ -568,15 +568,32 @@
    * value that landed without being confirmed. `unconfirmed` (the page shows
    * a value it never confirmed) is a value to check, never Filled;
    * `unsupported` (the control ignored every input the Companion can send) is
-   * a control it could not work, and says so. */
+   * a control it could not work, and says so.
+   *
+   * A HEADING IS `[statuses, icon, words, mark]`: an icon (or none) and a short heading, then a count chip
+   * (`groupHeading`). The three groups of values to CHECK share ONE line, `CHECK_LINE`, drawn once above the
+   * first of them, so no heading repeats ": check each one". `assumed` is the AI's own answer, so it says so:
+   * sparkles, "AI answered" (the register's `ai`). */
   const LOOP_GROUPS = [
-    [["closest"], "Closest matches: check each one", (row) => row.answer && `closest match: ${row.answer}`],
-    [["assumed"], "Answered for you: check each one", (row) => row.answer],
-    [["unconfirmed"], "Filled but not confirmed: check each one", (row) => row.answer],
-    ["open", "Needs your answer", (row) => row.answer],
-    [["cannot_operate", "unsupported"], "Couldn't operate these controls",
+    [["closest"], "search", "Closest matches", (row) => row.answer],
+    [["assumed"], "sparkles", "AI answered", (row) => row.answer],
+    [["unconfirmed"], "circle-help", "Filled but not confirmed", (row) => row.answer],
+    ["open", null, "Needs your answer", (row) => row.answer],
+    [["cannot_operate", "unsupported"], null, "Couldn't operate these controls",
       (row) => (row.status === "unsupported" ? "doesn't accept automated input" : row.answer)],
   ];
+  const CHECK_STATUSES = new Set(["closest", "assumed", "unconfirmed"]);
+  const CHECK_LINE = "Check each one before you submit.";
+
+  /** A group's heading: its icon, its words, and how many rows sit under it. The count is its own span so the
+   * heading's words stay the words; the heading role and level are the report's. */
+  function groupHeading({ build }, iconName, words, count) {
+    const head = build.node("div", "grp");
+    head.setAttribute("role", "heading");
+    head.setAttribute("aria-level", "3");
+    if (iconName) build.attach(head, build.icon(iconName, { size: 13 }));
+    return build.attach(head, build.node("span", "grp-words", words), build.node("span", "grp-n", count));
+  }
   const LOOP_OPEN = new Set(["needs_answer", "partial"]);
 
   function loopRows(ctx, rows, mark) {
@@ -603,7 +620,8 @@
     if (filled) attach(report, node("div", "sub count", `${filled} filled`));
     // First among the groups: the answers to read before anything else.
     attach(report, ...flagNodes(ctx));
-    for (const [key, heading, mark] of LOOP_GROUPS) {
+    let checkLineDrawn = false;
+    for (const [key, iconName, heading, mark] of LOOP_GROUPS) {
       const rows = key === "open"
         // Required first; otherwise the page's own order.
         ? [...fields.filter((row) => LOOP_OPEN.has(row.status) && row.required),
@@ -612,10 +630,11 @@
       if (!rows.length) continue;
       const list = loopRows(ctx, rows, mark);
       list.setAttribute("aria-label", heading);
-      const head = node("div", "grp", heading);
-      head.setAttribute("role", "heading");
-      head.setAttribute("aria-level", "3");
-      attach(report, head, list);
+      if (!checkLineDrawn && key !== "open" && key.some((status) => CHECK_STATUSES.has(status))) {
+        attach(report, node("div", "sub check-line", CHECK_LINE));
+        checkLineDrawn = true;
+      }
+      attach(report, groupHeading(ctx, iconName, heading, rows.length), list);
     }
     const left = [
       [having("already").length, (n) => `${n} already filled`],

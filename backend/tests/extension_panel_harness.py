@@ -457,6 +457,9 @@ class FakeNode {
    * rewritten in place on every render and its warning icon must not pile up. */
   get textContent() { return this._text; }
   set textContent(value) { this._text = value; this.children = []; }
+  /** The words of this node and its descendants, like a browser's `textContent` (an svg adds none): for a
+   * control whose label sits in a child span beside an icon. */
+  get allText() { return this._text + this.children.map((kid) => kid.allText).join(""); }
   focus(options) { ACTIVE = this; this.focusOptions = options ?? null; }
   get style() { return { setProperty: (n, v) => { this.props[n] = String(v); } }; }
   append(...kids) { for (const kid of kids) this.children.push(kid); }
@@ -549,7 +552,13 @@ global.document = {
   // An svg builder needs this and nothing else of the namespace: the node
   // records its tag, attributes and children like an HTML one. The namespace
   // itself is kept so a test can tell an svg from a lookalike html tag.
-  createElementNS: (ns, tag) => Object.assign(new FakeNode(tag), { namespace: ns }),
+  // A browser keeps an svg element's tag as written ("svg", "circle"), where an HTML element's is upper case.
+  createElementNS: (ns, tag) => {
+    const node = new FakeNode(tag);
+    node.tagName = String(tag);
+    node.namespace = ns;
+    return node;
+  },
   // A live read, like the real one: the panel captures it BEFORE a rebuild and
   // the node it names is thrown away by that rebuild, which is the whole
   // reason the restore has to travel as an id and not as a reference.
@@ -654,7 +663,7 @@ def _by_class(node, cls):
 def _text(node):
     # An svg reads as "" — a browser's `textContent` over an icon holds no text,
     # and the shapes inside it are not words either (Task 28).
-    if node["namespace"] == SVG_NS:
+    if node.get("namespace") == SVG_NS:
         return ""
     parts = [node["text"], *(_text(kid) for kid in node["children"])]
     return " ".join(part for part in parts if part).strip()

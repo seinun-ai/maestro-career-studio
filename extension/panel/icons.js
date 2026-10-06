@@ -2,7 +2,7 @@
  *
  * Glyph data from Lucide (lucide-react v1.48.0, ISC licence, https://lucide.dev): the same drawings the web app
  * uses, one per concept (frontend/lib/concept-icons.ts: done = circle-check, warning = triangle-alert,
- * attachment = paperclip, locked = lock, none = minus). `ns.icon(name, { size, label })` builds an <svg> with
+ * attachment = paperclip, locked = lock, none = minus, skip = skip-forward, ai = sparkles, unknown = circle-help). `ns.icon(name, { size, label })` builds an <svg> with
  * createElementNS and setAttribute, never innerHTML, so the panel stays CSP-clean and the node harness can read it.
  *
  * An icon never stands alone. With no `label` it is `aria-hidden` and a word sits beside it; with one it is an
@@ -34,13 +34,22 @@
     "lock": [["rect", { width: "18", height: "11", x: "3", y: "11", rx: "2", ry: "2" }],
       ["path", { d: "M7 11V7a5 5 0 0 1 10 0v4" }]],
     "minus": [["path", { d: "M5 12h14" }]],
+    "search": [["path", { d: "m21 21-4.34-4.34" }], ["circle", { cx: "11", cy: "11", r: "8" }]],
+    "sparkles": [
+      ["path", { d: "M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" }],
+      ["path", { d: "M20 2v4" }], ["path", { d: "M22 4h-4" }], ["circle", { cx: "4", cy: "20", r: "2" }]],
+    "circle-help": [["circle", { cx: "12", cy: "12", r: "10" }],
+      ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" }], ["path", { d: "M12 17h.01" }]],
+    "skip-forward": [["path", { d: "M21 4v16" }],
+      ["path", { d: "M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z" }]],
   };
 
   /** An <svg> for `name`, `size` px square. Throws on a name this file does not hold: a typo should fail the
    * render that made it, not draw an empty box. */
   ns.icon = (name, { size = 14, label = null } = {}) => {
+    // `hasOwn`: an inherited key ("constructor", "toString") is no icon either.
+    if (!Object.hasOwn(ICONS, name)) throw new Error(`icons.js has no icon named ${name}`);
     const shapes = ICONS[name];
-    if (!shapes) throw new Error(`icons.js has no icon named ${name}`);
     const svg = document.createElementNS(SVG_NS, "svg");
     const attrs = {
       class: "ico", width: size, height: size, viewBox: "0 0 24 24", fill: "none",

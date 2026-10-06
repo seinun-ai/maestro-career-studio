@@ -121,7 +121,16 @@ main(async () => {
     await settle();
     reopened = regions();
   }
-  emit({ loaded, opened, clicked, focusedAfter, reopened, settled: regions(), sent, writes,
+  // …then the footer's primary pressed again: a second note replaces the first.
+  let afterCta = null;
+  let beforeCta = null;
+  if (spec.pressCtaAfter === true) {
+    beforeCta = regions();
+    withClass(REGIONS.foot, "cta")[0].click();
+    await settle();
+    afterCta = regions();
+  }
+  emit({ loaded, opened, clicked, focusedAfter, reopened, beforeCta, afterCta, settled: regions(), sent, writes,
          limbs: limbs().map((limb) => limb.textContent) });
 });
 """
@@ -640,6 +649,16 @@ def test_a_tailor_that_renders_no_pdf_says_so_and_still_keeps_the_application(tm
                             "create the PDF. Select Create PDF to try again.")
     assert _icons(note) == ["triangle-alert"]
     assert note["class"] == "note error"
+    # The icon belongs to THAT note: the next one, with no warning, is drawn without it.
+    again = _resume(tmp_path, open=True, press="Quick tailor", pressCtaAfter=True, api={
+        "quick-tailor": _reply({"application_id": "app-quick", "session_id": "s", "applied": [],
+                                "pdf_ready": False, "nothing_to_tailor": False,
+                                "health_warning": "Base resume health is C"}),
+        "/render": _reply({"ok": True})})
+    [first] = _by_class(again["beforeCta"]["foot"], "note")
+    [second] = _by_class(again["afterCta"]["foot"], "note")
+    assert _icons(first) == ["triangle-alert"]
+    assert second["text"] != first["text"] and _icons(second) == []
     assert out["writes"][-1]["widget.session"]["applicationId"] == "app-quick"
     assert out["writes"][-1]["widget.session"]["pdfReady"] is False
     # Still at Resume: `stageFor` reads a PDF-less application as not done, so
@@ -935,7 +954,8 @@ def test_the_row_you_skipped_by_choice_is_a_door_and_the_ones_the_path_skipped_a
     door = next(n for n in _walk(out["armed"]["rail"]) if n.get("id") == "stg-open-resume")
     assert door["tag"] == "BUTTON"
     assert door["attrs"]["aria-expanded"] == "false"
-    assert _icons(door) == ["chevron-right"]
+    # The row's own words ("Not needed" with its minus) and then the door's caret.
+    assert _icons(door) == ["minus", "chevron-right"]
 
 
 def test_the_reopened_base_as_is_row_names_the_choice_and_offers_both_ways_on(tmp_path):

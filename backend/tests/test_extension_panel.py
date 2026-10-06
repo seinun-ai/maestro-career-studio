@@ -936,7 +936,9 @@ def test_the_rail_renders_four_stages_and_marks_the_one_you_are_on(booted):
     # carries a stage body, and reading the subtree whole would make this
     # assertion about the Job preview's labels as well.
     assert [_text(_by_class(row, "stg-row")[0]) for row in rows] == [
-        "1 Job", "2 Resume", "3 Fill", "4 Track"]
+        "1 Job", "2 Resume Not yet", "3 Fill Not yet", "4 Track Not yet"]
+    # A locked row says it in visible words with its icon, not in an aria-label alone.
+    assert [_icons(_by_class(row, "stg-state")[0]) for row in rows[1:]] == [["lock"]] * 3
     assert [row["class"] for row in rows] == [
         "stg active", "stg locked", "stg locked", "stg locked"]
     # Four steps in order, so the rail is a LIST — the position and the count
@@ -947,9 +949,10 @@ def test_the_rail_renders_four_stages_and_marks_the_one_you_are_on(booted):
     # am I", and a screen reader gets none of the border.
     assert [row["attrs"].get("aria-current") for row in rows] == [
         "step", None, None, None]
-    # …and the tick, the numeral and the greying carry their state in words.
+    # …and the tick, the numeral and the greying carry their state in words: the active row's numeral is
+    # named, and a locked row's words are visible text (above), so its numeral needs no name of its own.
     assert [_by_class(row, "stg-num")[0]["attrs"].get("aria-label") for row in rows] == [
-        "current step", "not yet", "not yet", "not yet"]
+        "current step", None, None, None]
 
 
 def test_the_footer_carries_one_primary_and_it_refuses_an_empty_page(booted):
@@ -1321,7 +1324,7 @@ def test_every_rail_state_says_itself_in_words(rail):
     assert _states(rail) == {"active", "done", "skipped", "locked"}
     assert _plain_labels(rail) == {
         "active": "current step", "done": "done",
-        "skipped": "not needed", "locked": "not yet",
+        "skipped": "Not needed", "locked": "Not yet",
     }
     # BOTH WORDS on the one row that is both, because a reader told only
     # "current step" hears an unfinished last step and a reader told only
@@ -1695,7 +1698,7 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     assert last["class"] == "id-foot"
     assert [kid["class"] for kid in last["children"]] == ["refresh", "linkish"]
     [row1] = _by_class(identity, "row1")
-    assert [kid["class"] for kid in row1["children"]] == ["who", "chip app"]
+    assert [kid["class"] for kid in row1["children"]] == ["who", "chip role-muted"]
     # Every endpoint is the widget's, unchanged — a panel that invented a route
     # would 404 in the browser and pass here.
     paths = [msg["path"] for msg in out["sent"] if msg["type"] == "api"]
@@ -2308,7 +2311,7 @@ main(async () => {
   // action is the footer's status segment (a bound application's reopened Job
   // row has no primary), and its PATCH fails, so the rail stays where it was.
   withClass(REGIONS.foot, "status-seg")[0].children
-    .find((button) => button.textContent === "Applied").click();
+    .find((button) => button.allText === "Applied").click();
   const duringRun = regions();
   release();
   await settle();
@@ -2786,7 +2789,7 @@ loadModules();
 const opener = (key) => findById(REGIONS.rail, `stg-open-${key}`);
 const statusButton = (label) => withClass(REGIONS.foot, "status-seg")
   .flatMap((segment) => segment.children)
-  .filter((button) => button.textContent === label)[0];
+  .filter((button) => button.allText === label)[0];
 main(async () => {
   await settle();
   opener("resume").click();

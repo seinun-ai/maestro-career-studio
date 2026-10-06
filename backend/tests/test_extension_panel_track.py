@@ -75,7 +75,7 @@ const allButtons = (node) => [
   ...node.children.flatMap(allButtons),
 ];
 const press = (label) => {
-  const found = statusButtons().filter((button) => button.textContent === label);
+  const found = statusButtons().filter((button) => button.allText === label);
   if (found.length !== 1) {
     throw new Error(`${found.length} status controls read "${label}"`);
   }
@@ -120,7 +120,7 @@ main(async () => {
   }
   const facts = ns.panel.actionStore().read();
   emit({ loaded, clicked, settled: regions(), reopened, sent, writes,
-         statuses: statusButtons().map((button) => button.textContent),
+         statuses: statusButtons().map((button) => button.allText),
          facts: {
            claimed: facts.claimed === true,
            applicationId: facts.application?.id ?? null,
@@ -359,9 +359,10 @@ def test_the_segment_says_which_state_it_is_in_to_something_that_cannot_see_it(d
     assert segment["attrs"]["aria-label"] == "Application status"
     assert [button["attrs"]["aria-checked"] for button in segment["children"]] == [
         "true", "false"]
-    # The two tints are two different states, not one class reused: a draft is
-    # unfinished business, an applied one is the end of the journey.
-    assert [button["class"] for button in segment["children"]] == ["draft-on", ""]
+    # The selected one is the same container whichever it is (the selected-in-set rule) and leads with a
+    # check; neither status is "good news" here, so neither has a colour of its own.
+    assert [button["class"] for button in segment["children"]] == ["on", ""]
+    assert [_icons(button) for button in segment["children"]] == [["check"], []]
 
 
 def test_an_applied_application_keeps_the_control_that_the_nudge_no_longer_asks_for(
@@ -379,6 +380,7 @@ def test_an_applied_application_keeps_the_control_that_the_nudge_no_longer_asks_
     assert [button["attrs"]["aria-checked"] for button in segment["children"]] == [
         "false", "true"]
     assert [button["class"] for button in segment["children"]] == ["", "on"]
+    assert [_icons(button) for button in segment["children"]] == [[], ["check"]]
 
 
 def test_the_journeys_end_offers_no_footer_primary_at_all(drafted, tmp_path):
@@ -831,22 +833,3 @@ def test_a_track_this_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
     assert _by_class(settled["identity"], "chip") == []
     assert out["facts"]["applicationId"] is None
     assert _rows(_rail_rows({"regions": settled}))["job"]["state"] == "active"
-
-
-def test_the_panels_status_words_are_the_web_apps():
-    """`STATUS_LABELS` (panel.js) is a copy of the application chip's labels in
-    `frontend/components/status-chip.tsx`, across the extension boundary where
-    no import reaches. Same keys, same words, or the Companion and the tracker
-    name one status two ways."""
-    import re
-
-    from tests.extension_harness import ROOT
-
-    panel = (ROOT / "extension" / "panel" / "panel.js").read_text(encoding="utf-8")
-    block = re.search(r"const STATUS_LABELS = \{(.*?)\};", panel, re.S).group(1)
-    companion = dict(re.findall(r'(\w+): "([^"]+)"', block))
-    chip = (ROOT / "frontend" / "components" / "status-chip.tsx").read_text(encoding="utf-8")
-    styles = re.search(r"const STATUS_STYLES: Record<.*?> = \{(.*?)\n\};", chip, re.S).group(1)
-    web = dict(re.findall(r'(\w+): \{\s*label: "([^"]+)"', styles))
-    assert web, "status-chip.tsx changed shape: re-read STATUS_STYLES"
-    assert companion == web

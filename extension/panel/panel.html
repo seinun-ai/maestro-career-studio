@@ -65,6 +65,10 @@
      fill engine's rule table and by the pause row's save router, which is one
      table with two readers rather than two tables that agree today.
 
+     status-roles.js (an application status's word and colour role, the web app's status chip in the
+     panel's language) sits with the shared modules; panel.js reads `ns.statusRoles` at load and throws,
+     naming it, when the tag is missing.
+
      icons.js (the Lucide drawings, `ns.icon`) is the FIRST panel-owned script: the
      stage bodies and the actions draw with it when they run, and panel.js throws
      at boot, naming this file, if it did not publish.
@@ -110,6 +114,7 @@
 <script src="../shared/recipe-book.js"></script>
 <script src="../shared/policy.js"></script>
 <script src="../shared/profile-fields.js"></script>
+<script src="../shared/status-roles.js"></script>
 <script src="icons.js"></script>
 <script src="stages/job.js"></script>
 <script src="stages/resume.js"></script>

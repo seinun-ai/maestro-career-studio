@@ -1137,7 +1137,7 @@ def test_the_progress_rows_are_the_runs_own_report(tmp_path):
     # The state is a visible WORD beside its mark, so the mark needs no
     # `aria-label` of its own and neither colour nor shape carries it alone.
     assert _marks(settled["rail"]) == [
-        ("dot", "Needs you"), ("dot", "Needs you"), ("circle-minus", "Skipped")]
+        ("dot", "Needs you"), ("dot", "Needs you"), ("skip-forward", "Skipped")]
     assert all("aria-label" not in row["children"][0]["attrs"]
                for row in _by_class(settled["rail"], "prog"))
     # And the still-open list is the residue plus the essay, each row naming
@@ -3327,6 +3327,8 @@ def test_an_attach_that_landed_is_reported_as_what_it_is(tmp_path):
     rows = dict(_rows_of(settled["rail"]))
     assert "Resume attached" in rows
     assert rows["Resume attached"] == "tailored-resume.pdf · 1 upload box"
+    # Done is the register's circle-check with its word beside it.
+    assert ("circle-check", "Done") in _marks(settled["rail"])
     # …and the offer is gone: there is no second press, because the interesting
     # failure is an attach that went somewhere unexpected and offering to repeat
     # it is how a user ends up with two.
@@ -3675,7 +3677,7 @@ main(async () => {
   if (spec.framesAfter) Object.assign(spec.frames, spec.framesAfter);
   if (spec.pressStatus !== undefined) {
     const segment = withClass(REGIONS.foot, "status-seg").flatMap((seg) => seg.children)
-      .find((one) => one.textContent === spec.pressStatus);
+      .find((one) => one.allText === spec.pressStatus);
     if (!segment) throw new Error(`no status control reads "${spec.pressStatus}"`);
     segment.click();
     await settle();
@@ -3778,14 +3780,17 @@ def _loop(tmp_path, report=LOOP_REPORT, **spec):
                     tmp_path, source=PANEL_SOURCE)
 
 
+CHECK_LINE = "Check each one before you submit."
+
+
 def _loop_groups(region):
     """The report as the user reads it: each heading or count line, and under
     each heading its rows' text."""
     [report] = _by_class(region, "loop")
     out = []
     for node in report["children"]:
-        if "grp" in node["class"].split() or "count" in node["class"].split():
-            out.append((node["text"], []))
+        if {"grp", "count", "check-line"} & set(node["class"].split()):
+            out.append((_text(node), []))
         else:
             out[-1][1].extend(_text(item) for item in node["children"])
     return out
@@ -3816,13 +3821,14 @@ def test_the_loop_report_is_grouped_in_the_order_the_user_acts_on_it(tmp_path):
     settled = out["settled"]
     assert _loop_groups(settled["rail"]) == [
         ("2 filled", []),
-        ("Closest matches: check each one", ["Highest degree · closest match: Master's"]),
-        ("Answered for you: check each one", ["How did you hear about us? · LinkedIn"]),
-        ("Needs your answer", [
+        (CHECK_LINE, []),
+        ("Closest matches 1", ["Highest degree · Master's"]),
+        ("AI answered 1", ["How did you hear about us? · LinkedIn"]),
+        ("Needs your answer 3", [
             "Skills · 3 of 5 added",
             'Start date · Companion clicked "Next week". Check it.',
             "Preferred shift"]),
-        ("Couldn't operate these controls", ["Country"]),
+        ("Couldn't operate these controls 1", ["Country"]),
         ("1 already filled · 1 left to you by policy · 1 you edited", []),
     ]
     # The rule pass's rows describe a different run and are not drawn.
@@ -3834,11 +3840,30 @@ def test_the_loop_report_is_grouped_in_the_order_the_user_acts_on_it(tmp_path):
     assert out["writes"] == []
 
 
+def test_report_headings_are_an_icon_a_short_heading_and_a_count(tmp_path):
+    """The three groups of values to check carry their own icon (closest = search, the AI's own answer =
+    sparkles, unconfirmed = circle-help); the "check each one" words are said ONCE for all of them, and no
+    heading repeats them. Every heading ends in its row count."""
+    out = _loop(tmp_path)
+    rail = out["settled"]["rail"]
+    heads = [h for h in _by_class(rail, "grp")]
+    assert [(_icons(h), _text(_by_class(h, "grp-words")[0]), _text(_by_class(h, "grp-n")[0]))
+            for h in heads] == [
+        (["search"], "Closest matches", "1"), (["sparkles"], "AI answered", "1"),
+        ([], "Needs your answer", "3"), ([], "Couldn't operate these controls", "1")]
+    assert all(h["attrs"]["role"] == "heading" and h["attrs"]["aria-level"] == "3" for h in heads)
+    assert [_text(n) for n in _by_class(rail, "check-line")] == [CHECK_LINE]
+    assert "check each one:" not in _text(rail).lower() and ": check each one" not in _text(rail)
+    # The line sits above the first of the check groups, not under every heading.
+    kids = _by_class(rail, "loop")[0]["children"]
+    assert "check-line" in kids[1]["class"] and "grp" in kids[2]["class"]
+
+
 def test_a_group_with_no_rows_is_not_shown(tmp_path):
     out = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
         *DONE_REPORT["fields"], _field("n1", "Preferred shift", "needs_answer")]})
     assert _loop_groups(out["settled"]["rail"]) == [
-        ("1 filled", []), ("Needs your answer", ["Preferred shift"]), ("1 already filled", [])]
+        ("1 filled", []), ("Needs your answer 1", ["Preferred shift"]), ("1 already filled", [])]
 
 
 def test_unconfirmed_and_unsupported_rows_are_listed_never_counted_filled(tmp_path):
@@ -3855,9 +3880,10 @@ def test_unconfirmed_and_unsupported_rows_are_listed_never_counted_filled(tmp_pa
     settled = out["settled"]
     assert _loop_groups(settled["rail"]) == [
         ("1 filled", []),
-        ("Filled but not confirmed: check each one",
+        (CHECK_LINE, []),
+        ("Filled but not confirmed 1",
          ['Willing to relocate? · Companion clicked "Yes". Check it.']),
-        ("Couldn't operate these controls",
+        ("Couldn't operate these controls 2",
          ["Rate your SQL · doesn't accept automated input", "Country"]),
         ("1 already filled", []),
     ]
@@ -4129,7 +4155,7 @@ def test_a_question_carrying_markup_is_shown_as_text(tmp_path):
     out = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
         _field("v1", "First name", "verified"), _field("n1", evil, "needs_answer")]})
     rail = out["settled"]["rail"]
-    assert ("Needs your answer", [evil]) in _loop_groups(rail)
+    assert ("Needs your answer 1", [evil]) in _loop_groups(rail)
     assert [n for n in _walk(rail) if n["tag"] == "IMG"] == []
 
 

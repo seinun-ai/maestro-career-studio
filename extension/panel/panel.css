@@ -35,6 +35,23 @@
   --cs-warn-text: oklch(0.5 0.13 75);
   --cs-danger-text: oklch(0.51 0.19 27);
   --cs-shadow: 0 2px 6px oklch(0.145 0 0 / 10%), 0 10px 28px oklch(0.145 0 0 / 12%);
+  /* The web app's M3-named status roles (frontend/app/globals.css), copied value for value: a role's container
+   * and the text on it, one meaning per colour in both apps. Muted is the surface container. */
+  --cs-surface-container: oklch(0.94 0 0);
+  --cs-primary-container: oklch(0.91 0.043 259);
+  --cs-on-primary-container: oklch(0.33 0.12 259);
+  --cs-secondary-container: oklch(0.925 0.022 259);
+  --cs-on-secondary-container: oklch(0.33 0.05 259);
+  --cs-success-container: oklch(0.915 0.06 163);
+  --cs-on-success-container: oklch(0.4 0.083 163);
+  --cs-warning-container: oklch(0.915 0.06 70);
+  --cs-on-warning-container: oklch(0.4 0.084 70);
+  --cs-attention-container: oklch(0.915 0.046 47);
+  --cs-on-attention-container: oklch(0.4 0.11 47);
+  --cs-tertiary-container: oklch(0.915 0.043 293);
+  --cs-on-tertiary-container: oklch(0.4 0.17 293);
+  --cs-error-container: oklch(0.915 0.042 25);
+  --cs-on-error-container: oklch(0.4 0.15 27);
 }
 /* Only the tokens that MOVE are restated. A panel is browser chrome, so it
  * follows the browser's scheme rather than the page's. */
@@ -52,6 +69,21 @@
     --cs-warn-text: oklch(0.85 0.12 85);
     --cs-danger-text: oklch(0.78 0.14 27);
     --cs-shadow: 0 2px 6px oklch(0 0 0 / 40%), 0 10px 28px oklch(0 0 0 / 34%);
+    --cs-surface-container: oklch(0.205 0 0);
+    --cs-primary-container: oklch(0.37 0.09 259);
+    --cs-on-primary-container: oklch(0.92 0.038 259);
+    --cs-secondary-container: oklch(0.33 0.03 259);
+    --cs-on-secondary-container: oklch(0.91 0.02 259);
+    --cs-success-container: oklch(0.38 0.075 163);
+    --cs-on-success-container: oklch(0.915 0.06 163);
+    --cs-warning-container: oklch(0.38 0.075 70);
+    --cs-on-warning-container: oklch(0.915 0.06 70);
+    --cs-attention-container: oklch(0.38 0.09 47);
+    --cs-on-attention-container: oklch(0.915 0.046 47);
+    --cs-tertiary-container: oklch(0.38 0.12 293);
+    --cs-on-tertiary-container: oklch(0.915 0.043 293);
+    --cs-error-container: oklch(0.38 0.11 27);
+    --cs-on-error-container: oklch(0.915 0.042 25);
   }
 }
 
@@ -134,9 +166,16 @@ body {
   font: 700 10.5px/1 var(--cs-font); border-radius: 999px; padding: 5px 9px;
   flex: none; margin-top: 2px; letter-spacing: .02em;
 }
-.chip.new { background: var(--cs-warn-tonal); color: var(--cs-warn-text); }
+/* "Not saved yet": a neutral outline, a fact and not a warning. */
+.chip.outline { border: 1px solid var(--cs-line); padding: 4px 8px; color: var(--cs-muted); }
 .chip.lib { background: var(--cs-primary-tonal); color: var(--cs-primary); }
-.chip.app { background: var(--cs-good-tonal); color: var(--cs-good); }
+/* An application status's colour role (shared/status-roles.js): the web status chip's pairs. */
+.chip.role-muted { background: var(--cs-surface-container); color: var(--cs-muted); }
+.chip.role-primary { background: var(--cs-primary-container); color: var(--cs-on-primary-container); }
+.chip.role-warning { background: var(--cs-warning-container); color: var(--cs-on-warning-container); }
+.chip.role-tertiary { background: var(--cs-tertiary-container); color: var(--cs-on-tertiary-container); }
+.chip.role-success { background: var(--cs-success-container); color: var(--cs-on-success-container); }
+.chip.role-error { background: var(--cs-error-container); color: var(--cs-on-error-container); }
 
 .ats { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 /* The arc is `--v` percent of the ring; the hole is the surface punched back
@@ -231,6 +270,10 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .stg.locked { opacity: .55; }
 .stg.skipped { opacity: .7; border-style: dashed; }
 .stg-name { font-weight: 700; font-size: 13px; }
+/* A locked or not-needed row's words, visible (lock + "Not yet", minus + "Not needed"). */
+.stg-state { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--cs-muted);
+  font-size: 12px; white-space: nowrap; }
+.stg-state ~ .stg-sum { margin-left: 8px; }
 .stg-sum { color: var(--cs-muted); font-size: 12px; margin-left: auto; text-align: right; max-width: 55%; }
 /* The active row's body. Indented past the numeral rather than under it, so the
    step's content reads as belonging to the step. */
@@ -384,7 +427,13 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * frame to scroll). So the button reset first, then the link's own colour and
  * rule. The mockup's `.needs` box hangs off it below. */
 /* The fill loop's report: a heading per group of rows, count lines between. */
-.loop .grp, .flagged .grp { margin-top: 12px; font-size: 12px; font-weight: 700; }
+.loop .grp, .flagged .grp { margin-top: 12px; font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; gap: 5px; }
+/* The count beside a heading: a small neutral chip. */
+.grp-n { font-size: 11px; font-weight: 700; line-height: 1; padding: 3px 7px; border-radius: 999px;
+  background: var(--cs-surface-container); color: var(--cs-muted); }
+.loop .check-line { margin-top: 12px; }
+.loop .check-line + .grp { margin-top: 6px; }
 .loop .count { margin-top: 8px; }
 .loop .grp + .resid, .flagged .grp + .resid { margin-top: 2px; }
 .resid { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -564,6 +613,7 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .note.error { color: var(--cs-danger-text); font-weight: 600; }
 /* Icons are inline svg: sized by their attributes, coloured by the text, and set on the text's baseline. */
 .ico { flex: none; vertical-align: -2px; }
+.fork a .ico { margin-left: 4px; }
 .note .ico { margin-right: 5px; }
 .linkish .ico { margin-left: 4px; vertical-align: -1px; }
 .stg-num .ico { vertical-align: 0; }
@@ -579,8 +629,10 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   border: 1px solid var(--cs-line); background: var(--cs-surface);
   color: var(--cs-muted); cursor: pointer;
 }
-.status-seg button.on { background: var(--cs-good-tonal); color: var(--cs-good); border-color: transparent; }
-.status-seg button.draft-on { background: var(--cs-warn-tonal); color: var(--cs-warn-text); border-color: transparent; }
+.status-seg button { display: inline-flex; align-items: center; gap: 4px; }
+/* The selected one of the pair: the secondary container and a leading check, whichever it is. */
+.status-seg button.on { background: var(--cs-secondary-container); color: var(--cs-on-secondary-container);
+  border-color: transparent; }
 /* Never wraps and never shrinks: a primary broken over three lines ("Fill /
  * this / form") reads as three buttons. */
 .cta {
@@ -621,3 +673,32 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .resid.flags li { overflow-wrap: anywhere; }
 .sub.ko { margin: 0 0 8px; padding: 6px 8px; border-radius: 8px;
   background: var(--cs-warn-tonal); color: var(--cs-warn-text); overflow-wrap: anywhere; }
+
+/* BUTTON STATES: hover (a mix toward the text colour), pressed (a small squeeze) and a solid focus ring, on the
+ * footer's primary, Stop and the secondary buttons. A disabled button gets none of them. */
+.cta, .stop, .fork button, .fork a, .seg button, .status-seg button {
+  transition: background-color 150ms, transform 140ms;
+}
+.cta:hover:not(:disabled) { background: color-mix(in oklab, var(--cs-primary), var(--cs-on-primary) 12%); }
+.stop:hover:not(:disabled), .fork button:hover:not(:disabled), .fork a:hover,
+.seg button:hover:not(:disabled), .status-seg button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--cs-surface), var(--cs-text) 6%);
+}
+.seg button.on:hover:not(:disabled) { background: var(--cs-surface); }
+.status-seg button.on:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--cs-secondary-container), var(--cs-on-secondary-container) 8%);
+}
+.fork button.sel:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--cs-primary-tonal), var(--cs-primary) 8%);
+}
+.cta:active:not(:disabled), .stop:active:not(:disabled), .fork button:active:not(:disabled), .fork a:active,
+.seg button:active:not(:disabled), .status-seg button:active:not(:disabled) { transform: scale(.97); }
+.cta:focus-visible, .stop:focus-visible, .fork button:focus-visible, .fork a:focus-visible,
+.seg button:focus-visible, .status-seg button:focus-visible {
+  outline: 2px solid var(--cs-primary); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cta, .stop, .fork button, .fork a, .seg button, .status-seg button { transition: none; }
+  .cta:active, .stop:active, .fork button:active, .fork a:active,
+  .seg button:active, .status-seg button:active { transform: none; }
+}
