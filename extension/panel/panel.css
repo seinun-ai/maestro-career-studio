@@ -150,7 +150,7 @@ body {
     conic-gradient(var(--ring-color, var(--cs-primary)) calc(var(--v, 0) * 1%), var(--cs-line) 0);
 }
 .ring.empty { color: var(--cs-muted); font-weight: 600; }
-.ats .arrow { color: var(--cs-muted); }
+.ats .arrow { color: var(--cs-muted); display: inline-flex; }
 .ats .lbl { font-size: 11px; color: var(--cs-muted); text-align: center; margin-top: 3px; }
 .ats .delta {
   font: 700 12px/1 var(--cs-font); color: var(--cs-good);
@@ -207,7 +207,7 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 /* The open/closed mark, and it earns its place by being the only thing on a
  * done row that says the row opens at all. Muted and small: it is an
  * affordance, not a control of its own. */
-.stg-caret { color: var(--cs-muted); font-size: 11px; flex: none; }
+.stg-caret { color: var(--cs-muted); flex: none; display: inline-flex; }
 /* The numeral sits in a 22px circle. `display:grid; place-items:center`
  * plus `font: 700 11px/1` sat the glyph low in some font stacks and clipped
  * it — line-height 1 sizes the inline box to the font-size, and a glyph
@@ -368,7 +368,15 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   border-bottom: 1px solid var(--cs-line); font-size: 12.5px;
 }
 .prog:last-of-type { border-bottom: none; }
-.prog .st { flex: none; width: 18px; text-align: center; }
+.prog .st {
+  flex: none; width: 82px; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600;
+}
+.prog .st.done { color: var(--cs-good); }
+.prog .st.skipped { color: var(--cs-muted); }
+/* The attention dot: Needs you, and nothing else, wears the warm colour. */
+.prog .st.open { color: var(--cs-warn-text); }
+.prog .st .dot { width: 8px; height: 8px; margin: 3px; border-radius: 50%; background: currentColor; flex: none; }
 .prog .n { color: var(--cs-muted); margin-left: auto; font-size: 12px; }
 
 /* The still-open list, styled as what it is: labels that jump to a control,
@@ -554,6 +562,11 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .note { color: var(--cs-muted); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
 .note:not(:empty) { margin-bottom: 8px; }
 .note.error { color: var(--cs-danger-text); font-weight: 600; }
+/* Icons are inline svg: sized by their attributes, coloured by the text, and set on the text's baseline. */
+.ico { flex: none; vertical-align: -2px; }
+.note .ico { margin-right: 5px; }
+.linkish .ico { margin-left: 4px; vertical-align: -1px; }
+.stg-num .ico { vertical-align: 0; }
 /* The action row: the status segment at the left, the primary pushed right by
  * its own auto margin. It WRAPS: at 320px Draft, Applied, Stop and a spinning
  * primary are 29px wider than the row, and a primary on a line of its own

@@ -49,6 +49,7 @@ from tests.extension_panel_harness import (
     _armed_entry,
     _by_class,
     _gets,
+    _icons,
     _jump_label,
     _PANEL_FAKES_JS,
     _rail_rows,
@@ -388,7 +389,14 @@ def _rows_of(region):
 
 
 def _marks(region):
-    return [_by_class(row, "st")[0]["text"] for row in _by_class(region, "prog")]
+    """Each progress row's mark and its visible word: `(icon, word)`, the icon
+    being the Lucide name or "dot" for the attention dot (Needs you)."""
+    marks = []
+    for row in _by_class(region, "prog"):
+        [st] = _by_class(row, "st")
+        icon = (_icons(st) or ["dot" if _by_class(st, "dot") else None])[0]
+        marks.append((icon, _text(st)))
+    return marks
 
 
 def _choose_calls(out):
@@ -1126,12 +1134,12 @@ def test_the_progress_rows_are_the_runs_own_report(tmp_path):
         ("Application questions", "1 filled · 3 need you"),
         ("Diversity questions", "turned off in Profile › Autofill"),
     ]
-    # The marks carry the state in WORDS as well, because an emoji reaches
-    # nobody using a screen reader.
-    assert _marks(settled["rail"]) == ["🟡", "🟡", "⏸"]
-    assert [row["children"][0]["attrs"]["aria-label"]
-            for row in _by_class(settled["rail"], "prog")] == [
-        "needs you", "needs you", "skipped"]
+    # The state is a visible WORD beside its mark, so the mark needs no
+    # `aria-label` of its own and neither colour nor shape carries it alone.
+    assert _marks(settled["rail"]) == [
+        ("dot", "Needs you"), ("dot", "Needs you"), ("circle-minus", "Skipped")]
+    assert all("aria-label" not in row["children"][0]["attrs"]
+               for row in _by_class(settled["rail"], "prog"))
     # And the still-open list is the residue plus the essay, each row naming
     # the field it jumps to.
     # The JUMP LABEL specifically — since Task 13 an answerable row also carries

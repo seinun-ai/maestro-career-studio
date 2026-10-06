@@ -107,6 +107,13 @@
   const ns = (window.careerStudioCompanion ??= {});
   const { stageFor, rankBaseResumes, restorableSession, sessionTenant,
           sameApplication, describesJob, sameSite } = ns.decisions;
+  // The drawings (panel/icons.js), read at load like the rosters below: a panel.html that forgot the tag fails on
+  // boot naming the file, not on the first render that wants a tick.
+  if (typeof ns.icon !== "function") {
+    throw new Error('panel: nothing published ns.icon — is <script src="icons.js"> in panel.html, '
+      + "before the stage scripts?");
+  }
+  const { icon } = ns;
 
   // `chrome.storage.local` holds TWO keys, and they hold different kinds of
   // thing: `widget.session`, the session pick (everything down to the
@@ -488,7 +495,7 @@
     applications: null,
     scores: null,       // latest_scores rows; null = not asked, [] = none
     busy: null,         // the stage key of the action currently running, or null
-    note: null,         // {text, error} — the last thing that happened HERE
+    note: null,         // {text, error, warning} — the last thing that happened HERE; `warning` draws the alert icon
     /** The posting on the page, as the user may still edit it, or null until
      * we have asked.
      *
@@ -1128,14 +1135,14 @@
     if (application?.id) {
       return {
         href: `${appUrl}/applications/${application.id}`,
-        label: "Open application ↗",
-        name: "Open this application in Maestro CS",
+        label: "Open application",
+        name: "Open this application in Maestro CS (opens in a new tab)",
       };
     }
     return {
       href: job?.id ? `${appUrl}/jobs/${job.id}` : appUrl,
-      label: "Open in Maestro CS ↗",
-      name: "Open in Maestro CS",
+      label: "Open in Maestro CS",
+      name: "Open in Maestro CS (opens in a new tab)",
     };
   }
 
@@ -1693,7 +1700,8 @@
       appUrl: card.settings?.appUrl, job: card.job, application: card.application,
     });
     if (!link) return null;
-    const anchor = node("a", "linkish", link.label);
+    // The arrow is an icon beside the words (aria-hidden); "opens in a new tab" rides the accessible name.
+    const anchor = attach(node("a", "linkish", link.label), icon("external-link", { size: 12 }));
     anchor.href = link.href;
     anchor.target = "_blank";
     anchor.rel = "noopener noreferrer";
@@ -1758,8 +1766,9 @@
     }
     attach(ats, ringColumn(before, "var(--cs-primary)",
                            before === null ? "ATS score" : "Base"));
-    attach(ats, node("span", "arrow", "→"),
-           ringColumn(after, "var(--cs-good)", "Tailored"));
+    const arrow = node("span", "arrow");
+    attach(arrow, icon("arrow-right", { size: 16 }));
+    attach(ats, arrow, ringColumn(after, "var(--cs-good)", "Tailored"));
     if (before !== null) {
       const delta = after - before;
       attach(ats, node("span", "delta", `${delta >= 0 ? "+" : ""}${delta}`));
@@ -1979,7 +1988,7 @@
              setFillMode, forgetLearnedMoves, startFill, attachResume, scrollToField, focusField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis },
-      build: { node, attach, plural, statusLabel, dayLabel },
+      build: { node, attach, plural, statusLabel, dayLabel, icon },
     };
   }
 
@@ -2376,7 +2385,9 @@
       // terminal row is both finished and current: it keeps the active border
       // and the active numeral chip (`.stg.active .stg-num`, panel.css) and
       // prints a ✓ in it, which is what a rail that has ENDED looks like.
-      const numeral = node("span", "stg-num", row.ticked ? "✓" : row.n);
+      // A circle-check icon (the register's done state), named by the aria-label below.
+      const numeral = node("span", "stg-num", row.ticked ? null : row.n);
+      if (row.ticked) attach(numeral, icon("circle-check", { size: 14 }));
       numeral.setAttribute("aria-label", row.stateLabel);
       // A DONE ROW IS A DOOR — Job, Resume and Fill; so is a row SKIPPED by a
       // claim, which is the base-as-is Resume row. `isReopenable` carries which and why. A REAL BUTTON rather than a click handler on the
@@ -2434,9 +2445,9 @@
    * `aria-hidden`, because the button it sits in already says the same thing in
    * `aria-expanded`, and a reader announcing both would announce it twice. */
   function caret(open) {
-    const mark = node("span", "stg-caret", open ? "▾" : "▸");
+    const mark = node("span", "stg-caret");
     mark.setAttribute("aria-hidden", "true");
-    return mark;
+    return attach(mark, icon(open ? "chevron-down" : "chevron-right", { size: 14 }));
   }
 
   /** Rebuild the rail without losing the user's place in it.
@@ -2586,6 +2597,9 @@
     const note = region("note");
     note.textContent = said?.text ?? "";
     note.className = said?.error ? "note error" : "note";
+    // The warning icon is decoration in front of the words: the live text is the words alone, so a
+    // screen reader hears exactly the sentence.
+    if (said?.warning) note.prepend(icon("triangle-alert", { size: 14 }));
 
     // THE MARK-APPLIED NUDGE IS THIS CONTROL. The card rendered a prompt under
     // its strip that appeared and disappeared; design §Footer replaced it with

@@ -93,14 +93,16 @@
     if (!done) return;
     const { token, out } = done;
     // The warning rides whichever sentence follows it.
-    const warning = out.health_warning ? `⚠ ${out.health_warning} ` : "";
+    // Words only: the note draws its own alert icon when `warning` is set, outside the live text.
+    const warning = out.health_warning ? `${out.health_warning} ` : "";
+    const warned = Boolean(out.health_warning);
     if (out.nothing_to_tailor) {
       // A 200 with nothing done: no gap this profile is allowed to resolve.
       // The session is left open server-side for a custom pass, which is what
       // "open it in Maestro CS" means here — and no application was created,
       // so nothing about the store moves.
       store.write({ note: { text: `${warning}Quick tailor has nothing to change for `
-        + "this job. Use your base resume as is, or tailor it in Maestro CS." } });
+        + "this job. Use your base resume as is, or tailor it in Maestro CS.", warning: warned } });
       store.render();
       return;
     }
@@ -117,9 +119,9 @@
       note: pdfReady
         ? { text: applied
           ? `${warning}Tailored. ${store.build.plural(applied, "change")} applied.`
-          : `${warning}Tailored.` }
+          : `${warning}Tailored.`, warning: warned }
         : { text: `${warning}Tailored, but couldn't create the PDF. Select `
-          + "Create PDF to try again.", error: true },
+          + "Create PDF to try again.", error: true, warning: warned },
     });
     store.render();
     // WRITTEN DOWN NOW, on the failure path as much as the success one:

@@ -81,23 +81,28 @@
     return seg;
   }
 
-  /** One progress row: a state mark, what it is about, and the count.
+  /** One progress row: a state mark with its word, what it is about, and the count.
    *
-   * The mark is an emoji and therefore reaches nobody using a screen reader on
-   * its own, so it carries the state IN WORDS — the rail's numeral does exactly
-   * this, for exactly this reason.
+   * The mark is an icon (or the attention dot) and the state is ALSO a visible
+   * word beside it, so neither colour nor shape carries the meaning alone and
+   * the span needs no `aria-label` of its own: the word is its name.
    */
-  function progressRow({ build }, [mark, state], name, detail) {
+  function progressRow({ build }, state, name, detail) {
     const row = build.node("div", "prog");
-    const st = build.node("span", "st", mark);
-    st.setAttribute("aria-label", state);
+    const st = build.node("span", `st ${state.tone}`);
+    // The attention dot is a plain span (CSS draws it); the other two states are Lucide icons.
+    const mark = state.icon ? build.icon(state.icon, { size: 14 }) : build.node("span", "dot");
+    if (!state.icon) mark.setAttribute("aria-hidden", "true");
+    build.attach(st, mark, build.node("span", null, state.word));
     return build.attach(row, st, build.node("span", null, name),
                         build.node("span", "n", detail));
   }
 
-  const DONE = ["✅", "done"];
-  const OPEN = ["🟡", "needs you"];
-  const SKIPPED = ["⏸", "skipped"];
+  // done = the register's circle-check; needs you = the dot and NOT an alert icon, because attention means
+  // "you act" only; skipped = circle-minus, "nothing happened here".
+  const DONE = { icon: "circle-check", word: "Done", tone: "done" };
+  const OPEN = { icon: null, word: "Needs you", tone: "open" };
+  const SKIPPED = { icon: "circle-minus", word: "Skipped", tone: "skipped" };
 
   /** What the rule pass did, from `reconcileFill`'s own counts.
    *

@@ -143,7 +143,9 @@ from tests.extension_panel_harness import (
     _armed_entry,
     _by_class,
     _gets,
+    _icons,
     _load,
+    _numeral,
     _PANEL_FAKES_JS,
     _panel_script,
     _rail_rows,
@@ -870,10 +872,13 @@ def test_the_header_link_points_at_the_web_app_and_never_at_nothing(booted):
     [link] = _by_class(booted["opened"]["identity"], "linkish")
     # No job and no application yet, so the link can only offer the app itself.
     assert link["href"] == APP_URL
-    assert link["text"] == "Open in Maestro CS ↗"
-    # The accessible name says the destination in full. Beside a job title this
-    # matters more than it did beside the deleted wordmark.
-    assert link["attrs"]["aria-label"] == "Open in Maestro CS"
+    assert _text(link) == "Open in Maestro CS"
+    # The leaves-this-surface mark is an icon, never a text arrow.
+    assert _icons(link) == ["external-link"]
+    # The accessible name says the destination in full, and that it opens a new
+    # tab. Beside a job title this matters more than it did beside the deleted
+    # wordmark.
+    assert link["attrs"]["aria-label"] == "Open in Maestro CS (opens in a new tab)"
 
 
 def test_the_panel_says_its_own_name_nowhere_because_chrome_already_does(booted):
@@ -1672,12 +1677,14 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     # line only Refresh shares.
     [link] = _by_class(out["regions"]["identity"], "linkish")
     assert link["href"] == f"{APP_URL}/applications/app-1"
-    assert link["text"] == "Open application ↗"
+    assert _text(link) == "Open application"
+    assert _icons(link) == ["external-link"]
     # The visible label is short; the accessible name is not allowed to be, and
     # this is the state where it does the work. Beside a job title and a
     # company, "Open application" alone reads as the POSTING'S apply page —
     # the one destination this link never has.
-    assert link["attrs"]["aria-label"] == "Open this application in Maestro CS"
+    assert link["attrs"]["aria-label"] == (
+        "Open this application in Maestro CS (opens in a new tab)")
     # ITS OWN LINE, and this is the assertion that keeps it off `row1`. Beside
     # the chip was the first home and a measured mistake: `.who` and a nowrap
     # link share one axis there, so at 400px — a NORMAL side-panel width — the
@@ -2409,8 +2416,8 @@ def test_reopening_shows_that_stages_body_without_moving_the_rail(revisited):
         None, None, "step", None]
     # …and the tick did not move either. Reopening is not rewinding: nothing
     # about the application changed because the user looked at a step again.
-    assert [_by_class(row, "stg-num")[0]["text"] for row in rail_rows] == [
-        "✓", "✓", "3", "4"]
+    assert [_numeral(row) for row in rail_rows] == [
+        "circle-check", "circle-check", "3", "4"]
 
 
 def test_pressing_an_open_header_again_closes_it(revisited):
@@ -2456,15 +2463,16 @@ def test_the_reopen_control_is_a_real_button_that_names_what_it_opened(revisited
     assert "aria-controls" not in closed["attrs"]
     # The row still reads as the row: the numeral, its state in words, and the
     # name are inside the button rather than replaced by it.
-    assert _text(button).startswith("✓ Job")
+    assert _icons(_by_class(button, "stg-num")[0]) == ["circle-check"]
+    assert _text(button).startswith("Job")
     assert _by_class(button, "stg-num")[0]["attrs"]["aria-label"] == "done"
     # And the state is VISIBLE too, because `aria-expanded` reaches nobody
     # looking at the screen: a done row that opens looks exactly like one that
     # does not until a mark says so, and "hover to find out" is not something a
     # keyboard can do. Hidden from the reader, which has the attribute — the
     # better version of the same sentence.
-    assert _by_class(button, "stg-caret")[0]["text"] == "▾"
-    assert _by_class(closed, "stg-caret")[0]["text"] == "▸"
+    assert _icons(_by_class(button, "stg-caret")[0]) == ["chevron-down"]
+    assert _icons(_by_class(closed, "stg-caret")[0]) == ["chevron-right"]
     assert _by_class(button, "stg-caret")[0]["attrs"]["aria-hidden"] == "true"
 
 
@@ -3087,7 +3095,7 @@ def test_refresh_is_disabled_while_a_fill_runs_and_never_cancels_it(tmp_path):
     # …and its report lands, which a bumped generation would have discarded.
     [note] = _by_class(out["finished"]["foot"], "note")
     assert note["text"] == "Fill finished. Review before you submit."
-    assert _rows(_rail_rows({"regions": out["finished"]}))["fill"]["numeral"] == "✓"
+    assert _rows(_rail_rows({"regions": out["finished"]}))["fill"]["numeral"] == "circle-check"
     assert not _refresh_button(out["finished"]["identity"])["disabled"]
 
 

@@ -42,6 +42,7 @@ from tests.extension_panel_harness import (
     SETTINGS_REPLY,
     _armed_entry,
     _by_class,
+    _icons,
     _PANEL_FAKES_JS,
     _posts,
     _rail_rows,
@@ -222,10 +223,10 @@ def test_the_evidence_line_is_what_the_application_has_to_show_for_itself(drafte
     where it attaches the same file.
     """
     [line] = _by_class(drafted["loaded"]["rail"], "evi")
-    assert _text(line) == "📎 tailored-resume.pdf ready"
-    # The paperclip is decoration and says so: an emoji reaches nobody using a
-    # screen reader, so the text beside it has to carry the line on its own —
-    # and it does.
+    assert _text(line) == "tailored-resume.pdf ready"
+    # The paperclip is an icon, and decoration, and says so: the text beside it
+    # has to carry the line on its own for a screen reader — and it does.
+    assert _icons(line) == ["paperclip"]
     assert line["children"][0]["attrs"]["aria-hidden"] == "true"
 
 
@@ -241,7 +242,8 @@ def test_an_applied_application_carries_the_day_it_went_out(tmp_path):
     """
     out = _track(tmp_path, detail=APPLIED_DETAIL)
     [line] = _by_class(out["loaded"]["rail"], "evi")
-    assert _text(line) == f"📎 tailored-resume.pdf ready · applied {AUG_18}"
+    assert _text(line) == f"tailored-resume.pdf ready · applied {AUG_18}"
+    assert _icons(line) == ["paperclip"]
     assert "Marked applied" in _text(_track_body(out["loaded"]))
 
 
@@ -389,8 +391,9 @@ def test_the_journeys_end_offers_no_footer_primary_at_all(drafted, tmp_path):
     footer is not empty: the status segment is its control.
     """
     assert _by_class(drafted["loaded"]["foot"], "cta") == []
-    assert _by_class(drafted["loaded"]["identity"], "linkish")[0]["text"] == (
-        "Open application ↗")
+    [link] = _by_class(drafted["loaded"]["identity"], "linkish")
+    assert _text(link) == "Open application"
+    assert _icons(link) == ["external-link"]
     applied = _track(tmp_path, detail=APPLIED_DETAIL)
     assert _by_class(applied["loaded"]["foot"], "cta") == []
     assert len(_by_class(applied["loaded"]["foot"], "status-seg")) == 1
@@ -419,8 +422,9 @@ def test_the_track_this_state_is_not_contradicted_by_the_footer(tmp_path):
     assert "not tracked yet" in _text(_track_body(out["loaded"]))
     assert _by_class(out["loaded"]["foot"], "cta") == []
     assert out["statuses"] == []
-    assert _by_class(out["loaded"]["identity"], "linkish")[0]["text"] == (
-        "Open in Maestro CS ↗")
+    [link] = _by_class(out["loaded"]["identity"], "linkish")
+    assert _text(link) == "Open in Maestro CS"
+    assert _icons(link) == ["external-link"]
 
 
 def test_marking_it_applied_ends_the_rail(tmp_path):
@@ -437,7 +441,7 @@ def test_marking_it_applied_ends_the_rail(tmp_path):
     settled = _track(tmp_path, press="Applied")["settled"]
     rows = _rows(_rail_rows({"regions": settled}))
     assert [rows[key]["numeral"] for key in
-            ("job", "resume", "fill", "track")] == ["✓"] * 4
+            ("job", "resume", "fill", "track")] == ["circle-check"] * 4
     assert rows["track"]["state"] == "active"
 
 
@@ -475,7 +479,7 @@ def test_marking_it_applied_is_one_patch_and_the_whole_surface_moves(tmp_path):
     # answers with the whole record, `applied_at` included, and it is folded
     # through the same `evidenceFrom` the GET is.
     assert _text(_by_class(settled["rail"], "evi")[0]) == (
-        f"📎 tailored-resume.pdf ready · applied {AUG_18}")
+        f"tailored-resume.pdf ready · applied {AUG_18}")
 
 
 def test_the_store_carries_the_servers_word_and_never_the_one_we_sent(tmp_path):
@@ -735,7 +739,7 @@ def test_armed_filled_then_tracked_stays_at_track(tmp_path):
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["track"]["state"] == "active"
     assert rows["resume"]["state"] == "skipped"
-    assert rows["resume"]["numeral"] != "✓"
+    assert rows["resume"]["numeral"] != "circle-check"
     assert rows["fill"]["state"] == "done"
     # The skipped row is a DOOR: the application still has no PDF, and Create
     # PDF and Tailor in Maestro CS live in its body. Reopening ticks nothing.

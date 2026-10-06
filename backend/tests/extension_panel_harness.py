@@ -31,8 +31,8 @@ WHAT IS IN HERE, in four groups:
   — and because the shared node harness's own fake DOM models a FORM
   (`querySelector` answers `[data-rt-qid]` and little else) rather than a tree
   you can append regions to.
-- THE READERS. `_walk`/`_by_class`/`_text`/`_jump_label`/`_rail_rows`/`_rows`
-  recover what was painted from that tree. They assert nothing; a test that
+- THE READERS. `_walk`/`_by_class`/`_text`/`_icons`/`_jump_label`/`_rail_rows`/`_rows`
+  recover (`_text` reads an svg as "", `_icons` names the icons drawn) what was painted from that tree. They assert nothing; a test that
   wants a claim makes it.
 - THE SPEC STARTERS. `SETTINGS_REPLY`, the two job rows, the base-resume
   library and the score rows that every stage's driver builds its `api` map
@@ -453,9 +453,18 @@ class FakeNode {
    * the panel made. A test that wants the guarantee asserts on this rather than
    * on a scroll position the fake would have had to invent.
    */
+  /** Assigning text EMPTIES the children, as in a browser: the footer's note is
+   * rewritten in place on every render and its warning icon must not pile up. */
+  get textContent() { return this._text; }
+  set textContent(value) { this._text = value; this.children = []; }
   focus(options) { ACTIVE = this; this.focusOptions = options ?? null; }
   get style() { return { setProperty: (n, v) => { this.props[n] = String(v); } }; }
   append(...kids) { for (const kid of kids) this.children.push(kid); }
+  appendChild(kid) { this.children.push(kid); return kid; }
+  /** The note's warning icon goes BEFORE its text, which a browser keeps as a
+   * text node; here the text is `textContent` and the children are only the
+   * elements, so putting one first is putting it at the front of the list. */
+  prepend(...kids) { this.children.unshift(...kids); }
   /** …and the SCROLL GOES WITH THEM, which is the one browser behaviour here
    * that had to be modelled rather than left out. Emptying an element collapses
    * its scroll height, so the browser puts `scrollTop` back to 0 and the new
@@ -537,6 +546,10 @@ global.document = {
     return null;
   },
   createElement: (tag) => new FakeNode(tag),
+  // An svg builder needs this and nothing else of the namespace: the node
+  // records its tag, attributes and children like an HTML one. The namespace
+  // itself is kept so a test can tell an svg from a lookalike html tag.
+  createElementNS: (ns, tag) => Object.assign(new FakeNode(tag), { namespace: ns }),
   // A live read, like the real one: the panel captures it BEFORE a rebuild and
   // the node it names is thrown away by that rebuild, which is the whole
   // reason the restore has to travel as an id and not as a reference.
@@ -559,6 +572,7 @@ global.document = {
 const snapshot = (node) => ({
   uid: node.uid,
   tag: node.tagName, class: node.className, text: node.textContent,
+  namespace: node.namespace ?? null,
   attrs: node.attrs, href: node.href ?? null, props: node.props,
   id: node.id ?? null, value: node.value ?? null, disabled: node.disabled === true,
   selected: node.selected === true,
@@ -638,8 +652,27 @@ def _by_class(node, cls):
 
 
 def _text(node):
+    # An svg reads as "" — a browser's `textContent` over an icon holds no text,
+    # and the shapes inside it are not words either (Task 28).
+    if node["namespace"] == SVG_NS:
+        return ""
     parts = [node["text"], *(_text(kid) for kid in node["children"])]
     return " ".join(part for part in parts if part).strip()
+
+
+SVG_NS = "http://www.w3.org/2000/svg"
+
+
+def _icons(node):
+    """The `data-icon` names drawn in this subtree, in document order.
+
+    `ns.icon` sets the attribute, and `_text` cannot see an svg, so this is how
+    a test asserts that a glyph is there. Names only, never the shapes: which
+    drawing a name means is Lucide's, and `test_extension_panel_icons.py` pins
+    the set.
+    """
+    own = [node["attrs"]["data-icon"]] if "data-icon" in node["attrs"] else []
+    return own + [name for kid in node["children"] for name in _icons(kid)]
 
 
 def _jump_label(item):
@@ -689,6 +722,14 @@ def _reply(data):
     return {"ok": True, "data": data}
 
 
+def _numeral(row):
+    """A rail row's numeral as painted: the step number, or the NAME of the icon
+    that replaced it ("circle-check" once the step is ticked, Task 28) — the
+    same fact in its new spelling, since an svg has no text to read."""
+    num = _by_class(row, "stg-num")[0]
+    return (_icons(num) or [None])[0] or num["text"]
+
+
 def _rail_rows(out):
     """The rail as `railModel` rows, recovered from what was rendered."""
     return [
@@ -699,7 +740,7 @@ def _rail_rows(out):
          # grew `ticked`: the terminal row is `active` AND ticked, so a reader
          # that only knew the class could not tell a finished rail from one
          # that had merely stopped on its last step.
-         "numeral": _by_class(row, "stg-num")[0]["text"],
+         "numeral": _numeral(row),
          "summary": _by_class(row, "stg-sum")[0]["text"]}
         for key, row in zip(["job", "resume", "fill", "track"],
                             _by_class(out["regions"]["rail"], "stg"), strict=True)
