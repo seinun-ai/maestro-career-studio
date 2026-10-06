@@ -145,6 +145,26 @@ def test_unworked_shared_jobs_become_replicas_without_an_overwrite_flag(world, h
     assert world.remote.get(models.Job, shared).owner_machine == world.machine_id("home")
 
 
+def test_a_repair_ignores_progress_on_replicas_of_laptop_jobs(world, home, clock):
+    shared = uuid.uuid4()
+    with world.building("home"):
+        simple_job(world.home, job_id=shared)
+    with world.building("remote"):
+        simple_job(world.remote, job_id=shared)
+    assert first(world)["ok"]
+    assert world.remote.get(models.Job, shared).owner_machine == world.machine_id("home")
+    with world.building("remote"):
+        world.remote.add(models.Application(job_id=shared, base_resume="base", status="draft"))
+        world.remote.commit()
+        status.update_state(world.remote, paired=False)
+        world.remote.commit()
+
+    again = first(world)
+
+    assert again["ok"], again
+    assert "Shared jobs" not in json.dumps(again)
+
+
 def test_pairing_skips_a_shared_job_that_vanished_before_the_commit(world, home, clock,
                                                                    monkeypatch):
     shared = uuid.uuid4()

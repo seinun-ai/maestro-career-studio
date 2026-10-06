@@ -50,21 +50,29 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
 4. **Add one restricted line** to the laptop's `~/.ssh/authorized_keys`, using
    the public half:
    ```
-   restrict,port-forwarding,permitopen="127.0.0.1:8001" ssh-ed25519 AAAA… maestro-bot
+   restrict,port-forwarding,permitopen="127.0.0.1:8001",command="/usr/bin/false" ssh-ed25519 AAAA… maestro-bot
    ```
-   This key can open one forward to Maestro's port and do nothing else. To also
-   refuse a shell, put `command="/usr/bin/false"` in front of `restrict`. Port
-   forwarding keeps working.
-5. **Make the sync key**, once, from your Maestro folder:
+   Keep `command="/usr/bin/false"`: `restrict` alone still lets the key run a
+   shell. With it, this key can open one forward to Maestro's port and do
+   nothing else, and port forwarding still works.
+5. **Make the sync key**, once, from your Maestro folder. On a Docker laptop:
    ```bash
    docker compose exec backend python -m scripts.sync_key create
    docker compose exec backend python -m scripts.sync_key show
    ```
+   On a native laptop, run these from the repository's `backend/` folder, with
+   the venv's Python and the key path set:
+   ```bash
+   SYNC_KEY_FILE="$MAESTRO_HOME/sync-key" "$MAESTRO_HOME/venv/bin/python" -m scripts.sync_key create
+   SYNC_KEY_FILE="$MAESTRO_HOME/sync-key" "$MAESTRO_HOME/venv/bin/python" -m scripts.sync_key show
+   ```
    `create` prints only the file's path. `show` prints the key: copy it into
    your vault from your own terminal, once. Never paste it into a chat or a
-   ticket. Maestro reads the key file on each request, so the laptop needs no
-   restart. The laptop is now the home copy. Its sync endpoints answer only
-   requests that carry this key.
+   ticket. Maestro reads the key file on each request, so a running laptop
+   needs no restart. The one exception is a native backend started before
+   `start.sh` always set `SYNC_KEY_FILE`: restart that one once
+   (`stop.sh --no-pause && start.sh`). The laptop is now the home copy. Its
+   sync endpoints answer only requests that carry this key.
 
 ## 2. The always-on copy
 
@@ -85,7 +93,7 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
    tunnel (`127.0.0.1`, `localhost` or `::1`). Maestro refuses any other address,
    and it ignores `HTTP_PROXY` and the like for this connection, because the key
    and your profile travel in it.
-4. **Restart,** because the key file is read at start:
+4. **Restart,** because the backend reads `maestro.env` at start:
    ```bash
    "$REPO/backend/scripts/native/stop.sh" --no-pause && "$REPO/backend/scripts/native/start.sh"
    ```
@@ -97,7 +105,16 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
        IdentityFile ~/.ssh/maestro-sync
        BatchMode yes
    ```
-6. **Open the tunnel.** It makes the VM's `127.0.0.1:8101` reach the laptop's
+6. **Trust the laptop's host key, once.** `BatchMode yes` refuses to ask, so
+   the first tunnel would fail with "Host key verification failed." Accept the
+   key once, by hand:
+   ```bash
+   ssh -o StrictHostKeyChecking=accept-new laptop true
+   ```
+   When you can, compare the fingerprint it shows with the one on the laptop:
+   `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. The command ends at once with
+   status 1, because the key's forced command is `/usr/bin/false`. That is fine.
+7. **Open the tunnel.** It makes the VM's `127.0.0.1:8101` reach the laptop's
    `127.0.0.1:8001`:
    ```bash
    ssh -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
@@ -106,9 +123,14 @@ The laptop needs Docker and a running Maestro. The VM needs a native install.
    It drops when the laptop sleeps. The watchdog below opens it again.
    To check it, run `curl -s http://127.0.0.1:8101/health` on the VM.
 
-To see where Maestro looks for the key on the VM, run
-`SYNC_KEY_FILE="$MAESTRO_HOME/sync-key" python -m scripts.sync_key path` from `backend/`
-(with the venv's Python).
+To check that sync is on at the laptop, run this on the VM with the tunnel up:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8101/api/sync/hello
+```
+
+`401` means the laptop has a key and wants it. `404` means the laptop has no
+key yet (step 1.5).
 
 ## 3. Cron lines
 
@@ -120,8 +142,8 @@ MAESTRO_HOME=/home/agent/maestro
 # keep the backend up (from native-install.md)
 */5 * * * * /home/agent/maestro-career-studio/backend/scripts/native/health.sh >/dev/null 2>&1 || /home/agent/maestro-career-studio/backend/scripts/native/start.sh --watchdog >/dev/null 2>&1
 @reboot /home/agent/maestro-career-studio/backend/scripts/native/start.sh --watchdog >/dev/null 2>&1
-# keep the tunnel up; the [1] stops pgrep from matching this very line
-*/5 * * * * pgrep -f '[1]27.0.0.1:8101:127.0.0.1:8001' >/dev/null || nohup ssh -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -L 127.0.0.1:8101:127.0.0.1:8001 laptop >/dev/null 2>&1 &
+# keep the tunnel up; the ^ anchor stops pgrep from matching cron's own "sh -c" line
+*/5 * * * * pgrep -f '^ssh .*127.0.0.1:8101:127.0.0.1:8001' >/dev/null || nohup ssh -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -L 127.0.0.1:8101:127.0.0.1:8001 laptop >/dev/null 2>&1 &
 @reboot nohup ssh -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -L 127.0.0.1:8101:127.0.0.1:8001 laptop >/dev/null 2>&1 &
 # one sync round every five minutes
 */5 * * * * /home/agent/maestro-career-studio/backend/scripts/native/sync.sh >/dev/null 2>&1
@@ -129,6 +151,11 @@ MAESTRO_HOME=/home/agent/maestro
 
 When the laptop does not answer, Maestro waits longer between tries: 5, 10, 20,
 then 30 minutes. The first success resets it. A cron line never forces a round.
+
+To run a round by hand without waiting out a backoff, run
+`"$REPO/backend/scripts/native/sync.sh" --now`. It forces the round without
+pairing. It still honours the 30-second pause after another round: inside it,
+the answer is "Synced moments ago."
 
 ## 4. First pairing
 
@@ -203,9 +230,10 @@ no key, it says "Sync isn't set up."
 
 - **0**: the round worked, or it was skipped for a reason that needs nobody:
   a backoff wait, a busy laptop, an unreachable laptop, or maintenance
-  (`stop.sh` pauses it).
+  (`stop.sh` pauses it). A round that did not run prints "Sync didn't run: …
+  It will try again."
 - **1**: a person has to act, or the local backend is down or not set up.
-  The message says which.
+  The message says which, and starts with "Sync failed:" when a person must act.
 
 It never prints the key. Cron discards output in the lines above. Run
 `sync.sh` by hand to read the message.
@@ -244,8 +272,8 @@ Either machine can be rebuilt from its backup plus one sync round.
   half-done. Update the laptop with `scripts/update.sh`. Update the VM with
   `stop.sh`, `git pull` to the same tag, `setup.sh`, then `start.sh`.
 - **"401: Sync key doesn't match."** The VM's key file differs from the laptop's.
-  Copy the key from the vault again, then restart the VM's backend. Do not
-  create a new key on the VM.
+  Copy the key from the vault again. Maestro reads the key file on each request,
+  so the VM's backend needs no restart. Do not create a new key on the VM.
 - **"404: Sync isn't set up on your laptop."** The laptop has no key file. Run
   `sync_key create` there.
 - **`sync.sh` says "This copy is not set up as the always-on copy".** The VM
@@ -253,7 +281,8 @@ Either machine can be rebuilt from its backup plus one sync round.
 - **"The laptop's address must be this machine's own tunnel (127.0.0.1)."**
   `SYNC_REMOTE_URL` names another host. Set it to the tunnel's address (step 2.3).
 - **"Laptop unreachable."** The tunnel is down, or the laptop is asleep or off,
-  or Docker is stopped. This is not an error: Maestro backs off and retries.
+  or Docker is stopped. `sync.sh` prints "Sync didn't run: Laptop unreachable. It will try again." This
+  is not an error: Maestro backs off and retries.
   Check the tunnel with `curl -s http://127.0.0.1:8101/health`.
 - **A laptop asleep for days.** The bot keeps hunting and applying to its own
   jobs. Mail updates and your queue and skip choices wait as requests. The

@@ -812,6 +812,13 @@ def test_sync_posts_one_plain_round_to_the_loopback_backend(native_home):
     assert_sync_safe(result, ctx)
 
 
+def test_sync_now_forces_a_round_without_pairing(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    assert run_sync(ctx, "--now").returncode == 0
+    assert posted_round(ctx)["body"] == {"force": True, "pair": False, "accept_profile_overwrite": False}
+
+
 def test_sync_passes_pairing_through_and_forces_past_the_backoff(native_home):
     ctx = native_home
     setup_home(ctx)
@@ -822,12 +829,12 @@ def test_sync_passes_pairing_through_and_forces_past_the_backoff(native_home):
 
 
 @pytest.mark.parametrize("args", [("--bogus",), ("--accept-profile-overwrite",), ("--pair", "extra"),
-                                  ("--pair", "--bogus"), ("pair",)])
+                                  ("--pair", "--bogus"), ("pair",), ("--now", "--accept-profile-overwrite")])
 def test_sync_rejects_unknown_flags_with_usage_and_posts_nothing(native_home, args):
     ctx = native_home
     setup_home(ctx)
     result = run_sync(ctx, *args)
-    assert result.returncode == 1 and "Usage: sync.sh [--pair [--accept-profile-overwrite]]" in result.stderr
+    assert result.returncode == 1 and "Usage: sync.sh [--now | --pair [--accept-profile-overwrite]]" in result.stderr
     assert not (ctx.records / "round.json").exists()
 
 
@@ -858,17 +865,17 @@ BACKOFF = {"ok": False, "outcome": "transient",
     (409, {"outcome": "transient", "detail": "A sync is already running."},
      0, "A sync is already running."),
     (200, {"ok": False, "outcome": "transient", "error": "502: Your laptop didn't answer.",
-           "steps": {"push": {"sent": 0}}}, 0, "502: Your laptop didn't answer."),
+           "steps": {"push": {"sent": 0}}}, 0, "Sync didn't run: 502: Your laptop didn't answer."),
     (200, {"ok": False, "outcome": "transient", "error": "Laptop unreachable."},
-     0, "Laptop unreachable."),
+     0, "Sync didn't run: Laptop unreachable. It will try again."),
     (200, {"ok": False, "outcome": "transient", "error": "Your laptop couldn't finish that sync request."},
-     0, "Your laptop couldn't finish that sync request."),
+     0, "Sync didn't run: Your laptop couldn't finish that sync request."),
     (200, {"ok": False, "outcome": "transient", "skipped": "Synced moments ago."},
      0, "Synced moments ago."),
     (200, {"ok": False, "outcome": "transient", "error": "A sync is already running on your laptop."},
-     0, "A sync is already running on your laptop."),
+     0, "Sync didn't run: A sync is already running on your laptop."),
     (200, {"ok": False, "outcome": "needs_person", "error": "401: Sync key doesn't match."},
-     1, "401: Sync key doesn't match."),
+     1, "Sync failed: 401: Sync key doesn't match."),
     (200, {"ok": False, "outcome": "needs_person",
            "skipped": "Update Maestro on both machines to the same version."},
      1, "Update Maestro on both machines to the same version."),
@@ -959,16 +966,18 @@ def exported_sync_key_file(ctx):
     return result.stdout
 
 
-def test_common_exports_the_key_file_only_when_one_exists(native_home):
+def test_common_always_exports_the_key_file_path(native_home):
     ctx = native_home
     setup_home(ctx)
-    assert exported_sync_key_file(ctx) == "unset"
+    expected = str(ctx.home.resolve() / "sync-key")
+    # a key created after start must be found without a restart, so the path is set before it exists
     assert not (ctx.home / "sync-key").exists()  # setup writes no key
+    assert exported_sync_key_file(ctx) == expected
     (ctx.home / "sync-key").write_text(SYNC_KEY + "\n")
-    assert exported_sync_key_file(ctx) == str(ctx.home.resolve() / "sync-key")
+    assert exported_sync_key_file(ctx) == expected
     (ctx.home / "sync-key").unlink()
     (ctx.home / "sync-key").symlink_to(ctx.home / "elsewhere")
-    assert exported_sync_key_file(ctx) == "unset"
+    assert exported_sync_key_file(ctx) == expected  # the backend refuses a symlink and treats it as off
 
 
 def test_env_example_has_the_commented_remote_url_and_key_file_note():

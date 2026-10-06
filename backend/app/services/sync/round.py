@@ -294,6 +294,13 @@ def _affected_applications(db: Session, slugs: list[str]) -> list[str]:
     return [application_id.hex for application_id in db.scalars(query)]
 
 
+def _progressed_shared(ctx: _Ctx) -> list[str]:
+    """Shared jobs with work on this copy, except replicas it already holds of the laptop's jobs."""
+    replicas = set(ctx.db.scalars(select(Job.id).where(Job.owner_machine == ctx.home_id)))
+    return [job_id.hex for job_id in ctx.shared_jobs
+            if job_id not in replicas and _progressed(ctx.db, job_id)]
+
+
 def _pairing_refusal(ctx: _Ctx, accept_profile_overwrite: bool) -> str | None:
     """Disclose only tables and keys, lost base slugs, affected applications and shared job ids.
     Accepting permits replacement, never merging. Cache the compared home snapshot for apply."""
@@ -303,7 +310,7 @@ def _pairing_refusal(ctx: _Ctx, accept_profile_overwrite: bool) -> str | None:
         return None
     remote = profile_bundle.export_profile(ctx.db)
     differences = _profile_differences(remote, ctx.pairing_profile)
-    progressed = [job_id.hex for job_id in ctx.shared_jobs if _progressed(ctx.db, job_id)]
+    progressed = _progressed_shared(ctx)
     if not differences and not progressed:
         return None
     details = [f"{table}: {', '.join(keys)}" for table, keys in differences.items()]

@@ -129,7 +129,7 @@ sides of moves. Deleted jobs leave tombstones; Core writers touch their subtree 
 inv-flush-guard). Resume JSON/rendered files stay on disk (`base_resumes` row + file required); job-site login: `settings/secrets/` (§6).
 
 **Sync** is optional, on only while a key file exists (`docs/sync-setup.md`): the laptop owns the profile, each job has one owner
-(docs/entities/job.md), nothing merges (inv-one-writer-ownership). The always-on copy drives: `sync.sh` (cron) or MCP `sync_now` asks its
+(docs/entities/job.md), nothing merges (inv-one-writer-ownership). The always-on copy drives: `sync.sh` (cron; `--now` forces a round) or MCP `sync_now` asks its
 backend for a round (`POST /api/sync/round`, `services/sync/round.py`), which calls the laptop's `/api/sync/*` through an SSH forward
 (inv-sync-channel), one transaction per step; failures back off 5 to 30 minutes. Changes to the other copy's job wait as `sync_requests`;
 a laptop job is offered only when queued `accepted` on the laptop with full automation on (`offers.mark_when_queued`); switching it off withdraws offers.

@@ -4,6 +4,7 @@
 # while stop.sh has paused maintenance; exits 1 when a person must act or the local backend
 # is unreachable, unreadable or not set up (404). Never prints the key.
 #   sync.sh                                  a plain round
+#   sync.sh --now                            a round now, past a backoff (not past the 30 s floor)
 #   sync.sh --pair [--accept-profile-overwrite]   the first round, at the keyboard
 set +x
 set -euo pipefail
@@ -11,16 +12,18 @@ umask 077
 # shellcheck source=common.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
 
-usage='Usage: sync.sh [--pair [--accept-profile-overwrite]]'
-pair=false accept=false
+usage='Usage: sync.sh [--now | --pair [--accept-profile-overwrite]]'
+pair=false accept=false now=false
 for arg in "$@"; do
     case "$arg" in
+        --now) now=true ;;
         --pair) pair=true ;;
         --accept-profile-overwrite) accept=true ;;
         *) native_error "$usage" ;;
     esac
 done
 [[ "$accept" == false || "$pair" == true ]] || native_error "$usage"
+[[ "$now" == false || "$pair" == false ]] || native_error "$usage"
 
 native_private_home
 if paused_since="$(native_paused_since)"; then
@@ -29,8 +32,10 @@ if paused_since="$(native_paused_since)"; then
 fi
 native_load_env
 [[ -x "$NATIVE_PYTHON" ]] || native_error 'Native venv is missing; run setup.sh.'
-# A person pairing wants the round now, even inside a backoff window; cron never forces.
-body="$(printf '{"force": %s, "pair": %s, "accept_profile_overwrite": %s}' "$pair" "$pair" "$accept")"
+# A person pairing or asking for --now wants the round now, even inside a backoff window; cron never forces.
+force="$pair"
+[[ "$now" == false ]] || force=true
+body="$(printf '{"force": %s, "pair": %s, "accept_profile_overwrite": %s}' "$force" "$pair" "$accept")"
 reply="$(native_post /api/sync/round "$body")" \
     || native_error 'Native backend is not reachable; check start.sh and health.sh.'
 status="${reply%%$'\n'*}"
@@ -73,8 +78,11 @@ if outcome == "ok" and code == 0:
     raise SystemExit(0)
 if status == 200 and not isinstance(body.get("skipped"), str):
     print(summary)
-for field, prefix in (("skipped", "Skipped: "), ("error", "Sync failed: "), ("detail", "")):
+transient = outcome == "transient"
+for field, prefix in (("skipped", "Skipped: "),
+                      ("error", "Sync didn\x27t run: " if transient else "Sync failed: "), ("detail", "")):
     if isinstance(body.get(field), str):
-        finish(code, prefix + line(body[field]))
+        suffix = " It will try again." if transient and field == "error" else ""
+        finish(code, prefix + line(body[field]) + suffix)
 finish(code, "Sync deferred." if outcome == "transient" else "Sync failed.")
 ' "$status"

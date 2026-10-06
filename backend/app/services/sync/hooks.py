@@ -76,16 +76,16 @@ def owned_here(session: Session, job_id: uuid.UUID) -> bool:
         return (owner is None or owner == status.machine_id(session)) and handover != refused
 
 
-def _not_owned_message(session: Session, job_id: uuid.UUID) -> str:
+def _not_owned(session: Session, job_id: uuid.UUID) -> NotOwnedHere:
     with session.no_autoflush:
         owner, handover = _ownership(session, _job_of(session, job_id))
     if status.is_remote():
         if owner in (None, status.machine_id(session)) and handover == "returning":
-            return RETURNING_MESSAGE
-        return ON_LAPTOP_MESSAGE
-    if handover == "offered":
-        return OFFERED_MESSAGE
-    return WITH_BOT_MESSAGE
+            return NotOwnedHere(RETURNING_MESSAGE)
+        return NotOwnedHere(ON_LAPTOP_MESSAGE)
+    if handover == "offered":  # offered, not yet taken: still the laptop's job
+        return NotOwnedHere(OFFERED_MESSAGE, "laptop")
+    return NotOwnedHere(WITH_BOT_MESSAGE)
 
 
 def require_owned(session: Session, job_id: uuid.UUID) -> None:
@@ -95,7 +95,7 @@ def require_owned(session: Session, job_id: uuid.UUID) -> None:
     if _job_of(session, job_id) is None:
         raise NotOwnedHere(UNRESOLVED_MESSAGE)
     if not owned_here(session, job_id):
-        raise NotOwnedHere(_not_owned_message(session, job_id))
+        raise _not_owned(session, job_id)
 
 
 def require_profile_writable(session: Session) -> None:

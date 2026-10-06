@@ -49,10 +49,9 @@ native_export_env() {
     export ALLOWED_HOSTS=localhost,127.0.0.1
     export FASTEMBED_CACHE_PATH="$MAESTRO_HOME/fastembed_cache"
     unset TEST_DATABASE_URL
-    # Setup writes no key. Only a key the user placed here turns sync on; the path is never printed.
-    if [[ -f "$MAESTRO_HOME/sync-key" && ! -L "$MAESTRO_HOME/sync-key" ]]; then
-        export SYNC_KEY_FILE="$MAESTRO_HOME/sync-key"
-    fi
+    # Setup writes no key. The path is always exported, so a key created later is read without a
+    # restart; a missing key file (or a symlink) means sync is off. The path is never printed.
+    export SYNC_KEY_FILE="$MAESTRO_HOME/sync-key"
     NATIVE_PYTHON="$MAESTRO_HOME/venv/bin/python"
 }
 

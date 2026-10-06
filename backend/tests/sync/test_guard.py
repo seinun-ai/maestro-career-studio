@@ -768,7 +768,9 @@ def test_offered_job_message_points_at_keep_it_here(db_session, handover):
     if handover:
         assert str(error.value) == ("This job is on its way to your bot. "
                                     "Use Keep it here to keep working on it.")
+        assert error.value.owner == "laptop"  # still the laptop's job until the bot takes it
     else:
+        assert error.value.owner == "bot"
         assert str(error.value) == ("This job is with your bot; "
                                     "ask for it back with Work on it here.")
 
