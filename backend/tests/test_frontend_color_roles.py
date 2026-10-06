@@ -551,15 +551,14 @@ def test_fatal_gate_containers_use_the_destructive_token():
 
 @pytest.mark.parametrize("mode", list(_MODES))
 def test_text_on_a_fatal_gate_meets_aa(mode):
-    """The gate's container is destructive/5; on it sit the Blocker badge
-    (text-destructive on bg-destructive/10), the fix hint (muted) and body."""
+    """The gate's container is destructive/5; on it sit the Must fix badge
+    (on-error-container on error-container, as in FailedGate), the fix hint (muted) and body."""
     t = _MODES[mode]
     destructive = _rgb(t, "destructive")
     for surface in ("card", "background"):
         gate = _over(destructive, _rgb(t, surface), 0.05)
-        badge = _over(destructive, gate, 0.10)
         for name, fg, bg in (
-            ("badge", destructive, badge),
+            ("badge", _rgb(t, "on-error-container"), _rgb(t, "error-container")),
             ("muted", _rgb(t, "muted-foreground"), gate),
             ("body", _rgb(t, "foreground"), gate),
         ):
@@ -796,7 +795,7 @@ def test_a_done_setup_step_says_done_in_words():
 
 _ALPHA_FILL = re.compile(r"(?<![:\w-])(bg|border|ring)-(primary|destructive)/[\d\[]")
 # A ratchet, not a sweep (visual-language plan, Task 4): the count can only go down.
-_ALPHA_FILL_CEILING = 42
+_ALPHA_FILL_CEILING = 40
 
 
 def test_alpha_fills_of_primary_and_destructive_only_shrink():
@@ -825,12 +824,21 @@ def test_required_is_not_an_error():
 def test_selected_gap_controls_show_a_check():
     rc = _read("components/gap-analysis/resolution-controls.tsx")
     segment = rc.split("export function ActionSegment", 1)[1].split("export function Chip", 1)[0]
-    chip = rc.split("export function Chip", 1)[1]
+    chip = rc.split("export function Chip", 1)[1].split("const LOAD_ERROR_MESSAGE", 1)[0]
     for body in (segment, chip):
         assert "<Check" in body and "bg-secondary-container" in body
 
 
 def test_a_strong_match_is_quiet_with_a_check():
     page = _read("app/jobs/[id]/tailor/[sessionId]/page.tsx")
-    assert "bg-surface-container " in page and "CircleCheck" in page
+    assert "bg-surface-container " in page
+    block = page.split("{strongMatch && !gapsJson.coverage_warning", 1)[1].split("Strong match", 1)[0]
+    assert "CONCEPT_ICONS.done" in block and "text-success" in block
     assert "bg-success-container" not in page
+
+
+def test_the_best_match_card_carries_the_primary_ring():
+    """Card's edge is a ring, not a border: `border-primary` draws nothing there."""
+    panel = _read("components/ats-score-panel.tsx")
+    assert 'top && "ring-primary"' in panel
+    assert "border-primary" not in panel

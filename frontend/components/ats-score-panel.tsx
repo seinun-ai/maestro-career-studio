@@ -206,7 +206,7 @@ function AtsScoreCard({
     <Card
       className={cn(
         "animate-fade-rise",
-        top && "border-primary",
+        top && "ring-primary",
       )}
       style={{ animationDelay: `${Math.min(index, 8) * 50}ms` }}
     >

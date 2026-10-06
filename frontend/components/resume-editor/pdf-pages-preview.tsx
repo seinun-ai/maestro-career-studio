@@ -113,7 +113,7 @@ export function PdfPagesPreview({
           ))}
         </div>
         {data.render_error && (
-          <div className="bg-destructive/10 text-destructive flex items-start gap-2 rounded-corner-md px-3 py-2 text-body-small">
+          <div className="bg-error-container text-on-error-container flex items-start gap-2 rounded-corner-md px-3 py-2 text-body-small">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
             <span>
               This preview is out of date because the PDF couldn&apos;t be updated. Check your last change, then update the PDF.

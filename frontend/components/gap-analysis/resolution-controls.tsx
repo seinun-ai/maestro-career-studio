@@ -276,9 +276,9 @@ export function ActionSegment({
           aria-disabled={locked || undefined}
           onClick={locked ? undefined : () => onSelect(action)}
           className={cn(
-            "h-6 rounded-full px-2 text-label-medium transition-colors aria-disabled:opacity-50",
+            "inline-flex h-6 items-center gap-1 rounded-full px-2 text-label-medium transition-colors aria-disabled:opacity-50",
             value === action
-              ? "bg-secondary-container text-on-secondary-container inline-flex items-center gap-1"
+              ? "bg-secondary-container text-on-secondary-container"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

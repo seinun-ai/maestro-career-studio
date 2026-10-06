@@ -53,8 +53,12 @@ def _strip_comments(text: str) -> str:
 
 def _register_entries() -> dict[str, str]:
     text = _REGISTER.read_text()
-    body = text.split("export const CONCEPT_ICONS", 1)[1]
-    return dict(re.findall(r"^\s{2}(\w+):\s*(\w+),", body, re.M))
+    body = text.split("export const CONCEPT_ICONS", 1)[1].split("} as const", 1)[0]
+    body = re.sub(r"//[^\n]*", "", body)
+    entries = dict(re.findall(r"^\s+(\w+):\s*(\w+),", body, re.M))
+    keys = re.findall(r"^\s+\w+:", body, re.M)
+    assert len(entries) == len(keys), f"{len(keys)} entries in the register, {len(entries)} parsed"
+    return entries
 
 
 def test_no_banned_or_alias_icon_is_imported():

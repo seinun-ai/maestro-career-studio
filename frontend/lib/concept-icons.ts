@@ -14,6 +14,7 @@ import {
 export const CONCEPT_ICONS = {
   // Sections (the sidebar's icons win: they were learned first).
   jobs: Inbox,
+  // Bot means "agents" (D1): the Agent inbox and connected agents share it; never add a second Bot key.
   agentInbox: Bot,
   automations: Workflow,
   referrals: Handshake,
@@ -44,7 +45,8 @@ export const CONCEPT_ICONS = {
   warning: TriangleAlert,
   fails: CircleX,
   unknown: CircleHelp,
-  notListed: Minus,
+  // Minus: "nothing here / no change" (not listed, not stated, same, flat, not needed)
+  none: Minus,
   locked: Lock,
   scheduled: CalendarClock,
   increase: TrendingUp,
