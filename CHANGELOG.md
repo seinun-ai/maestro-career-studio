@@ -30,6 +30,20 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Added
 
+- **Run Maestro without Docker** on a small always-on Linux machine. Four
+  commands (`setup`, `start`, `stop`, `health`) install and run the backend
+  from one folder, with one loopback worker. No sync and no web app there
+  yet: a connected agent starts the MCP server on demand. See
+  `docs/native-install.md`.
+- **`/health/memory`** reports how much memory the backend is using now and at
+  its peak, so you can watch a small machine. `health.sh` prints it too.
+- **Lighter ATS scoring on small machines.** Set `EMBEDDINGS_OUT_OF_PROCESS=1`
+  and each score loads its language model in a short-lived helper, one at a
+  time, instead of keeping it in the backend. Scores are the same; backend
+  memory after scoring drops from about 410 MB to about 170 MB, and each score
+  takes under a second longer. The native `start` command turns it on; the
+  Docker install keeps it off.
+
 - **Full automation**, Off by default in Settings › Connected agents: your
   agent can submit queued jobs whose final review is clean without asking
   each time. The daily limit and Companies to skip still apply; anything to
