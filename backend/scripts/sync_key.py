@@ -1,8 +1,11 @@
 """Make, show or locate the sync key: `python -m scripts.sync_key create|show|path`.
 
-Run it from backend/ (native installs: with the same environment the backend runs under, so
-it names the same file), or in Docker: `docker compose exec backend python -m scripts.sync_key
-create`. Only `show` ever prints the key.
+On Docker, run it inside the container:
+`docker compose exec backend python -m scripts.sync_key create`.
+On a native install, run it from backend/ with SYNC_KEY_FILE="$MAESTRO_HOME/sync-key" explicitly:
+`SYNC_KEY_FILE="$MAESTRO_HOME/sync-key" python -m scripts.sync_key create`.
+On the always-on copy, do not run create: place the vault's key at that path instead.
+Only `show` ever prints the key.
 """
 
 import argparse

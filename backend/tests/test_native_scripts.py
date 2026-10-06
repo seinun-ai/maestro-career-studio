@@ -15,6 +15,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from scripts import sync_key
+
 
 BACKEND = Path(__file__).resolve().parents[1]
 NATIVE = BACKEND / "scripts/native"
@@ -118,7 +120,8 @@ class Opener:
         if os.environ.get("NATIVE_TEST_FAIL") == "post":
             raise OSError(os.environ.get("OPENAI_API_KEY", ""))
         status = int(os.environ.get("NATIVE_TEST_ROUND_STATUS", "200"))
-        body = os.environ.get("NATIVE_TEST_ROUND", '{"ok": true, "steps": {}}').encode()
+        body = os.environ.get("NATIVE_TEST_ROUND",
+            '{"ok": true, "outcome": "ok", "steps": {}}').encode()
         if status != 200:
             raise urllib.error.HTTPError(url, status, "x", {}, io.BytesIO(body))
         return Response(body)
@@ -798,7 +801,7 @@ def test_sync_posts_one_plain_round_to_the_loopback_backend(native_home):
     setup_home(ctx)
     (ctx.home / "maestro.env").write_text("MAESTRO_PORT=8741\n")
     steps = {"reconcile": {"claimed": 0}, "pull": {"jobs": 2}}
-    result = run_sync(ctx, round_body={"ok": True, "steps": steps})
+    result = run_sync(ctx, round_body={"ok": True, "outcome": "ok", "steps": steps})
     assert result.returncode == 0, result.stderr
     sent = posted_round(ctx)
     assert sent["calls"] == 1 and sent["method"] == "POST"
@@ -843,20 +846,50 @@ def test_sync_declines_while_maintenance_is_paused(native_home):
     assert not (ctx.records / "round.json").exists()
 
 
-BACKOFF = {"ok": False, "skipped": "The last sync failed. Next try at 2026-10-06T11:00:00+00:00."}
+BACKOFF = {"ok": False, "outcome": "transient",
+           "skipped": "The last sync failed. Next try at 2026-10-06T11:00:00+00:00."}
 
 
 @pytest.mark.parametrize(("status", "body", "code", "words"), [
-    (200, {"ok": True, "steps": {"pull": {"jobs": 1}}}, 0, "Synced"),
-    (200, {"ok": False, "skipped": "Sync isn't set up."}, 0, "Skipped"),
-    (200, BACKOFF, 0, "Skipped"),
-    (409, {"detail": "A sync is already running."}, 0, "already running"),
-    (200, {"ok": False, "error": "502: Your laptop didn't answer.", "steps": {"push": {"sent": 0}}},
-     1, "Your laptop didn't answer."),
+    (200, {"ok": True, "outcome": "ok", "steps": {"pull": {"jobs": 1}}}, 0, "Synced"),
+    (200, {"ok": False, "outcome": "needs_person", "skipped": "Sync isn't set up."},
+     1, "Sync isn't set up."),
+    (200, BACKOFF, 0, BACKOFF["skipped"]),
+    (409, {"outcome": "transient", "detail": "A sync is already running."},
+     0, "A sync is already running."),
+    (200, {"ok": False, "outcome": "transient", "error": "502: Your laptop didn't answer.",
+           "steps": {"push": {"sent": 0}}}, 0, "502: Your laptop didn't answer."),
+    (200, {"ok": False, "outcome": "transient", "error": "Laptop unreachable."},
+     0, "Laptop unreachable."),
+    (200, {"ok": False, "outcome": "transient", "error": "Your laptop couldn't finish that sync request."},
+     0, "Your laptop couldn't finish that sync request."),
+    (200, {"ok": False, "outcome": "transient", "skipped": "Synced moments ago."},
+     0, "Synced moments ago."),
+    (200, {"ok": False, "outcome": "transient", "error": "A sync is already running on your laptop."},
+     0, "A sync is already running on your laptop."),
+    (200, {"ok": False, "outcome": "needs_person", "error": "401: Sync key doesn't match."},
+     1, "401: Sync key doesn't match."),
+    (200, {"ok": False, "outcome": "needs_person",
+           "skipped": "Update Maestro on both machines to the same version."},
+     1, "Update Maestro on both machines to the same version."),
+    (200, {"ok": False, "outcome": "needs_person",
+           "skipped": "This copy isn't paired with your laptop yet; run the first sync with the pair option."},
+     1, "This copy isn't paired with your laptop yet; run the first sync with the pair option."),
+    (200, {"ok": False, "outcome": "needs_person",
+           "error": "413: Your laptop refused a request as too large."},
+     1, "413: Your laptop refused a request as too large."),
+    (409, {"outcome": "needs_person", "detail": "The backend refused the request."},
+     1, "The backend refused the request."),
+    (409, {"detail": "A sync is already running."}, 1, "unreadable"),
     (404, {"detail": "Not Found"}, 1, "always-on copy"),
     (403, {"detail": "Browser requests can't use this."}, 1, "refused"),
     (500, {"detail": "boom"}, 1, "500"),
+    (503, {"outcome": "transient", "error": "Try again later."}, 1, "503"),
     (200, "not an object", 1, "unreadable"),
+    (200, {"ok": True, "steps": {}}, 1, "unreadable"),
+    (200, {"ok": True, "outcome": "unknown"}, 1, "unreadable"),
+    (200, {"ok": False, "outcome": []}, 1, "unreadable"),
+    (200, {"outcome": "ok"}, 1, "unreadable"),
 ])
 def test_sync_exit_codes_and_one_line_report(native_home, status, body, code, words):
     ctx = native_home
@@ -875,6 +908,27 @@ def test_sync_failure_to_reach_the_backend_is_exit_one_and_silent_about_why(nati
     assert_sync_safe(result, ctx)
 
 
+@pytest.mark.parametrize("status", [200, 409])
+def test_sync_unreadable_backend_reply_is_exit_one_without_echoing_it(native_home, status):
+    ctx = native_home
+    setup_home(ctx)
+    ctx.env["NATIVE_TEST_ROUND"] = f"<html>{SENTINEL} {SYNC_KEY}</html>"
+    result = run_sync(ctx, round_status=status)
+    assert result.returncode == 1 and "unreadable" in result.stderr
+    assert_sync_safe(result, ctx)
+
+
+def test_sync_reports_only_the_round_summary_and_message(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    result = run_sync(ctx, round_body={
+        "ok": True, "outcome": "ok", "steps": {}, "key": SYNC_KEY,
+        "bundle": {"password": SENTINEL}, "request_body": SENTINEL,
+    })
+    assert result.returncode == 0 and "Synced" in result.stdout
+    assert_sync_safe(result, ctx)
+
+
 def test_sync_without_a_venv_is_a_plain_error(native_home):
     ctx = native_home
     setup_home(ctx)
@@ -888,7 +942,8 @@ def test_sync_never_prints_a_key_in_the_key_file(native_home):
     setup_home(ctx)
     (ctx.home / "sync-key").write_text(SYNC_KEY + "\n")
     (ctx.home / "sync-key").chmod(0o600)
-    for status, body in ((200, {"ok": True, "steps": {}}), (200, {"ok": False, "error": "x"}),
+    for status, body in ((200, {"ok": True, "outcome": "ok", "steps": {}}),
+                         (200, {"ok": False, "outcome": "needs_person", "error": "x"}),
                          (500, {"detail": "boom"})):
         result = run_sync(ctx, "--pair", round_status=status, round_body=body)
         assert_sync_safe(result, ctx)
@@ -941,6 +996,21 @@ def test_sync_key_create_writes_a_private_key_and_prints_only_its_path(tmp_path)
     assert len(key) >= 32 and key not in result.stdout
     assert path.stat().st_mode & 0o777 == 0o600
     assert path.parent.stat().st_mode & 0o777 == 0o700
+
+
+def test_sync_key_main_creates_a_private_key_in_process(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "native home with spaces" / "sync-key"
+    monkeypatch.setattr(sync_key.status.settings, "sync_key_file", path)
+    assert sync_key.main(["create"]) == 0
+    output = capsys.readouterr()
+    assert (output.out, output.err) == (f"{path}\n", "")
+    assert len(path.read_text().strip()) >= 32
+    permissions = (path.stat().st_mode & 0o777, path.parent.stat().st_mode & 0o777)
+    assert permissions == (0o600, 0o700)
+    assert sync_key.main(["create"]) == 1
+    refusal = capsys.readouterr()
+    assert refusal.out == "" and "already exists" in refusal.err
+    assert path.read_text().strip() not in output.out + output.err + refusal.out + refusal.err
 
 
 def test_sync_key_create_refuses_to_overwrite(tmp_path):

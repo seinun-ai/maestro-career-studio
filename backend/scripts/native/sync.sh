@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run one sync round on the always-on copy: ask its local backend to talk to the laptop.
-# Cron-safe: exits 0 on success, on a skip (not set up, backoff, a round already running) and
-# while stop.sh has paused maintenance; exits 1 on any other failure. Never prints the key.
+# Cron-safe: exits 0 on ok or transient outcomes (backoff, busy, laptop unreachable) and
+# while stop.sh has paused maintenance; exits 1 when a person must act or the local backend
+# is unreachable, unreadable or not set up (404). Never prints the key.
 #   sync.sh                                  a plain round
 #   sync.sh --pair [--accept-profile-overwrite]   the first round, at the keyboard
 set +x
@@ -53,23 +54,27 @@ try:
     body = json.loads(sys.stdin.read())
 except ValueError:
     body = None
-if status == 409:
-    finish(0, "A sync is already running; nothing to do.")
 if status == 404:
     finish(1, "This copy is not set up as the always-on copy (needs a key file and SYNC_REMOTE_URL).")
 if status == 403:
     finish(1, "The backend refused the request.")
-if status != 200:
+if status not in (200, 409):
     finish(1, f"The backend answered {status}.")
-if not isinstance(body, dict) or not isinstance(body.get("ok"), bool):
+if not isinstance(body, dict) or body.get("outcome") not in ("ok", "transient", "needs_person"):
     finish(1, "The sync answer was unreadable.")
+if status == 200 and not isinstance(body.get("ok"), bool):
+    finish(1, "The sync answer was unreadable.")
+outcome = body["outcome"]
+code = int(outcome == "needs_person" or (status == 409 and outcome != "transient"))
 summary = json.dumps({key: body[key] for key in ("ok", "steps") if key in body}, sort_keys=True)
-if body["ok"]:
+if outcome == "ok" and code == 0:
     print("Synced.")
     print(summary)
     raise SystemExit(0)
-if isinstance(body.get("skipped"), str):
-    finish(0, "Skipped: " + line(body["skipped"]))
-print(summary)
-finish(1, "Sync failed: " + line(body["error"]) if isinstance(body.get("error"), str) else "Sync failed.")
+if status == 200 and not isinstance(body.get("skipped"), str):
+    print(summary)
+for field, prefix in (("skipped", "Skipped: "), ("error", "Sync failed: "), ("detail", "")):
+    if isinstance(body.get(field), str):
+        finish(code, prefix + line(body[field]))
+finish(code, "Sync deferred." if outcome == "transient" else "Sync failed.")
 ' "$status"
