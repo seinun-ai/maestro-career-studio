@@ -17,6 +17,7 @@ from app.services.sync import registry, status
 
 UNRESOLVED_MESSAGE = "Maestro couldn't tell which job this change belongs to, so it wasn't saved."
 PROFILE_MESSAGE = "Your laptop keeps your profile. Change it there."
+_PROFILE_CONTENT_COLUMNS = ("contact_json", "summary", "skills_json", "notes")
 
 
 class NotOwnedHere(Exception):
@@ -96,6 +97,9 @@ def seed_setting(session: Session, row: Setting) -> None:
 
 def seed_profile(session: Session, row: KBProfile) -> None:
     """Flush the empty singleton profile a first read creates; home's row replaces it."""
+    if not isinstance(row, KBProfile) or row.id != 1 or any(
+            getattr(row, column) for column in _PROFILE_CONTENT_COLUMNS):
+        raise ValueError("seed_profile only takes the empty singleton profile row")
     enabled = status.enabled()
     if enabled:
         session.info["sync_guard_profile_seed"] = {row}

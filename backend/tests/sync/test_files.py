@@ -100,7 +100,7 @@ def test_unknown_or_missing_portable_root_is_refused(roots, value):
 def test_unknown_pack_root_is_refused(roots):
     from app.services.sync import files
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"^Unknown sync root\.$"):
         files.pack_dir("unknown", "X", max_bytes=1024)
 
 

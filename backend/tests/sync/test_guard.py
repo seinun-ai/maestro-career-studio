@@ -365,15 +365,45 @@ def test_remote_tailor_reports_profile_skip(client, seeded, db_session, monkeypa
     assert not db_session.scalars(select(models.KBPoint)).all()
 
 
-def test_remote_boot_and_lazy_defaults(db_session, external_fakes, monkeypatch, caplog):
+def test_remote_boot_and_lazy_defaults(db_session, external_fakes, monkeypatch, capfd):
     status.create_key()
     monkeypatch.setattr(settings, "sync_remote_url", "http://127.0.0.1:8101")
+    capfd.readouterr()
     with TestClient(app) as booted:
         assert booted.get("/health").status_code == 200
         assert booted.get("/api/templates").status_code == 200
+    # Logging during boot goes to stderr, which caplog does not see.
+    output = capfd.readouterr()
+    assert "eager refresh failed" not in output.err + output.out
+    assert "NotOwnedHere" not in output.err + output.out
     assert db_session.get(models.Setting, "kb.seeded") is None
-    assert "NotOwnedHere" not in caplog.text and "eager refresh failed" not in caplog.text
+    # The boot flush seeds the empty profile but never commits it.
+    assert db_session.get(models.KBProfile, 1) is None
     _check_lazy_defaults(db_session)
+
+
+@pytest.mark.parametrize("row", [
+    models.KBProfile(id=2),
+    models.KBProfile(id=1, summary="Not empty"),
+    models.KBProfile(id=1, notes="Not empty"),
+    models.KBProfile(id=1, skills_json=[{"category": "Tools"}]),
+    models.KBProfile(id=1, contact_json={"name": "Example"}),
+    object(),
+])
+def test_seed_profile_refuses_anything_but_the_empty_singleton(db_session, row):
+    status.create_key()
+    with pytest.raises(ValueError):
+        hooks.seed_profile(db_session, row)
+    assert "sync_guard_profile_seed" not in db_session.info
+    assert db_session.get(models.KBProfile, 1) is None
+
+
+def test_seed_profile_accepts_the_empty_singleton(db_session):
+    status.create_key()
+    row = models.KBProfile(id=1)
+    hooks.seed_profile(db_session, row)
+    assert db_session.get(models.KBProfile, 1) is row
+    assert "sync_guard_profile_seed" not in db_session.info
 
 
 def _check_lazy_defaults(db_session):

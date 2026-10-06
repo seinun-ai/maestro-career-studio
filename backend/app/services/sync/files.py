@@ -38,7 +38,7 @@ _MAX_REL_BYTES = 1024
 def _root(name: str) -> Path:
     """The named root as an absolute path, refused when the root itself is a symlink."""
     if name not in ROOTS:
-        raise ValueError(f"unknown sync root: {name!r}")
+        raise ValueError("Unknown sync root.")
     root = Path(os.path.abspath(ROOTS[name]()))
     if root.is_symlink():
         raise ValueError(f"sync root {name!r} is a symlink")
