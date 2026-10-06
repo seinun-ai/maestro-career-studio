@@ -201,7 +201,7 @@ function JobSiteLoginFields({ editor, passwordSet }: { editor: LoginEditor; pass
   const hintId = `${id}-password-hint`;
   return (
     <div className="grid gap-4 @lg/setting:grid-cols-2">
-      <div className="grid gap-1.5">
+      <div className="grid content-end gap-1.5">
         <Label htmlFor={`${id}-email`}>Email</Label>
         <Input
           id={`${id}-email`}
@@ -213,7 +213,7 @@ function JobSiteLoginFields({ editor, passwordSet }: { editor: LoginEditor; pass
           onChange={(event) => setEmailDraft(event.target.value)}
         />
       </div>
-      <div className="grid gap-1.5">
+      <div className="grid content-end gap-1.5">
         <Label htmlFor={`${id}-password`}>Password</Label>
         <p id={hintId} className="text-muted-foreground text-body-small">
           {passwordSet ? "A password is saved. Type a new one to replace it." : "At least 8 characters."}

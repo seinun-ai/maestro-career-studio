@@ -46,7 +46,6 @@ def test_the_brief_tells_agents_whether_full_automation_is_on(db_session):
 
 
 def test_turning_full_automation_off_updates_the_brief(db_session):
-    value = client.get("/api/settings/auto-apply").json()["value"]
     for enabled in (True, False):
         assert client.put("/api/settings/full-automation", json={"value": enabled}).status_code == 200
         assert client.get("/api/settings/auto-apply").json()["value"]["full_automation"] is enabled

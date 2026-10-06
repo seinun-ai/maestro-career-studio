@@ -1996,11 +1996,11 @@ def record_triage(
 @mcp.tool(**_write("Report Application Failure", destructive=True, idempotent=False))
 @_guard
 def report_failure(proposal_id: str, reason: str) -> Any:
-    """Report execution failure. From pending_review/approved, transitions to needs_human
+    """Report execution failure. From pending_review/accepted/approved, transitions to needs_human
     (resumable). reason='submission_uncertain' (for a submit click that could not be
     verified) moves the proposal to the terminal submission_uncertain status:
-    resume_proposal is refused for it, and only the user's attestation through
-    mark_submitted moves it on."""
+    resume_proposal is refused for it. The user's attestation, or the agent's
+    (channel auto) in full automation mode, through mark_submitted moves it on."""
     return _client.report_failure(proposal_id, reason=reason)
 
 

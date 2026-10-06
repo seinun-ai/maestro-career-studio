@@ -628,8 +628,7 @@
   `.playwright-mcp/uploads/` (or `$MAESTRO_CS_UPLOAD_DIR`), pair Playwright
   `--output-dir` with the parent `.playwright-mcp` tree, and pass the returned `upload_path` to the file chooser —
   never copy/move with shell or filesystem tools. Details: `docs/playbooks/agent-apply.md`, `backend/mcp_server/README.md`.
-  **Attended executor:**
-  **Apply executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
+  **Attended executor:** Playwright MCP with headed real Chrome — prefer `--extension` so the Companion can
   autofill/attach; direct MCP + browser fill/upload is the supported fallback. The agent calls
   `record_filled_answers` per page, which replaces per-page screenshots; `final_review` and `submission_receipt`
   evidence stay, and every flag goes into the "Submit now?" question. Never headless / stealth / CAPTCHA

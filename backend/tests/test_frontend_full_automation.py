@@ -149,6 +149,9 @@ def test_login_actions_dim_and_block_pointer_input_when_disabled(source):
 
 def test_login_email_column_aligns_with_the_password_field(source):
     assert 'className="grid content-end gap-1.5"' in source
+    fields = source[source.index("function JobSiteLoginFields("):
+                    source.index("function JobSiteLoginActions(")]
+    assert fields.count('className="grid content-end gap-1.5"') == 2
 
 
 def test_failed_login_loads_offer_retry_before_the_loading_state(source):

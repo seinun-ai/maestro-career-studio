@@ -25,11 +25,13 @@ def path() -> Path:
 def read() -> tuple[str | None, str | None]:
     try:
         data = json.loads(path().read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
         return None, None
     if not isinstance(data, dict):
         return None, None
-    return data.get("email"), data.get("password")
+    email, password = data.get("email"), data.get("password")
+    return (email if isinstance(email, str) else None,
+            password if isinstance(password, str) else None)
 
 
 def write(email: str | None, password: str | None) -> None:

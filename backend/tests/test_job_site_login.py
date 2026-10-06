@@ -1,5 +1,6 @@
 """The job-site login: a local file, never the DB, never sent back to the web app."""
 
+import json
 import logging
 import os
 import stat
@@ -82,6 +83,76 @@ def test_get_and_put_repair_a_non_object_login_file(contents):
     assert put.status_code == 200
     assert put.json() == {"email": None, "password_set": True}
     assert job_site_login.read() == (None, "repaired-pass")
+
+
+@pytest.fixture(params=[
+    pytest.param(
+        b'{"email":"damaged-login@example.com","password":"bad-\xff"}',
+        id="non-utf-8",
+    ),
+    pytest.param(b'{"email":7654321}', id="numeric-email"),
+    pytest.param(b'{"email":false,"password":7654321}', id="boolean-and-number"),
+    pytest.param(
+        json.dumps({"email": {"value": "damaged-login@example.com"},
+                    "password": [SECRET]}).encode(),
+        id="object-and-array",
+    ),
+])
+def damaged_login_file(request):
+    target = job_site_login.path()
+    target.parent.mkdir(mode=0o700, parents=True)
+    target.write_bytes(request.param)
+    return target
+
+
+def test_damaged_login_reads_empty_without_logging_values(damaged_login_file, caplog):
+    with caplog.at_level(logging.DEBUG):
+        assert job_site_login.read() == (None, None)
+    for value in ("damaged-login@example.com", "7654321", SECRET):
+        assert value not in caplog.text
+
+
+def _repair_login(caplog):
+    api = TestClient(app, raise_server_exceptions=False)
+    with caplog.at_level(logging.DEBUG):
+        get = api.get("/api/settings/job-site-login")
+        put = api.put("/api/settings/job-site-login",
+                      json={"email": "repaired@example.com", "password": SECRET})
+    return get, put
+
+
+def test_get_and_put_repair_damaged_login(damaged_login_file, caplog):
+    get, put = _repair_login(caplog)
+    assert [get.status_code, put.status_code] == [200, 200]
+    assert get.json() == {"email": None, "password_set": False}
+    assert put.json() == {"email": "repaired@example.com", "password_set": True}
+    assert job_site_login.read() == ("repaired@example.com", SECRET)
+    assert stat.S_IMODE(damaged_login_file.stat().st_mode) == 0o600
+    assert SECRET not in get.text + put.text
+
+
+def test_damaged_login_requests_never_log_values(damaged_login_file, caplog):
+    get, put = _repair_login(caplog)
+    assert [get.status_code, put.status_code] == [200, 200]
+    assert caplog.records
+    for value in ("damaged-login@example.com", "repaired@example.com", "7654321", SECRET):
+        assert value not in caplog.text
+
+
+@pytest.mark.parametrize("stored, replacement, before, expected", [
+    ({"email": "ada@example.com", "password": [SECRET]},
+     {"password": SECRET}, ("ada@example.com", None), ("ada@example.com", SECRET)),
+    ({"email": 7654321, "password": SECRET},
+     {"email": "ada@example.com"}, (None, SECRET), ("ada@example.com", SECRET)),
+])
+def test_repair_preserves_the_other_valid_login_field(stored, replacement, before, expected):
+    target = job_site_login.path()
+    target.parent.mkdir(mode=0o700, parents=True)
+    target.write_text(json.dumps(stored), encoding="utf-8")
+    assert job_site_login.read() == before
+    response = client.put("/api/settings/job-site-login", json=replacement)
+    assert response.status_code == 200
+    assert job_site_login.read() == expected
 
 
 def test_delete_clears_both():
