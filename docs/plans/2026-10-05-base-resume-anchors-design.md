@@ -233,7 +233,8 @@ the anchor company is not this application's employer."
      anywhere."
   2. **Role:** the existing picker.
   3. **Company:** text, 80 characters max.
-  4. **Focus:** text, 80 characters max, placeholder "e.g. payments platforms".
+  4. **Focus:** text, 80 characters max, no placeholder (a blank field shows
+     none, per the conventions); hint "Such as payments platforms."
 
   Help text under the dialog: "Used when tailoring or asking for changes. This
   does not change the resume." The dialog sends one PATCH with only the changed
@@ -243,7 +244,7 @@ the anchor company is not this application's employer."
   set.
 - **Score panel.**
   - When `skipped` is non-empty, show one line: "2 resumes for other countries
-    weren't scored (job looks like US) · Score them anyway". The link
+    weren't scored for this United States job." plus a "Score them anyway" button. The link
     re-scores and re-reads with `include_other_countries=true` for that view.
   - When `fallback` is true, show the "None of your resumes is set for…" note.
 - **Copy:** follow `docs/frontend-conventions.md`. Register "Target" and
@@ -317,6 +318,59 @@ the anchor company is not this application's employer."
 - SYSTEM.md:
   - §5 step 4: scoring covers country-eligible bases;
   - §7: the identity tool, `base_anchors`, and `include_other_countries`.
+
+## Revisions against main (2026-10-06)
+
+Main moved about 470 commits after this design was written. The automation
+track also landed: the Automations page, answer receipts, the agent dashboard
+and its readiness marks. Its next phase is a Settings switch for auto-submit,
+which reads `inbox_readiness.is_ready` and final review as its last gate. These
+revisions supersede the sections above where they conflict.
+
+1. **One eligibility module, `services/base_eligibility.py`.** It holds the
+   country rule, the candidate set (`slugs`, `job_country`, `fallback`,
+   `skipped`) and `is_eligible(job, slug)`.
+   - Readers: scoring, the score read, the analytics pick, `best_base`,
+     `/candidates`, readiness and final review. None re-derives the rule.
+   - The score read and the analytics pick drop exactly the `skipped` slugs,
+     and nothing else. Their archived and deleted handling stays as it is.
+2. **Readiness gains `base_country`.** Its value is the job's country code
+   when the linked application's base is not eligible for it, else null.
+   - `is_ready` requires it to be null. The TS twin gains the same key and a
+     warning mark, "Resume for another country".
+   - The fallback (no base set for the country) counts as eligible.
+   - This changes the readiness rule that auto-submit will read, on purpose. It
+     is the gate that stops an India resume from being sent to a US job, even
+     when the base was chosen explicitly, through "Score them anyway", or
+     through a stale `fit.chosen_base`.
+3. **Final review gains `base_country`:** `{job_country, base, eligible}` for
+   the base actually being sent. That is the linked application's base, else
+   `fit.chosen_base`, else null.
+   - Nothing hard-blocks proposing, deciding or tailoring. An explicit choice
+     still works, and readiness and final review are where it shows.
+4. **Automation and agent paths:**
+   - MCP `score_ats` returns a `countries` block (`job_country`, `fallback`,
+     `skipped`) beside `scores`, so an agent can say why a base was not scored.
+   - The hunt brief's base summaries carry each base's anchors.
+   - The `tailor-run` skill uses `fit_json.chosen_base` only while it is still
+     among `score_ats`'s scores.
+5. **MCP limits on current main:**
+   - The identity tool is full-profile only, as `update_base_resume` is.
+   - It clears a text anchor with `""` and countries with `[]`, because the
+     MCP client drops `None` arguments.
+   - `quick_tailor` and `tailor_session` are at their docstring budget. The
+     `base_anchors` fact goes in `create_tailoring_session` and
+     `get_tailoring_session` instead, worded as a fact rather than an
+     instruction ("emphasis hints, not evidence").
+   - `base_anchors` is a model property, so all seven routes that return a
+     session carry it. It is null for a soft-deleted base.
+6. **Country input.** `countries.normalize` accepts an ISO code in any case,
+   `UK`, or an English country name. Anything else is None, which means
+   unknown and therefore no filter. Knock-out's private `_country` is not
+   migrated in this change.
+7. **Copy rules on current main.** UI text never uses "e.g." or "evidence", and
+   a blank field shows no placeholder. The dialog's help text reads "Used when
+   tailoring or asking for changes. Saving here does not change the resume."
 
 ## Future (not this change)
 
