@@ -100,7 +100,8 @@ MAESTRO_HOME=/home/agent/maestro
 ### systemd (user unit)
 
 Save as `~/.config/systemd/user/maestro.service`. Adjust the paths. This unit
-is a starting point; check it on your machine.
+is untested: nobody has run it yet. It is a starting point, so check it on your
+machine before you rely on it. The watchdog cron above is the tested option.
 
 ```ini
 [Unit]
@@ -159,13 +160,36 @@ costs about 76 MB. The agent should stop it, or let its harness kill it, after e
 
 ```bash
 curl -s http://127.0.0.1:8001/health/memory
-# example: {"rss_mb": 158.4, "peak_mb": 301.2, "platform": "linux"}
+# example: {"rss_mb": 150.3, "peak_mb": 175.0, "platform": "linux"}
 ```
 
 `rss_mb` is what the backend holds now. `peak_mb` is the highest it has been
 since it started. A helper's memory is not in these numbers, because the helper
 is a separate process. `health.sh` prints the same line without needing curl.
 For the whole machine, also read `free -m` (the "available" column).
+
+## Order of work on a small machine
+
+On a machine near 640 MB, the order of your work matters more than any setting.
+
+- **Score and tailor with the browser closed.** Or keep it under about 130 MB.
+  Open it only to browse job sites and fill forms.
+- **The numbers.** At rest, the backend is about 130 MB, one MCP server about
+  75 MB, and the helper's bookkeeping about 11 MB. A browser adds about 350 MB.
+  That is about 565 MB, which fits, but only thinly.
+- **A score adds a helper.** It takes about 260-290 MB for 1 to 3 seconds. That
+  covers tailoring, quick tailor and creating an application, because each one scores.
+- **With the browser open at 350 MB, a score does not fit.** In a test on a
+  640 MB box with no swap, every score either got the browser killed or stalled
+  the machine for about 60 seconds, then failed. With the browser closed, scores
+  took about 1.5 to 2.7 seconds and the box peaked near 560 MB.
+- **What failure looks like.** A score fails with `embeddings failed` (HTTP 500)
+  in `backend.log`, or the browser is killed. The backend itself survives, and
+  the next score works once memory is free.
+- **Hunting.** Gather jobs with the browser. Close it. Then save and score the
+  batch. Reopen the browser for the next round.
+- **Applying.** This already fits. Prepare and tailor a job first, then open the
+  browser to fill its form.
 
 ## Measured footprint
 
@@ -182,7 +206,7 @@ five typical cycles of save, score, render, fill and list:
   seconds, because the model's files load cold.
 - While a score runs, memory rises by about 290 MB for 1 to 3 seconds, then falls.
 - Backend plus one MCP server at rest is about 220-250 MB. Leave room for the
-  scoring burst and for your agent's browser.
+  scoring burst and for your agent's browser. See "Order of work on a small machine".
 
 A test pins the backend's memory: `backend/tests/test_memory_budget.py` runs three
 typical cycles and fails if the backend ends above 200 MB. It runs on Linux only
@@ -197,16 +221,23 @@ VM has about 640 MB available, no swap, and a browser the agent drives during ru
 
 1. **Install.** The agent clones the repository, then runs `setup.sh` with
    `MAESTRO_HOME=$HOME/maestro`. If `python3.12` is missing, install it first.
-2. **Secrets.** If any key is needed, the agent reads it from the app's secret
+2. **Base resumes.** A fresh install has none. Copy your base resume JSON files
+   into `$MAESTRO_HOME/base_resumes/`, then restart with `stop.sh` and `start.sh`.
+   The backend reads that folder at startup. Each file name, without `.json`,
+   becomes the resume's name. Or have the agent create one with the
+   `create_base_resume` MCP tool, which needs no restart.
+3. **Secrets.** If any key is needed, the agent reads it from the app's secret
    vault and writes it into `maestro.env` with a quoted assignment. The key is never
    typed into a chat or a command line.
-3. **Supervision.** User systemd may be unavailable on the VM, so the watchdog
+4. **Supervision.** User systemd may be unavailable on the VM, so the watchdog
    cron line above does the job. It also restarts the backend after an
    out-of-memory kill.
-4. **Connect.** The app registers the stdio command above as an MCP server. The
+5. **Connect.** The app registers the stdio command above as an MCP server. The
    agent starts it for a run and kills it afterward.
-5. **Browser.** Attended applications open the browser on the same machine. It is
-   the largest memory user during a run. Measure it in the pilot report below.
+6. **Browser.** Attended applications open the browser on the same machine. It is
+   the largest memory user during a run. Follow "Order of work on a small
+   machine": tailor with the browser closed, then open it to fill the form.
+   Measure it in the pilot report below.
 
 ## Pilot report
 
@@ -216,9 +247,14 @@ The agent on the always-on machine fills this in and sends it back.
 - [ ] Free memory before starting: the `available` column of `free -m`.
 - [ ] `/health/memory` right after `start.sh`.
 - [ ] Run one job hunt. Record `/health/memory` and `free -m` during it and after it.
+  Gather jobs with the browser, close it, then save and score the batch.
 - [ ] Run one attended apply, with its browser open. Record `/health/memory` and
   `free -m` during the fill and after the browser closes.
 - [ ] The time one score took, from the request to the result.
 - [ ] Any out-of-memory kill, restart, or watchdog start. Check `dmesg | grep -i oom`
-  and `$MAESTRO_HOME/logs/backend.log`.
+  and `$MAESTRO_HOME/logs/backend.log`. After a watchdog restart, the crash
+  traceback is in `backend.log.1`, because `start.sh` keeps the last run's log there.
+- [ ] Run `grep 'embeddings failed' $MAESTRO_HOME/logs/backend.log $MAESTRO_HOME/logs/backend.log.1`
+  and record how many lines match.
+- [ ] Were scores and tailoring run with the browser closed? Note any that were not.
 - [ ] Anything that felt slow, or any step that failed.
