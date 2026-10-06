@@ -440,6 +440,38 @@
     animation: shimmer-sweep 1400ms var(--ease-in-out-strong) infinite;
   }
 
+  /* Confirm a change in place: one soft ring that fades out (a status chip after its value changed). */
+  @keyframes confirm-ring {
+    from {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--ring) 45%, transparent);
+    }
+    to {
+      box-shadow: 0 0 0 6px transparent;
+    }
+  }
+  .animate-confirm {
+    animation: confirm-ring var(--duration-medium4) var(--ease-standard);
+  }
+
+  /* A row leaving a list it no longer belongs to (a skipped proposal): wrap it
+     in .collapse-exit with one child, then set data-leaving. The row fades and
+     its height closes (1fr to 0fr), so the rows below slide up. */
+  .collapse-exit {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition:
+      grid-template-rows var(--duration-short4) var(--ease-emphasized-accelerate),
+      opacity var(--duration-short4) var(--ease-emphasized-accelerate);
+  }
+  .collapse-exit > * {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .collapse-exit[data-leaving] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+
   /* Pending: dim + slightly blur a section while a mutation is in flight. */
   [data-pending="true"] {
     opacity: 0.55;

@@ -18,7 +18,7 @@
   `oklch(0.76 0.11 259)` dark; light focus ring `oklch(0.57 0.11 259)`, dark
   `oklch(0.62 0.09 259)`, so the solid ring is at least 3:1 on `--canvas`;
   the base-layer browser outline is that solid ring; motion utilities
-  `animate-fade-rise`, `animate-shimmer`, `[data-pending]`).
+  `animate-fade-rise`, `animate-shimmer`, `animate-confirm`, `collapse-exit` with `[data-leaving]`, `[data-pending]`; `hooks/use-count-up.ts` counts a number to its new value).
 - **Colour roles are M3's, pinned for contrast.** `globals.css` derives primary
   and secondary container pairs (`--primary-container`/`--on-primary-container`
   and the secondary twins) from the primary's hue, each with a `-hover` token
