@@ -573,6 +573,11 @@ def test_career_bullets_merge_origin_and_trust():
     # Usage is the register icon + count; its aria-label keeps the retired distinction.
     assert "CONCEPT_ICONS.baseResume" in points
     assert "aria-label={`${point.state === \"retired\" ? \"Still on\" : \"On\"} ${usageKeys.length}" in points
+    # A role-less span cannot carry an aria-label: the usage chip is an image with a name.
+    usage = _block(points, "Used in: ", "</span>")
+    assert 'role="img"' in usage
+    assert 'className="h-6"' in points
+    assert "origin_detail && !agent" in points
     # Drift stays a neutral chip with only the icon warning-coloured.
     assert 'className="size-3 text-warning"' in points
     # The pre-existing transition bugs: translate/scale are named, never `transform`.

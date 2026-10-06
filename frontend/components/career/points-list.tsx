@@ -120,14 +120,14 @@ export function PointActorChip({
     originLabel(point),
     hideProvenance ? null : provenanceWords,
     point.provenance ? null : "Added before we tracked where bullets come from.",
-    point.origin_detail
+    point.origin_detail && !agent
       ? `Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}`
       : null,
   ]
     .filter(Boolean)
     .join(". ");
   return (
-    <ActorChip kind={ORIGIN_KINDS[point.origin]} name={name} title={title}>
+    <ActorChip kind={ORIGIN_KINDS[point.origin]} name={name} title={title} className="h-6">
       {point.provenance === "derived_unverified" ? (
         <>
           <CONCEPT_ICONS.ai aria-hidden="true" className="size-3 shrink-0" /> AI inferred
@@ -425,6 +425,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             title={`Used in: ${usageKeys.map(resumeName).join(", ")}`}
             // A bullet no longer offered can still sit on resumes it was
             // added to: "Still on", so the chip never reads as offered.
+            role="img"
             aria-label={`${point.state === "retired" ? "Still on" : "On"} ${usageKeys.length} ${usageKeys.length === 1 ? "resume" : "resumes"}`}
           >
             <CONCEPT_ICONS.baseResume aria-hidden="true" className="size-3" />
