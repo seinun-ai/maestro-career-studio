@@ -49,13 +49,14 @@ if ! printf '%s\n' "$NATIVE_PID" > "$MAESTRO_HOME/backend.pid"; then
     native_signal KILL
     native_error 'Cannot create the native pidfile.'
 fi
-# Only now: until the pidfile exists, a watchdog tick would start a second backend.
-if (( resume )); then
-    native_clear_pause
-fi
 if ! native_wait_for_health; then
     native_abort_launch
     native_error 'Native backend did not become healthy within 30 seconds.'
+fi
+# Only now: before the pidfile, a watchdog tick would start a second backend,
+# and a resume that fails keeps the pause.
+if (( resume )); then
+    native_clear_pause
 fi
 trap - INT TERM
 printf '%s\n' 'Native backend started.'

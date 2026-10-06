@@ -105,7 +105,7 @@ def test_proxy_settings_survive_the_retry_and_the_env_is_restored(monkeypatch):
     with http_client.new_client() as client:
         proxied = [p.pattern for p, t in client._mounts.items() if t is not None]
     assert "https://" in proxied
-    assert os.environ["NO_PROXY"] == BAD  # the repair never rewrites the user's environment
+    assert os.environ["NO_PROXY"] == BAD  # new_client never rewrites os.environ
     assert os.environ["HTTPS_PROXY"] == SECRET_PROXY
 
 
