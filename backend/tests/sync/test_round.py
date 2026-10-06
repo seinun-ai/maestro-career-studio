@@ -1215,3 +1215,80 @@ def test_the_route_passes_the_outcome_through(client, sync_remote, monkeypatch):
                         lambda db, **kw: {"ok": False, "outcome": "needs_person", "skipped": "x"})
 
     assert client.post("/api/sync/round").json()["outcome"] == "needs_person"
+
+
+@pytest.mark.parametrize("response", [
+    httpx.Response(401, json={"detail": SENTINEL}),
+    httpx.Response(409, json={"detail": SENTINEL, "reason": "machine"}),
+])
+def test_backoff_and_a_forced_repeat_keep_a_failure_that_needs_a_person(
+        world, home, clock, response):
+    home.reply[("GET", "/api/sync/hello")] = response
+    assert go(world)["outcome"] == "needs_person"
+    assert state(world)["last_outcome"] == "needs_person"
+    home.calls.clear()
+
+    clock.now += timedelta(seconds=29)
+    assert go(world, force=True)["outcome"] == "needs_person"
+    clock.now += timedelta(seconds=31)
+    skipped = go(world)
+
+    assert skipped["outcome"] == "needs_person"
+    assert "Next try at" in skipped["skipped"]
+    assert home.calls == [] and state(world)["failures"] == 1
+
+
+def test_backoff_keeps_an_unreachable_laptops_transient_outcome(world, home, clock):
+    home.unreachable.add(("GET", "/api/sync/hello"))
+    assert go(world)["outcome"] == "transient"
+    assert state(world)["last_outcome"] == "transient"
+    home.calls.clear()
+    clock.now += timedelta(minutes=1)
+
+    assert go(world)["outcome"] == "transient"
+    assert home.calls == [] and state(world)["failures"] == 1
+
+
+def test_a_success_clears_the_saved_failure_outcome(world, home, clock):
+    home.reply[("GET", "/api/sync/hello")] = httpx.Response(401, json={"detail": SENTINEL})
+    assert go(world)["outcome"] == "needs_person"
+    assert state(world)["last_outcome"] == "needs_person"
+    home.reply.clear()
+    retry_after_backoff(clock, world)
+
+    assert go(world)["outcome"] == "ok"
+    saved = state(world)
+    assert (saved["last_outcome"], saved["last_error"], saved["next_attempt_at"]) == (None, None, None)
+    assert saved["failures"] == 0
+    assert go(world, force=True)["outcome"] == "transient"
+
+
+@pytest.mark.parametrize("storage", ["read_state", "update_state"])
+def test_a_db_error_recording_failure_still_returns_a_safe_transient_round_summary(
+        world, home, monkeypatch, caplog, storage):
+    caplog.set_level(logging.DEBUG)
+
+    def locked(*args, **kwargs):
+        world.remote.add(models.Setting(key="sync.uncommitted", value="must roll back"))
+        raise sa_exc.OperationalError("UPDATE settings SET value=?", (SENTINEL,),
+                                      Exception(SENTINEL))
+
+    with monkeypatch.context() as patch:
+        def broken(ctx):
+            patch.setattr(status, storage, locked)
+            raise sa_exc.OperationalError("UPDATE jobs SET title=?", (SENTINEL,),
+                                          Exception(SENTINEL))
+
+        patch.setattr(sync_round, "_STEPS", (("push", lambda ctx: {"sent": 1}), ("pull", broken)))
+        patch.setitem(app.dependency_overrides, get_db, lambda: world.remote)
+        response = TestClient(app).post("/api/sync/round", json={"pair": True})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": False, "outcome": "transient",
+        "error": "Maestro couldn't finish that sync on this copy.", "steps": {"push": {"sent": 1}},
+    }
+    assert not world.remote.new
+    assert world.remote.get(models.Setting, "sync.uncommitted") is None
+    assert SENTINEL not in response.text + caplog.text
+    assert KEY not in response.text + caplog.text

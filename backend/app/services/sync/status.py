@@ -21,10 +21,11 @@ SYNC_PROTOCOL = 1
 # The always-on copy's round state (local setting, never synced). ``since_home`` is home's opaque
 # jobs cursor; ``acked_own`` is the highest local job revision the push has gone past; ``retry_own``
 # maps a job home refused to the rounds it was refused, ``stuck_own`` one refused too often to the
-# (fixed) reason home gave; ``attempted_at`` is when the last round that reached home ended; times
-# are ISO.
+# (fixed) reason home gave; ``last_outcome`` keeps a failure's classification during backoff;
+# ``attempted_at`` is when the last round that reached home ended; times are ISO.
 STATE_DEFAULTS: dict = {
-    "paired": False, "last_ok": None, "last_error": None, "failures": 0, "next_attempt_at": None,
+    "paired": False, "last_ok": None, "last_error": None, "last_outcome": None,
+    "failures": 0, "next_attempt_at": None,
     "since_home": "0", "acked_own": 0, "profile_rev": None, "runs_at": None,
     "retry_own": {}, "stuck_own": {}, "attempted_at": None,
 }

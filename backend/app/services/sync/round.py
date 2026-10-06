@@ -736,8 +736,8 @@ _STEPS = (("reconcile", _reconcile), ("profile", _profile), ("push", _push), ("p
           ("requests", _requests), ("handovers", _handovers), ("runs", _runs))
 
 
-def _waiting(state: dict) -> str | None:
-    """The sentence for a round that is still inside its backoff window, or None."""
+def _waiting(state: dict) -> dict | None:
+    """The skipped answer preserving the last failure's outcome during backoff, or None."""
     try:
         until = datetime.fromisoformat(state["next_attempt_at"]) if state["next_attempt_at"] else None
     except ValueError:
@@ -745,14 +745,15 @@ def _waiting(state: dict) -> str | None:
     if until is None or _now() >= until:
         return None
     reason = state["last_error"] or "The last sync failed."
-    return f"{reason} Next try at {until.isoformat()}."
+    return _skipped(f"{reason} Next try at {until.isoformat()}.", state["last_outcome"] or TRANSIENT)
 
 
 def _record_failure(db: Session, stop: _Stop) -> None:
     db.rollback()
     failures = status.read_state(db)["failures"] + 1
     delay = min(30, 5 * 2 ** min(failures - 1, 5))
-    status.update_state(db, failures=failures, last_error=stop.text, attempted_at=_now().isoformat(),
+    status.update_state(db, failures=failures, last_error=stop.text, last_outcome=stop.outcome,
+                        attempted_at=_now().isoformat(),
                         next_attempt_at=(_now() + timedelta(minutes=delay)).isoformat())
 
 
@@ -790,9 +791,13 @@ def _attempt(db: Session, http: httpx.Client, options: _Options) -> dict:
     except (OSError, _Stop, KeyError, TypeError, AttributeError, SQLAlchemyError,
             ValueError) as failure:
         stop = _stop_for(failure)
-        _record_failure(db, stop)
+        try:
+            _record_failure(db, stop)
+        except SQLAlchemyError:
+            db.rollback()
+            stop = _Stop(_LOCAL, outcome=TRANSIENT)
         return {"ok": False, "outcome": stop.outcome, "error": stop.text, "steps": ctx.summary}
-    status.update_state(db, failures=0, next_attempt_at=None, last_error=None,
+    status.update_state(db, failures=0, next_attempt_at=None, last_error=None, last_outcome=None,
                         last_ok=_now().isoformat(), attempted_at=_now().isoformat())
     return {"ok": True, "outcome": OK, "steps": ctx.summary}
 
@@ -809,9 +814,8 @@ def _held_off(state: dict, options: _Options) -> dict | None:
     """The skipped answer for a round that may not start yet, or None. A forced round skips the
     backoff window but not the half minute after the last attempt."""
     if options.force:
-        return _skipped(SYNCED_JUST_NOW, TRANSIENT) if _just_ran(state) else None
-    wait = _waiting(state)
-    return _skipped(wait, TRANSIENT) if wait else None
+        return _skipped(SYNCED_JUST_NOW, state["last_outcome"] or TRANSIENT) if _just_ran(state) else None
+    return _waiting(state)
 
 
 def _locked_round(db: Session, options: _Options) -> dict:
