@@ -101,3 +101,27 @@ def test_the_status_chip_cross_fades_and_confirms():
 def test_the_confirm_pulse_skips_a_rollback():
     body = _read("components/status-chip.tsx").split("export function StatusChip", 1)[1]
     assert "if (pending || settled.current === current) return;" in body
+
+
+def test_inbox_actions_toast_from_the_hook():
+    hook = _read("components/proposals/triage-actions.tsx")
+    assert 'toast.success("Queued. A connected agent can apply to it now.")' in hook
+    assert 'toast.success("Proposal skipped")' in hook
+    assert "Kept. It's back in To review." in hook
+    assert '"Queued" : "Skipped"' in hook and '"proposal" : "proposals"' in hook  # the bulk sentences
+    page = _read("app/jobs/[id]/page.tsx")
+    assert "Queued. A connected agent" not in page and "Kept. It's back" not in page
+    assert 'toast.success("Skipped")' not in page
+
+
+def test_inbox_rows_leave_with_an_exit_transition():
+    section = _read("components/proposals/proposals-section.tsx")
+    assert "data-leaving" in section and "collapse-exit" in section and "grid-rows-[0fr]" not in section
+    assert "actingIds" in section and 'data-pending={acting ? "true" : undefined}' in section
+    hook = _read("components/proposals/triage-actions.tsx")
+    assert "actingIds" in hook and "ROW_EXIT_MS" in hook
+
+
+def test_the_bulk_bar_slides_up_on_mount():
+    bar = _read("components/proposals/triage-actions.tsx").split("export function BulkBar(", 1)[1]
+    assert "animate-in slide-in-from-bottom-2 fade-in-0 duration-(--duration-short4)" in bar

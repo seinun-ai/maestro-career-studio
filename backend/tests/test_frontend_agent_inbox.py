@@ -431,7 +431,8 @@ def test_a_row_checkbox_names_its_job():
 
 def test_queue_and_accept_say_queued():
     """Decision 19: the result of Accept is a Queued chip, so its words say Queued."""
-    assert 'toast.success("Queued. A connected agent can apply to it now.")' in _JOB
+    assert 'toast.success("Queued. A connected agent can apply to it now.")' in _TRIAGE
+    assert "Queued. A connected agent" not in _JOB
     assert "Accepted —" not in _JOB
     assert '{promote.isPending ? "Queueing…" : "Queue in Agent inbox"}' in _JOB
     assert 'label="Queue in Agent inbox"' in _TRACKER
@@ -608,7 +609,7 @@ def test_bulk_actions_use_only_the_rows_shown():
 
 
 def test_a_row_acted_on_alone_leaves_the_selection():
-    done = _SECTION[_SECTION.index("onDone: (ids) => {") :]
+    done = _SECTION[_SECTION.index("onDone: (ids, became) => {") :]
     done = done[: done.index("\n    },\n")]
     assert "for (const id of ids) copy.delete(id);" in done
 
@@ -646,7 +647,7 @@ def test_row_actions_keep_focus_while_they_run():
 def test_a_row_that_leaves_its_lane_hands_focus_on():
     """The next row's same control, else the previous row's, else the lane."""
     assert (
-        'next: focusSuccessor(from.closest(\'[data-slot="card"]\'), `[data-row-action="${action}"]`),'
+        'next: focusSuccessor(from.closest(".collapse-exit"), `[data-row-action="${action}"]`),'
         in _SECTION
     )
     effect = _SECTION[_SECTION.index("const l = leaving.current;") :]
@@ -770,7 +771,7 @@ def test_the_job_page_keeps_a_question_with_the_jobs_application():
     for part in ('status: "pending_review",', "applicationId: asked.data?.application ? undefined : application?.id,",
                  "disabled={triagePending || !asked.data}", "triaged.current = true;"):
         assert part in job_keep, part
-    assert 'if (became === "pending_review") toast.success("Kept. It\'s back in To review.");' in _JOB
+    assert 'toast.success("Kept. It\'s back in To review.")' in _TRIAGE and "Kept. It's back" not in _JOB
 
 
 def test_keep_it_patches_to_review_without_consent():

@@ -52,12 +52,17 @@ export function reasonLabel(reason: string): string {
 
 type BulkStatus = "accepted" | "rejected";
 
+/** How long a leaving row takes to collapse: globals.css `.collapse-exit` runs `--duration-short4`. */
+export const ROW_EXIT_MS = 200;
+
 /**
  * What a caller hears back, instead of per-call callbacks (a guarded start takes none). `onDone`: the
  * change was made, to these ids. `onUndone`: nothing changed (the request failed, or a delete was not
  * confirmed), so focus a caller moved on at the click has nowhere to go.
  */
 export type ProposalActionEvents = {
+  /** A Queue or Skip waits this long before the lists refetch, so the row it removes can leave first. */
+  settleMs?: number;
   onDone?: (ids: string[], became: BulkStatus | "pending_review" | "deleted") => void;
   onUndone?: () => void;
 };
@@ -71,6 +76,12 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
     void qc.invalidateQueries({ queryKey: FUNNEL_KEY });
     void qc.invalidateQueries({ queryKey: ["job-detail"] });
     void qc.invalidateQueries({ queryKey: ["proposal"] });
+  };
+
+  // A row that is leaving is still in the lists until the refetch, so a caller with an exit asks for a pause.
+  const settle = () => {
+    if (events.settleMs) setTimeout(invalidate, events.settleMs);
+    else invalidate();
   };
 
   const transition = useMutation({
@@ -97,7 +108,12 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
         }),
       }),
     onSuccess: (_data, vars) => {
-      invalidate();
+      if (vars.status === "pending_review") invalidate();
+      else settle();
+      // One owner for the words: the inbox and the job page say the same thing.
+      if (vars.status === "accepted") toast.success("Queued. A connected agent can apply to it now.");
+      else if (vars.status === "rejected") toast.success("Proposal skipped");
+      else toast.success("Kept. It's back in To review.");
       events.onDone?.([vars.id], vars.status);
     },
     onError: (err: Error, vars) => {
@@ -126,10 +142,16 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
         }),
       }),
     onSuccess: (data, vars) => {
-      invalidate();
-      events.onDone?.(vars.ids, vars.status);
+      settle();
+      // Only the rows that changed leave the selection and the list; a failed one stays to retry.
       const failed = data.results.filter((r) => !r.ok);
-      if (failed.length === 0) return;
+      const failedIds = new Set(failed.map((r) => r.id));
+      events.onDone?.(vars.ids.filter((id) => !failedIds.has(id)), vars.status);
+      if (failed.length === 0) {
+        const n = vars.ids.length;
+        toast.success(`${vars.status === "accepted" ? "Queued" : "Skipped"} ${n} ${n === 1 ? "proposal" : "proposals"}`);
+        return;
+      }
       // "queue": Accept's result is a Queued chip (the ONE status vocabulary).
       const verb = vars.status === "accepted" ? "queue" : "skip";
       // The server's reason, only when it is a sentence written for the user.
@@ -179,6 +201,12 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
   const transitionOnce = useSingleFlight(transition.mutate);
   const bulkOnce = useSingleFlight(bulk.mutate);
   const removeOnce = useSingleFlight(remove.mutate);
+  // The rows in flight, for a spinner on each: the buttons stay locked everywhere, but only these rows ask.
+  const actingIds = new Set<string>(
+    transition.isPending && transition.variables ? [transition.variables.id]
+    : bulk.isPending && bulk.variables ? bulk.variables.ids
+    : [],
+  );
   return {
     transition: transitionOnce,
     bulk: bulkOnce,
@@ -187,6 +215,7 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
     pending: transition.isPending || bulk.isPending || remove.isPending,
     // Only the bulk Queue spins: a bulk Skip runs from the dialog, whose own button spins.
     queuePending: bulk.isPending && bulk.variables?.status === "accepted",
+    actingIds,
   };
 }
 
@@ -301,7 +330,7 @@ export function BulkBar({
     // while they run, and the page hands focus on when a Queue, Skip or Clear takes the bar away.
     <div
       data-slot="bulk-bar"
-      className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3"
+      className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm animate-in slide-in-from-bottom-2 fade-in-0 duration-(--duration-short4) ease-(--ease-emphasized-decelerate) fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3"
     >
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-2">
         <span className="text-title-small tabular-nums">

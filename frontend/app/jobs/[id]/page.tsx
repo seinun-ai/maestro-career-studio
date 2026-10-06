@@ -177,10 +177,7 @@ export default function JobDetailPage({
   const skipped = useRef(false);
   const proposalActions = useProposalActions({
     onDone: (_ids, became) => {
-      if (became === "accepted") toast.success("Queued. A connected agent can apply to it now.");
-      if (became === "pending_review") toast.success("Kept. It's back in To review.");
       if (became === "rejected") {
-        toast.success("Skipped");
         skipped.current = true;
         setDeclineOpen(false);
       }

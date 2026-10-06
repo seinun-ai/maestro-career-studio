@@ -9,6 +9,7 @@ import {
   BookOpen,
   Bot,
   ChevronDown,
+  Loader2,
   Settings as SettingsIcon,
   Trash2,
   X,
@@ -24,6 +25,7 @@ import { useRoleLabel } from "@/components/role-category-picker";
 import {
   BulkBar,
   DeclineDialog,
+  ROW_EXIT_MS,
   useProposalActions,
 } from "@/components/proposals/triage-actions";
 import { ReadinessMarks } from "@/components/proposals/readiness-marks";
@@ -209,8 +211,24 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
   const skipReturn = useRef<(() => HTMLElement | null) | null>(null);
   const toReview = useRef<HTMLElement>(null);
   const historyId = useId();
+  // Rows that were queued or skipped and are collapsing out, with the status they leave: the refetch
+  // moves a queued row to another lane (a new row there, not leaving), so an id only leaves as that status.
+  const [leavingIds, setLeavingIds] = useState<ReadonlyMap<string, ProposalStatus>>(new Map());
   const actions = useProposalActions({
-    onDone: (ids) => {
+    settleMs: ROW_EXIT_MS,
+    onDone: (ids, became) => {
+      if (became === "accepted" || became === "rejected") {
+        const before = new Map((data?.items ?? []).map((p) => [p.id, p.status] as const));
+        setLeavingIds((prev) => {
+          // Entries the refetch has dropped or moved are done: only a row still as it was is leaving.
+          const next = new Map([...prev].filter(([id, status]) => before.get(id) === status));
+          for (const id of ids) {
+            const status = before.get(id);
+            if (status) next.set(id, status);
+          }
+          return next;
+        });
+      }
       // A row queued, skipped or deleted on its own leaves the selection; so do the bar's rows.
       setSelected((prev) => {
         const copy = new Set(prev);
@@ -428,13 +446,15 @@ export function ProposalsSection({ since = null }: { since?: string | null } = {
     since,
     duplicateKeys,
     pending: actions.pending,
+    actingIds: actions.actingIds,
+    leavingIds,
     onAct: (p: Proposal, action: RowAction, from: HTMLElement) => {
       const l: Leaving = {
         kind: "row",
         id: p.id,
         lane: laneOf(p.status),
         // The next row's same control, else the previous row's, else the lane.
-        next: focusSuccessor(from.closest('[data-slot="card"]'), `[data-row-action="${action}"]`),
+        next: focusSuccessor(from.closest(".collapse-exit"), `[data-row-action="${action}"]`),
       };
       leaving.current = l;
       if (action === "queue") actions.transition({ id: p.id, status: "accepted" });
@@ -771,6 +791,8 @@ function ProposalRow({
   onToggleSelected,
   onAct,
   pending,
+  actingIds,
+  leavingIds,
 }: {
   proposal: Proposal;
   lane: LaneKind;
@@ -780,8 +802,13 @@ function ProposalRow({
   onToggleSelected: (id: string, next: boolean) => void;
   onAct: (proposal: Proposal, action: RowAction, from: HTMLElement) => void;
   pending?: boolean;
+  /** Ids whose Queue or Skip is in flight: this row's buttons give way to a spinner. */
+  actingIds: ReadonlySet<string>;
+  /** Ids collapsing out (with the status they leave). */
+  leavingIds: ReadonlyMap<string, ProposalStatus>;
 }) {
   const job = proposal.job;
+  const acting = actingIds.has(proposal.id);
   const base = chosenBase(proposal);
   const baseName = useBaseResumeName(base ?? "", base !== null);
   const score = chosenScore(proposal);
@@ -810,7 +837,9 @@ function ProposalRow({
   };
 
   return (
-    <Card className="group">
+    // One child, so the wrapper can close its height (.collapse-exit in globals.css).
+    <div className="collapse-exit" data-leaving={leavingIds.get(proposal.id) === proposal.status || undefined}>
+    <Card className="group" data-pending={acting ? "true" : undefined}>
       <CardContent className="p-0">
         <div className="flex items-stretch gap-1">
           {showCheckbox ? (
@@ -880,7 +909,19 @@ function ProposalRow({
               {historyLabel(proposal.status, proposal.reason, STATUS_LABELS[proposal.status])}
             </Badge>
           </Link>
-          <div className="flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+          <div
+            className={cn(
+              "relative flex items-center gap-0.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
+              // The buttons stay (focus is kept) under the spinner that answers the press.
+              acting && "opacity-100 [&_button]:opacity-0",
+            )}
+          >
+            {acting ? (
+              <span role="status" className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                <span className="sr-only">Working</span>
+              </span>
+            ) : null}
             {lane === "triage" ? (
               <>
                 <IconButton
@@ -940,5 +981,6 @@ function ProposalRow({
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 }
