@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CONFIRM_MS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import type { SegmentTone } from "@/components/visual";
 import { APPLICATION_STATUSES, type ApplicationStatus } from "@/lib/types";
 
 /** One colour role per status: its container pair for the chip, the role
@@ -54,6 +55,18 @@ const STATUS_STYLES: Record<
     chip: "bg-muted text-muted-foreground line-through decoration-muted-foreground/40",
     dot: "bg-muted-foreground/40",
   },
+};
+
+/** The bar-segment tone for each status: the same roles as the dots above (the dots dim draft and
+ * withdrawn with /60 and /40; a bar segment has no room for that). Analytics' status mix reads this. */
+export const STATUS_TONES: Record<ApplicationStatus, SegmentTone> = {
+  draft: "muted",
+  applied: "primary",
+  interviewing: "warning",
+  offered: "tertiary",
+  accepted: "success",
+  rejected: "error",
+  withdrawn: "muted",
 };
 
 export function statusLabel(status: string | null): string {

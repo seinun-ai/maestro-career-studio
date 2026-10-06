@@ -15,8 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { statusLabel } from "@/components/status-chip";
-import { ScoreBar, SegmentedBar, Sparkline, type SegmentTone } from "@/components/visual";
+import { STATUS_TONES, statusLabel } from "@/components/status-chip";
+import { ScoreBar, SegmentedBar, Sparkline } from "@/components/visual";
 import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
@@ -30,17 +30,6 @@ import type {
   TailoringLiftRow,
 } from "@/lib/types";
 import { APPLICATION_STATUSES } from "@/lib/types";
-
-// Mirrors STATUS_STYLES' dot colours in status-chip.tsx, one tone per status.
-const STATUS_TONES: Record<(typeof APPLICATION_STATUSES)[number], SegmentTone> = {
-  draft: "muted",
-  applied: "primary",
-  interviewing: "warning",
-  offered: "tertiary",
-  accepted: "success",
-  rejected: "error",
-  withdrawn: "muted",
-};
 
 export function AnalyticsOverview({
   onOpenTab,
@@ -83,6 +72,9 @@ export function AnalyticsOverview({
     .filter((row) => row.tier !== "wording" && row.status === "in_kb")
     .slice(0, 3);
   const statusCounts = activity.data?.status_counts ?? {};
+  // Zeros read as real only once the data is in: not while loading, not after a failed load.
+  const hasStatusMix =
+    activity.data != null && APPLICATION_STATUSES.some((status) => statusCounts[status]);
   // Four weeks of daily buckets: the last 28 days, oldest first.
   const appliedPerDay = (activity.data?.series ?? []).slice(-28).map((b) => b.submitted);
   const gapMax = Math.max(1, ...(gaps.data ?? []).map((row) => row.n_jobs));
@@ -119,7 +111,7 @@ export function AnalyticsOverview({
           >
             <Sparkline
               values={appliedPerDay}
-              width={120}
+              width={96}
               height={32}
               label="Applied per day, last 28 days"
             />
@@ -158,15 +150,17 @@ export function AnalyticsOverview({
 
       <ActivityChart source={source} />
 
-      <SegmentedBar
-        name="Applications by status"
-        parts={APPLICATION_STATUSES.map((status) => ({
-          key: status,
-          label: statusLabel(status),
-          count: statusCounts[status] ?? 0,
-          tone: STATUS_TONES[status],
-        }))}
-      />
+      {hasStatusMix ? (
+        <SegmentedBar
+          name="Applications by status"
+          parts={APPLICATION_STATUSES.map((status) => ({
+            key: status,
+            label: statusLabel(status),
+            count: statusCounts[status] ?? 0,
+            tone: STATUS_TONES[status],
+          }))}
+        />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

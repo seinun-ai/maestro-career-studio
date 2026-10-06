@@ -214,3 +214,11 @@ def test_analytics_draws_status_mix_and_trend():
     assert 'label="Applied per day, last 28 days"' in src
     assert "bg-primary/10" not in _read("components/analytics/agent-pipeline-card.tsx")
     assert "bg-primary h-full rounded-full" in _read("components/analytics/agent-pipeline-card.tsx")
+
+
+def test_analytics_status_mix_waits_for_data_and_shares_the_status_tones():
+    src = _read("components/analytics/analytics-overview.tsx")
+    assert "{hasStatusMix ? (" in src and "activity.data != null" in src
+    assert "STATUS_TONES" in src and "const STATUS_TONES" not in src
+    chip = _read("components/status-chip.tsx")
+    assert "export const STATUS_TONES" in chip and 'accepted: "success"' in chip
