@@ -1,5 +1,4 @@
 import logging
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
@@ -14,7 +13,6 @@ from app.services.sync import hooks, requests as sync_requests
 from app.db import get_db
 from app.models.application import Application
 from app.models.base_resume import BaseResume
-from app.models.application_proposal import ApplicationProposal
 from app.models.ats_score import AtsScore
 from app.models.job import Job
 from app.models.tailoring_session import TailoringSession
@@ -33,6 +31,7 @@ from app.schemas.resume import ResumeData
 from app.schemas.resume_edit import ResumeEditRequest
 from app.services import (
     application_render,
+    application_status,
     artifacts,
     ats_score,
     base_resume_data,
@@ -359,53 +358,7 @@ def patch_application(
                 db, application, normalized, source="form_edit"
             )
 
-    # Keep applied_at in sync with the status transition, unless the caller
-    # explicitly set applied_at in this same PATCH (respect their value).
-    # Any stage that implies a submitted application (applied and everything
-    # after it on the pipeline) stamps the date once if unset — jumping
-    # straight from draft to interviewing implies you applied (review
-    # finding). Dropping back to "draft" clears it; rejected/withdrawn
-    # preserve whatever is there (they don't imply an application happened).
-    if "status" in fields and "applied_at" not in fields:
-        if application.status in ("applied", "interviewing", "offered", "accepted"):
-            if application.applied_at is None:
-                application.applied_at = datetime.now(UTC)
-        elif application.status == "draft":
-            application.applied_at = None
-
-    # User override (2026-08-01): marking the application applied+ means they
-    # completed it themselves — resolve any open proposal on the JOB (linked or
-    # not; one open proposal per job) instead of leaving it squatting in the
-    # triage/queued lanes. Close as posting-scoped decline with an honest
-    # consent event; this also releases an approved proposal's cap slot and,
-    # via the declined-job guard, stops the hunt re-proposing a posting the
-    # user already applied to. Application rejected/withdrawn deliberately do
-    # NOT close proposals — they don't imply an application happened.
-    if "status" in fields and application.status in (
-        "applied", "interviewing", "offered", "accepted",
-    ):
-        # Marked applied: the job's receipt rows posted before it had an application are its.
-        filled_answers.link_unlinked(db, application)
-        open_props = db.scalars(
-            select(ApplicationProposal).where(
-                ApplicationProposal.job_id == application.job_id,
-                ApplicationProposal.status.in_(tuple(proposal_svc.OPEN_STATUSES)),
-            )
-        ).all()
-        for prop in open_props:
-            try:
-                proposal_svc.transition(
-                    db, prop, "rejected",
-                    consent={
-                        "channel": "frontend",
-                        "note": "user marked the application applied",
-                    },
-                    reason=proposal_svc.APPLIED_MANUALLY,
-                )
-            except proposal_svc.TransitionError:
-                # A concurrent transition beat us to a terminal state; the
-                # user's status change must not fail over ledger housekeeping.
-                continue
+    application_status.apply_status_effects(db, application, set(fields))
 
     db.commit()
     db.refresh(application)

@@ -30,6 +30,7 @@ from app.routers import (
     resume_versions,
     setup,
     settings,
+    sync,
     tailoring_sessions,
     templates,
     version,
@@ -220,6 +221,7 @@ app.include_router(version.router)
 app.include_router(automations.router)
 app.include_router(filled_answers.router)
 app.include_router(agent_runs.router)
+app.include_router(sync.router)
 
 
 @app.get("/health")
