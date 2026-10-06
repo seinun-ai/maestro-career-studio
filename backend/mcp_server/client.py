@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from app.services.autofill_profile import canonical_identity_from_profile
+from app.services.http_client import new_client
 from app.write_origin import encode_detail
 
 DEFAULT_BASE_URL = "http://localhost:8000"
@@ -348,7 +349,7 @@ class BackendClient:
         """One HTTP round trip with the shared error mapping."""
         url = f"{self.base_url}{path}"
         try:
-            with httpx.Client(timeout=self._timeout) as client:
+            with new_client(timeout=self._timeout) as client:
                 response = client.request(method, url, **kwargs)
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
             # The request never left this process (no connection / no pooled
