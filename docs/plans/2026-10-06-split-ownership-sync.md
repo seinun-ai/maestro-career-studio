@@ -546,6 +546,12 @@ FastAPI's default 422 echoes the request `input`, which here would be bundle con
   - **Job requests:** apply through the normal service functions (`proposals.transition`, the
     application status and notes update) under the normal rules.
   - **Returns** `[{id, status: applied|refused, reason}]`.
+  - **Applying an application status change** has no service function today: applied_at stamping,
+    `link_unlinked` and closing open proposals with `APPLIED_MANUALLY` live inside the
+    `PATCH /api/applications/{id}` route (`routers/applications.py:356-405`). Extract them into one
+    service function both the route and the applier call (Task 6 review).
+  - **Order:** apply requests in `created_at` order (pending requests are merged per target before
+    they're sent, so the last decision wins).
 - `POST /api/sync/request-results` → mark home's sent requests `applied` or `refused`.
 - `GET /api/sync/handover/offers` → bundles of home jobs with `handover == "offered"`.
 - `POST /api/sync/handover/commit` with `{job_ids}` → for each still `offered`, set
@@ -596,7 +602,10 @@ FastAPI's default 422 echoes the request `input`, which here would be bundle con
    local `sync_rev` among the bundles pushed, read before the POST, and is saved only after a 2xx.
 7. **Pull home jobs:** `GET jobs?since=since_home` in pages, then `apply_job` as replicas, then
    advance `since_home`.
-8. **Requests both ways:** `GET requests` → apply locally → `POST request-results`.
+8. **Requests both ways** (Task 6 review: a local pending request for a job that became owned here,
+   e.g. after a take-over, is applied locally instead of sent; a request on a job the laptop has
+   offered is refused by its guard in this step and the handover then completes in step 9, so the
+   refusal reason says the job moved to the bot and the user can repeat the change there): `GET requests` → apply locally → `POST request-results`.
    Then local pending → `POST requests` → store results.
 9. **Handovers:**
    - **Offers:** `GET offers` → `apply_job` (still home's) → `POST commit` → own the committed jobs.
