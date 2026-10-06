@@ -70,12 +70,25 @@ def test_refused_without_the_mcp_origin(db_session, headers):
     _no_audit(db_session)
 
 
+@pytest.mark.parametrize("origin", [
+    "http://localhost:3000",
+    "chrome-extension://abcdefghijklmnopabcdefghijklmnop",
+])
+def test_refused_when_a_browser_origin_claims_the_mcp_header(db_session, origin):
+    _on(db_session)
+    prop = _proposal(db_session)
+    response = _post(prop, {**MCP, "Origin": origin})
+    assert response.status_code == 403
+    assert SECRET not in response.text
+    _no_audit(db_session)
+
+
 @pytest.mark.parametrize("status", ["accepted", "approved"])
 def test_handed_over_and_audited_without_the_value(db_session, status):
     _on(db_session)
     prop = _proposal(db_session, status)
     response = _post(prop)
-    assert response.status_code == 200
+    assert (response.status_code, "Origin" in response.request.headers) == (200, False)
     assert response.json() == {"email": "ada@example.com", "password": SECRET}
     event = db_session.query(ConsentEvent).filter_by(proposal_id=prop.id).one()
     assert (event.action, event.channel, event.note) == ("login_shared", "mcp", "claude-ai")
@@ -84,6 +97,17 @@ def test_handed_over_and_audited_without_the_value(db_session, status):
     assert SECRET not in (event.note or "") + str(event.evidence_manifest_json)
     db_session.refresh(prop)
     assert (prop.status, prop.cap_reserved_at) == (status, None)
+
+
+def test_job_site_login_refuses_a_company_on_the_skip_list(db_session):
+    auto_apply_settings.set_settings(
+        AutoApplySettings(full_automation=True, company_blocklist=["Acme"]), db_session,
+    )
+    response = _post(_proposal(db_session))
+    assert response.status_code == 409
+    assert "skip list" in response.json()["detail"]
+    assert SECRET not in response.text
+    _no_audit(db_session)
 
 
 @pytest.mark.parametrize("status", [

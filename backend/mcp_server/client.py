@@ -1215,9 +1215,15 @@ class BackendClient:
                 headers=_origin_headers(origin_detail),
             )
         except BackendError as exc:
+            messages = {
+                None: "Maestro is not reachable; try again later.",
+                403: "Only the connected agent can ask for the job-site login.",
+                404: "No such proposal or no job-site login is saved in Settings.",
+                409: "Full automation is off, the job is not queued or approved, or its company is on the skip list.",
+                422: "The proposal ID is malformed.",
+            }
             raise BackendError(
-                "Could not retrieve the job-site login. Full automation must be on, "
-                "the proposal queued or approved, and a login saved in Settings.",
+                messages.get(exc.status_code, "The job-site login could not be retrieved; try again later."),
                 status_code=exc.status_code,
             ) from None
         except ValueError:

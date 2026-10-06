@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -433,10 +433,13 @@ def get_final_review(proposal_id: UUID, db: Annotated[Session, Depends(get_db)])
 @router.post("/{proposal_id}/job-site-login")
 def share_job_site_login(
     proposal_id: UUID,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
     """The job-site login for a connected agent in full automation mode. MCP only; audited."""
+    if "origin" in request.headers:
+        raise HTTPException(403, detail="Browser-origin requests cannot receive the job-site login.")
     if write_origin.origin != "mcp":
         raise HTTPException(403, detail="Only a connected agent can ask for the job-site login.")
     prop = db.get(ApplicationProposal, proposal_id)

@@ -63,8 +63,13 @@ def share_job_site_login(session: Session, prop: ApplicationProposal,
                          agent: str | None) -> dict[str, str]:
     """{email, password} for an open job in full automation mode; one audit row per call
     (never the value). SYSTEM.md {#inv-job-site-password-local}."""
-    if not auto_apply_settings.get_settings(session).full_automation:
+    cfg = auto_apply_settings.get_settings(session)
+    if not cfg.full_automation:
         raise TransitionError("the job-site login needs full automation turned on in Settings")
+    if _company_is_blocked(session, prop, cfg.company_blocklist):
+        raise TransitionError(
+            "This company is on your Companies to skip list in Settings › Connected agents"
+        )
     if prop.status not in LOGIN_STATUSES:
         raise TransitionError("the job-site login is for a queued or approved job")
     email, password = job_site_login.read()

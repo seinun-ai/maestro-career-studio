@@ -75,6 +75,31 @@ _ERROR_RESPONSES = [
 ]
 
 
+@pytest.mark.parametrize(("status", "message"), [
+    (None, "Maestro is not reachable; try again later."),
+    (403, "Only the connected agent can ask for the job-site login."),
+    (404, "No such proposal or no job-site login is saved in Settings."),
+    (409, "Full automation is off, the job is not queued or approved, or its company is on the skip list."),
+    (422, "The proposal ID is malformed."),
+    (500, "The job-site login could not be retrieved; try again later."),
+])
+@respx.mock
+def test_login_failure_uses_a_fixed_status_message_without_response_body(status, message):
+    route = respx.post(URL)
+    if status is None:
+        route.mock(side_effect=httpx.ConnectError(SECRET))
+    else:
+        route.mock(return_value=httpx.Response(status, json={"detail": SECRET}))
+
+    with pytest.raises(BackendError) as error:
+        BackendClient(BASE).get_job_site_login("p1")
+
+    assert str(error.value) == message
+    assert error.value.status_code == status
+    assert error.value.body is None
+    assert SECRET not in str(error.value)
+
+
 @pytest.mark.parametrize("response", _ERROR_RESPONSES)
 @respx.mock
 def test_login_errors_never_retain_or_report_a_response_body(response, caplog):
