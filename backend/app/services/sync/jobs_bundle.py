@@ -10,12 +10,13 @@ The whole bundle is validated before the first write, and nothing here logs or e
 contents: errors name a table or a column, never a value.
 """
 
+import math
 import os
 import shutil
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
@@ -28,12 +29,12 @@ from sqlalchemy.orm.attributes import flag_modified
 from app import models
 from app.db import Base
 from app.models.sync import SyncTombstone
-from app.services.sync import files, status
+from app.services.sync import bundle_rows, files, status
+from app.services.sync.bundle_rows import obj_pk, row_pk
 
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
 _APPLICATIONS = "applications:"
 _JOB_COLUMNS_NOT_DATA = ("owner_machine", "sync_rev", "handover")
-_LATEX_LEFTOVERS = (".aux", ".log", ".out")  # rebuilt by every compile, never worth sending
 
 
 class DuplicateJob(Exception):
@@ -117,11 +118,6 @@ def _columns(model: type[Base]) -> list[tuple[str, sa.Column]]:
     return [(prop.key, prop.columns[0]) for prop in inspect(model).column_attrs]
 
 
-def _pk_keys(model: type[Base]) -> list[str]:
-    mapper = inspect(model)
-    return [mapper.get_property_by_column(column).key for column in mapper.primary_key]
-
-
 # ---------------------------------------------------------------------------- encoding
 
 
@@ -141,16 +137,27 @@ def _base_type(column: sa.Column):
 
 def _accepts(kind, value) -> bool:
     """Whether a JSON scalar has the shape this column stores. A bool is an int in Python, so it is
-    named first and kept out of the numeric kinds."""
+    named first and kept out of every other kind. A value the database cannot hold (an int past 64
+    bits, a lone surrogate) is refused here, before it fails at bind with the value in the error."""
     if isinstance(kind, sa.JSON):
         return True
     if isinstance(kind, sa.Boolean):
         return isinstance(value, bool)
+    if isinstance(value, bool):
+        return False
     if isinstance(kind, sa.Numeric) and not kind.asdecimal:
-        return isinstance(value, int | float) and not isinstance(value, bool)
+        return _finite(value)
     if isinstance(kind, sa.Integer):
-        return isinstance(value, int) and not isinstance(value, bool)
-    return isinstance(kind, sa.String | sa.DateTime | sa.Uuid | sa.Numeric) and isinstance(value, str)
+        return isinstance(value, int) and bundle_rows.fits_int64(value)
+    return (isinstance(kind, sa.String | sa.DateTime | sa.Uuid | sa.Numeric)
+            and isinstance(value, str) and bundle_rows.encodable(value))
+
+
+def _finite(value) -> bool:
+    try:
+        return isinstance(value, int | float) and math.isfinite(value)
+    except OverflowError:  # an int too big for a float
+        return False
 
 
 def _convert(kind, value):
@@ -160,7 +167,7 @@ def _convert(kind, value):
         return datetime.fromisoformat(value)
     if isinstance(kind, sa.Numeric) and kind.asdecimal:
         number = Decimal(value)
-        if not number.is_finite():
+        if not math.isfinite(float(number)):  # a database stores it as a float: 1E+999999999 is inf
             raise ValueError
         return number
     return value
@@ -198,12 +205,7 @@ def _export_row(spec: Table, obj: Base) -> dict:
 
 
 def _export_rows(db: Session, scope: Scope) -> list[dict]:
-    rows = []
-    for spec in TABLES:
-        keys = [getattr(spec.model, key) for key in _pk_keys(spec.model)]
-        query = select(spec.model).where(scope.clause(spec)).order_by(*keys)
-        rows.extend(_export_row(spec, obj) for obj in db.scalars(query))
-    return rows
+    return bundle_rows.export_rows(db, TABLES, lambda spec: [scope.clause(spec)], _export_row)
 
 
 def _artifact_dirs(rows: list[dict]) -> list[str]:
@@ -214,21 +216,16 @@ def _artifact_dirs(rows: list[dict]) -> list[str]:
     return sorted(rel for rel in found if not any(rel.startswith(other + "/") for other in found))
 
 
-def _decoded_size(entry: dict) -> int:
-    encoded = entry["b64"]
-    return len(encoded) // 4 * 3 - encoded.count("=")
-
-
 def _pack(dirs: list[str], max_bytes: int) -> tuple[list[dict], int]:
     packed: list[dict] = []
     skipped = 0
     remaining = max_bytes
     for rel in dirs:
         entries, left_out = files.pack_dir_with_skips("applications", rel, max_bytes=remaining)
-        entries = [entry for entry in entries if not entry["path"].lower().endswith(_LATEX_LEFTOVERS)]
+        entries = [entry for entry in entries if not entry["path"].lower().endswith(bundle_rows.LATEX_LEFTOVERS)]
         packed.extend(entries)
         skipped += left_out
-        remaining -= sum(_decoded_size(entry) for entry in entries)
+        remaining -= sum(bundle_rows.decoded_size(entry) for entry in entries)
     return packed, skipped
 
 
@@ -257,8 +254,8 @@ def export_job(db: Session, job_id: uuid.UUID, *, max_bytes: int = DEFAULT_MAX_B
 @dataclass
 class Parsed:
     job_id: uuid.UUID
-    rows: dict[str, list[dict]]
-    files: list
+    rows: dict[str, list[dict]] = field(repr=False)  # row values and file bytes never print
+    files: list = field(repr=False)
     dirs: tuple[str, ...]
 
 
@@ -276,16 +273,6 @@ def _decode_row(spec: Table, raw: object) -> dict:
     if not isinstance(raw, dict) or set(raw) != expected:
         raise ValueError(f"malformed {spec.name} row")
     return {key: _decode_value(spec, columns[key], key, value) for key, value in raw.items()}
-
-
-def _decode_rows(bundle: dict) -> dict[str, list[dict]]:
-    rows: dict[str, list[dict]] = {spec.name: [] for spec in TABLES}
-    for item in bundle["rows"]:
-        spec = _BY_NAME.get(item["table"]) if isinstance(item, dict) else None
-        if spec is None:
-            raise ValueError("unknown table in bundle")
-        rows[spec.name].append(_decode_row(spec, item.get("row")))
-    return rows
 
 
 def _check_links(job_id: uuid.UUID, rows: dict[str, list[dict]]) -> None:
@@ -324,7 +311,7 @@ def _parse(bundle: object) -> Parsed:
         raise ValueError("malformed bundle")
     try:
         job_id = uuid.UUID(bundle["job_id"])
-        rows = _decode_rows(bundle)
+        rows = bundle_rows.decode_rows(bundle, _BY_NAME, _decode_row)
         _check_links(job_id, rows)
         prefixes = _artifact_prefixes(bundle)
         return Parsed(job_id, rows, _check_files(bundle.get("files", []), prefixes), prefixes)
@@ -333,14 +320,6 @@ def _parse(bundle: object) -> Parsed:
 
 
 # ---------------------------------------------------------------------------- apply
-
-
-def _row_pk(spec: Table, row: dict) -> tuple:
-    return tuple(row[key] for key in _pk_keys(spec.model))
-
-
-def _obj_pk(spec: Table, obj: Base) -> tuple:
-    return tuple(getattr(obj, key) for key in _pk_keys(spec.model))
 
 
 def _check_duplicate(db: Session, parsed: Parsed) -> None:
@@ -360,7 +339,7 @@ def _receiver_scope(db: Session, parsed: Parsed) -> Scope:
 
 
 def _load_existing(db: Session, scope: Scope) -> dict[str, dict[tuple, Base]]:
-    return {spec.name: {_obj_pk(spec, obj): obj for obj in db.scalars(
+    return {spec.name: {obj_pk(spec, obj): obj for obj in db.scalars(
         select(spec.model).where(scope.clause(spec)))} for spec in TABLES}
 
 
@@ -386,24 +365,6 @@ def _localize(db: Session, parsed: Parsed) -> None:
     for row in parsed.rows["kb_port_log"]:
         if row["point_id"] not in points:
             row["point_id"] = None
-
-
-def _delete_rows(db: Session, doomed: dict[str, list[Base]]) -> None:
-    """ORM deletes, children before parents, one flush per table: the flush hook stamps the job and
-    the foreign keys never cascade into a row this call also deletes."""
-    for spec in reversed(TABLES):
-        for obj in doomed[spec.name]:
-            db.delete(obj)
-        db.flush()
-
-
-def _missing(existing: dict, parsed: Parsed) -> dict[str, list[Base]]:
-    """What is here but not in the bundle."""
-    doomed: dict[str, list[Base]] = {}
-    for spec in TABLES:
-        keep = {_row_pk(spec, row) for row in parsed.rows[spec.name]}
-        doomed[spec.name] = [obj for pk, obj in existing[spec.name].items() if pk not in keep]
-    return doomed
 
 
 def _value_for(column: sa.Column, value):
@@ -435,7 +396,7 @@ def _upsert(db: Session, spec: Table, existing: dict, rows: list[dict]) -> list[
         rows = sorted(rows, key=lambda row: row[spec.order])
     objects = []
     for row in rows:
-        obj = existing.get(_row_pk(spec, row))
+        obj = existing.get(row_pk(spec, row))
         if obj is None:
             obj = _fill_new(spec, row)
             db.add(obj)
@@ -450,9 +411,9 @@ def _apply_rows(db: Session, parsed: Parsed, sender_machine: str) -> list[str]:
     _check_duplicate(db, parsed)
     _localize(db, parsed)
     existing = _load_existing(db, _receiver_scope(db, parsed))
-    doomed = _missing(existing, parsed)
+    doomed = bundle_rows.missing(TABLES, existing, parsed.rows)
     folders = [obj.artifact_dir for obj in doomed["applications"] if obj.artifact_dir]
-    _delete_rows(db, doomed)
+    bundle_rows.delete_rows(db, TABLES, doomed)
     # The session's identity map is weak: hold every row until the end, or the hook's per-row job
     # lookup (session.get on the parent) would reload each collected parent from the database.
     held: list[Base] = []
@@ -541,8 +502,9 @@ def apply_tombstone(db: Session, job_id: uuid.UUID) -> None:
         models.Application.job_id == job_id)) if value]
     with _applying(db):
         scope = _db_scope(db, job_id)
-        _delete_rows(db, {spec.name: list(db.scalars(select(spec.model).where(scope.clause(spec))))
-                          for spec in TABLES})
+        bundle_rows.delete_rows(db, TABLES, {
+            spec.name: list(db.scalars(select(spec.model).where(scope.clause(spec))))
+            for spec in TABLES})
         db.execute(delete(SyncTombstone).where(SyncTombstone.job_id == job_id))
     for path in _unused_folders(db, folders):
         _remove_folder(path)

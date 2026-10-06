@@ -1,8 +1,8 @@
 """The profile as a bundle: export it at home, apply it onto the always-on copy (design Part B).
 
 A bundle is JSON: every profile row per table (paths relative to their root), the files those rows
-point at (base resumes with their JSON, PDFs and TeX; career-document uploads), the job-site login
-and home's profile revision. Applying is the always-on copy's job only: it makes its profile equal
+point at and no others (a base resume's JSON, PDF and TeX; a career document's upload; a template's
+preview PDF), the job-site login and home's profile revision. Applying is the always-on copy's job only: it makes its profile equal
 the bundle, so seeds that exist only there (startup seeding, first-read defaults, the empty
 career-profile row) are replaced or removed.
 
@@ -40,10 +40,12 @@ from app.services import (
     quick_tailor,
     text_settings,
 )
-from app.services.sync import files, jobs_bundle, registry, status
+from app.services.sync import bundle_rows, files, jobs_bundle, registry, status
+from app.services.sync.bundle_rows import obj_pk, row_pk
 
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 FILE_ROOTS = ("base_resumes", "kb_documents")
+PREVIEWS = "template_previews"  # under the base-resumes root: <template id>.pdf
 REFUSED = "Only the always-on copy applies a profile."
 
 # Settings that keep a file mirror under settings_dir, written through text_settings so the mirror
@@ -107,23 +109,52 @@ def _filters(spec: Table) -> list:
 
 
 def _export_rows(db: Session) -> list[dict]:
-    rows = []
-    for spec in TABLES:
-        keys = [getattr(spec.model, key) for key in jobs_bundle._pk_keys(spec.model)]
-        query = select(spec.model).where(*_filters(spec)).order_by(*keys)
-        rows.extend(jobs_bundle._export_row(spec, obj) for obj in db.scalars(query))
-    return rows
+    return bundle_rows.export_rows(db, TABLES, _filters, jobs_bundle._export_row)
 
 
-def _pack(max_bytes: int) -> tuple[list[dict], int]:
+def _row_files(table: str, row: dict) -> set[str | None]:
+    """The portable paths one exported row points at."""
+    if table == "base_resumes":
+        return {f"base_resumes:{row['slug']}.json", row["pdf_path"], row["tex_path"]}
+    if table == "kb_documents":
+        return {row["file_path"]}
+    if table == "templates":
+        return {f"base_resumes:{PREVIEWS}/{row['id']}.pdf"}
+    return set()
+
+
+def _referenced(rows: list[dict]) -> list[str]:
+    found: set[str | None] = set()
+    for item in rows:
+        found |= _row_files(item["table"], item["row"])
+    return sorted(path for path in found
+                  if path and not path.lower().endswith(bundle_rows.LATEX_LEFTOVERS))
+
+
+def _pack_file(portable: str, remaining: int) -> tuple[dict, int] | None:
+    """One referenced file and the bytes it used; None when it is missing or cannot be sent."""
+    name, _, rel = portable.partition(":")
+    try:
+        files._split(rel, allow_empty=False)
+    except ValueError:
+        return None  # a name no file could have
+    path = files._checked(name, rel, allow_empty=False)  # a symlink raises
+    return files._entry(name, files._root(name), path, remaining)
+
+
+def _pack(rows: list[dict], max_bytes: int) -> tuple[list[dict], int]:
+    """The files the rows point at, not the roots' whole contents. A missing or unsendable file is
+    skipped and counted; going over ``max_bytes`` raises ValueError."""
     packed: list[dict] = []
     skipped = 0
     remaining = max_bytes
-    for root in FILE_ROOTS:
-        entries, left_out = files.pack_dir_with_skips(root, "", max_bytes=remaining)
-        packed.extend(entries)
-        skipped += left_out
-        remaining -= sum(jobs_bundle._decoded_size(entry) for entry in entries)
+    for portable in _referenced(rows):
+        result = _pack_file(portable, remaining)
+        if result is None:
+            skipped += 1
+            continue
+        packed.append(result[0])
+        remaining -= result[1]
     return packed, skipped
 
 
@@ -134,11 +165,13 @@ def _login() -> dict | None:
 
 def export_profile(db: Session, *, max_bytes: int = DEFAULT_MAX_BYTES) -> dict:
     """The profile, its files and the job-site login, JSON-safe. ValueError over ``max_bytes`` or
-    for a symlink under a root."""
-    packed, skipped = _pack(max_bytes)
+    for a symlink among the files. The revision is read first: a save during the export then ships
+    newer content under the older revision, which only costs a repeat, never a stale remote."""
     revision = db.scalar(select(SyncState.value).where(SyncState.name == "profile_rev"))
+    rows = _export_rows(db)
+    packed, skipped = _pack(rows, max_bytes)
     return {
-        "rows": _export_rows(db),
+        "rows": rows,
         "files": packed,
         "files_skipped": skipped,
         "job_site_login": _login(),
@@ -151,9 +184,10 @@ def export_profile(db: Session, *, max_bytes: int = DEFAULT_MAX_BYTES) -> dict:
 
 @dataclass
 class Parsed:
-    rows: dict[str, list[dict]]
-    files: list
-    login: dict | None
+    rows: dict[str, list[dict]] = field(repr=False)  # settings rows can hold AI keys
+    files: list = field(repr=False)
+    login: dict | None = field(repr=False)
+    rev: int
 
 
 def _decode_path(spec: Table, key: str, value):
@@ -179,16 +213,6 @@ def _decode_row(spec: Table, raw: object) -> dict:
     return {key: _decode_value(spec, columns[key], key, value) for key, value in raw.items()}
 
 
-def _decode_rows(bundle: dict) -> dict[str, list[dict]]:
-    rows: dict[str, list[dict]] = {spec.name: [] for spec in TABLES}
-    for item in bundle["rows"]:
-        spec = _BY_NAME.get(item["table"]) if isinstance(item, dict) else None
-        if spec is None:
-            raise ValueError("unknown table in bundle")
-        rows[spec.name].append(_decode_row(spec, item.get("row")))
-    return rows
-
-
 def _plain_name(slug: str) -> bool:
     """A slug names a file under the base-resumes root: no folders, nothing hidden."""
     return bool(slug) and Path(slug).name == slug and not slug.startswith(".")
@@ -209,7 +233,7 @@ def _check_rows(rows: dict[str, list[dict]]) -> None:
     for spec in TABLES:
         seen = set()
         for row in rows[spec.name]:
-            pk = jobs_bundle._row_pk(spec, row)
+            pk = row_pk(spec, row)
             if pk in seen or not _is_profile_row(spec, row):
                 raise ValueError(f"{spec.name} row is not profile data")
             seen.add(pk)
@@ -229,9 +253,18 @@ def _check_files(entries: object) -> list:
 def _check_login(value: object) -> dict | None:
     if value is None:
         return None
-    if (not isinstance(value, dict) or set(value) != {"email", "password"}
-            or any(item is not None and not isinstance(item, str) for item in value.values())):
+    if not isinstance(value, dict) or set(value) != {"email", "password"}:
         raise ValueError("malformed job-site login")
+    for item in value.values():
+        if item is not None and not (isinstance(item, str) and bundle_rows.encodable(item)):
+            raise ValueError("malformed job-site login")
+    return value
+
+
+def _check_rev(value: object) -> int:
+    if (not isinstance(value, int) or isinstance(value, bool) or value < 0
+            or not bundle_rows.fits_int64(value)):
+        raise ValueError("malformed profile revision")
     return value
 
 
@@ -239,9 +272,10 @@ def _parse(bundle: object) -> Parsed:
     if not isinstance(bundle, dict) or not isinstance(bundle.get("rows"), list):
         raise ValueError("malformed bundle")
     try:
-        rows = _decode_rows(bundle)
+        rows = bundle_rows.decode_rows(bundle, _BY_NAME, _decode_row)
         _check_rows(rows)
-        return Parsed(rows, _check_files(bundle["files"]), _check_login(bundle["job_site_login"]))
+        return Parsed(rows, _check_files(bundle["files"]), _check_login(bundle["job_site_login"]),
+                      _check_rev(bundle["profile_rev"]))
     except (KeyError, TypeError, AttributeError):
         raise ValueError("malformed bundle") from None
 
@@ -257,32 +291,18 @@ class Removed:
 
 
 def _load_existing(db: Session) -> dict[str, dict[tuple, Base]]:
-    return {spec.name: {jobs_bundle._obj_pk(spec, obj): obj for obj in db.scalars(
+    return {spec.name: {obj_pk(spec, obj): obj for obj in db.scalars(
         select(spec.model).where(*_filters(spec)))} for spec in TABLES}
-
-
-def _missing(existing: dict, parsed: Parsed) -> dict[str, list[Base]]:
-    doomed: dict[str, list[Base]] = {}
-    for spec in TABLES:
-        keep = {jobs_bundle._row_pk(spec, row) for row in parsed.rows[spec.name]}
-        doomed[spec.name] = [obj for pk, obj in existing[spec.name].items() if pk not in keep]
-    return doomed
-
-
-def _delete_rows(db: Session, doomed: dict[str, list[Base]]) -> None:
-    """ORM deletes, children before parents, one flush per table (the DB nulls a job-side row's
-    link to a removed referral)."""
-    for spec in reversed(TABLES):
-        for obj in doomed[spec.name]:
-            db.delete(obj)
-        db.flush()
 
 
 def _apply_rows(db: Session, parsed: Parsed) -> Removed:
     existing = _load_existing(db)
-    doomed = _missing(existing, parsed)
+    doomed = bundle_rows.missing(TABLES, existing, parsed.rows)
     removed = Removed([obj.key for obj in doomed["settings"]])
-    _delete_rows(db, doomed)
+    # Deleting a career-history entity cascades, in the database, to the job-side kb_port_log rows
+    # keyed to it on remote-owned jobs, without bumping those jobs' revs. That is fine: home's own
+    # delete cascades the same rows off its replica, and a round pulls the profile before it pushes.
+    bundle_rows.delete_rows(db, TABLES, doomed)
     for spec in TABLES:
         jobs_bundle._upsert(db, spec, existing[spec.name], parsed.rows[spec.name])
         # These models have no relationship() between them, so the unit of work does not order
@@ -353,8 +373,9 @@ def _require_clean(db: Session) -> None:
         raise ValueError("commit or roll back pending changes before applying a profile")
 
 
-def apply_profile(db: Session, bundle: dict, *, max_bytes: int = DEFAULT_MAX_BYTES) -> None:
-    """Make this machine's profile equal the bundle. Only the always-on copy may call it.
+def apply_profile(db: Session, bundle: dict, *, max_bytes: int = DEFAULT_MAX_BYTES) -> int:
+    """Make this machine's profile equal the bundle and return the bundle's checked ``profile_rev``
+    for the caller to store. Only the always-on copy may call it.
 
     One transaction under ``sync_apply``: rows, then files, then the login, then commit; any failure
     rolls the rows back. After the commit, files the replaced rows no longer name are removed
@@ -380,3 +401,4 @@ def apply_profile(db: Session, bundle: dict, *, max_bytes: int = DEFAULT_MAX_BYT
     artifacts.remove_files(_stale_files(before, kept) + _mirror_files(removed.keys))
     with jobs_bundle._applying(db):
         _write_mirrors(db, parsed)
+    return parsed.rev

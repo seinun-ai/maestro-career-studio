@@ -490,6 +490,7 @@ def _refused(recv, roots, bundle):
         jobs_bundle.apply_job(recv, bundle, sender_machine="m")
     assert SENTINEL not in str(caught.value) and SENTINEL not in repr(caught.value)
     assert SENTINEL not in "".join(traceback.format_exception(caught.value))
+    assert type(caught.value) is ValueError
     assert (recv.query(models.Job).count(), tree(roots.recv)) == before
 
 
@@ -590,6 +591,14 @@ def test_apply_works_on_a_guarded_replica_and_the_guard_still_refuses_user_write
     recv.rollback()
 
 
+def test_the_parsed_bundle_prints_no_row_or_file_content(home, roots):
+    _, good = _bundle(home, roots)
+    parsed = jobs_bundle._parse(good)
+    assert good["files"] and SENTINEL in repr(parsed.rows)  # the sentinel really is in there
+    assert SENTINEL not in repr(parsed) + str(parsed)
+    assert good["files"][0]["b64"] not in repr(parsed)
+
+
 def test_apply_does_not_log_or_echo_the_bundle(home, recv, roots, caplog):
     _, good = _bundle(home, roots)
     caplog.set_level(logging.DEBUG)
@@ -681,6 +690,9 @@ BAD_VALUES = [
     ("jobs", "salary_min", SENTINEL), ("jobs", "salary_min", 5), ("jobs", "salary_min", "NaN"),
     ("ats_scores", "composite", None), ("jobs", "id", SENTINEL), ("jobs", "id", 5),
     ("applications", "artifact_dir", {"k": SENTINEL}),
+    ("jobs", "title", "\ud800" + SENTINEL), ("jobs", "raw_text", "\ud800" + SENTINEL),
+    ("resume_versions", "version_number", 2**63), ("resume_versions", "version_number", -(2**63) - 1),
+    ("jobs", "salary_min", "1E+999999999"),
 ]
 
 

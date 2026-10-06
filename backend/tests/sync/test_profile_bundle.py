@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import sessionmaker
 
 from app import models
@@ -20,7 +20,7 @@ from app.config import settings
 from app.db import Base, make_engine
 from app.services import base_resume_data, job_site_login
 from app.services.json_settings import JsonSetting
-from app.services.sync import files, profile_bundle, registry
+from app.services.sync import bundle_rows, files, profile_bundle, registry
 
 PASSWORD = "SENTINEL-PASSWORD-5521"
 WHEN = datetime(2026, 10, 1, 12, 30, 5, 123456, tzinfo=UTC)
@@ -340,13 +340,92 @@ def test_export_is_json_safe_portable_and_leaves_out_local_and_application_rows(
 
 
 def test_export_carries_the_files_and_the_login_and_reports_skips(home, roots, world):
-    os.mkfifo(roots.at("home", "base_resumes") / "pipe")
+    _write(roots.at("home", "base_resumes") / "template_previews" / "mine.pdf", b"%PDF preview")
     bundle = profile_bundle.export_profile(home)
     assert {entry["path"] for entry in bundle["files"]} == {
         "base_resumes:data_scientist.json", "base_resumes:pdfs/data_scientist.pdf",
-        "base_resumes:tex/data_scientist.tex", f"kb_documents:{world.ids.doc}/cv.pdf"}
-    assert bundle["files_skipped"] == 1
+        "base_resumes:tex/data_scientist.tex", f"kb_documents:{world.ids.doc}/cv.pdf",
+        "base_resumes:template_previews/mine.pdf"}
+    assert bundle["files_skipped"] == 1  # the "outside" resume has no JSON file
     assert bundle["job_site_login"] == {"email": "me@example.test", "password": PASSWORD}
+
+
+def _exported_paths(bundle):
+    return {entry["path"] for entry in bundle["files"]}
+
+
+def test_stray_files_in_the_roots_do_not_travel_or_count(home, roots, world):
+    base, kbd = roots.at("home", "base_resumes"), roots.at("home", "kb_documents")
+    _write(base / "template_previews" / "mine.pdf", b"%PDF preview")
+    clean = profile_bundle.export_profile(home)
+    for stray in (base / "stray.json", base / "pdfs" / "old.pdf", base / "tex" / "old.tex",
+                  base / "template_previews" / "ghost.pdf", kbd / "loose" / "x.pdf"):
+        _write(stray, b"S" * 1000)
+    os.mkfifo(base / "pipe")
+    bundle = profile_bundle.export_profile(home)
+    assert _exported_paths(bundle) == _exported_paths(clean)
+    assert bundle["files_skipped"] == clean["files_skipped"]
+    total = sum(bundle_rows.decoded_size(entry) for entry in clean["files"])
+    assert profile_bundle.export_profile(home, max_bytes=total)["files"] == clean["files"]
+
+
+def test_every_referenced_file_is_exported(home, roots, world):
+    base = roots.at("home", "base_resumes")
+    _write(base / "template_previews" / "mine.pdf", b"%PDF preview")
+    assert _exported_paths(profile_bundle.export_profile(home)) == {
+        "base_resumes:data_scientist.json", "base_resumes:pdfs/data_scientist.pdf",
+        "base_resumes:tex/data_scientist.tex", f"kb_documents:{world.ids.doc}/cv.pdf",
+        "base_resumes:template_previews/mine.pdf"}
+
+
+def test_a_missing_referenced_file_is_skipped_and_counted_never_fatal(home, roots, world):
+    before = profile_bundle.export_profile(home)
+    (roots.at("home", "kb_documents") / str(world.ids.doc) / "cv.pdf").unlink()
+    after = profile_bundle.export_profile(home)
+    assert _exported_paths(before) - _exported_paths(after) == {
+        f"kb_documents:{world.ids.doc}/cv.pdf"}
+    assert after["files_skipped"] == before["files_skipped"] + 1
+
+
+def test_a_referenced_file_that_is_not_regular_is_skipped_and_counted(home, roots, world):
+    before = profile_bundle.export_profile(home)
+    tex = roots.at("home", "base_resumes") / "tex" / "data_scientist.tex"
+    tex.unlink()
+    os.mkfifo(tex)
+    after = profile_bundle.export_profile(home)
+    assert _exported_paths(before) - _exported_paths(after) == {
+        "base_resumes:tex/data_scientist.tex"}
+    assert after["files_skipped"] == before["files_skipped"] + 1
+
+
+def test_latex_build_leftovers_are_not_exported_or_counted(home, roots, world):
+    before = profile_bundle.export_profile(home)
+    tex_dir = roots.at("home", "base_resumes") / "tex"
+    _write(tex_dir / "data_scientist.aux", b"leftover")
+    home.get(models.BaseResume, "data_scientist").tex_path = str(tex_dir / "data_scientist.aux")
+    home.commit()
+    after = profile_bundle.export_profile(home)
+    assert _exported_paths(before) - _exported_paths(after) == {
+        "base_resumes:tex/data_scientist.tex"}
+    assert after["files_skipped"] == before["files_skipped"]
+
+
+def _set_rev(db, value):
+    db.execute(text("INSERT INTO sync_state (name, value) VALUES ('profile_rev', :v) "
+                    "ON CONFLICT(name) DO UPDATE SET value=excluded.value"), {"v": value})
+    db.commit()
+
+
+def test_the_revision_is_read_before_the_files_are_packed(home, roots, world, monkeypatch):
+    _set_rev(home, 5)
+    real = profile_bundle._pack
+
+    def write_during_the_export(*args, **kwargs):
+        _set_rev(home, 9)  # a base-resume save lands between the two steps
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(profile_bundle, "_pack", write_during_the_export)
+    assert profile_bundle.export_profile(home)["profile_rev"] == 5
 
 
 def test_export_without_a_login_says_none(home, roots):
@@ -507,6 +586,28 @@ def test_a_login_missing_its_password_replaces_instead_of_merging(home, recv, ro
     assert job_site_login.read() == ("new@example.test", None)
 
 
+def test_the_parsed_bundle_prints_no_secret(home, roots, world):
+    roots.use("home")
+    bundle = json.loads(json.dumps(profile_bundle.export_profile(home)))
+    _row(bundle, "settings", key="persona")["value"] = "SENTINEL-AI-KEY-8842"
+    parsed = profile_bundle._parse(bundle)
+    shown = repr(parsed) + str(parsed)
+    assert PASSWORD not in shown and "SENTINEL-AI-KEY-8842" not in shown
+    assert "me@example.test" not in shown
+
+
+def test_apply_returns_the_checked_revision(home, recv, roots, remote, world):
+    roots.use("home")
+    bundle = json.loads(json.dumps(profile_bundle.export_profile(home)))
+    bundle["profile_rev"] = 7
+    roots.use("recv")
+    remote.on()
+    try:
+        assert profile_bundle.apply_profile(recv, bundle) == 7
+    finally:
+        remote.off()
+
+
 # ---------------------------------------------------------------------------- refusals
 
 
@@ -592,9 +693,34 @@ def _duplicate_key(bundle):
     bundle["rows"].append(copy.deepcopy(next(i for i in bundle["rows"] if i["table"] == "templates")))
 
 
+def _rev_string(bundle):
+    bundle["profile_rev"] = "not-a-number"
+
+
+def _rev_bool(bundle):
+    bundle["profile_rev"] = True
+
+
+def _rev_negative(bundle):
+    bundle["profile_rev"] = -1
+
+
+def _rev_float(bundle):
+    bundle["profile_rev"] = 1.5
+
+
+def _rev_huge(bundle):
+    bundle["profile_rev"] = 2**63
+
+
+def _rev_missing(bundle):
+    del bundle["profile_rev"]
+
+
 HOSTILE = [_unknown_table, _local_key, _local_key_by_prefix, _foreign_root, _absolute_path,
            _dotdot_path, _file_outside_roots, _file_dotdot, _bad_sha, _application_kind,
-           _extra_column, _bad_date, _bad_slug, _bad_login, _login_missing, _duplicate_key]
+           _extra_column, _bad_date, _bad_slug, _bad_login, _login_missing, _duplicate_key,
+           _rev_string, _rev_bool, _rev_negative, _rev_float, _rev_huge, _rev_missing]
 
 
 @pytest.mark.parametrize("mutate", HOSTILE, ids=lambda fn: fn.__name__.strip("_"))
@@ -673,9 +799,31 @@ def _datetime_is_a_number(bundle):
     _row(bundle, "templates")["created_at"] = 20261001
 
 
+def _text_has_a_lone_surrogate(bundle):
+    _row(bundle, "templates")["source"] = "\ud800" + PASSWORD
+
+
+def _integer_overflows_the_database(bundle):
+    _row(bundle, "base_resumes", slug="outside")["pdf_pages"] = 2**63
+
+
+def _login_has_a_lone_surrogate(bundle):
+    bundle["job_site_login"] = {"email": "a@b.test", "password": "\ud800" + PASSWORD}
+
+
 MISTYPED = [_text_gets_a_dict, _integer_gets_a_string, _integer_gets_a_bool,
             _boolean_gets_a_string, _uuid_is_garbage, _datetime_is_naive,
-            _setting_gets_a_number, _setting_key_is_a_list, _datetime_is_a_number]
+            _setting_gets_a_number, _setting_key_is_a_list, _datetime_is_a_number,
+            _text_has_a_lone_surrogate, _integer_overflows_the_database,
+            _login_has_a_lone_surrogate]
+
+
+def _printed(caught):
+    """Every way an exception can be shown: str, repr, the traceback. It must be a plain ValueError
+    (not a UnicodeEncodeError or OverflowError, whose text and attributes carry the value)."""
+    assert type(caught.value) is ValueError
+    return ("".join(traceback.format_exception(caught.value)) + caught.exconly()
+            + repr(caught.value) + str(caught.value))
 
 
 @pytest.mark.parametrize("mutate", MISTYPED, ids=lambda fn: fn.__name__.strip("_"))
@@ -693,7 +841,7 @@ def test_a_mistyped_value_is_refused_with_a_fixed_message_and_no_value_anywhere(
             profile_bundle.apply_profile(recv, bundle)
     finally:
         remote.off()
-    shown = "".join(traceback.format_exception(caught.value)) + caught.exconly()
+    shown = _printed(caught)
     assert PASSWORD not in shown and "[parameters" not in shown and "12345" not in shown
     assert "SELECT" not in shown and "INSERT" not in shown
     assert PASSWORD not in caplog.text
