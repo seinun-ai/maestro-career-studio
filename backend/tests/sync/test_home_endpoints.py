@@ -1,5 +1,6 @@
 """Home's sync endpoints (/api/sync/*): the channel the always-on copy talks to."""
 
+import asyncio
 import json
 import logging
 import threading
@@ -8,16 +9,18 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 from sqlalchemy.orm import sessionmaker
+from starlette.requests import ClientDisconnect
 
 from app import models
 from app.config import settings
 from app.db import Base, get_db, make_engine
 from app.main import app
 from app.routers import sync as sync_router
-from app.services import job_site_login
+from app.services import job_site_login, proposals
 from app.services.sync import duplicates, files, jobs_bundle, status
 from tests.sync.test_jobs_bundle import SENTINEL, WHEN, build_job
 
@@ -348,20 +351,75 @@ def test_profile_that_cannot_be_read_is_a_fixed_500(client, auth, monkeypatch):
     assert response.status_code == 500 and SENTINEL not in response.text
 
 
-def test_jobs_are_paged_by_revision(client, auth, db_session, roots):
+def cursor_of(bundle):
+    return f"{bundle['sync_rev']}:{bundle['job_id']}"
+
+
+def test_jobs_are_paged_by_a_revision_and_id_cursor(client, auth, db_session, roots):
     first = home_job(db_session, roots, tag="one")
     second = home_job(db_session, roots, tag="two")
     third = home_job(db_session, roots, tag="three")
-    page = client.get("/api/sync/jobs?since=0&limit=2", headers=auth).json()
+    page = client.get("/api/sync/jobs?limit=2", headers=auth).json()
     assert [b["job_id"] for b in page["bundles"]] == [first.job.hex, second.job.hex]
     assert page["more"] is True and page["tombstones"] == []
-    assert page["next_since"] == page["bundles"][-1]["sync_rev"]
+    assert page["next_since"] == cursor_of(page["bundles"][-1])
     rest = client.get(f"/api/sync/jobs?since={page['next_since']}&limit=2", headers=auth).json()
     assert [b["job_id"] for b in rest["bundles"]] == [third.job.hex]
     assert rest["more"] is False
-    assert rest["next_since"] == rest["bundles"][0]["sync_rev"]
+    assert rest["next_since"] == cursor_of(rest["bundles"][0])
     assert client.get(f"/api/sync/jobs?since={rest['next_since']}", headers=auth).json()[
         "bundles"] == []
+
+
+def test_a_page_may_end_inside_a_revision_that_several_jobs_share(
+        client, auth, db_session, roots):
+    ids = [home_job(db_session, roots, tag=f"j{index}").job for index in range(5)]
+    db_session.execute(text("UPDATE jobs SET sync_rev = 7"))
+    db_session.commit()
+    seen, cursor = [], "0"
+    for _ in range(6):
+        page = client.get(f"/api/sync/jobs?since={cursor}&limit=2", headers=auth).json()
+        assert len(page["bundles"]) <= 2
+        seen += [b["job_id"] for b in page["bundles"]]
+        cursor = page["next_since"]
+        if not page["more"]:
+            break
+    assert sorted(seen) == sorted(job.hex for job in ids)
+
+
+def test_an_integer_since_still_means_after_that_revision(client, auth, db_session, roots):
+    home_job(db_session, roots, tag="one")
+    second = home_job(db_session, roots, tag="two")
+    first_rev = client.get("/api/sync/jobs?limit=1", headers=auth).json()["bundles"][0]["sync_rev"]
+    body = client.get(f"/api/sync/jobs?since={first_rev}", headers=auth).json()
+    assert [b["job_id"] for b in body["bundles"]] == [second.job.hex]
+
+
+@pytest.mark.parametrize("since", ["1:zz", "-1", "1:2:3", "9" * 40, "x:" + "a" * 32])
+def test_a_malformed_cursor_is_a_422(client, auth, since):
+    response = client.get(f"/api/sync/jobs?since={since}", headers=auth)
+    assert response.status_code == 422
+
+
+def test_a_page_stops_at_the_byte_budget_with_more(client, auth, db_session, roots, monkeypatch):
+    first = home_job(db_session, roots, tag="one")
+    home_job(db_session, roots, tag="two")
+    one = client.get("/api/sync/jobs?limit=1", headers=auth).json()["bundles"][0]
+    weight = sync_router._weight(one)
+    monkeypatch.setattr(sync_router, "PAGE_BYTES", weight + weight // 2)
+    page = client.get("/api/sync/jobs", headers=auth).json()
+    assert [b["job_id"] for b in page["bundles"]] == [first.job.hex]
+    assert page["more"] is True and page["next_since"] == cursor_of(page["bundles"][0])
+
+
+def test_a_job_over_the_budget_alone_is_still_sent(client, auth, db_session, roots, monkeypatch):
+    first = home_job(db_session, roots, tag="one")
+    second = home_job(db_session, roots, tag="two")
+    monkeypatch.setattr(sync_router, "PAGE_BYTES", 10)
+    page = client.get("/api/sync/jobs", headers=auth).json()
+    assert [b["job_id"] for b in page["bundles"]] == [first.job.hex] and page["more"] is True
+    rest = client.get(f"/api/sync/jobs?since={page['next_since']}", headers=auth).json()
+    assert [b["job_id"] for b in rest["bundles"]] == [second.job.hex] and rest["more"] is False
 
 
 def test_jobs_leave_out_replicas_and_carry_files(client, auth, db_session, recv, roots):
@@ -382,9 +440,23 @@ def test_jobs_report_tombstones_within_the_page(client, auth, db_session, roots)
     body = client.get("/api/sync/jobs", headers=auth).json()
     assert [b["job_id"] for b in body["bundles"]] == [keep.job.hex]
     assert [t["job_id"] for t in body["tombstones"]] == [gone.job.hex]
-    assert body["next_since"] >= body["tombstones"][0]["rev"]
+    assert int(body["next_since"].split(":")[0]) >= body["tombstones"][0]["rev"]
     again = client.get(f"/api/sync/jobs?since={body['next_since']}", headers=auth).json()
     assert again["tombstones"] == []
+
+
+def test_tombstones_ride_the_page_that_reaches_their_revision(client, auth, db_session, roots):
+    gone = home_job(db_session, roots, tag="gone")
+    db_session.delete(db_session.get(models.Job, gone.job))
+    db_session.commit()
+    first = home_job(db_session, roots, tag="one")
+    second = home_job(db_session, roots, tag="two")
+    page = client.get("/api/sync/jobs?limit=1", headers=auth).json()
+    assert [b["job_id"] for b in page["bundles"]] == [first.job.hex]
+    assert page["more"] is True and [t["job_id"] for t in page["tombstones"]] == [gone.job.hex]
+    rest = client.get(f"/api/sync/jobs?since={page['next_since']}&limit=1", headers=auth).json()
+    assert [b["job_id"] for b in rest["bundles"]] == [second.job.hex]
+    assert rest["tombstones"] == []
 
 
 def test_a_job_too_large_to_send_is_skipped_and_counted(client, auth, db_session, roots,
@@ -395,7 +467,7 @@ def test_a_job_too_large_to_send_is_skipped_and_counted(client, auth, db_session
         raise ValueError("too big")
     monkeypatch.setattr(sync_router.jobs_bundle, "export_job", too_big)
     body = client.get("/api/sync/jobs", headers=auth).json()
-    assert body["bundles"] == [] and body["skipped"] == 1 and body["next_since"] > 0
+    assert body["bundles"] == [] and body["skipped"] == 1 and body["next_since"] != "0"
 
 
 # ------------------------------------------------------------------------------- POST /jobs
@@ -573,6 +645,38 @@ def test_the_files_limit_is_passed_to_apply(client, auth, recv, roots, monkeypat
     assert seen and all(isinstance(value, int) and value > 0 for value in seen)
 
 
+def test_a_delete_and_a_new_job_with_the_same_text_in_one_push_keep_the_new_job(
+        client, auth, db_session, recv, roots):
+    old, old_bundle = remote_job(recv, roots, tag="old")
+    assert post_jobs(client, auth, [old_bundle]).status_code == 200
+    original = db_session.get(models.Job, old.job).raw_text_hash
+    new, new_bundle = remote_job(recv, roots, tag="new")
+    set_hash(new_bundle, original)
+    body = post_jobs(client, auth, [new_bundle], [{"job_id": old.job.hex, "rev": 9}]).json()
+    assert _ids(body["deleted"]) == [old.job.hex] and _ids(body["applied"]) == [new.job.hex]
+    assert body["duplicates"] == [] and body["refused"] == []
+    db_session.expire_all()
+    assert db_session.get(models.Job, old.job) is None
+    assert db_session.get(models.Job, new.job).raw_text_hash == original
+
+
+def test_a_text_clash_with_a_replica_the_sender_owns_is_refused_for_a_retry(
+        client, auth, db_session, recv, roots):
+    old, old_bundle = remote_job(recv, roots, tag="old")
+    post_jobs(client, auth, [old_bundle])
+    original = db_session.get(models.Job, old.job).raw_text_hash
+    new, new_bundle = remote_job(recv, roots, tag="new")
+    set_hash(new_bundle, original)
+    body = post_jobs(client, auth, [new_bundle]).json()
+    assert body["applied"] == [] and body["duplicates"] == []
+    assert [r["job_id"] for r in body["refused"]] == [new.job.hex]
+    db_session.expire_all()
+    assert db_session.get(models.Job, old.job) is not None
+    assert db_session.get(models.Job, new.job) is None
+    retry = post_jobs(client, auth, [new_bundle], [{"job_id": old.job.hex, "rev": 9}]).json()
+    assert _ids(retry["applied"]) == [new.job.hex]
+
+
 # --------------------------------------------------------------------------- POST /ownership
 
 
@@ -617,7 +721,7 @@ def _local_request(db, job_id, kind="proposal_transition", payload=None, when=No
     return row
 
 
-def test_requests_for_jobs_the_remote_owns_are_sent_once_and_marked(
+def test_requests_for_jobs_the_remote_owns_are_sent_and_marked(
         client, auth, db_session, recv, roots):
     ids = _remote_case(client, auth, db_session, recv, roots)
     mine = home_job(db_session, roots)
@@ -632,6 +736,10 @@ def test_requests_for_jobs_the_remote_owns_are_sent_once_and_marked(
     db_session.expire_all()
     assert {r.status for r in db_session.scalars(select(models.SyncRequest)
             .where(models.SyncRequest.job_id == ids.job))} == {"sent"}
+    assert client.get("/api/sync/requests", headers=auth).json() == body  # until answered
+    client.post("/api/sync/request-results", headers=auth, json={"results": [
+        {"id": early.id.hex, "status": "applied", "reason": None},
+        {"id": late.id.hex, "status": "refused", "reason": "No."}]})
     assert client.get("/api/sync/requests", headers=auth).json() == []
 
 
@@ -859,6 +967,55 @@ def test_a_take_over_sent_to_home_is_refused_and_changes_nothing(
     assert db_session.get(models.Job, ids.job).owner_machine is None
 
 
+def test_a_needs_decision_proposal_with_no_application_cannot_go_to_review(
+        client, auth, db_session, roots):
+    ids = _owned_case(db_session, roots, status_="needs_decision")
+    proposal = db_session.get(models.ApplicationProposal, ids.proposal)
+    proposal.application_id = None
+    db_session.commit()
+    item = _request(ids.job, "proposal_transition", {
+        "proposal_id": str(ids.proposal), "to": "pending_review", "consent": SECRET_CONSENT})
+    (result,) = post_requests(client, auth, item).json()
+    assert result == {"id": item["id"], "status": "refused",
+                      "reason": proposals.NO_APPLICATION_TO_LINK}
+    db_session.expire_all()
+    assert db_session.get(models.ApplicationProposal, ids.proposal).status == "needs_decision"
+
+
+def test_a_needs_decision_proposal_with_an_application_goes_to_review_as_the_web_does(
+        client, auth, db_session, roots):
+    ids = _owned_case(db_session, roots, status_="needs_decision")
+    item = _request(ids.job, "proposal_transition", {
+        "proposal_id": str(ids.proposal), "to": "pending_review"})
+    (result,) = post_requests(client, auth, item).json()
+    assert result["status"] == "applied"
+    db_session.expire_all()
+    proposal = db_session.get(models.ApplicationProposal, ids.proposal)
+    assert proposal.status == "pending_review" and proposal.fit_json["decided_by"] == "user"
+
+
+def test_a_request_that_raises_is_refused_alone_with_a_fixed_sentence(
+        client, auth, db_session, roots, monkeypatch, caplog):
+    ids = _owned_case(db_session, roots)
+    caplog.set_level(logging.DEBUG)
+
+    def boom(db, item):
+        raise RuntimeError(f"secret {SENTINEL}")
+    monkeypatch.setitem(sync_router._APPLIERS, "take_over", boom)
+    now = datetime.now(UTC)
+    bad = _request(ids.job, "take_over", {}, now - timedelta(minutes=1))
+    good = _request(ids.job, "application_patch", {
+        "application_id": str(ids.app), "fields": {"notes": "Still applied"}}, now)
+    first, second = post_requests(client, auth, bad, good).json()
+    assert first == {"id": bad["id"], "status": "refused",
+                     "reason": "Maestro couldn't apply this request."}
+    assert second["status"] == "applied"
+    assert SENTINEL not in caplog.text and SENTINEL not in json.dumps([first, second])
+    db_session.expire_all()
+    assert db_session.get(models.Application, ids.app).notes == "Still applied"
+    assert post_requests(client, auth, bad).json() == [first]
+
+
 def test_an_unknown_kind_is_refused(client, auth):
     item = _request(None, "wire_money", {"note": SENTINEL})
     (result,) = post_requests(client, auth, item).json()
@@ -976,6 +1133,20 @@ def test_a_returned_job_is_owned_here_again(client, auth, db_session, recv, root
     db_session.commit()
 
 
+def test_a_kept_both_job_can_be_returned(client, auth, db_session, recv, roots):
+    mine = lone_job(db_session)
+    ids, bundle = remote_job(recv, roots)
+    set_hash(bundle, db_session.get(models.Job, mine.id).raw_text_hash)
+    assert post_jobs(client, auth, [bundle]).json()["duplicates"][0]["kept"] == "both"
+    bundle["handover"] = "returning"
+    body = client.post("/api/sync/handover/return", headers=auth, json={"bundles": [bundle]})
+    assert _ids(body.json()["job_ids"]) == [ids.job.hex] and body.json()["refused"] == []
+    db_session.expire_all()
+    job = db_session.get(models.Job, ids.job)
+    assert (job.owner_machine, job.handover) == (None, None)
+    assert job.raw_text_hash == duplicates.replica_hash(ids.job)
+
+
 def test_a_return_of_a_job_the_remote_does_not_own_is_refused(client, auth, db_session, recv,
                                                              roots):
     _, bundle = remote_job(recv, roots)
@@ -1038,6 +1209,40 @@ def test_runs_are_never_pruned_by_a_push(client, auth, db_session, remote_id):
 def test_a_run_of_the_wrong_shape_is_a_422(client, auth, change):
     response = client.post("/api/sync/runs", headers=auth, json={"runs": [_run(**change)]})
     assert response.status_code == 422 and SENTINEL not in response.text
+
+
+def test_run_counts_accept_only_the_known_names(client, auth):
+    response = client.post("/api/sync/runs", headers=auth, json={"runs": [
+        _run(counts={SENTINEL: 1})]})
+    assert response.status_code == 422 and SENTINEL not in response.text
+
+
+# ------------------------------------------------------------------------------- the body reader
+
+
+def test_a_stalled_peer_gets_a_408_and_the_lock_is_released(client, auth, monkeypatch):
+    async def stalled(self):
+        yield b"{"
+        await asyncio.sleep(30)
+    with monkeypatch.context() as patched:
+        patched.setattr(Request, "stream", stalled)
+        patched.setattr(sync_router, "_CHUNK_TIMEOUT", 0.05)
+        response = client.post("/api/sync/ownership", headers=auth, json={"job_ids": []})
+    assert response.status_code == 408
+    assert response.json() == {"detail": "The request took too long to arrive."}
+    assert not sync_router._LOCK.locked()
+    assert client.get("/api/sync/hello", headers=auth).status_code == 200
+
+
+def test_a_client_that_hangs_up_is_not_an_error(client, auth, monkeypatch, caplog):
+    async def gone(self):
+        raise ClientDisconnect
+        yield b""
+    monkeypatch.setattr(Request, "stream", gone)
+    caplog.set_level(logging.DEBUG)
+    client.post("/api/sync/ownership", headers=auth, json={"job_ids": []})
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not sync_router._LOCK.locked()
 
 
 # ---------------------------------------------------------------------------- never in a log

@@ -15,11 +15,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
-from app.services.sync import jobs_bundle
+from app.services.sync import jobs_bundle, status
 
 
 def replica_hash(job_id: uuid.UUID) -> str:
     return hashlib.sha256(f"replica:{job_id.hex}".encode()).hexdigest()
+
+
+class ReplicaClash(Exception):
+    """The text belongs to a replica of the sender's own: that job is on its way out or in; retry."""
 
 
 @dataclass(frozen=True)
@@ -60,15 +64,29 @@ def _stored_with_replica_hash(db: Session, job_id: uuid.UUID) -> bool:
     return db.scalar(select(Job.raw_text_hash).where(Job.id == job_id)) == replica_hash(job_id)
 
 
-def apply_replica(db: Session, bundle: dict, *, sender_machine: str, max_bytes: int) -> Outcome:
-    """Apply a bundle as a replica, settling a text clash by the rule above. Raises what
-    ``jobs_bundle.apply_job`` raises, except DuplicateJob."""
+def for_stored(db: Session, bundle: dict) -> dict:
+    """The bundle as it must be applied here: with the replica hash when the job is stored under it."""
     job_id = _job_id(bundle)
     if job_id is not None and _stored_with_replica_hash(db, job_id):
-        bundle = with_replica_hash(bundle)
+        return with_replica_hash(bundle)
+    return bundle
+
+
+def _owned_here(db: Session, job_id: uuid.UUID) -> bool:
+    owner = db.scalar(select(Job.owner_machine).where(Job.id == job_id))
+    return owner is None or owner == status.machine_id(db)
+
+
+def apply_replica(db: Session, bundle: dict, *, sender_machine: str, max_bytes: int) -> Outcome:
+    """Apply a bundle as a replica, settling a text clash by the rule above. Raises what
+    ``jobs_bundle.apply_job`` raises, except DuplicateJob; raises ReplicaClash when the clashing job
+    is a replica of a machine's own rather than this copy's."""
+    bundle = for_stored(db, bundle)
     try:
         jobs_bundle.apply_job(db, bundle, sender_machine=sender_machine, max_bytes=max_bytes)
     except jobs_bundle.DuplicateJob as clash:
+        if not _owned_here(db, clash.local_id):
+            raise ReplicaClash from None
         if not has_progressed(bundle):
             return Outcome("laptop", clash.local_id)
         jobs_bundle.apply_job(db, with_replica_hash(bundle), sender_machine=sender_machine,

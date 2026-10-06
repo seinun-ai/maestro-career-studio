@@ -547,6 +547,31 @@ def test_files_outside_the_jobs_artifact_folders_are_refused(home, recv, roots):
         _refused(recv, roots, bad)
 
 
+@pytest.mark.parametrize("target", ["Co_Role_dir/inner", "Co_Role_dir/inner/evidence", "Co_Role_dir"])
+def test_a_bundle_may_not_aim_at_another_jobs_application_folder(home, recv, roots, target):
+    _, good = _bundle(home, roots)
+    roots.use("recv")
+    other = build_job(recv, roots.recv, tag="dir/inner")
+    victim = roots.recv / "Co_Role_dir" / "inner" / "resume.pdf"
+    bundle = copy.deepcopy(good)
+    _row(bundle, "applications")["artifact_dir"] = f"applications:{target}"
+    bundle["files"] = [{**bundle["files"][0], "path": f"applications:{target}/resume.pdf"}]
+    before = victim.read_bytes()
+    with pytest.raises(ValueError):
+        jobs_bundle.apply_job(recv, bundle, sender_machine="m")
+    assert victim.read_bytes() == before
+    assert not (roots.recv / "Co_Role_dir" / "inner" / "evidence" / "resume.pdf").exists()
+    assert recv.get(models.Job, uuid.UUID(good["job_id"])) is None
+    assert recv.get(models.Job, other.job) is not None
+
+
+def test_a_job_may_reapply_its_own_artifact_folder(home, recv, roots):
+    _, good = _bundle(home, roots)
+    roots.use("recv")
+    jobs_bundle.apply_job(recv, good, sender_machine="m")
+    jobs_bundle.apply_job(recv, good, sender_machine="m")
+
+
 def test_a_bad_file_digest_rolls_the_rows_back(home, recv, roots):
     _, good = _bundle(home, roots)
     good["files"][0]["sha256"] = "0" * 64

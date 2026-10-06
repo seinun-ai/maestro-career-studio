@@ -330,6 +330,21 @@ def _check_duplicate(db: Session, parsed: Parsed) -> None:
         raise DuplicateJob(local)
 
 
+def _check_artifact_folders(db: Session, parsed: Parsed) -> None:
+    """A bundle's folders may not equal, contain or sit inside the folder of an application that is
+    not part of this job: files are written there, and they would overwrite another job's."""
+    ours = [os.path.realpath(row["artifact_dir"]) for row in parsed.rows["applications"]
+            if row["artifact_dir"]]
+    if not ours:
+        return
+    others = (os.path.realpath(value) for value in db.scalars(
+        select(models.Application.artifact_dir).where(
+            models.Application.artifact_dir.is_not(None),
+            models.Application.job_id != parsed.job_id)) if value)
+    if any(_nested(first, other) for other in others for first in ours):
+        raise ValueError("artifact folder belongs to another job")
+
+
 def _receiver_scope(db: Session, parsed: Parsed) -> Scope:
     """Existing and incoming ids together: rows of an application that is going away still count."""
     scope = _db_scope(db, parsed.job_id)
@@ -457,6 +472,7 @@ def apply_job(db: Session, bundle: dict, *, sender_machine: str,
     job or conflicts with another job's rows (never with row contents in the message).
     """
     parsed = _parse(bundle)
+    _check_artifact_folders(db, parsed)
     try:
         with _applying(db):
             folders = _apply_rows(db, parsed, sender_machine)
