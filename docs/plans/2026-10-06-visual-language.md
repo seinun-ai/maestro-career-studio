@@ -2723,3 +2723,6 @@ implementer of task N reads the "Task N" bullets as part of its brief.
 - **Task 7 / Task 15 (from the Task 7 review).** `animate-confirm` is a registered Tailwind `@utility`, not a plain
   class: Tailwind v4 applies variants (`data-confirm:`, `data-copied:` …) only to registered utilities, and the plain
   class compiled to nothing under a variant. Any later utility meant to take a variant is registered the same way.
+- **Every motion task (from the Task 10 review).** Tailwind v4's `translate-*`, `scale-*` and `rotate-*` set the CSS
+  `translate`, `scale` and `rotate` properties, not `transform`. A transition list names those properties
+  (`transition-[opacity,translate]`), never `transform`, or the movement jumps instead of animating.
