@@ -17,6 +17,7 @@ import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -268,7 +269,13 @@ export function QATab({ applicationId }: { applicationId: string }) {
             retrying={isFetching}
             onRetry={() => void refetch()}
           />
-        ) : !entries || entries.length === 0 ? (
+        ) : entries === undefined ? (
+          <div role="status" aria-busy="true" className="space-y-3">
+            <span className="sr-only">Loading answers…</span>
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        ) : entries.length === 0 ? (
           <p className="text-muted-foreground text-body-medium">No answers yet.</p>
         ) : (
           entries.map((entry, i) => {

@@ -46,6 +46,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   parseFlag,
@@ -823,6 +824,16 @@ export function ChatPage() {
                 </div>
               )}
               <div ref={bottomRef} />
+            </div>
+          </div>
+        ) : sessionId !== null && detail.isPending ? (
+          // An existing chat is still loading: say so, never the new-chat greeting.
+          <div role="status" aria-busy="true" className="flex-1">
+            <span className="sr-only">Loading this chat…</span>
+            <div className="mx-auto w-full max-w-3xl space-y-4 py-2">
+              <Skeleton className="ml-auto h-10 w-2/3" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="ml-auto h-10 w-1/2" />
             </div>
           </div>
         ) : (

@@ -163,3 +163,18 @@ def test_the_copy_button_confirms_in_place_and_aloud():
     # Tailwind v4 translate-y-* sets `translate`, not `transform`, so that is what must transition.
     assert "transition-[opacity,translate]" in btn and "transform" not in btn
     assert "CircleCheck" in btn and not re.search(r"\bCheck\b", btn.replace("CircleCheck", ""))
+
+
+def test_qa_history_waits_before_saying_empty():
+    src = _read("components/qa-tab.tsx")
+    # The skeleton stands in while the history query has no data; "No answers yet." only after it loaded.
+    pending = src.index("entries === undefined ?")
+    assert "<Skeleton" in src[pending : src.index("No answers yet.")]
+    assert "No answers yet." in src[src.index("entries.length === 0") :]
+
+
+def test_an_existing_chat_does_not_greet_while_loading():
+    src = _read("components/chat/chat-page.tsx")
+    start = src.index("sessionId !== null && detail.isPending ?")
+    branch = src[start : src.index("What are we working on?")]
+    assert "<Skeleton" in branch and 'aria-busy="true"' in branch
