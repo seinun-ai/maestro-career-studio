@@ -24,7 +24,7 @@ export function CopyButton({
       <span
         aria-hidden="true"
         data-show={copied || undefined}
-        className="bg-foreground text-background pointer-events-none absolute -top-6 left-1/2 inline-flex h-5 -translate-x-1/2 translate-y-1 items-center gap-1 rounded-full px-2 text-label-small whitespace-nowrap opacity-0 transition-[opacity,transform] duration-(--duration-short3) ease-(--ease-spring) data-show:translate-y-0 data-show:opacity-100"
+        className="bg-foreground text-background pointer-events-none absolute -top-6 left-1/2 inline-flex h-5 -translate-x-1/2 translate-y-1 items-center gap-1 rounded-full px-2 text-label-small whitespace-nowrap opacity-0 transition-[opacity,translate] duration-(--duration-short3) ease-(--ease-spring) data-show:translate-y-0 data-show:opacity-100"
       >
         <CircleCheck className="size-3" />
         Copied

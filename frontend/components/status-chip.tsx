@@ -64,7 +64,7 @@ function chipClasses(interactive: boolean): string {
   return cn(
     "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-label-medium",
     interactive &&
-      "cursor-pointer transition-[background-color,color,transform,box-shadow] duration-(--duration-short3) ease-(--ease-standard) select-none " +
+      "cursor-pointer transition-[background-color,color,scale,box-shadow] duration-(--duration-short3) ease-(--ease-standard) select-none " +
         "hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring",
   );
 }

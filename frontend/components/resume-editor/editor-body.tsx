@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 import { IconButton } from "@/components/icon-button";
 import { KbSyncPill } from "@/components/kb-sync-pill";
+import { useCopy } from "@/hooks/use-copy";
 import { useFocusOnNextCommit, useEditToggle } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
@@ -62,7 +63,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { fieldsNeedFixing } from "@/lib/describe-edit";
-import { useCopy } from "@/hooks/use-copy";
 import { couldnt } from "@/lib/error-text";
 import { type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";

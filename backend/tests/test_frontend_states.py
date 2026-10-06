@@ -160,4 +160,6 @@ def test_the_copy_button_confirms_in_place_and_aloud():
     btn = _read("components/copy-button.tsx")
     assert "Copied" in btn and 'aria-live="polite"' in btn and "data-show" in btn
     # D2: a done state is CircleCheck, never Check.
+    # Tailwind v4 translate-y-* sets `translate`, not `transform`, so that is what must transition.
+    assert "transition-[opacity,translate]" in btn and "transform" not in btn
     assert "CircleCheck" in btn and not re.search(r"\bCheck\b", btn.replace("CircleCheck", ""))
