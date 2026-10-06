@@ -256,9 +256,8 @@ export function DemonstrateSkillDialog({
           ) : (
             <Button
               size="sm"
-              disabled={
-                locked || !picked || prose.trim().length === 0 || draftMut.isPending
-              }
+              pending={draftMut.isPending}
+              disabled={locked || !picked || prose.trim().length === 0}
               focusableWhenDisabled
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
               onClick={() => draftOnce()}

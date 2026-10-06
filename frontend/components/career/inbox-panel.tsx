@@ -8,7 +8,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { Check, Inbox, Pencil, Trash2, X } from "lucide-react";
+import { Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -35,6 +35,11 @@ import { deleteKbPoint, patchKbPoint, bulkKbPointState, KB_DRAFTS_LIMIT } from "
 import { couldnt, errorDetail, isPlainSentence } from "@/lib/error-text";
 import { SECTION_ORDER_LABELS, type SectionKey } from "@/lib/formatting";
 import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+import { PointActorChip } from "@/components/career/points-list";
+
+const DraftsIcon = CONCEPT_ICONS.drafts;
+const ApproveIcon = CONCEPT_ICONS.approve;
 
 type DraftGroup = {
   entityId: string;
@@ -204,7 +209,7 @@ export function InboxPanel({
     return (
       <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-surface-container-low py-3 ring-0 outline-none">
         <CardContent className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-medium">
-          <Inbox className="text-primary size-4 shrink-0" aria-hidden="true" />
+          <DraftsIcon className="text-primary size-4 shrink-0" aria-hidden="true" />
           <span className="font-medium">Drafts to review</span>
           {isLoading ? (
             <Skeleton className="h-4 w-64" aria-label="Loading career drafts" />
@@ -224,7 +229,7 @@ export function InboxPanel({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle className="flex items-center gap-2">
             <span className="flex size-8 items-center justify-center rounded-full bg-background/80">
-              <Inbox className="text-primary size-4" aria-hidden="true" />
+              <DraftsIcon className="text-primary size-4" aria-hidden="true" />
             </span>
             Drafts to review
             {!isLoading && <Badge variant="secondary">{drafts.length}</Badge>}
@@ -237,7 +242,7 @@ export function InboxPanel({
                 onClick={() => approveAll.mutate(approvableIds)}
                 disabled={pending || approvableIds.length === 0}
               >
-                <Check aria-hidden="true" />
+                <ApproveIcon aria-hidden="true" />
                 {approveAll.isPending ? "Approving…" : "Approve all shown"}
               </Button>
               {skipped > 0 && (
@@ -332,19 +337,35 @@ function DraftRow({
 
   const update = useMutation({
     mutationKey: KB_POINT_MUTATION_KEY,
-    mutationFn: ({ payload }: { payload: KBPointPatch; success: string }) =>
+    mutationFn: ({ payload }: { payload: KBPointPatch; success: string; undoable?: boolean }) =>
       patchKbPoint(point.id, payload),
     onSuccess: async (updated, variables) => {
       setText(updated.text);
       setEditing(false);
       onDirtyChange(point.id, false);
-      toast.success(variables.success);
+      // The row unmounts once the list refetches, so Undo closes over the id and the client only.
+      toast.success(
+        variables.success,
+        variables.undoable
+          ? {
+              action: {
+                label: "Undo",
+                onClick: () =>
+                  patchKbPoint(updated.id, { state: "draft" })
+                    .then(() => invalidateKbPoints(queryClient))
+                    .catch((error: Error) => toast.error(couldnt("undo the approval", error))),
+              },
+            }
+          : undefined,
+      );
       await invalidateKbPoints(queryClient);
     },
     onError: (error: Error) => toast.error(couldnt("save the draft", error)),
   });
   // One write per gesture: a double click on Approve sent two PATCHes.
   const updateOnce = useSingleFlight(update.mutate);
+  // Save and Move to item share this mutation: only an approval says "Approving…".
+  const approving = update.isPending && update.variables?.payload.state === "approved";
 
   const discard = useMutation({
     mutationKey: KB_POINT_MUTATION_KEY,
@@ -387,6 +408,7 @@ function DraftRow({
         ...(value && value !== point.text ? { text: value } : {}),
       },
       success: "Bullet approved",
+      undoable: true,
     });
   };
 
@@ -435,7 +457,10 @@ function DraftRow({
         </div>
       ) : (
         <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 text-body-medium">{point.text}</p>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <p className="text-body-medium">{point.text}</p>
+            <PointActorChip point={point} />
+          </div>
           <Button
             ref={editRef}
             size="icon-sm"
@@ -476,12 +501,13 @@ function DraftRow({
           className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
           size="sm"
           onClick={approve}
+          pending={approving}
           disabled={!text.trim() || pending}
           // Disables itself while any draft saves: a native `disabled` drops focus.
           focusableWhenDisabled
         >
-          <Check aria-hidden="true" />
-          {update.isPending ? "Saving…" : "Approve"}
+          <ApproveIcon aria-hidden="true" />
+          {approving ? "Approving…" : "Approve"}
         </Button>
         <div className="min-w-44 flex-1 sm:max-w-64">
           <Label htmlFor={`draft-entity-${point.id}`} className="sr-only">

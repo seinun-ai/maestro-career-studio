@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode, type Ref } from "react";
 import {
   ArrowDown,
   ArrowUp,
-  MoreHorizontal,
+  Ellipsis,
   Pencil,
   Trash2,
 } from "lucide-react";
@@ -103,7 +103,7 @@ export function EditableCard({
                     variant="ghost"
                     aria-label={name ? `More actions for ${name}` : "More actions"}
                   >
-                    <MoreHorizontal className="size-3.5" />
+                    <Ellipsis className="size-3.5" />
                   </Button>
                 }
               />

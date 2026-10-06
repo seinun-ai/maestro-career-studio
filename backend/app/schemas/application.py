@@ -72,6 +72,9 @@ class ApplicationSummary(BaseModel):
     # soft-deleted rows are included, since the application outlives both.
     # Null when it has none.
     base_resume_name: str | None = None
+    # List-endpoint-only, read-only: the newest tailored score, else the base
+    # row for this resume; null when neither exists (never scored on read).
+    ats_score: float | None = None
 
     model_config = {"from_attributes": True}
 

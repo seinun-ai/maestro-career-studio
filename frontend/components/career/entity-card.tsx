@@ -1,14 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  ArrowUpRight,
-  BookOpen,
-  FileText,
-  ListChecks,
-  Merge,
-  MoreHorizontal,
-} from "lucide-react";
+import { ArrowUpRight, Ellipsis, ListChecks, Merge } from "lucide-react";
 
 import { KB_KIND_LABELS, kbStatusLabel } from "@/components/career/career-labels";
 import { MergeEntityDialog } from "@/components/career/merge-entity-dialog";
@@ -24,6 +17,9 @@ import {
 import { formatAbsoluteDateTime, formatTimeAgo } from "@/lib/format-date";
 import type { KBEntityStatus, KBEntitySummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const DraftsIcon = CONCEPT_ICONS.drafts;
 
 // Colours only: the words come from career-labels (one table for every surface).
 const STATUS_STYLES: Record<KBEntityStatus, { chip: string; dot: string }> = {
@@ -58,7 +54,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
     <GalleryCard
       href={`/career/${entity.id}`}
       ariaLabel={`Open ${entity.title}`}
-      className="h-full bg-surface-container-low pt-4 ring-0 transition-[transform,background-color,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:bg-primary/5 has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring has-[a:active]:scale-[0.97]"
+      className="h-full bg-surface-container-low pt-4 ring-0 transition-[translate,scale,background-color,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:bg-primary/5 has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring has-[a:active]:scale-[0.97]"
     >
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
         <div className="min-w-0">
@@ -94,7 +90,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
                     aria-label={`Actions for ${entity.title}`}
                     className="opacity-0 transition-opacity duration-150 group-hover/card:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100 pointer-coarse:opacity-100"
                   >
-                    <MoreHorizontal className="size-3.5" />
+                    <Ellipsis className="size-3.5" />
                   </Button>
                 }
               />
@@ -120,9 +116,9 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
           </span>
           <Metric icon={ListChecks} value={entity.point_count} one="bullet" many="bullets" />
           {entity.draft_count > 0 ? (
-            <Metric icon={BookOpen} value={entity.draft_count} one="draft" many="drafts" />
+            <Metric icon={DraftsIcon} value={entity.draft_count} one="draft" many="drafts" />
           ) : null}
-          <Metric icon={FileText} value={entity.document_count} one="document" many="documents" />
+          <Metric icon={CONCEPT_ICONS.attachment} value={entity.document_count} one="document" many="documents" />
         </div>
         <p
           className="text-muted-foreground text-body-small"

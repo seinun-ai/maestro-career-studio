@@ -26,10 +26,10 @@ test("outcomes in words", () => {
 
 test("the newest run per automation, and the card's line", () => {
   const map = latestByAutomation([
-    { automation: "job-hunt", finished_at: "2026-10-05T10:00:00Z" },
-    { automation: "mail-status", finished_at: "2026-10-04T10:00:00Z" },
+    { automation: "job-hunt", finished_at: "2026-10-05T10:00:00Z", outcome: "partial" },
+    { automation: "mail-status", finished_at: "2026-10-04T10:00:00Z", outcome: "ok" },
   ]);
-  assert.equal(map.get("job-hunt"), "2026-10-05T10:00:00Z");
+  assert.deepEqual(map.get("job-hunt"), { finished_at: "2026-10-05T10:00:00Z", outcome: "partial" });
   assert.equal(lastRanLine(undefined, (x) => x), null);
   assert.equal(lastRanLine(null, (x) => x), "Not run yet");
   assert.equal(lastRanLine("t", () => "2 hours ago"), "Last ran 2 hours ago");
@@ -37,13 +37,13 @@ test("the newest run per automation, and the card's line", () => {
 
 test("an older run of the same automation does not replace its newest time", () => {
   const map = latestByAutomation([
-    { automation: "job-hunt", finished_at: "2026-10-05T10:00:00Z" },
-    { automation: "mail-status", finished_at: "2026-10-04T10:00:00Z" },
-    { automation: "job-hunt", finished_at: "2026-10-03T10:00:00Z" },
+    { automation: "job-hunt", finished_at: "2026-10-05T10:00:00Z", outcome: "ok" },
+    { automation: "mail-status", finished_at: "2026-10-04T10:00:00Z", outcome: "failed" },
+    { automation: "job-hunt", finished_at: "2026-10-03T10:00:00Z", outcome: "failed" },
   ]);
   assert.deepEqual([...map], [
-    ["job-hunt", "2026-10-05T10:00:00Z"],
-    ["mail-status", "2026-10-04T10:00:00Z"],
+    ["job-hunt", { finished_at: "2026-10-05T10:00:00Z", outcome: "ok" }],
+    ["mail-status", { finished_at: "2026-10-04T10:00:00Z", outcome: "failed" }],
   ]);
   assert.equal(map.get("unreported"), undefined);
   assert.equal(latestByAutomation([]).size, 0);

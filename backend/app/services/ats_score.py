@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import not_, select
+from sqlalchemy import func, not_, select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -329,3 +329,57 @@ def compare(application_id: UUID, session: Session | None = None) -> dict[str, A
     finally:
         if owns_session:
             session.close()
+
+
+def tracker_scores(session: Session, applications: list[Application]) -> dict[UUID, float]:
+    """The score each tracker row shows: the newest tailored row, else the base row for its resume.
+    Read-only: never scores or backfills (the list must not write)."""
+    if not applications:
+        return {}
+    ids = [a.id for a in applications]
+    out: dict[UUID, float] = {}
+    for app_id, composite in session.execute(
+        select(AtsScore.application_id, AtsScore.composite)
+        .where(AtsScore.phase == "tailored", AtsScore.application_id.in_(ids))
+        .order_by(AtsScore.created_at.desc(), AtsScore.id.desc())
+    ):
+        out.setdefault(app_id, float(composite))
+    missing = [a for a in applications if a.id not in out]
+    if missing:
+        base = {
+            (job_id, target_id): float(composite)
+            for job_id, target_id, composite in session.execute(
+                select(AtsScore.job_id, AtsScore.target_id, AtsScore.composite).where(
+                    AtsScore.phase == "base",
+                    AtsScore.target_type == "base_resume",
+                    AtsScore.job_id.in_({a.job_id for a in missing}),
+                )
+            )
+        }
+        for a in missing:
+            score = base.get((a.job_id, a.base_resume))
+            if score is not None:
+                out[a.id] = score
+    return out
+
+
+def best_base_scores(session: Session, job_ids: list[UUID]) -> dict[UUID, float]:
+    """Each job's best base-resume score, read-only."""
+    if not job_ids:
+        return {}
+    return {
+        job_id: float(best)
+        for job_id, best in session.execute(
+            select(AtsScore.job_id, func.max(AtsScore.composite))
+            .where(
+                AtsScore.phase == "base",
+                AtsScore.job_id.in_(job_ids),
+                # Same set as latest_scores (the job header's Best): archived or
+                # soft-deleted bases are not picks, so they do not score the row.
+                AtsScore.target_id.not_in(
+                    select(BaseResume.slug).where(not_(base_resume_data.selectable_filter()))
+                ),
+            )
+            .group_by(AtsScore.job_id)
+        )
+    }

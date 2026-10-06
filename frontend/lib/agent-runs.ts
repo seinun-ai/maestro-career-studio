@@ -23,10 +23,14 @@ export function outcomeWord(outcome: RunOutcome): string {
   return OUTCOME_WORDS[outcome] ?? outcome;
 }
 
-/** automation → when its newest run finished (the list comes newest first). */
-export function latestByAutomation(runs: readonly { automation: string; finished_at: string }[]) {
-  const map = new Map<string, string>();
-  for (const run of runs) if (!map.has(run.automation)) map.set(run.automation, run.finished_at);
+/** automation → its newest run's finish time and outcome (the list comes newest first). */
+export function latestByAutomation(
+  runs: readonly { automation: string; finished_at: string; outcome: RunOutcome }[],
+) {
+  const map = new Map<string, { finished_at: string; outcome: RunOutcome }>();
+  for (const run of runs) {
+    if (!map.has(run.automation)) map.set(run.automation, { finished_at: run.finished_at, outcome: run.outcome });
+  }
   return map;
 }
 

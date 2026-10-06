@@ -160,7 +160,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their
    names): the tracker. Two queries (summary list with server-joined job fields + saved jobs of the
    toggle's source), a grouped status `Select` with counts, inline `StatusChip` per row (PATCHes
-   directly), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
+   directly), a read-only ATS column (`ats_score` / `best_ats_score`), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
    toggle; `?source=` deep-linkable; Analytics' copy reads All, as it counts every application).
    "Saved" = job with no application — agent-captured jobs stay out unless the toggle is `Agents`,
    which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,
@@ -186,12 +186,13 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    `GET /jobs/{id}/detail`, `get_final_review` and `/jobs/match` as `knockout`): stated JD
    requirements (work auth, OPT, salary, on-site vs where you live and relocation) vs the profile, recomputed on every read. Verdicts are `conflict` / `clear` /
    `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
-   warns (pay is negotiable). Informational like G11 tier 2: it flags; the
+   warns (pay is negotiable). On screen a pass is one quiet line and a conflict the loud banner, each followed by a
+   per-check chip strip (OK / Conflict / Warning / Add answer / Not listed / Not run). Informational like G11 tier 2: it flags; the
    consent/submit decision stays human unless the user's agent follows the full-automation prompt (§7).
 4. **Score** — Score and tailor auto-scores all active bases on first visit; per-base
    cards → **Analyze gaps** creates a session (one filled button, on the best match;
    Restart gap analysis and Mark applied without tailoring sit in each card's ⋯).
-   When every card draws the low-coverage warning, one banner says it instead.
+   When every card draws the low-coverage warning, or the same gate warning, one banner says it instead; the lowest subscore of a card wears a Weakest word.
    With no base resume the tab
    offers Import resumes and documents instead, and scores once that dialog closes.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions
@@ -578,7 +579,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   The panel document is a family of scripts (panel.html owns roster and order): `panel.js`
   owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`)
   get a per-render snapshot, per-CONCERN actions (`panel/actions/*.js`) a handle with one
-  `write(patch)` door, and each roster THROWS at boot naming a missing script. `shared/` is
+  `write(patch)` door, and each roster THROWS at boot naming a missing script. `panel/icons.js` (`ns.icon`, inline Lucide svg) draws every icon;
+  the panel carries no emoji or text glyph (`test_extension_panel_icons.py`). `shared/status-roles.js` is the application status table (word + colour role) the web `StatusChip` shares (`test_extension_status_roles.py`). `shared/` is
   what both worlds load: `decisions.js` (the ONE home of every panel rule), `choose.js`
   (routing, the /choose batch, `rest_fill` shaping, `QUESTIONY`) and `guided-run.js` (the
   runner, transport injected).
@@ -689,8 +691,7 @@ with the failure mode that bought it. Code citing "§8" lands here.
   with data-dir env overrides (its own sqlite file, never `data/`); frontend `API_PROXY_BACKEND=... npm run
   dev`. TeX is optional (`services/engines` searches the TeX homes itself, and
   `MAESTRO_CS_PDFLATEX=/nonexistent` simulates a TeX-less host). Full recipe: the maintainer's local
-  `verify` skill (not shipped). Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send
-  button.
+  `verify` skill (not shipped). Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send button.
 - **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors (what
   `pip install -e ".[dev,mcp]"` resolves); `backend/requirements.lock` is hash-pinned and is what the
   **container image** installs, so a published image is reproducible. After changing a dependency, regenerate
@@ -806,9 +807,7 @@ citation. Priority lives in the item text, not in the ordinal.
     latest, and a foreign template-only change reads as an unsaved local edit.
 27. `FullscreenEditorPage` is `h-dvh` (both studios, the template editor), and `VersionBanner` renders above it in
     `SidebarGutter`, so the page overflows by the banner's height whenever the banner shows.
-28. Contrast (WCAG 1.4.11): the agent-pipeline data bar (`analytics/agent-pipeline-card.tsx`, `bg-primary/10` on a
-    `bg-muted/50` track) is ~1.16:1 (solid `bg-primary`: ~6:1); dark `--ring` on `--primary-container` (the FAB) is
-    2.88:1, which is why that surface is not in `_RING_SURFACES`.
+28. Dark `--ring` on `--primary-container` (the FAB) is 2.88:1, so that surface is not in `_RING_SURFACES` (1.4.11).
 29. Focus lands on `<body>` on Escape from the <768px sidebar sheet (which stays open after a nav tap) and after any
     client-side link navigation. `Button nativeButton={false} render={<a>}` announces a link as a button (~40 sites,
     21 files): use `buttonVariants` on a plain `<a>` or `GuardedLink`, the sidebar's pattern.
@@ -931,6 +930,9 @@ citation. Priority lives in the item text, not in the ordinal.
 - **Workday apply steps read as "no form"** (2026-09-25): Workday has no `<form>`/`<select>`, a `type="text"` phone
   and no email on My Information, so every step but the résumé upload scored 1 and Fill was withheld. Measure
   `detectPage`'s signals on the live page before blaming timing; the fix is `workday-apply-route`.
+- **Tailwind v4 compiles some classes to nothing** (2026-10-06): a variant on a plain class (`data-confirm:animate-confirm`
+  until it was an `@utility`) and an unknown role (`border-outline`; check `--color-*` in `globals.css`); `translate-*`/`scale-*`
+  set those properties, so `transition-[…transform]` jumps → register a class that takes a variant; name those properties.
 ## 13. Active migrations & deprecation ledger
 
 **The rule.** A row is born the moment work lands that SUPERSEDES something without deleting it; it dies
@@ -975,8 +977,7 @@ survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a n
   projection of the typed reader, not a storage-migration blocker.
 - `job-location-raw`: `JobSummary` exposes ONLY the old field (no `location_raw`), so the list endpoint is
   the hardest blocker to dropping the column.
-- `explore-redirect`: contradicts a recorded decision to keep it. Needs an explicit overrule, not a silent
-  delete.
+- `explore-redirect`: contradicts a recorded decision to keep it. Needs an explicit overrule, not a silent delete.
 
 **Not migrations — do not re-file these here** (each was proposed as a row and rejected): the 4-way
 application-status vocabulary and the 3-way `quick_tailor_profile` shape are hand-synced by design; the

@@ -40,7 +40,7 @@ _TOGGLE = _read("components/source-toggle.tsx")
 
 
 def test_the_page_and_its_sidebar_item_are_called_jobs():
-    assert '{ href: "/applications", label: "Jobs", icon: Inbox },' in _read("components/app-sidebar.tsx")
+    assert '{ href: "/applications", label: "Jobs", icon: CONCEPT_ICONS.jobs },' in _read("components/app-sidebar.tsx")
     assert 'title="Jobs"' in _TRACKER
     # What it lists, truthfully: Tracked is the default and holds exactly this.
     assert 'subtitle="Jobs you saved and every application. Jobs a connected agent found are under Agents."' in _TRACKER

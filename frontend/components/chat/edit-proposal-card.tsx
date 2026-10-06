@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { CardResolution } from "@/components/chat/card-resolution";
 import { EditWordsList } from "@/components/edit-words-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiFetch, applyResumeEdits, setChatCardState } from "@/lib/api";
 import { describeEdits, type EditWords, type ResumeLike } from "@/lib/describe-edit";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -20,6 +21,8 @@ import type {
   ChatProposalOps,
   UUID,
 } from "@/lib/types";
+
+const AiIcon = CONCEPT_ICONS.ai;
 
 /**
  * Staged edit ops from propose_edits: the user approves the suggestion as one
@@ -108,10 +111,10 @@ export function EditProposalCard({
         : "the tailored resume";
 
   return (
-    <div className="rounded-corner-md border border-dashed px-3 py-2.5">
+    <div className={`rounded-corner-md border border-dashed px-3 py-2.5${resolution ? " opacity-80" : ""}`}>
       <div className="flex flex-wrap items-center gap-2 text-body-medium">
         <Badge variant="outline" className="gap-1">
-          <Sparkles className="size-3" aria-hidden="true" />
+          <AiIcon className="size-3" aria-hidden="true" />
           {`Suggested ${proposal.ops_count === 1 ? "edit" : "edits"}`}
         </Badge>
         {proposal.summary ? (
@@ -122,9 +125,7 @@ export function EditProposalCard({
       <EditWordsList edits={edits} />
       <div className="mt-2 flex justify-end gap-2">
         {resolution ? (
-          <span className="text-muted-foreground text-body-small">
-            {resolution === "applied" ? "Applied" : "Discarded"}
-          </span>
+          <CardResolution done={resolution === "applied"} doneWord="Applied" />
         ) : (
           <>
             <Button

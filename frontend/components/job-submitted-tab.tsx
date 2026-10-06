@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ClipboardList } from "lucide-react";
+import { TriangleAlert, ClipboardList } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { LoadErrorState } from "@/components/load-error-state";
@@ -174,7 +174,7 @@ function AnswerRow({
       <AnswerValue field={field} hidden={hidden} onOpenTab={onOpenTab} />
       {field.flags.map((flag) => (
         <p key={flag.id} className="flex items-center gap-1 text-body-small text-warning wrap-anywhere">
-          <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+          <TriangleAlert className="size-3.5 shrink-0" aria-hidden />
           {flag.reason}
         </p>
       ))}

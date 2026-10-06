@@ -2531,7 +2531,7 @@ def test_a_restore_that_cannot_reach_the_backend_keeps_the_binding(tmp_path):
     # The helper's positive half, so its three `not` uses cannot pass
     # vacuously: a kept binding is one it sees, by the chip's class as well as
     # by the link.
-    assert "app" in _by_class(out["regions"]["identity"], "chip")[0]["class"].split()
+    assert "role-muted" in _by_class(out["regions"]["identity"], "chip")[0]["class"].split()
     assert _claims_an_application(out["regions"])
     assert _note(out["regions"]) != DELETED_NOTE
     assert _session_writes(out) == [], (

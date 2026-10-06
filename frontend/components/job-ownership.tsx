@@ -1,12 +1,11 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bot, Laptop } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
 import { jobOwnershipView, syncActionMessage } from "@/lib/job-ownership";
 import type { JobOwnership } from "@/lib/types";
@@ -31,12 +30,16 @@ export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownershi
   const mutation = useOwnershipAction(jobId);
   const act = useSingleFlight(mutation.mutate);
   if (!view.mark) return null;
-  const Icon = ownership?.owner === "bot" ? Bot : Laptop;
+  // The bot is where your connected agents run, so it wears their glyph; the laptop has its own.
+  const Icon = ownership?.owner === "bot" ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
   return (
     <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
-      <Badge variant="secondary"><Icon className="size-3" aria-hidden="true" />{view.mark}</Badge>
+      <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-surface-container px-2 text-label-medium text-foreground">
+        <Icon className="size-3 shrink-0" aria-hidden="true" />
+        {view.mark}
+      </span>
       {view.action ? (
-        <Button size="xs" variant="outline" disabled={mutation.isPending} onClick={() => act(view.action!)}>
+        <Button size="xs" variant="outline" pending={mutation.isPending} onClick={() => act(view.action!)}>
           {view.action === "keep-here" ? "Keep it here" : "Work on it here"}
         </Button>
       ) : null}
@@ -47,5 +50,11 @@ export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownershi
 
 export function JobOwnershipNotice({ ownership }: { ownership?: JobOwnership }) {
   const { reason } = jobOwnershipView(ownership);
-  return reason ? <p className="text-muted-foreground text-body-small">{reason}</p> : null;
+  if (!reason) return null;
+  return (
+    <p className="text-muted-foreground flex items-start gap-1.5 text-body-small">
+      <CONCEPT_ICONS.locked className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      <span>{reason}</span>
+    </p>
+  );
 }

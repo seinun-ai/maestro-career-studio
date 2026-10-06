@@ -37,6 +37,7 @@ from tests.extension_panel_harness import (
     SETTINGS_REPLY,
     _armed_entry,
     _by_class,
+    _icons,
     _load,
     _posts,
     _PANEL_FAKES_JS,
@@ -120,7 +121,16 @@ main(async () => {
     await settle();
     reopened = regions();
   }
-  emit({ loaded, opened, clicked, focusedAfter, reopened, settled: regions(), sent, writes,
+  // …then the footer's primary pressed again: a second note replaces the first.
+  let afterCta = null;
+  let beforeCta = null;
+  if (spec.pressCtaAfter === true) {
+    beforeCta = regions();
+    withClass(REGIONS.foot, "cta")[0].click();
+    await settle();
+    afterCta = regions();
+  }
+  emit({ loaded, opened, clicked, focusedAfter, reopened, beforeCta, afterCta, settled: regions(), sent, writes,
          limbs: limbs().map((limb) => limb.textContent) });
 });
 """
@@ -201,7 +211,7 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     out = _resume(tmp_path, open=True)
     before = len(out["sent"])
     assert out["limbs"] == ["Use my base resume", "Tailor to this job",
-                            "Quick tailor", "Tailor in Maestro CS ↗"]
+                            "Quick tailor", "Tailor in Maestro CS"]
     # The branch the user is standing in, said in words as well as in colour.
     [_base, tailor] = _by_class(out["opened"]["rail"], "fork")[0]["children"]
     assert tailor["class"] == "sel"
@@ -214,7 +224,7 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     # past the explanation.
     [region] = [found for found in _walk(out["opened"]["rail"])
                 if found["id"] == tailor["attrs"]["aria-controls"]]
-    assert _limbs(region) == ["Quick tailor", "Tailor in Maestro CS ↗"]
+    assert _limbs(region) == ["Quick tailor", "Tailor in Maestro CS"]
     assert [line["text"] for line in _by_class(region, "sub")] == [OPTIONS_LINE]
     # Closed, there is no region — this loop renders what is true — so the
     # button says only that it is closed. A pointer kept across the collapse
@@ -247,8 +257,10 @@ def test_custom_in_studio_is_a_link_out_and_never_an_api_call(tmp_path):
     [custom] = [limb for limb in _by_class(out["opened"]["rail"], "fork")[1]["children"]
                 if limb["tag"] == "A"]
     assert custom["href"] == f"{APP_URL}/jobs/job-lightning?tab=fit"
-    assert custom["attrs"] == {}
-    assert custom["text"] == "Tailor in Maestro CS ↗"
+    # The words, an icon for "leaves this surface", and the new-tab note in the name.
+    assert _text(custom) == "Tailor in Maestro CS"
+    assert _icons(custom) == ["external-link"]
+    assert custom["attrs"] == {"aria-label": "Tailor in Maestro CS (opens in a new tab)"}
     # `target`/`rel` are plain properties on the fake node, like `href`.
     assert "quick-tailor" not in json.dumps(out["sent"])
 
@@ -301,7 +313,8 @@ def test_a_draft_whose_resume_has_no_pdf_offers_create_pdf_and_never_a_fresh_tai
     assert FORK_LINE not in _text(loaded["rail"])
     # …and the way to tailor it, in Maestro CS, where the web app asks before
     # replacing anything.
-    assert (link["tag"], link["text"]) == ("A", "Tailor in Maestro CS ↗")
+    assert (link["tag"], _text(link)) == ("A", "Tailor in Maestro CS")
+    assert _icons(link) == ["external-link"]
     assert link["href"] == f"{APP_URL}/jobs/job-lightning?tab=fit"
     [cta] = _by_class(loaded["foot"], "cta")
     assert cta["text"] == "Create PDF"
@@ -379,9 +392,10 @@ def test_a_tailored_pdf_makes_the_step_done_and_reopens_onto_one_small_link(tmp_
     body = _body(out["reopened"])
     assert _by_class(body, "fork") == []
     [again] = [n for n in _walk(body) if n["tag"] == "A"]
-    assert again["text"] == "Tailor in Maestro CS ↗"
+    assert _text(again) == "Tailor in Maestro CS"
+    assert _icons(again) == ["external-link"]
     assert again["href"] == f"{APP_URL}/jobs/job-lightning?tab=fit"
-    assert _text(body) == "Tailor in Maestro CS ↗"
+    assert _text(body) == "Tailor in Maestro CS"
     assert _by_class(out["reopened"]["foot"], "cta") == []
 
 
@@ -518,7 +532,7 @@ def test_quick_tailor_creates_the_application_and_the_rings_say_so(tmp_path):
         "Use my base resume": (False, "true"), "Tailor to this job": (False, None)}
     assert {_text(limb): locked(limb) for limb in
             _by_class(out["clicked"]["rail"], "fork")[1]["children"]} == {
-        "Quick tailor": (False, "true"), "Tailor in Maestro CS ↗": (False, None)}
+        "Quick tailor": (False, "true"), "Tailor in Maestro CS": (False, None)}
     assert out["focusedAfter"] == "resume-quick"
     # …and it LOOKS out of reach: `.fork button` sets `background`, `color`
     # and `cursor: pointer` explicitly, so without this rule the limb renders
@@ -630,9 +644,21 @@ def test_a_tailor_that_renders_no_pdf_says_so_and_still_keeps_the_application(tm
     [note] = _by_class(out["settled"]["foot"], "note")
     # The health warning rides the sentence rather than being said first and
     # overwritten a line later, which is what the card does with it.
-    assert note["text"] == ("⚠ Base resume health is C Tailored, but couldn't "
+    # The live text is words only; the alert is an icon drawn in front of it.
+    assert note["text"] == ("Base resume health is C Tailored, but couldn't "
                             "create the PDF. Select Create PDF to try again.")
+    assert _icons(note) == ["triangle-alert"]
     assert note["class"] == "note error"
+    # The icon belongs to THAT note: the next one, with no warning, is drawn without it.
+    again = _resume(tmp_path, open=True, press="Quick tailor", pressCtaAfter=True, api={
+        "quick-tailor": _reply({"application_id": "app-quick", "session_id": "s", "applied": [],
+                                "pdf_ready": False, "nothing_to_tailor": False,
+                                "health_warning": "Base resume health is C"}),
+        "/render": _reply({"ok": True})})
+    [first] = _by_class(again["beforeCta"]["foot"], "note")
+    [second] = _by_class(again["afterCta"]["foot"], "note")
+    assert _icons(first) == ["triangle-alert"]
+    assert second["text"] != first["text"] and _icons(second) == []
     assert out["writes"][-1]["widget.session"]["applicationId"] == "app-quick"
     assert out["writes"][-1]["widget.session"]["pdfReady"] is False
     # Still at Resume: `stageFor` reads a PDF-less application as not done, so
@@ -928,7 +954,10 @@ def test_the_row_you_skipped_by_choice_is_a_door_and_the_ones_the_path_skipped_a
     door = next(n for n in _walk(out["armed"]["rail"]) if n.get("id") == "stg-open-resume")
     assert door["tag"] == "BUTTON"
     assert door["attrs"]["aria-expanded"] == "false"
-    assert "▸" in _text(door)
+    # The row's own words ("Not needed" with its minus) and then the door's caret.
+    assert _icons(door) == ["minus", "chevron-right"]
+    # "Not needed" is visible text on the row, not an aria-label alone.
+    assert [_text(n) for n in _by_class(door, "stg-state")] == ["Not needed"]
 
 
 def test_the_reopened_base_as_is_row_names_the_choice_and_offers_both_ways_on(tmp_path):
@@ -959,7 +988,7 @@ def test_a_reopened_skipped_row_stays_skipped_and_the_rail_stays_put(tmp_path):
     rows = _rows(_rail_rows({"regions": out["reopened"]}))
     assert rows["resume"]["state"] == "skipped"
     assert rows["resume"]["summary"] == "Using your base resume as is."
-    assert rows["resume"]["numeral"] != "✓"
+    assert rows["resume"]["numeral"] != "circle-check"
     assert rows["fill"]["state"] == "active"
     door = next(n for n in _walk(out["reopened"]["rail"])
                 if n.get("id") == "stg-open-resume")
@@ -972,7 +1001,7 @@ def test_the_second_fork_level_still_discloses_under_the_reopened_claim(tmp_path
     discloses Quick tailor and Custom in Studio, and the withdraw stays last —
     it is the way OUT of the stage, not one of the ways through it."""
     body = _body(_armed(tmp_path, matched=True, openTailor=True)["reopened"])
-    assert _limbs(body) == ["Tailor to this job", "Quick tailor", "Tailor in Maestro CS ↗"]
+    assert _limbs(body) == ["Tailor to this job", "Quick tailor", "Tailor in Maestro CS"]
     assert _text(body["children"][-1]) == "Stop using the base resume"
 
 
@@ -997,7 +1026,7 @@ def test_a_tailor_from_the_reopened_door_takes_the_claim_off_the_body(tmp_path):
     assert _by_class(body, "unpick") == []
     # …and it is the done step's body: a resume with its PDF, and one small
     # way to tailor in Maestro CS.
-    assert _text(body) == "Tailor in Maestro CS ↗"
+    assert _text(body) == "Tailor in Maestro CS"
 
 
 def test_stop_using_base_as_is_returns_the_rail_to_the_ladder(tmp_path):
@@ -1146,8 +1175,8 @@ def _journey(out):
 def test_a_bound_application_with_its_pdf_opens_at_fill_with_no_base_click(tmp_path):
     out = _bound(tmp_path, _reply([*SCORE_ROWS, BOUND_TAILORED_ROW]))
     journey = _journey(out)
-    assert journey["job"] == ("done", "✓")
-    assert journey["resume"] == ("done", "✓")
+    assert journey["job"] == ("done", "circle-check")
+    assert journey["resume"] == ("done", "circle-check")
     assert journey["fill"][0] == "active"
     # What each done row settled: the application's base and its score, and
     # the tailored resume with its own.
@@ -1166,8 +1195,8 @@ def test_the_bound_application_answers_even_when_the_scores_read_fails(tmp_path)
     empty = _bound(tmp_path / "empty", _reply([]))
     for out in (failed, empty):
         journey = _journey(out)
-        assert journey["job"] == ("done", "✓")
-        assert journey["resume"] == ("done", "✓")
+        assert journey["job"] == ("done", "circle-check")
+        assert journey["resume"] == ("done", "circle-check")
         assert journey["fill"][0] == "active"
         # No score to print, so the summaries say only what is known.
         rows = _rows(_rail_rows(out))

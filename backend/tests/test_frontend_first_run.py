@@ -93,7 +93,7 @@ def test_score_tab_import_returns_focus_to_its_opener_while_it_is_there():
 def test_score_tab_rescore_awaits_the_refetch():
     """The run stays pending until the list refetches, so "No ATS scores yet."
     never paints between the prompt and the cards."""
-    assert re.search(r"onSuccess:\s*\(\)\s*=>\s*qc\.invalidateQueries", _panel())
+    assert re.search(r"onSuccess:\s*async\s*\(_result, manual\)\s*=>\s*\{\s*await qc\.invalidateQueries", _panel())
 
 
 def test_score_tab_rescores_in_the_same_event_as_the_close():
@@ -130,7 +130,7 @@ def test_score_tab_rescores_once_after_an_import_never_twice():
 def test_new_application_names_the_key_before_the_paste():
     page = _read("app/new/page.tsx")
     assert "setup.data?.model_key.done === false" in page
-    assert "disabled={disabled || busy || needsKey}" in page
+    assert "pending={busy}" in page and "disabled={disabled || needsKey}" in page
     # Placeholders are example values only (conventions: microcopy rules).
     assert "Paste the full job description here" not in page
     assert '<Label htmlFor="source_url" optional>' in page

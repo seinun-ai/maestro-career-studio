@@ -1,10 +1,11 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
-import { Check, Loader2, TriangleAlert } from "lucide-react";
+import { CircleCheck, Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { focusIfDropped } from "@/hooks/use-focus-return";
+import { useSavedHold } from "@/hooks/use-saved-hold";
 
 /**
  * The quiet half of the settings save model.
@@ -24,22 +25,29 @@ import { focusIfDropped } from "@/hooks/use-focus-return";
  * saved Try again", about 126px) and the description does not re-wrap as the
  * state changes.
  *
- * Three states: Saving…, Not saved (a failed write, with Try again where the
- * card still holds a value the server lacks), and Saves automatically.
+ * Four states: Saving…, Saved (a success says so for a moment, then settles),
+ * Not saved (a failed write, with Try again where the card still holds a value
+ * the server lacks), and Saves automatically (words only, outside the live
+ * region; `idle={false}` drops it while the card holds an unsaved value).
  */
+
 export function AutosaveStatus({
   pending,
   failed = false,
+  idle = true,
   onRetry,
   className,
 }: {
   pending: boolean;
   failed?: boolean;
+  /** False while the card holds an unsaved value (a typed key): "Saves automatically" would be untrue. */
+  idle?: boolean;
   onRetry?: () => void;
   className?: string;
 }) {
   const statusRef = useRef<HTMLSpanElement>(null);
   const refocus = useRef(false);
+  const justSaved = useSavedHold(pending, failed);
   // Try again stays mounted while the retry runs (`failed` holds until a
   // success settles). Once the retry settles: a success unmounts it, and the
   // focus it dropped goes to the status. A failure leaves it, and focus, in
@@ -57,7 +65,7 @@ export function AutosaveStatus({
         tabIndex={-1}
         aria-live="polite"
         className={`inline-flex items-center gap-1.5 ${
-          failed && !pending ? "text-destructive" : "text-muted-foreground"
+          failed && !pending ? "text-destructive" : justSaved ? "text-success" : "text-muted-foreground"
         }`}
       >
         {pending ? (
@@ -65,18 +73,22 @@ export function AutosaveStatus({
             <Loader2 className="size-3 animate-spin" aria-hidden="true" />
             Saving…
           </>
-        ) : !failed ? (
+        ) : !failed && justSaved ? (
           <>
-            <Check className="size-3" aria-hidden="true" />
-            Saves automatically
+            <CircleCheck className="size-3 animate-confirm rounded-full" aria-hidden="true" />
+            Saved
           </>
-        ) : (
+        ) : !failed ? null : (
           <>
             <TriangleAlert className="size-3" aria-hidden="true" />
             Not saved
           </>
         )}
       </span>
+      {/* Outside the live region: each autosave announces Saving… then Saved, and stops. */}
+      {!pending && !failed && !justSaved && idle ? (
+        <span className="text-muted-foreground">Saves automatically</span>
+      ) : null}
       {failed && onRetry ? (
         <Button
           type="button"

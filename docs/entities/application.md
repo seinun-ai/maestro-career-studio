@@ -8,7 +8,11 @@ One per (job, base_resume) in practice. Holds `status`, `applied_at`, `notes`,
 The list summary, the detail and the extension's `GET /api/jobs/match` summary
 all carry `base_resume_name`, the résumé's own name read from its row
 (`base_resume_data.display_name_of`, or an outer join in the list; archived
-and soft-deleted rows included; null when the slug has no row).
+and soft-deleted rows included; null when the slug has no row). The list summary
+alone also carries `ats_score`, the tracker's score column: the newest
+`tailored` AtsScore row for the application, else the `base` row for
+`(job, base_resume)`, else null. It is read-only (`ats_score.tracker_scores`,
+one query per kind for the page; the list never scores or backfills).
 
 - **Status vocabulary is backend-owned**: `ALLOWED_STATUSES` in
   `schemas/application.py` = draft, applied, interviewing, offered, accepted,

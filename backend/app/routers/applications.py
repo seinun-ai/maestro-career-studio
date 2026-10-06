@@ -206,9 +206,11 @@ def list_applications(
     summaries: list[ApplicationSummary] = []
     rows = db.execute(stmt).all()
     sync_ownership.stamp(db, {job.id: job for _, job, _ in rows}.values())
+    scores = ats_score.tracker_scores(db, [row[0] for row in rows])
     for application, job, base_name in rows:
         summary = ApplicationSummary.model_validate(application)
         summary.ownership = job.ownership
+        summary.ats_score = scores.get(application.id)
         summary.job_title = job.title
         summary.job_company = job.company
         summary.job_location = job.location

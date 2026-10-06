@@ -107,6 +107,19 @@
   const ns = (window.careerStudioCompanion ??= {});
   const { stageFor, rankBaseResumes, restorableSession, sessionTenant,
           sameApplication, describesJob, sameSite } = ns.decisions;
+  // The drawings (panel/icons.js), read at load like the rosters below: a panel.html that forgot the tag fails on
+  // boot naming the file, not on the first render that wants a tick.
+  if (typeof ns.icon !== "function") {
+    throw new Error('panel: nothing published ns.icon. Is <script src="icons.js"> in panel.html, '
+      + "before the stage scripts?");
+  }
+  const { icon } = ns;
+  // The status words and colour roles (shared/status-roles.js), read at load for the same reason.
+  if (!ns.statusRoles) {
+    throw new Error('panel: nothing published ns.statusRoles. Is <script src="../shared/status-roles.js"> '
+      + "in panel.html, before panel.js?");
+  }
+  const STATUS_ROLES = ns.statusRoles;
 
   // `chrome.storage.local` holds TWO keys, and they hold different kinds of
   // thing: `widget.session`, the session pick (everything down to the
@@ -334,9 +347,12 @@
     // "not needed" rather than "skipped": Skipped is the Agent inbox's word for
     // a job the user turned down, and a row the path does not need was not
     // turned down by anyone.
-    skipped: "not needed",
-    locked: "not yet",
+    skipped: "Not needed",
+    locked: "Not yet",
   };
+  // The two rows that are not the user's place get their words ON SCREEN with an icon (the aria-label was
+  // the only carrier before): a locked row is `lock` + "Not yet", a not-needed one `minus` + "Not needed".
+  const STATE_MARKS = { skipped: "minus", locked: "lock" };
 
   // `skipped` NAMES the stages the current path does not require, and this is
   // the copy that says so. It is never a checkmark: "we did not need to" and
@@ -488,7 +504,7 @@
     applications: null,
     scores: null,       // latest_scores rows; null = not asked, [] = none
     busy: null,         // the stage key of the action currently running, or null
-    note: null,         // {text, error} — the last thing that happened HERE
+    note: null,         // {text, error, warning} — the last thing that happened HERE; `warning` draws the alert icon
     /** The posting on the page, as the user may still edit it, or null until
      * we have asked.
      *
@@ -1128,14 +1144,14 @@
     if (application?.id) {
       return {
         href: `${appUrl}/applications/${application.id}`,
-        label: "Open application ↗",
-        name: "Open this application in Maestro CS",
+        label: "Open application",
+        name: "Open this application in Maestro CS (opens in a new tab)",
       };
     }
     return {
       href: job?.id ? `${appUrl}/jobs/${job.id}` : appUrl,
-      label: "Open in Maestro CS ↗",
-      name: "Open in Maestro CS",
+      label: "Open in Maestro CS",
+      name: "Open in Maestro CS (opens in a new tab)",
     };
   }
 
@@ -1391,15 +1407,11 @@
     return Number(found[1]) === new Date().getFullYear() ? day : `${day}, ${found[1]}`;
   }
 
-  /** An application status in the web app's words (`status-chip.tsx`'s
-   * labels): the key is what the backend stores and the PATCH sends, never
-   * what the user reads. An unknown key falls back to itself, as the web's
-   * does, rather than to a guess. */
-  const STATUS_LABELS = {
-    draft: "Draft", applied: "Applied", interviewing: "Interviewing", offered: "Offer",
-    accepted: "Offer accepted", rejected: "Rejected", withdrawn: "Withdrawn",
-  };
-  const statusLabel = (status) => STATUS_LABELS[status] ?? String(status);
+  /** An application status in the web app's words (`shared/status-roles.js`,
+   * the same table as `status-chip.tsx`): the key is what the backend stores
+   * and the PATCH sends, never what the user reads. An unknown key falls back
+   * to itself, as the web's does, rather than to a guess. */
+  const statusLabel = (status) => STATUS_ROLES[status]?.label ?? String(status);
 
   /** The composite `latest_scores` holds for one target, or null when there is
    * no row. Rendered, never computed: the panel does no scoring (design §4.2,
@@ -1693,7 +1705,8 @@
       appUrl: card.settings?.appUrl, job: card.job, application: card.application,
     });
     if (!link) return null;
-    const anchor = node("a", "linkish", link.label);
+    // The arrow is an icon beside the words (aria-hidden); "opens in a new tab" rides the accessible name.
+    const anchor = attach(node("a", "linkish", link.label), icon("external-link", { size: 12 }));
     anchor.href = link.href;
     anchor.target = "_blank";
     anchor.rel = "noopener noreferrer";
@@ -1707,13 +1720,16 @@
   function matchChip() {
     if (card.application) {
       const status = card.application.status ?? "draft";
-      return node("span", "chip app",
+      // The chip's colour is the status's role (`chip role-<role>`), one meaning per colour as in the web
+      // app; an unknown status is the neutral role.
+      return node("span", `chip role-${STATUS_ROLES[status]?.role ?? "muted"}`,
                   status === "draft" ? "Draft application" : statusLabel(status));
     }
     // "Saved", the web tracker's word for a job with no application yet.
     if (card.match === "exact") return node("span", "chip lib", "Saved");
     // What "New" meant, said plainly: this page's job is not in Maestro CS.
-    if (card.match === "none") return node("span", "chip new", "Not saved yet");
+    // A neutral outline chip: not being saved yet is a fact, not a warning.
+    if (card.match === "none") return node("span", "chip outline", "Not saved yet");
     return null;
   }
 
@@ -1758,8 +1774,9 @@
     }
     attach(ats, ringColumn(before, "var(--cs-primary)",
                            before === null ? "ATS score" : "Base"));
-    attach(ats, node("span", "arrow", "→"),
-           ringColumn(after, "var(--cs-good)", "Tailored"));
+    const arrow = node("span", "arrow");
+    attach(arrow, icon("arrow-right", { size: 16 }));
+    attach(ats, arrow, ringColumn(after, "var(--cs-good)", "Tailored"));
     if (before !== null) {
       const delta = after - before;
       attach(ats, node("span", "delta", `${delta >= 0 ? "+" : ""}${delta}`));
@@ -1979,7 +1996,7 @@
              setFillMode, forgetLearnedMoves, startFill, attachResume, scrollToField, focusField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis },
-      build: { node, attach, plural, statusLabel, dayLabel },
+      build: { node, attach, plural, statusLabel, dayLabel, icon },
     };
   }
 
@@ -2376,8 +2393,11 @@
       // terminal row is both finished and current: it keeps the active border
       // and the active numeral chip (`.stg.active .stg-num`, panel.css) and
       // prints a ✓ in it, which is what a rail that has ENDED looks like.
-      const numeral = node("span", "stg-num", row.ticked ? "✓" : row.n);
-      numeral.setAttribute("aria-label", row.stateLabel);
+      // A circle-check icon (the register's done state), named by the aria-label below.
+      const numeral = node("span", "stg-num", row.ticked ? null : row.n);
+      if (row.ticked) attach(numeral, icon("circle-check", { size: 14 }));
+      // Locked and not-needed rows say it in visible words (`stg-state`), so only active and done are named here.
+      if (!STATE_MARKS[row.state]) numeral.setAttribute("aria-label", row.stateLabel);
       // A DONE ROW IS A DOOR — Job, Resume and Fill; so is a row SKIPPED by a
       // claim, which is the base-as-is Resume row. `isReopenable` carries which and why. A REAL BUTTON rather than a click handler on the
       // row: the whole line is the target, it has to be reachable and pressable
@@ -2411,6 +2431,10 @@
       }
       attach(line, numeral,
              node("span", "stg-name", row.name),
+             STATE_MARKS[row.state]
+               ? attach(node("span", "stg-state"), icon(STATE_MARKS[row.state], { size: 12 }),
+                        node("span", null, row.stateLabel))
+               : null,
              node("span", "stg-sum", row.summary),
              reopenable ? caret(row.key === open) : null);
       // `?.()` and the `open` test together: one body, under whichever row is
@@ -2434,9 +2458,9 @@
    * `aria-hidden`, because the button it sits in already says the same thing in
    * `aria-expanded`, and a reader announcing both would announce it twice. */
   function caret(open) {
-    const mark = node("span", "stg-caret", open ? "▾" : "▸");
+    const mark = node("span", "stg-caret");
     mark.setAttribute("aria-hidden", "true");
-    return mark;
+    return attach(mark, icon(open ? "chevron-down" : "chevron-right", { size: 14 }));
   }
 
   /** Rebuild the rail without losing the user's place in it.
@@ -2516,7 +2540,7 @@
    * the one transition it is standing next to: the user has just filled a form,
    * and "did you submit it" is the question the page in front of them answers.
    */
-  const STATUS_OPTIONS = ["draft", "applied"].map((key) => [key, STATUS_LABELS[key]]);
+  const STATUS_OPTIONS = ["draft", "applied"].map((key) => [key, STATUS_ROLES[key].label]);
 
   /** Draft / Applied — the ONE control on this surface that writes a status.
    *
@@ -2555,12 +2579,11 @@
     segment.setAttribute("aria-label", "Application status");
     for (const [value, label] of STATUS_OPTIONS) {
       const on = status === value;
-      // `draft-on` and `on` are two different tints for two different states,
-      // which is the mockup's own pair: a draft is a warning colour because it
-      // is unfinished business, an applied one is the good colour because it is
-      // the end of the journey.
-      const button = node("button", on ? (value === "draft" ? "draft-on" : "on") : null,
-                          label);
+      // The selected one is the secondary container with a leading `check` (the selected-in-set rule):
+      // being the current choice is not good news, so neither status gets a colour of its own here.
+      const button = node("button", on ? "on" : null);
+      if (on) attach(button, icon("check", { size: 12 }));
+      attach(button, node("span", null, label));
       button.type = "button";
       button.setAttribute("role", "radio");
       button.setAttribute("aria-checked", on ? "true" : "false");
@@ -2586,6 +2609,9 @@
     const note = region("note");
     note.textContent = said?.text ?? "";
     note.className = said?.error ? "note error" : "note";
+    // The warning icon is decoration in front of the words: the live text is the words alone, so a
+    // screen reader hears exactly the sentence.
+    if (said?.warning) note.prepend(icon("triangle-alert", { size: 14 }));
 
     // THE MARK-APPLIED NUDGE IS THIS CONTROL. The card rendered a prompt under
     // its strip that appeared and disappeared; design §Footer replaced it with

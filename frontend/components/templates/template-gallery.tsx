@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, type ReactNode } from "react";
-import { Check, Star } from "lucide-react";
+import { Check, Star, TriangleAlert } from "lucide-react";
 
 import {
   GalleryCard,
@@ -78,9 +78,14 @@ function TemplateBadgeStrip({
         // The words say it on the card, not only in a hover: ATS is spelled
         // out once here, where it first appears.
         <p className="text-warning basis-full text-body-small">
-          <span aria-hidden="true">⚠</span> Applicant tracking systems (ATS)
-          may read some words as joined together. Pick another template to be
-          safe.
+          <span className="inline-flex items-start gap-1.5">
+            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            <span>
+              Applicant tracking systems (ATS)
+              may read some words as joined together. Pick another template to be
+              safe.
+            </span>
+          </span>
         </p>
       )}
     </div>

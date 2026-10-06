@@ -106,6 +106,9 @@ class JobSummary(BaseModel):
     proposal_status: str | None = None
     proposal_id: UUID | None = None
     proposal_proposed_by: str | None = None
+    # Derived, list-endpoint-only: the best base-resume score, read-only
+    # (null when the job has never been scored).
+    best_ats_score: float | None = None
     role_category: str | None = None
     level: str | None = None
     employment_type: str | None = None

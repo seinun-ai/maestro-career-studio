@@ -5,7 +5,10 @@
 Raw JD text + `raw_text_hash` (sha256, unique) + `source_url` + `extracted_json`
 plus promoted scalar columns (title, company, salary + currency, work-auth, …) and
 JobSkill rows. **A Job has no status** — "Saved" (UI term) is derived as
-job-without-application (`GET /api/jobs?without_application=true`).
+job-without-application (`GET /api/jobs?without_application=true`). The list summary alone carries
+`best_ats_score`, the max `composite` over the job's `base` AtsScore rows (null
+when none; `ats_score.best_base_scores`, one grouped query per page, read-only:
+the list never scores or backfills).
 
 - **Salary is optional and often absent** (~40%+ of US postings state no
   pay; some laws let a posting hyperlink a pay page — capture that as

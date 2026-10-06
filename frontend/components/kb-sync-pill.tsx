@@ -21,6 +21,9 @@ import { formatTimeAgo } from "@/lib/format-date";
 import { isLoadFailure } from "@/lib/query-state";
 import { syncActionableCount, syncBreakdownLines, syncPillLabel, syncResultSentence } from "@/lib/kb-sync-words";
 import { useSingleFlight } from "@/hooks/use-single-flight";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
+
+const AddToCareerHistoryIcon = CONCEPT_ICONS.addToCareerHistory;
 
 /** Every state renders at this height, so the toolbar row keeps its baseline
  *  and never reflows vertically when the query resolves or the count drops to
@@ -165,7 +168,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
       <PopoverTrigger
         render={
           <Button variant="outline" size="sm">
-            <RefreshCw />
+            <AddToCareerHistoryIcon />
             {/* "Add … to career history", with the preposition: the label must
                 say which way the data flows — nothing here touches the resume. */}
             {syncPillLabel(count)}

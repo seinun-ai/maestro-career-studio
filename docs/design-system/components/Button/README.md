@@ -21,6 +21,7 @@ Buttons run an action; the variant says how much it matters, and a view has exac
 
 - Corners are `radius-corner-sm`; the FAB is `radius-corner-lg`.
 - Hover on `tonal` and `fab` is the pre-mixed 8% state layer (`secondary-container-hover`, `primary-container-hover`); never pick an opacity at the call site.
+- `pending` marks a button whose own request is running: a spinner replaces the leading icon, `aria-busy` is set, presses are ignored and focus stays (a natively disabled button drops it to the page). Name the work in the label where it is worth naming ("Saving…", "Updating scores…", "Approving…", "Writing…"); otherwise keep the label and let the spinner say it. `disabled` stays for a button that cannot act yet, with the reason tied by `aria-describedby`.
 - Focus is a solid `ring` border with a 3px halo. Pressing scales the button to 0.97.
 - `tonal` is the one low-emphasis filled button. There is no grey `secondary` variant; Badge keeps its own `secondary` for plain metadata.
 - `tonal` rests on `background`, `card` or a `surface-container-*` panel. On a `secondary-container` surface (a current row, a selected chip) it would vanish, so use `outline` there.

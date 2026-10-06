@@ -7,7 +7,6 @@ import {
   Globe2,
   Link2,
   Lock,
-  Mail,
   MapPin,
   Pencil,
   Phone,
@@ -28,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
 import { getKbProfile, patchKbProfile } from "@/lib/api";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt, errorDetail } from "@/lib/error-text";
 import type { ContactInfo, KBProfileOut, KBProfilePatch } from "@/lib/types";
 
@@ -74,7 +74,7 @@ function contactDraft(profile: KBProfileOut): ContactInfo {
 function ProfileView({ profile }: { profile: KBProfileOut }) {
   const contactItems = [
     { label: "Name", value: profile.contact.name, icon: UserRound },
-    { label: "Email", value: profile.contact.email, icon: Mail },
+    { label: "Email", value: profile.contact.email, icon: CONCEPT_ICONS.email },
     { label: "Phone", value: profile.contact.phone, icon: Phone },
     { label: "Location", value: profile.contact.location, icon: MapPin },
     { label: "LinkedIn", value: profile.contact.linkedin, icon: Link2 },

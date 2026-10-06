@@ -159,7 +159,9 @@ def _list_items(heading_id: str) -> list[str]:
     flat = " ".join(_card().split())
     ul = flat[flat.index(f"<ul aria-labelledby={{{heading_id}}}") :]
     ul = ul[ul.index(">") + 1 : ul.index("</ul>")]
-    items = re.findall(r"<li>\s*(.*?)\s*</li>", ul)
+    items = re.findall(r"<li(?: [^>]*)?>\s*(.*?)\s*</li>", ul)
+    # The "can't" rows lead with the register's cannot glyph and wrap their words in a span: the words are what is pinned.
+    items = [re.sub(r"^<CONCEPT_ICONS\.cannot [^>]*/>\s*<span>(.*)</span>$", r"\1", i) for i in items]
     return [re.sub(r"\{/\*.*?\*/\}\s*", "", i).replace('{" "}', " ").replace("  ", " ") for i in items]
 
 

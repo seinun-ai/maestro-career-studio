@@ -309,10 +309,11 @@ def list_jobs(
     (default 50, max 500) and offset; a page shorter than limit is the last.
     Each item is a slim projection (company, title, role_category, level,
     employment_type, work_mode, location, salary, work_authorization,
-    opt_accepted) of roughly 0.8k characters, with no raw_text or
-    extracted_json; use get_job for full detail. Optionally only jobs without
-    an application. Each job carries ownership (owned_here, owner, handover,
-    pending_requests), identifying replicas and jobs being handed over."""
+    opt_accepted, best_ats_score: the best stored base-resume score, null when
+    unscored) of roughly 0.8k characters, with no raw_text or extracted_json;
+    use get_job for full detail. Optionally only jobs without an application.
+    Each job carries ownership (owned_here, owner, handover, pending_requests),
+    identifying replicas and jobs being handed over."""
     return _client.list_jobs(
         limit=limit, offset=offset, without_application=without_application
     )
@@ -1428,8 +1429,8 @@ def list_applications(
 ) -> Any:
     """List your applications as a thin paginated summary array. Filter by
     status/role_category; page with limit/offset. Rows name their base resume
-    (`base_resume_name`). Use get_application(id) for the full record and
-    compare_ats for scores."""
+    (`base_resume_name`) and the stored score (`ats_score`, null when unscored).
+    Use get_application(id) for the full record and compare_ats for scores."""
     return _client.list_applications(
         status=status, role_category=role_category, limit=limit, offset=offset
     )

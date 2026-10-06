@@ -641,7 +641,8 @@ def test_profile_and_notes_statements_are_hints():
 def test_experience_end_date_empty_means_current():
     field = _src("components/resume-editor/field.tsx")
     editor = _src("components/resume-editor/experience-editor.tsx")
-    _order(field, "<Label", "id={hintId}", "{hint}", "<Input", "aria-describedby={hint ? hintId : undefined}")
+    _order(field, "<Label", "id={hintId}", "{hint}", "<Input", "{...control}")
+    assert "hintId: hint ? hintId : undefined" in field  # the control's described-by keeps the hint
     # A narrow editor column stacks the fields (as the contact form does)
     # instead of clipping them in a 96px date box.
     assert re.search(r'"@container grid gap-3">\s*<div className="grid gap-3 @md:grid-cols-2">', editor)

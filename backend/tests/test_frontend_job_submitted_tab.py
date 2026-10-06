@@ -146,7 +146,7 @@ def test_voluntary_answers_are_hidden_until_asked_for_each_visit():
 
 
 def test_a_flag_is_a_warning_mark_with_its_reason_never_color_alone():
-    assert re.search(r'text-warning wrap-anywhere">\s*<AlertTriangle', _TAB)
+    assert re.search(r'text-warning wrap-anywhere">\s*<TriangleAlert', _TAB)
     assert "{flag.reason}" in _TAB
 
 

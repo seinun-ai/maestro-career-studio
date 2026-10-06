@@ -34,6 +34,7 @@ from app.schemas.job_match import JobMatchResult
 from app.schemas.job_search_brief import JobSearchBriefResponse
 from app.services import (
     artifacts,
+    ats_score,
     base_resume_data,
     filled_answers,
     jd_extraction,
@@ -387,8 +388,10 @@ def list_jobs(
         ).all()
         for job_id, *fields in proposal_rows:
             newest.setdefault(job_id, fields)
+        best = ats_score.best_base_scores(db, [job.id for job in rows])
         for job in rows:
             _stamp_newest_proposal(job, newest.get(job.id))
+            job.best_ats_score = best.get(job.id)
     sync_ownership.stamp(db, rows)
     return rows
 

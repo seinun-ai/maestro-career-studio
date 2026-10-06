@@ -1,7 +1,7 @@
 "use client";
 
 import type { RefObject } from "react";
-import { Braces, History as HistoryIcon, MoreHorizontal } from "lucide-react";
+import { Braces, History as HistoryIcon, Ellipsis } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -62,7 +62,7 @@ export function StudioOverflowMenu({
             aria-label="More resume actions"
             disabled={triggerDisabled}
           >
-            <MoreHorizontal />
+            <Ellipsis />
           </Button>
         }
       />

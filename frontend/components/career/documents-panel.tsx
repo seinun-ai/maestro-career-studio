@@ -2,7 +2,7 @@
 
 import { DragEvent, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileText, RefreshCw, Trash2, Upload } from "lucide-react";
+import { RefreshCw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -21,6 +21,7 @@ import {
   documentStatusLabel,
   draftsFromDocument,
 } from "@/lib/document-words";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import type { KBDocumentOut, KBEntityDetail } from "@/lib/types";
@@ -122,7 +123,7 @@ export function DocumentsPanel({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <FileText className="size-4" aria-hidden="true" /> Documents
+          <CONCEPT_ICONS.attachment className="size-4" aria-hidden="true" /> Documents
           <Badge variant="secondary">
             {documents.length}
           </Badge>
@@ -172,7 +173,7 @@ export function DocumentsPanel({
                 <li key={document.id} className="group/document py-3">
                   <div className="flex items-start gap-3">
                     <span className="bg-muted flex size-8 shrink-0 items-center justify-center rounded-full">
-                      <FileText className="text-muted-foreground size-3.5" aria-hidden="true" />
+                      <CONCEPT_ICONS.attachment className="text-muted-foreground size-3.5" aria-hidden="true" />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -234,7 +235,7 @@ function DocumentStatus({ document }: { document: KBDocumentOut }) {
     <span
       className={cn(
         "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-label-medium",
-        failed && "bg-destructive/10 text-destructive",
+        failed && "bg-error-container text-on-error-container",
         minted && "bg-success-container text-on-success-container",
         !failed && !minted && "bg-muted text-muted-foreground",
       )}
