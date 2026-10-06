@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     # Small native machines release the ATS model after each embedding batch.
     # Default off preserves the in-process model cache for existing installs.
     embeddings_out_of_process: bool = False
+    sync_key_file: Path | None = None
+    sync_remote_url: str = ""
     fast_model: str = "gpt-5.6-luna"
     smart_model: str = "gpt-5.6-luna"
     # Chat agent needs streaming tool calls; eligibility is the tools probe.
