@@ -88,7 +88,6 @@ def test_the_sidebar_draws_its_sections_from_the_register():
 _GLYPH_DATA_MARKERS = {"components/career/notes-editor.tsx"}
 
 
-@pytest.mark.xfail(strict=True, reason="Tasks 2-3")
 def test_no_text_glyph_stands_in_for_an_icon():
     hits = []
     for p in _SOURCES:

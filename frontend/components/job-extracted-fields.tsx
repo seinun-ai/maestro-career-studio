@@ -16,7 +16,7 @@ const SkillsIcon = CONCEPT_ICONS.skills;
 const WorkAuthorizationIcon = CONCEPT_ICONS.workAuthorization;
 const StudentPermitIcon = CONCEPT_ICONS.studentPermit;
 
-interface ExtractedSkill {
+export interface ExtractedSkill {
   skill_name: string;
   skill_category?: string;
   requirement_level?: string;
@@ -150,27 +150,38 @@ function StatLine({
   );
 }
 
-function SkillGroup({
+/** The three requirement groups, each under its word (colour alone never says Required vs Preferred). */
+export function SkillGroup({
   title,
   variant,
   skills,
+  limit,
 }: {
   title: string;
-  variant: "default" | "secondary" | "outline";
+  variant: "default" | "tonal" | "outline";
   skills: ExtractedSkill[];
+  /** Show at most this many badges, then "+N more"; the heading count stays the full total. */
+  limit?: number;
 }) {
   if (skills.length === 0) return null;
+  const shown = limit === undefined ? skills : skills.slice(0, Math.max(0, limit));
+  const extra = skills.length - shown.length;
   return (
     <div>
       <div className="text-muted-foreground mb-1.5 text-label-medium">
         {title} ({skills.length})
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {skills.map((s, i) => (
+        {shown.map((s, i) => (
           <Badge key={`${s.skill_name}-${i}`} variant={variant}>
             {s.skill_name}
           </Badge>
         ))}
+        {extra > 0 && (
+          <span className="text-muted-foreground self-center text-body-small">
+            +{extra} more
+          </span>
+        )}
       </div>
     </div>
   );
@@ -335,7 +346,7 @@ export function JobExtractedFields({
               />
               <SkillGroup
                 title="Preferred"
-                variant="secondary"
+                variant="tonal"
                 skills={preferred}
               />
               <SkillGroup

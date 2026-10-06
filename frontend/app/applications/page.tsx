@@ -4,7 +4,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, FilePlus2, KeyRound, Inbox, SendHorizontal, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, FilePlus2, KeyRound, Inbox, SendHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { CompanyMonogram } from "@/components/company-monogram";
@@ -475,8 +475,12 @@ function ApplicationsContent() {
       >
         {label}
         {active && (
-          <span className="text-muted-foreground ml-1 text-label-small">
-            {sortDir === "asc" ? "▲" : "▼"}
+          <span className="text-muted-foreground ml-1 inline-flex align-middle">
+            {sortDir === "asc" ? (
+              <ArrowUp className="size-3" aria-hidden="true" />
+            ) : (
+              <ArrowDown className="size-3" aria-hidden="true" />
+            )}
           </span>
         )}
       </TableHead>

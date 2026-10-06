@@ -183,7 +183,7 @@ def test_a_job_role_family_is_the_catalog_label():
 
 def test_the_extraction_summary_prints_no_enum_key():
     # `full_time`, `onsite`: the same words the job page's chips use.
-    assert 'import { humanizeEnum } from "@/components/job-extracted-fields";' in _SUMMARY
+    assert 'import { humanizeEnum, SkillGroup, type ExtractedSkill } from "@/components/job-extracted-fields";' in _SUMMARY
     for field in ("level", "employment_type", "work_mode"):
         assert f'<Badge variant="outline">{{humanizeEnum(job.{field})}}</Badge>' in _SUMMARY, field
     # The map keys the STORED value: `on_site` never matched, so every on-site
