@@ -183,7 +183,8 @@ file to open.
    `GET /jobs/{id}/detail`, `get_final_review` and `/jobs/match` as `knockout`): stated JD
    requirements (work auth, OPT, salary, on-site vs where you live and relocation) vs the profile, recomputed on every read. Verdicts are `conflict` / `clear` /
    `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
-   warns (pay is negotiable). Informational like G11 tier 2: it flags; the
+   warns (pay is negotiable). On screen a pass is one quiet line and a conflict the loud banner, each followed by a
+   per-check chip strip (OK / Conflict / Warning / Add answer / Not listed / Not run). Informational like G11 tier 2: it flags; the
    consent/submit decision stays human.
 4. **Score** — Score and tailor auto-scores all active bases on first visit; per-base
    cards → **Analyze gaps** creates a session (one filled button, on the best match;

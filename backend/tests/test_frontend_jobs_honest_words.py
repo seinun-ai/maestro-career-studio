@@ -36,8 +36,8 @@ def test_a_clear_knockout_claims_no_more_than_no_conflict():
     src = Path(knockout.__file__).read_text(encoding="utf-8")
     assert 'elif results & {"pass", "warning"}:\n        status = "clear"' in src
     card = _read("components/job-knockout-card.tsx")
-    assert 'label: "Nothing rules you out",' in card
-    assert 'detail: "Nothing the job lists conflicts with your profile.",' in card
+    assert 'label: "No knock-outs" }' in card  # the quiet line says only that nothing conflicts
+    assert "Nothing rules you out" not in card and "conflicts with your profile" not in card
     assert "meet the listed" not in card and "match what the job lists" not in card
 
 
@@ -47,8 +47,9 @@ def test_an_unstated_knockout_says_what_it_could_not_check():
     assert "if desired is None:\n        return None" in src
     assert "if job.years_experience_min is None or years_experience is None:\n        return None" in src
     card = _read("components/job-knockout-card.tsx")
-    assert "\"Nothing here to check. That doesn't mean you qualify.\"" in card
-    assert '`Can\'t check ${what} yet: add your ${fields}.`' in card
+    # The unstated line carries the caution in its accessible text; the Not run chips name what was skipped.
+    assert "Nothing here to check. That doesn't mean you qualify." in card
+    assert "uncheckedSentence" not in card and "Can't check" not in card
     assert 'job.salary_period === "year" || (job.salary_period == null && ceiling >= 10000)' in card
     assert 'anchorHref("/profile", "autofill-preferences")' in card
     assert 'anchorHref("/profile", "job-preferences-years")' in card
@@ -60,7 +61,8 @@ def test_an_unrun_knockout_names_the_check_and_its_salary_field():
     preferences.desired_salary (the Autofill tab's), not Job preferences' Minimum salary."""
     src = Path(knockout.__file__).read_text(encoding="utf-8")
     card = _read("components/job-knockout-card.tsx")
-    assert "return `${what.charAt(0).toUpperCase()}${what.slice(1)} check: not run yet`;" in card
+    assert "uncheckedLabel" not in card and "check: not run yet" not in card
+    assert 'const NOT_RUN: Summary = { icon: CircleDashed, word: "Not run"' in card  # replaces the sentence
     assert 'label: "Not checked yet"' not in card
     assert '(preferences or {}).get("desired_salary")' in src
     assert 'field: "desired salary (Profile › Autofill)",' in card
