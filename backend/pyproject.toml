@@ -84,6 +84,7 @@ app = [
     # root and under user/); glob both levels rather than enumerating suffixes.
     "templates/*",
     "templates/**/*",
+    "services/data/*.yaml",
     "services/ats/data/*.yaml",
     "assets/fonts/xcharter/*.otf",
     "assets/fonts/xcharter/*.txt",
