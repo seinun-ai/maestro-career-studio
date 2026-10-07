@@ -60,6 +60,10 @@ response on that path is sealed or the bare 404, whatever Host arrives, and
 `/api/sync/round` is not a real route through it. You can turn Funnel on before
 you show a pairing code. An outsider still gets the empty 404.
 
+The always-on copy does not join your tailnet and needs no SSH. Don't approve
+a tailnet login for it: that would join it as one of your own devices, with
+whatever your access rules give your devices.
+
 ### On the laptop
 
 1. In the tailnet admin, turn MagicDNS on and HTTPS certificates on. Add this
@@ -297,6 +301,12 @@ the laptop's database, a job the laptop has deleted since is dropped from the
 always-on copy, unless it has applied or acted on it; then it stays there, and
 the sync status says "The laptop deleted this job."
 
+The first rounds after pairing can take 20 minutes or more, because every older
+job travels with its files, about 20 jobs a page, so let a round finish rather
+than restarting the backend to clear it. A round started meanwhile gets "A sync
+is already running", and the next one continues where it stopped, since each
+page is saved.
+
 ## Cron lines
 
 On the always-on copy, add lines to the crontab. They sit next to the backend
@@ -312,6 +322,20 @@ MAESTRO_HOME=/home/agent/maestro
 @reboot /home/agent/maestro-career-studio/backend/scripts/native/start.sh --watchdog >/dev/null 2>&1
 # one sync round every five minutes
 */5 * * * * /home/agent/maestro-career-studio/backend/scripts/native/sync.sh >/dev/null 2>&1
+```
+
+To limit sync to waking hours, set `CRON_TZ` above the sync line and leave the
+watchdog lines above `CRON_TZ`, so those stay on all day. Without `CRON_TZ`,
+cron uses the machine's clock, often UTC, which shifts with daylight saving.
+
+```cron
+MAESTRO_HOME=/home/agent/maestro
+# keep the backend up, all day (these lines stay above CRON_TZ)
+*/5 * * * * /home/agent/maestro-career-studio/backend/scripts/native/health.sh >/dev/null 2>&1 || /home/agent/maestro-career-studio/backend/scripts/native/start.sh --watchdog >/dev/null 2>&1
+@reboot /home/agent/maestro-career-studio/backend/scripts/native/start.sh --watchdog >/dev/null 2>&1
+CRON_TZ=America/Chicago
+# one sync round every five minutes, from 7:00 through 23:55 in that zone
+*/5 7-23 * * * /home/agent/maestro-career-studio/backend/scripts/native/sync.sh >/dev/null 2>&1
 ```
 
 SSH tunnel only. The `^` anchor stops `pgrep` from matching cron's own

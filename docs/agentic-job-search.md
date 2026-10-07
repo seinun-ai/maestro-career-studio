@@ -4,7 +4,9 @@ The rules any agent follows when it hunts for jobs through the Maestro CS MCP
 server. The ready-made skill that follows them is
 [`job-hunt`](../backend/app/automations/skills/job-hunt/SKILL.md). Applying is a separate lane:
 [playbooks/agent-apply.md](playbooks/agent-apply.md) governs everything past
-capture, and a session that does both runs under both documents.
+capture, and a session that does both runs under both documents. An always-on
+copy follows these same rules while your laptop is off
+([Run an always-on bot](always-on-bot.md)).
 
 ## Where postings come from
 

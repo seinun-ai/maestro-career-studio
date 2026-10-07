@@ -241,6 +241,19 @@ def test_the_wheel_ships_every_skill_file():
         assert any(fnmatch.fnmatchcase(rel, g) for g in globs), f"{rel} not in package-data"
 
 
+def test_the_wheel_ships_the_bot_setup_prompt():
+    """Same rule as the skills: a wheel that omits bot-setup.md serves nothing to copy."""
+    backend = Path(__file__).resolve().parent.parent
+    globs = tomllib.loads((backend / "pyproject.toml").read_text())[
+        "tool"]["setuptools"]["package-data"]["app"]
+    path = backend / "app" / "automations" / "bot-setup.md"
+    assert path.is_file()
+    assert path.parent.name == "automations"
+    rel = path.relative_to(backend / "app").as_posix()
+    assert rel == "automations/bot-setup.md"
+    assert any(fnmatch.fnmatchcase(rel, g) for g in globs), f"{rel} not in package-data"
+
+
 def test_a_missing_card_fails_loudly(skills_dir):
     (skills_dir / "job-hunt" / "SKILL.md").unlink()
     with pytest.raises(ValueError, match="designed"):

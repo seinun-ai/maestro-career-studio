@@ -359,6 +359,9 @@ Desktop, Codex or any MCP agent. Your agent asks you when to run it:
 Nothing is ever submitted without your yes, and everything is written down —
 proposals, your yes/no decisions, and evidence.
 
+To keep that work going while your laptop is off, see
+[Run an always-on bot](always-on-bot.md).
+
 ## 7. Keeping it up to date
 
 From the project folder:

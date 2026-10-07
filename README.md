@@ -66,6 +66,7 @@ you** — your whole record exports to one `career.md` file
 [Updating](#updating) ·
 [Using it well](#using-it-well) ·
 [Driving it from Claude, Codex, or ChatGPT (MCP)](#driving-it-from-claude-codex-or-chatgpt-mcp) ·
+[Always-on bot (optional)](#always-on-bot-optional) ·
 [The rest of the toolkit](#the-rest-of-the-toolkit) ·
 [Where your files live](#where-your-files-live) ·
 [Community & contributing](#community-documentation--contributing) ·
@@ -471,6 +472,14 @@ app; use the desktop app.)
 
 Manual setup, every tool, and troubleshooting:
 [`backend/mcp_server/README.md`](backend/mcp_server/README.md).
+
+### Always-on bot (optional)
+
+An agent on a machine that stays on can work your job search while your laptop
+is off. Your laptop keeps your profile, and each job has one owner.
+[Run an always-on bot](docs/always-on-bot.md) is the setup. On your laptop, open
+Settings › Connected agents › Second copy and click **Copy setup prompt**. Paste
+that into the agent on the other machine.
 
 ---
 

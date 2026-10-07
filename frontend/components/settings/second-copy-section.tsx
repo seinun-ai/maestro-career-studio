@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState, type Ref, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CircleCheck, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { CopyButton } from "@/components/copy-button";
 import { SettingCard } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
+import { useCopy } from "@/hooks/use-copy";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
@@ -20,7 +22,9 @@ type SecondCopy = {
 type Opened = { code: string; open_until: string | null };
 const QUERY = ["settings", "second-copy"];
 const PATH = "/api/settings/second-copy";
+const SETUP_PATH = "/api/settings/second-copy/setup-prompt";
 const CARD = "Pair an always-on copy of Maestro with this laptop.";
+const NEW_BOT = "New bot? Copy its setup prompt and paste it into the agent app on that machine.";
 const PASTE = "Paste this code to your bot. It works once, for 10 minutes.";
 const SHOW = "Show a pairing code";
 const SHOW_NEW = "Show a new pairing code";
@@ -79,6 +83,31 @@ function PairingStatus({ at }: { at: string }) {
   );
 }
 
+function SetupPromptCopy() {
+  const { copied, copy } = useCopy();
+  const [busy, setBusy] = useState(false);
+  async function copyPrompt() {
+    setBusy(true);
+    try {
+      const body = await apiFetch<{ prompt: string }>(SETUP_PATH);
+      await copy(body.prompt);
+    } catch (error) {
+      toast.error(couldnt("copy the setup prompt", error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="grid gap-2">
+      <p className="body-medium max-w-[65ch]">{NEW_BOT}</p>
+      <Button variant="tonal" pending={busy} onClick={() => void copyPrompt()}>
+        {copied ? <CircleCheck aria-hidden="true" /> : <Copy aria-hidden="true" />}
+        {copied ? "Copied" : "Copy setup prompt"}
+      </Button>
+    </div>
+  );
+}
+
 function useHandoff() {
   const pending = useRef<RefObject<HTMLElement | null> | null>(null);
   useEffect(() => {
@@ -110,6 +139,7 @@ export function SecondCopyBody({ data, seconds, pending, code, act }: {
   }
   return (
     <div className="grid gap-4">
+      <SetupPromptCopy />
       {visible ? <PairingCode code={visible} ref={codeRef} /> : null}
       {live ? (
         <WindowCountdown seconds={seconds} pending={pending} onStop={() => press("stop")} />

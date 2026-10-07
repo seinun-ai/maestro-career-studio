@@ -89,6 +89,16 @@ test("a consumed window shows the bot's paired time and can be reopened", () => 
   assert.doesNotMatch(html, new RegExp(SHOW_NEW));
 });
 
+const NEW_BOT = /New bot\? Copy its setup prompt and paste it into the agent app on that machine\./;
+
+test("a new bot can copy its setup prompt from the same card", () => {
+  const html = render({ enabled: false, open_until: null, last_paired_at: null });
+  assert.match(html, NEW_BOT);
+  assert.match(html, /Copy setup prompt/);
+  assert.doesNotMatch(html, /Copied/);
+  assert.match(html, /Show a pairing code/);
+});
+
 test("a code just shown is large, copyable, and not offered again", () => {
   const code = "0123-4567-89AB-CDEF";
   const html = renderBody({
@@ -96,6 +106,8 @@ test("a code just shown is large, copyable, and not offered again", () => {
     seconds: 590, pending: false, code, act: () => {},
   });
   assert.match(html, /0123-4567-89AB-CDEF/);
+  assert.match(html, NEW_BOT);
+  assert.match(html, /Copy setup prompt/);
   assert.match(html, /Copy pairing code/);
   assert.match(html, PASTE);
   assert.match(html, /role="timer"/);
@@ -107,6 +119,11 @@ test("a code just shown is large, copyable, and not offered again", () => {
 test("the web talks only to the settings route, with POST and DELETE actions", () => {
   const source = fs.readFileSync(path.join(import.meta.dirname, "second-copy-section.tsx"), "utf8");
   assert.match(source, /\/api\/settings\/second-copy/);
+  assert.match(source, /\/api\/settings\/second-copy\/setup-prompt/);
+  assert.match(source, /useCopy\(/);
+  assert.match(source, /copy\(\s*body\.prompt\s*\)/);
+  assert.match(source, /copied \? "Copied" : "Copy setup prompt"/);
+  assert.match(source, NEW_BOT);
   assert.match(source, /method:.*POST/);
   assert.match(source, /DELETE/);
   assert.match(source, /pending=/);

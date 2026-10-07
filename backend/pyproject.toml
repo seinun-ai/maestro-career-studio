@@ -92,6 +92,8 @@ app = [
     "assets/fonts/xcharter/*.md",
     # The Automations page reads these skill files at request time.
     "automations/skills/*/SKILL.md",
+    # Copy setup prompt reads this once. Not a skill: a skill folder needs a card.
+    "automations/bot-setup.md",
 ]
 
 [tool.pytest.ini_options]

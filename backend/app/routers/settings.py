@@ -1,4 +1,6 @@
 from dataclasses import asdict
+from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -172,6 +174,45 @@ def allow_second_copy(db: Annotated[Session, Depends(get_db)]):
 @router.delete("/second-copy", dependencies=[Depends(_second_copy_home)])
 def stop_second_copy(db: Annotated[Session, Depends(get_db)]):
     return sync_pairing.close_window(db)
+
+
+_SETUP_PROMPT = Path(__file__).resolve().parent.parent / "automations" / "bot-setup.md"
+_LAPTOP_LATER = "<your laptop's address — I'll give it to you>"
+_HOST_CUTS = "/?#"
+
+
+@lru_cache(maxsize=1)
+def _bot_setup_text() -> str:
+    return _SETUP_PROMPT.read_text(encoding="utf-8")
+
+
+def _bare_host(value: str) -> str:
+    """Host only: drop a scheme, a path, a query, a fragment and any userinfo."""
+    text = value.strip()
+    if "://" in text:
+        text = text.split("://", 1)[1]
+    cut = len(text)
+    for mark in _HOST_CUTS:
+        at = text.find(mark)
+        if at != -1 and at < cut:
+            cut = at
+    text = text[:cut]
+    if "@" in text:
+        text = text.rsplit("@", 1)[1]
+    return text.strip()
+
+
+def _laptop_url(value: str) -> str:
+    host = _bare_host(value)
+    if not host:
+        return _LAPTOP_LATER
+    return "https://" + host
+
+
+@router.get("/second-copy/setup-prompt", dependencies=[Depends(_second_copy_home)])
+def get_second_copy_setup_prompt():
+    url = _laptop_url(app_settings.sync_public_host)
+    return {"prompt": _bot_setup_text().replace("{laptop_url}", url)}
 
 
 class _JobSiteLoginRoute(APIRoute):

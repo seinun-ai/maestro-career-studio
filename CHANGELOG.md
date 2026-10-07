@@ -28,6 +28,14 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Added
+
+- **Copy setup prompt** on Settings › Connected agents › Second copy, and a
+  guide for running an always-on bot (`docs/always-on-bot.md`). The button
+  copies a setup prompt for a fresh always-on copy. It fills in the laptop's
+  published address when one is set, and it never includes the sync key or a
+  pairing code.
+
 ## [0.8.0] — 2026-10-07
 
 ### Breaking changes

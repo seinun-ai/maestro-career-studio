@@ -45,6 +45,9 @@ REPO="$HOME/maestro-career-studio"          # your clone
   environment in `$MAESTRO_HOME/venv`, and a `maestro.env` file if none exists.
   It installs the backend with the MCP extra, then migrates the database.
   Set `PYTHON` if `python3.12` is not on your PATH. Rerunning keeps your keys.
+  Prefer a fresh install over copying the laptop's database onto this machine.
+  Pairing brings the profile over, and a copy carries jobs and settings the
+  laptop has since changed (they're replaced or dropped at pairing).
 - **start** refuses to run twice. `start.sh --watchdog` is for supervisors: it
   declines while maintenance is paused (see "Maintenance"). It loads `maestro.env`, starts one backend on
   `127.0.0.1:8001` (change it with `MAESTRO_PORT`), writes `backend.pid`, and
@@ -93,6 +96,12 @@ REPO="$HOME/maestro-career-studio"          # your clone
 is safe to repeat: `start.sh` refuses when it is already running, and
 `--watchdog` makes it wait while you do maintenance. Any supervisor can use that
 pair.
+
+Start the backend through the watchdog (cron, systemd or launchd), not with
+`start.sh` from inside an agent's own tool call: the sandbox can stop every
+process that call started when the call ends, even when `start.sh` has already
+detached. To restart, run `stop.sh --no-pause`, let the watchdog start it, then
+check `/health`.
 
 ### Watchdog cron (works where systemd is unavailable)
 
@@ -277,9 +286,12 @@ An app runs an AI agent on its own small virtual machine, around the clock. The
 VM has about 640 MB available, no swap, and a browser the agent drives during runs.
 
 1. **Install.** The agent clones the repository, then runs `setup.sh` with
-   `MAESTRO_HOME=$HOME/maestro`. If `python3.12` is missing, install it first.
+   `MAESTRO_HOME=$HOME/maestro`. Use a fresh install. Don't copy the laptop's
+   database here ([The four commands](#the-four-commands)). If `python3.12` is
+   missing, install it first.
 2. **Base resumes.** A fresh install has none. Copy your base resume JSON files
-   into `$MAESTRO_HOME/base_resumes/`, then restart with `stop.sh && start.sh`.
+   into `$MAESTRO_HOME/base_resumes/`, then restart as in
+   [Keep it running](#keep-it-running): `stop.sh --no-pause`, then the watchdog.
    The backend reads that folder at startup. Each file name, without `.json`,
    becomes the resume's name. Or have the agent create one with the
    `create_base_resume` MCP tool, which needs no restart.
@@ -288,8 +300,11 @@ VM has about 640 MB available, no swap, and a browser the agent drives during ru
    typed into a chat or a command line.
 4. **Supervision.** User systemd may be unavailable on the VM, so the watchdog
    cron line above does the job. It also restarts the backend after an
-   out-of-memory kill. For an update or a database swap, `stop.sh` pauses it and
-   `start.sh` resumes (see "Maintenance").
+   out-of-memory kill. Let the watchdog start the backend. Don't run `start.sh`
+   from inside the agent's own tool call
+   ([Keep it running](#keep-it-running)). To restart: `stop.sh --no-pause`,
+   wait for the watchdog, then check `/health`. For an update or a database
+   swap, `stop.sh` pauses it and `start.sh` resumes (see "Maintenance").
 5. **Connect.** The app registers the stdio command above as an MCP server. The
    agent starts it for a run and kills it afterward.
 6. **Browser.** Attended applications open the browser on the same machine. It is
