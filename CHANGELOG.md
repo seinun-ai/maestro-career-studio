@@ -28,6 +28,25 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-10-07
+
+### Breaking changes
+
+- None that need an action from you. Read these before updating:
+  - **Five migrations run at startup.** They only add tables and columns
+    (filled answers, agent runs, the autofill run trace, the always-on-copy
+    fields, a resume's target), so your data is untouched. `scripts/update.sh`
+    snapshots the database first.
+  - **No `.env` changes.** `docker-compose.yml` forwards one optional new
+    variable, `SYNC_PUBLIC_HOST`, only for a published sync address.
+  - **The backend image runs uvicorn with `--no-server-header --ws none`.**
+    Nothing relied on either: the app has no WebSocket routes.
+  - **The agent skills moved** from `docs/skills/<name>/` to
+    `backend/app/automations/skills/<name>/` (`docs/skills/` is now an index).
+    The app and any skill you already copied into your agent are unaffected. A
+    link or agent instruction that names the old folder now gets a 404; point
+    it at the new one or copy the prompt from the Automations page.
+
 ### Added
 
 - **Run Maestro without Docker** on a small always-on Linux machine. Four
@@ -43,7 +62,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   the always-on copy. It stays off until a sync key file exists; without one
   nothing changes. Pairing is a one-time code. Every sync message is sealed
   (protocol 2) and can travel over HTTPS through Tailscale Funnel or an SSH
-  tunnel. The key never travels. The MCP tool `sync_now` runs a round, and
+  tunnel. The key never travels, and anything that is not sealed gets the same
+  empty 404 as when sync is off, even on the published name. The MCP tool `sync_now` runs a round, and
   `sync.sh` runs one from cron. The always-on copy holds a read-only copy of
   your profile, including the AI key and the job-site login. See
   `docs/sync-setup.md`.
@@ -96,9 +116,37 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 - The knock-out check on a job also compares an on-site or hybrid office with
   where you live and whether you would relocate, and the Companion shows its
   verdict above the form before you fill.
+- **A target for each base resume**: the countries it may be sent to, a
+  company and a short focus, set in its Target dialog and shown as pills on
+  its card. A resume set for other countries is not scored or recommended for
+  a job elsewhere and is never ready to send; full automation checks it too.
+  Tailoring reads the target. A resume with no countries has no limit.
+- **Five new MCP tools:** `set_base_resume_identity` (a resume's target),
+  `sync_now`, `record_filled_answers`, `record_run` and `get_job_site_login`
+  (full automation only). `score_ats` names the bases it skipped for country.
+- **Pause the always-on copy's watchdog** while you work on it: `stop.sh`
+  leaves a pause the cron watchdog respects, `start.sh` resumes and
+  `health.sh` says when it is paused.
 
 ### Changed
 
+- **A new look across the web app**, from one design system: one tab style,
+  filled stat cards, shadows only on what floats, and filter chips with counts.
+- **One icon for each idea, and meters that say what they mean.** The same
+  glyph marks the same thing everywhere, in the Companion too, with no emoji
+  as icons. Scores, readiness and progress are small bars and dots with their
+  words beside them, never colour alone.
+- **Where you stand, at a glance.** The job header shows its best score; Jobs
+  shows each job's score, a status dot and a needs-you strip; score cards mark
+  the weakest score and show a shared warning once; the knock-out check is
+  quiet when it passes and loud on a conflict. Analytics adds a status mix and
+  a 28-day trend, and compare shows what a tailor gained or lost.
+- **Actions answer you.** Slow buttons spin, a status change turns the chip at
+  once, saves say Saved and copies say Copied. Inbox actions toast and the row
+  slides out. Approving a draft bullet and archiving a resume offer **Undo**.
+  Email, phone and link fields warn before you leave them.
+- **The Companion panel uses the web app's status words and colours**, with
+  icons in place of text symbols.
 - Jobs `job-hunt` saves are marked as found by an agent and keep the job's
   link. They wait in the Agent inbox alongside jobs from referral pages, and
   later hunts recognize jobs already saved.
@@ -129,6 +177,16 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   - with Agreements on, a "Signature" box that signs the form.
 
   A "please specify referral name" box no longer takes your how-heard answer.
+- **The backend starts when `NO_PROXY` holds a bracketed IPv6 address**, as a
+  default on some Linux VMs. The entry is repaired at startup, so the AI
+  provider and the first language-model download work too.
+- **The Score and tailor tab scores a job on first visit** even when all it
+  shows is a tailored row or a base hidden for another country.
+- A native health check during a launch no longer deletes the pid file.
+- **Tighter responses on the published sync name.** uvicorn no longer sends a
+  `server:` header and refuses WebSocket upgrades, so nothing names the stack.
+  The frontend's `sharp` and `source-map-js` dependencies are updated for
+  `npm audit` findings (high).
 
 ## [0.7.1] — 2026-10-01
 
