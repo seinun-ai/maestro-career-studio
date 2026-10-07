@@ -242,53 +242,56 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
   one.
 - **A second, always-on copy holds your profile.** Only if you set up sync
   ([docs/sync-setup.md](docs/sync-setup.md)). That copy keeps a read-only copy of
-  your profile, and it includes your AI key, your EEO answers if you saved
-  them, and your job-site login. Treat the machine that holds it like your
-  laptop: anything that can read its files or its database has all of that.
-  The profile travels only inside an SSH channel you open from the always-on
-  machine to the laptop. Nothing in sync logs a key, a login, a bundle or a
-  request body. Errors are fixed sentences plus a status code.
-  - **The sync endpoints refuse by default.** With no sync key file they answer
-    404, for every route. Only the laptop serves data and enrollment routes;
-    the always-on backend serves its own local round route.
-  - **A browser can never reach them.** Any request with an `Origin` header is
-    refused with 403, before the key is read, even with the right key.
-  - **Data routes need the key, checked in constant time.** The key is a bearer token
-    from a 0600 file in a 0700 folder. A wrong or missing key is a 401 that
-    echoes nothing. The key is checked before the version.
-  - **They listen on the laptop's loopback only.** The always-on machine
-    reaches them through an SSH forward. Restrict that SSH key to one forward
-    (`restrict,port-forwarding,permitopen="127.0.0.1:8001"`), and use a private
-    network. Never expose the port. Request bodies are capped, a stalled sender
-    times out, and one sync request runs at a time.
+  your profile, including your AI key, your EEO answers if you saved them, and
+  your job-site login. Treat that machine like your laptop. The hosting
+  platform already holds that replica, and the key file in its sandbox.
+  - **Every sync message is sealed.** The bodies are encrypted and authenticated
+    with AES-256-GCM. The keys come from the sync key through HKDF-SHA256. A
+    header MAC is checked before any body. The key never travels. There is no
+    bearer header.
+  - **Anything unsealed is an empty 404.** That response matches sync being off,
+    byte for byte, including a request that carries a bearer token. On the
+    published name, a response that is not sealed is replaced with that same
+    empty 404. With no key file, every `/api/sync/*` route is that 404.
+  - **Only `/api/sync` may be published,** through Tailscale Funnel. The laptop
+    process still listens on `127.0.0.1`. Maestro admits `SYNC_PUBLIC_HOST` only
+    under `/api/sync/`, and not on `/api/sync/round`. Funnel exposes only sealed
+    routes. The SSH route, if you use it, still restricts its key to one forward
+    (`restrict,port-forwarding,permitopen="127.0.0.1:8001"`).
+  - **Replays are refused,** including after a laptop restart. A seal stamped
+    before the process started is the empty 404. A clock on the always-on copy
+    that is running behind can see that refusal for up to 5 minutes after a
+    restart. The next round after the clocks agree works.
+  - **Query strings are not encrypted.** They are bound into the seal, so they
+    cannot be swapped, but a proxy that decrypts TLS can read them. Job ids and
+    revisions in cursors are visible that way. The profile, the AI key, the
+    job-site password, the sync key and the pairing code are not.
+  - **Who else can see a round.** On the HTTPS route, the internet, Tailscale's
+    relay and the sandbox proxy see ciphertext, plus those query strings. The pasted pairing
+    code plus a recorded enrollment would let the hosting platform recover the
+    sync key. That is nothing beyond the key file already in its sandbox, but
+    the code can outlive the sandbox in a transcript. Prefer
+    `sync.sh --pair --code -`, which reads the code from stdin so it does not
+    appear in the process list. If that platform is ever suspect, re-key:
+    delete both key files and pair again. The laptop's file is
+    `settings/secrets/sync-key`. The always-on copy's file is
+    `$MAESTRO_HOME/sync-key`.
+  - **Pairing is a one-time code.** Settings › Connected agents › Second copy
+    shows a 16-character code, once, for 10 minutes, with no attempt limit. Only
+    a digest is stored. The code is never logged. Stop retires it. Success logs
+    only the fixed line "A copy fetched the sync key." Enroll is
+    sealed with the code. An unsealed enroll is the same empty 404.
+  - **Nothing secret is logged.** No sync key, pairing code, seal plaintext,
+    bundle value or local path. Errors are fixed sentences.
   - **One writer per job.** The always-on copy cannot change your profile or
     your jobs, and the laptop cannot change a job the bot owns. A write to a
     row the other copy owns is refused at the database flush.
-  - **Pairing is an explicit, one-use approval.** Settings › Connected agents ›
-    Second copy opens a 10-minute window and creates the laptop's key if needed
-    (`POST /api/settings/second-copy`). Stop closes the window. The tunnel-only
-    `POST /api/sync/enroll` needs no bearer key during that window, checks the
-    protocol and schema, refuses any Origin before reading the key or body, and
-    shares the sync lock. Success closes the window and records the time in the
-    same transaction. Five closed-window or failed version checks in 10 minutes
-    block enrollment for 10 minutes, including after a restart or reopening.
-    Only the fixed line “A copy fetched the sync key.” is logged.
-  - **A recording cannot be replayed into a restarted laptop.** While the laptop
-    process is up, a byte-for-byte replay of a sealed request is a bare 404.
-    Home refuses any seal stamped before it started, so a recording can't be
-    replayed into a restarted laptop. That includes enrollment. A remote clock
-    running behind may see bare 404s for up to five minutes after a laptop
-    restart; its next round, once the clock catches up, works.
-  - **Setup stays outside `/api/sync/`.** The settings read works without a key
-    and creates nothing; only its POST opts in. On the always-on backend,
-    `POST /api/sync-setup/enroll` requires a configured loopback tunnel, refuses
-    any Origin, bypasses proxies and redirects, and installs the fetched key in
-    an exclusive 0600 file in a 0700 directory. It never returns the key to the
-    caller. An existing file or symlink is never overwritten. No-key data routes
-    remain 404. A local process reaching the restricted tunnel during an open
-    window can enroll: the SSH forward and private-network rule are the trust.
-    The manual alternative is `sync_key show` in your own terminal and a secure
-    transfer into the other key file. Never paste a key into a chat.
+  - **The round stays on loopback.** `POST /api/sync/round` and
+    `/api/sync-setup/*` are not published. An `Origin` on those is 403. The
+    always-on copy's enroll call stores the key in an exclusive 0600 file and
+    does not return it. An existing key file is never overwritten. A loopback
+    address ignores the proxy environment. Any other address must be `https://`
+    with no path and no query.
 
 ---
 

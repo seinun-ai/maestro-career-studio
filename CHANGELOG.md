@@ -40,11 +40,13 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   your bot**, with **Keep it here** and **Work on it here**. A queue, skip,
   status or note change on the other copy's job waits as **Sent at the next
   sync**. With full automation on, a job you queue on the laptop is offered to
-  the always-on copy. It is off until you create a sync key
-  (`python -m scripts.sync_key create`); without one nothing changes. The MCP
-  tool `sync_now` runs a round, and `sync.sh` runs one from cron. The always-on
-  copy holds a read-only copy of your profile, including the AI key and the
-  job-site login, carried only inside an SSH tunnel. See `docs/sync-setup.md`.
+  the always-on copy. It stays off until a sync key file exists; without one
+  nothing changes. Pairing is a one-time code. Every sync message is sealed
+  (protocol 2) and can travel over HTTPS through Tailscale Funnel or an SSH
+  tunnel. The key never travels. The MCP tool `sync_now` runs a round, and
+  `sync.sh` runs one from cron. The always-on copy holds a read-only copy of
+  your profile, including the AI key and the job-site login. See
+  `docs/sync-setup.md`.
 
 - **`/health/memory`** reports how much memory the backend is using now and at
   its peak, so you can watch a small machine. `health.sh` prints it too.

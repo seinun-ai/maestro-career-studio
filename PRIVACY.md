@@ -54,11 +54,22 @@ network.
 choose holds a read-only copy of your profile. That includes your resumes and
 career history, your settings with your AI key, any EEO answers you saved, and
 your job-site login. It also holds the jobs, applications and files that copy
-owns, and the laptop holds replicas of them. The data moves only inside an SSH
-connection that the always-on machine opens to your laptop, and it is never
-logged. Nothing goes to the author or to a Maestro server. The agent that runs on
+owns, and the laptop holds replicas of them. The hosting platform for that
+copy already holds this replica. Every sync message is sealed with keys derived
+from the sync key, and the key never travels. On the HTTPS route, the
+internet, Tailscale's relay and a proxy that decrypts TLS see ciphertext, plus
+query strings (job ids and
+revisions in cursors are visible; the profile, the AI key and the job-site
+password are not). The pasted code plus a recorded enrollment would let that
+platform recover the sync key. That is nothing beyond the key file already in
+its sandbox, but the code can outlive the sandbox in a transcript. Prefer
+`sync.sh --pair --code -`. If the platform is ever suspect, delete both key
+files and pair again. Nothing in a sync message goes to the author or to a
+Maestro server. The key, the code and the message bodies are not logged. The agent that runs on
 the always-on machine, and its provider, can read what that copy holds, under
-that provider's privacy policy. Without a sync key, none of this exists.
+that provider's privacy policy. Without a sync key, none of this exists. The
+app still listens only on `127.0.0.1`. The one published path is `/api/sync`,
+through Tailscale Funnel, as the setup guide describes.
 
 ## What leaves your machine
 

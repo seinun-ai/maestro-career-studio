@@ -130,7 +130,7 @@ inv-flush-guard). Resume JSON/rendered files stay on disk (`base_resumes` row + 
 
 **Sync** is optional, on only while a key file exists (`docs/sync-setup.md`): the laptop owns the profile, each job has one owner
 (docs/entities/job.md), nothing merges (inv-one-writer-ownership). The always-on copy drives: `sync.sh` (cron; `--now` forces a round) or MCP `sync_now` asks its
-backend for a round (`POST /api/sync/round`, `services/sync/round.py`), which calls the laptop's `/api/sync/*` through an SSH forward
+backend for a round (`POST /api/sync/round`, `services/sync/round.py`), which calls the laptop's `/api/sync/*` on the sealed channel
 (inv-sync-channel), one transaction per step; failures back off 5 to 30 minutes. Changes to the other copy's job wait as `sync_requests`;
 a laptop job is offered only when queued `accepted` on the laptop with full automation on (`offers.mark_when_queued`); switching it off withdraws offers.
 
@@ -450,15 +450,21 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   replicas (`owned_here`); a Core writer touches its job or the profile itself (`touch_job`/`touch_profile`); the sync's own writes pass
   inside `hooks.standing_aside(db)` (it sets `session.info["sync_apply"]` and restores the earlier value); a missing previous parent allows repair; no key allows every write; transaction end and rollback
   clear the hook's state. Pinned by `tests/sync/test_guard.py`.
-- **The sync channel refuses before it reads, and carries secrets only inside the tunnel.** `{#inv-sync-channel}` The laptop's `/api/sync/*`
-  answers 404 with no key file (and on the always-on copy, which serves none). A sealed peer route answers any `Origin` with that same bare
-  404 (empty; a browser cannot seal, and a 403 would show the public internet that sync is on). A failed seal is the same bare 404, then the
-  protocol and schema-revision check (409), one request at a time (409), a body cap (413) and a chunk timeout (408). It listens on the laptop's loopback only, reached through
-  an SSH forward limited to one `permitopen`. The always-on copy's client ignores the proxy environment
-  (`trust_env=False`) and refuses a `SYNC_REMOTE_URL` whose host isn't loopback (a `needs_person` skip, no request made). The profile, the AI key and the job-site login ride only this channel; no key, bundle, body
-  or exception text reaches a log or an error (fixed sentences and a status code). A received job's artifact folders and file paths must sit in their own application's folder and may not overlap another job's folder, compared case-folded and by inode (`services/sync/folders.py`: APFS ignores case), also before a tombstone removes a folder. `POST /api/sync/round` is the always-on copy's own
-  loopback call (no key; 404 on the laptop, 403 for an `Origin`, as are `/api/sync-setup/*` and `/api/sync/enroll`). Pinned by `tests/sync/test_home_endpoints.py`.
-  Settings' **Second copy** opens a one-use 10-minute window (`/api/settings/second-copy`); `/api/sync-setup/enroll` fetches the key privately through the tunnel, and `/api/sync/enroll` consumes the window with a five-failure rate limit (`tests/sync/test_pairing.py`).
+- **Every sync message is sealed; the key never travels.** `{#inv-sync-channel}` Peer routes and `/api/sync/enroll` are AES-256-GCM,
+  with HKDF-SHA256 keys derived from the sync key or the one-time pairing code. A header MAC is checked before any body. An unsealed request,
+  a failed seal, or an `Origin` on a sealed route is a bare 404, byte-identical to sync being off (empty; a 403 would show that sync is on).
+  With no key file every `/api/sync/*` route is that 404, and the always-on copy serves no home routes. After a good seal: the protocol and
+  schema check (409), one request at a time (409), a body cap (413) and a chunk timeout (408); those answers are sealed. Replays are refused,
+  including a seal stamped before this process started. Only `/api/sync` may be published, through Tailscale Funnel. `SYNC_PUBLIC_HOST` is
+  admitted only on that tree, not on `/api/sync/round`, and on that name any unsealed response becomes the same bare 404. A loopback
+  `SYNC_REMOTE_URL` is the SSH tunnel and ignores the proxy environment; any other address must be `https://` with no path or query and uses
+  the proxy environment, or the round is a `needs_person` skip and no request is made. The profile, the AI key and the job-site login ride
+  only this channel. No key, pairing code, seal plaintext, bundle value or local path reaches a log or an error (fixed sentences). A received
+  job's artifact folders and file paths must sit in their own application's folder and may not overlap another job's folder, compared
+  case-folded and by inode (`services/sync/folders.py`: APFS ignores case), also before a tombstone removes a folder. `POST /api/sync/round`
+  is the always-on copy's own loopback call (404 on the laptop, 403 for an `Origin`, as is `/api/sync-setup/*`). Settings' **Second copy**
+  shows a 16-character code, once, for 10 minutes, with no attempt limit. Pinned by `tests/sync/test_seal.py`, `test_sealed_home.py`,
+  `test_public_host.py`, `test_pairing.py` and `test_two_machines.py`.
 
 ## 7. Agent surfaces
 

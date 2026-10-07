@@ -169,9 +169,13 @@ keeps the pause, because the `@reboot` line also uses `--watchdog`.
 
 A second copy on its own is a complete Maestro with its own jobs and profile.
 To make it the always-on copy of your laptop's Maestro, follow
-[sync-setup.md](sync-setup.md). Pair it with a one-time code, set one line in
-`maestro.env`, and add a cron line for `sync.sh`. The laptop is reached over
-HTTPS or an SSH tunnel.
+[sync-setup.md](sync-setup.md). Set `SYNC_REMOTE_URL` in `maestro.env` to this
+machine's own tunnel, or to `https://<mac>.<tailnet>.ts.net` with no path and
+no query. If a proxy decrypts TLS, set `SSL_CERT_FILE` to a bundle that holds
+the proxy's CA. Add a cron line for `sync.sh`. Pair with
+`sync.sh --pair --code -` (the code is read from stdin). The laptop is reached
+over HTTPS through Funnel, or over an SSH tunnel. The sync key is not copied
+by hand.
 
 ## Connect an agent
 
