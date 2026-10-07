@@ -703,6 +703,33 @@ def test_a_resume_racing_the_watchdog_starts_one_backend(native_home):
         assert not pause_marker(ctx).exists()
 
 
+def test_a_health_check_during_the_launch_keeps_the_pidfile(native_home):
+    """start.sh's pid is the launcher until it exec's into uvicorn. A health.sh or watchdog tick
+    in that window used to call it stale and delete the pidfile the launch had just written,
+    leaving a backend that stop.sh and the watchdog could not find."""
+    ctx = native_home
+    setup_home(ctx)
+    launcher = subprocess.run(
+        ["bash", "-c", 'source "$1/common.sh" && printf %s "$NATIVE_LAUNCHER"', "x", str(NATIVE)],
+        capture_output=True, text=True, check=True).stdout
+    home = ctx.home.resolve()
+    # argv[0] carries the launcher's command line, exactly what ps and /proc show for the real one
+    launching = subprocess.Popen(
+        ["bash", "-c", 'exec -a "$0" sleep 60', f"{home}/venv/bin/python -c {launcher} app.main:app"])
+    try:
+        (ctx.home / "backend.pid").write_text(f"{launching.pid}\n")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and "venv/bin/python" not in subprocess.run(
+                ["ps", "-o", "args=", "-p", str(launching.pid)], capture_output=True, text=True).stdout:
+            time.sleep(0.02)
+        health = run_script("health.sh", ctx.env)
+        assert "not running" not in health.stderr
+        assert (ctx.home / "backend.pid").read_text().strip() == str(launching.pid)
+    finally:
+        launching.kill()
+        launching.wait()
+
+
 def test_stop_without_a_home_does_not_claim_a_pause(native_home):
     ctx = native_home
     env = {**ctx.env, "MAESTRO_HOME": str(ctx.home / "absent")}

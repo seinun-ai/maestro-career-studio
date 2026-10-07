@@ -13,6 +13,9 @@ case "$MAESTRO_HOME" in
     *) MAESTRO_HOME="$PWD/$MAESTRO_HOME" ;;
 esac
 
+# Run by start.sh as `python -c "$NATIVE_LAUNCHER" app.main:app ...`: a new session, then uvicorn in place.
+NATIVE_LAUNCHER='import os, sys; os.setsid(); os.execv(sys.executable, [sys.executable, "-m", "uvicorn", *sys.argv[1:]])'
+
 native_error() {
     printf '%s\n' "$1" >&2
     exit 1
@@ -123,7 +126,10 @@ native_pid_ours() {
     native_pid_alive || return 1
     local home
     home="$(cd -- "$MAESTRO_HOME" 2>/dev/null && pwd)" || home="$MAESTRO_HOME"
-    [[ "$NATIVE_PID_ARGS" == "$home/venv/bin/python -m uvicorn app.main:app"* ]]
+    # start.sh's launcher is the same pid until it exec's into uvicorn; a health.sh or watchdog tick
+    # in that window must not call the launch stale and delete the pidfile the launch just wrote.
+    [[ "$NATIVE_PID_ARGS" == "$home/venv/bin/python -m uvicorn app.main:app"* \
+        || "$NATIVE_PID_ARGS" == "$home/venv/bin/python -c $NATIVE_LAUNCHER app.main:app"* ]]
 }
 
 native_running() {
