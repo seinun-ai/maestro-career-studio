@@ -497,3 +497,18 @@ def test_a_code_sealed_enroll_on_the_public_host_opens(client, sync_on, publish)
         secret, rid, 200, response.headers[seal.HEADER], response.content,
         label=seal.ENROLL_TO_REMOTE)
     assert json.loads(plain)["key"] == status.read_key()
+
+
+def test_the_image_serves_no_websockets_and_no_server_header():
+    """A WebSocket upgrade answered by uvicorn's own layer is a plain-text 403 or 400.
+
+    The middleware cannot turn that into the bare 404, and the app has no WebSocket
+    routes, so the image turns the layer off. start.sh's argv is pinned in
+    tests/test_native_scripts.py.
+    """
+    dockerfile = Path(__file__).resolve().parents[2] / "Dockerfile"
+    cmd = next(line for line in dockerfile.read_text(encoding="utf-8").splitlines()
+               if line.startswith("CMD "))
+    argv = json.loads(cmd.removeprefix("CMD "))
+    assert argv[argv.index("--ws") + 1] == "none"
+    assert "--no-server-header" in argv

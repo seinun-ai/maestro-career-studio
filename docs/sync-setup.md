@@ -84,7 +84,8 @@ you show a pairing code. An outsider still gets the empty 404.
    ```
 
 3. In the laptop's `.env`, set the public name and restart. Docker Compose
-   forwards `SYNC_PUBLIC_HOST` to the backend.
+   forwards `SYNC_PUBLIC_HOST` to the backend. Set it on the laptop only: on
+   the always-on copy it would turn the copy's own sync round into the empty 404.
 
    ```bash
    SYNC_PUBLIC_HOST=<mac>.<tailnet>.ts.net

@@ -101,4 +101,6 @@ EXPOSE 8000
 # docker-compose.dev.yml overrides the command for it. Shipping --reload here
 # spawns a file-watching reloader in production and reloads on any bind-mounted
 # change, which is exactly the dev/prod confusion the compose split removed.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+# --ws none: the app has no WebSocket routes, and an upgrade answered by
+# uvicorn's WebSocket layer would name the stack on a published /api/sync.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--ws", "none"]
