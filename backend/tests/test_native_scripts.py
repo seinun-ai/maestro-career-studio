@@ -822,6 +822,7 @@ def test_sync_now_forces_a_round_without_pairing(native_home):
 def test_sync_passes_pairing_through_and_forces_past_the_backoff(native_home):
     ctx = native_home
     setup_home(ctx)
+    (ctx.home / "sync-key").write_text(SYNC_KEY)
     assert run_sync(ctx, "--pair").returncode == 0
     assert posted_round(ctx)["body"] == {"force": True, "pair": True, "accept_profile_overwrite": False}
     assert run_sync(ctx, "--pair", "--accept-profile-overwrite").returncode == 0
@@ -834,7 +835,7 @@ def test_sync_rejects_unknown_flags_with_usage_and_posts_nothing(native_home, ar
     ctx = native_home
     setup_home(ctx)
     result = run_sync(ctx, *args)
-    assert result.returncode == 1 and "Usage: sync.sh [--now | --pair [--accept-profile-overwrite]]" in result.stderr
+    assert result.returncode == 1 and "Usage: sync.sh [--now | --pair [--code <code>] [--accept-profile-overwrite]]" in result.stderr
     assert not (ctx.records / "round.json").exists()
 
 

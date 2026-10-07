@@ -5,25 +5,37 @@
 # is unreachable, unreadable or not set up (404). Never prints the key.
 #   sync.sh                                  a plain round
 #   sync.sh --now                            a round now, past a backoff (not past the 30 s floor)
-#   sync.sh --pair [--accept-profile-overwrite]   the first round, at the keyboard
+#   sync.sh --pair [--code <code>] [--accept-profile-overwrite]
+#       the first round, at the keyboard. --code - reads the code from stdin.
 set +x
 set -euo pipefail
 umask 077
 # shellcheck source=common.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
 
-usage='Usage: sync.sh [--now | --pair [--accept-profile-overwrite]]'
-pair=false accept=false now=false
-for arg in "$@"; do
+usage='Usage: sync.sh [--now | --pair [--code <code>] [--accept-profile-overwrite]]'
+pair=false accept=false now=false have_code=false code=''
+args=("$@")
+i=0
+while [[ "$i" -lt ${#args[@]} ]]; do
+    arg="${args[$i]}"
     case "$arg" in
         --now) now=true ;;
         --pair) pair=true ;;
         --accept-profile-overwrite) accept=true ;;
+        --code)
+            i=$((i + 1))
+            [[ "$i" -lt ${#args[@]} ]] || native_error "$usage"
+            code="${args[$i]}"
+            have_code=true
+            ;;
         *) native_error "$usage" ;;
     esac
+    i=$((i + 1))
 done
 [[ "$accept" == false || "$pair" == true ]] || native_error "$usage"
 [[ "$now" == false || "$pair" == false ]] || native_error "$usage"
+[[ "$have_code" == false || "$pair" == true ]] || native_error "$usage"
 
 native_private_home
 if paused_since="$(native_paused_since)"; then
@@ -33,7 +45,12 @@ fi
 native_load_env
 [[ -x "$NATIVE_PYTHON" ]] || native_error 'Native venv is missing; run setup.sh.'
 if [[ "$pair" == true && ! -e "$SYNC_KEY_FILE" && ! -L "$SYNC_KEY_FILE" ]]; then
-    enrollment="$(native_post /api/sync-setup/enroll '{}')" \
+    [[ "$have_code" == true ]] || native_error "$usage"
+    if [[ "$code" == "-" ]]; then
+        IFS= read -r code || native_error "$usage"
+    fi
+    body="$(printf '%s' "$code" | "$NATIVE_PYTHON" -c 'import json,sys; sys.stdout.write(json.dumps({"code": sys.stdin.read()}))')"
+    enrollment="$(native_post /api/sync-setup/enroll "$body")" \
         || native_error 'Native backend is not reachable; check start.sh and health.sh.'
     enrollment_status="${enrollment%%$'\n'*}"
     printf '%s' "${enrollment#*$'\n'}" | "$NATIVE_PYTHON" -c '
@@ -53,7 +70,7 @@ if isinstance(body, dict) and body.get("outcome") in ("needs_person", "transient
     if isinstance(text, str):
         print(" ".join(text.split())[:300], file=sys.stderr)
         raise SystemExit(1)
-print("This copy could not fetch the sync key. Check the laptop pairing window and tunnel.", file=sys.stderr)
+print("This copy could not fetch the sync key. Show a pairing code on your laptop and try again.", file=sys.stderr)
 raise SystemExit(1)
 ' "$enrollment_status" || exit 1
 fi

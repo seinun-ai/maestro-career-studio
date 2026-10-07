@@ -47,18 +47,23 @@ def test_allow_fetch_and_pair_in_one_go(copies):
     home, remote = copies
     assert not home.key_file.exists() and not remote.key_file.exists()
     assert home.http.get("/api/sync/hello").status_code == 404
-    assert home.http.post("/api/settings/second-copy", headers={
-        "Origin": "http://localhost:3000"}).status_code == 200
+    opened = home.http.post("/api/settings/second-copy", headers={
+        "Origin": "http://localhost:3000"})
+    assert opened.status_code == 200
+    code = opened.json()["code"]
     script = Path(__file__).resolve().parents[2] / "scripts/native/sync.sh"
-    result = subprocess.run(["bash", str(script), "--pair"],
+    result = subprocess.run(["bash", str(script), "--pair", "--code", code],
                             env={**os.environ, "MAESTRO_HOME": str(remote.root)},
                             capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, "The pairing script failed; subprocess output is withheld."
     assert "Synced." in result.stdout
+    output = result.stdout + result.stderr
+    assert not (code in output or home.key_file.read_text().strip() in output), (
+        "pairing output contained a secret")
     assert hashlib.sha256(remote.key_file.read_bytes()).digest() == hashlib.sha256(
         home.key_file.read_bytes()).digest()
     assert remote.key_file.stat().st_mode & 0o777 == 0o600
-    assert home.key_file.read_text().strip() not in result.stdout + result.stderr
     card = home.http.get("/api/settings/second-copy").json()
+    assert "code" not in card and code not in home.http.get("/api/settings/second-copy").text
     assert card["open_until"] is None and card["last_paired_at"] is not None
-    assert remote.http.post("/api/sync-setup/enroll").status_code == 409
+    assert remote.http.post("/api/sync-setup/enroll", json={"code": code}).status_code == 409

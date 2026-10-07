@@ -109,16 +109,19 @@ def _send(client, method, path, header, peer, body=b""):
 # ---------------------------------------------------------------- what stays unsealed
 
 
-def test_round_enroll_and_setup_stay_unsealed(client, sync_on, peer):
-    """These three are not peer routes. A seal header does not change their JSON answers."""
+def test_round_and_setup_stay_unsealed_and_enroll_is_the_bare_404(client, sync_on, peer):
+    """/round and /api/sync-setup are not peer routes: a seal header doesn't change their JSON
+    answers. /enroll is sealed with the pairing code's keys, so an unsealed call is the bare 404."""
     round_off = client.post("/api/sync/round", headers={seal.HEADER: "2.1.a.b.c.", "X-Maestro-Sync": peer})
-    enroll = client.post("/api/sync/enroll", headers={"X-Maestro-Sync": peer})
     setup = client.post("/api/sync-setup/enroll", headers={seal.HEADER: "2.1.a.b.c."})
-    for response in (round_off, enroll, setup):
+    for response in (round_off, setup):
         assert "x-maestro-seal" not in response.headers
         assert response.headers["content-type"].startswith("application/json")
     assert round_off.status_code == 404 and round_off.json()["detail"] == BARE
     assert setup.status_code == 404 and setup.json()["detail"] == BARE
+    enroll = client.post("/api/sync/enroll", headers={"X-Maestro-Sync": peer})
+    assert enroll.status_code == 404 and enroll.content == b""
+    assert "x-maestro-seal" not in enroll.headers
 
 
 def test_the_success_table_is_every_peer_route():

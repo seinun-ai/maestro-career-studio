@@ -37,25 +37,32 @@ function render(data) {
   return html;
 }
 
+function renderBody(props) {
+  return renderToStaticMarkup(React.createElement(component().SecondCopyBody, props));
+}
+
+const PASTE = /Paste this code to your bot\. It works once, for 10 minutes\./;
+
 test("sync off offers only the explicit opt-in, with plain copy", () => {
   const html = render({ enabled: false, open_until: null, last_paired_at: null });
   assert.match(html, /Second copy/);
-  assert.match(html, /Lets your always-on copy fetch the sync key once, through its tunnel\. Nothing to copy or paste\./);
-  assert.match(html, /Allow pairing for 10 minutes/);
+  assert.match(html, PASTE);
+  assert.match(html, /Show a pairing code/);
+  assert.doesNotMatch(html, /through its tunnel|Allow pairing for 10 minutes/);
   assert.doesNotMatch(html, />Stop<|Paired with your bot at|role="timer"/);
 });
 
-test("an open window renders a countdown and Stop, without a second Allow button", () => {
+test("an open window renders a countdown and Stop", () => {
   const html = render({ enabled: true, open_until: new Date(Date.now() + 590000).toISOString(), last_paired_at: null });
   assert.match(html, /role="timer"/);
   assert.match(html, /[0-9]+:[0-9]{2}/);
   assert.match(html, />Stop</);
-  assert.doesNotMatch(html, /Allow pairing for 10 minutes/);
+  assert.match(html, PASTE);
 });
 
-test("an expired window offers Allow again", () => {
+test("an expired window offers Show a pairing code again", () => {
   const html = render({ enabled: true, open_until: new Date(Date.now() - 1000).toISOString(), last_paired_at: null });
-  assert.match(html, /Allow pairing for 10 minutes/);
+  assert.match(html, /Show a pairing code/);
   assert.doesNotMatch(html, />Stop</);
 });
 
@@ -63,7 +70,22 @@ test("a consumed window shows the bot's paired time and can be reopened", () => 
   const html = render({ enabled: true, open_until: null, last_paired_at: "2026-10-06T12:00:00Z" });
   assert.match(html, /Paired with your bot at/);
   assert.match(html, /datetime="2026-10-06T12:00:00Z"/i);
-  assert.match(html, /Allow pairing for 10 minutes/);
+  assert.match(html, /Show a pairing code/);
+});
+
+test("a code just shown is large, copyable, and not offered again", () => {
+  const code = "0123-4567-89AB-CDEF";
+  const html = renderBody({
+    data: { enabled: true, open_until: new Date(Date.now() + 590000).toISOString(), last_paired_at: null },
+    seconds: 590, pending: false, code, act: () => {},
+  });
+  assert.match(html, /0123-4567-89AB-CDEF/);
+  assert.match(html, /Copy pairing code/);
+  assert.match(html, PASTE);
+  assert.match(html, /role="timer"/);
+  assert.match(html, />Stop</);
+  assert.match(html, /This laptop/);
+  assert.doesNotMatch(html, /Show a pairing code/);
 });
 
 test("the web talks only to the settings route, with POST and DELETE actions", () => {
@@ -73,5 +95,8 @@ test("the web talks only to the settings route, with POST and DELETE actions", (
   assert.match(source, /DELETE/);
   assert.match(source, /pending=/);
   assert.match(source, /SettingCard/);
-  assert.doesNotMatch(source, /\/api\/sync\/|sync-setup|\.key\b/);
+  assert.match(source, /CONCEPT_ICONS/);
+  assert.match(source, /Show a pairing code/);
+  assert.match(source, /Paste this code to your bot\. It works once, for 10 minutes\./);
+  assert.doesNotMatch(source, /\/api\/sync\/|sync-setup|\.key\b|through its tunnel|Allow pairing/);
 });

@@ -1,11 +1,11 @@
 """Home's side of the sync channel (split-ownership design, Part B).
 
 The always-on copy drives every request; this copy only answers. Peer routes under ``/api/sync/``
-(not ``/round`` or ``/enroll``) are sealed: a bare 404 while sync is off or this copy is remote,
-a bare 404 for any ``Origin`` (a browser cannot seal, and a 403 would show that sync is on),
-then the seal, then the protocol check and the single-flight lock.
-A failed seal is the same bare 404. ``/round``, ``/enroll`` and ``/api/sync-setup`` keep the
-Origin 403. Enrollment still needs a one-use window opened in Settings.
+(not ``/round`` or ``/enroll``) are sealed with the sync key: a bare 404 while sync is off or
+this copy is remote, a bare 404 for any ``Origin`` (a browser cannot seal, and a 403 would show
+that sync is on), then the seal, then the protocol check and the single-flight lock.
+A failed seal is the same bare 404. ``/round`` and ``/api/sync-setup`` keep the Origin 403.
+``/enroll`` keeps the Origin 403 and is sealed here with the one-time code, not the sync key.
 Local setup is under ``/api/sync-setup`` and is not sealed. Nothing here logs or echoes a key, a
 bundle, a request body, the AI key or the job-site password: every response and stored reason is
 a fixed sentence or one of the rule sentences the services already use, never ``str(exc)``.
@@ -353,18 +353,56 @@ def _require_enrollment(request: Request) -> str:
     return key
 
 
-@router.post("/enroll")
-def post_enroll(request: Request, db: DB, key: Annotated[str, Depends(_require_enrollment)]):
+def _enroll_header(request: Request, db: DB, secret: str | None):
     try:
-        pairing.check_window(db)
-        _check_version(request, db)
-        pairing.consume_window(db)
-    except (_Refused, pairing.Refused) as refusal:
-        if refusal.status_code != 429:
-            pairing.record_failure(db)
-        raise
+        ok = seal.check_header(
+            secret or pairing._STAND_IN, request.method, request.url.path, request.url.query,
+            request.headers.get(seal.HEADER, ""), request.headers.get("x-maestro-sync", ""),
+            replay=None, label=seal.ENROLL_TO_HOME)
+    except seal.Broken:
+        pairing.note_failed_open(db)
+        return _bare_404()
+    if pairing.seen_enroll(ok.rid, request.headers.get(seal.HEADER, "")):
+        return _bare_404()
+    return ok
+
+
+async def _enroll_wire(request: Request, db: DB):
+    try:
+        return await _read_body(request)
+    except (HTTPException, ClientDisconnect):
+        pairing.note_failed_open(db)
+        return _bare_404()
+
+
+def _opened_enroll(db: DB, secret: str, ok: seal.HeaderOk, wire: bytes) -> bool:
+    try:
+        seal.open_request(secret, ok, wire, label=seal.ENROLL_TO_HOME)
+    except seal.Broken:
+        pairing.note_failed_open(db)
+        return False
+    return pairing.complete_pairing(db, secret)
+
+
+def _enroll_answer(secret: str, rid: str, key: str) -> Response:
+    body = json.dumps({"key": key}).encode()
+    header, wire = seal.seal_response(secret, rid, 200, body, label=seal.ENROLL_TO_REMOTE)
+    return Response(content=wire, status_code=200, headers={seal.HEADER: header})
+
+
+@router.post("/enroll")
+async def post_enroll(request: Request, db: DB, key: Annotated[str, Depends(_require_enrollment)]):
+    secret = pairing.live_digest(db)
+    opened = _enroll_header(request, db, secret)
+    if isinstance(opened, Response) or secret is None:
+        return opened if isinstance(opened, Response) else _bare_404()
+    wire = await _enroll_wire(request, db)
+    if isinstance(wire, Response):
+        return wire
+    if not _opened_enroll(db, secret, opened, wire):
+        return _bare_404()
     logger.info("A copy fetched the sync key.")
-    return {"key": key}
+    return _enroll_answer(secret, opened.rid, key)
 
 
 def _require_setup_caller(request: Request) -> None:
@@ -375,13 +413,30 @@ def _require_setup_caller(request: Request) -> None:
     _take_lock(request)
 
 
-@setup_router.post("/enroll", dependencies=[Depends(_require_setup_caller)])
-def post_setup_enroll(db: DB):
+def _setup_refusal(refusal: pairing.Refused) -> JSONResponse:
+    return JSONResponse(status_code=refusal.status_code, content={
+        "ok": False, "detail": refusal.detail, "outcome": refusal.outcome})
+
+
+async def _submitted_code(request: Request) -> str:
     try:
-        return pairing.enroll_here(db)
+        raw = await request.body()
+        body = json.loads(raw) if raw else None
+    except (ValueError, UnicodeError):
+        raise pairing.Refused(422, "The request wasn't valid.") from None
+    code = body.get("code") if isinstance(body, dict) else None
+    if not isinstance(code, str) or len(code) > 64:
+        raise pairing.Refused(422, "The request wasn't valid.")
+    return code
+
+
+@setup_router.post("/enroll", dependencies=[Depends(_require_setup_caller)])
+async def post_setup_enroll(request: Request, db: DB):
+    try:
+        pairing.prepare_enroll()
+        return pairing.enroll_here(db, await _submitted_code(request))
     except pairing.Refused as refusal:
-        return JSONResponse(status_code=refusal.status_code, content={
-            "ok": False, "detail": refusal.detail, "outcome": refusal.outcome})
+        return _setup_refusal(refusal)
 
 
 async def _read_body(request: Request) -> bytes:

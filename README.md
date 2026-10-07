@@ -57,8 +57,9 @@ you** — your whole record exports to one `career.md` file
 > **Made for one person on one computer.** There is no login: anything that can
 > reach the app can read and change your whole career record and your saved API
 > keys. Out of the box it only listens on your own machine (`127.0.0.1`), so
-> that's safe. **Never expose it to a network** — not the internet, your home
-> network, or a tunnel. [`SECURITY.md`](SECURITY.md) has the details.
+> that's safe. **Never expose the app to a network.** Sync between copies is
+> the one published path, and only as [sync setup](docs/sync-setup.md) describes.
+> [`SECURITY.md`](SECURITY.md) has the details.
 
 **Contents:** [Why Maestro CS?](#why-maestro-cs) ·
 [Prerequisites](#prerequisites) · [Quickstart](#quickstart) ·

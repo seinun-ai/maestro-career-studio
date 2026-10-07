@@ -1,8 +1,12 @@
-"""Explicit opt-in and one-use key enrollment. Only local sync.* settings are written."""
+"""One-time pairing. The code is shown once; only its digest is stored."""
 
+import hashlib
+import hmac
 import json
 import os
+import secrets
 import threading
+import time
 from datetime import datetime, timedelta
 
 import httpx
@@ -14,22 +18,29 @@ from app.db import begin_write
 from app.models.setting import Setting
 from app.models.types import utcnow
 from app.services import http_client
-from app.services.sync import status
+from app.services.sync import seal, status
 
 LOCK = threading.Lock()
 WINDOW_KEY = "sync.pairing_until"
 PAIRED_KEY = "sync.last_paired_at"
-LIMIT_KEY = "sync.enrollment_limit"
+DIGEST_KEY = "sync.pairing_digest"
+ATTEMPTS_KEY = "sync.pairing_attempts"
 WINDOW = timedelta(minutes=10)
-CLOSED = "Pairing isn't open on your laptop. Click Allow pairing for 10 minutes there."
-LIMITED = "Pairing was tried too often. Wait 10 minutes, then allow pairing again."
+ATTEMPT_LIMIT = 5
+CLOSED = "Pairing didn't work. Show a pairing code on your laptop and try again."
+LIMITED = "Pairing was tried too often. Show a new pairing code on your laptop."
 EXISTS = "This copy already has a sync key. Use the pair option to finish setup."
 HOME_ONLY = "Allow pairing on your laptop, not on the always-on copy."
 UNREADABLE_KEY = "The sync key file can't be read. Check it before pairing."
 DISK = "Maestro couldn't save the sync key."
 ANSWER = "Your laptop's answer wasn't what Maestro expected."
-VERSION = "Update Maestro on both machines to the same version."
-TUNNEL = "The laptop's address must be this machine's own tunnel (127.0.0.1)."
+UNVERIFIED = "The laptop's answer couldn't be verified."
+TUNNEL = "The laptop's address must be this machine's own tunnel or an https:// address."
+INVALID_CODE = "That pairing code isn't valid."
+_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+_CONFUSABLES = {"O": "0", "I": "1", "L": "1"}
+_STAND_IN = secrets.token_hex(32)
+_REPLAY = seal.ReplayCache()
 
 
 class Refused(Exception):
@@ -77,71 +88,152 @@ def window_status(db: Session) -> dict:
             "last_paired_at": paired.isoformat() if paired else None}
 
 
+def _ensure_key() -> None:
+    if status.read_key() is not None:
+        return
+    try:
+        status.create_key()
+    except FileExistsError:
+        raise Refused(409, UNREADABLE_KEY) from None
+    except OSError:
+        raise Refused(500, DISK) from None
+
+
+def _new_code() -> str:
+    bits = int.from_bytes(secrets.token_bytes(10), "big")
+    chars = [_ALPHABET[(bits >> shift) & 31] for shift in range(75, -1, -5)]
+    raw = "".join(chars)
+    return "-".join(raw[index:index + 4] for index in range(0, 16, 4))
+
+
+def normalize_code(raw: object) -> str | None:
+    """Uppercase, drop spaces and dashes, map O/I/L, and keep 16 Crockford characters."""
+    if not isinstance(raw, str) or len(raw) > 64:
+        return None
+    chars = _crockford(raw)
+    if chars is None or len(chars) != 16:
+        return None
+    return "".join(chars)
+
+
+def _crockford(raw: str) -> list[str] | None:
+    chars = []
+    for char in raw.upper():
+        if char in " -":
+            continue
+        mapped = _CONFUSABLES.get(char, char)
+        if mapped not in _ALPHABET:
+            return None
+        chars.append(mapped)
+    return chars
+
+
+def _code_secret(code: str) -> str | None:
+    normalized = normalize_code(code)
+    if normalized is None:
+        return None
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
 def open_window(db: Session) -> dict:
-    if status.read_key() is None:
-        try:
-            status.create_key()
-        except FileExistsError:
-            raise Refused(409, UNREADABLE_KEY) from None
-        except OSError:
-            raise Refused(500, DISK) from None
+    _ensure_key()
+    code = _new_code()
+    secret = _code_secret(code)
+    if secret is None:
+        raise Refused(500, DISK)
     begin_write(db)
     until = (utcnow() + WINDOW).isoformat()
     _set(db, WINDOW_KEY, until)
+    _set(db, DIGEST_KEY, secret)
+    _set(db, ATTEMPTS_KEY, "0")
     db.commit()
-    return {"open_until": until}
+    return {"code": code, "open_until": until}
+
+
+def _clear_code(db: Session) -> None:
+    _set(db, WINDOW_KEY, "")
+    _set(db, DIGEST_KEY, "")
+    _set(db, ATTEMPTS_KEY, "0")
 
 
 def close_window(db: Session) -> dict:
     if not status.enabled():
         return {"open_until": None}
     begin_write(db)
-    _set(db, WINDOW_KEY, "")
+    _clear_code(db)
     db.commit()
     return {"open_until": None}
 
 
-def _limit(db: Session) -> dict:
-    try:
-        stored = json.loads(_get(db, LIMIT_KEY) or "{}")
-    except ValueError:
-        return {}
-    return stored if isinstance(stored, dict) else {}
+def _hex64(value: object) -> str | None:
+    if not isinstance(value, str) or len(value) != 64:
+        return None
+    if any(char not in "0123456789abcdef" for char in value):
+        return None
+    return value
 
 
-def check_window(db: Session) -> None:
-    blocked = _time(_limit(db).get("blocked_until"))
-    if blocked is not None and blocked > utcnow():
-        raise Refused(429, LIMITED, "limited")
+def live_digest(db: Session) -> str | None:
     if _open_until(db) is None:
-        raise Refused(409, CLOSED, "closed")
+        return None
+    return _hex64(_get(db, DIGEST_KEY))
 
 
-def record_failure(db: Session) -> None:
+def _attempts(db: Session) -> int:
+    raw = _get(db, ATTEMPTS_KEY)
+    if isinstance(raw, str) and raw.isdigit():
+        return int(raw)
+    return 0
+
+
+def note_failed_open(db: Session) -> None:
+    """One failed open. The fifth retires the window. A closed window is not an attempt."""
+    if live_digest(db) is None:
+        return
     begin_write(db)
-    now, previous = utcnow(), _limit(db).get("failures", [])
-    previous = previous[-5:] if isinstance(previous, list) else []
-    times = [_time(item) for item in previous]
-    recent = [item.isoformat() for item in times if item is not None and now - WINDOW < item <= now]
-    recent.append(now.isoformat())
-    blocked = (now + WINDOW).isoformat() if len(recent) >= 5 else None
-    _set(db, LIMIT_KEY, json.dumps({"failures": recent, "blocked_until": blocked}))
+    if _attempts(db) + 1 >= ATTEMPT_LIMIT:
+        _clear_code(db)
+    else:
+        _set(db, ATTEMPTS_KEY, str(_attempts(db) + 1))
     db.commit()
 
 
-def consume_window(db: Session) -> None:
-    """The key is handed off once: close and stamp in the same transaction."""
+def _stamp(header: str) -> int:
+    try:
+        return int(header.split(".")[1])
+    except (IndexError, ValueError):
+        return int(time.time())
+
+
+def seen_enroll(rid: str, header: str) -> bool:
+    """True when this rid was already accepted. Call only after the mac verifies."""
+    expiry = _stamp(header) + seal.SKEW_SECONDS + seal.REPLAY_SECONDS
+    return _REPLAY.seen(rid, time.time(), until=expiry)
+
+
+def complete_pairing(db: Session, digest: str) -> bool:
     begin_write(db)
-    check_window(db)
-    _set(db, WINDOW_KEY, "")
+    current = live_digest(db)
+    if current is None or not hmac.compare_digest(current, digest):
+        db.rollback()
+        return False
+    _clear_code(db)
     _set(db, PAIRED_KEY, utcnow().isoformat())
-    _set(db, LIMIT_KEY, "")
     db.commit()
+    return True
 
 
 def require_missing_key() -> None:
     if os.path.lexists(status.key_path()):
         raise Refused(409, EXISTS)
+
+
+def prepare_enroll() -> str:
+    route = status.remote_route()
+    if route is None:
+        raise Refused(409, TUNNEL)
+    require_missing_key()
+    return route
 
 
 def _headers(db: Session) -> dict:
@@ -150,61 +242,88 @@ def _headers(db: Session) -> dict:
     return {"X-Maestro-Sync": f"{status.SYNC_PROTOCOL}:{revision}:{mine}"}
 
 
-def _received_key(response: httpx.Response) -> str:
-    if response.status_code != 200:
-        raise _remote_refusal(response)
-    try:
-        body = response.json() if len(response.content) <= 8192 else None
-        key = body.get("key") if isinstance(body, dict) else None
-    except ValueError:
-        key = None
-    if not _valid_key(key):
-        raise Refused(409, ANSWER)
-    return key
-
-
 def _valid_key(key: object) -> bool:
     return (isinstance(key, str) and 0 < len(key) <= 4096 and key.isascii()
             and key.isprintable() and not any(char.isspace() for char in key))
 
 
-def _remote_reason(response: httpx.Response) -> str | None:
+def _enroll_client(route: str) -> httpx.Client:
     try:
-        body = response.json() if len(response.content) <= 8192 else {}
-        reason = body.get("reason") if isinstance(body, dict) else None
+        return http_client.new_client(
+            base_url=settings.sync_remote_url, timeout=httpx.Timeout(30, connect=10),
+            trust_env=route == "https", verify=True, follow_redirects=False)
+    except OSError:
+        raise Refused(409, "The certificate bundle in SSL_CERT_FILE can't be read.") from None
+    except (ImportError, ValueError, httpx.InvalidURL):
+        raise Refused(409, "The proxy settings in this machine's environment can't be used.") from None
+
+
+def _query_text(query: object) -> str:
+    if isinstance(query, bytes):
+        return query.decode()
+    return query if isinstance(query, str) else ""
+
+
+def _post_enroll(http: httpx.Client, secret: str, peer: str):
+    preview = http.build_request("POST", "/api/sync/enroll")
+    header, wire, rid = seal.seal_request(
+        secret, preview.method, preview.url.path, _query_text(preview.url.query), b"", peer,
+        label=seal.ENROLL_TO_HOME)
+    request = http.build_request(
+        "POST", "/api/sync/enroll", content=wire,
+        headers={seal.HEADER: header, "X-Maestro-Sync": peer})
+    return http.send(request), rid
+
+
+def _parsed_key(plain: bytes) -> str:
+    try:
+        body = json.loads(plain) if len(plain) <= 8192 else None
     except ValueError:
-        reason = None
-    return reason if isinstance(reason, str) else None
+        body = None
+    key = body.get("key") if isinstance(body, dict) else None
+    if not _valid_key(key):
+        raise Refused(409, ANSWER)
+    return key
 
 
-def _remote_refusal(response: httpx.Response) -> Refused:
-    code, reason = response.status_code, _remote_reason(response)
-    conflicts = {"closed": CLOSED, "version": VERSION,
-                 "busy": "A sync is already running on your laptop."}
-    if code == 409 and reason in conflicts:
-        return Refused(409, conflicts[reason], reason)
-    if code == 429:
-        return Refused(429, LIMITED, "limited")
-    if code == 404:
-        return Refused(409, "Sync isn't set up on your laptop.")
-    return Refused(503 if code >= 500 else 409, "Your laptop couldn't finish that sync request.")
-
-
-def enroll_here(db: Session) -> dict:
-    if not status.remote_is_own_tunnel():
-        raise Refused(409, TUNNEL)
-    require_missing_key()
+def _key_from(response: httpx.Response, secret: str, rid: str) -> str:
+    if response.status_code == 404 and seal.HEADER not in response.headers:
+        raise Refused(409, CLOSED, "closed")
+    if response.status_code == 429:
+        raise Refused(429, LIMITED, "limited")
+    if response.status_code >= 500:
+        raise Refused(503, "Laptop unreachable.")
     try:
-        with http_client.new_client(base_url=settings.sync_remote_url, headers=_headers(db),
-                                    timeout=httpx.Timeout(30, connect=10), trust_env=False,
-                                    follow_redirects=False) as http:
-            key = _received_key(http.post("/api/sync/enroll"))
+        plain = seal.open_response(
+            secret, rid, response.status_code, response.headers.get(seal.HEADER, ""),
+            response.content, label=seal.ENROLL_TO_REMOTE)
+    except seal.Broken:
+        raise Refused(409, UNVERIFIED) from None
+    return _parsed_key(plain)
+
+
+def _fetch_key(route: str, secret: str, peer: str) -> str:
+    try:
+        with _enroll_client(route) as http:
+            response, rid = _post_enroll(http, secret, peer)
     except (httpx.TransportError, httpx.InvalidURL):
         raise Refused(503, "Laptop unreachable.") from None
+    return _key_from(response, secret, rid)
+
+
+def _install_key(key: str) -> None:
     try:
         status.save_key(key)
     except FileExistsError:
         raise Refused(409, EXISTS) from None
     except OSError:
         raise Refused(500, DISK) from None
+
+
+def enroll_here(db: Session, code: str) -> dict:
+    route = prepare_enroll()
+    secret = _code_secret(code)
+    if secret is None:
+        raise Refused(409, INVALID_CODE)
+    _install_key(_fetch_key(route, secret, _headers(db)["X-Maestro-Sync"]))
     return {"ok": True}
