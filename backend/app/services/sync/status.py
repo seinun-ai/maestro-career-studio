@@ -75,8 +75,8 @@ LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
 def remote_route() -> str | None:
     """``tunnel`` for loopback http(s), ``https`` for any other https host, else None.
 
-    Anything past ``/`` in the path is None: the seal binds the path that was sent, and a
-    published mount only puts its own prefix back.
+    A path past ``/``, a query, a fragment or userinfo is None: the seal binds the path that
+    was sent, and a published mount only puts its own prefix back.
     """
     if not settings.sync_remote_url:
         return None
@@ -87,8 +87,16 @@ def remote_route() -> str | None:
     return _route_of(url)
 
 
-def _route_of(url: httpx.URL) -> str | None:
+def _bare_address(url: httpx.URL) -> bool:
     if url.path not in ("", "/") or not url.host:
+        return False
+    if url.query or url.fragment or url.userinfo:
+        return False
+    return True
+
+
+def _route_of(url: httpx.URL) -> str | None:
+    if not _bare_address(url):
         return None
     if url.scheme in ("http", "https") and url.host in LOOPBACK_HOSTS:
         return "tunnel"

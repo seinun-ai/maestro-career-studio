@@ -230,16 +230,19 @@ def test_the_always_on_copy_has_no_home_routes(client, sync_remote, auth, method
 def test_an_origin_is_refused_before_the_key_is_read(client, auth, method, path, body):
     headers = {**auth, "Authorization": f"Bearer {BAD_KEY}", "Origin": ALLOWED_ORIGIN}
     response = client.request(method, path, headers=headers, json=body)
-    assert response.status_code == 403
+    assert response.status_code == 404 and response.content == b""
+    assert "x-maestro-seal" not in response.headers
     assert BAD_KEY not in response.text
 
 
 def test_an_origin_is_refused_with_the_right_key_too(client, auth):
-    assert client.get("/api/sync/hello", headers={**auth, "Origin": ALLOWED_ORIGIN}
-                      ).status_code == 403
+    response = client.get("/api/sync/hello", headers={**auth, "Origin": ALLOWED_ORIGIN})
+    assert response.status_code == 404 and response.content == b""
+    assert "x-maestro-seal" not in response.headers
 
 
 def test_an_unlisted_origin_is_refused_too(client, auth):
+    """The origin guard answers 403 before routing, on every path, so this never reaches the seal."""
     headers = {**auth, "Origin": "https://evil.example"}
     assert client.get("/api/sync/hello", headers=headers).status_code == 403
 

@@ -50,7 +50,11 @@ NOT_OWN_TUNNEL = (
     "The laptop's address must be this machine's own tunnel or an https:// address."
 )
 BAD_BUNDLE = "The certificate bundle in SSL_CERT_FILE can't be read."
+BAD_PROXY = "The proxy settings in this machine's environment can't be used."
 _UNVERIFIED = "The laptop's answer couldn't be verified."
+_SEAL_REJECTED = (
+    "The laptop didn't accept this copy's seal: the key differs or sync is off there."
+)
 NOT_PAIRED = "This copy isn't paired with your laptop yet; run the first sync with the pair option."
 VERSION_MISMATCH = "Update Maestro on both machines to the same version."
 UNREACHABLE = "Laptop unreachable."
@@ -60,8 +64,6 @@ _PROFILE = "Maestro couldn't apply your laptop's profile."
 _GENERIC = "Your laptop couldn't finish that sync request."
 _LOCAL = "Maestro couldn't finish that sync on this copy."
 _SENTENCES = {
-    401: "Sync key doesn't match.",
-    404: "Sync isn't set up on your laptop.",
     413: "Your laptop refused a request as too large.",
 }
 _CONFLICTS = {
@@ -177,19 +179,27 @@ def _interpret(status_code: int, plain: bytes):
     return payload
 
 
+def _opened_answer(response: httpx.Response, secret: str, rid: str) -> bytes:
+    if response.status_code == 404 and seal.HEADER not in response.headers:
+        raise _Stop(_SEAL_REJECTED, outcome=NEEDS_PERSON)
+    try:
+        return seal.open_response(
+            secret, rid, response.status_code, response.headers.get(seal.HEADER, ""),
+            response.content)
+    except seal.Broken:
+        raise _Stop(_UNVERIFIED, outcome=TRANSIENT) from None
+
+
 def _call(ctx: _Ctx, method: str, path: str, *, params: dict | None = None, body=None):
     payload = b"" if body is None else json.dumps(body).encode()
     try:
         request, rid, secret = _wire_request(ctx, method, path, params, payload)
         response = ctx.http.send(request)
-        plain = seal.open_response(
-            secret, rid, response.status_code, response.headers.get(seal.HEADER, ""),
-            response.content)
     except (httpx.TransportError, httpx.InvalidURL):
         raise _Stop(UNREACHABLE) from None
     except seal.Broken:
         raise _Stop(_UNVERIFIED, outcome=TRANSIENT) from None
-    return _interpret(response.status_code, plain)
+    return _interpret(response.status_code, _opened_answer(response, secret, rid))
 
 
 def _headers(db: Session) -> dict:
@@ -995,6 +1005,15 @@ def _open_http(db: Session, route: str) -> httpx.Client:
         trust_env=route == "https", verify=True)
 
 
+def _http_or_skip(db: Session, route: str):
+    try:
+        return _open_http(db, route)
+    except OSError:
+        return _skipped(BAD_BUNDLE, NEEDS_PERSON)
+    except (ImportError, ValueError):
+        return _skipped(BAD_PROXY, NEEDS_PERSON)
+
+
 def _locked_round(db: Session, options: _Options) -> dict:
     if status.read_key() is None or not settings.sync_remote_url:
         return _skipped(NOT_SET_UP, NEEDS_PERSON)
@@ -1003,10 +1022,9 @@ def _locked_round(db: Session, options: _Options) -> dict:
         return _skipped(NOT_OWN_TUNNEL, NEEDS_PERSON)
     if (held := _held_off(status.read_state(db), options)) is not None:
         return held
-    try:
-        http = _open_http(db, route)
-    except OSError:
-        return _skipped(BAD_BUNDLE, NEEDS_PERSON)
+    http = _http_or_skip(db, route)
+    if isinstance(http, dict):
+        return http
     with http:
         return _attempt(db, http, options)
 

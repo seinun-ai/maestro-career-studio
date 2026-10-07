@@ -2,8 +2,10 @@
 
 The always-on copy drives every request; this copy only answers. Peer routes under ``/api/sync/``
 (not ``/round`` or ``/enroll``) are sealed: a bare 404 while sync is off or this copy is remote,
-403 for any ``Origin``, then the seal, then the protocol check and the single-flight lock.
-A failed seal is the same bare 404. Enrollment still needs a one-use window opened in Settings.
+a bare 404 for any ``Origin`` (a browser cannot seal, and a 403 would show that sync is on),
+then the seal, then the protocol check and the single-flight lock.
+A failed seal is the same bare 404. ``/round``, ``/enroll`` and ``/api/sync-setup`` keep the
+Origin 403. Enrollment still needs a one-use window opened in Settings.
 Local setup is under ``/api/sync-setup`` and is not sealed. Nothing here logs or echoes a key, a
 bundle, a request body, the AI key or the job-site password: every response and stored reason is
 a fixed sentence or one of the rule sentences the services already use, never ``str(exc)``.
@@ -16,6 +18,7 @@ import re
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, TypeVar
 
@@ -81,9 +84,10 @@ _TIMEOUT = "The request took too long to arrive."
 _RETRY = "This job's text matches a job that is still changing; Maestro will try again."
 _REFUSED = "A sync request was refused."
 _SEAL_GAP = 60.0
+_SEAL_SOURCES = 1024
 _REPLAY = seal.ReplayCache()
 _SEAL_LOCK = threading.Lock()
-_seal_seen: dict[str, float] = {}
+_seal_seen: OrderedDict[str, float] = OrderedDict()
 
 
 class _Refused(Exception):
@@ -126,27 +130,42 @@ def _home_key() -> str | None:
     return key
 
 
-def _drop_stale(now: float) -> None:
-    stale = [item for item, seen in _seal_seen.items() if now - seen >= _SEAL_GAP]
-    for item in stale:
-        del _seal_seen[item]
+def _forwarded_source(header: str) -> str:
+    """The last hop. A trusted proxy appends itself; earlier entries are the client's claim."""
+    return header.rsplit(",", 1)[-1].strip()
+
+
+def _remember_source(source: str, now: float) -> None:
+    _seal_seen[source] = now
+    _seal_seen.move_to_end(source)
+    if len(_seal_seen) > _SEAL_SOURCES:
+        _seal_seen.popitem(last=False)
 
 
 def _due(source: str, now: float) -> bool:
     with _SEAL_LOCK:
-        _drop_stale(now)
         previous = _seal_seen.get(source)
         if previous is not None and now - previous < _SEAL_GAP:
             return False
-        _seal_seen[source] = now
+        _remember_source(source, now)
         return True
 
 
 def _note_refusal(request: Request) -> None:
     """One fixed line per forwarded source per minute. The header value is never written."""
-    source = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    source = _forwarded_source(request.headers.get("x-forwarded-for", ""))
     if _due(source, time.monotonic()):
         logger.info(_REFUSED)
+
+
+def _or_bare_404(request: Request, call):
+    """A seal that raises anything is the same empty 404 as sync being off. Nothing is logged
+    but the throttled line: the exception text can echo header bytes."""
+    try:
+        return call()
+    except Exception:
+        _note_refusal(request)
+        return _bare_404()
 
 
 def _seal_outgoing(key: str, rid: str, response: Response) -> Response:
@@ -160,14 +179,13 @@ def _sealed_detail(key: str, rid: str, status_code: int, detail: str) -> Respons
 
 
 def _header_ok(request: Request, key: str):
-    try:
+    def check():
         return seal.check_header(
             key, request.method, request.url.path, request.url.query,
             request.headers.get(seal.HEADER, ""), request.headers.get("x-maestro-sync", ""),
             replay=_REPLAY)
-    except seal.Broken:
-        _note_refusal(request)
-        return _bare_404()
+
+    return _or_bare_404(request, check)
 
 
 def _declared_too_big(request: Request) -> bool:
@@ -176,11 +194,10 @@ def _declared_too_big(request: Request) -> bool:
 
 
 def _opened_body(request: Request, key: str, ok: seal.HeaderOk, wire: bytes):
-    try:
+    def open_body():
         return ok, seal.open_request(key, ok, wire)
-    except seal.Broken:
-        _note_refusal(request)
-        return _bare_404()
+
+    return _or_bare_404(request, open_body)
 
 
 async def _capped_body(request: Request, key: str, rid: str):
@@ -230,7 +247,7 @@ async def _run_sealed(original, request: Request):
     if key is None:
         return _bare_404()
     if "origin" in request.headers:
-        raise HTTPException(403, detail=_NO_BROWSERS)
+        return _bare_404()
     opened = await _unseal(request, key)
     if isinstance(opened, Response):
         return opened
@@ -269,9 +286,10 @@ class _SyncRoute(APIRoute):
 
     def get_route_handler(self):
         original = super().get_route_handler()
+        sealed = _peer_sealed(self.path)
 
         async def handler(request: Request):
-            if _peer_sealed(request.url.path):
+            if sealed:
                 return await _run_sealed(original, request)
             return await _run_plain(original, request)
 

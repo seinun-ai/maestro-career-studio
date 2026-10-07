@@ -539,8 +539,10 @@ def test_real_wrong_key_is_a_bare_404_and_the_round_cannot_verify(machines, tmp_
     response = machines.home.http.get("/api/sync/hello", headers={"Authorization": "Bearer wrong"})
     assert response.status_code == 404 and response.content == b""
     result = machines.round()
-    assert result["outcome"] == "transient"
-    assert result["error"] == "The laptop's answer couldn't be verified."
+    assert result["outcome"] == "needs_person"
+    assert result["error"] == (
+        "The laptop didn't accept this copy's seal: the key differs or sync is off there."
+    )
     assert "wrong" not in json.dumps(result)
 
 
@@ -589,7 +591,8 @@ def test_real_missing_seal_and_browser_origin_are_refused(machines):
     header, _wire, _rid = seal.seal_request(key, "GET", "/api/sync/hello", "", b"", peer)
     browser = machines.home.http.get("/api/sync/hello", headers={
         seal.HEADER: header, "X-Maestro-Sync": peer, "Origin": "http://localhost:3000"})
-    assert browser.status_code == 403 and "x-maestro-seal" not in browser.headers
+    assert browser.status_code == 404 and browser.content == b""
+    assert "x-maestro-seal" not in browser.headers
     code, body = sealed(machines.home.http, "GET", "/api/sync/hello", peer=peer, key=key)
     assert code == 200 and body["protocol"] == status.SYNC_PROTOCOL
 

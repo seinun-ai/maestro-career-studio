@@ -495,10 +495,26 @@ def test_a_wrong_key_is_reported_as_a_key_problem(world, home, clock):
 
     summary = go(world)
 
-    assert summary["outcome"] == "transient"
-    assert summary["error"] == "The laptop's answer couldn't be verified."
+    assert summary["outcome"] == "needs_person"
+    assert summary["error"] == (
+        "The laptop didn't accept this copy's seal: the key differs or sync is off there."
+    )
+    assert "couldn't be verified" not in summary["error"]
     assert "a-different-key" not in json.dumps(summary)
     assert state(world)["failures"] == 1
+    assert state(world)["last_outcome"] == "needs_person"
+    assert state(world)["last_error"] == summary["error"]
+
+
+def test_a_sealed_401_is_not_the_old_bearer_sentence(world, home, clock):
+    home.reply[("GET", "/api/sync/hello")] = httpx.Response(401, json={"detail": SENTINEL})
+
+    summary = go(world)
+
+    text = json.dumps(summary)
+    assert summary["outcome"] == "needs_person"
+    assert "Sync key doesn't match" not in text and SENTINEL not in text
+    assert "Sync isn't set up on your laptop" not in text
 
 
 def test_a_disk_error_while_applying_is_a_fixed_sentence(world, home, clock, monkeypatch, caplog):
