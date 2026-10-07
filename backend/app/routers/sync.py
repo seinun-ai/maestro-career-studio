@@ -80,6 +80,7 @@ _NO_BROWSERS = "Browser requests can't use this."
 _FAILED = "Maestro couldn't finish that sync request."
 _NOT_YOURS = "This job isn't yours to send."
 _OURS = "This job belongs to your laptop."
+_LAPTOP_DELETED = "The laptop deleted this job."
 _CANT_APPLY = "Maestro couldn't apply this job."
 _UNREADABLE = "This job couldn't be read."
 _NOT_HERE = "This job isn't on your laptop."
@@ -611,7 +612,8 @@ def get_jobs(peer: Peer, db: DB, since: Annotated[str, Query(max_length=64)] = "
     in (revision, id) order, up to ``limit`` and ``PAGE_BYTES``. ``next_since`` is the cursor for
     the following page; tombstones ride the page that reaches their revision."""
     since_rev, ident = _parse_cursor(since)
-    stamped = hooks.stamp_unsynced_jobs(db)
+    if hooks.stamp_unsynced_jobs(db):
+        db.commit()  # release the write lock before the export reads the page
     rev = since_rev
     rows = _jobs_after(db, rev, ident, limit)
     bundles, skipped, taken = _export_page(db, rows, limit)
@@ -621,8 +623,6 @@ def get_jobs(peer: Peer, db: DB, since: Annotated[str, Query(max_length=64)] = "
     tombstones = _tombstones(db, since_rev, rev if more else None)
     if not more and tombstones and tombstones[-1]["rev"] > rev:
         rev, ident = tombstones[-1]["rev"], _CURSOR_END
-    if stamped:
-        db.commit()
     return {"bundles": bundles, "tombstones": tombstones, "next_since": _cursor(rev, ident),
             "more": more, "skipped": skipped}
 
@@ -640,6 +640,11 @@ class _JobsPush(BaseModel):
     tombstones: list[_TombstoneIn] = []
 
 
+def _deleted_here(db: Session, job_id: uuid.UUID, owner) -> bool:
+    """A tombstone with no live row: the laptop deleted this id and has not saved it again."""
+    return owner is None and db.get(SyncTombstone, job_id) is not None
+
+
 def _refusal_of(db: Session, peer: PeerInfo, bundle: dict, job_id: uuid.UUID | None) -> str | None:
     """Why this bundle may not be stored here, or None."""
     if job_id is None:
@@ -647,6 +652,8 @@ def _refusal_of(db: Session, peer: PeerInfo, bundle: dict, job_id: uuid.UUID | N
     if bundle.get("owner") != peer.machine_id:
         return _NOT_YOURS
     owner = db.execute(select(Job.owner_machine).where(Job.id == job_id)).one_or_none()
+    if _deleted_here(db, job_id, owner):
+        return _LAPTOP_DELETED
     if owner is not None and owner[0] != peer.machine_id:
         return _OURS
     return None
@@ -676,6 +683,8 @@ def _store(db: Session, peer: PeerInfo, bundle: dict, found: dict) -> None:
     outcome, reason = _apply_one(db, peer, bundle, job_id)
     if outcome is None:
         found["refused"].append({"job_id": shown, "reason": reason})
+        if reason == _LAPTOP_DELETED and shown is not None:
+            found["gone"].append({"job_id": shown})
         return
     if outcome.kind != "laptop":
         found["applied"].append(shown)
@@ -697,7 +706,7 @@ def post_jobs(peer: Peer, db: DB, body: Body):
     push = _parse(_JobsPush, body)
     # Deletions first: a job deleted and re-saved with the same text in one round must not clash
     # with its own stale copy.
-    found: dict[str, list] = {"applied": [], "duplicates": [], "refused": []}
+    found: dict[str, list] = {"applied": [], "duplicates": [], "refused": [], "gone": []}
     deleted = [t.job_id.hex for t in push.tombstones if _drop_replica(db, peer, t.job_id)]
     for bundle in push.bundles:
         _store(db, peer, bundle, found)

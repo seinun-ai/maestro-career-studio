@@ -456,8 +456,8 @@ def _committed_revs(db_session, job_ids):
 
 
 def test_a_job_created_before_the_key_is_listed_from_since_zero(
-        client, auth, db_session, sync_on, monkeypatch, tmp_path):
-    monkeypatch.setattr(settings, "sync_key_file", tmp_path / "absent-key")
+        client, auth, db_session, sync_on, monkeypatch):
+    monkeypatch.setattr(settings, "sync_key_file", sync_on.with_name("absent-key"))
     assert status.read_key() is None
     job = lone_job(db_session, raw_text="Saved before the key existed")
     _park_at_zero(db_session, job.id)
@@ -471,24 +471,106 @@ def test_a_job_created_before_the_key_is_listed_from_since_zero(
     assert _committed_revs(db_session, [job.id])[job.id] > 0
 
 
-def test_revision_zero_jobs_are_returned_once_across_pages(client, auth, db_session, sync_on):
+def _five_unrevved(db_session):
     jobs = [lone_job(db_session, raw_text=f"Saved before pairing {index}") for index in range(5)]
     _park_at_zero(db_session, *[job.id for job in jobs])
+    return jobs
+
+
+def _job_page(client, auth, cursor, limit):
+    page = client.get(f"/api/sync/jobs?since={cursor}&limit={limit}", headers=auth).json()
+    ids = [item["job_id"] for item in page["bundles"]]
+    revs = [item["sync_rev"] for item in page["bundles"]]
+    return page, ids, revs
+
+
+def _walk_pages(client, auth, limit):
     seen, revs, cursor = [], [], "0"
     for _ in range(6):
-        page = client.get(f"/api/sync/jobs?since={cursor}&limit=2", headers=auth).json()
-        seen += [item["job_id"] for item in page["bundles"]]
-        revs += [item["sync_rev"] for item in page["bundles"]]
+        page, ids, page_revs = _job_page(client, auth, cursor, limit)
+        seen.extend(ids)
+        revs.extend(page_revs)
         cursor = page["next_since"]
         if not page["more"]:
             break
+    return seen, revs
+
+
+def test_revision_zero_jobs_are_returned_once_across_pages(client, auth, db_session, sync_on):
+    jobs = _five_unrevved(db_session)
+    seen, revs = _walk_pages(client, auth, 2)
     assert sorted(seen) == sorted(job.id.hex for job in jobs)
-    assert len(seen) == len(set(seen)) == 5
-    assert len(set(revs)) == 5 and min(revs) > 0
+    assert len(seen) == 5
+    assert len(set(seen)) == 5
+    assert len(set(revs)) == 5
+    assert min(revs) > 0
+
+
+def test_a_second_listing_of_revision_zero_jobs_returns_the_same_revisions(
+        client, auth, db_session, sync_on):
+    jobs = _five_unrevved(db_session)
+    _seen, revs = _walk_pages(client, auth, 2)
     stored = _committed_revs(db_session, [job.id for job in jobs])
     assert set(stored.values()) == set(revs)
     again = client.get("/api/sync/jobs?since=0&limit=20", headers=auth).json()
     assert sorted(item["sync_rev"] for item in again["bundles"]) == sorted(revs)
+
+
+def _record_export_lock(real, writing):
+    def spy(db, job_id, **kwargs):
+        writing.append(db.connection().connection.dbapi_connection.in_transaction)
+        return real(db, job_id, **kwargs)
+    return spy
+
+
+def test_listing_revision_zero_jobs_does_not_export_inside_the_write(
+        client, auth, db_session, sync_on, monkeypatch):
+    job = lone_job(db_session, raw_text="Saved before the key existed")
+    _park_at_zero(db_session, job.id)
+    writing = []
+    real = jobs_bundle.export_job
+    monkeypatch.setattr(jobs_bundle, "export_job", _record_export_lock(real, writing))
+
+    body = client.get("/api/sync/jobs?since=0", headers=auth).json()
+
+    assert writing == [False]
+    assert body["bundles"][0]["job_id"] == job.id.hex
+
+
+LAPTOP_DELETED = "The laptop deleted this job."
+
+
+def test_a_push_for_a_job_the_laptop_deleted_is_refused_and_not_stored(
+        client, auth, db_session, recv, roots):
+    ids, bundle = remote_job(recv, roots, tag="gone-push")
+    db_session.add(models.SyncTombstone(job_id=ids.job, rev=4))
+    db_session.commit()
+    body = post_jobs(client, auth, [bundle]).json()
+    assert body["refused"] == [{"job_id": ids.job.hex, "reason": LAPTOP_DELETED}]
+    assert body["gone"] == [{"job_id": ids.job.hex}]
+    assert body["applied"] == []
+    db_session.expire_all()
+    assert db_session.get(models.Job, ids.job) is None
+
+
+def test_a_fresh_push_is_stored_and_not_listed_gone(client, auth, db_session, recv, roots):
+    ids, bundle = remote_job(recv, roots, tag="fresh-push")
+    body = post_jobs(client, auth, [bundle]).json()
+    assert body["gone"] == []
+    assert ids.job.hex in body["applied"]
+    assert db_session.get(models.Job, ids.job) is not None
+
+
+def test_a_live_replica_is_not_refused_when_a_tombstone_also_exists(
+        client, auth, db_session, recv, roots):
+    ids, bundle = remote_job(recv, roots, tag="live-tomb")
+    assert post_jobs(client, auth, [bundle]).status_code == 200
+    db_session.add(models.SyncTombstone(job_id=ids.job, rev=3))
+    db_session.commit()
+    body = post_jobs(client, auth, [bundle]).json()
+    assert body["gone"] == []
+    assert body["refused"] == []
+    assert db_session.get(models.Job, ids.job) is not None
 
 
 def test_an_integer_since_still_means_after_that_revision(client, auth, db_session, roots):

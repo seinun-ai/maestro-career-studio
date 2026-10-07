@@ -291,8 +291,11 @@ pairs without the flag. Points the always-on copy recorded as "I can't
 confirm this" never block pairing, and they are sent to the laptop.
 
 After pairing, a job both copies already hold is the laptop's. A job only the
-always-on copy holds stays its own. Jobs that existed before pairing are sent
-on the first rounds.
+always-on copy holds stays its own. Jobs from before pairing travel on the
+first rounds, in both directions. If the always-on copy started from a copy of
+the laptop's database, a job the laptop has deleted since is dropped from the
+always-on copy, unless it has applied or acted on it; then it stays there, and
+the sync status says "The laptop deleted this job."
 
 ## Cron lines
 

@@ -419,9 +419,9 @@ def test_real_remote_job_patch_is_a_request_and_its_result_returns_home(machines
     assert (result["notes"], result["status"]) == ("Synthetic note", "applied")
 
 
-def _pre_key_job(db, title):
+def _pre_key_job(db, title, job_id=None):
     """Created, then put back at revision 0: the flush hook stamps even before a key exists."""
-    job = models.Job(id=uuid.uuid4(), title=title, raw_text=f"Synthetic posting {title}",
+    job = models.Job(id=job_id or uuid.uuid4(), title=title, raw_text=f"Synthetic posting {title}",
                      raw_text_hash=uuid.uuid4().hex)
     db.add(job)
     db.commit()
@@ -430,6 +430,13 @@ def _pre_key_job(db, title):
     db.expire_all()
     assert db.get(models.Job, job.id).sync_rev == 0
     return job.id
+
+
+def _pre_key_arrived(db, job_id, owner):
+    job = db.get(models.Job, job_id)
+    assert job is not None
+    assert job.owner_machine == owner
+    assert job.sync_rev > 0
 
 
 def test_real_jobs_from_before_either_key_cross_on_the_first_round(machines):
@@ -447,12 +454,27 @@ def test_real_jobs_from_before_either_key_cross_on_the_first_round(machines):
     assert result["steps"]["push"]["sent"] >= 1
     assert result["steps"]["pull"]["applied"] >= 1
     with machines.home.session() as db:
-        arrived = db.get(models.Job, remote_job)
-        assert arrived is not None and arrived.owner_machine == remote_id
+        _pre_key_arrived(db, remote_job, remote_id)
         assert db.get(models.Job, laptop_job).sync_rev > 0
-    landed = machines.db.get(models.Job, laptop_job)
-    assert landed is not None and landed.owner_machine == home_id
+    _pre_key_arrived(machines.db, laptop_job, home_id)
     assert machines.db.get(models.Job, remote_job).sync_rev > 0
+
+
+def test_a_snapshot_job_the_laptop_deleted_is_on_neither_side(machines):
+    job_id = uuid.uuid4()
+    with machines.home.session() as db:
+        db.add(models.SyncTombstone(job_id=job_id, rev=1))
+        db.commit()
+    _pre_key_job(machines.db, "Copied from the laptop", job_id)
+
+    result = machines.round()
+
+    assert result["ok"], result
+    assert result["steps"]["push"]["dropped"] == 1
+    machines.db.expire_all()
+    assert machines.db.get(models.Job, job_id) is None
+    with machines.home.session() as db:
+        assert db.get(models.Job, job_id) is None
 
 
 def test_real_two_fresh_installs_pair_without_the_overwrite_flag(machines):

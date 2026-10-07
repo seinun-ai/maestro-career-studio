@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.config import settings
-from app.services.sync import hooks, wire
+from app.services.sync import hooks, status, wire
 
 
 @pytest.fixture(autouse=True)
@@ -184,39 +184,99 @@ def _park_at_zero(session, *job_ids, owner=None):
     session.expire_all()
 
 
-def test_stamp_unsynced_jobs_gives_owned_revision_zero_jobs_distinct_revs(db_session):
+def _rev_zero_sample(db_session):
     first, second = _job(db_session), _job(db_session)
     replica = _job(db_session)
     kept = _job(db_session)
     kept_rev = kept.sync_rev
-    assert kept_rev > 0
     _park_at_zero(db_session, first.id, second.id)
     _park_at_zero(db_session, replica.id, owner="f" * 32)
-    profile_before = _state(db_session, "profile_rev")
+    return first, second, replica, kept, kept_rev
+
+
+def _revs_of(db_session, *jobs):
+    return {db_session.get(models.Job, job.id).sync_rev for job in jobs}
+
+
+def test_stamp_unsynced_jobs_gives_owned_revision_zero_jobs_distinct_revs(db_session):
+    first, second, replica, kept, kept_rev = _rev_zero_sample(db_session)
+    assert kept_rev > 0
     clock_before = _state(db_session, "clock")
-    requests_before = db_session.scalar(select(models.SyncRequest.id))
 
     stamped = hooks.stamp_unsynced_jobs(db_session)
     db_session.commit()
     db_session.expire_all()
 
+    revs = _revs_of(db_session, first, second)
     assert stamped == 2
-    revs = {db_session.get(models.Job, first.id).sync_rev,
-            db_session.get(models.Job, second.id).sync_rev}
     assert revs == {clock_before + 1, clock_before + 2}
     assert min(revs) > kept_rev
     assert db_session.get(models.Job, kept.id).sync_rev == kept_rev
     assert db_session.get(models.Job, replica.id).sync_rev == 0
+
+
+def test_a_replica_at_revision_zero_is_left_alone_and_a_second_stamp_is_a_noop(db_session):
+    first, second, replica, kept, kept_rev = _rev_zero_sample(db_session)
+    hooks.stamp_unsynced_jobs(db_session)
+    db_session.commit()
+    db_session.expire_all()
+    revs = _revs_of(db_session, first, second)
+
     assert db_session.get(models.Job, replica.id).owner_machine == "f" * 32
+    assert hooks.stamp_unsynced_jobs(db_session) == 0
+    db_session.expire_all()
+    assert _revs_of(db_session, first, second) == revs
+    assert db_session.get(models.Job, kept.id).sync_rev == kept_rev
+    assert db_session.get(models.Job, replica.id).sync_rev == 0
+
+
+def test_stamping_revision_zero_jobs_does_not_touch_profile_or_requests(db_session):
+    _first, _second, *_rest = _rev_zero_sample(db_session)
+    profile_before = _state(db_session, "profile_rev")
+    clock_before = _state(db_session, "clock")
+    requests_before = db_session.scalar(select(models.SyncRequest.id))
+
+    hooks.stamp_unsynced_jobs(db_session)
+    db_session.commit()
+
     assert _state(db_session, "profile_rev") == profile_before
     assert _state(db_session, "clock") == clock_before + 2
     assert db_session.scalar(select(models.SyncRequest.id)) == requests_before
-    assert hooks.stamp_unsynced_jobs(db_session) == 0
+
+
+def test_a_revision_zero_job_owned_by_this_machine_is_stamped(db_session):
+    job = _job(db_session)
+    mine = status.machine_id(db_session)
+    db_session.commit()
+    _park_at_zero(db_session, job.id, owner=mine)
+
+    assert hooks.stamp_unsynced_jobs(db_session) == 1
     db_session.expire_all()
-    assert {db_session.get(models.Job, first.id).sync_rev,
-            db_session.get(models.Job, second.id).sync_rev} == revs
-    assert db_session.get(models.Job, kept.id).sync_rev == kept_rev
-    assert db_session.get(models.Job, replica.id).sync_rev == 0
+    assert db_session.get(models.Job, job.id).sync_rev > 0
+
+
+def test_stamping_shows_the_new_revision_on_a_loaded_job(db_session):
+    job = _job(db_session)
+    _park_at_zero(db_session, job.id)
+    loaded = db_session.get(models.Job, job.id)
+    assert loaded.sync_rev == 0
+
+    hooks.stamp_unsynced_jobs(db_session)
+
+    assert loaded.sync_rev > 0
+
+
+def test_stamping_does_not_move_a_job_already_past_revision_zero(db_session, monkeypatch):
+    job = _job(db_session)
+    rev = job.sync_rev
+    assert rev > 0
+    monkeypatch.setattr(hooks, "_zero_owned_ids", lambda session: [job.id])
+
+    hooks.stamp_unsynced_jobs(db_session)
+    db_session.commit()
+    db_session.expire_all()
+
+    assert db_session.get(models.Job, job.id).sync_rev == rev
 
 
 def test_sync_off_allows_other_owner_and_handover(db_session):

@@ -347,28 +347,161 @@ def _park_at_zero(world, side, *job_ids, owner=None):
         db.commit()
 
 
+def _arrived_owned_by(world, job_id, owner):
+    arrived = job_of(world, "home", job_id)
+    assert arrived is not None and arrived.owner_machine == owner
+
+
 def test_a_remote_job_from_before_the_key_is_pushed_on_the_first_round(world, home, clock):
     older = lone_job(world, "remote")
     newer = lone_job(world, "remote")
-    replica = lone_job(world, "remote")
     _park_at_zero(world, "remote", older, newer)
-    _park_at_zero(world, "remote", replica, owner="f" * 32)
     assert job_of(world, "remote", older).sync_rev == 0
-    assert job_of(world, "remote", newer).sync_rev == 0
 
     summary = go(world)
 
     assert summary["ok"], summary
     assert summary["steps"]["push"]["sent"] >= 2
     remote_id = world.machine_id("remote")
-    for job_id in (older, newer):
-        arrived = job_of(world, "home", job_id)
-        assert arrived is not None and arrived.owner_machine == remote_id
+    _arrived_owned_by(world, older, remote_id)
+    _arrived_owned_by(world, newer, remote_id)
     revs = {job_of(world, "remote", job_id).sync_rev for job_id in (older, newer)}
     assert 0 not in revs and len(revs) == 2
+
+
+def test_a_foreign_revision_zero_job_is_not_pushed(world, home, clock):
+    replica = lone_job(world, "remote")
+    _park_at_zero(world, "remote", replica, owner="f" * 32)
+
+    assert go(world)["ok"]
+
     left = job_of(world, "remote", replica)
     assert (left.sync_rev, left.owner_machine) == (0, "f" * 32)
     assert job_of(world, "home", replica) is None
+
+
+def _sqlite_writing(db):
+    return db.connection().connection.dbapi_connection.in_transaction
+
+
+def _lock_on_push(real, writing):
+    def spy(ctx, method, path, **kwargs):
+        if method == "POST" and path == "/api/sync/jobs":
+            writing.append(_sqlite_writing(ctx.db))
+        return real(ctx, method, path, **kwargs)
+    return spy
+
+
+def test_a_revision_zero_push_releases_the_write_lock_before_the_post(world, home, clock, monkeypatch):
+    job = lone_job(world, "remote")
+    _park_at_zero(world, "remote", job)
+    writing = []
+    monkeypatch.setattr(sync_round, "_call", _lock_on_push(sync_round._call, writing))
+
+    summary = go(world)
+
+    assert summary["ok"], summary
+    assert writing == [False]
+
+
+DELETED = "The laptop deleted this job."
+
+
+def _home_tombstone(world, job_id):
+    with world.building("home"):
+        world.home.add(models.SyncTombstone(job_id=job_id, rev=1))
+        world.home.commit()
+
+
+def test_a_job_the_laptop_deleted_is_dropped_and_not_pushed_again(world, home, clock):
+    job = lone_job(world, "remote")
+    _park_at_zero(world, "remote", job)
+    _home_tombstone(world, job)
+
+    summary = go(world)
+
+    assert summary["ok"], summary
+    assert summary["steps"]["push"]["dropped"] == 1
+    assert job_of(world, "remote", job) is None
+    assert job_of(world, "home", job) is None
+    sent = len(home.posts("/api/sync/jobs"))
+    again = go(world)
+    assert again["steps"]["push"]["sent"] == 0
+    assert len(home.posts("/api/sync/jobs")) == sent
+
+
+def test_a_progressed_job_the_laptop_deleted_is_kept_and_then_stuck(world, home, clock):
+    job = lone_job(world, "remote", application=True)
+    _park_at_zero(world, "remote", job)
+    _home_tombstone(world, job)
+
+    first = go(world)
+
+    assert first["ok"], first
+    assert first["steps"]["push"]["dropped"] == 0
+    assert first["steps"]["push"]["refused"] == 1
+    assert job_of(world, "home", job) is None
+    assert job_of(world, "remote", job) is not None
+    for _ in range(4):
+        go(world)
+    assert state(world)["stuck_own"] == {job.hex: DELETED}
+    assert job_of(world, "remote", job) is not None
+
+
+def _proposal(world, job_id, proposal_status):
+    with world.building("remote"):
+        world.remote.add(models.ApplicationProposal(job_id=job_id, status=proposal_status))
+        world.remote.commit()
+
+
+def test_a_decided_proposal_keeps_a_job_the_laptop_deleted(world, home, clock):
+    job = lone_job(world, "remote")
+    _proposal(world, job, "accepted")
+    _park_at_zero(world, "remote", job)
+    _home_tombstone(world, job)
+
+    summary = go(world)
+
+    assert summary["steps"]["push"]["dropped"] == 0
+    assert summary["steps"]["push"]["refused"] == 1
+    assert job_of(world, "remote", job) is not None
+    assert job_of(world, "home", job) is None
+
+
+def test_a_pending_proposal_does_not_keep_a_job_the_laptop_deleted(world, home, clock):
+    job = lone_job(world, "remote")
+    _proposal(world, job, "pending_review")
+    _park_at_zero(world, "remote", job)
+    _home_tombstone(world, job)
+
+    summary = go(world)
+
+    assert summary["steps"]["push"]["dropped"] == 1
+    assert job_of(world, "remote", job) is None
+
+
+def _only_one_job(real, job_id):
+    def listing(db, push):
+        return [row for row in real(db, push) if row.id == job_id]
+    return listing
+
+
+def test_a_gone_id_outside_this_page_is_not_dropped(world, home, clock, monkeypatch):
+    keep = lone_job(world, "remote")
+    drop = lone_job(world, "remote")
+    _park_at_zero(world, "remote", keep, drop)
+    monkeypatch.setattr(sync_round, "_listing", _only_one_job(sync_round._listing, drop))
+    home.reply[("POST", "/api/sync/jobs")] = httpx.Response(200, json={
+        "applied": [], "duplicates": [], "deleted": [],
+        "refused": [{"job_id": drop.hex, "reason": DELETED}],
+        "gone": [{"job_id": drop.hex}, {"job_id": keep.hex}]})
+
+    summary = go(world)
+
+    assert summary["ok"], summary
+    assert summary["steps"]["push"]["dropped"] == 1
+    assert job_of(world, "remote", drop) is None
+    assert job_of(world, "remote", keep) is not None
 
 
 def test_the_second_round_sends_nothing(world, home, clock):

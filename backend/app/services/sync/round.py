@@ -612,6 +612,34 @@ def _track_refusals(push: _Push, page: _Page, refused: dict) -> None:
             push.retry[job_hex] = attempts
 
 
+def _listed_gone(answer: dict, page: _Page) -> list[str]:
+    raw = answer.get("gone")
+    if not isinstance(raw, list):
+        return []
+    listed = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        job_hex = _hex(item.get("job_id"))
+        if job_hex in page.listed:
+            listed.append(job_hex)
+    return listed
+
+
+def _drop_if_idle(ctx: _Ctx, job_hex: str, push: _Push) -> None:
+    """A job the laptop already deleted. One this copy has worked on stays, still refused."""
+    job_id = wire.uuid_of(job_hex)
+    if job_id is None or _progressed(ctx.db, job_id):
+        return
+    jobs_bundle.apply_tombstone(ctx.db, job_id)
+    push.counts["dropped"] += 1
+
+
+def _drop_listed_gone(ctx: _Ctx, answer: dict, page: _Page, push: _Push) -> None:
+    for job_hex in _listed_gone(answer, page):
+        _drop_if_idle(ctx, job_hex, push)
+
+
 def _settle_push(ctx: _Ctx, answer: dict, page: _Page, push: _Push) -> None:
     refused = {_hex(item.get("job_id")): _answer_text(item.get("reason")) or _GENERIC
                for item in answer["refused"] if _hex(item.get("job_id")) in page.listed}
@@ -624,6 +652,7 @@ def _settle_push(ctx: _Ctx, answer: dict, page: _Page, push: _Push) -> None:
             _drop_duplicate(ctx, item["job_id"], push)
         else:
             push.counts["kept_both"] += 1
+    _drop_listed_gone(ctx, answer, page, push)
 
 
 def _save_progress(ctx: _Ctx, push: _Push) -> None:
@@ -661,7 +690,8 @@ def _listing(db: Session, push: _Push) -> list:
 
 def _push(ctx: _Ctx) -> dict:
     db = ctx.db
-    hooks.stamp_unsynced_jobs(db)
+    if hooks.stamp_unsynced_jobs(db):
+        db.commit()  # the stamp's writes must not stay open across the POST
     saved = status.read_state(db)
     push = _Push(acked=saved["acked_own"], retry=_still_mine(db, saved["retry_own"]),
                  stuck=_still_mine(db, saved["stuck_own"]))
