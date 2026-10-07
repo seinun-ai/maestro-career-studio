@@ -24,6 +24,19 @@ def reset_key_read_warning(monkeypatch):
     monkeypatch.setattr(status, "_KEY_READ_WARNING_LOGGED", False)
 
 
+@pytest.fixture(autouse=True)
+def process_started_two_seconds_earlier(monkeypatch):
+    """Seals must not depend on where the wall clock sits inside the start second.
+
+    Tests that set ``_STARTED_AT`` themselves run after this and override it.
+    A real home process (the two-process tests) keeps the start time it captured
+    at import; this fixture does not reach that process.
+    """
+    from app.routers import sync as sync_router
+
+    monkeypatch.setattr(sync_router, "_STARTED_AT", sync_router._STARTED_AT - 2)
+
+
 @pytest.fixture
 def sync_on(tmp_path, monkeypatch):
     """Enable sync in an isolated directory as the home copy."""

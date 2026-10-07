@@ -455,7 +455,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   a failed seal, or an `Origin` on a sealed route is a bare 404, byte-identical to sync being off (empty; a 403 would show that sync is on).
   With no key file every `/api/sync/*` route is that 404, and the always-on copy serves no home routes. After a good seal: the protocol and
   schema check (409), one request at a time (409), a body cap (413) and a chunk timeout (408); those answers are sealed. Replays are refused,
-  including a seal stamped before this process started. Only `/api/sync` may be published, through Tailscale Funnel. `SYNC_PUBLIC_HOST` is
+  including a seal stamped in a second before this process started. Only `/api/sync` may be published, through Tailscale Funnel. `SYNC_PUBLIC_HOST` is
   admitted only on that tree, not on `/api/sync/round`, and on that name any unsealed response becomes the same bare 404. A loopback
   `SYNC_REMOTE_URL` is the SSH tunnel and ignores the proxy environment; any other address must be `https://` with no path or query and uses
   the proxy environment, or the round is a `needs_person` skip and no request is made. The profile, the AI key and the job-site login ride

@@ -548,7 +548,8 @@ def test_real_wrong_key_is_a_bare_404_and_the_round_cannot_verify(machines, tmp_
     result = machines.round()
     assert result["outcome"] == "needs_person"
     assert result["error"] == (
-        "The laptop didn't accept this copy's seal: the key differs or sync is off there."
+        "The laptop didn't accept this copy's seal: the key differs, sync is off there, "
+        "or the laptop has just restarted."
     )
     assert "wrong" not in json.dumps(result)
 

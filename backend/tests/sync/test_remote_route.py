@@ -20,7 +20,8 @@ ADDRESS = "The laptop's address must be this machine's own tunnel or an https://
 BUNDLE = "The certificate bundle in SSL_CERT_FILE can't be read."
 UNVERIFIED = "The laptop's answer couldn't be verified."
 REJECTED = (
-    "The laptop didn't accept this copy's seal: the key differs or sync is off there."
+    "The laptop didn't accept this copy's seal: the key differs, sync is off there, "
+    "or the laptop has just restarted."
 )
 BAD_PROXY = "The proxy settings in this machine's environment can't be used."
 

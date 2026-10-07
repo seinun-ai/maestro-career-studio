@@ -382,6 +382,67 @@ def test_a_new_code_replaces_the_previous_digest(client, sync_on):
     assert digest(first) != secret
 
 
+def _hold_claim(monkeypatch):
+    """Pause the first claim. ``complete_pairing`` runs only after the mac verifies."""
+    started, release = threading.Event(), threading.Event()
+    real = pairing.complete_pairing
+    state = {"hold": True}
+
+    def gated(db, digest_value):
+        if state["hold"]:
+            state["hold"] = False
+            db.rollback()
+            started.set()
+            release.wait(8)
+        return real(db, digest_value)
+
+    monkeypatch.setattr(pairing, "complete_pairing", gated)
+    return started, release
+
+
+def test_a_new_code_shown_after_the_mac_retires_the_old_enroll(
+        client, sync_on, db_session, monkeypatch):
+    """Dropping ``AND value = :digest`` would hand the key to A after B is shown."""
+    code_a = show(client)
+    secret_a = digest(code_a)
+    key = status.read_key()
+    header, wire, _rid = seal.seal_request(
+        secret_a, "POST", ENROLL, "", b"", PEER, label=seal.ENROLL_TO_HOME)
+    started, release = _hold_claim(monkeypatch)
+    db_session.rollback()
+    saved = _without_shared_session()
+    holder = {}
+
+    def post():
+        holder["response"] = TestClient(app).post(ENROLL, content=wire, headers={
+            seal.HEADER: header, "X-Maestro-Sync": PEER})
+
+    thread = threading.Thread(target=post)
+    thread.start()
+    try:
+        assert started.wait(5), "the enroll never reached the claim"
+        code_b = show(client)
+        assert code_b != code_a
+        release.set()
+        thread.join(8)
+    finally:
+        release.set()
+        thread.join(2)
+        _restore_session(saved)
+    assert not thread.is_alive()
+    refused = holder["response"]
+    assert refused.status_code == 404 and refused.content == b""
+    assert key.encode() not in refused.content
+    assert seal.HEADER.lower() not in {name.lower() for name in refused.headers}
+    db_session.rollback()
+    db_session.expire_all()
+    card = client.get(WINDOW).json()
+    assert card["open_until"] is not None and card["last_paired_at"] is None
+    opened, rid_b = sealed_enroll(client, digest(code_b))
+    assert opened.status_code == 200
+    assert open_enroll(opened, digest(code_b), rid_b)["key"] == key
+
+
 def test_a_damaged_window_matches_the_bare_404(client, sync_on, db_session, monkeypatch):
     baseline = off_bare(client, monkeypatch, "GET", "/api/sync/hello")
     secret = digest(show(client))

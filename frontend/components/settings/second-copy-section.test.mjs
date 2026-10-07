@@ -56,13 +56,22 @@ test("sync off offers only the explicit opt-in, with a neutral description", () 
   assert.doesNotMatch(html, />Stop<|Paired with your bot at|role="timer"/);
 });
 
-test("a pending code that this page cannot show offers a new one, not a countdown", () => {
-  const html = render({ enabled: true, open_until: new Date(Date.now() + 590000).toISOString(), last_paired_at: null });
+test("a live window this page did not open shows Stop and the countdown, not the code", () => {
+  const html = render({
+    enabled: true,
+    open_until: new Date(Date.now() + 590000).toISOString(),
+    last_paired_at: null,
+    code: "0123-4567-89AB-CDEF",
+  });
   assert.match(html, CARD_RE);
   assert.match(html, new RegExp(SHOW_NEW));
+  assert.match(html, /role="timer"/);
+  assert.match(html, /Expires in \d+:\d{2}/);
+  assert.match(html, />Stop</);
   assert.doesNotMatch(html, /Show a pairing code(?! )/);
   assert.doesNotMatch(html, PASTE);
-  assert.doesNotMatch(html, /role="timer"|>Stop</);
+  assert.doesNotMatch(html, /0123-4567-89AB-CDEF/);
+  assert.doesNotMatch(html, /Copy pairing code/);
 });
 
 test("an expired window offers Show a pairing code again", () => {
@@ -109,5 +118,7 @@ test("the web talks only to the settings route, with POST and DELETE actions", (
   assert.match(source, /Paste this code to your bot\. It works once, for 10 minutes\./);
   assert.match(source, /focusIfDropped\(focusTarget\(/);
   assert.match(source, /action === "stop" \? showRef : codeRef/);
+  assert.doesNotMatch(source, /type SecondCopy = \{[^}]*\bcode\b/);
+  assert.doesNotMatch(source, /data\.code/);
   assert.doesNotMatch(source, /\/api\/sync\/|sync-setup|\.key\b|through its tunnel|Allow pairing/);
 });

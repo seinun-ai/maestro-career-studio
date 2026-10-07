@@ -406,7 +406,7 @@ Either machine can be rebuilt from its backup plus one sync round.
   match in version and database revision. The round is skipped and nothing is
   half-done. Update the laptop with `scripts/update.sh`. Update the always-on
   copy with `stop.sh`, `git pull` to the same tag, `setup.sh`, then `start.sh`.
-- **"The laptop didn't accept this copy's seal: the key differs or sync is off there."**
+- **"The laptop didn't accept this copy's seal: the key differs, sync is off there, or the laptop has just restarted."**
   The outcome is `needs_person`. The key files differ, or the laptop
   has no key. Do not create a second key on the always-on copy. Right after a
   laptop restart, a clock on the always-on copy that is running behind can

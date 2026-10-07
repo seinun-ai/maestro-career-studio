@@ -497,7 +497,8 @@ def test_a_wrong_key_is_reported_as_a_key_problem(world, home, clock):
 
     assert summary["outcome"] == "needs_person"
     assert summary["error"] == (
-        "The laptop didn't accept this copy's seal: the key differs or sync is off there."
+        "The laptop didn't accept this copy's seal: the key differs, sync is off there, "
+        "or the laptop has just restarted."
     )
     assert "couldn't be verified" not in summary["error"]
     assert "a-different-key" not in json.dumps(summary)

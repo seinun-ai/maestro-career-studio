@@ -401,39 +401,60 @@ def _opened_hello(response, key, rid):
 
 
 def test_a_peer_seal_earlier_than_the_process_start_is_a_bare_404(client, sync_on, peer, monkeypatch):
-    """Home compares the stamp to this process's start, not to the request clock.
+    """Home compares the stamp to this process's start in whole seconds.
 
-    The same bytes then succeed once that start moves to the stamp: the refusal
-    must not register the rid, and a stamp equal to the start is not earlier.
-    A start half a second into the stamp's second is still later than the stamp.
+    A start half a second into the stamp's second still accepts that stamp.
+    A stamp from the previous second is a bare 404, and that refusal does not
+    register the rid: the same bytes succeed once the start moves back.
     """
     key = status.read_key()
     header, wire, rid = seal.seal_request(key, "GET", "/api/sync/hello", "", b"", peer)
     stamp = int(header.split(".")[1])
+    early_header, early_wire, early_rid = seal.seal_request(
+        key, "GET", "/api/sync/hello", "", b"", peer, now=float(stamp - 1))
     monkeypatch.setattr(sync_router, "_STARTED_AT", stamp + 0.5, raising=False)
-    refused = _send(client, "GET", "/api/sync/hello", header, peer, wire)
+    _opened_hello(_send(client, "GET", "/api/sync/hello", header, peer, wire), key, rid)
+    refused = _send(client, "GET", "/api/sync/hello", early_header, peer, early_wire)
     assert refused.status_code == 404 and refused.content == b""
     assert "x-maestro-seal" not in refused.headers
-    monkeypatch.setattr(sync_router, "_STARTED_AT", float(stamp))
-    _opened_hello(_send(client, "GET", "/api/sync/hello", header, peer, wire), key, rid)
+    monkeypatch.setattr(sync_router, "_STARTED_AT", float(stamp - 1))
+    _opened_hello(
+        _send(client, "GET", "/api/sync/hello", early_header, peer, early_wire), key, early_rid)
 
 
 def test_an_enroll_seal_earlier_than_the_process_start_is_a_bare_404(
         client, sync_on, monkeypatch):
+    """The previous second is a bare 404 and does not register the rid.
+
+    A start half a second into the stamp's second still accepts that stamp.
+    """
     secret = code_digest(show(client))
     header, wire, rid = seal.seal_request(
         secret, "POST", "/api/sync/enroll", "", b"", "peer-2", label=seal.ENROLL_TO_HOME)
     stamp = int(header.split(".")[1])
     monkeypatch.setattr(sync_router, "_STARTED_AT", stamp + 0.5, raising=False)
-    refused = _send(client, "POST", "/api/sync/enroll", header, "peer-2", wire)
-    assert refused.status_code == 404 and refused.content == b""
-    assert "x-maestro-seal" not in refused.headers
-    assert client.get("/api/settings/second-copy").json()["open_until"] is not None
-    monkeypatch.setattr(sync_router, "_STARTED_AT", float(stamp))
     opened = _send(client, "POST", "/api/sync/enroll", header, "peer-2", wire)
     assert opened.status_code == 200
     plain = seal.open_response(
         secret, rid, 200, opened.headers[seal.HEADER], opened.content,
+        label=seal.ENROLL_TO_REMOTE)
+    assert json.loads(plain)["key"] == status.read_key()
+
+    secret = code_digest(show(client))
+    early, early_wire, early_rid = seal.seal_request(
+        secret, "POST", "/api/sync/enroll", "", b"", "peer-2", label=seal.ENROLL_TO_HOME,
+        now=time.time() - 1)
+    early_stamp = int(early.split(".")[1])
+    monkeypatch.setattr(sync_router, "_STARTED_AT", early_stamp + 1.5, raising=False)
+    refused = _send(client, "POST", "/api/sync/enroll", early, "peer-2", early_wire)
+    assert refused.status_code == 404 and refused.content == b""
+    assert "x-maestro-seal" not in refused.headers
+    assert client.get("/api/settings/second-copy").json()["open_until"] is not None
+    monkeypatch.setattr(sync_router, "_STARTED_AT", float(early_stamp))
+    retried = _send(client, "POST", "/api/sync/enroll", early, "peer-2", early_wire)
+    assert retried.status_code == 200
+    plain = seal.open_response(
+        secret, early_rid, 200, retried.headers[seal.HEADER], retried.content,
         label=seal.ENROLL_TO_REMOTE)
     assert json.loads(plain)["key"] == status.read_key()
 

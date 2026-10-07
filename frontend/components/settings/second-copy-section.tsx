@@ -55,6 +55,21 @@ function PairingCode({ code, ref }: { code: string; ref?: Ref<HTMLDivElement> })
   );
 }
 
+function WindowCountdown({ seconds, pending, onStop }: {
+  seconds: number;
+  pending: boolean;
+  onStop: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-4">
+      <p role="timer" aria-live="off" className="body-medium tabular-nums">
+        Expires in {countdown(seconds)}
+      </p>
+      <Button variant="link" size="sm" pending={pending} onClick={onStop}>Stop</Button>
+    </div>
+  );
+}
+
 function PairingStatus({ at }: { at: string }) {
   return (
     <p className="body-medium text-muted-foreground flex items-center gap-2" role="status">
@@ -85,6 +100,7 @@ export function SecondCopyBody({ data, seconds, pending, code, act }: {
   act: (action: "allow" | "stop") => void;
 }) {
   const visible = seconds > 0 && code ? code : null;
+  const live = seconds > 0;
   const showRef = useRef<HTMLButtonElement>(null);
   const codeRef = useRef<HTMLDivElement>(null);
   const arm = useHandoff();
@@ -95,16 +111,12 @@ export function SecondCopyBody({ data, seconds, pending, code, act }: {
   return (
     <div className="grid gap-4">
       {visible ? <PairingCode code={visible} ref={codeRef} /> : null}
-      {visible ? (
-        <div className="flex items-center gap-4">
-          <p role="timer" aria-live="off" className="body-medium tabular-nums">
-            Expires in {countdown(seconds)}
-          </p>
-          <Button variant="link" size="sm" pending={pending} onClick={() => press("stop")}>Stop</Button>
-        </div>
-      ) : (
+      {live ? (
+        <WindowCountdown seconds={seconds} pending={pending} onStop={() => press("stop")} />
+      ) : null}
+      {visible ? null : (
         <Button ref={showRef} variant="tonal" pending={pending} onClick={() => press("allow")}>
-          {seconds > 0 ? SHOW_NEW : SHOW}
+          {live ? SHOW_NEW : SHOW}
         </Button>
       )}
       {data.last_paired_at ? <PairingStatus at={data.last_paired_at} /> : null}

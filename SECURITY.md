@@ -259,7 +259,7 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
     routes. The SSH route, if you use it, still restricts its key to one forward
     (`restrict,port-forwarding,permitopen="127.0.0.1:8001"`).
   - **Replays are refused,** including after a laptop restart. A seal stamped
-    before the process started is the empty 404. A clock on the always-on copy
+    in a second before the process started is the empty 404. A clock on the always-on copy
     that is running behind can see that refusal for up to 5 minutes after a
     restart. The next round after the clocks agree works.
   - **Query strings are not encrypted.** They are bound into the seal, so they

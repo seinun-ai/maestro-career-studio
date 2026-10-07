@@ -53,7 +53,8 @@ BAD_BUNDLE = "The certificate bundle in SSL_CERT_FILE can't be read."
 BAD_PROXY = "The proxy settings in this machine's environment can't be used."
 _UNVERIFIED = "The laptop's answer couldn't be verified."
 _SEAL_REJECTED = (
-    "The laptop didn't accept this copy's seal: the key differs or sync is off there."
+    "The laptop didn't accept this copy's seal: the key differs, sync is off there, "
+    "or the laptop has just restarted."
 )
 NOT_PAIRED = "This copy isn't paired with your laptop yet; run the first sync with the pair option."
 VERSION_MISMATCH = "Update Maestro on both machines to the same version."

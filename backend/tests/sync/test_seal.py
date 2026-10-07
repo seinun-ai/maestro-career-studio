@@ -368,14 +368,23 @@ def test_a_stamp_equal_to_not_before_is_accepted():
     assert open_request(SECRET, ok, wire) == b"same"
 
 
-def test_a_fractional_start_rejects_a_stamp_from_that_second():
-    """Truncating the start to a whole second would accept an earlier stamp."""
-    header, _wire, _rid = _seal(b"part", now=NOW)
-    later, later_wire, _rid = _seal(b"next", now=NOW + 1)
+def test_a_fractional_start_accepts_that_second_and_refuses_the_one_before():
+    """A start of N + 0.9 accepts a seal stamped N and refuses N - 1.
 
-    _broken(lambda: _check(header, not_before=NOW + 0.5))
-    ok = _check(later, not_before=NOW + 0.5, now=NOW + 1)
-    assert open_request(SECRET, ok, later_wire) == b"next"
+    The check clock is that same fractional instant, so comparing the stamp to
+    the raw start refuses N. Registering the refused rid would make the retry
+    a replay.
+    """
+    cache = ReplayCache()
+    start = NOW + 0.9
+    same, same_wire, _rid = _seal(b"same", now=NOW)
+    early, early_wire, _rid = _seal(b"early", now=NOW - 1)
+
+    ok = _check(same, replay=cache, not_before=start, now=start)
+    assert open_request(SECRET, ok, same_wire) == b"same"
+    _broken(lambda: _check(early, replay=cache, not_before=start, now=start))
+    opened = _check(early, replay=cache, not_before=float(NOW - 1), now=start)
+    assert open_request(SECRET, opened, early_wire) == b"early"
 
 
 def test_not_before_rejects_an_enroll_stamp_the_same_way():

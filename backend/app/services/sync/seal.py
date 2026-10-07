@@ -227,12 +227,12 @@ def _hold_until(ts: str) -> float:
 
 
 def _before_process_start(ts: str, not_before: float | None) -> bool:
-    """True when ``ts`` is earlier than this process's start instant.
+    """True when the stamp's second is earlier than this process's start second.
 
-    ``ts`` is whole seconds. Compare it with the raw start: truncating the
-    start to a second would accept a seal from earlier in that same second.
+    A recording stamped in that same second is the only thing let back in, and
+    it would have to come from the previous process's last second.
     """
-    return not_before is not None and int(ts) < not_before
+    return not_before is not None and int(ts) < int(not_before)
 
 
 def _replayed(replay: ReplayCache | None, rid: str, now: float, ts: str) -> bool:
