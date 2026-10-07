@@ -226,6 +226,12 @@ jobs:
       - name: Render the ownership components
         run: cd frontend && node --test components/job-ownership.test.mjs
 
+      # Renders the second-copy card under node's test runner. It needs the
+      # installed packages, so it runs here; the backend job has none and
+      # skips its copy (backend/tests/sync/test_pairing.py).
+      - name: Render the second-copy card
+        run: cd frontend && node --test components/settings/second-copy-section.test.mjs
+
       - name: Build Next.js production bundle
         run: cd frontend && npm run build
 

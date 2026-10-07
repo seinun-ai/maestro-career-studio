@@ -172,6 +172,38 @@ def test_a_sealed_hello_on_the_public_host_succeeds(client, sync_on, peer, monke
     _assert_refused(client.get("/health", headers={"Host": host}))
 
 
+def _sealed_raw(client, peer, host):
+    secret = status.read_key()
+    header, wire, _rid = seal.seal_request(secret, "GET", "/api/sync/hello", "", b"", peer)
+    return raw(client, "GET", "/api/sync/hello", content=wire, headers={
+        seal.HEADER: header, "X-Maestro-Sync": peer, "Host": host,
+    })
+
+
+def test_a_sealed_response_carries_no_vary(client, sync_on, peer, monkeypatch):
+    """A sealed sync response keeps no Vary header, on an allowed host or the published name.
+
+    The published name forwards a sealed response instead of replacing it. Stripping
+    the header only on the empty 404 leaves it here.
+    """
+    monkeypatch.setattr(settings, "sync_public_host", "")
+    allowed = _sealed_raw(client, peer, "testserver")
+    assert allowed.status_code == 200, allowed.content
+    assert "vary" not in allowed.headers
+    monkeypatch.setattr(settings, "sync_public_host", PUBLIC)
+    published = _sealed_raw(client, peer, PUBLIC)
+    assert published.status_code == 200, published.content
+    assert "vary" not in published.headers
+
+
+def test_a_non_sync_response_keeps_cors_vary(client):
+    """Vary stays on the rest of the API. A sync-only strip that matches every path fails."""
+    response = client.get("/health", headers={"Origin": "http://localhost:3000"})
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert "origin" in response.headers.get("vary", "").lower()
+
+
 def test_the_public_host_is_read_on_each_request(client, sync_on, peer, monkeypatch):
     """main.py captured allowed_hosts at import. Empty versus set is read per request.
 

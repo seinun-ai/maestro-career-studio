@@ -252,6 +252,40 @@ def _response_sealed(message: dict) -> bool:
     return any(name.lower() == _SEAL_NAME for name, _value in headers)
 
 
+def _without_vary(message: dict) -> dict:
+    """Drop ``Vary`` from one ASGI start message. Other messages pass through.
+
+    Starlette 1.7's CORS middleware sets ``Vary: Origin`` on every non-preflight
+    response, including one with no Origin. Older Starlette does that only when
+    it reflects an allowed Origin.
+    """
+    if message.get("type") != "http.response.start":
+        return message
+    headers = message.get("headers")
+    if not headers:
+        return message
+    kept = [(name, value) for name, value in headers if name.lower() != b"vary"]
+    if len(kept) == len(headers):
+        return message
+    return {**message, "headers": kept}
+
+
+class _SyncChannelSend:
+    """On ``/api/sync``, the response that leaves is the one the route built.
+
+    The published-name 404 is ``Response(status_code=404)`` sent from outside
+    CORS, so it has no ``Vary``. A response that did pass through CORS would
+    otherwise carry ``Vary: Origin`` and no longer match it, and a sealed
+    response would carry that header out to the proxy.
+    """
+
+    def __init__(self, send: Send) -> None:
+        self._send = send
+
+    async def __call__(self, message: dict) -> None:
+        await self._send(_without_vary(message))
+
+
 class _BareUnlessSealed:
     """On the published name, a response without the seal header is the empty 404.
 
@@ -292,7 +326,10 @@ class SyncPublicHostMiddleware:
     While it is set, every http path under ``/api/sync`` is public whatever Host
     says. A path the tree does not admit is the empty 404 directly. An admitted
     path has its ``send`` wrapped: anything without the seal header, including a
-    raise before a response starts, leaves as that same 404.
+    raise before a response starts, leaves as that same 404. Every http response
+    on a sync-shaped path also drops ``Vary`` on the way out, so a CORS
+    middleware that adds ``Vary: Origin`` cannot split that 404 in two or add a
+    header to a sealed response.
     """
 
     def __init__(self, app: ASGIApp, allowed_hosts: list[str]) -> None:
@@ -300,6 +337,8 @@ class SyncPublicHostMiddleware:
         self.trusted = TrustedHostMiddleware(app, allowed_hosts=allowed_hosts)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") == "http" and _sync_shaped(scope.get("path") or ""):
+            send = _SyncChannelSend(send)
         if _public_sync_http(scope):
             await self._serve_public_sync(scope, receive, send)
             return

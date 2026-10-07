@@ -135,15 +135,46 @@ def window_open(client):
     return client.get(WINDOW).json()["open_until"] is not None
 
 
-def test_all_sync_routes_are_404_without_a_key(client, sync_off):
-    paths = {route.path for route in app.routes if route.path.startswith("/api/sync/")}
-    assert ENROLL in paths
-    for route in app.routes:
-        if route.path not in paths:
+def _http_routes(routes, prefix=""):
+    """Each HTTP route's path and methods, descending included routers.
+
+    FastAPI 0.142 keeps an included router as one route with no path. Older
+    FastAPI flattens those routes onto ``app.routes``.
+    """
+    for route in routes:
+        included = getattr(route, "original_router", None)
+        if included is not None:
+            extra = getattr(getattr(route, "include_context", None), "prefix", "") or ""
+            yield from _http_routes(included.routes, prefix + extra)
             continue
-        for method in route.methods:
-            response = client.request(method, route.path, json={})
-            assert response.status_code == 404, (method, route.path)
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", None)
+        if path is not None and methods:
+            yield prefix + path, methods
+            continue
+        nested = getattr(route, "routes", None)
+        if nested:
+            yield from _http_routes(nested, prefix)
+
+
+def test_all_sync_routes_are_404_without_a_key(client, sync_off):
+    routes = [(path, methods) for path, methods in _http_routes(app.routes)
+              if path.startswith("/api/sync/")]
+    # The sync router still lists its own routes flat. app.routes must name the
+    # same ones: a walker that stops at the included router, or prefixes twice,
+    # fails here before any request is sent.
+    on_router = {
+        (route.path, frozenset(route.methods))
+        for route in sync_router.router.routes
+        if route.path.startswith("/api/sync/")
+    }
+    assert {(path, frozenset(methods)) for path, methods in routes} == on_router
+    paths = {path for path, _methods in routes}
+    assert ENROLL in paths
+    for path, methods in routes:
+        for method in methods:
+            response = client.request(method, path, json={})
+            assert response.status_code == 404, (method, path)
     assert not status.key_path().exists()
 
 
@@ -803,7 +834,19 @@ def test_remote_rejects_unusable_answers_without_writing(client, remote_setup, m
 
 
 def test_web_card_contract_and_rendering():
-    from tests.node_ts import run_node_test
+    """Renders the real card, so it needs the web app's installed packages.
+
+    Node's type stripping cannot do that. The backend CI job has no frontend
+    node_modules, so there it is the frontend job that runs this file
+    (`node --test components/settings/second-copy-section.test.mjs` after
+    `npm ci`); here it runs wherever the packages are installed, and a missing
+    node still fails in CI through `_node_with_typescript`.
+    """
+    from tests.node_ts import FRONTEND, _node_with_typescript, run_node_test
+
+    if not (FRONTEND / "node_modules" / "typescript").is_dir():
+        _node_with_typescript()  # fails in CI when node itself is absent; only then skip
+        pytest.skip("frontend packages are not installed; the frontend CI job runs this file")
     result = run_node_test("components/settings/second-copy-section.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr
 
