@@ -1,14 +1,19 @@
-"""The published hostname is accepted only under /api/sync/ (sealed-sync Task 4).
+"""While SYNC_PUBLIC_HOST is set, every http /api/sync path is public (sealed-sync review).
 
-A path is under that prefix only when it starts with ``/api/sync/`` and still does
-after normalization, and is not ``/api/sync/round``. On the published name,
-``/api/sync`` itself and a ``/api/sync/`` path the tree refuses (``..``, a
-percent-encoded segment, ``//``, ``/round``) are the sync routes' bare 404.
-``/api/sync-setup`` and every other path stay TrustedHostMiddleware's host error.
+The Host header does not choose that. Funnel forwards the client's Host, so
+localhost, an allowed address, an unknown host and a trailing-dot name all get
+the same treatment: an admitted path goes to the app and an unsealed response
+is the sync routes' bare 404; ``/api/sync`` itself and a ``/api/sync/`` path the
+tree refuses (``..``, a percent-encoded segment, ``//``, ``/round``) are that
+404 directly. A path is admitted only when it starts with ``/api/sync/`` and
+still does after normalization, and is not ``/api/sync/round``.
+``/api/sync-setup`` and every other path stay TrustedHostMiddleware's host
+error. An empty setting leaves the host check as it was.
 """
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -16,9 +21,12 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings, settings
 from app.db import get_db
-from app.main import app
+from app.main import SyncPublicHostMiddleware, app
+from app.routers import sync as sync_router
 from app.services.sync import seal, status
 from tests.sync.conftest import raw
+from tests.sync.test_pairing import digest as code_digest
+from tests.sync.test_pairing import show
 
 PUBLIC = "mac.tailnet.ts.net"
 INVALID = "Invalid host header"
@@ -165,13 +173,23 @@ def test_a_sealed_hello_on_the_public_host_succeeds(client, sync_on, peer, monke
 
 
 def test_the_public_host_is_read_on_each_request(client, sync_on, peer, monkeypatch):
-    """main.py captured allowed_hosts at import. This setting must not be."""
+    """main.py captured allowed_hosts at import. Empty versus set is read per request.
+
+    A non-empty value applies to every sync path, whatever Host says. Clearing it
+    restores the host check.
+    """
     monkeypatch.setattr(settings, "sync_public_host", "")
+    reference = _exchange("GET", "/api/sync/hello", [(b"host", b"testserver")])
+    assert reference == _BARE
     _assert_refused(client.get("/api/sync/hello", headers={"Host": PUBLIC}))
     monkeypatch.setattr(settings, "sync_public_host", PUBLIC)
     body = _sealed_hello(client, peer, PUBLIC)
     assert body["protocol"] == status.SYNC_PROTOCOL
     monkeypatch.setattr(settings, "sync_public_host", "other.example.test")
+    seen = _exchange("GET", "/api/sync/hello", [(b"host", PUBLIC.encode("ascii"))])
+    assert seen == reference
+    _assert_refused(client.get("/health", headers={"Host": PUBLIC}))
+    monkeypatch.setattr(settings, "sync_public_host", "")
     _assert_refused(client.get("/api/sync/hello", headers={"Host": PUBLIC}))
 
 
@@ -250,14 +268,32 @@ def test_setup_enroll_on_the_public_host_is_refused(client, publish):
 
 
 @pytest.mark.parametrize("host", LOOKALIKE_HOSTS)
-def test_a_lookalike_host_is_refused_on_a_sync_path(client, publish, host):
-    _assert_refused(client.get("/api/sync/hello", headers={"Host": host}))
+def test_a_lookalike_host_is_refused_on_a_sync_path(sync_on, monkeypatch, host):
+    """A lookalike is not a second door. On a sync path it is the bare 404, not the app."""
+    monkeypatch.setattr(settings, "sync_public_host", "")
+    reference = _exchange("GET", "/api/sync/hello", [(b"host", b"testserver")])
+    assert reference == _BARE
+    monkeypatch.setattr(settings, "sync_public_host", PUBLIC)
+    seen = _exchange("GET", "/api/sync/hello", [(b"host", host.encode("ascii"))])
+    assert seen == reference
+    code, body = _raw_http("/health", [(b"host", host.encode("ascii"))])
+    assert (code, body) == (400, INVALID.encode())
 
 
 @pytest.mark.parametrize("configured", ["*", "*.tailnet.ts.net", "mac.tailnet.ts.net.evil.test"])
-def test_the_public_host_is_one_name_not_a_pattern(client, monkeypatch, configured):
+def test_the_public_host_is_one_name_not_a_pattern(client, sync_on, monkeypatch, configured):
+    """A wildcard is not an allowlist. Off /api/sync the host check still refuses it.
+
+    On a sync path any non-empty setting is the public treatment, so the answer
+    is the bare 404 rather than the app behind a matched name.
+    """
+    monkeypatch.setattr(settings, "sync_public_host", "")
+    reference = _exchange("GET", "/api/sync/hello", [(b"host", b"testserver")])
+    assert reference == _BARE
     monkeypatch.setattr(settings, "sync_public_host", configured)
-    _assert_refused(client.get("/api/sync/hello", headers={"Host": PUBLIC}))
+    seen = _exchange("GET", "/api/sync/hello", [(b"host", PUBLIC.encode("ascii"))])
+    assert seen == reference
+    _assert_refused(client.get("/health", headers={"Host": PUBLIC}))
     _assert_refused(client.get("/health", headers={"Host": "evil.example"}))
 
 
@@ -294,8 +330,18 @@ def test_a_sync_prefix_that_escapes_is_the_bare_404(sync_on, publish, path):
         assert (seen[0], seen[1]) == (400, INVALID.encode())
 
 
-def test_two_host_headers_are_refused(publish):
-    code, body = _raw_http("/api/sync/hello", [
+def test_two_host_headers_are_refused(sync_on, monkeypatch):
+    """Two Host headers are a host TrustedHost would refuse. A sync path is the bare 404."""
+    monkeypatch.setattr(settings, "sync_public_host", "")
+    reference = _exchange("GET", "/api/sync/hello", [(b"host", b"testserver")])
+    assert reference == _BARE
+    monkeypatch.setattr(settings, "sync_public_host", PUBLIC)
+    seen = _exchange("GET", "/api/sync/hello", [
+        (b"host", PUBLIC.encode("ascii")),
+        (b"host", b"evil.example"),
+    ])
+    assert seen == reference
+    code, body = _raw_http("/health", [
         (b"host", PUBLIC.encode("ascii")),
         (b"host", b"evil.example"),
     ])
@@ -330,3 +376,124 @@ def test_loopback_hosts_stay_allowed(client, sync_on, peer, publish):
     assert client.get("/health", headers={"Host": "127.0.0.1:8001"}).status_code == 200
     body = _sealed_hello(client, peer, "testserver")
     assert body["protocol"] == status.SYNC_PROTOCOL
+
+
+# Taken while SYNC_PUBLIC_HOST is empty, so this is the route's own 404. Once the
+# setting is on, every host enters the wrapper and can no longer serve as that reference.
+_SPOOFED_HOSTS = ("localhost", "127.0.0.1:8001", "evil.example", f"{PUBLIC}.")
+_FINGERPRINTS = (
+    ("PUT", "/api/sync/hello"),
+    ("GET", "/api/sync/hello/"),
+    ("GET", "/api/sync/round"),
+    ("GET", "/api/sync"),
+    ("GET", "/api/sync/hello"),
+)
+
+
+def _route_bare(monkeypatch):
+    monkeypatch.setattr(settings, "sync_public_host", "")
+    reference = _exchange("GET", "/api/sync/hello", [(b"host", b"testserver")])
+    assert reference == _BARE
+    return reference
+
+
+@pytest.mark.parametrize("host", _SPOOFED_HOSTS)
+@pytest.mark.parametrize(("method", "path"), _FINGERPRINTS)
+def test_a_sync_path_is_the_bare_404_whatever_the_host(sync_on, monkeypatch, host, method, path):
+    """A spoofed Host must not reveal the method, the redirect, or a JSON 404."""
+    reference = _route_bare(monkeypatch)
+    monkeypatch.setattr(settings, "sync_public_host", PUBLIC)
+    seen = _exchange(method, path, [(b"host", host.encode("ascii"))])
+    assert seen == reference
+    assert seal.HEADER.lower().encode() not in {name for name, _value in seen[2]}
+
+
+def test_an_empty_public_host_keeps_the_localhost_put(client, sync_on, monkeypatch):
+    """With the setting empty, a localhost PUT is still the method refusal it is today."""
+    monkeypatch.setattr(settings, "sync_public_host", "")
+    denied = client.put("/api/sync/hello", headers={"Host": "localhost"})
+    assert denied.status_code == 405
+    assert denied.headers["allow"] == "GET"
+    assert denied.json() == {"detail": "Method Not Allowed"}
+
+
+def test_non_sync_paths_keep_the_host_check(client, publish):
+    assert client.get("/api/health", headers={"Host": "localhost"}).status_code == 200
+    _assert_refused(client.get("/api/health", headers={"Host": PUBLIC}))
+
+
+def test_a_handler_exception_on_a_public_sync_path_is_the_bare_404(
+        sync_on, monkeypatch, caplog):
+    """A raise before any response must not become Starlette's plain-text 500."""
+    reference = _route_bare(monkeypatch)
+    monkeypatch.setattr(settings, "sync_public_host", PUBLIC)
+    sentinel = "SENTINEL-sync-exception-9917"
+
+    def boom():
+        raise RuntimeError(sentinel)
+
+    monkeypatch.setattr(sync_router, "_home_key", boom)
+    with caplog.at_level(logging.ERROR):
+        seen = _exchange("GET", "/api/sync/hello", [(b"host", b"localhost")])
+    assert seen == reference
+    text = caplog.text
+    assert sentinel not in text and "Traceback" not in text
+    assert all(record.message == "A sync request failed." for record in caplog.records)
+    assert sentinel.encode() not in seen[1]
+
+
+def test_an_exception_after_a_sealed_response_started_is_reraised(monkeypatch):
+    monkeypatch.setattr(settings, "sync_public_host", PUBLIC)
+    sentinel = "SENTINEL-after-start-9917"
+
+    async def explode(_scope, _receive, send):
+        await send({
+            "type": "http.response.start", "status": 200,
+            "headers": [(b"x-maestro-seal", b"2.nonce")],
+        })
+        raise RuntimeError(sentinel)
+
+    middleware = SyncPublicHostMiddleware(explode, allowed_hosts=["localhost"])
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET",
+        "scheme": "http", "path": "/api/sync/hello", "raw_path": b"/api/sync/hello",
+        "query_string": b"", "headers": [(b"host", b"localhost")],
+        "client": ("127.0.0.1", 9), "server": ("testserver", 80),
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(_message):
+        return None
+
+    with pytest.raises(RuntimeError, match=sentinel):
+        asyncio.run(middleware(scope, receive, send))
+
+
+def test_a_sealed_jobs_read_on_the_public_host_opens(client, sync_on, peer, publish):
+    secret = status.read_key()
+    header, wire, rid = seal.seal_request(secret, "GET", "/api/sync/jobs", "", b"", peer)
+    response = raw(client, "GET", "/api/sync/jobs", content=wire, headers={
+        seal.HEADER: header, "X-Maestro-Sync": peer, "Host": PUBLIC,
+    })
+    assert response.status_code == 200
+    assert seal.HEADER.lower() in response.headers
+    plain = seal.open_response(
+        secret, rid, response.status_code, response.headers[seal.HEADER], response.content)
+    body = json.loads(plain)
+    assert body["bundles"] == [] and "tombstones" in body
+
+
+def test_a_code_sealed_enroll_on_the_public_host_opens(client, sync_on, publish):
+    secret = code_digest(show(client))
+    header, wire, rid = seal.seal_request(
+        secret, "POST", "/api/sync/enroll", "", b"", "peer-2", label=seal.ENROLL_TO_HOME)
+    response = raw(client, "POST", "/api/sync/enroll", content=wire, headers={
+        seal.HEADER: header, "X-Maestro-Sync": "peer-2", "Host": PUBLIC,
+    })
+    assert response.status_code == 200
+    plain = seal.open_response(
+        secret, rid, 200, response.headers[seal.HEADER], response.content,
+        label=seal.ENROLL_TO_REMOTE)
+    assert json.loads(plain)["key"] == status.read_key()

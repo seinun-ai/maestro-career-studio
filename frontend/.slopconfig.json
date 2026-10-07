@@ -8,6 +8,7 @@
     "**/__snapshots__/**",
     "**/*.spec.ts",
     "**/*.test.ts",
+    "**/*.test.mjs",
     "**/migrations/**",
     "**/package-lock.json",
     "**/.slop-baseline.json",

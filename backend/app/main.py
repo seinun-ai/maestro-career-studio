@@ -207,14 +207,29 @@ def _under_sync(path: str) -> bool:
     return normal.startswith("/api/sync/") and normal != "/api/sync/round"
 
 
+def _public_host_set() -> bool:
+    """settings.sync_public_host, read now, names one host."""
+    return bool(_hostname(app_settings.sync_public_host))
+
+
 def _on_public_host(scope: Scope) -> bool:
-    """settings.sync_public_host, read now, matches the one presented Host."""
+    """That name matches the one presented Host. WebSocket and non-sync paths only."""
     if scope["type"] not in ("http", "websocket"):
         return False
     configured = _hostname(app_settings.sync_public_host).casefold()
     if not configured:
         return False
     return _presented_host(scope).casefold() == configured
+
+
+def _public_sync_http(scope: Scope) -> bool:
+    """A sync-shaped http path while the public host is configured.
+
+    The Host header is not consulted. A published listener forwards the client's.
+    """
+    if scope.get("type") != "http" or not _public_host_set():
+        return False
+    return _sync_shaped(scope.get("path") or "")
 
 
 def _sync_shaped(path: str) -> bool:
@@ -228,18 +243,8 @@ def _admits_public_host(scope: Scope) -> bool:
     return _under_sync(scope.get("path") or "")
 
 
-def _bare_public_miss(scope: Scope) -> bool:
-    """A sync-shaped path the published tree refuses. Answer it here, not via the host check.
-
-    TrustedHostMiddleware's plain-text 400 names the stack and singles these paths out.
-    """
-    if scope["type"] != "http" or not _on_public_host(scope):
-        return False
-    path = scope.get("path") or ""
-    return _sync_shaped(path) and not _under_sync(path)
-
-
 _SEAL_NAME = SEAL_HEADER.lower().encode("ascii")
+_SYNC_FAILED = "A sync request failed."
 
 
 def _response_sealed(message: dict) -> bool:
@@ -259,10 +264,12 @@ class _BareUnlessSealed:
         self._receive = receive
         self._send = send
         self._forward = True
+        self.started = False
 
     async def __call__(self, message: dict) -> None:
         kind = message["type"]
         if kind == "http.response.start":
+            self.started = True
             await self._start(message)
             return
         if kind == "http.response.body" and not self._forward:
@@ -278,13 +285,14 @@ class _BareUnlessSealed:
 
 
 class SyncPublicHostMiddleware:
-    """TrustedHostMiddleware, plus one hostname on /api/sync/ only.
+    """TrustedHostMiddleware, plus the sync tree while a public host is configured.
 
     The extra hostname is not added to allowed_hosts. It is read from settings
     on each request, because allowed_hosts itself was captured at import.
-    A sync-shaped path that is not admitted is that empty 404 directly, without
-    calling the app. A request that is admitted has its ``send`` wrapped:
-    anything that does not carry the seal header leaves as the same 404.
+    While it is set, every http path under ``/api/sync`` is public whatever Host
+    says. A path the tree does not admit is the empty 404 directly. An admitted
+    path has its ``send`` wrapped: anything without the seal header, including a
+    raise before a response starts, leaves as that same 404.
     """
 
     def __init__(self, app: ASGIApp, allowed_hosts: list[str]) -> None:
@@ -292,21 +300,34 @@ class SyncPublicHostMiddleware:
         self.trusted = TrustedHostMiddleware(app, allowed_hosts=allowed_hosts)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if _bare_public_miss(scope):
+        if _public_sync_http(scope):
+            await self._serve_public_sync(scope, receive, send)
+            return
+        # WebSocket on the published name still follows the host. Http sync does not.
+        if _admits_public_host(scope):
+            await self.app(scope, receive, send)
+            return
+        await self.trusted(scope, receive, send)
+
+    async def _serve_public_sync(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if not _under_sync(scope.get("path") or ""):
             await Response(status_code=404)(scope, receive, send)
             return
-        if not _admits_public_host(scope):
-            await self.trusted(scope, receive, send)
-            return
-        outbound = _BareUnlessSealed(scope, receive, send) if scope["type"] == "http" else send
-        await self.app(scope, receive, outbound)
+        outbound = _BareUnlessSealed(scope, receive, send)
+        try:
+            await self.app(scope, receive, outbound)
+        except Exception:
+            if outbound.started:
+                raise
+            logger.error(_SYNC_FAILED)
+            await Response(status_code=404)(scope, receive, send)
 
 
 # Added LAST, so it wraps everything and runs FIRST: a forged Host is rejected
 # before any handler, and the 400 deliberately carries no CORS headers.
 # This is the DNS-rebinding defence — see config.allowed_hosts for why CORS
-# alone cannot provide it. sync_public_host is a second door for /api/sync/
-# only, and the wrapper reads it per request rather than widening allowed_hosts.
+# alone cannot provide it. While sync_public_host is set, every http /api/sync
+# path is that door whatever Host says. The wrapper reads it per request.
 # Starlette's add_middleware PREPENDS, so the order these three calls appear in
 # is the reverse of the order they run in; the order is pinned by
 # test_the_host_check_outranks_the_origin_check.

@@ -1,17 +1,17 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 668,
-    "total_loc": 202069,
-    "src_loc": 56690,
-    "test_loc": 145379,
+    "modules": 686,
+    "total_loc": 209722,
+    "src_loc": 58606,
+    "test_loc": 151116,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
     "complexity_hotspots": [
       {
         "file": "mcp_server/tests/test_server.py",
-        "line": 549,
+        "line": 550,
         "name": "test_audit_one_sentence_docstring_fixes",
         "complexity": 42,
         "params": 0,
@@ -130,6 +130,14 @@
         "lines": 79
       },
       {
+        "file": "app/services/proposals.py",
+        "line": 428,
+        "name": "get_final_review",
+        "complexity": 29,
+        "params": 2,
+        "lines": 95
+      },
+      {
         "file": "app/services/health_gates.py",
         "line": 162,
         "name": "_iter_texts",
@@ -147,19 +155,11 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1139,
+        "line": 1141,
         "name": "_live_text_fragments",
         "complexity": 28,
         "params": 1,
         "lines": 43
-      },
-      {
-        "file": "app/services/proposals.py",
-        "line": 418,
-        "name": "get_final_review",
-        "complexity": 28,
-        "params": 2,
-        "lines": 92
       },
       {
         "file": "app/services/career_kb.py",
@@ -291,7 +291,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 987,
+        "line": 989,
         "name": "_write_back_elicited_points",
         "complexity": 24,
         "params": 3,
@@ -299,7 +299,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1357,
+        "line": 1360,
         "name": "tailor",
         "complexity": 24,
         "params": 4,
@@ -383,7 +383,7 @@
         "name": "base_summaries",
         "complexity": 23,
         "params": 1,
-        "lines": 124
+        "lines": 125
       },
       {
         "file": "tests/test_frontend_settings_cards.py",
@@ -410,7 +410,7 @@
         "lines": 31
       }
     ],
-    "hotspot_count": 656,
+    "hotspot_count": 688,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -429,7 +429,22 @@
       },
       {
         "file": "tests/sync/conftest.py",
-        "line": 91,
+        "line": 446,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "tests/sync/conftest.py",
+        "line": 450,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "tests/sync/conftest.py",
+        "line": 393,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "tests/sync/conftest.py",
+        "line": 108,
         "kind": "swallowed_exception"
       },
       {
@@ -471,11 +486,16 @@
         "file": "app/services/artifacts.py",
         "line": 27,
         "kind": "swallowed_exception"
+      },
+      {
+        "file": "app/services/sync/seal.py",
+        "line": 249,
+        "kind": "swallowed_exception"
       }
     ],
-    "error_masking_count": 12,
-    "internal_import_edges": 3007,
-    "imports_per_module": 4.5,
+    "error_masking_count": 16,
+    "internal_import_edges": 3139,
+    "imports_per_module": 4.58,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -498,7 +518,7 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.56,
+    "percentage": 0.54,
     "duplicated_lines": 381,
     "clones": 43,
     "allowlisted_clones": 0,
@@ -610,29 +630,29 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "656 function(s) over threshold. worst: mcp_server/tests/test_server.py:549 cc=42",
+      "detail": "688 function(s) over threshold. worst: mcp_server/tests/test_server.py:550 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
     {
       "rank": "P2",
       "signal": "error_masking",
-      "detail": "12 bare/swallowed exception handlers",
+      "detail": "16 bare/swallowed exception handlers",
       "why": "Converts loud failures into silent wrong answers; hides the next defect.",
       "action": "Narrow the exception type or re-raise. Never leave a bare pass."
     }
   ],
   "metrics": {
-    "total_loc": 202069,
-    "src_loc": 56690,
-    "test_loc": 145379,
-    "modules": 668,
+    "total_loc": 209722,
+    "src_loc": 58606,
+    "test_loc": 151116,
+    "modules": 686,
     "orphan_loc": 0,
-    "duplication_pct": 0.56,
+    "duplication_pct": 0.54,
     "duplicated_lines": 381,
     "clone_count": 43,
-    "complexity_hotspots": 663,
-    "error_masking": 12,
-    "imports_per_module": 4.5
+    "complexity_hotspots": 688,
+    "error_masking": 16,
+    "imports_per_module": 4.58
   }
 }

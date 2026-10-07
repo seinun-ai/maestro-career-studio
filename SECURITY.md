@@ -250,13 +250,16 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
     header MAC is checked before any body. The key never travels. There is no
     bearer header.
   - **Anything unsealed is an empty 404.** That response matches sync being off,
-    byte for byte, including a request that carries a bearer token. On the
-    published name, a response that is not sealed is replaced with that same
-    empty 404. With no key file, every `/api/sync/*` route is that 404.
+    byte for byte, including a request that carries a bearer token. While
+    `SYNC_PUBLIC_HOST` is set, an unsealed response on `/api/sync` is replaced
+    with that same empty 404, whatever Host says. With no key file, every
+    `/api/sync/*` route is that 404.
   - **Only `/api/sync` may be published,** through Tailscale Funnel. The laptop
-    process still listens on `127.0.0.1`. Maestro admits `SYNC_PUBLIC_HOST` only
-    under `/api/sync/`, and not on `/api/sync/round`. Funnel exposes only sealed
-    routes. The SSH route, if you use it, still restricts its key to one forward
+    process still listens on `127.0.0.1`. While `SYNC_PUBLIC_HOST` is set, every
+    response on `/api/sync` is sealed or the bare 404, whatever Host arrives.
+    `/api/sync/round` and any path that is not a real sync route are that 404
+    directly. The public name is still refused on every other path. The SSH
+    route, if you use it, still restricts its key to one forward
     (`restrict,port-forwarding,permitopen="127.0.0.1:8001"`).
   - **Replays are refused,** including after a laptop restart. A seal stamped
     in a second before the process started is the empty 404. A clock on the always-on copy
@@ -281,8 +284,11 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
     `settings/secrets/sync-key`. The always-on copy's file is
     `$MAESTRO_HOME/sync-key`.
   - **Pairing is a one-time code.** Settings › Connected agents › Second copy
-    shows a 16-character code, once, for 10 minutes, with no attempt limit. Only
-    a digest is stored. The code is never logged. Stop retires it. Success logs
+    shows a 16-character code, once, for 10 minutes, with no attempt limit. The
+    stored digest is the enroll secret: anyone who can read the laptop's database
+    (or a backup taken while the 10-minute window is open) could enroll during
+    that window, which is why the window is short, single use, and Stop exists.
+    The code is never logged. Stop retires it. Success logs
     only the fixed line "A copy fetched the sync key." Enroll is
     sealed with the code. An unsealed enroll is the same empty 404.
   - **Nothing secret is logged.** No sync key, pairing code, seal plaintext,

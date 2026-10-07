@@ -55,10 +55,10 @@ Both routes pair with the same one-time code. Pick one.
 
 ## HTTPS through Funnel
 
-Funnel publishes only `/api/sync`. Maestro admits the public name only on that
-tree, and `/api/sync/round` is never reachable through it. Funnel exposes only
-sealed routes. You can turn Funnel on before you show a pairing code. An
-outsider still gets the empty 404.
+Funnel publishes only `/api/sync`. While `SYNC_PUBLIC_HOST` is set, every
+response on that path is sealed or the bare 404, whatever Host arrives, and
+`/api/sync/round` is not a real route through it. You can turn Funnel on before
+you show a pairing code. An outsider still gets the empty 404.
 
 ### On the laptop
 
@@ -238,8 +238,11 @@ The card has these states:
   this code to your bot. It works once, for 10 minutes." A countdown reads
   "Expires in M:SS", and **Stop** is next to it.
 - **Show a new pairing code.** A window is still open, but this page does not
-  hold the code (a reload drops it; only a digest is stored). A new code
-  replaces the old one. The old code stops working.
+  hold the code (a reload drops it). The stored digest is the enroll secret:
+  anyone who can read the laptop's database, or a backup taken while the window
+  is open, could enroll until it ends. That is why the window is short, single
+  use, and Stop exists. A new code replaces the old one. The old code stops
+  working.
 - **Stop.** The window closes and the code stops working. The key file stays.
 - **Paired with your bot at** the local time. Shown after a copy has paired.
   It stays on the card after the window closes.
