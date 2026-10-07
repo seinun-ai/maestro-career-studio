@@ -1,10 +1,13 @@
 import logging
+import posixpath
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.datastructures import Headers
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import settings as app_settings
 from app.origin_guard import OriginGuardMiddleware
@@ -161,19 +164,86 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Added AFTER CORS and BEFORE TrustedHost, which puts it in the middle of the
-# stack: Host → Origin → CORS. CORS alone leaves a cross-origin POST's side
+# Added AFTER CORS and BEFORE the host middleware, which puts it in the middle
+# of the stack: Host → Origin → CORS. CORS alone leaves a cross-origin POST's side
 # effect intact and withholds only the reply, which against a zero-auth API is
 # the whole attack. See app/origin_guard.py.
 app.add_middleware(OriginGuardMiddleware, allowed_origins=ALLOWED_ORIGINS)
 
+_HOST_MARKS = (" ", "/", "@", "\\")
+_PATH_MARKS = ("..", "//", "\\", "%")
+
+
+def _hostname(value: str) -> str:
+    """One hostname, with a numeric port removed. Empty when it is not that."""
+    text = value.strip()
+    if not text or any(mark in text for mark in _HOST_MARKS):
+        return ""
+    host, separator, port = text.partition(":")
+    if not separator:
+        return text
+    if host and port.isdigit():
+        return host
+    return ""
+
+
+def _presented_host(scope: Scope) -> str:
+    values = Headers(scope=scope).getlist("host")
+    if len(values) != 1:
+        return ""
+    return _hostname(values[0])
+
+
+def _under_sync(path: str) -> bool:
+    """True only for a path that is, and stays, under /api/sync/, other than the always-on
+    copy's own loopback-only /api/sync/round."""
+    if not path.startswith("/api/sync/"):
+        return False
+    if any(mark in path for mark in _PATH_MARKS):
+        return False
+    normal = posixpath.normpath(path)
+    return normal.startswith("/api/sync/") and normal != "/api/sync/round"
+
+
+def _admits_public_host(scope: Scope) -> bool:
+    """settings.sync_public_host, read now, and only on a sync path."""
+    if scope["type"] not in ("http", "websocket"):
+        return False
+    configured = _hostname(app_settings.sync_public_host).casefold()
+    if not configured:
+        return False
+    if _presented_host(scope).casefold() != configured:
+        return False
+    return _under_sync(scope.get("path") or "")
+
+
+class SyncPublicHostMiddleware:
+    """TrustedHostMiddleware, plus one hostname on /api/sync/ only.
+
+    The extra hostname is not added to allowed_hosts. It is read from settings
+    on each request, because allowed_hosts itself was captured at import.
+    """
+
+    def __init__(self, app: ASGIApp, allowed_hosts: list[str]) -> None:
+        self.app = app
+        self.trusted = TrustedHostMiddleware(app, allowed_hosts=allowed_hosts)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if _admits_public_host(scope):
+            await self.app(scope, receive, send)
+            return
+        await self.trusted(scope, receive, send)
+
+
 # Added LAST, so it wraps everything and runs FIRST: a forged Host is rejected
 # before any handler, and the 400 deliberately carries no CORS headers.
 # This is the DNS-rebinding defence — see config.allowed_hosts for why CORS
-# alone cannot provide it. Starlette's add_middleware PREPENDS, so the order
-# these three calls appear in is the reverse of the order they run in; the
-# order is pinned by test_the_host_check_outranks_the_origin_check.
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=app_settings.allowed_hosts)
+# alone cannot provide it. sync_public_host is a second door for /api/sync/
+# only, and the wrapper reads it per request rather than widening allowed_hosts.
+# Starlette's add_middleware PREPENDS, so the order these three calls appear in
+# is the reverse of the order they run in; the order is pinned by
+# test_the_host_check_outranks_the_origin_check.
+app.add_middleware(SyncPublicHostMiddleware, allowed_hosts=app_settings.allowed_hosts)
 
 
 @app.exception_handler(NotOwnedHere)

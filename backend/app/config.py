@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     embeddings_out_of_process: bool = False
     sync_key_file: Path | None = None
     sync_remote_url: str = ""
+    # Hostname a published sync listener may send (SYNC_PUBLIC_HOST), for example
+    # <mac>.<tailnet>.ts.net. Empty leaves the host allowlist unchanged. The host
+    # middleware reads this on each request; it is never added to allowed_hosts.
+    sync_public_host: str = ""
     fast_model: str = "gpt-5.6-luna"
     smart_model: str = "gpt-5.6-luna"
     # Chat agent needs streaming tool calls; eligibility is the tools probe.
