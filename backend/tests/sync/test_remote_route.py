@@ -125,6 +125,14 @@ def test_an_ftp_proxy_is_a_needs_person_skip(world, monkeypatch, caplog):
     assert proxy not in caplog.text
 
 
+def test_a_proxy_with_a_bad_port_is_a_needs_person_skip(world, monkeypatch, caplog):
+    # httpx raises InvalidURL here, which is not a ValueError.
+    caplog.set_level("DEBUG")
+    proxy = "http://sentinel-proxy.example:notaport"
+    _proxy_round(world, monkeypatch, proxy)
+    assert proxy not in caplog.text
+
+
 def test_a_tunnel_ignores_a_socks_proxy(world, monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "socks5://sentinel-proxy.example:1080")
     monkeypatch.setattr(settings, "sync_remote_url", "http://127.0.0.1:9")

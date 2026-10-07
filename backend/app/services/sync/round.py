@@ -1010,7 +1010,7 @@ def _http_or_skip(db: Session, route: str):
         return _open_http(db, route)
     except OSError:
         return _skipped(BAD_BUNDLE, NEEDS_PERSON)
-    except (ImportError, ValueError):
+    except (ImportError, ValueError, httpx.InvalidURL):
         return _skipped(BAD_PROXY, NEEDS_PERSON)
 
 
