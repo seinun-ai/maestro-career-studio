@@ -262,12 +262,16 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
     in a second before the process started is the empty 404. A clock on the always-on copy
     that is running behind can see that refusal for up to 5 minutes after a
     restart. The next round after the clocks agree works.
-  - **Query strings are not encrypted.** They are bound into the seal, so they
-    cannot be swapped, but a proxy that decrypts TLS can read them. Job ids and
-    revisions in cursors are visible that way. The profile, the AI key, the
-    job-site password, the sync key and the pairing code are not.
+  - **Some of the message stays in the clear.** A proxy that decrypts TLS can
+    read the path, which names each operation; query strings (the job cursor
+    and the profile `since`); the plaintext `X-Maestro-Sync` header (protocol,
+    schema revision, and this copy's machine id); status codes; body sizes;
+    and timing. The seal binds the query string and that header, so they
+    cannot be swapped, but they are not encrypted. The profile, the AI key,
+    the job-site password, the sync key and the pairing code are not.
   - **Who else can see a round.** On the HTTPS route, the internet, Tailscale's
-    relay and the sandbox proxy see ciphertext, plus those query strings. The pasted pairing
+    relay and the sandbox proxy see ciphertext, plus the paths, query strings,
+    `X-Maestro-Sync` header, status codes, body sizes and timing above. The pasted pairing
     code plus a recorded enrollment would let the hosting platform recover the
     sync key. That is nothing beyond the key file already in its sandbox, but
     the code can outlive the sandbox in a transcript. Prefer

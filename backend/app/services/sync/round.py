@@ -16,6 +16,7 @@ import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import httpx
 from sqlalchemy import event, or_, select
@@ -30,7 +31,7 @@ from app.models.job import Job
 from app.models.setting import Setting
 from app.models.sync import SyncRequest, SyncTombstone
 from app.models.types import utcnow
-from app.services import http_client
+from app.services import http_client, persona, prompts
 from app.services.sync import (
     bundle_rows, duplicates, hooks, jobs_bundle, profile_bundle, request_apply, seal, status, wire,
 )
@@ -180,9 +181,20 @@ def _interpret(status_code: int, plain: bytes):
     return payload
 
 
+# A TLS endpoint in front of a down laptop answers these with no seal. A sealed
+# 503 from home still goes through open_response.
+_GATEWAY = frozenset({502, 503, 504})
+
+
+def _unsealed_gateway(response: httpx.Response) -> bool:
+    return response.status_code in _GATEWAY and seal.HEADER not in response.headers
+
+
 def _opened_answer(response: httpx.Response, secret: str, rid: str) -> bytes:
     if response.status_code == 404 and seal.HEADER not in response.headers:
         raise _Stop(_SEAL_REJECTED, outcome=NEEDS_PERSON)
+    if _unsealed_gateway(response):
+        raise _Stop(UNREACHABLE) from None
     try:
         return seal.open_response(
             secret, rid, response.status_code, response.headers.get(seal.HEADER, ""),
@@ -304,6 +316,48 @@ def _empty_profile_keys(remote: dict) -> set:
             and not any(row[name] for name in ("contact_json", "summary", "skills_json", "notes"))}
 
 
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8") if path.exists() else ""
+    except OSError:
+        return ""
+
+
+def _startup_seeds() -> dict[str, str]:
+    """Prompt rows startup writes, read from the same files it reads. Not copied here."""
+    return {
+        f"{prompts.PROMPT_PREFIX}{name}": _read_text(prompts.PROMPT_DIR / f"{name}.txt")
+        for name in prompts.VALID_PROMPTS
+    }
+
+
+def _setting_value(row: dict) -> str | None:
+    value = row.get("value") or ""
+    return value if isinstance(value, str) else None
+
+
+def _untouched_setting(key: tuple, row: dict, seeds: dict[str, str]) -> bool:
+    if key[0] != "settings":
+        return False
+    name = row.get("key")
+    if not isinstance(name, str) or (name not in seeds and name != persona.PERSONA_KEY):
+        return False
+    value = _setting_value(row)
+    if value is None:
+        return False
+    if name == persona.PERSONA_KEY:
+        # Empty is what a fresh install stores. A non-empty persona is a save:
+        # set_text rewrites the persona file too, so matching it proves nothing.
+        return value == ""
+    return value == seeds[name]
+
+
+def _seeded_setting_keys(remote: dict) -> set:
+    """Startup settings still holding what the seed wrote: nothing on this copy to lose."""
+    seeds = _startup_seeds()
+    return {key for key, row in remote.items() if _untouched_setting(key, row, seeds)}
+
+
 def _differs(key: tuple, row: dict, theirs: dict) -> bool:
     return key not in theirs or _row_hash(key[0], row) != _row_hash(key[0], theirs[key])
 
@@ -311,7 +365,8 @@ def _differs(key: tuple, row: dict, theirs: dict) -> bool:
 def _profile_differences(remote: dict, home: dict) -> dict[str, list[str]]:
     """List remote rows that would be lost or replaced. Home-only rows are ordinary replication."""
     mine, theirs = _profile_index(remote), _profile_index(home)
-    ignored = _addition_keys(mine, theirs) | _empty_profile_keys(mine)
+    ignored = (_addition_keys(mine, theirs) | _empty_profile_keys(mine)
+               | _seeded_setting_keys(mine))
     differences: dict[str, list[str]] = {}
     for key, row in mine.items():
         if key not in ignored and _differs(key, row, theirs):

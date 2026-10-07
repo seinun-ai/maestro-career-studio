@@ -25,7 +25,7 @@ from app import models
 from app.config import settings
 from app.db import get_db
 from app.main import app
-from app.services import base_resume_data, proposals, seeding, tailoring_session
+from app.services import base_resume_data, persona, prompts, proposals, seeding, tailoring_session
 from app.services.sync import jobs_bundle, pairing, profile_bundle, request_apply, seal, status
 from app.services.sync import requests as sync_requests
 from app.services.sync import round as sync_round
@@ -276,6 +276,54 @@ def test_a_filled_career_profile_on_the_remote_blocks_pairing(world, home, clock
     result = first(world)
     assert not result["ok"] and "kb_profile" in result["skipped"]
     assert "sentinel" not in result["skipped"]
+
+
+def test_a_seeded_persona_does_not_block_the_first_pair(world, home, clock):
+    """A fresh install's persona row is what startup writes, not something to lose."""
+    with world.building("remote"):
+        assert seeding.ensure_persona(world.remote) == ""
+    setting(world, "home", "persona", "Laptop persona")
+
+    assert first(world)["ok"]
+
+    assert world.seen("remote").get(models.Setting, "persona").value == "Laptop persona"
+
+
+def test_an_edited_persona_still_blocks_the_first_pair(world, home, clock):
+    with world.building("remote"):
+        seeding.ensure_persona(world.remote)
+        persona.set_persona("Edited on the bot", world.remote)
+    setting(world, "home", "persona", "Laptop persona")
+
+    result = first(world)
+
+    assert not result["ok"] and "settings: persona" in result["skipped"]
+    assert "Edited on the bot" not in result["skipped"]
+    assert world.remote.get(models.Setting, "persona").value == "Edited on the bot"
+
+
+def test_a_seeded_prompt_does_not_block_the_first_pair(world, home, clock):
+    default = (prompts.PROMPT_DIR / "qa.txt").read_text(encoding="utf-8")
+    with world.building("remote"):
+        seeding.seed_prompts(world.remote)
+        assert world.remote.get(models.Setting, "prompt.qa").value == default
+    setting(world, "home", "prompt.qa", default + "Laptop edit.")
+
+    assert first(world)["ok"]
+
+    assert world.seen("remote").get(models.Setting, "prompt.qa").value == default + "Laptop edit."
+
+
+def test_an_edited_prompt_still_blocks_the_first_pair(world, home, clock):
+    with world.building("remote"):
+        seeding.seed_prompts(world.remote)
+        world.remote.get(models.Setting, "prompt.qa").value = "Edited on the bot"
+        world.remote.commit()
+
+    result = first(world)
+
+    assert not result["ok"] and "prompt.qa" in result["skipped"]
+    assert "Edited on the bot" not in result["skipped"]
 
 
 def test_rows_that_differ_only_in_their_own_timestamps_do_not_block_pairing(world, home, clock):

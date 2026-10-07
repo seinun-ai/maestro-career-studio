@@ -168,6 +168,54 @@ def test_a_404_whose_seal_will_not_open_stays_unverified(world, monkeypatch):
     assert summary["error"] == UNVERIFIED
 
 
+@pytest.mark.parametrize("status_code", [502, 503, 504])
+def test_an_unsealed_gateway_is_unreachable(world, monkeypatch, status_code):
+    def respond(_request):
+        return httpx.Response(status_code, content=b"bad gateway")
+
+    summary = _transport_round(world, monkeypatch, respond)
+    assert summary["ok"] is False and summary["outcome"] == "transient"
+    assert summary["error"] == sync_round.UNREACHABLE
+    assert UNVERIFIED not in json.dumps(summary)
+
+
+def test_an_unsealed_500_stays_unverified(world, monkeypatch):
+    summary = _transport_round(
+        world, monkeypatch, lambda _request: httpx.Response(500, content=b"bad gateway"))
+    assert summary["ok"] is False and summary["outcome"] == "transient"
+    assert summary["error"] == UNVERIFIED
+    assert sync_round.UNREACHABLE not in summary["error"]
+
+
+def test_a_sealed_503_keeps_its_sentence(world, monkeypatch):
+    """A seal header means the laptop answered. A proxy's bare 503 has none."""
+    body = b'{"detail":"down"}'
+
+    def respond(request):
+        secret = status.read_key()
+        peer = request.headers.get("x-maestro-sync", "")
+        ok = seal.check_header(
+            secret, request.method, request.url.path, request.url.query.decode(),
+            request.headers.get(seal.HEADER, ""), peer, replay=None)
+        header, wire = seal.seal_response(secret, ok.rid, 503, body)
+        return httpx.Response(503, content=wire, headers={seal.HEADER: header})
+
+    summary = _transport_round(world, monkeypatch, respond)
+    assert summary["ok"] is False and summary["outcome"] == "transient"
+    assert summary["error"] == "503: Your laptop couldn't finish that sync request."
+    assert sync_round.UNREACHABLE not in summary["error"]
+
+
+def test_a_503_whose_seal_will_not_open_stays_unverified(world, monkeypatch):
+    def respond(_request):
+        return httpx.Response(503, content=b"x", headers={seal.HEADER: "2.not-a-nonce"})
+
+    summary = _transport_round(world, monkeypatch, respond)
+    assert summary["ok"] is False and summary["outcome"] == "transient"
+    assert summary["error"] == UNVERIFIED
+    assert sync_round.UNREACHABLE not in summary["error"]
+
+
 def test_an_https_round_trusts_the_environment_and_a_tunnel_does_not(world, monkeypatch):
     seen = []
 

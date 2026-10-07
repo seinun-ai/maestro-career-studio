@@ -109,9 +109,14 @@ outsider still gets the empty 404.
    SYNC_REMOTE_URL=https://<mac>.<tailnet>.ts.net
    ```
 
-3. If a proxy on this machine decrypts TLS, set `SSL_CERT_FILE` to a bundle
-   that contains the proxy's CA. `maestro.env` is loaded when the backend
-   starts, so it can live there.
+3. If a proxy on this machine decrypts TLS, set `HTTPS_PROXY`, `NO_PROXY`, and
+   `SSL_CERT_FILE` in `$MAESTRO_HOME/maestro.env`. The native scripts load that
+   file with `set -a`. A backend the cron watchdog restarts has no shell
+   environment, so a proxy variable that exists only in a terminal never
+   reaches it. Without `HTTPS_PROXY` and `NO_PROXY` there, the round reports
+   "Laptop unreachable" and exits 0, then keeps doing that. `SSL_CERT_FILE` is
+   a bundle that contains the proxy's CA. Example values, not a real proxy:
+   `HTTPS_PROXY=http://proxy.example:3128` and `NO_PROXY=127.0.0.1,localhost`.
 4. Restart, because the backend reads `maestro.env` at start:
 
    ```bash
@@ -434,7 +439,9 @@ Either machine can be rebuilt from its backup plus one sync round.
   or Docker is stopped. The outcome is `transient`. `sync.sh` prints "Sync
   didn't run: Laptop unreachable. It will try again." This is not an error:
   Maestro backs off and retries. On the SSH route, check the tunnel with
-  `curl -s http://127.0.0.1:8101/health`.
+  `curl -s http://127.0.0.1:8101/health`. On the HTTPS route, the same line
+  repeating forever means `HTTPS_PROXY` or `NO_PROXY` is missing from
+  `maestro.env` (the watchdog restart does not keep your shell).
 - **A laptop asleep for days.** The bot keeps hunting and applying to its own
   jobs. Mail updates and your queue and skip choices wait as requests. The
   first round after the laptop wakes sends them all. The wait is at most 30

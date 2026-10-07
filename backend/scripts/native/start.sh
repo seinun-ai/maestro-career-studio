@@ -41,7 +41,7 @@ chmod 600 "$log"
 # exec keeps the pidfile's PID; the session also owns any spawned helpers.
 nohup "$NATIVE_PYTHON" -c \
     'import os, sys; os.setsid(); os.execv(sys.executable, [sys.executable, "-m", "uvicorn", *sys.argv[1:]])' \
-    app.main:app --host 127.0.0.1 --port "$MAESTRO_PORT" --workers 1 \
+    app.main:app --host 127.0.0.1 --port "$MAESTRO_PORT" --workers 1 --no-server-header \
     > "$log" 2>&1 < /dev/null &
 NATIVE_PID=$!
 trap 'native_abort_launch; exit 1' INT TERM

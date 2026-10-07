@@ -1,9 +1,10 @@
 """The published hostname is accepted only under /api/sync/ (sealed-sync Task 4).
 
 A path is under that prefix only when it starts with ``/api/sync/`` and still does
-after normalization. ``/api/sync`` with no further segment, ``/api/sync-setup``,
-and anything that can climb out (``..``, a percent-encoded segment, ``//``) are
-the same host refusal TrustedHostMiddleware already returns.
+after normalization, and is not ``/api/sync/round``. On the published name,
+``/api/sync`` itself and a ``/api/sync/`` path the tree refuses (``..``, a
+percent-encoded segment, ``//``, ``/round``) are the sync routes' bare 404.
+``/api/sync-setup`` and every other path stay TrustedHostMiddleware's host error.
 """
 
 import asyncio
@@ -29,9 +30,8 @@ REFUSED_PATHS = (
     "/openapi.json",
     "/api/jobs",
     "/api/settings/persona",
-    "/api/sync",
-    "/api/sync/",
     "/api/sync-setup/enroll",
+    "/api/sync-setup/status",
     "/api/syncology",
     "/API/sync/hello",
     "/not/api/sync/hello",
@@ -226,10 +226,12 @@ def test_a_sealed_refusal_on_the_public_host_keeps_the_seal(client, sync_on, pee
     assert json.loads(plain)["reason"] == "version"
 
 
-def test_the_round_route_is_refused_on_the_public_host(client, publish):
+def test_the_round_route_is_refused_on_the_public_host(sync_on, publish):
     # /round is the always-on copy's own loopback call; the published name never reaches it.
-    _assert_refused(client.post("/api/sync/round", headers={"Host": PUBLIC}, json={}))
-    _assert_refused(client.get("/api/sync/round/", headers={"Host": PUBLIC}))
+    # The old host 400 named the app and singled this path out.
+    reference = _exchange("GET", "/api/sync/hello", [(b"host", b"testserver")])
+    for method, path in (("POST", "/api/sync/round"), ("GET", "/api/sync/round/")):
+        assert _exchange(method, path, [(b"host", PUBLIC.encode("ascii"))]) == reference
 
 
 def test_enroll_is_not_a_host_refusal_on_the_public_host(client, publish):
@@ -259,10 +261,37 @@ def test_the_public_host_is_one_name_not_a_pattern(client, monkeypatch, configur
     _assert_refused(client.get("/health", headers={"Host": "evil.example"}))
 
 
-@pytest.mark.parametrize("path", RAW_PATHS)
-def test_a_sync_prefix_that_escapes_is_refused(publish, path):
+@pytest.mark.parametrize("path", [
+    "/api/sync",
+    "/api/sync/",
+    "/api/sync/round",
+    "/api/sync//hello",
+    "/api/sync/%2e%2e/jobs",
+    "/api/sync/../jobs",
+])
+def test_a_sync_shaped_miss_on_the_public_host_is_the_bare_404(sync_on, publish, path):
+    reference = _exchange("GET", "/api/sync/hello", [(b"host", b"testserver")])
+    assert reference == _BARE
+    seen = _exchange("GET", path, [(b"host", PUBLIC.encode("ascii"))])
+    assert seen == reference
+    assert seal.HEADER.lower().encode() not in {name for name, _value in seen[2]}
+
+
+@pytest.mark.parametrize("path", ["/api/sync-setup/status", "/api/jobs"])
+def test_paths_outside_the_sync_mount_stay_a_host_error(publish, path):
     code, body = _raw_http(path, [(b"host", PUBLIC.encode("ascii"))])
     assert (code, body) == (400, INVALID.encode())
+
+
+@pytest.mark.parametrize("path", RAW_PATHS)
+def test_a_sync_prefix_that_escapes_is_the_bare_404(sync_on, publish, path):
+    # A backslash does not start with /api/sync/, so it is not the published mount.
+    reference = _exchange("GET", "/api/sync/hello", [(b"host", b"testserver")])
+    seen = _exchange("GET", path, [(b"host", PUBLIC.encode("ascii"))])
+    if path.startswith("/api/sync/"):
+        assert seen == reference
+    else:
+        assert (seen[0], seen[1]) == (400, INVALID.encode())
 
 
 def test_two_host_headers_are_refused(publish):

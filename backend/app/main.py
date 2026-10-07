@@ -207,16 +207,36 @@ def _under_sync(path: str) -> bool:
     return normal.startswith("/api/sync/") and normal != "/api/sync/round"
 
 
-def _admits_public_host(scope: Scope) -> bool:
-    """settings.sync_public_host, read now, and only on a sync path."""
+def _on_public_host(scope: Scope) -> bool:
+    """settings.sync_public_host, read now, matches the one presented Host."""
     if scope["type"] not in ("http", "websocket"):
         return False
     configured = _hostname(app_settings.sync_public_host).casefold()
     if not configured:
         return False
-    if _presented_host(scope).casefold() != configured:
+    return _presented_host(scope).casefold() == configured
+
+
+def _sync_shaped(path: str) -> bool:
+    return path == "/api/sync" or path.startswith("/api/sync/")
+
+
+def _admits_public_host(scope: Scope) -> bool:
+    """The published name, and only on a path that stays under /api/sync/."""
+    if not _on_public_host(scope):
         return False
     return _under_sync(scope.get("path") or "")
+
+
+def _bare_public_miss(scope: Scope) -> bool:
+    """A sync-shaped path the published tree refuses. Answer it here, not via the host check.
+
+    TrustedHostMiddleware's plain-text 400 names the stack and singles these paths out.
+    """
+    if scope["type"] != "http" or not _on_public_host(scope):
+        return False
+    path = scope.get("path") or ""
+    return _sync_shaped(path) and not _under_sync(path)
 
 
 _SEAL_NAME = SEAL_HEADER.lower().encode("ascii")
@@ -262,8 +282,9 @@ class SyncPublicHostMiddleware:
 
     The extra hostname is not added to allowed_hosts. It is read from settings
     on each request, because allowed_hosts itself was captured at import.
-    A request admitted on that name has its ``send`` wrapped: anything that
-    does not carry the seal header leaves as the sync routes' empty 404.
+    A sync-shaped path that is not admitted is that empty 404 directly, without
+    calling the app. A request that is admitted has its ``send`` wrapped:
+    anything that does not carry the seal header leaves as the same 404.
     """
 
     def __init__(self, app: ASGIApp, allowed_hosts: list[str]) -> None:
@@ -271,6 +292,9 @@ class SyncPublicHostMiddleware:
         self.trusted = TrustedHostMiddleware(app, allowed_hosts=allowed_hosts)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if _bare_public_miss(scope):
+            await Response(status_code=404)(scope, receive, send)
+            return
         if not _admits_public_host(scope):
             await self.trusted(scope, receive, send)
             return

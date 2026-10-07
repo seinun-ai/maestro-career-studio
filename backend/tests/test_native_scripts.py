@@ -278,7 +278,7 @@ def assert_migration(ctx):
 
 def assert_worker(ctx, backend):
     assert backend["args"] == ["app.main:app", "--host", "127.0.0.1",
-                               "--port", "8741", "--workers", "1"]
+                               "--port", "8741", "--workers", "1", "--no-server-header"]
     assert backend["cwd"] == str(BACKEND)
     assert backend["umask"] == 0o077
     assert (ctx.home / "backend.pid").read_text().strip() == str(backend["pid"])
@@ -568,7 +568,7 @@ def test_default_home_and_port_work_without_overrides(native_home):
     start_home(ctx)
     backend = read_record(ctx, "uvicorn")
     assert backend["args"] == ["app.main:app", "--host", "127.0.0.1",
-                               "--port", "8001", "--workers", "1"]
+                               "--port", "8001", "--workers", "1", "--no-server-header"]
     assert_runtime_paths(backend["env"], ctx.home)
     assert_private_layout(ctx)
 

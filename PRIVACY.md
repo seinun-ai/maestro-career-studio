@@ -58,9 +58,11 @@ owns, and the laptop holds replicas of them. The hosting platform for that
 copy already holds this replica. Every sync message is sealed with keys derived
 from the sync key, and the key never travels. On the HTTPS route, the
 internet, Tailscale's relay and a proxy that decrypts TLS see ciphertext, plus
-query strings (job ids and
-revisions in cursors are visible; the profile, the AI key and the job-site
-password are not). The pasted code plus a recorded enrollment would let that
+the path (it names each operation), query strings (the job cursor and the
+profile `since`), the plaintext `X-Maestro-Sync` header (protocol, schema
+revision, and this copy's machine id), status codes, body sizes and timing.
+The profile, the AI key and the job-site password are not in that cleartext.
+The pasted code plus a recorded enrollment would let that
 platform recover the sync key. That is nothing beyond the key file already in
 its sandbox, but the code can outlive the sandbox in a transcript. Prefer
 `sync.sh --pair --code -`. If the platform is ever suspect, delete both key
