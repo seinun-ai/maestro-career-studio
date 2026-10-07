@@ -59,8 +59,9 @@ middle (the sandbox's decrypting proxy, a public relay, the internet) can read o
 - The user pastes the code to the bot, which runs `sync.sh --pair --code <code>`. The always-on
   copy sends an enroll request sealed with a key derived from the code; the laptop answers with
   the sync key sealed the same way and retires the code. Then the pairing round runs.
-- At most 5 attempts per code; the code is never logged or stored in clear (a hash, compared in
-  constant time). The card then shows "Paired with your bot at <time>".
+- No attempt limit (owner decision, 2026-10-06, after review): 80 bits makes online guessing
+  hopeless, and a limit would only let outsiders burn the owner's code. A code works once and
+  expires after 10 minutes; it is never logged or stored in clear (only its digest). The card then shows "Paired with your bot at <time>".
 - The same mechanism serves the SSH tunnel route. Task 18's no-code enroll is replaced.
 
 ## Part 3: Setup, rules, docs, testing
