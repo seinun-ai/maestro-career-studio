@@ -28,6 +28,8 @@ def pairing_post(self, request, url):
         assert request.get_method() == "POST" and not request.has_header("Authorization")
         sent = json.loads(request.data.decode())
         (records / "enroll.json").write_text(json.dumps(sent))
+        import sys
+        (records / "helper-argv.json").write_text(json.dumps(sys.argv))
         body = json.loads(os.environ.get("NATIVE_TEST_ENROLL", '{"ok": true}'))
         if body.get("ok") is True:
             key = Path(os.environ["SYNC_KEY_FILE"])
@@ -80,6 +82,17 @@ def test_code_from_stdin_is_posted_and_not_printed(native_home):
     assert enrolled(ctx) == {"code": CODE}
     assert CODE not in result.stdout + result.stderr
     assert_sync_safe(result, ctx)
+
+
+def test_the_helper_argv_does_not_contain_a_stdin_code(native_home):
+    ctx = native_home
+    prepare(ctx)
+    result = run_with(ctx, "--pair", "--code", "-", stdin=CODE + "\n")
+    assert result.returncode == 0, result.stderr
+    recorded = json.loads((ctx.records / "helper-argv.json").read_text())
+    assert recorded
+    assert CODE not in json.dumps(recorded)
+    assert enrolled(ctx) == {"code": CODE}
 
 
 @pytest.mark.parametrize("args", [

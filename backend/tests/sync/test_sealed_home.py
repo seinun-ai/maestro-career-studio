@@ -447,11 +447,12 @@ def test_a_swapped_peer_header_is_a_bare_404(client, sync_on, peer):
 
 def test_an_origin_on_a_sealed_peer_route_is_a_bare_404(client, sync_on, peer, monkeypatch, tmp_path):
     """A browser cannot seal. Origin on a peer route is the same empty 404 as sync off, even
-    when the seal would have opened. Setup and enroll keep the 403."""
+    when the seal would have opened. Setup keeps the 403. Enroll is that same bare 404."""
     setup = client.post("/api/sync-setup/enroll", headers={"Origin": ALLOWED_ORIGIN})
     enroll = client.post("/api/sync/enroll", headers={"Origin": ALLOWED_ORIGIN})
-    assert setup.status_code == 403 and enroll.status_code == 403
-    assert setup.json()["detail"] == enroll.json()["detail"] == "Browser requests can't use this."
+    assert setup.status_code == 403
+    assert setup.json()["detail"] == "Browser requests can't use this."
+    assert enroll.status_code == 404 and enroll.content == b""
     key = status.read_key()
     header, wire, _rid = seal.seal_request(key, "GET", "/api/sync/hello", "", b"", peer)
     headers = {seal.HEADER: header, "X-Maestro-Sync": peer, "Origin": ALLOWED_ORIGIN,

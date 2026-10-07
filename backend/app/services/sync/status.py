@@ -105,11 +105,6 @@ def _route_of(url: httpx.URL) -> str | None:
     return None
 
 
-def remote_is_own_tunnel() -> bool:
-    """True when ``remote_route()`` is the loopback tunnel. Pairing still calls this."""
-    return remote_route() == "tunnel"
-
-
 def mode() -> str:
     """"off", "home" or "remote" from one read of the key file (a list of rows reads it once)."""
     if read_key() is None:

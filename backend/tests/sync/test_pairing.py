@@ -1,21 +1,26 @@
 """Pairing with a one-time code. The code is shown once; enroll speaks seals."""
 
+import asyncio
 import hashlib
 import json
 import logging
 import re
+import threading
 from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 from fastapi import Request
+from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.db import get_db
 from app.main import app
 from app.models.setting import Setting
 from app.routers import sync as sync_router
 from app.services import http_client
 from app.services.sync import pairing, seal, status
+from app.services.sync import round as sync_round
 from tests.sync import test_home_endpoints as home_tests
 
 # Reuse the existing isolated channel fixtures without importing their test cases.
@@ -27,7 +32,10 @@ WINDOW = "/api/settings/second-copy"
 ENROLL = "/api/sync/enroll"
 SETUP = "/api/sync-setup/enroll"
 CLOSED = "Pairing didn't work. Show a pairing code on your laptop and try again."
+HOME_ONLY = "Show a pairing code on your laptop, not on the always-on copy."
 TUNNEL = "The laptop's address must be this machine's own tunnel or an https:// address."
+UNVERIFIED = "The laptop's answer couldn't be verified."
+ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 KEY = "SENTINEL-PAIRING-KEY-DO-NOT-PRINT"
 CODE_RE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}$")
 TYPED = "o123 4567 89ab cdef"
@@ -74,6 +82,21 @@ def bare_of(response):
         (key.lower(), value) for key, value in response.headers.items()
         if key.lower() not in {"date", "server"}))
     return response.status_code, bytes(response.content), headers
+
+
+def off_bare(client, monkeypatch, method, path, **kwargs):
+    """A sync-off answer for the same method and headers. Callers compare, not hard-code."""
+    remembered = settings.sync_key_file
+    monkeypatch.setattr(settings, "sync_key_file", remembered.parent / "absent-sync-key")
+    try:
+        return bare_of(client.request(method, path, **kwargs))
+    finally:
+        monkeypatch.setattr(settings, "sync_key_file", remembered)
+
+
+def setting_keys(db):
+    db.expire_all()
+    return {row.key for row in db.query(Setting)}
 
 
 def sealed_enroll(client, secret, *, body=b"", peer=PEER, query="", now=None, label=None,
@@ -165,7 +188,7 @@ def test_window_refuses_remote_even_without_key(client, sync_off, monkeypatch, m
     monkeypatch.setattr(settings, "sync_remote_url", "http://127.0.0.1:8101")
     response = client.request(method, WINDOW)
     assert response.status_code == 409
-    assert isinstance(response.json()["detail"], str)
+    assert response.json()["detail"] == HOME_ONLY
     assert not status.key_path().exists()
 
 
@@ -196,21 +219,43 @@ def test_normalization_maps_confusables_and_rejects_anything_else():
     assert pairing.normalize_code("") is None
 
 
-def test_enroll_origin_is_refused_before_key_or_body(client, sync_on, monkeypatch):
+def test_enroll_origin_is_the_bare_404_before_the_key_or_body(client, sync_on, monkeypatch):
+    """A valid enroll seal from an allowed Origin is still the sync-off 404, and the key stays."""
+    baseline = off_bare(
+        client, monkeypatch, "GET", "/api/sync/hello", headers={"Origin": ALLOWED_ORIGIN})
+    secret = digest(show(client))
+    header, wire, _rid = seal.seal_request(
+        secret, "POST", ENROLL, "", b"", PEER, label=seal.ENROLL_TO_HOME)
+
     def forbidden(*args, **kwargs):
-        raise AssertionError("must refuse before touching secrets or the body")
+        raise AssertionError("must refuse before touching the sync key or the body")
+
+    read_key = status.read_key
     monkeypatch.setattr(status, "read_key", forbidden)
     monkeypatch.setattr(Request, "body", forbidden)
-    response = client.post(ENROLL, headers={"Origin": ALLOWED_ORIGIN}, content=KEY)
-    assert response.status_code == 403
+    monkeypatch.setattr(Request, "stream", forbidden)
+    response = client.post(ENROLL, content=wire, headers={
+        seal.HEADER: header, "X-Maestro-Sync": PEER, "Origin": ALLOWED_ORIGIN})
+    assert bare_of(response) == baseline
+    monkeypatch.setattr(status, "read_key", read_key)
+    assert window_open(client)
 
 
-def test_enroll_without_key_is_404(client, sync_off):
-    assert client.post(ENROLL).status_code == 404
+def test_enroll_without_a_key_matches_sync_off_hello(client, sync_off):
+    hello = bare_of(client.get("/api/sync/hello"))
+    assert bare_of(client.post(ENROLL, content=b"x")) == hello
+    origin = {"Origin": ALLOWED_ORIGIN}
+    assert bare_of(client.get("/api/sync/hello", headers=origin)) == bare_of(
+        client.post(ENROLL, headers=origin, content=b"x"))
 
 
-def test_enroll_without_key_is_404_for_a_web_origin_too(client, sync_off):
-    assert client.post(ENROLL, headers={"Origin": ALLOWED_ORIGIN}).status_code == 404
+def test_generated_codes_use_every_position_of_the_crockford_alphabet():
+    """16 Crockford characters is 80 bits. A short code or a stuck column fails here."""
+    codes = [pairing._new_code().replace("-", "") for _ in range(300)]
+    assert all(len(code) == 16 and set(code) <= set(ALPHABET) for code in codes)
+    assert set("".join(codes)) == set(ALPHABET)
+    for index, column in enumerate(zip(*codes)):
+        assert len(set(column)) >= 8, index
 
 
 def test_stop_retires_the_digest(client, sync_on, db_session):
@@ -290,7 +335,7 @@ def test_a_bad_mac_does_not_read_the_body(client, sync_on, monkeypatch):
     assert response.status_code == 404 and called == []
 
 
-def test_a_failed_open_spends_one_attempt_and_a_replay_does_not(client, sync_on):
+def test_a_failed_open_keeps_the_window_and_a_replay_does_not(client, sync_on):
     secret = digest(show(client))
     header, wire, rid = seal.seal_request(
         secret, "POST", ENROLL, "", b"{}", PEER, label=seal.ENROLL_TO_HOME)
@@ -306,39 +351,49 @@ def test_a_failed_open_spends_one_attempt_and_a_replay_does_not(client, sync_on)
     assert open_enroll(response, secret, fresh)["key"] == status.read_key()
 
 
-def test_the_fifth_failed_open_retires_and_failures_match(client, sync_on):
-    baseline = bare_of(client.post(ENROLL, content=b"x"))
-    assert baseline[0] == 404 and baseline[1] == b""
+def test_wrong_guesses_do_not_retire_the_window(client, sync_on, db_session, monkeypatch):
+    baseline = off_bare(client, monkeypatch, "GET", "/api/sync/hello")
     secret = digest(show(client))
-    wrong, _rid = sealed_enroll(client, digest("ZZZZ-ZZZZ-ZZZZ-ZZZZ"))
-    assert bare_of(wrong) == baseline
-    for _ in range(3):
+    assert "sync.pairing_attempts" not in setting_keys(db_session)
+    wrong = digest("ZZZZ-ZZZZ-ZZZZ-ZZZZ")
+    for _ in range(100):
+        response, _rid = sealed_enroll(client, wrong)
+        assert bare_of(response) == baseline
+    for _ in range(6):
         header, wire, _rid = flipped(secret)
         assert bare_of(post_parts(client, header, wire)) == baseline
     assert window_open(client)
-    header, wire, _rid = flipped(secret)
-    assert bare_of(post_parts(client, header, wire)) == baseline
-    assert not window_open(client)
-    sixth, _rid = sealed_enroll(client, secret)
-    assert bare_of(sixth) == baseline
-    assert client.get(WINDOW).json()["last_paired_at"] is None
+    assert "sync.pairing_attempts" not in setting_keys(db_session)
+    response, rid = sealed_enroll(client, secret)
+    assert open_enroll(response, secret, rid)["key"] == status.read_key()
 
 
-def test_a_damaged_window_matches_the_bare_404(client, sync_on, db_session):
-    baseline = bare_of(client.post(ENROLL, content=b"x"))
+def test_a_new_code_replaces_the_previous_digest(client, sync_on):
+    first, second = show(client), show(client)
+    refused, _rid = sealed_enroll(client, digest(first))
+    assert refused.status_code == 404 and refused.content == b""
+    assert window_open(client)
+    response, rid = sealed_enroll(client, digest(second))
+    assert open_enroll(response, secret := digest(second), rid)["key"] == status.read_key()
+    assert digest(first) != secret
+
+
+def test_a_damaged_window_matches_the_bare_404(client, sync_on, db_session, monkeypatch):
+    baseline = off_bare(client, monkeypatch, "GET", "/api/sync/hello")
     secret = digest(show(client))
     put_setting(db_session, "sync.pairing_until", "not-a-time")
     response, _rid = sealed_enroll(client, secret)
     assert bare_of(response) == baseline
 
 
-def test_an_expired_window_matches_and_does_not_spend_the_five(client, sync_on, db_session):
-    baseline = bare_of(client.post(ENROLL, content=b"x"))
+def test_an_expired_window_matches_sync_off_and_still_works_once_restored(
+        client, sync_on, db_session, monkeypatch):
+    baseline = off_bare(client, monkeypatch, "GET", "/api/sync/hello")
     code = show(client)
     secret = digest(code)
     put_setting(db_session, "sync.pairing_until",
                 (datetime.now(UTC) - timedelta(seconds=1)).isoformat())
-    for _ in range(5):
+    for _ in range(6):
         response, _rid = sealed_enroll(client, secret)
         assert bare_of(response) == baseline
     put_setting(db_session, "sync.pairing_until",
@@ -354,17 +409,167 @@ def test_a_closed_window_rejects_the_stand_in_secret(client, sync_on):
     assert status.read_key().encode() not in response.content
 
 
-def test_enroll_uses_the_sync_single_flight_lock(client, sync_on):
-    secret = digest(show(client))
-    sync_router._LOCK.acquire()
+def _stall_first_enroll_check(monkeypatch):
+    """Hold the first enroll mac check. A lock taken before it makes every peer busy."""
+    started, release = threading.Event(), threading.Event()
+    real = seal.check_header
+    gate = {"open": True}
+    guard = threading.Lock()
+
+    def slow(*args, **kwargs):
+        if kwargs.get("label") == seal.ENROLL_TO_HOME:
+            with guard:
+                stall = gate["open"]
+                gate["open"] = False
+            if stall:
+                started.set()
+                release.wait(8)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(seal, "check_header", slow)
+    return started, release
+
+
+def _peer_hello(revision):
+    key = status.read_key()
+    peer = f"{status.SYNC_PROTOCOL}:{revision}:flood-peer"
+    header, _wire, rid = seal.seal_request(key, "GET", "/api/sync/hello", "", b"", peer)
+    response = TestClient(app).get("/api/sync/hello", headers={
+        seal.HEADER: header, "X-Maestro-Sync": peer})
     try:
-        response = client.post(ENROLL, content=b"x")
-        assert response.status_code == 409 and response.json()["reason"] == "busy"
+        plain = sync_round._opened_answer(response, key, rid)
+        return sync_round._interpret(response.status_code, plain)
+    except sync_round._Stop as stop:
+        return stop
+
+
+def _without_shared_session():
+    return app.dependency_overrides.pop(get_db, None)
+
+
+def _restore_session(saved):
+    if saved is not None:
+        app.dependency_overrides[get_db] = saved
+
+
+def test_a_flood_of_bad_enrolls_does_not_busy_a_peer_or_a_round(
+        client, sync_on, db_session, monkeypatch):
+    revision = status.schema_revision(db_session)
+    db_session.rollback()
+    started, release = _stall_first_enroll_check(monkeypatch)
+    saved = _without_shared_session()
+    holder = {}
+
+    def hold():
+        holder["response"] = TestClient(app).post(ENROLL, content=b"x")
+
+    thread = threading.Thread(target=hold)
+    thread.start()
+    assert started.wait(5), "the bad enroll never reached the mac check"
+    try:
+        flood = [TestClient(app).post(ENROLL, content=b"x") for _ in range(12)]
+        opened = _peer_hello(revision)
     finally:
-        sync_router._LOCK.release()
-    response, rid = sealed_enroll(client, secret)
-    assert open_enroll(response, secret, rid)["key"] == status.read_key()
+        release.set()
+        thread.join(8)
+        _restore_session(saved)
+    assert not thread.is_alive()
+    assert all(response.status_code != 409 and b"busy" not in response.content for response in flood)
+    assert isinstance(opened, dict) and opened.get("protocol") == status.SYNC_PROTOCOL
+    assert "already running" not in json.dumps(opened)
     assert not sync_router._LOCK.locked()
+
+
+def test_two_concurrent_correct_enrolls_hand_the_key_over_once(
+        client, sync_on, db_session, monkeypatch):
+    baseline = off_bare(client, monkeypatch, "GET", "/api/sync/hello")
+    secret = digest(show(client))
+    key = status.read_key()
+    seals = [
+        seal.seal_request(secret, "POST", ENROLL, "", b"", PEER, label=seal.ENROLL_TO_HOME)
+        for _ in range(2)]
+    real = pairing.complete_pairing
+    barrier = threading.Barrier(2)
+
+    def gated(db, digest_value):
+        barrier.wait(5)
+        return real(db, digest_value)
+
+    monkeypatch.setattr(pairing, "complete_pairing", gated)
+    db_session.rollback()
+    saved = _without_shared_session()
+    results = [None, None]
+
+    def post(index):
+        header, wire, rid = seals[index]
+        results[index] = (TestClient(app).post(ENROLL, content=wire, headers={
+            seal.HEADER: header, "X-Maestro-Sync": PEER}), rid)
+
+    threads = [threading.Thread(target=post, args=(index,)) for index in range(2)]
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+    finally:
+        _restore_session(saved)
+    assert all(item is not None and not isinstance(item, Exception) for item in results)
+    statuses = sorted(item[0].status_code for item in results)
+    assert statuses == [200, 404]
+    for response, rid in results:
+        if response.status_code == 200:
+            assert open_enroll(response, secret, rid)["key"] == key
+        else:
+            assert bare_of(response) == baseline
+    db_session.expire_all()
+    assert client.get(WINDOW).json()["open_until"] is None
+    again, _rid = sealed_enroll(client, secret)
+    assert bare_of(again) == baseline
+
+
+def test_health_answers_while_enroll_here_is_stuck(client, remote_setup, monkeypatch):
+    started, release = threading.Event(), threading.Event()
+    outcome = {}
+
+    def stuck(request):
+        started.set()
+        release.wait(10)
+        return httpx.Response(404)
+
+    fake_route(monkeypatch, stuck, trust_env=False)
+
+    async def scenario():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
+            loop = asyncio.get_running_loop()
+
+            def probe():
+                if not started.wait(3):
+                    outcome["blocked"] = "never"
+                    release.set()
+                    return
+                future = asyncio.run_coroutine_threadsafe(http.get("/health"), loop)
+                try:
+                    health = future.result(timeout=1)
+                except TimeoutError:
+                    outcome["blocked"] = "loop"
+                    release.set()
+                    return
+                outcome["health"] = (health.status_code, health.json())
+                release.set()
+
+            enroll = asyncio.create_task(http.post(SETUP, json={"code": TYPED}))
+            watcher = threading.Thread(target=probe)
+            watcher.start()
+            await enroll
+            watcher.join(5)
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()
+    assert outcome.get("blocked") is None
+    assert outcome.get("health") == (200, {"status": "ok"})
 
 
 @pytest.fixture
@@ -500,9 +705,9 @@ def test_remote_busy_enrollment_has_a_transient_outcome(client, remote_setup):
 
 @pytest.mark.parametrize("case", [
     (404, "needs_person", CLOSED),
-    (429, "needs_person", "Pairing was tried too often. Show a new pairing code on your laptop."),
+    (429, "needs_person", UNVERIFIED),
     (503, "transient", "Laptop unreachable."),
-    (307, "needs_person", "The laptop's answer couldn't be verified."),
+    (307, "needs_person", UNVERIFIED),
 ])
 def test_remote_failures_have_fixed_sentences(client, remote_setup, monkeypatch, case):
     code, outcome, detail = case

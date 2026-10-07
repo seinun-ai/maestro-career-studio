@@ -50,7 +50,7 @@ if [[ "$pair" == true && ! -e "$SYNC_KEY_FILE" && ! -L "$SYNC_KEY_FILE" ]]; then
         IFS= read -r code || native_error "$usage"
     fi
     body="$(printf '%s' "$code" | "$NATIVE_PYTHON" -c 'import json,sys; sys.stdout.write(json.dumps({"code": sys.stdin.read()}))')"
-    enrollment="$(native_post /api/sync-setup/enroll "$body")" \
+    enrollment="$(printf '%s' "$body" | native_post /api/sync-setup/enroll)" \
         || native_error 'Native backend is not reachable; check start.sh and health.sh.'
     enrollment_status="${enrollment%%$'\n'*}"
     printf '%s' "${enrollment#*$'\n'}" | "$NATIVE_PYTHON" -c '
@@ -78,7 +78,7 @@ fi
 force="$pair"
 [[ "$now" == false ]] || force=true
 body="$(printf '{"force": %s, "pair": %s, "accept_profile_overwrite": %s}' "$force" "$pair" "$accept")"
-reply="$(native_post /api/sync/round "$body")" \
+reply="$(printf '%s' "$body" | native_post /api/sync/round)" \
     || native_error 'Native backend is not reachable; check start.sh and health.sh.'
 status="${reply%%$'\n'*}"
 printf '%s' "${reply#*$'\n'}" | "$NATIVE_PYTHON" -c '

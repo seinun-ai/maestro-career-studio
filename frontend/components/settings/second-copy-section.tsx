@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type Ref, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
+import { focusIfDropped, focusTarget } from "@/lib/focus";
 
 type SecondCopy = {
   enabled: boolean;
@@ -19,7 +20,10 @@ type SecondCopy = {
 type Opened = { code: string; open_until: string | null };
 const QUERY = ["settings", "second-copy"];
 const PATH = "/api/settings/second-copy";
+const CARD = "Pair an always-on copy of Maestro with this laptop.";
 const PASTE = "Paste this code to your bot. It works once, for 10 minutes.";
+const SHOW = "Show a pairing code";
+const SHOW_NEW = "Show a new pairing code";
 
 function usePairingClock(until: string | null | undefined) {
   const [now, setNow] = useState(() => Date.now());
@@ -35,9 +39,9 @@ function countdown(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function PairingCode({ code }: { code: string }) {
+function PairingCode({ code, ref }: { code: string; ref?: Ref<HTMLDivElement> }) {
   return (
-    <div className="grid gap-2">
+    <div ref={ref} className="grid gap-2">
       <p className="text-label-medium text-muted-foreground flex items-center gap-2">
         <CONCEPT_ICONS.laptop className="size-4 shrink-0" aria-hidden="true" />
         This laptop
@@ -60,6 +64,19 @@ function PairingStatus({ at }: { at: string }) {
   );
 }
 
+function useHandoff() {
+  const pending = useRef<RefObject<HTMLElement | null> | null>(null);
+  useEffect(() => {
+    const node = pending.current?.current;
+    if (!node) return;
+    pending.current = null;
+    focusIfDropped(focusTarget(node));
+  });
+  return (target: RefObject<HTMLElement | null>) => {
+    pending.current = target;
+  };
+}
+
 export function SecondCopyBody({ data, seconds, pending, code, act }: {
   data: SecondCopy;
   seconds: number;
@@ -67,21 +84,27 @@ export function SecondCopyBody({ data, seconds, pending, code, act }: {
   code: string | null;
   act: (action: "allow" | "stop") => void;
 }) {
-  const visible = seconds > 0 ? code : null;
+  const visible = seconds > 0 && code ? code : null;
+  const showRef = useRef<HTMLButtonElement>(null);
+  const codeRef = useRef<HTMLDivElement>(null);
+  const arm = useHandoff();
+  function press(action: "allow" | "stop") {
+    arm(action === "stop" ? showRef : codeRef);
+    act(action);
+  }
   return (
     <div className="grid gap-4">
-      {visible ? <PairingCode code={visible} /> : null}
-      {seconds > 0 ? (
+      {visible ? <PairingCode code={visible} ref={codeRef} /> : null}
+      {visible ? (
         <div className="flex items-center gap-4">
           <p role="timer" aria-live="off" className="body-medium tabular-nums">
             Expires in {countdown(seconds)}
           </p>
-          <Button variant="link" size="sm" pending={pending} onClick={() => act("stop")}>Stop</Button>
+          <Button variant="link" size="sm" pending={pending} onClick={() => press("stop")}>Stop</Button>
         </div>
-      ) : null}
-      {visible ? null : (
-        <Button variant="tonal" pending={pending} onClick={() => act("allow")}>
-          Show a pairing code
+      ) : (
+        <Button ref={showRef} variant="tonal" pending={pending} onClick={() => press("allow")}>
+          {seconds > 0 ? SHOW_NEW : SHOW}
         </Button>
       )}
       {data.last_paired_at ? <PairingStatus at={data.last_paired_at} /> : null}
@@ -127,7 +150,7 @@ export function SecondCopySection() {
   const seconds = until ? Math.max(0, Math.ceil((Date.parse(until) - now) / 1000)) : 0;
   return (
     <SettingCard id="second-copy" title="Second copy" query={setting} skeleton="h-12 w-full"
-      description={PASTE}
+      description={CARD}
       errorTitle="Couldn't load the second copy setting.">
       {(data) => <SecondCopyBody data={data} pending={save.isPending} act={save.mutate}
         code={code} seconds={seconds} />}

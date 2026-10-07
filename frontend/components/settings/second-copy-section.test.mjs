@@ -41,23 +41,28 @@ function renderBody(props) {
   return renderToStaticMarkup(React.createElement(component().SecondCopyBody, props));
 }
 
+const CARD = "Pair an always-on copy of Maestro with this laptop.";
+const CARD_RE = new RegExp(CARD.replace(/[.]/g, "\\."));
 const PASTE = /Paste this code to your bot\. It works once, for 10 minutes\./;
+const SHOW_NEW = "Show a new pairing code";
 
-test("sync off offers only the explicit opt-in, with plain copy", () => {
+test("sync off offers only the explicit opt-in, with a neutral description", () => {
   const html = render({ enabled: false, open_until: null, last_paired_at: null });
   assert.match(html, /Second copy/);
-  assert.match(html, PASTE);
+  assert.match(html, CARD_RE);
   assert.match(html, /Show a pairing code/);
-  assert.doesNotMatch(html, /through its tunnel|Allow pairing for 10 minutes/);
+  assert.doesNotMatch(html, PASTE);
+  assert.doesNotMatch(html, /through its tunnel|Allow pairing/);
   assert.doesNotMatch(html, />Stop<|Paired with your bot at|role="timer"/);
 });
 
-test("an open window renders a countdown and Stop", () => {
+test("a pending code that this page cannot show offers a new one, not a countdown", () => {
   const html = render({ enabled: true, open_until: new Date(Date.now() + 590000).toISOString(), last_paired_at: null });
-  assert.match(html, /role="timer"/);
-  assert.match(html, /[0-9]+:[0-9]{2}/);
-  assert.match(html, />Stop</);
-  assert.match(html, PASTE);
+  assert.match(html, CARD_RE);
+  assert.match(html, new RegExp(SHOW_NEW));
+  assert.doesNotMatch(html, /Show a pairing code(?! )/);
+  assert.doesNotMatch(html, PASTE);
+  assert.doesNotMatch(html, /role="timer"|>Stop</);
 });
 
 test("an expired window offers Show a pairing code again", () => {
@@ -71,6 +76,8 @@ test("a consumed window shows the bot's paired time and can be reopened", () => 
   assert.match(html, /Paired with your bot at/);
   assert.match(html, /datetime="2026-10-06T12:00:00Z"/i);
   assert.match(html, /Show a pairing code/);
+  assert.doesNotMatch(html, PASTE);
+  assert.doesNotMatch(html, new RegExp(SHOW_NEW));
 });
 
 test("a code just shown is large, copyable, and not offered again", () => {
@@ -97,6 +104,10 @@ test("the web talks only to the settings route, with POST and DELETE actions", (
   assert.match(source, /SettingCard/);
   assert.match(source, /CONCEPT_ICONS/);
   assert.match(source, /Show a pairing code/);
+  assert.match(source, /Show a new pairing code/);
+  assert.match(source, CARD_RE);
   assert.match(source, /Paste this code to your bot\. It works once, for 10 minutes\./);
+  assert.match(source, /focusIfDropped\(focusTarget\(/);
+  assert.match(source, /action === "stop" \? showRef : codeRef/);
   assert.doesNotMatch(source, /\/api\/sync\/|sync-setup|\.key\b|through its tunnel|Allow pairing/);
 });

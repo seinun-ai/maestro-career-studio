@@ -1,7 +1,6 @@
 """One-time pairing. The code is shown once; only its digest is stored."""
 
 import hashlib
-import hmac
 import json
 import os
 import secrets
@@ -10,7 +9,7 @@ import time
 from datetime import datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -24,13 +23,11 @@ LOCK = threading.Lock()
 WINDOW_KEY = "sync.pairing_until"
 PAIRED_KEY = "sync.last_paired_at"
 DIGEST_KEY = "sync.pairing_digest"
-ATTEMPTS_KEY = "sync.pairing_attempts"
+_ATTEMPTS_KEY = "sync.pairing_attempts"
 WINDOW = timedelta(minutes=10)
-ATTEMPT_LIMIT = 5
 CLOSED = "Pairing didn't work. Show a pairing code on your laptop and try again."
-LIMITED = "Pairing was tried too often. Show a new pairing code on your laptop."
 EXISTS = "This copy already has a sync key. Use the pair option to finish setup."
-HOME_ONLY = "Allow pairing on your laptop, not on the always-on copy."
+HOME_ONLY = "Show a pairing code on your laptop, not on the always-on copy."
 UNREADABLE_KEY = "The sync key file can't be read. Check it before pairing."
 DISK = "Maestro couldn't save the sync key."
 ANSWER = "Your laptop's answer wasn't what Maestro expected."
@@ -145,15 +142,21 @@ def open_window(db: Session) -> dict:
     until = (utcnow() + WINDOW).isoformat()
     _set(db, WINDOW_KEY, until)
     _set(db, DIGEST_KEY, secret)
-    _set(db, ATTEMPTS_KEY, "0")
+    _drop_attempts(db)
     db.commit()
     return {"code": code, "open_until": until}
+
+
+def _drop_attempts(db: Session) -> None:
+    row = db.get(Setting, _ATTEMPTS_KEY)
+    if row is not None:
+        db.delete(row)
 
 
 def _clear_code(db: Session) -> None:
     _set(db, WINDOW_KEY, "")
     _set(db, DIGEST_KEY, "")
-    _set(db, ATTEMPTS_KEY, "0")
+    _drop_attempts(db)
 
 
 def close_window(db: Session) -> dict:
@@ -179,25 +182,6 @@ def live_digest(db: Session) -> str | None:
     return _hex64(_get(db, DIGEST_KEY))
 
 
-def _attempts(db: Session) -> int:
-    raw = _get(db, ATTEMPTS_KEY)
-    if isinstance(raw, str) and raw.isdigit():
-        return int(raw)
-    return 0
-
-
-def note_failed_open(db: Session) -> None:
-    """One failed open. The fifth retires the window. A closed window is not an attempt."""
-    if live_digest(db) is None:
-        return
-    begin_write(db)
-    if _attempts(db) + 1 >= ATTEMPT_LIMIT:
-        _clear_code(db)
-    else:
-        _set(db, ATTEMPTS_KEY, str(_attempts(db) + 1))
-    db.commit()
-
-
 def _stamp(header: str) -> int:
     try:
         return int(header.split(".")[1])
@@ -211,14 +195,38 @@ def seen_enroll(rid: str, header: str) -> bool:
     return _REPLAY.seen(rid, time.time(), until=expiry)
 
 
+def _stored(db: Session, name: str) -> str | None:
+    value = db.execute(text("SELECT value FROM settings WHERE key = :name"), {"name": name}).scalar()
+    return value if isinstance(value, str) else None
+
+
+def _window_live(raw: str | None) -> bool:
+    until = _time(raw)
+    return until is not None and until > utcnow()
+
+
+def _claim_digest(db: Session, digest: str) -> bool:
+    """One row changes. A second caller in the same window updates nothing."""
+    result = db.execute(
+        text("UPDATE settings SET value = '' WHERE key = :name AND value = :digest"),
+        {"name": DIGEST_KEY, "digest": digest})
+    return result.rowcount == 1
+
+
+def _stamp_paired(db: Session) -> None:
+    db.expire_all()
+    _set(db, WINDOW_KEY, "")
+    _set(db, PAIRED_KEY, utcnow().isoformat())
+    _drop_attempts(db)
+
+
 def complete_pairing(db: Session, digest: str) -> bool:
+    db.rollback()
     begin_write(db)
-    current = live_digest(db)
-    if current is None or not hmac.compare_digest(current, digest):
+    if not _window_live(_stored(db, WINDOW_KEY)) or not _claim_digest(db, digest):
         db.rollback()
         return False
-    _clear_code(db)
-    _set(db, PAIRED_KEY, utcnow().isoformat())
+    _stamp_paired(db)
     db.commit()
     return True
 
@@ -289,8 +297,6 @@ def _parsed_key(plain: bytes) -> str:
 def _key_from(response: httpx.Response, secret: str, rid: str) -> str:
     if response.status_code == 404 and seal.HEADER not in response.headers:
         raise Refused(409, CLOSED, "closed")
-    if response.status_code == 429:
-        raise Refused(429, LIMITED, "limited")
     if response.status_code >= 500:
         raise Refused(503, "Laptop unreachable.")
     try:
