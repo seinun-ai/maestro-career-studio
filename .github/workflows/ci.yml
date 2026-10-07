@@ -220,6 +220,12 @@ jobs:
       - name: Verify TypeScript types
         run: cd frontend && npx tsc --noEmit
 
+      # Renders the real ownership components under node's test runner. It needs
+      # the installed packages, so it runs here; the backend job has none and
+      # skips its copy (backend/tests/sync/test_frontend_ownership.py).
+      - name: Render the ownership components
+        run: cd frontend && node --test components/job-ownership.test.mjs
+
       - name: Build Next.js production bundle
         run: cd frontend && npm run build
 

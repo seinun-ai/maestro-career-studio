@@ -1,7 +1,9 @@
 """Ownership wire-policy parity: guard states produce the promised web controls."""
 
+import pytest
+
 from app.services.sync import hooks
-from tests.node_ts import FRONTEND, run_node_test, ts_map
+from tests.node_ts import FRONTEND, _node_with_typescript, run_node_test, ts_map
 
 
 def test_web_ownership_policy_behaviors():
@@ -28,6 +30,16 @@ def test_wire_states_match_the_web_marks():
 
 
 def test_actual_marks_render_without_a_browser():
+    """Renders the real React components, so it needs the web app's installed packages.
+
+    Node's type stripping cannot do that (JSX, react, react-query, next). The backend CI job has
+    no frontend node_modules, so there it is the frontend job that runs this file
+    (`node --test components/job-ownership.test.mjs` after `npm ci`); here it runs wherever the
+    packages are installed, and a missing node still fails in CI through `run_node_test`.
+    """
+    if not (FRONTEND / "node_modules" / "typescript").is_dir():
+        _node_with_typescript()  # fails in CI when node itself is absent; only then skip
+        pytest.skip("frontend packages are not installed; the frontend CI job runs this file")
     done = run_node_test("components/job-ownership.test.mjs")
     assert done.returncode == 0, done.stdout + done.stderr
 
