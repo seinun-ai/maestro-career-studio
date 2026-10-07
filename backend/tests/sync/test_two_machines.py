@@ -984,23 +984,6 @@ def _assert_bare(code, headers, body):
     assert code == 404 and body == b"" and "x-maestro-seal" not in headers
 
 
-def _rid_of(raw):
-    for line in raw.split(b"\r\n"):
-        name, sep, value = line.partition(b":")
-        if sep and name.lower() == b"x-maestro-seal":
-            return value.strip().decode("ascii").split(".")[2]
-    raise AssertionError("recorded request had no seal header")
-
-
-def _open_applied(code, headers, body, raw):
-    assert code == 200 and body and "x-maestro-seal" in headers
-    plain = seal.open_response(
-        status.read_key(), _rid_of(raw), 200, headers["x-maestro-seal"], body)
-    answer = json.loads(plain)
-    assert [row["status"] for row in answer] == ["applied"]
-    assert all(row["reason"] is None for row in answer)
-
-
 def _stamp(value):
     return None if value is None else value.isoformat()
 
@@ -1185,13 +1168,14 @@ def _edit_home_note(home, application_id):
 
 
 def _replay_after_restart(home, db, ids, proxy, posted):
-    """One fresh home process: the replay cache is empty and the skew window still holds."""
+    """One fresh home process: the replay cache is empty and the skew window still holds, but
+    home refuses any seal stamped before it started, so the replay is the bare 404."""
     home.stop()
     try:
         home.start()
         _edit_home_note(home, ids.application)
         before = _both(home, db, ids)
-        _open_applied(*replay_recorded(proxy, posted), posted)
+        _assert_bare(*replay_recorded(proxy, posted))
         assert _both(home, db, ids) == before, "replay after restart changed a database"
     finally:
         if home.process is None or home.process.poll() is not None:
@@ -1224,7 +1208,6 @@ def test_real_intercepting_proxy_sees_ciphertext_and_replay_changes_nothing(
     _replay_after_restart(home_backend, db_session, ids, recording_proxy, posted)
 
 
-@pytest.mark.xfail(strict=True, reason="home refuses seals older than its start: next commit")
 def test_real_replayed_push_after_restart_keeps_the_newer_job(
         home_backend, db_session, tmp_path, monkeypatch, recording_proxy):
     """An old push, replayed after home restarts, must not replace a newer revision."""

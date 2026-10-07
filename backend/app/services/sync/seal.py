@@ -226,6 +226,15 @@ def _hold_until(ts: str) -> float:
     return int(ts) + SKEW_SECONDS + REPLAY_SECONDS
 
 
+def _before_process_start(ts: str, not_before: float | None) -> bool:
+    """True when ``ts`` is earlier than this process's start instant.
+
+    ``ts`` is whole seconds. Compare it with the raw start: truncating the
+    start to a second would accept a seal from earlier in that same second.
+    """
+    return not_before is not None and int(ts) < not_before
+
+
 def _replayed(replay: ReplayCache | None, rid: str, now: float, ts: str) -> bool:
     if replay is None:
         return False
@@ -267,12 +276,15 @@ def seal_request(
 def check_header(
     secret: str, method: str, path: str, query: str, header: str, peer: str, *,
     replay: ReplayCache | None, label: bytes = TO_HOME, now: float | None = None,
+    not_before: float | None = None,
 ) -> HeaderOk:
     def verify() -> HeaderOk:
         moment = time.time() if now is None else now
         parsed = _usable(secret, label, header, moment)
         aad = request_aad(method, path, query, parsed.ts, parsed.rid, peer)
         if not hmac.compare_digest(_mac(secret, label, aad), parsed.mac):
+            raise Broken
+        if _before_process_start(parsed.ts, not_before):
             raise Broken
         if _replayed(replay, parsed.rid, moment, parsed.ts):
             raise Broken

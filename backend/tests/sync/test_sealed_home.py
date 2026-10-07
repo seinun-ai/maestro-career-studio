@@ -22,6 +22,8 @@ from app.main import app
 from app.routers import sync as sync_router
 from app.services.sync import seal, status
 from tests.sync.conftest import _Seal, _send_sealed, raw, sealed
+from tests.sync.test_pairing import digest as code_digest
+from tests.sync.test_pairing import show
 from tests.sync.test_jobs_bundle import SENTINEL
 
 BARE = "Not Found"
@@ -383,15 +385,64 @@ def test_a_good_mac_reads_the_body_and_a_stall_is_a_sealed_408(client, sync_on, 
 def test_a_seal_one_second_outside_the_window_is_a_bare_404(client, sync_on, peer, monkeypatch, skew):
     moment = 1_700_000_000.0
     monkeypatch.setattr(seal.time, "time", lambda: moment)
+    # The frozen clock is years before this process. Pull the start back so
+    # the 404 is the skew window, not a stamp from before startup.
+    monkeypatch.setattr(sync_router, "_STARTED_AT", moment - seal.SKEW_SECONDS - 1)
     header, wire, _rid = seal.seal_request(
         status.read_key(), "GET", "/api/sync/hello", "", b"", peer, now=moment - skew)
     response = _send(client, "GET", "/api/sync/hello", header, peer, wire)
     assert response.status_code == 404 and response.content == b""
 
 
+def _opened_hello(response, key, rid):
+    assert response.status_code == 200
+    plain = seal.open_response(key, rid, 200, response.headers[seal.HEADER], response.content)
+    assert json.loads(plain)["protocol"] == status.SYNC_PROTOCOL
+
+
+def test_a_peer_seal_earlier_than_the_process_start_is_a_bare_404(client, sync_on, peer, monkeypatch):
+    """Home compares the stamp to this process's start, not to the request clock.
+
+    The same bytes then succeed once that start moves to the stamp: the refusal
+    must not register the rid, and a stamp equal to the start is not earlier.
+    A start half a second into the stamp's second is still later than the stamp.
+    """
+    key = status.read_key()
+    header, wire, rid = seal.seal_request(key, "GET", "/api/sync/hello", "", b"", peer)
+    stamp = int(header.split(".")[1])
+    monkeypatch.setattr(sync_router, "_STARTED_AT", stamp + 0.5, raising=False)
+    refused = _send(client, "GET", "/api/sync/hello", header, peer, wire)
+    assert refused.status_code == 404 and refused.content == b""
+    assert "x-maestro-seal" not in refused.headers
+    monkeypatch.setattr(sync_router, "_STARTED_AT", float(stamp))
+    _opened_hello(_send(client, "GET", "/api/sync/hello", header, peer, wire), key, rid)
+
+
+def test_an_enroll_seal_earlier_than_the_process_start_is_a_bare_404(
+        client, sync_on, monkeypatch):
+    secret = code_digest(show(client))
+    header, wire, rid = seal.seal_request(
+        secret, "POST", "/api/sync/enroll", "", b"", "peer-2", label=seal.ENROLL_TO_HOME)
+    stamp = int(header.split(".")[1])
+    monkeypatch.setattr(sync_router, "_STARTED_AT", stamp + 0.5, raising=False)
+    refused = _send(client, "POST", "/api/sync/enroll", header, "peer-2", wire)
+    assert refused.status_code == 404 and refused.content == b""
+    assert "x-maestro-seal" not in refused.headers
+    assert client.get("/api/settings/second-copy").json()["open_until"] is not None
+    monkeypatch.setattr(sync_router, "_STARTED_AT", float(stamp))
+    opened = _send(client, "POST", "/api/sync/enroll", header, "peer-2", wire)
+    assert opened.status_code == 200
+    plain = seal.open_response(
+        secret, rid, 200, opened.headers[seal.HEADER], opened.content,
+        label=seal.ENROLL_TO_REMOTE)
+    assert json.loads(plain)["key"] == status.read_key()
+
+
 def test_a_seal_at_the_window_edge_is_accepted(client, sync_on, peer, monkeypatch):
     moment = 1_700_000_000.0
     monkeypatch.setattr(seal.time, "time", lambda: moment)
+    # Same frozen clock. The edge stamp equals this start, so it is not earlier.
+    monkeypatch.setattr(sync_router, "_STARTED_AT", moment - seal.SKEW_SECONDS)
     code, body = sealed(client, "GET", "/api/sync/hello", peer=peer, key=status.read_key())
     # sealed() stamps `now` itself; rebuild at the edge so 300 is in and 301 is out.
     header, wire, rid = seal.seal_request(

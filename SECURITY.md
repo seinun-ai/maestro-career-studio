@@ -273,11 +273,12 @@ until you remove it (docs/UPDATING.md). Never commit any of it.
     same transaction. Five closed-window or failed version checks in 10 minutes
     block enrollment for 10 minutes, including after a restart or reopening.
     Only the fixed line “A copy fetched the sync key.” is logged.
-  - **A replay after restart is idempotent.** While the laptop process is up, a
-    byte-for-byte replay of a sealed request is a bare 404. After a restart the
-    in-memory replay cache is empty, so the same bytes are accepted inside the
-    5-minute window and change nothing: the handlers are idempotent, and
-    `request_apply` dedupes by id.
+  - **A recording cannot be replayed into a restarted laptop.** While the laptop
+    process is up, a byte-for-byte replay of a sealed request is a bare 404.
+    Home refuses any seal stamped before it started, so a recording can't be
+    replayed into a restarted laptop. That includes enrollment. A remote clock
+    running behind may see bare 404s for up to five minutes after a laptop
+    restart; its next round, once the clock catches up, works.
   - **Setup stays outside `/api/sync/`.** The settings read works without a key
     and creates nothing; only its POST opts in. On the always-on backend,
     `POST /api/sync-setup/enroll` requires a configured loopback tunnel, refuses

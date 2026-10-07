@@ -88,9 +88,12 @@ def _check(header: str, **kwargs):
     args = {"method": "POST", "path": PATH, "query": "", "peer": PEER, "label": TO_HOME,
             "now": NOW, "replay": None, "secret": SECRET}
     args.update(kwargs)
+    passed = {}
+    if "not_before" in kwargs:
+        passed["not_before"] = args.pop("not_before")
     return check_header(args.pop("secret"), args.pop("method"), args.pop("path"), args.pop("query"),
                         header, args.pop("peer"), label=args.pop("label"), now=args.pop("now"),
-                        replay=args.pop("replay"))
+                        replay=args.pop("replay"), **passed)
 
 
 def test_labels_skew_and_header_name_are_fixed():
@@ -345,6 +348,42 @@ def test_replay_window_starts_at_check_time_not_the_sealed_timestamp():
     _check(header, replay=cache)
     assert cache.seen(rid, NOW + REPLAY_SECONDS - 0.001) is True
     assert cache.seen(rid, NOW + REPLAY_SECONDS) is False
+
+
+def test_a_stamp_earlier_than_not_before_is_broken_and_leaves_the_rid_free():
+    """Registering the rid before the start check would make the retry a replay."""
+    cache = ReplayCache()
+    header, wire, _rid = _seal(b"early", now=NOW - 1)
+
+    _broken(lambda: _check(header, replay=cache, not_before=float(NOW)))
+    ok = _check(header, replay=cache, not_before=float(NOW - 1))
+    assert open_request(SECRET, ok, wire) == b"early"
+    _broken(lambda: _check(header, replay=cache, not_before=float(NOW - 1)))
+
+
+def test_a_stamp_equal_to_not_before_is_accepted():
+    header, wire, _rid = _seal(b"same", now=NOW)
+
+    ok = _check(header, replay=None, not_before=float(NOW))
+    assert open_request(SECRET, ok, wire) == b"same"
+
+
+def test_a_fractional_start_rejects_a_stamp_from_that_second():
+    """Truncating the start to a whole second would accept an earlier stamp."""
+    header, _wire, _rid = _seal(b"part", now=NOW)
+    later, later_wire, _rid = _seal(b"next", now=NOW + 1)
+
+    _broken(lambda: _check(header, not_before=NOW + 0.5))
+    ok = _check(later, not_before=NOW + 0.5, now=NOW + 1)
+    assert open_request(SECRET, ok, later_wire) == b"next"
+
+
+def test_not_before_rejects_an_enroll_stamp_the_same_way():
+    header, wire, _rid = _seal(b"", label=ENROLL_TO_HOME, now=NOW - 1)
+
+    _broken(lambda: _check(header, label=ENROLL_TO_HOME, not_before=float(NOW)))
+    ok = _check(header, label=ENROLL_TO_HOME, not_before=float(NOW - 1))
+    assert open_request(SECRET, ok, wire, label=ENROLL_TO_HOME) == b""
 
 
 def test_a_replayed_request_id_is_broken_and_a_new_one_is_not():

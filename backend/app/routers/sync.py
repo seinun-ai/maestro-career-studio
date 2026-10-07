@@ -4,7 +4,8 @@ The always-on copy drives every request; this copy only answers. Peer routes und
 (not ``/round`` or ``/enroll``) are sealed with the sync key: a bare 404 while sync is off or
 this copy is remote, a bare 404 for any ``Origin`` (a browser cannot seal, and a 403 would show
 that sync is on), then the seal, then the protocol check and the single-flight lock.
-A failed seal is the same bare 404. ``/round`` and ``/api/sync-setup`` keep the Origin 403.
+A failed seal is the same bare 404, including a seal stamped before this process
+started. ``/round`` and ``/api/sync-setup`` keep the Origin 403.
 ``/enroll`` is sealed here with the one-time code, not the sync key: the header mac is
 checked before anything else, and every refusal is the same bare 404. Enroll does not take
 the single-flight lock; the code is claimed once, in its own transaction.
@@ -90,6 +91,11 @@ _SEAL_SOURCES = 1024
 _REPLAY = seal.ReplayCache()
 _SEAL_LOCK = threading.Lock()
 _seal_seen: OrderedDict[str, float] = OrderedDict()
+# Captured once. A seal from before this process started is a replay the
+# in-memory cache can no longer see. A remote clock running behind may see
+# bare 404s for up to the skew after a laptop restart; its next round after
+# the clock catches up works.
+_STARTED_AT = time.time()
 
 
 class _Refused(Exception):
@@ -185,7 +191,7 @@ def _header_ok(request: Request, key: str):
         return seal.check_header(
             key, request.method, request.url.path, request.url.query,
             request.headers.get(seal.HEADER, ""), request.headers.get("x-maestro-sync", ""),
-            replay=_REPLAY)
+            replay=_REPLAY, not_before=_STARTED_AT)
 
     return _or_bare_404(request, check)
 
@@ -348,7 +354,7 @@ def _mac_ok(request: Request, secret: str | None):
         ok = seal.check_header(
             secret or pairing._STAND_IN, request.method, request.url.path, request.url.query,
             request.headers.get(seal.HEADER, ""), request.headers.get("x-maestro-sync", ""),
-            replay=None, label=seal.ENROLL_TO_HOME)
+            replay=None, label=seal.ENROLL_TO_HOME, not_before=_STARTED_AT)
     except seal.Broken:
         return _bare_404()
     if pairing.seen_enroll(ok.rid, request.headers.get(seal.HEADER, "")):

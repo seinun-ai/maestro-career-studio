@@ -294,6 +294,10 @@ def test_the_sync_label_is_not_the_enroll_label(client, sync_on):
 
 def test_five_minutes_is_accepted_and_one_second_past_is_not(client, sync_on, monkeypatch):
     monkeypatch.setattr(seal.time, "time", lambda: float(MOMENT))
+    # The frozen clock is years before this process. Pull the start back past
+    # the lower skew edge so this still measures the window.
+    monkeypatch.setattr(
+        sync_router, "_STARTED_AT", float(MOMENT) - seal.SKEW_SECONDS - 1)
     secret = digest(show(client))
     for skew in (301, -301):
         response, _rid = sealed_enroll(client, secret, now=MOMENT + skew)
