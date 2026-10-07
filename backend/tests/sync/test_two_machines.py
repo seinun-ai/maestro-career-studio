@@ -5,13 +5,17 @@ The pairing regressions also run without sockets, using Task 11's fake channel.
 """
 
 import base64
+import gzip
+import hashlib
 import json
+import re
 import socket
 import time
 import uuid
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -699,6 +703,33 @@ _PASSWORD = "login-sentinel-p9w3h6t2m5"
 _TITLE = "title-sentinel-r8y5u1i4o6"
 _FILE = b"file-sentinel-bytes-m2n8b5v7q1w4e6r9"
 _NOTE = "request-sentinel-q4n7h2c8"
+_LATER = "later-note-sentinel-h6k3p9d1"
+_REMOTE_TITLE = "remote-title-sentinel-v1k8m3"
+_NEWER_TITLE = "newer-title-sentinel-v2p6q1"
+_REMOTE_FILE = b"remote-file-sentinel-z4c7n2b8"
+
+# Every route this scenario's rounds send. One that goes around the proxy is missing here.
+_ROUTES = frozenset({
+    ("POST", "/api/sync/enroll"),
+    ("GET", "/api/sync/hello"),
+    ("GET", "/api/sync/profile"),
+    ("POST", "/api/sync/ownership"),
+    ("GET", "/api/sync/jobs"),
+    ("POST", "/api/sync/jobs"),
+    ("GET", "/api/sync/requests"),
+    ("POST", "/api/sync/requests"),
+    ("GET", "/api/sync/handover/offers"),
+})
+
+# Request names are the forward-proxy allow-list. Response names are what a sealed
+# Response actually emits: only X-Maestro-Seal (no media type, so no content-type),
+# plus content-length from Starlette and date and server from uvicorn.
+_REQUEST_HEADERS = frozenset({
+    "host", "content-length", "content-type", "accept", "accept-encoding",
+    "connection", "user-agent", "x-maestro-sync", "x-maestro-seal",
+})
+_RESPONSE_HEADERS = frozenset({"content-length", "date", "server", "x-maestro-seal"})
+_B64_TOKEN = re.compile(r"[A-Za-z0-9+/_=-]{16,}")
 
 
 def _prepare_proxy_remote(monkeypatch, home, tmp_path, proxy):
@@ -774,6 +805,7 @@ def _queue_and_send(db, ids, now):
     second = sync_round.run_round(db, pair=True)
     assert second["ok"], second.get("outcome")
     assert second["steps"]["requests"]["sent"] == 1
+    assert second["steps"]["push"]["sent"] == 1
 
 
 def _assert_request_landed(home, db, ids):
@@ -791,21 +823,138 @@ def _assert_payloads_arrived(db, tmp_path, ids, file_bytes):
     assert db.get(models.Job, ids.job).title == _TITLE
     login = (tmp_path / "settings" / "secrets" / "job-site-login.json").read_text(encoding="utf-8")
     assert _PASSWORD in login
-    found = list((tmp_path / "applications").rglob("note.bin"))
-    assert len(found) == 1 and found[0].read_bytes() == file_bytes
+    found = tmp_path / "applications" / ids.application.hex / "note.bin"
+    assert found.read_bytes() == file_bytes
+
+
+def _code_digest(code):
+    normalized = pairing.normalize_code(code)
+    assert normalized is not None
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def _sync_key_and_digest(home, code):
+    key = home.key_file.read_text(encoding="utf-8").strip()
+    return key, _code_digest(code)
+
+
+def _derived_hex(sync_key, digest):
+    """The four message keys, hex: sync traffic from the sync key, enrollment from the digest."""
+    pairs = (
+        (sync_key, seal.TO_HOME), (sync_key, seal.TO_REMOTE),
+        (digest, seal.ENROLL_TO_HOME), (digest, seal.ENROLL_TO_REMOTE),
+    )
+    return [seal.derive(secret, label).hex().encode() for secret, label in pairs]
+
+
+def _raw_secrets(home, code, home_file):
+    key, digest = _sync_key_and_digest(home, code)
+    normalized = pairing.normalize_code(code).encode()
+    values = [
+        key.encode(), code.encode(), normalized, digest.encode(),
+        _PROFILE.encode(), _AI_KEY.encode(), _PASSWORD.encode(), _TITLE.encode(),
+        _NOTE.encode(), _LATER.encode(), _REMOTE_TITLE.encode(), _NEWER_TITLE.encode(),
+        home_file, _REMOTE_FILE, base64.standard_b64encode(home_file),
+        base64.standard_b64encode(_REMOTE_FILE),
+    ]
+    values.extend(_derived_hex(key, digest))
+    return values
+
+
+def _encode_both(chunk):
+    found = []
+    for encode in (base64.standard_b64encode, base64.urlsafe_b64encode):
+        token = encode(chunk)
+        found.append(token)
+        stripped = token.rstrip(b"=")
+        if stripped != token:
+            found.append(stripped)
+    return found
+
+
+def _aligned_chunk(secret, offset):
+    start = (3 - offset) % 3
+    length = ((len(secret) - start) // 3) * 3
+    return secret[start:start + length]
+
+
+def _b64_needles(secret):
+    """Standard and urlsafe base64 of ``secret`` at each 3-byte alignment."""
+    found = _encode_both(secret)
+    for offset in range(3):
+        chunk = _aligned_chunk(secret, offset)
+        if len(chunk) >= 12:
+            found.extend(_encode_both(chunk))
+    return [token for token in found if len(token) >= 16]
+
+
+def _unique(items):
+    seen, found = set(), []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            found.append(item)
+    return found
 
 
 def _forbidden(home, code, file_bytes):
-    key = home.key_file.read_text(encoding="utf-8").strip().encode()
-    normalized = pairing.normalize_code(code).encode()
-    return [key, code.encode(), normalized, _PROFILE.encode(), _AI_KEY.encode(),
-            _PASSWORD.encode(), _TITLE.encode(), _NOTE.encode(), file_bytes,
-            base64.b64encode(file_bytes)]
+    raw = _raw_secrets(home, code, file_bytes)
+    needles = []
+    for secret in raw:
+        needles.extend(_b64_needles(secret))
+    return _unique(raw + needles)
 
 
-def _no_secrets(blob, forbidden):
-    if any(secret in blob for secret in forbidden):
-        raise AssertionError("the proxy recording contained a secret")
+def _gunzip(blob):
+    if len(blob) < 2 or blob[:2] != b"\x1f\x8b":
+        return None
+    try:
+        return gzip.decompress(blob)
+    except OSError:
+        return None
+
+
+def _try_decode(padded):
+    found = []
+    for decoder in (base64.standard_b64decode, base64.urlsafe_b64decode):
+        try:
+            found.append(decoder(padded))
+        except ValueError:
+            continue
+    return found
+
+
+def _decoded_at_offsets(token):
+    found = []
+    for offset in range(3):
+        piece = token[offset:]
+        if len(piece) < 16:
+            continue
+        found.extend(_try_decode(piece + "=" * (-len(piece) % 4)))
+    return found
+
+
+def _views_of(blob):
+    views = [blob]
+    opened = _gunzip(blob)
+    if opened is not None:
+        views.append(opened)
+    for token in _B64_TOKEN.findall(blob.decode("latin-1")):
+        for decoded in _decoded_at_offsets(token):
+            views.append(decoded)
+            inflated = _gunzip(decoded)
+            if inflated is not None:
+                views.append(inflated)
+    return views
+
+
+def _no_secrets(pairs, forbidden):
+    for request, response in pairs:
+        for raw in (request, response):
+            head, _, body = raw.partition(b"\r\n\r\n")
+            for view in _views_of(head) + _views_of(body):
+                if any(secret in view for secret in forbidden):
+                    raise AssertionError("the proxy recording contained a secret")
 
 
 def _assert_recorded_seal(blob, port):
@@ -886,11 +1035,161 @@ def _both(home, db, ids):
     return {"home": home_rows, "remote": _rows(db, ids.job, ids.application)}
 
 
+def _body(raw):
+    return raw.partition(b"\r\n\r\n")[2]
+
+
+def _header_names(raw):
+    head = raw.split(b"\r\n\r\n", 1)[0]
+    names = set()
+    for line in head.split(b"\r\n")[1:]:
+        name, sep, _value = line.partition(b":")
+        if sep:
+            names.add(name.strip().lower().decode("latin-1"))
+    return names
+
+
+def _header_map(raw):
+    head = raw.split(b"\r\n\r\n", 1)[0]
+    found = {}
+    for line in head.split(b"\r\n")[1:]:
+        name, sep, value = line.partition(b":")
+        if sep:
+            found[name.strip().lower().decode("latin-1")] = value.strip().decode("latin-1")
+    return found
+
+
+def _assert_names(raw, allowed):
+    extra = _header_names(raw) - allowed
+    assert not extra, f"unexpected header: {sorted(extra)}"
+
+
+def _request_parts(raw):
+    method, target, _version = raw.split(b"\r\n", 1)[0].decode("latin-1").split(" ")
+    parts = urlsplit(target)
+    return method, parts.path, parts.query
+
+
+def _status_of(raw):
+    return int(raw.split(b" ", 2)[1])
+
+
+def _ciphertext(header, body):
+    if body:
+        return body
+    field = header.split(".")[5]
+    return base64.urlsafe_b64decode(field + "=" * (-len(field) % 4))
+
+
+def _direction(path, sync_key, digest):
+    if path == "/api/sync/enroll":
+        return digest, seal.ENROLL_TO_HOME, seal.ENROLL_TO_REMOTE
+    return sync_key, seal.TO_HOME, seal.TO_REMOTE
+
+
+def _open_request(secret, label, raw):
+    method, path, query = _request_parts(raw)
+    headers = _header_map(raw)
+    body = _body(raw)
+    try:
+        ok = seal.check_header(
+            secret, method, path, query, headers["x-maestro-seal"],
+            headers["x-maestro-sync"], replay=None, label=label)
+        plain = seal.open_request(secret, ok, body, label=label)
+    except seal.Broken:
+        raise AssertionError(f"{method} {path} did not open") from None
+    if len(_ciphertext(headers["x-maestro-seal"], body)) != len(plain) + 16:
+        raise AssertionError(f"{method} {path} body was not plaintext plus a tag")
+    return method, path, plain
+
+
+def _open_response(secret, label, request, response):
+    rid = _header_map(request)["x-maestro-seal"].split(".")[2]
+    headers = _header_map(response)
+    body = _body(response)
+    try:
+        plain = seal.open_response(
+            secret, rid, _status_of(response), headers["x-maestro-seal"], body, label=label)
+    except seal.Broken:
+        raise AssertionError("a recorded response did not open") from None
+    if len(body) != len(plain) + 16:
+        raise AssertionError("a recorded response body was not plaintext plus a tag")
+    return plain
+
+
+def _opened_pair(request, response, sync_key, digest):
+    _assert_names(request, _REQUEST_HEADERS)
+    _assert_names(response, _RESPONSE_HEADERS)
+    path = _request_parts(request)[1]
+    secret, to_home, to_remote = _direction(path, sync_key, digest)
+    method, path, plain = _open_request(secret, to_home, request)
+    _open_response(secret, to_remote, request, response)
+    return method, path, plain
+
+
+def _bundle_crossed(method, path, plain, needle):
+    return method == "POST" and path == "/api/sync/jobs" and needle in plain
+
+
+def _assert_exchange(pairs, sync_key, digest, bundle_file):
+    routes, crossed = set(), False
+    needle = base64.standard_b64encode(bundle_file)
+    for request, response in pairs:
+        method, path, plain = _opened_pair(request, response, sync_key, digest)
+        routes.add((method, path))
+        crossed = crossed or _bundle_crossed(method, path, plain, needle)
+    missing = _ROUTES - routes
+    assert not missing, f"routes missed the proxy: {sorted(missing)}"
+    assert crossed, "the job bundle did not cross the proxy"
+
+
+def _add_remote_job(db, root, title, file_bytes):
+    job_id, app_id = uuid.uuid4(), uuid.uuid4()
+    folder = Path(root) / "applications" / app_id.hex
+    folder.mkdir(parents=True)
+    (folder / "note.bin").write_bytes(file_bytes)
+    db.add(models.Job(
+        id=job_id, title=title, raw_text="Synthetic remote posting",
+        raw_text_hash=uuid.uuid4().hex))
+    db.flush()
+    db.add(models.Application(
+        id=app_id, job_id=job_id, base_resume="base", status="draft",
+        artifact_dir=str(folder), pdf_path=str(folder / "note.bin")))
+    db.commit()
+    return SimpleNamespace(job=job_id, application=app_id)
+
+
+def _home_title(home, job_id):
+    with home.session() as session:
+        job = session.get(models.Job, job_id)
+        return None if job is None else job.title
+
+
+def _home_bytes(home, application_id):
+    with home.session() as session:
+        application = session.get(models.Application, application_id)
+        if application is None or not application.pdf_path:
+            return None
+        return Path(application.pdf_path).read_bytes()
+
+
+def _retitle(db, job_id, title):
+    db.get(models.Job, job_id).title = title
+    db.commit()
+
+
+def _edit_home_note(home, application_id):
+    response = home.http.patch(
+        f"/api/applications/{application_id}", json={"notes": _LATER})
+    assert response.status_code == 200
+
+
 def _replay_after_restart(home, db, ids, proxy, posted):
     """One fresh home process: the replay cache is empty and the skew window still holds."""
     home.stop()
     try:
         home.start()
+        _edit_home_note(home, ids.application)
         before = _both(home, db, ids)
         _open_applied(*replay_recorded(proxy, posted), posted)
         assert _both(home, db, ids) == before, "replay after restart changed a database"
@@ -907,14 +1206,47 @@ def test_real_intercepting_proxy_sees_ciphertext_and_replay_changes_nothing(
     now = _clock(monkeypatch)
     ids = _seed_home(home_backend, _FILE)
     code = _pair_and_sync(db_session, home_backend)
+    remote = _add_remote_job(db_session, tmp_path, _REMOTE_TITLE, _REMOTE_FILE)
     _queue_and_send(db_session, ids, now)
     _assert_request_landed(home_backend, db_session, ids)
     _assert_payloads_arrived(db_session, tmp_path, ids, _FILE)
-    blob = recording_proxy.transcript()
-    _assert_recorded_seal(blob, home_backend.port)
-    _no_secrets(blob, _forbidden(home_backend, code, _FILE))
+    assert _home_bytes(home_backend, remote.application) == _REMOTE_FILE
+    assert _home_title(home_backend, remote.job) == _REMOTE_TITLE
+    pairs = recording_proxy.recorded_pairs()
+    sync_key, digest = _sync_key_and_digest(home_backend, code)
+    _assert_exchange(pairs, sync_key, digest, _REMOTE_FILE)
+    _assert_recorded_seal(recording_proxy.transcript(), home_backend.port)
+    _no_secrets(pairs, _forbidden(home_backend, code, _FILE))
     posted = _one_post(recording_proxy, home_backend.port, "/api/sync/requests")
     before = _both(home_backend, db_session, ids)
     _assert_bare(*replay_recorded(recording_proxy, posted))
     assert _both(home_backend, db_session, ids) == before
     _replay_after_restart(home_backend, db_session, ids, recording_proxy, posted)
+
+
+@pytest.mark.xfail(strict=True, reason="home refuses seals older than its start: next commit")
+def test_real_replayed_push_after_restart_keeps_the_newer_job(
+        home_backend, db_session, tmp_path, monkeypatch, recording_proxy):
+    """An old push, replayed after home restarts, must not replace a newer revision."""
+    _prepare_proxy_remote(monkeypatch, home_backend, tmp_path, recording_proxy)
+    now = _clock(monkeypatch)
+    _seed_home(home_backend, _FILE)
+    _pair_and_sync(db_session, home_backend)
+    remote = _add_remote_job(db_session, tmp_path, _REMOTE_TITLE, _REMOTE_FILE)
+    now.value += timedelta(minutes=31)
+    pushed = sync_round.run_round(db_session, pair=True)
+    assert pushed["ok"] and pushed["steps"]["push"]["sent"] == 1
+    posted = _one_post(recording_proxy, home_backend.port, "/api/sync/jobs")
+    _retitle(db_session, remote.job, _NEWER_TITLE)
+    now.value += timedelta(minutes=31)
+    again = sync_round.run_round(db_session, pair=True)
+    assert again["ok"] and again["steps"]["push"]["sent"] == 1
+    assert _home_title(home_backend, remote.job) == _NEWER_TITLE
+    home_backend.stop()
+    try:
+        home_backend.start()
+        _assert_bare(*replay_recorded(recording_proxy, posted))
+        assert _home_title(home_backend, remote.job) == _NEWER_TITLE
+    finally:
+        if home_backend.process is None or home_backend.process.poll() is not None:
+            home_backend.start()

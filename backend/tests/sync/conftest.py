@@ -368,6 +368,11 @@ class RecordingProxy:
             parts = [chunk for pair in zip(self._requests, self._responses) for chunk in pair]
             return b"".join(parts)
 
+    def recorded_pairs(self):
+        """Each forwarded request beside the origin response, in order."""
+        with self._lock:
+            return list(zip(self._requests, self._responses))
+
     def close(self):
         self._closed = True
         try:
