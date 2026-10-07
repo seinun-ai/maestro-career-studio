@@ -7,10 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.datastructures import Headers
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import settings as app_settings
 from app.origin_guard import OriginGuardMiddleware
+from app.services.sync.seal import HEADER as SEAL_HEADER
 
 from app.routers import (
     role_categories,
@@ -217,11 +219,51 @@ def _admits_public_host(scope: Scope) -> bool:
     return _under_sync(scope.get("path") or "")
 
 
+_SEAL_NAME = SEAL_HEADER.lower().encode("ascii")
+
+
+def _response_sealed(message: dict) -> bool:
+    headers = message.get("headers") or ()
+    return any(name.lower() == _SEAL_NAME for name, _value in headers)
+
+
+class _BareUnlessSealed:
+    """On the published name, a response without the seal header is the empty 404.
+
+    The replacement is Starlette's ``Response(status_code=404)``, the same call
+    the sync routes use, so the status, body, and headers match that 404.
+    """
+
+    def __init__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        self._scope = scope
+        self._receive = receive
+        self._send = send
+        self._forward = True
+
+    async def __call__(self, message: dict) -> None:
+        kind = message["type"]
+        if kind == "http.response.start":
+            await self._start(message)
+            return
+        if kind == "http.response.body" and not self._forward:
+            return
+        await self._send(message)
+
+    async def _start(self, message: dict) -> None:
+        if _response_sealed(message):
+            await self._send(message)
+            return
+        self._forward = False
+        await Response(status_code=404)(self._scope, self._receive, self._send)
+
+
 class SyncPublicHostMiddleware:
     """TrustedHostMiddleware, plus one hostname on /api/sync/ only.
 
     The extra hostname is not added to allowed_hosts. It is read from settings
     on each request, because allowed_hosts itself was captured at import.
+    A request admitted on that name has its ``send`` wrapped: anything that
+    does not carry the seal header leaves as the sync routes' empty 404.
     """
 
     def __init__(self, app: ASGIApp, allowed_hosts: list[str]) -> None:
@@ -229,10 +271,11 @@ class SyncPublicHostMiddleware:
         self.trusted = TrustedHostMiddleware(app, allowed_hosts=allowed_hosts)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if _admits_public_host(scope):
-            await self.app(scope, receive, send)
+        if not _admits_public_host(scope):
+            await self.trusted(scope, receive, send)
             return
-        await self.trusted(scope, receive, send)
+        outbound = _BareUnlessSealed(scope, receive, send) if scope["type"] == "http" else send
+        await self.app(scope, receive, outbound)
 
 
 # Added LAST, so it wraps everything and runs FIRST: a forged Host is rejected

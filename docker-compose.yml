@@ -53,6 +53,9 @@ services:
       # own browser -- binding to 127.0.0.1 does not, because the browser is
       # already inside. Add your own hostname if you front this with a proxy.
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      # Hostname a published sync listener may send. Empty leaves the allowlist
+      # unchanged; the app reads it per request and accepts it only under /api/sync/.
+      SYNC_PUBLIC_HOST: ${SYNC_PUBLIC_HOST:-}
       # Browser origins allowed to call the API. CORS governs what a page may
       # READ; this governs what it may RUN, because a cross-origin form POST
       # needs no preflight and its write lands whether or not the reply is

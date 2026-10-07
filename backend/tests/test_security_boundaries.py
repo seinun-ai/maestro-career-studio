@@ -467,11 +467,21 @@ def test_the_host_check_outranks_the_origin_check():
 
     Pins the middleware ORDER, which is the easy thing to get backwards:
     Starlette's add_middleware prepends, so the LAST one added runs FIRST.
+    An allowed Origin still yields 400 if Host runs second, so the disallowed
+    Origin is the pin: reversed, that request is the guard's 403.
     """
-    response = TestClient(app).get(
+    client = TestClient(app)
+    allowed = client.get(
         "/health",
         headers={"Host": "evil.example", "Origin": "http://localhost:3000"},
     )
+    blocked = client.get(
+        "/health",
+        headers={"Host": "evil.example", "Origin": "https://evil.example"},
+    )
 
-    assert response.status_code == 400
+    assert allowed.status_code == 400
+    assert blocked.status_code == 400
+    assert blocked.text == "Invalid host header"
+    assert "Origin not allowed" not in blocked.text
 
