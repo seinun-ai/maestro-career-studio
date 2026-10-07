@@ -4,10 +4,11 @@ import secrets
 import socket
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import pytest
@@ -198,3 +199,245 @@ def sealed(client, method, path, *, json=None, params=None, key=None, peer=None)
 def raw(client, method, path, **kwargs):
     """An unsealed call. The response is whatever the server sent."""
     return _transmit(client, method, path, **kwargs)
+
+
+_BAD_GATEWAY = (
+    b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+)
+
+
+def _recv_until(sock, buf, marker):
+    while marker not in buf:
+        chunk = sock.recv(65536)
+        if not chunk:
+            break
+        buf += chunk
+    return buf
+
+
+def _recv_exact(sock, buf, length):
+    while len(buf) < length:
+        chunk = sock.recv(65536)
+        if not chunk:
+            break
+        buf += chunk
+    return buf
+
+
+def _read_line(sock, buf):
+    buf = _recv_until(sock, buf, b"\r\n")
+    if b"\r\n" not in buf:
+        return None, buf
+    line, _, rest = buf.partition(b"\r\n")
+    return line, rest
+
+
+def _header_map(head):
+    found = {}
+    for line in head.split(b"\r\n")[1:]:
+        name, sep, value = line.partition(b":")
+        if sep:
+            found[name.strip().lower()] = value.strip()
+    return found
+
+
+def _until_close(sock, buf):
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            return buf, b""
+        buf += chunk
+
+
+def _append_chunk(sock, buf, raw, size):
+    buf = _recv_exact(sock, buf, size + 2)
+    if len(buf) < size + 2 or buf[size:size + 2] != b"\r\n":
+        return None
+    raw.extend(buf[:size + 2])
+    return buf[size + 2:]
+
+
+def _chunk_trailers(sock, buf, raw):
+    while True:
+        line, buf = _read_line(sock, buf)
+        if line is None:
+            return None, buf
+        raw.extend(line + b"\r\n")
+        if line == b"":
+            return bytes(raw), buf
+
+
+def _take_chunked(sock, buf):
+    raw = bytearray()
+    while True:
+        line, buf = _read_line(sock, buf)
+        if line is None:
+            return None, buf
+        raw.extend(line + b"\r\n")
+        try:
+            size = int(line.split(b";", 1)[0].strip(), 16)
+        except ValueError:
+            return None, buf
+        if size == 0:
+            return _chunk_trailers(sock, buf, raw)
+        nxt = _append_chunk(sock, buf, raw, size)
+        if nxt is None:
+            return None, buf
+        buf = nxt
+
+
+def _body_after(sock, rest, headers, close_delimited):
+    if b"chunked" in headers.get(b"transfer-encoding", b"").lower():
+        return _take_chunked(sock, rest)
+    length = headers.get(b"content-length")
+    if length is None:
+        return _until_close(sock, rest) if close_delimited else (b"", rest)
+    needed = int(length)
+    rest = _recv_exact(sock, rest, needed)
+    if len(rest) < needed:
+        return None, rest
+    return rest[:needed], rest[needed:]
+
+
+def _read_message(sock, buf, *, close_delimited=False):
+    buf = _recv_until(sock, buf, b"\r\n\r\n")
+    if b"\r\n\r\n" not in buf:
+        return None, buf
+    head, _, rest = buf.partition(b"\r\n\r\n")
+    body, rest = _body_after(sock, rest, _header_map(head), close_delimited)
+    if body is None:
+        return None, buf
+    return head + b"\r\n\r\n" + body, rest
+
+
+def _retarget(raw):
+    """Absolute-URI request line to the origin-form the app actually routes."""
+    line, sep, rest = raw.partition(b"\r\n")
+    method, target, version = line.split(b" ")
+    parts = urlsplit(target.decode("ascii"))
+    if parts.scheme != "http" or not parts.hostname:
+        return None
+    path = parts.path or "/"
+    if parts.query:
+        path = f"{path}?{parts.query}"
+    port = parts.port or 80
+    rewritten = b" ".join((method, path.encode("ascii"), version)) + sep + rest
+    return parts.hostname, port, rewritten
+
+
+def _forward(raw):
+    target = _retarget(raw)
+    if target is None:
+        return _BAD_GATEWAY
+    host, port, rewritten = target
+    try:
+        with socket.create_connection((host, port), timeout=10) as origin:
+            origin.settimeout(30)
+            origin.sendall(rewritten)
+            response, _rest = _read_message(origin, b"", close_delimited=True)
+    except OSError:
+        return _BAD_GATEWAY
+    return response or _BAD_GATEWAY
+
+
+class RecordingProxy:
+    """HTTP forward proxy on 127.0.0.1. Records every byte both ways."""
+
+    def __init__(self):
+        self._requests: list[bytes] = []
+        self._responses: list[bytes] = []
+        self._clients: list = []
+        self._lock = threading.Lock()
+        self._closed = False
+        server = socket.socket()
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen(64)
+        self._server = server
+        self.port = server.getsockname()[1]
+        self.url = f"http://127.0.0.1:{self.port}"
+        self._thread = threading.Thread(target=self._accept, name="recording-proxy", daemon=True)
+        self._thread.start()
+
+    def recorded_requests(self):
+        with self._lock:
+            return list(self._requests)
+
+    def transcript(self):
+        with self._lock:
+            parts = [chunk for pair in zip(self._requests, self._responses) for chunk in pair]
+            return b"".join(parts)
+
+    def close(self):
+        self._closed = True
+        try:
+            self._server.close()
+        except OSError:
+            pass
+        with self._lock:
+            clients = list(self._clients)
+        for conn in clients:
+            _shut(conn)
+        self._thread.join(timeout=2)
+
+    def _remember(self, request, response):
+        with self._lock:
+            self._requests.append(request)
+            self._responses.append(response)
+
+    def _accept(self):
+        self._server.settimeout(0.2)
+        while not self._closed:
+            try:
+                conn, _addr = self._server.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
+
+    def _serve(self, conn):
+        conn.settimeout(30)
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        with self._lock:
+            self._clients.append(conn)
+        try:
+            self._relay(conn)
+        except OSError:
+            return
+        finally:
+            _shut(conn)
+            with self._lock:
+                if conn in self._clients:
+                    self._clients.remove(conn)
+
+    def _relay(self, conn):
+        buf = b""
+        while not self._closed:
+            raw, buf = _read_message(conn, buf)
+            if raw is None:
+                return
+            response = _forward(raw)
+            conn.sendall(response)
+            self._remember(raw, response)
+
+
+def _shut(conn):
+    try:
+        conn.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+    try:
+        conn.close()
+    except OSError:
+        pass
+
+
+@pytest.fixture
+def recording_proxy():
+    """Local recording forward proxy. Absolute-URI in, origin-form out."""
+    proxy = RecordingProxy()
+    try:
+        yield proxy
+    finally:
+        proxy.close()

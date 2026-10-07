@@ -4,23 +4,26 @@ The process tests deliberately aren't slow: they need no downloads and belong in
 The pairing regressions also run without sockets, using Task 11's fake channel.
 """
 
+import base64
 import json
 import socket
 import time
 import uuid
 from datetime import timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import event, select, text
+from sqlalchemy import event, inspect as sa_inspect, select, text
 
 from app import models
 from app.config import settings
 from app.db import get_db
 from app.main import app
 from app.services import base_resume_data, proposals, seeding, tailoring_session
-from app.services.sync import jobs_bundle, profile_bundle, request_apply, seal, status
+from app.services.sync import jobs_bundle, pairing, profile_bundle, request_apply, seal, status
+from app.services.sync import requests as sync_requests
 from app.services.sync import round as sync_round
 from tests.sync.conftest import sealed
 from tests.conftest import _clear_tables
@@ -686,3 +689,232 @@ def test_real_take_over_is_refused_while_the_bot_is_applying(machines):
         assert request.status == "refused"
         assert request.reason == request_apply.BUSY_APPLYING
         assert db.get(models.Job, ids.job).owner_machine == status.machine_id(machines.db)
+
+
+# ------------------------------------------------ intercepting proxy
+
+_PROFILE = "profile-sentinel-k7m2q9vx4n8p"
+_AI_KEY = "sk-sentinel-ai-b4c8e1d6f3a79c2e"
+_PASSWORD = "login-sentinel-p9w3h6t2m5"
+_TITLE = "title-sentinel-r8y5u1i4o6"
+_FILE = b"file-sentinel-bytes-m2n8b5v7q1w4e6r9"
+_NOTE = "request-sentinel-q4n7h2c8"
+
+
+def _prepare_proxy_remote(monkeypatch, home, tmp_path, proxy):
+    """The in-process remote takes the https route, so httpx honors HTTP_PROXY."""
+    for name in ("applications", "base_resumes", "kb_documents", "settings"):
+        root = tmp_path / name
+        root.mkdir()
+        monkeypatch.setattr(settings, f"{name}_dir", root)
+    monkeypatch.setattr(settings, "sync_key_file", tmp_path / "remote-sync-key")
+    monkeypatch.setattr(settings, "sync_remote_url", home.url)
+    monkeypatch.setattr(status, "remote_route", lambda: "https")
+    monkeypatch.setenv("HTTP_PROXY", proxy.url)
+    monkeypatch.setenv("http_proxy", proxy.url)
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def _clock(monkeypatch):
+    now = SimpleNamespace(value=sync_round._now())
+    monkeypatch.setattr(sync_round, "_now", lambda: now.value)
+    return now
+
+
+def _write_login(home):
+    path = Path(home.env["SETTINGS_DIR"]) / "secrets" / "job-site-login.json"
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.write_text(json.dumps({"email": "me@example.test", "password": _PASSWORD}),
+                    encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _add_home_rows(db, job_id, app_id, folder):
+    db.add(models.KBProfile(id=1, summary=_PROFILE))
+    db.add(models.Setting(key="llm.openai_api_key", value=_AI_KEY))
+    db.add(models.Setting(key="kb.seeded", value="1"))
+    db.add(models.Job(id=job_id, title=_TITLE, raw_text="Synthetic posting",
+                      raw_text_hash=uuid.uuid4().hex))
+    db.flush()
+    db.add(models.Application(
+        id=app_id, job_id=job_id, base_resume="base", status="draft",
+        artifact_dir=str(folder), pdf_path=str(folder / "note.bin")))
+
+
+def _seed_home(home, file_bytes):
+    job_id, app_id = uuid.uuid4(), uuid.uuid4()
+    folder = Path(home.env["APPLICATIONS_DIR"]) / app_id.hex
+    folder.mkdir(parents=True)
+    (folder / "note.bin").write_bytes(file_bytes)
+    _write_login(home)
+    with home.session() as db:
+        _clear_tables(db)
+        db.commit()
+        with jobs_bundle.applying(db):
+            _add_home_rows(db, job_id, app_id, folder)
+    return SimpleNamespace(job=job_id, application=app_id)
+
+
+def _pair_and_sync(db, home):
+    opened = home.http.post("/api/settings/second-copy")
+    assert opened.status_code == 200, opened.status_code
+    code = opened.json()["code"]
+    assert pairing.enroll_here(db, code) == {"ok": True}
+    first = sync_round.run_round(db, pair=True)
+    assert first["ok"], first.get("outcome")
+    return code
+
+
+def _queue_and_send(db, ids, now):
+    application = db.get(models.Application, ids.application)
+    queued = sync_requests.queue_application_patch(db, application, {"notes": _NOTE})
+    assert queued is not None and queued.status_code == 202
+    now.value += timedelta(minutes=31)
+    second = sync_round.run_round(db, pair=True)
+    assert second["ok"], second.get("outcome")
+    assert second["steps"]["requests"]["sent"] == 1
+
+
+def _assert_request_landed(home, db, ids):
+    with home.session() as session:
+        assert session.get(models.Application, ids.application).notes == _NOTE
+    db.expire_all()
+    assert db.get(models.Application, ids.application).notes is None
+
+
+def _assert_payloads_arrived(db, tmp_path, ids, file_bytes):
+    """The sealed round delivered every sentinel. Absence from the proxy is then meaningful."""
+    db.expire_all()
+    assert db.get(models.KBProfile, 1).summary == _PROFILE
+    assert db.get(models.Setting, "llm.openai_api_key").value == _AI_KEY
+    assert db.get(models.Job, ids.job).title == _TITLE
+    login = (tmp_path / "settings" / "secrets" / "job-site-login.json").read_text(encoding="utf-8")
+    assert _PASSWORD in login
+    found = list((tmp_path / "applications").rglob("note.bin"))
+    assert len(found) == 1 and found[0].read_bytes() == file_bytes
+
+
+def _forbidden(home, code, file_bytes):
+    key = home.key_file.read_text(encoding="utf-8").strip().encode()
+    normalized = pairing.normalize_code(code).encode()
+    return [key, code.encode(), normalized, _PROFILE.encode(), _AI_KEY.encode(),
+            _PASSWORD.encode(), _TITLE.encode(), _NOTE.encode(), file_bytes,
+            base64.b64encode(file_bytes)]
+
+
+def _no_secrets(blob, forbidden):
+    if any(secret in blob for secret in forbidden):
+        raise AssertionError("the proxy recording contained a secret")
+
+
+def _assert_recorded_seal(blob, port):
+    folded = blob.lower()
+    absolute = f"http://127.0.0.1:{port}/api/sync/".encode()
+    assert absolute in blob and b"x-maestro-seal:" in folded
+    assert f"POST {absolute.decode()}enroll ".encode() in blob
+    assert b"/api/sync/jobs" in blob and b"http/1.1 200" in folded
+
+
+def _one_post(proxy, port, path):
+    prefix = f"POST http://127.0.0.1:{port}{path} ".encode()
+    found = [req for req in proxy.recorded_requests() if req.startswith(prefix)]
+    assert len(found) == 1
+    return found[0]
+
+
+def replay_recorded(proxy, raw):
+    sock = socket.create_connection(("127.0.0.1", proxy.port), timeout=20)
+    with sock:
+        sock.sendall(raw)
+        status_line, headers, body = _read_http(sock)
+    return int(status_line.split(" ", 2)[1]), headers, body
+
+
+def _assert_bare(code, headers, body):
+    assert code == 404 and body == b"" and "x-maestro-seal" not in headers
+
+
+def _rid_of(raw):
+    for line in raw.split(b"\r\n"):
+        name, sep, value = line.partition(b":")
+        if sep and name.lower() == b"x-maestro-seal":
+            return value.strip().decode("ascii").split(".")[2]
+    raise AssertionError("recorded request had no seal header")
+
+
+def _open_applied(code, headers, body, raw):
+    assert code == 200 and body and "x-maestro-seal" in headers
+    plain = seal.open_response(
+        status.read_key(), _rid_of(raw), 200, headers["x-maestro-seal"], body)
+    answer = json.loads(plain)
+    assert [row["status"] for row in answer] == ["applied"]
+    assert all(row["reason"] is None for row in answer)
+
+
+def _stamp(value):
+    return None if value is None else value.isoformat()
+
+
+def _counts(session):
+    names = sorted(sa_inspect(session.get_bind()).get_table_names())
+    return {name: session.scalar(text(f'SELECT COUNT(*) FROM "{name}"')) for name in names}
+
+
+def _request_row(row):
+    payload = json.dumps(row.payload_json, sort_keys=True, default=str)
+    return (row.id.hex, row.status, row.origin, row.kind, row.reason,
+            _stamp(row.answered_at), payload)
+
+
+def _rows(session, job_id, app_id):
+    job = session.get(models.Job, job_id)
+    app = session.get(models.Application, app_id)
+    reqs = session.scalars(select(models.SyncRequest).order_by(models.SyncRequest.id)).all()
+    return {
+        "counts": _counts(session),
+        "job": None if job is None else (job.title, job.owner_machine, job.handover, job.sync_rev),
+        "notes": None if app is None else (app.notes, app.status, _stamp(app.updated_at)),
+        "requests": [_request_row(row) for row in reqs],
+    }
+
+
+def _both(home, db, ids):
+    db.expire_all()
+    with home.session() as session:
+        home_rows = _rows(session, ids.job, ids.application)
+    return {"home": home_rows, "remote": _rows(db, ids.job, ids.application)}
+
+
+def _replay_after_restart(home, db, ids, proxy, posted):
+    """One fresh home process: the replay cache is empty and the skew window still holds."""
+    home.stop()
+    try:
+        home.start()
+        before = _both(home, db, ids)
+        _open_applied(*replay_recorded(proxy, posted), posted)
+        assert _both(home, db, ids) == before, "replay after restart changed a database"
+    finally:
+        if home.process is None or home.process.poll() is not None:
+            home.start()
+
+
+def test_real_intercepting_proxy_sees_ciphertext_and_replay_changes_nothing(
+        home_backend, db_session, tmp_path, monkeypatch, recording_proxy):
+    """With an http:// target httpx uses the absolute-URI forward form, so the proxy
+    records the request in cleartext — exactly the decrypting-proxy view we must survive."""
+    _prepare_proxy_remote(monkeypatch, home_backend, tmp_path, recording_proxy)
+    now = _clock(monkeypatch)
+    ids = _seed_home(home_backend, _FILE)
+    code = _pair_and_sync(db_session, home_backend)
+    _queue_and_send(db_session, ids, now)
+    _assert_request_landed(home_backend, db_session, ids)
+    _assert_payloads_arrived(db_session, tmp_path, ids, _FILE)
+    blob = recording_proxy.transcript()
+    _assert_recorded_seal(blob, home_backend.port)
+    _no_secrets(blob, _forbidden(home_backend, code, _FILE))
+    posted = _one_post(recording_proxy, home_backend.port, "/api/sync/requests")
+    before = _both(home_backend, db_session, ids)
+    _assert_bare(*replay_recorded(recording_proxy, posted))
+    assert _both(home_backend, db_session, ids) == before
+    _replay_after_restart(home_backend, db_session, ids, recording_proxy, posted)
