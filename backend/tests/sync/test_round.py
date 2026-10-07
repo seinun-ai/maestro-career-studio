@@ -19,7 +19,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import exc as sa_exc
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import sessionmaker
 
 from app import models
@@ -334,6 +334,41 @@ def test_a_full_round(world, home, clock, caplog):
     assert isinstance(saved["profile_rev"], int)
     blob = json.dumps(summary) + json.dumps(saved)
     assert KEY not in blob and KEY not in caplog.text and SENTINEL not in blob
+
+
+def _park_at_zero(world, side, *job_ids, owner=None):
+    """The flush hook stamps a create even with no key, so this is a row it never stamped."""
+    values = {"sync_rev": 0}
+    if owner is not None:
+        values["owner_machine"] = owner
+    with world.as_(side):
+        db = getattr(world, side)
+        db.execute(update(models.Job).where(models.Job.id.in_(job_ids)).values(**values))
+        db.commit()
+
+
+def test_a_remote_job_from_before_the_key_is_pushed_on_the_first_round(world, home, clock):
+    older = lone_job(world, "remote")
+    newer = lone_job(world, "remote")
+    replica = lone_job(world, "remote")
+    _park_at_zero(world, "remote", older, newer)
+    _park_at_zero(world, "remote", replica, owner="f" * 32)
+    assert job_of(world, "remote", older).sync_rev == 0
+    assert job_of(world, "remote", newer).sync_rev == 0
+
+    summary = go(world)
+
+    assert summary["ok"], summary
+    assert summary["steps"]["push"]["sent"] >= 2
+    remote_id = world.machine_id("remote")
+    for job_id in (older, newer):
+        arrived = job_of(world, "home", job_id)
+        assert arrived is not None and arrived.owner_machine == remote_id
+    revs = {job_of(world, "remote", job_id).sync_rev for job_id in (older, newer)}
+    assert 0 not in revs and len(revs) == 2
+    left = job_of(world, "remote", replica)
+    assert (left.sync_rev, left.owner_machine) == (0, "f" * 32)
+    assert job_of(world, "home", replica) is None
 
 
 def test_the_second_round_sends_nothing(world, home, clock):

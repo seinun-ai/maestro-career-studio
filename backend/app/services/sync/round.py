@@ -661,6 +661,7 @@ def _listing(db: Session, push: _Push) -> list:
 
 def _push(ctx: _Ctx) -> dict:
     db = ctx.db
+    hooks.stamp_unsynced_jobs(db)
     saved = status.read_state(db)
     push = _Push(acked=saved["acked_own"], retry=_still_mine(db, saved["retry_own"]),
                  stuck=_still_mine(db, saved["stuck_own"]))

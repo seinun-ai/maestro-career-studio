@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import event, inspect as sa_inspect, select, text
+from sqlalchemy import event, inspect as sa_inspect, select, text, update
 
 from app import models
 from app.config import settings
@@ -417,6 +417,42 @@ def test_real_remote_job_patch_is_a_request_and_its_result_returns_home(machines
     assert machines.round()["ok"]
     result = require_ok(machines.home.http.get(f"/api/applications/{ids.application}"))
     assert (result["notes"], result["status"]) == ("Synthetic note", "applied")
+
+
+def _pre_key_job(db, title):
+    """Created, then put back at revision 0: the flush hook stamps even before a key exists."""
+    job = models.Job(id=uuid.uuid4(), title=title, raw_text=f"Synthetic posting {title}",
+                     raw_text_hash=uuid.uuid4().hex)
+    db.add(job)
+    db.commit()
+    db.execute(update(models.Job).where(models.Job.id == job.id).values(sync_rev=0))
+    db.commit()
+    db.expire_all()
+    assert db.get(models.Job, job.id).sync_rev == 0
+    return job.id
+
+
+def test_real_jobs_from_before_either_key_cross_on_the_first_round(machines):
+    with machines.home.session() as db:
+        laptop_job = _pre_key_job(db, "Laptop role before pairing")
+        home_id = status.machine_id(db)
+        db.commit()
+    remote_job = _pre_key_job(machines.db, "Bot role before pairing")
+    remote_id = status.machine_id(machines.db)
+    machines.db.commit()
+
+    result = machines.round()
+
+    assert result["ok"], result
+    assert result["steps"]["push"]["sent"] >= 1
+    assert result["steps"]["pull"]["applied"] >= 1
+    with machines.home.session() as db:
+        arrived = db.get(models.Job, remote_job)
+        assert arrived is not None and arrived.owner_machine == remote_id
+        assert db.get(models.Job, laptop_job).sync_rev > 0
+    landed = machines.db.get(models.Job, laptop_job)
+    assert landed is not None and landed.owner_machine == home_id
+    assert machines.db.get(models.Job, remote_job).sync_rev > 0
 
 
 def test_real_two_fresh_installs_pair_without_the_overwrite_flag(machines):

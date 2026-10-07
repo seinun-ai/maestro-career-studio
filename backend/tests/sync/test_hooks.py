@@ -173,6 +173,52 @@ def test_import_restamps_from_local_clock(db_session):
     assert job.sync_rev == _state(db_session, "clock") == before + 1
 
 
+def _park_at_zero(session, *job_ids, owner=None):
+    """Back at the server default. The flush hook stamps even with sync off, so a Core write is
+    what a row the hook never stamped looks like."""
+    values = {"sync_rev": 0}
+    if owner is not None:
+        values["owner_machine"] = owner
+    session.execute(update(models.Job).where(models.Job.id.in_(job_ids)).values(**values))
+    session.commit()
+    session.expire_all()
+
+
+def test_stamp_unsynced_jobs_gives_owned_revision_zero_jobs_distinct_revs(db_session):
+    first, second = _job(db_session), _job(db_session)
+    replica = _job(db_session)
+    kept = _job(db_session)
+    kept_rev = kept.sync_rev
+    assert kept_rev > 0
+    _park_at_zero(db_session, first.id, second.id)
+    _park_at_zero(db_session, replica.id, owner="f" * 32)
+    profile_before = _state(db_session, "profile_rev")
+    clock_before = _state(db_session, "clock")
+    requests_before = db_session.scalar(select(models.SyncRequest.id))
+
+    stamped = hooks.stamp_unsynced_jobs(db_session)
+    db_session.commit()
+    db_session.expire_all()
+
+    assert stamped == 2
+    revs = {db_session.get(models.Job, first.id).sync_rev,
+            db_session.get(models.Job, second.id).sync_rev}
+    assert revs == {clock_before + 1, clock_before + 2}
+    assert min(revs) > kept_rev
+    assert db_session.get(models.Job, kept.id).sync_rev == kept_rev
+    assert db_session.get(models.Job, replica.id).sync_rev == 0
+    assert db_session.get(models.Job, replica.id).owner_machine == "f" * 32
+    assert _state(db_session, "profile_rev") == profile_before
+    assert _state(db_session, "clock") == clock_before + 2
+    assert db_session.scalar(select(models.SyncRequest.id)) == requests_before
+    assert hooks.stamp_unsynced_jobs(db_session) == 0
+    db_session.expire_all()
+    assert {db_session.get(models.Job, first.id).sync_rev,
+            db_session.get(models.Job, second.id).sync_rev} == revs
+    assert db_session.get(models.Job, kept.id).sync_rev == kept_rev
+    assert db_session.get(models.Job, replica.id).sync_rev == 0
+
+
 def test_sync_off_allows_other_owner_and_handover(db_session):
     job = _job(db_session, owner_machine="other-machine", handover="offered")
     before = job.sync_rev

@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-from sqlalchemy import event, inspect, select, text
+from sqlalchemy import bindparam, event, inspect, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_dirty
 
@@ -162,6 +162,36 @@ def _advance_clock(session: Session) -> int:
     )).scalar_one()
     _expire_state(session, "clock")
     return value
+
+
+def _zero_owned_ids(session: Session) -> list[uuid.UUID]:
+    from app.services.sync.jobs_bundle import owned_clause
+
+    return list(session.scalars(
+        select(Job.id).where(owned_clause(session), Job.sync_rev == 0).order_by(Job.id)))
+
+
+def _assign_rev(session: Session, job_id: uuid.UUID) -> None:
+    """One clock value, written without a second pass through the flush hook."""
+    rev = _advance_clock(session)
+    statement = text(
+        "UPDATE jobs SET sync_rev = :rev WHERE id = :id AND sync_rev = 0"
+    ).bindparams(bindparam("id", type_=Job.id.type))
+    session.execute(statement, {"rev": rev, "id": job_id})
+    loaded = session.identity_map.get((Job, (job_id,), None))
+    if loaded is not None:
+        session.expire(loaded, ["sync_rev"])
+
+
+def stamp_unsynced_jobs(session: Session) -> int:
+    """One fresh revision each for jobs this copy owns that are still at revision 0.
+
+    A second call returns 0. Replicas are left alone. The caller commits.
+    """
+    ids = _zero_owned_ids(session)
+    for job_id in ids:
+        _assign_rev(session, job_id)
+    return len(ids)
 
 
 def _stamp_profile(session: Session, rev: int) -> None:

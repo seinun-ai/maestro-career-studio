@@ -12,7 +12,7 @@ import httpx
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import sessionmaker
 from starlette.requests import ClientDisconnect
 
@@ -438,6 +438,57 @@ def test_a_page_may_end_inside_a_revision_that_several_jobs_share(
         if not page["more"]:
             break
     assert sorted(seen) == sorted(job.hex for job in ids)
+
+
+def _park_at_zero(db, *job_ids):
+    """The flush hook stamps a create even with no key, so this is a row it never stamped."""
+    db.execute(update(models.Job).where(models.Job.id.in_(job_ids)).values(sync_rev=0))
+    db.commit()
+    db.expire_all()
+
+
+def _committed_revs(db_session, job_ids):
+    maker = sessionmaker(bind=db_session.get_bind(), autoflush=False)
+    with maker() as other:
+        rows = other.execute(select(models.Job.id, models.Job.sync_rev).where(
+            models.Job.id.in_(job_ids))).all()
+    return {row.id: row.sync_rev for row in rows}
+
+
+def test_a_job_created_before_the_key_is_listed_from_since_zero(
+        client, auth, db_session, sync_on, monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "sync_key_file", tmp_path / "absent-key")
+    assert status.read_key() is None
+    job = lone_job(db_session, raw_text="Saved before the key existed")
+    _park_at_zero(db_session, job.id)
+    assert db_session.get(models.Job, job.id).sync_rev == 0
+    monkeypatch.setattr(settings, "sync_key_file", sync_on)
+
+    body = client.get("/api/sync/jobs?since=0", headers=auth).json()
+
+    assert [item["job_id"] for item in body["bundles"]] == [job.id.hex]
+    assert body["bundles"][0]["sync_rev"] > 0
+    assert _committed_revs(db_session, [job.id])[job.id] > 0
+
+
+def test_revision_zero_jobs_are_returned_once_across_pages(client, auth, db_session, sync_on):
+    jobs = [lone_job(db_session, raw_text=f"Saved before pairing {index}") for index in range(5)]
+    _park_at_zero(db_session, *[job.id for job in jobs])
+    seen, revs, cursor = [], [], "0"
+    for _ in range(6):
+        page = client.get(f"/api/sync/jobs?since={cursor}&limit=2", headers=auth).json()
+        seen += [item["job_id"] for item in page["bundles"]]
+        revs += [item["sync_rev"] for item in page["bundles"]]
+        cursor = page["next_since"]
+        if not page["more"]:
+            break
+    assert sorted(seen) == sorted(job.id.hex for job in jobs)
+    assert len(seen) == len(set(seen)) == 5
+    assert len(set(revs)) == 5 and min(revs) > 0
+    stored = _committed_revs(db_session, [job.id for job in jobs])
+    assert set(stored.values()) == set(revs)
+    again = client.get("/api/sync/jobs?since=0&limit=20", headers=auth).json()
+    assert sorted(item["sync_rev"] for item in again["bundles"]) == sorted(revs)
 
 
 def test_an_integer_since_still_means_after_that_revision(client, auth, db_session, roots):

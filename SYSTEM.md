@@ -124,8 +124,7 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
         status tracking (StatusChip)        QA router (cover letter / answers)
 ```
 
-`data/maestro_cs.sqlite3` (SQLite, WAL) holds rows and local sync clocks; ORM flushes stamp jobs/profile, including imports and both
-sides of moves. Deleted jobs leave tombstones; Core writers touch their subtree (`services/sync/hooks.py`; the write guard is §6
+`data/maestro_cs.sqlite3` (SQLite, WAL) holds rows and local sync clocks; ORM flushes stamp jobs/profile, including imports and both sides of moves. A job still at revision 0 is stamped from that clock when this copy pushes or lists its jobs. Deleted jobs leave tombstones; Core writers touch their subtree (`services/sync/hooks.py`; the write guard is §6
 inv-flush-guard). Resume JSON/rendered files stay on disk (`base_resumes` row + file required); job-site login: `settings/secrets/` (§6).
 
 **Sync** is optional, on only while a key file exists (`docs/sync-setup.md`): the laptop owns the profile, each job has one owner

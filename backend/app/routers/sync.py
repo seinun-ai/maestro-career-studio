@@ -611,6 +611,7 @@ def get_jobs(peer: Peer, db: DB, since: Annotated[str, Query(max_length=64)] = "
     in (revision, id) order, up to ``limit`` and ``PAGE_BYTES``. ``next_since`` is the cursor for
     the following page; tombstones ride the page that reaches their revision."""
     since_rev, ident = _parse_cursor(since)
+    stamped = hooks.stamp_unsynced_jobs(db)
     rev = since_rev
     rows = _jobs_after(db, rev, ident, limit)
     bundles, skipped, taken = _export_page(db, rows, limit)
@@ -620,6 +621,8 @@ def get_jobs(peer: Peer, db: DB, since: Annotated[str, Query(max_length=64)] = "
     tombstones = _tombstones(db, since_rev, rev if more else None)
     if not more and tombstones and tombstones[-1]["rev"] > rev:
         rev, ident = tombstones[-1]["rev"], _CURSOR_END
+    if stamped:
+        db.commit()
     return {"bundles": bundles, "tombstones": tombstones, "next_since": _cursor(rev, ident),
             "more": more, "skipped": skipped}
 

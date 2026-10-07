@@ -291,7 +291,8 @@ pairs without the flag. Points the always-on copy recorded as "I can't
 confirm this" never block pairing, and they are sent to the laptop.
 
 After pairing, a job both copies already hold is the laptop's. A job only the
-always-on copy holds stays its own.
+always-on copy holds stays its own. Jobs that existed before pairing are sent
+on the first rounds.
 
 ## Cron lines
 
