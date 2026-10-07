@@ -40,6 +40,12 @@ if not os.environ.get("TEST_DATABASE_URL") or _MINTED_BY_CONTROLLER:
 for _secret in ("OPENAI_API_KEY", "GEMINI_API_KEY"):
     os.environ[_secret] = ""
 
+# The same walk would bring a live laptop's sync setup into every test: with
+# SYNC_PUBLIC_HOST set, every /api/sync path is the bare 404 whatever Host says.
+# Tests that need these set them per test.
+for _sync_setting in ("SYNC_PUBLIC_HOST", "SYNC_REMOTE_URL"):
+    os.environ[_sync_setting] = ""
+
 # Same reason, same timing: `app.main` installs TrustedHostMiddleware from
 # `settings.allowed_hosts` at import, and starlette's TestClient sends
 # `Host: testserver`. 52 test modules build their own `TestClient(app)`, so the
