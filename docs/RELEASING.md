@@ -135,8 +135,11 @@ integrity check.
 ```bash
 gh release upload vX.Y.Z mcpb/maestro-career-studio.mcpb
 shasum -a 256 mcpb/maestro-career-studio.mcpb   # must equal server.json's fileSha256
-mcp-publisher login github                       # org Owner of seinun-ai; device-code login
-mcp-publisher publish
+# The registry grants io.github.seinun-ai/* only to org Owners, read from the
+# token's org role. The device-code login's token can't read it (you'd get
+# "permission to publish: io.github.<you>/*"), so log in with a classic PAT
+# that has ONLY the read:org scope (7-day expiry), typed in without echo:
+read -rs MCP_GITHUB_TOKEN && export MCP_GITHUB_TOKEN && mcp-publisher login github && mcp-publisher publish; unset MCP_GITHUB_TOKEN
 curl -s "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.seinun-ai/maestro-career-studio"
 ```
 
