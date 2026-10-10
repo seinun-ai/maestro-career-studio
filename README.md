@@ -20,9 +20,10 @@
 
 ### Tailor your resume to every job, without the AI making things up.
 
-Maestro Career Studio is a free, open-source job application studio that runs on
-your computer. Every resume is built from things you actually did, every AI edit
-is a change you accept or undo, and the result is a real LaTeX or Typst PDF.
+Maestro Career Studio is a free, open-source job application studio from
+[Seinun LLC](https://seinun.com). It runs on your computer. Every resume is built
+from things you actually did, every AI edit is a change you accept or undo, and
+the result is a real LaTeX or Typst PDF.
 
 - **Same score, every time.** The match score uses fixed rules and runs on your
   computer with no AI service involved, so the same resume and job always get
