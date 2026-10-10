@@ -48,7 +48,7 @@ dev = [
     # to 0.16.2 in CI against 0.12.0 locally and reported 449 errors on a tree
     # that linted clean. The rule set is now pinned in [tool.ruff.lint] too, so
     # this bound is belt-and-braces — lift it deliberately, with a run.
-    "ruff>=0.7,<0.17",
+    "ruff>=0.16.9,<0.17",
     "respx>=0.21",
     "playwright>=1.63.0",
 ]
