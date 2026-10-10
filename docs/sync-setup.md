@@ -122,11 +122,10 @@ whatever your access rules give your devices.
    "Laptop unreachable" and exits 0, then keeps doing that. `SSL_CERT_FILE` is
    a bundle that contains the proxy's CA. Example values, not a real proxy:
    `HTTPS_PROXY=http://proxy.example:3128` and `NO_PROXY=127.0.0.1,localhost`.
-4. Restart, because the backend reads `maestro.env` at start:
-
-   ```bash
-   "$REPO/backend/scripts/native/stop.sh" --no-pause && "$REPO/backend/scripts/native/start.sh"
-   ```
+4. Restart, because the backend reads `maestro.env` at start. At a keyboard,
+   `stop.sh --no-pause` and then `start.sh` is fine. An agent should not run
+   `start.sh` from a tool call. It should run `stop.sh --no-pause`, wait for
+   the watchdog (up to 5 minutes), then check `health.sh`.
 
 5. Add the cron lines under [Cron lines](#cron-lines) for this route. This
    machine does not get an SSH key, and it does not join Tailscale.
@@ -180,11 +179,10 @@ clear.
    tunnel (`127.0.0.1`, `localhost` or `::1`) or an `https://` address with no
    path and no query. For this tunnel, Maestro ignores `HTTP_PROXY` and the
    like, because the connection stays on the machine.
-3. **Restart,** because the backend reads `maestro.env` at start:
-
-   ```bash
-   "$REPO/backend/scripts/native/stop.sh" --no-pause && "$REPO/backend/scripts/native/start.sh"
-   ```
+3. **Restart,** because the backend reads `maestro.env` at start. At a
+   keyboard, `stop.sh --no-pause` and then `start.sh` is fine. An agent should
+   not run `start.sh` from a tool call. It should run `stop.sh --no-pause`,
+   wait for the watchdog (up to 5 minutes), then check `health.sh`.
 
 4. **Add the laptop to `~/.ssh/config`** (use your private network's name):
 
@@ -303,9 +301,12 @@ the sync status says "The laptop deleted this job."
 
 The first rounds after pairing can take 20 minutes or more, because every older
 job travels with its files, about 20 jobs a page, so let a round finish rather
-than restarting the backend to clear it. A round started meanwhile gets "A sync
-is already running", and the next one continues where it stopped, since each
-page is saved.
+than restarting the backend to clear it. Run the first pairing round, and the
+first `sync.sh --now`, in the background with the output in a log, and read the
+log until it finishes. A tool call that times out reports a false failure while
+the round keeps going: `sync.sh` then exits 3. Check later with `sync.sh --now`.
+A round started meanwhile gets "A sync is already running", and the next one
+continues where it stopped, since each page is saved.
 
 ## Cron lines
 
@@ -333,7 +334,7 @@ MAESTRO_HOME=/home/agent/maestro
 # keep the backend up, all day (these lines stay above CRON_TZ)
 */5 * * * * /home/agent/maestro-career-studio/backend/scripts/native/health.sh >/dev/null 2>&1 || /home/agent/maestro-career-studio/backend/scripts/native/start.sh --watchdog >/dev/null 2>&1
 @reboot /home/agent/maestro-career-studio/backend/scripts/native/start.sh --watchdog >/dev/null 2>&1
-CRON_TZ=America/Chicago
+CRON_TZ=Europe/London
 # one sync round every five minutes, from 7:00 through 23:55 in that zone
 */5 7-23 * * * /home/agent/maestro-career-studio/backend/scripts/native/sync.sh >/dev/null 2>&1
 ```
@@ -402,6 +403,9 @@ no key, it says "Sync isn't set up."
   It will try again."
 - **1**: a person has to act, or the local backend is down or not set up.
   The message says which, and starts with "Sync failed:" when a person must act.
+- **3**: the wait ended and the round is still running on this machine. The
+  message says to check later with `sync.sh --now`. "A sync is already running"
+  means it hasn't finished yet. A backend that is not reachable is still exit 1.
 
 It never prints the key. Cron discards output in the lines above. Run
 `sync.sh` by hand to read the message.
@@ -442,7 +446,9 @@ Either machine can be rebuilt from its backup plus one sync round.
 - **"Update Maestro on both machines to the same version."** The two copies must
   match in version and database revision. The round is skipped and nothing is
   half-done. Update the laptop with `scripts/update.sh`. Update the always-on
-  copy with `stop.sh`, `git pull` to the same tag, `setup.sh`, then `start.sh`.
+  copy with `stop.sh`, `git fetch --tags && git checkout <tag>`, `setup.sh`,
+  then `start.sh` if you are at the keyboard. An agent should run
+  `start.sh --unpause` instead, wait for the watchdog, and run `health.sh`.
 - **"The laptop didn't accept this copy's seal: the key differs, sync is off there, or the laptop has just restarted."**
   The outcome is `needs_person`. The key files differ, or the laptop
   has no key. Do not create a second key on the always-on copy. Right after a

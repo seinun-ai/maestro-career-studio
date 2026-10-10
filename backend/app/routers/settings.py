@@ -1,7 +1,10 @@
+import os
+import re
 from dataclasses import asdict
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -178,7 +181,6 @@ def stop_second_copy(db: Annotated[Session, Depends(get_db)]):
 
 _SETUP_PROMPT = Path(__file__).resolve().parent.parent / "automations" / "bot-setup.md"
 _LAPTOP_LATER = "<your laptop's address — I'll give it to you>"
-_HOST_CUTS = "/?#"
 
 
 @lru_cache(maxsize=1)
@@ -187,19 +189,16 @@ def _bot_setup_text() -> str:
 
 
 def _bare_host(value: str) -> str:
-    """Host only: drop a scheme, a path, a query, a fragment and any userinfo."""
+    """Host only: drop a scheme, userinfo, a path, a query and a fragment. Keep a numeric port."""
     text = value.strip()
-    if "://" in text:
-        text = text.split("://", 1)[1]
-    cut = len(text)
-    for mark in _HOST_CUTS:
-        at = text.find(mark)
-        if at != -1 and at < cut:
-            cut = at
-    text = text[:cut]
-    if "@" in text:
-        text = text.rsplit("@", 1)[1]
-    return text.strip()
+    if not text:
+        return ""
+    # A bare host:port has no scheme. urlsplit would treat the host as the scheme.
+    parsed = urlsplit(text if "://" in text else "//" + text)
+    netloc = parsed.netloc
+    if "@" in netloc:
+        netloc = netloc.rsplit("@", 1)[1]
+    return netloc.strip()
 
 
 def _laptop_url(value: str) -> str:
@@ -209,10 +208,31 @@ def _laptop_url(value: str) -> str:
     return "https://" + host
 
 
-@router.get("/second-copy/setup-prompt", dependencies=[Depends(_second_copy_home)])
+_RELEASE = re.compile(r"v?(\d+\.\d+\.\d+)")
+
+
+def _checkout() -> str:
+    """Which version the bot checks out: this laptop's release, or the newest one.
+
+    APP_VERSION is the same string GET /api/version reports. A local build has
+    "dev" (or "dev-<sha>"), which is no tag, so the bot takes the newest release.
+    """
+    match = _RELEASE.fullmatch(os.environ.get("APP_VERSION", "dev").strip())
+    if match:
+        return f"check out tag v{match.group(1)}, the version my laptop runs"
+    return "check out the newest release tag (my laptop runs a local build)"
+
+
+def _refuse_always_on_copy():
+    """The setup prompt is static. It does not take the sync lock."""
+    if app_settings.sync_remote_url:
+        raise HTTPException(409, detail=sync_pairing.HOME_ONLY)
+
+
+@router.get("/second-copy/setup-prompt", dependencies=[Depends(_refuse_always_on_copy)])
 def get_second_copy_setup_prompt():
-    url = _laptop_url(app_settings.sync_public_host)
-    return {"prompt": _bot_setup_text().replace("{laptop_url}", url)}
+    text = _bot_setup_text().replace("{laptop_url}", _laptop_url(app_settings.sync_public_host))
+    return {"prompt": text.replace("{checkout}", _checkout())}
 
 
 class _JobSiteLoginRoute(APIRoute):
@@ -320,8 +340,12 @@ def get_market(db: Annotated[Session, Depends(get_db)]):
         "key": "market",
         "value": setting,
         "supported": [
-            {"key": k, "label": markets.labels()[k], "currency": markets.currency_for(k),
-             "offers_eeo": markets.offers_eeo(k)}
+            {
+                "key": k,
+                "label": markets.labels()[k],
+                "currency": markets.currency_for(k),
+                "offers_eeo": markets.offers_eeo(k),
+            }
             for k in markets.keys()
         ],
         "currency": markets.currency_for(setting.market),
@@ -381,7 +405,9 @@ def get_job_site_login():
 @job_site_login_router.put("/job-site-login", response_model=JobSiteLoginStatus)
 def put_job_site_login(payload: JobSiteLoginIn):
     if payload.password is not None and not PASSWORD_MIN <= len(payload.password) <= PASSWORD_MAX:
-        raise HTTPException(422, detail=f"The password needs {PASSWORD_MIN} to {PASSWORD_MAX} characters.")
+        raise HTTPException(
+            422, detail=f"The password needs {PASSWORD_MIN} to {PASSWORD_MAX} characters."
+        )
     job_site_login.write(payload.email, payload.password)
     return job_site_login.status()
 
@@ -389,6 +415,7 @@ def put_job_site_login(payload: JobSiteLoginIn):
 @job_site_login_router.delete("/job-site-login", status_code=204)
 def delete_job_site_login():
     job_site_login.clear()
+
 
 router.include_router(job_site_login_router)
 
@@ -399,9 +426,7 @@ def get_eeo_consent(db: Annotated[Session, Depends(get_db)]):
 
 
 @router.put("/eeo-consent", response_model=SettingEnvelope[EeoConsent])
-def put_eeo_consent(
-    payload: SettingValueIn[EeoConsent], db: Annotated[Session, Depends(get_db)]
-):
+def put_eeo_consent(payload: SettingValueIn[EeoConsent], db: Annotated[Session, Depends(get_db)]):
     return {"key": "eeo_consent", "value": eeo_consent.set_consent(payload.value, db)}
 
 
@@ -436,12 +461,10 @@ def get_openai_info(db: Annotated[Session, Depends(get_db)]):
         api_key_configured=bool(db_openai or app_settings.openai_api_key),
         gemini_api_key_configured=bool(db_gemini or app_settings.gemini_api_key),
         openai_key_source=(
-            "settings" if db_openai
-            else "env" if app_settings.openai_api_key else "none"
+            "settings" if db_openai else "env" if app_settings.openai_api_key else "none"
         ),
         gemini_key_source=(
-            "settings" if db_gemini
-            else "env" if app_settings.gemini_api_key else "none"
+            "settings" if db_gemini else "env" if app_settings.gemini_api_key else "none"
         ),
         model_options=model_settings.usable_option_dicts(db),
         base_url=model_settings.get_base_url(db) or app_settings.openai_base_url or None,
@@ -552,20 +575,13 @@ def sync_provider_models(payload: SyncPayload, db: Annotated[Session, Depends(ge
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     in_catalog = model_settings.usable_ids(db)
-    return {
-        "models": [
-            {**row, "in_catalog": row["id"] in in_catalog}
-            for row in discovered
-        ]
-    }
+    return {"models": [{**row, "in_catalog": row["id"] in in_catalog} for row in discovered]}
 
 
 @router.post("/openai/models", response_model=OpenAIInfo)
 def add_catalog_model(payload: ExtraModelPayload, db: Annotated[Session, Depends(get_db)]):
     try:
-        model_settings.add_extra_model(
-            db, payload.id, payload.provider, label=payload.label
-        )
+        model_settings.add_extra_model(db, payload.id, payload.provider, label=payload.label)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return get_openai_info(db)

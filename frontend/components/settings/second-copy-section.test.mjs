@@ -28,9 +28,33 @@ function component() {
   return require("./second-copy-section.tsx");
 }
 
+const PROMPT_KEY = ["settings", "second-copy", "setup-prompt"];
+
 function render(data) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(["settings", "second-copy"], data);
+  client.setQueryData(PROMPT_KEY, { prompt: "SENTINEL-PROMPT-DO-NOT-RENDER" });
+  const html = renderToStaticMarkup(React.createElement(QueryClientProvider, { client },
+    React.createElement(component().SecondCopySection)));
+  client.clear();
+  return html;
+}
+
+function renderPromptError(data) {
+  // A data-less error is fetched again on mount unless retryOnMount is off, and that
+  // optimistic fetch hides the error on the only render static markup performs.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, retryOnMount: false } },
+  });
+  client.setQueryData(["settings", "second-copy"], data);
+  const query = client.getQueryCache().build(client, {
+    queryKey: PROMPT_KEY,
+    queryFn: () => Promise.reject(new Error("no")),
+  });
+  query.setState({
+    status: "error", fetchStatus: "idle", error: new Error("no"),
+    errorUpdateCount: 1, errorUpdatedAt: Date.now(), fetchFailureCount: 1,
+  });
   const html = renderToStaticMarkup(React.createElement(QueryClientProvider, { client },
     React.createElement(component().SecondCopySection)));
   client.clear();
@@ -38,7 +62,10 @@ function render(data) {
 }
 
 function renderBody(props) {
-  return renderToStaticMarkup(React.createElement(component().SecondCopyBody, props));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(PROMPT_KEY, { prompt: "SENTINEL-PROMPT-DO-NOT-RENDER" });
+  return renderToStaticMarkup(React.createElement(QueryClientProvider, { client },
+    React.createElement(component().SecondCopyBody, props)));
 }
 
 const CARD = "Pair an always-on copy of Maestro with this laptop.";
@@ -96,7 +123,27 @@ test("a new bot can copy its setup prompt from the same card", () => {
   assert.match(html, NEW_BOT);
   assert.match(html, /Copy setup prompt/);
   assert.doesNotMatch(html, /Copied/);
+  assert.doesNotMatch(html, /SENTINEL-PROMPT-DO-NOT-RENDER/);
   assert.match(html, /Show a pairing code/);
+});
+
+test("copying the setup prompt is a link, secondary to showing a code", () => {
+  const html = render({ enabled: false, open_until: null, last_paired_at: null });
+  const at = html.indexOf("Copy setup prompt");
+  assert.ok(at > 0);
+  const tag = html.slice(html.lastIndexOf("<button", at), at);
+  assert.match(tag, /underline-offset-4/);
+  assert.doesNotMatch(tag, /bg-secondary-container/);
+  const show = html.indexOf("Show a pairing code");
+  const showTag = html.slice(html.lastIndexOf("<button", show), show);
+  assert.match(showTag, /bg-secondary-container/);
+});
+
+test("a failed setup-prompt load is one inline line and not a toast", () => {
+  const html = renderPromptError({ enabled: false, open_until: null, last_paired_at: null });
+  assert.match(html, /Couldn(?:'|&#x27;)t load the setup prompt\./);
+  assert.doesNotMatch(html, /Copy setup prompt/);
+  assert.doesNotMatch(html, /toast/);
 });
 
 test("a code just shown is large, copyable, and not offered again", () => {
@@ -120,8 +167,15 @@ test("the web talks only to the settings route, with POST and DELETE actions", (
   const source = fs.readFileSync(path.join(import.meta.dirname, "second-copy-section.tsx"), "utf8");
   assert.match(source, /\/api\/settings\/second-copy/);
   assert.match(source, /\/api\/settings\/second-copy\/setup-prompt/);
+  assert.match(source, /useQuery\(/);
   assert.match(source, /useCopy\(/);
-  assert.match(source, /copy\(\s*body\.prompt\s*\)/);
+  assert.match(source, /onClick=\{\(\) => void copy\(text\)\}/);
+  assert.doesNotMatch(source, /await apiFetch/);
+  assert.doesNotMatch(source, /couldnt\("copy the setup prompt"/);
+  assert.match(source, /variant="link"[\s\S]{0,200}Copy setup prompt/);
+  assert.doesNotMatch(source, /variant="tonal"[\s\S]{0,160}Copy setup prompt/);
+  assert.match(source, /w-fit/);
+  assert.match(source, /Couldn't load the setup prompt\./);
   assert.match(source, /copied \? "Copied" : "Copy setup prompt"/);
   assert.match(source, NEW_BOT);
   assert.match(source, /method:.*POST/);

@@ -41,22 +41,29 @@ def assert_url(prompt, url):
     assert prompt.count(f"{url}/api/sync/hello") == 1
 
 
-@pytest.mark.parametrize(("configured", "url"), [
-    ("", PLACEHOLDER),
-    ("   ", PLACEHOLDER),
-    ("https://", PLACEHOLDER),
-    (HOST, f"https://{HOST}"),
-    (f"  {HOST}  ", f"https://{HOST}"),
-    (f"https://{HOST}", f"https://{HOST}"),
-    (f"https://{HOST}/", f"https://{HOST}"),
-    (f"https://{HOST}/api/sync", f"https://{HOST}"),
-    (f"HTTPS://{HOST}/api/sync/", f"https://{HOST}"),
-    (f"{HOST}/api/sync", f"https://{HOST}"),
-    (f"https://{HOST}?cursor=1", f"https://{HOST}"),
-    (f"https://{HOST}#frag", f"https://{HOST}"),
-    (f"https://bot:s3cret@{HOST}/api/sync", f"https://{HOST}"),
-    ("HTTPS://Laptop.Example.Test/Api", "https://Laptop.Example.Test"),
-])
+@pytest.mark.parametrize(
+    ("configured", "url"),
+    [
+        ("", PLACEHOLDER),
+        ("   ", PLACEHOLDER),
+        ("https://", PLACEHOLDER),
+        (HOST, f"https://{HOST}"),
+        (f"  {HOST}  ", f"https://{HOST}"),
+        (f"https://{HOST}", f"https://{HOST}"),
+        (f"https://{HOST}/", f"https://{HOST}"),
+        (f"https://{HOST}/api/sync", f"https://{HOST}"),
+        (f"HTTPS://{HOST}/api/sync/", f"https://{HOST}"),
+        (f"{HOST}/api/sync", f"https://{HOST}"),
+        (f"https://{HOST}?cursor=1", f"https://{HOST}"),
+        (f"https://{HOST}#frag", f"https://{HOST}"),
+        (f"https://bot:s3cret@{HOST}/api/sync", f"https://{HOST}"),
+        ("HTTPS://Laptop.Example.Test/Api", "https://Laptop.Example.Test"),
+        (f"https://{HOST}:8443/api/sync", f"https://{HOST}:8443"),
+        (f"{HOST}:8443/api/sync", f"https://{HOST}:8443"),
+        (f"https://{HOST}:443", f"https://{HOST}:443"),
+        (f"https://bot:s3cret@{HOST}:8443/api", f"https://{HOST}:8443"),
+    ],
+)
 def test_setup_prompt_fills_only_the_public_host(client, sync_off, monkeypatch, configured, url):
     prompt = filled(client, monkeypatch, configured)
     assert_url(prompt, url)
@@ -79,7 +86,18 @@ def test_setup_prompt_keeps_the_rules_and_the_curl_braces(client, sync_off, monk
         "stop.sh --no-pause",
         "SSL_CERT_FILE",
         "should print 404",
+        "%{http_code} %{size_download}",
+        "404 0",
+        "REPO=$HOME/maestro-career-studio",
+        "release tag",
+        "if pairing says the versions differ, tell me",
+        "Don't create or copy base resumes",
         "--pair --code -",
+        'nohup "$REPO/backend/scripts/native/sync.sh" --pair --code -',
+        '> "$MAESTRO_HOME/logs/pair.log" 2>&1 &',
+        "Don't run it inside a tool call that times out.",
+        "sync.sh --now",
+        "start.sh --unpause",
         "--accept-profile-overwrite",
         "Don't join this machine to my tailnet",
         "20 minutes",
@@ -88,25 +106,74 @@ def test_setup_prompt_keeps_the_rules_and_the_curl_braces(client, sync_off, monk
         assert line in prompt
 
 
-def test_setup_prompt_omits_the_sync_key_and_the_pairing_code(client, sync_on, db_session):
+def _opened_prompt(client, sync_on):
     sync_on.write_text(KEY + "\n", encoding="utf-8")
     opened = client.post("/api/settings/second-copy", headers={"Origin": home_tests.ALLOWED_ORIGIN})
+    response = client.get(PROMPT)
+    return opened, response
+
+
+def test_setup_prompt_omits_the_sync_key_and_the_pairing_code(client, sync_on):
+    opened, response = _opened_prompt(client, sync_on)
     assert opened.status_code == 200, opened.text
     code = opened.json()["code"]
-    secret = hashlib.sha256(pairing.normalize_code(code).encode()).hexdigest()
-    response = client.get(PROMPT)
     assert response.status_code == 200, response.text
     text = response.text
+    secret = hashlib.sha256(pairing.normalize_code(code).encode()).hexdigest()
     assert KEY not in text
     assert code not in text
     assert code.replace("-", "") not in text
     assert secret not in text
     assert str(sync_on) not in text
     assert status.read_key() == KEY
+
+
+def test_setup_prompt_omits_stored_setting_values(client, sync_on, db_session):
+    _opened, response = _opened_prompt(client, sync_on)
+    assert response.status_code == 200, response.text
+    text = response.text
     db_session.expire_all()
     for row in db_session.query(Setting).all():
         if row.value:
             assert row.value not in text
+
+
+@pytest.mark.parametrize(
+    ("raw", "line"),
+    [
+        (None, "check out the newest release tag (my laptop runs a local build)"),
+        ("dev", "check out the newest release tag (my laptop runs a local build)"),
+        ("dev-abc123", "check out the newest release tag (my laptop runs a local build)"),
+        ("v0.2.0", "check out tag v0.2.0, the version my laptop runs"),
+        ("0.8.0", "check out tag v0.8.0, the version my laptop runs"),
+    ],
+)
+def test_setup_prompt_names_the_version_this_backend_is_running(
+    client, sync_off, monkeypatch, raw, line
+):
+    if raw is None:
+        monkeypatch.delenv("APP_VERSION", raising=False)
+    else:
+        monkeypatch.setenv("APP_VERSION", raw)
+    prompt = filled(client, monkeypatch, HOST)
+    assert line in prompt
+    assert "if pairing says the versions differ, tell me" in prompt
+    assert "{checkout}" not in prompt and "{laptop_version}" not in prompt
+    assert "tag vv" not in prompt and "tag vdev" not in prompt
+
+
+def test_setup_prompt_answers_while_a_sync_is_running(client, sync_off, monkeypatch):
+    monkeypatch.setattr(settings, "sync_public_host", HOST)
+    assert pairing.LOCK.acquire(blocking=False)
+    try:
+        prompt = client.get(PROMPT)
+        window = client.get("/api/settings/second-copy")
+    finally:
+        pairing.LOCK.release()
+    assert prompt.status_code == 200
+    assert HOST in prompt.json()["prompt"]
+    assert window.status_code == 409
+    assert window.json()["detail"] == "A sync is already running."
 
 
 def test_the_always_on_copy_refuses_the_setup_prompt(client, sync_off, monkeypatch):

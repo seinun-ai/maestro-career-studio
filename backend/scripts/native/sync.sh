@@ -2,7 +2,8 @@
 # Run one sync round on the always-on copy: ask its local backend to talk to the laptop.
 # Cron-safe: exits 0 on ok or transient outcomes (backoff, busy, laptop unreachable) and
 # while stop.sh has paused maintenance; exits 1 when a person must act or the local backend
-# is unreachable, unreadable or not set up (404). Never prints the key.
+# is unreachable, unreadable or not set up (404). Exits 3 when the round's wait ended and
+# the round is still running here. Never prints the key.
 #   sync.sh                                  a plain round
 #   sync.sh --now                            a round now, past a backoff (not past the 30 s floor)
 #   sync.sh --pair [--code <code>] [--accept-profile-overwrite]
@@ -78,8 +79,19 @@ fi
 force="$pair"
 [[ "$now" == false ]] || force=true
 body="$(printf '{"force": %s, "pair": %s, "accept_profile_overwrite": %s}' "$force" "$pair" "$accept")"
-reply="$(printf '%s' "$body" | native_post /api/sync/round)" \
-    || native_error 'Native backend is not reachable; check start.sh and health.sh.'
+# An hour, not the 900 s every other native_post uses. The first pairing round pulls every
+# page and can outlive that shorter wait; the backend keeps going after this script stops.
+set +e
+reply="$(printf '%s' "$body" | native_post /api/sync/round 3600)"
+round_status=$?
+set -e
+if [[ "$round_status" -eq 28 ]]; then
+    printf '%s\n' 'The round is still running on this machine. Check later with sync.sh --now; "A sync is already running" means it hasn'"'"'t finished yet.' >&2
+    exit 3
+fi
+if [[ "$round_status" -ne 0 ]]; then
+    native_error 'Native backend is not reachable; check start.sh and health.sh.'
+fi
 status="${reply%%$'\n'*}"
 printf '%s' "${reply#*$'\n'}" | "$NATIVE_PYTHON" -c '
 import json

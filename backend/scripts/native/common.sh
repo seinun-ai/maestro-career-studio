@@ -263,7 +263,8 @@ _NATIVE_POST_PY='import sys
 import urllib.error
 import urllib.request
 
-port, path = sys.argv[1:3]
+port, path = sys.argv[1], sys.argv[2]
+seconds = float(sys.argv[3]) if len(sys.argv) > 3 else 900
 body = sys.stdin.read()
 # Loopback must bypass inherited proxy settings. Errors never print what was sent.
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -271,19 +272,26 @@ request = urllib.request.Request(
     "http://127.0.0.1:%s%s" % (port, path), data=body.encode(),
     headers={"Content-Type": "application/json"}, method="POST")
 try:
-    with opener.open(request, timeout=900) as response:
+    with opener.open(request, timeout=seconds) as response:
         status, reply = response.status, response.read(65536)
 except urllib.error.HTTPError as refusal:
     status, reply = refusal.code, refusal.read(65536)
-except (OSError, ValueError):
-    raise SystemExit(1) from None
+except (OSError, ValueError) as exc:
+    # Exit 28 matches curl when the wait ends. urllib raises URLError(TimeoutError),
+    # an OSError, so a bare failure exit cannot tell a long round from a down backend.
+    reason = getattr(exc, "reason", None)
+    waited_out = isinstance(exc, TimeoutError) or isinstance(reason, TimeoutError)
+    raise SystemExit(28 if waited_out else 1) from None
 sys.stdout.write("%s\n%s" % (status, reply.decode("utf-8", "replace")))
 '
 
 native_post() {
-    # POST JSON from stdin to the loopback backend ($1 is the path). Prints the HTTP status,
-    # then the response body (at most 64 KiB); fails without printing when nothing answers.
-    "$NATIVE_PYTHON" -c "$_NATIVE_POST_PY" "$MAESTRO_PORT" "$1" 2>/dev/null
+    # POST JSON from stdin to the loopback backend. $1 is the path. $2 is an optional
+    # timeout in seconds (default 900). Prints the HTTP status, then the body (at most
+    # 64 KiB). Exit 1 when nothing answers. Exit 28 when the wait ends: the backend
+    # may still be working.
+    local seconds="${2:-900}"
+    "$NATIVE_PYTHON" -c "$_NATIVE_POST_PY" "$MAESTRO_PORT" "$1" "$seconds" 2>/dev/null
 }
 
 native_wait_for_health() {

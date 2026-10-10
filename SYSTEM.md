@@ -462,7 +462,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   job's artifact folders and file paths must sit in their own application's folder and may not overlap another job's folder, compared
   case-folded and by inode (`services/sync/folders.py`: APFS ignores case), also before a tombstone removes a folder. `POST /api/sync/round`
   is the always-on copy's own loopback call (404 on the laptop, 403 for an `Origin`, as is `/api/sync-setup/*`). Settings' **Second copy**
-  shows a 16-character code, once, for 10 minutes, with no attempt limit. Pinned by `tests/sync/test_seal.py`, `test_sealed_home.py`,
+  shows a 16-character code, once, for 10 minutes, with no attempt limit. `GET /api/settings/second-copy/setup-prompt` serves `backend/app/automations/bot-setup.md` (no sync lock; 409 on the always-on copy). Pinned by `tests/sync/test_seal.py`, `test_sealed_home.py`,
   `test_public_host.py`, `test_pairing.py` and `test_two_machines.py`.
 
 ## 7. Agent surfaces

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, type Ref, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { CopyButton } from "@/components/copy-button";
@@ -23,6 +22,7 @@ type Opened = { code: string; open_until: string | null };
 const QUERY = ["settings", "second-copy"];
 const PATH = "/api/settings/second-copy";
 const SETUP_PATH = "/api/settings/second-copy/setup-prompt";
+const SETUP_QUERY = ["settings", "second-copy", "setup-prompt"];
 const CARD = "Pair an always-on copy of Maestro with this laptop.";
 const NEW_BOT = "New bot? Copy its setup prompt and paste it into the agent app on that machine.";
 const PASTE = "Paste this code to your bot. It works once, for 10 minutes.";
@@ -83,27 +83,30 @@ function PairingStatus({ at }: { at: string }) {
   );
 }
 
+function useSetupPrompt() {
+  return useQuery({
+    queryKey: SETUP_QUERY,
+    queryFn: () => apiFetch<{ prompt: string }>(SETUP_PATH),
+    retry: false,
+  });
+}
+
 function SetupPromptCopy() {
   const { copied, copy } = useCopy();
-  const [busy, setBusy] = useState(false);
-  async function copyPrompt() {
-    setBusy(true);
-    try {
-      const body = await apiFetch<{ prompt: string }>(SETUP_PATH);
-      await copy(body.prompt);
-    } catch (error) {
-      toast.error(couldnt("copy the setup prompt", error));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const setup = useSetupPrompt();
+  const text = setup.data?.prompt ?? null;
   return (
     <div className="grid gap-2">
       <p className="body-medium max-w-[65ch]">{NEW_BOT}</p>
-      <Button variant="tonal" pending={busy} onClick={() => void copyPrompt()}>
-        {copied ? <CircleCheck aria-hidden="true" /> : <Copy aria-hidden="true" />}
-        {copied ? "Copied" : "Copy setup prompt"}
-      </Button>
+      {setup.isError && !text ? (
+        <p className="body-medium text-muted-foreground">{"Couldn't load the setup prompt."}</p>
+      ) : null}
+      {text ? (
+        <Button variant="link" size="sm" className="w-fit justify-self-start"
+          onClick={() => void copy(text)}>
+          {copied ? "Copied" : "Copy setup prompt"}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -174,6 +177,7 @@ export function SecondCopySection() {
       return until && Date.parse(until) > Date.now() ? 3000 : false;
     },
   });
+  useSetupPrompt();
   const now = usePairingClock(setting.data?.open_until);
   const save = useMutation({
     mutationFn: (action: "allow" | "stop") => action === "stop"

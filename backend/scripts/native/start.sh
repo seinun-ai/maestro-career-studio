@@ -1,21 +1,37 @@
 #!/usr/bin/env bash
 # Background one loopback worker, with a disk-backed model cache.
 # --watchdog is for supervisors: it declines while stop.sh has paused maintenance.
+# --unpause clears that pause and exits without starting, so the watchdog can start it.
 set +x
 set -euo pipefail
 umask 077
 # shellcheck source=common.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
 
+usage='Usage: start.sh [--watchdog | --unpause]'
 watchdog=0
+unpause=0
 for arg in "$@"; do
     case "$arg" in
         --watchdog) watchdog=1 ;;
-        *) native_error 'Usage: start.sh [--watchdog]' ;;
+        --unpause) unpause=1 ;;
+        *) native_error "$usage" ;;
     esac
 done
+if (( watchdog && unpause )); then
+    native_error "$usage"
+fi
 
 native_private_home
+if (( unpause )); then
+    if native_paused_since >/dev/null; then
+        native_clear_pause
+        printf '%s\n' 'Maintenance pause cleared; the watchdog will start Maestro within 5 minutes.'
+    else
+        printf '%s\n' "Maestro isn't paused."
+    fi
+    exit 0
+fi
 resume=0
 if paused_since="$(native_paused_since)"; then
     if (( watchdog )); then

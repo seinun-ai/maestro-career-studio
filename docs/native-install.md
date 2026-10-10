@@ -101,7 +101,8 @@ Start the backend through the watchdog (cron, systemd or launchd), not with
 `start.sh` from inside an agent's own tool call: the sandbox can stop every
 process that call started when the call ends, even when `start.sh` has already
 detached. To restart, run `stop.sh --no-pause`, let the watchdog start it, then
-check `/health`.
+check `/health`. To update, see "Maintenance": an agent finishes with
+`start.sh --unpause` and waits for the watchdog, rather than running `start.sh`.
 
 ### Watchdog cron (works where systemd is unavailable)
 
@@ -169,10 +170,18 @@ paused and starts nothing. `start.sh` starts and then removes the marker, so a
 manual start resumes. While paused, `health.sh` says so and still exits 1. A reboot
 keeps the pause, because the `@reboot` line also uses `--watchdog`.
 
-- **Restart:** `stop.sh && start.sh`.
+- **Restart:** at a keyboard, `stop.sh && start.sh` is fine. An agent should
+  run `stop.sh --no-pause`, wait for the watchdog (up to 5 minutes), then check
+  `health.sh`. It should not run `start.sh` from a tool call.
 - **Swap the database:** `stop.sh`, replace `$MAESTRO_HOME/data/maestro_cs.sqlite3`
-  and delete its `-wal` and `-shm` files, then `start.sh`.
-- **Update:** `stop.sh`, then `git pull` in the repository, `setup.sh`, and `start.sh`.
+  and delete its `-wal` and `-shm` files, then `start.sh` at a keyboard. An
+  agent should run `start.sh --unpause` and wait for the watchdog.
+- **Update:** `stop.sh` (this pauses the watchdog), then
+  `git fetch --tags && git checkout <tag>`, then `setup.sh`. At a keyboard,
+  `start.sh` is fine. An agent should run `start.sh --unpause`, wait for the
+  watchdog, then `health.sh`. `start.sh --unpause` only clears the pause. It
+  prints "Maintenance pause cleared; the watchdog will start Maestro within 5
+  minutes." and exits 0. When Maestro isn't paused it says so and still exits 0.
 
 ## Keep it in step with your laptop (optional)
 
@@ -289,12 +298,13 @@ VM has about 640 MB available, no swap, and a browser the agent drives during ru
    `MAESTRO_HOME=$HOME/maestro`. Use a fresh install. Don't copy the laptop's
    database here ([The four commands](#the-four-commands)). If `python3.12` is
    missing, install it first.
-2. **Base resumes.** A fresh install has none. Copy your base resume JSON files
-   into `$MAESTRO_HOME/base_resumes/`, then restart as in
-   [Keep it running](#keep-it-running): `stop.sh --no-pause`, then the watchdog.
-   The backend reads that folder at startup. Each file name, without `.json`,
-   becomes the resume's name. Or have the agent create one with the
-   `create_base_resume` MCP tool, which needs no restart.
+2. **Base resumes.** A bot you will pair gets your base resumes from your laptop
+   at pairing. Skip this step. Only a standalone install, one that will not
+   pair, needs them: copy the JSON files into `$MAESTRO_HOME/base_resumes/`,
+   then restart as in [Keep it running](#keep-it-running). The backend reads
+   that folder at startup. Each file name, without `.json`, becomes the
+   resume's name. Or create one with the `create_base_resume` MCP tool, which
+   needs no restart.
 3. **Secrets.** If any key is needed, the agent reads it from the app's secret
    vault and writes it into `maestro.env` with a quoted assignment. The key is never
    typed into a chat or a command line.
@@ -303,8 +313,10 @@ VM has about 640 MB available, no swap, and a browser the agent drives during ru
    out-of-memory kill. Let the watchdog start the backend. Don't run `start.sh`
    from inside the agent's own tool call
    ([Keep it running](#keep-it-running)). To restart: `stop.sh --no-pause`,
-   wait for the watchdog, then check `/health`. For an update or a database
-   swap, `stop.sh` pauses it and `start.sh` resumes (see "Maintenance").
+   wait for the watchdog, then check `/health`. For an update, an agent should
+   use `stop.sh`, `git fetch --tags && git checkout <tag>`, `setup.sh`,
+   `start.sh --unpause`, then wait for the watchdog and run `health.sh`.
+   At a keyboard, `start.sh` is still fine (see "Maintenance").
 5. **Connect.** The app registers the stdio command above as an MCP server. The
    agent starts it for a run and kills it afterward.
 6. **Browser.** Attended applications open the browser on the same machine. It is

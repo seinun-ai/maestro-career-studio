@@ -21,15 +21,23 @@ from scripts import sync_key
 BACKEND = Path(__file__).resolve().parents[1]
 NATIVE = BACKEND / "scripts/native"
 SCRIPTS = ("common.sh", "setup.sh", "start.sh", "stop.sh", "health.sh", "sync.sh")
-HOME_DIRS = ("data", "applications", "settings", "base_resumes", "kb_documents",
-             "logs", "exports", "fastembed_cache")
+HOME_DIRS = (
+    "data",
+    "applications",
+    "settings",
+    "base_resumes",
+    "kb_documents",
+    "logs",
+    "exports",
+    "fastembed_cache",
+)
 SENTINEL = "synthetic-secret-do-not-print"
 SYNC_KEY = "synthetic-sync-key-do-not-print"
 READOUT = {"rss_mb": 144.0, "peak_mb": 150.0, "platform": "linux"}
 
 # These modules replace only dependencies at the subprocess boundary. The
 # actual bash commands, permissions, sessions, pidfile and urllib GET run.
-FAKE_SUPPORT = '''
+FAKE_SUPPORT = """
 import json, os, sys
 from pathlib import Path
 
@@ -50,9 +58,9 @@ def dependency(kind):
     if os.environ.get("NATIVE_TEST_FAIL") == kind:
         print(os.environ.get("OPENAI_API_KEY", ""), file=sys.stderr)
         raise SystemExit(17)
-'''
+"""
 
-FAKE_VENV = '''
+FAKE_VENV = """
 import sys
 from pathlib import Path
 from native_test_support import record
@@ -60,7 +68,7 @@ record("venv")
 target = Path(sys.argv[-1]) / "bin/python"
 target.parent.mkdir(parents=True)
 target.symlink_to(sys.executable)  # argv[0] stays the venv path, as in a real venv
-'''
+"""
 
 FAKE_UVICORN = '''
 import os, signal, subprocess, sys, time
@@ -84,7 +92,7 @@ while True:
     time.sleep(0.02)
 '''
 
-FAKE_HTTP = '''
+FAKE_HTTP = """
 import io, json, os, socket, urllib.error, urllib.request
 from pathlib import Path
 from native_test_support import record
@@ -97,6 +105,8 @@ class Opener:
         url = getattr(request, "full_url", request)
         assert url.startswith("http://127.0.0.1:")
         if getattr(request, "data", None) is not None:
+            # Keep post(request, url). Pairing tests replace post with that signature.
+            request.maestro_timeout = timeout
             return self.post(request, url)
         assert timeout <= 1
         record("get")
@@ -121,9 +131,14 @@ class Opener:
         calls = json.loads(path.read_text())["calls"] + 1 if path.exists() else 1
         path.write_text(json.dumps({"calls": calls, "url": url, "method": request.get_method(),
             "body": json.loads(request.data), "content_type": request.get_header("Content-type"),
-            "has_auth": request.has_header("Authorization")}))
+            "has_auth": request.has_header("Authorization"),
+            "timeout": request.maestro_timeout}))
         if os.environ.get("NATIVE_TEST_FAIL") == "post":
-            raise OSError(os.environ.get("OPENAI_API_KEY", ""))
+            # A refused connection, not a timeout: URLError whose reason is not TimeoutError.
+            raise urllib.error.URLError(ConnectionRefusedError(111, "refused"))
+        if os.environ.get("NATIVE_TEST_FAIL") == "timeout":
+            # What urllib actually raises: URLError wrapping TimeoutError, not a bare one.
+            raise urllib.error.URLError(TimeoutError("timed out"))
         status = int(os.environ.get("NATIVE_TEST_ROUND_STATUS", "200"))
         body = os.environ.get("NATIVE_TEST_ROUND",
             '{"ok": true, "outcome": "ok", "steps": {}}').encode()
@@ -150,10 +165,10 @@ class PortProbe:
 
 urllib.request.build_opener = build_opener
 socket.socket = lambda *args, **kwargs: PortProbe()
-'''
+"""
 
 
-FAKE_PS = '''
+FAKE_PS = """
 import json, os, sys
 from pathlib import Path
 
@@ -183,12 +198,18 @@ else:
     for pid in pids:
         if alive(pid):
             print(os.getpgid(pid), 'S')
-'''
+"""
 
 
 def run_script(name, env, timeout=45):
-    return subprocess.run(["bash", str(NATIVE / name)], cwd="/", env=env,
-                          capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(
+        ["bash", str(NATIVE / name)],
+        cwd="/",
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
 
 
 def read_record(ctx, name):
@@ -221,16 +242,24 @@ def native_home(tmp_path):
     modules.joinpath("sitecustomize.py").write_text(FAKE_HTTP)
     modules.joinpath("native_test_ps.py").write_text(FAKE_PS)
     modules.joinpath("ps").write_text(
-        f'#!/bin/bash\nexec {shlex.quote(sys.executable)} -m native_test_ps "$@"\n')
+        f'#!/bin/bash\nexec {shlex.quote(sys.executable)} -m native_test_ps "$@"\n'
+    )
     modules.joinpath("ps").chmod(0o700)
     for name in ("pip", "alembic"):
         modules.joinpath(f"{name}.py").write_text(
-            f"from native_test_support import dependency\ndependency({name!r})\n")
+            f"from native_test_support import dependency\ndependency({name!r})\n"
+        )
     home = tmp_path / "native home with spaces"
-    env = {"PATH": f"{modules}:{os.defpath}", "HOME": str(tmp_path), "MAESTRO_HOME": str(home),
-           "PYTHON": sys.executable, "PYTHONPATH": str(modules),
-           "NATIVE_TEST_RECORDS": str(records), "TEST_DATABASE_URL": "must-be-cleared",
-           "OPENAI_API_KEY": SENTINEL}
+    env = {
+        "PATH": f"{modules}:{os.defpath}",
+        "HOME": str(tmp_path),
+        "MAESTRO_HOME": str(home),
+        "PYTHON": sys.executable,
+        "PYTHONPATH": str(modules),
+        "NATIVE_TEST_RECORDS": str(records),
+        "TEST_DATABASE_URL": "must-be-cleared",
+        "OPENAI_API_KEY": SENTINEL,
+    }
     ctx = SimpleNamespace(home=home, env=env, records=records)
     yield ctx
     record = records / "uvicorn.json"
@@ -282,9 +311,18 @@ def assert_migration(ctx):
 
 
 def assert_worker(ctx, backend):
-    assert backend["args"] == ["app.main:app", "--host", "127.0.0.1",
-                               "--port", "8741", "--workers", "1", "--no-server-header",
-                               "--ws", "none"]
+    assert backend["args"] == [
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8741",
+        "--workers",
+        "1",
+        "--no-server-header",
+        "--ws",
+        "none",
+    ]
     assert backend["cwd"] == str(BACKEND)
     assert backend["umask"] == 0o077
     assert (ctx.home / "backend.pid").read_text().strip() == str(backend["pid"])
@@ -292,15 +330,22 @@ def assert_worker(ctx, backend):
 
 def assert_runtime_paths(env, home):
     expected = {f"{name.upper()}_DIR": str(home / name) for name in HOME_DIRS[:-1]}
-    expected.update(APP_ROOT=str(home), DATABASE_URL=f"sqlite:///{home}/data/maestro_cs.sqlite3",
-                    TEST_DATABASE_URL=None)
+    expected.update(
+        APP_ROOT=str(home),
+        DATABASE_URL=f"sqlite:///{home}/data/maestro_cs.sqlite3",
+        TEST_DATABASE_URL=None,
+    )
     assert {key: env[key] for key in expected} == expected
 
 
 def assert_pilot_settings(env, home):
-    expected = {"EMBEDDINGS_OUT_OF_PROCESS": "1", "MALLOC_ARENA_MAX": "2",
-                "ALLOWED_HOSTS": "localhost,127.0.0.1", "OPENAI_API_KEY": SENTINEL,
-                "FASTEMBED_CACHE_PATH": str(home / "fastembed_cache")}
+    expected = {
+        "EMBEDDINGS_OUT_OF_PROCESS": "1",
+        "MALLOC_ARENA_MAX": "2",
+        "ALLOWED_HOSTS": "localhost,127.0.0.1",
+        "OPENAI_API_KEY": SENTINEL,
+        "FASTEMBED_CACHE_PATH": str(home / "fastembed_cache"),
+    }
     assert {key: env[key] for key in expected} == expected
 
 
@@ -319,16 +364,22 @@ def test_native_files_exist(name):
 
 @pytest.mark.parametrize("name", SCRIPTS)
 def test_native_scripts_are_valid_bash(name):
-    result = subprocess.run(["bash", "-n", str(NATIVE / name)],
-                            capture_output=True, text=True)
+    result = subprocess.run(["bash", "-n", str(NATIVE / name)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.skipif(not shutil.which("shellcheck"), reason="shellcheck is not installed")
 def test_native_scripts_pass_shellcheck():
-    result = subprocess.run(["shellcheck", "--external-sources", "--source-path=SCRIPTDIR",
-                             *(str(NATIVE / name) for name in SCRIPTS)],
-                            capture_output=True, text=True)
+    result = subprocess.run(
+        [
+            "shellcheck",
+            "--external-sources",
+            "--source-path=SCRIPTDIR",
+            *(str(NATIVE / name) for name in SCRIPTS),
+        ],
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -378,7 +429,8 @@ def test_start_enforces_pilot_settings_and_stop_is_idempotent(native_home):
         f"OPENAI_API_KEY='{SENTINEL}'\nMAESTRO_PORT=8741\n"
         "EMBEDDINGS_OUT_OF_PROCESS=0\nMALLOC_ARENA_MAX=8\nDATA_DIR=/wrong\n"
         "FASTEMBED_CACHE_PATH=/wrong\nALLOWED_HOSTS='*'\n"
-        f"printf '%s' '{SENTINEL}'\nprintf '%s' '{SENTINEL}' >&2\n")
+        f"printf '%s' '{SENTINEL}'\nprintf '%s' '{SENTINEL}' >&2\n"
+    )
     result = run_script("start.sh", ctx.env)
     assert result.returncode == 0, result.stderr
     wait_for_file(ctx.records / "uvicorn.json")
@@ -412,8 +464,17 @@ def test_pid_probe_rejects_numbers_that_overflow_a_signed_pid(native_home, pid):
     setup_home(ctx)
     (ctx.home / "backend.pid").write_text(pid + "\n")
     result = subprocess.run(
-        ["bash", "-c", 'source "$1"; native_read_pid', "native-pid-probe",
-         str(NATIVE / "common.sh")], env=ctx.env, capture_output=True, text=True)
+        [
+            "bash",
+            "-c",
+            'source "$1"; native_read_pid',
+            "native-pid-probe",
+            str(NATIVE / "common.sh"),
+        ],
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 1
 
 
@@ -444,11 +505,24 @@ def time_wait_port():
 
 
 def probe_free_port(port):
-    env = {"PATH": os.defpath, "HOME": str(NATIVE), "MAESTRO_PORT": str(port),
-           "NATIVE_PYTHON": sys.executable}
+    env = {
+        "PATH": os.defpath,
+        "HOME": str(NATIVE),
+        "MAESTRO_PORT": str(port),
+        "NATIVE_PYTHON": sys.executable,
+    }
     return subprocess.run(
-        ["bash", "-c", 'source "$1"; native_free_port', "native-port-probe", str(NATIVE / "common.sh")],
-        env=env, capture_output=True, text=True).returncode
+        [
+            "bash",
+            "-c",
+            'source "$1"; native_free_port',
+            "native-port-probe",
+            str(NATIVE / "common.sh"),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    ).returncode
 
 
 def test_free_port_check_ignores_time_wait_but_still_sees_a_live_listener():
@@ -461,14 +535,17 @@ def test_free_port_check_ignores_time_wait_but_still_sees_a_live_listener():
 
 @pytest.fixture
 def unrelated_process():
-    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
-                               start_new_session=True)
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True
+    )
     yield process
     process.kill()
     process.wait()
 
 
-def test_start_treats_a_reused_pid_as_stale_and_leaves_that_process_alone(native_home, unrelated_process):
+def test_start_treats_a_reused_pid_as_stale_and_leaves_that_process_alone(
+    native_home, unrelated_process
+):
     ctx = native_home
     setup_home(ctx)
     (ctx.home / "backend.pid").write_text(f"{unrelated_process.pid}\n")
@@ -501,8 +578,9 @@ def test_missing_ps_without_proc_fails_with_a_clear_message(native_home, tmp_pat
     tools.mkdir()
     (tools / "dirname").symlink_to(shutil.which("dirname"))
     env = {**ctx.env, "PATH": str(tools)}
-    result = subprocess.run([shutil.which("bash"), str(NATIVE / "health.sh")], env=env,
-                            capture_output=True, text=True)
+    result = subprocess.run(
+        [shutil.which("bash"), str(NATIVE / "health.sh")], env=env, capture_output=True, text=True
+    )
     assert result.returncode == 1 and "ps" in result.stderr
 
 
@@ -533,8 +611,14 @@ def test_start_failure_cleans_pidfile_and_never_contacts_a_squatted_port(native_
     assert_safe(result, ctx)
 
 
-@pytest.mark.parametrize("body", ["not json", '{"rss_mb": "secret", "peak_mb": 1}',
-                                  '{"rss_mb": -1, "peak_mb": 2, "platform": "linux"}'])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "not json",
+        '{"rss_mb": "secret", "peak_mb": 1}',
+        '{"rss_mb": -1, "peak_mb": 2, "platform": "linux"}',
+    ],
+)
 def test_health_rejects_unhealthy_responses_without_printing_them(native_home, body):
     ctx = native_home
     start_home(ctx)
@@ -573,9 +657,18 @@ def test_default_home_and_port_work_without_overrides(native_home):
     ctx.home = Path(ctx.env["HOME"]) / "maestro"
     start_home(ctx)
     backend = read_record(ctx, "uvicorn")
-    assert backend["args"] == ["app.main:app", "--host", "127.0.0.1",
-                               "--port", "8001", "--workers", "1", "--no-server-header",
-                               "--ws", "none"]
+    assert backend["args"] == [
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8001",
+        "--workers",
+        "1",
+        "--no-server-header",
+        "--ws",
+        "none",
+    ]
     assert_runtime_paths(backend["env"], ctx.home)
     assert_private_layout(ctx)
 
@@ -602,8 +695,14 @@ def test_env_syntax_errors_do_not_expose_key_values(native_home):
 
 def run_native(command, env):
     """Run a shell line as a supervisor would; the scripts are reached by absolute path."""
-    return subprocess.run(["bash", "-c", command, "watchdog", str(NATIVE)], cwd="/", env=env,
-                          capture_output=True, text=True, timeout=45)
+    return subprocess.run(
+        ["bash", "-c", command, "watchdog", str(NATIVE)],
+        cwd="/",
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
 
 
 WATCHDOG = '"$1/health.sh" >/dev/null 2>&1 || "$1/start.sh" --watchdog'
@@ -627,12 +726,22 @@ def test_stop_writes_a_private_maintenance_marker_with_the_utc_time(native_home)
 def test_stop_no_pause_leaves_no_marker_and_unknown_flags_are_rejected(native_home):
     ctx = native_home
     start_home(ctx)
-    bad = subprocess.run(["bash", str(NATIVE / "stop.sh"), "--bogus"], cwd="/", env=ctx.env,
-                         capture_output=True, text=True)
+    bad = subprocess.run(
+        ["bash", str(NATIVE / "stop.sh"), "--bogus"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
     assert bad.returncode == 1 and "Usage" in bad.stderr
     assert (ctx.home / "backend.pid").exists() and not pause_marker(ctx).exists()
-    result = subprocess.run(["bash", str(NATIVE / "stop.sh"), "--no-pause"], cwd="/",
-                            env=ctx.env, capture_output=True, text=True)
+    result = subprocess.run(
+        ["bash", str(NATIVE / "stop.sh"), "--no-pause"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
     assert not pause_marker(ctx).exists() and not (ctx.home / "backend.pid").exists()
 
@@ -641,11 +750,18 @@ def test_start_watchdog_declines_while_paused_and_exits_zero(native_home):
     ctx = native_home
     setup_home(ctx)
     pause_marker(ctx).write_text("2026-10-06T01:02:03Z\n")
-    result = subprocess.run(["bash", str(NATIVE / "start.sh"), "--watchdog"], cwd="/",
-                            env=ctx.env, capture_output=True, text=True)
+    result = subprocess.run(
+        ["bash", str(NATIVE / "start.sh"), "--watchdog"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == ("Maestro is paused for maintenance since 2026-10-06T01:02:03Z; "
-                             "not starting. Run start.sh to resume.\n")
+    assert result.stdout == (
+        "Maestro is paused for maintenance since 2026-10-06T01:02:03Z; "
+        "not starting. Run start.sh to resume.\n"
+    )
     assert not (ctx.records / "uvicorn.json").exists()
     assert not (ctx.home / "backend.pid").exists()
     assert pause_marker(ctx).exists()
@@ -655,8 +771,13 @@ def test_start_watchdog_declines_while_paused_and_exits_zero(native_home):
 def test_start_watchdog_starts_when_not_paused(native_home):
     ctx = native_home
     setup_home(ctx)
-    result = subprocess.run(["bash", str(NATIVE / "start.sh"), "--watchdog"], cwd="/",
-                            env=ctx.env, capture_output=True, text=True)
+    result = subprocess.run(
+        ["bash", str(NATIVE / "start.sh"), "--watchdog"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
     wait_for_file(ctx.records / "uvicorn.json")
     assert (ctx.home / "backend.pid").exists()
@@ -691,8 +812,14 @@ def test_a_resume_racing_the_watchdog_starts_one_backend(native_home):
     for _ in range(3):
         assert run_script("stop.sh", ctx.env).returncode == 0
         calls = read_record(ctx, "uvicorn")["calls"]
-        resume = subprocess.Popen(["bash", str(NATIVE / "start.sh")], cwd="/", env=ctx.env,
-                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        resume = subprocess.Popen(
+            ["bash", str(NATIVE / "start.sh")],
+            cwd="/",
+            env=ctx.env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         ticks = [run_native(WATCHDOG, ctx.env) for _ in range(5)]
         out, err = resume.communicate(timeout=45)
         assert resume.returncode == 0, err
@@ -711,16 +838,30 @@ def test_a_health_check_during_the_launch_keeps_the_pidfile(native_home):
     setup_home(ctx)
     launcher = subprocess.run(
         ["bash", "-c", 'source "$1/common.sh" && printf %s "$NATIVE_LAUNCHER"', "x", str(NATIVE)],
-        capture_output=True, text=True, check=True).stdout
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
     home = ctx.home.resolve()
     # argv[0] carries the launcher's command line, exactly what ps and /proc show for the real one
     launching = subprocess.Popen(
-        ["bash", "-c", 'exec -a "$0" sleep 60', f"{home}/venv/bin/python -c {launcher} app.main:app"])
+        [
+            "bash",
+            "-c",
+            'exec -a "$0" sleep 60',
+            f"{home}/venv/bin/python -c {launcher} app.main:app",
+        ]
+    )
     try:
         (ctx.home / "backend.pid").write_text(f"{launching.pid}\n")
         deadline = time.monotonic() + 5
-        while time.monotonic() < deadline and "venv/bin/python" not in subprocess.run(
-                ["ps", "-o", "args=", "-p", str(launching.pid)], capture_output=True, text=True).stdout:
+        while (
+            time.monotonic() < deadline
+            and "venv/bin/python"
+            not in subprocess.run(
+                ["ps", "-o", "args=", "-p", str(launching.pid)], capture_output=True, text=True
+            ).stdout
+        ):
             time.sleep(0.02)
         health = run_script("health.sh", ctx.env)
         assert "not running" not in health.stderr
@@ -741,9 +882,70 @@ def test_stop_without_a_home_does_not_claim_a_pause(native_home):
 def test_start_rejects_unknown_flags(native_home):
     ctx = native_home
     setup_home(ctx)
-    result = subprocess.run(["bash", str(NATIVE / "start.sh"), "--bogus"], cwd="/", env=ctx.env,
-                            capture_output=True, text=True)
-    assert result.returncode == 1 and "Usage" in result.stderr
+    result = subprocess.run(
+        ["bash", str(NATIVE / "start.sh"), "--bogus"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert result.stderr.strip() == "Usage: start.sh [--watchdog | --unpause]"
+    assert not (ctx.records / "uvicorn.json").exists()
+
+
+def test_start_unpause_clears_the_marker_and_starts_nothing(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    pause_marker(ctx).write_text("2026-10-06T01:02:03Z\n")
+    result = subprocess.run(
+        ["bash", str(NATIVE / "start.sh"), "--unpause"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == (
+        "Maintenance pause cleared; the watchdog will start Maestro within 5 minutes.\n"
+    )
+    assert not pause_marker(ctx).exists()
+    assert not (ctx.records / "uvicorn.json").exists()
+    assert not (ctx.home / "backend.pid").exists()
+    assert_safe(result, ctx)
+
+
+def test_start_unpause_when_not_paused_says_so_and_starts_nothing(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    result = subprocess.run(
+        ["bash", str(NATIVE / "start.sh"), "--unpause"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "Maestro isn't paused.\n"
+    assert not pause_marker(ctx).exists()
+    assert not (ctx.records / "uvicorn.json").exists()
+    assert not (ctx.home / "backend.pid").exists()
+
+
+def test_start_rejects_unpause_together_with_watchdog(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    pause_marker(ctx).write_text("2026-10-06T01:02:03Z\n")
+    result = subprocess.run(
+        ["bash", str(NATIVE / "start.sh"), "--unpause", "--watchdog"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert result.stderr.strip() == "Usage: start.sh [--watchdog | --unpause]"
+    assert pause_marker(ctx).read_text() == "2026-10-06T01:02:03Z\n"
     assert not (ctx.records / "uvicorn.json").exists()
 
 
@@ -767,7 +969,11 @@ def test_watchdog_does_not_restart_a_paused_backend(native_home):
     assert run_script("stop.sh", ctx.env).returncode == 0
     tick = run_native(f"{WATCHDOG}; {WATCHDOG}", ctx.env)
     assert tick.returncode == 0 and "paused for maintenance" in tick.stdout
-    assert read_record(ctx, "uvicorn") == {**read_record(ctx, "uvicorn"), "pid": first_pid, "calls": 1}
+    assert read_record(ctx, "uvicorn") == {
+        **read_record(ctx, "uvicorn"),
+        "pid": first_pid,
+        "calls": 1,
+    }
     assert not (ctx.home / "backend.pid").exists()
 
 
@@ -784,8 +990,13 @@ def test_start_after_a_pause_resumes_and_the_watchdog_then_has_nothing_to_do(nat
 def test_stop_no_pause_then_start_restarts_and_the_watchdog_recovers_a_plain_stop(native_home):
     ctx = native_home
     start_home(ctx)
-    stopped = subprocess.run(["bash", str(NATIVE / "stop.sh"), "--no-pause"], cwd="/",
-                             env=ctx.env, capture_output=True, text=True)
+    stopped = subprocess.run(
+        ["bash", str(NATIVE / "stop.sh"), "--no-pause"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
     assert stopped.returncode == 0
     tick = run_native(WATCHDOG, ctx.env)
     assert tick.returncode == 0, tick.stderr
@@ -797,8 +1008,13 @@ def test_a_marker_that_is_not_a_time_is_never_echoed(native_home):
     ctx = native_home
     setup_home(ctx)
     pause_marker(ctx).write_text(f"{SENTINEL}\n")
-    watchdog = subprocess.run(["bash", str(NATIVE / "start.sh"), "--watchdog"], cwd="/",
-                              env=ctx.env, capture_output=True, text=True)
+    watchdog = subprocess.run(
+        ["bash", str(NATIVE / "start.sh"), "--watchdog"],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
     health = run_script("health.sh", ctx.env)
     assert watchdog.returncode == 0 and "unknown time" in watchdog.stdout
     assert health.returncode == 1 and "paused for maintenance" in health.stderr
@@ -809,7 +1025,7 @@ def test_a_marker_that_is_not_a_time_is_never_echoed(native_home):
 # ------------------------------------------------------------------ sync.sh and the key CLI
 
 
-def run_sync(ctx, *args, round_status=None, round_body=None, fail=None):
+def run_sync(ctx, *args, round_status=None, round_body=None, fail=None, input_text=None):
     env = dict(ctx.env)
     if round_status is not None:
         env["NATIVE_TEST_ROUND_STATUS"] = str(round_status)
@@ -817,8 +1033,15 @@ def run_sync(ctx, *args, round_status=None, round_body=None, fail=None):
         env["NATIVE_TEST_ROUND"] = json.dumps(round_body)
     if fail:
         env["NATIVE_TEST_FAIL"] = fail
-    return subprocess.run(["bash", str(NATIVE / "sync.sh"), *args], cwd="/", env=env,
-                          capture_output=True, text=True, timeout=45)
+    return subprocess.run(
+        ["bash", str(NATIVE / "sync.sh"), *args],
+        cwd="/",
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=45,
+        input=input_text,
+    )
 
 
 def posted_round(ctx):
@@ -842,7 +1065,7 @@ def test_sync_posts_one_plain_round_to_the_loopback_backend(native_home):
     assert sent["url"] == "http://127.0.0.1:8741/api/sync/round"
     assert sent["content_type"] == "application/json" and not sent["has_auth"]
     assert sent["body"] == {"force": False, "pair": False, "accept_profile_overwrite": False}
-    assert json.loads(result.stdout[result.stdout.index("{"):]) == {"ok": True, "steps": steps}
+    assert json.loads(result.stdout[result.stdout.index("{") :]) == {"ok": True, "steps": steps}
     assert_sync_safe(result, ctx)
 
 
@@ -850,7 +1073,11 @@ def test_sync_now_forces_a_round_without_pairing(native_home):
     ctx = native_home
     setup_home(ctx)
     assert run_sync(ctx, "--now").returncode == 0
-    assert posted_round(ctx)["body"] == {"force": True, "pair": False, "accept_profile_overwrite": False}
+    assert posted_round(ctx)["body"] == {
+        "force": True,
+        "pair": False,
+        "accept_profile_overwrite": False,
+    }
 
 
 def test_sync_passes_pairing_through_and_forces_past_the_backoff(native_home):
@@ -858,18 +1085,39 @@ def test_sync_passes_pairing_through_and_forces_past_the_backoff(native_home):
     setup_home(ctx)
     (ctx.home / "sync-key").write_text(SYNC_KEY)
     assert run_sync(ctx, "--pair").returncode == 0
-    assert posted_round(ctx)["body"] == {"force": True, "pair": True, "accept_profile_overwrite": False}
+    assert posted_round(ctx)["body"] == {
+        "force": True,
+        "pair": True,
+        "accept_profile_overwrite": False,
+    }
     assert run_sync(ctx, "--pair", "--accept-profile-overwrite").returncode == 0
-    assert posted_round(ctx)["body"] == {"force": True, "pair": True, "accept_profile_overwrite": True}
+    assert posted_round(ctx)["body"] == {
+        "force": True,
+        "pair": True,
+        "accept_profile_overwrite": True,
+    }
 
 
-@pytest.mark.parametrize("args", [("--bogus",), ("--accept-profile-overwrite",), ("--pair", "extra"),
-                                  ("--pair", "--bogus"), ("pair",), ("--now", "--accept-profile-overwrite")])
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("--bogus",),
+        ("--accept-profile-overwrite",),
+        ("--pair", "extra"),
+        ("--pair", "--bogus"),
+        ("pair",),
+        ("--now", "--accept-profile-overwrite"),
+    ],
+)
 def test_sync_rejects_unknown_flags_with_usage_and_posts_nothing(native_home, args):
     ctx = native_home
     setup_home(ctx)
     result = run_sync(ctx, *args)
-    assert result.returncode == 1 and "Usage: sync.sh [--now | --pair [--code <code>] [--accept-profile-overwrite]]" in result.stderr
+    assert (
+        result.returncode == 1
+        and "Usage: sync.sh [--now | --pair [--code <code>] [--accept-profile-overwrite]]"
+        in result.stderr
+    )
     assert not (ctx.records / "round.json").exists()
 
 
@@ -888,51 +1136,127 @@ def test_sync_declines_while_maintenance_is_paused(native_home):
     assert not (ctx.records / "round.json").exists()
 
 
-BACKOFF = {"ok": False, "outcome": "transient",
-           "skipped": "The last sync failed. Next try at 2026-10-06T11:00:00+00:00."}
+BACKOFF = {
+    "ok": False,
+    "outcome": "transient",
+    "skipped": "The last sync failed. Next try at 2026-10-06T11:00:00+00:00.",
+}
 
 
-@pytest.mark.parametrize(("status", "body", "code", "words"), [
-    (200, {"ok": True, "outcome": "ok", "steps": {"pull": {"jobs": 1}}}, 0, "Synced"),
-    (200, {"ok": False, "outcome": "needs_person", "skipped": "Sync isn't set up."},
-     1, "Sync isn't set up."),
-    (200, BACKOFF, 0, BACKOFF["skipped"]),
-    (409, {"outcome": "transient", "detail": "A sync is already running."},
-     0, "A sync is already running."),
-    (200, {"ok": False, "outcome": "transient", "error": "502: Your laptop didn't answer.",
-           "steps": {"push": {"sent": 0}}}, 0, "Sync didn't run: 502: Your laptop didn't answer."),
-    (200, {"ok": False, "outcome": "transient", "error": "Laptop unreachable."},
-     0, "Sync didn't run: Laptop unreachable. It will try again."),
-    (200, {"ok": False, "outcome": "transient", "error": "Your laptop couldn't finish that sync request."},
-     0, "Sync didn't run: Your laptop couldn't finish that sync request."),
-    (200, {"ok": False, "outcome": "transient", "skipped": "Synced moments ago."},
-     0, "Synced moments ago."),
-    (200, {"ok": False, "outcome": "transient", "error": "A sync is already running on your laptop."},
-     0, "Sync didn't run: A sync is already running on your laptop."),
-    (200, {"ok": False, "outcome": "needs_person", "error": "401: Sync key doesn't match."},
-     1, "Sync failed: 401: Sync key doesn't match."),
-    (200, {"ok": False, "outcome": "needs_person",
-           "skipped": "Update Maestro on both machines to the same version."},
-     1, "Update Maestro on both machines to the same version."),
-    (200, {"ok": False, "outcome": "needs_person",
-           "skipped": "This copy isn't paired with your laptop yet; run the first sync with the pair option."},
-     1, "This copy isn't paired with your laptop yet; run the first sync with the pair option."),
-    (200, {"ok": False, "outcome": "needs_person",
-           "error": "413: Your laptop refused a request as too large."},
-     1, "413: Your laptop refused a request as too large."),
-    (409, {"outcome": "needs_person", "detail": "The backend refused the request."},
-     1, "The backend refused the request."),
-    (409, {"detail": "A sync is already running."}, 1, "unreadable"),
-    (404, {"detail": "Not Found"}, 1, "always-on copy"),
-    (403, {"detail": "Browser requests can't use this."}, 1, "refused"),
-    (500, {"detail": "boom"}, 1, "500"),
-    (503, {"outcome": "transient", "error": "Try again later."}, 1, "503"),
-    (200, "not an object", 1, "unreadable"),
-    (200, {"ok": True, "steps": {}}, 1, "unreadable"),
-    (200, {"ok": True, "outcome": "unknown"}, 1, "unreadable"),
-    (200, {"ok": False, "outcome": []}, 1, "unreadable"),
-    (200, {"outcome": "ok"}, 1, "unreadable"),
-])
+@pytest.mark.parametrize(
+    ("status", "body", "code", "words"),
+    [
+        (200, {"ok": True, "outcome": "ok", "steps": {"pull": {"jobs": 1}}}, 0, "Synced"),
+        (
+            200,
+            {"ok": False, "outcome": "needs_person", "skipped": "Sync isn't set up."},
+            1,
+            "Sync isn't set up.",
+        ),
+        (200, BACKOFF, 0, BACKOFF["skipped"]),
+        (
+            409,
+            {"outcome": "transient", "detail": "A sync is already running."},
+            0,
+            "A sync is already running.",
+        ),
+        (
+            200,
+            {
+                "ok": False,
+                "outcome": "transient",
+                "error": "502: Your laptop didn't answer.",
+                "steps": {"push": {"sent": 0}},
+            },
+            0,
+            "Sync didn't run: 502: Your laptop didn't answer.",
+        ),
+        (
+            200,
+            {"ok": False, "outcome": "transient", "error": "Laptop unreachable."},
+            0,
+            "Sync didn't run: Laptop unreachable. It will try again.",
+        ),
+        (
+            200,
+            {
+                "ok": False,
+                "outcome": "transient",
+                "error": "Your laptop couldn't finish that sync request.",
+            },
+            0,
+            "Sync didn't run: Your laptop couldn't finish that sync request.",
+        ),
+        (
+            200,
+            {"ok": False, "outcome": "transient", "skipped": "Synced moments ago."},
+            0,
+            "Synced moments ago.",
+        ),
+        (
+            200,
+            {
+                "ok": False,
+                "outcome": "transient",
+                "error": "A sync is already running on your laptop.",
+            },
+            0,
+            "Sync didn't run: A sync is already running on your laptop.",
+        ),
+        (
+            200,
+            {"ok": False, "outcome": "needs_person", "error": "401: Sync key doesn't match."},
+            1,
+            "Sync failed: 401: Sync key doesn't match.",
+        ),
+        (
+            200,
+            {
+                "ok": False,
+                "outcome": "needs_person",
+                "skipped": "Update Maestro on both machines to the same version.",
+            },
+            1,
+            "Update Maestro on both machines to the same version.",
+        ),
+        (
+            200,
+            {
+                "ok": False,
+                "outcome": "needs_person",
+                "skipped": "This copy isn't paired with your laptop yet; run the first sync with the pair option.",
+            },
+            1,
+            "This copy isn't paired with your laptop yet; run the first sync with the pair option.",
+        ),
+        (
+            200,
+            {
+                "ok": False,
+                "outcome": "needs_person",
+                "error": "413: Your laptop refused a request as too large.",
+            },
+            1,
+            "413: Your laptop refused a request as too large.",
+        ),
+        (
+            409,
+            {"outcome": "needs_person", "detail": "The backend refused the request."},
+            1,
+            "The backend refused the request.",
+        ),
+        (409, {"detail": "A sync is already running."}, 1, "unreadable"),
+        (404, {"detail": "Not Found"}, 1, "always-on copy"),
+        (403, {"detail": "Browser requests can't use this."}, 1, "refused"),
+        (500, {"detail": "boom"}, 1, "500"),
+        (503, {"outcome": "transient", "error": "Try again later."}, 1, "503"),
+        (200, "not an object", 1, "unreadable"),
+        (200, {"ok": True, "steps": {}}, 1, "unreadable"),
+        (200, {"ok": True, "outcome": "unknown"}, 1, "unreadable"),
+        (200, {"ok": False, "outcome": []}, 1, "unreadable"),
+        (200, {"outcome": "ok"}, 1, "unreadable"),
+    ],
+)
 def test_sync_exit_codes_and_one_line_report(native_home, status, body, code, words):
     ctx = native_home
     setup_home(ctx)
@@ -942,11 +1266,49 @@ def test_sync_exit_codes_and_one_line_report(native_home, status, body, code, wo
     assert_sync_safe(result, ctx)
 
 
+STILL_RUNNING = (
+    "The round is still running on this machine. Check later with sync.sh --now; "
+    '"A sync is already running" means it hasn\'t finished yet.\n'
+)
+UNREACHABLE = "Native backend is not reachable; check start.sh and health.sh.\n"
+
+
 def test_sync_failure_to_reach_the_backend_is_exit_one_and_silent_about_why(native_home):
     ctx = native_home
     setup_home(ctx)
     result = run_sync(ctx, fail="post")
-    assert result.returncode == 1 and "not reachable" in result.stderr
+    assert result.returncode == 1 and result.stderr == UNREACHABLE
+    assert "still running" not in result.stderr
+    assert_sync_safe(result, ctx)
+
+
+def test_the_round_post_waits_an_hour_and_enrollment_does_not(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    assert run_sync(ctx).returncode == 0
+    sent = posted_round(ctx)
+    assert sent["timeout"] == 3600
+    assert sent["url"].endswith("/api/sync/round")
+    (ctx.records / "round.json").unlink()
+    enrolled = run_sync(
+        ctx, "--pair", "--code", "-", input_text="0123-4567-89AB-CDEF\n", fail="timeout"
+    )
+    assert enrolled.returncode == 1
+    assert enrolled.stderr == UNREACHABLE
+    assert "still running" not in enrolled.stderr
+    enroll = posted_round(ctx)
+    assert enroll["timeout"] == 900
+    assert enroll["url"].endswith("/api/sync-setup/enroll")
+
+
+def test_a_round_that_times_out_says_it_is_still_running_and_exits_3(native_home):
+    ctx = native_home
+    setup_home(ctx)
+    result = run_sync(ctx, "--now", fail="timeout")
+    assert result.returncode == 3
+    assert result.stderr == STILL_RUNNING
+    assert result.stdout == ""
+    assert posted_round(ctx)["timeout"] == 3600
     assert_sync_safe(result, ctx)
 
 
@@ -963,10 +1325,17 @@ def test_sync_unreadable_backend_reply_is_exit_one_without_echoing_it(native_hom
 def test_sync_reports_only_the_round_summary_and_message(native_home):
     ctx = native_home
     setup_home(ctx)
-    result = run_sync(ctx, round_body={
-        "ok": True, "outcome": "ok", "steps": {}, "key": SYNC_KEY,
-        "bundle": {"password": SENTINEL}, "request_body": SENTINEL,
-    })
+    result = run_sync(
+        ctx,
+        round_body={
+            "ok": True,
+            "outcome": "ok",
+            "steps": {},
+            "key": SYNC_KEY,
+            "bundle": {"password": SENTINEL},
+            "request_body": SENTINEL,
+        },
+    )
     assert result.returncode == 0 and "Synced" in result.stdout
     assert_sync_safe(result, ctx)
 
@@ -984,9 +1353,11 @@ def test_sync_never_prints_a_key_in_the_key_file(native_home):
     setup_home(ctx)
     (ctx.home / "sync-key").write_text(SYNC_KEY + "\n")
     (ctx.home / "sync-key").chmod(0o600)
-    for status, body in ((200, {"ok": True, "outcome": "ok", "steps": {}}),
-                         (200, {"ok": False, "outcome": "needs_person", "error": "x"}),
-                         (500, {"detail": "boom"})):
+    for status, body in (
+        (200, {"ok": True, "outcome": "ok", "steps": {}}),
+        (200, {"ok": False, "outcome": "needs_person", "error": "x"}),
+        (500, {"detail": "boom"}),
+    ):
         result = run_sync(ctx, "--pair", round_status=status, round_body=body)
         assert_sync_safe(result, ctx)
     assert_sync_safe(run_sync(ctx, fail="post"), ctx)
@@ -995,8 +1366,18 @@ def test_sync_never_prints_a_key_in_the_key_file(native_home):
 
 def exported_sync_key_file(ctx):
     result = subprocess.run(
-        ["bash", "-c", 'source "$1"; native_load_env; printf %s "${SYNC_KEY_FILE-unset}"',
-         "probe", str(NATIVE / "common.sh")], cwd="/", env=ctx.env, capture_output=True, text=True)
+        [
+            "bash",
+            "-c",
+            'source "$1"; native_load_env; printf %s "${SYNC_KEY_FILE-unset}"',
+            "probe",
+            str(NATIVE / "common.sh"),
+        ],
+        cwd="/",
+        env=ctx.env,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
     return result.stdout
 
@@ -1012,7 +1393,9 @@ def test_common_always_exports_the_key_file_path(native_home):
     assert exported_sync_key_file(ctx) == expected
     (ctx.home / "sync-key").unlink()
     (ctx.home / "sync-key").symlink_to(ctx.home / "elsewhere")
-    assert exported_sync_key_file(ctx) == expected  # the backend refuses a symlink and treats it as off
+    assert (
+        exported_sync_key_file(ctx) == expected
+    )  # the backend refuses a symlink and treats it as off
 
 
 def test_env_example_has_the_commented_remote_url_and_key_file_note():
@@ -1027,8 +1410,14 @@ def run_key_cli(tmp_path, *args, key_file="default"):
     env["SETTINGS_DIR"] = str(tmp_path / "settings")
     if key_file != "default":
         env["SYNC_KEY_FILE"] = str(key_file)
-    return subprocess.run([sys.executable, "-m", "scripts.sync_key", *args], cwd=BACKEND, env=env,
-                          capture_output=True, text=True, timeout=60)
+    return subprocess.run(
+        [sys.executable, "-m", "scripts.sync_key", *args],
+        cwd=BACKEND,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
 
 
 def test_sync_key_create_writes_a_private_key_and_prints_only_its_path(tmp_path):
@@ -1125,8 +1514,13 @@ def test_full_setup_start_health_stop_with_real_venv(tmp_path):
         available.bind(("127.0.0.1", 0))
         port = available.getsockname()[1]
     env = os.environ.copy()
-    env.update(MAESTRO_HOME=str(tmp_path / "maestro"), MAESTRO_PORT=str(port),
-               PYTHON=sys.executable, OPENAI_API_KEY="", GEMINI_API_KEY="")
+    env.update(
+        MAESTRO_HOME=str(tmp_path / "maestro"),
+        MAESTRO_PORT=str(port),
+        PYTHON=sys.executable,
+        OPENAI_API_KEY="",
+        GEMINI_API_KEY="",
+    )
     try:
         setup = run_script("setup.sh", env, timeout=600)
         assert setup.returncode == 0, setup.stderr
