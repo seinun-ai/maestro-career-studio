@@ -140,12 +140,11 @@ Paste the job description (**Add job**) or save it with the Companion, then scor
 against your base resumes. Scoring uses no AI service, so the same resume and
 job always get the same number.
 
-<!-- job-overview.png captured 2026-08-23: real Lightning AI posting kept on
-     the same precedent as the Visa posting (employer-published public
-     document); the "your profile states 2" line matches the years already
-     public in the shipped resume captures. -->
+<!-- Screenshots in this guide were retaken 2026-10-12 on v0.10.1 with the
+     fictional demo persona (Jordan Ellis, example.com, sample-company names);
+     sources live in the private marketing repo (site-media/). -->
 
-![The job's details, and a check of its stated requirements against your profile — including mismatches](assets/job-overview.png)
+![The job's details and Match score, with a check of its stated requirements against your profile](assets/job-overview.png)
 
 Every saved job also gets a **requirements check**: what the posting *states*
 about work authorization, visa (OPT) policy, salary and years of experience,
@@ -221,7 +220,7 @@ Claude (Desktop or Code), the ChatGPT desktop app or the Codex CLI can run the
 whole process in conversation — read a posting, score it, work the gaps, make
 the PDF. It runs on **your computer** against **your** data.
 
-![Claude pulling the whole pipeline over MCP and building its own view of it](assets/mcp-dashboard.png)
+![Settings › Connected agents: what a connected agent can and can't do, and the one-line command to connect Claude Code or Codex](assets/connected-agents.png)
 
 <!-- TODO(P4) mcp-chat.png — a SECOND shot for this section is still open: a
      Claude conversation answering a real question over the explore tools
@@ -391,7 +390,7 @@ show which companies you applied to and when. Clear it any time in **Analytics
 
 ### Analytics: what the market keeps asking you for
 
-![The market you are actually applying into, in numbers](assets/analytics.png)
+![Your search in numbers: applications over time, where they stand, and the gaps that keep coming up](assets/analytics.png)
 
 Every saved job adds to a picture of the market you're applying into — top
 skills, a skill heatmap, role mix over time — filterable by role, level and job
@@ -404,7 +403,7 @@ tailoring is helping.
 
 ### Hunt with the agent you already use
 
-![A scheduled hunt reporting back — and stopping at your review](assets/hunt-digest.png)
+![What a hunt found, waiting in your Agent inbox for your review](assets/agent-inbox.png)
 
 Your AI assistant can job-hunt for you. It reads your job preferences from the
 app, finds postings on whatever sites it can use, saves and scores them against
