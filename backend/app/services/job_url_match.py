@@ -69,13 +69,92 @@ this table; `tests/test_extension_panel.py` pins the two against each other.
 """
 
 import re
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 # Query keys that carry a posting's identity on the boards named above. Order is
 # precedence when a URL carries several. Deliberately short: a key here turns a
 # same-path URL pair into two postings, so it must name a posting and nothing
 # else (`gh_src`, `refId`, `trk` are referrals and stay out).
 POSTING_ID_QUERY_KEYS: tuple[str, ...] = ("currentJobId", "jk", "vjk", "gh_jid")
+
+# Query-string keys that are pure referral / analytics noise and carry no
+# posting identity. These are removed by `strip_tracking_params` before a URL
+# is stored. The set is deliberately conservative: only keys that are
+# universally tracking-only go here. Posting-identity keys (POSTING_ID_QUERY_KEYS
+# above) are intentionally absent — stripping them would turn two different
+# postings into the same URL.
+#
+# Prefix rules:
+#   - any key whose name starts with "utm_" is a UTM analytics parameter.
+#   - the explicit entries below cover the most common non-UTM referral keys
+#     seen across Lever, Greenhouse, LinkedIn, and Indeed.
+TRACKING_PARAM_KEYS: frozenset[str] = frozenset(
+    {
+        # Greenhouse referral source
+        "gh_src",
+        # LinkedIn referral / tracking
+        "refId",
+        "trk",
+        # Generic referral / source keys used across many boards
+        "ref",
+        "src",
+        "source",
+        # Indeed click-tracking
+        "from",
+        # Other common analytics / referral keys
+        "ss",
+        "rsid",
+    }
+)
+
+
+def strip_tracking_params(url: str | None) -> str | None:
+    """Return *url* with pure-referral query parameters removed.
+
+    This is the **single server-side authority** for tracking-param removal.
+    All write paths that store a ``source_url`` (``POST /api/jobs``,
+    ``POST /api/jobs/ingest``, ``PATCH /api/jobs/{id}``) call this function so
+    the strip happens consistently in one place regardless of how the URL
+    arrived — browser extension, MCP agent, or the user editing the field.
+
+    Removed parameters:
+    - Any key whose name starts with ``utm_`` (UTM analytics family).
+    - The fixed set in :data:`TRACKING_PARAM_KEYS` (gh_src, refId, trk, …).
+
+    Preserved parameters:
+    - Keys in :data:`POSTING_ID_QUERY_KEYS` (currentJobId, jk, vjk, gh_jid)
+      are **never** removed — they are posting identity on LinkedIn, Indeed,
+      and Greenhouse-embedded boards.  Stripping them would collapse two
+      different postings into one URL.
+    - Every other key is preserved as-is.
+
+    Returns ``None`` for a ``None`` input (propagates the "no URL" sentinel
+    unchanged) and returns the original string unchanged if it cannot be
+    parsed (same never-raise contract as the rest of this module).
+
+    Trailing whitespace is also stripped so callers do not need a separate
+    ``.strip()`` call.
+    """
+    if url is None:
+        return None
+    url = url.strip()
+    if not url:
+        return None
+    try:
+        split = urlsplit(url)
+    except ValueError:
+        return url  # unparseable — leave it alone, never raise
+    if not split.query:
+        return url
+    params = parse_qs(split.query, keep_blank_values=True)
+    cleaned = {
+        key: values
+        for key, values in params.items()
+        if not (key.lower().startswith("utm_") or key in TRACKING_PARAM_KEYS)
+    }
+    new_query = urlencode(cleaned, doseq=True)
+    return urlunsplit(split._replace(query=new_query))
+
 
 # LinkedIn's permalink carries the same id in the PATH: /jobs/view/4001/ or
 # /jobs/view/<title-slug>-4001. Host-gated so a look-alike path elsewhere is
