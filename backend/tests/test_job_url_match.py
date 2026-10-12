@@ -4,7 +4,7 @@ import pytest
 
 from app.models.application import Application
 from app.models.job import Job
-from app.services.job_url_match import is_same_posting, posting_id
+from app.services.job_url_match import is_same_posting, posting_id, strip_tracking_params
 
 
 LEVER = "https://jobs.lever.co/acme/abc"
@@ -315,7 +315,236 @@ def test_match_ties_resolve_to_the_newest_capture(db_session, client):
 
     response = client.get("/api/jobs/match", params={"url": LEVER})
 
+
     assert response.status_code == 200
     body = response.json()
     assert body["match"] == "exact"
     assert body["job"]["id"] == str(newer.id)
+
+
+# ---------------------------------------------------------------------------
+# strip_tracking_params — unit tests
+# ---------------------------------------------------------------------------
+#
+# Specification:
+#   - UTM family (any key starting with utm_) is removed.
+#   - TRACKING_PARAM_KEYS entries (gh_src, refId, trk, ref, src, source, from,
+#     ss, rsid) are removed.
+#   - POSTING_ID_QUERY_KEYS (currentJobId, jk, vjk, gh_jid) are PRESERVED —
+#     stripping them would merge two different postings into one URL.
+#   - Whitespace-only or None input returns None.
+#   - Unparseable URLs are returned unchanged and never raise.
+#   - Fragment (#apply) is preserved; the function only touches query strings.
+#   - A URL with no query string is returned unchanged.
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # --- tracking params removed ---
+        # UTM family
+        (
+            f"{LEVER}?utm_source=linkedin&utm_medium=organic",
+            LEVER,
+        ),
+        (
+            f"{LEVER}?utm_campaign=spring&utm_content=job",
+            LEVER,
+        ),
+        # Greenhouse referral source
+        (
+            f"{LEVER}?gh_src=abc123",
+            LEVER,
+        ),
+        # LinkedIn referral / tracking
+        (
+            "https://www.linkedin.com/jobs/view/4001/?refId=x&trk=public_jobs_topcard",
+            "https://www.linkedin.com/jobs/view/4001/",
+        ),
+        # Generic referral keys
+        (
+            f"{LEVER}?ref=indeed&src=organic&source=jobboard",
+            LEVER,
+        ),
+        # Indeed click-tracking
+        (
+            "https://www.indeed.com/viewjob?jk=abc123&from=serp",
+            "https://www.indeed.com/viewjob?jk=abc123",
+        ),
+        # Mixed: some tracking, some non-tracking
+        (
+            f"{LEVER}?utm_source=email&keepme=1",
+            f"{LEVER}?keepme=1",
+        ),
+        # Compound: multiple tracking keys
+        (
+            f"{LEVER}?gh_src=x&utm_source=y&utm_medium=z",
+            LEVER,
+        ),
+        # --- posting-identity keys PRESERVED ---
+        # LinkedIn currentJobId must survive (it IS the posting identity)
+        (
+            "https://www.linkedin.com/jobs/search/?currentJobId=4001&utm_source=email",
+            "https://www.linkedin.com/jobs/search/?currentJobId=4001",
+        ),
+        # Indeed jk must survive
+        (
+            "https://www.indeed.com/viewjob?jk=abc123&utm_campaign=spring",
+            "https://www.indeed.com/viewjob?jk=abc123",
+        ),
+        # Indeed vjk must survive
+        (
+            "https://www.indeed.com/jobs?q=data&vjk=abc123&utm_source=x",
+            "https://www.indeed.com/jobs?q=data&vjk=abc123",
+        ),
+        # Greenhouse gh_jid must survive (different from gh_src)
+        (
+            "https://acme.example/careers?gh_jid=555&gh_src=referral",
+            "https://acme.example/careers?gh_jid=555",
+        ),
+        # --- no query string — returned as-is ---
+        (LEVER, LEVER),
+        (GREENHOUSE, GREENHOUSE),
+        # --- fragment preserved, tracking still removed ---
+        (
+            f"{LEVER}?utm_source=x#apply",
+            f"{LEVER}#apply",
+        ),
+        # --- edge cases ---
+        # Whitespace stripped, no params → LEVER without trailing space
+        (f"  {LEVER}  ", LEVER),
+        # None → None
+        (None, None),
+        # Empty string → None
+        ("", None),
+        # Whitespace-only → None
+        ("   ", None),
+        # Unparseable URL returned unchanged (never raises)
+        ("not a url", "not a url"),
+        ("http://[", "http://["),
+    ],
+)
+def test_strip_tracking_params(raw, expected):
+    assert strip_tracking_params(raw) == expected
+
+
+# ---------------------------------------------------------------------------
+# Router-level integration: tracking params stripped at every write path
+# ---------------------------------------------------------------------------
+#
+# These tests exercise the full HTTP path to confirm that strip_tracking_params
+# is wired into every endpoint that stores source_url (create, ingest, patch).
+
+
+def _minimal_extraction():
+    return {
+        "company": "Acme",
+        "title": "Data Engineer",
+        "role_category": "data_engineer",
+        "level": "mid",
+        "employment_type": "full_time",
+        "work_mode": "remote",
+        "location_raw": "Remote",
+        "work_authorization": "unstated",
+        "opt_accepted": "unstated",
+        "skills": [],
+        "responsibilities": [],
+        "qualifications": [],
+    }
+
+
+def test_create_strips_tracking_params(db_session, monkeypatch, client):
+    """POST /api/jobs stores source_url without tracking params."""
+    from app.routers import jobs as jobs_module
+
+    monkeypatch.setattr(
+        jobs_module.jd_extraction,
+        "extract_jd",
+        lambda raw_text, session=None: _minimal_extraction(),
+    )
+
+    dirty = f"{LEVER}?utm_source=linkedin&gh_src=referral"
+    response = client.post("/api/jobs", json={"raw_text": "JD text", "source_url": dirty})
+
+    assert response.status_code == 200
+    assert response.json()["source_url"] == LEVER
+
+
+def test_ingest_strips_tracking_params(db_session, client):
+    """POST /api/jobs/ingest stores source_url without tracking params."""
+    dirty = f"{GREENHOUSE}?utm_campaign=spring&gh_src=abc"
+    response = client.post(
+        "/api/jobs/ingest",
+        json={
+            "extracted_json": _minimal_extraction(),
+            "raw_text": "ingest JD text",
+            "source_url": dirty,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source_url"] == GREENHOUSE
+
+
+def test_patch_strips_tracking_params(db_session, client):
+    """PATCH /api/jobs/{id} stores source_url without tracking params."""
+    # Seed a job without a source_url, then patch in a dirty one.
+    job = _job(None, "patch-strip")
+    db_session.add(job)
+    db_session.commit()
+
+    dirty = f"{LEVER}?utm_source=email&trk=jobpost&ref=homepage"
+    response = client.patch(f"/api/jobs/{job.id}", json={"source_url": dirty})
+
+    assert response.status_code == 200
+    assert response.json()["source_url"] == LEVER
+
+
+def test_patch_preserves_posting_id_keys(db_session, client):
+    """PATCH /api/jobs/{id} does NOT strip posting-identity query keys."""
+    job = _job(None, "patch-preserve-id")
+    db_session.add(job)
+    db_session.commit()
+
+    # gh_jid is a posting identity on Greenhouse-embedded boards — must survive.
+    url_with_id = "https://acme.example/careers?gh_jid=555&utm_source=email"
+    response = client.patch(f"/api/jobs/{job.id}", json={"source_url": url_with_id})
+
+    assert response.status_code == 200
+    stored = response.json()["source_url"]
+    assert "gh_jid=555" in stored
+    assert "utm_source" not in stored
+
+
+def test_create_preserves_linkedin_currentjobid(db_session, monkeypatch, client):
+    """POST /api/jobs preserves currentJobId (LinkedIn posting identity)."""
+    from app.routers import jobs as jobs_module
+
+    monkeypatch.setattr(
+        jobs_module.jd_extraction,
+        "extract_jd",
+        lambda raw_text, session=None: _minimal_extraction(),
+    )
+
+    url = "https://www.linkedin.com/jobs/search/?currentJobId=4001&utm_source=email"
+    response = client.post("/api/jobs", json={"raw_text": "LI JD", "source_url": url})
+
+    assert response.status_code == 200
+    stored = response.json()["source_url"]
+    assert "currentJobId=4001" in stored
+    assert "utm_source" not in stored
+
+
+def test_list_jobs_filter_strips_tracking_params(db_session, client):
+    """GET /api/jobs?source_url= with tracking params still finds the stored job."""
+    # The job was stored without tracking params (strip happened on create/ingest).
+    job = _job(LEVER, "list-filter-strip")
+    db_session.add(job)
+    db_session.commit()
+
+    # Query with a dirty URL; the filter should strip before the WHERE clause.
+    dirty = f"{LEVER}?utm_source=email&gh_src=ref"
+    response = client.get("/api/jobs", params={"source_url": dirty})
+
+    assert response.status_code == 200
+    ids = [row["id"] for row in response.json()]
+    assert str(job.id) in ids

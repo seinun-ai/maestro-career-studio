@@ -46,6 +46,7 @@ from app.services import (
     role_categories,
     tailoring_session,
 )
+from app.services.job_url_match import strip_tracking_params
 from app.services.skill_normalize import canonicalize_skill_name, coerce_skill_category
 from app.services.sync import hooks as sync_hooks
 from app.services.sync import ownership as sync_ownership
@@ -172,7 +173,7 @@ def _job_from_extraction(
     job = Job(
         raw_text=raw_text,
         raw_text_hash=raw_text_hash,
-        source_url=(source_url or "").strip() or None,
+        source_url=strip_tracking_params(source_url),
         source=source,
     )
     _apply_extraction(job, extraction, session)
@@ -363,14 +364,13 @@ def list_jobs(
             select(Application.id).where(Application.job_id == Job.id).correlate(Job)
         )
         stmt = stmt.where(~exists(has_application))
-    normalized_url = (source_url or "").strip()
+    normalized_url = strip_tracking_params(source_url)
     if normalized_url:
         # Exact match only — the dedupe lookup for external capture agents.
         # (Substring/prefix matching would false-positive across postings that
-        # share a careers-site path.) Strip first: every write path stores a
-        # stripped source_url, so a trailing-whitespace query would otherwise
-        # miss an already-captured job. An all-whitespace value strips to empty
-        # and is treated as no filter.
+        # share a careers-site path.) Strip tracking params: every write path
+        # stores a tracking-param-free source_url, so a query that arrives with
+        # ?gh_src= or ?utm_* would otherwise miss the already-captured job.
         stmt = stmt.where(Job.source_url == normalized_url)
     stmt = stmt.order_by(Job.created_at.desc()).offset(offset).limit(limit)
     rows = list(db.scalars(stmt))
@@ -580,7 +580,7 @@ def patch_job(job_id: UUID, payload: JobPatch, db: Annotated[Session, Depends(ge
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     if payload.source_url is not None:
-        job.source_url = payload.source_url.strip() or None
+        job.source_url = strip_tracking_params(payload.source_url)
     db.commit()
     db.refresh(job)
     return _with_newest_proposal(db, job)

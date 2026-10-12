@@ -642,12 +642,14 @@ class BackendClient:
         # (services/job_url_match.py), and the atomic lookup SYSTEM.md §11
         # item 9 asked for. A referral link (?gh_src=, ?utm_*) or the
         # posting's /apply sub-path now finds the captured job instead of
-        # prompting a duplicate extraction; tracking-param stripping is not
-        # the agent's job. One request: match carries the newest-first job
-        # AND its newest application summary.
+        # prompting a duplicate extraction; tracking-param stripping is the
+        # server's job (job_url_match.strip_tracking_params), not the agent's.
+        # One request: match carries the newest-first job AND its newest
+        # application summary.
         # Strip before building params (defense in depth): every write path
-        # stores a stripped source_url, so a trailing-whitespace URL would
-        # otherwise miss its own captured job. The server strips too.
+        # stores a tracking-param-free source_url, so a trailing-whitespace URL
+        # would otherwise miss its own captured job. The server strips too.
+
         source_url = source_url.strip()
         match = self._request(
             "GET", "/api/jobs/match", params={"url": source_url}
