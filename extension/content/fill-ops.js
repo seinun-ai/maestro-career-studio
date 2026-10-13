@@ -26,7 +26,7 @@
   // `undo`: explore's own allowance for taking back what it committed, apart
   // from the explore's, so a slow explore never eats the undo (or the reverse).
   // `add`: one press of a section's Add and the wait for its entry (sections.js).
-  const budgets = { explore: 5000, undo: 6000, apply: 6000, setItem: 4000, setMax: 20000, step: 2000, add: 4000 };
+  const budgets = { explore: 5000, undo: 6000, apply: 6000, setItem: 6000, setMax: 20000, step: 2000, add: 4000 };
   const inv = () => ns.fillInventory;
   const core = () => ns.fillCore;
   let runId = null;
@@ -83,7 +83,15 @@
   };
   // A popup deliberately left open (a category's children) is closed before
   // any other field is touched; an adaptive move keeps its own field's open.
-  const closeLeftOpen = async (exceptFid) => {
+  // `kept`: the field whose explored list was left up on request (a set's item:
+  // its own commit clicks in that list, `reuse`). Anything else closes it first.
+  let kept = null;
+  const closeLeftOpen = async (exceptFid, { reuse = null } = {}) => {
+    if (kept && kept !== reuse) {
+      const up = inv().resolve(kept);
+      kept = null;
+      if (up) await cleanup(up);
+    }
     const keep = exceptFid ? inv().resolve(exceptFid) : null;
     for (const el of [...core().leftOpen.keys()]) if (el !== keep) await cleanup(el);
   };
@@ -118,10 +126,12 @@
       const ms = Number.isFinite(r.ms) ? Math.max(0, Math.min(budgets.explore, r.ms)) : budgets.explore;
       // `variant`: the recipe's move order the loop sends, passed through.
       const { got, aborted } = await run((t) => core().explore(el, shape, {
-        term: r.term ?? undefined, consentForms, variant: r.variant ?? undefined,
+        term: r.term ?? undefined, consentForms, variant: r.variant ?? undefined, keep: r.keep === true,
       }, t), ms, el);
       if (aborted) await cleanup(el);
       let row = got.options ? got : { options: [], complete: false, searchable: false, error: got.reason ?? got.outcome };
+      const left = row.kept === true;
+      delete row.kept;
       if (!halted() && core().moved(el, shape, snap)) {
         const undo = await run((t) => core().takeBack(el, shape, snap, row.options, t), budgets.undo, el);
         if (undo.aborted) await cleanup(el);
@@ -135,6 +145,9 @@
         delete row.error;
         delete row.committed;
       }
+      // A list left up stays up only while nothing moved: a commit taken back, or an error, closes it.
+      if (left && !row.error && !halted()) kept = r.fid;
+      else if (left) await cleanup(el);
       out[r.fid] = row;
     }
     return out;
@@ -173,15 +186,17 @@
     const out = [];
     for (const a of actions ?? []) {
       if (!mine(a?.fid)) continue;
-      await closeLeftOpen(a.op === "move" ? a.fid : null);
+      await closeLeftOpen(a.op === "move" ? a.fid : null, { reuse: a.op === "set" ? a.fid : null });
       const { el, shape, refused } = target(a.fid, a.fp);
       if (refused) {
         out.push({ fid: a.fid, outcome: refused, committed: null });
         continue;
       }
+      // A set's budget is its items' (one item: setItem); setMax only caps a batch.
       const ms = a.op === "set"
         ? Math.min(budgets.setMax, budgets.setItem * Math.max(1, (a.texts ?? []).length)) : budgets.apply;
       const { got, aborted } = await run((t) => operate(a, el, shape, t), ms, el);
+      if (kept === a.fid) kept = null; // the set tidies its own list (an aborted one is closed below)
       if (aborted) await cleanup(el);
       // Remember what was actually COMMITTED: the clicked option's text for a
       // choose (not the raw decision), the texts for a set, the value for a write.

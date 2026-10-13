@@ -673,7 +673,9 @@
       }
       return false;
     };
-    const explore = async (f, term) => {
+    // `keep` (a set's item on a search box): the list it settled is left up for
+    // the item's own commit, which clicks in it without searching again.
+    const explore = async (f, term, { keep = false } = {}) => {
       if (halt() || fieldLate(f)) return null;
       // The field's remaining time rides along: the page's explore never runs past it.
       const left = (rows.get(f.fid)?.deadline ?? Infinity) - Date.now();
@@ -681,6 +683,7 @@
       const got = merged(await broadcast({
         type: "fill_explore", requests: [withOrder(f, {
           fid: f.fid, fp: f.fp, ...(term ? { term } : {}), ...(Number.isFinite(left) ? { ms: left } : {}),
+          ...(keep ? { keep: true } : {}),
         })],
       }))[f.fid];
       if (got) heard(f, "explore", got);
@@ -746,8 +749,9 @@
     // an operation that failed OUTRIGHT (its open committed a value, its list
     // never settled or never opened, the widget ignored it) is a contradiction
     // too, of the recipe tried only (no moves: its family is taught nothing).
-    // A set whose items opened differently (`varied`) is no one move: nothing
-    // to learn, and a contradiction under a recipe.
+    // A set whose items opened differently (`varied`, or one-item sets that
+    // verified under different moves) is no one move: nothing to learn, and a
+    // contradiction under a recipe.
     const OUTRIGHT = new Set(["committed_while_opening", "committed_while_exploring", "unsettled", "no_popup", "no_effect"]);
     const heard = (f, op, got) => {
       const tried = Boolean(rows.get(f.fid).recipe);
@@ -756,7 +760,14 @@
       const ordered = op === "explore" || op === "choose" || op === "set";
       if (tried && ordered && OUTRIGHT.has(op === "explore" ? got.error : got.reason)) set(f.fid, { contradicted: true });
       if (op !== "choose" && op !== "set") return;
-      if (got.varied?.length) set(f.fid, { moves: null, ...(tried ? { contradicted: true } : {}) });
+      // A set is committed item by item: items that opened two ways are no one
+      // move, however the page's set reports them (each is a one-item set).
+      const row = rows.get(f.fid);
+      const mixed = op === "set" && Boolean(got.variant) && Boolean(row.setMoves)
+        && JSON.stringify(row.setMoves) !== JSON.stringify(got.variant);
+      if (op === "set" && got.variant && !row.setMoves) set(f.fid, { setMoves: got.variant });
+      if (mixed) set(f.fid, { mixedMoves: true });
+      if (got.varied?.length || mixed || row.mixedMoves) set(f.fid, { moves: null, ...(tried ? { contradicted: true } : {}) });
       else if (got.outcome === "verified" && got.variant) set(f.fid, { moves: got.variant });
       if (got.outcome === "unconfirmed") set(f.fid, { moves: got.variant ?? rows.get(f.fid).moves ?? null, contradicted: true });
     };
@@ -1021,91 +1032,108 @@
       return fail(f, out.reason ?? out.outcome);
     };
 
-    // ---- a set: every source item picked on its own, coverage counted per item
+    // ---- a set: every source item picked AND committed on its own, coverage counted per item
+    // Each item is explored, picked, set and read back before the next is
+    // started, so a slow or lost item costs only itself (one set for all of
+    // them ran under one page budget, and timed out with most pills missing).
     // `learnt`: the explore fillChoice already ran for the first item.
     const commitSet = async (f, row, opts, complete, noOptions, learnt) => {
       const all = [...new Set(row.value.map(String))];
       const worked = all.slice(0, L.MAX_ITEMS);
       const byPolicy = new Set(worked.filter(policyBlocks));
       const todo = worked.filter((item) => !byPolicy.has(item));
-      const pairs = []; // [option text, source item, reason, its path when explore read one]
       const missed = new Map(); // source item -> the history entry the adaptive step starts from
       const late = []; // source items the field's clock ran out on
-      if (noOptions) {
-        for (const item of todo) missed.set(item, noOptions);
-      } else {
-        // One item at a time, so a Stop or the field's clock holds between
-        // items. A native (or popup) list is picked per source item over the
-        // full list, so every chosen option maps back to the item it stands for.
-        for (const [i, item] of todo.entries()) {
-          if (halt()) return undefined;
-          if (fieldLate(f)) {
-            late.push(...todo.slice(i));
-            break;
-          }
-          let shown = opts;
-          let whole = complete;
-          if (f.shape === "search") {
-            const got = learnt?.item === item ? learnt.got : await explore(f, item);
-            if (!got) {
-              if (halt()) return undefined;
-              late.push(...todo.slice(i));
-              break;
-            }
-            if (exploreRefused(f, got, item)) return undefined;
-            // Radio rows: the widget takes ONE answer after all (nothing is committed yet).
-            if (got.multi === false) {
-              if (holdsOne(f, row, got)) return keepHeld(f, row);
-              if (all.length > 1) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
-              return commitOne(f, row, got.options ?? [], false, item, item);
-            }
-            if (allBlocked(got.options)) {
-              byPolicy.add(item); // every option shown for it is a never-fill one
-              continue;
-            }
-            if (!got.options?.length) {
-              missed.set(item, historyEntry("search:value", "unexpected", got.error ?? "no_results"));
-              continue;
-            }
-            shown = got.options;
-            whole = false;
-          }
-          const p = await pick(f, row, shown, whole, item);
-          if (!p && fieldLate(f)) {
-            late.push(...todo.slice(i));
-            break;
-          }
-          if (p?.text) pairs.push([p.text, item, p.reason, p.where]);
-          else if (p?.abstained) missed.set(item, historyEntry("choose", "abstained"));
-        }
-      }
-      if (halt()) return undefined;
       const covered = new Map(); // source item -> reason
       const landed = [];
       let landedHow = "group_committed"; // how the last landed value got there
       let committed = null;
-      if (pairs.length) {
-        const texts = [...new Set(pairs.map(([t]) => t))];
-        const action = { op: "set", texts };
-        // A search set types the item that found each option.
-        if (f.shape === "search") action.terms = texts.map((t) => pairs.find(([x]) => x === t)[1]);
-        // Each item's path, where explore read one (null: the text alone). A
+      let listUp = false; // an item's explore left its list up and no set has used it yet
+      // One picked option, committed under its own page budget. Undefined: the
+      // field is decided (stopped, refused, out of time) and commitSet ends.
+      const commitItem = async (item, p) => {
+        const action = { op: "set", texts: [p.text] };
+        // A search set types the item that found the option.
+        if (f.shape === "search") action.terms = [item];
+        // The option's path, where explore read one (null: the text alone). A
         // set types the item it explored with, so the view is the one explore read.
-        const wheres = texts.map((t) => pairs.find(([x]) => x === t)[3] ?? null);
-        if (wheres.some((w) => typeof w === "string")) action.wheres = wheres;
-        // What was picked is committed even when the clock ran out picking the rest.
+        if (typeof p.where === "string") action.wheres = [p.where];
+        // What was picked is committed even when the clock ran out while it was picked.
         const out = await act(f, withOrder(f, action), { overtime: true });
-        if (notDone(f, out)) return undefined;
-        if (out.outcome !== "verified" && out.outcome !== "partial") return fail(f, out.reason ?? out.outcome);
-        committed = out.committed ?? null;
-        const missing = new Set(out.missing ?? []);
-        const blocked = new Set(out.blocked ?? []);
-        for (const [t, item, reason] of pairs) {
-          if (blocked.has(t)) byPolicy.add(item);
-          else if (missing.has(t)) missed.set(item, historyEntry("choose", "missing"));
-          else covered.set(item, reason);
+        listUp = false; // the set tidies the list it was given
+        if (notDone(f, out)) return false;
+        if (out.outcome === "timeout") {
+          missed.set(item, historyEntry("choose", "timeout"));
+          return true;
         }
+        if (out.outcome !== "verified" && out.outcome !== "partial") {
+          fail(f, out.reason ?? out.outcome);
+          return false;
+        }
+        committed = out.committed ?? committed;
+        if ((out.blocked ?? []).includes(p.text)) byPolicy.add(item);
+        else if ((out.missing ?? []).includes(p.text)) missed.set(item, historyEntry("choose", "missing"));
+        else covered.set(item, p.reason);
+        return true;
+      };
+      try {
+        if (noOptions) {
+          for (const item of todo) missed.set(item, noOptions);
+        } else {
+          // One item at a time, so a Stop or the field's clock holds between
+          // items. A native (or popup) list is picked per source item over the
+          // full list, so every chosen option maps back to the item it stands for.
+          for (const [i, item] of todo.entries()) {
+            if (halt()) return undefined;
+            if (fieldLate(f)) {
+              late.push(...todo.slice(i));
+              break;
+            }
+            let shown = opts;
+            let whole = complete;
+            if (f.shape === "search") {
+              const fresh = learnt?.item !== item; // fillChoice's own explore closed its list
+              const got = fresh ? await explore(f, item, { keep: true }) : learnt.got;
+              listUp = fresh && Boolean(got?.options?.length) && !got.error;
+              if (!got) {
+                if (halt()) return undefined;
+                late.push(...todo.slice(i));
+                break;
+              }
+              if (exploreRefused(f, got, item)) return undefined;
+              // Radio rows: the widget takes ONE answer after all (nothing is committed yet).
+              if (got.multi === false) {
+                if (holdsOne(f, row, got)) return keepHeld(f, row);
+                if (all.length > 1) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
+                listUp = false; // the choose closes the page's list before it opens its own
+                return commitOne(f, row, got.options ?? [], false, item, item);
+              }
+              if (allBlocked(got.options)) {
+                byPolicy.add(item); // every option shown for it is a never-fill one
+                continue;
+              }
+              if (!got.options?.length) {
+                missed.set(item, historyEntry("search:value", "unexpected", got.error ?? "no_results"));
+                continue;
+              }
+              shown = got.options;
+              whole = false;
+            }
+            const p = await pick(f, row, shown, whole, item);
+            if (!p && fieldLate(f)) {
+              late.push(...todo.slice(i));
+              break;
+            }
+            if (p?.text) {
+              if (!(await commitItem(item, p))) return undefined;
+            } else if (p?.abstained) missed.set(item, historyEntry("choose", "abstained"));
+          }
+        }
+      } finally {
+        // An item that was explored but never set (abstained, no answer): its list is closed.
+        if (listUp) await act(f, { op: "close" }, { closing: true });
       }
+      if (halt()) return undefined;
       // What the generic path missed, on a popup widget: the adaptive step, one item at a time.
       if (CAN_ADAPT.has(f.shape) && routeOf(row) === "slot") {
         const queue = [...missed].filter(([item]) => !late.includes(item));

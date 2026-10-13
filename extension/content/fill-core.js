@@ -141,6 +141,9 @@
     ...(typeof where === "string" ? { where } : {}),
   }));
   const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  // Whether a field still holds what it did, an empty multi widget (read as
+  // `[]`, displayed as "") included.
+  const unchanged = (x, y) => same(...[x, y].map((v) => [v].flat().filter((h) => h != null && h !== "")));
   // The options a decision named: its exact text, else the equivalent
   // (case/space/accent-folded) ones.
   const match = (options, text) => {
@@ -975,7 +978,10 @@
   };
 
   // `variant`: a recipe's order for the opens and searches (see `open`).
-  async function explore(el, shape, { term, consentForms, variant } = {}, t) {
+  // `keep` (a set's item): the list it settled stays up, with the query in the
+  // box, for the item's own commit to click in — `kept` says it did (fill-ops
+  // closes it before anything else touches the page).
+  async function explore(el, shape, { term, consentForms, variant, keep = false } = {}, t) {
     if (shape.kind !== "choice") return { options: [], complete: false, searchable: false, error: "not_a_choice" };
     if (shape.passive) {
       const p = shape.passive(el);
@@ -1010,7 +1016,8 @@
       if (!got.options.length && !pop && term && moved(el, shape, snap)) {
         got = { options: added(el, shape, snap).map((text, i) => ({ oid: `o${i + 1}`, text, selected: false })), complete: false };
       }
-      await tidy(el, t);
+      const kept = keep && shape.open === "search" && Boolean(pop?.isConnected) && got.options.length > 0 && !moved(el, shape, snap);
+      if (!kept) await tidy(el, t);
       // A filtered search view is never the complete list. `multi` only when the
       // rows said so: checkboxes (several answers) or radios (one).
       // Rows found by a word are not the view a choose typing the term opens:
@@ -1018,6 +1025,7 @@
       const rowsRead = byWord ? got.options.map(({ where, ...o }) => o) : got.options;
       const out = { options: flag(rowsRead, consentForms), complete: got.complete && !term, searchable };
       if (rows) out.multi = rows === "multi";
+      if (kept) out.kept = true;
       if (!out.options.length) {
         if (pop) out.error = "empty_popup";
         else {
@@ -1105,11 +1113,13 @@
     b().check(t);
     checkableIn(x).click();
   }] : GESTURES);
-  // After a click: a moment for the page, and for a tick its pill — the next
-  // item is typed only once the page shows the one before (≤ OPEN_MS).
-  const afterClick = async (el, shape, o, text, t) => {
+  // After a click: a moment for the page, and for a tick — or ANY row of a
+  // set's item — its pill: the next item is typed only once the page shows the
+  // one before (≤ OPEN_MS). A page that takes a pick late (a pill 600 ms on)
+  // is told from one that ignored it only by that wait.
+  const afterClick = async (el, shape, o, text, t, { asSet = false } = {}) => {
     await b().settle(t, 200);
-    if (checkableIn(o)?.type === "checkbox") await b().waitFor(() => holds(el, shape, text), OPEN_MS, t);
+    if (asSet || checkableIn(o)?.type === "checkbox") await b().waitFor(() => holds(el, shape, text), OPEN_MS, t);
   };
   // Whether the field's committed value already holds this text — presence
   // only, whatever error the field shows.
@@ -1219,10 +1229,16 @@
         if (!hit) return done({ outcome: "unexpected", reason: "option_missing", options: flag(b().optionsOf(live), consentForms) });
         if ((multi || shape.multi?.(el)) && isHeld(hit)) return done(alreadyThere(el, shape, hit.text));
         const gestures = gesturesFor(hit.el);
-        if (attempt >= gestures.length) break; // a row redrawn with a tick where a plain row was
+        // A set's item gets one click more: a page may drop a click that lands
+        // while its list redraws, and the row to click again is read afresh on
+        // the next turn (never this turn's node). It is the last gesture again,
+        // sent only when the wait for the pill saw nothing change (below); a
+        // pill that came late ends the item at the held check above.
+        const spare = asSet ? 1 : 0;
+        if (attempt >= gestures.length + spare) break; // a row redrawn with a tick where a plain row was
         const shown = b().optionsOf(live).map((o) => o.text).join("\n");
-        gestures[attempt](hit.el, t);
-        await afterClick(el, shape, hit.el, hit.text, t);
+        gestures[Math.min(attempt, gestures.length - 1)](hit.el, t);
+        await afterClick(el, shape, hit.el, hit.text, t, { asSet });
         w.saw("pointer");
         // The pick is committed: the query typed to find it is no longer the
         // engine's to take back (a free-text box whose pick equals the query).
@@ -1245,7 +1261,7 @@
         // Something else got committed: a second click could undo it (a chip
         // that un-picks on click). Only a click that changed nothing is
         // retried, with the next gesture — and a tick has no next one.
-        if (!same(shape.read(el), before.display) || attempt + 1 >= gestures.length) break;
+        if (!unchanged(shape.read(el), before.display) || attempt + 1 >= gestures.length + spare) break;
       }
       return { outcome: "unexpected", ...w.reason("not_committed") };
     } finally {

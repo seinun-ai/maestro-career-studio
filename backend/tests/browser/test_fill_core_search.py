@@ -571,3 +571,57 @@ def test_explore_undoes_a_pick_that_enter_committed(page, load):
     assert oracle(page, "school") == "" and oracle(page, "skills") == ["SQL"]
     assert page.evaluate("""() => document.querySelector('[data-automation-id="formField-school"]')
         .querySelectorAll('[data-automation-id="selectedItem"]').length""") == 0
+
+
+# ---------- a list field's items are committed one at a time (Task 28), on workday_misses.html
+
+def test_a_kept_explore_list_is_committed_in_without_a_second_search(page, load):
+    """The item's explore leaves its settled list up (`keep`) and its one-item
+    set clicks the row in it: one search per item, not two (the owner's skills
+    list timed out searching every item twice)."""
+    load(page, fixture_html("workday_misses.html"))
+    listen(page)
+    skills = inv(page)["Type to Add Skills"]
+    got = explore(page, skills, "SQL", keep=True)
+    assert [o["text"] for o in got["options"]] == ["SQL", "SQL Server"] and "kept" not in got
+    assert list_shown(page) and oracle(page, "slowSkills") == []
+    row = apply(page, skills, op="set", texts=["SQL"], terms=["SQL"])
+    assert (row["outcome"], row["added"], row["missing"]) == ("verified", ["SQL"], [])
+    assert oracle(page, "slowSkills") == ["SQL"] and not list_shown(page) and page.input_value("#skills") == ""
+    heard = [h for h in page.evaluate("window.heard") if h.startswith("skills:")]
+    assert heard.count("skills:keyup:Enter") == 1   # explore's search; the set typed and pressed nothing
+
+
+def test_a_kept_list_is_closed_by_anything_but_its_own_set(page, load):
+    load(page, fixture_html("workday_misses.html"))
+    f = inv(page)
+    explore(page, f["Type to Add Skills"], "SQL", keep=True)
+    assert list_shown(page)
+    row = apply(page, f["Phone Extension"], op="write", value="12")   # another field's operation closes it first
+    assert row["outcome"] == "verified" and not list_shown(page)
+    explore(page, f["Type to Add Skills"], "SQL", keep=True)
+    assert list_shown(page)
+    page.evaluate(f"() => {OPS}.cancel()")   # a Stop closes it too
+    page.wait_for_function("() => !document.querySelector('[data-automation-id=activeListContainer]')")
+    assert page.input_value("#skills") == ""
+
+
+def test_a_click_the_page_loses_to_a_redraw_is_made_again_on_the_fresh_row(page, load):
+    """The first Pandas click is dropped and the list's rows are new nodes. The
+    set item waits for its pill, finds the row again and clicks it once more —
+    one click per try, never two before the page shows the first took."""
+    load(page, fixture_html("workday_misses.html"))
+    listen(page)
+    row = apply(page, inv(page)["Type to Add Skills"], op="set", texts=["Pandas"], terms=["Pandas"])
+    assert (row["outcome"], row["added"]) == ("verified", ["Pandas"])
+    assert oracle(page, "slowSkills") == ["Pandas"]
+    assert [(c["text"], c["on"]) for c in page.evaluate("window.rowClicks")] == [("Pandas", "checkbox")] * 2
+
+
+def test_an_item_the_list_never_shows_is_missing_and_the_next_one_still_lands(page, load):
+    load(page, fixture_html("workday_misses.html"))
+    skills = inv(page)["Type to Add Skills"]
+    row = apply(page, skills, op="set", texts=["Rust"], terms=["Rust"])
+    assert (row["outcome"], row["missing"]) == ("partial", ["Rust"]) and oracle(page, "slowSkills") == []
+    row = apply(page, skills, op="set", texts=["SQL"], terms=["SQL"])
+    assert row["outcome"] == "verified" and oracle(page, "slowSkills") == ["SQL"]

@@ -794,3 +794,55 @@ def test_an_optional_field_with_no_fact_is_left_blank_and_a_required_one_is_aske
     assert page.input_value("#phone-ext") == ""
     study = out["by_question"]["Field of Study"]
     assert (study["status"], study["required"]) == ("needs_answer", True), study
+
+
+# ---------- a list field commits and confirms each item as it goes (Task 28)
+
+# Twelve skills the misses page lists: each search finds it as a row (a few as
+# the first of two or three), a row click adds its pill 600 ms later, and the
+# first "Pandas" click is lost to a redraw that gives the list new row nodes.
+TWELVE_SKILLS = ["Python", "SQL", "Tableau", "Pandas", "NumPy", "Git", "Docker", "Spark", "Excel",
+                 "Statistics", "Power BI", "Scikit-learn"]
+
+
+def _skills_run(page, skills, **spec):
+    fact = {"route": "slot", "slot": "skills", "value": skills}
+    # Served from a host: the run's trace (which the steps below are read from) names one.
+    return _run(page, html=fixture_html("workday_misses.html"), url="https://careers.acme.test/apply",
+                map={"Type to Add Skills": fact}, limits={"MAX_ROUNDS": 1, "MAX_ITEMS": 12}, **spec)
+
+
+def _field_trace(out, question):
+    fid = out["by_question"][question]["fid"]
+    return next(t for t in out["report"]["trace"]["fields"] if t["fid"] == fid)
+
+
+def test_twelve_skills_each_land_with_their_own_set_and_none_runs_late(e2e_page):
+    """Live 2026-10-13: ~19 skills were picked, then ONE set action searched and
+    clicked every item again under a 20 s page budget and timed out after 5 pills.
+    Each item is now committed right after its own pick, so a slow item costs
+    only itself: all twelve land (Pandas on its second click), one `set` step per
+    item, each verified, and the field never runs late."""
+    page = e2e_page
+    out = _skills_run(page, TWELVE_SKILLS)
+    skills = out["by_question"]["Type to Add Skills"]
+    assert skills["status"] == "verified", skills
+    assert sorted(oracle(page, "slowSkills")) == sorted(TWELVE_SKILLS)
+    steps = _field_trace(out, "Type to Add Skills")["steps"]
+    sets = [s for s in steps if s["op"] == "set"]
+    assert [(s["effect"], s["word"]) for s in sets] == [("progress", "verified")] * 12, steps
+    assert not [s for s in steps if s.get("effect") == "late"]
+    # Each item fits its own page budget (6 s) with Pandas' second click in it, and the
+    # whole field fits the ordinary clock (25 s + 6 s for each item past the first).
+    assert max(s["ms"] for s in sets) < 6000, sets
+    assert out["ms"] < 25000 + 6000 * 11
+
+
+def test_a_skill_the_list_never_offers_is_missing_and_the_rest_still_land(e2e_page):
+    page = e2e_page
+    wanted = [*TWELVE_SKILLS[:5], "Rust", *TWELVE_SKILLS[5:11]]   # twelve items, one the list has no row for
+    out = _skills_run(page, wanted)
+    skills = out["by_question"]["Type to Add Skills"]
+    assert skills["status"] == "partial", skills
+    assert "11 of 12 added" in skills["answer"], skills
+    assert sorted(oracle(page, "slowSkills")) == sorted(s for s in wanted if s != "Rust")

@@ -192,15 +192,17 @@ def test_a_search_choose_carries_a_path_only_from_the_view_it_opens(page, load, 
 def test_a_set_carries_each_items_path_when_explore_read_one(page, load):
     """Each item's option was explored with the term the set types for it:
     its path travels, so the set does not read a long list whole per item.
-    An item explore gave no path for is carried as null (read whole)."""
+    An item explore gave no path for carries none (read whole)."""
     out = run(page, load, frames=[[f("k", "search", "Skills", multi=None)]],
               map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
               explore={"SQL": {"options": [{**opt("o1", "SQL"), "where": "\u203aData"}], "multi": True},
                        "Python": {"options": [opt("o1", "Python")], "multi": True}},
               pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
-              apply={"SQL+Python": {"outcome": "verified", "added": ["SQL", "Python"], "missing": []}})
-    [s] = actions(out, "set")
-    assert (s["texts"], s["terms"], s["wheres"]) == (["SQL", "Python"], ["SQL", "Python"], ["\u203aData", None])
+              apply={"SQL": {"outcome": "verified", "added": ["SQL"], "missing": []},
+                     "Python": {"outcome": "verified", "added": ["Python"], "missing": []}})
+    sql, python = actions(out, "set")
+    assert (sql["texts"], sql["terms"], sql["wheres"]) == (["SQL"], ["SQL"], ["\u203aData"])
+    assert (python["texts"], python["terms"], "wheres" in python) == (["Python"], ["Python"], False)
 
 
 def test_a_set_item_commits_by_its_path_on_a_long_list(page, load):

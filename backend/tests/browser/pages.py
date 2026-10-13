@@ -32,8 +32,8 @@ def apply(page, f, **action):
     return page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f["fid"], "fp": f["fp"], **action})[0]
 
 
-def explore(page, f, term=None):
-    return page.evaluate(f"(r) => {OPS}.explore([r])", {"fid": f["fid"], "fp": f["fp"], "term": term})[f["fid"]]
+def explore(page, f, term=None, **request):
+    return page.evaluate(f"(r) => {OPS}.explore([r])", {"fid": f["fid"], "fp": f["fp"], "term": term, **request})[f["fid"]]
 
 
 def oracle(page, key):

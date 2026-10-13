@@ -320,12 +320,15 @@ def test_a_search_whose_rows_show_checkboxes_takes_the_set_path(page, load):
               explore={"SQL": {"options": [opt("o1", "SQL")], "multi": True},
                        "Python": {"options": [opt("o1", "Python")], "multi": True}},
               pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
-              apply={"SQL+Python": {"outcome": "verified", "added": ["SQL", "Python"], "missing": []}})
+              apply={"SQL": {"outcome": "verified", "added": ["SQL"], "missing": []},
+                     "Python": {"outcome": "verified", "added": ["Python"], "missing": []}})
     assert statuses(out) == {"k": "verified"}
     assert explored_terms(out) == ["SQL", "Python"]   # the first item's explore is not repeated
     # Each explore carries what the field's clock has left, so the page's explore never outlives it.
     assert all(0 < r["ms"] <= 31000 for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"])
-    assert [a["texts"] for a in actions(out, "set")] == [["SQL", "Python"]]
+    assert [a["texts"] for a in actions(out, "set")] == [["SQL"], ["Python"]]   # each item committed as it goes
+    # The first item reuses fillChoice's explore (its list is closed); the next is explored to be committed in.
+    assert [r.get("keep") for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"]] == [None, True]
 
 
 def test_a_search_whose_rows_show_radios_takes_one_answer(page, load):
@@ -397,7 +400,7 @@ def test_radio_rows_turn_a_one_item_set_into_one_answer(page, load):
               explore={"UT Arlington": {"options": [opt("o1", "UT Arlington")], "multi": False}},
               pick={"k:UT Arlington": {"oids": ["o1"], "reason": "matched"}})
     assert statuses(out) == {"k": "verified"}
-    assert [(a["op"], a.get("text")) for a in actions(out)] == [("choose", "UT Arlington")]
+    assert [(a["op"], a.get("text")) for a in actions(out)] == [("choose", "UT Arlington")]   # no set, and no close of its own
 
 
 def test_eleven_skills_with_ten_added_is_partial_not_verified(page, load):
@@ -406,11 +409,11 @@ def test_eleven_skills_with_ten_added_is_partial_not_verified(page, load):
               map={"k": {"route": "slot", "slot": "skills", "value": skills}},
               explore={s: {"options": [opt("o1", s)]} for s in skills},
               pick={f"k:{s}": {"oids": ["o1"], "reason": "matched"} for s in skills},
-              apply={"+".join(skills[:10]): {"outcome": "verified", "added": skills[:10], "missing": []}})
+              apply={s: {"outcome": "verified", "added": [s], "missing": []} for s in skills})
     [r] = out["report"]["fields"]
     assert (r["status"], r["answer"]) == ("partial", "10 of 11 added")
-    [s] = actions(out, "set")
-    assert s["texts"] == skills[:10] and s["terms"] == skills[:10]
+    sets = actions(out, "set")
+    assert [s["texts"] for s in sets] == [[s] for s in skills[:10]] and [s["terms"] for s in sets] == [[s] for s in skills[:10]]
 
 
 def test_an_unchecked_lone_checkbox_is_not_already_answered(page, load):
@@ -936,7 +939,7 @@ def test_blocked_set_items_are_reported_apart_from_the_missing_ones(page, load):
                        "Rust": {"options": [opt("o1", "Rust")]},
                        "Go": {"options": [opt("o1", "Go signature", blocked=True)]}},
               pick={"k:Python": {"oids": ["o1"], "reason": "matched"}, "k:Rust": {"oids": ["o1"], "reason": "matched"}},
-              apply={"Python+Rust": {"outcome": "partial", "added": ["Python"], "missing": [], "blocked": ["Rust"]}})
+              apply={"Rust": {"outcome": "partial", "added": [], "missing": [], "blocked": ["Rust"]}})
     r = row(out, "k")
     assert (r["status"], r["answer"]) == ("partial", "1 of 3 added · 2 left to you by policy")
     assert all(o["text"] != "Go signature" for b in bodies(out, "/api/autofill/pick") for o in b["fields"][0]["options"])
@@ -955,6 +958,30 @@ def test_a_set_item_the_generic_path_missed_gets_the_adaptive_step_with_its_item
     assert [s["item"] for s in bodies(out, "/api/autofill/step")] == ["Python", "Python"]
     states = [m for m in out["sent"] if m["type"] == "fill_step_state"]
     assert [s["value"] for s in states] == ["Python", "Python"]
+
+
+def test_a_set_item_that_times_out_costs_only_itself(page, load):
+    """Live 2026-10-13: one set for every item timed out at 20 s and lost all but
+    five. Each item has its own page budget now: the slow one is missing (and
+    handed to the adaptive step), the items on either side of it land."""
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python", "Tableau"]}},
+              explore={t: {"options": [opt("o1", t)]} for t in ("SQL", "Python", "Tableau")},
+              pick={f"k:{t}": {"oids": ["o1"], "reason": "matched"} for t in ("SQL", "Python", "Tableau")},
+              apply={"Python": {"outcome": "timeout"}})
+    r = row(out, "k")
+    assert (r["status"], r["answer"]) == ("partial", "2 of 3 added")
+    assert [a["texts"] for a in actions(out, "set")] == [["SQL"], ["Python"], ["Tableau"]]
+    assert [s["item"] for s in bodies(out, "/api/autofill/step")] == []   # nothing on offer but give_up: no model asked
+    assert [m["mid"] for m in actions(out, "move")] == ["give_up"]
+
+
+def test_a_list_left_up_by_an_item_nobody_set_is_closed(page, load):
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
+              explore={t: {"options": [opt("o1", t)]} for t in ("SQL", "Python")},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": [], "reason": "abstained"}})
+    assert [(a["op"], a.get("texts")) for a in actions(out) if a["op"] != "move"] == [("set", ["SQL"]), ("close", None)]
 
 
 def test_an_explore_refusal_is_final(page, load):
@@ -1055,7 +1082,7 @@ def test_native_set_picks_run_one_at_a_time(page, load):
               apiDelay={"/api/autofill/pick": 20},
               map={"k": {"route": "slot", "slot": "skills", "value": list("ABCD")}},
               pick={f"k:{t}": {"oids": [f"o{i}"], "reason": "matched"} for i, t in enumerate("ABCD")},
-              apply={"A+B+C+D": {"outcome": "verified", "added": list("ABCD"), "missing": []}})
+              apply={t: {"outcome": "verified", "added": [t], "missing": []} for t in "ABCD"})
     assert statuses(out) == {"k": "verified"}
     assert out["peak"]["/api/autofill/pick"] == 1
     assert [b["fields"][0]["item"] for b in bodies(out, "/api/autofill/pick")] == list("ABCD")
@@ -1083,7 +1110,8 @@ def test_a_stop_between_native_set_items_stops_the_picks(page, load):
       const r = await ns.fillLoop.runFill({broadcast, api, cancelled: () => stop}, {});
       return {picks, applies, stopped: r.stopped};
     }""", options)
-    assert got == {"picks": 2, "applies": 0, "stopped": True}
+    # A was committed as it went; the Stop met B's pick, so B (and C, D) never reached the page.
+    assert got == {"picks": 2, "applies": 1, "stopped": True}
 
 
 @pytest.mark.parametrize(("item_ms", "status", "picks"), [(150, "verified", 3), (0, "partial", 2)])
@@ -2339,7 +2367,8 @@ def test_a_set_whose_items_opened_differently_is_not_learned_as_one_move(page, l
               map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
               explore={"SQL": {"options": [opt("o1", "SQL")]}, "Python": {"options": [opt("o1", "Python")]}},
               pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
-              apply={"SQL+Python": {"outcome": "verified", "variant": {"open": "keys"}, "varied": ["open"]}},
+              apply={"SQL": {"outcome": "verified", "variant": {"open": "keys"}},
+                     "Python": {"outcome": "verified", "variant": {"open": "press"}}},
               sweep=[[{"fid": "k", "outcome": "verified", "held": True}]])
     assert run(page, load, recipes={}, **kw)["lessons"] is None
     out = run(page, load, recipes={"book": LEARNED}, **kw)
@@ -2353,7 +2382,7 @@ def test_a_set_carries_the_learned_order(page, load):
               pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
               recipes={"book": LEARNED})
     assert statuses(out) == {"k": "verified"}
-    assert variants(out) == {"explore": [KEYS_FIRST, KEYS_FIRST], "choose": [], "set": [KEYS_FIRST], "write": []}
+    assert variants(out) == {"explore": [KEYS_FIRST, KEYS_FIRST], "choose": [], "set": [KEYS_FIRST, KEYS_FIRST], "write": []}
 
 
 def test_deliberate_writes_never_consult_a_recipe(page, load):
@@ -3138,15 +3167,16 @@ def test_an_option_index_past_the_schemas_bound_is_dropped(page, load):
     assert [s["option"] for s in traced(out, "s")["steps"] if s["op"] == "pick"] == [249]
 
 
-def test_a_set_notes_a_pick_per_item_and_one_set_action(page, load):
+def test_a_set_notes_a_pick_and_a_set_per_item(page, load):
     options = [opt("o1", "SQL"), opt("o2", "Python")]
     out = run(page, load, frames=[[f("k", "select", "Skills", multi=True, options=options, optionsComplete=True)]],
               map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
               pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o2"], "reason": "matched"}},
-              apply={"SQL+Python": {"outcome": "verified", "added": ["SQL", "Python"], "missing": []}})
+              apply={"SQL": {"outcome": "verified", "added": ["SQL"], "missing": []},
+                     "Python": {"outcome": "verified", "added": ["Python"], "missing": []}})
     steps = traced(out, "k")["steps"]
-    assert [s["op"] for s in steps] == ["map", "pick", "pick", "set"]
-    assert ([s["option"] for s in steps[1:3]], steps[3]["effect"]) == ([0, 1], "progress")
+    assert [s["op"] for s in steps] == ["map", "pick", "set", "pick", "set"]
+    assert ([s["option"] for s in (steps[1], steps[3])], [s["effect"] for s in (steps[2], steps[4])]) == ([0, 1], ["progress"] * 2)
 
 
 # ---------- the loop's trace limits mirror the backend schema's
