@@ -46,6 +46,10 @@
 
   function classify(s) {
     if (s.captchaVisible) return { kind: "captcha" };
+    // A job board's own pages are the board's, whatever else is on them: Easy Apply is no "Apply"
+    // link, a stray control is no reason to read the page as a form, and the board's sign-in must
+    // never be taken for an employer's (the saved employer password is not the board's).
+    if (s.boardNative) return { kind: "board_native" };
     // Two or more password inputs is a sign-up or a change-password form even when the confirm
     // field is unlabelled: this run never fills a password, so it parks.
     if (s.confirmPassword || (s.passwordInputs ?? 0) > 1) return { kind: "create_account" };
@@ -53,14 +57,18 @@
     if (s.passwordInputs === 1) return { kind: "sign_in" };
     if (s.confirmationText && !s.fillable) return { kind: "confirmation" };
     if (s.closedText) return { kind: "closed" };
-    if (s.hasApplyLink && !s.fillable) return { kind: s.boardNative ? "board_native" : "posting" };
+    if (s.hasApplyLink && !s.fillable) return { kind: "posting" };
 
     const sorted = (s.buttons ?? []).map((b) => ({ ...b, sort: sortButton(b) }));
     // A Submit counts when it can be SEEN, enabled or not: it is often disabled until the form
     // validates, and a Next beside it is then not to be trusted. Outside the form counts too.
     const submit = sorted.some((b) => b.sort === "submit" && b.visible !== false);
     const next = sorted.filter((b) => b.sort === "next" && b.visible && b.enabled && b.inForm !== false);
-    if (submit) return { kind: "review" };
+    // `submitSeen`: a Submit the button list could not see (a div role=button, an image input, a
+    // plain link, or a control whose id or name says submit). `submitContext`: a dialog or the
+    // step's own heading asks about submitting ("Submit your application?"), so its Proceed is the
+    // Submit's. Either one stops the run the way a visible Submit button does.
+    if (submit || s.submitSeen || s.submitContext) return { kind: "review" };
     // Exactly one Next is the step, even with nothing to fill (an intro or "before you apply"
     // page should advance). Several, or fields with no Next, is not sure: the run stops here.
     if (next.length === 1) return { kind: "form_step", next: next[0].id };

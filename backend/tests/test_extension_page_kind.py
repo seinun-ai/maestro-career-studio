@@ -215,8 +215,35 @@ def test_an_apply_link_beside_a_fillable_form_is_not_a_posting(tmp_path):
     assert kind(tmp_path, hasApplyLink=True, fillable=3, buttons=[btn("Next")])["kind"] == "form_step"
 
 
-def test_board_native_flag_alone_is_not_board_native(tmp_path):
-    assert kind(tmp_path, boardNative=True)["kind"] == "unknown"
+def test_a_job_boards_own_page_is_board_native_whatever_else_is_on_it(tmp_path):
+    """Easy Apply is no "Apply" link, a stray control must not make it a form, and the board's
+    sign-in must never be read as an employer's (the saved password is not the board's)."""
+    assert kind(tmp_path, boardNative=True)["kind"] == "board_native"
+    assert kind(tmp_path, boardNative=True, buttons=[btn("Easy Apply")], fillable=0)["kind"] == "board_native"
+    assert kind(tmp_path, boardNative=True, fillable=1, buttons=[btn("Next")])["kind"] == "board_native"
+    assert kind(tmp_path, boardNative=True, passwordInputs=1)["kind"] == "board_native"
+    assert kind(tmp_path, boardNative=True, passwordInputs=2, confirmPassword=True)["kind"] == "board_native"
+    assert kind(tmp_path, boardNative=True, captchaVisible=True)["kind"] == "captcha"
+
+
+def test_a_dialog_or_heading_that_asks_about_submitting_makes_its_proceed_a_review(tmp_path):
+    """{Proceed, Cancel} in a "Submit your application?" dialog: Proceed sorts "next", and was a
+    form_step."""
+    buttons = [btn("Proceed", id="p"), btn("Cancel")]
+    assert kind(tmp_path, fillable=0, buttons=buttons)["kind"] == "form_step"
+    assert kind(tmp_path, fillable=0, buttons=buttons, submitContext=True)["kind"] == "review"
+    assert kind(tmp_path, fillable=3, buttons=buttons, submitContext=True)["kind"] == "review"
+
+
+def test_a_submit_the_button_list_could_not_see_stops_the_run(tmp_path):
+    buttons = [btn("Next", id="n")]
+    assert kind(tmp_path, fillable=2, buttons=buttons)["kind"] == "form_step"
+    assert kind(tmp_path, fillable=2, buttons=buttons, submitSeen=True)["kind"] == "review"
+
+
+def test_the_submit_context_never_hides_a_confirmation_or_a_closed_page(tmp_path):
+    assert kind(tmp_path, confirmationText=True, submitContext=True)["kind"] == "confirmation"
+    assert kind(tmp_path, closedText=True, submitContext=True)["kind"] == "closed"
 
 
 def test_form_step_carries_the_one_next_button_id(tmp_path):
