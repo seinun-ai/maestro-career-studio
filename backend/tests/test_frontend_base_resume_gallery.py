@@ -40,7 +40,7 @@ def test_the_card_root_carries_the_hue_and_the_footer_runs_to_the_bottom_edge():
 
 def test_the_title_leads_with_the_square_and_nothing_in_the_footer_is_muted():
     body = squash(_body())
-    assert body.index("<ResumeSwatch hue={resume.color_hue} />") < body.index("{name}")
+    assert body.index("<ResumeSwatch hue={resume.color_hue} />") < body.index('<span className="truncate">{name}</span>')
     # Meta text inherits on-resume-container from the footer; a muted grey would drop below 4.5:1 on some tints.
     assert "text-muted-foreground" not in body
 
@@ -89,3 +89,11 @@ def test_the_gallery_groups_through_the_pure_lib_and_names_each_group_by_its_hea
 def test_the_grouping_passes_its_node_tests():
     result = run_node_test("lib/role-groups.test.ts")
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_title_tooltip_names_the_role_the_heading_names():
+    """A free-text role or a catalog label, not the bare category key; nothing for an unset role."""
+    body = squash(_body())
+    assert "const role = roleUnset ? null : displayRoleTag(resume.role_category, resume.role_label, options);" in body
+    assert "title={role ? `${name}\\n${role}` : name}" in body
+    assert "roleLabel(" not in body

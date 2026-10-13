@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbsoluteDateTime, formatLabeledAgo } from "@/lib/format-date";
 import { ResumeSwatch } from "@/components/visual";
-import { displayRoleTag, roleLabel, useRoleCategories } from "@/components/role-category-picker";
+import { displayRoleTag, useRoleCategories } from "@/components/role-category-picker";
 import { groupByRole, isRoleUnset, type RoleGroup } from "@/lib/role-groups";
 import { resumeColorStyle } from "@/lib/resume-color";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,8 @@ function BaseResumeCardBody({
   const isArchived = !!resume.archived_at;
   const roleUnset = isRoleUnset(resume);
   const name = baseResumeLabel(resume.slug, [resume]);
+  const { data: options } = useRoleCategories();
+  const role = roleUnset ? null : displayRoleTag(resume.role_category, resume.role_label, options);
 
   return (
     <>
@@ -54,7 +56,7 @@ function BaseResumeCardBody({
               /base-resumes/<slug> whenever you actually need it. */}
           <CardTitle
             className="flex min-w-0 items-center gap-1.5"
-            title={[name, roleLabel(resume.role_category)].join("\n")}
+            title={role ? `${name}\n${role}` : name}
           >
             <ResumeSwatch hue={resume.color_hue} />
             <span className="truncate">{name}</span>

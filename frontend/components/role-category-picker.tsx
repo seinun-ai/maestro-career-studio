@@ -27,6 +27,7 @@ import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { humanizeSlug } from "@/lib/humanize-slug";
+import { inOrder } from "@/lib/in-order";
 import { cn } from "@/lib/utils";
 import { baseResumeLabel, type BaseResumeDetail, type FavoredRole, type RoleCategory } from "@/lib/types";
 
@@ -98,12 +99,14 @@ export function RoleCategoryPicker({
   const guessing = proposed && !confirmed;
 
   const save = useMutation({
-    scope: { id: `identity-${slug}` }, // in step with the other identity saves (useAnchorSave)
     mutationFn: (entry: FavoredRole | null) =>
-      apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/identity`, {
-        method: "PATCH",
-        body: JSON.stringify(identityFromFavoredRole(entry)),
-      }),
+      // In order with the other identity saves of this resume (useAnchorSave).
+      inOrder(`identity-${slug}`, () =>
+        apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/identity`, {
+          method: "PATCH",
+          body: JSON.stringify(identityFromFavoredRole(entry)),
+        }),
+      ),
     onSuccess: (updated) => {
       qc.setQueryData(["base-resumes", slug], updated);
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
@@ -190,13 +193,15 @@ function useAnchorSave<K extends keyof AnchorValues>(slug: string, field: K) {
   const qc = useQueryClient();
   return useMutation({
     // One at a time per resume: two quick saves reach the server in the order they were made, so the last
-    // choice is the one that stays. The scope is shared by every field of this resume's identity.
-    scope: { id: `identity-${slug}` },
+    // choice is the one that stays. Every field of this resume's identity shares the chain. Not a mutation
+    // `scope`: a queued scoped mutation waits for the tab to be focused, and a hidden tab could lose the save.
     mutationFn: (value: AnchorValues[K]) =>
-      apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/identity`, {
-        method: "PATCH",
-        body: JSON.stringify({ [field]: value }),
-      }),
+      inOrder(`identity-${slug}`, () =>
+        apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/identity`, {
+          method: "PATCH",
+          body: JSON.stringify({ [field]: value }),
+        }),
+      ),
     onSuccess: (updated) => {
       qc.setQueryData(["base-resumes", slug], updated);
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
@@ -394,7 +399,8 @@ export function TargetDialog({
           />
           <ResumeColorPicker
             value={shown}
-            onChange={setDrag}
+            // The already-checked swatch is not a change: it clears the drag so a later outside change still shows.
+            onChange={(hue) => setDrag(hue === shown ? null : hue)}
             onCommit={(hue) => {
               setDrag(null);
               saveColor.mutate(hue);

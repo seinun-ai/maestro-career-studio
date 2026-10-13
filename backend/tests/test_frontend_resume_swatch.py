@@ -76,16 +76,21 @@ def test_the_arrow_keys_move_between_swatches():
 
 
 def test_the_custom_hue_is_a_labelled_range_over_the_whole_wheel():
-    assert 'type="range"' in _PICKER and "min={0}" in _PICKER and "max={359}" in _PICKER
-    assert ">Hue<" in _PICKER
+    for part in ('type="range"', "min={0}", "max={359}", ">Hue<"):
+        assert part in _PICKER, part
     assert "aria-valuetext={presetName(value) ?? `Hue ${value ?? 0}`}" in _PICKER
-    assert "Custom" in _PICKER and "aria-expanded={sliderOpen}" in _PICKER
+
+
+def test_custom_opens_the_slider_and_a_custom_value_that_arrives_late_opens_it_too():
+    assert "Custom" in _PICKER
+    assert "aria-expanded={sliderOpen}" in _PICKER
     assert "aria-controls={sliderOpen ? sliderId : undefined}" in _PICKER
-    # A custom value that arrives after mount opens the slider.
     assert "customOpen ?? isCustom" in _PICKER
-    # ...and stays open once used: a drag onto a preset hue would otherwise unmount it before pointerup commits.
+
+
+def test_the_slider_stays_open_once_used_and_a_click_on_the_checked_swatch_is_no_new_choice():
+    # A drag onto a preset hue would otherwise unmount the slider before its pointerup commits.
     assert "onFocus={() => { if (customOpen === null) setCustomOpen(true); }}" in _PICKER
-    # A click on the already-checked swatch is not a new choice.
     assert "if (preset.hue !== value) onCommit?.(preset.hue)" in _PICKER
     assert "p-1.5" in _PICKER  # the 6px focus ring stays inside the group
 

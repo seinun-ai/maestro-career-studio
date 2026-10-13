@@ -6,6 +6,7 @@ Source pins in the style of test_frontend_resume_swatch.py: the frontend has no 
 from pathlib import Path
 
 from tests._jsx_pins import open_tag, squash
+from tests.node_ts import run_node_test
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 _NEW = (_FRONTEND / "components/base-resumes/new-base-resume-dialog.tsx").read_text(encoding="utf-8")
@@ -83,10 +84,24 @@ def test_target_shows_the_drag_then_the_pending_save_then_the_saved_color_with_n
 
 
 def test_identity_saves_for_one_resume_run_in_order_and_each_field_has_one_toast():
+    """A chain per resume, not a mutation `scope`: a queued scoped mutation waits for tab focus and a hidden tab could lose it."""
     hook = _hook()
-    assert "scope: { id: `identity-${slug}` }," in hook
-    assert "{ id: `anchor-${field}` }" in hook and hook.count("{ id: `anchor-${field}` }") == 2
-    assert 'scope: { id: `identity-${slug}` }, // in step with the other identity saves' in squash(_TARGET_FILE)
+    assert "scope:" not in squash(_TARGET_FILE)
+    assert "mutationFn: (value: AnchorValues[K]) => inOrder(`identity-${slug}`, () => apiFetch" in hook
+    role = squash(_TARGET_FILE[_TARGET_FILE.index("export function RoleCategoryPicker(") :])
+    assert "mutationFn: (entry: FavoredRole | null) => // In order with the other identity saves of this resume (useAnchorSave). inOrder(`identity-${slug}`, () =>" in role
+    assert 'import { inOrder } from "@/lib/in-order";' in _TARGET_FILE
+    assert hook.count("{ id: `anchor-${field}` }") == 2
+
+
+def test_the_in_order_chain_passes_its_node_tests():
+    result = run_node_test("lib/in-order.test.ts")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_already_checked_swatch_clears_the_drag():
+    picker = open_tag(_target(), "ResumeColorPicker")
+    assert "onChange={(hue) => setDrag(hue === shown ? null : hue)}" in picker
 
 
 def test_the_color_save_invalidates_both_list_keys_and_the_detail_key_and_reports_an_error():
@@ -111,7 +126,7 @@ def test_the_studio_passes_the_saved_color_to_target():
 
 def test_the_slider_latches_open_on_pointer_down_and_on_focus():
     """Safari does not focus a range input on click, so onFocus alone never latches the slider before a drag."""
-    slider = open_tag(_PICKER, "input", after='type="range"'.replace('type="range"', "<input id={sliderId}"))
+    slider = open_tag(_PICKER, "input", after="<input id={sliderId}")
     latch = "{() => { if (customOpen === null) setCustomOpen(true); }}"
     assert f"onPointerDown={latch}" in slider
     assert f"onFocus={latch}" in slider
