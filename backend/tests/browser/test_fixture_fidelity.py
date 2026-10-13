@@ -708,7 +708,43 @@ def test_misses_skills_answer_in_two_stages_and_other_clicks_are_never_ignored(p
     wait_oracle(page, "slowSkills", ["Git", "GitHub"])
 
 
-def test_misses_the_full_field_of_study_lists_nothing_and_a_short_term_lists_matches(page, load):
+def text_of(page, text):
+    return page.locator(ROWS, has_text=text).locator("[data-automation-id=promptOption]")
+
+
+def test_misses_a_click_on_the_row_text_commits_like_its_checkbox(page, load):
+    load(page, fixture_html("workday_misses.html"), sources=[])
+    search(page, "skills", "Python", rows=["Python", "Python IDLE", "Maya Python"])
+    page.evaluate(f"""() => {{ window.seen = {{}};
+      const list = {SKILLS_PILLS}.querySelector('[data-automation-id=selectedItemList]');
+      new MutationObserver(() => {{ if (!window.seen.pill && list.children.length) window.seen.pill = performance.now(); }})
+        .observe(list, {{ childList: true }});
+      window.seen.click = performance.now();
+      [...document.querySelectorAll('[data-automation-id=activeListContainer] [role=option] [data-automation-id=promptOption]')]
+        .find((p) => p.textContent === 'Python IDLE').click(); }}""")
+    assert pills(page, "skills") == [] and oracle(page, "slowSkills") == []
+    wait_oracle(page, "slowSkills", ["Python IDLE"])
+    seen = page.evaluate("window.seen")
+    assert 560 <= seen["pill"] - seen["click"] <= 900
+    assert pills(page, "skills") == ["Python IDLE"]
+
+
+def test_misses_the_first_pandas_row_text_click_is_ignored_and_the_second_works(page, load):
+    load(page, fixture_html("workday_misses.html"), sources=[])
+    search(page, "skills", "Pandas", rows=["Pandas"])
+    page.evaluate("window.firstRow = document.querySelector('[data-automation-id=activeListContainer] [role=option]')")
+    text_of(page, "Pandas").click()
+    page.wait_for_timeout(900)
+    assert pills(page, "skills") == [] and oracle(page, "slowSkills") == []
+    assert page.evaluate("window.firstRow.isConnected") is False
+    text_of(page, "Pandas").click()
+    text_of(page, "Pandas").click()   # a repeat while the pick is pending changes nothing
+    wait_oracle(page, "slowSkills", ["Pandas"])
+    page.wait_for_timeout(PAST_SEARCH_MS)
+    assert pills(page, "skills") == ["Pandas"] and oracle(page, "slowSkills") == ["Pandas"]
+
+
+def test_misses_the_full_field_of_study_lists_nothing_and_so_does_data(page, load):
     load(page, fixture_html("workday_misses.html"), sources=[])
     search(page, "fos", "Data Science and Analytics", rows=["No Items."])
     assert page.locator(f"{ROWS} input").count() == 0
@@ -722,11 +758,18 @@ def test_misses_the_full_field_of_study_lists_nothing_and_a_short_term_lists_mat
     wait_rows(page, ["Statistics"])
     page.wait_for_timeout(PAST_SEARCH_MS * 2)   # past stage two: still the one row
     assert page.locator(ROWS).count() == 1 and oracle(page, "fieldOfStudy") == ""
+    # Word-prefix matching: "Data" starts no word of the three options, "Science" starts one.
     page.fill("#fos", "Data")
     page.keyboard.press("Enter")
-    wait_rows(page, ["Data Science", "Data Analytics"])
-    page.locator(ROWS, has_text="Data Science").locator("input").click()
-    assert oracle(page, "fieldOfStudy") == "Data Science" and pills(page, "fos") == ["Data Science"]
+    wait_rows(page, ["No Items."])
+    page.fill("#fos", "Science")
+    page.keyboard.press("Enter")
+    wait_rows(page, ["Computer Science"])
+    page.fill("#fos", "Statistics")
+    page.keyboard.press("Enter")
+    wait_rows(page, ["Statistics"])
+    page.locator(ROWS, has_text="Statistics").locator("input").click()
+    assert oracle(page, "fieldOfStudy") == "Statistics" and pills(page, "fos") == ["Statistics"]
     assert page.locator(LIST).count() == 0
 
 

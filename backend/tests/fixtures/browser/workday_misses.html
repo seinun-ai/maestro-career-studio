@@ -173,18 +173,21 @@
   });
 
   // ---- the three search-and-pick boxes (§2): the markup and gestures of
-  // workday_search.html, minus its virtual list (these lists are short).
+  // workday_search.html, minus its virtual list (these lists are short). One
+  // difference, from the owner's live run: the row's text acts as its
+  // checkbox's label, so a click anywhere on a row commits like the checkbox
+  // (workday_search.html's probe only saw the checkbox commit).
   // Matching is silent in the notes; the traces fit WORD-PREFIX matching: every
-  // word typed must start some word of the option. "Data Science and
-  // Analytics" starts no word of any option ("and" fits nothing), so a long
-  // value finds nothing while "Data" or "Statistics" finds rows.
+  // word typed must start some word of the option, so a long value
+  // with a word no option has ("Data Science and Analytics") finds nothing.
   const SKILLS = ["Python", "Python IDLE", "Maya Python", "SQL", "SQL Server", "R", "RStudio", "Pandas", "NumPy",
     "Tableau", "Tableau Prep", "Machine Learning", "Statistics", "Statistical Modeling", "Spark", "Apache Spark",
     "Excel", "Microsoft Excel", "Git", "GitHub", "Docker", "Docker Compose", "Scikit-learn", "Power BI"];
-  // The three the traces listed, plus two "Data ..." rows: "Data" listing
-  // matches needs something to match, and the notes name no such row. Neither
-  // is the full value, so that stays empty.
-  const FIELDS = ["Statistics", "Computer Science", "Mathematics", "Data Science", "Data Analytics"];
+  // Exactly the three options the traces listed. With word-prefix matching the
+  // full value "Data Science and Analytics" lists nothing, "Data" lists nothing
+  // either, "Statistics" lists one row, and "Science" lists Computer Science (a
+  // plausible wrong match for a caller that takes the first row blindly).
+  const FIELDS = ["Statistics", "Computer Science", "Mathematics"];
   const CODES = ["United States of America (+1)", "Canada (+1)", "India (+91)", "United Kingdom (+44)"];
   const WIDGETS = {
     "phone-code": { key: "phoneCode", multi: false, leaves: CODES, pillMs: 0 },
@@ -315,14 +318,8 @@
     if (!row || !open) return;
     const item = open.items[Number(row.dataset.index)];
     if (!item || item.kind === "none") return;
-    if (e.target.matches('input[data-automation-id="radioBtn"]')) {
-      if (e.target.type === "checkbox") e.preventDefault();   // the app, not the browser, owns the tick
-      choose(item.text);
-      return;
-    }
-    // A click on the row text only HIGHLIGHTS it (§2 "row vs radio").
-    for (const r of open.box.querySelectorAll(':scope > [role="option"]')) r.setAttribute("aria-selected", "false");
-    row.setAttribute("aria-selected", "true");
+    if (e.target.matches('input[type="checkbox"]')) e.preventDefault();   // the app, not the browser, owns the tick
+    choose(item.text);
   }
 
   // No auto-commit of a single hit here (workday_search.html's School does,
