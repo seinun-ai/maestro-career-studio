@@ -615,6 +615,7 @@ export function EditorBody({
         countries={(live ?? initial).countries}
         company={(live ?? initial).company}
         focus={(live ?? initial).focus}
+        colorHue={(live ?? initial).color_hue}
         open={targetOpen}
         onOpenChange={setTargetOpen}
         finalFocus={overflowRef}

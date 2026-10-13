@@ -22,11 +22,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ResumeColorPicker } from "@/components/base-resumes/resume-color-picker";
+import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { humanizeSlug } from "@/lib/humanize-slug";
 import { cn } from "@/lib/utils";
-import type { BaseResumeDetail, FavoredRole, RoleCategory } from "@/lib/types";
+import { baseResumeLabel, type BaseResumeDetail, type FavoredRole, type RoleCategory } from "@/lib/types";
 
 /** The vocabulary, fetched once. Deliberately NOT duplicated client-side: it
  *  lives in backend/app/services/ats/data/role_categories.yaml, and a second
@@ -169,12 +171,13 @@ export function targetMenuLabel(
 }
 
 /** The PATCH /identity keys the Target dialog writes besides the role, with their value shapes. */
-type AnchorValues = { countries: string[]; company: string; focus: string };
+type AnchorValues = { countries: string[]; company: string; focus: string; color_hue: number };
 
 const FIELD_WORDS: Record<keyof AnchorValues, string> = {
   countries: "countries",
   company: "company",
   focus: "focus",
+  color_hue: "color",
 };
 
 /**
@@ -199,7 +202,13 @@ function useAnchorSave<K extends keyof AnchorValues>(slug: string, field: K) {
         qc.invalidateQueries({ queryKey: ["ats-scores"] });
         qc.invalidateQueries({ queryKey: ["proposals"] });
       }
-      const set = field === "countries" ? updated.countries.length > 0 : Boolean(updated[field]);
+      // A hue of 0 is a color, so the color is "set" by not being null rather than by being truthy.
+      const set =
+        field === "countries"
+          ? updated.countries.length > 0
+          : field === "color_hue"
+            ? updated.color_hue !== null
+            : Boolean(updated[field]);
       const words = FIELD_WORDS[field];
       toast.success(`${words[0].toUpperCase()}${words.slice(1)} ${set ? "saved" : "cleared"}`);
     },
@@ -291,6 +300,7 @@ export function TargetDialog({
   countries,
   company,
   focus,
+  colorHue,
   open,
   onOpenChange,
   finalFocus,
@@ -301,6 +311,8 @@ export function TargetDialog({
   countries: string[];
   company: string | null;
   focus: string | null;
+  /** The saved color. The dialog holds its own live copy while a slider drags, and follows this. */
+  colorHue: number | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /**
@@ -312,6 +324,18 @@ export function TargetDialog({
   finalFocus?: RefObject<HTMLElement | null>;
 }) {
   const saveCountries = useAnchorSave(slug, "countries");
+  const saveColor = useAnchorSave(slug, "color_hue");
+  // The live value drives the preview while a slider drags; only a settled choice saves (onCommit).
+  const [live, setLive] = useState(colorHue);
+  const [seen, setSeen] = useState(colorHue);
+  if (seen !== colorHue) {
+    setSeen(colorHue);
+    setLive(colorHue);
+  }
+  const others = useBaseResumes(false, { enabled: open }).data;
+  const used = (others ?? [])
+    .filter((r) => r.slug !== slug)
+    .map((r) => ({ hue: r.color_hue, name: baseResumeLabel(r.slug, [r]) }));
   const bodyRef = useRef<HTMLDivElement>(null);
   const handleOpenChange = (next: boolean) => {
     // Escape unmounts the fields with no blur, so a typed company or focus commits first.
@@ -364,6 +388,12 @@ export function TargetDialog({
             label="Focus"
             hint="Such as payments platforms."
             value={focus}
+          />
+          <ResumeColorPicker
+            value={live}
+            onChange={setLive}
+            onCommit={(hue) => saveColor.mutate(hue, { onError: () => setLive(colorHue) })}
+            used={used}
           />
         </div>
         <DialogFooter>

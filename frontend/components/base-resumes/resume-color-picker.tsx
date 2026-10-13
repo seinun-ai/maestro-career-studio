@@ -135,6 +135,8 @@ export function ResumeColorPicker({ value, onChange, onCommit, used, label = "Co
             onChange={(e) => { unsettled.current = Number(e.target.value); onChange(unsettled.current); }}
             // Latch the slider open on first touch: dragging onto a preset hue makes the value non-custom, and a
             // slider that follows the value would unmount mid-drag, before its pointerup could commit.
+            // Safari does not focus a range input on click, so the first touch latches on pointer down too.
+            onPointerDown={() => { if (customOpen === null) setCustomOpen(true); }}
             onFocus={() => { if (customOpen === null) setCustomOpen(true); }}
             onPointerUp={settle} onKeyUp={settle} onBlur={settle}
             style={{ "--hue-track": HUE_TRACK } as CSSProperties}

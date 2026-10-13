@@ -10,8 +10,10 @@ import { toast } from "sonner";
 import { KB_KIND_LABELS } from "@/components/career/career-labels";
 import { Dropzone, type DropzoneRejection } from "@/components/setup/dropzone";
 import { useFocusOnNextCommit, useOpenerReturn } from "@/hooks/use-focus-return";
+import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 
+import { ResumeColorPicker } from "@/components/base-resumes/resume-color-picker";
 import { useRoleCategories } from "@/components/role-category-picker";
 import {
   favoredRoleFromTag,
@@ -41,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
+import { pickFreeHue } from "@/lib/resume-color";
 import { uniqueSlug } from "@/lib/slug";
 import { acceptedFilesHint, RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
 import {
@@ -205,6 +208,13 @@ function NewBaseResumeForm({
   const [file, setFile] = useState<File | null>(null);
   const [fileRejected, setFileRejected] = useState<DropzoneRejection[]>([]);
   const slugsTaken = existingResumes.map((r) => r.slug);
+  // The color: random from the ones no other resume uses until the person chooses. The random number is
+  // drawn once per form, so the pick holds still while the list loads or the form re-renders.
+  const [chosen, setChosen] = useState<number | null>(null);
+  const [seed] = useState(Math.random);
+  const others = useBaseResumes(false, { enabled: open }).data;
+  const randomHue = pickFreeHue((others ?? []).map((r) => r.color_hue), () => seed);
+  const hue = chosen ?? randomHue;
   // Per instance: Getting started keeps one form per suggestion mounted at
   // once, and a fixed id would name the first (hidden) form's field.
   const fieldId = useId();
@@ -357,6 +367,7 @@ function NewBaseResumeForm({
           role_category: coarseFromTag(tag),
           entity_ids: Array.from(selected),
           summary,
+          color_hue: hue,
         }),
       });
     }
@@ -371,6 +382,7 @@ function NewBaseResumeForm({
         form.append("display_name", display);
         form.append("slug", uniqueSlug(display, slugsTaken));
       }
+      form.append("color_hue", String(hue));
       const identity = identityFromFavoredRole(tag);
       if (identity.role_category) form.append("role_category", identity.role_category);
       if (identity.role_label) form.append("role_label", identity.role_label);
@@ -387,6 +399,7 @@ function NewBaseResumeForm({
           body: JSON.stringify({
             new_slug: uniqueSlug(name || `${source} copy`, slugsTaken),
             new_display_name: display,
+            color_hue: hue,
           }),
         },
       );
@@ -419,6 +432,7 @@ function NewBaseResumeForm({
         slug: uniqueSlug(name, slugsTaken),
         display_name: display,
         data: EMPTY_DATA,
+        color_hue: hue,
         ...(tag
           ? tagBody
           : {}),
@@ -452,7 +466,8 @@ function NewBaseResumeForm({
   // What Start over would throw away. Switching tabs is not a draft.
   const touched =
     Boolean(name || instruction || selected.size || plan || source || file) ||
-    tag !== initialTag;
+    tag !== initialTag ||
+    chosen !== null;
 
   const toggle = (id: string) =>
     setSelected((current) => {
@@ -543,6 +558,13 @@ function NewBaseResumeForm({
                 </div>
               )}
             </div>
+
+            <ResumeColorPicker
+              value={hue}
+              onChange={setChosen}
+              pickedAtRandom={chosen === null}
+              used={(others ?? []).map((r) => ({ hue: r.color_hue, name: baseResumeLabel(r.slug, [r]) }))}
+            />
 
             <TabsContent value="kb" className="grid gap-4">
               <div className="grid gap-1.5">
