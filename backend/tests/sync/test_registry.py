@@ -43,6 +43,7 @@ LOCAL_MODELS = (
     models.AutofillRun,
     models.AutofillFieldObservation,
     models.AutofillMechanismStat,
+    models.AutofillWidgetGap,
 )
 SYNC_MODELS = (models.SyncState, models.SyncTombstone, models.SyncRequest)
 INDIRECT_JOB_MODELS = (models.ConsentEvent, models.QAEntry, *BY_KIND_MODELS)

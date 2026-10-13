@@ -26,6 +26,7 @@ from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.models.autofill_run import AutofillRun
+from app.models.autofill_widget_gap import AutofillWidgetGap
 from app.models.job import Job
 from app.schemas.autofill_choose import ChooseRequest, ChooseResponse
 from app.schemas.autofill_fill import (
@@ -38,11 +39,13 @@ from app.schemas.autofill_fill import (
     StepRequest,
     StepResponse,
 )
+from app.schemas.autofill_gaps import GapBatch
 from app.schemas.autofill_telemetry import TelemetryBatch, TelemetryObservation
 from app.schemas.autofill_trace import RunTrace
 from app.services import (
     autofill_catalog,
     autofill_choose,
+    autofill_gaps,
     autofill_map,
     autofill_pick,
     autofill_profile,
@@ -156,6 +159,19 @@ def post_run(payload: RunTrace, db: Annotated[Session, Depends(get_db)]):
     return Response(status_code=204)
 
 
+@router.post("/gaps", status_code=204)
+def post_gaps(payload: GapBatch, db: Annotated[Session, Depends(get_db)]):
+    """Count widgets the engine could not operate or the user fixed by hand (value-free)."""
+    autofill_gaps.record(db, payload.gaps)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/gaps/summary")
+def get_gaps_summary(db: Annotated[Session, Depends(get_db)]):
+    return autofill_gaps.build_summary(db)
+
+
 @router.get("/telemetry/summary")
 def get_telemetry_summary(db: Annotated[Session, Depends(get_db)]):
     return autofill_telemetry.build_summary(db)
@@ -163,7 +179,7 @@ def get_telemetry_summary(db: Annotated[Session, Depends(get_db)]):
 
 @router.delete("/telemetry")
 def clear_telemetry(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
-    """Delete every stored observation and every stored run trace. Returns how many rows went.
+    """Delete every stored observation, run trace and known gap. Returns how many rows went.
 
     The privacy argument for this table has always been that it has no value
     column — true, and not the whole picture. Each row carries `host` and
@@ -177,7 +193,8 @@ def clear_telemetry(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
     first is the kind of helpfulness nobody consents to. The toggle stays where
     it is (extension card → `⋯`), and the next batch stores normally.
 
-    The run traces carry `host` and a start time too, so they go with it. The mechanism counters
+    The run traces carry `host` and a start time too, so they go with it, and so does the
+    known-gaps list, whose rows are keyed by host. The mechanism counters
     stay: their keys hold no host and no label (SYSTEM.md {#inv-autofill-telemetry-no-values}).
 
     Returns a count rather than 204 because a destructive control that cannot
@@ -185,6 +202,9 @@ def clear_telemetry(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
     """
     deleted = db.execute(delete(AutofillFieldObservation)).rowcount
     runs_deleted = db.execute(delete(AutofillRun)).rowcount
+    # No count of its own in the body: the body's shape is pinned, and the gap rows are tallies
+    # of widget kinds, not records the user captured field by field.
+    db.execute(delete(AutofillWidgetGap))
     db.commit()
     return {"deleted": deleted, "runs_deleted": runs_deleted}
 

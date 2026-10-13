@@ -11,6 +11,7 @@ def test_all_planned_tables_are_registered():
         "autofill_field_observations",
         "autofill_mechanism_stats",
         "autofill_runs",
+        "autofill_widget_gaps",
         "base_resumes",
         "bullet_classifications",
         "bullet_disputes",

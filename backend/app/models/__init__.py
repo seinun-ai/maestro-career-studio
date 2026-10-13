@@ -5,6 +5,7 @@ from app.models.ats_score import AtsScore
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.models.autofill_mechanism_stat import AutofillMechanismStat
 from app.models.autofill_run import AutofillRun
+from app.models.autofill_widget_gap import AutofillWidgetGap
 from app.models.base_resume import BaseResume
 from app.models.bullet_classification import BulletClassification
 from app.models.bullet_dispute import BulletDispute
@@ -34,6 +35,7 @@ __all__ = [
     "AutofillFieldObservation",
     "AutofillMechanismStat",
     "AutofillRun",
+    "AutofillWidgetGap",
     "BaseResume",
     "BulletClassification",
     "BulletDispute",

@@ -21,6 +21,7 @@ import {
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
+import { type AutofillGapsSummary, gapsLine } from "@/lib/autofill-gaps";
 import { couldnt } from "@/lib/error-text";
 import type { JevInfo } from "@/lib/types";
 
@@ -41,6 +42,18 @@ function useJevInfo() {
     queryKey: ["settings", "jev"],
     queryFn: () => apiFetch<JevInfo>("/api/settings/jev"),
   });
+}
+
+/** One diagnostics line: how many kinds of field the Companion could not operate, on how many
+ *  sites, and how many you fixed by hand. Counts only, never a site's name. A failed load shows
+ *  nothing: it is a diagnostic, not a setting. */
+function KnownGapsLine() {
+  const gaps = useQuery({
+    queryKey: ["autofill-gaps-summary"],
+    queryFn: () => apiFetch<AutofillGapsSummary>("/api/autofill/gaps/summary"),
+  });
+  if (!gaps.data) return null;
+  return <p className="text-muted-foreground text-body-small">{gapsLine(gaps.data)}</p>;
 }
 
 /** Jev (TypeSafe AI) as the Companion's form-filling decision engine: its key,
@@ -179,6 +192,7 @@ export function FormFillingSection() {
               {save.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
+          <KnownGapsLine />
         </div>
       )}
     </SettingCard>

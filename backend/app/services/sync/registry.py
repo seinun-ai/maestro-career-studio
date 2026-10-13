@@ -53,6 +53,8 @@ TABLES = {
     "autofill_runs": LOCAL,
     "autofill_field_observations": LOCAL,
     "autofill_mechanism_stats": LOCAL,
+    # Holds hosts, like the other autofill telemetry: it stays on the machine that saw them.
+    "autofill_widget_gaps": LOCAL,
     "sync_state": SYNC,
     "sync_tombstones": SYNC,
     "sync_requests": SYNC,

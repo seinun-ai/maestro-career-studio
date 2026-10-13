@@ -7,9 +7,10 @@ Run from backend/ against a COPY of the database (the same guard as the fill eva
     python -m scripts.fill_trace --db <copy> report
 
 `report` prints the never-expiring counters and the stored runs: a `window:` line (how far back the
-counters and the runs reach), a `legend:` line (what kept and rejected mean), then five `== Section ==`
+counters and the runs reach), a `legend:` line (what kept and rejected mean), then six `== Section ==`
 blocks: wasted actions, calibration, first-engine and second-opinion value, slowest fields, threshold
-suggestions. A block with nothing to show prints `(no data)`. Headers, `window:`, `legend:` and
+suggestions, known gaps (the widget kinds the Companion could not operate or you fixed by hand: a
+`kinds=  sites=  user_fixed=` line, then the top kinds by count; no host, label or value). A block with nothing to show prints `(no data)`. Headers, `window:`, `legend:` and
 `note:` lines are prose; every other line is `key=value` pairs separated by two spaces, so `grep`
 finds a family, an op or a floor. A count prints as `kept=41/42(98%)`: the count first, never only
 a rounded percent. `kept` is an outcome proxy (the field ended filled), not proof the answer was
@@ -434,6 +435,17 @@ def _stored_runs(session: Session) -> tuple[list[datetime], list[SlowField]]:
     return [run.started_at for run in runs], fields
 
 
+def render_gaps(session: Session) -> list[str]:
+    """The known-gaps summary (the same one Settings reads): totals, then the top kinds by count."""
+    from app.services.autofill_gaps import build_summary
+
+    summary = build_summary(session)
+    if not summary["top"]:
+        return [NO_DATA]
+    return [_pairs(kinds=summary["kinds"], sites=summary["sites"], user_fixed=summary["user_fixed"]),
+            *(_pairs(**top) for top in summary["top"])]
+
+
 def run_report(session: Session, args: argparse.Namespace) -> int:
     counters, since = _counter_rows(session)
     started, slow = _stored_runs(session)
@@ -443,6 +455,7 @@ def run_report(session: Session, args: argparse.Namespace) -> int:
         ("First engine and second opinion", render_second(counters["first"], counters["second"])),
         ("Slowest fields", render_slowest(slow)),
         ("Suggestions", render_suggestions(counters["first"], counters["decision"])),
+        ("Known gaps", render_gaps(session)),
     ]
     print(render_window(since, started), render_legend(), sep="\n", end="\n\n")
     print("\n\n".join("\n".join([f"== {title} ==", *lines]) for title, lines in sections))
@@ -489,7 +502,7 @@ def _parser() -> argparse.ArgumentParser:
     p_last.add_argument("--n", type=_positive, default=1, help="how many runs, newest first (default 1)")
     p_last.set_defaults(run=run_last)
     sub.add_parser("report", parents=[common], help="counters and stored runs: wasted actions, calibration, "
-                   "second-opinion value, slowest fields, floor suggestions").set_defaults(run=run_report)
+                   "second-opinion value, slowest fields, floor suggestions, known gaps").set_defaults(run=run_report)
     return ap
 
 

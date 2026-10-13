@@ -19,7 +19,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models.autofill_run import AutofillRun
+from app.schemas.autofill_gaps import GapIn
 from app.schemas.autofill_trace import RunTrace
+from app.services import autofill_gaps
 from app.services.autofill_choose import CLOSEST_FLOOR
 from app.models.autofill_mechanism_stat import AutofillMechanismStat
 from app.services.autofill_trace import DECISIONS, KEPT, REJECTED, parse_key, store_run
@@ -109,6 +111,9 @@ def make_counted_db(path: Path, docs: list[dict]) -> Path:
     with Session(engine) as session:
         for doc in docs:
             store_run(session, RunTrace.model_validate(doc))
+        autofill_gaps.record(session, [GapIn(family="ab12cd", host="boards.example.com", shape="popup",
+                                             outcome="cannot_operate")])
+        session.commit()
     engine.dispose()
     return path
 
@@ -463,8 +468,9 @@ def test_no_counters_at_all_prints_no_data_and_still_the_note():
 # ---------- report: the script, end to end
 
 SECTIONS = ["== Wasted actions ==", "== Calibration ==", "== First engine and second opinion ==",
-            "== Slowest fields ==", "== Suggestions =="]
+            "== Slowest fields ==", "== Suggestions ==", "== Known gaps =="]
 COUNTED_LINES = [   # one line from each section, for 30 runs of the fields() fixture
+    "family=ab12cd  shape=popup  outcome=cannot_operate  count=1  sites=1",
     "family=f:ab12  kind=choose  tries=30  not_progress=0/30(0%)  unknown=0  timed=30  avg_ms=412  wasted_ms=0",
     "op=pick  engine=fast  by=second  floor=0.9  band=0.9  choice=answer  n=30  kept=30/30(100%)  "
     "left=0/30(0%)  failed=0/30(0%)  rejected=0/30(0%)",
@@ -514,7 +520,7 @@ def test_report_skips_keys_it_cannot_read_and_runs_that_no_longer_parse(tmp_path
     lines = done.stdout.splitlines()
     assert "bogus" not in done.stdout
     assert "abc" not in done.stdout
-    assert lines.count("(no data)") == 4   # every counter section: all five keys were skipped
+    assert lines.count("(no data)") == 5   # every counter section (all five keys were skipped) and the gaps
     assert lines[0].endswith("runs=last 2 (oldest 2026-10-03)")
     slowest = lines[lines.index("== Slowest fields ==") + 1:lines.index("== Suggestions ==") - 1]
     assert [line.split("  ")[0] for line in slowest] == ["host=boards.example.com"] * 3
@@ -526,5 +532,5 @@ def test_report_on_an_empty_database_prints_no_data_for_every_section(tmp_path, 
     lines = done.stdout.splitlines()
     assert lines[0] == "window: counters=none  runs=none"
     assert [line for line in lines if line.startswith("== ")] == SECTIONS
-    assert lines.count("(no data)") == 5
+    assert lines.count("(no data)") == 6
     assert fill_trace.SUGGESTION_NOTE in lines
