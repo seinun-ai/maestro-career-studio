@@ -1312,6 +1312,9 @@ const robotTrap = (el, labelText) => {
     .filter(Boolean).map((s) => s.trim());
   if (words.some((s) => TRAP_WORDS.test(s))) return true;
   // Drawn wholly outside the page (a classic honeypot), though `visible` passes it.
+  // Text boxes only: a widget library may hide a native <select> (or a checkbox)
+  // off-page and drive it from a visible box (planner, 2026-10-13).
+  if (!isTextLike(el)) return false;
   const r = el.getBoundingClientRect();
   return r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0;
 };
