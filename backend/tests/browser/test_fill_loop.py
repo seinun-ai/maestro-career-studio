@@ -1665,6 +1665,16 @@ def test_a_move_runs_at_most_twice_per_field_and_value_whatever_it_shows(page, l
     assert steps[3]["history"][-1] == "search:value -> already_failed"
 
 
+def test_the_same_options_are_no_change_even_when_the_rest_of_the_state_moved(page, load):
+    """The search lists the same rows each time while the box's value and the
+    popup flag flip: still a move that changed nothing."""
+    rows = ("Statistics", "Computer Science")
+    states = [{**_shown(*rows), "popupOpen": i % 2 == 0, "committed": f"draft {i}"} for i in range(8)]
+    out = run(page, load, **_search_field(states))
+    assert [m["mid"] for m in actions(out, "move")] == ["search:value", "search:value", "give_up"]
+    assert "search:value -> no_change" in bodies(out, "/api/autofill/step")[2]["history"]
+
+
 def test_a_scroll_that_shows_the_same_window_is_a_move_that_changed_nothing(page, load):
     """Scroll has no run limit, so only `no_change` stops it from going round."""
     window = {"version": 1, "candidates": [{"mid": "scroll", "describe": "Scroll the list"}, GIVE_UP]}

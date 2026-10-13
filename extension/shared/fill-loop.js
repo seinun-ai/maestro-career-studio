@@ -902,6 +902,10 @@
     const stateKey = (state, value) => JSON.stringify([value ?? null, state.committed ?? null, Boolean(state.popupOpen),
       (state.options ?? []).length, (state.options ?? []).map((o) => o?.text),
       (state.candidates ?? []).map((c) => [c?.mid, c?.describe])]);
+    // What the list shows, and nothing else: each option's text and the category
+    // it sits under. A move changed nothing when this is what its last run left,
+    // whatever else about the state (the box's value, the popup flag) moved.
+    const optionsOf = (state) => JSON.stringify((state.options ?? []).map((o) => [o?.text, o?.where ?? null]));
     const FAILED = new Set(["unexpected", "reverted"]);
     const MAX_REFUSALS = 2;
     // A move runs at most twice per field and value, whatever it did: a third
@@ -943,10 +947,10 @@
           return { outcome: "stale", why: wordOf(state.error) ?? "stale" };
         }
         if (after) {
-          // A move that progressed but left the field showing what the last run of
+          // A move that progressed but left the list showing what the last run of
           // that move left is a move that changed nothing: failed from the state
-          // it ran in, and the model is told so.
-          const shown = stateKey(state, value);
+          // it ran in (the whole state key), and the model is told so.
+          const shown = optionsOf(state);
           if (left.get(after.key) === shown) {
             failedMoves.add(after.tried);
             const unchanged = historyEntry(after.mid, "no_change");
