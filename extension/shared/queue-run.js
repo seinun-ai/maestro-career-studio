@@ -65,7 +65,9 @@
   const LIMITS = { parallel: 3, waitingMax: 10, stepMax: 15, changeMs: 15000, paceMs: [2000, 6000] };
   // The fill's budget in a run (design Part 8.1): nobody is watching a queued run, so a stubborn
   // field gets a longer clock and more steps than the user's own Autofill (fill-loop's defaults).
-  const RUN_LIMITS = { FIELD_MS: 60000, MAX_STEPS: 12 };
+  // RUN_MS is per page: a long page (a Workday skills list) must not be cut off at the 180 s the
+  // field clocks would otherwise outgrow.
+  const RUN_LIMITS = { FIELD_MS: 60000, MAX_STEPS: 12, RUN_MS: 600000 };
   // Task 1a's spike: a fill in a background tab of the run window works.
   const HIDDEN_TABS_OK = true;
   const POLL_MS = 500;

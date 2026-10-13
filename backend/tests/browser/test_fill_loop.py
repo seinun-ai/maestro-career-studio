@@ -46,6 +46,10 @@ DRIVER = """async (spec) => {
   const take = (v) => (Array.isArray(v) ? (v.length > 1 ? v.shift() : v[0]) : v);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   Object.assign(window.careerStudioCompanion.fillLoop.limits, {QUIET_MS: 0}, spec.limits ?? {});
+  // `clockJump`: the page's clock moves this many ms ahead at the first inventory (after the
+  // run's deadline was set), as if the run had been going that long.
+  let skew = 0;
+  if (spec.clockJump) { const real = Date.now.bind(Date); Date.now = () => real() + skew; }
   const broadcast = async (msg) => {
     // A peek (the fid set only, after a commit) is its own call: it is not a round.
     calls.push(msg.type === "fill_inventory" && msg.peek ? "fill_peek" : msg.type);
@@ -58,6 +62,7 @@ DRIVER = """async (spec) => {
     }
     if (msg.type === "fill_inventory") {
       round += 1;
+      if (round === 1 && spec.clockJump) skew = spec.clockJump;
       const fields = spec.frames[Math.min(round, spec.frames.length) - 1];
       // null: the page no longer answers (a frame that went away).
       return fields === null ? [{frameId: 0, error: "gone"}] : one({frame: "f", host: "x.test", fields});
@@ -971,6 +976,16 @@ def test_the_run_has_a_deadline(page, load):
     assert statuses(out) == {"a": "needs_answer", "b": "needs_answer"}
     # The panel can say "ran out of time" rather than "no answer".
     assert {r["lastOutcome"] for r in out["report"]["fields"]} == {"timeout"}
+
+
+def test_a_queued_run_has_ten_minutes_a_page_and_ordinary_autofill_keeps_three(page, load):
+    # 200 s into the run: past the default deadline (180 s), well inside the queued run's (600 s).
+    spec = dict(frames=[[f("a", question="City")]], clockJump=200000,
+                map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}})
+    default = run(page, load, **spec)
+    assert default["report"]["timedOut"] is True and statuses(default) == {"a": "needs_answer"}
+    queued = run(page, load, **spec, options={"sourceHint": None, "limits": {"RUN_MS": 600000}})
+    assert not queued["report"]["timedOut"] and statuses(queued) == {"a": "verified"}
 
 
 def test_the_run_running_out_mid_step_closes_the_popup_it_held(page, load):

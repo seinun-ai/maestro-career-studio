@@ -332,7 +332,7 @@ def test_the_fill_limits_are_passed_through_and_a_run_defaults_to_trying_harder(
     out = _drive(tmp_path, [REVIEW], options={"fillLimits": {"FIELD_MS": 5000}})
     assert names(out, "fill") == [["fill", {"limits": {"FIELD_MS": 5000}}]]
     plain = _drive(tmp_path, [REVIEW])
-    assert names(plain, "fill") == [["fill", {"limits": {"FIELD_MS": 60000, "MAX_STEPS": 12}}]]
+    assert names(plain, "fill") == [["fill", {"limits": {"FIELD_MS": 60000, "MAX_STEPS": 12, "RUN_MS": 600000}}]]
 
 
 # ---------- loops and limits ----------
@@ -722,6 +722,6 @@ def test_the_limits_and_the_hidden_tab_finding_are_published(tmp_path):
     driver = "const ns = loadModules(); emit({ limits: ns.queueRun.LIMITS, run: ns.queueRun.RUN_LIMITS, hidden: ns.queueRun.HIDDEN_TABS_OK, keys: Object.keys(ns.queueRun).sort() });"
     out = run_node(driver, {}, tmp_path, source=SOURCE)
     assert out["limits"] == {"parallel": 3, "waitingMax": 10, "stepMax": 15, "changeMs": 15000, "paceMs": [2000, 6000]}
-    assert out["run"] == {"FIELD_MS": 60000, "MAX_STEPS": 12}
+    assert out["run"] == {"FIELD_MS": 60000, "MAX_STEPS": 12, "RUN_MS": 600000}
     assert out["hidden"] is True
     assert "next" not in out["keys"], "the scheduler is Phase 3"
