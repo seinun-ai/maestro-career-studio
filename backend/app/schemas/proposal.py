@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.autofill_gaps import HOST_PATTERN
 from app.schemas.job import JobSummary
 
 
@@ -162,8 +163,9 @@ class CompanionConfirmation(BaseModel):
     confirmation phrase. Bounded so page prose cannot ride along; nothing else is accepted."""
     model_config = {"extra": "forbid"}
 
-    host: str = Field(max_length=255)
-    path: str = Field(max_length=2048)
+    host: str = Field(pattern=HOST_PATTERN)
+    # A path only: a query or fragment can carry tokens or an email address.
+    path: str = Field(max_length=2048, pattern=r"^/[^?#]*$")
     text: str = Field(max_length=300)
 
 

@@ -15,6 +15,9 @@ from app.schemas.autofill_fill import Shape
 
 MAX_GAPS = 40
 
+# A lowercase / punycode host, as in a run trace; the Companion's submit report uses it too.
+HOST_PATTERN = r"^[a-z0-9.-]{1,253}(:\d{1,5})?$"
+
 GapOutcome = Literal["cannot_operate", "unconfirmed", "user_fixed", "missing_technique"]
 
 
@@ -26,7 +29,7 @@ class GapIn(BaseModel):
     # The recipe-book family hash (content/recipes.js) without its `f:` prefix: a 53-bit value in
     # base 36, so at most 11 characters ((2**53 - 1).toString(36) is 11 long).
     family: str = Field(pattern=r"^[0-9a-z]{1,11}$")
-    host: str = Field(pattern=r"^[a-z0-9.-]{1,253}(:\d{1,5})?$")  # lowercase / punycode, as in a run trace
+    host: str = Field(pattern=HOST_PATTERN)
     shape: Shape | Literal["unknown"]
     outcome: GapOutcome
 
