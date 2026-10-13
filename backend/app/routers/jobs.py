@@ -253,7 +253,7 @@ def _insert_skills(session: Session, job_id: UUID, extraction: dict[str, Any]) -
 
 def _fill_apply_url(db: Session, job: Job, apply_url: str | None) -> None:
     """A job saved again gains the apply link it lacked; a link it already has is never replaced."""
-    if apply_url and not job.apply_url:
+    if apply_url and job.apply_url is None:
         job.apply_url = apply_url
         db.commit()
         db.refresh(job)

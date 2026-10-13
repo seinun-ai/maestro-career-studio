@@ -93,6 +93,19 @@ def test_a_saved_again_job_never_loses_the_link_it_has(client, monkeypatch):
     assert bare["apply_url"] == APPLY
 
 
+def test_a_saved_again_job_keeps_a_stored_empty_link(client, monkeypatch, db_session):
+    """Only NULL is missing: an empty string that arrived another way (sync) is not overwritten."""
+    _stub_extraction(monkeypatch)
+    text = {"raw_text": "Title: Data Engineer\nCompany: Acme"}
+    first = client.post("/api/jobs", json=text).json()
+    db_session.get(Job, uuid.UUID(first["id"])).apply_url = ""
+    db_session.commit()
+
+    again = client.post("/api/jobs", json={**text, "apply_url": APPLY}).json()
+
+    assert again["apply_url"] == ""
+
+
 def test_an_ingested_twin_gains_the_link_too(client):
     body = {"extracted_json": {"company": "Globex", "title": "Analyst"}, "raw_text": "Analyst at Globex"}
     first = client.post("/api/jobs/ingest", json=body).json()
