@@ -418,8 +418,8 @@ CLICK = "onclick='window.hit = (window.hit || 0) + 1; return false;'"
 @pytest.mark.parametrize("html", [
     f"<h1>Analyst</h1><button {CLICK}>Apply</button>",
     f"<h1>Analyst</h1><button {CLICK}>Apply now</button>",
-    f"<h1>Analyst</h1><a href='/jobs/9/apply' {CLICK}>Apply for this job</a>",
-    f"<h1>Analyst</h1><a href='/jobs/9/apply' role='button' {CLICK}>  APPLY  </a>",
+    f"<h1>Analyst</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply for this job</a>",
+    f"<h1>Analyst</h1><a href='https://jobs.acme.test/jobs/9/apply' role='button' {CLICK}>  APPLY  </a>",
     f"<h1>Analyst</h1><button {CLICK} aria-label='Apply for Staff Engineer at Acme'>Apply</button>",
     f"<h1>Analyst</h1><button {CLICK} title='Apply to this role'>Apply now</button>",
     f"<h1>Analyst</h1><input type='button' value='Apply now' {CLICK}>",
@@ -552,20 +552,55 @@ def test_an_apply_that_belongs_to_a_form_is_neither_named_nor_pressed(page, load
 
 
 def test_the_apply_call_names_the_link_beside_a_forms_apply_button_not_the_button(page, load):
-    load(page, f"<form><button {CLICK}>Apply</button></form><a href='/jobs/9/apply' {CLICK}>Apply</a>", SOURCES)
+    load(page, f"<form><button {CLICK}>Apply</button></form><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply</a>", SOURCES)
     s = summary(page)
     assert advance_apply(page, s["applyId"]) == {"clicked": True}
     assert page.evaluate("() => window.hit") == 1
 
 
-@pytest.mark.parametrize("href, target", [("#", None), ("#apply", None), ("", None),
-                                          ("javascript:void(0)", None), (" JavaScript:go()", None),
-                                          ("/jobs/9/apply", "_blank")])
+@pytest.mark.parametrize("href, target", [
+    ("#", None), ("#apply", None), ("", None),
+    ("javascript:void(0)", None), (" JavaScript:go()", None), ("JAVASCRIPT:go()", None),
+    ("java&#10;script:go()", None), ("java&#9;script:go()", None), ("jav&#x61;script:go()", None),
+    ("data:text/html,hi", None), ("mailto:jobs@acme.test", None), ("ftp://acme.test/apply", None),
+    ("/jobs/9/apply", "_blank"), ("/jobs/9/apply", "_BLANK"), ("/jobs/9/apply", " _Blank "),
+    ("/jobs/9/apply", "applywin"), ("/jobs/9/apply", "_top"), ("/jobs/9/apply", "_parent"),
+])
 def test_a_link_that_goes_nowhere_or_opens_a_tab_is_not_an_apply_the_run_presses(page, load, href, target):
     attr = f" target='{target}'" if target else ""
     load(page, f"<h1>A</h1><a href='{href}'{attr} {CLICK}>Apply</a>", SOURCES)
     s = summary(page)
     assert s["applyId"] is None
+    assert page.evaluate("() => window.hit || 0") == 0
+
+
+@pytest.mark.parametrize("attr", ["", " target='_self'", " target='_SELF'", " target=''"])
+def test_a_same_tab_http_link_is_pressable_whatever_the_case_of_self(page, load, attr):
+    load(page, f"<h1>A</h1><a href='https://jobs.acme.test/jobs/9/apply'{attr} {CLICK}>Apply</a>", SOURCES)
+    s = summary(page)
+    assert s["applyId"] and advance_apply(page, s["applyId"]) == {"clicked": True}
+    assert page.evaluate("() => window.hit") == 1
+
+
+def test_an_absolute_https_link_is_pressable(page, load):
+    load(page, f"<h1>A</h1><a href='https://careers.acme.test/9' {CLICK}>Apply</a>", SOURCES)
+    assert summary(page)["applyId"]
+
+
+def test_a_base_target_that_opens_a_tab_makes_a_targetless_link_unpressable(page, load):
+    load(page, f"<base target='_blank'><h1>A</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply</a>", SOURCES)
+    assert summary(page)["applyId"] is None
+    load(page, f"<base target='_blank'><h1>A</h1><a href='https://jobs.acme.test/jobs/9/apply' target='_self' {CLICK}>Apply</a>", SOURCES)
+    assert summary(page)["applyId"]
+
+
+def test_the_press_re_checks_the_link_if_the_page_rewrites_it_after_naming(page, load):
+    load(page, f"<h1>A</h1><a id='a' href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply</a>", SOURCES)
+    apply_id = summary(page)["applyId"]
+    page.evaluate("() => document.getElementById('a').setAttribute('target', 'applywin')")
+    assert advance_apply(page, apply_id) == {"clicked": False, "why": "would_submit"}
+    page.evaluate("() => { const a = document.getElementById('a'); a.removeAttribute('target'); a.setAttribute('href', 'java&#10;script:go()'.replace('&#10;', String.fromCharCode(10))); }")
+    assert advance_apply(page, apply_id) == {"clicked": False, "why": "would_submit"}
     assert page.evaluate("() => window.hit || 0") == 0
 
 
@@ -611,7 +646,7 @@ def run_driver(page, *, swap="", signIn=False, **record):
 
 
 def test_a_fresh_run_whose_first_page_has_an_apply_link_presses_it(page, load):
-    serve(page, APPLY_URL, f"<h1>Analyst at Acme</h1><a href='/jobs/9/apply' {CLICK}>Apply</a>")
+    serve(page, APPLY_URL, f"<h1>Analyst at Acme</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply</a>")
     out = run_driver(page)
     assert out["calls"] == [["advance", True]] and out["hit"] == 1
 
@@ -631,7 +666,7 @@ def test_the_same_page_reached_after_a_sign_in_is_never_pressed(page, load):
 
 
 def test_a_resume_onto_a_posting_looking_page_is_never_pressed(page, load):
-    serve(page, APPLY_URL, f"<h1>Analyst at Acme</h1><a href='/jobs/9/apply' {CLICK}>Apply</a>")
+    serve(page, APPLY_URL, f"<h1>Analyst at Acme</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply</a>")
     out = run_driver(page, tabId=7, status="parked", why="captcha", hosts=["jobs.acme.test"])
     assert out["calls"] == [] and out["hit"] == 0 and out["why"] == "posting"
 

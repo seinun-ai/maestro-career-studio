@@ -181,12 +181,16 @@
   const isApply = (el) => APPLY_TEXT.test(shownTextOf(el))
     && labels(el).every((t) => APPLY_TEXT.test(t) || applyDetail(t));
 
-  // Only a control that cannot submit a form: a link that goes somewhere in this tab, or a button
-  // with no form to submit (`el.form` also covers the form="id" attribute).
+  // Only a control that cannot submit a form: a link that goes to an http(s) page in THIS tab, or
+  // a button with no form to submit (`el.form` also covers the form="id" attribute). The scheme is
+  // the PARSED one (`el.protocol`): a raw-text test is beaten by "java&#10;script:", which the
+  // parser reads as javascript:. A target other than "" or "_self" (any case, a named window, or a
+  // <base target>) opens a tab the run cannot follow.
   const applyPressable = (el) => {
     if (el.tagName === "A") {
       const href = (el.getAttribute("href") ?? "").trim();
-      return href !== "" && !href.startsWith("#") && !/^javascript:/i.test(href) && el.target !== "_blank";
+      const target = (el.getAttribute("target") ?? document.querySelector("base[target]")?.getAttribute("target") ?? "").trim().toLowerCase();
+      return href !== "" && !href.startsWith("#") && /^https?:$/.test(el.protocol) && (target === "" || target === "_self");
     }
     return !el.form;
   };
