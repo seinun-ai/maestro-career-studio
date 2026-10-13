@@ -157,7 +157,7 @@
  * emitted); `ignored`, `help` and every explore result are never read.
  * Recording is additive: it changes no status, request or page action.
  *
- * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, limits,
+ * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, pageHostOf, limits,
  * buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines }.
  */
 (() => {
@@ -225,6 +225,16 @@
       const q = new URL(url).searchParams;
       const raw = q.get("source") ?? q.get("utm_source") ?? q.get("src");
       return raw ? raw.split(/[?&#]/)[0].toLowerCase().slice(0, 60) : null;
+    } catch {
+      return null;
+    }
+  };
+  // The page's own hostname, sent so the backend can tell a job's own site from another job on the same
+  // ATS tenant (the panel restores an application per tenant). Null for anything the backend would refuse.
+  const pageHostOf = (url) => {
+    try {
+      const host = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+      return host.length <= 253 && /^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host) ? host : null;
     } catch {
       return null;
     }
@@ -418,6 +428,7 @@
     };
     if (options.applicationId) selector.application_id = options.applicationId;
     else if (options.base) selector.base = String(options.base).slice(0, 200);
+    if (options.pageHost) selector.page_host = String(options.pageHost);
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
     // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome,
     //   deadline, spent, started, recommits, failedMoves, ignored, wrote, wroteAs,
@@ -2048,5 +2059,5 @@
     return [`${s.heading}: ${s.added} of ${needed} added. Add the rest yourself.`];
   });
 
-  ns.fillLoop = { runFill, sourceHintOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
+  ns.fillLoop = { runFill, sourceHintOf, pageHostOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
 })();

@@ -599,6 +599,38 @@ def test_source_hint_survives_a_malformed_query(page, load):
     assert hint == "rec_linkedin"
 
 
+@pytest.mark.parametrize("url, expected", [
+    ("https://Job-Boards.Greenhouse.io/acme/jobs/7?source=x", "job-boards.greenhouse.io"),
+    ("https://acme.example:8443/apply", "acme.example"),  # no port
+    ("https://acme.example./apply", "acme.example"),
+    ("http://[::1]:3000/apply", None),  # an IPv6 literal is not a hostname the backend takes
+    ("about:blank", None),
+    ("not a url", None),
+    ("", None),
+])
+def test_page_host_is_the_pages_hostname_or_null(page, load, url, expected):
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    assert page.evaluate("(u) => window.careerStudioCompanion.fillLoop.pageHostOf(u)", url) == expected
+
+
+def test_every_ask_carries_the_page_host_when_the_panel_knows_it(page, load):
+    out = run(page, load, frames=[[f("a", question="City"), f("g", "select", "Gender", options=[opt("o1", "Female")],
+                                                              optionsComplete=True)]],
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
+                   "g": {"route": "slot", "slot": "eeo.gender", "value": "Female"}},
+              pick={"g": {"oids": ["o1"], "reason": "matched"}},
+              options={"sourceHint": None, "pageHost": "careers.acme.example"})
+    asks = bodies(out, "/api/autofill/map") + bodies(out, "/api/autofill/pick")
+    assert asks and all(body["page_host"] == "careers.acme.example" for body in asks)
+    assert not [b for b in bodies(out, "/api/autofill/map") if "page_host" not in b]
+
+
+def test_no_page_host_is_sent_when_there_is_none(page, load):
+    out = run(page, load, frames=[[f("a", question="City")]],
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
+    assert all("page_host" not in body for body in bodies(out, "/api/autofill/map"))
+
+
 # ---------- the contracts Tasks 4–6 settled
 
 

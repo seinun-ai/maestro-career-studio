@@ -3767,7 +3767,7 @@ def test_ai_mode_runs_the_fill_loop_and_not_the_rule_pass(tmp_path):
         "panel_prepare"]
     [run] = out["runs"]
     assert run["options"] == {"applicationId": None, "base": "ai_ml_engineer",
-                              "sourceHint": "linkedin"}
+                              "sourceHint": "linkedin", "pageHost": LOOP_HOST}
     assert run["cancelledAtStart"] is False
     # The page messages are the loop's (the stub sent one); none of the rule pass's.
     assert set(_broadcast_types(out)) == {"fill_inventory"}

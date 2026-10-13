@@ -146,14 +146,64 @@ def test_map_reads_low_stakes_from_the_setting_not_the_client(db_session, monkey
                  {"fields": [MAP_FIELD], "low_stakes": False}).status_code == 422
 
 
+ACME_HOST = "careers.acme.example"
+
+
+def _queued_job(db_session, tmp_path, monkeypatch, *, apply_url=None, source_url=None, status="accepted"):
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    job = db_session.get(Job, application.job_id)
+    job.apply_url, job.source_url = apply_url, source_url
+    db_session.add(ApplicationProposal(job_id=job.id, application_id=application.id, status=status))
+    db_session.commit()
+    return application
+
+
+@pytest.mark.usefixtures("profile")
+@pytest.mark.parametrize("urls, page_host, queued", [
+    ({"apply_url": "https://careers.acme.example/jobs/7/apply"}, ACME_HOST, True),  # the apply link's host
+    ({"apply_url": "https://careers.acme.example/jobs/7/apply"}, "Careers.Acme.Example", True),
+    ({"apply_url": "https://acme.example/apply"}, "careers.acme.example", True),  # a subdomain of it
+    ({"source_url": "https://jobs.example.test/acme/7"}, "jobs.example.test", True),  # the source link's host
+    ({"apply_url": "https://careers.acme.example/a", "source_url": "https://jobs.example.test/7"},
+     "jobs.example.test", True),  # either one
+    # Another job on the same ATS tenant: the restored application is not this page's job.
+    ({"apply_url": "https://acme.wd5.myworkdayjobs.example/en/job/7"}, "globex.wd5.myworkdayjobs.example", False),
+    ({"apply_url": "https://careers.acme.example/a"}, "notcareers.acme.example", False),  # not a subdomain
+    ({"apply_url": "https://careers.acme.example/a"}, "careers.acme.example.evil.test", False),
+    ({"apply_url": "https://careers.acme.example/a"}, None, False),  # no page host
+    ({}, ACME_HOST, False),  # the job has no link to match
+])
+def test_a_job_is_queued_only_for_its_own_site(db_session, monkeypatch, tmp_path, urls, page_host, queued):
+    application = _queued_job(db_session, tmp_path, monkeypatch, **urls)
+    model_settings.set_answer_level(db_session, "queued")
+    seen = _spy_map(monkeypatch)
+    body = {"application_id": str(application.id), "fields": [MAP_FIELD]}
+    assert _post(db_session, "/api/autofill/map", {**body, **({"page_host": page_host} if page_host else {})}
+                 ).status_code == 200
+    assert seen["kw"]["queued"] is queued
+
+
+@pytest.mark.usefixtures("profile")
+def test_a_matching_site_without_an_accepted_proposal_is_not_queued(db_session, monkeypatch, tmp_path):
+    application = _queued_job(db_session, tmp_path, monkeypatch, apply_url="https://careers.acme.example/a",
+                              status="pending_review")
+    seen = _spy_map(monkeypatch)
+    _post(db_session, "/api/autofill/map",
+          {"application_id": str(application.id), "fields": [MAP_FIELD], "page_host": ACME_HOST})
+    assert seen["kw"]["queued"] is False
+
+
 @pytest.mark.usefixtures("profile")
 def test_map_and_pick_pass_the_answer_level_and_whether_the_job_is_queued(db_session, monkeypatch, tmp_path):
     slug = _seed_base(db_session, tmp_path, monkeypatch)
     application = _seed_application(db_session, slug)
+    db_session.get(Job, application.job_id).apply_url = "https://careers.acme.example/jobs/7/apply"
+    db_session.commit()
     model_settings.set_answer_level(db_session, "queued")
     seen_map, seen_pick = _spy_map(monkeypatch), _spy_pick(monkeypatch)
-    body = {"application_id": str(application.id), "fields": [MAP_FIELD]}
-    pick_body = {"application_id": str(application.id), "fields": [PICK_FIELD]}
+    body = {"application_id": str(application.id), "fields": [MAP_FIELD], "page_host": ACME_HOST}
+    pick_body = {"application_id": str(application.id), "fields": [PICK_FIELD], "page_host": ACME_HOST}
 
     def asked():
         assert _post(db_session, "/api/autofill/map", body).status_code == 200
@@ -179,8 +229,10 @@ def test_map_and_pick_pass_the_answer_level_and_whether_the_job_is_queued(db_ses
 def test_step_passes_whether_the_job_is_queued(db_session, monkeypatch, tmp_path):
     slug = _seed_base(db_session, tmp_path, monkeypatch)
     application = _seed_application(db_session, slug)
+    db_session.get(Job, application.job_id).apply_url = "https://careers.acme.example/jobs/7/apply"
+    db_session.commit()
     seen = _spy_step(monkeypatch)
-    body = {**STEP, "application_id": str(application.id)}
+    body = {**STEP, "application_id": str(application.id), "page_host": ACME_HOST}
     assert _post(db_session, "/api/autofill/step", body).status_code == 200
     assert seen["kw"]["queued"] is False
     db_session.add(ApplicationProposal(job_id=application.job_id, application_id=application.id, status="accepted"))

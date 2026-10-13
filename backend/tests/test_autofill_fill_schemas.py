@@ -64,6 +64,20 @@ def test_a_pick_route_is_slot_or_low_stakes_only():
         PickField(**_pick_field(route="free_text"))
 
 
+@pytest.mark.parametrize("host", ["careers.acme.example", "ACME.wd5.myworkdayjobs.example", "localhost", "a-b.example",
+                                  "x" * 63, ".".join(["a"] * 100)[:253]])
+def test_a_page_host_is_a_hostname(host):
+    assert PickRequest(fields=[_pick_field()], page_host=host).page_host == host
+    assert PickRequest(fields=[_pick_field()]).page_host is None
+
+
+@pytest.mark.parametrize("host", ["", "acme.example:8443", "https://acme.example", "acme.example/path", "[::1]",
+                                  "-acme.example", "acme..example", "a b.example", "x" * 254])
+def test_a_page_host_that_is_not_a_hostname_is_refused(host):
+    with pytest.raises(ValidationError):
+        PickRequest(fields=[_pick_field()], page_host=host)
+
+
 def test_the_source_hint_is_bounded():
     assert PickRequest(fields=[_pick_field()], source_hint="rec_linkedin").source_hint == "rec_linkedin"
     with pytest.raises(ValidationError):
