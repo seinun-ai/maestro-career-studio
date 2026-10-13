@@ -39,7 +39,7 @@ from app.services.autofill_map import (
     second_asked,
     second_decided,
 )
-from app.services.autofill_reasoned import reason
+from app.services.autofill_reasoned import reason, reason_years
 
 logger = logging.getLogger(__name__)
 
@@ -349,6 +349,36 @@ def _with_polarity(out: dict[str, Picked], ways: dict[str, autofill_polarity.Pol
         out[fid] = out[fid].model_copy(update={"polarity": polarity_trace(w)})
 
 
+# A question that names a number of years: the only low_stakes field the history is asked about first.
+_ASKS_YEARS = re.compile(r"\b(?:years?|yrs?)\b", re.IGNORECASE)
+
+
+def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint | None, session: Session,
+                 budget: Budget) -> dict[str, Picked]:
+    """The queued level's years questions: the history FIRST (autofill_reasoned.reason_years). Enough
+    years shown is its Yes; fewer, or anything it could not read, is left to the user; and only a
+    history SILENT about the skill gets the keen Yes, asked as any low_stakes field is (never-list
+    stated). An optional pass: a failure leaves its fields to the user."""
+    out, silent = reason_years(fields, facts, session, budget, hint.company if hint else None)
+    rest = [f for f in fields if f.fid in silent]
+    if not rest:
+        return out
+    try:
+        picked = None
+        if model_settings.get_autofill_engine(session) == "jev":
+            try:
+                picked, _ = _with_jev(rest, facts, hint, session, {}, level="queued", queued=True)
+            except llm.LLMProviderError:
+                logger.warning("jev pick failed; the fast model picks this batch")
+        if picked is None:
+            picked = main_call(budget, lambda timeout: _with_llm(rest, facts, hint, session, {}, timeout=timeout,
+                                                                 level="queued", queued=True), "fast pick")
+    except llm.LLMProviderError:
+        logger.warning("the keen answer to a years question failed; its fields are left to the user")
+        return out
+    return out | picked
+
+
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> dict[str, Picked]:
     budget = Budget()
@@ -362,6 +392,10 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
                or (f.route == "slot" and values_for(f, facts.get(f.slot or "")))]
     reasoned = [f for f in fields if f.route == "reasoned" and not f.slot]
     asked = {f.fid for f in askable + reasoned}
+    # Level "queued" on a queued job: a years-with-a-skill question asks the history before it may be a keen Yes.
+    years = [f for f in askable if f.route == "low_stakes" and level == "queued" and queued
+             and _ASKS_YEARS.search(f.question)]
+    askable = [f for f in askable if f not in years]
     out = {f.fid: ABSTAIN for f in fields if f.fid not in asked}
     # A Yes/No fact's answer to the question as worded: polarity first, code
     # flips; unsure, it is left to the user and never picked.
@@ -391,6 +425,8 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
             if n_decided := _with_second_opinion(picked, tops, unsure, second):
                 logger.info("pick: the fast model decided %d of %d fields Jev abstained on", n_decided, len(unsure))
         out |= picked
+    if years:
+        out |= _years_first(years, facts, hint, session, budget)
     if reasoned:
         out |= reason(reasoned, facts, session, budget, hint.company if hint else None, level)
     _with_polarity(out, ways)

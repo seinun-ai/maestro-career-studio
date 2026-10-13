@@ -387,6 +387,37 @@ def test_the_fast_model_low_stakes_pick_states_the_never_list_and_may_decline(db
     assert got["h"].reason == "abstained"
 
 
+QUEUED_FIELD = pf("r", question="Do you meet the listed requirements?", route="low_stakes", options=opts("Yes", "No"))
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_queued_level_pick_states_the_queued_scope_and_the_protected_never_list_to_jev(db_session, monkeypatch):
+    model_settings.set_answer_level(db_session, "queued")
+    calls = fake_jev(monkeypatch)
+    autofill_pick.pick([QUEUED_FIELD], FACTS, db_session, None, queued=True)
+    text = calls[0]["questions"]["r"]["instructions"]
+    scope, never = autofill_map.low_stakes_scope(FACTS, level="queued", queued=True)
+    assert f"{never}." in text and scope[1:] in text
+    for protected in ("work authorization", "sponsorship", "security clearance", "salary", "legal attestation"):
+        assert protected in text, protected
+    assert "number of years of experience" not in text
+    # Off a queued job the same level states the history level's scope.
+    calls = fake_jev(monkeypatch)
+    autofill_pick.pick([QUEUED_FIELD], FACTS, db_session, None, queued=False)
+    assert autofill_map._NEVER_LOW_STAKES in calls[0]["questions"]["r"]["instructions"]
+
+
+def test_the_queued_level_pick_states_the_queued_scope_and_the_protected_never_list_to_the_fast_model(
+        db_session, monkeypatch):
+    model_settings.set_answer_level(db_session, "queued")
+    prompts = fake_llm(monkeypatch, {"r": {"oids": [], "confidence": 0.9}})
+    autofill_pick.pick([QUEUED_FIELD], FACTS, db_session, None, queued=True)
+    _, never = autofill_map.low_stakes_scope(FACTS, level="queued", queued=True)
+    assert f"{never}." in prompts[0]["prompt"] and "(answered Yes)" in prompts[0]["prompt"]
+    for protected in ("work authorization", "sponsorship", "security clearance", "salary", "legal attestation"):
+        assert protected in prompts[0]["prompt"], protected
+
+
 @pytest.mark.usefixtures("jev_on")
 def test_a_set_slot_without_an_item_abstains(db_session, monkeypatch):
     calls = fake_jev(monkeypatch, {"k": ("o1", 0.99)})

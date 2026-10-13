@@ -58,15 +58,25 @@ WINDOW_RULE = ('Say whether each answer is negative (No, None, Not applicable, N
 # The Screening answers level 2 rule (docs/plans/2026-10-10-companion-queued-run-design.md Part 3):
 # at "history" and "queued" a "N years with a skill" Yes/No is answered Yes when the history shows
 # the skill. Level 3's blanket Yes is /map's (a low-stakes route), never this route's.
-YEARS_YES_RULE = ("A yes/no question asking for at least N years with a skill or tool: answer Yes when the work "
-                  "history shows the skill and does not contradict N years (for example the total years "
-                  "of work cover N); answer none when the history clearly shows fewer years.")
+YEARS_YES_RULE = ("A yes/no question asking for at least N years with a skill or tool: count the years from the "
+                  "jobs that show the skill, and answer Yes when the work history shows the skill and does not "
+                  "contradict N years; answer none when the history clearly shows fewer years. Only a general "
+                  "question about years of experience, with no skill named, is covered by the total years of work.")
+# Level "queued" on a queued job asks the history FIRST (autofill_pick._years_first): a Yes when it shows
+# enough, no answer when it shows fewer, and the keen Yes only when it is silent about the skill.
+YEARS_COVERAGE_RULE = ('For a question asking for at least N years with a skill or tool, also return "years": '
+                       '"enough" when the jobs that show the skill add up to N years or more, "fewer" when they '
+                       'show the skill but add up to clearly fewer, or "silent" when no job or school mentions '
+                       "the skill at all.")
 
 
-def prompt_rules(level: str, today: str = "the date in the history") -> str:
+def prompt_rules(level: str, today: str = "the date in the history", *, coverage: bool = False) -> str:
     """The rules of the reasoning prompt, as the answer level states them. The
-    never-list is the same at every level."""
+    never-list is the same at every level. `coverage`: also tell enough from
+    fewer from silent for a years question."""
     years = f"- {YEARS_YES_RULE}\n" if level in ("history", "queued") else ""
+    if coverage:
+        years += f"- {YEARS_COVERAGE_RULE}\n"
     return (f"- {SILENCE_RULE}\n- {PRIVATE_EMPLOYERS_RULE}\n- {WINDOW_RULE}\n"
             f"- Count years of experience from the dates of the jobs that show it: today is {today}, "
             "and a current job runs to today.\n"
@@ -182,6 +192,23 @@ def _names_company(field: PickField, company: str | None) -> bool:
     return any(f" {key} " in f" {name_key(text)} " for text in (field.question, *(o.text for o in field.options)))
 
 
+def _ask(asked: list[PickField], hist: dict, session: Session, timeout: float, level: str, *,
+         coverage: bool = False) -> dict | None:
+    """The model's answers by field id, or None when the call failed."""
+    payload = [{"id": f.fid, "question": f.question, "options": [o.model_dump() for o in f.options]}
+               for f in asked]
+    try:
+        raw = fast_json(session, _PROMPT.format(
+            rule=_PAGE_TEXT_IS_DATA, rules=prompt_rules(level, hist["today"], coverage=coverage),
+            history=json.dumps(hist), fields=json.dumps(payload)),
+            "autofill-reasoned-pick", timeout=timeout)
+    except llm.LLMProviderError:
+        logger.warning("fast model reasoning failed; its fields are left to the user")
+        return None
+    answers = raw.get("answers") if isinstance(raw, dict) else None
+    return answers if isinstance(answers, dict) else {}
+
+
 def reason(fields: list[PickField], facts: dict[str, Fact], session: Session, budget: Budget,
            company: str | None, level: str = "history") -> dict[str, Picked]:
     hist = history(facts)
@@ -191,17 +218,47 @@ def reason(fields: list[PickField], facts: dict[str, Fact], session: Session, bu
     timeout = budget.left()
     if not asked or not shown or timeout is None:
         return out
-    payload = [{"id": f.fid, "question": f.question, "options": [o.model_dump() for o in f.options]}
-               for f in asked]
-    try:
-        raw = fast_json(session, _PROMPT.format(
-            rule=_PAGE_TEXT_IS_DATA, rules=prompt_rules(level, hist["today"]),
-            history=json.dumps(hist), fields=json.dumps(payload)),
-            "autofill-reasoned-pick", timeout=timeout)
-    except llm.LLMProviderError:
-        logger.warning("fast model reasoning failed; its fields are left to the user")
+    answers = _ask(asked, hist, session, timeout, level)
+    if answers is None:
         return out
-    answers = raw.get("answers") if isinstance(raw, dict) else None
-    answers = answers if isinstance(answers, dict) else {}
     return out | {f.fid: _verdict(answers.get(f.fid), {o.oid: o.text for o in f.options}, hist, shown)
                   for f in asked}
+
+
+def reason_years(fields: list[PickField], facts: dict[str, Fact], session: Session, budget: Budget,
+                 company: str | None) -> tuple[dict[str, Picked], set[str]]:
+    """The history's say on "at least N years with a skill" questions, for level
+    "queued" on a queued job (owner: "Yes only if the history is silent"). Returns
+    each field's Picked and the ids the history is SILENT about, which are the
+    only ones left for a keen Yes:
+
+    - enough years shown → its Yes (a real `assumed` answer, shown by the jobs it cites);
+    - clearly fewer years → abstained, never a Yes: the user answers it;
+    - silent (the model says so, citing nothing; or the applicant has no history at all) → in the set;
+    - anything else (a failed call, no time, the company named, an unreadable answer) → abstained."""
+    hist = history(facts)
+    shown = {entry["id"] for entry in hist["jobs"] + hist["schools"]}
+    asked = [f for f in fields if not _names_company(f, company)]
+    out = {f.fid: _ABSTAIN for f in fields}
+    if not asked:
+        return out, set()
+    if not shown:
+        return out, {f.fid for f in asked}
+    timeout = budget.left()
+    answers = _ask(asked, hist, session, timeout, "queued", coverage=True) if timeout is not None else None
+    if answers is None:
+        return out, set()
+    silent: set[str] = set()
+    for f in asked:
+        entry = answers.get(f.fid)
+        entry = entry if isinstance(entry, dict) else {}
+        coverage = entry.get("years")
+        if coverage == "silent" and not entry.get("shown_by"):
+            silent.add(f.fid)
+        elif coverage == "enough":
+            offered = {o.oid: o.text for o in f.options}
+            got = _verdict(entry, offered, hist, shown)
+            # "Enough years" and a negative option contradict each other: ask the user.
+            if got.oids and not negative(offered[got.oids[0]]):
+                out[f.fid] = got
+    return out, silent

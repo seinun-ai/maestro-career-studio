@@ -1,7 +1,9 @@
 """The reasoning route's prompt follows the Screening answers level (model_settings.get_answer_level)."""
 
-from app.services import autofill_pick, autofill_reasoned, model_settings
-from tests.test_autofill_pick import HISTORY_FACTS, fake_reasoner, reasoned
+import pytest
+
+from app.services import autofill_catalog, autofill_pick, autofill_reasoned, llm, model_settings
+from tests.test_autofill_pick import HISTORY_FACTS, fake_reasoner, opts, pf, reasoned
 
 YEARS = "Do you have at least 5 years of experience with SQL?"
 
@@ -35,3 +37,102 @@ def test_the_reasoned_pass_asks_with_the_answer_level_the_setting_holds(db_sessi
         autofill_pick.pick([reasoned("y", YEARS, "Yes", "No")], HISTORY_FACTS, db_session, None)
         [asked] = [p for p in prompts if p["trace_name"] == "autofill-reasoned-pick"]
         assert ("shows the skill" in asked["prompt"]) is expect, level
+
+
+# ---------- level "queued" on a queued job: the history is asked FIRST; the keen Yes only when it is silent
+
+QUEUED_YEARS = "Do you have at least 5 years of experience with SQL?"
+ENOUGH = {"oid": "o1", "confidence": 0.95, "shown_by": ["j1", "j2"], "years": "enough"}
+
+
+def fake_models(monkeypatch, years_entry, keen_oid="o1"):
+    """The reasoning call answers `years_entry` for field y; the keen pick says `keen_oid`."""
+    calls = []
+
+    def call_openai(**kw):
+        calls.append(kw)
+        if kw["trace_name"] == "autofill-reasoned-pick":
+            return {"answers": {"y": years_entry} if years_entry is not None else {}}
+        return {"picks": {"y": {"oids": [keen_oid], "confidence": 0.9}}}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    return calls
+
+
+def years_pick(db_session, *, level="queued", queued=True, question=QUEUED_YEARS, facts=HISTORY_FACTS):
+    model_settings.set_answer_level(db_session, level)
+    return autofill_pick.pick([pf("y", question=question, route="low_stakes", options=opts("Yes", "No"))],
+                              facts, db_session, None, queued=queued)["y"]
+
+
+def test_enough_years_in_the_history_is_its_yes_and_no_keen_pick_is_made(db_session, monkeypatch):
+    calls = fake_models(monkeypatch, ENOUGH)
+    got = years_pick(db_session)
+    assert (got.oids, got.reason) == (["o1"], "assumed")
+    assert [c["trace_name"] for c in calls] == ["autofill-reasoned-pick"]
+    assert "also return \"years\"" in calls[0]["prompt"]
+
+
+def test_fewer_years_than_asked_is_left_to_the_user_never_a_keen_yes(db_session, monkeypatch):
+    calls = fake_models(monkeypatch, {"oid": "o2", "confidence": 0.95, "shown_by": ["j1"], "years": "fewer"})
+    got = years_pick(db_session)
+    assert (got.oids, got.reason) == ([], "abstained")
+    assert [c["trace_name"] for c in calls] == ["autofill-reasoned-pick"]
+
+
+def test_a_history_silent_about_the_skill_gets_the_keen_yes(db_session, monkeypatch):
+    calls = fake_models(monkeypatch, {"oid": "none", "confidence": 0.9, "shown_by": [], "years": "silent"})
+    got = years_pick(db_session)
+    assert got.oids == ["o1"] and got.reason == "assumed"
+    keen_prompt = [c for c in calls if c["trace_name"] == "autofill-pick"][0]["prompt"]
+    assert "(answered Yes)" in keen_prompt and "work authorization" in keen_prompt
+
+
+@pytest.mark.parametrize("entry", [
+    None,  # no readable answer
+    {"oid": "none", "confidence": 0.9, "shown_by": ["j1"], "years": "silent"},  # "silent" yet cites a job
+    {"oid": "o1", "confidence": 0.9, "shown_by": ["j1"]},  # no coverage word
+    {"oid": "o1", "confidence": 0.9, "shown_by": ["j1"], "years": "plenty"},
+    {"oid": "o2", "confidence": 0.95, "shown_by": ["j1"], "years": "enough"},  # enough, but a No
+    {"oid": "o1", "confidence": 0.95, "shown_by": ["j9"], "years": "enough"},  # cites a job that is not there
+])
+def test_anything_but_a_clear_enough_or_silent_is_left_to_the_user(db_session, monkeypatch, entry):
+    calls = fake_models(monkeypatch, entry)
+    got = years_pick(db_session)
+    assert got.oids == [] and got.reason == "abstained"
+    assert "autofill-pick" not in [c["trace_name"] for c in calls]
+
+
+def test_an_applicant_with_no_history_is_silent_so_the_keen_yes_stands(db_session, monkeypatch):
+    calls = fake_models(monkeypatch, None)
+    got = years_pick(db_session, facts=autofill_catalog.build({}, [], ["SQL"]))
+    assert got.oids == ["o1"]
+    assert [c["trace_name"] for c in calls] == ["autofill-pick"]
+
+
+def test_a_failed_reasoning_call_leaves_the_years_question_to_the_user(db_session, monkeypatch):
+    def down(**kw):
+        raise llm.LLMProviderError("down")
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", down)
+    assert years_pick(db_session).oids == []
+
+
+@pytest.mark.parametrize("level, queued", [("history", True), ("queued", False)])
+def test_below_the_queued_level_or_off_a_queued_job_the_history_is_not_asked_first(
+        db_session, monkeypatch, level, queued):
+    calls = fake_models(monkeypatch, ENOUGH)
+    got = years_pick(db_session, level=level, queued=queued)
+    assert [c["trace_name"] for c in calls] == ["autofill-pick"] and got.oids == ["o1"]
+
+
+def test_only_a_question_naming_years_asks_the_history_first(db_session, monkeypatch):
+    calls = fake_models(monkeypatch, ENOUGH)
+    years_pick(db_session, question="Are you willing to travel?")
+    assert [c["trace_name"] for c in calls] == ["autofill-pick"]
+
+
+def test_the_years_rule_counts_from_the_jobs_that_show_the_skill():
+    rule = autofill_reasoned.prompt_rules(level="queued")
+    assert "count the years from the jobs that show the skill" in rule
+    assert "Only a general question about years of experience, with no skill named" in rule
