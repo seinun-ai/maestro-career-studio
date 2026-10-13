@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, Radio } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { useFieldMessage } from "@/components/resume-editor/field";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,6 +34,7 @@ import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { emailWarning, linkWarning, phoneWarning } from "@/lib/field-checks";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
+import { inOrder } from "@/lib/in-order";
 import { cn } from "@/lib/utils";
 import type {
   AutofillOptions,
@@ -78,6 +80,9 @@ const YES_NO_DECLINE = [
  *  (`GROUP_HEADING`), so a form section and a content section look alike. The
  *  `w-full` keeps the row-level actions ("Fill from career history", "Decline the rest")
  *  pinned to the far end of the legend. */
+/** How many saved answers a fill reads: `MAX_CUSTOM` in backend/app/services/autofill_catalog.py. */
+const CUSTOM_IN_USE = 30;
+
 const LEGEND = cn(GROUP_HEADING, "flex w-full items-center justify-between gap-2");
 
 const GROUPS: GroupDef[] = [
@@ -787,7 +792,7 @@ function AutofillEditor({
    *  agreeing to terms, which nobody chose.
    *
    *  What it never does, at any setting, is in the confirm text: it never
-   *  moves to the next page and never submits. */
+   *  submits, and it moves to the next page only during a queued run. */
   const setConsentFormsEnabled = async (consentForms: boolean) => {
     if (consentForms) {
       const acknowledged = await confirm({
@@ -797,9 +802,9 @@ function AutofillEditor({
           "With this on, the Companion can fill every field on an application "
           + "form, including terms, acknowledgements, certifications, "
           + "arbitration and waivers, signatures, initials and typed-name "
-          + "attestations. It never moves to the next page and never submits. "
-          + "Check every form before you submit it. You can turn this off "
-          + "anytime.",
+          + "attestations. It never submits. Only during a run of your queued "
+          + "jobs does it move to the next page. Check every form before you "
+          + "submit it. You can turn this off anytime.",
         confirmLabel: "Allow",
         consent: true,
       });
@@ -1125,6 +1130,12 @@ function AutofillEditor({
         <p className="text-muted-foreground text-body-small">
           Questions you get often, with your usual answers.
         </p>
+        {custom.length > CUSTOM_IN_USE ? (
+          <p className="text-body-small">
+            Only the first {CUSTOM_IN_USE} are used when filling for now.
+            Remove the ones you no longer need.
+          </p>
+        ) : null}
         {custom.map((qa, i) => (
           <div key={i} className="flex items-start gap-2">
             <div className="grid flex-1 gap-3">
@@ -1239,7 +1250,8 @@ function CompanionPermissions({
           <p id={hintId} className="text-muted-foreground text-body-small">
             The Companion can fill every field, including terms boxes,
             certifications, signatures and typed-name attestations. It never
-            moves to the next page or submits.
+            submits. Only during a run of your queued jobs does it move to the
+            next page.
           </p>
           {/* An agreement given under an older, narrower policy is served
               off (consent_forms_lapsed); a yes now records the current one. */}
@@ -1261,20 +1273,46 @@ function CompanionPermissions({
         />
       </div>
       {consent.consent_forms ? <AgreedOn consent={consent} /> : null}
-      <LowStakesSwitch />
+      <ScreeningAnswers />
     </CardSection>
   );
 }
 
-/** Questions no answer of yours covers and whose answer barely matters, which
- *  the Companion answers in the job's favor while this is on (off by
- *  default). Its own setting, not the consent record: it is a preference,
- *  not a permission to disclose or agree. The server re-reads it on every
- *  fill (/map, /pick and /step), so this switch is the only way to turn it on. The
- *  kinds, and the never list, are the backend's (`_LOW_STAKES`,
- *  `_NEVER_LOW_STAKES` in backend/app/services/autofill_map.py). */
-function LowStakesSwitch() {
+/** How far the Companion answers screening questions no saved answer covers.
+ *  Its own setting, not the consent record: it is a preference, not a
+ *  permission to disclose or agree. The server re-reads it on every fill
+ *  (/map, /pick and /step), so this dial is the only way to move it. What each
+ *  level adds, and the protected list that no level moves, are the backend's
+ *  (`answer_level` in backend/app/services/autofill_map.py). Saves go through
+ *  `inOrder`, never a mutation `scope`: a scoped mutation queues as paused in
+ *  a hidden tab and never runs (SYSTEM.md section 12). */
+const ANSWER_LEVELS: {
+  value: AutofillOptions["answer_level"];
+  label: string;
+  line: string;
+}[] = [
+  {
+    value: "facts",
+    label: "Facts only",
+    line: "Only your saved answers and career history. Anything else waits for you.",
+  },
+  {
+    value: "history",
+    label: "Backed by your history",
+    line:
+      "Also answers low-stakes questions in the job's favour, and "
+      + "years-with-a-skill questions when your history shows the skill.",
+  },
+  {
+    value: "queued",
+    label: "Queued means I qualify",
+    line: "On jobs you queued, also says yes to every requirement question.",
+  },
+];
+
+function ScreeningAnswers() {
   const qc = useQueryClient();
+  const labelId = useId();
   const hintId = useId();
   const options = useQuery({
     queryKey: ["settings", "autofill-options"],
@@ -1282,64 +1320,53 @@ function LowStakesSwitch() {
   });
   const saveOptions = useMutation({
     mutationFn: (value: AutofillOptions) =>
-      apiFetch<AutofillOptions>("/api/settings/autofill-options", {
-        method: "PUT",
-        body: JSON.stringify(value),
-      }),
+      inOrder("autofill-options", () =>
+        apiFetch<AutofillOptions>("/api/settings/autofill-options", {
+          method: "PUT",
+          body: JSON.stringify(value),
+        }),
+      ),
     onSuccess: (result) => {
       qc.setQueryData(["settings", "autofill-options"], result);
-      toast.success(
-        result.low_stakes
-          ? "The Companion now answers low-stakes questions"
-          : "The Companion won't answer low-stakes questions",
-      );
+      const picked = ANSWER_LEVELS.find((l) => l.value === result.answer_level);
+      toast.success(`Screening answers: ${picked?.label ?? result.answer_level}`);
     },
     onError: (err: Error) => toast.error(couldnt("save this setting", err)),
   });
-  const saveOnce = useSingleFlight(saveOptions.mutate);
+  // The pick shows at once and the saved value replaces it, so a second pick
+  // made while the first saves is neither dropped nor shown as the old level.
+  const shown = saveOptions.isPending
+    ? saveOptions.variables.answer_level
+    : options.data?.answer_level;
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="grid gap-1">
-        <Label htmlFor="low-stakes">Answer low-stakes questions for me</Label>
-        <div id={hintId} className="text-muted-foreground grid gap-1 text-body-small">
-          <p>
-            When none of your answers covers a question, the Companion answers
-            it in the job&apos;s favor. It does this for:
-          </p>
-          <ul className="list-disc ps-4">
-            <li>how you heard about the job and how to contact you</li>
-            <li>whether you&apos;d relocate, travel, work on site, or work shifts or overtime</li>
-            <li>whether you&apos;d take a drug test</li>
-            <li>openness to other roles</li>
-            <li>whether you&apos;re related to or used to work for the company</li>
-            <li>what you would do if you become employed by the company</li>
-            <li>consent to text and marketing messages</li>
-            <li>whether you have the experience and education the job description asks for</li>
-          </ul>
-          <p>It lists them under Answered for you, so you can check each one.</p>
-          <p>
-            It never guesses your education and work history, work
-            authorization, sponsorship, age, diversity questions, background
-            checks, security clearance, salary, or signatures.
-          </p>
-          <p>
-            Whether this is on or off, Fill may also answer some questions
-            from your work history. These ask about past employment by a kind
-            of organization (such as a government agency), a security clearance
-            or years of experience. Fill lists those for you to check too.
-          </p>
-        </div>
-        {options.isError ? (
-          <p className="text-label-medium">Couldn&apos;t load this setting.</p>
-        ) : null}
-      </div>
-      <Switch
-        id="low-stakes"
+    <div className="grid gap-2">
+      <Label id={labelId}>Screening answers</Label>
+      <RadioGroup<AutofillOptions["answer_level"] | "">
+        aria-labelledby={labelId}
         aria-describedby={hintId}
-        checked={options.data?.low_stakes ?? false}
+        value={shown ?? ""}
         disabled={!options.data}
-        onCheckedChange={(low_stakes) => saveOnce({ low_stakes })}
-      />
+        onValueChange={(answer_level) =>
+          answer_level && saveOptions.mutate({ answer_level })
+        }
+      >
+        {ANSWER_LEVELS.map((level) => (
+          <label key={level.value} className="flex items-start gap-2">
+            <Radio value={level.value} />
+            <span className="grid gap-0.5">
+              <span className="text-label-large">{level.label}</span>
+              <span className="text-muted-foreground text-body-small">{level.line}</span>
+            </span>
+          </label>
+        ))}
+      </RadioGroup>
+      <p id={hintId} className="text-muted-foreground text-body-small">
+        Work authorization, sponsorship, salary, EEO, background, clearance and
+        legal statements always wait for a saved answer.
+      </p>
+      {options.isError ? (
+        <p className="text-label-medium">Couldn&apos;t load this setting.</p>
+      ) : null}
     </div>
   );
 }

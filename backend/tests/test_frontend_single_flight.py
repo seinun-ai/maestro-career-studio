@@ -100,8 +100,8 @@ _SITES = [
     ("components/resume-editor/kb-import-drawer.tsx", "importMutation"),
     ("app/templates/[id]/page.tsx", "recompileM"),
     ("components/resume-versions/version-history-sheet.tsx", "restore"),
-    # The low-stakes switch (a double click flipped it twice).
-    ("components/settings/autofill-section.tsx", "saveOptions"),
+    # (The Screening answers dial is not here: a radio fires only for a different pick, so a double click
+    # saves once, and its saves go through `inOrder` so a quick second pick is not dropped.)
     # The Resumes folder card: the switch, Save path and Use the default share one guard.
     ("components/settings/resumes-folder-section.tsx", "save"),
     ("components/settings/resumes-folder-section.tsx", "open"),

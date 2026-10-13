@@ -332,9 +332,10 @@ export interface ResumesFolderSettings {
 }
 
 /** GET/PUT /api/settings/autofill-options: how far the Companion's fill may
- *  go. A bare object, no envelope. The fill re-reads it server-side. */
+ *  answer a screening question no saved answer covers. A bare object, no
+ *  envelope. The fill re-reads it server-side. */
 export interface AutofillOptions {
-  low_stakes: boolean;
+  answer_level: "facts" | "history" | "queued";
 }
 
 export interface EeoConsent {

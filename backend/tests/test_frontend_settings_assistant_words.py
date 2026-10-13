@@ -33,6 +33,8 @@ def _between(src: str, start: str, end: str) -> str:
 
 
 _AUTOFILL = _read("components/settings/autofill-section.tsx")
+# The Companion clicks Next only during a queued run (Companion queued run, Phase 2); Submit never.
+PROMISE = "It never submits. Only during a run of your queued jobs does it move to the next page."
 _CHAT = _read("components/chat/chat-page.tsx")
 
 
@@ -69,7 +71,7 @@ def test_the_consent_words_keep_every_promise():
     for promise in (
         "It never guesses and never uses AI for these.",
         "Tax-credit questions stay with you, and this doesn't cover signatures or legal statements.",
-        "It never moves to the next page and never submits.",
+        PROMISE,
         "Check every form before you submit it.",
         "Let the Companion answer the voluntary diversity questions?",
     ):
@@ -246,7 +248,8 @@ def test_the_agreement_box_consent_lists_what_it_unlocks():
 def test_the_consent_switches_keep_their_promises():
     """M3, M4: each switch's hint keeps what it never does."""
     flat = _joined(_AUTOFILL)
-    assert "It never moves to the next page or submits." in flat
+    assert PROMISE in flat
+    assert "next page and never submits" not in flat and "next page or submits" not in flat
     assert "Tax-credit questions are always yours to fill." in flat
     assert "signatures are always yours" not in flat
     assert "(WOTC)" not in _AUTOFILL

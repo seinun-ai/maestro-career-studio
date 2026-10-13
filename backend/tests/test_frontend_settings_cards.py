@@ -17,6 +17,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app.services.autofill_catalog import MAX_CUSTOM
+
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
@@ -492,46 +494,74 @@ def _flat(text: str) -> str:
     return " ".join(text.split())
 
 
-def test_the_low_stakes_switch_sits_beside_the_agreement_switch():
+def test_the_screening_answers_dial_sits_below_the_agreement_switch():
     boxes = _slice(_AUTOFILL, "function CompanionPermissions(", "\n}\n")
-    assert boxes.index('id="consent-forms"') < boxes.index("<LowStakesSwitch />")
-    switch = _slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n")
-    assert '<Label htmlFor="low-stakes">Answer low-stakes questions for me</Label>' in switch
-    assert 'id="low-stakes"' in switch and "aria-describedby={hintId}" in switch
-    # Off until the server says otherwise, and never trusted from here: /map
-    # and /pick read the setting server-side.
-    assert "checked={options.data?.low_stakes ?? false}" in switch
+    assert boxes.index('id="consent-forms"') < boxes.index("<ScreeningAnswers />")
+    dial = _slice(_AUTOFILL, "function ScreeningAnswers(", "\n}\n")
+    assert "<Label id={labelId}>Screening answers</Label>" in dial
+    assert "aria-labelledby={labelId}" in dial and "aria-describedby={hintId}" in dial
+    # Nothing is picked until the server says so, and never trusted from here: /map, /pick and /step read
+    # the setting server-side.
+    assert 'value={shown ?? ""}' in dial and "disabled={!options.data}" in dial
 
 
-def test_the_low_stakes_switch_reads_and_writes_its_own_setting():
-    switch = _slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n")
-    assert 'queryKey: ["settings", "autofill-options"]' in switch
-    assert 'apiFetch<AutofillOptions>("/api/settings/autofill-options")' in switch
-    assert 'method: "PUT"' in switch and "body: JSON.stringify(value)" in switch
-    assert 'qc.setQueryData(["settings", "autofill-options"], result);' in switch
-    assert 'toast.error(couldnt("save this setting", err))' in switch
-    assert "const saveOnce = useSingleFlight(saveOptions.mutate);" in switch
-    assert "onCheckedChange={(low_stakes) => saveOnce({ low_stakes })}" in switch
+def test_the_screening_answers_dial_reads_and_writes_its_own_setting():
+    dial = _slice(_AUTOFILL, "function ScreeningAnswers(", "\n}\n")
+    assert 'queryKey: ["settings", "autofill-options"]' in dial
+    assert 'apiFetch<AutofillOptions>("/api/settings/autofill-options")' in dial
+    assert 'method: "PUT"' in dial and "body: JSON.stringify(value)" in dial
+    assert 'qc.setQueryData(["settings", "autofill-options"], result);' in dial
+    assert 'toast.error(couldnt("save this setting", err))' in dial
+    assert "saveOptions.mutate({ answer_level })" in dial
+
+
+# --- Screening answers ---------------------------------------------------------
+
+
+def test_the_screening_answers_dial_replaces_the_low_stakes_switch():
+    """The API carries `answer_level` now (a `low_stakes` body is a 422), so the card is a radio group
+    of three levels, each with its one line, and the protected list is said under it."""
+    src = _read("components/settings/autofill-section.tsx")
     types = _read("lib/types.ts")
-    assert "export interface AutofillOptions {\n  low_stakes: boolean;\n}" in types
+    assert "low_stakes" not in src and "LowStakes" not in src
+    assert 'answer_level: "facts" | "history" | "queued";' in types
+    dial = _slice(src, "function ScreeningAnswers() {", "\n}\n")
+    flat = " ".join(dial.split())
+    levels = _slice(src, "const ANSWER_LEVELS", "\n];\n")
+    for label in ("Facts only", "Backed by your history", "Queued means I qualify"):
+        assert f'label: "{label}"' in levels, label
+    levels_flat = " ".join(re.sub(r'"\s*\+\s*"', "", levels).split())
+    assert "<RadioGroup" in dial and "<Switch" not in dial
+    assert "Screening answers" in dial
+    assert "toast.success(`Screening answers: ${" in flat
+    for line in (
+        "Only your saved answers and career history. Anything else waits for you.",
+        "Also answers low-stakes questions in the job's favour, and years-with-a-skill questions "
+        "when your history shows the skill.",
+        "On jobs you queued, also says yes to every requirement question.",
+        "Work authorization, sponsorship, salary, EEO, background, clearance and legal statements "
+        "always wait for a saved answer.",
+    ):
+        assert line in levels_flat or line.replace("'", "&apos;") in flat, line
 
 
-def test_the_low_stakes_help_names_the_widened_kinds_and_the_never_list():
-    switch = _flat(_slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n"))
-    for kind in ("how you heard about the job", "how to contact you", "relocate", "travel", "on site",
-                 "shifts or overtime", "drug test", "other roles", "related to", "used to work for",
-                 "text and marketing messages", "experience and education the job description asks for"):
-        assert kind in switch, kind
-    for kind in ("your education and work history", "work authorization", "sponsorship", "age",
-                 "diversity questions", "background checks", "security clearance", "salary", "signatures"):
-        assert kind in switch, kind
-    assert "Answered for you" in switch
-    assert "what you would do if you become employed by the company" in switch
+def test_the_screening_answers_save_is_not_scoped():
+    """A scoped TanStack mutation queues as paused in a hidden tab and never runs (SYSTEM.md section 12);
+    saves are ordered by `inOrder` instead, and a second pick is not dropped while the first is in flight."""
+    src = _read("components/settings/autofill-section.tsx")
+    dial = _slice(src, "function ScreeningAnswers() {", "\n}\n")
+    assert "scope" not in dial
+    assert 'inOrder("autofill-options"' in dial
+    assert "useSingleFlight" not in dial
 
 
-def test_the_low_stakes_help_says_the_work_history_answers_some_questions_at_any_setting():
-    switch = _flat(_slice(_AUTOFILL, "function LowStakesSwitch(", "\n}\n"))
-    assert ("Whether this is on or off, Fill may also answer some questions from your work history. These ask "
-            "about past employment by a kind of organization (such as a government agency), a security clearance "
-            "or years of experience. Fill lists those for you to check too.") in switch
-    assert "(/map, /pick and /step)" in _slice(_AUTOFILL, "/** Questions no answer of yours covers", "function LowStakesSwitch(")
+def test_saved_answers_past_the_limit_are_flagged():
+    """The fill uses the first `MAX_CUSTOM` saved answers only; the line shows for 31 rows, not for 30."""
+    src = _read("components/settings/autofill-section.tsx")
+    assert f"const CUSTOM_IN_USE = {MAX_CUSTOM};" in src
+    assert "custom.length > CUSTOM_IN_USE" in src
+    flat = " ".join(src.split())
+    assert (
+        "Only the first {CUSTOM_IN_USE} are used when filling for now. Remove the ones you no longer need."
+        in flat
+    )
