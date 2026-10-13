@@ -138,6 +138,8 @@ FILL_ENGINE_SOURCES = [
     CONTENT / "fill-core.js",
     CONTENT / "fill-ops.js",
     CONTENT / "sections.js",
+    # Reads real layout (rects, computed visibility) and clicks, so it is driven in Chromium too.
+    CONTENT / "page-reader.js",
 ]
 PAGE_RUNTIME_SOURCES = [
     SHARED / "decisions.js",

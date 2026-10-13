@@ -251,6 +251,10 @@ def test_the_content_script_is_the_split_modules_in_dependency_order(content_scr
         "content/autofill.js",
         "content/open-questions.js",
         "content/detect.js",
+        # Reads the page for the queued run and presses its Next. After detect.js, whose
+        # `ns.fillableControls` it counts fields with, and before agent.js, whose page_classify /
+        # page_advance handlers call it.
+        "content/page-reader.js",
         "content/agent.js",
         # Last, and it reads `ns.onFieldTouched`'s caller (inventory.js) and
         # `ns.frameMayReceiveUserData` (agent.js) only at call time: it is the one
@@ -262,7 +266,9 @@ def test_the_content_script_is_the_split_modules_in_dependency_order(content_scr
 def test_agent_is_only_the_page_rpc_front_door():
     """The split is defeated if a moved engine leaves a stale agent.js copy."""
     source = (EXTENSION / "content" / "agent.js").read_text(encoding="utf-8")
-    assert len(source.splitlines()) < 700
+    # A size guard, not a design one: the named functions below are what must stay out. It grew
+    # 700 -> 720 for the queued run's two gated handlers (page_classify, page_advance).
+    assert len(source.splitlines()) < 720
     assert "function fillFormFromProfile" not in source
     assert "function collectOpenQuestions" not in source
     assert "function fillAnswersByQid" not in source

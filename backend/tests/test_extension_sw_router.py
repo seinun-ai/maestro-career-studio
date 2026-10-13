@@ -1160,6 +1160,9 @@ def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
         # (`#icims_content_iframe`). It carries nothing and returns only the
         # frame's own page text, the public posting.
         "extract_job_posting",
+        # The queued run's page reader and its Next click, gated on the receiving side like the
+        # fill operations; `page_advance` presses a Next only and never a Submit.
+        "page_classify", "page_advance",
     ]
 
 

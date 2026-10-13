@@ -134,6 +134,11 @@ ns.fillOps = {
   add: (r) => { calls.push(["fillOps.add", r]); return { sid: "f-s1", outcome: "added", entries: 1 }; },
   cancel: () => { calls.push(["fillOps.cancel", 0]); },
 };
+// The page reader needs a real DOM too (tests/browser/test_page_reader.py drives it).
+ns.pageReader = {
+  summary: () => { calls.push(["pageReader.summary", 0]); return { host: "x", buttons: [] }; },
+  advance: (id) => { calls.push(["pageReader.advance", id]); return { clicked: true }; },
+};
 
 main(async () => {
   // The gate itself, as `content/touch-notice.js` asks it at send time.
@@ -144,7 +149,7 @@ main(async () => {
     skills: [], pairs: [], b64: "", filename: "resume.pdf",
     consentForms: true, runId: "run-2", requests: [{ fid: "f-1", fp: "p" }],
     actions: [{ fid: "f-1", fp: "p", op: "write", value: "x" }], fid: "f-1", fp: "p", value: "v",
-    sid: "f-s1", heading: "Websites", entries: 0,
+    sid: "f-s1", heading: "Websites", entries: 0, id: "tag-3",
     // Only when the fixture states one — `undefined` is the shape the floating
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
@@ -547,6 +552,28 @@ def test_fill_add_forwards_the_section_and_the_view_it_was_decided_on(tmp_path):
     (the page refuses the press when either changed) — nothing else."""
     out = _run(tmp_path, type_="fill_add", top_frame=True)
     assert out["calls"] == [["fillOps.add", {"sid": "f-s1", "heading": "Websites", "entries": 0}]]
+
+
+@pytest.mark.parametrize("type_, refused_shape", [
+    ("page_classify", {"summary": None}),
+    ("page_advance", {"clicked": False, "why": "gate"}),
+])
+def test_the_page_reader_and_the_next_click_are_gated_by_frame(tmp_path, type_, refused_shape):
+    """An ad or chat iframe must never be read for its buttons, and above all never pressed."""
+    refused = _run(tmp_path, type_=type_, top_frame=False, form=False)
+    assert refused["calls"] == [] and refused["data"] == refused_shape
+    for top_frame, form in ((True, False), (False, True)):
+        out = _run(tmp_path, type_=type_, top_frame=top_frame, form=form)
+        assert out["calls"] != [], f"{type_} was refused in a frame that may receive user data"
+
+
+def test_page_classify_says_whether_it_is_the_top_frame_and_page_advance_forwards_only_the_id(tmp_path):
+    top = _run(tmp_path, type_="page_classify", top_frame=True)
+    assert top["data"] == {"summary": {"host": "x", "buttons": []}, "top": True}
+    sub = _run(tmp_path, type_="page_classify", top_frame=False, form=True)
+    assert sub["data"]["top"] is False
+    out = _run(tmp_path, type_="page_advance", top_frame=True)
+    assert out["calls"] == [["pageReader.advance", "tag-3"]] and out["data"] == {"clicked": True}
 
 
 def test_fill_cancel_reaches_every_frame(tmp_path):

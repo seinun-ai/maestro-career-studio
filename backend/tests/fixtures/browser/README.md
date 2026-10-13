@@ -58,6 +58,16 @@ missing key, so a typo never reads as "nothing committed".
 | `icims_profile.html` | iCIMS candidate profile, live 2026-10-01, markup modelled — select2-style boxes over a hidden native select (School's hidden the way select2 does, with a 1px clip) showing "— Make a Selection —"; Month / Day / Year controls with bare labels under one row label; phone and address "Type" selects | `icims_degree`, `icims_school`, `icims_country`, `icims_state` |
 | `workday_misses.html` | owner's live run 2026-10-13, run traces + screenshots — a visible and an offscreen robot trap beside real optional boxes; a phone-code selectinput already holding a pill; an optional empty Phone Extension; skills with two-stage results, a pill 600 ms after the click and a first "Pandas" click lost to a redraw; a required Field of Study whose full value lists nothing; search results in two stages, 300 ms then 700 ms; a Country choice that swaps the address inputs for new nodes 400 ms later | `robotWebsite`, `robotBlank`, `website`, `middleName`, `phoneExt`, `addressLine`, `cityName`, `postalCode` (text, `null`), `phoneCode` (string), `slowSkills` (array), `fieldOfStudy` (string), `countryChoice` |
 
+Generic wizard pages (no vendor modelled; the page reader's tests and the queued run's driver tests
+use them, which is why they are files and not inline): `wizard_step1.html` (a required field and a
+`<button type="submit">Next</button>`; oracle `advanced`, set only by the form's own submit),
+`wizard_step2.html` (a plain "Save and Continue" button; oracle `advancedStep2`), `wizard_review.html`
+(a Submit, no Next; oracle `submitted`, which no test may ever see true), `wizard_confirmation.html`,
+`signin.html`, `create_account.html`, `verify_code.html`, `captcha.html` (a challenge frame wrapper;
+its markup is ASSUMED, not captured), `posting_external.html` (Apply link), `posting_board_native.html`
+(Apply button, served under a board hostname by its test) and `closed.html`. They reproduce no
+observed vendor behaviour: change one and `tests/browser/test_page_reader.py` first.
+
 `native.html` keeps no oracle: a native control's own value (`input_value`,
 `checked`) is what the page submits, so tests read that.
 

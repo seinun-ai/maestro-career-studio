@@ -641,6 +641,15 @@
       ns.fillOps.cancel();
       return true;
     },
+    /* The queued run's eyes and its one hand (content/page-reader.js). Gated like the fill
+     * operations, each returning its empty shape in a refused frame. `page_advance` presses a
+     * Next button the reader named, re-sorting its text at click time; it never presses a Submit. */
+    page_classify: (msg) => (frameMayReceiveUserData(msg)
+      ? { summary: ns.pageReader.summary(), top: window.top === window.self }
+      : { summary: null }),
+    page_advance: (msg) => (frameMayReceiveUserData(msg)
+      ? ns.pageReader.advance(msg.id)
+      : { clicked: false, why: "gate" }),
   };
 
   // ONE LIVE listener per isolated world. panel_prepare re-injects this file

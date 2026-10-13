@@ -39,6 +39,7 @@ proxies their API requests:
 | `content/open-questions.js` | every frame | open-question collection and answer injection |
 | `content/touch-notice.js` | every frame | tells the panel THAT you changed a field: one throttled (2 s) `fields_touched` message of fids only, sent only where the frame gate (`ns.frameMayReceiveUserData`) says yes; engine writes never trigger it |
 | `content/detect.js` | every frame, every page | the detection read — reads, scores, returns |
+| `content/page-reader.js` | every frame | the queued run's eyes and hand: `summary()` (counts, button texts, booleans, never a value) for `shared/page-kind.js`, and `advance(id)`, the only navigation click in the extension — it re-sorts the button's current labels and refuses any Submit-worded one |
 | `content/agent.js` | every frame | page RPC front door, extraction wrapper, resume attach |
 | `panel/panel.{html,css,js}` | the side panel | the store, the loaders, the generation guard, the render loop, the tab binding; sends everything through the service worker |
 | `panel/icons.js` | the side panel | `ns.icon(name, {size, label})`: inline Lucide svg built with `createElementNS` (never `innerHTML`), `aria-hidden` unless labelled, `data-icon` names it; one glyph per concept as in the web app's `lib/concept-icons.ts`; no emoji or text glyph in panel code (`test_extension_panel_icons.py`); `panel.js` throws at boot when it is missing, and stage bodies reach it as `build.icon` |

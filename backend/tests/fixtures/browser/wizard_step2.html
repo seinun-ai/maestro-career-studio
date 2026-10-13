@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- A generic application wizard, step 2 (no vendor modelled; see wizard_step1.html). The step
+     button is a plain <button> reading "Save and Continue", the other common wording.
+     Oracle: `advancedStep2` is set by the button's own click handler. -->
+<html><head><title>Apply to Acme</title></head><body>
+<main>
+  <h1>Apply: Data Analyst at Acme</h1>
+  <p>Step 2 of 3: Your experience</p>
+  <form id="step">
+    <label for="employer">Most recent employer*</label><input id="employer" name="employer" required>
+    <label for="years">Years of experience</label>
+    <select id="years" name="years"><option value="">Select</option><option>0-2</option><option>3-5</option></select>
+    <button type="button">Back</button>
+    <button type="button" id="go">Save and Continue</button>
+  </form>
+</main>
+<script>
+  window.__oracle = window.__oracle || {};
+  window.__oracle.advancedStep2 = false;
+  document.getElementById("go").addEventListener("click", () => { window.__oracle.advancedStep2 = true; });
+</script>
+</body></html>

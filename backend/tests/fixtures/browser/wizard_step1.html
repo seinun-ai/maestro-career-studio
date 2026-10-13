@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- A generic application wizard, step 1. Models NO vendor and no observed live page: it is the
+     plain shape the queued run's page reader is built for (a required field, a Back, and a
+     <button type="submit"> whose TEXT says Next). Kept as a file because Task 15's driver tests
+     reuse the step-1 -> step-2 pair. The type="submit" is the point: many wizards use it for every
+     step, so the button's wording, never its type, decides what it is.
+     Oracle: `advanced` is set only by the form's own submit handler, i.e. a real click on Next. -->
+<html><head><title>Apply to Acme</title></head><body>
+<header><a href="#">Acme Careers</a></header>
+<main>
+  <h1>Apply: Data Analyst at Acme</h1>
+  <p>Step 1 of 3: About you</p>
+  <form id="step">
+    <label for="first">First name*</label><input id="first" name="first" required>
+    <button type="button">Back</button>
+    <button type="submit">Next</button>
+  </form>
+</main>
+<script>
+  window.__oracle = window.__oracle || {};
+  window.__oracle.advanced = false;
+  document.getElementById("step").addEventListener("submit", (e) => {
+    e.preventDefault();
+    window.__oracle.advanced = true;
+  });
+</script>
+</body></html>

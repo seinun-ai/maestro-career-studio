@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- A generic application wizard, final step (no vendor modelled; see wizard_step1.html): fields
+     and a Submit, no Next. The queued run must stop here as "review".
+     Oracle: `submitted` is set by the Submit button's click handler; no test may ever see it true. -->
+<html><head><title>Apply to Acme</title></head><body>
+<main>
+  <h1>Apply: Data Analyst at Acme</h1>
+  <p>Step 3 of 3: Review</p>
+  <form id="step">
+    <label for="note">Anything else we should know?</label><textarea id="note" name="note"></textarea>
+    <button type="button">Back</button>
+    <button type="submit" id="send">Submit application</button>
+  </form>
+</main>
+<script>
+  window.__oracle = window.__oracle || {};
+  window.__oracle.submitted = false;
+  document.getElementById("send").addEventListener("click", (e) => {
+    e.preventDefault();
+    window.__oracle.submitted = true;
+  });
+</script>
+</body></html>

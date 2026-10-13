@@ -742,7 +742,8 @@ const HANDLERS = {
     const BROADCASTABLE = ["profile_fill", "collect_open_questions", "fill_answers",
       "guided_write", "scroll_to_field",
       "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
-      "fill_sections", "fill_add", "detect_page", "extract_job_posting"];
+      "fill_sections", "fill_add", "detect_page", "extract_job_posting",
+      "page_classify", "page_advance"];
     const tabId = fanoutTab(msg, sender);
     if (!BROADCASTABLE.includes(msg.message?.type)) {
       throw new Error(`not broadcastable: ${JSON.stringify(msg.message?.type)}`);
