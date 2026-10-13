@@ -11,6 +11,7 @@ have come from `advance`.
 """
 
 import json
+import re
 
 import pytest
 
@@ -34,6 +35,10 @@ def classify(page):
 
 def advance(page, button_id):
     return page.evaluate(f"(id) => {READER}.advance(id)", button_id)
+
+
+def advance_apply(page, button_id):
+    return page.evaluate(f"(id) => {READER}.advance(id, {{apply: true}})", button_id)
 
 
 def button(s, text):
@@ -92,7 +97,7 @@ def test_the_summary_is_counts_texts_and_booleans_and_never_a_value(page, load):
       <input type='password' value='Zelda-Secret-9'><button>Next</button></form>""", SOURCES)
     s = summary(page)
     assert "Zelda-Secret-9" not in json.dumps(s)
-    assert set(s) == {"host", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
+    assert set(s) == {"host", "stepKey", "applyId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
                       "fillable", "hasApplyLink", "confirmationText", "closedText", "boardNative"}
     assert set(s["buttons"][0]) == {"id", "text", "type", "marker", "inForm", "visible", "enabled"}
     assert (s["passwordInputs"], s["fillable"]) == (1, 3)
@@ -378,6 +383,118 @@ def test_the_pin_covers_a_submit_that_is_disabled_or_hidden_too(page, load):
     for b in summary(page)["buttons"]:
         assert advance(page, b["id"])["clicked"] is False
     assert page.evaluate("() => window.hit === 1") is False
+
+
+# ---------- the posting's Apply: the one narrow exception ----------
+
+CLICK = "onclick='window.hit = (window.hit || 0) + 1; return false;'"
+
+
+@pytest.mark.parametrize("html", [
+    f"<h1>Analyst</h1><button {CLICK}>Apply</button>",
+    f"<h1>Analyst</h1><button {CLICK}>Apply now</button>",
+    f"<h1>Analyst</h1><a href='#go' {CLICK}>Apply for this job</a>",
+    f"<h1>Analyst</h1><a href='#go' role='button' {CLICK}>  APPLY  </a>",
+    f"<h1>Analyst</h1><input type='button' value='Apply now' {CLICK}>",
+])
+def test_the_postings_plain_apply_is_named_and_pressed_only_by_the_apply_call(page, load, html):
+    load(page, html, SOURCES)
+    assert classify(page)["kind"] == "posting"
+    s = summary(page)   # after classify, which reads the page too and retires the ids before it
+    assert s["applyId"]
+    # Without the flag it is the Submit word it always was (a bare link is no button at all).
+    assert advance(page, s["applyId"])["clicked"] is False
+    assert page.evaluate("() => window.hit || 0") == 0
+    assert advance_apply(page, s["applyId"]) == {"clicked": True}
+    assert page.evaluate("() => window.hit") == 1
+
+
+@pytest.mark.parametrize("html", [
+    f"<h1>A</h1><button {CLICK}>Submit application</button>",
+    f"<h1>A</h1><button {CLICK}>Apply and submit</button>",
+    f"<h1>A</h1><button {CLICK}>Reapply</button>",
+    f"<h1>A</h1><button {CLICK}>Apply-now</button>",
+    f"<h1>A</h1><button {CLICK} aria-label='Apply for Staff Engineer'>Apply</button>",
+    f"<h1>A</h1><button {CLICK} title='Send my application'>Apply</button>",
+    f"<h1>A</h1><button {CLICK}>Apply on the company site</button>",
+    f"<h1>A</h1><button {CLICK}>Next</button>",
+])
+def test_nothing_but_a_plain_apply_is_ever_named_or_pressed_as_one(page, load, html):
+    load(page, html, SOURCES)
+    s = summary(page)
+    assert s["applyId"] is None
+    for b in s["buttons"]:
+        assert advance_apply(page, b["id"])["clicked"] is False
+    assert page.evaluate("() => window.hit || 0") == 0
+
+
+def test_the_apply_call_refuses_a_page_that_has_fields(page, load):
+    """An Apply-worded button beside a fillable control is a form's Submit, not a posting's link."""
+    load(page, f"<label for='a'>Name</label><input id='a'><button {CLICK}>Apply</button>", SOURCES)
+    s = summary(page)
+    assert advance_apply(page, s["applyId"]) == {"clicked": False, "why": "not_posting"}
+    assert page.evaluate("() => window.hit || 0") == 0
+
+
+def test_the_apply_call_refuses_a_stale_hidden_or_untagged_target(page, load):
+    load(page, f"<h1>A</h1><button id='b' {CLICK}>Apply</button><button id='n' {CLICK}>Next</button>", SOURCES)
+    old = summary(page)["applyId"]
+    fresh = summary(page)["applyId"]
+    assert old != fresh
+    assert advance_apply(page, old) == {"clicked": False, "why": "not_apply"}
+    for target in ("nope", "", None, 3):
+        assert advance_apply(page, target) == {"clicked": False, "why": "not_apply"}
+    # A Next button is not an Apply, whatever the caller says.
+    next_id = next(b["id"] for b in summary(page)["buttons"] if b["text"] == "Next")
+    assert advance_apply(page, next_id) == {"clicked": False, "why": "not_apply"}
+    page.evaluate("() => { document.getElementById('b').style.visibility = 'hidden'; }")
+    assert advance_apply(page, fresh) == {"clicked": False, "why": "not_apply"}
+    assert page.evaluate("() => window.hit || 0") == 0
+
+
+def test_an_apply_relabelled_between_the_summary_and_the_press_is_refused(page, load):
+    load(page, f"<h1>A</h1><button id='b' {CLICK}>Apply</button>", SOURCES)
+    apply_id = summary(page)["applyId"]
+    page.evaluate("() => { document.getElementById('b').textContent = 'Submit application'; }")
+    assert advance_apply(page, apply_id) == {"clicked": False, "why": "not_apply"}
+    assert page.evaluate("() => window.hit || 0") == 0
+
+
+def test_a_review_like_page_with_no_fields_is_a_posting_to_the_page_and_the_drivers_filled_flag_decides(page, load):
+    """After a fill, a field-less page with an Apply-worded button reads as a posting to the page
+    (it has no way to know). The driver's `filled` flag is what makes it the review page; this pins
+    that the page itself reports it as an Apply it WOULD press, so that flag is load-bearing."""
+    load(page, f"<h1>Review</h1><button {CLICK}>Apply</button>", SOURCES)
+    assert classify(page)["kind"] == "posting"
+
+
+@pytest.mark.parametrize("word", PIN_WORDS)
+@pytest.mark.parametrize("flavour", sorted(FLAVOURS))
+def test_the_apply_call_presses_a_pin_word_only_when_it_is_exactly_an_apply_wording(page, load, word, flavour):
+    load(page, FLAVOURS[flavour].format(w=word), SOURCES)
+    page.evaluate("""() => {
+      window.hit = 0;
+      document.getElementById('t').addEventListener('click', (e) => { e.preventDefault(); window.hit += 1; });
+    }""")
+    s = summary(page)
+    plain = re.fullmatch(r"\s*apply( now| for this job)?\s*", word, re.I) is not None and flavour != "aria label"
+    ids = [b["id"] for b in s["buttons"]] + ["unknown-id", ""]
+    results = [advance_apply(page, i)["clicked"] for i in ids]
+    assert page.evaluate("() => window.hit") == (1 if plain else 0)
+    assert results.count(True) == (1 if plain else 0)
+    assert (s["applyId"] is not None) == plain
+
+
+def test_the_step_key_tells_steps_apart_and_never_carries_the_heading(page, load):
+    load(page, "<h1>Your contact details</h1><button>Next</button>", SOURCES)
+    one = summary(page)["stepKey"]
+    again = summary(page)["stepKey"]
+    load(page, "<h1>Work history</h1><button>Next</button>", SOURCES)
+    two = summary(page)["stepKey"]
+    assert one and one == again and one != two
+    assert "contact" not in one.lower() and "work" not in two.lower()
+    load(page, "<nav><h2>Site menu</h2></nav><p>no heading</p>", SOURCES)
+    assert summary(page)["stepKey"] == ""
 
 
 # ---------- the ATS table's verdicts (Task 14) ----------

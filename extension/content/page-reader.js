@@ -12,6 +12,13 @@
  * times, re-read from the button itself at click time. Every label a person or a screen reader
  * could read counts; if any one of them carries a Submit word the button is a Submit.
  *
+ * The Apply of a POSTING is the one narrow exception, and it is its own call: `advance(id, {apply:
+ * true})`. "Apply" is a Submit word, so the plain call still refuses it. The apply call presses only
+ * what `summary().applyId` named, on a page with no fillable control, and only when EVERY label the
+ * control answers to is exactly an apply wording (APPLY_TEXT): "Apply", "Apply now", "Apply for this
+ * job". Whether the run may ask (the first page, nothing filled yet, the apply link's own host) is
+ * the driver's (shared/queue-run.js); the page re-checks what it can see.
+ *
  * `signIn` is the one place the saved job-site login is typed (design Part 4,
  * inv-job-site-password-local). It runs in the TOP frame only, on the host the run reached from the
  * job's apply link, on a page with exactly one plain password box; account creation, email codes and
@@ -147,14 +154,37 @@
     return own.some((s) => ONE_TIME_CODE.test(s ?? ""));
   };
 
+  const tag = (el) => {
+    const id = `${FRAME_TAG}-${++seq}`;
+    el.setAttribute("data-maestro-btn", id);
+    return id;
+  };
+
+  // Every label is an apply wording, nothing more: "Apply for Staff Engineer" in an aria-label is
+  // not "Apply", and a control that answers to a second wording is not the plain posting Apply.
+  const isApply = (el) => {
+    const all = labels(el);
+    return all.length > 0 && all.every((t) => APPLY_TEXT.test(t));
+  };
+
+  /** A short, stable key for the step's heading (the page's first visible h1 or h2): the same step
+   * reads the same, another step differs, and the heading itself never leaves the page (the summary
+   * carries no prose). It tells two wizard steps apart that share a URL and a button row. */
+  function stepKey() {
+    const heading = [...document.querySelectorAll("h1, h2")].find((el) => shown(el) && !el.closest(CHROME) && squash(el.textContent));
+    if (!heading) return "";
+    let hash = 0x811c9dc5;
+    for (const ch of squash(heading.textContent).toLowerCase()) hash = Math.imul(hash ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+    return hash.toString(36);
+  }
+
   /** The page, as plain data for `ns.pageKind.classify`. Re-tags every button (`data-maestro-btn`)
    * so an id from an earlier call stops naming anything. */
   function summary() {
     for (const old of document.querySelectorAll("[data-maestro-btn]")) old.removeAttribute("data-maestro-btn");
     const inForm = inFormOf(fieldForms());
     const buttons = [...document.querySelectorAll(BUTTONS)].map((el) => {
-      const id = `${FRAME_TAG}-${++seq}`;
-      el.setAttribute("data-maestro-btn", id);
+      const id = tag(el);
       const known = knownOf(el);
       return {
         id,
@@ -169,8 +199,13 @@
     });
     const bodyText = (document.body?.innerText ?? "").slice(0, BODY_SLICE);
     const passwords = passwordInputs();
+    // The posting's plain Apply, named for the one narrow `advance(id, {apply: true})` call. A link
+    // is not in `buttons`, so it is tagged here (a button keeps the id it was given above).
+    const applyEl = [...document.querySelectorAll(`a[href], ${BUTTONS}`)].find((el) => shown(el) && enabled(el) && isApply(el));
     return {
       host: location.hostname,
+      stepKey: stepKey(),
+      applyId: applyEl ? applyEl.getAttribute("data-maestro-btn") ?? tag(applyEl) : null,
       buttons,
       passwordInputs: passwords.length,
       confirmPassword: passwords.some(isConfirmPassword),
@@ -237,10 +272,27 @@
    * the panel then omits `apply_url`. Read from the page the user is on and nothing else. */
   const applyUrl = (posting) => applyTarget(posting?.url) ?? applyLink();
 
+  /** The posting's Apply, pressed on the driver's say-so and the page's own re-check: the control
+   * the last `summary()` named `applyId`, no fillable control anywhere on the page, and every label
+   * exactly an apply wording. `{clicked: true}` or `{clicked: false, why}`: "not_apply" (not that
+   * control, or not plainly worded as Apply), "not_posting" (the page has fields: it is a form, and
+   * its Apply-worded button is a Submit), "submit" (the vendor's table calls it one). */
+  function pressApply(id) {
+    const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
+    if (!el || !el.matches(`a[href], ${BUTTONS}`)) return { clicked: false, why: "not_apply" };
+    if (ns.fillableControls() > 0) return { clicked: false, why: "not_posting" };
+    if (knownOf(el) === "submit") return { clicked: false, why: "submit" };
+    if (!shown(el) || !enabled(el) || !isApply(el)) return { clicked: false, why: "not_apply" };
+    el.click();
+    return { clicked: true };
+  }
+
   /** Press the Next button the last `summary()` named `id`, if it is still one. Returns
    * `{clicked: true}` or `{clicked: false, why}`: "submit" (its text now carries a Submit word),
-   * "not_next" (no such tagged button, or it is hidden, disabled or not worded as a Next). */
-  function advance(id) {
+   * "not_next" (no such tagged button, or it is hidden, disabled or not worded as a Next).
+   * `{apply: true}` is the posting's Apply instead (pressApply), and only that. */
+  function advance(id, { apply = false } = {}) {
+    if (apply === true) return pressApply(id);
     if (typeof id !== "string" || !id) return { clicked: false, why: "not_next" };
     const el = document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`);
     if (!el || !el.matches(BUTTONS)) return { clicked: false, why: "not_next" };

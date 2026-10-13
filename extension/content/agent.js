@@ -645,12 +645,13 @@
     },
     /* The queued run's eyes and its one hand (content/page-reader.js). Gated like the fill
      * operations, each returning its empty shape in a refused frame. `page_advance` presses a
-     * Next button the reader named, re-sorting its text at click time; it never presses a Submit. */
+     * Next button the reader named, re-sorting its text at click time; it never presses a Submit.
+     * `apply: true` is the one narrow exception (a posting's plain Apply; see page-reader.js). */
     page_classify: (msg) => (frameMayReceiveUserData(msg)
       ? { summary: ns.pageReader.summary(), top: window.top === window.self }
       : { summary: null }),
     page_advance: (msg) => (frameMayReceiveUserData(msg)
-      ? ns.pageReader.advance(msg.id)
+      ? ns.pageReader.advance(msg.id, { apply: msg.apply === true })
       : { clicked: false, why: "gate" }),
     // The saved login: the TOP frame only, never gated on form evidence (a subframe is refused, not
     // asked). Reached only through panel_frame0, never the all-frames broadcast.

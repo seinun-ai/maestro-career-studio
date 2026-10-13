@@ -81,6 +81,9 @@ GUIDED_RUN_JS = (ROOT / "extension" / "shared" / "guided-run.js").read_text(enco
 # page operations (`fill_inventory` … `fill_sweep`) from this shared module; the
 # panel itself sends `fill_focus` (a report row's jump) and `fill_cancel` (Stop).
 FILL_LOOP_JS = (ROOT / "extension" / "shared" / "fill-loop.js").read_text(encoding="utf-8")
+# The queued run's page ops (`pageOps` in shared/queue-run.js) are where `page_classify`,
+# `page_advance` and `page_sign_in` are sent from.
+QUEUE_RUN_JS = (ROOT / "extension" / "shared" / "queue-run.js").read_text(encoding="utf-8")
 
 # `sw.js` is not in EXTENSION_SOURCES' job — it never runs in a page — and is
 # read here on its own so `extract` can slice the fan-out out of it. decisions.js
@@ -532,21 +535,18 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
     the claim, and a new in-page caller should have to come and change it.
 
     The scan reads every caller: the panel's files, `shared/guided-run.js`
-    and `shared/fill-loop.js`, which is where the rule pass's and the fill
-    engine's page messages are sent from. A typo in any `type:` string is a
-    feature that is silently dead.
+    and `shared/fill-loop.js` (where the rule pass's and the fill engine's
+    page messages are sent from), and `shared/queue-run.js` (the queued run's
+    page reads, its Next click and its sign-in). A typo in any `type:` string
+    is a feature that is silently dead.
     """
-    callers = SW_JS + PANEL_JS + GUIDED_RUN_JS + FILL_LOOP_JS
+    callers = SW_JS + PANEL_JS + GUIDED_RUN_JS + FILL_LOOP_JS + QUEUE_RUN_JS
     sent = set(re.findall(r'\btype:\s*"([a-z_]+)"', js_code(callers)))
     called = set(re.findall(r"ns\.pageHandlers\.([a-z_]+)\(", callers))
     handled = set(_page_handler_keys())
 
     reachable = sent | called
-    # The queued run's page reader landed before its driver (queued-run plan Task 13, then the
-    # panel runner): these three have no sender YET. The task that adds the sender empties this set.
-    awaiting_sender = {"page_classify", "page_advance", "page_sign_in"}
-    assert reachable & handled == handled - awaiting_sender, (
-        f"page handlers nobody reaches: {sorted(handled - reachable - awaiting_sender)}")
+    assert reachable & handled == handled, f"page handlers nobody reaches: {sorted(handled - reachable)}"
     assert handled == {
         "extract_job_posting", "detect_page", "profile_fill",
         "collect_open_questions", "fill_answers", "guided_write",

@@ -137,7 +137,8 @@ ns.fillOps = {
 // The page reader needs a real DOM too (tests/browser/test_page_reader.py drives it).
 ns.pageReader = {
   summary: () => { calls.push(["pageReader.summary", 0]); return { host: "x", buttons: [] }; },
-  advance: (id) => { calls.push(["pageReader.advance", id]); return { clicked: true }; },
+  // The Apply flag rides as a third element only when it was true: a plain Next click never carries it.
+  advance: (id, opts) => { calls.push(opts?.apply === true ? ["pageReader.advance", id, "apply"] : ["pageReader.advance", id]); return { clicked: true }; },
   // Records WHICH keys arrived, never the values: the secret must not ride out in a call log.
   signIn: (a) => { calls.push(["pageReader.signIn", Object.keys(a).sort(), a.allowedHost]); return { signedIn: "clicked" }; },
   applyUrl: () => null,   // extract_job_posting asks it for the employer's link
@@ -158,6 +159,7 @@ main(async () => {
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
     ...(spec.peek ? { peek: true } : {}),
+    ...(spec.apply === undefined ? {} : { apply: spec.apply }),
     ...(spec.readOnly ? { readOnly: true } : {}),
     // The origin the panel vouches for (`withFlowOrigin`), only when stated.
     ...(spec.flowOrigin === undefined ? {} : { flowOrigin: spec.flowOrigin }),
@@ -169,8 +171,10 @@ main(async () => {
 
 def _run(tmp_path, *, type_, top_frame, form=False, detect_throws=False, file_inputs=(),
          expect=None, peek=False, flow_origin=None, origin=None, controls=None,
-         read_only=False):
+         read_only=False, apply=None):
     extra = {}
+    if apply is not None:
+        extra["apply"] = apply
     if controls is not None:
         extra["controls"] = list(controls)
     if flow_origin is not None:
@@ -578,6 +582,17 @@ def test_page_classify_says_whether_it_is_the_top_frame_and_page_advance_forward
     assert sub["data"]["top"] is False
     out = _run(tmp_path, type_="page_advance", top_frame=True)
     assert out["calls"] == [["pageReader.advance", "tag-3"]] and out["data"] == {"clicked": True}
+
+
+@pytest.mark.parametrize("apply, expected", [
+    (None, [["pageReader.advance", "tag-3"]]),
+    (False, [["pageReader.advance", "tag-3"]]),
+    ("yes", [["pageReader.advance", "tag-3"]]),   # only a true boolean is the Apply call
+    (True, [["pageReader.advance", "tag-3", "apply"]]),
+])
+def test_page_advance_forwards_the_apply_flag_only_when_it_is_exactly_true(tmp_path, apply, expected):
+    out = _run(tmp_path, type_="page_advance", top_frame=True, apply=apply)
+    assert out["calls"] == expected
 
 
 @pytest.mark.parametrize("form", [False, True])
