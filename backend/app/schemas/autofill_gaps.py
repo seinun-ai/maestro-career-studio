@@ -1,8 +1,10 @@
 """The POST contract for the known-gaps list.
 
 extra="forbid" on both models is the privacy backstop (SYSTEM.md {#inv-autofill-telemetry-no-values}):
-a label, a value or an option text 422s instead of being stored. Every string is a closed enum or a
-pattern a typed answer cannot satisfy: a lowercase hash, a lowercase hostname, a shape or outcome word.
+a label, a value or an option text 422s instead of being stored. Shape and outcome are closed enums.
+The family and host patterns are shape checks, not proof: they admit any short lowercase token, so
+they bound what can ride along (no spaces, capitals or punctuation; a family no longer than the hash)
+and rely on the extension to post only the recipe hash and the page's hostname.
 """
 
 from typing import Literal
@@ -21,8 +23,9 @@ class GapIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # The recipe-book family hash (content/recipes.js) without its `f:` prefix.
-    family: str = Field(pattern=r"^[0-9a-z]{1,24}$")
+    # The recipe-book family hash (content/recipes.js) without its `f:` prefix: a 53-bit value in
+    # base 36, so at most 11 characters ((2**53 - 1).toString(36) is 11 long).
+    family: str = Field(pattern=r"^[0-9a-z]{1,11}$")
     host: str = Field(pattern=r"^[a-z0-9.-]{1,253}(:\d{1,5})?$")  # lowercase / punycode, as in a run trace
     shape: Shape | Literal["unknown"]
     outcome: GapOutcome

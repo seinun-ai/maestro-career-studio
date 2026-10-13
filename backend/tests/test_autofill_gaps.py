@@ -108,7 +108,7 @@ def test_the_batch_itself_refuses_extra_keys(client, db_session):
 
 
 @pytest.mark.parametrize("bad", [
-    {"family": ""}, {"family": "f:ab12"}, {"family": "AB12"}, {"family": "a" * 25}, {"family": "a b"},
+    {"family": ""}, {"family": "f:ab12"}, {"family": "AB12"}, {"family": "a" * 12}, {"family": "johnsmith1985"}, {"family": "a b"},
     {"host": ""}, {"host": "Careers.Acme.example"}, {"host": "a" * 254}, {"host": "acme.example/path"},
     {"host": "Pronouns, she/her"}, {"shape": "slider"}, {"shape": ""}, {"outcome": "filled"},
     {"outcome": ""},
@@ -132,6 +132,11 @@ def test_at_most_forty_gaps_per_post(client, db_session):
 def test_an_empty_post_is_accepted_and_stores_nothing(client, db_session):
     assert post(client).status_code == 204
     assert rows(db_session) == []
+
+
+def test_the_longest_real_recipe_hash_is_accepted(client):
+    """(2**53 - 1) in base 36, the largest value content/recipes.js can produce."""
+    assert post(client, gap(family="2gosa7pa2gv")).status_code == 204
 
 
 def test_a_host_with_a_port_is_accepted(client):
