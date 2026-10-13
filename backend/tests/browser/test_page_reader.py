@@ -844,7 +844,6 @@ def test_a_code_box_beside_the_password_parks(page):
     "<button>Sign in and submit</button>",
     "<button>Sign in with Google</button>",
     "<button aria-label='Submit application'>Sign in</button>",
-    "<button disabled>Sign in</button>",
     "<button style='display:none'>Sign in</button>",
     "",
 ])
@@ -854,6 +853,25 @@ def test_without_a_plain_sign_in_button_nothing_is_typed(page, buttons):
     serve(page, "https://x.test/signin", f"<form><input type='email'><input type='password'>{buttons}</form>")
     assert sign_in(page) == {"signedIn": False, "why": "no_button"}
     assert page.evaluate("() => [...document.querySelectorAll('input')].map((i) => i.value)") == ["", ""]
+
+
+ENABLE_ON_INPUT = """<form onsubmit='return false'><input id='e' type='email'><input id='p' type='password'>
+  <button id='b' disabled onclick='window.hit = 1'>Sign in</button></form><script>
+  const [e, p, b] = ['e', 'p', 'b'].map((id) => document.getElementById(id));
+  const sync = () => { b.disabled = {rule}; };
+  e.addEventListener('input', sync); p.addEventListener('input', sync);</script>"""
+
+
+def test_a_sign_in_button_that_enables_after_both_boxes_are_filled_still_signs_in(page):
+    serve(page, "https://x.test/signin", ENABLE_ON_INPUT.replace("{rule}", "!(e.value && p.value)"))
+    assert sign_in(page) == {"signedIn": "clicked"}
+    assert page.evaluate("() => window.hit") == 1
+
+
+def test_a_sign_in_button_that_stays_disabled_after_typing_is_not_clicked(page):
+    serve(page, "https://x.test/signin", ENABLE_ON_INPUT.replace("{rule}", "true"))
+    assert sign_in(page) == {"signedIn": False, "why": "button"}
+    assert page.evaluate("() => window.hit === 1") is False
 
 
 @pytest.mark.parametrize("label", ["Sign in", "Log in", "LOGIN", "Continue", "Next", "  sign   in "])

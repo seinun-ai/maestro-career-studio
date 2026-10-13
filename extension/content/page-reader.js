@@ -380,9 +380,12 @@
     const scope = box.form ?? box.closest(FORM) ?? document;
     const emailEl = emailBox(scope);
     if (!emailEl) return { signedIn: false, why: "no_email" };
-    const plain = (el) => el.isConnected && !el.closest(CHROME) && shown(el) && enabled(el)
+    // Found by wording and visibility; ENABLED is asked only at the click (below), because many
+    // forms enable Sign in only once both boxes hold a value.
+    const worded = (el) => el.isConnected && !el.closest(CHROME) && shown(el)
       && SIGN_IN_BUTTON.test(labelOf(el)) && sortOf(labelOf(el)) !== "submit";
-    const go = [...scope.querySelectorAll(BUTTONS)].find(plain);
+    const plain = (el) => worded(el) && enabled(el);
+    const go = [...scope.querySelectorAll(BUTTONS)].find(worded);
     if (!go) return { signedIn: false, why: "no_button" };
 
     const { typeText, enter, leave } = ns.fillBase;
@@ -396,7 +399,7 @@
     } catch {
       return { signedIn: false, why: "typing" };   // a fixed word: an error's text could carry a value
     }
-    // Typing ran the page's own input handlers, which can relabel or remove the button: judged again.
+    // Typing ran the page's own input handlers, which can enable, relabel or remove the button: judged again.
     if (!plain(go)) return { signedIn: false, why: "button" };
     try {
       go.click();
