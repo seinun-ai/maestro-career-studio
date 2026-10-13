@@ -64,18 +64,18 @@ def test_a_pick_route_is_slot_or_low_stakes_only():
         PickField(**_pick_field(route="free_text"))
 
 
-@pytest.mark.parametrize("host", ["careers.acme.example", "ACME.wd5.myworkdayjobs.example", "localhost", "a-b.example",
-                                  "x" * 63, ".".join(["a"] * 100)[:253]])
-def test_a_page_host_is_a_hostname(host):
-    assert PickRequest(fields=[_pick_field()], page_host=host).page_host == host
-    assert PickRequest(fields=[_pick_field()]).page_host is None
+@pytest.mark.parametrize("url", ["https://job-boards.greenhouse.io/acme/jobs/7?gh_jid=7", "http://localhost:3000/apply",
+                                 "HTTPS://ACME.example/a", "https://acme.example/" + "x" * 2000])
+def test_a_page_url_is_an_http_address(url):
+    assert PickRequest(fields=[_pick_field()], page_url=url).page_url == url
+    assert PickRequest(fields=[_pick_field()]).page_url is None
 
 
-@pytest.mark.parametrize("host", ["", "acme.example:8443", "https://acme.example", "acme.example/path", "[::1]",
-                                  "-acme.example", "acme..example", "a b.example", "x" * 254])
-def test_a_page_host_that_is_not_a_hostname_is_refused(host):
+@pytest.mark.parametrize("url", ["", "acme.example/apply", "javascript:alert(1)", "chrome://extensions", "file:///etc/passwd",
+                                 "https://acme.example/a b", "https://acme.example/" + "x" * 2100])
+def test_a_page_url_that_is_not_an_http_address_is_refused(url):
     with pytest.raises(ValidationError):
-        PickRequest(fields=[_pick_field()], page_host=host)
+        PickRequest(fields=[_pick_field()], page_url=url)
 
 
 def test_the_source_hint_is_bounded():

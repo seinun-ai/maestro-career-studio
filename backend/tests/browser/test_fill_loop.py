@@ -600,35 +600,43 @@ def test_source_hint_survives_a_malformed_query(page, load):
 
 
 @pytest.mark.parametrize("url, expected", [
-    ("https://Job-Boards.Greenhouse.io/acme/jobs/7?source=x", "job-boards.greenhouse.io"),
-    ("https://acme.example:8443/apply", "acme.example"),  # no port
-    ("https://acme.example./apply", "acme.example"),
-    ("http://[::1]:3000/apply", None),  # an IPv6 literal is not a hostname the backend takes
+    ("https://job-boards.greenhouse.io/acme/jobs/7?gh_jid=7#apply", "https://job-boards.greenhouse.io/acme/jobs/7?gh_jid=7"),
+    ("http://acme.example:8443/apply", "http://acme.example:8443/apply"),
     ("about:blank", None),
+    ("chrome://extensions", None),
     ("not a url", None),
     ("", None),
+    ("https://acme.example/" + "x" * 2100, None),  # past the backend's bound
 ])
-def test_page_host_is_the_pages_hostname_or_null(page, load, url, expected):
+def test_page_url_is_the_pages_address_without_its_fragment_or_null(page, load, url, expected):
     load(page, "<div></div>", sources=LOOP_SOURCES)
-    assert page.evaluate("(u) => window.careerStudioCompanion.fillLoop.pageHostOf(u)", url) == expected
+    assert page.evaluate("(u) => window.careerStudioCompanion.fillLoop.pageUrlOf(u)", url) == expected
 
 
-def test_every_ask_carries_the_page_host_when_the_panel_knows_it(page, load):
+def test_every_ask_carries_the_page_url_when_the_panel_knows_it(page, load):
+    url = "https://job-boards.greenhouse.io/acme/jobs/7/apply?gh_jid=7"
     out = run(page, load, frames=[[f("a", question="City"), f("g", "select", "Gender", options=[opt("o1", "Female")],
                                                               optionsComplete=True)]],
               map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
                    "g": {"route": "slot", "slot": "eeo.gender", "value": "Female"}},
               pick={"g": {"oids": ["o1"], "reason": "matched"}},
-              options={"sourceHint": None, "pageHost": "careers.acme.example"})
+              options={"sourceHint": None, "pageUrl": url})
     asks = bodies(out, "/api/autofill/map") + bodies(out, "/api/autofill/pick")
-    assert asks and all(body["page_host"] == "careers.acme.example" for body in asks)
-    assert not [b for b in bodies(out, "/api/autofill/map") if "page_host" not in b]
+    assert asks and all(body["page_url"] == url for body in asks)
 
 
-def test_no_page_host_is_sent_when_there_is_none(page, load):
+def test_the_page_url_never_reaches_the_run_trace_or_the_report(page, load):
+    url = "https://job-boards.greenhouse.io/acme/jobs/7/apply?gh_jid=7"
+    out = run(page, load, frames=[[f("a", question="City")]],
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
+              options={"sourceHint": None, "pageUrl": url})
+    assert "greenhouse" not in json.dumps(out["report"]) and "gh_jid" not in json.dumps(out["report"])
+
+
+def test_no_page_url_is_sent_when_there_is_none(page, load):
     out = run(page, load, frames=[[f("a", question="City")]],
               map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
-    assert all("page_host" not in body for body in bodies(out, "/api/autofill/map"))
+    assert all("page_url" not in body for body in bodies(out, "/api/autofill/map"))
 
 
 # ---------- the contracts Tasks 4–6 settled

@@ -81,8 +81,8 @@ MAX_PICK_OPTIONS = 250  # Jev Choice ceiling 255 incl. `none`
 RESERVED_OID = "none"
 # The extension's field id, `<frame>-<n>` (content/inventory.js).
 FID = r"^[A-Za-z0-9_-]{1,64}$"
-# A hostname: dot-separated labels of letters, digits and inner hyphens (no port, no IPv6 literal).
-HOSTNAME = r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"
+# The page the fill is on: an http(s) address, no whitespace.
+PAGE_URL = r"^[Hh][Tt][Tt][Pp][Ss]?://\S+$"
 
 
 class Selector(BaseModel):
@@ -94,10 +94,11 @@ class Selector(BaseModel):
     # The browser's own date: "today" is the applicant's, and the server may
     # run on UTC. Taken only within a day of the server's (routers/autofill).
     today: date | None = None
-    # The page's own hostname (location.hostname): a job is Queued for THIS fill only when the page
-    # is its own site (routers/autofill._queued). The panel restores an application_id per ATS tenant,
-    # so the id alone would let another job on the same tenant inherit "queued".
-    page_host: str | None = Field(default=None, max_length=253, pattern=HOSTNAME)
+    # The page's own address (location.href, no fragment): a job is Queued for THIS fill only when the
+    # page is that job's own posting (routers/autofill._queued). The panel restores an application_id
+    # per ATS tenant, and one host serves many employers, so neither the id nor the host is enough.
+    # Used for that comparison alone: never stored, traced or sent on.
+    page_url: str | None = Field(default=None, max_length=2048, pattern=PAGE_URL)
 
 
 class MapField(BaseModel):

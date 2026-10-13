@@ -52,6 +52,7 @@ from app.services import (
     autofill_trace,
     base_resume_data,
     eeo_consent,
+    job_url_match,
     model_settings,
 )
 from app.services.autofill_context import employment_blocks, resume_skills
@@ -401,28 +402,21 @@ def _job_hint(
     )
 
 
-def _host_of(url: str | None) -> str | None:
-    try:
-        return urlsplit(url).hostname if url else None
-    except ValueError:
-        return None
-
-
-def _queued(db: Session, application_id: UUID | None, page_host: str | None) -> bool:
+def _queued(db: Session, application_id: UUID | None, page_url: str | None) -> bool:
     """Whether this fill is for a job the user queued: the job has a proposal
-    they accepted (or that was approved) AND the page is the job's own site (the
-    host of its apply link or its source link, or a subdomain of it). Only then
-    may the "Queued means I qualify" level answer its requirement questions Yes.
-    The panel restores an application per ATS tenant, so the id alone would let
-    another job on the same tenant inherit "queued"; no page host is not queued.
+    they accepted (or that was approved) AND the page is that job's own posting
+    (its apply link or its source link; `job_url_match.is_same_posting` treats an
+    apply sub-path as the same posting and fails toward "not"). Only then may the
+    "Queued means I qualify" level answer its requirement questions Yes. The panel
+    restores an application per ATS tenant, and one host serves many employers,
+    so neither the id nor the host would do; no page address is not queued.
     Read here, never taken from the page's say-so."""
     application = db.get(Application, application_id) if application_id is not None else None
-    if application is None or not page_host:
+    if application is None or not page_url:
         return False
     job = db.get(Job, application.job_id)
-    hosts = {h for h in (_host_of(job.apply_url), _host_of(job.source_url)) if h} if job else set()
-    page = page_host.lower().rstrip(".")
-    if not any(page == host or page.endswith(f".{host}") for host in hosts):
+    if job is None or not (job_url_match.is_same_posting(job.apply_url, page_url)
+                           or job_url_match.is_same_posting(job.source_url, page_url)):
         return False
     return db.scalar(select(
         exists().where(ApplicationProposal.job_id == application.job_id,
@@ -438,7 +432,7 @@ def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> Ma
     return MapResponse(fields=autofill_map.map_fields(
         payload.fields, facts, db, eeo_consented=consented,
         low_stakes=model_settings.get_autofill_low_stakes(db),
-        level=model_settings.get_answer_level(db), queued=_queued(db, payload.application_id, payload.page_host)))
+        level=model_settings.get_answer_level(db), queued=_queued(db, payload.application_id, payload.page_url)))
 
 
 @router.post("/pick", response_model=PickResponse)
@@ -447,7 +441,7 @@ def post_pick(payload: PickRequest, db: Annotated[Session, Depends(get_db)]) -> 
     facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return PickResponse(picks=autofill_pick.pick(
         payload.fields, facts, db, _job_hint(db, payload.application_id, payload.source_hint),
-        queued=_queued(db, payload.application_id, payload.page_host)))
+        queued=_queued(db, payload.application_id, payload.page_url)))
 
 
 @router.post("/step", response_model=StepResponse)
@@ -456,7 +450,7 @@ def post_step(payload: StepRequest, db: Annotated[Session, Depends(get_db)]) -> 
     the moves the page's code generated. The fact comes from the slot."""
     facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return autofill_step.step(payload, facts, db, _job_hint(db, payload.application_id, payload.source_hint),
-                              queued=_queued(db, payload.application_id, payload.page_host))
+                              queued=_queued(db, payload.application_id, payload.page_url))
 
 
 @router.post("/sections", response_model=SectionsResponse)

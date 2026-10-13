@@ -157,7 +157,7 @@
  * emitted); `ignored`, `help` and every explore result are never read.
  * Recording is additive: it changes no status, request or page action.
  *
- * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, pageHostOf, limits,
+ * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, pageUrlOf, limits,
  * buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines }.
  */
 (() => {
@@ -229,12 +229,14 @@
       return null;
     }
   };
-  // The page's own hostname, sent so the backend can tell a job's own site from another job on the same
-  // ATS tenant (the panel restores an application per tenant). Null for anything the backend would refuse.
-  const pageHostOf = (url) => {
+  // The page's own address (no fragment), sent so the backend can tell the posting a job was saved from
+  // from another job on the same ATS tenant or host. It only ever rides a request body: the trace and the
+  // receipt are built from rows, never from the selector. Null for anything the backend would refuse.
+  const pageUrlOf = (url) => {
     try {
-      const host = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
-      return host.length <= 253 && /^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host) ? host : null;
+      const u = new URL(url);
+      u.hash = "";
+      return /^https?:$/.test(u.protocol) && u.href.length <= 2048 ? u.href : null;
     } catch {
       return null;
     }
@@ -428,7 +430,7 @@
     };
     if (options.applicationId) selector.application_id = options.applicationId;
     else if (options.base) selector.base = String(options.base).slice(0, 200);
-    if (options.pageHost) selector.page_host = String(options.pageHost);
+    if (options.pageUrl) selector.page_url = String(options.pageUrl);
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
     // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome,
     //   deadline, spent, started, recommits, failedMoves, ignored, wrote, wroteAs,
@@ -2059,5 +2061,5 @@
     return [`${s.heading}: ${s.added} of ${needed} added. Add the rest yourself.`];
   });
 
-  ns.fillLoop = { runFill, sourceHintOf, pageHostOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
+  ns.fillLoop = { runFill, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
 })();

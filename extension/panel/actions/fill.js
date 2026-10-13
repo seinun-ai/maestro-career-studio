@@ -456,7 +456,7 @@
         applicationId: facts.application?.id ?? null,
         base: facts.application ? null : facts.baseSlug,
         sourceHint: ns.fillLoop.sourceHintOf(facts.url),
-        pageHost: ns.fillLoop.pageHostOf(facts.url),
+        pageUrl: ns.fillLoop.pageUrlOf(facts.url),
       });
       // After the run's own attach (`beforeSweep` set `auto`), so the upload is on the receipt.
       const flags = await recordReceipt(store, facts, token,
