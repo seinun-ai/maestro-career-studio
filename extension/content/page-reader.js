@@ -20,9 +20,10 @@
  * Submit word. And it presses only a real navigation LINK (an <a> with an http(s) href that is not
  * "#", not javascript:, not target=_blank, which opens a tab the run cannot follow). A <button>
  * Apply is never pressed, form or no form: a form-less one is page script (a quick-apply, a
- * draft's review) that may well send the application, so the page parks as a posting. Whether the
- * run may ask at
- * all (the first page of a tab it opened itself) is the driver's (shared/queue-run.js).
+ * draft's review) that may well send the application, so the page parks as a posting. The link is
+ * NAVIGATED to (location.assign of its checked address), never clicked: a click would run its
+ * onclick or router script, which can send the application too. Whether the run may ask at all
+ * (the first page of a tab it opened itself) is the driver's (shared/queue-run.js).
  *
  * `signIn` is the one place the saved job-site login is typed (design Part 4,
  * inv-job-site-password-local). It runs in the TOP frame only, on the host the run reached from the
@@ -55,6 +56,14 @@
   // Site chrome: a "Continue" in a header or nav is the site's, never the application step's, and a
   // newsletter form in a footer is not "the form".
   const CHROME = 'header, nav, footer, [role="banner"], [role="navigation"], [role="search"], [role="contentinfo"], [role="menubar"]';
+  // A footer inside the application's own content (a wizard's action bar) is not the site's.
+  const CONTENT_BOX = 'main, article, section, form, dialog, [role="main"], [role="dialog"], [role="alertdialog"], [role="form"]';
+  const inChrome = (el) => {
+    for (let n = el.closest(CHROME); n; n = n.parentElement?.closest(CHROME)) {
+      if (n.tagName !== "FOOTER" || !n.parentElement?.closest(CONTENT_BOX)) return true;
+    }
+    return false;
+  };
   // Everything on a page a person could press as a button, for the "is there a Submit here" check
   // ONLY (what may be pressed as a Next stays BUTTONS): an ARIA button of any tag, an image input,
   // a plain link.
@@ -142,10 +151,10 @@
     return r.right + window.scrollX > 0 && r.bottom + window.scrollY > 0;
   };
   const fieldForms = () => [...document.querySelectorAll(FORM)]
-    .filter((f) => !f.closest(CHROME) && [...f.querySelectorAll(FIELD)].some((c) => shown(c) && onPage(c)));
+    .filter((f) => !inChrome(f) && [...f.querySelectorAll(FIELD)].some((c) => shown(c) && onPage(c)));
 
   const inFormOf = (forms) => (el) => {
-    if (!forms.length) return !el.closest(CHROME);
+    if (!forms.length) return !inChrome(el);
     const form = el.form ?? el.closest(FORM);
     return forms.some((f) => f === form || f.contains(el));
   };
@@ -192,27 +201,35 @@
   const submitSeen = () => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
     if (!shown(el)) return false;
     const extra = !el.matches(BUTTONS);
-    if (extra && (el.closest(CHROME) || shownTextOf(el).length > MAX_TEXT)) return false;
+    if (extra && (inChrome(el) || shownTextOf(el).length > MAX_TEXT)) return false;
     return submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit");
   });
 
   /** The step's first visible h1/h2 text, outside site chrome. */
   const stepHeading = () => {
-    const heading = [...document.querySelectorAll("h1, h2")].find((el) => shown(el) && !el.closest(CHROME) && squash(el.textContent));
+    const heading = [...document.querySelectorAll("h1, h2")].find((el) => shown(el) && !inChrome(el) && squash(el.textContent));
     return heading ? squash(heading.textContent) : "";
   };
 
   /** True when a visible dialog, or the step's own heading, asks about submitting ("Submit your
-   * application?", "Review and submit"): then its Proceed or Continue is the Submit's. A boolean;
-   * the words never leave the page. */
+   * application?", "Are you sure you want to apply?", "Review and submit"): then its Proceed or
+   * Continue is the Submit's. A boolean; the words never leave the page.
+   *
+   * A DIALOG is judged by the full button sort (any Submit word: apply, send, finish...): a dialog
+   * that names its title that way is asking, and the cost of a wrong guess is a stopped run. Its
+   * body text counts too when it asks a question. The page's own STEP HEADING keeps the narrow
+   * SUBMIT_HEADING, since "Apply to Acme" and "Complete your profile" head ordinary steps. */
   const submitContext = () => {
-    const dialogs = [...document.querySelectorAll(DIALOG)].filter(shown).map((d) => [
-      d.getAttribute("aria-label"), d.getAttribute("title"),
-      ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => d.ownerDocument.getElementById(id)?.textContent),
-      ...[...d.querySelectorAll("h1, h2, h3, h4, [role='heading']")].map((h) => h.textContent),
-      (d.textContent ?? "").slice(0, 300),
-    ].map(squash).join(" "));
-    return [stepHeading(), ...dialogs].some((text) => SUBMIT_HEADING.test(text));
+    const asks = [...document.querySelectorAll(DIALOG)].filter(shown).some((d) => {
+      const body = squash((d.textContent ?? "").slice(0, 300));
+      return [
+        d.getAttribute("aria-label"), d.getAttribute("title"),
+        ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => d.ownerDocument.getElementById(id)?.textContent),
+        ...[...d.querySelectorAll("h1, h2, h3, h4, [role='heading']")].map((h) => h.textContent),
+        body.includes("?") ? body : "",
+      ].map(squash).some((text) => text && sortOf(text) === "submit");
+    });
+    return asks || SUBMIT_HEADING.test(stepHeading());
   };
 
   const tag = (el) => {
@@ -369,7 +386,10 @@
     if (knownOf(el) === "submit" || submitMarked(el)) return { clicked: false, why: "submit" };
     if (!shown(el) || !enabled(el) || !isApply(el)) return { clicked: false, why: "not_apply" };
     if (!applyPressable(el)) return { clicked: false, why: "would_submit" };
-    el.click();
+    // NAVIGATE to the address just checked; do not click. A click runs the link's handlers (an
+    // onclick quick-apply, an SPA router), which are page script that can send the application.
+    // `el.href` is the parsed, absolute http(s) address `applyPressable` approved.
+    location.assign(el.href);
     return { clicked: true };
   }
 
@@ -442,7 +462,7 @@
     if (!emailEl) return { signedIn: false, why: "no_email" };
     // Found by wording and visibility; ENABLED is asked only at the click (below), because many
     // forms enable Sign in only once both boxes hold a value.
-    const worded = (el) => el.isConnected && !el.closest(CHROME) && shown(el)
+    const worded = (el) => el.isConnected && !inChrome(el) && shown(el)
       && SIGN_IN_BUTTON.test(labelOf(el)) && sortOf(labelOf(el)) !== "submit";
     const plain = (el) => worded(el) && enabled(el);
     const go = [...scope.querySelectorAll(BUTTONS)].find(worded);

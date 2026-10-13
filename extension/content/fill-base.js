@@ -450,11 +450,21 @@
     return false;
   };
 
-  // A password box by SHAPE, never by label: its type, or (a show-password toggle makes it
-  // type=text) the autocomplete token it still carries. ONE definition for the inventory, which
-  // never lists one, and the page reader, which counts them and types the saved login into one.
-  const isPasswordBox = (el) => el instanceof HTMLInputElement
-    && (el.type === "password" || /(^|\s)(current|new)-password(\s|$)/i.test(el.getAttribute("autocomplete") ?? ""));
+  // A password box: its type, or (a show-password toggle makes it type=text) the autocomplete token
+  // it still carries. "current-password" says it alone; "new-password" does not, because forms put
+  // it on ordinary text boxes to stop the browser's autofill, so it counts only when the box's own
+  // name, id, label or placeholder says password. ONE definition for the inventory, which never
+  // lists one, and the page reader, which counts them and types the saved login into one.
+  const PASSWORD_WORD = /pass|pwd/i;
+  const isPasswordBox = (el) => {
+    if (!(el instanceof HTMLInputElement)) return false;
+    if (el.type === "password") return true;
+    const tokens = (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/);
+    if (tokens.includes("current-password")) return true;
+    if (!tokens.includes("new-password")) return false;
+    return [el.name, el.id, el.placeholder, el.getAttribute("aria-label"), ...[...(el.labels ?? [])].map((l) => l.textContent)]
+      .some((text) => PASSWORD_WORD.test(text ?? ""));
+  };
 
   ns.fillBase = {
     isPasswordBox, Cancelled, Unfocusable, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,

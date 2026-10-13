@@ -14,6 +14,7 @@ import json
 import re
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 
 from tests.browser.conftest import ENGINE_SOURCES, EXTENSION, fixture_html
 from tests.browser.pages import oracle
@@ -39,6 +40,23 @@ def advance(page, button_id):
 
 def advance_apply(page, button_id):
     return page.evaluate(f"(id) => {READER}.advance(id, {{apply: true}})", button_id)
+
+
+def landing(page, press):
+    """Run `press` (an Apply press) and wait for the tab to navigate; return (result, new url).
+    The route answers any request to the test hosts, so the landing page exists. A navigation can
+    destroy the page's context before `evaluate` answers, so a press that did navigate and lost
+    its answer reads as the click it was (the navigation is the evidence)."""
+    page.route(re.compile(r"https://(jobs|careers)\.acme\.test/.*"), lambda route: route.fulfill(
+        status=200, content_type="text/html", body="<p>landed</p>"))
+    with page.expect_navigation() as nav:
+        try:
+            result = press()
+        except PlaywrightError as err:
+            if "context was destroyed" not in str(err):
+                raise
+            result = {"clicked": True}
+    return result, nav.value.url
 
 
 def button(s, text):
@@ -433,6 +451,20 @@ def test_the_steps_own_heading_can_be_the_submit_context(page, load):
     assert classify(page)["kind"] == "review"
 
 
+@pytest.mark.parametrize("dialog", [
+    "<div aria-modal='true'><h2>Are you sure you want to apply?</h2><button>Continue</button></div>",
+    "<div role='alertdialog' aria-label='Finish your application?'><button>Proceed</button></div>",
+    "<div role='dialog'><p>Ready to send? Your details go to Acme.</p><button>Continue</button></div>",
+    "<dialog open aria-labelledby='t'><span id='t'>Confirm and apply</span><button>Continue</button></dialog>",
+])
+def test_a_dialog_with_any_submit_word_in_its_question_is_a_submit_context(page, load, dialog):
+    """Dialogs are judged by the full button sort, not the narrow step-heading words; the lone
+    Continue is never offered as the step."""
+    load(page, dialog, SOURCES)
+    assert summary(page)["submitContext"] is True
+    assert classify(page) == {"kind": "review"}
+
+
 @pytest.mark.parametrize("html", [
     "<h1>Apply to Acme: Data Analyst</h1><label for='a'>Name</label><input id='a'><button>Next</button>",
     "<h1>Complete your profile</h1><label for='a'>Name</label><input id='a'><button>Next</button>",
@@ -505,6 +537,18 @@ def test_a_toggled_password_box_counts_as_a_password(page, load):
     assert page.evaluate("() => window.careerStudioCompanion.fillInventory.list({}).fields.length") == 0
 
 
+def test_a_footer_in_the_applications_own_content_keeps_its_next(page, load):
+    """A wizard's own footer action bar (inside main, a form or a section) is not site chrome."""
+    load(page, """<main><label for='a'>Name</label><input id='a'>
+      <footer><button>Back</button><button>Save and Continue</button></footer></main>""", SOURCES)
+    assert {b["text"]: b["inForm"] for b in summary(page)["buttons"]}["Save and Continue"] is True
+    assert classify(page)["kind"] == "form_step"
+    load(page, """<form><label for='a'>Name</label><input id='a'><footer><button>Next</button></footer></form>""", SOURCES)
+    assert classify(page)["kind"] == "form_step"
+    load(page, """<label for='a'>Name</label><input id='a'><footer><button>Next</button></footer>""", SOURCES)
+    assert summary(page)["buttons"][0]["inForm"] is False   # the page's own bottom footer is the site's
+
+
 def test_a_footer_newsletter_form_is_not_the_pages_form(page, load):
     load(page, NO_FORM_PAGE + "<footer><form><label for='em'>Email</label><input id='em'>"
                               "<button type='button'>Subscribe</button></form></footer>", SOURCES)
@@ -549,8 +593,11 @@ def test_the_postings_plain_apply_is_named_and_pressed_only_by_the_apply_call(pa
     # Without the flag it is the Submit word it always was (a bare link is no button at all).
     assert advance(page, s["applyId"])["clicked"] is False
     assert page.evaluate("() => window.hit || 0") == 0
-    assert advance_apply(page, s["applyId"]) == {"clicked": True}
-    assert page.evaluate("() => window.hit") == 1
+    result, url = landing(page, lambda: advance_apply(page, s["applyId"]))
+    assert result == {"clicked": True}
+    # The tab went to the link's address. Its own handler (which would have recorded a hit and
+    # cancelled the navigation) never ran: the press is a navigation, not a click.
+    assert url.startswith("https://jobs.acme.test/jobs/9/apply")
 
 
 @pytest.mark.parametrize("html", [
@@ -689,8 +736,8 @@ def test_an_apply_that_belongs_to_a_form_is_neither_named_nor_pressed(page, load
 def test_the_apply_call_names_the_link_beside_a_forms_apply_button_not_the_button(page, load):
     load(page, f"<form><button {CLICK}>Apply</button></form><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply</a>", SOURCES)
     s = summary(page)
-    assert advance_apply(page, s["applyId"]) == {"clicked": True}
-    assert page.evaluate("() => window.hit") == 1
+    result, url = landing(page, lambda: advance_apply(page, s["applyId"]))
+    assert result == {"clicked": True} and url.startswith("https://jobs.acme.test/jobs/9/apply")
 
 
 @pytest.mark.parametrize("href, target", [
@@ -713,8 +760,9 @@ def test_a_link_that_goes_nowhere_or_opens_a_tab_is_not_an_apply_the_run_presses
 def test_a_same_tab_http_link_is_pressable_whatever_the_case_of_self(page, load, attr):
     load(page, f"<h1>A</h1><a href='https://jobs.acme.test/jobs/9/apply'{attr} {CLICK}>Apply</a>", SOURCES)
     s = summary(page)
-    assert s["applyId"] and advance_apply(page, s["applyId"]) == {"clicked": True}
-    assert page.evaluate("() => window.hit") == 1
+    assert s["applyId"]
+    result, url = landing(page, lambda: advance_apply(page, s["applyId"]))
+    assert result == {"clicked": True} and url.startswith("https://jobs.acme.test/jobs/9/apply")
 
 
 def test_an_absolute_https_link_is_pressable(page, load):
@@ -785,8 +833,17 @@ def run_driver(page, *, swap="", signIn=False, **record):
 
 def test_a_fresh_run_whose_first_page_has_an_apply_link_presses_it(page, load):
     serve(page, APPLY_URL, f"<h1>Analyst at Acme</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply</a>")
-    out = run_driver(page)
-    assert out["calls"] == [["advance", True]] and out["hit"] == 1
+    # The navigation can destroy the evaluate's context first; the landing address is the evidence.
+    page.route(re.compile(r"https://jobs\.acme\.test/jobs/.*"), lambda route: route.fulfill(
+        status=200, content_type="text/html", body="<p>landed</p>"))
+    with page.expect_navigation() as nav:
+        try:
+            out = run_driver(page)
+            assert out["calls"] == [["advance", True]] and out["hit"] == 0
+        except PlaywrightError as err:
+            if "context was destroyed" not in str(err):
+                raise
+    assert nav.value.url == "https://jobs.acme.test/jobs/9/apply"
 
 
 def test_a_draft_review_page_with_only_hidden_inputs_and_an_apply_submit_is_never_pressed(page, load):
@@ -1196,10 +1253,26 @@ def test_the_inventory_lists_no_password_even_when_the_box_is_labelled_like_a_pl
 def test_the_inventory_lists_no_box_that_declares_itself_a_password_by_autocomplete(page, load):
     """A show-password toggle turns a password box into type=text: its autocomplete token still says
     what it is, and that is a shape, not a label."""
-    load(page, "<label>Choose a value <input type='text' autocomplete='new-password'></label>"
+    load(page, "<label>Choose a password <input type='text' autocomplete='new-password'></label>"
                "<label>Current <input autocomplete='current-password'></label>"
                "<label>Nickname <input autocomplete='nickname'></label>", SOURCES)
     assert [f["question"] for f in _inventory(page, consentForms=True, runId="r1")] == ["Nickname"]
+
+
+def test_a_text_box_that_says_new_password_only_to_stop_autofill_is_an_ordinary_field(page, load):
+    """Forms put autocomplete=new-password on any text box to stop the browser's autofill. Only a
+    box whose own name, id, label or placeholder says password counts as one."""
+    load(page, "<label>City <input type='text' name='city' autocomplete='new-password'></label>"
+               "<button>Next</button>", SOURCES)
+    s = summary(page)
+    assert (s["passwordInputs"], s["confirmPassword"]) == (0, False)
+    assert classify(page)["kind"] == "form_step"
+    assert [f["question"] for f in _inventory(page, consentForms=True, runId="r1")] == ["City"]
+    load(page, "<input type='text' name='password' autocomplete='new-password'>", SOURCES)
+    assert summary(page)["passwordInputs"] == 1
+    load(page, "<label>Pass phrase <input type='text' autocomplete='new-password'></label>", SOURCES)
+    assert summary(page)["passwordInputs"] == 1
+    assert _inventory(page, consentForms=True, runId="r1") == []
 
 
 # ---------- the employer's apply link (queued-run plan Task 16) ----------
