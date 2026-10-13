@@ -50,6 +50,8 @@ const summaryOf = (p) => {
       s.buttons = ["Autofill with Resume", "Apply Manually", "Use My Last Application"].map((t, i) => btn(`ch-${i}`, t)); break;
     case "alert_posting": s.fillable = 1; s.hasApplyLink = true;
       s.buttons = [btn("alert-1", "Subscribe", { inForm: false }), btn("apply-1", "Apply now", { inForm: false })]; break;
+    case "unseen_submit": s.fillable = 2; s.buttons = [btn(`n-${p.n ?? 0}`, "Next")]; s.submitSeen = true; break;
+    case "submit_dialog": s.fillable = 2; s.buttons = [btn(`n-${p.n ?? 0}`, "Next")]; s.submitContext = true; break;
     case "unknown": break;
     default: throw new Error(`no page type ${p.t}`);
   }
@@ -639,6 +641,16 @@ def test_a_carousel_next_at_the_top_does_not_outvote_the_form_in_an_embedded_fra
 def test_a_visible_submit_in_a_subframe_makes_the_tab_the_review_page(tmp_path):
     for top in (step(0, fillable=0), step(0, fillable=2), {"t": "posting"}):
         frames = [{"frameId": 0, "top": True, "page": top}, {"frameId": 4, "page": REVIEW}]
+        out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": frames}])
+        assert out["record"]["status"] == "ready" and names(out, "advance") == [], top
+
+
+@pytest.mark.parametrize("sub", [{"t": "unseen_submit"}, {"t": "submit_dialog"}])
+def test_a_subframe_whose_only_submit_signal_is_unseen_or_a_dialog_makes_the_tab_review(tmp_path, sub):
+    """A div role=button Submit (submitSeen) or a "submit your application?" dialog (submitContext)
+    is not in the button list, yet it is enough to stop: the top frame's Next is not pressed."""
+    for top in (step(0, fillable=0), step(0, fillable=2)):
+        frames = [{"frameId": 0, "top": True, "page": top}, {"frameId": 4, "page": sub}]
         out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": frames}])
         assert out["record"]["status"] == "ready" and names(out, "advance") == [], top
 

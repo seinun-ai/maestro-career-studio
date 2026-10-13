@@ -136,8 +136,11 @@
     const fillable = (f) => f.result.summary.fillable ?? 0;
     // A posting's own "Apply" is Submit-worded too, but the page it sits on classifies as a posting
     // before any button is read: only a frame that classifies as a review by its Submit counts.
-    const showsSubmit = (f) => kindOf(f) === "review" && (f.result.summary.buttons ?? [])
-      .some((b) => b.visible !== false && ns.pageKind.sortButton(b) === "submit");
+    // Every Submit signal the reader has counts: a Submit-worded button, one the button list could
+    // not see (`submitSeen`), or a dialog asking about submitting (`submitContext`).
+    const showsSubmit = (f) => kindOf(f) === "review" && (
+      f.result.summary.submitSeen === true || f.result.summary.submitContext === true
+      || (f.result.summary.buttons ?? []).some((b) => b.visible !== false && ns.pageKind.sortButton(b) === "submit"));
     const fullest = usable.reduce((best, f) => (!best || fillable(f) > fillable(best) ? f : best), null);
     if (top && (WALL_ANYWHERE.has(kindOf(top)) || TOP_ONLY.has(kindOf(top)))) return top;
     const wall = usable.find((f) => WALL_ANYWHERE.has(kindOf(f)));
