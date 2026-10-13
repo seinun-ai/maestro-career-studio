@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import sys
 from contextlib import closing
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -52,7 +53,11 @@ def test_a_post_stores_one_row_per_gap_with_a_count_of_one(client, db_session):
 def test_posting_the_same_gap_again_increments_its_count(client, db_session):
     post(client, gap())
     first = rows(db_session)[0]
-    first_seen, last_seen = first.first_seen_at, first.last_seen_at
+    first_seen = first.first_seen_at
+    # Push the stored last-seen into the past, so a column that never updates cannot pass.
+    long_ago = first_seen - timedelta(days=30)
+    first.last_seen_at = long_ago
+    db_session.commit()
 
     post(client, gap())
     post(client, gap(), gap())
@@ -60,7 +65,7 @@ def test_posting_the_same_gap_again_increments_its_count(client, db_session):
     (row,) = rows(db_session)
     assert row.count == 4
     assert row.first_seen_at == first_seen
-    assert row.last_seen_at >= last_seen
+    assert row.last_seen_at > long_ago
 
 
 def test_the_same_gap_twice_in_one_post_is_one_row_with_both_counted(client, db_session):
@@ -118,8 +123,10 @@ def test_at_most_forty_gaps_per_post(client, db_session):
     assert post(client, *forty).status_code == 204
     assert len(rows(db_session)) == 40
 
-    assert post(client, *forty, gap(family="one-too-many")).status_code == 422
-    assert len(rows(db_session)) == 40
+    # The 41st is as valid as the rest, so only the cap can refuse it.
+    assert post(client, *forty, gap(family="f40")).status_code == 422
+    stored = rows(db_session)
+    assert len(stored) == 40 and {r.count for r in stored} == {1}
 
 
 def test_an_empty_post_is_accepted_and_stores_nothing(client, db_session):
