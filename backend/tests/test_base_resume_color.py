@@ -93,6 +93,13 @@ def test_create_rejects_a_hue_out_of_range_and_saves_nothing(client, db_session,
     assert db_session.get(BaseResume, "bad_hue") is None
 
 
+@pytest.mark.parametrize("loose", [True, "12", 12.0])
+def test_create_refuses_a_hue_that_is_not_a_json_integer(client, db_session, loose):
+    res = _create(client, "loose_hue", color_hue=loose)
+    assert res.status_code == 422
+    assert db_session.get(BaseResume, "loose_hue") is None
+
+
 def test_archived_and_deleted_resumes_do_not_hold_a_colour(client, db_session):
     # Eight presets are live; the other two are held only by an archived and a
     # soft-deleted resume, so both are free to take.
@@ -197,6 +204,13 @@ def test_import_rejects_a_hue_out_of_range_and_saves_nothing(client, db_session,
     assert db_session.query(BaseResume).count() == 0
 
 
+def test_import_refuses_a_hue_that_is_not_a_number_and_saves_nothing(client, db_session, monkeypatch):
+    _fake_parse(monkeypatch)
+    res = _import(client, "a.txt", color_hue="abc")
+    assert res.status_code == 422
+    assert db_session.query(BaseResume).count() == 0
+
+
 def test_kb_import_mints_each_base_with_a_distinct_preset(db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(kb_import.base_resume_data.settings, "base_resumes_dir", tmp_path)
     monkeypatch.setattr(
@@ -257,6 +271,18 @@ def test_identity_rejects_a_bad_hue_and_saves_none_of_the_request(client, db_ses
     _add(db_session, "tinted", color_hue=5, company="Keep")
 
     res = client.patch("/api/base-resumes/tinted/identity", json={"color_hue": 400, "company": "Changed"})
+
+    assert res.status_code == 422
+    db_session.expire_all()
+    row = db_session.get(BaseResume, "tinted")
+    assert (row.color_hue, row.company) == (5, "Keep")
+
+
+@pytest.mark.parametrize("loose", [True, "12", 12.0])
+def test_identity_refuses_a_hue_that_is_not_a_json_integer(client, db_session, loose):
+    _add(db_session, "tinted", color_hue=5, company="Keep")
+
+    res = client.patch("/api/base-resumes/tinted/identity", json={"color_hue": loose, "company": "Changed"})
 
     assert res.status_code == 422
     db_session.expire_all()

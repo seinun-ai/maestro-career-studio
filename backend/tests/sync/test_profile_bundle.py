@@ -483,6 +483,24 @@ def test_base_resume_anchors_arrive_and_the_country_rule_reads_them_on_the_remot
         roots.use("home")
 
 
+def test_base_resume_colour_hue_arrives_and_a_change_replaces_it(home, recv, roots, remote, world):
+    """color_hue is a base_resumes column, so it travels as a profile row, NULL included."""
+    home.get(models.BaseResume, "data_scientist").color_hue = 230
+    home.commit()
+    ship(home, recv, roots, remote)
+    roots.use("recv")
+    assert recv.get(models.BaseResume, "data_scientist").color_hue == 230
+    assert recv.get(models.BaseResume, "outside").color_hue is None
+
+    roots.use("home")
+    home.get(models.BaseResume, "data_scientist").color_hue = 5
+    home.commit()
+    ship(home, recv, roots, remote)
+    recv.expire_all()
+    roots.use("recv")
+    assert recv.get(models.BaseResume, "data_scientist").color_hue == 5
+
+
 def test_the_base_resume_file_arrives_and_load_returns_the_new_content(home, recv, roots, remote, world):
     ship(home, recv, roots, remote)
     roots.use("recv")

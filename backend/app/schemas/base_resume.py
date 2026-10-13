@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.schemas.resume import ResumeData
 from app.services.resume_colors import BAD_HUE, valid_hue
@@ -15,7 +15,8 @@ def _check_hue(value: int | None) -> int | None:
 
 
 # A hue is 0-359; None means "not given" (create/duplicate) or "clear" (identity).
-ColorHue = Annotated[int | None, AfterValidator(_check_hue)]
+# Strict, so JSON `true`, "12" and 12.0 are refused instead of coerced.
+ColorHue = Annotated[int | None, Field(strict=True), AfterValidator(_check_hue)]
 
 
 class _BaseResumeIdentityRead(BaseModel):

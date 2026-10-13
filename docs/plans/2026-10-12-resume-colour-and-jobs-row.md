@@ -186,7 +186,7 @@ def downgrade() -> None:
         batch_op.drop_column("color_hue")
 ```
 
-- A helper in `resume_colors.py`, taking a session: `hues_in_use(db) -> list[int|None]` = `color_hue` of rows matching `base_resume_data.selectable_filter()` (:29, not deleted and not archived). Do not use `active_filter()`, which excludes deleted rows only.
+- A helper in `resume_colors.py`, taking a session: `hues_in_use(db) -> list[int|None]` = `color_hue` of rows matching `base_resume_data.selectable_filter()` (:29, not deleted and not archived). Do not use `active_filter()`, which excludes deleted rows only. *As built:* `hues_in_use` lives in `base_resume_data.py` beside `selectable_filter`.
 - Schemas: read side `color_hue: int | None = None`. `BaseResumeCreate`, `BaseResumeFromKB` (:86), `BaseResumeDuplicate` (:81) and `BaseResumeIdentity` gain `color_hue: int | None = None`, with a shared `field_validator` that raises on a value outside `0..359` (Pydantic → 422).
 - `create_base_resume`: `color_hue=payload.color_hue if payload.color_hue is not None else pick_hue(hues_in_use(db))`.
 - `create_from_kb` builds its own `BaseResumeCreate` (:481-489): pass `color_hue` through. `/import` takes `Form()` fields (:536-539) and builds its own `BaseResumeCreate` (:566-574): add `color_hue: Annotated[int | None, Form()] = None` and pass it through. Add one test each, with a hue and without one.
@@ -317,8 +317,8 @@ export function presetName(hue: number | null | undefined): string | null {
   4. `docs/design-system/README.md` Shape (:77): "`radius-corner-2xs` (2px) the resume square".
 
   Never use a stock `rounded-*`, an arbitrary `rounded-[2px]` (`_RADIUS_BY_HAND` bans it), or `rounded-full` (round means status).
-- `ResumeTag({ hue, children })`: `inline-flex items-center gap-1.5` with the swatch, then the name.
-- `useBaseResumeColor(slug)`: the hue from the archived-inclusive list `useBaseResumes(true)`, `null` while loading or unknown.
+- `ResumeTag({ hue, children })`: `inline-flex items-center gap-1.5` with the swatch, then the name. *As built:* it is `items-baseline`, so a wrapped name keeps its square on the first line.
+- `useBaseResumeColor(slug)`: the hue from the archived-inclusive list `useBaseResumes(true)`, `null` while loading or unknown. *As built:* `useBaseResumeColor()` takes no argument and returns a lookup, `colorOf(slug)`.
 - `ResumeColorPicker({ value, onChange, used, label = "Colour" })`:
   - A `role="radiogroup"` of ten 32px swatch buttons. Each is a `button` with `role="radio"`, `aria-checked`, `aria-label` set to the preset name plus ", used by <name>" when taken, `rounded-corner-sm` (a control), and `bg-resume` with its `resumeColorStyle`.
   - A checked swatch shows a 16px `Check` in `text-primary-foreground` plus the solid 2px `ring` outline with an offset (the DS's selected rule).
@@ -354,7 +354,7 @@ Commit: `docs(design-system): the base resume colour rule`.
 **Files:** `frontend/components/base-resumes/new-base-resume-dialog.tsx` (shared block :490, after :544; payloads :352, :371 FormData, :389, :420), `frontend/components/role-category-picker.tsx` `TargetDialog` (:287-375; save via `useAnchorSave`), and the backend for the FormData import path if `color_hue` is not read there (`/import` :533).
 
 - The dialog opens with `pickFreeHue(hues of useBaseResumes(false))`, held in state with `pickedAtRandom = true` until the user chooses. It always sends `color_hue` on every tab's payload: the JSON bodies at :352/:389/:420 and the FormData at :371 (`fd.append("color_hue", String(hue))`). Task 2 made all four endpoints accept it.
-- `TargetDialog` gains a Colour row (the picker, `pickedAtRandom` false). A change saves right away through `PATCH /identity` like the other anchors, invalidating the base resume queries (both list keys and the detail key).
+- `TargetDialog` gains a Colour row (the picker, `pickedAtRandom` false). A change saves right away through `PATCH /identity` like the other anchors, invalidating the base resume queries (both list keys and the detail key). *As built:* the dialog saves on the picker's `onCommit`, and identity PATCHes are serialised per resume by `lib/in-order.ts`.
 - Test: extend `backend/tests/test_frontend_base_resume_anchors.py` (or a sibling) to pin that both dialogs mount `ResumeColorPicker` and that the create payloads include `color_hue`.
 
 Commit: `feat(base-resumes): pick and change a resume's colour`.
@@ -366,7 +366,7 @@ Commit: `feat(base-resumes): pick and change a resume's colour`.
 - **The card:** a 6px `bg-resume` band above the thumbnail (outside it). The thumbnail keeps its size and full bleed. The header area gets `bg-resume-container text-on-resume-container`. The title gets the square, and secondary text in the footer uses `text-on-resume-container`, not `text-muted-foreground`. Set `resumeColorStyle(resume.color_hue)` on the card root.
 - **Chips:** the health chip and the country pills keep their own fills. A secondary Badge on the tint must keep 4.5:1, so check it in the browser and switch the pill to a `card` fill if needed.
 - **`AnchorPills`:** gains `showRole?: boolean` (default `true`). The gallery passes `false`. The role is now the group heading.
-- **Grouping by role:** a plain heading (`text-title-small`, the role label, a `label-small` count) per role, in the order roles first appear in the page's current list order. "Role not set" goes last and keeps its existing "Role not set" badge on each card. Archived cards (Show archived) stay in their group, at the existing `opacity-60`.
+- **Grouping by role:** a plain heading (`text-title-small`, the role label, a `label-small` count) per role, in the order roles first appear in the page's current list order. "Role not set" goes last and keeps its existing "Role not set" badge on each card. Archived cards (Show archived) stay in their group, at the existing `opacity-60`. *As built:* the card has no "Role not set" pill (the group heading carries the one hint), and archived cards dim only the band and the image (`PreviewThumbnail` `dimmed`), not the whole card.
 - **Pins:** `backend/tests/test_frontend_base_resume_anchors.py:179` asserts the literal `"<AnchorPills resume={resume} />"` in the gallery. Change it to the new literal with `showRole={false}` and keep its intent. Lines :170 (the role line inside `anchor-pills.tsx`) and :183-184 (the score card keeps its role pill) must stay green.
 
 Commit: `feat(base-resumes): colour band, tinted footer, grouped by role`.
