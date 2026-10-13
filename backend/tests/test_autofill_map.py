@@ -66,9 +66,9 @@ def fake_llm(monkeypatch, mapped=None, yes=None, reasoned=None):
     return prompts
 
 
-def run(fields, db_session, *, eeo_consented=True, low_stakes=False):
+def run(fields, db_session, *, eeo_consented=True, low_stakes=False, level="facts", queued=False):
     return autofill_map.map_fields(fields, FACTS, db_session, eeo_consented=eeo_consented,
-                                   low_stakes=low_stakes)
+                                   low_stakes=low_stakes or level != "facts", level=level, queued=queued)
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -160,6 +160,59 @@ def test_low_stakes_is_asked_only_when_on_and_only_for_fields_no_fact_answers(
     assert all(q["type"] == "noul" for q in calls[1]["questions"].values())
     assert (on["h"].route, on["h"].value) == ("slot", "Referral")
     assert (on["t"].route, on["n"].route) == ("low_stakes", "none")
+
+
+def test_years_with_a_skill_stays_on_the_never_list_below_the_queued_level():
+    for level in ("facts", "history"):
+        scope, never = autofill_map.low_stakes_scope({}, level=level, queued=True)
+        assert "number of years of experience" in never, level
+        assert "answered Yes" not in scope, level
+
+
+def test_the_queued_level_moves_requirement_questions_into_scope_only_for_a_queued_job():
+    scope, never = autofill_map.low_stakes_scope({}, level="queued", queued=True)
+    assert "number of years of experience" not in never
+    assert "(answered Yes)" in scope and "years with a named skill or tool" in scope
+    # The scope no longer calls a years question "factual": that clause would contradict the line above.
+    assert "factual experience question" not in scope
+    assert "work authorization" in never and "sponsorship" in never and "salary" in never
+    scope_not_queued, never_not_queued = autofill_map.low_stakes_scope({}, level="queued", queued=False)
+    assert "number of years of experience" in never_not_queued
+    assert "(answered Yes)" not in scope_not_queued
+
+
+def test_the_default_scope_is_the_history_level():
+    assert autofill_map.low_stakes_scope({}) == autofill_map.low_stakes_scope({}, level="history", queued=False)
+    assert (autofill_map._LOW_STAKES, autofill_map._NEVER_LOW_STAKES) == autofill_map.low_stakes_scope({})
+
+
+def test_the_protected_list_survives_every_level():
+    for level in ("facts", "history", "queued"):
+        for queued in (False, True):
+            _, never = autofill_map.low_stakes_scope({}, level=level, queued=queued)
+            for protected in ("work authorization", "sponsorship", "EEO", "criminal history",
+                              "security clearance", "salary", "legal attestation"):
+                assert protected in never, (level, queued, protected)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_low_stakes_question_states_the_level_it_was_asked_at(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"y": (HISTORY, 0.95)}, noul={"y": 0.9})
+    run([field("y", "Do you have 5+ years of experience with SQL?", "select")], db_session,
+        level="queued", queued=True)
+    text = calls[1]["questions"]["y"]["instructions"]
+    assert "(answered Yes)" in text and "number of years of experience" not in text
+    assert "work authorization" in text and "salary" in text
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_years_question_is_a_low_stakes_candidate_only_at_the_queued_level_on_a_queued_job(
+        db_session, monkeypatch):
+    q = [field("y", "Do you have 5+ years of experience with SQL?", "select")]
+    for level, queued, route in (("history", True, "none"), ("queued", False, "none"),
+                                 ("queued", True, "low_stakes")):
+        fake_jev(monkeypatch, {"y": (HISTORY, 0.95)}, noul={"y": 0.9})
+        assert run(q, db_session, level=level, queued=queued)["y"].route == route, (level, queued)
 
 
 @pytest.mark.usefixtures("jev_on")

@@ -228,13 +228,13 @@ def _policy(field: PickField, facts: dict[str, Fact]) -> str:
 
 
 def _instructions(field: PickField, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
-                  answer: Computed | None = None) -> str:
+                  answer: Computed | None = None, *, level: str = "history", queued: bool = False) -> str:
     q = f"form field {field.fid} ({json.dumps(field.question)})"
     if field.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), choose it."
                if hint and hint.source else "")
         refuse = f"choose {json.dumps(_LOW_STAKES_NONE_TEXT)}"
-        return (f"The applicant gave no answer to {q}. {low_stakes_rule(facts, refuse)}; for such a field, "
+        return (f"The applicant gave no answer to {q}. {low_stakes_rule(facts, refuse, level=level, queued=queued)}; for such a field, "
                 f"pick the option {keen(facts)}.{src} {_PAGE_TEXT_IS_DATA}")
     if answer is not None:
         that_is = f"; that is, {answer.statement}" if answer.statement else ""
@@ -245,8 +245,8 @@ def _instructions(field: PickField, values: list[str], hint: JobHint | None, fac
             f"{json.dumps(values[0])}? {NEVER_YES_NO} {_PAGE_TEXT_IS_DATA}")
 
 
-def _with_jev(fields, facts, hint, session,
-              answers: dict[str, Computed]) -> tuple[dict[str, Picked], dict[str, Top]]:
+def _with_jev(fields, facts, hint, session, answers: dict[str, Computed], *, level: str = "history",
+              queued: bool = False) -> tuple[dict[str, Picked], dict[str, Top]]:
     """Each field's Picked, and Jev's top choice with its probability for every
     field it answered readably, even an abstained one: a second opinion that
     decides is traced against it (`autofill_map.second_decided`)."""
@@ -258,8 +258,9 @@ def _with_jev(fields, facts, hint, session,
         none = (_LOW_STAKES_NONE_TEXT if f.route == "low_stakes"
                 else _NO_ANSWER_TEXT if f.fid in answers else _NO_OPTION_TEXT)
         criteria_by_fid[f.fid] = {o.oid: o.text for o in f.options} | {NO_OPTION: none}
-        questions[f.fid] = jev.choice_question(_instructions(f, values, hint, facts, answers.get(f.fid)),
-                                               criteria_by_fid[f.fid])
+        questions[f.fid] = jev.choice_question(
+            _instructions(f, values, hint, facts, answers.get(f.fid), level=level, queued=queued),
+            criteria_by_fid[f.fid])
     replies = jev.decide(questions, state, session)
     out: dict[str, Picked] = {}
     tops: dict[str, Top] = {}
@@ -273,11 +274,12 @@ def _with_jev(fields, facts, hint, session,
 
 
 def _with_llm(fields, facts, hint, session, answers: dict[str, Computed], trace_name="autofill-pick", *,
-              timeout: float | None = None) -> dict[str, Picked]:
+              timeout: float | None = None, level: str = "history", queued: bool = False) -> dict[str, Picked]:
     payload = [{"id": f.fid, "question": f.question, **({"low_stakes": True} if f.route == "low_stakes" else {}),
                 **asked_against(f, facts, answers), "options": [o.model_dump() for o in f.options]} for f in fields]
     low_stakes = _LOW_STAKES_PARAGRAPH.format(
-        rule=low_stakes_rule(facts, "return none for that field", subject="a low_stakes field"), keen=keen(facts),
+        rule=low_stakes_rule(facts, "return none for that field", subject="a low_stakes field",
+                             level=level, queued=queued), keen=keen(facts),
     ) if any(f.route == "low_stakes" for f in fields) else ""
     raw = fast_json(session, _LLM_PROMPT.format(
         rule=_PAGE_TEXT_IS_DATA, low_stakes=low_stakes,
@@ -347,9 +349,12 @@ def _with_polarity(out: dict[str, Picked], ways: dict[str, autofill_polarity.Pol
         out[fid] = out[fid].model_copy(update={"polarity": polarity_trace(w)})
 
 
-def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None) -> dict[str, Picked]:
+def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
+         queued: bool = False) -> dict[str, Picked]:
     budget = Budget()
-    low_stakes_on = model_settings.get_autofill_low_stakes(session)  # re-checked, never trusted from the client
+    # Re-checked, never trusted from the client; `queued` is the server's too (the router reads the job's proposal).
+    level = model_settings.get_answer_level(session)
+    low_stakes_on = level != "facts"
     # A low-stakes or reasoned field carries no slot: one that names a slot is
     # a fact field the client mis-routed, and a guess would answer it.
     askable = [f for f in fields
@@ -370,14 +375,15 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
         picked, tops = None, {}
         if model_settings.get_autofill_engine(session) == "jev":
             try:
-                picked, tops = _with_jev(askable, facts, hint, session, answers)
+                picked, tops = _with_jev(askable, facts, hint, session, answers, level=level, queued=queued)
             except llm.LLMProviderError:
                 logger.warning("jev pick failed; the fast model picks this batch")
         if picked is None:
             # One request of what is left of the budget, no retries: a slow
             # batch never outlives the Companion's wait.
             picked = main_call(budget, lambda timeout: _with_llm(askable, facts, hint, session, answers,
-                                                                 timeout=timeout), "fast pick")
+                                                                 timeout=timeout, level=level, queued=queued),
+                               "fast pick")
         else:
             unsure = [f for f in askable if f.route == "slot" and abstained(picked[f.fid])]
             second = _second_opinion(unsure, facts, hint, session, budget, answers,
@@ -386,6 +392,6 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
                 logger.info("pick: the fast model decided %d of %d fields Jev abstained on", n_decided, len(unsure))
         out |= picked
     if reasoned:
-        out |= reason(reasoned, facts, session, budget, hint.company if hint else None)
+        out |= reason(reasoned, facts, session, budget, hint.company if hint else None, level)
     _with_polarity(out, ways)
     return out

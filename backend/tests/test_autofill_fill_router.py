@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.db import get_db
 from app.main import app
+from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
 from app.schemas.autofill_fill import Mapped, Picked, StepResponse
 from app.schemas.eeo_consent import EeoConsent
@@ -63,8 +64,8 @@ def _spy_map(monkeypatch):
 def _spy_pick(monkeypatch):
     seen = {}
 
-    def pick(fields, facts, session, hint):
-        seen.update(facts=facts, hint=hint)
+    def pick(fields, facts, session, hint, **kw):
+        seen.update(facts=facts, hint=hint, kw=kw)
         return {f.fid: Picked(oids=[], reason="abstained") for f in fields}
 
     monkeypatch.setattr(autofill_pick, "pick", pick)
@@ -82,7 +83,7 @@ def test_map_builds_facts_from_the_consent_gated_profile(db_session, monkeypatch
     assert "personal.city" in seen["facts"]
     assert not [slot for slot in seen["facts"] if slot.startswith("eeo")]
     # No answer-level row reads the default level, "history", which has low-stakes answers on.
-    assert seen["kw"] == {"eeo_consented": False, "low_stakes": True}
+    assert seen["kw"] == {"eeo_consented": False, "low_stakes": True, "level": "history", "queued": False}
 
 
 @pytest.mark.usefixtures("profile")
@@ -143,6 +144,43 @@ def test_map_reads_low_stakes_from_the_setting_not_the_client(db_session, monkey
     assert seen["kw"]["low_stakes"] is True
     assert _post(db_session, "/api/autofill/map",
                  {"fields": [MAP_FIELD], "low_stakes": False}).status_code == 422
+
+
+@pytest.mark.usefixtures("profile")
+def test_map_and_pick_pass_the_answer_level_and_whether_the_job_is_queued(db_session, monkeypatch, tmp_path):
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    model_settings.set_answer_level(db_session, "queued")
+    seen_map, seen_pick = _spy_map(monkeypatch), _spy_pick(monkeypatch)
+    body = {"application_id": str(application.id), "fields": [MAP_FIELD]}
+    pick_body = {"application_id": str(application.id), "fields": [PICK_FIELD]}
+
+    def asked():
+        assert _post(db_session, "/api/autofill/map", body).status_code == 200
+        assert _post(db_session, "/api/autofill/pick", pick_body).status_code == 200
+        return seen_map["kw"]["queued"], seen_pick["kw"]["queued"]
+
+    assert asked() == (False, False)  # no proposal: not a Queued job
+    proposal = ApplicationProposal(job_id=application.job_id, application_id=application.id, status="pending_review")
+    db_session.add(proposal)
+    db_session.commit()
+    assert asked() == (False, False)  # still waiting for the user's yes
+    for status in ("accepted", "approved"):
+        proposal.status = status
+        db_session.commit()
+        assert asked() == (True, True), status
+        assert seen_map["kw"]["level"] == "queued"
+    proposal.status = "rejected"
+    db_session.commit()
+    assert asked() == (False, False)
+
+
+@pytest.mark.usefixtures("profile")
+def test_a_request_with_no_application_is_never_queued(db_session, monkeypatch):
+    model_settings.set_answer_level(db_session, "queued")
+    seen = _spy_map(monkeypatch)
+    assert _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]}).status_code == 200
+    assert seen["kw"]["queued"] is False
 
 
 @pytest.mark.usefixtures("profile")

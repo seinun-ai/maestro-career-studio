@@ -97,18 +97,26 @@ _LOW_STAKES_TEMPLATE = (
     "travel (any share of time), on-site work, shifts, overtime or a drug test; openness to other roles; "
     "{conflict}; what the applicant would do if employed by the company; consent to be contacted by SMS, "
     "automated calls or texts, or marketing messages; or a yes/no self-assessment against the job description as "
-    "a whole, such as having the required experience or meeting the educational requirement (one naming a number "
-    "of years with a specific skill or tool is a factual experience question instead)")
+    "a whole, such as having the required experience or meeting the educational requirement{years}")
 # A list of noun phrases: every question states it after "is about anything
 # on this never-list:". A self-assessment naming a number of years with a
 # specific skill or tool ("5+ years of SQL?") is a factual experience question
 # (the example names no real tool: it would be a value the model must not see)
 # (owner, 2026-09-27); the job description's generic "required experience" is not.
+# Only "Queued means I qualify" on a job the user queued moves it (below); the
+# rest of the list never moves at any level (the protected list).
 _NEVER_LOW_STAKES_TEMPLATE = (
-    "a factual education or experience question (a school, degree, employer, title, date or certification, or "
-    "a number of years of experience with a specific skill or tool, such as \"5+ years of <a named tool>?\", even asked as "
-    "yes or no), work authorization, sponsorship, age or eligibility facts, EEO / diversity, background or "
+    "a factual education or experience question (a school, degree, employer, title, date or certification{years}), "
+    "work authorization, sponsorship, age or eligibility facts, EEO / diversity, background or "
     "criminal history, security clearance, salary, {worked}or a legal attestation or signature")
+# What the years clause says below the queued level, in the scope and in the never-list.
+_YEARS_IN_SCOPE = " (one naming a number of years with a specific skill or tool is a factual experience question instead)"
+_YEARS_NEVER = (', or a number of years of experience with a specific skill or tool, such as '
+                '"5+ years of <a named tool>?", even asked as yes or no')
+# Level 3 on a Queued job (design Part 3): the user's own queueing is the claim that they
+# qualify, so a requirement question, years with a named tool included, is answered Yes.
+_QUEUED_SCOPE = ("; any requirement, qualification or experience self-assessment for this job, including "
+                 "years with a named skill or tool (answered Yes)")
 _CONFLICT = "whether the applicant is related to, or was previously employed by, the company (answered No)"
 # The history lists the company applied to: "previously employed here" is a
 # fact now, and a keen No would contradict it.
@@ -116,11 +124,17 @@ _CONFLICT_WORKED_HERE = "whether the applicant is related to someone at the comp
 _WORKED_HERE_NEVER = "whether the applicant worked for this company (their history says they did), "
 
 
-def low_stakes_scope(facts: dict[str, Fact]) -> tuple[str, str]:
-    """The low-stakes kinds and the never-list for THIS request's facts."""
+def low_stakes_scope(facts: dict[str, Fact], *, level: str = "history", queued: bool = False) -> tuple[str, str]:
+    """The low-stakes kinds and the never-list for THIS request's facts and
+    answer level (model_settings.get_answer_level). Only level "queued" on a
+    job the user queued (`queued`) moves a years-with-a-skill question out of
+    the never-list and into the scope; every other protected item stays."""
     worked = WORKED_HERE in facts
-    return (_LOW_STAKES_TEMPLATE.format(conflict=_CONFLICT_WORKED_HERE if worked else _CONFLICT),
-            _NEVER_LOW_STAKES_TEMPLATE.format(worked=_WORKED_HERE_NEVER if worked else ""))
+    widened = level == "queued" and queued
+    conflict = _CONFLICT_WORKED_HERE if worked else _CONFLICT
+    return (_LOW_STAKES_TEMPLATE.format(conflict=conflict, years=_QUEUED_SCOPE if widened else _YEARS_IN_SCOPE),
+            _NEVER_LOW_STAKES_TEMPLATE.format(worked=_WORKED_HERE_NEVER if worked else "",
+                                              years="" if widened else _YEARS_NEVER))
 
 
 _LOW_STAKES, _NEVER_LOW_STAKES = low_stakes_scope({})
@@ -144,14 +158,15 @@ def keen(facts: dict[str, Fact]) -> str:
             "employed by, the company)")
 
 
-def low_stakes_rule(facts: dict[str, Fact], refuse: str, subject: str = "the field") -> str:
+def low_stakes_rule(facts: dict[str, Fact], refuse: str, subject: str = "the field", *,
+                    level: str = "history", queued: bool = False) -> str:
     """What a low-stakes field never is, THEN what it is, as /pick and /step ask
     it. The exclusion comes first, as a condition with its own refusal, and the
     scope is a definition, never an assertion that this field is in it: /map
     may have mis-routed a protected question here, and nothing but this
     wording stands between it and a keen answer (owner: no code-level refusal).
     The caller finishes the sentence with the keen answer."""
-    scope, never = low_stakes_scope(facts)
+    scope, never = low_stakes_scope(facts, level=level, queued=queued)
     return (f"If {subject} is about anything on this never-list, {refuse}: {never}. "
             f"Otherwise a low_stakes field is {scope[0].lower()}{scope[1:]}")
 
@@ -334,14 +349,14 @@ def _fast_yes(ask: dict[str, str], floor: float, session: Session, trace_name: s
 
 
 def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session,
-                budget: Budget) -> dict[str, Engine]:
+                budget: Budget, *, level: str = "history", queued: bool = False) -> dict[str, Engine]:
     """Which of these fields is a low-stakes question, and which engine judged
     it (Jev, or the fast model when the engine is `fast` or Jev's call failed)?
     The never-list is stated in every question."""
     timeout = budget.left()
     if not fields or timeout is None:
         return {}
-    scope, never = low_stakes_scope(facts)
+    scope, never = low_stakes_scope(facts, level=level, queued=queued)
     ask = {f.fid: (f"Is form field {f.fid} ({json.dumps(f.question)}) one of these low-stakes questions: "
                    f"{scope}? It is NOT if it is about anything on this never-list: {never}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
@@ -524,7 +539,8 @@ def _said_no_fact(picked: tuple[str, float] | None, *, history: bool = False) ->
     unsure answer, a fact below its floor, a protected or EEO kind all say
     something else, and none of them is a candidate for either pass.
     `history`: a history question no fact answers counts too — for the
-    reasoning route only, never for a low-stakes guess."""
+    reasoning route, and for a low-stakes guess only on a Queued job at the
+    queued level, where a years question is answered Yes."""
     key, p = picked or (None, 0.0)
     return (key == NO_SLOT or (history and key == HISTORY_UNANSWERED)) and p >= SLOT_FLOOR
 
@@ -570,7 +586,8 @@ def _has_history(facts: dict[str, Fact]) -> bool:
 
 
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,
-               eeo_consented: bool, low_stakes: bool) -> dict[str, Mapped]:
+               eeo_consented: bool, low_stakes: bool, level: str = "history",
+               queued: bool = False) -> dict[str, Mapped]:
     budget = Budget()
     criteria = _criteria(facts)
     picked, second, unsure = None, None, []
@@ -618,7 +635,10 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
     # Known gap: `_low_stakes` and `_answerable` discard the probability, so `p` stays None.
     # These routes REPLACE the field's trace on purpose: it describes the route that stands.
     if low_stakes:
-        for fid, judge in _low_stakes(leftovers(history=False), facts, session, budget).items():
+        # A years question is the history sentinel's; at "queued" on a Queued job it is this pass's too.
+        yes_to_years = level == "queued" and queued
+        for fid, judge in _low_stakes(leftovers(history=yes_to_years), facts, session, budget,
+                                      level=level, queued=queued).items():
             out[fid] = Mapped(route="low_stakes", trace=DecisionTrace(engine=judge))
     if _has_history(facts):
         for fid in _answerable(leftovers(history=True), session, budget):

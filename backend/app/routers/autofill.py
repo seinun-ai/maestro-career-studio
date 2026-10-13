@@ -17,12 +17,13 @@ from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import delete, select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.application import Application
+from app.models.application_proposal import ApplicationProposal
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.models.autofill_run import AutofillRun
 from app.models.job import Job
@@ -400,6 +401,19 @@ def _job_hint(
     )
 
 
+def _queued(db: Session, application_id: UUID | None) -> bool:
+    """Whether this application's job is one the user queued: it has a proposal
+    they accepted (or that was approved). Only then may the "Queued means I
+    qualify" level answer its requirement questions Yes. Read here, never taken
+    from the page."""
+    application = db.get(Application, application_id) if application_id is not None else None
+    if application is None:
+        return False
+    return db.scalar(select(
+        exists().where(ApplicationProposal.job_id == application.job_id,
+                       ApplicationProposal.status.in_(("accepted", "approved"))))) is True
+
+
 @router.post("/map", response_model=MapResponse)
 def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> MapResponse:
     """Which applicant fact each field asks for; labels only reach the model.
@@ -408,7 +422,8 @@ def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> Ma
     facts, consented = _facts(db, payload.application_id, payload.base, payload.today)
     return MapResponse(fields=autofill_map.map_fields(
         payload.fields, facts, db, eeo_consented=consented,
-        low_stakes=model_settings.get_autofill_low_stakes(db)))
+        low_stakes=model_settings.get_autofill_low_stakes(db),
+        level=model_settings.get_answer_level(db), queued=_queued(db, payload.application_id)))
 
 
 @router.post("/pick", response_model=PickResponse)
@@ -416,7 +431,8 @@ def post_pick(payload: PickRequest, db: Annotated[Session, Depends(get_db)]) -> 
     """Which live option states each field's fact."""
     facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return PickResponse(picks=autofill_pick.pick(
-        payload.fields, facts, db, _job_hint(db, payload.application_id, payload.source_hint)))
+        payload.fields, facts, db, _job_hint(db, payload.application_id, payload.source_hint),
+        queued=_queued(db, payload.application_id)))
 
 
 @router.post("/step", response_model=StepResponse)

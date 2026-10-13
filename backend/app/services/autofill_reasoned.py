@@ -55,13 +55,27 @@ WINDOW_RULE = ('Say whether each answer is negative (No, None, Not applicable, N
                'answer that something did not happen or is absent). For a negative answer, also return "since": '
                '"YYYY-MM", the first month of the period the question asks about (the earliest job\'s start when '
                "it asks about ever), and list in shown_by every job in that period.")
+# The Screening answers level 2 rule (docs/plans/2026-10-10-companion-queued-run-design.md Part 3):
+# at "history" and "queued" a "N years with a skill" Yes/No is answered Yes when the history shows
+# the skill. Level 3's blanket Yes is /map's (a low-stakes route), never this route's.
+YEARS_YES_RULE = ("A yes/no question asking for at least N years with a skill or tool: answer Yes when the work "
+                  "history shows the skill and does not contradict N years (for example the total years "
+                  "of work cover N); answer none when the history clearly shows fewer years.")
+
+
+def prompt_rules(level: str, today: str = "the date in the history") -> str:
+    """The rules of the reasoning prompt, as the answer level states them. The
+    never-list is the same at every level."""
+    years = f"- {YEARS_YES_RULE}\n" if level in ("history", "queued") else ""
+    return (f"- {SILENCE_RULE}\n- {PRIVATE_EMPLOYERS_RULE}\n- {WINDOW_RULE}\n"
+            f"- Count years of experience from the dates of the jobs that show it: today is {today}, "
+            "and a current job runs to today.\n"
+            f"{years}"
+            f"- Never answer a question about {NEVER_REASONED}: return none.\n")
+
+
 _PROMPT = """You answer job-application questions from the applicant's history below, and only from it. {rule}
-- {silence}
-- {private}
-- {window}
-- Count years of experience from the dates of the jobs that show it: today is {today}, and a current job runs to today.
-- Never answer a question about {never}: return none.
-Return JSON {{"answers": {{"<field id>": {{"oid": "<option id or none>", "confidence": <0..1>,
+{rules}Return JSON {{"answers": {{"<field id>": {{"oid": "<option id or none>", "confidence": <0..1>,
 "shown_by": ["<history id>"], "negative": true|false, "since": "<YYYY-MM, for a negative answer>"}}}}}}.
 History: {history}
 Fields: {fields}
@@ -169,7 +183,7 @@ def _names_company(field: PickField, company: str | None) -> bool:
 
 
 def reason(fields: list[PickField], facts: dict[str, Fact], session: Session, budget: Budget,
-           company: str | None) -> dict[str, Picked]:
+           company: str | None, level: str = "history") -> dict[str, Picked]:
     hist = history(facts)
     shown = {entry["id"] for entry in hist["jobs"] + hist["schools"]}
     asked = [f for f in fields if not _names_company(f, company)]
@@ -181,8 +195,8 @@ def reason(fields: list[PickField], facts: dict[str, Fact], session: Session, bu
                for f in asked]
     try:
         raw = fast_json(session, _PROMPT.format(
-            rule=_PAGE_TEXT_IS_DATA, silence=SILENCE_RULE, private=PRIVATE_EMPLOYERS_RULE, window=WINDOW_RULE,
-            today=hist["today"], never=NEVER_REASONED, history=json.dumps(hist), fields=json.dumps(payload)),
+            rule=_PAGE_TEXT_IS_DATA, rules=prompt_rules(level, hist["today"]),
+            history=json.dumps(hist), fields=json.dumps(payload)),
             "autofill-reasoned-pick", timeout=timeout)
     except llm.LLMProviderError:
         logger.warning("fast model reasoning failed; its fields are left to the user")
