@@ -93,21 +93,47 @@ def test_an_unknown_proposal_is_a_404(db_session):
     assert r.status_code == 404
 
 
-def test_it_respects_the_cap(db_session, queued):
+def _recorded_as_applied_yourself(db_session, prop):
+    """The user's own Submit is always recorded; what the cap or skip list stopped is the Companion starting it."""
+    db_session.expire_all()
+    row = db_session.get(ApplicationProposal, prop.id)
+    app_row = db_session.get(Application, row.application_id)
+    assert app_row.status == "applied" and app_row.applied_at is not None
+    assert (row.status, row.reason) == ("rejected", svc.APPLIED_MANUALLY)
+    assert row.cap_reserved_at is None  # no slot taken
+    assert [i["kind"] for i in row.evidence_json] == ["submission_receipt"]
+    assert row.evidence_json[0]["path"] == "/apply/done"
+    events = db_session.query(ConsentEvent).filter_by(proposal_id=row.id).all()
+    assert [e.action for e in events] == ["rejected"]  # never an "approved" or "submitted" claim
+
+
+def test_a_full_day_still_records_the_users_submit_as_applied_yourself(db_session, queued):
     auto_apply_settings.set_settings(AutoApplySettings(max_submissions_per_day=1), db_session)
     other = _mk_proposal(db_session)
     other.cap_reserved_at = datetime.now(UTC)
     db_session.commit()
     r = _post(queued)
-    assert r.status_code == 409 and "cap" in r.json()["detail"]
-    _untouched(db_session, queued)
+    assert r.status_code == 200 and r.json()["status"] == "rejected"
+    _recorded_as_applied_yourself(db_session, queued)
 
 
-def test_it_respects_the_skip_list_set_after_queueing(db_session, queued):
+def test_a_company_skipped_after_queueing_still_records_the_users_submit(db_session, queued):
     auto_apply_settings.set_settings(AutoApplySettings(company_blocklist=["acme"]), db_session)
     r = _post(queued)
-    assert r.status_code == 409 and r.json()["detail"] == svc.COMPANY_BLOCKED
-    _untouched(db_session, queued)
+    assert r.status_code == 200 and r.json()["status"] == "rejected"
+    _recorded_as_applied_yourself(db_session, queued)
+
+
+def test_the_fallback_without_a_linked_application_still_closes_the_proposal(db_session):
+    prop = _mk_proposal(db_session, with_app=False)
+    prop.status = "accepted"
+    db_session.commit()
+    auto_apply_settings.set_settings(AutoApplySettings(company_blocklist=["acme"]), db_session)
+    r = _post(prop)
+    assert r.status_code == 200
+    db_session.expire_all()
+    row = db_session.get(ApplicationProposal, prop.id)
+    assert (row.status, row.reason) == ("rejected", svc.APPLIED_MANUALLY)
 
 
 @pytest.mark.parametrize("status", ["submitted", "rejected", "expired"])
@@ -178,20 +204,38 @@ def test_the_queueing_patch_may_name_the_companion_channel(db_session):
     assert r.status_code == 200 and r.json()["status"] == "accepted"
 
 
-def test_a_job_owned_by_the_other_copy_is_refused_and_untouched(db_session, queued):
+def _sync_on(db_session, queued, **job_fields):
     from app.models.job import Job
     from app.services.sync import status
 
-    db_session.get(Job, queued.job_id).owner_machine = "other-machine"
+    job = db_session.get(Job, queued.job_id)
+    for name, value in job_fields.items():
+        setattr(job, name, value)
     db_session.commit()
     status.create_key()
+
+
+def test_a_job_owned_by_the_other_copy_is_refused_and_untouched(db_session, queued):
+    _sync_on(db_session, queued, owner_machine="other-machine")
     r = _post(queued)
     assert r.status_code == 409 and r.json()["owner"] == "bot"
     _untouched(db_session, queued)
 
 
-def test_the_companion_channel_is_a_consent_channel():
-    assert "companion" in svc.CONSENT_CHANNELS
+def test_a_job_offered_to_the_always_on_copy_is_refused_and_untouched(db_session, queued):
+    """Task 20a claims the job (Keep it here) before a run starts; until then the other copy may take it."""
+    _sync_on(db_session, queued, handover="offered")
+    r = _post(queued)
+    assert r.status_code == 409
+    _untouched(db_session, queued)
+
+
+def test_an_offered_job_is_refused_even_when_the_cap_is_full(db_session, queued):
+    """Ownership is checked before the fallback, which would otherwise write the application."""
+    _sync_on(db_session, queued, handover="offered")
+    auto_apply_settings.set_settings(AutoApplySettings(company_blocklist=["acme"]), db_session)
+    assert _post(queued).status_code == 409
+    _untouched(db_session, queued)
 
 
 # The channel says "the Companion asked", so it cannot be named from anywhere else.

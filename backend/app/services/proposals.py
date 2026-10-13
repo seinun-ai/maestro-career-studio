@@ -24,6 +24,14 @@ class TransitionError(Exception):
     """Illegal transition or missing precondition; routers map this to 409."""
 
 
+class DailyCapReached(TransitionError):
+    """The approve step found no submission slot left today."""
+
+
+class CompanyOnSkipList(TransitionError):
+    """The approve step found the company on the user's Companies to skip list."""
+
+
 ALLOWED = {
     "pending_review": {"accepted", "approved", "rejected", "needs_decision", "needs_human", "expired"},
     "needs_decision": {"pending_review", "rejected", "expired"},
@@ -224,7 +232,7 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
             raise TransitionError("the Companion can only approve a job you queued")
         if _company_is_blocked(
                 session, prop, auto_apply_settings.get_settings(session).company_blocklist):
-            raise TransitionError(COMPANY_BLOCKED)
+            raise CompanyOnSkipList(COMPANY_BLOCKED)
     if new_status == "approved" and not _evidence_has_kind(prop, "final_review"):
         raise TransitionError("approved requires final_review evidence")
     if new_status == "submitted":
@@ -307,8 +315,13 @@ def record_companion_submit(session: Session, prop: ApplicationProposal,
                             confirmation: dict) -> ApplicationProposal:
     """Record a Submit the user pressed, which the Companion saw confirmed. Approves (the
     Companion's own consent event), then marks submitted with the confirmation as the receipt,
-    in ONE commit: a refusal at either step (cap, skip list, state, ownership) saves nothing, so
-    a job is never left approved without its submit. Clicks nothing; `submitted` is terminal."""
+    in ONE commit: a refusal at either step (state, ownership) saves nothing, so a job is never
+    left approved without its submit. Clicks nothing; `submitted` is terminal.
+
+    The daily cap and the skip list guard what the Companion may START, not what the user did:
+    the application was sent either way. When the approve step refuses on either, the record
+    falls back to the "applied manually" path (the application is applied, the proposal closed
+    as applied yourself), so the ledger matches what happened."""
     try:
         review = get_final_review(session, prop)
         review.pop("evidence", None)
@@ -322,6 +335,35 @@ def record_companion_submit(session: Session, prop: ApplicationProposal,
             "channel": COMPANION_CHANNEL,
             "note": f"Queued run: the confirmation page at {confirmation['host']} was seen"})
         session.commit()
+    except (DailyCapReached, CompanyOnSkipList):
+        session.rollback()
+        return _record_applied_yourself(session, prop, confirmation)
+    except Exception:
+        session.rollback()
+        raise
+    return prop
+
+
+def _record_applied_yourself(session: Session, prop: ApplicationProposal,
+                             confirmation: dict) -> ApplicationProposal:
+    """The user submitted a job the approve step would not take: do what marking it applied in
+    the web app does (stamp, link answers, close the open proposal as APPLIED_MANUALLY), and keep
+    the confirmation page as the proposal's receipt."""
+    from app.services import application_status
+
+    try:
+        _append_evidence(
+            prop, "submission_receipt", "Confirmation page (Companion)", confirmation,
+            path=confirmation["path"], host=confirmation["host"], text=confirmation["text"])
+        app_row = session.get(Application, prop.application_id) if prop.application_id else None
+        if app_row is not None:
+            app_row.status = "applied"
+            # Closes the job's open proposals (this one) with commit.
+            application_status.apply_status_effects(session, app_row, {"status"})
+            session.commit()
+        else:
+            transition(session, prop, "rejected", reason=APPLIED_MANUALLY,
+                       consent={"channel": "frontend", "note": "user submitted; no application to mark"})
     except Exception:
         session.rollback()
         raise
@@ -604,7 +646,7 @@ def cap_status(session: Session) -> dict:
 def _enforce_daily_cap(session: Session) -> None:
     cap = cap_status(session)
     if cap["remaining"] <= 0:
-        raise TransitionError(
+        raise DailyCapReached(
             f"daily submission cap reached ({cap['reserved_last_24h']}/{cap['max_per_day']})")
 
 
