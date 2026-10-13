@@ -39,7 +39,7 @@ proxies their API requests:
 | `content/open-questions.js` | every frame | open-question collection and answer injection |
 | `content/touch-notice.js` | every frame | tells the panel THAT you changed a field: one throttled (2 s) `fields_touched` message of fids only, sent only where the frame gate (`ns.frameMayReceiveUserData`) says yes; engine writes never trigger it |
 | `content/detect.js` | every frame, every page | the detection read — reads, scores, returns |
-| `shared/ats-buttons.js` | every frame | a short table of navigation buttons an ATS names by its own markers (Workday's footer button, whose own text decides; Greenhouse and Lever submit controls); it never says "next", and the text sort still wins over any verdict |
+| `shared/ats-buttons.js` | every frame | a short table of navigation buttons an ATS names by its own markers (only recorded ones: Workday's footer button, whose own text decides); it never says "next", and the text sort still wins over any verdict |
 | `content/page-reader.js` | every frame | the queued run's eyes and hand: `summary()` (counts, button texts, booleans, never a value) for `shared/page-kind.js`, and `advance(id)`, the only navigation click in the extension — it re-sorts the button's current labels and refuses any Submit-worded one |
 | `content/agent.js` | every frame | page RPC front door, extraction wrapper, resume attach |
 | `panel/panel.{html,css,js}` | the side panel | the store, the loaders, the generation guard, the render loop, the tab binding; sends everything through the service worker |

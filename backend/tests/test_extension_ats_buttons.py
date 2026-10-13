@@ -2,8 +2,8 @@
 own stable markers, for the cases where the TEXT alone cannot say what a button is.
 
 `extension/shared/ats-buttons.js` is pure, so node drives it. What these tests hold:
-the table can only ever make a button MORE stopped (every shipped verdict is "submit" or "text",
-never "next"), a marker counts only on its own vendor's host, and an unknown host has no say at all. A Submit word in a
+the table can only ever make a button MORE stopped (every shipped verdict is "text", never
+"next"), a marker counts only on its own vendor's host, and an unknown host has no say at all. A Submit word in a
 button's text still beats a "next" verdict; that half lives in `shared/page-kind.js` and is pinned
 in test_extension_page_kind.py and, end to end, in tests/browser/test_page_reader.py.
 """
@@ -38,29 +38,6 @@ def known(tmp_path, host, **attrs):
     return _run(tmp_path, [(host, attrs)])["known"][0]
 
 
-def test_greenhouses_submit_marker_is_a_submit_whatever_its_text(tmp_path):
-    """The case the text cannot catch: a submit button that reads "Done". The id is the evidence."""
-    for host in ["boards.greenhouse.io", "job-boards.greenhouse.io", "greenhouse.io", "Boards.Greenhouse.IO"]:
-        assert known(tmp_path, host, id="submit_app") == "submit"
-
-
-def test_levers_submit_marker_is_a_submit_by_id_or_by_data_qa(tmp_path):
-    assert known(tmp_path, "jobs.lever.co", id="btn-submit") == "submit"
-    assert known(tmp_path, "jobs.lever.co", qa="btn-submit") == "submit"
-
-
-def test_a_marker_counts_only_on_its_own_vendors_host(tmp_path):
-    out = _run(tmp_path, [
-        ("jobs.lever.co", {"id": "submit_app"}),          # Greenhouse's marker on Lever
-        ("boards.greenhouse.io", {"id": "btn-submit"}),   # Lever's marker on Greenhouse
-        ("acme-careers.example.com", {"id": "submit_app"}),
-        ("greenhouse.io.example.com", {"id": "submit_app"}),
-        ("evilgreenhouse.io", {"id": "submit_app"}),
-        ("jobs.lever.co.example.com", {"id": "btn-submit"}),
-    ])
-    assert out["known"] == [None] * 6
-
-
 def test_workdays_footer_marker_names_the_navigation_button_and_leaves_the_verdict_to_its_text(tmp_path):
     """Recorded in test_extension_detection.py (`_WORKDAY_MY_INFORMATION`). The verdict is "text",
     never "next": Workday's last step relabels the same button "Submit"."""
@@ -70,11 +47,12 @@ def test_workdays_footer_marker_names_the_navigation_button_and_leaves_the_verdi
         ("acme.wd5.myworkdayjobs.com", {"automationId": "pageFooterNextButton2"}),
         ("acme.wd5.myworkdayjobs.com", {"id": "pageFooterNextButton"}),
         ("acme.wd5.myworkdayjobs.com", {"automationId": "add-button"}),
-        ("boards.greenhouse.io", {"automationId": "pageFooterNextButton"}),
+        ("boards.greenhouse.io", {"automationId": "pageFooterNextButton"}),   # another vendor's host
+        ("acme-careers.example.com", {"automationId": "pageFooterNextButton"}),
         ("myworkdayjobs.com.example.com", {"automationId": "pageFooterNextButton"}),
         ("evilmyworkdayjobs.com", {"automationId": "pageFooterNextButton"}),
     ])
-    assert out["known"] == [None] * 6
+    assert out["known"] == [None] * 7
 
 
 def test_an_unknown_host_or_marker_has_no_say(tmp_path):
@@ -82,20 +60,22 @@ def test_an_unknown_host_or_marker_has_no_say(tmp_path):
         ("example.com", {}),
         ("boards.greenhouse.io", {}),
         ("boards.greenhouse.io", {"id": "next"}),
-        ("boards.greenhouse.io", {"id": "submit_app_2"}),
+        ("boards.greenhouse.io", {"id": "submit_app"}),   # a host with no rows, whatever the id
+        ("jobs.lever.co", {"id": "btn-submit", "qa": "btn-submit"}),
+        ("acme.wd5.myworkdayjobs.com", {}),
         ("", {"id": "submit_app"}),
         (None, {"id": "submit_app"}),
-        ("boards.greenhouse.io", None),
+        ("acme.wd5.myworkdayjobs.com", None),
     ])
-    assert out["known"] == [None] * 7
+    assert out["known"] == [None] * 9
 
 
 def test_the_table_never_says_next(tmp_path):
     """A "next" entry would be a button the run clicks on a marker's word alone, so none ships
     without a recorded fixture that shows the marker (and then this pin is changed on purpose).
-    "text" hands the verdict back to the button's own label, and "submit" only stops."""
+    "text" hands the verdict back to the button's own label."""
     verdicts = _run(tmp_path)["verdicts"]
-    assert verdicts and set(verdicts) == {"submit", "text"}
+    assert verdicts and set(verdicts) == {"text"}
 
 
 def test_an_unknown_verdict_string_is_a_submit_and_text_is_a_known_one(tmp_path):

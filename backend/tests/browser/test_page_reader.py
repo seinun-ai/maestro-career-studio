@@ -625,15 +625,24 @@ def serve(page, url, body):
         page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
 
 
-GREENHOUSE_STEP = """<form><label for='a'>Name</label><input id='a'>
+ODD_SUBMIT_STEP = """<form><label for='a'>Name</label><input id='a'>
   <button type='button'>Back</button>
   <input type='submit' id='submit_app' value='Done' onclick='window.hit = 1; return false;'></form>"""
 
 
-def test_greenhouses_submit_control_is_a_submit_even_when_it_reads_done(page):
-    """The case the text cannot catch: the sort alone calls "Done" unclear and would offer no
-    Submit at all; the vendor's own id says it is one. The page stops, and nothing is clicked."""
-    serve(page, "https://boards.greenhouse.io/acme/jobs/1", GREENHOUSE_STEP)
+SUBMIT_ENTRY = """() => {
+  window.careerStudioCompanion.atsButtons.HOSTS.acmeats = /^ats\\.acme-example\\.test$/;
+  window.careerStudioCompanion.atsButtons.RULES.push(
+    { vendor: "acmeats", buttons: [{ id: "submit_app", verdict: "submit" }] });
+}"""
+
+
+def test_a_table_submit_is_a_submit_even_when_it_reads_done(page):
+    """The wiring for a verdict of "submit", with an entry no shipped table has (a made-up vendor
+    added for this test only). The sort alone calls "Done" unclear and would offer no Submit at
+    all; the marker says it is one. The page stops, and nothing is clicked."""
+    serve(page, "https://ats.acme-example.test/apply", ODD_SUBMIT_STEP)
+    page.evaluate(SUBMIT_ENTRY)
     assert classify(page)["kind"] == "review"   # classify re-tags the buttons, so read ids after it
     s = summary(page)
     done = button(s, "Done")
@@ -643,23 +652,13 @@ def test_greenhouses_submit_control_is_a_submit_even_when_it_reads_done(page):
     assert page.evaluate("() => window.hit === 1") is False
 
 
-def test_the_same_control_on_an_unlisted_host_has_no_verdict(page):
-    """A marker is the vendor's only on the vendor's host: on any other host "Done" is the text's
-    to judge (unclear), and the summary carries no `known` key at all."""
-    serve(page, "https://careers.acme-example.test/jobs/1", GREENHOUSE_STEP)
+def test_a_marker_looking_id_on_a_host_with_no_rows_has_no_verdict(page):
+    """The shipped table has no row for this host, so "Done" is the text's to judge (unclear) and
+    the summary carries no `known` key at all."""
+    serve(page, "https://careers.acme-example.test/jobs/1", ODD_SUBMIT_STEP)
     s = summary(page)
     assert all("known" not in b for b in s["buttons"])
     assert advance(page, button(s, "Done")["id"]) == {"clicked": False, "why": "not_next"}
-
-
-def test_levers_submit_control_is_known_by_its_data_qa(page):
-    serve(page, "https://jobs.lever.co/acme/1", """<form><label for='a'>Name</label><input id='a'>
-      <button type='button' data-qa='btn-submit' onclick='window.hit = 1'>Go</button></form>""")
-    assert classify(page)["kind"] == "review"
-    s = summary(page)
-    assert s["buttons"][0]["known"] == "submit"
-    assert advance(page, s["buttons"][0]["id"]) == {"clicked": False, "why": "submit"}
-    assert page.evaluate("() => window.hit === 1") is False
 
 
 NEXT_ENTRY = """() => {
