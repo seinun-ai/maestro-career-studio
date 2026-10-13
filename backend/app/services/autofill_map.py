@@ -55,6 +55,7 @@ T = TypeVar("T")
 BLOCKED_EEO = "blocked_eeo"
 PROTECTED_UNANSWERED = "protected_unanswered"
 HISTORY_UNANSWERED = "history_unanswered"
+YEARS_UNANSWERED = "years_unanswered"
 LOW_STAKES_FLOOR = 0.8
 ANSWERABLE_FLOOR = 0.8
 # Seconds since the request began after which no optional pass starts, and
@@ -81,8 +82,12 @@ _SENTINELS = {
     # Offered in every question too, so a question the work history may answer
     # has somewhere to go that is neither a protected question nor "none".
     HISTORY_UNANSWERED: "A question about past employment by a KIND of organization (a government agency, a "
-                        "federal contractor), a security clearance, or years of experience with something, "
-                        "which none of the listed applicant facts answers",
+                        "federal contractor), or a security clearance, which none of the listed applicant facts "
+                        "answers",
+    # Apart from the history sentinel because only THIS one may ever reach a keen
+    # Yes (level "queued" on a queued job): a clearance or agency question never does.
+    YEARS_UNANSWERED: "A question about years of experience with a specific skill or tool (at least N years of "
+                      "something), which none of the listed applicant facts answers",
     # Always offered too: without consent it marks the field `blocked`; with
     # consent the EEO facts are listed, and choosing this means none answers it.
     BLOCKED_EEO: "A voluntary diversity / EEO question (gender, race or ethnicity, Hispanic or Latino, "
@@ -517,7 +522,7 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
 def _no_fact_key(key: str, eeo_consented: bool) -> bool:
     """A key that means "no fact answers it". blocked_eeo only with consent: without it, it is
     the `blocked` route, a real decision."""
-    return key in (NO_SLOT, HISTORY_UNANSWERED, PROTECTED_UNANSWERED) or (key == BLOCKED_EEO and eeo_consented)
+    return key in (NO_SLOT, HISTORY_UNANSWERED, YEARS_UNANSWERED, PROTECTED_UNANSWERED) or (key == BLOCKED_EEO and eeo_consented)
 
 
 def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact],
@@ -534,15 +539,23 @@ def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
         chose_none=None if picked is None else _no_fact_key(picked[0], eeo_consented))})
 
 
-def _said_no_fact(picked: tuple[str, float] | None, *, history: bool = False) -> bool:
+# The sentinels the reasoning pass also takes (a history question, a years question), and the one
+# the low-stakes pass takes at the queued level on a queued job (a years question is answered Yes
+# when the history is silent). A clearance or agency question (HISTORY_UNANSWERED) is never
+# the low-stakes pass's, at any level: that is the code-level guarantee.
+_REASONED_KEYS = frozenset({HISTORY_UNANSWERED, YEARS_UNANSWERED})
+_KEEN_YEARS_KEYS = frozenset({YEARS_UNANSWERED})
+_NO_KEYS: frozenset[str] = frozenset()
+
+
+def _said_no_fact(picked: tuple[str, float] | None, *, also: frozenset[str] = _NO_KEYS) -> bool:
     """An EXPLICIT, confident "no fact answers this". An omitted, refused or
     unsure answer, a fact below its floor, a protected or EEO kind all say
     something else, and none of them is a candidate for either pass.
-    `history`: a history question no fact answers counts too — for the
-    reasoning route, and for a low-stakes guess only on a Queued job at the
-    queued level, where a years question is answered Yes."""
+    `also`: sentinels that count too (`_REASONED_KEYS` for the reasoning
+    route; a low-stakes guess takes only `_KEEN_YEARS_KEYS`, on a Queued job at the queued level)."""
     key, p = picked or (None, 0.0)
-    return (key == NO_SLOT or (history and key == HISTORY_UNANSWERED)) and p >= SLOT_FLOOR
+    return (key == NO_SLOT or key in also) and p >= SLOT_FLOOR
 
 
 def _unsure(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact]) -> bool:
@@ -574,11 +587,11 @@ def _second_opinion(fields: list[MapField], criteria: dict[str, str], session: S
         return None
 
 
-def _agrees_no_fact(second: tuple[str, float] | None, *, history: bool) -> bool:
+def _agrees_no_fact(second: tuple[str, float] | None, *, also: frozenset[str] = _NO_KEYS) -> bool:
     """A second opinion keeps a field a guess candidate only by not naming
     anything else: a fact (at any probability), a protected, EEO or free-text
     kind keep it the user's. Silence says nothing."""
-    return second is None or second[0] == NO_SLOT or (history and second[0] == HISTORY_UNANSWERED)
+    return second is None or second[0] == NO_SLOT or second[0] in also
 
 
 def _has_history(facts: dict[str, Fact]) -> bool:
@@ -626,21 +639,22 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
     out |= decided
     _one_job_per_entry(fields, out)
 
-    def leftovers(*, history: bool) -> list[MapField]:
+    def leftovers(also: frozenset[str]) -> list[MapField]:
         return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
-                and not _foreign(f) and _said_no_fact(picked.get(f.fid), history=history)
-                and _agrees_no_fact(second.get(f.fid), history=history)]
+                and not _foreign(f) and _said_no_fact(picked.get(f.fid), also=also)
+                and _agrees_no_fact(second.get(f.fid), also=also)]
 
     # Out of time (`budget.left()`), a pass asks nothing: the open questions stay the user's.
     # Known gap: `_low_stakes` and `_answerable` discard the probability, so `p` stays None.
     # These routes REPLACE the field's trace on purpose: it describes the route that stands.
     if low_stakes:
-        # A years question is the history sentinel's; at "queued" on a Queued job it is this pass's too.
-        yes_to_years = level == "queued" and queued
-        for fid, judge in _low_stakes(leftovers(history=yes_to_years), facts, session, budget,
+        # A years question is the reasoning pass's; at "queued" on a Queued job it is this pass's too
+        # (/pick asks the history first, autofill_pick._years_first).
+        keen_years = _KEEN_YEARS_KEYS if level == "queued" and queued else _NO_KEYS
+        for fid, judge in _low_stakes(leftovers(keen_years), facts, session, budget,
                                       level=level, queued=queued).items():
             out[fid] = Mapped(route="low_stakes", trace=DecisionTrace(engine=judge))
     if _has_history(facts):
-        for fid in _answerable(leftovers(history=True), session, budget):
+        for fid in _answerable(leftovers(_REASONED_KEYS), session, budget):
             out[fid] = Mapped(route="reasoned", trace=DecisionTrace(engine="fast"))
     return out

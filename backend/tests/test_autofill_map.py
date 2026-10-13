@@ -197,7 +197,7 @@ def test_the_protected_list_survives_every_level():
 
 @pytest.mark.usefixtures("jev_on")
 def test_the_low_stakes_question_states_the_level_it_was_asked_at(db_session, monkeypatch):
-    calls = fake_jev(monkeypatch, {"y": (HISTORY, 0.95)}, noul={"y": 0.9})
+    calls = fake_jev(monkeypatch, {"y": (YEARS, 0.95)}, noul={"y": 0.9})
     run([field("y", "Do you have 5+ years of experience with SQL?", "select")], db_session,
         level="queued", queued=True)
     text = calls[1]["questions"]["y"]["instructions"]
@@ -211,7 +211,7 @@ def test_a_years_question_is_a_low_stakes_candidate_only_at_the_queued_level_on_
     q = [field("y", "Do you have 5+ years of experience with SQL?", "select")]
     for level, queued, route in (("history", True, "none"), ("queued", False, "none"),
                                  ("queued", True, "low_stakes")):
-        fake_jev(monkeypatch, {"y": (HISTORY, 0.95)}, noul={"y": 0.9})
+        fake_jev(monkeypatch, {"y": (YEARS, 0.95)}, noul={"y": 0.9})
         assert run(q, db_session, level=level, queued=queued)["y"].route == route, (level, queued)
 
 
@@ -346,6 +346,7 @@ def test_text_and_date_fields_are_never_low_stakes(db_session, monkeypatch, shap
 
 PROTECTED = autofill_map.PROTECTED_UNANSWERED
 HISTORY = autofill_map.HISTORY_UNANSWERED
+YEARS = autofill_map.YEARS_UNANSWERED
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -1003,8 +1004,32 @@ def test_every_map_question_offers_the_history_sentinel_and_it_is_never_low_stak
     got = run([field("c", "Do you hold a US Security Clearance?", "popup")], db_session, low_stakes=True)
     criteria = calls[0]["questions"]["c"]["criteria"]
     assert HISTORY in criteria and "security clearance" in criteria[HISTORY]
+    # Years of experience is the other sentinel: it alone may ever reach a keen Yes.
+    assert YEARS in criteria and "years of experience" in criteria[YEARS] and "years" not in criteria[HISTORY]
     assert "clearance" not in criteria[PROTECTED]
     assert got["c"].route == "none" and len(calls) == 1  # no low-stakes question; the reasoning said no
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", ["Do you hold a US Security Clearance?", HISTORY_WORDINGS[0]])
+@pytest.mark.parametrize("level, queued", [("facts", False), ("history", True), ("queued", False), ("queued", True)])
+def test_a_clearance_or_agency_question_is_never_offered_to_the_low_stakes_judge(
+        db_session, monkeypatch, question, level, queued):
+    """The code-level guarantee: only the years sentinel widens at the queued level."""
+    calls = fake_jev(monkeypatch, {"c": (HISTORY, 0.95)}, noul={"c": 0.99})
+    got = run([field("c", question, "popup", options=["Yes", "No"])], db_session, level=level, queued=queued)
+    assert got["c"].route != "low_stakes"
+    assert not [c for c in calls if any(q["type"] == "noul" for q in c["questions"].values())]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_years_question_still_reaches_the_reasoning_route_when_the_judge_declines(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"y": (YEARS, 0.95)}, noul={"y": 0.1})
+    prompts = fake_llm(monkeypatch, reasoned={"y": 0.95})
+    got = run([field("y", "Do you have 5+ years of experience with SQL?", "select")], db_session,
+              level="queued", queued=True)
+    assert got["y"].route == "reasoned"
+    assert [p["trace_name"] for p in prompts] == ["autofill-reasoned"]
 
 
 def test_a_batch_with_no_open_choice_makes_exactly_one_model_call(db_session, monkeypatch):
