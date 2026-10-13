@@ -118,6 +118,7 @@ GIVE_UP_DESCRIBE = "Stop: no move will select the goal's answer to the question"
 JOB_KEYS = ("employer", "title", "description", "start", "end", "current")
 SCHOOL_KEYS = ("school", "degree", "discipline", "start_year", "end_year")
 POLICIES = ("exact", "flag", "any", "low_stakes", "reasoned")
+ANSWER_LEVELS = ("facts", "history", "queued")
 # The job every case is asked for; a case history listing this company makes
 # "previously employed here" a derived fact (autofill_catalog._worked_here).
 HINT_TITLE, HINT_COMPANY = "Data Analyst", "Acme Corp"
@@ -192,12 +193,32 @@ def check_pick_case(case: dict) -> None:
             raise ValueError(f"{cid}: a {route} case carries no slot or fact")
     if route == "low_stakes" and case.get("low_stakes") not in ("on", "off"):
         raise ValueError(f"{cid}: a low_stakes case names the setting, on or off")
+    check_level(case)
     if route == "reasoned" and "history" not in case:
         raise ValueError(f"{cid}: a reasoned case carries a history of jobs and schools")
     if "history" in case:
         check_history(cid, case["history"])
     if case.get("code_path") and route != "low_stakes":
         raise ValueError(f"{cid}: only a low_stakes setting check is a code-path case")
+
+
+def check_level(case: dict) -> None:
+    """`level` (the Screening answers level, default: history when the setting is on, else facts) and
+    `queued` (the job is one the user queued) only mean something on a low_stakes case."""
+    cid = case.get("id")
+    if case.get("level") not in (None, *ANSWER_LEVELS):
+        raise ValueError(f"{cid}: level is one of {ANSWER_LEVELS}")
+    if not isinstance(case.get("queued", False), bool):
+        raise ValueError(f"{cid}: queued is true or false")
+    if (case.get("level") or case.get("queued")) and case.get("route", "slot") != "low_stakes":
+        raise ValueError(f"{cid}: only a low_stakes case names a level or a queued job")
+    if (case.get("level") == "facts") != (case.get("low_stakes") == "off") and case.get("level"):
+        raise ValueError(f"{cid}: low-stakes answers are off at the facts level and on at the others")
+
+
+def level_of(case: dict) -> str:
+    """The answer level a case runs at: named, else history when its low-stakes setting is on."""
+    return case.get("level") or ("history" if case.get("low_stakes") == "on" else "facts")
 
 
 def check_step_case(case: dict) -> None:
@@ -221,6 +242,7 @@ def check_step_case(case: dict) -> None:
     if route == "low_stakes" and (case.get("slot") or case.get("fact") is not None or
                                   case.get("low_stakes") not in ("on", "off")):
         raise ValueError(f"{cid}: a low_stakes case names the setting and carries no slot or fact")
+    check_level(case)
 
 
 def check_map_case(case: dict, facts: dict[str, str]) -> None:
@@ -340,13 +362,13 @@ def _fast_decided(got) -> bool:
 
 
 @contextmanager
-def engine_of(run: Run, low_stakes: bool = False):
-    """Force the engine and the low-stakes setting; in a Jev pass, record
-    Jev's failures and refuse the fast-model fallback."""
+def engine_of(run: Run, level: str = "facts"):
+    """Force the engine and the Screening answers level (low-stakes answers are on at every level but
+    "facts"); in a Jev pass, record Jev's failures and refuse the fast-model fallback."""
     from app.services import autofill_map, autofill_pick, autofill_polarity, autofill_step, jev, llm, model_settings
 
     saved = {(model_settings, "get_autofill_engine"): model_settings.get_autofill_engine,
-             (model_settings, "get_autofill_low_stakes"): model_settings.get_autofill_low_stakes,
+             (model_settings, "get_answer_level"): model_settings.get_answer_level,
              (jev, "decide"): jev.decide,
              (autofill_pick, "_with_llm"): autofill_pick._with_llm,
              (autofill_map, "_with_llm"): autofill_map._with_llm,
@@ -415,7 +437,8 @@ def engine_of(run: Run, low_stakes: bool = False):
 
     engine = "jev" if run.engine == "routed" else run.engine
     model_settings.get_autofill_engine = lambda session=None: engine
-    model_settings.get_autofill_low_stakes = lambda session=None: low_stakes
+    # /pick and /step read the level; the derived low-stakes switch reads it too.
+    model_settings.get_answer_level = lambda session=None: level
     autofill_pick.verdict, autofill_step._decide = seen_pick, seen_step
     autofill_polarity.decide = seen_polarity
     autofill_polarity.forget()   # each case, on each engine, asks its own polarity
@@ -462,8 +485,9 @@ def run_pick(case: dict, run: Run, session, today: str) -> dict:
     hint = job_hint(case)
     run.trace.clear()
     try:
-        with engine_of(run, low_stakes=case.get("low_stakes") == "on"):
-            picked = autofill_pick.pick([fld], case_facts(case, today), session, hint)["c1"]
+        with engine_of(run, level=level_of(case)):
+            picked = autofill_pick.pick([fld], case_facts(case, today), session, hint,
+                                        queued=bool(case.get("queued")))["c1"]
     except (JevFellBack, llm.LLMProviderError) as exc:
         return failure(case, exc)
     got = next((o.text for o in fld.options if picked.oids and o.oid == picked.oids[0]), None)
@@ -487,8 +511,8 @@ def run_step(case: dict, run: Run, session, today: str) -> dict:
     hint = job_hint(case)
     run.trace.clear()
     try:
-        with engine_of(run, low_stakes=case.get("low_stakes") == "on"):
-            resp = autofill_step.step(req, case_facts(case, today), session, hint)
+        with engine_of(run, level=level_of(case)):
+            resp = autofill_step.step(req, case_facts(case, today), session, hint, queued=bool(case.get("queued")))
     except (JevFellBack, llm.LLMProviderError) as exc:
         return failure(case, exc)
     mid = resp.mid or "give_up"

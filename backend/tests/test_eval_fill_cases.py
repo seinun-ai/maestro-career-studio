@@ -648,3 +648,80 @@ def test_open_copy_points_the_app_at_the_copy_and_binds_it(tmp_path, monkeypatch
     logs = Path(os.environ["LOGS_DIR"])                                # an unset one gets a fresh temp dir
     assert logs.is_dir() and logs.parent == tmp_path and logs.name.startswith("dbcopy-logs_dir-")
     assert registered == [(shutil.rmtree, (str(logs),), {"ignore_errors": True})]   # only the one it made
+
+
+# ---------- the queued level: the cases and what the harness forces for them
+
+QUEUED_NEVER = ("clearance", "government", "work-auth")
+
+
+def test_the_queued_level_cases_are_there_and_well_formed():
+    by_id = {c["id"]: c for c in PICKS["cases"]}
+    for kind in QUEUED_NEVER:
+        case = by_id[f"queued-never-{kind}"]
+        assert (case["route"], case["level"], case["queued"], case["expected"]) == ("low_stakes", "queued", True, None), kind
+        assert ev.level_of(case) == "queued"
+    assert by_id["queued-years-history-says-fewer"]["expected"] is None
+    assert {by_id[k]["expected"] for k in ("queued-years-history-silent", "queued-years-history-enough")} == {"Yes"}
+    assert ev.level_of(by_id["low-stakes-drug-test"]) == "history" and ev.level_of(
+        by_id["low-stakes-jd-experience-off"]) == "facts"
+
+
+@pytest.mark.parametrize("bad", [{"level": "everything"}, {"queued": "yes"}, {"level": "facts"}, {"level": "history", "low_stakes": "off"}])
+def test_a_malformed_level_is_refused(bad):
+    case = {"id": "x", "route": "low_stakes", "low_stakes": "on", "question": "Q", "options": ["Yes", "No"],
+            "expected": None} | bad
+    with pytest.raises(ValueError):
+        ev.check_pick_case(case)
+    with pytest.raises(ValueError):
+        ev.check_pick_case({"id": "x", "slot": "personal.city", "fact": "X", "question": "Q", "options": ["X"],
+                            "expected": "X", "level": "queued"})
+
+
+def test_the_harness_forces_the_answer_level_and_the_queued_job_then_puts_them_back(monkeypatch):
+    from app.schemas.autofill_fill import Picked
+    from app.services import autofill_pick, model_settings
+
+    seen = {}
+
+    def spy(fields, facts, session, hint, **kw):
+        seen.update(level=model_settings.get_answer_level(None), low_stakes=model_settings.get_autofill_low_stakes(None),
+                    **kw)
+        return {"c1": Picked(oids=[], reason="abstained")}
+
+    real = model_settings.get_answer_level
+    # The spy runs inside `engine_of`: it reads what the harness forced.
+    monkeypatch.setattr(autofill_pick, "pick", spy)
+
+    by_id = {c["id"]: c for c in PICKS["cases"]}
+    ev.run_pick(by_id["queued-never-clearance"], ev.Run("fast"), None, PICKS["today"])
+    assert seen == {"level": "queued", "low_stakes": True, "queued": True}
+    ev.run_pick(by_id["low-stakes-jd-experience-off"], ev.Run("fast"), None, PICKS["today"])
+    assert seen == {"level": "facts", "low_stakes": False, "queued": False}
+    assert model_settings.get_answer_level is real
+
+
+def _fast_models(monkeypatch, years):
+    """The fast model: the reasoning call says `years`; the keen pick would say Yes to anything."""
+    from app.services import autofill_pick
+
+    def call_openai(**kw):
+        if kw["trace_name"] == "autofill-reasoned-pick":
+            return {"answers": {"c1": years}}
+        return {"picks": {"c1": {"oids": ["o1"], "confidence": 0.95}}}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+
+
+def test_a_years_question_the_history_contradicts_is_asked_even_if_the_keen_model_would_say_yes(monkeypatch):
+    by_id = {c["id"]: c for c in PICKS["cases"]}
+    _fast_models(monkeypatch, {"oid": "o2", "confidence": 0.95, "shown_by": ["j1"], "years": "fewer"})
+    got = ev.run_pick(by_id["queued-years-history-says-fewer"], ev.Run("fast"), None, PICKS["today"])
+    assert got["outcome"] == "abstained_ok" and got["got"] is None
+
+
+def test_a_years_question_the_history_is_silent_about_gets_the_keen_yes(monkeypatch):
+    by_id = {c["id"]: c for c in PICKS["cases"]}
+    _fast_models(monkeypatch, {"oid": "none", "confidence": 0.9, "shown_by": [], "years": "silent"})
+    got = ev.run_pick(by_id["queued-years-history-silent"], ev.Run("fast"), None, PICKS["today"])
+    assert (got["outcome"], got["got"]) == ("right", "Yes")
