@@ -165,6 +165,11 @@ def test_history_is_built_from_move_ids_and_outcomes_only(entry):
     assert req(history=["choose -> unexpected (new_options)", "give_up -> closed"]).history
 
 
+def test_a_move_that_changed_nothing_is_a_history_entry():
+    """The loop tells the model `search:value -> no_change` when a move left the field looking as it did."""
+    assert req(history=["search:value -> progressed", "search:value -> no_change"]).history
+
+
 @pytest.mark.usefixtures("jev_on")
 def test_a_group_click_is_progress_and_an_answer_click_needs_its_floor(db_session, monkeypatch):
     candidates = [{"mid": "click:o1", "describe": 'Open the group "Job Board"'},

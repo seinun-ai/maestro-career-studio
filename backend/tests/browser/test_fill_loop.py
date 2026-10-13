@@ -897,15 +897,17 @@ def test_history_is_built_from_move_ids_and_outcomes_and_keeps_the_last_eight(pa
 
 
 def _ten_step_field():
-    """A popup that needs nine scrolls, then a click: ten adaptive steps to get its answer."""
-    scroll = {"version": 1, "candidates": [{"mid": "scroll", "describe": "Scroll the list"}, GIVE_UP]}
+    """A popup that needs nine scrolls, then a click: ten adaptive steps to get its answer.
+    Scrolling is the one move that is not counted: a long list takes as many as it has windows."""
     pick = {"version": 2, "candidates": [{"mid": "click:o1", "describe": 'Click the option "LinkedIn"'}, GIVE_UP]}
     return dict(frames=[[f("h", "popup", "How did you hear?")]] * 3,
                 map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
                 explore={"h": {"options": [opt("o1", "Job Board")], "complete": True}},
                 pick={"h": {"oids": [], "reason": "abstained"}},
                 apply={"scroll": {"outcome": "progressed"}},
-                step={"states": [scroll] * 9 + [pick],
+                # Each scroll shows another window of the list: nine scrolls, none of them a repeat.
+                step={"states": [{"version": 1, "candidates": [{"mid": "scroll", "describe": f"Scroll the list ({i})"}, GIVE_UP]}
+                                 for i in range(9)] + [pick],
                       "moves": [{"mid": "scroll", "reason": "progress"}] * 9 + [{"mid": "click:o1", "reason": "matched"}]})
 
 
@@ -1502,7 +1504,7 @@ def test_every_proposal_source_shares_the_field_budget(page, load):
     (a quick commit, then the adaptive step) runs on what is left, never on a
     fresh FIELD_MS: some adaptive steps run, and the clock stops them before
     the 8 that would have verified."""
-    states = [{"candidates": [{"mid": "scroll", "describe": "Scroll"}, GIVE_UP]} for _ in range(7)] + [
+    states = [{"candidates": [{"mid": "scroll", "describe": f"Scroll {i}"}, GIVE_UP]} for i in range(7)] + [
         {"candidates": [{"mid": "click:o1", "describe": 'Click the option "LinkedIn"'}, GIVE_UP]}]
     # Wide margins, for a slow machine: a fresh clock would leave 1500 ms for
     # 8 steps of ~100 ms (verified); the shared one leaves ~500 ms (about 4).
@@ -1619,6 +1621,72 @@ def test_two_refusals_in_a_row_end_the_adaptive_step(page, load):
     assert [a["mid"] for a in actions(out, "move")] == ["click:o1", "give_up"]
     assert len(bodies(out, "/api/autofill/step")) == 3
     assert (row(out, "d")["status"], row(out, "d")["lastOutcome"]) == ("needs_answer", "abstained")
+
+
+def _search_field(states, **spec):
+    """Field of Study, whose model always answers `search:value` (live 2026-10-13: eight times, then cannot_operate)."""
+    return dict(frames=[[f("k", "search", "Field of Study", required=True)]] * 3,
+                map={"k": {"route": "slot", "slot": "education.0.discipline", "value": "Data Science and Analytics"}},
+                explore={"Data Science and Analytics": {"options": [], "complete": False, "error": "empty_popup"}},
+                apply={"search:value": {"outcome": "progressed"}},
+                step={"states": states, "moves": [{"mid": "search:value", "reason": "progress"}] * 8}, **spec)
+
+
+def _shown(*rows):
+    """A search box's state listing `rows` (its version is minted afresh by the page on every read)."""
+    return {"version": 1, "popupOpen": True, "options": [{"oid": f"o{i}", "text": t} for i, t in enumerate(rows, 1)],
+            "candidates": [{"mid": "search:value", "describe": 'Type "Data Science and Analytics" into the search box'}, GIVE_UP]}
+
+
+def test_the_same_search_is_never_sent_three_times(page, load):
+    """The page lists the same three rows after every search: the second search
+    changed nothing, so the model hears `no_change`, the search is not sent a
+    third time, and the field ends in four steps, not the budget's eight."""
+    rows = ("Statistics", "Computer Science", "Mathematics")
+    out = run(page, load, **_search_field([_shown(*rows) for _ in range(8)]))
+    assert [m["mid"] for m in actions(out, "move")] == ["search:value", "search:value", "give_up"]
+    steps = bodies(out, "/api/autofill/step")
+    assert len(steps) == 4
+    assert steps[2]["history"][-2:] == ["search:value -> progressed", "search:value -> no_change"]
+    assert steps[3]["history"][-1] == "search:value -> already_failed"
+    assert all(HISTORY_ENTRY.match(e) for s in steps for e in s["history"])
+    assert (row(out, "k")["status"], row(out, "k")["lastOutcome"]) == ("needs_answer", "abstained")
+
+
+def test_a_move_runs_at_most_twice_per_field_and_value_whatever_it_shows(page, load):
+    """Each search lists something new, so nothing is `no_change`: a third
+    proposal is still refused like an already-failed one."""
+    out = run(page, load, **_search_field([_shown(f"Row {i}") for i in range(8)]))
+    assert [m["mid"] for m in actions(out, "move")] == ["search:value", "search:value", "give_up"]
+    steps = bodies(out, "/api/autofill/step")
+    assert len(steps) == 4
+    assert not any("no_change" in e for s in steps for e in s["history"])
+    assert steps[3]["history"][-1] == "search:value -> already_failed"
+
+
+def test_a_scroll_that_shows_the_same_window_is_a_move_that_changed_nothing(page, load):
+    """Scroll has no run limit, so only `no_change` stops it from going round."""
+    window = {"version": 1, "candidates": [{"mid": "scroll", "describe": "Scroll the list"}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Company")]] * 2,
+              map={"d": {"route": "slot", "slot": "experience.0.company", "value": "Acme"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
+              apply={"scroll": {"outcome": "progressed"}},
+              step={"states": [dict(window) for _ in range(8)], "moves": [{"mid": "scroll", "reason": "progress"}] * 8})
+    assert [m["mid"] for m in actions(out, "move")] == ["scroll", "scroll", "give_up"]
+    assert bodies(out, "/api/autofill/step")[-1]["history"][-2:] == ["scroll -> no_change", "scroll -> already_failed"]
+
+
+def test_a_search_for_another_value_is_a_fresh_count(page, load):
+    """The count is per field AND value: each item of a set may search twice."""
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]] * 3,
+              map={"k": {"route": "slot", "slot": "skills", "value": ["Go", "Rust"]}},
+              explore={t: {"options": [], "complete": False, "error": "empty_popup"} for t in ("Go", "Rust")},
+              apply={"search:value": {"outcome": "progressed"}},
+              step={"states": [_shown(f"Row {i}") for i in range(12)],
+                    "moves": [{"mid": "search:value", "reason": "progress"}] * 12})
+    searched = [m["value"] for m in out["sent"] if m["type"] == "fill_step_state"]
+    assert searched.count("Go") == 3 and searched.count("Rust") == 3   # two runs, then the state kept for two refusals
+    assert [m["mid"] for m in actions(out, "move")].count("search:value") == 4
 
 
 def test_a_recommit_whose_explore_left_another_value_names_that_value(page, load):
@@ -2854,13 +2922,13 @@ def test_a_huge_option_list_reports_a_count_the_schema_accepts(page, load):
 def test_a_fields_trace_path_keeps_its_first_and_last_twenty_steps(page, load):
     """A popup scrolled 30 times: 62 steps happen. The first 20 show how the field began and the
     last 20 how it ended; each /step answer is marked by its p so the two ends can be told apart."""
-    state = {"candidates": [{"mid": "scroll", "describe": "Scroll the list"}, GIVE_UP]}
+    states = [{"candidates": [{"mid": "scroll", "describe": f"Scroll the list ({i})"}, GIVE_UP]} for i in range(30)]
     moves = [{"mid": "scroll", "reason": "progress", "trace": {"p": i / 100}} for i in range(30)]
     out = run(page, load, frames=[[f("d", "popup", "Company")]] * 2, limits={"MAX_STEPS": 30},
               map={"d": {"route": "slot", "slot": "experience.0.company", "value": "Acme"}},
               explore={"d": {"options": [], "complete": False, "error": "no_popup"}},
               apply={"scroll": {"outcome": "progressed"}},
-              step={"states": [state] * 30, "moves": moves})
+              step={"states": states, "moves": moves})
     assert len(actions(out, "move")) == 31  # 30 scrolls and the closing give_up
     steps = traced(out, "d")["steps"]
     assert len(steps) == 40

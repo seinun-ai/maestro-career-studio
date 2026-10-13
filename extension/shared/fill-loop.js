@@ -46,7 +46,9 @@
  *   executors: they share the field's one budget (FIELD_MS, charged for the
  *   time the field was worked, across rounds — a retry never gets a fresh
  *   clock), a state + move pair that failed is never proposed to the page again
- *   (`failedMoves`: the state as shown, the value it was for, the move), and a
+ *   (`failedMoves`: the state as shown, the value it was for, the move — also
+ *   a move that progressed yet left what its last run left, `no_change`, and a
+ *   move already run twice for the field and value), and a
  *   field is `unsupported` only once two DIFFERENT kinds of gesture (pointer,
  *   keyboard; typing: two different values) — have had no effect at all
  *   (`no_effect`, with the kinds the page tried) since anything last did.
@@ -902,13 +904,24 @@
       (state.candidates ?? []).map((c) => [c?.mid, c?.describe])]);
     const FAILED = new Set(["unexpected", "reverted"]);
     const MAX_REFUSALS = 2;
+    // A move runs at most twice per field and value, whatever it did: a third
+    // proposal is refused like one that failed. Scroll is the exception: a
+    // long list takes a scroll per window, and a scroll that shows the same
+    // window again is `no_change`, a scroll at the end is refused by the page.
+    const MAX_RUNS = 2;
     const adapt = async (f, row, first, item) => {
       const value = item ?? (typeof row.value === "string" ? row.value : undefined);
       const history = first ? [first] : [];
       // A state + move pair that failed, for this field and this run: never
       // sent to the page again. The row keeps it across rounds and items.
       const failedMoves = rows.get(f.fid).failedMoves ?? new Set();
-      set(f.fid, { failedMoves });
+      // Per move (id, value, and the term it types, once a move names one):
+      // how often it ran, and the state it left the last time it progressed.
+      // Kept on the row like `failedMoves`.
+      const ran = rows.get(f.fid).moveRuns ?? new Map();
+      const left = rows.get(f.fid).moveLeft ?? new Map();
+      set(f.fid, { failedMoves, moveRuns: ran, moveLeft: left });
+      let after = null; // { key, tried }: a move that progressed, whose state is read next
       let state = null; // kept (not re-read) when a proposed move was refused here: the page's state is untouched
       let refusals = 0; // proposals refused in a row as already failed
       for (let i = 0; i < L.MAX_STEPS; i += 1) {
@@ -928,6 +941,18 @@
           if (state.error === "cancelled") return { outcome: "halted" };
           // The field changed under us (or the page could not read it): back to the inventory.
           return { outcome: "stale", why: wordOf(state.error) ?? "stale" };
+        }
+        if (after) {
+          // A move that progressed but left the field showing what the last run of
+          // that move left is a move that changed nothing: failed from the state
+          // it ran in, and the model is told so.
+          const shown = stateKey(state, value);
+          if (left.get(after.key) === shown) {
+            failedMoves.add(after.tried);
+            const unchanged = historyEntry(after.mid, "no_change");
+            if (unchanged) history.push(unchanged);
+          } else left.set(after.key, shown);
+          after = null;
         }
         // Nothing but give_up on offer: no model is asked.
         if (!state.candidates.some((c) => c?.mid && c.mid !== "give_up")) return giveUp(f, "gave_up");
@@ -949,10 +974,12 @@
         if (fieldLate(f)) return giveUp(f, "late");
         if (!chosen) return giveUp(f, res ? "gave_up" : "no_answer");
         const tried = `${stateKey(state, value)}:${chosen.mid}`;
-        if (failedMoves.has(tried)) {
-          // Proposed again on the same state: not executed. The model hears so,
-          // and chooses again from the same state — twice in a row, and the
-          // step has nothing new to offer: it gives up.
+        const key = JSON.stringify([chosen.mid, value ?? null, res.term ?? null]);
+        if (failedMoves.has(tried) || (chosen.mid !== "scroll" && (ran.get(key) ?? 0) >= MAX_RUNS)) {
+          // Proposed again on the same state, or after its two runs: not
+          // executed. The model hears so, and chooses again from the same
+          // state — twice in a row, and the step has nothing new to offer: it
+          // gives up.
           if ((refusals += 1) >= MAX_REFUSALS) return giveUp(f, "gave_up");
           const refused = historyEntry(chosen.mid, "already_failed");
           if (refused) history.push(refused);
@@ -960,6 +987,7 @@
         }
         refusals = 0;
         const asProgress = res.reason === "progress" && chosen.mid.startsWith("click:");
+        ran.set(key, (ran.get(key) ?? 0) + 1);
         const out = await act(f, {
           op: "move", mid: chosen.mid, version: state.version, ...(asProgress ? { as: "progress" } : {}),
         });
@@ -980,6 +1008,7 @@
           return { outcome: "landed", how: out.reason, text: out.reason === "search_committed" ? left : quotedText(chosen.describe) ?? left };
         }
         // progressed, stale, not_a_group, anything else: a fresh state, and step again.
+        if (out.outcome === "progressed") after = { key, tried, mid: chosen.mid };
       }
       return giveUp(f, "exhausted");
     };
