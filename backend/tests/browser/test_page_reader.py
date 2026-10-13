@@ -658,9 +658,9 @@ def test_a_draft_review_page_with_only_hidden_inputs_and_an_apply_submit_is_neve
 
 
 def test_the_same_page_reached_after_a_sign_in_is_never_pressed(page, load):
-    serve(page, APPLY_URL, "<h1>Sign in</h1><form><label for='e'>Email</label><input id='e' type='email'>"
+    serve(page, WORKDAY_URL, "<h1>Sign in</h1><form><label for='e'>Email</label><input id='e' type='email'>"
                            "<input type='password'><button type='button'>Sign in</button></form>")
-    out = run_driver(page, swap=DRAFT_REVIEW, signIn=True)
+    out = run_driver(page, swap=DRAFT_REVIEW, signIn=True, openUrl=WORKDAY_URL)
     assert out["calls"] == [["signIn"]] and out["hit"] == 0
     assert (out["status"], out["why"]) == ("parked", "posting")
 
@@ -774,6 +774,7 @@ LOGIN = {"email": "ada@acme.test", "password": "Pw-Zelda-9-not-real", "allowedHo
 
 def sign_in(page, **over):
     return page.evaluate(f"(a) => {READER}.signIn(a)", {**LOGIN, **over})
+WORKDAY_URL = "https://acme.wd5.myworkdayjobs.com/apply"   # the saved login is typed only on a known ATS host
 
 
 def serve_signin(page, name="signin.html", url="https://x.test/signin"):

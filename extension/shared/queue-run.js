@@ -8,11 +8,17 @@
  *
  * THE STATE MACHINE (record.status; saved at every change and every page boundary)
  *   opening → [signing_in] → filling → advancing → (next page: filling → advancing …)
- *     → ready        a review page, filled; the user's Submit is the only thing left
+ *     → ready        a review page, filled; the user's Submit is the only thing left. Only with
+ *                    evidence it was the application: a step behind it, or a field this page's fill
+ *                    wrote or confirmed. A start chooser or a posting with a stray control parks
+ *                    `unknown_page` instead. A field-less page with a lone Next after step 0 is
+ *                    treated as review too (when unsure whether it is Next or Submit, stop).
  *     → confirming   a ready tab that now shows the confirmation page (Task 20 marks it applied)
  *     → parked       the run needs the user or hit a wall; `why` says which:
  *         captcha | create_account | verify | board_native   the page kind, a wall by design
  *         sign_in_failed   the saved login did not work; never retried (a lockout)
+ *         sign_in_yourself the sign-in page is on a host that is not a known ATS (shared/ats-hosts.js):
+ *                          the saved password is not typed there; the user signs in and presses Resume
  *         open_questions   required fields it could not answer or operate; `open` lists them
  *         no_change        Next did nothing, even after one refill
  *         loop | step_limit   the same page again, or more than LIMITS.stepMax steps
@@ -78,6 +84,8 @@
   const POLL_MS = 500;
   const MAX_QUESTION = 200;
   const OPEN_STATUSES = new Set(["needs_answer", "cannot_operate"]);
+  // A fill "wrote or confirmed" a field when it ended in one of these (not unconfirmed, yours, blocked).
+  const WROTE_STATUSES = new Set(["verified", "closest", "assumed", "already", "partial"]);
   const WALLS = new Set(["captcha", "create_account", "verify", "board_native"]);
   const DEPS = ["openTab", "classify", "advance", "fill", "signIn", "waitForChange", "tabUrl",
     "save", "onUpdate", "now", "cancelled"];
@@ -110,16 +118,34 @@
     return [where, summary?.stepKey ?? "", buttons, summary?.fillable ?? 0].join("\n");
   }
 
-  /** The frame to judge the tab by: one that answered with a summary (a frame with no form
-   * evidence says null). The top frame wins when it says something definite (a wall, a sign-in, a
-   * form step, a review); when it is a bare posting or unreadable and a subframe has the fields
-   * (a careers page embedding the ATS form), the subframe with the most fillable controls wins. */
+  // A wall shows in whichever frame holds it (a challenge in the embedded form's own iframe).
+  // These only mean something in the top document: the page around everything else.
+  const WALL_ANYWHERE = new Set(["captcha", "create_account", "verify"]);
+  const TOP_ONLY = new Set(["sign_in", "closed", "confirmation", "board_native"]);
+
+  /** The frame to judge the tab by. Only frames that answered with a summary count (a frame with
+   * no form evidence says null). In order: the top document's own sign-in, closed, confirmation or
+   * board page, or a wall in any frame; then any frame with a visible Submit, because one is
+   * enough to make the TAB the review page (a Next in a carousel at the top must not outvote the
+   * form's Submit in an embedded frame); then the top frame if it has fields to fill; then the
+   * frame with the most fillable controls (a careers page embedding the ATS form); else the top. */
   function pickFrame(frames) {
     const usable = (Array.isArray(frames) ? frames : []).filter((f) => f?.result?.summary);
     const top = usable.find((f) => f.result.top);
+    const kindOf = (f) => ns.pageKind.classify(f.result.summary).kind;
     const fillable = (f) => f.result.summary.fillable ?? 0;
+    // A posting's own "Apply" is Submit-worded too, but the page it sits on classifies as a posting
+    // before any button is read: only a frame that classifies as a review by its Submit counts.
+    const showsSubmit = (f) => kindOf(f) === "review" && (f.result.summary.buttons ?? [])
+      .some((b) => b.visible !== false && ns.pageKind.sortButton(b) === "submit");
     const fullest = usable.reduce((best, f) => (!best || fillable(f) > fillable(best) ? f : best), null);
-    if (top && !["unknown", "posting"].includes(ns.pageKind.classify(top.result.summary).kind)) return top;
+    if (top && (WALL_ANYWHERE.has(kindOf(top)) || TOP_ONLY.has(kindOf(top)))) return top;
+    const wall = usable.find((f) => WALL_ANYWHERE.has(kindOf(f)));
+    if (wall) return wall;
+    if (top && showsSubmit(top)) return top;
+    const submitting = usable.find(showsSubmit);
+    if (submitting) return submitting;
+    if (top && fillable(top) > 0) return top;
     if (fullest && fillable(fullest) > 0) return fullest;
     return top ?? fullest;
   }
@@ -236,6 +262,10 @@
         if (kind === "confirmation") return await park("already_applied");
         // A field-less page with an Apply after a fill (or after a step) is the review page.
         if (kind === "posting" && (record.filled === true || record.step > 0)) kind = "review";
+        // Later than the first page, a page with nothing to fill and a lone Next may be a final
+        // "are you sure" page: when unsure whether a button is Next or Submit, stop. (An intro page
+        // at step 0 still advances.)
+        if (kind === "form_step" && record.step > 0 && (summary.fillable ?? 0) === 0) kind = "review";
 
         if (WALLS.has(kind)) return await park(kind);
         if (kind === "closed") return await finish("stopped", "closed");
@@ -244,8 +274,12 @@
         if (kind === "sign_in") {
           // Marked BEFORE the attempt: whatever happens, the login is tried once.
           if (record.signedIn === true) return await park("sign_in_failed");
+          // The saved password is typed only on a known ATS host (the owner's decision); anywhere
+          // else the user signs in and presses Resume. Nothing is fetched or marked as tried.
+          const allowedHost = record.hosts.at(-1);
+          if (!ns.atsHosts.isKnown(allowedHost)) return await park("sign_in_yourself");
           await update({ status: "signing_in", signedIn: true });
-          const result = await act(deps.signIn, record, { allowedHost: record.hosts.at(-1), stop: stopping });
+          const result = await act(deps.signIn, record, { allowedHost, stop: stopping });
           if (!result?.signedIn) return await park("sign_in_failed");
           await waitChange(fingerprint(url, summary));
           moved();
@@ -264,18 +298,30 @@
 
         // form_step | review: fill the page, read it again, then judge it.
         if (!pageFilled) {
+          // A review page at the first step with nothing on it to fill and no Next is not the end
+          // of an application (a chooser, a posting): it is not filled, and not "ready".
+          if (kind === "review" && record.step === 0 && record.wrote !== true && (summary.fillable ?? 0) === 0) {
+            return await park("unknown_page");
+          }
           // `filled` before the fill: one that types and then throws or is stopped has still filled.
           await update({ status: "filling", filled: true });
           const report = await act(deps.fill, record, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
           if (!Array.isArray(report?.fields)) throw new Error("the fill gave no report");
           if (report.stopped) throw HALT;
+          if (report.fields.some((f) => WROTE_STATUSES.has(f.status))) await update({ wrote: true });
           const open = openQuestions(report);
           if (open.length) return await park("open_questions", { open });
           pageFilled = true;
           continue;
         }
 
-        if (kind === "review") return await finish("ready", null, { readyAt: deps.now(), open: [] });
+        if (kind === "review") {
+          // "Ready to submit" needs evidence this was the application: a step behind it, or a field
+          // this page's fill wrote or confirmed. A start chooser or a posting with a stray control
+          // (a job-alert box) has neither.
+          if (record.step === 0 && record.wrote !== true) return await park("unknown_page");
+          return await finish("ready", null, { readyAt: deps.now(), open: [] });
+        }
 
         const here = fingerprint(url, summary);
         if (tried === 0) {
@@ -304,7 +350,8 @@
 
   /** The three page-facing deps and the change wait, built from a transport:
    *   broadcast(tabId, message, frameId?) → [{frameId, result}]   every frame of that tab, or just
- *                                                     `frameId` when given (page_broadcast)
+ *                                                     `frameId` when given (page_broadcast);
+ *                                                     a press (Next or Apply) always names its frame
    *   frame0(tabId, message) → result                   the top document only (panel_frame0)
    *   api(path, init) → the parsed JSON body            the backend
    *   tabUrl(tabId), sleep(ms), now()                   the host's
@@ -316,11 +363,10 @@
 
     const classify = (tabId) => broadcast(tabId, { type: "page_classify" });
 
-    // A Next goes to every frame (an id belongs to the frame that minted it, so only that one can
-    // press). The posting's Apply goes to that one frame alone.
+    // The press goes to the one frame that named the button (ids are frame-tagged as well).
     async function advance(tabId, frameId, id, opts) {
       const apply = opts?.apply === true;
-      const frames = await broadcast(tabId, { type: "page_advance", id, ...(apply ? { apply: true } : {}) }, ...(apply ? [frameId] : []));
+      const frames = await broadcast(tabId, { type: "page_advance", id, ...(apply ? { apply: true } : {}) }, frameId);
       const answer = (Array.isArray(frames) ? frames : []).find((f) => f.frameId === frameId)?.result;
       return answer?.clicked === true ? { clicked: true } : { clicked: false, why: typeof answer?.why === "string" ? answer.why : "gate" };
     }

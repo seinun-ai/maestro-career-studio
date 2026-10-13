@@ -19,7 +19,8 @@ from tests.extension_harness import ROOT, js_code, run_node
 
 QUEUE_RUN_JS = (ROOT / "extension" / "shared" / "queue-run.js").read_text(encoding="utf-8")
 PAGE_KIND_JS = (ROOT / "extension" / "shared" / "page-kind.js").read_text(encoding="utf-8")
-SOURCE = PAGE_KIND_JS + "\n" + QUEUE_RUN_JS
+ATS_HOSTS_JS = (ROOT / "extension" / "shared" / "ats-hosts.js").read_text(encoding="utf-8")
+SOURCE = ATS_HOSTS_JS + "\n" + PAGE_KIND_JS + "\n" + QUEUE_RUN_JS
 
 _DRIVER = r"""
 const ns = loadModules();
@@ -45,6 +46,10 @@ const summaryOf = (p) => {
     case "board_native": s.hasApplyLink = true; s.boardNative = true; break;
     case "posting": s.hasApplyLink = true; s.applyId = p.applyId === undefined ? "apply-1" : p.applyId;
       s.buttons = [btn("apply-1", "Apply now", { inForm: false })]; break;
+    case "chooser": s.fillable = p.fillable ?? 0;
+      s.buttons = ["Autofill with Resume", "Apply Manually", "Use My Last Application"].map((t, i) => btn(`ch-${i}`, t)); break;
+    case "alert_posting": s.fillable = 1; s.hasApplyLink = true;
+      s.buttons = [btn("alert-1", "Subscribe", { inForm: false }), btn("apply-1", "Apply now", { inForm: false })]; break;
     case "unknown": break;
     default: throw new Error(`no page type ${p.t}`);
   }
@@ -103,7 +108,8 @@ const deps = {
   fill: async (record, options) => {
     tick("fill", options ?? null);
     fillCalls += 1;
-    const fields = (spec.fills ?? [])[fillCalls - 1] ?? [];
+    // By default a fill writes one field, as a real page's does; `fills` says otherwise.
+    const fields = (spec.fills ?? [])[fillCalls - 1] ?? [{ fid: "fdef", question: "Name", required: true, status: "verified" }];
     if (spec.cancelOnFill === fillCalls) { cancelFlag = true; callsWhenCancelled = calls.length; }
     if (spec.fillReturns === "nothing") return undefined;
     if (spec.fillThrows) throw new Error("secret-token-xyz exploded");
@@ -147,6 +153,10 @@ def step(n, **extra):
 
 
 REVIEW = {"t": "review"}
+# The saved password is typed only on a known ATS host, so the sign-in tests run on one.
+WD = "acme.wd5.myworkdayjobs.com"
+SIGN_IN = {"t": "sign_in", "host": WD}
+ON_WD = {"openUrl": f"https://{WD}/apply"}
 
 
 def names(out, name):
@@ -224,49 +234,73 @@ def test_a_captcha_after_a_step_parks_the_run_where_it_stands(tmp_path):
 # ---------- sign-in ----------
 
 def test_sign_in_is_tried_once_and_a_page_that_still_asks_parks_it(tmp_path):
-    out = _drive(tmp_path, [{"t": "sign_in"}])   # signIn "works" but the page never moves on
+    out = _drive(tmp_path, [SIGN_IN], record=ON_WD)   # signIn "works" but the page never moves on
     assert (out["record"]["status"], out["record"]["why"]) == ("parked", "sign_in_failed")
     assert len(names(out, "signIn")) == 1
 
 
 def test_sign_in_that_works_carries_on_with_the_form(tmp_path):
-    out = _drive(tmp_path, [{"t": "sign_in"}, step(1), REVIEW], signInMoves=True)
+    out = _drive(tmp_path, [SIGN_IN, step(1), REVIEW], signInMoves=True, record=ON_WD)
     assert out["record"]["status"] == "ready" and len(names(out, "signIn")) == 1
 
 
 def test_a_refused_sign_in_parks_at_once_without_waiting_for_the_page(tmp_path):
-    out = _drive(tmp_path, [{"t": "sign_in"}], signIn={"signedIn": False, "why": "host"})
+    out = _drive(tmp_path, [SIGN_IN], signIn={"signedIn": False, "why": "host"}, record=ON_WD)
     assert (out["record"]["status"], out["record"]["why"]) == ("parked", "sign_in_failed")
     assert names(out, "waitForChange") == []
 
 
+@pytest.mark.parametrize("host", ["boards.greenhouse.io", "acme.wd5.myworkdayjobs.com", "jobs.lever.co", "acme.icims.com"])
+def test_a_known_ats_host_gets_the_saved_login(tmp_path, host):
+    out = _drive(tmp_path, [{"t": "sign_in", "host": host}], signInMoves=True,
+                 record={"openUrl": f"https://{host}/apply"})
+    assert len(names(out, "signIn")) == 1 and out["record"]["signedIn"] is True
+
+
+@pytest.mark.parametrize("host", ["careers.acme.test", "greenhouse.io.attacker.test", "login.sso-example.test"])
+def test_an_unknown_host_is_the_users_to_sign_in_to_and_nothing_is_fetched(tmp_path, host):
+    out = _drive(tmp_path, [{"t": "sign_in", "host": host}], signInMoves=True,
+                 record={"openUrl": f"https://{host}/apply"})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "sign_in_yourself")
+    assert names(out, "signIn") == [] and names(out, "waitForChange") == []
+    # Not marked as tried: the user signs in, presses Resume, and a page that no longer asks goes on.
+    assert out["record"].get("signedIn") is not True
+
+
+def test_after_the_user_signs_in_by_hand_a_resume_carries_on(tmp_path):
+    parked = {"tabId": 7, "status": "parked", "why": "sign_in_yourself", "hosts": ["careers.acme.test"]}
+    out = _drive(tmp_path, [step(1), REVIEW], record=parked)
+    assert out["record"]["status"] == "ready" and names(out, "signIn") == []
+
+
 def test_a_resumed_record_that_already_tried_the_login_never_tries_it_again(tmp_path):
-    out = _drive(tmp_path, [{"t": "sign_in"}], record={"signedIn": True, "tabId": 7})
+    out = _drive(tmp_path, [SIGN_IN], record={"signedIn": True, "tabId": 7})
     assert names(out, "signIn") == []
     assert (out["record"]["status"], out["record"]["why"]) == ("parked", "sign_in_failed")
 
 
 def test_the_driver_hands_the_sign_in_a_record_and_a_host_and_nothing_secret(tmp_path):
-    out = _drive(tmp_path, [{"t": "sign_in"}], signInMoves=True)
+    out = _drive(tmp_path, [SIGN_IN], signInMoves=True, record=ON_WD)
     (call,) = names(out, "signIn")
-    assert call[1:] == [2, ["allowedHost", "stop"], "jobs.acme.test"]
+    assert call[1:] == [2, ["allowedHost", "stop"], WD]
     assert "password" not in str(out["record"]).lower()
 
 
 def test_the_sign_in_host_is_the_one_the_run_navigated_to_not_the_pages_own_claim(tmp_path):
     """The apply link led to the careers host; the page then CLAIMS another host in its summary."""
-    liar = {"t": "sign_in", "host": "evil.example.test", "urlHost": "jobs.acme.test"}
-    out = _drive(tmp_path, [liar], signInMoves=True)
+    liar = {"t": "sign_in", "host": "evil.example.test", "urlHost": WD}
+    out = _drive(tmp_path, [liar], signInMoves=True, record=ON_WD)
     (call,) = names(out, "signIn")
-    assert call[3] == "jobs.acme.test"
-    assert out["record"]["hosts"] == ["jobs.acme.test"]
+    assert call[3] == WD
+    assert out["record"]["hosts"] == [WD]
 
 
 def test_a_host_reached_by_the_runs_own_navigation_is_remembered_in_order(tmp_path):
-    pages = [step(1, urlHost="jobs.acme.test"), {"t": "sign_in", "urlHost": "id.acme-ats.test"}]
-    out = _drive(tmp_path, pages, signInMoves=True)
-    assert out["record"]["hosts"] == ["jobs.acme.test", "id.acme-ats.test"]
-    assert names(out, "signIn")[0][3] == "id.acme-ats.test"
+    other = "acme.myworkdayjobs.com"
+    pages = [step(1, urlHost=WD), {"t": "sign_in", "urlHost": other}]
+    out = _drive(tmp_path, pages, signInMoves=True, record=ON_WD)
+    assert out["record"]["hosts"] == [WD, other]
+    assert names(out, "signIn")[0][3] == other
 
 
 def test_a_page_that_redirects_on_its_own_does_not_become_a_trusted_host(tmp_path):
@@ -290,7 +324,7 @@ def test_an_open_required_field_parks_the_page_with_the_list(tmp_path):
 
 
 def test_an_optional_open_field_does_not_park(tmp_path):
-    out = _drive(tmp_path, [REVIEW], fills=[[needs("f1", required=False)]])
+    out = _drive(tmp_path, [REVIEW], fills=[[needs("f1", required=False), needs("f2", status="verified")]])
     assert out["record"]["status"] == "ready"
 
 
@@ -404,13 +438,19 @@ def test_a_posting_without_an_apply_the_page_named_is_not_pressed(tmp_path):
     assert out["record"]["why"] == "posting" and names(out, "advance") == []
 
 
-@pytest.mark.parametrize("record", [{"filled": True}, {"step": 1}])
+@pytest.mark.parametrize("record", [{"filled": True, "wrote": True}, {"step": 1}])
 def test_a_field_less_page_with_an_apply_button_after_a_fill_or_a_step_is_the_review_page(tmp_path, record):
     """Never pressed: with the record's `filled` (or a step behind it) the Apply-worded button is a
     Submit, and the run stops there as Ready to submit."""
     out = _drive(tmp_path, [{"t": "posting"}], record=record)
     assert out["record"]["status"] == "ready"
     assert names(out, "advance") == []
+
+
+def test_a_fill_that_wrote_nothing_is_no_evidence_the_page_was_the_application(tmp_path):
+    out = _drive(tmp_path, [{"t": "posting"}], record={"filled": True})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert names(out, "advance") == [] and names(out, "fill") == []
 
 
 def test_a_review_like_page_reached_after_a_real_fill_is_never_pressed_either(tmp_path):
@@ -433,7 +473,7 @@ def test_an_apply_that_leaves_the_page_unchanged_parks_no_change(tmp_path):
 def test_apply_is_never_pressed_after_a_sign_in_even_on_a_page_that_looks_like_a_posting(tmp_path):
     """A site that restores a saved draft after sign-in lands on its review page: no fillable
     control, and one "Apply" that is really a Submit."""
-    out = _drive(tmp_path, [{"t": "sign_in"}, {"t": "posting"}], signInMoves=True)
+    out = _drive(tmp_path, [SIGN_IN, {"t": "posting", "host": WD}], signInMoves=True, record=ON_WD)
     assert (out["record"]["status"], out["record"]["why"]) == ("parked", "posting")
     assert names(out, "advance") == []
 
@@ -475,6 +515,60 @@ def test_a_page_seen_after_it_moved_is_still_a_loop_when_it_comes_back(tmp_path)
     again = {"url": "/same", "key": "same"}
     out = _drive(tmp_path, [step(1, **again), step(2), step(1, **again), REVIEW])
     assert out["record"]["why"] == "loop" and len(out["record"]["seen"]) == 2
+
+
+# ---------- "ready" needs evidence it was the application ----------
+
+def test_a_start_chooser_with_nothing_to_fill_is_not_filled_and_not_ready(tmp_path):
+    """Workday's "Autofill with Resume / Apply Manually / Use My Last Application" page."""
+    out = _drive(tmp_path, [{"t": "chooser"}])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert out["record"]["readyAt"] is None and names(out, "fill") == [] and names(out, "advance") == []
+
+
+@pytest.mark.parametrize("page", [{"t": "chooser", "fillable": 1}, {"t": "alert_posting"}])
+def test_a_page_with_a_stray_control_whose_fill_wrote_nothing_is_not_ready(tmp_path, page):
+    """A chooser with one stray radio, or a posting with a job-alert box and a location select:
+    they classify as review, and the fill writes none of the profile into them."""
+    out = _drive(tmp_path, [page], fills=[[needs("loc", "Location", required=False)]])
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert out["record"]["readyAt"] is None and names(out, "advance") == []
+    assert out["fillCalls"] == 1 and not out["record"].get("wrote")
+
+
+def test_a_one_page_application_is_ready_when_its_fill_wrote_a_field(tmp_path):
+    out = _drive(tmp_path, [REVIEW], fills=[[needs("f1", status="already")]])
+    assert out["record"]["status"] == "ready" and out["record"]["wrote"] is True
+
+
+@pytest.mark.parametrize("status", ["unconfirmed", "yours", "blocked", "needs_answer", "cannot_operate"])
+def test_a_field_the_fill_did_not_write_or_confirm_is_no_evidence(tmp_path, status):
+    out = _drive(tmp_path, [REVIEW], fills=[[needs("f1", required=False, status=status)]])
+    assert out["record"]["why"] == "unknown_page"
+
+
+def test_a_review_page_behind_a_step_is_ready_even_when_its_fill_wrote_nothing(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW], fills=[[], []])
+    assert out["record"]["status"] == "ready"
+
+
+def test_a_resume_remembers_that_a_field_was_written_before_the_park(tmp_path):
+    parked = {"tabId": 7, "status": "parked", "why": "open_questions", "wrote": True, "filled": True}
+    out = _drive(tmp_path, [REVIEW], record=parked, fills=[[]])
+    assert out["record"]["status"] == "ready"
+
+
+# ---------- when unsure whether a button is Next or Submit, stop ----------
+
+def test_a_fieldless_page_with_a_lone_next_after_the_first_step_is_treated_as_review_and_not_pressed(tmp_path):
+    out = _drive(tmp_path, [step(1), step(2, fillable=0), step(3)])
+    assert out["record"]["status"] == "ready" and out["record"]["step"] == 1
+    assert out["pressed"] == ["next-1"]
+
+
+def test_an_intro_page_at_the_first_step_still_advances(tmp_path):
+    out = _drive(tmp_path, [step(1, fillable=0), REVIEW])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
 
 
 # ---------- the confirmation, and a finished run ----------
@@ -536,6 +630,28 @@ def test_a_lone_posting_top_frame_is_still_judged_so_its_apply_can_be_followed(t
     assert names(out, "advance")[0][1:] == [0, "apply-1", {"apply": True}]
 
 
+def test_a_carousel_next_at_the_top_does_not_outvote_the_form_in_an_embedded_frame(tmp_path):
+    frames = [{"frameId": 0, "top": True, "page": step(0, fillable=0)}, {"frameId": 4, "page": step(1, fillable=3)}]
+    out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": frames}, REVIEW])
+    assert names(out, "advance")[0][1:3] == [4, "next-1"]
+
+
+def test_a_visible_submit_in_a_subframe_makes_the_tab_the_review_page(tmp_path):
+    for top in (step(0, fillable=0), step(0, fillable=2), {"t": "posting"}):
+        frames = [{"frameId": 0, "top": True, "page": top}, {"frameId": 4, "page": REVIEW}]
+        out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": frames}])
+        assert out["record"]["status"] == "ready" and names(out, "advance") == [], top
+
+
+def test_a_wall_in_any_frame_and_a_sign_in_at_the_top_still_win(tmp_path):
+    sub_captcha = [{"frameId": 0, "top": True, "page": step(0, fillable=2)}, {"frameId": 4, "page": {"t": "captcha"}}]
+    out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": sub_captcha}])
+    assert out["record"]["why"] == "captcha" and names(out, "advance") == []
+    sign_in = [{"frameId": 0, "top": True, "page": {"t": "sign_in", "host": WD}}, {"frameId": 4, "page": step(1, fillable=5)}]
+    out = _drive(tmp_path, [{"t": "step", "n": 0, "host": WD, "frames": sign_in}], record=ON_WD, signInMoves=True)
+    assert len(names(out, "signIn")) == 1
+
+
 # ---------- Stop ----------
 
 def test_a_stop_before_anything_ends_the_run_with_no_page_call_at_all(tmp_path):
@@ -557,7 +673,7 @@ def test_a_stop_during_the_fill_never_reaches_the_advance(tmp_path):
 
 
 def test_a_stop_during_a_sign_in_never_reaches_the_wait_or_another_sign_in(tmp_path):
-    out = _drive(tmp_path, [{"t": "sign_in"}], cancelAfter=4)   # openTab, classify, tabUrl, signIn
+    out = _drive(tmp_path, [SIGN_IN], cancelAfter=4, record=ON_WD)   # openTab, classify, tabUrl, signIn
     assert out["record"]["why"] == "user"
     assert len(names(out, "signIn")) == 1 and names(out, "waitForChange") == []
 
@@ -712,15 +828,15 @@ def test_classify_asks_every_frame_of_the_named_tab_for_the_page_summary(tmp_pat
 ])
 def test_advance_sends_the_id_and_the_apply_flag_only_when_it_is_exactly_true(tmp_path, options, message):
     out = _ops(tmp_path, "advance", advanceOptions=options)
-    assert out["sent"] == [["broadcast", 4, message] + ([0] if message.get("apply") else [])]
+    assert out["sent"] == [["broadcast", 4, message, 0]]
     assert out["result"] == {"clicked": True}
 
 
-def test_the_apply_press_goes_to_the_one_frame_that_named_the_control_and_a_next_to_all(tmp_path):
+def test_every_press_goes_to_the_one_frame_that_named_the_button(tmp_path):
     apply = _ops(tmp_path, "advance", frameId=3, advanceOptions={"apply": True})
     assert apply["sent"] == [["broadcast", 4, {"type": "page_advance", "id": "tag-1", "apply": True}, 3]]
     plain = _ops(tmp_path, "advance", frameId=3)
-    assert plain["sent"] == [["broadcast", 4, {"type": "page_advance", "id": "tag-1"}]]
+    assert plain["sent"] == [["broadcast", 4, {"type": "page_advance", "id": "tag-1"}, 3]]
 
 
 def test_a_stop_during_the_login_fetch_types_nothing_and_presses_nothing(tmp_path):
