@@ -1265,10 +1265,10 @@ The page (made-up employer Acme, no real names; keeps `window.__oracle` per the 
    "United States of America (+1)" (`__oracle.phoneCode` set at load).
 3. **Optional extension:** `Phone Extension`, not required, empty.
 4. **Slow skills:** a `multiselect` skills box. A search answers in two stages (1 row at 300 ms,
-   the full list at 900 ms). A row click adds its pill 600 ms later; the FIRST click on "Pandas"
+   the full list at 700 ms: the gap stays under the engine's `QUIET_MS`, 500 ms). A row click adds its pill 600 ms later; the FIRST click on "Pandas"
    is ignored (the live "click landed during a redraw" case), the second works. A click on the
    row's text commits like its checkbox (on Workday the text is the checkbox's label).
-5. **Field of Study:** a search box whose list holds "Statistics", "Computer Science",
+5. **Field of Study (required):** a search box whose list holds "Statistics", "Computer Science",
    "Mathematics" only (word-prefix matching). Searching the full value "Data Science and
    Analytics" lists nothing, and so does its word "Data"; "Science" lists "Computer Science" (a
    plausible wrong match); "Statistics" lists one row. Only a term the agent chooses (Task 30)
@@ -1351,7 +1351,7 @@ it, and a skills box with one pill must still be filled.
 
 **Step 1: Failing test** `test_a_held_value_with_no_fact_is_already_there`: on
 `workday_misses.html`, Phone Country Code reports `already`, not `needs_answer`; an EMPTY box with
-no fact still reports `needs_answer`. **Step 2: Run** `-k held_value`. Expected: FAIL. **Step 3:
+no fact still reports `needs_answer` (Field of Study, required and empty, with no fact). **Step 2: Run** `-k held_value`. Expected: FAIL. **Step 3:
 Implement.** **Step 4: Run** all of `test_fill_loop.py`. Expected: PASS. **Step 5: Commit**
 `fix(fill-loop): a field that already holds an answer is not asked`.
 
@@ -1396,7 +1396,7 @@ not twice, and a slow item costs only itself.
 - Test: `backend/tests/browser/test_fill_core_search.py`, `backend/tests/browser/test_fill_loop.py`
 
 **Step 1: Failing tests** on `workday_misses.html` with 12 skills in the profile:
-- all 12 pills land (`__oracle.skills` holds 12), "Pandas" on its second click;
+- all 12 pills land (`__oracle.slowSkills` holds 12), "Pandas" on its second click;
 - the trace has one `set` step per item, each `verified`, and no `late`;
 - an item the list never offers is reported missing while the other 11 still land;
 - `test_a_search_set_keeps_existing_chips_and_reports_partial_honestly` still passes.
@@ -1517,12 +1517,18 @@ test form.
   `document.body` has had no mutations for `ms`, or after `max`; uses `sleep`, so a hidden tab
   works (Task 1a))
 - Modify: `extension/content/fill-ops.js` (`run()`: before a `write`, `await quiet()` when the
-  page changed in the last 300 ms; the inventory observer's `generation` counter tells)
+  page changed in the last 300 ms; the inventory observer's `generation` counter tells; AND after
+  any choice commit, the next write waits `quiet({ms: 600})`: a redraw can start up to ~400 ms after
+  a choice with nothing changing in between (the recorded form's Country redraw), so a 300 ms quiet
+  alone would let a write start inside that gap. A write whose node is replaced mid-write re-finds
+  the field by its fingerprint and writes once more in the SAME round, never the next. (Planner,
+  2026-10-13, after the batch-1 review.))
 - Test: `backend/tests/browser/test_fill_loop.py`
 
 **Step 1: Failing test** `test_a_redrawn_section_is_typed_once`: on `workday_misses.html`, choose
-Country, then fill Address, City and Postal Code; each lands on the NEW node, and the trace shows
-one `write` per field, no `stale`. **Step 2: Run.** Expected: FAIL (`write → error (stale)`).
+Country and START the Address, City and Postal Code writes as soon as the choice's click returns
+(inside the 400 ms gap, on purpose, so the test can't pass by timing); each lands on the NEW node,
+the oracle holds all three values, and the trace shows one `write` per field, no `stale`. **Step 2: Run.** Expected: FAIL (`write → error (stale)`).
 **Step 3: Implement.** **Step 4: Run** all of `test_fill_loop.py`; also
 `tests/browser/test_fill_hidden.py`. Expected: PASS. **Step 5: Commit** `fix(fill): wait for a
 redrawn section before typing`.
