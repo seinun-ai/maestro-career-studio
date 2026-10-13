@@ -835,6 +835,44 @@ def test_history_is_built_from_move_ids_and_outcomes_and_keeps_the_last_eight(pa
     assert actions(out, "move")[-1]["mid"] == "give_up"
 
 
+def _ten_step_field():
+    """A popup that needs nine scrolls, then a click: ten adaptive steps to get its answer."""
+    scroll = {"version": 1, "candidates": [{"mid": "scroll", "describe": "Scroll the list"}, GIVE_UP]}
+    pick = {"version": 2, "candidates": [{"mid": "click:o1", "describe": 'Click the option "LinkedIn"'}, GIVE_UP]}
+    return dict(frames=[[f("h", "popup", "How did you hear?")]] * 3,
+                map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+                explore={"h": {"options": [opt("o1", "Job Board")], "complete": True}},
+                pick={"h": {"oids": [], "reason": "abstained"}},
+                apply={"scroll": {"outcome": "progressed"}},
+                step={"states": [scroll] * 9 + [pick],
+                      "moves": [{"mid": "scroll", "reason": "progress"}] * 9 + [{"mid": "click:o1", "reason": "matched"}]})
+
+
+def _driven(page, **spec):
+    """One more run in the page already loaded (the module's state carries over from the last)."""
+    return page.evaluate(DRIVER, {"frames": [[]], "explore": {}, "apply": {}, "map": {}, "pick": {}, "choose": {},
+                                  "step": {"states": [], "moves": []}} | spec)
+
+
+def test_a_run_given_limits_works_a_field_longer_than_the_default_allows(page, load):
+    default = run(page, load, **_ten_step_field())
+    assert len(bodies(default, "/api/autofill/step")) == 8
+    assert row(default, "h")["status"] == "cannot_operate"
+    queued = run(page, load, **_ten_step_field(), options={"sourceHint": None, "limits": {"FIELD_MS": 60000, "MAX_STEPS": 12}})
+    assert len(bodies(queued, "/api/autofill/step")) == 10
+    assert row(queued, "h")["status"] == "verified"
+
+
+def test_per_run_limits_end_with_the_run_and_never_change_the_modules_budget(page, load):
+    run(page, load, **_ten_step_field(), options={"sourceHint": None, "limits": {"FIELD_MS": 60000, "MAX_STEPS": 12}})
+    assert page.evaluate("""() => { const l = window.careerStudioCompanion.fillLoop.limits;
+      return [l.MAX_STEPS, l.FIELD_MS]; }""") == [8, 25000]
+    # A second run in the same page, given none, still stops at the default.
+    again = _driven(page, **_ten_step_field())
+    assert len([p for p in again["posts"] if p["path"] == "/api/autofill/step"]) == 8
+    assert next(r for r in again["report"]["fields"] if r["fid"] == "h")["status"] == "cannot_operate"
+
+
 def test_a_native_set_is_picked_per_source_item_and_never_offers_a_blocked_option(page, load):
     options = [opt("o1", "SQL"), opt("o2", "Python"), opt("o3", "Password manager", blocked=True)]
     out = run(page, load, frames=[[f("k", "select", "Skills", multi=True, options=options, optionsComplete=True)]],

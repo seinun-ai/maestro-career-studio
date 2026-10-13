@@ -163,7 +163,9 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   // Mutable so a test can shrink a clock or a cap; the loop never changes them,
-  // and one run reads one copy.
+  // and one run reads one copy: the defaults with `options.limits` laid over them
+  // (the queued run asks for a longer field clock and more steps), so a run's own
+  // budget never leaks into a parallel run or the user's own Autofill.
   const limits = {
     MAX_ROUNDS: 4,
     MAX_ATTEMPTS: 3,
@@ -409,7 +411,7 @@
     const cancelled = deps.cancelled ?? (() => false);
     const recipes = typeof deps.recipes?.get === "function" && typeof deps.recipes?.record === "function"
       ? deps.recipes : null;
-    const L = { ...limits };
+    const L = { ...limits, ...options.limits };
     const startedAt = new Date();
     const runDeadline = Date.now() + L.RUN_MS;
     const runId = newRunId();

@@ -46,7 +46,7 @@
  *                               first read that finds no frame answering parks as `unknown_page`
  *   classify(tabId) → [{frameId, result: {summary, top}}]      tabUrl(tabId) → the tab's address
  *   advance(tabId, frameId, id, opts) → {clicked, why}         opts is {apply: true} or absent
- *   fill(record, {limits?}) → the fill-loop report             signIn(record, {allowedHost}) → {signedIn}
+ *   fill(record, {limits}) → the fill-loop report              signIn(record, {allowedHost}) → {signedIn}
  *   waitForChange(tabId, before, ms, stop) → {changed, url}
  *   save(record) · onUpdate(record) · now() · cancelled(record)   (save is the host's: it owns the list)
  *   pageOps() builds classify, advance, signIn and waitForChange from a message transport.
@@ -57,12 +57,15 @@
  * first page as "review".
  *
  * WHAT THIS FILE PUBLISHES: ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS,
- * HIDDEN_TABS_OK }. The scheduler (`next`, the record list, pacing) is not here.
+ * RUN_LIMITS, HIDDEN_TABS_OK }. The scheduler (`next`, the record list, pacing) is not here.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
 
   const LIMITS = { parallel: 3, waitingMax: 10, stepMax: 15, changeMs: 15000, paceMs: [2000, 6000] };
+  // The fill's budget in a run (design Part 8.1): nobody is watching a queued run, so a stubborn
+  // field gets a longer clock and more steps than the user's own Autofill (fill-loop's defaults).
+  const RUN_LIMITS = { FIELD_MS: 60000, MAX_STEPS: 12 };
   // Task 1a's spike: a fill in a background tab of the run window works.
   const HIDDEN_TABS_OK = true;
   const POLL_MS = 500;
@@ -244,7 +247,7 @@
         // form_step | review: fill the page, read it again, then judge it.
         if (!pageFilled) {
           await update({ status: "filling" });
-          const report = await act(deps.fill, record, options.fillLimits ? { limits: options.fillLimits } : {});
+          const report = await act(deps.fill, record, { limits: options.fillLimits ?? RUN_LIMITS });
           if (!Array.isArray(report?.fields)) throw new Error("the fill gave no report");
           if (report.stopped) throw HALT;
           await update({ filled: true });
@@ -348,5 +351,5 @@
     return { classify, advance, signIn, waitForChange };
   }
 
-  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, HIDDEN_TABS_OK };
+  ns.queueRun = { drive, pageOps, fingerprint, pickFrame, LIMITS, RUN_LIMITS, HIDDEN_TABS_OK };
 })();

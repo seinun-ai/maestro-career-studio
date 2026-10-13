@@ -328,11 +328,11 @@ def test_a_resume_reads_the_page_again_and_keeps_the_open_tab(tmp_path):
     assert (out["record"]["status"], out["record"]["why"], out["record"]["open"]) == ("ready", None, [])
 
 
-def test_the_fill_limits_are_passed_through_and_nothing_else_is(tmp_path):
-    out = _drive(tmp_path, [REVIEW], options={"fillLimits": {"FIELD_MS": 60000}})
-    assert names(out, "fill") == [["fill", {"limits": {"FIELD_MS": 60000}}]]
+def test_the_fill_limits_are_passed_through_and_a_run_defaults_to_trying_harder(tmp_path):
+    out = _drive(tmp_path, [REVIEW], options={"fillLimits": {"FIELD_MS": 5000}})
+    assert names(out, "fill") == [["fill", {"limits": {"FIELD_MS": 5000}}]]
     plain = _drive(tmp_path, [REVIEW])
-    assert names(plain, "fill") == [["fill", {}]]
+    assert names(plain, "fill") == [["fill", {"limits": {"FIELD_MS": 60000, "MAX_STEPS": 12}}]]
 
 
 # ---------- loops and limits ----------
@@ -719,8 +719,9 @@ def test_the_fingerprint_is_the_address_without_the_hash_the_step_key_the_sorted
 
 
 def test_the_limits_and_the_hidden_tab_finding_are_published(tmp_path):
-    driver = "const ns = loadModules(); emit({ limits: ns.queueRun.LIMITS, hidden: ns.queueRun.HIDDEN_TABS_OK, keys: Object.keys(ns.queueRun).sort() });"
+    driver = "const ns = loadModules(); emit({ limits: ns.queueRun.LIMITS, run: ns.queueRun.RUN_LIMITS, hidden: ns.queueRun.HIDDEN_TABS_OK, keys: Object.keys(ns.queueRun).sort() });"
     out = run_node(driver, {}, tmp_path, source=SOURCE)
     assert out["limits"] == {"parallel": 3, "waitingMax": 10, "stepMax": 15, "changeMs": 15000, "paceMs": [2000, 6000]}
+    assert out["run"] == {"FIELD_MS": 60000, "MAX_STEPS": 12}
     assert out["hidden"] is True
     assert "next" not in out["keys"], "the scheduler is Phase 3"
