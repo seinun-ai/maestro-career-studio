@@ -125,12 +125,18 @@
   // ("Have you built bots?" is a real question), and "leave blank if none" is an
   // optional field's hint, not a trap.
   const TRAP_WORDS = /\bhoney ?pot\b|\bfor (?:spam ?)?(?:ro)?bots only\b|\bif you(?:'|\u2019)?(?:re| are) (?:a )?human\b|\b(?:do not|don(?:'|\u2019)t) (?:fill|enter|complete|type)(?: in)? (?:this|it)\b|^leave (?:this|it) (?:field |input |box )?(?:blank|empty)[.!]?$/i;
+  const TRAP_TYPES = new Set(["text", "email", "url", "tel", "search", "number"]);   // an <input> with no type reads "text"
   const robotTrap = (el, labelText) => {
     const words = [labelText, el.getAttribute("aria-label"), el.getAttribute("placeholder")]
       .filter(Boolean).map((s) => s.trim());
     if (words.some((s) => TRAP_WORDS.test(s))) return true;
     // Drawn wholly outside the page (a classic honeypot), though `visible` passes
     // it. Page coordinates, so a field merely scrolled out of view is not one.
+    // Text boxes only: a widget library parks a native select, checkbox or radio
+    // off-page and drives it from a visible box, which stays a field.
+    const textLike = el instanceof HTMLTextAreaElement
+      || (el instanceof HTMLInputElement && TRAP_TYPES.has(el.type));
+    if (!textLike) return false;
     const r = el.getBoundingClientRect();
     return r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0;
   };

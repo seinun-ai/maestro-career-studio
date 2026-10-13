@@ -481,6 +481,19 @@ def test_a_field_far_down_the_page_is_still_a_field(page, load):
     assert [f["question"] for f in fields(page)] == ["First name", "Salary expectations", "Notice period"]
 
 
+def test_the_off_page_rule_is_for_text_boxes_only(page, load):
+    """A widget library parks a native select, checkbox or radio off-page and
+    drives it from a visible box: it stays a field. An off-page TEXT box with a
+    normal label is the honeypot rule working."""
+    load(page, """<div style='position:absolute; left:-9999px'>
+        <label for='s'>Preferred shift</label><select id='s'><option>Day</option></select>
+        <label for='c'>Company</label><input id='c'>
+        <label for='t'>Cover note</label><textarea id='t'></textarea>
+        <label for='e' style='position:absolute'>Backup email</label><input id='e' type='email'></div>
+      <label for='ok'>First name</label><input id='ok'>""")
+    assert sorted(f["question"] for f in fields(page)) == ["First name", "Preferred shift"]
+
+
 def test_real_select2_hiding_is_one_field_not_two(page, load):
     """select2 hides its select with a 1px clip (`select2-hidden-accessible`),
     which counts as visible: tied to the box, it is the box's backing, never a
