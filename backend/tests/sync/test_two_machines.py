@@ -1087,6 +1087,13 @@ def replay_recorded(proxy, raw):
     return int(status_line.split(" ", 2)[1]), headers, body
 
 
+def _next_second():
+    """Home refuses a seal stamped before the second it started in, so a restart that lands in
+    the recording's own second would let the replay back in (by design: that is the previous
+    process's last second). Wait the second out so the restart is always strictly later."""
+    time.sleep(1 - time.time() % 1 + 0.01)
+
+
 def _assert_bare(code, headers, body):
     assert code == 404 and body == b"" and "x-maestro-seal" not in headers
 
@@ -1277,6 +1284,7 @@ def _edit_home_note(home, application_id):
 def _replay_after_restart(home, db, ids, proxy, posted):
     """One fresh home process: the replay cache is empty and the skew window still holds, but
     home refuses any seal stamped before it started, so the replay is the bare 404."""
+    _next_second()
     home.stop()
     try:
         home.start()
@@ -1332,6 +1340,7 @@ def test_real_replayed_push_after_restart_keeps_the_newer_job(
     again = sync_round.run_round(db_session, pair=True)
     assert again["ok"] and again["steps"]["push"]["sent"] == 1
     assert _home_title(home_backend, remote.job) == _NEWER_TITLE
+    _next_second()
     home_backend.stop()
     try:
         home_backend.start()
