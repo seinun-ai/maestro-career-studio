@@ -133,3 +133,15 @@ def test_the_saved_answers_fill_leaves_a_robot_trap_empty(page, load):
     assert page.evaluate("['site', 'hp', 'hp2'].map((i) => document.getElementById(i).value)") == ["https://example.com", "", ""]
     assert [item["rule"] for item in result["filled"]] == ["website"]
     assert result["seen"] == 1
+
+
+def test_the_saved_answers_fill_checks_a_trap_by_its_own_label(page, load):
+    """labelFor() joins the name and id onto the label ("leave this field blank
+    | website"), which hides an end-anchored trap phrase; the trap is judged by
+    the field's own label."""
+    load(page, "<label for='site'>Website</label><input id='site' name='site'>"
+               "<label for='website'>Leave this field blank</label><input id='website' name='website'>", SOURCES)
+    page.evaluate(
+        "async (p) => window.careerStudioCompanion.fillFormFromProfile(p, [], false, [], false)",
+        {"personal": {"website": "https://example.com"}})
+    assert page.evaluate("['site', 'website'].map((i) => document.getElementById(i).value)") == ["https://example.com", ""]

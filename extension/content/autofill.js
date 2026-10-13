@@ -1400,7 +1400,9 @@ async function fillFormFromProfile(
   for (const input of inputs) {
     if (isFormJunk(input)) continue;
     const labelText = labelFor(input);
-    if (ns.fillBase?.robotTrap(input, labelText)) {
+    // The field's OWN label: labelFor() is composite (name and id joined on), which
+    // would hide an end-anchored trap phrase such as "Leave this field blank".
+    if (ns.fillBase?.robotTrap(input, ns.shapes.readField(input).question ?? labelText)) {
       traps.add(input);
       continue;
     }
