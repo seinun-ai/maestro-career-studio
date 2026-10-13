@@ -396,7 +396,7 @@ Commit: `feat(ui): a base resume's square beside its name everywhere`.
 
 ### Task 9: The chart split by base resume
 
-`components/charts/fit-distribution-chart.tsx:30-32,85`: each series' `fill` becomes the resume's `resume` colour, computed in JS with a helper `resumeSwatchColor(hue, mode)` in `lib/resume-color.ts` that returns an `oklch(...)` string. The tones must be read from the CSS variables, not re-declared: use `getComputedStyle(document.documentElement).getPropertyValue("--resume-swatch-l")` and the matching variables. The legend gets the squares. Update the comment at :30-32 and `docs/frontend-conventions.md` (~1548) to match the rule from Task 5. Every other chart is untouched.
+`components/charts/fit-distribution-chart.tsx:30-32,85`: each series' `fill` is `resumeFill(hue)` from `lib/resume-color.ts`, a CSS string `oklch(var(--resume-swatch-l) calc(<chroma> * var(--resume-swatch-c)) <hue>)` (chroma 0 when the hue is null, so grey). The tones stay in globals.css only, and the theme follows with no JS, as chart-kit's `CHART_COLORS` already passes `var()` fills (built this way after review: a JS copy of the recipe plus a theme hook was dropped). The legend gets the squares. Update the comment at :30-32 and `docs/frontend-conventions.md` (~1548) to match the rule from Task 5. Every other chart is untouched.
 
 Commit: `feat(analytics): fit distribution uses resume colours`.
 
