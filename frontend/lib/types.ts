@@ -573,6 +573,9 @@ export interface BaseResumeSummary {
   countries: string[];
   company: string | null;
   focus: string | null;
+  /** The resume's colour as a hue 0-359; null draws neutral grey. Drawn by
+   *  resumeColorStyle in lib/resume-color.ts. */
+  color_hue: number | null;
 }
 
 /** GET /api/countries: one ISO country, in file (code) order. */

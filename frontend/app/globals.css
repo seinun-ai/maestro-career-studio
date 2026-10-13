@@ -77,6 +77,15 @@
   --color-surface-container: var(--surface-container);
   --color-surface-container-high: var(--surface-container-high);
   --color-surface-container-highest: var(--surface-container-highest);
+  /* Base resume colour: identity, never state. The hue and chroma ride on the
+     element (`--resume-h`, `--resume-c`, set by resumeColorStyle in
+     lib/resume-color.ts); the tones below are per theme. These MUST stay
+     `inline`: a custom property declared on :root resolves its var()s there,
+     where no resume's hue exists, and children would inherit grey. No hue set
+     means chroma 0: neutral. Pinned by test_frontend_resume_colors.py. */
+  --color-resume: oklch(var(--resume-swatch-l) calc(var(--resume-c, 0) * var(--resume-swatch-c)) var(--resume-h, 0));
+  --color-resume-container: oklch(var(--resume-container-l) calc(var(--resume-c, 0) * var(--resume-container-c)) var(--resume-h, 0));
+  --color-on-resume-container: oklch(var(--on-resume-container-l) calc(var(--resume-c, 0) * var(--on-resume-container-c)) var(--resume-h, 0));
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -259,6 +268,16 @@
   --surface-container: oklch(0.94 0 0);
   --surface-container-high: oklch(0.928 0 0);
   --surface-container-highest: oklch(0.915 0 0);
+  /* The tones of a base resume's colour (the three resume colours in
+     @theme inline above): OKLCH lightness, and chroma as a multiple of the
+     hue's own. Chosen so any hue holds 4.5:1 for the text on the container
+     and 3:1 for the square on the page and a card. */
+  --resume-swatch-l: 0.52;
+  --resume-swatch-c: 1;
+  --resume-container-l: 0.93;
+  --resume-container-c: 0.36;
+  --on-resume-container-l: 0.38;
+  --on-resume-container-c: 0.82;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -329,6 +348,13 @@
   --surface-container: oklch(0.205 0 0);
   --surface-container-high: oklch(0.24 0 0);
   --surface-container-highest: oklch(0.269 0 0);
+  /* Base resume tones on dark: a lighter square, a deep container, near-white text. */
+  --resume-swatch-l: 0.76;
+  --resume-swatch-c: 0.9;
+  --resume-container-l: 0.33;
+  --resume-container-c: 0.45;
+  --on-resume-container-l: 0.9;
+  --on-resume-container-c: 0.4;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
