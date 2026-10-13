@@ -78,7 +78,9 @@
   selection ring and the offset focus ring merged into one 4px blue band
   (ring against primary is 1.49:1 light, 1.70:1 dark). **Current in a list or nav**
   (a sidebar row, the open chat) is secondary container, semibold, and
-  `aria-current`, with no Check. **A create or secondary action** is
+  `aria-current`, with no Check. The one exception is the health check's
+  active-bullet highlight (`question-pass.tsx`): it is emphasis on a passage, not
+  navigation, so it keeps `primary-container`. **A create or secondary action** is
   `Button variant="tonal"`, the one low-emphasis filled button (there is no
   grey `secondary` Button variant; a Badge keeps its own for plain metadata;
   `test_frontend_design_tokens.py` pins the Button side). **A non-interactive status chip** is
@@ -1689,7 +1691,8 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   lookup like `useBaseResumeLabel` (call `colorOf(slug)` per row in a `.map()`). It reads the archived-inclusive list,
   so a score or proposal keeps its resume's colour after the resume is archived.
   A row of squares with no name beside each (Career history's "In N resumes", `career/entity-card.tsx`: up to 8, then
-  "+N") puts the names in the row's `title` and in an `sr-only` list, since the squares are `aria-hidden`; the card's
+  "+N") puts the names (sorted by display name) in the title of the squares' span, lifted to `z-20` above the card's
+  link with a click that opens the card, and in an `sr-only` list, since the squares are `aria-hidden`; the card's
   `used_in_bases` comes from `kb_port_log` (`services/career_kb.used_in_bases`) and counts every base not deleted, archived ones included.
 - **Icons come from the register.** `lib/concept-icons.ts` (`CONCEPT_ICONS`) owns one glyph per concept, and
   `test_frontend_concept_icons.py` pins that each concept maps to its own icon, that banned or alias icons are

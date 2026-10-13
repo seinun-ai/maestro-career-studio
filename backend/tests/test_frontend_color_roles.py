@@ -349,21 +349,23 @@ def test_segmented_controls_and_entity_cards_expose_pressed():
 
 
 # `bg-primary/N` and `bg-background/N` as a component fill is retired (design-system README, Color):
-# a faded fill is not a role, so its text partner has no contrast guarantee. What may still carry
-# one is a bar that floats over scrolling content, a pill over an image, and a state layer on a
-# solid fill (a hover or focus tint is not a resting fill).
+# a faded fill is not a role, so its text partner has no contrast guarantee. The exceptions, each with
+# the exact number of matches it may hold: a bar that floats over scrolling content, a pill over an
+# image, the hover tint on a solid primary fill (Button, Badge), and the editor's resize handle on a
+# transparent fill. A new match anywhere else, or one more in these files, fails.
 _OVERLAY_FILES = {
-    "app/jobs/[id]/tailor/[sessionId]/page.tsx": "sticky footer",
-    "components/resume-health/health-report-page.tsx": "sticky bar",
-    "components/resume-health/question-pass.tsx": "sticky bar",
-    "components/proposals/triage-actions.tsx": "fixed bar",
-    "components/sidebar-reveal-trigger.tsx": "floating trigger",
-    "components/gallery/preview-thumbnail.tsx": "pills over the page image",
-    "components/templates/template-gallery.tsx": "the selected pill over the preview image",
-    "components/ui/button.tsx": "hover on the solid primary, and a comment",
-    "components/ui/badge.tsx": "hover on the solid primary",
-    "components/resume-editor/editor-shell.tsx": "the resize handle's hover and focus tint",
+    "app/jobs/[id]/tailor/[sessionId]/page.tsx": ("sticky footer", 1),
+    "components/resume-health/health-report-page.tsx": ("sticky bar", 1),
+    "components/resume-health/question-pass.tsx": ("sticky bar", 1),
+    "components/proposals/triage-actions.tsx": ("fixed bar", 1),
+    "components/sidebar-reveal-trigger.tsx": ("floating trigger", 1),
+    "components/gallery/preview-thumbnail.tsx": ("two pills over the page image", 2),
+    "components/templates/template-gallery.tsx": ("the selected pill over the preview image", 1),
+    "components/ui/button.tsx": ("hover on the solid primary, and a comment", 2),
+    "components/ui/badge.tsx": ("hover on the solid primary", 1),
+    "components/resume-editor/editor-shell.tsx": ("the resize handle's hover and focus tint", 2),
 }
+_OPACITY_FILL = re.compile(r"bg-(?:primary|background)/")
 
 
 def test_no_opacity_fill_outside_the_allow_list():
@@ -371,19 +373,10 @@ def test_no_opacity_fill_outside_the_allow_list():
     for root in ("app", "components"):
         for path in (_FRONTEND / root).rglob("*.tsx"):
             rel = path.relative_to(_FRONTEND).as_posix()
-            if re.search(r"bg-(?:primary|background)/", path.read_text(encoding="utf-8")):
-                if rel not in _OVERLAY_FILES:
-                    offenders.append(rel)
+            found = len(_OPACITY_FILL.findall(path.read_text(encoding="utf-8")))
+            if found != _OVERLAY_FILES.get(rel, ("", 0))[1]:
+                offenders.append(f"{rel}: {found} (allowed {_OVERLAY_FILES.get(rel, ('', 0))[1]})")
     assert offenders == [], f"use a role pair or a surface step, not an opacity: {offenders}"
-
-
-def test_the_allow_list_only_names_files_that_still_need_it():
-    stale = [
-        rel
-        for rel in _OVERLAY_FILES
-        if not re.search(r"bg-(?:primary|background)/", (_FRONTEND / rel).read_text(encoding="utf-8"))
-    ]
-    assert stale == [], f"drop these from the allow-list: {stale}"
 
 
 def test_the_editor_shell_keeps_its_opacity_to_the_resize_handle():
@@ -400,10 +393,13 @@ def test_a_selected_choice_is_secondary_container_with_a_check_and_aria_pressed(
         "components/templates/template-select.tsx",
     ):
         src = _read(rel)
-        assert "bg-secondary-container text-on-secondary-container" in src, rel
-        assert "aria-pressed={" in src and "<Check " in src, rel
+        assert "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover" in src, rel
+        assert "aria-pressed={" in src and '<Check className="size-3.5 shrink-0" aria-hidden="true" />' in src, rel
+        assert re.search(r"<Check className=\"(?!size-3\.5)", src) is None, rel  # one Check size
     dialog = _read("components/career/new-entity-dialog.tsx")
     assert dialog.count('<Check className="size-3.5 shrink-0" aria-hidden="true" />') == 2
+    # An unselected option's title stays foreground; only its hint is muted (TypeChoice does the same).
+    assert "border-input hover:border-border text-muted" not in dialog
 
 
 def test_resting_cards_that_were_blue_washes_sit_on_a_surface_step():
@@ -415,9 +411,17 @@ def test_resting_cards_that_were_blue_washes_sit_on_a_surface_step():
     ):
         src = _read(rel)
         assert "bg-surface-container-low" in src and "bg-primary/" not in src, rel
+
+
+def test_the_steps_inside_a_resting_card_climb_one_each():
     # The capture box's textarea sits one step above the card it is in.
     capture = _read("components/career/capture-box.tsx")
     assert "border-0 bg-surface-container px-4 ring-1" in capture
+    # The inbox's merge-source box and its items climb one step each from the draft row (surface-container).
+    inbox = _read("components/career/inbox-panel.tsx")
+    assert 'className="mt-3 rounded-corner-md bg-surface-container-high p-3"' in inbox
+    assert 'className="rounded-corner-md bg-surface-container-highest p-2"' in inbox
+    assert 'className="group/draft rounded-corner-md bg-surface-container p-3 ring-1' in inbox
     # The explore bar is one series: the solid fill ScoreBar uses.
     assert "bg-primary block h-full rounded-full" in _read("components/explore/explore-overview.tsx")
     assert 'variant="outline" className="bg-card"' in _read("components/resume-versions/version-diff-view.tsx")

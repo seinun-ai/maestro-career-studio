@@ -13,7 +13,7 @@ _ROW = _CARD[_CARD.index("function UsedIn(") : _CARD.index("/** A count and its 
 
 
 def test_the_row_comes_last_and_reads_the_summary_field():
-    assert "<UsedIn slugs={entity.used_in_bases ?? []} />" in _CARD
+    assert "<UsedIn slugs={entity.used_in_bases ?? []} href={`/career/${entity.id}`} />" in _CARD
     assert _CARD.index("Updated {formatTimeAgo") < _CARD.index("<UsedIn ") < _CARD.index("<MergeEntityDialog")
     assert "used_in_bases?: string[];" in (_FRONTEND / "lib/types.ts").read_text(encoding="utf-8")
 
@@ -25,20 +25,29 @@ def test_nothing_shows_for_an_item_on_no_resume():
 def test_the_words_agree_and_are_small_and_muted():
     row = open_tag(_ROW, "div")
     assert {"text-muted-foreground", "text-body-small"} <= tokens(row)
-    assert 'In {slugs.length} {slugs.length === 1 ? "resume" : "resumes"}' in squash(_ROW)
+    assert 'In {resumes.length} {resumes.length === 1 ? "resume" : "resumes"}' in squash(_ROW)
 
 
 def test_up_to_eight_squares_then_a_count_of_the_rest():
     assert "const MAX_SQUARES = 8;" in _CARD
-    assert "slugs.slice(0, MAX_SQUARES).map" in _ROW and "<ResumeSwatch key={slug} hue={colorOf(slug)} />" in _ROW
-    assert "slugs.length > MAX_SQUARES ?" in _ROW and "+{slugs.length - MAX_SQUARES}" in squash(_ROW)
+    assert "resumes.slice(0, MAX_SQUARES).map" in _ROW and "<ResumeSwatch key={slug} hue={colorOf(slug)} />" in _ROW
+    assert "resumes.length > MAX_SQUARES ?" in _ROW and "+{resumes.length - MAX_SQUARES}" in squash(_ROW)
+
+
+def test_squares_and_names_go_by_display_name_not_slug():
+    assert ".sort((a, b) => a.name.localeCompare(b.name))" in squash(_ROW)
 
 
 def test_the_names_ride_in_the_squares_title_and_an_sr_only_list():
-    squares = '<span className="relative z-20 flex items-center gap-1" title={names.join(", ")} aria-hidden="true">'
-    assert squares in squash(_ROW)
+    row = squash(_ROW)
+    assert 'className="relative z-20 flex cursor-pointer items-center gap-1"' in row
+    assert 'title={resumes.map((r) => r.name).join(", ")}' in row and 'aria-hidden="true"' in row
     assert tokens(open_tag(_ROW, "ul")) == {"sr-only"}
     assert "nameOf" in _ROW and "useBaseResumeLabel" in _CARD and "useBaseResumeColor" in _CARD
+
+
+def test_a_click_on_the_squares_opens_the_card_like_the_link_under_them():
+    assert "onClick={() => router.push(href)}" in _ROW and "useRouter()" in _ROW
 
 
 def test_only_the_squares_sit_above_the_cards_link():
@@ -58,8 +67,11 @@ def test_what_changes_the_usage_refreshes_the_cards():
     page = (_FRONTEND / "app/base-resumes/page.tsx").read_text(encoding="utf-8")
     assert 'qc.invalidateQueries({ queryKey: ["kb", "entities"] })' in page
     assert "const invalidate = () => {" in page  # delete, archive and its undo all call it
+    pill = (_FRONTEND / "components/kb-sync-pill.tsx").read_text(encoding="utf-8")
+    assert 'void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });' in pill
 
 
-def test_the_agent_tool_says_what_the_new_field_is():
+def test_the_agent_tools_say_what_the_new_field_is():
     server = (_FRONTEND.parent / "backend/mcp_server/server.py").read_text(encoding="utf-8")
-    assert "and used_in_bases, the active base resumes it was added to." in server
+    note = "used_in_bases, the base resumes it is on (archived included, deleted excluded)."
+    assert server.count(note) == 2  # kb_list_entities and kb_get_entity

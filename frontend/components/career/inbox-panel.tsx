@@ -477,13 +477,13 @@ function DraftRow({
       )}
 
       {point.merge_sources && point.merge_sources.length > 0 && (
-        <div className="mt-3 rounded-corner-md bg-surface-container p-3">
+        <div className="mt-3 rounded-corner-md bg-surface-container-high p-3">
           <p className="mb-2 text-label-medium">Wording from your resumes</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {point.merge_sources.map((source, index) => (
               <div
                 key={`${source.resume_key}-${source.section}-${index}`}
-                className="rounded-corner-md bg-surface-container-high p-2"
+                className="rounded-corner-md bg-surface-container-highest p-2"
               >
                 <p className="text-muted-foreground mb-1 text-label-small">
                   {resumeName(source.resume_key)} · {sectionWord(source.section)}

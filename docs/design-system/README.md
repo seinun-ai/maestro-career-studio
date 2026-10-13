@@ -43,7 +43,7 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 - A status as plain text, an icon or a dot on a surface uses the role itself: `success`, `warning`, `attention`, `tertiary`, `destructive`.
 - Every pair above, and every text role on every surface, holds at least 4.5:1 in light and dark; the repo's tests compute it from the tokens.
 - Status never rides on color alone: the chip's word, an icon or a Check says it too.
-- A link's color is `primary`. `bg-primary/N` with `text-primary` is not a component fill, and neither is `bg-background/N`: take the container pair, or the next surface step up. Only a bar that floats over scrolling content, or a pill over an image, keeps an opacity (`test_frontend_color_roles.py` holds the allow-list).
+- A link's color is `primary`. `bg-primary/N` with `text-primary` is not a component fill, and neither is `bg-background/N`: take the container pair, or the next surface step up. The exceptions, each named in the allow-list in `test_frontend_color_roles.py`: a bar that floats over scrolling content, a pill over an image, the hover tint on a solid primary fill (Button, Badge), and the editor's resize handle on a transparent fill.
 - Hover on a container is its pre-mixed 8% state layer (`primary-container-hover`, `secondary-container-hover`); a call site never picks an opacity.
 - `chart-1` to `chart-6` are for chart series only, in their fixed order. `brand-blue` and `brand-yellow` are for the mark only.
 - **Base resume color is identity, never state.** Each base resume has one hue, picked at random from the free presets when it is made and changeable in its Target. Draw it as a square (`ResumeSwatch`) beside the resume's name, never alone and never as a round pill or dot (round is status). The tones come from the hue (`resume`, `resume-container`, `on-resume-container`), so any hue holds contrast.
@@ -84,7 +84,7 @@ One corner per kind of thing: `radius-corner-2xs` (2px) the resume square; `radi
 
 ## Selection and state
 
-- **Selected in a set** (a toggle, a filter chip, a segment): `secondary-container`, a leading Check and `aria-pressed`. The tonal fill alone is too faint to say "on".
+- **Selected in a set** (a toggle, a filter chip, a segment, an option card): `secondary-container` (its hover is `secondary-container-hover`), a leading Check and `aria-pressed`. The tonal fill alone is too faint to say "on". An option card may keep its `primary` border.
 - **A color swatch** (the base resume color picker) has no tonal fill to give, so its selected state is a Check and the solid 2px `ring` outline, with its focus drawn as a separate outer ring.
 - **Current in a list or nav** (a sidebar row, the open chat): `secondary-container`, weight 600 and `aria-current`, with no Check.
 - **One filled button per view.** Everything else is tonal, outline, ghost or text-style. A dialog's confirm is filled because the dialog is its own view.

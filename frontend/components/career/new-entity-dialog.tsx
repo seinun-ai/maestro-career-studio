@@ -289,15 +289,15 @@ export function NewEntityDialog({
                     className={cn(
                       "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
                       sectionType === "entries"
-                        ? "border-primary bg-secondary-container text-on-secondary-container"
-                        : "border-input hover:border-border text-muted-foreground",
+                        ? "border-primary bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
+                        : "border-input hover:border-border",
                     )}
                   >
                     <span className="flex items-center gap-1.5 text-label-medium">
                       {sectionType === "entries" ? <Check className="size-3.5 shrink-0" aria-hidden="true" /> : null}
                       {SECTION_TYPE_LABELS.entries}
                     </span>
-                    <span className="text-body-small">Each with a title and details</span>
+                    <span className={cn("text-body-small", sectionType !== "entries" && "text-muted-foreground")}>Each with a title and details</span>
                   </button>
                   <button
                     type="button"
@@ -311,15 +311,15 @@ export function NewEntityDialog({
                     className={cn(
                       "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
                       sectionType === "bullets"
-                        ? "border-primary bg-secondary-container text-on-secondary-container"
-                        : "border-input hover:border-border text-muted-foreground",
+                        ? "border-primary bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
+                        : "border-input hover:border-border",
                     )}
                   >
                     <span className="flex items-center gap-1.5 text-label-medium">
                       {sectionType === "bullets" ? <Check className="size-3.5 shrink-0" aria-hidden="true" /> : null}
                       {SECTION_TYPE_LABELS.bullets}
                     </span>
-                    <span className="text-body-small">A simple list</span>
+                    <span className={cn("text-body-small", sectionType !== "bullets" && "text-muted-foreground")}>A simple list</span>
                   </button>
                 </div>
               </div>

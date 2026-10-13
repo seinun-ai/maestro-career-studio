@@ -503,7 +503,7 @@ def kb_list_entities(kind: str | None = None, status: str | None = None) -> Any:
     kind (experience|project|education|certification|extra) or status
     (ongoing|completed|archived). Each item carries point_count, draft_count and
     approved_count (the bullets a resume can use; retired ones are in point_count only)
-    and used_in_bases, the active base resumes it was added to."""
+    and used_in_bases, the base resumes it is on (archived included, deleted excluded)."""
     return _client.list_kb_entities(kind=kind, status=status)
 
 
@@ -511,7 +511,8 @@ def kb_list_entities(kind: str | None = None, status: str | None = None) -> Any:
 @_guard
 def kb_get_entity(entity_id: str) -> Any:
     """Full detail for one Career KB entity: dates, notes, its points (each with
-    id, text and state), attached documents, and the activity timeline."""
+    id, text and state), attached documents, and the activity timeline; also
+    used_in_bases, the base resumes it is on (archived included, deleted excluded)."""
     return _client.get_kb_entity(entity_id)
 
 

@@ -94,6 +94,8 @@ export function KbSyncPill({ slug }: { slug: string }) {
         </>,
       );
       restoreFocus.current = true;
+      // The cards' "In N resumes" row reads what this just logged.
+      void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
       await queryClient.invalidateQueries({
         queryKey: ["base-resumes", slug, "kb-sync-status"],
       });

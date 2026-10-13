@@ -852,8 +852,8 @@ citation. Priority lives in the item text, not in the ordinal.
 42. Answer trust follow-ups: fix-and-learn from the receipt; the auto-submit preview; a "What Maestro knows about you"
     page; a JD-extracted graduation/enrollment knock-out; `RECORD_NEVER` folded into `NEVER_FILLED`; receipt capture
     across a full-page navigation and for a manual Attach press. Phase-4 source limits: `docs/entities/filled-answers.md`.
-43. `create_from_kb` writes no `kb_port_log` rows, so a base composed from Career history is missing from `used_in_bases`
-    ("In N resumes" on cards) until a port or sync logs its items (`services/career_kb.used_in_bases`).
+43. "In N resumes" (`services/career_kb.used_in_bases`) reads `kb_port_log`, which is append-only: it means "added to or came
+    from", so it can overcount; `create_from_kb` and base duplication write no rows, so those bases are missed.
 
 ## 12. Gotchas that have bitten before
 

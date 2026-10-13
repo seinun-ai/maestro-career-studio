@@ -4,9 +4,9 @@ import { useRef, useState, type RefObject } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   Eye,
   EyeOff,
-  Check,
   Ellipsis,
   Pencil,
   Plus,
@@ -590,7 +590,7 @@ function TypeChoice({
       className={cn(
         "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
         active
-          ? "border-primary bg-secondary-container text-on-secondary-container"
+          ? "border-primary bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
           : "border-input hover:border-border",
       )}
     >

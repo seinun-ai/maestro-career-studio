@@ -69,8 +69,8 @@ export default function BaseResumesListPage() {
   const afterDelete = useRef<(() => HTMLElement | null) | null>(null);
   const visibleResumes = resumes.data ?? [];
 
-  // Career history's cards say which base resumes use an item ("In N resumes"), so a delete or an
-  // archive refreshes them too.
+  // Career history's cards say which base resumes use an item ("In N resumes"). Only a delete changes the
+  // answer (an archived resume still counts), but the others refresh it too for the price of one request.
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["kb", "entities"] });
     return qc.invalidateQueries({ queryKey: ["base-resumes"] });

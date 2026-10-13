@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowUpRight, Ellipsis, ListChecks, Merge } from "lucide-react";
 
 import { kbStatusLabel } from "@/components/career/career-labels";
@@ -123,7 +124,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
         >
           Updated {formatTimeAgo(entity.last_activity)}
         </p>
-        <UsedIn slugs={entity.used_in_bases ?? []} />
+        <UsedIn slugs={entity.used_in_bases ?? []} href={`/career/${entity.id}`} />
       </CardContent>
 
       <MergeEntityDialog
@@ -138,30 +139,39 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
 /** The squares drawn before "+N" takes the rest. */
 const MAX_SQUARES = 8;
 
-/** "In 3 resumes" and the resumes' squares: which base resumes this item is on. A square always sits
+/** "In 3 resumes" and the resumes' squares: which base resumes this item is on, by name. A square always sits
  *  beside its name, so for a row of squares the names ride in the squares' title and in an sr-only list
  *  (the squares themselves are hidden from assistive tech). Nothing for an item that is on none. */
-function UsedIn({ slugs }: { slugs: string[] }) {
+function UsedIn({ slugs, href }: { slugs: string[]; href: string }) {
+  const router = useRouter();
   const colorOf = useBaseResumeColor();
   const nameOf = useBaseResumeLabel();
   if (slugs.length === 0) return null;
-  const names = slugs.map(nameOf);
+  const resumes = slugs
+    .map((slug) => ({ slug, name: nameOf(slug) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <div className="text-muted-foreground flex items-center gap-1.5 text-body-small">
       <span>
-        In {slugs.length} {slugs.length === 1 ? "resume" : "resumes"}
+        In {resumes.length} {resumes.length === 1 ? "resume" : "resumes"}
       </span>
       {/* `relative z-20` lifts the squares above the card's stretched link (as GalleryCardActions does), so
-          hovering them shows the names; the rest of the card, the words included, still opens it. */}
-      <span className="relative z-20 flex items-center gap-1" title={names.join(", ")} aria-hidden="true">
-        {slugs.slice(0, MAX_SQUARES).map((slug) => (
+          hovering them shows the names; the click opens the card like the link under it. The rest of the
+          card, the words included, is the link itself, and the link stays the keyboard route. */}
+      <span
+        className="relative z-20 flex cursor-pointer items-center gap-1"
+        title={resumes.map((r) => r.name).join(", ")}
+        onClick={() => router.push(href)}
+        aria-hidden="true"
+      >
+        {resumes.slice(0, MAX_SQUARES).map(({ slug }) => (
           <ResumeSwatch key={slug} hue={colorOf(slug)} />
         ))}
-        {slugs.length > MAX_SQUARES ? <span>+{slugs.length - MAX_SQUARES}</span> : null}
+        {resumes.length > MAX_SQUARES ? <span>+{resumes.length - MAX_SQUARES}</span> : null}
       </span>
       <ul className="sr-only">
-        {names.map((name, i) => (
-          <li key={slugs[i]}>{name}</li>
+        {resumes.map(({ slug, name }) => (
+          <li key={slug}>{name}</li>
         ))}
       </ul>
     </div>
