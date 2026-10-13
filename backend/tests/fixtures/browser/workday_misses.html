@@ -1,0 +1,375 @@
+<!-- The Workday application the Companion got wrong on 2026-10-13 (made-up
+     employer Acme). Source: owner's live run 2026-10-13, run traces +
+     screenshots. Every section below reproduces one behaviour those traces
+     showed; where they are silent the page takes the simplest behaviour that
+     fits them and says so.
+       1. Robot traps: a visible honeypot labelled "...for robots only, do not
+          enter if you're human." beside the real Website box, an offscreen one
+          labelled "Leave this field blank", and a real optional box whose label
+          only SAYS "leave blank if none" (Middle name — not a trap).
+       2. Phone Country Code: a selectinput already holding one pill.
+       3. Phone Extension: optional, empty.
+       4. Skills: results arrive in two stages, a pick's pill lands later, and a
+          click made while the list redraws is lost (Pandas, first time).
+       5. Field of Study: the full value finds nothing.
+       6. Country: a choice redraws Address, City and Postal Code as new nodes.
+     Text boxes follow field notes §1 (draft on input, taken when focus really
+     leaves); the search boxes follow §2's gestures as workday_search.html does
+     (press opens, Enter on key-up searches, the row's radio or checkbox commits,
+     rows are reused between stages); the popup follows §3/§8a as
+     workday_listbox.html does. -->
+<h3>Acme — Application</h3>
+<div data-automation-id="formField-website">
+  <label for="website">Website</label>
+  <input id="website" name="websiteUrl" type="text" data-oracle="website">
+</div>
+<!-- The honeypot is visible and sits right beside the real Website box; only its label tells them apart. -->
+<div data-automation-id="formField-hp">
+  <label for="hp">Enter website. This input is for robots only, do not enter if you're human.</label>
+  <input id="hp" name="website" type="text" data-oracle="robotWebsite">
+</div>
+<div data-automation-id="formField-hp2" style="position:absolute; left:-9999px">
+  <label for="hp2">Leave this field blank</label>
+  <input id="hp2" name="leave_blank" type="text" data-oracle="robotBlank">
+</div>
+<div data-automation-id="formField-middleName">
+  <label for="middle">Middle name (leave blank if none)</label>
+  <input id="middle" name="middleName" type="text" data-oracle="middleName">
+</div>
+
+<div data-automation-id="formField-phoneCode"><label for="phone-code">Country Phone Code*</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="phone-code" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+<div data-automation-id="formField-phoneExtension">
+  <label for="phone-ext">Phone Extension</label>
+  <input id="phone-ext" name="phoneExtension" type="text" data-oracle="phoneExt">
+</div>
+
+<div data-automation-id="formField-skills"><label for="skills">Type to Add Skills</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="skills" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+<div data-automation-id="formField-fieldOfStudy"><label for="fos">Field of Study</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="fos" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+
+<div data-automation-id="formField-country">
+  <fieldset><legend><div id="rich-label-country"><div data-automation-id="richText"><p>Country</p></div><abbr title="required">*</abbr></div></legend>
+    <div><button id="country" type="button" aria-haspopup="listbox" aria-label=" Select One Required" aria-controls="country-list"
+      aria-expanded="false">Select One</button>
+      <input type="text" class="hidden-backing" style="display:none"></div></fieldset></div>
+<div id="address-section">
+  <div data-automation-id="formField-addressLine1"><label for="address">Address*</label>
+    <input id="address" name="addressLine1" type="text" aria-required="true" data-oracle="addressLine"></div>
+  <div data-automation-id="formField-city"><label for="city">City*</label>
+    <input id="city" name="city" type="text" aria-required="true" data-oracle="cityName"></div>
+  <div data-automation-id="formField-postalCode"><label for="postal">Postal Code*</label>
+    <input id="postal" name="postalCode" type="text" aria-required="true" data-oracle="postalCode"></div>
+</div>
+<div id="portal"></div>
+<div id="popup-portal"></div>
+<style>
+  [data-automation-id="activeListContainer"] { position: absolute; z-index: 10; width: 420px; max-height: 240px; min-height: 30px;
+    overflow-y: auto; border: 1px solid #888; background: #fff; }
+  [data-automation-id="activeListContainer"] > [role="option"] { height: 30px; display: flex; align-items: center; }
+  [data-automation-id="promptLeafNode"] { display: flex; align-items: center; gap: 6px; }
+  [data-automation-id="selectedItem"] { display: inline-flex; align-items: center; gap: 4px; }
+  [data-automation-id="DELETE_charm"] { width: 14px; height: 14px; cursor: pointer; }
+  [data-automation-id="DELETE_charm"]::before { content: "\00D7"; }
+  [data-automation-id="selectedItem"] [data-automation-id="promptOption"] { margin: 0; }
+  .wd-popup { position: absolute; z-index: 10; margin: 0; padding: 0; width: 260px; max-height: 120px; overflow-y: auto;
+    list-style: none; background: #fff; border: 1px solid #888; }
+  .wd-popup > li { height: 24px; line-height: 24px; padding: 0 8px; }
+</style>
+<script>
+(() => {
+  // __oracle[<field>] is what the fake app HOLDS: set only by a real leave
+  // (text), by a result row's radio or checkbox once the app has processed it
+  // (search boxes), or by the option click (the popup) — never by what the box
+  // shows. The engine must never read it. Text starts null (never committed);
+  // the search boxes start with their app state.
+  const oracle = (window.__oracle = window.__oracle || {});
+
+  // ---- text boxes (§1): draft on input, taken when focus really leaves.
+  const bindText = (input) => {
+    const key = input.dataset.oracle;
+    let draft = input.value;
+    input.addEventListener("input", () => { draft = input.value; });
+    input.addEventListener("focusout", () => {
+      if (document.activeElement === input) return;   // a focusout sent while focused is not a leave
+      oracle[key] = draft;
+    });
+  };
+  for (const input of document.querySelectorAll("input[data-oracle]")) {
+    oracle[input.dataset.oracle] = null;
+    bindText(input);
+  }
+
+  // ---- Country (§3/§8a popup) and the section it redraws.
+  const COUNTRIES = ["Select One", "United States of America", "Canada", "India"];
+  const REDRAW_MS = 400;
+  oracle.countryChoice = "";
+  const redrawAddress = () => {
+    // Live, a choice made Workday re-render the section: the SAME labels over
+    // NEW input nodes, so a write held on an old node reaches nothing. The
+    // traces do not say what the new boxes show; they show what the app holds
+    // (a draft never taken is lost), the simplest consistent reading.
+    for (const old of document.querySelectorAll("#address-section input")) {
+      const fresh = document.createElement("input");
+      for (const a of old.attributes) fresh.setAttribute(a.name, a.value);
+      fresh.value = oracle[old.dataset.oracle] ?? "";
+      bindText(fresh);
+      old.replaceWith(fresh);
+    }
+  };
+  const countryBtn = document.getElementById("country");
+  const popupPortal = document.getElementById("popup-portal");
+  let countryList = null;
+  const pickCountry = (li) => {
+    const text = li.textContent;
+    for (const o of countryList.children) o.setAttribute("aria-selected", String(o === li));
+    countryBtn.parentElement.querySelector(".hidden-backing").value = text === "Select One" ? "" : "a1b2c3d4".repeat(4);   // a 32-character id, as in workday_listbox.html
+    oracle.countryChoice = text === "Select One" ? "" : text;
+    countryBtn.textContent = text;
+    countryBtn.setAttribute("aria-label", ` ${text} Required`);
+    countryList.style.display = "none";
+    countryBtn.setAttribute("aria-expanded", "false");
+    setTimeout(redrawAddress, REDRAW_MS);
+  };
+  countryBtn.addEventListener("click", () => {
+    if (!countryList) {
+      countryList = document.createElement("ul");
+      countryList.id = "country-list";
+      countryList.className = "wd-popup";
+      countryList.setAttribute("role", "listbox");
+      for (const text of COUNTRIES) {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", String(text === "Select One"));
+        li.textContent = text;
+        li.addEventListener("click", (e) => { e.stopPropagation(); pickCountry(li); });
+        countryList.append(li);
+      }
+      popupPortal.append(countryList);
+    }
+    const shown = countryList.style.display !== "none" && countryBtn.getAttribute("aria-expanded") === "true";
+    countryList.style.display = shown ? "none" : "block";
+    countryBtn.setAttribute("aria-expanded", String(!shown));
+    const r = countryBtn.getBoundingClientRect();
+    countryList.style.left = `${r.left + scrollX}px`;
+    countryList.style.top = `${r.bottom + scrollY}px`;
+  });
+  document.addEventListener("click", (e) => {
+    if (!countryList || countryList.contains(e.target) || countryBtn.contains(e.target)) return;
+    countryList.style.display = "none";
+  });
+
+  // ---- the three search-and-pick boxes (§2): the markup and gestures of
+  // workday_search.html, minus its virtual list (these lists are short).
+  // Matching is silent in the notes; the traces fit WORD-PREFIX matching: every
+  // word typed must start some word of the option. "Data Science and
+  // Analytics" starts no word of any option ("and" fits nothing), so a long
+  // value finds nothing while "Data" or "Statistics" finds rows.
+  const SKILLS = ["Python", "Python IDLE", "Maya Python", "SQL", "SQL Server", "R", "RStudio", "Pandas", "NumPy",
+    "Tableau", "Tableau Prep", "Machine Learning", "Statistics", "Statistical Modeling", "Spark", "Apache Spark",
+    "Excel", "Microsoft Excel", "Git", "GitHub", "Docker", "Docker Compose", "Scikit-learn", "Power BI"];
+  // The three the traces listed, plus two "Data ..." rows: "Data" listing
+  // matches needs something to match, and the notes name no such row. Neither
+  // is the full value, so that stays empty.
+  const FIELDS = ["Statistics", "Computer Science", "Mathematics", "Data Science", "Data Analytics"];
+  const CODES = ["United States of America (+1)", "Canada (+1)", "India (+91)", "United Kingdom (+44)"];
+  const WIDGETS = {
+    "phone-code": { key: "phoneCode", multi: false, leaves: CODES, pillMs: 0 },
+    skills: { key: "slowSkills", multi: true, leaves: SKILLS, pillMs: 600 },   // the pill lands 600 ms after the click
+    fos: { key: "fieldOfStudy", multi: false, leaves: FIELDS, pillMs: 0 },
+  };
+  // Two stages (the traces: a single row first, the full list after). The
+  // notes give no gap beyond "stage two comes later"; these are the traces' round numbers.
+  const STAGE_1_MS = 300;
+  const STAGE_2_MS = 900;
+  const state = { "phone-code": [CODES[0]], skills: [], fos: [] };
+  oracle.phoneCode = CODES[0];
+  oracle.slowSkills = [];
+  oracle.fieldOfStudy = "";
+  const portal = document.getElementById("portal");
+  const inputOf = (id) => document.getElementById(id);
+  const pillList = (id) => inputOf(id).closest('[data-automation-id="multiSelectContainer"]')
+    .querySelector('[data-automation-id="selectedItemList"]');
+  const syncOracle = (id) => { oracle[WIDGETS[id].key] = WIDGETS[id].multi ? [...state[id]] : (state[id][0] ?? ""); };
+  const renderPills = (id) => {
+    pillList(id).replaceChildren(...state[id].map((text) => {
+      const li = document.createElement("li");
+      const pill = document.createElement("div");
+      pill.setAttribute("data-automation-id", "selectedItem");
+      pill.setAttribute("role", "option");
+      pill.setAttribute("aria-label", `${text}, press delete to clear value.`);
+      const charm = document.createElement("div");
+      charm.setAttribute("data-automation-id", "DELETE_charm");
+      const p = document.createElement("p");
+      p.setAttribute("data-automation-id", "promptOption");
+      p.textContent = text;
+      pill.append(charm, p);
+      li.append(pill);
+      return li;
+    }));
+  };
+
+  let open = null;   // { id, box, items, token }; only one list at a time
+  let tokens = 0;
+  const close = () => { open = null; portal.replaceChildren(); };
+
+  const buildRow = (row, kind) => {
+    row.dataset.kind = kind;
+    const text = document.createElement("div");
+    text.setAttribute("data-automation-id", "promptOption");
+    if (kind === "leaf") {
+      const leaf = document.createElement("div");
+      leaf.setAttribute("data-automation-id", "promptLeafNode");
+      const box = document.createElement("input");
+      box.type = WIDGETS[open.id].multi ? "checkbox" : "radio";
+      box.setAttribute("data-automation-id", "radioBtn");
+      box.tabIndex = -1;
+      leaf.append(box, text);
+      row.replaceChildren(leaf);
+    } else {
+      row.replaceChildren(text);   // the "No Items." row
+    }
+  };
+  // Rows are REUSED between stages: an existing row keeps its node and gets new text (§2 rule 3).
+  const render = () => {
+    if (!open) return;
+    const { box, items, id } = open;
+    const rows = [...box.children];
+    items.forEach((item, i) => {
+      let row = rows[i];
+      if (!row) {
+        row = document.createElement("div");
+        row.setAttribute("role", "option");
+        box.append(row);
+      }
+      if (item.kind === "none") row.removeAttribute("data-automation-id");
+      else row.setAttribute("data-automation-id", "menuItem");
+      if (row.dataset.kind !== item.kind) buildRow(row, item.kind);
+      row.dataset.index = String(i);
+      row.setAttribute("aria-selected", "false");
+      row.querySelector('[data-automation-id="promptOption"]').textContent = item.text;
+      const tick = row.querySelector('input[data-automation-id="radioBtn"]');
+      if (tick) tick.checked = state[id].includes(item.text);
+    });
+    rows.slice(items.length).forEach((r) => r.remove());
+  };
+
+  const openList = (id) => {
+    const box = document.createElement("div");
+    box.setAttribute("data-automation-id", "activeListContainer");
+    box.setAttribute("role", "listbox");
+    const r = inputOf(id).closest('[data-automation-id="multiSelectContainer"]').getBoundingClientRect();
+    box.style.left = `${r.left + scrollX}px`;
+    box.style.top = `${r.bottom + scrollY}px`;
+    open = { id, box, items: [], token: ++tokens };   // opens EMPTY on press, as School does (§2 rule 9)
+    portal.replaceChildren(box);
+    box.addEventListener("click", onListClick);
+    render();
+  };
+
+  // What the app does once it has processed a pick (immediately, or pillMs later).
+  const take = (id, text) => {
+    if (WIDGETS[id].multi) state[id] = state[id].includes(text) ? state[id].filter((t) => t !== text) : [...state[id], text];
+    else state[id] = [text];
+    renderPills(id);
+    syncOracle(id);
+    if (!WIDGETS[id].multi) { inputOf(id).value = ""; if (open && open.id === id) close(); }
+    else if (open && open.id === id) requestAnimationFrame(render);   // the tick redraws a frame later (§2 rule 8)
+  };
+  // A pick is ignored while the SAME skill's earlier pick is still on its way, so
+  // a retried click never toggles the skill back off.
+  const pending = new Set();
+  let pandasLost = false;
+  const choose = (text) => {
+    const { id } = open;
+    if (id === "skills" && text === "Pandas" && !pandasLost) {
+      // The live "click landed during a redraw": the list is rebuilt out from
+      // under the click (new row nodes) and the pick never happens. Only the
+      // first time; the traces show the second click working.
+      pandasLost = true;
+      requestAnimationFrame(() => { if (open && open.id === id) { open.box.replaceChildren(); render(); } });
+      return;
+    }
+    if (pending.has(`${id}/${text}`)) return;
+    const { pillMs } = WIDGETS[id];
+    if (!pillMs) { take(id, text); return; }
+    pending.add(`${id}/${text}`);
+    setTimeout(() => { pending.delete(`${id}/${text}`); take(id, text); }, pillMs);
+  };
+
+  function onListClick(e) {
+    const row = e.target.closest('[role="option"]');
+    if (!row || !open) return;
+    const item = open.items[Number(row.dataset.index)];
+    if (!item || item.kind === "none") return;
+    if (e.target.matches('input[data-automation-id="radioBtn"]')) {
+      if (e.target.type === "checkbox") e.preventDefault();   // the app, not the browser, owns the tick
+      choose(item.text);
+      return;
+    }
+    // A click on the row text only HIGHLIGHTS it (§2 "row vs radio").
+    for (const r of open.box.querySelectorAll(':scope > [role="option"]')) r.setAttribute("aria-selected", "false");
+    row.setAttribute("aria-selected", "true");
+  }
+
+  // No auto-commit of a single hit here (workday_search.html's School does,
+  // §2 rule 5): "Statistics" must LIST one row, and the traces show the row
+  // listed, not taken.
+  const search = (id, query) => {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const hits = WIDGETS[id].leaves.filter((t) => {
+      const tokens = t.toLowerCase().split(/\s+/);
+      return words.every((w) => tokens.some((x) => x.startsWith(w)));
+    });
+    const results = hits.length ? hits.map((text) => ({ kind: "leaf", text })) : [{ kind: "none", text: "No Items." }];
+    const token = open.token;
+    const live = () => open && open.token === token;
+    setTimeout(() => { if (live()) { open.items = results.slice(0, 1); render(); } }, STAGE_1_MS);
+    setTimeout(() => { if (live()) { open.items = results; render(); } }, STAGE_2_MS);
+  };
+
+  for (const id of Object.keys(WIDGETS)) {
+    const input = inputOf(id);
+    renderPills(id);
+    // Press opens the list on the next frame; typing without a press opens nothing (§2).
+    input.addEventListener("mousedown", () => {
+      if (open && open.id === id) return;
+      requestAnimationFrame(() => { if (!open || open.id !== id) openList(id); });
+    });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+    // Enter searches on KEY-UP, and only while this widget's list is open (§2 rules 1, 2).
+    input.addEventListener("keyup", (e) => {
+      if (e.key !== "Enter" || !open || open.id !== id) return;
+      open.token = ++tokens;
+      const query = input.value.trim();
+      if (query) search(id, query);
+    });
+    pillList(id).addEventListener("click", (e) => {
+      const charm = e.target.closest('[data-automation-id="DELETE_charm"]');
+      if (!charm) return;
+      const text = charm.parentElement.querySelector('[data-automation-id="promptOption"]').textContent;
+      state[id] = state[id].filter((t) => t !== text);
+      renderPills(id);
+      syncOracle(id);
+      if (open && open.id === id) requestAnimationFrame(render);
+    });
+  }
+  document.addEventListener("mousedown", (e) => {
+    if (!open || portal.contains(e.target) || e.target === inputOf(open.id)) return;
+    close();
+  });
+})();
+</script>

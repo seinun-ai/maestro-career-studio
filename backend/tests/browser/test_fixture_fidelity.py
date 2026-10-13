@@ -619,6 +619,143 @@ def test_popup_with_search_commits_the_searched_option(page, load):
 
 
 
+# --- workday_misses.html (owner's live run 2026-10-13, run traces + screenshots)
+# Timings in the fixture: stage one 300 ms, stage two 900 ms, a skills pill 600 ms
+# after the click, the Country redraw 400 ms after the choice.
+SKILLS_PILLS = "document.getElementById('skills').closest('[data-automation-id=multiSelectContainer]')"
+
+
+def tick_of(page, text):
+    return page.locator(ROWS, has_text=text).locator("input[data-automation-id=radioBtn]")
+
+
+def test_misses_the_robot_traps_and_the_real_boxes_are_told_apart_only_by_their_text(page, load):
+    load(page, fixture_html("workday_misses.html"), sources=[])
+    label = lambda i: page.inner_text(f"label[for={i}]")   # noqa: E731
+    assert label("hp") == "Enter website. This input is for robots only, do not enter if you're human."
+    assert label("website") == "Website" and label("middle") == "Middle name (leave blank if none)"
+    assert label("hp2") == "Leave this field blank"
+    assert page.get_attribute("#hp", "name") == "website" and page.is_visible("#hp")
+    # The second trap is parked far off the left edge, as a honeypot is.
+    assert page.locator("#hp2").bounding_box()["x"] < -9000
+    assert all(oracle(page, k) is None for k in ("robotWebsite", "robotBlank", "website", "middleName"))
+    # Text is held when focus really leaves (§1), so a robot-trap fill is visible in the oracle.
+    page.fill("#hp", "https://example.com")
+    page.keyboard.press("Tab")
+    assert oracle(page, "robotWebsite") == "https://example.com" and oracle(page, "website") is None
+
+
+def test_misses_phone_code_holds_one_pill_and_the_extension_is_optional_and_empty(page, load):
+    load(page, fixture_html("workday_misses.html"), sources=[])
+    assert pills(page, "phone-code") == ["United States of America (+1)"]
+    assert oracle(page, "phoneCode") == "United States of America (+1)"
+    assert page.get_attribute("#phone-code", "data-uxi-widget-type") == "selectinput"
+    assert page.evaluate("document.getElementById('phone-code').closest('[data-automation-id=multiSelectContainer]')"
+                         ".dataset.uxiWidgetType") == "multiselect"
+    assert page.input_value("#phone-ext") == "" and oracle(page, "phoneExt") is None
+    assert page.get_attribute("#phone-ext", "aria-required") is None and "*" not in page.inner_text("label[for=phone-ext]")
+    assert page.inner_text("label[for=phone-ext]") == "Phone Extension"
+
+
+def test_misses_a_skills_pill_appears_600_ms_after_the_click(page, load):
+    load(page, fixture_html("workday_misses.html"), sources=[])
+    search(page, "skills", "Python", rows=["Python", "Python IDLE", "Maya Python"])
+    assert pills(page, "skills") == [] and oracle(page, "slowSkills") == []
+    page.evaluate(f"""() => {{ window.seen = {{}};
+      const list = {SKILLS_PILLS}.querySelector('[data-automation-id=selectedItemList]');
+      new MutationObserver(() => {{ if (!window.seen.pill && list.children.length) window.seen.pill = performance.now(); }})
+        .observe(list, {{ childList: true }});
+      window.seen.click = performance.now();
+      [...document.querySelectorAll('[data-automation-id=activeListContainer] [role=option]')]
+        .find((r) => r.textContent === 'Python').querySelector('input').click(); }}""")
+    assert pills(page, "skills") == [] and oracle(page, "slowSkills") == []   # same task: nothing yet
+    wait_oracle(page, "slowSkills", ["Python"])
+    seen = page.evaluate("window.seen")
+    assert 560 <= seen["pill"] - seen["click"] <= 900
+    assert pills(page, "skills") == ["Python"]
+
+
+def test_misses_the_first_pandas_click_is_ignored_and_the_second_works(page, load):
+    load(page, fixture_html("workday_misses.html"), sources=[])
+    search(page, "skills", "Pandas", rows=["Pandas"])
+    page.evaluate("window.firstRow = document.querySelector('[data-automation-id=activeListContainer] [role=option]')")
+    tick_of(page, "Pandas").click()
+    page.wait_for_timeout(900)   # well past the 600 ms a real pick would take
+    assert pills(page, "skills") == [] and oracle(page, "slowSkills") == []
+    # The click landed during a redraw: the list's rows are new nodes now.
+    assert page.evaluate("window.firstRow.isConnected") is False
+    assert row_texts(page) == ["Pandas"]
+    tick_of(page, "Pandas").click()
+    wait_oracle(page, "slowSkills", ["Pandas"])
+    assert pills(page, "skills") == ["Pandas"]
+
+
+def test_misses_skills_answer_in_two_stages_and_other_clicks_are_never_ignored(page, load):
+    load(page, fixture_html("workday_misses.html"), sources=[])
+    page.click("#skills")
+    page.wait_for_selector(LIST)
+    page.fill("#skills", "Git")
+    page.evaluate("""() => { window.stages = [];
+      const list = document.querySelector('[data-automation-id=activeListContainer]');
+      new MutationObserver(() => { const n = list.querySelectorAll('[role=option]').length;
+        if (window.stages[window.stages.length - 1] !== n) window.stages.push(n); })
+        .observe(list, { childList: true, subtree: true }); }""")
+    page.keyboard.press("Enter")
+    wait_rows(page, ["Git", "GitHub"])
+    assert page.evaluate("window.stages") == [1, 2]   # one row, then the full list
+    for text in ("Git", "GitHub"):   # two quick picks both land
+        tick_of(page, text).first.click()
+    wait_oracle(page, "slowSkills", ["Git", "GitHub"])
+
+
+def test_misses_the_full_field_of_study_lists_nothing_and_a_short_term_lists_matches(page, load):
+    load(page, fixture_html("workday_misses.html"), sources=[])
+    search(page, "fos", "Data Science and Analytics", rows=["No Items."])
+    assert page.locator(f"{ROWS} input").count() == 0
+    for _ in range(2):   # the same search again finds the same nothing
+        page.fill("#fos", "Data Science and Analytics")
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(PAST_SEARCH_MS * 2)
+        assert row_texts(page) == ["No Items."]
+    page.fill("#fos", "Statistics")
+    page.keyboard.press("Enter")
+    wait_rows(page, ["Statistics"])
+    page.wait_for_timeout(PAST_SEARCH_MS * 2)   # past stage two: still the one row
+    assert page.locator(ROWS).count() == 1 and oracle(page, "fieldOfStudy") == ""
+    page.fill("#fos", "Data")
+    page.keyboard.press("Enter")
+    wait_rows(page, ["Data Science", "Data Analytics"])
+    page.locator(ROWS, has_text="Data Science").locator("input").click()
+    assert oracle(page, "fieldOfStudy") == "Data Science" and pills(page, "fos") == ["Data Science"]
+    assert page.locator(LIST).count() == 0
+
+
+def test_misses_a_country_choice_swaps_the_address_city_and_postal_inputs_400_ms_later(page, load):
+    load(page, fixture_html("workday_misses.html"), sources=[])
+    page.fill("#address", "1 Main Street")
+    page.keyboard.press("Tab")
+    assert oracle(page, "addressLine") == "1 Main Street"
+    page.evaluate("window.before = ['address', 'city', 'postal'].map((id) => document.getElementById(id))")
+    page.click("#country")
+    page.evaluate("""() => { window.t0 = performance.now(); window.swappedAt = null;
+      new MutationObserver(() => { if (!window.swappedAt && document.getElementById('city') !== window.before[1])
+        window.swappedAt = performance.now(); }).observe(document.body, { childList: true, subtree: true }); }""")
+    page.click("#country-list > li:has-text('Canada')")
+    assert oracle(page, "countryChoice") == "Canada"
+    assert page.evaluate("window.before.every((n) => n.isConnected)")   # nothing yet
+    page.wait_for_function("window.swappedAt")
+    assert 300 <= page.evaluate("window.swappedAt - window.t0") <= 800
+    assert page.evaluate("window.before.every((n) => !n.isConnected)")
+    # New nodes, same ids and labels; the app re-renders what it holds.
+    assert page.evaluate("['address', 'city', 'postal'].every((id, i) => document.getElementById(id) !== window.before[i])")
+    assert [page.inner_text(f"label[for={i}]") for i in ("address", "city", "postal")] == [
+        "Address*", "City*", "Postal Code*"]
+    assert page.input_value("#address") == "1 Main Street"
+    # A write to a stale node reaches nothing.
+    page.evaluate("window.before[0].value = 'stale'")
+    assert page.input_value("#address") == "1 Main Street"
+
+
 # --- gem_form.html (jobs.gem.com, live 2026-09-27)
 def test_gem_boxes_and_radios_have_nothing_but_their_page_text_to_name_them(page, load):
     load(page, fixture_html("gem_form.html"), sources=[])
