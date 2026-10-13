@@ -335,9 +335,11 @@ def record_companion_submit(session: Session, prop: ApplicationProposal,
             "channel": COMPANION_CHANNEL,
             "note": f"Queued run: the confirmation page at {confirmation['host']} was seen"})
         session.commit()
-    except (DailyCapReached, CompanyOnSkipList):
+    except (DailyCapReached, CompanyOnSkipList) as refusal:
         session.rollback()
-        return _record_applied_yourself(session, prop, confirmation)
+        return _record_applied_yourself(
+            session, prop, confirmation,
+            "daily cap reached" if isinstance(refusal, DailyCapReached) else "company on skip list")
     except Exception:
         session.rollback()
         raise
@@ -345,25 +347,27 @@ def record_companion_submit(session: Session, prop: ApplicationProposal,
 
 
 def _record_applied_yourself(session: Session, prop: ApplicationProposal,
-                             confirmation: dict) -> ApplicationProposal:
-    """The user submitted a job the approve step would not take: do what marking it applied in
-    the web app does (stamp, link answers, close the open proposal as APPLIED_MANUALLY), and keep
-    the confirmation page as the proposal's receipt."""
+                             confirmation: dict, refused_for: str) -> ApplicationProposal:
+    """The user submitted a job the approve step would not take: close the proposal as APPLIED_MANUALLY
+    under the Companion's own consent (it saw the confirmation after the user's Submit, so the
+    ledger must not say the user acted in the web app), then do what marking the application
+    applied does (stamp, link answers). The confirmation page stays as the proposal's receipt."""
     from app.services import application_status
 
     try:
         _append_evidence(
             prop, "submission_receipt", "Confirmation page (Companion)", confirmation,
             path=confirmation["path"], host=confirmation["host"], text=confirmation["text"])
+        transition(session, prop, "rejected", reason=APPLIED_MANUALLY, commit=False, consent={
+            "channel": COMPANION_CHANNEL,
+            "note": f"Queued run: the user submitted; confirmation page at {confirmation['host']} "
+                    f"seen; not counted ({refused_for})"})
         app_row = session.get(Application, prop.application_id) if prop.application_id else None
         if app_row is not None:
             app_row.status = "applied"
-            # Closes the job's open proposals (this one) with commit.
+            # The job has no open proposal left to close, so this stamps and links only.
             application_status.apply_status_effects(session, app_row, {"status"})
-            session.commit()
-        else:
-            transition(session, prop, "rejected", reason=APPLIED_MANUALLY,
-                       consent={"channel": "frontend", "note": "user submitted; no application to mark"})
+        session.commit()
     except Exception:
         session.rollback()
         raise

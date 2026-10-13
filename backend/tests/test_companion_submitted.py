@@ -93,7 +93,7 @@ def test_an_unknown_proposal_is_a_404(db_session):
     assert r.status_code == 404
 
 
-def _recorded_as_applied_yourself(db_session, prop):
+def _recorded_as_applied_yourself(db_session, prop, refused_for):
     """The user's own Submit is always recorded; what the cap or skip list stopped is the Companion starting it."""
     db_session.expire_all()
     row = db_session.get(ApplicationProposal, prop.id)
@@ -105,6 +105,9 @@ def _recorded_as_applied_yourself(db_session, prop):
     assert row.evidence_json[0]["path"] == "/apply/done"
     events = db_session.query(ConsentEvent).filter_by(proposal_id=row.id).all()
     assert [e.action for e in events] == ["rejected"]  # never an "approved" or "submitted" claim
+    # the Companion saw it after the user's Submit; the user did nothing in the web app
+    assert events[0].channel == "companion" and refused_for in events[0].note
+    assert "acme.example" in events[0].note
 
 
 def test_a_full_day_still_records_the_users_submit_as_applied_yourself(db_session, queued):
@@ -114,14 +117,14 @@ def test_a_full_day_still_records_the_users_submit_as_applied_yourself(db_sessio
     db_session.commit()
     r = _post(queued)
     assert r.status_code == 200 and r.json()["status"] == "rejected"
-    _recorded_as_applied_yourself(db_session, queued)
+    _recorded_as_applied_yourself(db_session, queued, "daily cap reached")
 
 
 def test_a_company_skipped_after_queueing_still_records_the_users_submit(db_session, queued):
     auto_apply_settings.set_settings(AutoApplySettings(company_blocklist=["acme"]), db_session)
     r = _post(queued)
     assert r.status_code == 200 and r.json()["status"] == "rejected"
-    _recorded_as_applied_yourself(db_session, queued)
+    _recorded_as_applied_yourself(db_session, queued, "company on skip list")
 
 
 def test_the_fallback_without_a_linked_application_still_closes_the_proposal(db_session):
@@ -134,6 +137,8 @@ def test_the_fallback_without_a_linked_application_still_closes_the_proposal(db_
     db_session.expire_all()
     row = db_session.get(ApplicationProposal, prop.id)
     assert (row.status, row.reason) == ("rejected", svc.APPLIED_MANUALLY)
+    event = db_session.query(ConsentEvent).filter_by(proposal_id=row.id).one()
+    assert event.channel == "companion" and "skip list" in event.note
 
 
 @pytest.mark.parametrize("status", ["submitted", "rejected", "expired"])
