@@ -258,9 +258,54 @@ the recipe book already remembers which known move worked per widget family. Thi
    it trusted). One that matches nothing is noted as a missing technique in the known-gaps list.
 3. **Known-gaps list.** A durable, value-free table: widget family hash, host, field shape, outcome
    (`cannot_operate`, `unconfirmed`, `user_fixed`), counts and last seen. It survives the 50-run trace
-   limit, follows `telemetryEnabled`, is cleared by `DELETE /api/autofill/telemetry` (it holds hosts),
+   limit, is posted only when `telemetryEnabled === true` (the fill log: off by default, Options ›
+   Keep a fill log), is cleared by `DELETE /api/autofill/telemetry` (it holds hosts),
    and is ranked in `scripts/fill_trace.py report` and a one-line diagnostics summary in Settings ›
    Form filling. Each engine fix it drives ships with a recorded test form.
+
+## Part 9: The fill agent: context, tools, ideas (added 2026-10-13)
+
+The owner's live run on a Workday form (2026-10-13, five stored run traces) showed the loop isn't
+short of time or tries. It's short of things to try. The owner's direction: the fill agent should
+behave like a normal AI agent that has the context, the tools and at least the ideas to fill a
+form. In simple words:
+
+- **Context (what it knows when it is stuck on a field).** The question as worded, whether it is
+  required, the options the page shows, the saved fact it is filling (server-side, as today), the
+  job, every move it already tried and what each did, what worked on this site before (the recipe
+  book), and the kind of widget it is facing.
+- **Tools (what it can do).** The moves the page code offers, plus new ones: search with a term the
+  agent writes (a shorter word, a synonym, the category), clear and retype, and tick a row's own
+  checkbox. Typing a search is never an answer: an answer is still a click that clears the slot's
+  match floor, exactly as today.
+- **Ideas (how it thinks about the next try).** A short technique card per widget kind (search box
+  with staged results, multi-pick list with pills, plain dropdown, checkbox group, date), about ten
+  lines each, sent with every adaptive step: what to try after which failure. Cards are generic
+  widget craft, never per-site procedures (the Goal Card's non-goal stands). The recipe book (what
+  worked on this site) and the known-gaps list (Part 8.3) feed which cards get written next.
+- **Check every action.** Every move is verified on the page before the next one. For a list field
+  (skills), each item must show as a pill; a missing pill is clicked once more, then reported.
+- **Don't go round in circles.** A move that left the page looking the same as before counts as
+  failed, even if the page said it progressed. The same search for the same value is never sent
+  three times.
+- **Never touch a robot trap.** A field that tells humans not to fill it (a honeypot) is never
+  filled, never asked about, and never counted as missing.
+- **Don't ask what isn't needed.** An optional field with no saved fact is left blank quietly; a
+  field the page already holds an answer in is "already there", even when no fact maps to it.
+- **Let the page settle.** After a choice redraws part of the page, typing waits for the page to
+  stop changing, so a field is typed once, not twice.
+
+What it found, and which of the above fixes it:
+
+| Live miss (Workday, 2026-10-13) | Fixed by |
+|---|---|
+| A "for robots only, do not enter" field was filled with the website | Robot trap |
+| Skills: ~19 picks, 5 pills; one pick hung 20 s and the field ran out of time | Check every action; per-item time |
+| Field of Study: the same exact-value search 8 times, then "couldn't operate" | Tools (own search term), don't go round in circles, ideas |
+| Country Phone Code asked while it showed "United States (+1)" | Already there |
+| Phone Extension (optional) asked | Don't ask what isn't needed |
+| Every text field typed, went stale, typed again | Let the page settle |
+| Phone Device Type, preferred name, conflict-of-interest questions asked | Part 3 (the dial) and always-remembered answers |
 
 ## Rules and docs changed on purpose
 

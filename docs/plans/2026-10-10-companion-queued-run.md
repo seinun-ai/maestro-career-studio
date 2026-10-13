@@ -34,6 +34,11 @@ Task 23 (gate plus the owner's live check). Main must be merged in before Phase 
 
 **Done:** Task 1 (spike, 21245658) and Task 1a (engine fills hidden tabs, 06f00226).
 
+**Re-checked against main 547bbf6e (2026-10-13).** The branch was fast-forwarded to local main (38
+commits: base resume colours and their square in the Companion, the Jobs Where column, the fill log
+off by default). File references, the migration head (now `abd275b457d8`), the fill-log gate and the
+resume-square rule were brought up to date in the tasks below. Phase 1 is done (its own plan).
+
 **Phase 1: the new panel look (direction C), no behavior change.** Today's four steps redrawn
 as C's one-next-step card with the four-segment progress bar; same features. Its own plan:
 `docs/plans/2026-10-11-companion-panel-c.md`. No task below belongs to Phase 1.
@@ -51,10 +56,24 @@ as C's one-next-step card with the four-segment progress bar; same features. Its
   run list and run log are Phase 3.)
 - Task 20a's **Apply** only (queue as the user's yes, then drive this tab). **Queue** is Phase 3.
 - Learn from the fix and the known-gaps list: Tasks 10a, 20b.
-- Phase 2 order: 2 → 3 → 4 → 5 → 6 → 7 → 9 → 10a → 12 → 13 → 14 → 15 → 16 → 17 (drive) → 18 →
-  18a → 20 (one-job parts) → 20a (Apply) → 20b → docs → gate and live check.
+- The fill agent (design Part 9, added 2026-10-13 after the owner's live Workday run): the
+  recorded test form (24), never touch a robot trap (25), already there (26), leave empty
+  optional fields alone (27), check every action in a list field (28), don't go round in
+  circles (29), the agent's own search term (30), technique cards and what worked here (31),
+  let the page settle (32).
+- Remembering (added 2026-10-13): Task 20 saves every typed answer; 20c keeps an answer that names
+  the job's company or city for that job only; Task 5 shows when more than 30 saved answers exist
+  (only the first 30 are used until Task 33).
+- Phase 2 order: 24 → 25 first (filling a robot trap can get an application flagged as a bot), then
+  2 → 3 → 4 → 5 → 6 → 7 → 9 → 10a → 12 → 13 → 14 → 15 → 16 → 17 (drive) → 18 → 18a → 26 → 27 →
+  28 → 29 → 30 → 31 → 32 → 20 (one-job parts) → 20a (Apply) → 20b → 20c → docs → gate and live check.
+  The live check re-runs a Workday application like the 2026-10-13 one and compares its traces.
+  Before it, tick **Keep a fill log** in the Companion's Options: since 6695ee40 the fill log and
+  run traces are off by default and the service worker posts them only when
+  `telemetryEnabled === true`.
 
-**Phase 3: the queue and parallel applications.** Tasks 8 (queue-run list), 10 (run log counts),
+**Phase 3: the queue and parallel applications.** Task 33 first (use every saved answer, not
+the first 30: queued runs pile up saved answers fastest), then Tasks 8 (queue-run list), 10 (run log counts),
 11 (Prepare queued jobs), 17's `next()` and record list, 19 (Queue view, run window, pacing), the
 Queue-view and run-log parts of 20, 20a's **Queue** button, then (21) if Phase 2's live check asks
 for it, docs, gate and live check.
@@ -114,6 +133,10 @@ widen scope.
 6. **Unclear buttons stop the run in v1** (treated as review). The model-picked `/api/autofill/page`
    is Task 21, behind the live check: build it only if the live check shows unclear buttons are a
    real source of stops.
+7. **Technique cards are widget craft, not per-ATS procedures** (added 2026-10-13). The Goal Card's
+   non-goal "Per-ATS fill procedures" stands: Task 31's cards are keyed by widget kind (search box,
+   multi-pick list, dropdown, group, select, date), never by site. What worked on a given site
+   stays in the recipe book, which already learns it from evidence.
 
 ---
 
@@ -295,8 +318,8 @@ stop for the planner: parallel stays at 1.
 ### Task 2: The "Screening answers" level (storage + settings API)
 
 **Files:**
-- Modify: `backend/app/services/model_settings.py` (after `AUTOFILL_LOW_STAKES_KEY`, line ~252)
-- Modify: `backend/app/routers/settings.py:77-81` (`AutofillOptions`) and `:619-627` (routes)
+- Modify: `backend/app/services/model_settings.py` (after `AUTOFILL_LOW_STAKES_KEY`, line 273)
+- Modify: `backend/app/routers/settings.py:77-81` (`AutofillOptions`) and `:625-634` (routes)
 - Test: `backend/tests/test_settings_autofill_options.py` (rewrite its three tests)
 
 **Step 1: Write the failing tests** (replace the file's tests):
@@ -401,7 +424,7 @@ criminal history, clearance, salary, legal attestation or signature.
   `_NEVER_LOW_STAKES_TEMPLATE`, `_LOW_STAKES_TEMPLATE`)
 - Modify: `backend/app/services/autofill_reasoned.py` (`reason`, its prompt)
 - Modify: `backend/app/routers/autofill.py` (`post_map` ~403, `_facts` ~345: compute `queued`)
-- Modify: `backend/app/services/autofill_pick.py:352` (pass the level through where `keen` is used)
+- Modify: `backend/app/services/autofill_pick.py` (`_LOW_STAKES_PARAGRAPH` :65, formatted at :279-280; pass the level through where `keen` is used)
 - Test: `backend/tests/test_autofill_map.py`, `backend/tests/test_autofill_reasoned.py` (create it if
   absent), `backend/tests/test_autofill_fill_router.py`
 
@@ -471,8 +494,8 @@ Without a proposal, `queued=False`.
 - `routers/autofill.py`: a helper `_queued(db, application_id) -> bool` is True when the
   application's job has an `ApplicationProposal` with status `accepted` or `approved`.
   `post_map` passes `level=model_settings.get_answer_level(db), queued=_queued(db, payload.application_id)`.
-  Pass `level` into the reasoned pass the same way at its call site (`autofill_pick.py:388`).
-- `autofill_pick.py:352`: the low-stakes paragraph uses the same `low_stakes_scope(facts, level=,
+  Pass `level` into the reasoned pass the same way at its call site (`autofill_pick.py:389`).
+- `autofill_pick.py` `_LOW_STAKES_PARAGRAPH` (:65, formatted at :279-280): the low-stakes paragraph uses the same `low_stakes_scope(facts, level=,
   queued=)` so /pick and /map state the same scope.
 
 **Step 4: Run** `pytest tests/test_autofill_map.py tests/test_autofill_pick.py
@@ -484,9 +507,9 @@ Expected: PASS.
 ### Task 4: The Job Search Brief carries the answer level
 
 **Files:**
-- Modify: `backend/app/services/job_search_brief.py` (`build_brief`, ~line 185)
+- Modify: `backend/app/services/job_search_brief.py` (`build_brief`, line 101; `_auto_apply_block` at 85)
 - Modify: `backend/app/schemas/job_search_brief.py` (`JobSearchBriefResponse`, ~line 72)
-- Modify: `backend/mcp_server/server.py:437` (`get_job_search_brief` docstring: mention `applying.answer_level`)
+- Modify: `backend/mcp_server/server.py:439-441` (`get_job_search_brief` docstring: mention `applying.answer_level`)
 - Test: `backend/tests/test_job_search_brief.py`
 
 **Step 1: Failing test:**
@@ -513,7 +536,7 @@ response. Keep the MCP docstring under the truncation ratchet
 
 **Files:**
 - Modify: `frontend/components/settings/autofill-section.tsx:1264` and `:1276-1345` (`LowStakesSwitch`)
-- Modify: `frontend/lib/types.ts:318-322` (`AutofillOptions`)
+- Modify: `frontend/lib/types.ts:336-338` (`AutofillOptions`)
 - Test: `backend/tests/test_frontend_settings_cards.py`, `backend/tests/test_frontend_settings_assistant_words.py`
 
 **Step 1: Update the wording tests first.**
@@ -538,9 +561,17 @@ frontend/components/settings`). Label "Screening answers", one short line under 
   years-with-a-skill questions when your history shows the skill."
 - **Queued means I qualify**: "On jobs you queued, also says yes to every requirement question."
 Under the group, one line: "Work authorization, sponsorship, salary, EEO, background, clearance and
-legal statements always wait for a saved answer." Toast: `Screening answers: <label>`. Keep the
+legal statements always wait for a saved answer." Toast: `Screening answers: <label>`. Don't
+give the dial's mutation a TanStack `scope` (a scoped mutation stalls in a hidden tab; SYSTEM.md
+§12); use `lib/in-order.ts` if saves must be ordered. Keep the
 copy rules (`docs/frontend-conventions.md`; ratchets `test_frontend_vocabulary.py`,
 `test_frontend_sentence_length.py`). Replace the old promise sentence with the new one from Step 1.
+
+**Saved answers in use (added 2026-10-13).** In the same file's "Your own questions" fieldset,
+under its description: when `custom.length > 30`, one line, "Only the first 30 are used when
+filling for now. Remove the ones you no longer need." (`autofill_catalog.MAX_CUSTOM`; Task 33
+removes the line once every saved answer can be used). Pin it in `test_frontend_settings_cards.py`
+(shown for 31 rows, absent for 30).
 
 **Step 4: Run** the two test files plus `test_frontend_vocabulary.py test_frontend_sentence_length.py`,
 then `cd frontend && npx tsc --noEmit && npm run lint`. Expected: PASS.
@@ -551,13 +582,14 @@ then `cd frontend && npx tsc --noEmit && npm run lint`. Expected: PASS.
 
 **Files:**
 - Create: `backend/migrations/versions/<12-hex>_jobs_apply_url.py` (generate the id with
-  `python -c "import uuid; print(uuid.uuid4().hex[:12])"`; `down_revision = "559244b575bc"`, which is
-  the current head; confirm with `alembic heads` first)
+  `python -c "import uuid; print(uuid.uuid4().hex[:12])"`; `down_revision = "abd275b457d8"`
+  (base_resume_color_hue), the head at 547bbf6e; confirm with `alembic heads` first)
 - Modify: `backend/app/models/job.py` (beside `source_url`, line 24)
 - Modify: `backend/app/schemas/job.py` (`JobCreate`, `JobIngest`, `JobSummary`)
 - Modify: `backend/app/routers/jobs.py` (`create_job` ~300, `_persist_job` ~252)
-- Modify: `backend/app/services/sync/*` only if the sync row serializers list job columns
-  explicitly (`grep -rn "source_url" backend/app/services/sync`); add `apply_url` beside it
+- No sync change: the sync serializers are column-generic. Add an `apply_url` round-trip case to
+  `backend/tests/sync/test_jobs_bundle.py` (as 547bbf6e did for `color_hue` in
+  `test_profile_bundle.py`)
 - Test: `backend/tests/test_jobs_apply_url.py` (new)
 
 **Step 1: Failing tests:**
@@ -678,7 +710,7 @@ def companion_job_site_login(payload: LoginRequest, request: Request, db: ...):
         raise HTTPException(404, detail=str(exc)) from exc
 ```
 
-Clean the 422 the same way `routers/settings.py:240-253` does. The body never carries the password,
+Clean the 422 the same way `routers/settings.py:242-254` (`_JobSiteLoginRoute`) does. The body never carries the password,
 but keep it uniform.
 
 **Step 4: Run** the new test plus `tests/test_job_site_login_handoff.py tests/test_security_boundaries.py -q`.
@@ -718,7 +750,7 @@ class QueueRunItem(BaseModel):
 class QueueRunResponse(BaseModel):
     items: list[QueueRunItem]
     cap_left: int
-    skipped: list[dict]               # [{proposal_id, why}] why ∈ blocked | applied | no_link | cap
+    skipped: list[dict]               # [{proposal_id, why}] why ∈ blocked | applied | no_link | cap | not_here
 ```
 
 **Step 1: Failing tests** (seed with `tests/test_proposals_models.py::_mk_job` plus proposals):
@@ -726,6 +758,9 @@ class QueueRunResponse(BaseModel):
 - only `accepted` proposals appear, oldest first;
 - a blocked company, an already-applied application (`Application.status == "applied"`) and a job
   with no url each land in `skipped` with their `why`;
+- with sync on, a job this install doesn't own (offered to or held by another writer,
+  `offers.mark_when_queued`, `{#inv-one-writer-ownership}`; the PATCH route already calls
+  `hooks.require_owned`) lands in `skipped` with `why == "not_here"`;
 - with `max_submissions_per_day=2` and one reservation in the last 24 h (`cap_status`), only 1 item is
   returned and the rest are `skipped` with `why == "cap"`;
 - `open_url` prefers `apply_url`;
@@ -863,13 +898,15 @@ user fixed by hand, so the engine's to-do list survives the 50-run trace limit.
 
 **Files:**
 - Create: `backend/app/models/autofill_widget_gap.py` (+ export from `models/__init__.py`)
-- Create: `backend/migrations/versions/<12-hex>_autofill_widget_gaps.py` (down_revision = Task 6's
+- Create: `backend/migrations/versions/<12-hex>_autofill_widget_gaps.py` (down_revision = Task 6's revision, which itself chains from abd275b457d8;
   revision; table-creation style: `7d3c1a9e5b20_agent_runs.py`)
 - Modify: `backend/app/routers/autofill.py` (`POST /api/autofill/gaps`, `GET /api/autofill/gaps/summary`;
   `DELETE /api/autofill/telemetry` also clears gaps)
 - Modify: `backend/scripts/fill_trace.py` (a `gaps` section in `report`)
 - Modify: `frontend/components/settings/autofill-section.tsx` (one diagnostics line under Form filling:
-  "Fields the Companion couldn't operate: N kinds on M sites, N fixed by you." with no list of hosts
+  "Fields the Companion couldn't operate: N kinds on M sites, N fixed by you." With no gap rows, the
+  line uses the Analytics coverage card's empty wording (`autofill-coverage-card.tsx`): the fill
+  log is off unless turned on in the Companion's Options. With no list of hosts
   in the UI)
 - Test: `backend/tests/test_autofill_gaps.py` (new)
 
@@ -1157,8 +1194,8 @@ page_sign_in: (msg) => (window.top === window.self
 
 **Files:**
 - Modify: `extension/content/agent.js` (`extractJobPosting` result gains `applyUrl`)
-- Modify: `extension/panel/panel.js` (`ingestBodyFrom` ~1342 and its "TWO KEYS AND NO MORE" comment;
-  `job.js:94` posts the body)
+- Modify: `extension/panel/panel.js` (`ingestBodyFrom` ~1354, comment at 1334, and its "TWO KEYS AND NO MORE" comment;
+  `panel/actions/job.js:94` posts the body)
 - Test: `backend/tests/test_extension_panel_job.py`, `backend/tests/test_extension_posting_identity.py`
   or a new node test for the extraction
 
@@ -1182,7 +1219,353 @@ and say why the third exists.
 
 ---
 
+## The fill agent: context, tools, ideas (design Part 9, added 2026-10-13)
+
+The owner's live Workday run (2026-10-13; five stored run traces, read with `scripts/fill_trace.py
+last`) showed the loop is short of things to try, not of time. These tasks give the fill agent what
+a normal AI agent has: **context** (what it knows when stuck), **tools** (moves it can make),
+**ideas** (how to choose the next try), plus the checks that keep it honest. Every task here is
+generic widget craft; none is a per-site procedure (Adjustment 7).
+
+What the traces showed, so each task's test reproduces it:
+- A text box labelled "Enter website. This input is for robots only, do not enter if you're
+  human." was filled with the website (`map → personal.website jev 0.78`).
+- Skills: about 19 `pick — matched`, then ONE `set → late (timeout) 20.2s`. The loop explores and
+  picks every item first, then one `set` action searches and clicks every item AGAIN
+  (`fill-loop.js` `commitSet` 1005-1133; `fill-core.js` `setAll` 1267-1316) under the page budget
+  `min(setMax 20000, setItem 4000 × n)` (`fill-ops.js:29,183`). Twenty items cannot fit 20 s, so
+  the batch timed out after 5 pills. A plain-row click is confirmed only by a 200 ms settle
+  (`fill-core.js` `afterClick` 1109-1113); a checkbox row waits for the pill.
+- Field of Study: `search:value → progressed` eight times, then `cannot_operate`. A `progressed`
+  outcome is never added to `failedMoves` (`fill-loop.js` 873, 938), and the only other search the
+  page offers is `search:word:N`, the value's own words (`fill-core.js` `wordsOf` 1349-1352).
+- Country Phone Code showed "United States of America (+1)" but was asked: a Workday search box
+  with one pill and unknown multiplicity reads `answered: false` (`shapes.js` `searchAnswered`
+  185-189), /map routes it `none`, and `routed()` makes it `needs_answer` (`fill-loop.js`
+  1404-1425).
+- Phone Extension (optional, no fact) was asked: `routed()` never reads `required`.
+- Nine text fields each logged `write → error (stale)` then `write → progress (verified)`: a choice
+  redrew the section, and the write went to the old node. Nothing waits for the page to stop
+  changing before a write (`fill-base.js` `settle` is a fixed sleep).
+
+### Task 24: A recorded test form for the 2026-10-13 misses
+
+**Files:**
+- Create: `backend/tests/fixtures/browser/workday_misses.html`
+- Modify: `backend/tests/fixtures/browser/README.md` (one entry; source: "owner's live run
+  2026-10-13, run traces + screenshots", the observed behaviours below)
+- Test: `backend/tests/browser/test_fixture_fidelity.py`
+
+The page (made-up employer Acme, no real names; keeps `window.__oracle` per the README):
+1. **Robot trap:** `<label for='hp'>Enter website. This input is for robots only, do not enter if
+   you're human.</label><input id='hp' name='website'>`, visible, next to a real `Website` box.
+   A second trap positioned offscreen (`position:absolute; left:-9999px`) labelled "Leave this
+   field blank". A real `Middle name (leave blank if none)` box (NOT a trap).
+2. **Phone code:** a `selectinput` in a `multiselect` container already holding one pill
+   "United States of America (+1)" (`__oracle.phoneCode` set at load).
+3. **Optional extension:** `Phone Extension`, not required, empty.
+4. **Slow skills:** a `multiselect` skills box. A search answers in two stages (1 row at 300 ms,
+   the full list at 900 ms). A row click adds its pill 600 ms later; the FIRST click on "Pandas"
+   is ignored (the live "click landed during a redraw" case), the second works.
+5. **Field of Study:** a search box whose list holds "Statistics", "Computer Science",
+   "Mathematics" only. Searching the full value "Data Science and Analytics" lists nothing;
+   "Statistics" or "Data" lists matches.
+6. **Redraw:** choosing a `Country` popup option replaces the `Address`, `City` and `Postal Code`
+   inputs with new nodes (same labels) 400 ms later.
+
+**Step 1:** Write the fidelity tests (they drive the page by hand, no engine): the delayed pill
+appears 600 ms after a click; the first "Pandas" click adds nothing; the full Field of Study value
+lists nothing and "Statistics" lists one row; the Country choice swaps the three inputs' nodes.
+**Step 2:** Run `pytest tests/browser/test_fixture_fidelity.py -k misses -v`. Expected: FAIL (no
+fixture). **Step 3:** Write the fixture. **Step 4:** Run again. Expected: PASS; also
+`pytest tests/browser/test_fixture_privacy.py -q`. **Step 5:** Commit
+`test(fixtures): a recorded form for the 2026-10-13 Workday misses`.
+
+### Task 25: Never touch a robot trap
+
+A trap is never filled, never listed, never asked about, and never counted as missing. Both fill
+paths skip it: the fill loop (via the inventory) and the saved-answers fill
+(`autofill.js` `fillFormFromProfile`, still reachable from `agent.js:585`).
+
+**Files:**
+- Modify: `extension/content/fill-base.js` (new `robotTrap(el, labelText)`, exported on
+  `ns.fillBase`)
+- Modify: `extension/content/inventory.js` (`eligible()` 84-102: `false` for a trap; read the label
+  with `ns.shapes.readField(el)`, memoised per pass)
+- Modify: `extension/content/autofill.js` (the control loop at 1397/1418: `continue` on a trap)
+- Test: `backend/tests/browser/test_inventory.py`, `backend/tests/browser/test_fill_loop.py`,
+  `backend/tests/test_extension_*` (the legacy path's node-harness test that covers
+  `fillFormFromProfile`; grep `fillFormFromProfile` in `backend/tests/`)
+
+**The rule** (a trap if ANY holds):
+```js
+// Phrases a honeypot uses to tell humans to stay out. "Bots" alone is not one
+// ("Have you built bots?" is a real question), and "leave blank if none" is an
+// optional field's hint, not a trap.
+const TRAP_WORDS = /\bhoney ?pot\b|\bfor (?:spam ?)?(?:ro)?bots only\b|\bif you(?:'|\u2019)?(?:re| are) (?:a )?human\b|\b(?:do not|don(?:'|\u2019)t) (?:fill|enter|complete|type)(?: in)? (?:this|it)\b|^leave (?:this|it) (?:field |input |box )?(?:blank|empty)[.!]?$/i;
+const robotTrap = (el, labelText) => {
+  const words = [labelText, el.getAttribute("aria-label"), el.getAttribute("placeholder")]
+    .filter(Boolean).map((s) => s.trim());
+  if (words.some((s) => TRAP_WORDS.test(s))) return true;
+  // Drawn wholly outside the page (a classic honeypot), though `visible` passes it.
+  const r = el.getBoundingClientRect();
+  return r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0;
+};
+```
+
+**Step 1: Failing tests:**
+- `test_a_robot_trap_is_never_a_field`: on `workday_misses.html` neither trap is listed; `Website`
+  and `Middle name (leave blank if none)` are. Parametrize the wording over "This input is for
+  robots only", "If you are human, leave this blank", "Do not fill this field", "Leave this field
+  blank", and an `aria-label`-only trap. Negative cases stay fields: "Have you built bots or
+  automation tools?", "Middle name (leave blank if none)", "Do not include your country code".
+- `test_a_run_never_writes_a_robot_trap`: a fill loop run with a profile holding a website leaves
+  both traps empty (`__oracle` unset and `.value === ""`), and the run report lists neither.
+- The legacy fill leaves the trap empty with the same profile.
+
+**Step 2: Run** `pytest tests/browser/test_inventory.py -k trap tests/browser/test_fill_loop.py -k
+trap -v`. Expected: FAIL (the trap is filled). **Step 3: Implement.** **Step 4: Run** the same,
+then all of `tests/browser/test_inventory.py`. Expected: PASS, including
+`test_a_visible_select_marked_aria_hidden_is_still_a_field` (aria-hidden alone is still not a
+trap). **Step 5: Commit** `fix(fill): never fill a robot trap`.
+
+### Task 26: A field that already holds an answer is "already there"
+
+**Files:**
+- Modify: `extension/shared/fill-loop.js` (`routed()` 1404-1425)
+- Test: `backend/tests/browser/test_fill_loop.py`
+
+**Rule:** a SEARCH field /map routes `none` (no fact, no safe answer) whose inventory record
+already holds a pill (`committed` is a non-empty list, and `!f.invalid`) finishes `already` instead
+of `needs_answer`. Only pills count: a popup's `committed` can be its placeholder ("Select One"),
+which `answered` already handles. A mapped field keeps today's path (it may still need to add or change).
+Don't change `searchAnswered`: `test_search_pills_are_read_from_the_multiselect_container` pins
+it, and a skills box with one pill must still be filled.
+
+**Step 1: Failing test** `test_a_held_value_with_no_fact_is_already_there`: on
+`workday_misses.html`, Phone Country Code reports `already`, not `needs_answer`; an EMPTY box with
+no fact still reports `needs_answer`. **Step 2: Run** `-k held_value`. Expected: FAIL. **Step 3:
+Implement.** **Step 4: Run** all of `test_fill_loop.py`. Expected: PASS. **Step 5: Commit**
+`fix(fill-loop): a field that already holds an answer is not asked`.
+
+### Task 27: Leave an empty optional field alone
+
+**Files:**
+- Modify: `extension/shared/fill-loop.js` (`routed()`: route `none`, `!f.required`, nothing
+  committed, `!f.invalid` → `finish(f, "left_blank")`)
+- Modify: `extension/panel/stages/fill.js` (the summary line near 640: "N optional fields left
+  blank", never under Needs your answer)
+- Modify: `backend/app/schemas/autofill_telemetry.py` (add `left_blank` to the loop's statuses,
+  108-127, with a comment: an optional field nothing answered, left empty on purpose). No
+  trace or sw change: statuses there are a generic `WORD`
+- Test: `backend/tests/browser/test_fill_loop.py`, `backend/tests/test_extension_panel.py`,
+  `backend/tests/test_autofill_telemetry*.py`
+
+A field the page marks invalid (after Next, Task 13 reads errors) is never `left_blank`: it goes
+to Needs your answer. If Workday's required star is ever missed, that path catches it.
+
+**Step 1: Failing tests:** Phone Extension reports `left_blank`; a required empty field with no
+fact still reports `needs_answer`; an optional field with `invalid` reports `needs_answer`; the
+panel shows "1 optional field left blank" and no link for it; the telemetry schema accepts
+`left_blank`. **Step 2: Run.** Expected: FAIL. **Step 3: Implement.** **Step 4: Run**
+`pytest tests/browser/test_fill_loop.py tests/test_extension_panel.py tests/test_autofill_telemetry*.py
+-q`. Expected: PASS. **Step 5: Commit** `feat(fill-loop): optional fields with no answer are left
+blank, not asked`.
+
+### Task 28: Check every action in a list field
+
+Each item is committed and confirmed right after its pick, in the list its explore already
+settled (the search reuses it: `fill-core.js` `settledFor`, 532-536), so an item is searched once,
+not twice, and a slow item costs only itself.
+
+**Files:**
+- Modify: `extension/shared/fill-loop.js` (`commitSet`: per item explore → pick → a one-item `set`
+  → read `missing`; the batch `set` after all picks goes)
+- Modify: `extension/content/fill-core.js` (`afterClick` 1109-1113: wait for `holds()` up to
+  `OPEN_MS` after ANY row click in a set, not only a checkbox row; `chooseOne` in a set: one
+  re-click when the pill did not appear and the row is still listed)
+- Modify: `extension/content/fill-ops.js` (one-item `set` budget `setItem: 6000`; `setMax` only
+  caps a batch, which no caller sends any more; keep it for safety)
+- Test: `backend/tests/browser/test_fill_core_search.py`, `backend/tests/browser/test_fill_loop.py`
+
+**Step 1: Failing tests** on `workday_misses.html` with 12 skills in the profile:
+- all 12 pills land (`__oracle.skills` holds 12), "Pandas" on its second click;
+- the trace has one `set` step per item, each `verified`, and no `late`;
+- an item the list never offers is reported missing while the other 11 still land;
+- `test_a_search_set_keeps_existing_chips_and_reports_partial_honestly` still passes.
+
+**Step 2: Run** `-k "skills or set"`. Expected: FAIL (the batch times out or Pandas is missing).
+**Step 3: Implement.** **Step 4: Run** `tests/browser/test_fill_core_search.py
+tests/browser/test_fill_loop.py -q`. Expected: PASS. **Step 5: Commit** `fix(fill): a list field
+commits and confirms each item as it goes`.
+
+### Task 29: Don't go round in circles
+
+**Files:**
+- Modify: `extension/shared/fill-loop.js` (`adapt()` 873-950)
+- Test: `backend/tests/browser/test_adaptive_step.py`
+
+**Rule:**
+- A move whose outcome is `progressed` but whose NEXT state shows the same options it showed the
+  last time that same move ran (same move id, same value) is a failed move: add the earlier state
+  key to `failedMoves` and push `<mid> -> no_change` to the history.
+- Any one move id runs at most twice per field and value, whatever its outcome (a third proposal
+  is refused like an already-failed one).
+- Add `no_change` to the outcomes `HISTORY_ENTRY` accepts (`backend/app/schemas/autofill_fill.py`
+  187; it already allows any `[a-z_]+`, so only the test changes).
+
+**Step 1: Failing test** `test_the_same_search_is_never_sent_three_times`: a scripted step model
+that always answers `search:value` on the Field of Study box; the page sees `search:value` at most
+twice, the model hears `no_change`, and the field ends in at most 4 steps, not 8. **Step 2: Run.**
+Expected: FAIL (8 sends). **Step 3: Implement.** **Step 4: Run** all of
+`test_adaptive_step.py`. Expected: PASS. **Step 5: Commit** `fix(fill-loop): a move that changed
+nothing is not repeated`.
+
+### Task 30: Tools: the agent writes its own search term
+
+A new move, `search:term`: type a term the AGENT chose (a shorter word, a synonym, the category),
+not the value. Typing a search is never an answer: the answer is still a `click:oN` that clears
+the slot's match floor (`verdict`), exactly as today.
+
+**Files:**
+- Modify: `extension/content/fill-core.js` (`stepState` 1427-1434: offer `{mid: "search:term",
+  describe: "Type a search term you choose (a shorter word, a synonym or the category) into the
+  search box"}` wherever `search:value` is offered; `move()` 1459-1580: `search:term` types
+  `action.term`)
+- Modify: `extension/shared/fill-loop.js` (`adapt()`: pass `res.term` with the move; keep the
+  terms tried for this field in `rows` and send them as `tried_terms`)
+- Modify: `backend/app/schemas/autofill_fill.py` (`MOVE_ID` and `HISTORY_ENTRY` gain
+  `search:term`; `StepRequest.tried_terms: list[str]` ≤ 6, each ≤ 40; `StepResponse.term: str |
+  None`, pattern `^[\w .&+/#-]{1,40}$`)
+- Modify: `backend/app/services/autofill_step.py` (Jev only picks among ids, so when the chosen
+  move is `search:term`, ONE fast-model call writes the term: "Write one search term of 1 to 3
+  words likely to list the goal's answer. Not one of: <tried_terms>. Return JSON {"term": ...}";
+  invalid, repeated or out of time → treat as `give_up` for this step)
+- Modify: `extension/sw.js` `TRACE_MOVE` (:268) += `search:term`, or `scrubTrace` drops the step
+  (`app/schemas/autofill_trace.py` imports `MOVE_ID`, so the schema edit above covers the server).
+  The trace records `search:term`, never the term: a term can carry the value
+  (`{#inv-autofill-telemetry-no-values}`). Test through `test_extension_sw_router.py` `_post_trace`
+  (defaults to `OPTED_IN`)
+- Test: `backend/tests/test_autofill_step.py`, `backend/tests/browser/test_adaptive_step.py`
+
+**Step 1: Failing tests:**
+- backend: a request offering `search:term` where the scripted model picks it returns a valid
+  `term`; a term repeating `tried_terms` or failing the pattern returns `abstained`; a
+  `search:term` with no `term` from the page is never executed;
+- browser: on `workday_misses.html` Field of Study, after `search:value` lists nothing the loop
+  sends `search:term` "Statistics" (scripted), then `click:oN` on "Statistics" with reason
+  `closest`, and the field ends `closest_filled` (flag slot, complete list);
+- the report's trace (`trace_of(out)`) and its `scrubTrace`d copy hold `search:term` and no term
+  text.
+
+**Step 2: Run.** Expected: FAIL. **Step 3: Implement.** **Step 4: Run**
+`pytest tests/test_autofill_step.py tests/browser/test_adaptive_step.py -q`. Expected: PASS.
+**Step 5: Commit** `feat(fill): the step agent can search with its own term`.
+
+### Task 31: Ideas: a technique card per widget kind, and what worked here
+
+**Files:**
+- Create: `backend/app/services/autofill_techniques.py` (`CARDS: dict[str, str]`, one per kind)
+- Modify: `backend/app/schemas/autofill_fill.py` (`StepRequest.kind: Literal["popup", "search",
+  "multi", "group", "select", "date"] | None`; `StepRequest.worked_here: list[str]` ≤ 4, each
+  matching `MOVE_ID`)
+- Modify: `backend/app/services/autofill_step.py` (`_instructions` 110-132 appends
+  "Techniques for this kind of widget: <card>" and, when `worked_here`, "On this site these moves
+  worked before: <ids>")
+- Modify: `extension/shared/fill-loop.js` (`adapt()`'s POST 903-909: `kind` from the field's
+  shape and `multi`; `worked_here` from the recipe book's lesson for `f.recipe`, ids only)
+- Test: `backend/tests/test_autofill_step.py`, `backend/tests/test_autofill_techniques.py` (new)
+
+The cards (each ≤ 700 characters, so a step's prompt stays small):
+- `search`: "Results can arrive in stages; wait for the list, don't search again at once. If the full
+  answer lists nothing, search one distinctive word of it, then a synonym or the broader category
+  (search:term). Prefer an exact option; take the closest only when the list is complete. Never
+  repeat a search that changed nothing."
+- `multi`: "Each item is its own search and click; a pill appearing is the proof. If an item's pill
+  doesn't appear, click its row once more. An item the list never offers is skipped, never
+  replaced with an unrelated one."
+- `popup`: "Open the list first. Long lists scroll: scroll before deciding the answer is missing.
+  A row that opens a group leads to sub-options; open it only if the answer is inside."
+- `group`: "Click the option whose text answers the question as worded. A lone checkbox is yes
+  when ticked."
+- `select`: "Choose the option whose text answers the question; never the placeholder."
+- `date`: "Fill the parts the page shows (month, day, year) in its own format."
+
+**Step 1: Failing tests:** every `CARDS` value ≤ 700 characters and every `kind` has a card; the
+prompt for `kind: "search"` contains the search card; `worked_here: ["open"]` adds the line; an
+unknown `kind` or a `worked_here` id outside `MOVE_ID` is a 422; the loop's request carries `kind`
+and `worked_here` for a field with a recipe. **Step 2: Run.** Expected: FAIL. **Step 3:
+Implement.** **Step 4: Run** `pytest tests/test_autofill_step.py tests/test_autofill_techniques.py
+tests/browser/test_adaptive_step.py -q`. Expected: PASS. **Step 5: Commit** `feat(fill): the step
+agent gets a technique card and what worked on this site`.
+
+The known-gaps list (Task 10a) is where the next cards come from: a `cannot_operate` or
+`missing_technique` kind that keeps recurring is a card (or a move) to write, each with a recorded
+test form.
+
+### Task 32: Let the page settle before typing
+
+**Files:**
+- Modify: `extension/content/fill-base.js` (new `quiet(t, {ms = 300, max = 2000})`: resolves once
+  `document.body` has had no mutations for `ms`, or after `max`; uses `sleep`, so a hidden tab
+  works (Task 1a))
+- Modify: `extension/content/fill-ops.js` (`run()`: before a `write`, `await quiet()` when the
+  page changed in the last 300 ms; the inventory observer's `generation` counter tells)
+- Test: `backend/tests/browser/test_fill_loop.py`
+
+**Step 1: Failing test** `test_a_redrawn_section_is_typed_once`: on `workday_misses.html`, choose
+Country, then fill Address, City and Postal Code; each lands on the NEW node, and the trace shows
+one `write` per field, no `stale`. **Step 2: Run.** Expected: FAIL (`write → error (stale)`).
+**Step 3: Implement.** **Step 4: Run** all of `test_fill_loop.py`; also
+`tests/browser/test_fill_hidden.py`. Expected: PASS. **Step 5: Commit** `fix(fill): wait for a
+redrawn section before typing`.
+
+### Watch in the Phase 2 live check (no task yet)
+
+- The sponsorship text box and residency-permit question on the same form routed `none` at
+  0.88 and 0.62 against a 0.90 floor, while "work permit" mapped at 0.91 to `work_auth`. If the
+  live check shows protected questions with a saved fact still parking, lower the map's floor for
+  those slots on evidence (`scripts/fill_trace.py report` suggestions), not by guess.
+
 ## Phase 3 — The runner and the panel
+
+### Task 33: Use every saved answer, not the first 30 (Phase 3, first task; added 2026-10-13)
+
+`autofill_catalog._custom` offers only the first `MAX_CUSTOM = 30` saved answers, in the order
+saved. Once runs remember every answer (Task 20), a user passes 30 after roughly ten applications,
+and every newer answer would silently stop being used. Raising the cap isn't the fix: all facts
+share `MAX_SLOTS = 240`, the decision model's choice ceiling. Instead each request offers the 30
+saved answers CLOSEST in meaning to the page's own questions.
+
+**Files:**
+- Modify: `backend/app/services/autofill_catalog.py` (`build(..., questions=None, keep=())`;
+  `_custom`: with `questions`, rank every row by its best cosine similarity to any of them
+  (`app.services.ats.embeddings.embed_texts` / `cosine`, the app's local model) and offer the top
+  `MAX_CUSTOM`; when embeddings fail, rank by shared words instead (never fail the fill); without
+  `questions`, today's first 30. A row keeps its slot `custom.<original index>`, and any slot in
+  `keep` is always offered)
+- Modify: `backend/app/routers/autofill.py` (`/map` passes its fields' questions; `/pick`, `/step`
+  and the reasoned pass pass `keep={payload.slot}` so a `custom.<i>` that /map chose is still there
+  on the next call)
+- Modify: `frontend/components/settings/autofill-section.tsx` (remove the "Only the first 30…"
+  line Task 5 added)
+- Test: `backend/tests/test_autofill_catalog.py`, `backend/tests/test_autofill_fill_router.py`,
+  `backend/tests/test_frontend_settings_cards.py`
+
+**Step 1: Failing tests:**
+- 40 saved answers where #35 is "Is a relative a government official?": a build with the page
+  question "Do any of your family members hold public office?" offers `custom.35` (embedding stubbed
+  with a fake that scores that pair highest; one test with the real local model, marked like the
+  other embedding tests);
+- with `keep={"custom.35"}` and unrelated questions, `custom.35` is still offered;
+- an embedding failure (stub raises) falls back to word overlap and still offers ≤ 30;
+- no request ever offers more than `MAX_CUSTOM` saved answers or more than `MAX_SLOTS` facts.
+
+**Step 2: Run.** Expected: FAIL. **Step 3: Implement.** **Step 4: Run** `pytest
+tests/test_autofill_catalog.py tests/test_autofill_fill_router.py tests/test_autofill_step.py
+tests/test_autofill_pick.py -q`. Expected: PASS. **Step 5: Commit** `feat(autofill): offer the
+saved answers closest to the page, not the first 30`.
+
 
 ### Task 17: `shared/queue-run.js`, the runner (pure, deps injected)
 
@@ -1294,9 +1677,10 @@ Expected: PASS.
 **Files:**
 - Modify: `extension/shared/decisions.js:334` (`restorableSession`: no `ttlMs`; origin, tenant and
   backend-wins guards stay)
-- Modify: `extension/panel/panel.js` (`KEY`, `SESSION_TTL_MS`, `rememberSession` ~2139,
-  `restoreSession` ~3127, `refreshPage` comment ~2860, the KEY comment block ~140-171)
-- Modify: `extension/INTERNALS.md` (the `widget.session` paragraphs ~1511 and ~451-462)
+- Modify: `extension/panel/panel.js` (`KEY`, `SESSION_TTL_MS`, `rememberSession` 2212,
+  `restoreSession` 3201, `refreshPage` comment 2953-2961, the KEY comment block 131-177; `KEY` 178,
+  `SESSION_TTL_MS` 186)
+- Modify: `extension/INTERNALS.md` (the `widget.session` paragraphs 1527-1532 and 467-478)
 - Test: `backend/tests/test_extension_panel*.py` and `tests/extension_fixtures.py` (session fixtures),
   plus the decisions tests that pass `ttlMs`
 
@@ -1530,7 +1914,11 @@ tests/test_extension_queue_run.py -q`. Expected: PASS.
 
 **Step 3: Implement.**
 
-**Step 4: Run** `pytest tests/test_extension_panel*.py tests/test_extension_panel_icons.py -q`.
+Every new text-on-fill colour pair (e.g. Needs you on the warn tone) joins `_TEXT_PAIRS` in
+`tests/test_extension_panel_contrast.py` (the panel's colours are the app's since 75408302).
+
+**Step 4: Run** `pytest tests/test_extension_panel*.py tests/test_extension_panel_icons.py
+tests/test_extension_panel_contrast.py tests/test_extension_status_roles.py -q`.
 Expected: PASS.
 
 **Step 5: Commit** `feat(companion): run list, Needs you with Resume, auto-mark after your Submit`.
@@ -1571,6 +1959,10 @@ with **Queue** beside it; with it off, **Save job** exactly as today.
   **Finish in Maestro CS** (the web app's tailoring session) and **Apply with the base resume**
   (`POST /api/applications/from-base` then render, then the one-job run; the open session is left
   untouched).
+- **A base resume is never named without its square** (SYSTEM.md §6 `inv-resume-color-identity`,
+  INTERNALS 265-269): the "Apply with this resume" card and every line naming a base keep
+  `swatch(color_hue)`, built like the Job step's base rows (`stages/job.js` `rowText({node, attach,
+  swatch})`, ~286).
 
 **Step 1: Failing panel-harness tests:**
 - full automation off → only Save job;
@@ -1595,7 +1987,7 @@ book the move the user used, and note techniques the engine lacks.
 - Modify: `extension/content/recipes.js` (a gesture watcher per field: `watch(fid)` / `report(fid)`)
 - Modify: `extension/content/agent.js` (`fill_watch {fids}` starts watching parked fields;
   `fill_watch_report {fids}` returns `{fid: {family, site, gestures: [...]}}`), `extension/sw.js`
-  (`BROADCASTABLE` += both, pin updated)
+  (`BROADCASTABLE` += both, pin updated; the panel→sw handler `fill_gaps`, NOT broadcastable)
 - Modify: `extension/shared/recipe-book.js` (`recordDemonstration(lesson)`: a known move enters at
   `probation` for that site only; never `trusted` from one demonstration; a family lesson needs the
   usual two sites)
@@ -1603,8 +1995,10 @@ book the move the user used, and note techniques the engine lacks.
   then for each field now holding a value (from the receipt's `fromEdits`): a known move →
   `recipes.recordDemonstration`; no known move → POST `/api/autofill/gaps` with
   `outcome: "missing_technique"`; every fixed field → a `user_fixed` gap; every run's leftover
-  `cannot_operate`/`unconfirmed` fields → their gap rows. All gap posts go through the
-  `telemetry`-gated path and are skipped when `telemetryEnabled` is false.)
+  `cannot_operate`/`unconfirmed` fields → their gap rows. Gap posts go through a new sw handler
+  `fill_gaps` (POST `/api/autofill/gaps`, keys whitelisted to family/host/shape/outcome), gated
+  like `telemetry`/`fill_trace`: it posts only when `telemetryEnabled === true` (off by default;
+  Options › Keep a fill log).)
 - Test: `backend/tests/browser/test_recipes.py`, `backend/tests/test_extension_panel_run.py`
 
 **Gesture vocabulary** (value-free; the engine's own axes from `recipe-book.js` `AXES`):
@@ -1620,13 +2014,73 @@ then a pointer pick). Record event TYPES and key NAMES from a fixed allowlist (`
 - recipe-book (node): one demonstration → `probation` at `s:<site>`, not trusted; a second
   demonstration on another site → the family is `trusted` (same lifecycle as engine wins);
 - panel: Resume after a hand fix posts a `user_fixed` gap and records the demonstration; with
-  telemetry off, no gap post and no demonstration is recorded.
+  the fill log off (stored `{}`, `false`, `"true"`, `1`, as
+  `test_telemetry_is_off_until_the_user_turns_it_on` does) the sw posts no gap, and the
+  demonstration is STILL recorded: the recipe book is local and was never gated by the fill log
+  (planner's call 2026-10-13; gating it would leave Learn from the fix off for nearly everyone).
+  The panel harness `SETTINGS_REPLY` has `telemetryEnabled: True`; sw tests use `OPTED_IN`.
 
 **Step 2: Run.** Expected: FAIL. **Step 3: Implement.** **Step 4: Run**
 `pytest tests/browser/test_recipes.py tests/test_extension_panel_run.py tests/test_extension_sw_router.py -q`.
 Expected: PASS.
 
 **Step 5: Commit** `feat(companion): a hand fix teaches the recipe book; misses join the known-gaps list`.
+
+### Task 20c: A remembered answer that names this job stays with this job (added 2026-10-13)
+
+Task 20 saves every answer typed before Resume to the `custom` saved answers
+(`panel/actions/pause.js` `learnAnswer` → `withCustomAnswer`), and /map offers each one as a fact
+(`autofill_catalog._custom`, "saved answer to: <question>"), matched by meaning. Some answers only
+hold for the job they were given on: "Are you willing to relocate to Austin?", "Have you worked at
+Acme before?". Reused at the next company, they would be wrong while looking like a normal filled
+answer. So a saved answer whose question names THIS job's company or city is scoped to it.
+
+**Files:**
+- Modify: `extension/panel/actions/pause.js` (`withCustomAnswer(custom, question, answer, job)`:
+  when the normalized question contains the job's company, or the city of its location (each ≥ 3
+  characters), the row gets `only_for: "<that company or city>"`; `learnAnswer` passes the card's
+  job `{company, location}`)
+- Modify: `backend/app/services/autofill_catalog.py` (`build(..., location=None)`; `_custom(out,
+  custom, company, location)`: a row with `only_for` is offered only when `only_for` is contained,
+  case-insensitively, in this job's company or location; with no job it is never offered. A row
+  keeps its slot `custom.<i>` either way, so the indices other rows use don't move)
+- Modify: `backend/app/routers/autofill.py` (`_facts`: pass `location=job.location if job else None`
+  beside `company=`)
+- Modify: `frontend/components/settings/autofill-section.tsx` ("Your own questions": a row with
+  `only_for` shows one muted line, "Only for <only_for>"; editing a row keeps `only_for`)
+- Test: `backend/tests/test_autofill_catalog.py`, `backend/tests/test_extension_panel_fill.py`
+  (it covers `withCustomAnswer` today), `backend/tests/test_frontend_settings_cards.py`
+
+**Step 1: Failing tests:**
+```python
+def test_a_saved_answer_naming_a_company_is_offered_only_for_that_company():
+    profile = {"custom": [
+        {"question": "Have you worked at Acme before?", "answer": "No", "only_for": "Acme"},
+        {"question": "Is a relative a government official?", "answer": "No"}]}
+    at_acme = cat.build(profile, [], [], company="Acme Corp")
+    at_globex = cat.build(profile, [], [], company="Globex")
+    assert "custom.0" in at_acme and "custom.1" in at_acme
+    assert "custom.0" not in at_globex and "custom.1" in at_globex
+    assert "custom.0" not in cat.build(profile, [], [])          # no job: a scoped answer is never offered
+
+
+def test_a_saved_answer_naming_a_city_is_offered_only_there():
+    profile = {"custom": [{"question": "Willing to relocate to Austin?", "answer": "Yes", "only_for": "Austin"}]}
+    assert "custom.0" in cat.build(profile, [], [], company="Globex", location="Austin, TX")
+    assert "custom.0" not in cat.build(profile, [], [], company="Globex", location="Denver, CO")
+```
+In the panel test: `withCustomAnswer([], "Have you worked at Acme before?", "No", {company: "Acme",
+location: "Austin, TX"})` gives `only_for: "Acme"`; "Willing to relocate to Austin?" gives
+`only_for: "Austin"`; "Is a relative a government official?" gives no `only_for`; updating an
+existing row keeps its `only_for`. In the settings test: the card renders "Only for" for a scoped
+row.
+
+**Step 2: Run** `pytest tests/test_autofill_catalog.py -k saved_answer tests/test_extension_panel_fill.py
+tests/test_frontend_settings_cards.py -q`. Expected: FAIL. **Step 3: Implement.** **Step 4: Run**
+the same files in full, plus `tests/test_autofill_fill_router.py`. Expected: PASS.
+**Step 5: Commit** `feat(autofill): an answer that names a job's company or city is kept for that job`.
+
+Dates ("Can you start on 1 November?") are not scoped in v1: the live check says whether they need to be.
 
 ### Task 21 (conditional): `/api/autofill/page` for unclear buttons
 
@@ -1654,8 +2108,8 @@ Ask the planner before starting.
     user's" becomes "Submit stays the user's at every setting; Next is clicked only by
     `page_advance` during a queued run with full automation on";
   - `inv-job-site-password-local`: the Companion route, top-frame typing, never a model;
-  - `inv-autofill-telemetry-no-values`: the known-gaps table (value-free, telemetry-gated, cleared
-    by `DELETE /telemetry`) and the gesture report (event types and allowlisted key names only);
+  - `inv-autofill-telemetry-no-values`: the known-gaps table (value-free, posted only while the fill log is on
+    (`telemetryEnabled === true`, default off), cleared by `DELETE /telemetry`) and the gesture report (event types and allowlisted key names only);
   - `inv-auto-consent-gated`: the `companion` channel and `companion-submitted`;
   - §7 Chrome extension + Guided fill: the queued run, per-tab memory, the Screening answers dial;
   - update pins in `.system_md_enforcement.json` for any new symbols named in §6.
@@ -1692,7 +2146,9 @@ that moved.
 browser pane at 1280 and 1024 widths. Never verify against the docker-compose stack.
 
 **Step 5: Owner live check** (the owner does this; write the checklist into the PR description):
-load the unpacked extension; full automation on; queue five real jobs across Workday, Greenhouse,
+load the unpacked extension; in its Options tick **Keep a fill log** (off by default; without it
+no run trace or known-gap row is stored, and `fill_trace.py last|report` has nothing to compare);
+full automation on; queue five real jobs across Workday, Greenhouse,
 Lever, Ashby and iCIMS; Apply to queued. For each: did it reach the real review page and stop?
 Was Submit ever clicked (must be no)? What parked, and why? Seconds of your time per job (from the
 run log). Then decide on Task 21.
