@@ -1266,10 +1266,14 @@ The page (made-up employer Acme, no real names; keeps `window.__oracle` per the 
 3. **Optional extension:** `Phone Extension`, not required, empty.
 4. **Slow skills:** a `multiselect` skills box. A search answers in two stages (1 row at 300 ms,
    the full list at 900 ms). A row click adds its pill 600 ms later; the FIRST click on "Pandas"
-   is ignored (the live "click landed during a redraw" case), the second works.
+   is ignored (the live "click landed during a redraw" case), the second works. A click on the
+   row's text commits like its checkbox (on Workday the text is the checkbox's label).
 5. **Field of Study:** a search box whose list holds "Statistics", "Computer Science",
-   "Mathematics" only. Searching the full value "Data Science and Analytics" lists nothing;
-   "Statistics" or "Data" lists matches.
+   "Mathematics" only (word-prefix matching). Searching the full value "Data Science and
+   Analytics" lists nothing, and so does its word "Data"; "Science" lists "Computer Science" (a
+   plausible wrong match); "Statistics" lists one row. Only a term the agent chooses (Task 30)
+   reaches the right answer. (Planner, 2026-10-13: the earlier "or Data lists matches"
+   contradicted "only" and was withdrawn.)
 6. **Redraw:** choosing a `Country` popup option replaces the `Address`, `City` and `Postal Code`
    inputs with new nodes (same labels) 400 ms later.
 
