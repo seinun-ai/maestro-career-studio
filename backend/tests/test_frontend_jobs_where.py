@@ -30,26 +30,53 @@ def test_the_role_cell_is_two_lines_with_no_ownership_in_it():
 def test_the_where_head_sits_after_status_and_only_shows_when_a_row_has_a_mark():
     head = squash(_TABLE[: _TABLE.index("</TableHeader>")])
     assert head.index('header("status"') < head.index(">Where</TableHead>") < head.index('header("applied_at"')
-    assert '{showWhere ? <TableHead className="w-[9%] px-3">Where</TableHead> : null}' in head
+    assert "{showWhere ? <TableHead " in head and "</TableHead> : null}" in head
     assert "const showWhere = filtered.some((r) => ownershipWhere(" in squash(_PAGE)
-    # Today's 96%: Role 27 with Where, 36 without (it gets Where's 9). The others never change. Status is
-    # 16, not the 13 the plan listed: "Interviewing" is 118px and ran into Where's icon at the table's 52rem.
-    assert 'showWhere ? "w-[27%]" : "w-[36%]"' in head
-    rest = [int(w) for w in re.findall(r"w-\[(\d+)%\]", head.replace("w-[27%]", "").replace("w-[36%]", ""))]
-    assert rest == [15, 11, 16, 9, 9, 9] and 27 + sum(rest) == 36 + sum(rest) - 9 == 96
 
 
-def test_the_where_cell_is_an_icon_and_a_word_with_the_long_sentence_as_its_title():
+def test_columns_with_fixed_content_are_in_rem_and_role_and_resume_share_the_rest_as_percentages():
+    """A percentage of a table that scrolls at 52rem gave "Offer accepted" less room than its chip needs;
+    Role and Resume take what the fixed columns leave, and Role widens when Where is not there."""
+    head = squash(_TABLE[: _TABLE.index("</TableHeader>")])
+    for key in ("ats", "status", "applied_at", "created_at"):
+        width = re.search(rf'header\("{key}", "[^"]+", "(w-[^"]+)"\)', head)
+        assert width and "%" not in width.group(1), key
+    where = tokens(open_tag(head, "TableHead", after="{showWhere ?"))
+    assert any(re.fullmatch(r"w-(\d+|\[[\d.]+rem\])", t) for t in where), where
+
+
+def test_role_widens_and_resume_narrows_when_where_is_not_shown():
+    head = squash(_TABLE[: _TABLE.index("</TableHeader>")])
+    role = re.search(r'header\("role", "Role", showWhere \? "w-\[(\d+)%\]" : "w-\[(\d+)%\]"\)', head)
+    resume = re.search(r'<TableHead className=\{showWhere \? "w-\[(\d+)%\]" : "w-\[(\d+)%\]"\}>Resume', head)
+    assert role and resume
+    assert int(role.group(2)) > int(role.group(1))
+    assert int(resume.group(2)) < int(resume.group(1))
+    assert 'minWidth="52rem"' in _PAGE
+
+
+def test_the_where_cell_is_an_icon_and_a_word_with_the_long_sentence_for_the_tooltip_and_for_readers():
     cell = _TABLE[_TABLE.index("{showWhere ? (") :]
     cell = cell[: cell.index("</TableCell>")]
     squashed = squash(cell)
     # The bot is where your connected agents run, so it wears their glyph, as the header mark does.
     assert "where?.bot ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop" in squash(_PAGE)
-    span = open_tag(cell, "span")
-    assert "title={where.sentence}" in span
+    assert "title={where.sentence}" in open_tag(cell, "span")
     icon = open_tag(cell, "WhereIcon")
     assert "text-muted-foreground" in tokens(icon) and 'aria-hidden="true"' in icon
     assert "{where.word}" in squashed
+    assert '<span className="sr-only">{where.sentence}</span>' in squashed
+
+
+def test_a_request_still_on_its_way_shows_as_queued_under_the_label():
+    cell = _TABLE[_TABLE.index("{showWhere ? (") :]
+    cell = cell[: cell.index("</TableCell>")]
+    squashed = squash(cell)
+    # A request still on its way shows as a small muted word under the label; the sentence says the rest.
+    queued = open_tag(cell, "span", after="{where.pending ?")
+    assert "text-muted-foreground" in tokens(queued) and ">Queued</span>" in squashed
+    # Every row of a table that shows Where has an owner; a row without one just leaves the cell empty.
+    assert "—" not in cell
 
 
 def test_the_page_reads_row_data_only():
@@ -58,26 +85,53 @@ def test_the_page_reads_row_data_only():
     assert "const owner = r.kind === \"saved\" ? r.job.ownership : r.app.ownership;" in _PAGE
 
 
-def test_a_row_the_laptop_cannot_ask_about_shows_a_lock_in_its_status_chip():
+def test_a_chip_on_a_job_that_is_moving_is_locked_but_still_focusable():
     chip = open_tag(_TABLE, "StatusChip")
-    assert "disabled={!ownership.canRequest}" in chip
+    assert "disabled=" not in chip  # StatusChip derives locked from the reason
     assert "lockedReason={ownership.canRequest ? undefined : (ownership.reason ?? undefined)}" in squash(chip)
-    src = _src("components/status-chip.tsx")
+    src = squash(_src("components/status-chip.tsx"))
     assert "lockedReason?: string;" in src
-    assert "CONCEPT_ICONS.locked" in src and "title={lockedReason}" in src
-    # A chip without a reason keeps its chevron.
-    assert "lockedReason ? " in src and "<ChevronDown" in src
+    assert "const locked = disabled || !!lockedReason;" in src
+    assert "const blocked = pending || !!lockedReason;" in src
+    # The pending path: aria-disabled, and a menu that refuses to open, so the chip keeps focus.
+    assert "open={open && !blocked}" in src
+    assert "if (!blocked) setOpen(next);" in src
+    assert "aria-disabled={blocked || undefined}" in src
+
+
+def test_a_locked_chip_explains_itself_and_does_not_invite_a_click():
+    src = squash(_src("components/status-chip.tsx"))
+    assert "aria-describedby={lockedReason ? reasonId : undefined}" in src
+    assert 'id={reasonId} className="sr-only">{lockedReason}</span>' in src
+    assert "useId()" in src
+    # No hover lift or pointer cursor while locked, and the chevron is a lock.
+    assert "chipClasses(!locked, locked)" in src
+    assert 'locked && "cursor-default' in src
+    assert "<CONCEPT_ICONS.locked" in src
 
 
 def test_the_row_menu_offers_the_ownership_action_before_delete():
     menu = squash(_TABLE[_TABLE.index("<DropdownMenuContent") : _TABLE.index("</DropdownMenuContent>")])
-    action = '{ownership.action ? ( <> <OwnershipMenuItem jobId={jobId} action={ownership.action} /> <DropdownMenuSeparator /> </> ) : null}'
+    action = ("{ownership.action ? ( <> <OwnershipMenuItem jobId={jobId} action={ownership.action} "
+              "pending={ownership.pending} /> <DropdownMenuSeparator /> </> ) : null}")
     assert action in menu and menu.index(action) < menu.index("Delete job")
     comp = _src("components/job-ownership.tsx")
-    item = comp[comp.index("export function OwnershipMenuItem") :]
-    assert "useOwnershipAction(jobId)" in item and "<DropdownMenuItem" in item
-    assert 'view.action === "keep-here" ? "Keep it here" : "Work on it here"' not in item  # one place picks the words
-    assert "CONCEPT_ICONS.laptop" in item
+    item = squash(comp[comp.index("export function OwnershipMenuItem") : comp.index("export function JobOwnershipNotice")])
+    assert "<DropdownMenuItem disabled={busy || pending}" in item and "CONCEPT_ICONS.laptop" in item
+    # The words come from one table; a request already waiting for the next sync replaces the label.
+    assert "{pending ? REQUEST_QUEUED : ACTION_LABEL[action]}" in item
+    assert "ACTION_LABEL[view.action]" in comp
+
+
+def test_the_header_mark_and_the_row_menu_share_one_request_state_per_job():
+    comp = _src("components/job-ownership.tsx")
+    assert comp.count("ownershipKey(jobId)") == 2  # the mutation's key, and the one read for "busy"
+    assert "mutationKey: ownershipKey(jobId)" in comp
+    assert "useIsMutating({ mutationKey: ownershipKey(jobId) }) > 0" in comp
+    mark = comp[comp.index("export function JobOwnershipMark") : comp.index("export function OwnershipMenuItem")]
+    item = comp[comp.index("export function OwnershipMenuItem") : comp.index("export function JobOwnershipNotice")]
+    assert "useOwnershipBusy(jobId)" in mark and "pending={busy}" in mark
+    assert "useOwnershipBusy(jobId)" in item
 
 
 def test_the_where_column_is_in_the_design_system():

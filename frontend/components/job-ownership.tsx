@@ -8,16 +8,24 @@ import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
-import { jobOwnershipView, syncActionMessage } from "@/lib/job-ownership";
+import { REQUEST_QUEUED, jobOwnershipView, syncActionMessage, type OwnershipActionName } from "@/lib/job-ownership";
 import type { JobOwnership } from "@/lib/types";
 
 const ACTION_LABEL = { "keep-here": "Keep it here", "work-here": "Work on it here" } as const;
 
+/** One key for a job's ownership request, so every button for it (a header's, a row menu's) reads one state. */
+const ownershipKey = (jobId: string) => ["job-ownership", jobId];
+
+/** True while a request to move this job is in flight, wherever on screen it was started. */
+function useOwnershipBusy(jobId: string): boolean {
+  return useIsMutating({ mutationKey: ownershipKey(jobId) }) > 0;
+}
+
 function useOwnershipAction(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationKey: ["job-ownership", jobId],
-    mutationFn: (action: string) => apiFetch(`/api/jobs/${jobId}/${action}`, { method: "POST" }),
+    mutationKey: ownershipKey(jobId),
+    mutationFn: (action: OwnershipActionName) => apiFetch(`/api/jobs/${jobId}/${action}`, { method: "POST" }),
     onSuccess: (result) => {
       toast.success(syncActionMessage(result, "Kept on your laptop"));
       void qc.invalidateQueries({ queryKey: ["jobs"] });
@@ -33,6 +41,7 @@ export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownershi
   const view = jobOwnershipView(ownership);
   const mutation = useOwnershipAction(jobId);
   const act = useSingleFlight(mutation.mutate);
+  const busy = useOwnershipBusy(jobId);
   if (!view.mark) return null;
   // The bot is where your connected agents run, so it wears their glyph; the laptop has its own.
   const Icon = ownership?.owner === "bot" ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
@@ -43,26 +52,27 @@ export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownershi
         {view.mark}
       </span>
       {view.action ? (
-        <Button size="xs" variant="outline" pending={mutation.isPending} onClick={() => act(view.action!)}>
+        <Button size="xs" variant="outline" pending={busy} onClick={() => act(view.action!)}>
           {ACTION_LABEL[view.action]}
         </Button>
       ) : null}
-      {view.pending ? <span role="status" className="text-muted-foreground text-body-small">Sent at the next sync</span> : null}
+      {view.pending ? <span role="status" className="text-muted-foreground text-body-small">{REQUEST_QUEUED}</span> : null}
     </div>
   );
 }
 
 /** The row menu's "Work on it here" / "Keep it here". A menu closes on click, so the request's progress
- * is read from the query client: reopening the menu mid-request finds the item disabled. */
-export function OwnershipMenuItem({ jobId, action }: { jobId: string; action: "keep-here" | "work-here" }) {
+ * is read from the query client: reopening the menu mid-request finds the item disabled. A request of
+ * yours that is still waiting for the next sync disables it too, so no second one goes out. */
+export function OwnershipMenuItem({ jobId, action, pending }: { jobId: string; action: OwnershipActionName; pending: boolean }) {
   const mutation = useOwnershipAction(jobId);
   const act = useSingleFlight(mutation.mutate);
-  const busy = useIsMutating({ mutationKey: ["job-ownership", jobId] }) > 0;
+  const busy = useOwnershipBusy(jobId);
   const Icon = CONCEPT_ICONS.laptop;
   return (
-    <DropdownMenuItem disabled={busy} onClick={() => act(action)}>
+    <DropdownMenuItem disabled={busy || pending} onClick={() => act(action)}>
       <Icon className="size-4" aria-hidden="true" />
-      {ACTION_LABEL[action]}
+      {pending ? REQUEST_QUEUED : ACTION_LABEL[action]}
     </DropdownMenuItem>
   );
 }

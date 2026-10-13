@@ -1128,13 +1128,18 @@
   (`test_a_filter_change_keeps_the_scroll_position`).
 - **Jobs row** (`app/applications/page.tsx`): every row is two lines (company, then role and
   location), so every row is one height; nothing a row can gain (an ownership mark, a notice) goes
-  inside the Role cell. Ownership is the **Where** column after Status: an icon and one word
-  (`ownershipWhere` in `lib/job-ownership.ts`: Laptop, Bot, Moving), the long sentence as its
-  tooltip, shown only when some visible row has an owner (sync off: no column, Role takes its
-  width). The page reads only each row's own `ownership`, never `use-job-ownership`. A chip that
-  cannot change because the job is on the other copy trades its chevron for a lock
-  (`StatusChip` `lockedReason`). **Work on it here** / **Keep it here** are in the row's ⋯ menu
-  (`OwnershipMenuItem`). The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.
+  inside the Role cell. Ownership is the **Where** column after Status: a muted icon (whoever holds
+  the job now) and one word (`ownershipWhere` in `lib/job-ownership.ts`: Laptop, Bot, Moving), the
+  long sentence as its tooltip and an sr-only sentence, and a small "Queued" under the label while a
+  request of yours waits for the next sync. It shows only when some visible row has an owner (sync
+  off: no column, Role takes its room). The page reads only each row's own `ownership`, never
+  `use-job-ownership`. A chip locks while the job is moving between copies (`StatusChip`
+  `lockedReason`: a lock, the reason as title and `aria-describedby`, `aria-disabled` so it stays
+  focusable). **Work on it here** / **Keep it here** are in the row's ⋯ menu (`OwnershipMenuItem`,
+  disabled while a request is in flight or waiting); the header mark and the menu share one request
+  state per job (`ownershipKey`). Columns with fixed content are in rem (the table scrolls at 52rem,
+  where a percentage of it left "Offer accepted" no room); Role and Resume share the rest, Role more
+  when Where is not shown. The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.
   Pinned by `test_frontend_jobs_where.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the

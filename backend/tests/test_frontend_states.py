@@ -93,9 +93,10 @@ def test_a_pending_status_chip_cannot_be_changed_again():
     chip = _read("components/status-chip.tsx")
     body = chip.split("export function StatusChip", 1)[1]
     # Focusable while pending: a native disabled button drops focus to <body> when the menu closes.
-    assert "aria-disabled={pending || undefined}" in body
+    assert "const blocked = pending || !!lockedReason;" in body  # a locked chip takes the same path
+    assert "aria-disabled={blocked || undefined}" in body
     assert not re.search(r"(?<![-\w])disabled=\{pending\}", body)
-    assert "open={open && !pending}" in body and "if (!pending && s !== current)" in body
+    assert "open={open && !blocked}" in body and "if (!pending && s !== current)" in body
 
 
 def test_the_status_chip_cross_fades_and_confirms():

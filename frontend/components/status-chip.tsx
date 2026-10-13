@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 
 import {
@@ -75,12 +75,14 @@ export function statusLabel(status: string | null): string {
   return STATUS_STYLES[status as ApplicationStatus]?.label ?? "Unknown";
 }
 
-function chipClasses(interactive: boolean): string {
+/** `locked` is a chip that can be focused but not changed: no pointer cursor, no hover lift, still a focus ring. */
+function chipClasses(interactive: boolean, locked = false): string {
   return cn(
     "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-label-medium",
     interactive &&
       "cursor-pointer transition-[background-color,color,scale,box-shadow] duration-(--duration-short3) ease-(--ease-standard) select-none " +
         "hover:shadow-level1 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring",
+    locked && "cursor-default select-none focus-visible:outline-2 focus-visible:outline-ring",
   );
 }
 
@@ -199,7 +201,8 @@ export function StatusChip({
   onSelect: (status: ApplicationStatus) => void;
   pending?: boolean;
   disabled?: boolean;
-  /** Why the chip cannot change right now (a job that is on the other copy): the chevron becomes a lock. */
+  /** Why the chip cannot change right now (a job moving between copies): the chevron becomes a lock and the
+   * chip refuses to open but stays focusable, like a pending one. */
   lockedReason?: string;
   className?: string;
 }) {
@@ -220,12 +223,15 @@ export function StatusChip({
   // A natively disabled trigger cannot take focus back when the menu closes, so
   // the chip stays focusable (aria-disabled) and just refuses to open meanwhile.
   const [open, setOpen] = useState(false);
+  const reasonId = useId();
+  const locked = disabled || !!lockedReason;
+  const blocked = pending || !!lockedReason;
 
   return (
     <DropdownMenu
-      open={open && !pending}
+      open={open && !blocked}
       onOpenChange={(next) => {
-        if (!pending) setOpen(next);
+        if (!blocked) setOpen(next);
       }}
     >
       <DropdownMenuTrigger
@@ -236,11 +242,12 @@ export function StatusChip({
             type="button"
             data-status-chip
             disabled={disabled}
-            aria-disabled={pending || undefined}
+            aria-disabled={blocked || undefined}
+            aria-describedby={lockedReason ? reasonId : undefined}
             data-confirm={confirm || undefined}
             title={lockedReason}
-            aria-label={disabled ? `Status: ${style.label}` : `Status: ${style.label}. Change status`}
-            className={cn(chipClasses(true), style.chip, "data-confirm:animate-confirm", className)}
+            aria-label={locked ? `Status: ${style.label}` : `Status: ${style.label}. Change status`}
+            className={cn(chipClasses(!locked, locked), style.chip, "data-confirm:animate-confirm", className)}
             onClick={(e) => e.stopPropagation()}
           >
             {pending ? (
@@ -250,7 +257,10 @@ export function StatusChip({
             )}
             {style.label}
             {lockedReason ? (
-              <CONCEPT_ICONS.locked className="size-3 opacity-50" aria-hidden="true" />
+              <>
+                <CONCEPT_ICONS.locked className="size-3 opacity-50" aria-hidden="true" />
+                <span id={reasonId} className="sr-only">{lockedReason}</span>
+              </>
             ) : (
               <ChevronDown className="size-3 opacity-50" />
             )}

@@ -1,5 +1,7 @@
 import type { JobOwnership, SyncQueued } from "./types";
 
+export const REQUEST_QUEUED = "Sent at the next sync";
+
 /** No ownership on a row means sync is off (or an older server): owned here, unmarked, nothing locked. */
 export function jobOwnershipView(ownership?: JobOwnership) {
   if (!ownership) return { mark: null, action: null, canWrite: true, canRequest: true,
@@ -18,15 +20,17 @@ function isMoving(ownership: JobOwnership): boolean {
 }
 
 /** The Jobs table's Where cell: one word, whose copy it is, and the long sentence for its tooltip.
- * Null where the row has no mark, which is every row with sync off. */
+ * Moving keeps the icon of whoever holds the job now. `pending` is a request of yours still on its way
+ * (the sentence then ends with where it stands). Null where the row has no mark: every row with sync off. */
 export function ownershipWhere(ownership?: JobOwnership):
-  { word: "Laptop" | "Bot" | "Moving"; bot: boolean; sentence: string } | null {
+  { word: "Laptop" | "Bot" | "Moving"; bot: boolean; pending: boolean; sentence: string } | null {
   const view = jobOwnershipView(ownership);
   if (!ownership || !view.mark) return null;
   const bot = ownership.owner === "bot";
   const moving = isMoving(ownership);
-  return { word: moving ? "Moving" : bot ? "Bot" : "Laptop", bot,
-    sentence: moving || !view.canWrite ? ownershipReason(ownership) : view.mark };
+  const sentence = moving || !view.canWrite ? ownershipReason(ownership) : view.mark;
+  return { word: moving ? "Moving" : bot ? "Bot" : "Laptop", bot, pending: view.pending,
+    sentence: view.pending ? `${sentence} · ${REQUEST_QUEUED}` : sentence };
 }
 
 function ownershipMark(ownership?: JobOwnership): string {
@@ -34,7 +38,9 @@ function ownershipMark(ownership?: JobOwnership): string {
   return ownership?.owner === "bot" ? "With your bot" : "On your laptop";
 }
 
-function ownershipAction(ownership?: JobOwnership): "keep-here" | "work-here" | null {
+export type OwnershipActionName = "keep-here" | "work-here";
+
+function ownershipAction(ownership?: JobOwnership): OwnershipActionName | null {
   if (!ownership || ownership.handover === "returning") return null;
   if (ownership.handover === "offered") return ownership.can_keep_here ? "keep-here" : null;
   return !ownership.owned_here && ownership.owner === "bot" ? "work-here" : null;
@@ -67,7 +73,7 @@ export function isSyncQueued(value: unknown): value is SyncQueued {
 }
 
 export function syncActionMessage(value: unknown, savedMessage: string): string {
-  return isSyncQueued(value) ? "Sent at the next sync" : savedMessage;
+  return isSyncQueued(value) ? REQUEST_QUEUED : savedMessage;
 }
 
 export function ownershipControlProps(locked: boolean, attribute: "disabled" | "readOnly" = "disabled"):

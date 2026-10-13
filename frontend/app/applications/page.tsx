@@ -738,13 +738,13 @@ function ApplicationsContent() {
           <Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
               <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
-                {header("role", "Role", showWhere ? "w-[27%]" : "w-[36%]")}
-                <TableHead className="w-[15%]">Resume</TableHead>
-                {header("ats", "Match score", "w-[11%]")}
-                {header("status", "Status", "w-[16%]")}
-                {showWhere ? <TableHead className="w-[9%] px-3">Where</TableHead> : null}
-                {header("applied_at", "Applied", "w-[9%]")}
-                {header("created_at", "Added", "w-[9%]")}
+                {header("role", "Role", showWhere ? "w-[60%]" : "w-[68%]")}
+                <TableHead className={showWhere ? "w-[40%]" : "w-[32%]"}>Resume</TableHead>
+                {header("ats", "Match score", "w-28")}
+                {header("status", "Status", "w-[9.5rem]")}
+                {showWhere ? <TableHead className="w-20 px-3">Where</TableHead> : null}
+                {header("applied_at", "Applied", "w-24")}
+                {header("created_at", "Added", "w-24")}
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -853,7 +853,6 @@ function ApplicationsContent() {
                       ) : (
                         <StatusChip
                           status={r.app.status}
-                          disabled={!ownership.canRequest}
                           lockedReason={ownership.canRequest ? undefined : (ownership.reason ?? undefined)}
                           pending={
                             patchStatus.isPending &&
@@ -876,16 +875,20 @@ function ApplicationsContent() {
                     {showWhere ? (
                       <TableCell className="px-3 text-body-small">
                         {where ? (
-                          <span className="inline-flex items-center gap-1.5" title={where.sentence}>
-                            <WhereIcon
-                              className="text-muted-foreground size-3.5 shrink-0"
-                              aria-hidden="true"
-                            />
-                            {where.word}
+                          <span className="flex flex-col" title={where.sentence}>
+                            <span className="inline-flex items-center gap-1.5">
+                              <WhereIcon
+                                className="text-muted-foreground size-3.5 shrink-0"
+                                aria-hidden="true"
+                              />
+                              {where.word}
+                            </span>
+                            {where.pending ? (
+                              <span className="text-muted-foreground pl-5 text-label-small" aria-hidden="true">Queued</span>
+                            ) : null}
+                            <span className="sr-only">{where.sentence}</span>
                           </span>
-                        ) : (
-                          <span className="text-muted-foreground" aria-hidden="true">—</span>
-                        )}
+                        ) : null}
                       </TableCell>
                     ) : null}
                     <TableCell className="text-muted-foreground text-body-small tabular-nums">
@@ -929,7 +932,7 @@ function ApplicationsContent() {
                           <DropdownMenuContent align="end" className="w-max">
                             {ownership.action ? (
                               <>
-                                <OwnershipMenuItem jobId={jobId} action={ownership.action} />
+                                <OwnershipMenuItem jobId={jobId} action={ownership.action} pending={ownership.pending} />
                                 <DropdownMenuSeparator />
                               </>
                             ) : null}

@@ -76,10 +76,22 @@ test("only the server's other-copy sentences count as an ownership refusal", () 
 test("the Where column says Laptop, Bot or Moving, with the long sentence behind it", () => {
   assert.equal(ownershipWhere(undefined), null);
   assert.equal(ownershipWhere(off), null);
-  assert.deepEqual(ownershipWhere({ ...off, owner: "laptop" }), { word: "Laptop", bot: false, sentence: "On your laptop" });
-  const withBot = ownershipWhere({ ...off, owned_here: false, owner: "bot" });
-  assert.deepEqual(withBot, { word: "Bot", bot: true, sentence: ownershipReason({ ...off, owned_here: false, owner: "bot" }) });
+  assert.deepEqual(ownershipWhere({ ...off, owner: "laptop" }),
+    { word: "Laptop", bot: false, pending: false, sentence: "On your laptop" });
+  const replica = { ...off, owned_here: false, owner: "bot" as const };
+  assert.deepEqual(ownershipWhere(replica),
+    { word: "Bot", bot: true, pending: false, sentence: ownershipReason(replica) });
   const offered = { ...off, owner: "laptop" as const, handover: "offered", can_keep_here: true };
-  assert.deepEqual(ownershipWhere(offered), { word: "Moving", bot: false, sentence: ownershipReason(offered) });
-  assert.equal(ownershipWhere({ ...off, owned_here: false, owner: "bot", handover: "returning" })?.word, "Moving");
+  assert.deepEqual(ownershipWhere(offered),
+    { word: "Moving", bot: false, pending: false, sentence: ownershipReason(offered) });
+  // Moving keeps the icon of whoever holds the job now: the bot while it hands the job back.
+  const returning = ownershipWhere({ ...off, owned_here: false, owner: "bot", handover: "returning" });
+  assert.equal(returning?.word, "Moving");
+  assert.equal(returning?.bot, true);
+});
+
+test("a request still waiting for the next sync says so in the Where sentence", () => {
+  const waiting = ownershipWhere({ ...off, owned_here: false, owner: "bot", pending_requests: 1 });
+  assert.equal(waiting?.pending, true);
+  assert.equal(waiting?.sentence, `${ownershipReason({ ...off, owned_here: false, owner: "bot" })} · Sent at the next sync`);
 });
