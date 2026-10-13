@@ -988,8 +988,8 @@ def test_a_star_or_a_required_suffix_marks_the_field_and_leaves_the_question(pag
 
 @pytest.mark.parametrize("label", [
     "Is a degree required for this role?",
+    "Is a degree required?",
     "Required skills",
-    "Which of these is required",
     "Model a*b number",
 ])
 def test_the_word_required_in_a_question_is_not_a_mark(page, load, label):
@@ -1028,3 +1028,29 @@ def test_a_star_on_the_date_groups_label_makes_each_part_required(page, load):
     assert [(q, r) for q, r in got if q.startswith("Start Date")] == [
         (f"Start Date (Month / Day / Year): {p}", True) for p in ("Month", "Day", "Year")], got
     assert [r for q, r in got if q.startswith("End Date")] == [False, False, False], got
+
+
+# The same label, read from each source a question can come from.
+LABEL_SOURCES = {
+    "label-for": "<label for='t'>{}</label><input id='t'>",
+    "aria-label": "<input aria-label='{}'>",
+    "aria-labelledby": "<span id='l'>{}</span><input aria-labelledby='l'>",
+    "legend": ("<fieldset><legend>{}</legend><label><input type='radio' name='a'>Yes</label>"
+               "<label><input type='radio' name='a'>No</label></fieldset>"),
+}
+
+
+@pytest.mark.parametrize("source", LABEL_SOURCES)
+@pytest.mark.parametrize("label, question, required", [
+    ("Phone Required", "Phone", True),
+    ("Email Address Required", "Email Address", True),
+    ("Phone Number required:", "Phone Number", True),
+    # A long sentence: still required (asking is the safe side), its words kept.
+    ("Which of these is required", "Which of these is required", True),
+    ("Is a degree required?", "Is a degree required?", False),
+    ("Required skills", "Required skills", False),
+])
+def test_a_bare_trailing_required_marks_the_field_whatever_read_the_label(page, load, source, label, question, required):
+    load(page, LABEL_SOURCES[source].format(label))
+    [(got, is_required)] = _required(page)
+    assert (got, is_required) == (question, required)
