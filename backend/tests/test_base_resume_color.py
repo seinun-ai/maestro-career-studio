@@ -122,6 +122,19 @@ def test_duplicate_gets_a_different_hue_from_its_source(client, db_session):
     assert res.json()["color_hue"] != PRESET_HUES[3]
 
 
+def test_duplicating_an_archived_source_never_reuses_its_hue(client, db_session):
+    # The source's hue is the only preset no live resume holds, so a pick that
+    # only looked at live resumes would hand it straight back.
+    for i, hue in enumerate(PRESET_HUES[:9]):
+        _add(db_session, f"live{i}", color_hue=hue)
+    _add(db_session, "source", color_hue=PRESET_HUES[9], archived_at=datetime.now(timezone.utc))
+
+    for i in range(10):
+        res = client.post("/api/base-resumes/source/duplicate", json={"new_slug": f"copy{i}"})
+        assert res.status_code == 200, res.text
+        assert res.json()["color_hue"] in PRESET_HUES[:9]
+
+
 def test_duplicate_keeps_a_hue_the_caller_chose(client, db_session):
     _add(db_session, "source", color_hue=PRESET_HUES[3])
     res = client.post("/api/base-resumes/source/duplicate", json={"new_slug": "copy", "color_hue": 17})

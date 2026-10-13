@@ -826,7 +826,7 @@ def duplicate_base_resume(
         # The colour tells the copy apart from its source, so it is picked, not copied.
         color_hue=payload.color_hue
         if payload.color_hue is not None
-        else pick_hue(hues_in_use(db)),
+        else pick_hue(hues_in_use(db), avoid=source.color_hue),
     )
     db.add(row)
     record_version(

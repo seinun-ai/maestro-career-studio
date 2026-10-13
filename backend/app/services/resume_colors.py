@@ -33,9 +33,15 @@ def hues_in_use(db: Session) -> list[int | None]:
     return list(db.scalars(select(BaseResume.color_hue).where(base_resume_data.selectable_filter())))
 
 
-def pick_hue(used: Iterable[int | None], *, rng: random.Random | None = None) -> int:
-    """A random preset no resume in `used` has; else one of the least-used presets."""
+def pick_hue(
+    used: Iterable[int | None], *, avoid: int | None = None, rng: random.Random | None = None
+) -> int:
+    """A random preset no resume in `used` has; else one of the least-used presets.
+
+    `avoid` is never returned: a duplicate must not share its source's colour
+    even when the source is archived and so absent from `used`."""
     rng = rng or random.Random()
     counts = Counter(h for h in used if h in PRESET_HUES)
-    fewest = min(counts.get(h, 0) for h in PRESET_HUES)
-    return rng.choice([h for h in PRESET_HUES if counts.get(h, 0) == fewest])
+    presets = [h for h in PRESET_HUES if h != avoid]
+    fewest = min(counts.get(h, 0) for h in presets)
+    return rng.choice([h for h in presets if counts.get(h, 0) == fewest])

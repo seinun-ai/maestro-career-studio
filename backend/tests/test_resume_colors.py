@@ -29,3 +29,8 @@ def test_when_all_are_taken_pick_the_least_used():
 
 def test_custom_hues_in_use_do_not_block_presets():
     assert pick_hue([7, 41, 200], rng=random.Random(2)) in PRESET_HUES
+
+
+def test_avoid_is_never_picked_even_when_it_is_the_only_free_preset():
+    used = PRESET_HUES[:9]
+    assert all(pick_hue(used, avoid=PRESET_HUES[9], rng=random.Random(s)) != PRESET_HUES[9] for s in range(30))

@@ -78,7 +78,7 @@
   extraction, wrong for a typo). Deliberately no required create field: the documented onboarding path
   drops JSON into `base_resumes/` and reaches `seeding.py` without touching the
   API, so a REST-only validator would not hold. `PATCH
-  /api/base-resumes/{slug}/identity` sets role/display_name and the anchors below WITHOUT rewriting
+  /api/base-resumes/{slug}/identity` sets role/display_name, the anchors and the colour below WITHOUT rewriting
   `data_json`, recording a version, rewriting the disk file, or recompiling the
   PDF — unlike the full PUT. Artifact filenames resolve their role label from
   this column (`base_resume_data.declared_role` →
