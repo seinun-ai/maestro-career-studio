@@ -1156,6 +1156,14 @@ two tables list the same hosts for the vendors present.
 
 **Step 5: Commit** `feat(companion): known ATS advance buttons`.
 
+**As built (planner, 2026-10-13):** the table holds only markers recorded in the repo's fixtures:
+Workday's footer button (`data-automation-id="pageFooterNextButton"`, from
+`test_extension_detection.py`) with a `"text"` verdict — known navigation (counted in the form even
+beside a site-wide footer form) whose own label decides Next or Submit, so no `known` is passed to the
+sort. Greenhouse/Lever rows and their tests were withdrawn: there is no recorded markup for them, and
+their buttons read "Submit Application", which the Submit-word rule already stops on. A test-only
+injected row proves the submit wiring. A row is added only from a recorded page (live check).
+
 ### Task 15: Sign in with the saved login (top frame only)
 
 **Files:**
