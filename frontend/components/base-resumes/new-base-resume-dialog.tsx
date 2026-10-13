@@ -136,7 +136,8 @@ export function NewBaseResumeDialog({
   const returnToOpener = useOpenerReturn(open);
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent size="lg" keepMounted ref={popupRef} finalFocus={returnToOpener}>
+      {/* scroll-pb-20: the sticky footer is about 65px tall, and a control focused by Tab scrolls clear of it. */}
+      <DialogContent size="lg" keepMounted ref={popupRef} finalFocus={returnToOpener} className="scroll-pb-20">
         <DialogHeader>
           <DialogTitle>New base resume</DialogTitle>
           <DialogDescription>
@@ -794,10 +795,8 @@ function NewBaseResumeForm({
           </div>
         </Tabs>
 
-        {/* Sticky: Custom's hue slider makes the body taller than a laptop screen, and Close and Create must stay in
-            reach. A sticky bar takes the popover fill and shadow-level2 (design system, Shadow). -bottom-4 is the popup's
-            own bottom padding: sticky measures from inside it, so 0 would leave a strip of body under the bar. */}
-        <DialogFooter className="sticky -bottom-4 z-10 bg-popover shadow-level2">
+        {/* Sticky: Custom's hue slider makes the body taller than a laptop screen, and Close and Create must stay in reach. */}
+        <DialogFooter sticky>
           {/* Closing keeps the draft, so the one discard is named for what it
               does. No confirm: the label says what is lost. */}
           {touched && (

@@ -31,6 +31,7 @@ export function PreviewThumbnail({
   placeholder,
   chip,
   mark,
+  dimmed = false,
   className,
 }: {
   /** `null` when there is no preview to show — renders `placeholder` instead. */
@@ -43,6 +44,8 @@ export function PreviewThumbnail({
   /** Persistent top-right marker for what the image IS (e.g. "Sample"). `chip`
    *  reports a degraded STATE bottom-left; both can show at once. */
   mark?: string;
+  /** Fade the page image (an archived card). The placeholder and the chips keep full contrast. */
+  dimmed?: boolean;
   className?: string;
 }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
@@ -79,7 +82,7 @@ export function PreviewThumbnail({
             }}
             onLoad={() => setLoadedSrc(src)}
             onError={() => setFailedSrc(src)}
-            className={cn("h-full w-full bg-white object-cover object-top", loading && "opacity-0")}
+            className={cn("h-full w-full bg-white object-cover object-top", loading ? "opacity-0" : dimmed && "opacity-60")}
           />
         </>
       ) : (

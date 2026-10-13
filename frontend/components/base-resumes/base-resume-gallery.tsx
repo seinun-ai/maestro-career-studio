@@ -48,7 +48,7 @@ function BaseResumeCardBody({
           contrast (the Archived pill says the state), where fading the whole card dropped them to about 3:1. */}
       <div aria-hidden="true" className={cn("h-1.5 shrink-0 bg-resume", isArchived && "opacity-60")} />
       {/* Square-topped: the band above is the card's top edge, and a rounded thumbnail would show the card behind it. */}
-      <BaseResumeThumbnail resume={resume} className={cn("rounded-none", isArchived && "[&_img]:opacity-60")} />
+      <BaseResumeThumbnail resume={resume} dimmed={isArchived} className="rounded-none" />
       <CardHeader className="rounded-none bg-resume-container py-4 text-on-resume-container">
         <div className="flex min-w-0 flex-col gap-2">
           {/* The slug is never shown, not even on hover: the resume is named

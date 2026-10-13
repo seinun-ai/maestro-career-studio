@@ -572,7 +572,7 @@ export default function JobDetailPage({
                 />
                 {/* The square goes with the name: below 2xl neither shows. */}
                 <ResumeTag hue={colorOf(best.target_id)} className="hidden min-w-0 2xl:inline-flex">
-                  <span aria-hidden="true" className="text-muted-foreground truncate" title={baseName(best.target_id)}>{baseName(best.target_id)}</span>
+                  <span aria-hidden="true" className="text-muted-foreground truncate">{baseName(best.target_id)}</span>
                 </ResumeTag>
               </span>
             ) : null}

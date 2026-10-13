@@ -13,6 +13,7 @@ _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 _GALLERY = (_FRONTEND / "components/base-resumes/base-resume-gallery.tsx").read_text(encoding="utf-8")
 _PILLS = (_FRONTEND / "components/base-resumes/anchor-pills.tsx").read_text(encoding="utf-8")
 _CARD = (_FRONTEND / "components/gallery/gallery-card.tsx").read_text(encoding="utf-8")
+_PREVIEW = (_FRONTEND / "components/gallery/preview-thumbnail.tsx").read_text(encoding="utf-8")
 _GROUPS = (_FRONTEND / "lib/role-groups.ts").read_text(encoding="utf-8")
 
 
@@ -60,10 +61,9 @@ def test_an_archived_card_fades_only_the_picture_and_keeps_its_words_at_full_con
     image fade and the footer is untouched: measured 7.85:1 or more in light and 9.01:1 in dark on the real data."""
     body = _body()
     assert 'isArchived && "opacity-60"' in open_tag(body, "div")
-    thumb = squash(open_tag(body, "BaseResumeThumbnail"))
-    assert 'isArchived && "[&_img]:opacity-60"' in thumb
-    assert "opacity" not in open_tag(body, "CardHeader")
-    assert "opacity" not in open_tag(_GALLERY, "GalleryCard")
+    assert "dimmed={isArchived}" in open_tag(body, "BaseResumeThumbnail")
+    assert 'loading ? "opacity-0" : dimmed && "opacity-60"' in _PREVIEW
+    assert "opacity" not in open_tag(body, "CardHeader") + open_tag(_GALLERY, "GalleryCard")
 
 
 def test_the_role_pill_is_left_out_of_gallery_cards_only():
@@ -91,8 +91,12 @@ def test_the_gallery_groups_through_the_pure_lib_and_names_each_group_by_its_hea
     assert "<section" not in section and "aria-labelledby" not in section
     # The heading says "Role not set" once; the cards do not repeat it, and the way out is one muted hint beside it.
     assert "Role not set" not in _body()
-    hint = "Set a role in each resume&apos;s Target to group it."
-    assert f'{{group.label === null && ( <span className="text-body-small text-muted-foreground">{hint}</span>' in squash(section)
+
+
+def test_the_unset_group_carries_one_muted_hint_beside_its_heading():
+    hint = _GALLERY.split("group.label === null")[1][:200]
+    assert {"text-body-small", "text-muted-foreground"} <= tokens(open_tag(hint, "span"))
+    assert "Set a role in each resume" in hint
 
 
 def test_the_grouping_passes_its_node_tests():

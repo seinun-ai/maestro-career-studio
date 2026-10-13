@@ -109,16 +109,22 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 function DialogFooter({
   className,
   showCloseButton = false,
+  sticky = false,
   children,
   ...props
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
+  /** Keep the bar at the popup's bottom edge while the body scrolls. Pair it with `scroll-pb-*` on the
+   *  DialogContent, so a focused control is never left under it. */
+  sticky?: boolean
 }) {
   return (
     <div
       data-slot="dialog-footer"
       className={cn(
         "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-corner-xl border-t bg-surface-container-low p-4 sm:flex-row sm:justify-end",
+        // -bottom-4 cancels the popup's p-4: sticky measures from inside the padding, so 0 left a strip of body under the bar.
+        sticky && "sticky -bottom-4 z-10 shadow-level2",
         className
       )}
       {...props}

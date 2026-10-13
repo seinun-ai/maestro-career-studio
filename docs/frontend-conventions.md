@@ -1068,7 +1068,7 @@
   heading, so cards pass `showRole={false}`. A card carries no "Role not set" pill
   either: that group's heading says it, with one muted hint beside it ("Set a role
   in each resume's Target to group it."). An archived card fades only the band and
-  the page image (`opacity-60`); the footer keeps full contrast (the whole card at
+  the page image (`opacity-60`, `PreviewThumbnail dimmed`); the footer keeps full contrast (the whole card at
   `opacity-60` read about 3:1) and the Archived pill says the state.
   Pinned by `test_frontend_base_resume_gallery.py`.
 - **Sidebar: one create action, and a current page you can see and hear.** Every
@@ -1140,8 +1140,8 @@
   long sentence as its tooltip and an sr-only sentence, and a small "Waiting" under the label while a
   request of yours waits for the next sync (any request, so it is only a note; "Queued" is a saved job's
   chip). It shows only when some visible row has an owner (sync
-  off: no column, Role takes its room, but not at Resume's cost: Role and Resume are 65/35 either way,
-  because 72/28 truncated "Data Scientist (India)" at 1280). The page reads only each row's own `ownership`, never
+  off: no column; Role and Resume share its room, 65/35 either way, since 72/28 truncated "Data Scientist
+  (India)" at 1280). The page reads only each row's own `ownership`, never
   `use-job-ownership`. A chip locks while the job is moving between copies (`StatusChip`
   `lockedReason`: a lock, the reason as title and `aria-describedby`, `aria-disabled` so it stays
   focusable). **Work on it here** / **Keep it here** are in the row's ⋯ menu (`OwnershipMenuItem`,
@@ -1690,9 +1690,10 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   `ResumeTag` (the Jobs Resume cell, the score card title, the select triggers, the import list) has
   `title={name}`: a trigger shows only its value and a cell has no other way to widen. Pinned by
   `test_frontend_resume_square.py`.
-- **The New base resume dialog's footer is sticky** (`sticky -bottom-4 bg-popover shadow-level2`, the sticky-bar
-  rule). Custom's hue slider makes the body scroll at 1280x900, and Close and Create must stay in reach;
-  `-bottom-4` is the popup's own bottom padding. Pinned by `test_frontend_dialog_drafts.py`.
+- **A dialog footer can be sticky** (`<DialogFooter sticky>`: `sticky -bottom-4 z-10 shadow-level2`, keeping the
+  footer's own surface). The New base resume dialog uses it: Custom's hue slider makes the body scroll at 1280x900,
+  and Close and Create must stay in reach. `-bottom-4` cancels the popup's `p-4`; the dialog's content takes
+  `scroll-pb-20` so a control focused by Tab is never left under the bar. Pinned by `test_frontend_dialog_drafts.py`.
 - **A base resume's colour is a hue on the element, not a class per colour.** The rule (identity, never state;
   where it may appear) is in `docs/design-system/README.md`. Set `style={resumeColorStyle(resume.color_hue)}`
   (`lib/resume-color.ts`) on the element that names the resume or on its card, then use `bg-resume`,

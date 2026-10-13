@@ -74,7 +74,7 @@ def test_new_base_resume_keeps_its_form():
     assert "setFormGen((g) => g + 1);" in start_over
     # The pressed button unmounts with the old form; focus goes to the new one.
     assert "focusNext(popupRef);" in start_over
-    assert '<DialogContent size="lg" keepMounted ref={popupRef} finalFocus={returnToOpener}>' in wrapper
+    assert 'size="lg" keepMounted ref={popupRef} finalFocus={returnToOpener}' in open_tag(wrapper, "DialogContent")
 
 
 def test_the_base_resumes_page_keeps_its_dialog_mounted():
@@ -117,11 +117,12 @@ def test_start_over_shows_only_for_a_touched_draft():
 
 
 def test_the_new_dialog_keeps_close_and_create_in_reach_when_the_body_scrolls():
-    """Custom's hue slider made the body taller than a laptop screen and pushed both buttons off it. The bar sticks to
-    the popup's bottom edge (-bottom-4: sticky measures inside the popup's own padding) with the popover fill and the
-    sticky-bar shadow."""
-    footer = tokens(open_tag(_NBR, "DialogFooter"))
-    assert {"sticky", "-bottom-4", "bg-popover", "shadow-level2"} <= footer
+    """Custom's hue slider made the body taller than a laptop screen and pushed both buttons off it. The footer is
+    sticky (the primitive's prop), and the popup's scroll padding keeps a Tab-focused control from the bar's 65px."""
+    assert "<DialogFooter sticky>" in _NBR
+    assert "scroll-pb-20" in tokens(open_tag(_NBR, "DialogContent"))
+    dialog = (_FRONTEND / "components/ui/dialog.tsx").read_text(encoding="utf-8")
+    assert 'sticky && "sticky -bottom-4 z-10 shadow-level2"' in dialog
 
 
 def test_new_base_resume_ids_are_per_instance():

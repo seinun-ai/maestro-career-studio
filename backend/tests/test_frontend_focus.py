@@ -530,7 +530,7 @@ def test_a_kept_mounted_dialog_returns_to_the_element_that_opened_it():
     ) in hook
     wrapper = _NBR[_NBR.index("export function NewBaseResumeDialog(") : _NBR.index("\nfunction NewBaseResumeForm(")]
     assert "const returnToOpener = useOpenerReturn(open);" in wrapper
-    assert '<DialogContent size="lg" keepMounted ref={popupRef} finalFocus={returnToOpener}>' in wrapper
+    assert 'size="lg" keepMounted ref={popupRef} finalFocus={returnToOpener}' in wrapper
 
 
 def test_every_kept_mounted_dialog_names_its_return_target():

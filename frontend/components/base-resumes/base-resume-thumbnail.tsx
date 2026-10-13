@@ -17,9 +17,11 @@ import { baseResumeLabel, type BaseResumeSummary } from "@/lib/types";
  */
 export function BaseResumeThumbnail({
   resume,
+  dimmed,
   className,
 }: {
   resume: BaseResumeSummary;
+  dimmed?: boolean;
   className?: string;
 }) {
   // Cache-bust on pdf_rendered_at: re-rendering regenerates the page image at
@@ -47,6 +49,7 @@ export function BaseResumeThumbnail({
             }
           : undefined
       }
+      dimmed={dimmed}
       className={className}
     />
   );

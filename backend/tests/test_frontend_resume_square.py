@@ -58,13 +58,14 @@ def test_the_site_draws_the_square_from_a_hue(path):
     assert len(hued) == (2 if path in _TWO_SITES else 1), path
 
 
-@pytest.mark.parametrize("path", _SITES)
+@pytest.mark.parametrize("path", [p for p in _SITES if p != "app/jobs/[id]/page.tsx"])  # its pill's own title names it
 def test_a_name_that_truncates_beside_the_square_carries_its_whole_value_in_title(path):
     """A truncated base resume name has no other way to be read: not on hover, and a trigger shows only the value."""
     src = _src(path)
     for block in re.findall(r"<ResumeTag\b.*?</ResumeTag>", src, re.S):
-        for span in re.findall(r"<span\b[^>]*\btruncate\b[^>]*>", block):
-            assert "title={" in span, f"{path}: {span}"
+        spans = [open_tag(block[m.start() :], "span") for m in re.finditer(r"<span\b", block)]
+        for span in spans:
+            assert "truncate" not in tokens(span) or "title={" in span, f"{path}: {span}"
 
 
 @pytest.mark.parametrize("path", ["components/career/points-list.tsx", "components/career/use-resume-key-label.ts"])

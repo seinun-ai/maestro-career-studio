@@ -36,7 +36,7 @@ def test_the_where_head_sits_after_status_and_only_shows_when_a_row_has_a_mark()
 
 def test_columns_with_fixed_content_are_in_rem_and_role_and_resume_share_the_rest_as_percentages():
     """A percentage of a table that scrolls at 52rem gave "Offer accepted" less room than its chip needs;
-    Role and Resume take what the fixed columns leave, and Role widens when Where is not there."""
+    Role and Resume take what the fixed columns leave, and share it 65/35 with or without Where."""
     head = squash(_TABLE[: _TABLE.index("</TableHeader>")])
     for key in ("ats", "status", "applied_at", "created_at"):
         width = re.search(rf'header\("{key}", "[^"]+", "(w-[^"]+)"\)', head)
