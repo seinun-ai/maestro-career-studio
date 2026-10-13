@@ -4105,7 +4105,8 @@
    *
    * Not `>=` by accident: an answer of EQUAL weight AND equal provenance is a
    * page that has settled, and rewriting the store with a same-sized rewording
-   * would repaint the inputs for nothing. */
+   * would repaint the inputs for nothing. The one exception is an Apply link
+   * the preview lacks, which is copied over silently (it is not shown). */
   function landPosting(preview) {
     if (card.previewTyped) return false;
     if (card.preview !== null) {
@@ -4113,7 +4114,16 @@
       const standing = sourceRank(card.preview);
       if (rank < standing) return false;
       if (rank === standing
-          && postingWeight(preview) <= postingWeight(card.preview)) return false;
+          && postingWeight(preview) <= postingWeight(card.preview)) {
+        // The same posting read again can find the Apply link the first read ran ahead of (it
+        // renders after the description). It is the one thing a settled posting can still gain, and
+        // it is not shown, so nothing repaints.
+        if (postingWeight(preview) === postingWeight(card.preview)
+            && !card.preview.applyUrl && preview.applyUrl) {
+          card.preview = { ...card.preview, applyUrl: preview.applyUrl };
+        }
+        return false;
+      }
     }
     card.preview = preview;
     return true;

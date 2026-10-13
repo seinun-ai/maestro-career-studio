@@ -257,7 +257,7 @@ _APPLY_DRIVER_JS = _EXTRACT_DRIVER_JS.replace(
     "  const ns = loadModules();\n")
 
 
-def _apply(tmp_path, *, url, posting_url, link=None, body="Job B body text " * 40):
+def _apply(tmp_path, *, url, posting_url, link=None, body="Job B body text " * 40, json_ld=True):
     posting = {
         "@context": "https://schema.org", "@type": "JobPosting",
         "title": "Job A", "description": "<p>Job A description</p>",
@@ -267,7 +267,7 @@ def _apply(tmp_path, *, url, posting_url, link=None, body="Job B body text " * 4
         posting["url"] = posting_url
     return run_node(
         _APPLY_DRIVER_JS,
-        {"page": {"url": url, "jsonLd": [json.dumps(posting)], "body": body,
+        {"page": {"url": url, "jsonLd": [json.dumps(posting)] if json_ld else [], "body": body,
                   "title": "Job | Board", "link": link}},
         tmp_path, source=_content_source(_APPLY_SOURCES))
 
@@ -310,8 +310,12 @@ def test_an_unusable_json_ld_url_is_no_apply_link(tmp_path, bad):
     assert out["applyUrl"] is None
 
 
-def test_a_page_without_a_posting_still_answers_the_link_or_null(tmp_path):
-    """The visible-content path carries `applyUrl` too (null here, since this
-    page has no Apply link)."""
-    out = _source(tmp_path, main="Plenty of words about something. " * 20)
+def test_a_page_without_a_posting_answers_null_and_then_the_link_it_has(tmp_path):
+    """The visible-content path carries `applyUrl` too, through the real page reader: null on a page
+    with no Apply link, the link on a page with one."""
+    page = dict(url="https://example.test/page", posting_url=None, json_ld=False,
+                body="Plenty of words about something. " * 20)
+    out = _apply(tmp_path, **page)
+    assert out["source"] != "json-ld"
     assert out["applyUrl"] is None
+    assert _apply(tmp_path, link=EMPLOYER, **page)["applyUrl"] == EMPLOYER

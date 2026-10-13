@@ -1201,3 +1201,45 @@ def test_the_workday_marker_means_nothing_on_another_host(page):
     nav = button(summary(page), "Save and Continue")
     assert nav["inForm"] is False and "known" not in nav
     assert classify(page)["kind"] == "review"
+
+
+# ---------- a board's own hosts, and the ceiling on what is stored ----------
+
+def _target(page, href):
+    return page.evaluate(f"(h) => {READER}.applyTarget(h)", href)
+
+
+@pytest.mark.parametrize("host, same_board", [
+    ("www.linkedin.com", "https://uk.linkedin.com/jobs/view/1"),
+    ("www.linkedin.com", "https://linkedin.com/jobs/view/1"),
+    ("www.indeed.com", "https://smartapply.indeed.com/beta/indeedapply/form/1"),
+])
+def test_another_host_of_the_same_board_is_still_the_board(page, host, same_board):
+    _served(page, host, "<h1>Analyst</h1>")
+    assert _target(page, same_board) is None
+
+
+def test_a_different_board_or_a_non_board_page_keeps_the_link(page):
+    _served(page, "www.linkedin.com", "<h1>Analyst</h1>")
+    assert _target(page, "https://www.indeed.com/viewjob?jk=1") == "https://www.indeed.com/viewjob?jk=1"
+    other = "https://uk.linkedin.com/jobs/view/1"
+    _served(page, "careers.acme.example", "<h1>Analyst</h1>")
+    assert _target(page, other) == other
+
+
+def test_a_sibling_board_host_in_the_structured_data_does_not_hide_the_real_apply_link(page):
+    """`applyTarget` returning a string would stop the `??` from ever reaching the anchor."""
+    _served(page, "www.linkedin.com",
+            '<a href="https://careers.acme.example/apply/9">Apply on company website</a>')
+    posting = {"url": "https://uk.linkedin.com/jobs/view/4001/"}
+    assert page.evaluate(f"(p) => {READER}.applyUrl(p)", posting) == "https://careers.acme.example/apply/9"
+
+
+def test_the_ceiling_is_on_the_unwrapped_address_not_on_linkedins_wrapper(page):
+    """A long tracking tail on the wrapper must not cost a short employer address."""
+    _served(page, "www.linkedin.com", "<h1>Analyst</h1>")
+    wrapped = _safety_go("https://careers.acme.example/apply/9") + "&trk=" + "t" * 2100
+    assert len(wrapped) > 2048
+    assert _target(page, wrapped) == "https://careers.acme.example/apply/9"
+    # …and the other direction: a long address inside a short wrapper is still too long.
+    assert _target(page, _safety_go("https://careers.acme.example/" + "a" * 2048)) is None

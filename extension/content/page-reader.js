@@ -249,7 +249,11 @@
 
   const withoutWww = (host) => String(host ?? "").toLowerCase().replace(/^www\./, "");
 
-  const sendable = (raw) => /^https?:\/\/[^\s/?#]\S*$/i.test(raw) && raw.length <= MAX_APPLY_URL;
+  const shaped = (raw) => /^https?:\/\/[^\s/?#]\S*$/i.test(raw);
+
+  /** Which job board a host belongs to ("linkedin" for www.linkedin.com AND uk.linkedin.com), or
+   * null: `boardNative`'s rule. Two hosts of the same board are one site for the apply link. */
+  const boardOf = (host) => BOARD_HOST.exec(host)?.[2]?.toLowerCase() ?? null;
 
   /** LinkedIn sends an external Apply through its own interstitial,
    * `https://www.linkedin.com/safety/go/?url=<the employer's address, encoded>`. The employer's
@@ -274,11 +278,16 @@
   function applyTarget(href) {
     const given = typeof href === "string" ? href.trim() : "";
     // A host straight after the slashes: the backend rejects `http://` and `https:///x` outright.
-    if (!sendable(given)) return null;
+    if (!shaped(given)) return null;
     const raw = linkedinRedirectTarget(given);
-    if (!sendable(raw)) return null;
+    // The ceiling is on the address that would be STORED, not on the wrapper it came in.
+    if (!shaped(raw) || raw.length > MAX_APPLY_URL) return null;
     try {
-      return withoutWww(new URL(raw).hostname) === withoutWww(location.hostname) ? null : raw;
+      const host = new URL(raw).hostname;
+      const mine = location.hostname;
+      // Another host of the same board (uk.linkedin.com, smartapply.indeed.com) is still the board.
+      const onBoard = boardOf(host) !== null && boardOf(host) === boardOf(mine);
+      return onBoard || withoutWww(host) === withoutWww(mine) ? null : raw;
     } catch (_) {
       return null;
     }

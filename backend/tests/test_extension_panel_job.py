@@ -551,6 +551,24 @@ def test_save_job_posts_the_apply_link_the_page_exposed(tmp_path):
     }
 
 
+def test_an_apply_link_that_renders_after_the_description_still_reaches_the_save(tmp_path):
+    """The first read has the posting and no Apply link (the link renders later); the next read has
+    the same posting plus the link. The re-read is refused as no heavier, but the link is the one
+    thing a settled preview can still gain, and it is not shown, so nothing repaints."""
+    linked = _reply({**POSTING_REPLY["data"], "applyUrl": APPLY_LINK})
+    out = _job_stage(tmp_path, click=True, page={"extract_job_posting": [POSTING_REPLY, linked]}, api={
+        "job-boards": [
+            _reply({"match": "none", "job": None, "application": None}),
+            _reply({"match": "exact", "job": SAVED_JOB, "application": None}),
+        ],
+        "POST /api/jobs": _reply(SAVED_JOB),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "GET /api/ats-scores": _reply(SCORES[:2]),
+        "POST /api/ats-scores": _reply(SCORES[:2]),
+    })
+    assert json.loads(_posts(out)[0]["init"]["body"])["apply_url"] == APPLY_LINK
+
+
 def test_a_saved_job_is_sent_as_edited_and_the_stage_advances_on_the_reload(tmp_path):
     """The whole action, end to end: what goes out, and what moves the rail.
 
