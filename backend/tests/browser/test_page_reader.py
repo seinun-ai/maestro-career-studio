@@ -22,7 +22,7 @@ from tests.test_extension_page_kind import SUBMIT
 READER = "window.careerStudioCompanion.pageReader"
 KIND = "window.careerStudioCompanion.pageKind"
 SOURCES = ENGINE_SOURCES + ["content/detect.js", "shared/ats-buttons.js", "shared/page-kind.js",
-                           "content/page-reader.js"]
+                           "content/page-reader.js", "shared/queue-run.js"]
 
 
 def summary(page):
@@ -393,8 +393,10 @@ CLICK = "onclick='window.hit = (window.hit || 0) + 1; return false;'"
 @pytest.mark.parametrize("html", [
     f"<h1>Analyst</h1><button {CLICK}>Apply</button>",
     f"<h1>Analyst</h1><button {CLICK}>Apply now</button>",
-    f"<h1>Analyst</h1><a href='#go' {CLICK}>Apply for this job</a>",
-    f"<h1>Analyst</h1><a href='#go' role='button' {CLICK}>  APPLY  </a>",
+    f"<h1>Analyst</h1><a href='/jobs/9/apply' {CLICK}>Apply for this job</a>",
+    f"<h1>Analyst</h1><a href='/jobs/9/apply' role='button' {CLICK}>  APPLY  </a>",
+    f"<h1>Analyst</h1><button {CLICK} aria-label='Apply for Staff Engineer at Acme'>Apply</button>",
+    f"<h1>Analyst</h1><button {CLICK} title='Apply to this role'>Apply now</button>",
     f"<h1>Analyst</h1><input type='button' value='Apply now' {CLICK}>",
 ])
 def test_the_postings_plain_apply_is_named_and_pressed_only_by_the_apply_call(page, load, html):
@@ -414,8 +416,11 @@ def test_the_postings_plain_apply_is_named_and_pressed_only_by_the_apply_call(pa
     f"<h1>A</h1><button {CLICK}>Apply and submit</button>",
     f"<h1>A</h1><button {CLICK}>Reapply</button>",
     f"<h1>A</h1><button {CLICK}>Apply-now</button>",
-    f"<h1>A</h1><button {CLICK} aria-label='Apply for Staff Engineer'>Apply</button>",
+    f"<h1>A</h1><button {CLICK} aria-label='Apply and submit my application'>Apply</button>",
+    f"<h1>A</h1><button {CLICK} aria-label='Apply for the role and submit'>Apply</button>",
     f"<h1>A</h1><button {CLICK} title='Send my application'>Apply</button>",
+    f"<h1>A</h1><button {CLICK} aria-label='Submit'>Apply</button>",
+    f"<h1>A</h1><button {CLICK} aria-label='Apply'>Next</button>",
     f"<h1>A</h1><button {CLICK}>Apply on the company site</button>",
     f"<h1>A</h1><button {CLICK}>Next</button>",
 ])
@@ -477,7 +482,9 @@ def test_the_apply_call_presses_a_pin_word_only_when_it_is_exactly_an_apply_word
       document.getElementById('t').addEventListener('click', (e) => { e.preventDefault(); window.hit += 1; });
     }""")
     s = summary(page)
-    plain = re.fullmatch(r"\s*apply( now| for this job)?\s*", word, re.I) is not None and flavour != "aria label"
+    # A "link button" is `<a href='#'>`: it goes nowhere, so the apply call will not press it.
+    plain = (re.fullmatch(r"\s*apply( now| for this job)?\s*", word, re.I) is not None
+             and flavour not in ("aria label", "link button"))
     ids = [b["id"] for b in s["buttons"]] + ["unknown-id", ""]
     results = [advance_apply(page, i)["clicked"] for i in ids]
     assert page.evaluate("() => window.hit") == (1 if plain else 0)
@@ -495,6 +502,113 @@ def test_the_step_key_tells_steps_apart_and_never_carries_the_heading(page, load
     assert "contact" not in one.lower() and "work" not in two.lower()
     load(page, "<nav><h2>Site menu</h2></nav><p>no heading</p>", SOURCES)
     assert summary(page)["stepKey"] == ""
+
+
+# What would submit a form is never pressed as an Apply, whatever the page shows around it.
+
+FORM_APPLY = [
+    "<form><input type='hidden' name='draft' value='1'><button {c}>Apply</button></form>",
+    "<form><input type='hidden' name='draft' value='1'><button type='button' {c}>Apply</button></form>",
+    "<form><input type='hidden' name='draft' value='1'><input type='submit' value='Apply' {c}></form>",
+    "<form><input type='hidden' name='draft' value='1'><input type='button' value='Apply' {c}></form>",
+    "<form id='f'><input type='hidden' name='draft'></form><button form='f' {c}>Apply</button>",
+    "<form><input type='file' style='display:none'><input readonly value='x'><button {c}>Apply now</button></form>",
+]
+
+
+@pytest.mark.parametrize("html", FORM_APPLY)
+def test_an_apply_that_belongs_to_a_form_is_neither_named_nor_pressed(page, load, html):
+    load(page, "<h1>Review</h1>" + html.format(c=CLICK), SOURCES)
+    s = summary(page)
+    assert s["fillable"] == 0 and s["hasApplyLink"] is True and s["applyId"] is None
+    for b in s["buttons"]:
+        assert advance_apply(page, b["id"])["clicked"] is False
+    assert page.evaluate("() => window.hit || 0") == 0
+
+
+def test_the_apply_call_names_the_link_beside_a_forms_apply_button_not_the_button(page, load):
+    load(page, f"<form><button {CLICK}>Apply</button></form><a href='/jobs/9/apply' {CLICK}>Apply</a>", SOURCES)
+    s = summary(page)
+    assert advance_apply(page, s["applyId"]) == {"clicked": True}
+    assert page.evaluate("() => window.hit") == 1
+
+
+@pytest.mark.parametrize("href, target", [("#", None), ("#apply", None), ("", None),
+                                          ("javascript:void(0)", None), (" JavaScript:go()", None),
+                                          ("/jobs/9/apply", "_blank")])
+def test_a_link_that_goes_nowhere_or_opens_a_tab_is_not_an_apply_the_run_presses(page, load, href, target):
+    attr = f" target='{target}'" if target else ""
+    load(page, f"<h1>A</h1><a href='{href}'{attr} {CLICK}>Apply</a>", SOURCES)
+    s = summary(page)
+    assert s["applyId"] is None
+    assert page.evaluate("() => window.hit || 0") == 0
+
+
+def test_the_apply_call_re_checks_the_form_owner_at_press_time(page, load):
+    """Named while the button was free-standing; the page then moves it into a form."""
+    load(page, f"<h1>A</h1><button id='b' {CLICK}>Apply</button><form id='f'></form>", SOURCES)
+    apply_id = summary(page)["applyId"]
+    assert apply_id
+    page.evaluate("() => document.getElementById('f').appendChild(document.getElementById('b'))")
+    assert advance_apply(page, apply_id) == {"clicked": False, "why": "would_submit"}
+    assert page.evaluate("() => window.hit || 0") == 0
+
+
+# ---------- the driver against the REAL page reader (the Apply exception's four scenarios) ----------
+
+DRIVE = """async ({record, swap, signIn}) => {
+  const ns = window.careerStudioCompanion;
+  const calls = [];
+  const deps = {
+    openTab: async () => 1,
+    classify: async () => [{frameId: 0, result: {summary: ns.pageReader.summary(), top: true}}],
+    tabUrl: async () => location.href,
+    advance: async (tabId, frameId, id, opts) => {
+      calls.push(["advance", opts?.apply === true]);
+      return ns.pageReader.advance(id, opts);
+    },
+    fill: async () => ({fields: []}),
+    signIn: async () => { calls.push(["signIn"]); document.body.innerHTML = swap; return {signedIn: true}; },
+    waitForChange: async () => ({changed: Boolean(signIn)}),
+    save() {}, onUpdate() {}, now: () => 1, cancelled: () => false,
+  };
+  await ns.queueRun.drive(record, deps);
+  return {status: record.status, why: record.why, calls, hit: window.hit || 0};
+}"""
+
+APPLY_URL = "https://jobs.acme.test/apply"
+DRAFT_REVIEW = f"<h1>Review your draft</h1><form><input type='hidden' name='d' value='1'><button {CLICK}>Apply</button></form>"
+
+
+def run_driver(page, *, swap="", signIn=False, **record):
+    base = {"openUrl": "https://jobs.acme.test/apply", "tabId": None, "hosts": [], "seen": [], "step": 0}
+    return page.evaluate(DRIVE, {"record": {**base, **record}, "swap": swap, "signIn": signIn})
+
+
+def test_a_fresh_run_whose_first_page_has_an_apply_link_presses_it(page, load):
+    serve(page, APPLY_URL, f"<h1>Analyst at Acme</h1><a href='/jobs/9/apply' {CLICK}>Apply</a>")
+    out = run_driver(page)
+    assert out["calls"] == [["advance", True]] and out["hit"] == 1
+
+
+def test_a_draft_review_page_with_only_hidden_inputs_and_an_apply_submit_is_never_pressed(page, load):
+    serve(page, APPLY_URL, DRAFT_REVIEW)
+    out = run_driver(page)
+    assert out["hit"] == 0 and out["calls"] == [] and (out["status"], out["why"]) == ("parked", "posting")
+
+
+def test_the_same_page_reached_after_a_sign_in_is_never_pressed(page, load):
+    serve(page, APPLY_URL, "<h1>Sign in</h1><form><label for='e'>Email</label><input id='e' type='email'>"
+                           "<input type='password'><button type='button'>Sign in</button></form>")
+    out = run_driver(page, swap=DRAFT_REVIEW, signIn=True)
+    assert out["calls"] == [["signIn"]] and out["hit"] == 0
+    assert (out["status"], out["why"]) == ("parked", "posting")
+
+
+def test_a_resume_onto_a_posting_looking_page_is_never_pressed(page, load):
+    serve(page, APPLY_URL, f"<h1>Analyst at Acme</h1><a href='/jobs/9/apply' {CLICK}>Apply</a>")
+    out = run_driver(page, tabId=7, status="parked", why="captcha", hosts=["jobs.acme.test"])
+    assert out["calls"] == [] and out["hit"] == 0 and out["why"] == "posting"
 
 
 # ---------- the ATS table's verdicts (Task 14) ----------

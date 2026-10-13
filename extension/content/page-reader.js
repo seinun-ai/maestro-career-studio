@@ -14,10 +14,14 @@
  *
  * The Apply of a POSTING is the one narrow exception, and it is its own call: `advance(id, {apply:
  * true})`. "Apply" is a Submit word, so the plain call still refuses it. The apply call presses only
- * what `summary().applyId` named, on a page with no fillable control, and only when EVERY label the
- * control answers to is exactly an apply wording (APPLY_TEXT): "Apply", "Apply now", "Apply for this
- * job". Whether the run may ask (the first page, nothing filled yet, the apply link's own host) is
- * the driver's (shared/queue-run.js); the page re-checks what it can see.
+ * what `summary().applyId` named, on a page with no fillable control, when the VISIBLE text is
+ * exactly an apply wording (APPLY_TEXT: "Apply", "Apply now", "Apply for this job") and any other
+ * label (aria-label, title) is an apply wording or "Apply for/to/at <something>" that carries no
+ * Submit word. And it presses only a control that cannot submit a form: a link that navigates
+ * (a real href, not "#" or javascript:, not target=_blank, which opens a tab the run cannot
+ * follow), or a button with no form to submit. A form's own "Apply" is a Submit, whatever the page
+ * shows around it (a draft's review page can hold only hidden inputs). Whether the run may ask at
+ * all (the first page of a tab it opened itself) is the driver's (shared/queue-run.js).
  *
  * `signIn` is the one place the saved job-site login is typed (design Part 4,
  * inv-job-site-password-local). It runs in the TOP frame only, on the host the run reached from the
@@ -91,14 +95,15 @@
   };
   const enabled = (el) => !el.matches(":disabled") && el.getAttribute("aria-disabled") !== "true";
 
+  /** What the control shows: its text, or an input's value (an unlabelled submit input reads "Submit"). */
+  const shownTextOf = (el) => squash(el instanceof HTMLInputElement
+    ? el.value || (el.type === "submit" ? "Submit" : "")
+    : el.textContent);
   /** Every text a button answers to: what it shows, its accessible name, its tooltip. */
   const labels = (el) => {
     const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/)
       .map((id) => el.ownerDocument.getElementById(id)?.textContent);
-    const shownText = el instanceof HTMLInputElement
-      ? el.value || (el.type === "submit" ? "Submit" : "")   // an unlabelled submit input reads "Submit"
-      : el.textContent;
-    return [shownText, ...named, el.getAttribute("aria-label"), el.getAttribute("title")].map(squash).filter(Boolean);
+    return [shownTextOf(el), ...named, el.getAttribute("aria-label"), el.getAttribute("title")].map(squash).filter(Boolean);
   };
   /** The one label the sort reads: a Submit-worded one if ANY label is, else the shown text. */
   const labelOf = (el) => {
@@ -161,11 +166,23 @@
     return id;
   };
 
-  // Every label is an apply wording, nothing more: "Apply for Staff Engineer" in an aria-label is
-  // not "Apply", and a control that answers to a second wording is not the plain posting Apply.
-  const isApply = (el) => {
-    const all = labels(el);
-    return all.length > 0 && all.every((t) => APPLY_TEXT.test(t));
+  // "Apply for Staff Engineer" in an aria-label is fine beside a visible "Apply"; "Apply and submit
+  // my application" is not (its remainder is a Submit).
+  const applyDetail = (text) => {
+    const m = /^\s*apply\s+(?:for|to|at|on)\s+(.+)$/i.exec(text);
+    return Boolean(m) && sortOf(m[1]) !== "submit";
+  };
+  const isApply = (el) => APPLY_TEXT.test(shownTextOf(el))
+    && labels(el).every((t) => APPLY_TEXT.test(t) || applyDetail(t));
+
+  // Only a control that cannot submit a form: a link that goes somewhere in this tab, or a button
+  // with no form to submit (`el.form` also covers the form="id" attribute).
+  const applyPressable = (el) => {
+    if (el.tagName === "A") {
+      const href = (el.getAttribute("href") ?? "").trim();
+      return href !== "" && !href.startsWith("#") && !/^javascript:/i.test(href) && el.target !== "_blank";
+    }
+    return !el.form;
   };
 
   /** A short, stable key for the step's heading (the page's first visible h1 or h2): the same step
@@ -202,7 +219,7 @@
     const passwords = passwordInputs();
     // The posting's plain Apply, named for the one narrow `advance(id, {apply: true})` call. A link
     // is not in `buttons`, so it is tagged here (a button keeps the id it was given above).
-    const applyEl = [...document.querySelectorAll(`a[href], ${BUTTONS}`)].find((el) => shown(el) && enabled(el) && isApply(el));
+    const applyEl = [...document.querySelectorAll(`a[href], ${BUTTONS}`)].find((el) => shown(el) && enabled(el) && isApply(el) && applyPressable(el));
     return {
       host: location.hostname,
       stepKey: stepKey(),
@@ -275,8 +292,9 @@
 
   /** The posting's Apply, pressed on the driver's say-so and the page's own re-check: the control
    * the last `summary()` named `applyId`, no fillable control anywhere on the page, and every label
-   * exactly an apply wording. `{clicked: true}` or `{clicked: false, why}`: "not_apply" (not that
-   * control, or not plainly worded as Apply), "not_posting" (the page has fields: it is a form, and
+   * an apply wording. `{clicked: true}` or `{clicked: false, why}`: "not_apply" (not that
+   * control, or not plainly worded as Apply), "would_submit" (it belongs to a form, or its link goes
+   * nowhere or opens a new tab), "not_posting" (the page has fields: it is a form, and
    * its Apply-worded button is a Submit), "submit" (the vendor's table calls it one). */
   function pressApply(id) {
     const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
@@ -284,6 +302,7 @@
     if (ns.fillableControls() > 0) return { clicked: false, why: "not_posting" };
     if (knownOf(el) === "submit") return { clicked: false, why: "submit" };
     if (!shown(el) || !enabled(el) || !isApply(el)) return { clicked: false, why: "not_apply" };
+    if (!applyPressable(el)) return { clicked: false, why: "would_submit" };
     el.click();
     return { clicked: true };
   }
