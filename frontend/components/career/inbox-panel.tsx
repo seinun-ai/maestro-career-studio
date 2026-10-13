@@ -228,7 +228,7 @@ export function InboxPanel({
       <CardHeader className="pb-1">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle className="flex items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-full bg-background/80">
+            <span className="flex size-8 items-center justify-center rounded-full bg-surface-container">
               <DraftsIcon className="text-primary size-4" aria-hidden="true" />
             </span>
             Drafts to review
@@ -416,7 +416,7 @@ function DraftRow({
     <article
       ref={articleRef}
       data-draft-row
-      className="group/draft rounded-corner-md bg-background/80 p-3 ring-1 ring-foreground/5"
+      className="group/draft rounded-corner-md bg-surface-container p-3 ring-1 ring-foreground/5"
     >
       {editing ? (
         <div className="space-y-2">
@@ -483,7 +483,7 @@ function DraftRow({
             {point.merge_sources.map((source, index) => (
               <div
                 key={`${source.resume_key}-${source.section}-${index}`}
-                className="rounded-corner-md bg-background/80 p-2"
+                className="rounded-corner-md bg-surface-container-high p-2"
               >
                 <p className="text-muted-foreground mb-1 text-label-small">
                   {resumeName(source.resume_key)} · {sectionWord(source.section)}

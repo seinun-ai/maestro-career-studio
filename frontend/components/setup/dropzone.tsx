@@ -4,6 +4,7 @@ import React, { useRef, useState } from "react";
 import { Upload } from "lucide-react";
 
 import { acceptedTypesLabel } from "@/lib/upload-accept";
+import { cn } from "@/lib/utils";
 
 export type DropzoneRejection = { file: File; reason: string };
 
@@ -36,6 +37,8 @@ export function Dropzone({
 }): React.ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  // Muted text fails on the drag fill in dark mode (4.05:1); the pair's own text holds.
+  const quiet = isDragging ? "text-on-primary-container" : "text-muted-foreground";
   const dragCounter = useRef(0);
 
   const processFileList = (incomingFiles: FileList | File[]) => {
@@ -175,11 +178,11 @@ export function Dropzone({
           disabled
             ? "cursor-not-allowed pointer-events-none opacity-50 border-muted-foreground/25"
             : isDragging
-              ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+              ? "border-primary bg-primary-container text-on-primary-container ring-2 ring-primary/20"
               : "border-muted-foreground/25 hover:border-muted-foreground/50 bg-transparent hover:bg-surface-container-low"
         }`}
       >
-        <Upload className="size-5 text-muted-foreground" />
+        <Upload className={cn("size-5", quiet)} />
         <span className="font-medium">
           {maxFiles === 1
             ? isDragging
@@ -189,7 +192,7 @@ export function Dropzone({
               ? "Drop files here"
               : "Choose or drop files"}
         </span>
-        <span className="text-body-small text-muted-foreground">{hint}</span>
+        <span className={cn("text-body-small", quiet)}>{hint}</span>
       </button>
     </div>
   );

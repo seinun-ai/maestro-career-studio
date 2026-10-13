@@ -38,7 +38,7 @@ const STATUS_META: Record<
   in_kb: {
     label: "In your career history",
     hint: "It's in your career history. Add it to a resume.",
-    chip: "bg-primary/10 text-primary",
+    chip: "bg-primary-container text-on-primary-container",
   },
   ported: {
     label: "Used before",

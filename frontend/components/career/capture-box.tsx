@@ -140,8 +140,8 @@ export function CaptureBox() {
           }}
         >
           <Label htmlFor="career-capture" className="col-start-1 row-start-1 flex items-center gap-2 text-label-large whitespace-nowrap">
-            <span className="flex size-7 items-center justify-center rounded-full bg-primary/10">
-              <Sparkles className="text-primary size-3.5" aria-hidden="true" />
+            <span className="flex size-7 items-center justify-center rounded-full bg-primary-container">
+              <Sparkles className="text-on-primary-container size-3.5" aria-hidden="true" />
             </span>
             Quick capture
           </Label>
@@ -153,7 +153,7 @@ export function CaptureBox() {
             readOnly={capture.isPending}
             aria-describedby="career-capture-help"
             className={cn(
-              "col-span-2 row-start-2 border-0 bg-background/90 px-4 ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring",
+              "col-span-2 row-start-2 border-0 bg-surface-container-low px-4 ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring",
               open
                 ? "min-h-24 py-3 sm:col-span-3"
                 : "min-h-9 resize-none py-1.5 sm:col-span-1 sm:col-start-2 sm:row-start-1",

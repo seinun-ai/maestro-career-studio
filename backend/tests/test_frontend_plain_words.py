@@ -447,6 +447,18 @@ def test_item_counts_agree_with_their_nouns():
     assert "{value} {value === 1 ? one : many}" in card
 
 
+def test_career_cards_say_only_what_is_news():
+    """The list is single-kind (and "Other sections" has a heading per section), so the card
+    carries no kind kicker; a completed item's dates already say it, so no chip; a zero count
+    is not a fact."""
+    card = _read("components/career/entity-card.tsx")
+    assert "KB_KIND_LABELS" not in card and "section_title" not in card
+    assert 'entity.status === "completed"' in card and "success-container" not in card
+    assert "if (value === 0) return null;" in card
+    assert "entity.draft_count > 0" not in card  # the Metric hides its own zero
+    assert "bg-background/" not in card and "bg-surface-container px-2" in card
+
+
 def test_the_import_button_names_what_it_opens():
     # D10.6: "Add documents" opened the upload dialog on its Resumes tab. At the
     # merge the button took the dialog's own title (lane 9's upload-dialog.tsx).
@@ -461,7 +473,6 @@ def test_the_import_button_names_what_it_opens():
 # section" on one screen and "Other section" on the next, and a status never
 # prints its stored key.
 _KIND_TABLE_USERS = (
-    "components/career/entity-card.tsx",
     "components/career/entity-detail.tsx",
     "components/career/new-entity-dialog.tsx",
     "components/career/merge-entity-dialog.tsx",

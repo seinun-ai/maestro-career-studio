@@ -86,7 +86,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
     <Card className="animate-fade-rise">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <span className="flex size-8 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
             <UserRound className="size-4" aria-hidden="true" />
           </span>
           Career profile

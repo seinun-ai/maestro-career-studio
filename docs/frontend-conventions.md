@@ -1029,8 +1029,8 @@
   and Proposed primary, Interviewing warning, Offer tertiary, Offer accepted
   success, Rejected error, Queued secondary; grades A and B success, C
   warning, D attention, F error), so no chip carries a `dark:` twin. The KB
-  entity chips are role pairs too (ongoing primary container, completed
-  success). `test_frontend_color_roles.py` finds every chip literal in
+  entity chips are role pairs too (ongoing primary container, archived muted;
+  a completed item has no chip, its dates say it). `test_frontend_color_roles.py` finds every chip literal in
   `status-chip.tsx` and `career/entity-card.tsx` and computes it over the
   page, a card, `--muted` and a hovered row in both modes.
 - **Card galleries**: Templates and Base resumes are the same image-first

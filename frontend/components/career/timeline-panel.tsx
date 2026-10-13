@@ -41,7 +41,7 @@ export function TimelinePanel({ events }: { events: KBTimelineEvent[] }) {
               const Icon = ICONS[event.type as keyof typeof ICONS] ?? CircleDot;
               return (
                 <li key={`${event.ts}-${event.type}-${index}`} className="flex gap-3">
-                  <div className="bg-primary/10 mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full text-primary">
+                  <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
                     <Icon className="size-3.5" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">

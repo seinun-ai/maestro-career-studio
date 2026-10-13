@@ -145,7 +145,7 @@ export function DocumentsPanel({
             disabled={upload.isPending}
             aria-label="Upload document"
           />
-          <span className="mx-auto flex size-9 items-center justify-center rounded-full bg-background/80">
+          <span className="mx-auto flex size-9 items-center justify-center rounded-full bg-surface-container">
             <Upload className="text-muted-foreground size-4" aria-hidden="true" />
           </span>
           <p className="mt-2 text-title-small">Drop a file here</p>

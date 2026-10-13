@@ -150,7 +150,7 @@ def test_one_filled_button_in_view():
 
 def test_the_context_pane_highlights_the_active_bullet():
     assert "hidden xl:block" in _PASS and "xl:hidden" in _PASS
-    assert "bg-primary/10 border-l-2 border-primary" in _PASS
+    assert "border-primary bg-primary-container text-on-primary-container" in _PASS
     assert "bulletContext(" in _PASS
     assert "max-w-[65ch]" in _PASS
 

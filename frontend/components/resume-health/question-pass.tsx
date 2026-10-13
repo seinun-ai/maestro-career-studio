@@ -407,8 +407,10 @@ function ContextPane({ context }: { context: BulletContext }) {
             key={i}
             aria-current={i === context.active ? "true" : undefined}
             className={cn(
-              "text-foreground border-l-2 border-transparent py-1 pl-3 text-body-medium",
-              i === context.active && "bg-primary/10 border-l-2 border-primary",
+              "border-l-2 py-1 pl-3 text-body-medium",
+              i === context.active
+                ? "border-primary bg-primary-container text-on-primary-container"
+                : "border-transparent text-foreground",
             )}
           >
             {bullet}

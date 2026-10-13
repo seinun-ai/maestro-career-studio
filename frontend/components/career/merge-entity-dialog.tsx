@@ -216,7 +216,7 @@ export function MergeEntityDialog({
                   <li key={entity.id}>
                     <button
                       type="button"
-                      className="hover:bg-background/80 focus-visible:ring-ring w-full rounded-corner-md px-2.5 py-2 text-left transition-colors focus-visible:ring-3 focus-visible:outline-none"
+                      className="hover:bg-surface-container-high focus-visible:ring-ring w-full rounded-corner-md px-2.5 py-2 text-left transition-colors focus-visible:ring-3 focus-visible:outline-none"
                       onClick={() => setPicked(entity)}
                     >
                       <span className="block truncate text-title-small">

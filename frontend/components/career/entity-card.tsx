@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ArrowUpRight, Ellipsis, ListChecks, Merge } from "lucide-react";
 
-import { KB_KIND_LABELS, kbStatusLabel } from "@/components/career/career-labels";
+import { kbStatusLabel } from "@/components/career/career-labels";
 import { MergeEntityDialog } from "@/components/career/merge-entity-dialog";
 import { GalleryCard, GalleryCardActions } from "@/components/gallery/gallery-card";
 import { Button } from "@/components/ui/button";
@@ -21,15 +21,12 @@ import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
 const DraftsIcon = CONCEPT_ICONS.drafts;
 
-// Colours only: the words come from career-labels (one table for every surface).
-const STATUS_STYLES: Record<KBEntityStatus, { chip: string; dot: string }> = {
+// Colours only: the words come from career-labels (one table for every surface). A completed item
+// carries no chip: its dates already say it, and a chip on nearly every card is noise.
+const STATUS_STYLES: Record<Exclude<KBEntityStatus, "completed">, { chip: string; dot: string }> = {
   ongoing: {
     chip: "bg-primary-container text-on-primary-container",
     dot: "bg-primary",
-  },
-  completed: {
-    chip: "bg-success-container text-on-success-container",
-    dot: "bg-success",
   },
   archived: {
     chip: "bg-muted text-muted-foreground",
@@ -38,10 +35,13 @@ const STATUS_STYLES: Record<KBEntityStatus, { chip: string; dot: string }> = {
 };
 
 export function EntityCard({ entity }: { entity: KBEntitySummary }) {
-  const status = STATUS_STYLES[entity.status] ?? {
-    chip: "bg-muted text-muted-foreground",
-    dot: "bg-muted-foreground/50",
-  };
+  const status =
+    entity.status === "completed"
+      ? null
+      : (STATUS_STYLES[entity.status] ?? {
+          chip: "bg-muted text-muted-foreground",
+          dot: "bg-muted-foreground/50",
+        });
   const dateRange = [entity.start_date, entity.end_date].filter(Boolean).join(" – ");
   const [mergeOpen, setMergeOpen] = useState(false);
 
@@ -58,11 +58,6 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
     >
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
         <div className="min-w-0">
-          <p className="text-muted-foreground mb-1 text-label-small">
-            {entity.kind === "extra" && entity.section_title
-              ? entity.section_title
-              : KB_KIND_LABELS[entity.kind]}
-          </p>
           <CardTitle className="truncate">{entity.title}</CardTitle>
           {/* No organization and no dates: no second line. Independent was
               a claim the user never made. */}
@@ -104,20 +99,20 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
         </GalleryCardActions>
       </CardHeader>
       <CardContent className="mt-auto space-y-3">
-        <div className="flex flex-wrap items-center gap-2 text-body-small">
-          <span
-            className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-label-medium",
-              status.chip,
-            )}
-          >
-            <span className={cn("size-1.5 rounded-full", status.dot)} />
-            {kbStatusLabel(entity.status)}
-          </span>
-          <Metric icon={ListChecks} value={entity.point_count} one="bullet" many="bullets" />
-          {entity.draft_count > 0 ? (
-            <Metric icon={DraftsIcon} value={entity.draft_count} one="draft" many="drafts" />
+        <div className="flex flex-wrap items-center gap-2 text-body-small empty:hidden">
+          {status ? (
+            <span
+              className={cn(
+                "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-label-medium",
+                status.chip,
+              )}
+            >
+              <span className={cn("size-1.5 rounded-full", status.dot)} />
+              {kbStatusLabel(entity.status)}
+            </span>
           ) : null}
+          <Metric icon={ListChecks} value={entity.point_count} one="bullet" many="bullets" />
+          <Metric icon={DraftsIcon} value={entity.draft_count} one="draft" many="drafts" />
           <Metric icon={CONCEPT_ICONS.attachment} value={entity.document_count} one="document" many="documents" />
         </div>
         <p
@@ -137,7 +132,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
   );
 }
 
-/** A count and its noun, in agreement: "1 bullet", "3 bullets". */
+/** A count and its noun, in agreement: "1 bullet", "3 bullets". Nothing for zero: an empty count is not a fact. */
 function Metric({
   icon: Icon,
   value,
@@ -149,8 +144,9 @@ function Metric({
   one: string;
   many: string;
 }) {
+  if (value === 0) return null;
   return (
-    <span className="text-muted-foreground inline-flex h-6 items-center gap-1 rounded-full bg-background/70 px-2">
+    <span className="text-muted-foreground inline-flex h-6 items-center gap-1 rounded-full bg-surface-container px-2">
       <Icon className="size-3.5" aria-hidden="true" />
       {value} {value === 1 ? one : many}
     </span>

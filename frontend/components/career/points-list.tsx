@@ -421,7 +421,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
         <PointActorChip point={point} />
         {point.usage.length > 0 ? (
           <span
-            className="text-muted-foreground inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 text-body-small"
+            className="inline-flex h-6 items-center gap-1 rounded-full bg-primary-container px-2 text-body-small text-on-primary-container"
             title={`Used in: ${usageKeys.map(resumeName).join(", ")}`}
             // A bullet no longer offered can still sit on resumes it was
             // added to: "Still on", so the chip never reads as offered.

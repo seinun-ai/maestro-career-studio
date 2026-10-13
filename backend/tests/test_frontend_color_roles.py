@@ -348,14 +348,58 @@ def test_segmented_controls_and_entity_cards_expose_pressed():
     assert dialog.count('aria-pressed={sectionType === "') == 2
 
 
-def test_primary_tint_pairs_do_not_spread():
-    """bg-primary/10 text-primary is retired as a component fill. What remains
-    is the historical comment in button.tsx plus decorative avatars and status
-    chips the plan leaves alone. The count must not rise."""
-    count = 0
-    for path in (_FRONTEND / "components").rglob("*.tsx"):
-        count += path.read_text(encoding="utf-8").count("bg-primary/10 text-primary")
-    assert count <= 7, count
+# `bg-primary/N` and `bg-background/N` as a component fill is retired (design-system README, Color):
+# a faded fill is not a role, so its text partner has no contrast guarantee. What may still carry
+# one is a bar that floats over scrolling content (it must show what is under it), a pill over an
+# image, and the hover on a solid primary.
+_OVERLAY_FILES = {
+    "app/jobs/[id]/tailor/[sessionId]/page.tsx": "sticky footer",
+    "components/resume-health/health-report-page.tsx": "sticky bar",
+    "components/resume-health/question-pass.tsx": "sticky bar",
+    "components/proposals/triage-actions.tsx": "fixed bar",
+    "components/sidebar-reveal-trigger.tsx": "floating trigger",
+    "components/gallery/preview-thumbnail.tsx": "pills over the page image",
+    "components/ui/button.tsx": "hover on the solid primary, and a comment",
+}
+# Sites the audit never listed, found by this scan. Each is a resting tint, a selected or drop-target
+# state, a hover, or a bar fill; none is changed yet because a role there is a design call. Shrink
+# this set as they are decided (never grow it).
+_UNDECIDED_FILES = {
+    "components/ui/badge.tsx": "hover on the solid primary",
+    "components/career/capture-box.tsx": "the card's resting tint",
+    "components/career/entity-card.tsx": "hover tint on the card",
+    "components/career/first-run-import-card.tsx": "resting tint",
+    "components/career/new-entity-dialog.tsx": "selected kind",
+    "components/chat/change-card.tsx": "resting tint",
+    "components/chat/kb-capture-card.tsx": "resting tint",
+    "components/explore/explore-overview.tsx": "bar fill",
+    "components/resume-editor/editor-shell.tsx": "panel wash and resize-handle hover",
+    "components/resume-editor/extra-sections-editor.tsx": "drop target",
+    "components/resume-editor/formatting-panel.tsx": "panel wash",
+    "components/resume-versions/version-diff-view.tsx": "badge wash",
+    "components/templates/template-gallery.tsx": "pill over the preview image",
+    "components/templates/template-select.tsx": "selected template",
+}
+
+
+def test_no_opacity_fill_outside_the_allow_list():
+    offenders = []
+    for root in ("app", "components"):
+        for path in (_FRONTEND / root).rglob("*.tsx"):
+            rel = path.relative_to(_FRONTEND).as_posix()
+            if re.search(r"bg-(?:primary|background)/", path.read_text(encoding="utf-8")):
+                if rel not in _OVERLAY_FILES and rel not in _UNDECIDED_FILES:
+                    offenders.append(rel)
+    assert offenders == [], f"use a role pair or a surface step, not an opacity: {offenders}"
+
+
+def test_the_allow_list_only_names_files_that_still_need_it():
+    stale = [
+        rel
+        for rel in (*_OVERLAY_FILES, *_UNDECIDED_FILES)
+        if not re.search(r"bg-(?:primary|background)/", (_FRONTEND / rel).read_text(encoding="utf-8"))
+    ]
+    assert stale == [], f"drop these from the allow-list: {stale}"
 
 
 _RING_SURFACES = ("background", "card", "sidebar", "canvas", "muted", "secondary-container")
@@ -654,10 +698,10 @@ _CHIPS = [(rel, cls) for rel in _CHIP_SOURCES for cls in _CHIP_CLASS.findall(_re
 
 def test_every_tinted_chip_is_found():
     found = {rel: sum(1 for r, _ in _CHIPS if r == rel) for rel in _CHIP_SOURCES}
-    # 7 application statuses + Needs you + 7 proposal entries; 3 KB states + fallback.
+    # 7 application statuses + Needs you + 7 proposal entries; ongoing and archived (a completed item has no chip) + fallback.
     assert found == {
         "components/status-chip.tsx": 15,
-        "components/career/entity-card.tsx": 4,
+        "components/career/entity-card.tsx": 3,
     }, found
 
 

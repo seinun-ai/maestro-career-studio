@@ -52,9 +52,9 @@ type ReviewRow = {
 };
 
 const ACTION_CHIPS: Record<KBAdaptAction, { label: string; chip: string }> = {
-  rewritten: { label: "Rewritten", chip: "bg-primary/10 text-primary" },
-  merged: { label: "Merged", chip: "bg-primary/10 text-primary" },
-  replace: { label: "Replaces existing", chip: "bg-primary/10 text-primary" },
+  rewritten: { label: "Rewritten", chip: "bg-primary-container text-on-primary-container" },
+  merged: { label: "Merged", chip: "bg-primary-container text-on-primary-container" },
+  replace: { label: "Replaces existing", chip: "bg-primary-container text-on-primary-container" },
   kept: { label: "Kept as is", chip: "bg-muted text-muted-foreground" },
 };
 

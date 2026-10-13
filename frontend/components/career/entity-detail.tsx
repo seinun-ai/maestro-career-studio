@@ -356,7 +356,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="bg-background/80 text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-label-medium">
+            <span className="bg-surface-container text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-label-medium">
               {entity.kind === "extra" && entity.section_title
                 ? entity.section_title
                 : KB_KIND_LABELS[entity.kind]}
