@@ -83,6 +83,11 @@ def test_the_custom_hue_is_a_labelled_range_over_the_whole_wheel():
     assert "aria-controls={sliderOpen ? sliderId : undefined}" in _PICKER
     # A custom value that arrives after mount opens the slider.
     assert "customOpen ?? isCustom" in _PICKER
+    # ...and stays open once used: a drag onto a preset hue would otherwise unmount it before pointerup commits.
+    assert "onFocus={() => { if (customOpen === null) setCustomOpen(true); }}" in _PICKER
+    # A click on the already-checked swatch is not a new choice.
+    assert "if (preset.hue !== value) onCommit?.(preset.hue)" in _PICKER
+    assert "p-1.5" in _PICKER  # the 6px focus ring stays inside the group
 
 
 def test_the_picker_separates_the_live_value_from_the_settled_choice():

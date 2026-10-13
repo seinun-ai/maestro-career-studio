@@ -55,8 +55,8 @@ export function ResumeColorPicker({ value, onChange, onCommit, used, label = "Co
   const swatches = useRef<(HTMLButtonElement | null)[]>([]);
   const checked = RESUME_PRESETS.findIndex((p) => p.hue === value);
   const isCustom = value !== null && checked === -1;
-  // The slider follows the value until the person opens or closes it: a custom hue that arrives after mount
-  // opens it, and Custom can still close it.
+  // The slider follows the value until the person opens, closes or first uses it: a custom hue that arrives
+  // after mount opens it, and Custom can still close it.
   const [customOpen, setCustomOpen] = useState<boolean | null>(null);
   const sliderOpen = customOpen ?? isCustom;
   // The last hue chosen by key or slider that has not been committed yet; null once it has.
@@ -88,7 +88,7 @@ export function ResumeColorPicker({ value, onChange, onCommit, used, label = "Co
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div role="radiogroup" aria-labelledby={labelId} aria-describedby={pickedAtRandom ? hintId : undefined}
           onKeyUp={(e) => { if (NAV_KEYS.includes(e.key)) settle(); }}
-          className="flex flex-wrap items-center gap-2 p-1">
+          className="flex flex-wrap items-center gap-2 p-1.5">
           {RESUME_PRESETS.map((preset, i) => {
             const on = i === checked;
             const takenBy = used.filter((u) => u.hue === preset.hue).map((u) => u.name);
@@ -98,7 +98,7 @@ export function ResumeColorPicker({ value, onChange, onCommit, used, label = "Co
               <button key={preset.hue} type="button" role="radio" aria-checked={on} aria-label={name} title={name}
                 ref={(el) => { swatches.current[i] = el; }}
                 tabIndex={i === tabStop ? 0 : -1}
-                onClick={() => { onChange(preset.hue); onCommit?.(preset.hue); }}
+                onClick={() => { onChange(preset.hue); if (preset.hue !== value) onCommit?.(preset.hue); }}
                 onKeyDown={(e) => {
                   const to = target(i, e.key);
                   if (to === null) return;
@@ -133,6 +133,9 @@ export function ResumeColorPicker({ value, onChange, onCommit, used, label = "Co
           <input id={sliderId} type="range" min={0} max={359} step={1} value={value ?? 0}
             aria-valuetext={presetName(value) ?? `Hue ${value ?? 0}`}
             onChange={(e) => { unsettled.current = Number(e.target.value); onChange(unsettled.current); }}
+            // Latch the slider open on first touch: dragging onto a preset hue makes the value non-custom, and a
+            // slider that follows the value would unmount mid-drag, before its pointerup could commit.
+            onFocus={() => { if (customOpen === null) setCustomOpen(true); }}
             onPointerUp={settle} onKeyUp={settle} onBlur={settle}
             style={{ "--hue-track": HUE_TRACK } as CSSProperties}
             className={HUE_RANGE} />
