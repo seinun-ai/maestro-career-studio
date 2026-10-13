@@ -35,6 +35,7 @@ from tests.extension_fixtures import (
 from tests.extension_harness import js_code, run_node
 from tests.extension_panel_harness import (
     EXTENSION,
+    HUED_RESUMES,
     LIGHTNING_JOB,
     PANEL_SOURCE,
     SCORE_RESUMES,
@@ -1152,3 +1153,89 @@ def test_the_base_list_explains_the_ats_score_once(tmp_path):
     web = (EXTENSION.parent / "frontend" / "lib" / "ats-words.ts").read_text(
         encoding="utf-8")
     assert ATS_LEAD in web.replace('"\n  + "', "").replace("\n", " ")
+
+
+# ---------- the base resume's square (identity, never state) ----------
+#
+# A resume's colour is its hue, stored by the backend and sent as `color_hue`. The panel draws it as a small
+# square before the name wherever a base resume is named in a body or the header: the ranked rows, "Resume from",
+# and the Before ring's label. The words stay the node's own text (the square is a child), so every assertion
+# about what a row SAYS is unchanged.
+
+HUED = {"/api/base-resumes": _reply(HUED_RESUMES)}
+
+
+def _squares(node):
+    """The `--resume-h` / `--resume-c` of every square in this subtree, in order."""
+    return [square["props"] for square in _by_class(node, "swatch")]
+
+
+def test_a_base_row_wears_its_resumes_square_before_the_name(tmp_path):
+    out = _score(tmp_path, reopen="job", api=HUED)
+    rows = _by_class(out["loaded"]["rail"], "baserow")
+    # Ranked: AI/ML Engineer (hue 5, a preset: its chroma), Data Scientist (77: the custom chroma), Backend (none).
+    assert [_squares(row) for row in rows] == [
+        [{"--resume-h": "5", "--resume-c": "0.11"}],
+        [{"--resume-h": "77", "--resume-c": "0.1"}],
+        [],
+    ]
+    # The words are untouched, and the name carries its square (the CSS puts it first).
+    assert [_text(row) for row in rows] == [
+        "AI/ML Engineer 72", "Data Scientist 64", "Backend Engineer not scored"]
+    dot, name, score = rows[0]["children"]
+    assert (name["tag"], name["text"], len(_by_class(name, "swatch"))) == ("B", "AI/ML Engineer", 1)
+
+
+def test_the_square_is_decoration(tmp_path):
+    """The name already says which resume it is: the square is hidden from a screen reader and has no words."""
+    out = _score(tmp_path, reopen="job", api=HUED)
+    squares = _by_class(out["loaded"]["rail"], "swatch")
+    assert [(square["attrs"], square["text"]) for square in squares] == [({"aria-hidden": "true"}, "")] * 2
+
+
+def test_a_library_without_colours_draws_no_squares(tmp_path):
+    out = _score(tmp_path, reopen="job")
+    assert _by_class(out["loaded"]["rail"], "swatch") == []
+    assert _by_class(out["loaded"]["identity"], "swatch") == []
+
+
+def test_resume_from_and_the_read_only_rows_wear_the_square_and_keep_their_words(tmp_path):
+    out = _score(tmp_path, reopen="job", api={
+        **HUED, "lightningai": BOUND_TO_DATA_SCIENTIST,
+        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf", "status": "draft"})})
+    body = _by_class(out["loaded"]["rail"], "stg-body")[0]
+    [sub] = [n for n in _by_class(body, "sub") if n["text"].startswith("Resume from")]
+    # The words are the line's own text; the square is its child.
+    assert sub["text"] == "Resume from Data Scientist · 64"
+    assert _squares(sub) == [{"--resume-h": "77", "--resume-c": "0.1"}]
+    assert [_squares(row) for row in _by_class(body, "baserow")] == [
+        [{"--resume-h": "5", "--resume-c": "0.11"}], [{"--resume-h": "77", "--resume-c": "0.1"}], []]
+
+
+def test_the_before_ring_label_wears_the_square_of_the_resume_it_scores(tmp_path):
+    """The label under the Before ring names a resume's score, so it wears that resume's square (the
+    ranking's best, Rose, until the user picks another)."""
+    out = _score(tmp_path, api=HUED)
+    [ats] = _by_class(out["loaded"]["identity"], "ats")
+    [label] = _by_class(ats, "lbl")
+    assert label["text"] == "Base resume score"
+    assert _squares(label) == [{"--resume-h": "5", "--resume-c": "0.11"}]
+
+
+def test_a_match_score_that_does_not_exist_yet_names_no_resume(tmp_path):
+    out = _score(tmp_path, api={**HUED, "GET /api/ats-scores": _reply([])})
+    [ats] = _by_class(out["loaded"]["identity"], "ats")
+    assert [label["text"] for label in _by_class(ats, "lbl")] == ["Match score"]
+    assert _squares(ats) == []
+
+
+def test_the_tailored_ring_has_no_square_and_the_base_ring_has_the_applications_base(tmp_path):
+    out = _score(tmp_path, api={
+        **HUED, "lightningai": BOUND_TO_DATA_SCIENTIST,
+        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf", "status": "draft"}),
+        "GET /api/ats-scores": _reply([*SCORE_ROWS, TAILORED_ROW])})
+    [ats] = _by_class(out["loaded"]["identity"], "ats")
+    base, tailored = _by_class(ats, "lbl")
+    assert (base["text"], tailored["text"]) == ("Base", "Tailored")
+    assert _squares(base) == [{"--resume-h": "77", "--resume-c": "0.1"}]
+    assert _squares(tailored) == []

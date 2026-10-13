@@ -19,11 +19,16 @@ from tests.test_frontend_color_roles import _contrast, _oklab, _srgb
 _LCH = re.compile(r"oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)")
 
 
-def _tokens(theme: str) -> dict[str, tuple[float, float, float]]:
+def _declared(theme: str) -> dict[str, str]:
     values = _props(_PANEL_CSS, ":root")
     if theme == "dark":
         dark = _PANEL_CSS.split("@media (prefers-color-scheme: dark)", 1)[1]
         values = {**values, **dict(re.findall(r"(--cs-[\w-]+):\s*([^;]+);", dark))}
+    return values
+
+
+def _tokens(theme: str) -> dict[str, tuple[float, float, float]]:
+    values = _declared(theme)
     return {
         name: tuple(float(v) for v in m.groups())
         for name, value in values.items()
@@ -113,3 +118,42 @@ def test_a_graphic_meets_non_text_contrast(theme, graphic, surface):
     tokens = _tokens(theme)
     ratio = _contrast(_rgb(tokens, graphic), _rgb(tokens, surface))
     assert ratio >= 3, f"{theme}: --cs-{graphic} on --cs-{surface} is {ratio:.2f}:1"
+
+
+# ---------- the base resume's square ----------
+#
+# `.swatch` draws `oklch(L calc(hue-chroma * C-factor) hue)` from the panel's own tone variables, the app's
+# recipe (test_frontend_resume_colors.py runs the same sweep on the app's surfaces). The square sits beside
+# the name on the plain surface, on the Next card, and on the hovered done row (muted container).
+
+
+def _swatch_square(theme: str, hue: float, chroma: float):
+    declared = _declared(theme)
+    lightness = float(declared["--cs-resume-swatch-l"])
+    return _srgb(_oklab((lightness, chroma * float(declared["--cs-resume-swatch-c"]), hue)))
+
+
+_PRESETS = [(5, 0.11), (40, 0.11), (80, 0.11), (125, 0.11), (160, 0.09), (195, 0.09), (230, 0.09),
+            (265, 0.06), (300, 0.11), (335, 0.11)]
+_HUES = [pytest.param(h, c, id=f"preset-{h}") for h, c in _PRESETS] + [
+    pytest.param(h, 0.1, id=f"sweep-{h}") for h in range(0, 360, 5)]
+
+
+@pytest.mark.parametrize("theme", _THEMES)
+@pytest.mark.parametrize("hue,chroma", _HUES)
+def test_the_square_reads_on_every_surface_it_sits_on(theme, hue, chroma):
+    """A graphic beside its name needs 3:1 (WCAG 1.4.11)."""
+    square = _swatch_square(theme, hue, chroma)
+    tokens = _tokens(theme)
+    for surface in ("surface", "surface-2", "muted-container"):
+        ratio = _contrast(square, _rgb(tokens, surface))
+        assert ratio >= 3, f"{theme} hue {hue}: the square on --cs-{surface} is {ratio:.2f}:1"
+
+
+def test_the_swatch_rule_draws_from_the_recipe_and_leads_its_line():
+    rule = _PANEL_CSS.split("\n.swatch {", 1)[1].split("}", 1)[0]
+    assert re.sub(r"\s+", " ", rule).strip() == (
+        "width: 10px; height: 10px; border-radius: 2px; flex: none; order: -1; "
+        "background: oklch(var(--cs-resume-swatch-l) calc(var(--resume-c, 0) * var(--cs-resume-swatch-c)) "
+        "var(--resume-h, 0));"
+    )

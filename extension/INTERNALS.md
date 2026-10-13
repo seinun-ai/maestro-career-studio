@@ -24,6 +24,7 @@ proxies their API requests:
 | `shared/recipe-book.js` | the panel document | the recipe book: which of the engine's own moves worked per widget family, its lifecycle and bounds; the loop's `deps.recipes` |
 | `shared/profile-fields.js` | every frame **and** the panel document | the label patterns naming a TYPED home in the autofill profile: one table read by the rule that FILLS the field and by the pause row that decides where an answer is LEARNED |
 | `shared/status-roles.js` | the panel document | an application status's word and colour role (`ns.statusRoles`), the same table as the web `status-chip.tsx` (pinned by `test_extension_status_roles.py`); read by `matchChip` and the Track status segment; `panel.js` throws at boot naming it when the tag is missing |
+| `shared/resume-color.js` | the panel document | a base resume's hue to the chroma its square is drawn with (`ns.resumeChroma`): the same ten presets and custom chroma as `frontend/lib/resume-color.ts` and the backend picker (pinned by `test_resume_color_parity.py`); `panel.js` `swatch(hue)` draws the square (`.swatch` in `panel.css`, tones `--cs-resume-*` copied from the app and pinned by `test_extension_status_roles.py`) and throws at boot naming this file when the tag is missing |
 | `content/field-reader.js` | every frame | the new fill engine's one answer to "what is this field asking" (label-for → … → nearby → preceding: the visible text right before the field, when nothing names it — never a radio's or checkbox's, and only text that passes the label test: short, no sentence, no error, no heading before it, no other text or trailing label beside it), with its source. `readField(container)` runs it too, so a nameless group container or date wrapper can take its question from it; `ns.precedingLabel` is also a group's question with no container. A label that names only a part ("Month", "Day", "Year", "Type", "Number") is prefixed with its group's question, and a control holding one part of a date says which (`part`) |
 | `content/fill-base.js` | every frame | the engine's page primitives: budgets with real cancellation and a latched Stop, validation state, popup ownership, human typing, closing only popups the engine opened |
 | `content/shapes.js` | every frame | widget shapes: recognise, group (a nameless radio outside any container joins its own run of nameless radios under the nearest ancestor holding no other kind of control — cut at visible text that is no option's label, never two options reading the same; a nameless checkbox stays alone; a named checkbox's same-name set stops at its nearest grouping container, since live Workday names every work entry's "I currently work here" box alike), read what is COMMITTED, how a choice widget opens |
@@ -261,6 +262,11 @@ asking permission of itself.
   bound application the reopened Job row is read-only**: one line, "Resume
   from Data Scientist · 64" (the application's own base), and the ranked list
   as information, with no pick and no change to the Before ring.
+  **A base resume is never named without its square** (identity, never state: the
+  stored `color_hue`, drawn by `swatch(hue)` before the name): each base row,
+  "Resume from …", "Using … as is" and the Before ring's label wear it; the rings
+  stay blue and a one-line summary (`stageSummaries`) stays text. The words stay
+  the node's own text and the square is its child, which CSS puts first.
 - **The Resume step is short, and keyed on what is true** (owner-approved copy,
   2026-09-27). With no application it asks one question: **Use my base resume**
   or **Tailor to this job**, with one muted line ("Base: your resume unchanged.

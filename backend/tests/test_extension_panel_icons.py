@@ -126,3 +126,10 @@ def test_the_boot_names_status_roles_js_when_its_tag_is_missing(tmp_path):
     with pytest.raises(AssertionError, match="status-roles.js"):
         run_node(_ICON_DRIVER_JS, {"tabs": [], "replies": {"read_settings": SETTINGS_REPLY}},
                  tmp_path, source=source)
+
+
+def test_the_boot_names_resume_color_js_when_its_tag_is_missing(tmp_path):
+    source = "\n".join(_panel_script(src) for src in PANEL_SCRIPT_SRCS if src != "../shared/resume-color.js")
+    with pytest.raises(AssertionError, match="resume-color.js"):
+        run_node(_ICON_DRIVER_JS, {"tabs": [], "replies": {"read_settings": SETTINGS_REPLY}},
+                 tmp_path, source=source)

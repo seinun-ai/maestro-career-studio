@@ -52,6 +52,15 @@
   --cs-on-tertiary-container: oklch(0.4 0.17 293);
   --cs-error-container: oklch(0.915 0.042 25);
   --cs-on-error-container: oklch(0.4 0.15 27);
+  /* The base resume colour recipe (frontend/app/globals.css `--resume-*`, parity pinned by
+   * test_extension_status_roles.py): a hue and its chroma, set on the element by panel.js (`--resume-h`,
+   * `--resume-c`), and these per-theme tones turn them into a colour. Every hue clears contrast by construction. */
+  --cs-resume-swatch-l: 0.52;
+  --cs-resume-swatch-c: 1;
+  --cs-resume-container-l: 0.93;
+  --cs-resume-container-c: 0.36;
+  --cs-on-resume-container-l: 0.38;
+  --cs-on-resume-container-c: 0.82;
 }
 /* The app's primary, success, warning and destructive tokens, light and dark (frontend/app/globals.css), pinned by
  * test_extension_status_roles.py; every text-on-fill pair is checked by test_extension_panel_contrast.py.
@@ -89,6 +98,12 @@
     --cs-on-tertiary-container: oklch(0.915 0.043 293);
     --cs-error-container: oklch(0.38 0.11 27);
     --cs-on-error-container: oklch(0.915 0.042 25);
+    --cs-resume-swatch-l: 0.76;
+    --cs-resume-swatch-c: 0.9;
+    --cs-resume-container-l: 0.33;
+    --cs-resume-container-c: 0.45;
+    --cs-on-resume-container-l: 0.9;
+    --cs-on-resume-container-c: 0.4;
   }
 }
 
@@ -380,6 +395,16 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   box-shadow: inset 0 0 0 2.5px var(--cs-surface);
 }
 .baserow b { font-size: 13px; font-weight: 500; }
+/* A base resume's square (identity, never state: panel.js `swatch`). It is the LAST child of the line it decorates,
+ * so the line's words stay that node's own text, and `order: -1` puts it first. No hue draws no square. */
+.swatch {
+  width: 10px; height: 10px; border-radius: 2px; flex: none; order: -1;
+  background: oklch(var(--cs-resume-swatch-l) calc(var(--resume-c, 0) * var(--cs-resume-swatch-c)) var(--resume-h, 0));
+}
+.baserow b:has(> .swatch), .sub:has(> .swatch), .ats .lbl:has(> .swatch) {
+  display: flex; align-items: center; gap: 6px;
+}
+.ats .lbl:has(> .swatch) { justify-content: center; }
 .baserow.sel b { font-weight: 600; }
 /* The composite, as the backend computed it. `good` marks the top of the
  * RANKING and never merely the top of the list — an all-unscored library has

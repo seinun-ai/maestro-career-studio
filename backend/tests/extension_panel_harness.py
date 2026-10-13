@@ -785,6 +785,13 @@ SCORE_RESUMES = [
     {"slug": "data_scientist", "display_name": "Data Scientist"},
     {"slug": "ai_ml_engineer", "display_name": "AI/ML Engineer"},
 ]
+# `SCORE_RESUMES` as the API sends them once a resume has a colour (`color_hue`): the best match has a preset
+# hue (Rose), the second a custom one, the third none. The square is drawn from this and nothing else.
+HUED_RESUMES = [
+    {**SCORE_RESUMES[0], "color_hue": None},
+    {**SCORE_RESUMES[1], "color_hue": 77},
+    {**SCORE_RESUMES[2], "color_hue": 5},
+]
 SCORE_ROWS = [
     {"target_type": "base_resume", "target_id": "data_scientist", "phase": "base",
      "composite": 63.6, "engine_version": "ats-2.3.0"},

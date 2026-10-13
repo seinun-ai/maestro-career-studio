@@ -96,6 +96,12 @@
       ?.display_name || null;
   }
 
+  /** The chosen base resume's colour, or null (not listed, or no colour yet). */
+  function baseHue({ facts }) {
+    return facts.resumes?.find((resume) => resume.slug === facts.baseSlug)
+      ?.color_hue ?? null;
+  }
+
   /** The way out of the base-as-is claim, the twin of the claimed Job body's
    * "Stop using this draft": a claim the user made is theirs to withdraw.
    * `baseSlug` survives it, so the rail comes back with the base still chosen. */
@@ -186,7 +192,8 @@
     if (armed) {
       // `useBaseAsIs` refuses without a base, so the fallback is for a bridge
       // entry that lost it rather than for a choice nobody made.
-      attach(body, node("div", "sub", `Using ${baseName(ctx) || "your base resume"} as is`),
+      attach(body, attach(node("div", "sub", `Using ${baseName(ctx) || "your base resume"} as is`),
+                          build.swatch(baseHue(ctx))),
              attach(node("div", "fork"), tailorLimb(ctx)));
     } else {
       attach(body,

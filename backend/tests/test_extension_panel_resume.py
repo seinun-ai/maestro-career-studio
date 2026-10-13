@@ -29,6 +29,7 @@ from tests.extension_fixtures import (
 from tests.extension_harness import run_node
 from tests.extension_panel_harness import (
     APP_URL,
+    HUED_RESUMES,
     LIGHTNING_JOB,
     PANEL_CSS,
     PANEL_SOURCE,
@@ -975,6 +976,17 @@ def test_the_reopened_base_as_is_row_names_the_choice_and_offers_both_ways_on(tm
     assert [n["text"] for n in _by_class(body, "unpick")] == ["Stop using the base resume"]
     # Nothing was asked of the backend to open a body.
     assert out["askedAfterBoot"] == []
+
+
+def test_the_base_as_is_line_wears_the_chosen_resumes_square(tmp_path):
+    """"Using AI/ML Engineer as is" names a base resume, so it wears that resume's square. The line's words are
+    its own text (the square is a child), and a resume without a colour draws none."""
+    out = _armed(tmp_path, api={"/api/base-resumes": _reply(HUED_RESUMES)})
+    [line] = [n for n in _by_class(_body(out["reopened"]), "sub") if n["text"].startswith("Using")]
+    assert line["text"] == "Using AI/ML Engineer as is"
+    assert [s["props"] for s in _by_class(line, "swatch")] == [{"--resume-h": "5", "--resume-c": "0.11"}]
+    plain = _armed(tmp_path)
+    assert _by_class(_body(plain["reopened"]), "swatch") == []
 
 
 def test_a_reopened_skipped_row_stays_skipped_and_the_rail_stays_put(tmp_path):

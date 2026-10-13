@@ -121,6 +121,12 @@
       + "in panel.html, before panel.js?");
   }
   const STATUS_ROLES = ns.statusRoles;
+  // A base resume's hue to the chroma its square is drawn with (shared/resume-color.js), read at load for the same reason.
+  if (typeof ns.resumeChroma !== "function") {
+    throw new Error('panel: nothing published ns.resumeChroma. Is <script src="../shared/resume-color.js"> '
+      + "in panel.html, before panel.js?");
+  }
+  const { resumeChroma } = ns;
 
   // `chrome.storage.local` holds TWO keys, and they hold different kinds of
   // thing: `widget.session`, the session pick (everything down to the
@@ -1643,6 +1649,18 @@
     return parent;
   }
 
+  /** A base resume's square, or null for a resume with no colour (`attach` skips nulls). Decoration: the name beside
+   * it already says which resume this is, so it is `aria-hidden` and carries no words. Only the hue and the chroma
+   * ride on the element; panel.css derives the colour (`.swatch`). */
+  function swatch(hue) {
+    if (hue === null || hue === undefined) return null;
+    const square = node("span", "swatch");
+    square.setAttribute("aria-hidden", "true");
+    square.style.setProperty("--resume-h", String(hue));
+    square.style.setProperty("--resume-c", String(resumeChroma(hue)));
+    return square;
+  }
+
   /** The footer's primary, and the header's Refresh (`refreshControl`).
    *
    * `comingSoon` LIVED HERE as this function's default `onClick`, and it is
@@ -1718,9 +1736,11 @@
     return el;
   }
 
-  function ringColumn(value, color, label) {
+  /** `hue` is the square on the label: the Before ring's label names a base resume's score, so it wears that
+   * resume's colour. The words stay the label's own text. */
+  function ringColumn(value, color, label, hue = null) {
     const column = node("div");
-    attach(column, ring(value, color), node("div", "lbl", label));
+    attach(column, ring(value, color), attach(node("div", "lbl", label), swatch(hue)));
     return column;
   }
 
@@ -1734,6 +1754,10 @@
       ? compositeFor(card.scores, "application", card.application.id, "tailored") : null;
 
     const ats = node("div", "ats");
+    // The Before ring scores the chosen base resume, so its label wears that resume's square; a missing score
+    // names no resume.
+    const baseHue = before === null ? null
+      : (card.resumes ?? []).find((resume) => resume.slug === card.baseSlug)?.color_hue ?? null;
     if (after === null) {
       // "Not scored yet" and not "after adding the job": a job can be saved
       // and still have no score, and the hint must stay true then too. With a
@@ -1742,13 +1766,13 @@
       // What an ATS score IS is said once, in the Job step's base list
       // (`stages/job.js`).
       attach(ats, ringColumn(before, "var(--cs-primary)",
-                             before === null ? "Match score" : "Base resume score"),
+                             before === null ? "Match score" : "Base resume score", baseHue),
              node("span", "hint",
                   before === null ? "Not scored yet." : "Tailoring can raise it."));
       return ats;
     }
     attach(ats, ringColumn(before, "var(--cs-primary)",
-                           before === null ? "Match score" : "Base"));
+                           before === null ? "Match score" : "Base", baseHue));
     const arrow = node("span", "arrow");
     attach(arrow, icon("arrow-right", { size: 16 }));
     attach(ats, arrow, ringColumn(after, "var(--cs-good)", "Tailored"));
@@ -1877,8 +1901,9 @@
    *   cannot drift into two behaviours.
    * - `build` — the shared builders. `node`/`attach` so a body builds elements
    *   the way the rest of the panel does (`textContent`, null children
-   *   dropped), and `plural` because "1 skills" is the sentence that tells a
-   *   user nobody read the copy.
+   *   dropped), `plural` because "1 skills" is the sentence that tells a
+   *   user nobody read the copy, and `swatch` because a base resume is never
+   *   named without its square.
    *
    * DESIGNED FROM THREE BODIES rather than from the first one: Job needs
    * free-text fields plus a write on every keystroke, the base list needs a
@@ -2011,7 +2036,7 @@
              setFillMode, forgetLearnedMoves, startFill, attachResume, scrollToField, focusField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis },
-      build: { node, attach, plural, statusLabel, dayLabel, icon },
+      build: { node, attach, plural, statusLabel, dayLabel, icon, swatch },
     };
   }
 

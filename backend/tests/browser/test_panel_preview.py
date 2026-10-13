@@ -91,6 +91,24 @@ def test_dark_is_a_different_paint_from_light(panel, server):
     assert light != dark
 
 
+def test_each_base_row_wears_its_resumes_square_before_the_name(panel, server):
+    """The square is the last child of the name (so the words stay its own text) and CSS puts it first."""
+    open_state(panel, server, "job-saved")
+    squares = panel.locator(".baserow .swatch")
+    assert squares.count() == 4
+    first = panel.locator(".baserow").first
+    left = first.locator(".swatch").evaluate("el => el.getBoundingClientRect().left")
+    name_left = first.locator("b").evaluate(
+        "el => { const r = document.createRange(); r.selectNodeContents(el.firstChild);"
+        " return r.getBoundingClientRect().left; }")
+    assert left < name_left
+    assert first.locator(".swatch").evaluate("el => el.getBoundingClientRect().width") == 10
+    light = squares.first.evaluate("el => getComputedStyle(el).backgroundColor")
+    assert light != "rgba(0, 0, 0, 0)"
+    open_state(panel, server, "dark-job-saved", "dark")
+    assert panel.locator(".baserow .swatch").first.evaluate("el => getComputedStyle(el).backgroundColor") != light
+
+
 def test_an_unknown_state_is_a_404(server):
     from urllib.error import HTTPError
     from urllib.request import urlopen

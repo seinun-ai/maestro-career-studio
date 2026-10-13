@@ -279,12 +279,15 @@
   /** A row's name and its composite. "not scored" is a WORD, never a zero: a
    * base resume nobody has scored against this job has no number, and
    * printing one would be the panel inventing the judgement it exists to
-   * render. Rounded, never computed — the composite is the backend's. */
-  function rowText({ node }, entry, best) {
+   * render. Rounded, never computed — the composite is the backend's.
+   *
+   * The name wears the resume's square (a child, so the name stays the node's
+   * own text; panel.css puts the square first). */
+  function rowText({ node, attach, swatch }, entry, best) {
     const score = entry.score === null
       ? node("span", "score", "not scored")
       : node("span", best ? "score good" : "score", String(Math.round(entry.score)));
-    return [node("b", null, entry.display_name || entry.slug), score];
+    return [attach(node("b", null, entry.display_name || entry.slug), swatch(entry.color_hue)), score];
   }
 
   /** The same row as information only: a bound application already answered
@@ -298,14 +301,19 @@
    * `base_resume` (the pick's and the restore's `baseSlug` otherwise), by the
    * name the web app shows, and its score for this job when one is stored.
    * "Resume from", never "Tailored from": the panel cannot tell a tailored
-   * resume from the base unchanged (a track-this application). */
-  function tailoredFrom({ facts }, ranked, usedSlug) {
+   * resume from the base unchanged (a track-this application).
+   *
+   * The line's words are its own text and the base's square is its child
+   * (panel.css puts the square first); a base the library no longer lists
+   * has no colour to show. */
+  function tailoredFrom({ facts, build }, ranked, usedSlug) {
     const used = ranked.find((entry) => entry.slug === usedSlug);
     const name = used?.display_name || facts.application?.base_resume_name
       || "your base resume";
-    return used && used.score !== null
+    const words = used && used.score !== null
       ? `Resume from ${name} · ${Math.round(used.score)}`
       : `Resume from ${name}`;
+    return build.attach(build.node("div", "sub", words), build.swatch(used?.color_hue));
   }
 
   /** The saved job's base question: every base resume this job has an
@@ -337,7 +345,7 @@
       const list = node("div");
       ranked.forEach((entry, index) =>
         attach(list, infoRow(ctx, entry, index === best, usedSlug)));
-      return attach(body, node("div", "sub", tailoredFrom(ctx, ranked, usedSlug)), list,
+      return attach(body, tailoredFrom(ctx, ranked, usedSlug), list,
                     node("div", "sub", ATS_SCORE_LEAD));
     }
     const list = node("div");

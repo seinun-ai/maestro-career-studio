@@ -36,19 +36,23 @@
       "data": [
         {
           "slug": "data_scientist",
-          "display_name": "Data Scientist"
+          "display_name": "Data Scientist",
+          "color_hue": 230
         },
         {
           "slug": "ai_ml_engineer",
-          "display_name": "AI/ML Engineer"
+          "display_name": "AI/ML Engineer",
+          "color_hue": 5
         },
         {
           "slug": "backend_engineer",
-          "display_name": "Backend Engineer"
+          "display_name": "Backend Engineer",
+          "color_hue": 125
         },
         {
           "slug": "analytics_engineer",
-          "display_name": "Analytics Engineer"
+          "display_name": "Analytics Engineer",
+          "color_hue": 77
         }
       ]
     },

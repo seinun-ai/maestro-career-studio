@@ -73,6 +73,10 @@
      panel's language) sits with the shared modules; panel.js reads `ns.statusRoles` at load and throws,
      naming it, when the tag is missing.
 
+     resume-color.js (a base resume's hue to the chroma it is drawn with, `ns.resumeChroma`, the app's presets) sits
+     beside it for the same reason: the base resume's square is drawn by `panel.js` and by the stage bodies, and
+     `panel.js` throws at boot, naming the file, when the tag is missing.
+
      icons.js (the Lucide drawings, `ns.icon`) is the FIRST panel-owned script: the
      stage bodies and the actions draw with it when they run, and panel.js throws
      at boot, naming this file, if it did not publish.
@@ -119,6 +123,7 @@
 <script src="../shared/policy.js"></script>
 <script src="../shared/profile-fields.js"></script>
 <script src="../shared/status-roles.js"></script>
+<script src="../shared/resume-color.js"></script>
 <script src="icons.js"></script>
 <script src="stages/job.js"></script>
 <script src="stages/resume.js"></script>

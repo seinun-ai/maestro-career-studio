@@ -62,6 +62,10 @@ _COPIED = {
     "--cs-good": "--success", "--cs-good-tonal": "--success-container",
     "--cs-warn-tonal": "--warning-container", "--cs-warn-text": "--on-warning-container",
     "--cs-danger-text": "--destructive", "--cs-muted": "--muted-foreground",
+    # The base resume colour recipe's tones (the app's `--resume-*`), which the panel's `.swatch` computes with.
+    **{f"--cs-{t}": f"--{t}" for t in (
+        "resume-swatch-l", "resume-swatch-c", "resume-container-l", "resume-container-c",
+        "on-resume-container-l", "on-resume-container-c")},
 }
 
 
