@@ -870,3 +870,8 @@ def test_an_untailored_row_says_so_beside_the_meter():
     # Long agent names shrink and truncate inside the meta line; the bar beside the cap sentence is hidden from AT.
     assert 'className="min-w-0 shrink"' in _SECTION
     assert 'aria-hidden="true" className="inline-flex"' in _read("components/proposals/cap-today.tsx")
+
+
+def test_data_only_evidence_rows_draw_no_thumbnail():
+    # The Companion records its final review and confirmation page as rows with an empty path.
+    assert "(data.evidence_json ?? []).filter((e) => e.path)" in _PANEL

@@ -68,7 +68,8 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
   const planSummary = typeof plan.summary === "string" ? plan.summary : null;
   const companyNote =
     typeof plan.company_note === "string" ? plan.company_note : null;
-  const evidence = data.evidence_json ?? [];
+  // Screenshots only: the Companion's final-review and confirmation rows are data with no file (empty path).
+  const evidence = (data.evidence_json ?? []).filter((e) => e.path);
   // A question or a stop, in the agent's words, and how it is answered (Keep it and Skip sit in the header).
   const needs = needsYouLine(data.status, data.reason);
 
