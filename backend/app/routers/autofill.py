@@ -440,7 +440,8 @@ def post_step(payload: StepRequest, db: Annotated[Session, Depends(get_db)]) -> 
     """The next move for a field the generic path could not finish, chosen from
     the moves the page's code generated. The fact comes from the slot."""
     facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
-    return autofill_step.step(payload, facts, db, _job_hint(db, payload.application_id, payload.source_hint))
+    return autofill_step.step(payload, facts, db, _job_hint(db, payload.application_id, payload.source_hint),
+                              queued=_queued(db, payload.application_id))
 
 
 @router.post("/sections", response_model=SectionsResponse)

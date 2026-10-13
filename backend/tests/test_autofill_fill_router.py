@@ -176,6 +176,20 @@ def test_map_and_pick_pass_the_answer_level_and_whether_the_job_is_queued(db_ses
 
 
 @pytest.mark.usefixtures("profile")
+def test_step_passes_whether_the_job_is_queued(db_session, monkeypatch, tmp_path):
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    seen = _spy_step(monkeypatch)
+    body = {**STEP, "application_id": str(application.id)}
+    assert _post(db_session, "/api/autofill/step", body).status_code == 200
+    assert seen["kw"]["queued"] is False
+    db_session.add(ApplicationProposal(job_id=application.job_id, application_id=application.id, status="accepted"))
+    db_session.commit()
+    assert _post(db_session, "/api/autofill/step", body).status_code == 200
+    assert seen["kw"]["queued"] is True
+
+
+@pytest.mark.usefixtures("profile")
 def test_a_request_with_no_application_is_never_queued(db_session, monkeypatch):
     model_settings.set_answer_level(db_session, "queued")
     seen = _spy_map(monkeypatch)
@@ -341,8 +355,8 @@ STEP = {"fid": "g", "question": "Gender", "route": "slot", "slot": "eeo.gender",
 def _spy_step(monkeypatch):
     seen = {}
 
-    def step(req, facts, session, hint):
-        seen.update(req=req, facts=facts, hint=hint)
+    def step(req, facts, session, hint, **kw):
+        seen.update(req=req, facts=facts, hint=hint, kw=kw)
         return StepResponse(mid=None, reason="abstained")
 
     monkeypatch.setattr(autofill_step, "step", step)

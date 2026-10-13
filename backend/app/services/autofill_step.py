@@ -108,14 +108,14 @@ def _progress(mid: str | None, p: float | None, engine: Engine) -> StepResponse:
 
 
 def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
-                  answer: Computed | None = None) -> str:
+                  answer: Computed | None = None, *, level: str = "history", queued: bool = False) -> str:
     field = f"form field {req.fid} ({json.dumps(req.question)})"
     if req.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), that is the one."
                if hint and hint.source else "")
         # The never-list first, as its own condition: see autofill_map.low_stakes_rule.
         goal = (f"You are filling {field} on a job application; the applicant gave no answer to it. "
-                f"{low_stakes_rule(facts, 'give up (the "Stop" move)')}; for such a field, the goal is to select the option "
+                f"{low_stakes_rule(facts, 'give up (the "Stop" move)', level=level, queued=queued)}; for such a field, the goal is to select the option "
                 f"{keen(facts)}.{src}")
     elif answer is not None:
         # A Yes/No fact: its polarity decided and the value flipped by code
@@ -204,12 +204,15 @@ def _move(req: StepRequest, ask: _Ask, session: Session, budget: Budget) -> Step
     return _with_second_opinion(decided, (got.choice, got.probability) if got else None, second)
 
 
-def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None) -> StepResponse:
+def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
+         queued: bool = False) -> StepResponse:
     budget = Budget()
+    # The same level /map and /pick state; read here, never from the client (`queued` is the router's).
+    level = model_settings.get_answer_level(session)
     if req.route == "low_stakes":
         # Re-checked here, not trusted from the client; and a field naming a
         # slot is a fact field — a keen-applicant guess would answer it.
-        if req.slot or not model_settings.get_autofill_low_stakes(session):
+        if req.slot or level == "facts":
             return ABSTAIN
         fact = None
     else:
@@ -227,7 +230,7 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         if answer is None:
             return StepResponse(mid=None, reason="abstained", polarity=polarity)
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
-    ask = _Ask(instructions=_instructions(req, values, hint, facts, answer),
+    ask = _Ask(instructions=_instructions(req, values, hint, facts, answer, level=level, queued=queued),
                state={"job": asdict(hint) if hint else None, "history": req.history},
                criteria=criteria, policy=policy)
     moved = _move(req, ask, session, budget)

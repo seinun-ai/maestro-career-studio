@@ -344,6 +344,43 @@ def test_a_plain_click_is_an_answer_only_and_only_a_group_click_is_progress(db_s
     assert step(req(slot="work_auth.sponsorship_now", candidates=plain), db_session)["reason"] == "abstained"
 
 
+def _low_stakes_step_prompt(db_session, monkeypatch, level, queued):
+    model_settings.set_answer_level(db_session, level)
+    prompts = fake_llm(monkeypatch, {"move": GIVE_UP, "confidence": 0.9})
+    autofill_step.step(req(route="low_stakes", question="Do you have 5+ years of experience with SQL?"),
+                       FACTS, db_session, None, queued=queued)
+    return prompts[0]["prompt"]
+
+
+def test_the_step_states_the_queued_scope_at_the_queued_level_on_a_queued_job(db_session, monkeypatch):
+    """/map routes a requirement or years question low_stakes only there; /step must not refuse it."""
+    prompt = _low_stakes_step_prompt(db_session, monkeypatch, "queued", True)
+    scope, never = autofill_map.low_stakes_scope(FACTS, level="queued", queued=True)
+    assert f"{never}." in prompt and scope[1:] in prompt
+    assert "number of years of experience" not in prompt and "(answered Yes)" in prompt
+
+
+def test_the_step_keeps_years_on_the_never_list_below_the_queued_level_or_off_a_queued_job(db_session, monkeypatch):
+    for level, queued in (("history", True), ("queued", False), ("history", False)):
+        prompt = _low_stakes_step_prompt(db_session, monkeypatch, level, queued)
+        assert _NEVER_LOW_STAKES in prompt and "(answered Yes)" not in prompt, (level, queued)
+
+
+def test_the_step_names_the_protected_list_at_every_level(db_session, monkeypatch):
+    for level, queued in (("history", False), ("history", True), ("queued", False), ("queued", True)):
+        prompt = _low_stakes_step_prompt(db_session, monkeypatch, level, queued)
+        for protected in ("work authorization", "sponsorship", "EEO", "criminal history",
+                          "security clearance", "salary", "legal attestation"):
+            assert protected in prompt, (level, queued, protected)
+
+
+def test_the_facts_level_refuses_a_low_stakes_step_even_on_a_queued_job(db_session, monkeypatch):
+    model_settings.set_answer_level(db_session, "facts")
+    prompts = fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.99})
+    got = autofill_step.step(req(route="low_stakes"), FACTS, db_session, None, queued=True)
+    assert got.mid is None and not prompts
+
+
 def test_a_low_stakes_step_says_which_way_a_conflict_question_goes(db_session, monkeypatch):
     """Owner, 2026-09-26: "related to / previously employed by the company" is
     low-stakes, answered No — the step says so, as /pick does."""
