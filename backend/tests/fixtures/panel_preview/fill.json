@@ -143,7 +143,6 @@
       "7": {
         "origin": "https://job-boards.greenhouse.io",
         "tenant": "https://job-boards.greenhouse.io/acme",
-        "at": "$now",
         "applicationId": "app-acme",
         "status": "draft",
         "jobId": "job-acme",

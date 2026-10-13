@@ -3237,6 +3237,18 @@ def test_a_pick_made_long_ago_survives_a_refresh(tmp_path):
         link["href"] for link in _by_class(identity, "linkish")]
 
 
+def test_a_pick_write_held_across_a_tab_switch_lands_under_the_tab_it_was_made_in(tmp_path):
+    """The entry AND the tab id are taken from the card before the write waits,
+    so a write that lands after the user has moved to tab 42 is still tab 7's
+    entry and nobody else's."""
+    out = _picked_then_refreshed(tmp_path, holdPressWrite=True, switchDuringPress=42,
+                                 tabUrls={"42": POSTING_URL},
+                                 apiAfter={"lightningai": _UNMATCHED})
+    assert out["pickEntries"], "the pick was never written"
+    assert {write["tabId"] for write in out["pickEntries"]} == {"7"}
+    assert set(out["picks"]) == {"7"}
+
+
 def test_a_picked_draft_deleted_in_the_web_app_is_dropped_by_refresh(tmp_path):
     """Writing the memory again does not keep a dead pick alive: the detail
     read's 404 still unbinds it, and the picker is offered again."""

@@ -117,6 +117,7 @@ const heard = (msg, sender) => onRuntimeMessage(msg, sender);
 let onNavCompleted = null;
 const navCompleted = async (details) => { if (onNavCompleted) await onNavCompleted(details); };
 const queries = [];
+const allTabQueries = [];
 const listeners = [];
 const sent = [];
 const writes = [];
@@ -127,6 +128,19 @@ const sessionWrites = [];
 // panel wrote it. Kept apart from `sessionWrites`, which is the application
 // flow's record: a test that counts one must not see the other.
 const pickWrites = [];
+// What each write changed, as `{tabId, entry}`: the tab the panel wrote for.
+const pickEntries = [];
+// WEB LOCKS, as the browser grants them: one holder per name, in the order
+// asked. `locksAsked` is the names, so a test can see which work was done under
+// which lock. A second panel (a driver's `rival`) asks through the same fake.
+const lockTails = new Map();
+const locksAsked = [];
+const locks = { request: (name, callback) => {
+  locksAsked.push(name);
+  const run = (lockTails.get(name) ?? Promise.resolve()).then(() => callback());
+  lockTails.set(name, run.catch(() => {}));
+  return run;
+} };
 const broadcasts = [];
 // Every `console.warn` the panel wrote. A warning is not private: Chrome lists
 // an extension page's warnings under chrome://extensions → Errors, so a
@@ -270,6 +284,18 @@ global.chrome = {
     // shutting down), and without a way to make it the surviving tenant of
     // `card.fault` would have no test at all.
     query: async (info) => {
+      // The sweep asks for EVERY tab, and that is not the bound-tab question the
+      // suite counts in `queries`. Unless `spec.openTabs` says which exist, every
+      // tab the spec mentions does.
+      if (!info.active) {
+        allTabQueries.push(info);
+        if (spec.openTabsThrow) throw new Error("tabs are unavailable");
+        const mentioned = [
+          ...(spec.tabs ?? []).map((tab) => tab.id), ...Object.keys(spec.tabUrls ?? {}),
+          ...(spec.pickTabs ?? []), pickTabId(), ...Object.keys(pickMapNow()),
+        ];
+        return (spec.openTabs ?? mentioned).map((id) => ({ id: Number(id) }));
+      }
       queries.push(info);
       if (spec.tabsThrow) throw new Error("no window is focused");
       return spec.tabs ?? [];
@@ -322,7 +348,7 @@ global.chrome = {
     // here, so a browser restart forgets it. `spec.sessionStored` seeds it.
     session: {
       get: async (key) => {
-        if (key === "widget.sessions") return { [key]: pickMapNow() };
+        if (key === "widget.sessions") return { [key]: JSON.parse(JSON.stringify(pickMapNow())) };
         const stored = spec.sessionStored ?? {};
         return Object.hasOwn(stored, key) ? { [key]: stored[key] } : {};
       },
@@ -336,9 +362,12 @@ global.chrome = {
         const changed = Object.keys(map).filter(
           (id) => JSON.stringify(map[id]) !== JSON.stringify(before[id]));
         pickMap = map;
-        pickWrites.push(map);
         const tabs = changed.length ? changed : [pickTabId()];
-        for (const id of tabs) if (map[id]) writes.push({ "widget.session": map[id] });
+        pickWrites.push(map);
+        for (const id of tabs) if (map[id]) {
+          writes.push({ "widget.session": map[id] });
+          pickEntries.push({ tabId: id, entry: map[id] });
+        }
       },
     },
   },
@@ -425,6 +454,7 @@ const copies = [];
 Object.defineProperty(globalThis, "navigator", {
   configurable: true,
   value: {
+    locks,
     clipboard: {
       writeText: async (text) => {
         if (spec.clipboardThrows) throw new Error("document is not focused");
@@ -799,7 +829,8 @@ loadModules();
 main(async () => {
   await settle();
   // `writes` too, because a plain load is not always write-free.
-  emit({ regions: regions(), sent, writes, removals, picks: pickMapNow(), pickWrites });
+  emit({ regions: regions(), sent, writes, removals, picks: pickMapNow(), pickWrites, pickEntries,
+        allTabQueries, locksAsked });
 });
 """
 
@@ -1019,7 +1050,8 @@ main(async () => {
   const refreshed = regions();
   if (finishRun) finishRun();
   await settle();
-  emit({ loaded, beforePress, pressed, refreshed, finished: regions(), focus,
+  emit({ loaded, beforePress, pressed, refreshed, finished: regions(), focus, pickEntries,
+         picks: pickMapNow(),
          refreshedLists, finishedLists: lists(),
          hadButton: Boolean(button), sentAfter: sent.slice(sentBefore), broadcasts,
          writesAfter: writes.slice(writesBefore) });

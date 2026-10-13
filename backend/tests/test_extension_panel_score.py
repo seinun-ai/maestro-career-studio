@@ -631,8 +631,8 @@ def restorable(tmp_path_factory):
         # --- THE SIBLING-POSTING GUARD -----------------------------------
         # With no clock, the tenant is all that kept a pick to its employer, and
         # a board serves every posting of an employer from one tenant. The entry
-        # remembers the address it was made on (`link`); a page that is neither
-        # above nor below it is another posting.
+        # remembers the address it was made on (`link`); a page whose path parts
+        # from it at a segment that is an id on both sides is another posting.
         "next_page_of_the_same_posting": {
             "entry": _entry(link=POSTING_LINK),
             "scope": _scope(url=f"{POSTING_LINK}/apply")},
@@ -664,6 +664,20 @@ def restorable(tmp_path_factory):
                             link="https://jobs.lever.co/globex/3f2a9c1e-b4ce-a9cd-bc1d-aabbccddeeff"),
             "scope": _scope(**_AT_LEVER,
                             url="https://jobs.lever.co/globex/9b8c7d6e-a1bc-b2cd-c3de-abcdefabcdef/apply")},
+        # A short counter after a word is a step; a long run of digits is an id.
+        "a_two_digit_wizard_step": {
+            "entry": _entry(link=f"{POSTING_LINK}/step10"),
+            "scope": _scope(url=f"{POSTING_LINK}/step11")},
+        "a_dated_page_slug_reads_as_an_id": {
+            "entry": _entry(link=f"{POSTING_LINK}/page-2024-01"),
+            "scope": _scope(url=f"{POSTING_LINK}/page-2024-02")},
+        "a_long_numeric_sibling": {
+            "entry": _entry(link=f"{GREENHOUSE_ORIGIN}/lightningai/jobs/12345"),
+            "scope": _scope(url=f"{GREENHOUSE_ORIGIN}/lightningai/jobs/67890")},
+        # An id on one side only is not two postings: the other side is a name.
+        "an_id_page_then_a_named_page": {
+            "entry": _entry(link=POSTING_LINK),
+            "scope": _scope(url=f"{GREENHOUSE_ORIGIN}/lightningai/jobs/search")},
         "a_listing_above_the_posting": {
             "entry": _entry(link=POSTING_LINK),
             "scope": _scope(url=f"{GREENHOUSE_ORIGIN}/lightningai")},
@@ -748,13 +762,14 @@ def test_a_sibling_posting_on_the_same_tenant_does_not_inherit_a_pick(restorable
     """THE SIBLING-POSTING GUARD, and the cost side next to it.
 
     The backend's `is_same_posting` is directional (a saved posting is a prefix
-    of the page); this one is symmetric, because it only has to veto a page that
-    is another posting, not to say which job a page is. So the posting page after
-    its apply page still restores, and a listing above the posting is no
-    contradiction (that was true before and stays true). It vetoes only when the
-    paths part at a segment that is an id on both sides (digits, a UUID): a
-    wizard's own steps (`applyManually` to `review`, `step2` to `step3`) part at
-    names, and the pick has to survive them.
+    of the page); this one only has to veto a page that is another posting, not
+    to say which job a page is. A page above or below the link (a prefix either
+    way) is the same posting, so the posting page after its apply page still
+    restores and a listing above it is no contradiction (that was true before
+    and stays true). It vetoes only when the paths part at a segment that is an
+    id on both sides (digits, a UUID): a wizard's own steps (`applyManually` to
+    `review`, `step2` to `step3`, `step10` to `step11`) part at names, and the
+    pick has to survive them. Letter-only and short-code ids are known misses.
 
     The backend naming the entry's own job outranks it, as it outranks the
     tenant. An entry from before the address was kept has nothing to compare, and
@@ -770,6 +785,12 @@ def test_a_sibling_posting_on_the_same_tenant_does_not_inherit_a_pick(restorable
     assert restorable["another_origin"] is None
     assert restorable["a_wizard_step_beside_the_step"] == "job-lightning"
     assert restorable["a_numbered_wizard_step"] == "job-lightning"
+    assert restorable["a_two_digit_wizard_step"] == "job-lightning"
+    assert restorable["an_id_page_then_a_named_page"] == "job-lightning"
+    # PINNED AS A DECISION: dated content is not a wizard, and a re-ask on a
+    # date-numbered page is cheaper than a pick carried onto another posting.
+    assert restorable["a_dated_page_slug_reads_as_an_id"] is None
+    assert restorable["a_long_numeric_sibling"] is None
     assert restorable["a_listing_above_the_posting"] == "job-lightning"
     assert restorable["a_sibling_posting_the_backend_confirms_is_the_entrys_job"] == "job-lightning"
     assert restorable["legacy_entry_with_no_link"] == "job-lightning"

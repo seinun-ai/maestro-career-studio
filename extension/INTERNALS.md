@@ -482,12 +482,22 @@ asking permission of itself.
   With no clock, a **sibling posting** of the same employer opened later in the
   same tab would inherit the pick, so the entry also keeps the address it was
   made on (`link`: origin and path, no query) and `restorableSession` refuses a
-  page that is neither above nor below it (`samePosting`, a symmetric prefix; the
-  backend naming the entry's own job outranks it). A wizard step that sits
-  beside the posting's path rather than under it reads as a sibling and asks for
-  the pick again. The old `chrome.storage.local` key `widget.session` is read
-  once on the first boot of this build, adopted by the active tab if it is under
-  30 minutes old and on that tab's site, and removed.
+  page that `samePosting` calls a sibling (the backend naming the entry's own job
+  outranks it). The rule compares paths from the root: a page above or below the
+  link is the same posting; paths that part at a segment that is id-like on both
+  sides (digits, a UUID) are two postings; parting at a name or a short step
+  counter (`applyManually` to `review`, `step10` to `step11`) is a wizard walking
+  and keeps the pick. Siblings whose slugs carry no id, letter-only ids and short
+  codes are not caught, which is what the pick did before the guard.
+  The map is shared by every window's panel, so each read-edit-write holds the
+  Web Lock `maestro.widget.sessions`; a panel's boot also drops entries whose tab
+  no longer exists (a tab closed while no panel was open never fired
+  `onRemoved`, and `tabs.onReplaced`, a prerender swap, orphans an entry the same
+  way until that sweep). `chrome.storage.session` is wiped when the extension is
+  updated or reloaded, so a mid-wizard auto-update loses the pick and the user
+  picks again. The old `chrome.storage.local` key `widget.session` is read
+  once per boot until a later release deletes the migration, adopted by the
+  active tab if it is under 30 minutes old and on that tab's site, and removed.
   `done.fill` rides the same entry, which is why reopening the ticked Fill row is
   how you reach Autofill again on page three of a form the extension has
   already finished once.
@@ -1544,7 +1554,8 @@ comma-separated.
   `widget.session` storage key was the same trade until the pick became a per-tab
   map (`widget.sessions`, above): renaming it would have dropped every live entry,
   stranding a user mid-wizard, so it was read once by the build that renamed it
-  (`adoptLegacySession`) and is now only a name in a comment. `restoreSession`'s
+  (`adoptLegacySession`; the string lives on as `KEY.legacySession` until that
+  migration is deleted). `restoreSession`'s
   `if (entry.applicationId)` guard is the condition of writing an
   application-less entry at all. The keys the
   floating card and an earlier panel build left behind (`widget.dock`, `widget.hiddenOrigins`,

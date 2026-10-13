@@ -413,9 +413,9 @@ function scrubTrace(trace) {
 // hands them the suggested key back — a settings loss, for a string no user
 // ever sees. What they DO see is the manifest's `description`, and that says
 // "Open the Maestro CS panel on this page". Same reasoning as the
-// `widget.sessions` storage key's prefix (the floating card's name): an identifier
-// holding user state keeps its historical name; the name is documentation's
-// problem, not the user's.
+// `widget.*` storage names, which keep the floating card's prefix long after the
+// card was deleted: an identifier holding user state keeps its historical name;
+// the name is documentation's problem, not the user's.
 const TOGGLE_COMMAND = "toggle-widget";
 
 /** The content scripts, in the manifest's injection order.

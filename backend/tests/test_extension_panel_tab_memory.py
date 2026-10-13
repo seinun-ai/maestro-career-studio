@@ -79,6 +79,27 @@ const findTag = (node, tag) => [
   ...(node.tagName === tag ? [node] : []),
   ...node.children.flatMap((kid) => findTag(kid, tag)),
 ];
+// ANOTHER WINDOW'S PANEL, caught in the act. When armed, the first read of the
+// map hands this panel its snapshot and then holds it for a while; meanwhile the
+// rival does what a second panel does, a read-modify-write of the whole map under
+// the same Web Lock. Whether the rival's tab survives is whether the panel's
+// write was exclusive of it.
+let rivalArmed = false;
+let rivalDone = null;
+const readPicks = chrome.storage.session.get;
+const writePicks = chrome.storage.session.set;
+chrome.storage.session.get = async (key) => {
+  const snapshot = await readPicks(key);
+  if (key === "widget.sessions" && rivalArmed) {
+    rivalArmed = false;
+    rivalDone = navigator.locks.request("maestro.widget.sessions", async () => {
+      const map = (await readPicks(key))[key];
+      await writePicks({ [key]: { ...map, [spec.rival.tab]: spec.rival.entry } });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  return snapshot;
+};
 main(async () => {
   await settle();
   const shots = [{ regions: regions(), picks: JSON.parse(JSON.stringify(pickMapNow())) }];
@@ -87,15 +108,18 @@ main(async () => {
     if (step.navigate) await onUpdated(step.tab, { url: step.navigate });
     if (step.close !== undefined) await onRemoved(step.close);
     await settle();
+    if (step.armRival) rivalArmed = true;
     if (step.pickDraft !== undefined) {
       const [select] = findTag(REGIONS.rail, "SELECT");
       select.value = select.children.filter((option) => option.value)[step.pickDraft].value;
       select.dispatch("change");
       await settle();
+      if (rivalDone) await rivalDone;
+      await settle();
     }
     shots.push({ regions: regions(), picks: JSON.parse(JSON.stringify(pickMapNow())) });
   }
-  emit({ shots, pickWrites, writes, removals });
+  emit({ shots, pickWrites, pickEntries, writes, removals, allTabQueries, locksAsked });
 });
 """
 
@@ -218,7 +242,8 @@ def test_a_different_posting_on_the_same_employer_does_not_inherit_the_pick(tmp_
     scoped a pick on a board that serves every job of an employer from one path
     prefix, so a later posting opened in the same tab would have been handed the
     earlier job's application. The entry remembers the address it was made on,
-    and a page that is neither above nor below it is a sibling."""
+    and a page whose path parts from it at an id on both sides is a sibling
+    (`jobs/99` against `jobs/100`); a page above or below it is the same posting."""
     out = _tabs(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
                 sessionStored=_seeded(**{"7": entry(link=POSTING_URL)}),
                 steps=[{"tab": 7, "navigate": OTHER_APPLY_URL}])
@@ -275,3 +300,76 @@ def test_a_cross_tenant_value_on_the_old_key_still_meets_the_tenant_guard(tmp_pa
     out = _load(tmp_path, tabs=[{"id": 7, "url": COHERE_APPLY_URL}], api=_API,
                 legacySession=entry(at=_now_ms() - MINUTE_MS, tenant=LIGHTNING_TENANT))
     assert _armed(out["regions"]["identity"]) is None
+
+
+# ---------- two windows ----------
+
+
+def _draft_page(url):
+    draft = {"id": "app-1", "job_id": "job-1", "base_resume": "ai_ml_engineer",
+             "status": "draft", "job_company": "Cohere", "job_title": "Research Engineer 1"}
+    return {
+        "tabUrls": {"7": LIGHTNING_APPLY_URL, "8": url},
+        "page": {"detect_page": _reply({"tier": "B", "form": True, "score": 2}),
+                 "extract_job_posting": _reply({"url": url, "title": "Apply", "text": "",
+                                                "source": "body"})},
+        "api": {**_API, "GET /api/applications?": _reply([draft]),
+                "GET /api/applications/app-1": _reply({"pdf_path": None, "status": "draft"})},
+    }
+
+
+def test_two_panels_writing_at_once_do_not_lose_each_others_tab(tmp_path):
+    """The map is one value shared by every window's panel, and each change
+    reads it whole and writes it whole. A second panel's write that lands between
+    this panel's read and its write would be erased by it, so the pair runs under
+    one Web Lock, taken by every panel. Here the rival writes tab 99 exactly in
+    that gap; both tabs must be there afterwards."""
+    out = _tabs(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
+                rival={"tab": "99", "entry": entry(applicationId="app-rival")},
+                **_draft_page(COHERE_APPLY_URL),
+                steps=[{"activate": 8}, {"armRival": True, "pickDraft": 0}])
+    final = out["shots"][-1]["picks"]
+    assert set(final) == {"8", "99"}
+    assert final["99"]["applicationId"] == "app-rival"
+    assert final["8"]["applicationId"] == "app-1"
+    assert set(out["locksAsked"]) == {"maestro.widget.sessions"}
+
+
+def test_every_change_to_the_map_is_made_under_the_lock(tmp_path):
+    """A pick, a closed tab and the boot sweep all go through `updateSessions`."""
+    out = _tabs(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
+                sessionStored=_seeded(**{"7": entry(link=POSTING_URL), "8": entry()}),
+                steps=[{"close": 8}])
+    assert out["locksAsked"].count("maestro.widget.sessions") >= 2
+
+
+# ---------- tabs that closed while no panel was listening ----------
+
+
+def test_the_boot_sweep_drops_the_entries_of_tabs_that_no_longer_exist(tmp_path):
+    """A tab closed while the panel was closed never fired `onRemoved` to
+    anyone. The panel asks which tabs exist on boot and drops the rest."""
+    out = _load(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}], api=_API,
+                openTabs=[7, 8],
+                sessionStored=_seeded(**{"7": entry(link=POSTING_URL),
+                                         "8": entry(applicationId="app-other"),
+                                         "9": entry(applicationId="app-gone"),
+                                         "10": entry(applicationId="app-gone")}))
+    assert set(out["picks"]) == {"7", "8"}
+    assert out["allTabQueries"] == [{}]
+    assert _armed(out["regions"]["identity"]) == "app-remembered"
+
+
+def test_the_sweep_is_one_write_and_none_when_every_tab_is_open(tmp_path):
+    out = _load(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}], api=_API,
+                sessionStored=_seeded(**{"7": entry(link=POSTING_URL), "8": entry()}))
+    assert set(out["picks"]) == {"7", "8"}
+    assert out["pickWrites"] == []
+
+
+def test_a_tab_list_that_cannot_be_read_sweeps_nothing(tmp_path):
+    out = _load(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}], api=_API,
+                openTabsThrow=True,
+                sessionStored=_seeded(**{"7": entry(link=POSTING_URL), "9": entry()}))
+    assert set(out["picks"]) == {"7", "9"}
+    assert _armed(out["regions"]["identity"]) == "app-remembered"

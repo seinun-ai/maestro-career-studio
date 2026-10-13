@@ -117,8 +117,12 @@
            () => document.getElementById(`stg-open-${spec.reopen}`).click());
     }
     if (spec.autoPress) {
-      when(() => ready() && document.querySelector(".cta"),
-           () => document.querySelector(".cta").click());
+      // Four rows paint on the first render, before the panel is bound to its
+      // tab, so "ready" alone clicks the unbound panel's primary. The page's
+      // job match going out says binding began; the pause lets its answer land.
+      const bound = () => sent.some((msg) => msg.type === "api");
+      when(() => ready() && bound() && document.querySelector(".cta"),
+           () => setTimeout(() => document.querySelector(".cta").click(), 150));
     }
   });
 })();

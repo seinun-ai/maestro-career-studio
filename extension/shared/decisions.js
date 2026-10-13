@@ -330,21 +330,33 @@
   // first group. A wizard step's name (`review`, `useMyLastApplication`) is
   // neither. Two digits, not one: `step2` is a wizard step and `99` is a job.
   const ID_SEGMENT_RE = /\d{2,}|^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+  // A short counter after a word is a step's name, not an id: `step10` to
+  // `step11` is a wizard walking, and `page-2024-01` (which this does not match)
+  // is dated content.
+  const STEP_COUNTER_RE = /^[a-z]+\d{1,3}$/i;
+  const isIdSegment = (segment) => ID_SEGMENT_RE.test(segment) && !STEP_COUNTER_RE.test(segment);
 
   /** Is the page at `url` the posting `link` names, or a page of that posting's
    * wizard? Only a SIBLING answers false: another posting of the same employer.
    *
    * The paths are compared from the root, and what decides is the first segment
-   * where they part. A page that is above or below the link (a prefix either
-   * way) is the same posting, so `/acme/jobs/99` then `/acme/jobs/99/apply` and
-   * back agree. Parting at a segment that is an ID on both sides
-   * (`/acme/jobs/99` against `/acme/jobs/100/apply`) is two postings.
-   * Parting anywhere else is a wizard moving between its own steps
-   * (`/apply/applyManually` to `/apply/review`) and is the same posting,
-   * because a step's name carries no identity and the user's pick must survive
-   * the steps. The cost of that safety is that a sibling posting whose slug has
-   * no id in it is not caught here; it is also what the pick did before this
-   * guard existed.
+   * where they part:
+   * - One path is a prefix of the other (a page above or below the link): the
+   *   same posting. `/acme/jobs/99` then `/acme/jobs/99/apply` and back agree.
+   * - They part at a segment that is id-like on BOTH sides (`isIdSegment`:
+   *   digits, a UUID): two postings. `/acme/jobs/99` against
+   *   `/acme/jobs/100/apply`.
+   * - They part at anything else (a name, a short step counter): a wizard
+   *   moving between its own steps, so the same posting. `/apply/applyManually`
+   *   to `/apply/review`, `/apply/step10` to `/apply/step11`. A step's name
+   *   carries no identity and the user's pick must survive the steps.
+   *
+   * KNOWN MISSES, so nobody mistakes this for a posting-identity oracle: a
+   * sibling whose slug carries no id (`/acme/data-scientist` against
+   * `/acme/ml-engineer`), an id that is letters only, and a short code
+   * (`/jobs/a7`) all read as the same posting. That is what the pick did before
+   * this guard existed, so it is a gap in the fix and not a regression; the
+   * backend naming a saved job still catches the saved ones.
    *
    * The backend's `is_same_posting` is directional where this is not. That one
    * answers "is this page the saved job", so a listing above the posting must
@@ -366,7 +378,7 @@
     if (saved.origin !== current.origin) return false;
     const [a, b] = [saved, current].map((u) => u.pathname.split("/").filter(Boolean));
     const parts = a.findIndex((segment, i) => i < b.length && segment !== b[i]);
-    return parts === -1 || !(ID_SEGMENT_RE.test(a[parts]) && ID_SEGMENT_RE.test(b[parts]));
+    return parts === -1 || !(isIdSegment(a[parts]) && isIdSegment(b[parts]));
   }
 
   /** May a remembered pick be restored onto THIS page load?

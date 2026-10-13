@@ -953,27 +953,28 @@
     }
   }
 
-  // Changes to the map run one after another: each is a read, an edit and a
-  // write, and two interleaved (a pick, then a tab closing) would each write
-  // back the map the other had not finished with. Windows are not covered —
-  // two panels racing is the application flow's trade too (`persistFlow`) — but
-  // one panel's own writes are.
-  let sessionsQueue = Promise.resolve();
+  // Every change to the map is a read, an edit and a write of the WHOLE map,
+  // and the map is shared by every window's panel: two panels doing it at once
+  // would each write back the map the other had not finished with, and a pick
+  // would vanish. A Web Lock does what no variable here can (`navigator.locks`
+  // is shared by every extension page, and grants in order), so it also orders
+  // one panel's own writes. The application flow (`persistFlow`) makes no such
+  // promise; this memory is the one that decides which job a tab is on.
+  const SESSIONS_LOCK = "maestro.widget.sessions";
 
-  /** Edit the map in place of the stored one: `edit` gets a copy and returns
-   * the map to store, or null to leave it as it is. A failure costs the memory
-   * and never the panel, `writeStore`'s rule, so this never rejects. */
+  /** Edit the map in place of the stored one: `edit` gets a copy (and may be
+   * async) and returns the map to store, or null to leave it as it is. A
+   * failure costs the memory and never the panel, `writeStore`'s rule, so this
+   * never rejects. */
   function updateSessions(edit) {
-    const run = sessionsQueue.then(async () => {
+    return navigator.locks.request(SESSIONS_LOCK, async () => {
       try {
-        const next = edit({ ...(await readSessions()) });
+        const next = await edit({ ...(await readSessions()) });
         if (next) await chrome.storage.session.set({ [KEY.sessions]: next });
       } catch (err) {
         console.warn("[maestro-cs] session memory write failed:", err);
       }
     });
-    sessionsQueue = run;
-    return run;
   }
 
   /** A closed tab's job is forgotten. Every window's panel hears the event; the
@@ -986,13 +987,36 @@
     });
   }
 
+  /** Drop the entries of tabs that no longer exist. A tab closed while no panel
+   * was open never fired `onRemoved` to anyone, and a prerender swap
+   * (`tabs.onReplaced`) leaves its old id behind; session storage forgets them
+   * only when Chrome quits. Run once per boot, and the tab list is read INSIDE
+   * the lock so a tab another window opened a moment ago, whose pick that
+   * window's panel has just written, is in the list the sweep compares with. A
+   * tab list that cannot be read sweeps nothing. */
+  function sweepClosedTabs() {
+    return updateSessions(async (sessions) => {
+      const open = new Set((await chrome.tabs.query({})).map((tab) => String(tab.id)));
+      const gone = Object.keys(sessions).filter((id) => !open.has(id));
+      gone.forEach((id) => delete sessions[id]);
+      return gone.length ? sessions : null;
+    });
+  }
+
   /** The one-time move off the old single key (see `KEY`): the entry becomes
    * the active tab's, if it is under `LEGACY_SESSION_MS` old, is from this
    * tab's site and the tab has no entry of its own yet, and the key goes either
    * way. The guards that apply to any entry (tenant, the backend's answer)
    * still run when `restoreSession` reads it back, so this only keeps a
    * foreign or stale value out of the map. A profile with no old key costs one
-   * local read and no write. */
+   * local read and no write.
+   *
+   * ITS EDGES, none worth more code: it runs on every boot until a later
+   * release deletes it (the key is gone after the first, so later runs are the
+   * one read); it does nothing when there is no active tab, leaving the key for
+   * the next boot, where the 30 minutes will most likely have lapsed; and two
+   * panels booting together can adopt the one entry into two tabs, which the
+   * tenant and backend guards sort out when each tab reads it back. */
   async function adoptLegacySession(tab) {
     let old;
     try {
@@ -2907,6 +2931,7 @@
       scheduleFrameDetect();
     });
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    await sweepClosedTabs();
     if (tab) {
       // BEFORE the first load, so the entry it adopts is the one that load reads.
       await adoptLegacySession(tab);
