@@ -210,7 +210,8 @@ this contract. Code citing "§4" lands here; the table says which file to open.
    pre-ops first (enable_entry → toggle_entry, port_kb_point → add_bullet +
    KBPortLog row; deduped per point/entry), then remaining non-skip
    resolutions → smart-model LLM → typed edit ops → apply → keyword-survival
-   check (one retry, then add_skill_item fallback — LLM path only) →
+   check (one retry, then add_skill_item fallback with normalized-token dedupe
+   within the target skills category — LLM path only) →
    reuse-or-insert application → version row → draft-KBPoint write-back of substantive user_input answers (origin=gap_elicitation; every
    skipped write-back returns on the response as `kb_writeback_skips` with a reason — too_short / wrong_section / no_entity_match / duplicate,
    or profile_owned_elsewhere (always-on copy: tailoring skips draft career-history points) — and the gap page toasts a quiet note, so

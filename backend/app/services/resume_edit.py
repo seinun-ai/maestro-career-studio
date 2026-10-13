@@ -32,6 +32,7 @@ from app.schemas.resume_edit import (
     ToggleEntry,
 )
 from app.services import bullet_classify
+from app.services.ats import normalize_term
 
 logger = logging.getLogger(__name__)
 
@@ -234,13 +235,25 @@ def _apply_replace_skills_group(resume: dict[str, Any], op: ReplaceSkillsGroup) 
     }
 
 
+def _skill_item_is_covered(item: str, existing_item: str) -> bool:
+    """Treat an item as present when all of its normalized tokens are listed.
+
+    Skills are often stored as one line with related tools in parentheses, for
+    example ``AWS (SageMaker, EKS, S3)``. A later add of ``AWS, SageMaker``
+    should not create a second line just because the separators differ.
+    """
+    requested = set(normalize_term(item).split())
+    existing = set(normalize_term(existing_item).split())
+    return bool(requested) and requested <= existing
+
+
 def _apply_add_skill_item(resume: dict[str, Any], op: AddSkillItem) -> dict[str, Any]:
     groups = _entries(resume, "skills")
     target = op.category.casefold()
     matches = [g for g in groups if str(g.get("category", "")).casefold() == target]
     if matches:
         items = matches[0].setdefault("items", [])
-        if op.item.casefold() not in {str(i).casefold() for i in items}:
+        if not any(_skill_item_is_covered(op.item, str(i)) for i in items):
             items.append(op.item)
         category = matches[0].get("category")
     else:
