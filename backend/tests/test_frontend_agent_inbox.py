@@ -873,5 +873,6 @@ def test_an_untailored_row_says_so_beside_the_meter():
 
 
 def test_data_only_evidence_rows_draw_no_thumbnail():
-    # The Companion records its final review and confirmation page as rows with an empty path.
-    assert "(data.evidence_json ?? []).filter((e) => e.path)" in _PANEL
+    # The Companion's final_review row has an empty path and its submission_receipt row the page's
+    # URL path; an agent's screenshots, of any kind, are stored as evidence/<name>.
+    assert '(data.evidence_json ?? []).filter((e) => e.path.startsWith("evidence/"))' in _PANEL

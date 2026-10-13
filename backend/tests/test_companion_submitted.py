@@ -67,10 +67,10 @@ def test_a_confirmation_after_the_users_submit_records_the_job_applied(db_sessio
     kinds = [item["kind"] for item in prop.evidence_json]
     assert kinds == ["final_review", "submission_receipt"]
     receipt = prop.evidence_json[1]
-    assert (receipt["host"], receipt["page_path"], receipt["text"]) == (
+    assert (receipt["host"], receipt["path"], receipt["text"]) == (
         "acme.example", "/apply/done", "Thank you for applying")
-    # the Agent inbox draws every row's `path` as a screenshot; these rows have none
-    assert receipt["path"] == "" and prop.evidence_json[0]["path"] == ""
+    # no file behind either row: the Agent inbox draws only rows whose path is under evidence/
+    assert prop.evidence_json[0]["path"] == ""
     # the approved event carries the final review, the submitted one both rows
     approved = next(e for e in events if e.action == "approved")
     assert [i["kind"] for i in approved.evidence_manifest_json] == ["final_review"]

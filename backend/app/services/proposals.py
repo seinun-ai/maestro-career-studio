@@ -284,12 +284,13 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
 
 
 def _append_evidence(prop: ApplicationProposal, kind: str, label: str, snapshot: dict,
-                     **fields: str) -> None:
-    """A data-only evidence row: the Companion has no screenshot, only what it read. `path` stays
-    empty (the Agent inbox draws every row's `path` as an image; there is no file to serve)."""
+                     *, path: str = "", **fields: str) -> None:
+    """A data-only evidence row: the Companion has no screenshot, only what it read. `path` is no
+    file under evidence/ here (empty, or the confirmation page's URL path); the Agent inbox draws
+    only rows whose `path` is under evidence/."""
     manifest = list(prop.evidence_json or [])
     manifest.append({
-        "step": len(manifest) + 1, "label": label, "kind": kind, "path": "",
+        "step": len(manifest) + 1, "label": label, "kind": kind, "path": path,
         "sha256": hashlib.sha256(
             json.dumps(snapshot, sort_keys=True, default=str).encode()).hexdigest(),
         "captured_at": datetime.now(UTC).isoformat(),
@@ -312,7 +313,7 @@ def record_companion_submit(session: Session, prop: ApplicationProposal,
             "channel": COMPANION_CHANNEL, "note": "Queued run: user submitted"})
         _append_evidence(
             prop, "submission_receipt", "Confirmation page (Companion)", confirmation,
-            host=confirmation["host"], page_path=confirmation["path"], text=confirmation["text"])
+            path=confirmation["path"], host=confirmation["host"], text=confirmation["text"])
         transition(session, prop, "submitted", commit=False, attested=True, consent={
             "channel": COMPANION_CHANNEL,
             "note": f"Queued run: the confirmation page at {confirmation['host']} was seen"})
