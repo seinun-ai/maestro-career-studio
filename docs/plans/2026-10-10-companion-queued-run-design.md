@@ -156,7 +156,7 @@ text. At most 15 steps per application; the same fingerprint seen twice parks.
 |---|---|
 | Facts only | saved answers and career history; the rest parks (today's low-stakes Off) |
 | Backed by your history (default) | the above; the low-stakes kinds answered in the job's favour; "N years of a skill" Yes when the history shows the skill and does not contradict the years |
-| Queued means I qualify | the above; every requirement and years question on a Queued job is Yes |
+| Queued means I qualify | the above; every requirement and years question on a Queued job is Yes, except a years question the history clearly contradicts (asked; owner 2026-10-13: Yes only when the history is silent or shows enough) |
 
 - The protected list sits outside the dial at every level.
 - EEO consent and Agreements (`consent_forms`) stay separate: they are legal permissions, not answer
@@ -169,7 +169,11 @@ text. At most 15 steps per application; the same fingerprint seen twice parks.
 - Every answer the dial gives is marked on the receipt and listed under "Check before you submit"
   on the review page.
 - The map prompt (`services/autofill_map.py`) gets the level 2 years rule and the level 3 rule; a
-  fill request names its job so level 3 can tell a Queued job.
+  fill request names its job so level 3 can tell a Queued job, and the page's host, which must
+  match the job's apply or posting site (a restored application on the same ATS tenant is not
+  enough; batch-2 review, 2026-10-13).
+- Clearance and "employment by a kind of organization" questions never reach the low-stakes judge
+  at any level (their own sentinel); only years questions widen at level 3.
 
 ## Part 4: Sign-in with the saved login
 

@@ -504,6 +504,13 @@ Expected: PASS.
 
 **Step 5: Commit** `feat(autofill): the answer level widens low-stakes and reasoned answers; the protected list never moves`.
 
+**Batch-2 review amendments (2026-10-13, owner decision on years):** clearance and organization-kind
+questions keep their own sentinel and never reach the low-stakes judge; only a `YEARS_UNANSWERED`
+sentinel widens at level 3. At level 3 a years question asks the reasoned pass first: enough → Yes;
+the history clearly shows fewer → asked; the history is silent → the low-stakes Yes. `_queued` also
+requires the request's `page_host` to match the job's apply_url or source_url host. /step states
+the same level as /map and /pick. The eval harness patches `get_answer_level`.
+
 ### Task 4: The Job Search Brief carries the answer level
 
 **Files:**
