@@ -958,3 +958,73 @@ def test_a_grid_header_row_is_never_a_groups_question(page, load):
       <tr><td colspan='2'><label><input type='radio' name='s'>Yes</label>
       <label><input type='radio' name='s'>No</label></td></tr></table>""")
     assert [f["question"] for f in fields(page)] == [""]
+
+
+# ---------- what marks a field required (an optional field is left blank, so none may be missed)
+
+def _required(page):
+    return [(f["question"], f["required"]) for f in fields(page)]
+
+
+@pytest.mark.parametrize("label, question", [
+    ("Phone*", "Phone"),
+    ("Phone ✱", "Phone"),            # Lever's heavy asterisk
+    ("Phone ∗", "Phone"),
+    ("Phone ＊", "Phone"),           # full-width
+    ("* Phone", "Phone"),            # a leading star
+    ("✱ Phone", "Phone"),
+    ("Salary* (USD)", "Salary (USD)"),   # a star with more text behind it
+    ("Salary * (USD)", "Salary (USD)"),
+    ("Phone (Required)", "Phone"),
+    ("Phone (required) *", "Phone"),
+    ("Phone - required", "Phone"),
+    ("Phone: Required", "Phone"),
+    ("Phone [required]", "Phone"),
+])
+def test_a_star_or_a_required_suffix_marks_the_field_and_leaves_the_question(page, load, label, question):
+    load(page, f"<label for='t'>{label}</label><input id='t'>")
+    assert _required(page) == [(question, True)]
+
+
+@pytest.mark.parametrize("label", [
+    "Is a degree required for this role?",
+    "Required skills",
+    "Which of these is required",
+    "Model a*b number",
+])
+def test_the_word_required_in_a_question_is_not_a_mark(page, load, label):
+    load(page, f"<label for='t'>{label}</label><input id='t'>")
+    assert _required(page) == [(label, False)]
+
+
+def test_a_star_on_a_group_question_marks_it_required(page, load):
+    load(page, """<fieldset><legend>Are you 18 or older? ✱</legend>
+      <label><input type='radio' name='a'>Yes</label><label><input type='radio' name='a'>No</label></fieldset>""")
+    assert _required(page) == [("Are you 18 or older?", True)]
+
+
+def test_a_popup_over_a_required_hidden_select_is_required(page, load):
+    """select2/iCIMS: the box shows no star; the select hidden under it carries `required`."""
+    def box(attrs):
+        return f"""<div><label id='l' for='s'>Degree</label>
+          <select id='s' class='select2-hidden-accessible' aria-hidden='true' tabindex='-1' {attrs}
+            style='border:0;clip:rect(0 0 0 0);height:1px;margin:-1px;overflow:hidden;padding:0;position:absolute;width:1px'>
+            <option value=''>— Make a Selection —</option><option value='b'>BS</option></select>
+          <span class='select2-container'><span role='combobox' aria-haspopup='true' aria-labelledby='l' tabindex='0'>
+            <span>— Make a Selection —</span></span></span></div>"""
+    for attrs, expected in (("required", True), ("aria-required='true'", True), ("", False)):
+        load(page, box(attrs))
+        assert _required(page) == [("Degree", expected)], attrs
+
+
+def test_a_star_on_the_date_groups_label_makes_each_part_required(page, load):
+    def row(label, n):
+        return f"""<div><div>{label}</div><div>
+          <span><label for='m{n}'>Month</label><select id='m{n}'><option value=''></option><option>1</option></select></span>
+          <span><label for='d{n}'>Day</label><select id='d{n}'><option value=''></option><option>1</option></select></span>
+          <span><label for='y{n}'>Year</label><input id='y{n}'></span></div></div>"""
+    load(page, row("Start Date* (Month / Day / Year)", 1) + row("End Date (Month / Day / Year)", 2))
+    got = _required(page)
+    assert [(q, r) for q, r in got if q.startswith("Start Date")] == [
+        (f"Start Date (Month / Day / Year): {p}", True) for p in ("Month", "Day", "Year")], got
+    assert [r for q, r in got if q.startswith("End Date")] == [False, False, False], got

@@ -44,7 +44,6 @@
   const SINGLE = '[class*="single-value" i], [class*="singleValue" i], [class*="selection-item" i]';
   const SELECT_STRUCTURE = `${SINGLE}, ${CHIP}, [class*="placeholder" i], [class*="value-container" i], [class*="valueContainer" i]`;
   const GROUPER = 'fieldset, [role="radiogroup"], [role="group"]';
-  const STAR = /\s*\*+\s*$/;
   const edge = (n) => n === document.body || n === document.documentElement || n.tagName === "FORM";
 
   // Per-pass memo (the inventory wraps one list() in `pass`): readField and
@@ -330,7 +329,8 @@
     const t = (ms.length > 1 ? ns.textBefore(ms[0]) : "")
       || ns.precedingLabel(ms[0].closest("label") ?? ms[0], ms, { group: true, prose: ms.length > 1 })
       || (ms.length > 1 && ms.every((m) => m.closest("tr") === ms[0].closest("tr")) ? ns.rowAbove(ms[0]) : "");
-    return t ? { question: clean(t.replace(STAR, "")), source: "preceding", required: STAR.test(t) } : null;
+    const marked = t ? ns.unmark(t) : null;
+    return marked ? { question: marked.text, source: "preceding", required: marked.required } : null;
   };
   // Never a member's own option label ("Yes"): no question beats a wrong one.
   const groupQuestion = (el) => {
@@ -478,6 +478,13 @@
         return buttonLike(el) && HASPOPUP.test(el.getAttribute("aria-haspopup") ?? "");
       },
       read: readPopup,
+      // A select2/iCIMS box shows no star of its own: the hidden select under
+      // it carries `required`, and a field wrongly read optional is now left
+      // blank rather than asked.
+      describe: (el) => {
+        const s = popupBacking(el) ? null : backingSelect(el);
+        return { required: Boolean(s && (s.required || s.getAttribute("aria-required") === "true")) };
+      },
       // Over a backing select, answered is what the select holds, never the
       // box's words.
       answered: (el) => {

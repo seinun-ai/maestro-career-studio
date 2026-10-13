@@ -20,7 +20,24 @@
   loaded.add("content/field-reader.js");
   const ZERO_WIDTH = /[​-‍⁠﻿‎‏]/g;
   const clean = (s) => String(s ?? "").replace(ZERO_WIDTH, " ").replace(/\s+/g, " ").trim();
-  const STAR = /\s*\*+\s*$/;
+  // The marks that say "required" in a label's TEXT, read one way everywhere
+  // (shapes.js reads a group's question through ns.unmark too): a star of any
+  // kind (the ASCII one, Lever's heavy ✱, ∗, the full-width ＊) at the start,
+  // at the end, or after the words with more text behind it ("Salary* (USD)");
+  // and the word "required" as a suffix or in parentheses ("Phone (Required)",
+  // "Phone - required"). The word inside a sentence ("Is a degree required for
+  // this role?") is part of the question, not a mark. A star counts at the
+  // start of the text, or after a word or a space with a space, colon, bracket
+  // or the end behind it, so "a*b" is left alone.
+  const STAR_CHARS = "*\u2731\u2217\uFF0A\uFE61\u204E";
+  const STARS = new RegExp(`^\\s*[${STAR_CHARS}]+\\s*|\\s*[${STAR_CHARS}]+(?=[\\s:(\\[]|$)`, "gu");
+  const REQUIRED_WORD = /(?:\s*[([]\s*required\s*[)\]]|\s*[-\u2013\u2014|,:]\s*required)\s*$/i;
+  const unmark = (t) => {
+    const raw = String(t ?? "");
+    const unstarred = raw.replace(STARS, "");
+    const word = REQUIRED_WORD.exec(unstarred);
+    return { text: clean(word ? unstarred.slice(0, word.index) : unstarred), required: unstarred !== raw || Boolean(word) };
+  };
   const text = (el) => clean(el?.innerText || el?.textContent);
   const rootOf = (el) => (el?.getRootNode?.() instanceof ShadowRoot ? el.getRootNode() : document);
   const byId = (el, id) => rootOf(el).getElementById?.(id) ?? document.getElementById(id);
@@ -77,7 +94,7 @@
   const NOT_LABEL = '[role="alert"], [aria-live], [data-automation-id="errorMessage"], [class*="error" i]';
   const MAX_CLIMB = 6;
   // A label is short and is no sentence ("Phone", "Are you over 18?", "City:").
-  const labelish = (t) => t.length <= 80 && t.split(" ").length <= 12 && !/[.!]$/.test(t.replace(STAR, ""));
+  const labelish = (t) => t.length <= 80 && t.split(" ").length <= 12 && !/[.!]$/.test(unmark(t).text);
   // A CHOICE GROUP may be asked by a paragraph (iCIMS VEVRAA: "2. If you
   // believe you belong to … please indicate by checking the appropriate box
   // below. As a Government contractor …"). Its question is the one sentence
@@ -280,19 +297,25 @@
       const named = (n.matches("fieldset") ? text(n.querySelector(":scope > legend")) : "")
         || fromIds(n, "aria-labelledby") || clean(n.getAttribute("aria-label")) || (head ? text(head) : "")
         || precedingLabel(n, own, { group: true });
-      return clean(named.replace(STAR, "").replace(/\s*\(\d+\)$/, ""));
+      const marked = unmark(named);
+      return { question: clean(marked.text.replace(/\s*\(\d+\)$/, "")), required: marked.required };
     }
-    return "";
+    return { question: "", required: false };
   };
-  // { question, part }: a part label prefixed with its group's question, and
-  // which date part the control holds (by its label, else its id or name).
+  // { question, part, required }: a part label prefixed with its group's
+  // question, and which date part the control holds (by its label, else its id
+  // or name). A star on the GROUP's label ("Start Date*") makes each part
+  // required: it is read before the question is built, which drops it.
   const withGroup = (el, question) => {
-    if (isChoice(el)) return { question, part: null };
-    const bare = clean(question.replace(STAR, ""));
+    if (isChoice(el)) return { question, part: null, required: false };
+    const bare = unmark(question).text;
     const part = datePartOf(el, bare);
-    if (!PART_LABEL.test(bare)) return { question, part };
+    if (!PART_LABEL.test(bare)) return { question, part, required: false };
     const group = groupQuestion(el);
-    return { question: group && !PART_LABEL.test(group) ? `${group}: ${question}` : question, part };
+    return {
+      question: group.question && !PART_LABEL.test(group.question) ? `${group.question}: ${question}` : question,
+      part, required: group.required,
+    };
   };
   const SOURCES = [
     ["label-for", (el) => {
@@ -382,14 +405,14 @@
     if (!prev) return "";
     for (const [, read] of SOURCES) {
       try {
-        const q = clean(read(prev).replace(STAR, ""));
+        const q = unmark(read(prev)).text;
         if (q) return q.slice(0, CONTEXT_MAX);
       } catch { /* the next source */ }
     }
     return "";
   };
   const withFollowed = (el, question, source) => {
-    const bare = clean(question.replace(STAR, ""));
+    const bare = unmark(question).text;
     if (!FOLLOW_UP.test(bare) || isChoice(el)) return question;
     const own = source === "label-for" ? rootOf(el).querySelector?.(`label[for="${CSS.escape(el.id)}"]`) : null;
     const before = followed(el, own ?? el.closest("label") ?? null);
@@ -397,6 +420,7 @@
   };
 
   ns.readFieldText = clean;
+  ns.unmark = unmark;
   ns.repeatOf = repeatOf;
   ns.ANY_HEADING = ANY_HEADING;
   ns.byIdIn = byId; // an id, resolved in the element's own root
@@ -415,18 +439,19 @@
       }
     }
     let part;
-    ({ question, part } = withGroup(el, question));
+    let grouped;
+    ({ question, part, required: grouped } = withGroup(el, question));
     if (question) question = withFollowed(el, question, source);
-    const starred = STAR.test(question);
+    const marked = unmark(question);
     const section = sectionOf(el);
     return {
-      question: clean(question.replace(STAR, "")),
+      question: marked.text,
       source,
       help: fromIds(el, "aria-describedby"),
       section,
       repeatIndex: repeatIndex(section),
-      required: Boolean(el.required) || el.getAttribute("aria-required") === "true" || starred
-        || popupLabel(el).required,
+      required: Boolean(el.required) || el.getAttribute("aria-required") === "true" || marked.required
+        || grouped || popupLabel(el).required,
       part,
     };
   };
