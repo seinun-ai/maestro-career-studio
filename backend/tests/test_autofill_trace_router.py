@@ -339,7 +339,7 @@ def _report_statuses_in_the_fill_loop_header() -> set[str]:
 
 def test_the_status_sets_are_pinned_to_the_fill_loop_header():
     header = _report_statuses_in_the_fill_loop_header()
-    left = {"blocked", "yours", "needs_answer"}
+    left = {"blocked", "yours", "needs_answer", "left_blank"}
     assert header == KEPT | FAILED | left
 
 
