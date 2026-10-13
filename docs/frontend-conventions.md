@@ -1643,6 +1643,16 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   | Who or what a thing came from (you, AI, the Assistant, a connected agent, Career history) | `ActorChip` |
   | A trend with no axes | `Sparkline` |
   | A status's own colour where no chip fits (filters, analytics, a lane) | `StatusDot` (application) or `LaneDot` (proposal), from `status-chip.tsx` |
+  | Which base resume a thing names | `ResumeSwatch` beside the name (`ResumeTag` is the pair) |
+- **A base resume's colour is a hue on the element, not a class per colour.** The rule (identity, never state;
+  where it may appear) is in `docs/design-system/README.md`. Set `style={resumeColorStyle(resume.color_hue)}`
+  (`lib/resume-color.ts`) on the element that names the resume or on its card, then use `bg-resume`,
+  `bg-resume-container` and `text-on-resume-container`: they read `--resume-h` and `--resume-c` and fall back to grey
+  with no hue. The three are `@theme inline` colours (a `:root` declaration would resolve their `var()`s where no hue
+  exists, and `test_frontend_color_roles.py` cannot parse them there); `test_frontend_resume_colors.py` pins the
+  lines and computes contrast for every preset and a sweep of hues in both themes. Never give the square
+  `rounded-full` or an opacity, and never write a hue's colour by hand. The hue comes from `useBaseResumeColor(slug)`,
+  which reads the archived-inclusive list, so a score or proposal keeps its resume's colour after the resume is archived.
 - **Icons come from the register.** `lib/concept-icons.ts` (`CONCEPT_ICONS`) owns one glyph per concept, and
   `test_frontend_concept_icons.py` pins that each concept maps to its own icon, that banned or alias icons are
   not imported, that no text glyph stands in for an icon, and that the sidebar draws from the register. Never add a second `Bot` key (connected agents are the Agent inbox's `Bot`

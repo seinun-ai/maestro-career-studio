@@ -38,6 +38,7 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 | `attention-container` | `on-attention-container` | Needs you |
 | `tertiary-container` | `on-tertiary-container` | An offer, an Ask |
 | `error-container` | `on-error-container` | Rejected, removed, must fix |
+| `resume-container` | `on-resume-container` | The footer of a card that stands for one base resume (see below) |
 
 - A status as plain text, an icon or a dot on a surface uses the role itself: `success`, `warning`, `attention`, `tertiary`, `destructive`.
 - Every pair above, and every text role on every surface, holds at least 4.5:1 in light and dark; the repo's tests compute it from the tokens.
@@ -45,6 +46,9 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 - A link's color is `primary`. `bg-primary/N` with `text-primary` is not a component fill.
 - Hover on a container is its pre-mixed 8% state layer (`primary-container-hover`, `secondary-container-hover`); a call site never picks an opacity.
 - `chart-1` to `chart-6` are for chart series only, in their fixed order. `brand-blue` and `brand-yellow` are for the mark only.
+- **Base resume color is identity, never state.** Each base resume has one hue, picked at random from the free presets when it is made and changeable in its Target. Draw it as a square (`ResumeSwatch`) beside the resume's name, never alone and never as a round pill or dot (round is status). The tones come from the hue (`resume`, `resume-container`, `on-resume-container`), so any hue holds contrast.
+- **Only a card that stands for one base resume** (its gallery card, its score card) carries the color as a 6px top band and a `resume-container` footer. Rows, pages and the sidebar never take it. PDFs never carry it.
+- **Charts split by base resume** color each series by its resume. Every other chart keeps `chart-1` to `chart-6`.
 
 ## Surfaces and elevation
 
@@ -137,7 +141,8 @@ Each component page has a live preview in light and dark, what you provide, and 
 - Data: JobsTable, HealthSummary
 - Visual primitives (eight): DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip and Sparkline from `components/visual/`, and StatusDot from `status-chip.tsx`, which also exports `LaneDot` for proposal statuses
 - Communication: Callout, EmptyState, JudgedText, Dialog
+- Base resume color: ResumeSwatch and ResumeTag from `components/visual/`, and ResumeColorPicker from `components/base-resumes/`
 
 ## Not synced
 
-Matches the app after all eight token steps and the six approved interface changes in `docs/plans/2026-10-02-design-system-tokens.md` (branch `claude/ds-steps`, on `main` at `5baf568c`); the repo's tests pin each rule. Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Components: previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open. Not previewed: the eight visual primitives (DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, StatusDot) have a README and no `preview.html`, and the Button `pending` state and the field warning appear in their READMEs only; the motion utilities are described, not demonstrated. Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.
+Matches the app after all eight token steps and the six approved interface changes in `docs/plans/2026-10-02-design-system-tokens.md` (branch `claude/ds-steps`, on `main` at `5baf568c`); the repo's tests pin each rule. Skipped variables: `primary-container-hover` and `secondary-container-hover` (they are `color-mix()` values). Fonts: Geist and Geist Mono load from Google Fonts; no font files are stored. Components: previews are static HTML that uses the repo's own Tailwind classes, compiled with its `globals.css`; the React components were not built into a bundle, so menus, popovers and dialogs do not open. Not previewed: the eight visual primitives (DotMeter, ScoreBar, SegmentedBar, ProgressCount, DeltaChip, ActorChip, Sparkline, StatusDot), ResumeSwatch and ResumeColorPicker have a README and no `preview.html`, and the Button `pending` state and the field warning appear in their READMEs only; the motion utilities are described, not demonstrated. Not yet covered: dropdown menu, popover, sheet, tooltip, slider, sortable list, chip input, the resume studio, gap-analysis cards, the Assistant, charts and the settings cards.
