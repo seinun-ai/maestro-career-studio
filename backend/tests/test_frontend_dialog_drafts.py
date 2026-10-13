@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._jsx_pins import open_tag, tokens
+
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
@@ -105,13 +107,21 @@ def test_start_over_knows_what_a_draft_is():
 
 
 def test_start_over_shows_only_for_a_touched_draft():
-    footer = _flat(_between(_NBR, "<DialogFooter>", "</DialogFooter>"))
+    footer = _flat(_between(_NBR, "<DialogFooter", "</DialogFooter>"))
     assert footer.count("Start over") == 1
     start_over = footer[footer.index("{touched && (") : footer.index("Start over")]
     assert "onClick={onStartOver}" in start_over
     assert "disabled={busy}" in start_over
     assert "> Close </Button>" in footer
     assert "Cancel" not in footer
+
+
+def test_the_new_dialog_keeps_close_and_create_in_reach_when_the_body_scrolls():
+    """Custom's hue slider made the body taller than a laptop screen and pushed both buttons off it. The bar sticks to
+    the popup's bottom edge (-bottom-4: sticky measures inside the popup's own padding) with the popover fill and the
+    sticky-bar shadow."""
+    footer = tokens(open_tag(_NBR, "DialogFooter"))
+    assert {"sticky", "-bottom-4", "bg-popover", "shadow-level2"} <= footer
 
 
 def test_new_base_resume_ids_are_per_instance():

@@ -738,8 +738,8 @@ function ApplicationsContent() {
           <Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
               <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
-                {header("role", "Role", showWhere ? "w-[65%]" : "w-[72%]")}
-                <TableHead className={showWhere ? "w-[35%]" : "w-[28%]"}>Resume</TableHead>
+                {header("role", "Role", "w-[65%]")}
+                <TableHead className="w-[35%]">Resume</TableHead>
                 {header("ats", "Match score", "w-[6.75rem] px-3")}
                 {header("status", "Status", "w-[9.25rem] px-3")}
                 {showWhere ? <TableHead className="w-[4.5rem] px-3">Where</TableHead> : null}
@@ -762,6 +762,7 @@ function ApplicationsContent() {
                     : `/jobs/${r.app.job_id}`;
                 const company = rowCompany(r) || "—";
                 const title = rowTitle(r) || "Untitled role";
+                const resumeName = r.kind === "application" ? r.app.base_resume_name || baseName(r.app.base_resume) : "";
                 // A saved job an agent captured names its filer; an application is "agent" only
                 // because a proposal was linked to it, whoever made it.
                 const mark =
@@ -823,8 +824,8 @@ function ApplicationsContent() {
                         <span className="text-muted-foreground">—</span>
                       ) : (
                         <ResumeTag hue={colorOf(r.app.base_resume)} className="max-w-full">
-                          <span className="text-foreground min-w-0 truncate">
-                            {r.app.base_resume_name || baseName(r.app.base_resume)}
+                          <span className="text-foreground min-w-0 truncate" title={resumeName}>
+                            {resumeName}
                           </span>
                         </ResumeTag>
                       )}

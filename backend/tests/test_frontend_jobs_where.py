@@ -55,13 +55,11 @@ def test_the_fixed_columns_pad_their_cells_like_their_heads_and_role_and_resume_
     assert padded == [False, False, True, True, True, True, True, False]
 
 
-def test_role_widens_and_resume_narrows_when_where_is_not_shown():
+def test_role_and_resume_split_the_rest_65_35_whether_or_not_where_shows():
+    """72/28 with Where hidden truncated "Data Scientist (India)" at 1280; Role does not take what Where gives up."""
     head = squash(_TABLE[: _TABLE.index("</TableHeader>")])
-    role = re.search(r'header\("role", "Role", showWhere \? "w-\[(\d+)%\]" : "w-\[(\d+)%\]"\)', head)
-    resume = re.search(r'<TableHead className=\{showWhere \? "w-\[(\d+)%\]" : "w-\[(\d+)%\]"\}>Resume', head)
-    assert role and resume
-    assert int(role.group(2)) > int(role.group(1))
-    assert int(resume.group(2)) < int(resume.group(1))
+    assert 'header("role", "Role", "w-[65%]")' in head
+    assert '<TableHead className="w-[35%]">Resume</TableHead>' in head
     assert 'minWidth="52rem"' in _PAGE
 
 

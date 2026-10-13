@@ -23,18 +23,18 @@ def _body() -> str:
 def test_the_card_is_a_six_pixel_band_then_the_full_size_thumbnail_then_a_tinted_footer():
     body = _body()
     band = open_tag(body, "div")
-    assert {"h-1.5", "bg-resume"} <= tokens(band) and 'aria-hidden="true"' in band
+    assert '"h-1.5 shrink-0 bg-resume"' in band and 'aria-hidden="true"' in band
     thumb_at, footer_at = body.index("<BaseResumeThumbnail"), body.index("<CardHeader")
     assert body.index("<div") < thumb_at < footer_at
     # The thumbnail keeps its size and full bleed: only its top corners go square, under the band.
-    assert "rounded-none" in tokens(open_tag(body, "BaseResumeThumbnail"))
+    assert '"rounded-none"' in open_tag(body, "BaseResumeThumbnail")
     assert {"bg-resume-container", "text-on-resume-container", "rounded-none"} <= tokens(open_tag(body, "CardHeader"))
 
 
 def test_the_card_root_carries_the_hue_and_the_footer_runs_to_the_bottom_edge():
     card = squash(open_tag(_GALLERY, "GalleryCard"))
     assert "style={resumeColorStyle(r.color_hue)}" in card
-    assert 'className={cn("gap-0 pb-0", r.archived_at && "opacity-60")}' in card
+    assert 'className="gap-0 pb-0"' in card
     assert "style?: CSSProperties;" in _CARD and "style={style}" in _CARD
 
 
@@ -53,9 +53,17 @@ def test_pills_and_badges_on_the_tint_take_the_card_fill_so_their_shape_survives
     body = _body()
     archived = open_tag(body, "Badge", after="{isArchived && (")
     assert "className={ON_TINT_PILL_CLASS}" in archived
-    # The outline badge keeps a border that shows, in the footer's own text color.
-    unset = open_tag(body, "Badge", after="{roleUnset && (")
-    assert {"border-on-resume-container/40", "text-on-resume-container"} <= tokens(unset)
+
+
+def test_an_archived_card_fades_only_the_picture_and_keeps_its_words_at_full_contrast():
+    """The whole card at opacity-60 put the name and meta at about 3.0:1 on the tint (light). Now the band and the page
+    image fade and the footer is untouched: measured 7.85:1 or more in light and 9.01:1 in dark on the real data."""
+    body = _body()
+    assert 'isArchived && "opacity-60"' in open_tag(body, "div")
+    thumb = squash(open_tag(body, "BaseResumeThumbnail"))
+    assert 'isArchived && "[&_img]:opacity-60"' in thumb
+    assert "opacity" not in open_tag(body, "CardHeader")
+    assert "opacity" not in open_tag(_GALLERY, "GalleryCard")
 
 
 def test_the_role_pill_is_left_out_of_gallery_cards_only():
@@ -81,9 +89,10 @@ def test_the_gallery_groups_through_the_pure_lib_and_names_each_group_by_its_hea
     assert {"text-label-small", "text-muted-foreground"} <= tokens(open_tag(section, "span"))
     # One heading per group, no region per group: a landmark for each role would crowd the page's landmark list.
     assert "<section" not in section and "aria-labelledby" not in section
-    # An unset role keeps its badge on each card, and archived cards keep their place at opacity-60.
-    assert "Role not set" in _body()
-    assert 'r.archived_at && "opacity-60"' in squash(section)
+    # The heading says "Role not set" once; the cards do not repeat it, and the way out is one muted hint beside it.
+    assert "Role not set" not in _body()
+    hint = "Set a role in each resume&apos;s Target to group it."
+    assert f'{{group.label === null && ( <span className="text-body-small text-muted-foreground">{hint}</span>' in squash(section)
 
 
 def test_the_grouping_passes_its_node_tests():

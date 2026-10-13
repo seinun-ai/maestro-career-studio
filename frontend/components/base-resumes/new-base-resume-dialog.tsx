@@ -698,7 +698,7 @@ function NewBaseResumeForm({
                         const hit = existingResumes.find((r) => r.slug === value);
                         return hit ? (
                           <ResumeTag hue={hit.color_hue} className="min-w-0">
-                            <span className="truncate">{baseResumeLabel(hit.slug, [hit])}</span>
+                            <span className="truncate" title={baseResumeLabel(hit.slug, [hit])}>{baseResumeLabel(hit.slug, [hit])}</span>
                           </ResumeTag>
                         ) : (
                           String(value ?? "")
@@ -794,7 +794,10 @@ function NewBaseResumeForm({
           </div>
         </Tabs>
 
-        <DialogFooter>
+        {/* Sticky: Custom's hue slider makes the body taller than a laptop screen, and Close and Create must stay in
+            reach. A sticky bar takes the popover fill and shadow-level2 (design system, Shadow). -bottom-4 is the popup's
+            own bottom padding: sticky measures from inside it, so 0 would leave a strip of body under the bar. */}
+        <DialogFooter className="sticky -bottom-4 z-10 bg-popover shadow-level2">
           {/* Closing keeps the draft, so the one discard is named for what it
               does. No confirm: the label says what is lost. */}
           {touched && (

@@ -242,7 +242,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
                   {report.bases.map((b) => (
                     <li key={b.slug} className="flex items-center justify-between gap-3">
                       <ResumeTag hue={colorOf(b.slug)} className="min-w-0">
-                        <span className="truncate text-body-medium">{b.display_name}</span>
+                        <span className="truncate text-body-medium" title={b.display_name}>{b.display_name}</span>
                       </ResumeTag>
                       <RoleCategoryPicker
                         slug={b.slug}

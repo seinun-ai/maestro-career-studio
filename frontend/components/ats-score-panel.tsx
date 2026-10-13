@@ -240,7 +240,7 @@ function AtsScoreCard({
         <div className="grid min-w-0 gap-1">
           <CardTitle className="min-w-0 text-title-small">
             <ResumeTag hue={resume?.color_hue} className="max-w-full">
-              <span className="min-w-0 truncate">{baseName(score.target_id)}</span>
+              <span className="min-w-0 truncate" title={baseName(score.target_id)}>{baseName(score.target_id)}</span>
             </ResumeTag>
           </CardTitle>
           {resume && <AnchorPills resume={resume} />}

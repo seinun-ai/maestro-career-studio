@@ -1065,7 +1065,12 @@
   `bg-resume-container` footer with `text-on-resume-container` text, the name led
   by the square. Pills on that footer take the card fill (`AnchorPills onTint`),
   because the secondary fill is the tint's own tone; the role is the group's
-  heading, so cards pass `showRole={false}`. Pinned by `test_frontend_base_resume_gallery.py`.
+  heading, so cards pass `showRole={false}`. A card carries no "Role not set" pill
+  either: that group's heading says it, with one muted hint beside it ("Set a role
+  in each resume's Target to group it."). An archived card fades only the band and
+  the page image (`opacity-60`); the footer keeps full contrast (the whole card at
+  `opacity-60` read about 3:1) and the Archived pill says the state.
+  Pinned by `test_frontend_base_resume_gallery.py`.
 - **Sidebar: one create action, and a current page you can see and hear.** Every
   row (`SidebarMenuButton`, its sub-menu row, skeleton and count) is
   `rounded-full`, so hover and the current row share one pill shape
@@ -1135,14 +1140,15 @@
   long sentence as its tooltip and an sr-only sentence, and a small "Waiting" under the label while a
   request of yours waits for the next sync (any request, so it is only a note; "Queued" is a saved job's
   chip). It shows only when some visible row has an owner (sync
-  off: no column, Role takes its room). The page reads only each row's own `ownership`, never
+  off: no column, Role takes its room, but not at Resume's cost: Role and Resume are 65/35 either way,
+  because 72/28 truncated "Data Scientist (India)" at 1280). The page reads only each row's own `ownership`, never
   `use-job-ownership`. A chip locks while the job is moving between copies (`StatusChip`
   `lockedReason`: a lock, the reason as title and `aria-describedby`, `aria-disabled` so it stays
   focusable). **Work on it here** / **Keep it here** are in the row's ⋯ menu (`OwnershipMenuItem`,
   disabled only while its own request is in flight); the header mark and the menu share one request
   state per job (`ownershipKey`). Columns with fixed content are in rem (the table scrolls at 52rem,
-  where a percentage of it left "Offer accepted" no room); Role and Resume share the rest, Role more
-  when Where is not shown. The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.
+  where a percentage of it left "Offer accepted" no room); Role and Resume share the rest, 65/35.
+  The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.
   Pinned by `test_frontend_jobs_where.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the
@@ -1680,6 +1686,13 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   | A trend with no axes | `Sparkline` |
   | A status's own colour where no chip fits (filters, analytics, a lane) | `StatusDot` (application) or `LaneDot` (proposal), from `status-chip.tsx` |
   | Which base resume a thing names | `ResumeSwatch` beside the name (`ResumeTag` is the pair) |
+- **A base resume's name that truncates carries its whole value in `title`.** Every `truncate` span inside a
+  `ResumeTag` (the Jobs Resume cell, the score card title, the select triggers, the import list) has
+  `title={name}`: a trigger shows only its value and a cell has no other way to widen. Pinned by
+  `test_frontend_resume_square.py`.
+- **The New base resume dialog's footer is sticky** (`sticky -bottom-4 bg-popover shadow-level2`, the sticky-bar
+  rule). Custom's hue slider makes the body scroll at 1280x900, and Close and Create must stay in reach;
+  `-bottom-4` is the popup's own bottom padding. Pinned by `test_frontend_dialog_drafts.py`.
 - **A base resume's colour is a hue on the element, not a class per colour.** The rule (identity, never state;
   where it may appear) is in `docs/design-system/README.md`. Set `style={resumeColorStyle(resume.color_hue)}`
   (`lib/resume-color.ts`) on the element that names the resume or on its card, then use `bg-resume`,

@@ -308,7 +308,7 @@ export function SendToResumeDialog({
                     {selectedTarget
                       ? (
                         <ResumeTag hue={selectedTarget.color_hue} className="min-w-0">
-                          <span className="truncate">
+                          <span className="truncate" title={selectedTarget.display_name ?? baseResumeLabel(selectedTarget.slug)}>
                             {selectedTarget.display_name ?? baseResumeLabel(selectedTarget.slug)}
                           </span>
                         </ResumeTag>

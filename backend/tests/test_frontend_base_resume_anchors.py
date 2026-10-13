@@ -178,7 +178,7 @@ def test_pills_show_what_is_set_and_nothing_when_nothing_is():
 def test_the_gallery_and_the_score_cards_show_the_pills():
     # The gallery groups by role, so the role is the heading, not a pill; the tinted footer wants card-filled pills.
     assert "<AnchorPills resume={resume} showRole={false} onTint />" in _GALLERY
-    # The unset role stays the gallery's one invitation; a set role is a pill.
+    # The unset role is the "Role not set" group's heading and its one hint; a set role is a pill.
     assert "Role not set" in _GALLERY and "Role not set" not in _PILLS
     card = _between(_PANEL, "function AtsScoreCard(", "export function AtsScorePanel(")
     assert "{resume && <AnchorPills resume={resume} />}" in card

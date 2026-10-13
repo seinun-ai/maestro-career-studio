@@ -26,10 +26,8 @@ import { BaseResumeThumbnail } from "./base-resume-thumbnail";
  * the name (led by the color's square), last-edited, what its Target sets and the actions menu. The card
  * root carries the color's CSS variables, so the band, the footer and the square all follow one hue.
  *
- * The role badge is CONDITIONAL on purpose: role_category defaults to
- * "unknown", which the model keeps as "a visible state the UI offers to fix".
- * Shown on every card it is decoration; shown only when unset it reports a
- * defect — the same rule the template card's ATS-spacing badge follows.
+ * The role is the group's heading, so a card carries no role pill; an unset role is the "Role not set" group,
+ * whose heading carries the one hint for fixing it.
  */
 function BaseResumeCardBody({
   resume,
@@ -46,9 +44,11 @@ function BaseResumeCardBody({
 
   return (
     <>
-      <div aria-hidden="true" className="h-1.5 shrink-0 bg-resume" />
+      {/* An archived card fades only what is picture: the band and the page image. The footer's words stay at full
+          contrast (the Archived pill says the state), where fading the whole card dropped them to about 3:1. */}
+      <div aria-hidden="true" className={cn("h-1.5 shrink-0 bg-resume", isArchived && "opacity-60")} />
       {/* Square-topped: the band above is the card's top edge, and a rounded thumbnail would show the card behind it. */}
-      <BaseResumeThumbnail resume={resume} className="rounded-none" />
+      <BaseResumeThumbnail resume={resume} className={cn("rounded-none", isArchived && "[&_img]:opacity-60")} />
       <CardHeader className="rounded-none bg-resume-container py-4 text-on-resume-container">
         <div className="flex min-w-0 flex-col gap-2">
           {/* The slug is never shown, not even on hover: the resume is named
@@ -73,16 +73,6 @@ function BaseResumeCardBody({
               {isArchived && (
                 <Badge variant="secondary" className={ON_TINT_PILL_CLASS}>
                   Archived
-                </Badge>
-              )}
-              {roleUnset && (
-                <Badge
-                  variant="outline"
-                  // The default outline border is the tint's tone too: border and text take the footer's own color.
-                  className="border-on-resume-container/40 text-on-resume-container"
-                  title="No target role. Set one in the resume to group it by role."
-                >
-                  Role not set
                 </Badge>
               )}
               <AnchorPills resume={resume} showRole={false} onTint />
@@ -115,6 +105,10 @@ function RoleSection({
           {group.resumes.length}
           <span className="sr-only">{group.resumes.length === 1 ? " resume" : " resumes"}</span>
         </span>
+        {/* The heading already says "Role not set", so a card does not repeat it; the way out is said once, here. */}
+        {group.label === null && (
+          <span className="text-body-small text-muted-foreground">Set a role in each resume&apos;s Target to group it.</span>
+        )}
       </div>
       <GalleryGrid>
         {group.resumes.map((r) => (
@@ -123,7 +117,7 @@ function RoleSection({
             href={href(r)}
             ariaLabel={`Open ${r.display_name ?? r.slug}`}
             // The footer runs to the card's bottom edge, so the card's own bottom padding and row gap go.
-            className={cn("gap-0 pb-0", r.archived_at && "opacity-60")}
+            className="gap-0 pb-0"
             style={resumeColorStyle(r.color_hue)}
           >
             <BaseResumeCardBody resume={r} actions={renderActions?.(r)} />
