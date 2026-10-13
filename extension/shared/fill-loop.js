@@ -1419,15 +1419,13 @@
     const snapshot = () => JSON.stringify([...rows.values()].map((r) => [r.fid, r.status, r.attempts]));
 
     // ---- a round's fields, and the order they are worked in
-    // What each open field is: text (a fact to type), choice, or prose (a
-    // free-text answer the model writes); one with nothing to fill it is
-    // finished here.
     // A search box with a pill in it and no fact to put there is answered:
     // Workday's Country Phone Code showed its one pill but read unanswered (a
     // pill box of unknown multiplicity may hold the first of several) and was
     // asked. Only pills count — a popup's committed text can be its
     // placeholder, which `answered` already covers. A leftover is the engine's
     // own write for an earlier question, never an answer.
+    // Unlike `holdsOne` (a MAPPED radio-rows box left alone), this is for a field with no fact.
     const holdsPill = (f, row) => f.shape === "search" && !f.invalid && !row.leftover
       && Array.isArray(f.committed) && f.committed.some((v) => v != null && String(v).trim() !== "");
     // An optional field with no fact and nothing in it is left empty: asking
@@ -1438,6 +1436,9 @@
     // earlier write.
     const leftBlank = (f, row) => !f.required && !f.invalid && !row.leftover
       && [f.committed].flat().every((v) => v == null || String(v).trim() === "");
+    // What each open field is: text (a fact to type), choice, or prose (a
+    // free-text answer the model writes); one with nothing to fill it is
+    // finished here.
     const routed = (open) => {
       const texts = [];
       const choices = [];

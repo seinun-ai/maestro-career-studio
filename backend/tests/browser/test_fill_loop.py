@@ -1228,6 +1228,38 @@ def test_a_relabelled_field_holding_someone_elses_value_is_already(page, load):
     assert statuses(out) == {"a": "already"}
 
 
+def test_a_held_pill_with_no_fact_is_already_there(page, load):
+    out = run(page, load, frames=[[f("k", "search", "Phone code", committed=["United States (+1)"], answered=False)]])
+    assert statuses(out) == {"k": "already"}
+    assert actions(out) == [] and "fill_explore" not in out["calls"]
+
+
+@pytest.mark.parametrize("case", ["leftover", "invalid", "mapped"])
+def test_a_held_pill_is_only_an_answer_when_nothing_else_speaks(page, load, case):
+    """A pill held with no fact is `already`, except: the engine's own write for
+    an earlier question (a leftover), a field the page flags invalid, and a
+    field with a fact (which may still need to add or change)."""
+    held = {"committed": ["Springfield"], "answered": False}
+    if case == "invalid":
+        out = run(page, load, frames=[[f("k", "search", "Phone code", invalid=True, **held)]])
+        assert row(out, "k")["status"] == "needs_answer"
+    elif case == "leftover":
+        # Written as the City, then relabelled while still holding it: no fact answers the new question.
+        out = run(page, load, frames=[[f("k", question="City")],
+                                      [f("k", "search", "Phone code", fp="fp-k2", **held)]],
+                  map={"k:City": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
+        r = row(out, "k")
+        assert r["status"] == "needs_answer"
+        assert r["answer"] == 'Companion wrote "Springfield" here for an earlier question. Check it.'
+    else:
+        out = run(page, load, frames=[[f("k", "search", "Country", **held)]],
+                  map={"k": {"route": "slot", "slot": "personal.country", "value": "Canada"}},
+                  explore={"Canada": {"options": [opt("o1", "Canada")]}},
+                  pick={"k": {"oids": ["o1"], "reason": "matched"}})
+        assert row(out, "k")["status"] != "already"
+        assert "fill_explore" in out["calls"]
+
+
 def test_complete_native_lists_are_picked_in_one_call(page, load):
     yes_no = [opt("o1", "Yes"), opt("o2", "No")]
     fields = [f(x, "select", f"Q{x}", options=yes_no, optionsComplete=True) for x in "abc"]
