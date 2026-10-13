@@ -233,6 +233,8 @@ def bulk_transition(payload: ProposalBulkTransition, db: Annotated[Session, Depe
     report — a mixed selection partially succeeds instead of all-or-nothing.
     With sync on, rows on the other copy's jobs are queued ("Sent at the next
     sync", status unchanged) and an offered job's row reports why it was refused."""
+    if payload.consent.channel == svc.COMPANION_CHANNEL:
+        raise HTTPException(422, detail="The Companion's consent channel is not for bulk changes.")
     return ProposalBulkResponse(results=[_bulk_row(db, payload, pid) for pid in payload.ids])
 
 
@@ -343,11 +345,21 @@ def delete_proposal(proposal_id: UUID, db: Annotated[Session, Depends(get_db)]):
 def transition_proposal(
     proposal_id: UUID,
     payload: ProposalTransition,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
 ):
     prop = db.get(ApplicationProposal, proposal_id)
     if prop is None:
         raise HTTPException(404, detail="Proposal not found")
+    # The `companion` channel says the Companion asked, so only its exact origin may name it, and
+    # only to queue: approving and submitting are recorded by /companion-submitted alone.
+    if payload.consent is not None and payload.consent.channel == svc.COMPANION_CHANNEL:
+        if not is_companion(request):
+            raise HTTPException(403, detail="Only the Companion can use its consent channel.")
+        if payload.status in ("approved", "submitted"):
+            raise HTTPException(
+                409, detail="The Companion records an approval and a submit through "
+                "companion-submitted, not here.")
     queued = sync_requests.queue_proposal_transition(db, prop, payload)
     if queued is not None:
         return queued

@@ -192,3 +192,32 @@ def test_a_job_owned_by_the_other_copy_is_refused_and_untouched(db_session, queu
 
 def test_the_companion_channel_is_a_consent_channel():
     assert "companion" in svc.CONSENT_CHANNELS
+
+
+# The channel says "the Companion asked", so it cannot be named from anywhere else.
+@pytest.mark.parametrize("headers", [{}, {"Origin": "http://localhost:3000"}])
+def test_the_companion_channel_is_refused_from_anywhere_else(db_session, headers):
+    prop = _mk_proposal(db_session)
+    r = client.patch(f"/api/proposals/{prop.id}", headers=headers,
+                     json={"status": "accepted", "consent": {"channel": "companion"}})
+    assert r.status_code == 403
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, prop.id).status == "pending_review"
+    assert db_session.query(ConsentEvent).count() == 0
+
+
+@pytest.mark.parametrize("body", [
+    {"status": "approved", "consent": {"channel": "companion"}},
+    {"status": "submitted", "attested": True, "consent": {"channel": "companion"}},
+])
+def test_approving_and_submitting_with_the_companion_channel_go_through_the_endpoint(db_session, queued, body):
+    r = client.patch(f"/api/proposals/{queued.id}", headers=EXT, json=body)
+    assert r.status_code == 409 and "companion-submitted" in r.json()["detail"]
+    _untouched(db_session, queued)
+
+
+def test_bulk_changes_refuse_the_companion_channel(db_session, queued):
+    r = client.post("/api/proposals/bulk-transition", headers=EXT, json={
+        "ids": [str(queued.id)], "status": "rejected", "consent": {"channel": "companion"}})
+    assert r.status_code == 422
+    _untouched(db_session, queued)
