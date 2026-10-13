@@ -56,6 +56,12 @@ _COPIED = {
         "attention-container", "on-attention-container", "tertiary-container", "on-tertiary-container",
         "error-container", "on-error-container")},
     "--cs-muted-container": "--muted", "--cs-on-muted-container": "--muted-foreground",
+    # The panel's own names for the app's primary, success and warning roles, and the text colours.
+    "--cs-primary": "--primary", "--cs-on-primary": "--primary-foreground",
+    "--cs-primary-tonal": "--primary-container",
+    "--cs-good": "--success", "--cs-good-tonal": "--success-container",
+    "--cs-warn-tonal": "--warning-container", "--cs-warn-text": "--on-warning-container",
+    "--cs-danger-text": "--destructive", "--cs-muted": "--muted-foreground",
 }
 
 

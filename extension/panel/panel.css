@@ -21,19 +21,18 @@
   --cs-surface: oklch(1 0 0);
   --cs-surface-2: oklch(0.97 0 0);
   --cs-text: oklch(0.145 0 0);
-  --cs-muted: oklch(0.51 0 0);
+  --cs-muted: oklch(0.505 0 0);
   --cs-line: oklch(0.92 0 0);
-  --cs-primary: oklch(0.55 0.17 259);
-  --cs-primary-tonal: oklch(0.95 0.03 259);
+  --cs-primary: oklch(0.48 0.17 259);
+  --cs-primary-tonal: oklch(0.91 0.043 259);
   --cs-on-primary: oklch(0.985 0 0);
-  --cs-good: oklch(0.62 0.15 151);
-  --cs-good-tonal: oklch(0.95 0.04 151);
-  --cs-warn-tonal: oklch(0.97 0.05 85);
-  /* The mockup wrote this one as a literal beside its tonal background. It is
-   * a token here because it is the only colour that has to move in the dark
-   * scheme without its background moving with it. */
-  --cs-warn-text: oklch(0.5 0.13 75);
-  --cs-danger-text: oklch(0.51 0.19 27);
+  --cs-good: oklch(0.48 0.1 163);
+  --cs-good-tonal: oklch(0.915 0.06 163);
+  --cs-warn-tonal: oklch(0.915 0.06 70);
+  /* The text that sits on `--cs-warn-tonal` (the app's on-warning-container), and on the plain surface where a
+   * warm mark needs to read. */
+  --cs-warn-text: oklch(0.4 0.084 70);
+  --cs-danger-text: oklch(0.49 0.185 27.3);
   --cs-shadow: 0 2px 6px oklch(0.145 0 0 / 10%), 0 10px 28px oklch(0.145 0 0 / 12%);
   /* The web app's M3-named status roles (frontend/app/globals.css), copied value for value: a role's container
    * and the text on it, one meaning per colour in both apps. Muted is the web's `--muted` and `--muted-foreground`. */
@@ -54,21 +53,25 @@
   --cs-error-container: oklch(0.915 0.042 25);
   --cs-on-error-container: oklch(0.4 0.15 27);
 }
-/* Only the tokens that MOVE are restated. A panel is browser chrome, so it
+/* The app's primary, success, warning and destructive tokens, light and dark (frontend/app/globals.css), pinned by
+ * test_extension_status_roles.py; every text-on-fill pair is checked by test_extension_panel_contrast.py.
+ * Only the tokens that MOVE are restated. A panel is browser chrome, so it
  * follows the browser's scheme rather than the page's. */
 @media (prefers-color-scheme: dark) {
   :root {
     --cs-surface: oklch(0.205 0 0);
     --cs-surface-2: oklch(0.26 0 0);
     --cs-text: oklch(0.985 0 0);
-    --cs-muted: oklch(0.72 0 0);
+    --cs-muted: oklch(0.708 0 0);
     --cs-line: oklch(0.32 0 0);
-    --cs-primary: oklch(0.62 0.16 259);
-    --cs-primary-tonal: oklch(0.3 0.06 259);
-    --cs-good-tonal: oklch(0.3 0.05 151);
-    --cs-warn-tonal: oklch(0.32 0.06 85);
-    --cs-warn-text: oklch(0.85 0.12 85);
-    --cs-danger-text: oklch(0.78 0.14 27);
+    --cs-primary: oklch(0.76 0.11 259);
+    --cs-on-primary: oklch(0.205 0.05 259);
+    --cs-primary-tonal: oklch(0.37 0.09 259);
+    --cs-good: oklch(0.83 0.11 163);
+    --cs-good-tonal: oklch(0.38 0.075 163);
+    --cs-warn-tonal: oklch(0.38 0.075 70);
+    --cs-warn-text: oklch(0.915 0.06 70);
+    --cs-danger-text: oklch(0.838 0.089 26.76);
     --cs-shadow: 0 2px 6px oklch(0 0 0 / 40%), 0 10px 28px oklch(0 0 0 / 34%);
     --cs-muted-container: oklch(0.269 0 0);
     --cs-on-muted-container: oklch(0.708 0 0);
@@ -562,11 +565,13 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 }
 /* The options a select or radio group will accept, verbatim. The writer matches
  * the typed answer against them, so a user who cannot see them is guessing at a
- * closed list. */
-.needs .opts { margin-top: 6px; font-size: 11.5px; color: var(--cs-muted); }
+ * closed list.
+ * Both lines are in the warm text colour because they sit on the warm tint: muted grey
+ * on the app's warning container is 3.9:1 in the dark scheme. */
+.needs .opts { margin-top: 6px; font-size: 11.5px; color: var(--cs-warn-text); }
 .needs .learn {
   display: flex; align-items: center; gap: 6px; margin-top: 7px;
-  font-size: 11.5px; color: var(--cs-muted);
+  font-size: 11.5px; color: var(--cs-warn-text);
 }
 /* The row's own submit. Smaller than the footer's `.cta` and deliberately so:
  * there is one primary on this surface and it is the footer's, and a second
