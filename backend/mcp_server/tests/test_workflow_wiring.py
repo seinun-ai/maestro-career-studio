@@ -132,6 +132,17 @@ def test_set_base_resume_identity_tool_forwards_only_what_was_given(monkeypatch)
     assert seen == {"slug": "uk_ds", "countries": ["GB"], "company": ""}
 
 
+def test_set_base_resume_identity_tool_forwards_color_hue(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client, "set_base_resume_identity", lambda slug, **kw: seen.update(slug=slug, **{k: v for k, v in kw.items() if v is not None}) or {"slug": slug}
+    )
+
+    srv.set_base_resume_identity("uk_ds", color_hue=230)
+
+    assert seen == {"slug": "uk_ds", "color_hue": 230}
+
+
 def test_score_ats_brief_never_reads_settings_or_profile(monkeypatch):
     # The whole point of `brief` is a triage loop paying no extra HTTP round
     # trip. If either settings call fires, the mutation is invisible to a

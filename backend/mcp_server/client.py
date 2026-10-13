@@ -735,7 +735,7 @@ class BackendClient:
 
     def set_base_resume_identity(self, slug: str, **fields: Any) -> Any:
         """PATCH /identity with the fields the tool was given (display_name, role_category,
-        role_label, countries, company, focus). None is "not sent"; "" and [] are real values
+        role_label, countries, company, focus, color_hue). None is "not sent"; "" and [] are real values
         (they clear), so only None is dropped."""
         return self._request("PATCH", f"/api/base-resumes/{slug}/identity", json=_drop_none(**fields))
 

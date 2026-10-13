@@ -885,6 +885,7 @@ def set_base_resume_identity(
     countries: list[str] | None = None,
     company: str | None = None,
     focus: str | None = None,
+    color_hue: int | None = None,
 ) -> Any:
     """Set what a base resume is written for. Only the fields passed change.
     `countries` (ISO codes) restricts which jobs the resume is scored and
@@ -892,9 +893,10 @@ def set_base_resume_identity(
     one is flagged. `role_category`/`role_label` name the role, `company` and
     `focus` are free-text emphasis hints for tailoring (at most 80 characters
     each), and `display_name` renames the resume. `[]` clears countries and
-    `""` clears company or focus. An unknown country or an over-long value is a
-    422 that saves none of the fields. Resume content, versions and the PDF
-    are never touched."""
+    `""` clears company or focus. `color_hue` (0-359) sets the colour the app
+    shows beside the resume's name; it never changes the PDF. An unknown country,
+    an over-long value or a hue outside 0-359 is a 422 that saves none of the
+    fields. Resume content, versions and the PDF are never touched."""
     return _client.set_base_resume_identity(
         slug,
         display_name=display_name,
@@ -903,6 +905,7 @@ def set_base_resume_identity(
         countries=countries,
         company=company,
         focus=focus,
+        color_hue=color_hue,
     )
 
 

@@ -12,7 +12,7 @@
   `get_job_site_login` hands the login to a Queued/approved job's agent (§6); filer and create-lock rules: "MCP proposal filer" below), base resumes
   (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, details carry the parent diff, a restore
   is a new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes` without deleting; those
-  five and `set_base_resume_identity` (a base's only anchor writer, `""`/`[]` clear) are **full-profile only**), health
+  five and `set_base_resume_identity` (a base's only anchor writer and, after create, its only colour writer; `""`/`[]` clear) are **full-profile only**), health
   (run/get + waivers; a finding carries its bullet's own `question`, `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a report `next_grade`; disputes and the word bank
   are web-only; the bank uses GET/PUT), the full tailoring workflow (session tools take **`tailoring_session_id`** — breaking rename, no
   legacy alias — and carry `base_anchors`; `resolve_gaps`' evidence-carrying actions are gated server-side — §4;
@@ -103,6 +103,14 @@
   the category's label, null when undeclared) or null for no row, a soft-deleted row or all four empty;
   it feeds `TailoringSession.base_anchors` (a model property over a viewonly `base_row`, on every session
   response, null for a soft-deleted base) and the base summaries in the hunt brief (`anchors`).
+  **Colour** is `color_hue` (0-359, nullable; null draws neutral): identity, never state. Every create path
+  picks it (create, `from-kb`, `/import`, duplicate, KB import, seeding): the caller's value when given,
+  else a random preset no selectable (not archived, not deleted) base holds, else one of the least-used
+  (`services/resume_colors.py`; seeding adds each pick to its in-use list before the next). Only the hue is
+  stored; the app derives its tones. After create it changes ONLY through `PATCH /identity` (MCP
+  `set_base_resume_identity`), validated before any write like the anchors, with the same no-version, no-render
+  rule; duplicate picks a fresh hue instead of copying. It syncs with the profile row like the anchors (export
+  walks the columns, so the payload is unchanged).
   **Only countries decide anything.** `services/base_eligibility.py` owns the rule: a job whose country
   is unknown (`countries.normalize` finds no code, "Remote" included) keeps every selectable base; a
   known country keeps the bases listing it plus those with no countries; when none qualify every

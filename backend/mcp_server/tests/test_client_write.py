@@ -268,6 +268,16 @@ def test_set_base_resume_identity_sends_clearing_values_as_given():
 
 
 @respx.mock
+def test_set_base_resume_identity_sends_the_colour_hue():
+    route = respx.patch(f"{BASE}/api/base-resumes/uk_ds/identity").mock(
+        return_value=httpx.Response(200, json={"slug": "uk_ds"})
+    )
+    BackendClient(BASE).set_base_resume_identity("uk_ds", color_hue=230)
+    import json as _json
+    assert _json.loads(route.calls.last.request.read()) == {"color_hue": 230}
+
+
+@respx.mock
 def test_score_ats_posts_include_other_countries_only_when_true():
     route = respx.post(f"{BASE}/api/ats-scores").mock(return_value=httpx.Response(200, json=[]))
     client = BackendClient(BASE)

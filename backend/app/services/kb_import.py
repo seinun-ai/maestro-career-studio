@@ -47,6 +47,7 @@ from app.services import (
     role_categories,
 )
 from app.services.attachment_extract import UnreadableFile, extract_text, plain_read_error
+from app.services.resume_colors import hues_in_use, pick_hue
 from app.services.resume_versions import record_version
 
 logger = logging.getLogger(__name__)
@@ -168,6 +169,7 @@ def _mint_base(
         data_json=data,
         role_category=proposed_role,
         role_label=role_label,
+        color_hue=pick_hue(hues_in_use(session)),
     )
     session.add(row)
     record_version(session, "base", slug, data, source="import")

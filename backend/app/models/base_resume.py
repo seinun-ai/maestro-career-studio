@@ -39,6 +39,9 @@ class BaseResume(Base):
     )
     company: Mapped[str | None] = mapped_column(Text, nullable=True)
     focus: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Identity colour hue (0-359), picked on create (services/resume_colors.py)
+    # and changed only through PATCH /identity. Never state; NULL draws neutral.
+    color_hue: Mapped[int | None] = mapped_column(Integer, nullable=True)
     data_json: Mapped[dict] = mapped_column(JSONDoc, nullable=False)
     pdf_path: Mapped[str | None] = mapped_column(Text)
     tex_path: Mapped[str | None] = mapped_column(Text)

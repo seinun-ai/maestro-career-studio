@@ -47,6 +47,7 @@ from app.services import (
     pdf_preview,
     role_categories,
 )
+from app.services.resume_colors import hues_in_use, pick_hue
 from app.services.base_resume_data import resume_label
 from app.services.attachment_extract import (
     UPLOAD_UNREADABLE,
@@ -214,6 +215,7 @@ def _detail(
         countries=row.countries,
         company=row.company,
         focus=row.focus,
+        color_hue=row.color_hue,
         data=ResumeData.model_validate(row.data_json),
         pdf_path=row.pdf_path,
         tex_path=row.tex_path,
@@ -290,6 +292,9 @@ def create_base_resume(
         data_json=data_dict,
         role_category=role_category,
         role_label=role_label,
+        color_hue=payload.color_hue
+        if payload.color_hue is not None
+        else pick_hue(hues_in_use(db)),
     )
     db.add(row)
     record_version(db, "base", payload.slug, data_dict, source="create")
@@ -480,6 +485,7 @@ def create_from_kb(
             data=ResumeData.model_validate(composed),
             role_category=role_category,
             role_label=role_label,
+            color_hue=payload.color_hue,
         ),
         db,
     )
@@ -537,6 +543,7 @@ def import_base_resume(
     display_name: Annotated[str | None, Form()] = None,
     role_category: Annotated[str | None, Form()] = None,
     role_label: Annotated[str | None, Form()] = None,
+    color_hue: Annotated[int | None, Form()] = None,
 ):
     """Parse ONE uploaded resume file straight into a NEW base resume.
 
@@ -571,6 +578,7 @@ def import_base_resume(
             data=ResumeData.model_validate(parsed),
             role_category=role_category or None,
             role_label=role_label or None,
+            color_hue=color_hue,
         ),
         db,
     )
@@ -616,10 +624,11 @@ def update_base_resume_identity(
     payload: BaseResumeIdentity,
     db: Annotated[Session, Depends(get_db)],
 ):
-    """Set a base resume's role, display name and/or anchors.
+    """Set a base resume's role, display name, anchors and/or colour hue.
 
     The anchors are countries (ISO codes), company and focus; saving them is
-    metadata too, so a 422 on any field saves none of them.
+    metadata too, so a 422 on any field saves none of them. The colour hue
+    (0-359) is checked by the schema before this body runs.
 
     Deliberately NOT the full PUT: that rewrites data_json, records a
     ResumeVersion, rewrites the on-disk JSON and recompiles the PDF. Declaring a
@@ -656,6 +665,8 @@ def update_base_resume_identity(
         row.display_name = payload.display_name
     for column, value in anchor_updates.items():
         setattr(row, column, value)
+    if "color_hue" in fields:
+        row.color_hue = payload.color_hue
 
     db.commit()
     db.refresh(row)
@@ -812,6 +823,10 @@ def duplicate_base_resume(
         countries=list(source.countries or []),
         company=source.company,
         focus=source.focus,
+        # The colour tells the copy apart from its source, so it is picked, not copied.
+        color_hue=payload.color_hue
+        if payload.color_hue is not None
+        else pick_hue(hues_in_use(db)),
     )
     db.add(row)
     record_version(
