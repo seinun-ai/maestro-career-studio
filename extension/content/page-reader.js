@@ -48,7 +48,7 @@
   const MAX_APPLY_URL = 2048;
   const BOARD_HOST = /(^|\.)(linkedin|indeed)\.com$/i;
   const CONFIRM_PASSWORD = /confirm|re-?enter|re-?type|repeat|verify/i;
-  const ONE_TIME_CODE = /\botp\b|one[- ]?time|verification code|security code|confirmation code|authentication code|passcode/i;
+  const ONE_TIME_CODE = /\botp\b|verification code|authentication code|passcode/i;
   // Site chrome: a "Continue" in a header or nav is the site's, never the application step's.
   const CHROME = 'header, nav, [role="banner"], [role="navigation"], [role="search"], [role="contentinfo"], [role="menubar"]';
   const FORM = 'form, [role="form"]';
@@ -121,8 +121,14 @@
 
   // The forms that hold the application's own fields. A header search form does not count, and
   // when no form holds fields (some wizards render none) every non-chrome button is the step's.
+  // A form of hidden, display:none or parked-off-page controls (a tracking or CSRF form) is not the
+  // page's: counting it would turn off the no-form path and park the real Next.
+  const onPage = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.right + window.scrollX > 0 && r.bottom + window.scrollY > 0;
+  };
   const fieldForms = () => [...document.querySelectorAll(FORM)]
-    .filter((f) => !f.closest(CHROME) && f.querySelector(FIELD));
+    .filter((f) => !f.closest(CHROME) && [...f.querySelectorAll(FIELD)].some((c) => shown(c) && onPage(c)));
 
   const inFormOf = (forms) => (el) => {
     if (!forms.length) return !el.closest(CHROME);

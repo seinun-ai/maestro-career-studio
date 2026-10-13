@@ -173,8 +173,20 @@ def test_password_and_code_inputs(page, load):
     assert (s["passwordInputs"], s["confirmPassword"]) == (2, True)
     load(page, "<input type='password' autocomplete='new-password'>", SOURCES)
     assert summary(page)["confirmPassword"] is True   # a lone new-password is a sign-up, which parks
+    load(page, "<label>Enter the OTP <input name='x'></label>", SOURCES)
+    assert summary(page)["otpInput"] is True
     load(page, "<label>Enter the 6-digit code <input name='otp'></label>", SOURCES)
     assert summary(page)["otpInput"] is True
+    load(page, "<input name='c' autocomplete='one-time-code'>", SOURCES)
+    assert summary(page)["otpInput"] is True
+
+
+@pytest.mark.parametrize("label", ["One-time relocation bonus expected?", "Card security code"])
+def test_one_time_or_security_code_words_alone_are_not_a_code_box(page, load, label):
+    load(page, f"<label>{label} <input name='q1'></label><label>First name <input name='fn'></label>"
+               "<button>Next</button>", SOURCES)
+    assert summary(page)["otpInput"] is False
+    assert classify(page)["kind"] == "form_step"
 
 
 # ---------- captcha ----------
@@ -240,6 +252,19 @@ def test_a_page_with_no_form_element_is_a_form_step_through_its_footer_bar(page,
     assert verdict["kind"] == "form_step"
     named = page.evaluate("(id) => document.querySelector(`[data-maestro-btn='${id}']`).textContent", verdict["next"])
     assert named == "Save and Continue"
+
+
+@pytest.mark.parametrize("hide", [
+    "", "style='display:none'", "style='visibility:hidden'", "style='position:absolute;left:-10000px'",
+])
+def test_a_form_of_unseen_controls_does_not_turn_off_the_no_form_footer_path(page, load, hide):
+    """A tracking or CSRF form with only hidden, display:none or parked controls is not the
+    page's form: counting it would make the real footer Next inForm:false and park the step."""
+    unseen = "<input type='hidden' name='t'>" if not hide else f"<input name='t' {hide}>"
+    load(page, NO_FORM_PAGE + f"<form action='#'>{unseen}</form>", SOURCES)
+    in_form = {b["text"]: b["inForm"] for b in summary(page)["buttons"]}
+    assert in_form["Save and Continue"] is True and in_form["Continue"] is False
+    assert classify(page)["kind"] == "form_step"
 
 
 def test_a_nav_landmark_button_is_never_the_steps_next(page, load):
