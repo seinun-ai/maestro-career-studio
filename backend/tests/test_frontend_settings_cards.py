@@ -538,11 +538,23 @@ def test_the_screening_answers_dial_replaces_the_low_stakes_switch():
         "Only your saved answers and career history. Anything else waits for you.",
         "Also answers low-stakes questions in the job's favor, and years-with-a-skill questions "
         "when your history shows the skill.",
-        "On jobs you queued, also says yes to every requirement question.",
+        "On jobs you queued, also says yes to requirement and years questions, except the ones listed below. "
+        "If your history shows fewer years, it asks you.",
+        "Low-stakes means how you heard about the job, travel, relocation and similar. "
+        "They show under Answered for you.",
         "Work authorization, sponsorship, salary, EEO, background, clearance and legal statements "
-        "always wait for a saved answer.",
+        "always wait for a saved answer, unless you allow agreements and signatures above.",
     ):
         assert line in levels_flat or line.replace("'", "&apos;") in flat, line
+
+
+def test_each_level_is_named_by_its_label_and_described_by_its_lines():
+    """The radio's name was its label plus the whole description; the label span names it and the lines describe it."""
+    dial = _slice(_AUTOFILL, "function ScreeningAnswers(", "\n}\n")
+    assert "aria-labelledby={`${optionId}-${level.value}-label`}" in dial
+    assert "aria-describedby={`${optionId}-${level.value}-lines`}" in dial
+    assert "id={`${optionId}-${level.value}-label`}" in dial
+    assert "id={`${optionId}-${level.value}-lines`}" in dial
 
 
 def test_the_screening_answers_save_is_not_scoped():

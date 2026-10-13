@@ -1290,6 +1290,8 @@ const ANSWER_LEVELS: {
   value: AutofillOptions["answer_level"];
   label: string;
   line: string;
+  /** What a word in the line means, said once under it. */
+  note?: string;
 }[] = [
   {
     value: "facts",
@@ -1302,11 +1304,17 @@ const ANSWER_LEVELS: {
     line:
       "Also answers low-stakes questions in the job's favor, and "
       + "years-with-a-skill questions when your history shows the skill.",
+    note:
+      "Low-stakes means how you heard about the job, travel, relocation and "
+      + "similar. They show under Answered for you.",
   },
   {
     value: "queued",
     label: "Queued means I qualify",
-    line: "On jobs you queued, also says yes to every requirement question.",
+    line:
+      "On jobs you queued, also says yes to requirement and years questions, "
+      + "except the ones listed below. If your history shows fewer years, it "
+      + "asks you.",
   },
 ];
 
@@ -1314,6 +1322,7 @@ function ScreeningAnswers() {
   const qc = useQueryClient();
   const labelId = useId();
   const hintId = useId();
+  const optionId = useId();
   const options = useQuery({
     queryKey: ["settings", "autofill-options"],
     queryFn: () => apiFetch<AutofillOptions>("/api/settings/autofill-options"),
@@ -1351,18 +1360,37 @@ function ScreeningAnswers() {
         }
       >
         {ANSWER_LEVELS.map((level) => (
+          // The radio is named by its label alone and described by the lines
+          // under it, so a screen reader doesn't read the whole paragraph as
+          // the name.
           <label key={level.value} className="flex items-start gap-2">
-            <Radio value={level.value} />
+            <Radio
+              value={level.value}
+              aria-labelledby={`${optionId}-${level.value}-label`}
+              aria-describedby={`${optionId}-${level.value}-lines`}
+            />
             <span className="grid gap-0.5">
-              <span className="text-label-large">{level.label}</span>
-              <span className="text-muted-foreground text-body-small">{level.line}</span>
+              <span
+                id={`${optionId}-${level.value}-label`}
+                className="text-label-large"
+              >
+                {level.label}
+              </span>
+              <span
+                id={`${optionId}-${level.value}-lines`}
+                className="text-muted-foreground grid gap-0.5 text-body-small"
+              >
+                <span>{level.line}</span>
+                {level.note ? <span>{level.note}</span> : null}
+              </span>
             </span>
           </label>
         ))}
       </RadioGroup>
       <p id={hintId} className="text-muted-foreground text-body-small">
         Work authorization, sponsorship, salary, EEO, background, clearance and
-        legal statements always wait for a saved answer.
+        legal statements always wait for a saved answer, unless you allow
+        agreements and signatures above.
       </p>
       {options.isError ? (
         <p className="text-label-medium">Couldn&apos;t load this setting.</p>
