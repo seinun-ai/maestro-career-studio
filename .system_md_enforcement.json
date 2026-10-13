@@ -211,6 +211,11 @@
       {"path": "backend/tests/test_replay.py", "symbol": "test_foreign_reasoning_is_dropped_and_own_kept"},
       {"path": "backend/app/services/llm_providers/replay.py", "symbol": "def for_provider"}
     ],
+    "inv-resume-color-identity": [
+      {"path": "backend/tests/test_frontend_resume_colors.py", "symbol": "test_the_tones_are_the_recipe"},
+      {"path": "backend/tests/test_resume_color_parity.py", "symbol": "test_the_extension_presets_equal_the_frontend_presets_in_order"},
+      {"path": "extension/shared/resume-color.js", "symbol": "PRESETS"}
+    ],
     "inv-env-before-app": [
       {"path": "backend/tests/maestro_cs/test_maintenance.py", "symbol": "test_importing_the_cli_alone_imports_no_app_module"},
       {"path": "backend/tests/maestro_cs/test_maintenance.py", "symbol": "test_check_binds_settings_to_the_home_after_apply_env"},

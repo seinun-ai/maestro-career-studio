@@ -8,5 +8,6 @@ A dialog interrupts for one decision or one short task, and keeps what the perso
 - Focus moves into the dialog on open and returns to the trigger on close; it never falls to `<body>`.
 - A dialog keeps what the user typed, or paid for, across close.
 - Leaving with unsaved work asks.
+- A tall form keeps its actions in view: `DialogFooter sticky` pins the bar to the popup's bottom edge while the body scrolls. Pair it with `scroll-pb-*` on the `DialogContent`, so a focused control is never left under the bar.
 
 Source: `frontend/components/ui/dialog.tsx`, `confirm-dialog.tsx`. Changed from source: padding 16px to 24px, `shadow-level3` added.

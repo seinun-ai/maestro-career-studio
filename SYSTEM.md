@@ -270,7 +270,6 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `test_template_id_containment.py`. Related: `model_settings.set_base_url` rejects non-`http(s)` schemes — that value
   decides **where the stored API key is sent** (`llm._client`); both containers run non-root `APP_UID` over the PII
   mounts; and `llm._log_call` keeps metadata only unless `llm_log_content` is set (0600 either way).
-
 - **An empty environment variable means UNSET.** `{#inv-empty-env-unset}` `config.scrub_empty_env()` deletes every
   empty/whitespace env var at import, before any SDK client is constructed (`config.SCRUBBED_ENV` records what went).
   `docker-compose.yml` writes `VAR: ${VAR:-}` for optional settings — an EMPTY STRING, not an omission — and third-party
@@ -394,7 +393,6 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   Next/Submit and nothing wider; `consent_forms` lifts every label refusal for the callers that pass it (the fill loop,
   a model included; never the old collector/pause rows), and only it, as served (lapsed or unreadable: absent), adds
   `derived.agrees_to_terms`.
-
 - **Provider data** `{#inv-provider-tagged-meta}`: opaque blocks (`ProviderMeta`: Claude thinking signatures, Gemini thought
   signatures) carry their provider and reach only that provider; `replay.for_provider` strips them for any other, so a model
   switch mid-chat never leaks one vendor's blocks to another. Pinned by `tests/test_replay.py`.
@@ -425,7 +423,6 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   under `app/` imports `sqlalchemy.dialects`. `UTCDateTime` is the whole timezone story: aware in Python, naive UTC on
   disk, and a NAIVE bind raises; the APP writes every timestamp (`default=utcnow`, `onupdate=utcnow`) so one format
   lands on disk. Pinned by `tests/test_db_portability.py`.
-
 - **Job-site passwords stay in their local file.** `{#inv-job-site-password-local}`
   `settings/secrets/job-site-login.json` is 0600 (directory 0700); writes serialize and replace from unique temp files;
   damaged JSON/non-object files read empty. Never DB, exports, telemetry or logs. Settings GET/PUT return only `{email,
@@ -434,7 +431,6 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `ConsentEvent(action="login_shared", channel="mcp", note=client name)`, never the value; the login passes through the
   agent's AI provider. Pins: `tests/test_job_site_login.py`, `test_job_site_login_handoff.py`,
   `mcp_server/tests/test_client_job_site_login.py` (symbols in `.system_md_enforcement.json`).
-
 - **Automatic consent is gated by the user's switch.** `{#inv-auto-consent-gated}` Off by default; only PUT
   `/api/settings/full-automation` (`{value: bool}`, StrictBool) writes it; PUT `/api/settings/auto-apply` preserves it.
   Channel `auto` approves only `accepted` (Queued), requires `final_review` evidence, re-checks the company blocklist,
@@ -443,7 +439,6 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   still has its submit recorded. Eligibility is the agent's `apply-auto` prompt, not a server-side review judgment.
   Pins: `tests/test_full_automation_setting.py`, `test_proposal_state_machine.py` (symbols in
   `.system_md_enforcement.json`).
-
 - **One writer per job; the laptop owns the profile.** `{#inv-one-writer-ownership}` With sync on (a key file exists) every job has one owner
   machine (`jobs.owner_machine`, NULL = this one) and the other copy holds a read-only replica; the laptop owns the whole profile, which
   the always-on copy replaces on every round and never merges. A queue, skip, status or note change on the other copy's job is a
@@ -484,6 +479,9 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   environment at import, and its `env_file=".env"` would read a Docker checkout's file from the caller's folder. One-shot verbs
   (`check`, `migrate`, `connect`) call `home.apply_env()` first, which also `chdir`s into the home; servers get it as child env
   with cwd = home; `maestro mcp` imports no `app` module. Pinned by `tests/maestro_cs/test_maintenance.py` and `test_bridge.py`.
+- **Base resume colour is identity, never state.** `{#inv-resume-color-identity}` One hue per base resume, drawn as a square beside its
+  name, never as status; the recipe lives once in `globals.css` and the presets are mirrored across backend, frontend and extension.
+  Pinned by `tests/test_frontend_resume_colors.py` and `test_resume_color_parity.py`.
 
 ## 7. Agent surfaces
 
@@ -581,7 +579,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`)
   get a per-render snapshot, per-CONCERN actions (`panel/actions/*.js`) a handle with one
   `write(patch)` door, and each roster THROWS at boot naming a missing script. `panel/icons.js` (`ns.icon`, inline Lucide svg) draws every icon;
-  the panel carries no emoji or text glyph (`test_extension_panel_icons.py`). `shared/status-roles.js` is the application status table (word + colour role) the web `StatusChip` shares (`test_extension_status_roles.py`). `shared/` is
+  the panel carries no emoji or text glyph (`test_extension_panel_icons.py`). `shared/status-roles.js` is the application status table (word + colour role) the web `StatusChip` shares (`test_extension_status_roles.py`). `shared/resume-color.js` holds the base resume presets behind the Companion's base resume square (`swatch`; §6 inv-resume-color-identity). `shared/` is
   what both worlds load: `decisions.js` (the ONE home of panel rules), `choose.js` (routing, /choose batch, `rest_fill` shaping, `QUESTIONY`).
   `guided-run.js` (runner, injected transport) is panel-only.
   Failure copy (never server text; `failureNote`), revisit rules, sender model, COMMIT GESTURE and the ONE `attachableFileInputs` definition:
@@ -857,6 +855,10 @@ citation. Priority lives in the item text, not in the ordinal.
 
 ## 12. Gotchas that have bitten before
 
+- **A hidden tab stalled saves** (2026-10-13): TanStack v5 scoped mutations queue as paused and continue only while the tab
+  is focused → serialize saves with a per-key promise chain (`lib/in-order.ts`), never a mutation scope.
+- **Safari may not focus a range input on click** (2026-10-13): UI latched on focus never engaged → latch on `pointerdown` as well.
+- **`[&_img]:opacity-N` beat an img's own `opacity-0` loading class** (2026-10-13): specificity → pass a prop, not a descendant selector.
 - **An update served the old version's pages** (2026-10-12, 0.10.0): Next writes `.next/server/route-cache` inside the
   installed bundle at run time; uv replaces only shipped files, so 0.9.0's cached HTML (dead script and CSS links) outlived
   the update → `maestro run` clears it before the web starts (`runtime.clear_web_cache`).
