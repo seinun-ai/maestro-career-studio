@@ -188,15 +188,15 @@ export function TemplateSelect({
             className={cn(
               "flex w-full items-center justify-between gap-3 rounded-corner-sm border px-3 py-2 text-left transition-colors",
               value === DEFAULT_TEMPLATE
-                ? "border-primary bg-primary/5"
+                ? "border-primary bg-secondary-container text-on-secondary-container"
                 : "hover:bg-surface-container-low dark:hover:bg-surface-container-high",
             )}
           >
             <span className="flex items-center gap-2 text-title-small">
-              {value === DEFAULT_TEMPLATE && <Check className="text-primary size-4 shrink-0" aria-hidden="true" />}
+              {value === DEFAULT_TEMPLATE && <Check className="size-4 shrink-0" aria-hidden="true" />}
               Use the default template
             </span>
-            <span className="text-muted-foreground text-body-small">
+            <span className={cn("text-body-small", value !== DEFAULT_TEMPLATE && "text-muted-foreground")}>
               {defaultTemplate?.display_name ?? "Default"}
             </span>
           </button>

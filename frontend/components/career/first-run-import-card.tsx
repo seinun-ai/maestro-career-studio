@@ -56,7 +56,7 @@ export function FirstRunImportCard() {
 
   return (
     <>
-      <Card className="border-primary/20 bg-primary/[0.03]">
+      <Card className="border-0 bg-surface-container-low ring-0">
         <CardContent className="flex flex-wrap items-start justify-between gap-4 pt-6">
           <div className="flex gap-3">
             <Sparkles className="text-primary mt-0.5 size-5 shrink-0" />

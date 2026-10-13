@@ -350,8 +350,8 @@ def test_segmented_controls_and_entity_cards_expose_pressed():
 
 # `bg-primary/N` and `bg-background/N` as a component fill is retired (design-system README, Color):
 # a faded fill is not a role, so its text partner has no contrast guarantee. What may still carry
-# one is a bar that floats over scrolling content (it must show what is under it), a pill over an
-# image, and the hover on a solid primary.
+# one is a bar that floats over scrolling content, a pill over an image, and a state layer on a
+# solid fill (a hover or focus tint is not a resting fill).
 _OVERLAY_FILES = {
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": "sticky footer",
     "components/resume-health/health-report-page.tsx": "sticky bar",
@@ -359,26 +359,10 @@ _OVERLAY_FILES = {
     "components/proposals/triage-actions.tsx": "fixed bar",
     "components/sidebar-reveal-trigger.tsx": "floating trigger",
     "components/gallery/preview-thumbnail.tsx": "pills over the page image",
+    "components/templates/template-gallery.tsx": "the selected pill over the preview image",
     "components/ui/button.tsx": "hover on the solid primary, and a comment",
-}
-# Sites the audit never listed, found by this scan. Each is a resting tint, a selected or drop-target
-# state, a hover, or a bar fill; none is changed yet because a role there is a design call. Shrink
-# this set as they are decided (never grow it).
-_UNDECIDED_FILES = {
     "components/ui/badge.tsx": "hover on the solid primary",
-    "components/career/capture-box.tsx": "the card's resting tint",
-    "components/career/entity-card.tsx": "hover tint on the card",
-    "components/career/first-run-import-card.tsx": "resting tint",
-    "components/career/new-entity-dialog.tsx": "selected kind",
-    "components/chat/change-card.tsx": "resting tint",
-    "components/chat/kb-capture-card.tsx": "resting tint",
-    "components/explore/explore-overview.tsx": "bar fill",
-    "components/resume-editor/editor-shell.tsx": "panel wash and resize-handle hover",
-    "components/resume-editor/extra-sections-editor.tsx": "drop target",
-    "components/resume-editor/formatting-panel.tsx": "panel wash",
-    "components/resume-versions/version-diff-view.tsx": "badge wash",
-    "components/templates/template-gallery.tsx": "pill over the preview image",
-    "components/templates/template-select.tsx": "selected template",
+    "components/resume-editor/editor-shell.tsx": "the resize handle's hover and focus tint",
 }
 
 
@@ -388,7 +372,7 @@ def test_no_opacity_fill_outside_the_allow_list():
         for path in (_FRONTEND / root).rglob("*.tsx"):
             rel = path.relative_to(_FRONTEND).as_posix()
             if re.search(r"bg-(?:primary|background)/", path.read_text(encoding="utf-8")):
-                if rel not in _OVERLAY_FILES and rel not in _UNDECIDED_FILES:
+                if rel not in _OVERLAY_FILES:
                     offenders.append(rel)
     assert offenders == [], f"use a role pair or a surface step, not an opacity: {offenders}"
 
@@ -396,10 +380,47 @@ def test_no_opacity_fill_outside_the_allow_list():
 def test_the_allow_list_only_names_files_that_still_need_it():
     stale = [
         rel
-        for rel in (*_OVERLAY_FILES, *_UNDECIDED_FILES)
+        for rel in _OVERLAY_FILES
         if not re.search(r"bg-(?:primary|background)/", (_FRONTEND / rel).read_text(encoding="utf-8"))
     ]
     assert stale == [], f"drop these from the allow-list: {stale}"
+
+
+def test_the_editor_shell_keeps_its_opacity_to_the_resize_handle():
+    shell = _read("components/resume-editor/editor-shell.tsx")
+    assert len(re.findall(r"bg-(?:primary|background)/", shell)) == 2  # hover and focus, the same class run
+    assert "hover:bg-primary/20 focus-visible:bg-primary/40" in shell
+
+
+def test_a_selected_choice_is_secondary_container_with_a_check_and_aria_pressed():
+    """README "Selected in a set": the tonal fill, a leading Check, aria-pressed."""
+    for rel in (
+        "components/career/new-entity-dialog.tsx",
+        "components/resume-editor/extra-sections-editor.tsx",
+        "components/templates/template-select.tsx",
+    ):
+        src = _read(rel)
+        assert "bg-secondary-container text-on-secondary-container" in src, rel
+        assert "aria-pressed={" in src and "<Check " in src, rel
+    dialog = _read("components/career/new-entity-dialog.tsx")
+    assert dialog.count('<Check className="size-3.5 shrink-0" aria-hidden="true" />') == 2
+
+
+def test_resting_cards_that_were_blue_washes_sit_on_a_surface_step():
+    for rel in (
+        "components/career/capture-box.tsx",
+        "components/career/first-run-import-card.tsx",
+        "components/chat/change-card.tsx",
+        "components/chat/kb-capture-card.tsx",
+    ):
+        src = _read(rel)
+        assert "bg-surface-container-low" in src and "bg-primary/" not in src, rel
+    # The capture box's textarea sits one step above the card it is in.
+    capture = _read("components/career/capture-box.tsx")
+    assert "border-0 bg-surface-container px-4 ring-1" in capture
+    # The explore bar is one series: the solid fill ScoreBar uses.
+    assert "bg-primary block h-full rounded-full" in _read("components/explore/explore-overview.tsx")
+    assert 'variant="outline" className="bg-card"' in _read("components/resume-versions/version-diff-view.tsx")
 
 
 _RING_SURFACES = ("background", "card", "sidebar", "canvas", "muted", "secondary-container")

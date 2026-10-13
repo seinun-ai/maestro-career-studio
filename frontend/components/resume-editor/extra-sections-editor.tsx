@@ -6,6 +6,7 @@ import {
   ArrowUp,
   Eye,
   EyeOff,
+  Check,
   Ellipsis,
   Pencil,
   Plus,
@@ -589,12 +590,15 @@ function TypeChoice({
       className={cn(
         "flex flex-1 flex-col items-start gap-0.5 rounded-corner-sm border px-3 py-2 text-left transition-colors",
         active
-          ? "border-primary bg-primary/5"
+          ? "border-primary bg-secondary-container text-on-secondary-container"
           : "border-input hover:border-border",
       )}
     >
-      <span className="text-title-small">{title}</span>
-      <span className="text-muted-foreground text-body-small">{hint}</span>
+      <span className="flex items-center gap-1.5 text-title-small">
+        {active ? <Check className="size-3.5 shrink-0" aria-hidden="true" /> : null}
+        {title}
+      </span>
+      <span className={cn("text-body-small", !active && "text-muted-foreground")}>{hint}</span>
     </button>
   );
 }

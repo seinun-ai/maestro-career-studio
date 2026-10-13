@@ -69,7 +69,12 @@ export default function BaseResumesListPage() {
   const afterDelete = useRef<(() => HTMLElement | null) | null>(null);
   const visibleResumes = resumes.data ?? [];
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["base-resumes"] });
+  // Career history's cards say which base resumes use an item ("In N resumes"), so a delete or an
+  // archive refreshes them too.
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: ["kb", "entities"] });
+    return qc.invalidateQueries({ queryKey: ["base-resumes"] });
+  };
 
   const duplicate = useMutation({
     mutationFn: () => {

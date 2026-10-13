@@ -123,6 +123,8 @@ export function SendToResumeDialog({
       queryKey: ["resume-versions", "base", targetSlug],
     });
     void queryClient.invalidateQueries({ queryKey: ["kb", "entity", entity.id] });
+    // The card's "In N resumes" row.
+    void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
     // The port is committed before the target re-renders, so a render failure
     // now comes back beside the success (it used to be a 4xx for a port that
     // had already landed), not instead of it.

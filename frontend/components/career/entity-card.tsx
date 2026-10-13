@@ -56,7 +56,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
     <GalleryCard
       href={`/career/${entity.id}`}
       ariaLabel={`Open ${entity.title}`}
-      className="h-full bg-surface-container-low pt-4 ring-0 transition-[translate,scale,background-color,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:bg-primary/5 has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring has-[a:active]:scale-[0.97]"
+      className="h-full bg-surface-container-low pt-4 ring-0 transition-[translate,scale,background-color,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:bg-surface-container has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring has-[a:active]:scale-[0.97]"
     >
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
         <div className="min-w-0">
@@ -139,7 +139,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
 const MAX_SQUARES = 8;
 
 /** "In 3 resumes" and the resumes' squares: which base resumes this item is on. A square always sits
- *  beside its name, so for a row of squares the names ride in the row's title and in an sr-only list
+ *  beside its name, so for a row of squares the names ride in the squares' title and in an sr-only list
  *  (the squares themselves are hidden from assistive tech). Nothing for an item that is on none. */
 function UsedIn({ slugs }: { slugs: string[] }) {
   const colorOf = useBaseResumeColor();
@@ -147,11 +147,13 @@ function UsedIn({ slugs }: { slugs: string[] }) {
   if (slugs.length === 0) return null;
   const names = slugs.map(nameOf);
   return (
-    <div className="text-muted-foreground flex items-center gap-1.5 text-body-small" title={names.join(", ")}>
+    <div className="text-muted-foreground flex items-center gap-1.5 text-body-small">
       <span>
         In {slugs.length} {slugs.length === 1 ? "resume" : "resumes"}
       </span>
-      <span className="flex items-center gap-1" aria-hidden="true">
+      {/* `relative z-20` lifts the squares above the card's stretched link (as GalleryCardActions does), so
+          hovering them shows the names; the rest of the card, the words included, still opens it. */}
+      <span className="relative z-20 flex items-center gap-1" title={names.join(", ")} aria-hidden="true">
         {slugs.slice(0, MAX_SQUARES).map((slug) => (
           <ResumeSwatch key={slug} hue={colorOf(slug)} />
         ))}
@@ -180,7 +182,7 @@ function Metric({
 }) {
   if (value === 0) return null;
   return (
-    <span className="text-muted-foreground inline-flex h-6 items-center gap-1 rounded-full bg-surface-container px-2">
+    <span className="text-muted-foreground inline-flex h-6 items-center gap-1 rounded-full bg-surface-container px-2 group-hover/card:bg-surface-container-highest">
       <Icon className="size-3.5" aria-hidden="true" />
       {value} {value === 1 ? one : many}
     </span>

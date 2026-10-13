@@ -34,8 +34,32 @@ def test_up_to_eight_squares_then_a_count_of_the_rest():
     assert "slugs.length > MAX_SQUARES ?" in _ROW and "+{slugs.length - MAX_SQUARES}" in squash(_ROW)
 
 
-def test_the_names_ride_in_the_title_and_an_sr_only_list_not_beside_each_square():
-    assert "title={names.join(\", \")}" in _ROW
-    assert '<span className="flex items-center gap-1" aria-hidden="true">' in squash(_ROW)
+def test_the_names_ride_in_the_squares_title_and_an_sr_only_list():
+    squares = '<span className="relative z-20 flex items-center gap-1" title={names.join(", ")} aria-hidden="true">'
+    assert squares in squash(_ROW)
     assert tokens(open_tag(_ROW, "ul")) == {"sr-only"}
     assert "nameOf" in _ROW and "useBaseResumeLabel" in _CARD and "useBaseResumeColor" in _CARD
+
+
+def test_only_the_squares_sit_above_the_cards_link():
+    """The card's link covers the face at z-10, so a title under it never shows; the squares lift to
+    z-20 (as GalleryCardActions does) and the row's words stay under the link, so the card still opens."""
+    assert _ROW.count('className="relative z-20') == 1 and "title=" in _ROW and _ROW.count("title=") == 1
+
+
+def test_the_hover_is_one_surface_step_and_the_chips_stay_visible_on_it():
+    assert "hover:bg-surface-container " in _CARD and "bg-primary/" not in _CARD
+    assert "bg-surface-container px-2 group-hover/card:bg-surface-container-highest" in _CARD
+
+
+def test_what_changes_the_usage_refreshes_the_cards():
+    send = (_FRONTEND / "components/career/send-to-resume-dialog.tsx").read_text(encoding="utf-8")
+    assert send.count('queryKey: ["kb", "entities"]') == 1
+    page = (_FRONTEND / "app/base-resumes/page.tsx").read_text(encoding="utf-8")
+    assert 'qc.invalidateQueries({ queryKey: ["kb", "entities"] })' in page
+    assert "const invalidate = () => {" in page  # delete, archive and its undo all call it
+
+
+def test_the_agent_tool_says_what_the_new_field_is():
+    server = (_FRONTEND.parent / "backend/mcp_server/server.py").read_text(encoding="utf-8")
+    assert "and used_in_bases, the active base resumes it was added to." in server

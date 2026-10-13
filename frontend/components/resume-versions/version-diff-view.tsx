@@ -37,7 +37,7 @@ export function DiffChangeList({ changes }: { changes: ResumeDiffChange[] }) {
           className={cn("rounded-corner-md px-3 py-2 text-body-medium", KIND_STYLES[c.kind])}
         >
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="bg-background/60">
+            <Badge variant="outline" className="bg-card">
               {KIND_LABELS[c.kind]}
             </Badge>
             <span className="font-medium">{words.section}</span>

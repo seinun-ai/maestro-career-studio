@@ -502,7 +502,8 @@ def kb_list_entities(kind: str | None = None, status: str | None = None) -> Any:
     with no IDs; this tool returns the IDs needed to edit). Optionally filter by
     kind (experience|project|education|certification|extra) or status
     (ongoing|completed|archived). Each item carries point_count, draft_count and
-    approved_count (the bullets a resume can use; retired ones are in point_count only)."""
+    approved_count (the bullets a resume can use; retired ones are in point_count only)
+    and used_in_bases, the active base resumes it was added to."""
     return _client.list_kb_entities(kind=kind, status=status)
 
 

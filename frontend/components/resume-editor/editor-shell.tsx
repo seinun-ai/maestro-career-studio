@@ -232,7 +232,7 @@ export function EditorShell({
           </div>
         </div>
         {fmtOpen && formattingPanel && (
-          <div className="border-b bg-background/60 max-h-[60vh] overflow-y-auto">
+          <div className="border-b bg-surface-container-low max-h-[60vh] overflow-y-auto">
             {formattingPanel}
           </div>
         )}

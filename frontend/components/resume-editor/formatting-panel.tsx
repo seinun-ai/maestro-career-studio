@@ -309,12 +309,12 @@ export function FormattingPanel({
   const showContent = collapsible ? open : true;
 
   return (
-    <div className={cn("bg-background/60 shrink-0", collapsible && "border-b")}>
+    <div className={cn("bg-surface-container-low shrink-0", collapsible && "border-b")}>
       {collapsible && (
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="hover:bg-surface-container-low flex w-full items-center justify-between px-3 py-2 text-label-large transition-colors"
+          className="hover:bg-surface-container flex w-full items-center justify-between px-3 py-2 text-label-large transition-colors"
         >
           <span className="flex items-center gap-2">
             <SlidersHorizontal className="size-3.5" />
@@ -348,7 +348,7 @@ export function FormattingPanel({
             />
           )}
           {onRevertToBase && (
-            <div className="text-muted-foreground bg-surface-container-low flex items-center justify-between gap-2 rounded-corner-md px-2 py-1.5 text-body-small">
+            <div className="text-muted-foreground bg-surface-container flex items-center justify-between gap-2 rounded-corner-md px-2 py-1.5 text-body-small">
               <span>
                 {inherited && !customized
                   ? "Same as base resume"

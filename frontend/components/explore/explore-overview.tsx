@@ -85,7 +85,7 @@ function BarList({
           </span>
           <span className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
             <span
-              className="bg-primary/70 block h-full rounded-full"
+              className="bg-primary block h-full rounded-full"
               style={{ width: `${(r.count / max) * 100}%` }}
             />
           </span>
