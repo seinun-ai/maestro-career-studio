@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.companion_origin import is_companion
 from app.db import begin_write, get_db
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
@@ -15,6 +16,7 @@ from app.models.qa_entry import QAEntry
 from app.schemas.job import JobSummary
 from app.schemas.proposal import (
     ApplicationSummaryForProposal,
+    CompanionSubmitted,
     ProposalBulkResponse,
     ProposalBulkResult,
     ProposalBulkTransition,
@@ -463,6 +465,29 @@ def share_job_site_login(
         raise HTTPException(409, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(404, detail=str(exc)) from exc
+
+
+@router.post("/{proposal_id}/companion-submitted", response_model=ProposalDetail)
+def companion_submitted(
+    proposal_id: UUID,
+    payload: CompanionSubmitted,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """The Companion saw the confirmation page after the USER pressed Submit: approve and mark
+    submitted in one step, consent channel `companion`. It clicks nothing."""
+    if not is_companion(request):
+        raise HTTPException(403, detail="Only the Companion can record a submit it saw.")
+    prop = db.get(ApplicationProposal, proposal_id)
+    if prop is None:
+        raise HTTPException(404, detail="Proposal not found")
+    # Before any write, like the other proposal writes: a job the other copy owns is refused.
+    hooks.require_owned(db, prop.job_id)
+    try:
+        svc.record_companion_submit(db, prop, payload.confirmation.model_dump())
+    except svc.TransitionError as e:
+        raise HTTPException(409, detail=str(e)) from e
+    return _detail(db, prop)
 
 
 @router.post("/{proposal_id}/evidence", status_code=201)

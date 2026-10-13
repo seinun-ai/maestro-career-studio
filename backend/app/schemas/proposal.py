@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.job import JobSummary
 
@@ -19,7 +19,7 @@ class ProposalCreate(BaseModel):
 
 
 class ConsentPayload(BaseModel):
-    channel: Literal["chat", "slack", "frontend", "mcp", "auto"]
+    channel: Literal["chat", "slack", "frontend", "mcp", "auto", "companion"]
     note: str | None = None
 
 
@@ -155,3 +155,19 @@ class ProposalFunnelResponse(BaseModel):
     rejected_proposals: int = 0
     needs_human: int = 0
     expired: int = 0
+
+
+class CompanionConfirmation(BaseModel):
+    """What the Companion read on the page after the user's Submit: where, and the matched
+    confirmation phrase. Bounded so page prose cannot ride along; nothing else is accepted."""
+    model_config = {"extra": "forbid"}
+
+    host: str = Field(max_length=255)
+    path: str = Field(max_length=2048)
+    text: str = Field(max_length=300)
+
+
+class CompanionSubmitted(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    confirmation: CompanionConfirmation

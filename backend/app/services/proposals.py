@@ -3,6 +3,8 @@ or adversarial MCP caller cannot record a submission without consent: entering
 approved/rejected writes a ConsentEvent in the same transaction, and submitted
 additionally requires evidence. Expiry is lazy (expire_stale on reads) — this
 system deliberately has no scheduler."""
+import hashlib
+import json
 import unicodedata
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -58,7 +60,12 @@ def not_allowed_message(status: str) -> str:
 
 
 CONSENT_REQUIRED = {"accepted", "approved", "rejected"}
-CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp", "auto")
+CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp", "auto", "companion")
+
+# The Companion's own yes: a queued run it fills but never submits. `companion` approves and
+# records the Submit the USER pressed, after the Companion saw the confirmation page, so the
+# ledger can tell it from the user's click in the web app. The user's skip list still applies.
+COMPANION_CHANNEL = "companion"
 
 # Full automation mode (phase 4): the agent's own yes, and its own word that a job went
 # through, labelled so the ledger can tell them from the user's. The server checks only the
@@ -200,7 +207,9 @@ def _reserve_cap(session: Session, prop: ApplicationProposal) -> None:
 def transition(session: Session, prop: ApplicationProposal, new_status: str,
                *, consent: dict | None = None, reason: str | None = None,
                intervention: dict | None = None,
-               attested: bool = False) -> ApplicationProposal:
+               attested: bool = False, commit: bool = True) -> ApplicationProposal:
+    """`commit=False` flushes instead, for a caller that chains transitions and commits them
+    together (record_companion_submit): a failure on the second must not leave the first saved."""
     if new_status not in ALLOWED.get(prop.status, set()):
         raise TransitionError(not_allowed_message(prop.status))
     if new_status in CONSENT_REQUIRED:
@@ -208,6 +217,10 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
             raise TransitionError(f"{new_status} requires consent with a valid channel")
     if consent and consent.get("channel") == AUTO_CHANNEL:
         _check_auto_consent(session, prop, new_status, consent, attested)
+    if (consent and consent.get("channel") == COMPANION_CHANNEL and new_status == "approved"
+            and _company_is_blocked(
+                session, prop, auto_apply_settings.get_settings(session).company_blocklist)):
+        raise TransitionError(COMPANY_BLOCKED)
     if new_status == "approved" and not _evidence_has_kind(prop, "final_review"):
         raise TransitionError("approved requires final_review evidence")
     if new_status == "submitted":
@@ -263,7 +276,50 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
             filled_answers.link_unlinked(session, app_row)
 
     sync_offers.mark_when_queued(session, prop)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
+    return prop
+
+
+def _append_evidence(prop: ApplicationProposal, kind: str, label: str, snapshot: dict,
+                     **fields: str) -> None:
+    """A data-only evidence row: the Companion has no screenshot, only what it read. `path` stays
+    empty (the Agent inbox draws every row's `path` as an image; there is no file to serve)."""
+    manifest = list(prop.evidence_json or [])
+    manifest.append({
+        "step": len(manifest) + 1, "label": label, "kind": kind, "path": "",
+        "sha256": hashlib.sha256(
+            json.dumps(snapshot, sort_keys=True, default=str).encode()).hexdigest(),
+        "captured_at": datetime.now(UTC).isoformat(),
+        **fields,
+    })
+    prop.evidence_json = manifest
+
+
+def record_companion_submit(session: Session, prop: ApplicationProposal,
+                            confirmation: dict) -> ApplicationProposal:
+    """Record a Submit the user pressed, which the Companion saw confirmed. Approves (the
+    Companion's own consent event), then marks submitted with the confirmation as the receipt,
+    in ONE commit: a refusal at either step (cap, skip list, state, ownership) saves nothing, so
+    a job is never left approved without its submit. Clicks nothing; `submitted` is terminal."""
+    try:
+        review = get_final_review(session, prop)
+        review.pop("evidence", None)
+        _append_evidence(prop, "final_review", "Final review (Companion)", review)
+        transition(session, prop, "approved", commit=False, consent={
+            "channel": COMPANION_CHANNEL, "note": "Queued run: user submitted"})
+        _append_evidence(
+            prop, "submission_receipt", "Confirmation page (Companion)", confirmation,
+            host=confirmation["host"], page_path=confirmation["path"], text=confirmation["text"])
+        transition(session, prop, "submitted", commit=False, attested=True, consent={
+            "channel": COMPANION_CHANNEL,
+            "note": f"Queued run: the confirmation page at {confirmation['host']} was seen"})
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     return prop
 
 
