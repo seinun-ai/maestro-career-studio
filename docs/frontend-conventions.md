@@ -1688,6 +1688,9 @@ alone); what changes is that a repeated sentence becomes a glyph, a bar or a dot
   `rounded-full` or an opacity, and never write a hue's colour by hand. The hue comes from `useBaseResumeColor()`, a
   lookup like `useBaseResumeLabel` (call `colorOf(slug)` per row in a `.map()`). It reads the archived-inclusive list,
   so a score or proposal keeps its resume's colour after the resume is archived.
+  A row of squares with no name beside each (Career history's "In N resumes", `career/entity-card.tsx`: up to 8, then
+  "+N") puts the names in the row's `title` and in an `sr-only` list, since the squares are `aria-hidden`; the card's
+  `used_in_bases` comes from `kb_port_log` (`services/career_kb.used_in_bases`) and counts every base not deleted, archived ones included.
 - **Icons come from the register.** `lib/concept-icons.ts` (`CONCEPT_ICONS`) owns one glyph per concept, and
   `test_frontend_concept_icons.py` pins that each concept maps to its own icon, that banned or alias icons are
   not imported, that no text glyph stands in for an icon, and that the sidebar draws from the register. Never add a second `Bot` key (connected agents are the Agent inbox's `Bot`

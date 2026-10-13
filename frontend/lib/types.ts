@@ -793,6 +793,8 @@ export interface KBEntitySummary {
   section_key?: string | null;
   section_type?: "entries" | "bullets" | null;
   section_title?: string | null;
+  /** Slugs of the active base resumes this item was added to (absent from a backend that predates it). */
+  used_in_bases?: string[];
 }
 
 export interface KBEntityDetail extends KBEntitySummary {

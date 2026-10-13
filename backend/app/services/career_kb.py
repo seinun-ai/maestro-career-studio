@@ -494,7 +494,33 @@ def entity_timeline(
     return events
 
 
-def entity_summary(session: Session, entity: KBEntity) -> KBEntitySummary:
+def used_in_bases(session: Session, entity_ids: Sequence[uuid.UUID] | None = None) -> dict[uuid.UUID, list[str]]:
+    """Each entity's ACTIVE base resumes, by slug and sorted, from one query over kb_port_log.
+
+    Active, not selectable: an archived resume is still the user's resume (archive hides a menu
+    pick), a soft-deleted one is gone. An application's port rows (resume_kind 'application') key
+    an id, not a slug, and are left out. `entity_ids=None` covers every entity (the list route)."""
+    stmt = (
+        select(KBPortLog.entity_id, KBPortLog.resume_key)
+        .join(BaseResume, BaseResume.slug == KBPortLog.resume_key)
+        .where(KBPortLog.resume_kind == "base", base_resume_data.active_filter())
+        .distinct()
+        .order_by(KBPortLog.resume_key)
+    )
+    if entity_ids is not None:
+        stmt = stmt.where(KBPortLog.entity_id.in_(entity_ids))
+    used: dict[uuid.UUID, list[str]] = defaultdict(list)
+    for entity_id, slug in session.execute(stmt):
+        used[entity_id].append(slug)
+    return used
+
+
+def entity_summary(
+    session: Session, entity: KBEntity, used_in: Mapping[uuid.UUID, list[str]] | None = None
+) -> KBEntitySummary:
+    """`used_in` is `used_in_bases` computed once for a whole list; alone, the entity asks for itself."""
+    if used_in is None:
+        used_in = used_in_bases(session, [entity.id])
     points = entity.points
     documents = entity.documents
     last_activity = entity.updated_at
@@ -521,6 +547,7 @@ def entity_summary(session: Session, entity: KBEntity) -> KBEntitySummary:
         section_key=detail.get("section_key") if entity.kind == "extra" else None,
         section_type=detail.get("section_type") if entity.kind == "extra" else None,
         section_title=detail.get("section_title") if entity.kind == "extra" else None,
+        used_in_bases=used_in.get(entity.id, []),
     )
 
 

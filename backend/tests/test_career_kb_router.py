@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBProfile
+from app.models.base_resume import BaseResume
+from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog, KBProfile
 
 
 def test_profile_get_creates_singleton_and_patch_is_partial(client, db_session):
@@ -61,6 +62,52 @@ def test_the_list_counts_approved_bullets_apart_from_drafts_and_not_used(client,
     db_session.commit()
     row = client.get("/api/kb/entities?kind=project").json()[0]
     assert (row["point_count"], row["draft_count"], row["approved_count"]) == (5, 1, 2)
+
+
+def _port(db_session, entity, point, key, kind="base"):
+    db_session.add(
+        KBPortLog(
+            entity_id=entity.id, point_id=point.id, resume_kind=kind, resume_key=key,
+            section="experience", ported_text=point.text,
+        )
+    )
+
+
+def test_the_list_names_the_active_base_resumes_an_item_is_on(client, db_session):
+    on_two, on_none = KBEntity(kind="experience", title="Analyst"), KBEntity(kind="experience", title="Idle")
+    db_session.add_all([on_two, on_none, *(BaseResume(slug=s, data_json={}) for s in ("beta", "alpha", "gone"))])
+    db_session.flush()
+    first = KBPoint(entity_id=on_two.id, text="One", state="approved", origin="manual")
+    second = KBPoint(entity_id=on_two.id, text="Two", state="approved", origin="manual")
+    db_session.add_all([first, second])
+    db_session.flush()
+    # Two bullets on one resume count the resume once; an application's key is an id, not a base slug.
+    for point in (first, second):
+        _port(db_session, on_two, point, "beta")
+    _port(db_session, on_two, first, "alpha")
+    _port(db_session, on_two, first, "gone")
+    _port(db_session, on_two, first, "alpha", kind="application")
+    _port(db_session, on_two, first, "no-such-base")
+    db_session.commit()
+
+    def used(entity):
+        rows = {r["id"]: r for r in client.get("/api/kb/entities").json()}
+        return rows[str(entity.id)]["used_in_bases"]
+
+    # Soft-deleted bases are gone from the list, archived ones are not (archive hides a menu pick, not the resume).
+    db_session.get(BaseResume, "gone").deleted_at = datetime.now(UTC)
+    db_session.commit()
+    assert used(on_two) == ["alpha", "beta"]
+    assert used(on_none) == []
+
+    db_session.get(BaseResume, "alpha").archived_at = datetime.now(UTC)
+    db_session.commit()
+    assert used(on_two) == ["alpha", "beta"]
+
+    db_session.get(BaseResume, "beta").deleted_at = datetime.now(UTC)
+    db_session.commit()
+    assert used(on_two) == ["alpha"]
+    assert client.get(f"/api/kb/entities/{on_two.id}").json()["used_in_bases"] == ["alpha"]
 
 
 def test_create_entity_surfaces_same_identity_as_possible_duplicate(client, db_session):

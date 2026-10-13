@@ -177,7 +177,8 @@ def list_entities(
         stmt = stmt.where(KBEntity.kind == kind)
     if status:
         stmt = stmt.where(KBEntity.status == status)
-    return [svc.entity_summary(db, entity) for entity in db.scalars(stmt).all()]
+    used_in = svc.used_in_bases(db)
+    return [svc.entity_summary(db, entity, used_in) for entity in db.scalars(stmt).all()]
 
 
 @router.post("/entities", response_model=KBEntityCreateResponse)

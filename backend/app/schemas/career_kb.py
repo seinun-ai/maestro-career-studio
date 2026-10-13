@@ -324,6 +324,9 @@ class KBEntitySummary(BaseModel):
     section_key: str | None = None
     section_type: str | None = None
     section_title: str | None = None
+    # Slugs of the active base resumes this item was added to (kb_port_log), sorted. A soft-deleted
+    # base drops out; the default keeps every other builder of a summary working.
+    used_in_bases: list[str] = Field(default_factory=list)
 
 
 class KBEntityDetail(KBEntitySummary):

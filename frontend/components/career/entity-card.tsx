@@ -14,6 +14,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ResumeSwatch } from "@/components/visual";
+import { useBaseResumeColor, useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { formatAbsoluteDateTime, formatTimeAgo } from "@/lib/format-date";
 import type { KBEntityStatus, KBEntitySummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -121,6 +123,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
         >
           Updated {formatTimeAgo(entity.last_activity)}
         </p>
+        <UsedIn slugs={entity.used_in_bases ?? []} />
       </CardContent>
 
       <MergeEntityDialog
@@ -129,6 +132,37 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
         source={entity}
       />
     </GalleryCard>
+  );
+}
+
+/** The squares drawn before "+N" takes the rest. */
+const MAX_SQUARES = 8;
+
+/** "In 3 resumes" and the resumes' squares: which base resumes this item is on. A square always sits
+ *  beside its name, so for a row of squares the names ride in the row's title and in an sr-only list
+ *  (the squares themselves are hidden from assistive tech). Nothing for an item that is on none. */
+function UsedIn({ slugs }: { slugs: string[] }) {
+  const colorOf = useBaseResumeColor();
+  const nameOf = useBaseResumeLabel();
+  if (slugs.length === 0) return null;
+  const names = slugs.map(nameOf);
+  return (
+    <div className="text-muted-foreground flex items-center gap-1.5 text-body-small" title={names.join(", ")}>
+      <span>
+        In {slugs.length} {slugs.length === 1 ? "resume" : "resumes"}
+      </span>
+      <span className="flex items-center gap-1" aria-hidden="true">
+        {slugs.slice(0, MAX_SQUARES).map((slug) => (
+          <ResumeSwatch key={slug} hue={colorOf(slug)} />
+        ))}
+        {slugs.length > MAX_SQUARES ? <span>+{slugs.length - MAX_SQUARES}</span> : null}
+      </span>
+      <ul className="sr-only">
+        {names.map((name, i) => (
+          <li key={slugs[i]}>{name}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
