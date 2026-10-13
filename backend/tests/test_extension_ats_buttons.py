@@ -18,7 +18,7 @@ from tests.extension_harness import run_node
 
 EXTENSION = Path(__file__).resolve().parents[2] / "extension"
 ATS_BUTTONS_JS = (EXTENSION / "shared" / "ats-buttons.js").read_text(encoding="utf-8")
-DETECT_JS = (EXTENSION / "content" / "detect.js").read_text(encoding="utf-8")
+ATS_HOSTS_JS = (EXTENSION / "shared" / "ats-hosts.js").read_text(encoding="utf-8")
 
 _DRIVER = r"""
 const ns = loadModules();
@@ -89,10 +89,10 @@ def test_an_unknown_verdict_string_is_a_submit_and_text_is_a_known_one(tmp_path)
     assert out == {"text": "text", "odd": "submit"}
 
 
-def test_the_hosts_are_detect_jss_hosts(tmp_path):
-    """Copied, not imported (detect.js publishes no table), so a vendor whose host pattern drifts
-    in either file fails here."""
-    detect = dict(re.findall(r'\["(\w+)", /(.+?)/\],', DETECT_JS))
+def test_the_hosts_are_the_shared_ats_hosts(tmp_path):
+    """Copied, not imported (the table is in its own module), so a vendor whose host pattern
+    drifts in either file fails here."""
+    detect = dict(re.findall(r'\["(\w+)", /(.+?)/\],', ATS_HOSTS_JS))
     ours = _run(tmp_path)["hosts"]
     assert ours and set(ours) <= set(detect)
     for vendor, source in ours.items():

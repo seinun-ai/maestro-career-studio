@@ -101,7 +101,7 @@ FORM_MODULE_SOURCES = [
     CONTENT / "autofill.js",
     CONTENT / "open-questions.js",
 ]
-DETECTION_MODULE_SOURCES = [CONTENT / "job-posting.js", CONTENT / "detect.js"]
+DETECTION_MODULE_SOURCES = [SHARED / "ats-hosts.js", CONTENT / "job-posting.js", CONTENT / "detect.js"]
 
 # The two lists COINCIDE since R-C, and that is a fact about today rather than a
 # rule: `EXTENSION_SOURCES` is "everything a source scan must see" and this is
@@ -146,6 +146,7 @@ PAGE_RUNTIME_SOURCES = [
     SHARED / "choose.js",
     SHARED / "policy.js",
     SHARED / "profile-fields.js",
+    SHARED / "ats-hosts.js",
     SHARED / "ats-buttons.js",
     SHARED / "page-kind.js",
     CONTENT / "job-posting.js",

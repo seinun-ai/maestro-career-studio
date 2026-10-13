@@ -19,8 +19,7 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
 
-  // Copied from `content/detect.js` ATS_HOSTS (it publishes no table); a test pins that the
-  // two agree for every vendor listed here.
+  // Copied from `shared/ats-hosts.js`; a test pins that the two agree for every vendor listed here.
   const HOSTS = {
     workday: /(^|\.)myworkdayjobs\.com$/,
   };

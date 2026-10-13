@@ -221,6 +221,10 @@ def test_the_content_script_is_the_split_modules_in_dependency_order(content_scr
         # salary rule is the policy's own pattern, never a second copy), and
         # autofill.js spreads its patterns into the rule table that fills them.
         "shared/profile-fields.js",
+        # Pure: the known ATS hosts, one list for detect.js (which vendor is this page) and the
+        # queued run's driver (where the saved password may be typed). Read at call time, but
+        # detect.js runs a vendor lookup on every page, so it sits ahead of it.
+        "shared/ats-hosts.js",
         # Pure: the few navigation buttons an ATS names by its own markers (a verdict per
         # vendor host). Read by the page reader at call time, so only the namespace order is
         # fixed; it sits beside page-kind.js, whose Next/Submit sort it informs.

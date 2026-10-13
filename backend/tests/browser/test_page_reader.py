@@ -21,7 +21,7 @@ from tests.test_extension_page_kind import SUBMIT
 
 READER = "window.careerStudioCompanion.pageReader"
 KIND = "window.careerStudioCompanion.pageKind"
-SOURCES = ENGINE_SOURCES + ["content/detect.js", "shared/ats-buttons.js", "shared/page-kind.js",
+SOURCES = ENGINE_SOURCES + ["content/detect.js", "shared/ats-hosts.js", "shared/ats-buttons.js", "shared/page-kind.js",
                            "content/page-reader.js", "shared/queue-run.js"]
 
 
