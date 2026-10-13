@@ -249,7 +249,7 @@ def test_a_resumed_record_that_already_tried_the_login_never_tries_it_again(tmp_
 def test_the_driver_hands_the_sign_in_a_record_and_a_host_and_nothing_secret(tmp_path):
     out = _drive(tmp_path, [{"t": "sign_in"}], signInMoves=True)
     (call,) = names(out, "signIn")
-    assert call[1:] == [2, ["allowedHost"], "jobs.acme.test"]
+    assert call[1:] == [2, ["allowedHost", "stop"], "jobs.acme.test"]
     assert "password" not in str(out["record"]).lower()
 
 
@@ -375,7 +375,6 @@ def test_a_posting_is_followed_through_its_apply_once_with_the_apply_flag(tmp_pa
     assert out["record"]["status"] == "ready" and out["record"]["step"] == 1
     first, second = names(out, "advance")
     assert first[1:] == [0, "apply-1", {"apply": True}] and second[3] is None
-    assert out["record"]["applyClicked"] is True
 
 
 def test_a_posting_after_the_first_apply_is_not_pressed_a_second_time(tmp_path):
@@ -431,11 +430,61 @@ def test_an_apply_that_leaves_the_page_unchanged_parks_no_change(tmp_path):
     assert len(names(out, "advance")) == 1
 
 
+def test_apply_is_never_pressed_after_a_sign_in_even_on_a_page_that_looks_like_a_posting(tmp_path):
+    """A site that restores a saved draft after sign-in lands on its review page: no fillable
+    control, and one "Apply" that is really a Submit."""
+    out = _drive(tmp_path, [{"t": "sign_in"}, {"t": "posting"}], signInMoves=True)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "posting")
+    assert names(out, "advance") == []
+
+
+@pytest.mark.parametrize("record", [
+    {"tabId": 7, "status": "parked", "why": "captcha", "hosts": ["jobs.acme.test"]},
+    {"tabId": 7, "status": "parked", "why": "unknown_page", "hosts": ["jobs.acme.test"]},
+    {"tabId": 7, "status": "stopped", "why": "user", "hosts": ["jobs.acme.test"]},
+])
+def test_apply_is_never_pressed_on_a_resume(tmp_path, record):
+    """The user may have walked the tab to a field-less review page by hand since the park."""
+    out = _drive(tmp_path, [{"t": "posting"}], record=record)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "posting")
+    assert names(out, "advance") == []
+
+
+def test_apply_is_pressed_on_the_first_read_of_a_tab_the_call_opened_and_not_on_the_second(tmp_path):
+    out = _drive(tmp_path, [{"t": "posting", "url": "/a"}, {"t": "posting", "url": "/b", "key": "b"}])
+    assert [c[3] for c in names(out, "advance")] == [{"apply": True}]
+
+
+def test_filled_is_set_before_the_fill_so_a_fill_that_throws_still_counts(tmp_path):
+    out = _drive(tmp_path, [step(1)], fillThrows=True)
+    assert out["record"]["filled"] is True and out["record"]["why"] == "error"
+
+
+def test_a_resume_after_no_change_can_move_when_the_page_now_does(tmp_path):
+    """The fingerprint is remembered only once a press MOVED the page, so a Resume on the page
+    that would not move is not mistaken for coming back to it."""
+    first = _drive(tmp_path, [step(1, stuck=99, url="/s", key="k")])
+    assert (first["record"]["status"], first["record"]["why"]) == ("parked", "no_change")
+    assert first["record"]["seen"] == []
+    second = _drive(tmp_path, [step(1, url="/s", key="k"), REVIEW], record=first["record"])
+    assert second["record"]["status"] == "ready" and second["record"]["step"] == 1
+    assert len(second["record"]["seen"]) == 1
+
+
+def test_a_page_seen_after_it_moved_is_still_a_loop_when_it_comes_back(tmp_path):
+    again = {"url": "/same", "key": "same"}
+    out = _drive(tmp_path, [step(1, **again), step(2), step(1, **again), REVIEW])
+    assert out["record"]["why"] == "loop" and len(out["record"]["seen"]) == 2
+
+
 # ---------- the confirmation, and a finished run ----------
 
-def test_a_confirmation_page_before_ready_is_treated_as_a_review_page(tmp_path):
+def test_a_confirmation_page_before_ready_parks_as_already_applied_never_ready(tmp_path):
+    """A "thank you" page the run did not reach by its own Submit is an application someone else
+    sent (a draft this session already submitted); calling it ready would invite a second one."""
     out = _drive(tmp_path, [{"t": "confirmation"}])
-    assert out["record"]["status"] == "ready" and names(out, "advance") == []
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "already_applied")
+    assert out["record"]["readyAt"] is None and names(out, "advance") == [] and names(out, "fill") == []
 
 
 def test_a_ready_tab_that_shows_the_confirmation_becomes_confirming(tmp_path):
@@ -465,6 +514,26 @@ def test_without_a_top_summary_the_frame_with_the_most_fillable_controls_wins_an
     frames = [{"frameId": 1}, {"frameId": 2, "page": step(1, fillable=1)}, {"frameId": 3, "page": step(2, fillable=4)}]
     out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": frames}])
     assert names(out, "advance")[0][1:3] == [3, "next-2"]
+
+
+def test_a_top_frame_that_is_a_bare_posting_or_unreadable_yields_to_the_subframe_holding_the_form(tmp_path):
+    """A careers page embedding the ATS form in an iframe: the page around it has an Apply and no fields."""
+    for top in ({"t": "posting"}, {"t": "unknown"}):
+        frames = [{"frameId": 0, "top": True, "page": top}, {"frameId": 4, "page": step(1, fillable=3)}]
+        out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": frames}])
+        assert names(out, "advance")[0][1:3] == [4, "next-1"], top
+
+
+def test_a_top_frame_that_says_something_definite_is_not_overruled_by_a_fuller_subframe(tmp_path):
+    frames = [{"frameId": 0, "top": True, "page": {"t": "captcha"}}, {"frameId": 4, "page": step(1, fillable=9)}]
+    out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": frames}])
+    assert (out["record"]["why"], names(out, "advance")) == ("captcha", [])
+
+
+def test_a_lone_posting_top_frame_is_still_judged_so_its_apply_can_be_followed(tmp_path):
+    frames = [{"frameId": 0, "top": True, "page": {"t": "posting"}}, {"frameId": 4}]
+    out = _drive(tmp_path, [{"t": "step", "n": 0, "frames": frames}, REVIEW])
+    assert names(out, "advance")[0][1:] == [0, "apply-1", {"apply": True}]
 
 
 # ---------- Stop ----------
@@ -581,8 +650,8 @@ const t0 = { summary: { host: "x", fillable: 2, stepKey: "a", buttons: [{ text: 
 const t1 = { summary: { host: "x", fillable: 2, stepKey: "b", buttons: [{ text: "Next", visible: true }] }, top: true };
 
 const ops = ns.queueRun.pageOps({
-  broadcast: async (tabId, message) => {
-    sent.push(["broadcast", tabId, message]);
+  broadcast: async (tabId, message, ...only) => {
+    sent.push(only.length ? ["broadcast", tabId, message, only[0]] : ["broadcast", tabId, message]);
     if (message.type === "page_classify") pollN += 1;
     if (spec.broadcastThrows) throw new Error("tab gone");
     if (message.type === "page_classify") {
@@ -611,7 +680,10 @@ main(async () => {
   let result;
   if (spec.op === "classify") result = await ops.classify(4);
   if (spec.op === "advance") result = await ops.advance(4, spec.frameId ?? 0, "tag-1", spec.advanceOptions);
-  if (spec.op === "signIn") result = await ops.signIn({ proposalId: "p1", tabId: 4 }, { allowedHost: "jobs.acme.test" });
+  if (spec.op === "signIn") {
+    result = await ops.signIn({ proposalId: "p1", tabId: 4 },
+      { allowedHost: "jobs.acme.test", ...(spec.stopAfterFetch ? { stop: () => true } : {}) });
+  }
   if (spec.op === "wait") {
     const before = ns.queueRun.fingerprint(spec.beforeUrl ?? "https://jobs.acme.test/a", t0.summary);
     result = await ops.waitForChange(4, before, spec.ms ?? 3000, spec.stop ? () => true : undefined);
@@ -640,8 +712,22 @@ def test_classify_asks_every_frame_of_the_named_tab_for_the_page_summary(tmp_pat
 ])
 def test_advance_sends_the_id_and_the_apply_flag_only_when_it_is_exactly_true(tmp_path, options, message):
     out = _ops(tmp_path, "advance", advanceOptions=options)
-    assert out["sent"] == [["broadcast", 4, message]]
+    assert out["sent"] == [["broadcast", 4, message] + ([0] if message.get("apply") else [])]
     assert out["result"] == {"clicked": True}
+
+
+def test_the_apply_press_goes_to_the_one_frame_that_named_the_control_and_a_next_to_all(tmp_path):
+    apply = _ops(tmp_path, "advance", frameId=3, advanceOptions={"apply": True})
+    assert apply["sent"] == [["broadcast", 4, {"type": "page_advance", "id": "tag-1", "apply": True}, 3]]
+    plain = _ops(tmp_path, "advance", frameId=3)
+    assert plain["sent"] == [["broadcast", 4, {"type": "page_advance", "id": "tag-1"}]]
+
+
+def test_a_stop_during_the_login_fetch_types_nothing_and_presses_nothing(tmp_path):
+    out = _ops(tmp_path, "signIn", stopAfterFetch=True)
+    assert out["result"] == {"signedIn": False, "why": "stopped"}
+    assert [s[0] for s in out["sent"]] == ["api"], "frame 0 was never asked: no password was sent"
+    assert "the-password-9" not in str(out["result"]) and "the-password-9" not in str(out["logged"])
 
 
 def test_advance_answers_with_the_named_frames_result_only(tmp_path):
