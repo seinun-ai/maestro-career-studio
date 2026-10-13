@@ -100,7 +100,7 @@
     if (!shape && el.querySelector(ns.fieldControls.CONTROL)) return false;
     if (!shown(el)) return false;
     // A honeypot is never a field: not filled, listed, asked or counted missing.
-    return !ns.fillBase.robotTrap(el, ns.shapes.readField(el).question);
+    return !ns.fillBase.isTrapField(el, "");
   };
   const describe = (el, shape) => {
     const own = ns.shapes.readField(el);

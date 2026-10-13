@@ -1400,9 +1400,10 @@ async function fillFormFromProfile(
   for (const input of inputs) {
     if (isFormJunk(input)) continue;
     const labelText = labelFor(input);
-    // The field's OWN label: labelFor() is composite (name and id joined on), which
-    // would hide an end-anchored trap phrase such as "Leave this field blank".
-    if (ns.fillBase?.robotTrap(input, ns.shapes.readField(input).question ?? labelText)) {
+    // The field's OWN label, not labelFor()'s composite (name and id joined on),
+    // which would hide an end-anchored trap phrase. `?.`: the node harness runs
+    // this file without fill-base.js.
+    if (ns.fillBase?.isTrapField(input, labelText)) {
       traps.add(input);
       continue;
     }

@@ -122,23 +122,36 @@
   };
 
   // Phrases a honeypot uses to tell humans to stay out. "Bots" alone is not one
-  // ("Have you built bots?" is a real question), and "leave blank if none" is an
-  // optional field's hint, not a trap.
-  const TRAP_WORDS = /\bhoney ?pot\b|\bfor (?:spam ?)?(?:ro)?bots only\b|\bif you(?:'|\u2019)?(?:re| are) (?:a )?human\b|\b(?:do not|don(?:'|\u2019)t) (?:fill|enter|complete|type)(?: in)? (?:this|it)\b|^leave (?:this|it) (?:field |input |box )?(?:blank|empty)[.!]?$/i;
+  // ("Have you built bots?" is a real question), "leave blank if none" is an
+  // optional field's hint, and "do not enter it with dashes" is an instruction
+  // about HOW to fill: a trap phrase must end its clause.
+  const END = String.raw`(?=\s*(?:[,.;:!)]|$))`;
+  const TRAP_WORDS = new RegExp(String.raw`\bhoney ?pot\b|\bfor (?:spam ?)?(?:ro)?bots only\b|\bif you(?:'|\u2019)?(?:re| are) (?:a )?human` + END
+    + String.raw`|\b(?:do not|don(?:'|\u2019)t) (?:fill|enter|complete|type)(?: in)? (?:this|it)(?: (?:field|input|box))?(?: in| out)?` + END
+    + String.raw`|^leave (?:this|it) (?:field |input |box )?(?:blank|empty)[.!]?$`, "i");
   const TRAP_TYPES = new Set(["text", "email", "url", "tel", "search", "number"]);   // an <input> with no type reads "text"
-  const robotTrap = (el, labelText) => {
+  const robotTrap = (el, labelText, required = false) => {
+    // A human must fill a required field, so it is never a trap.
+    if (required || el.required || el.getAttribute("aria-required") === "true") return false;
     const words = [labelText, el.getAttribute("aria-label"), el.getAttribute("placeholder")]
       .filter(Boolean).map((s) => s.trim());
     if (words.some((s) => TRAP_WORDS.test(s))) return true;
     // Drawn wholly outside the page (a classic honeypot), though `visible` passes
     // it. Page coordinates, so a field merely scrolled out of view is not one.
     // Text boxes only: a widget library parks a native select, checkbox or radio
-    // off-page and drives it from a visible box, which stays a field.
+    // off-page and drives it from a visible box, which stays a field. A box with
+    // no rects at all (display:none) is hidden, not off-page.
     const textLike = el instanceof HTMLTextAreaElement
       || (el instanceof HTMLInputElement && TRAP_TYPES.has(el.type));
-    if (!textLike) return false;
+    if (!textLike || !el.getClientRects().length) return false;
     const r = el.getBoundingClientRect();
     return r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0;
+  };
+  // One reading of "is this field a trap" for every path: the field reader's
+  // own label (it follows aria-labelledby), `fallbackLabel` only if that is empty.
+  const isTrapField = (el, fallbackLabel) => {
+    const own = ns.shapes.readField(el);
+    return robotTrap(el, own.question || fallbackLabel, Boolean(own.required));
   };
 
   const ERROR_NODE = '[data-automation-id="errorMessage"], [role="alert"], [class*="error" i]';
@@ -440,6 +453,6 @@
   ns.fillBase = {
     Cancelled, Unfocusable, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,
     popups, ownedPopup, optionsOf, press, closePopups, enter, leave, keyPress, typeText, equivalent, clean,
-    markEnginePopup, insideEnginePopup, engineOpen, robotTrap,
+    markEnginePopup, insideEnginePopup, engineOpen, robotTrap, isTrapField,
   };
 })();

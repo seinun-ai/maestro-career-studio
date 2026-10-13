@@ -183,3 +183,14 @@ def test_open_questions_judge_a_trap_by_the_field_readers_label(page, load):
                         " return { labels: r.questions.map((q) => q.label), blank: r.blank }; }")
     assert not [x for x in got["labels"] if "tell us" in x or "extra notes" in x]
     assert got["blank"] + len(got["labels"]) == 1   # only the real box is an open field
+
+
+def test_a_hidden_box_is_hidden_not_a_trap(page, load):
+    """A display:none box has no rects at all: the saved-answers fill reports
+    it `hidden` (an answer it could not reach), not as an off-page honeypot."""
+    load(page, "<label for='fn'>First name</label><input id='fn' style='display:none'>", SOURCES)
+    result = page.evaluate(
+        "async (p) => window.careerStudioCompanion.fillFormFromProfile(p, [], false, [], false)",
+        {"personal": {"first_name": "Ada"}})
+    assert result["filled"] == []
+    assert [o for o in result["observations"] if o.get("outcome") == "hidden"], result

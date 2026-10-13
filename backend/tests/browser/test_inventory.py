@@ -463,10 +463,21 @@ def test_a_trap_by_its_wording_is_skipped(page, load, html):
     "Middle name (leave blank if none)",
     "Do not include your country code",
     "Website",
+    "Phone (do not enter it with dashes)",
+    "Referral code (do not fill this in unless referred)",
+    "Do not enter this information if you are a current employee",
+    "If you are a Human Resources professional, please say so",
 ])
 def test_an_ordinary_question_is_not_taken_for_a_trap(page, load, label):
     load(page, f"<label for='t'>{label}</label><input id='t'>")
     assert [f["question"] for f in fields(page)] == [label]
+
+
+@pytest.mark.parametrize("attrs", ["required", "aria-required='true'"])
+def test_a_required_box_is_never_a_trap(page, load, attrs):
+    """A human must fill a required field, whatever its label says."""
+    load(page, f"<label for='t'>Do not fill this field</label><input id='t' {attrs}>")
+    assert [f["question"] for f in fields(page)] == ["Do not fill this field"]
 
 
 def test_a_field_far_down_the_page_is_still_a_field(page, load):

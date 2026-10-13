@@ -93,11 +93,9 @@ function collectOpenQuestions() {
     return false;
   };
 
-  // A honeypot is judged by the field reader's label, the one the inventory and
-  // the saved-answers fill use (it follows aria-labelledby, which
-  // questionTextFor does not); questionTextFor's text only if the reader is absent.
-  const isTrap = (el, fallbackText) => ns.fillBase?.robotTrap(
-    el, ns.shapes?.readField(el).question ?? fallbackText) ?? false;
+  // A honeypot is judged by the field reader's label, as in the inventory and
+  // the saved-answers fill. `?.`: the node harness runs this file without fill-base.js.
+  const isTrap = (el, fallbackText) => ns.fillBase?.isTrapField(el, fallbackText) ?? false;
 
   const questionTextFor = (input) => {
     if (input.id) {
