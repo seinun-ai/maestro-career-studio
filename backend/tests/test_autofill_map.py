@@ -77,7 +77,7 @@ def test_a_confident_slot_returns_its_value_for_code_to_type(db_session, monkeyp
     got = run([field("a", "City")], db_session)
     # `trace` is pinned by the decision-trace tests; here only the answer itself.
     assert got["a"].model_dump(exclude={"trace"}) == {"route": "slot", "slot": "personal.city",
-                                                      "value": "Springfield", "format": None, "why": None}
+                                                      "value": "Springfield", "format": None, "why": None, "years": False}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -213,6 +213,25 @@ def test_a_years_question_is_a_low_stakes_candidate_only_at_the_queued_level_on_
                                  ("queued", True, "low_stakes")):
         fake_jev(monkeypatch, {"y": (YEARS, 0.95)}, noul={"y": 0.9})
         assert run(q, db_session, level=level, queued=queued)["y"].route == route, (level, queued)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_low_stakes_field_filed_under_the_years_sentinel_is_marked_a_years_question(db_session, monkeypatch):
+    """The wording may be anything ("5+ YOE?", "a decade of Java?"): the map knows which sentinel it chose."""
+    fake_jev(monkeypatch, {"y": (YEARS, 0.95), "t": ("none", 0.95)}, noul={"y": 0.9, "t": 0.9})
+    got = run([field("y", "Do you have a decade of Java?", "select"), field("t", "Willing to travel?", "select")],
+              db_session, level="queued", queued=True)
+    assert (got["y"].route, got["y"].years) == ("low_stakes", True)
+    assert (got["t"].route, got["t"].years) == ("low_stakes", False)
+
+
+@pytest.mark.parametrize("question, marked, expected", [
+    ("Do you have 5+ years of SQL?", False, True), ("Do you have 3 yrs with Kafka?", False, True),
+    ("5+ YOE with Python?", False, True), ("A decade of Java?", False, True), ("5yrs Go?", False, True),
+    ("Are you proficient in SQL?", True, True), ("Are you proficient in SQL?", False, False),
+    ("Willing to travel?", False, False), ("Do you have a yearly bonus preference?", False, False)])
+def test_asks_years_reads_the_wording_or_the_marker(question, marked, expected):
+    assert autofill_map.asks_years(question, marked) is expected
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -865,7 +884,7 @@ def test_a_choice_no_fact_answers_is_reasoned_when_the_history_can_answer_it(db_
     prompts = fake_llm(monkeypatch, {"g": {"key": "none", "confidence": 0.95}}, reasoned={"g": 0.9})
     got = run([field("g", HISTORY_WORDINGS[0], "popup", options=["Yes", "No"])], db_session)
     assert got["g"].model_dump(exclude={"trace"}) == {"route": "reasoned", "slot": None, "value": None,
-                                                      "format": None, "why": None}
+                                                      "format": None, "why": None, "years": False}
     [asked] = [p for p in prompts if p["trace_name"] == "autofill-reasoned"]
     assert HISTORY_WORDINGS[0] in asked["prompt"]
 

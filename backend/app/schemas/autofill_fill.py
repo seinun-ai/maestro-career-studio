@@ -22,7 +22,9 @@ EntryKind = Literal["experience", "education", "languages", "websites"]
 # The highest entry index a field may carry (its page entry, or its profile
 # entry). The loop's MAX_ENTRY_INDEX mirrors it.
 MAX_ENTRY_INDEX = 20
-Reason = Literal["matched", "closest", "assumed", "abstained"]
+# "asked": a final abstain /step must not take over (a years question the history says too few years for,
+# or one the history check could not read): the user answers it.
+Reason = Literal["matched", "closest", "assumed", "abstained", "asked"]
 
 
 # ---------- decision traces (value-free)
@@ -136,6 +138,9 @@ class Mapped(BaseModel):
     value: str | list[str] | None = None  # to the LOCAL extension only
     format: Format | None = None
     why: Why | None = None
+    # A low_stakes field /map filed under the years sentinel: a "years with a skill" question, whatever its
+    # wording. The loop echoes it to /pick and /step, which treat it as a years question (autofill_map.asks_years).
+    years: bool = False
     trace: DecisionTrace | None = None
 
 
@@ -165,6 +170,7 @@ class PickField(BaseModel):
     item: str | None = Field(default=None, max_length=300)  # one member of a set slot
     options: list[PickOption] = Field(min_length=1, max_length=MAX_PICK_OPTIONS)
     complete: bool = True
+    years: bool = False  # echoed from /map (Mapped.years)
 
 
 class PickRequest(Selector):
@@ -216,6 +222,7 @@ class StepRequest(Selector):
     # True only when every option is in view (the page says so) — a closest
     # match over a capped, unscrolled or filtered list is never allowed.
     complete: bool = False
+    years: bool = False  # echoed from /map (Mapped.years)
 
     @field_validator("candidates")
     @classmethod

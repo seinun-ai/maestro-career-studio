@@ -9,6 +9,8 @@ from app.schemas.autofill_fill import (
     MapRequest,
     PickField,
     PickRequest,
+    Picked,
+    StepRequest,
 )
 
 
@@ -76,6 +78,17 @@ def test_a_page_url_is_an_http_address(url):
 def test_a_page_url_that_is_not_an_http_address_is_refused(url):
     with pytest.raises(ValidationError):
         PickRequest(fields=[_pick_field()], page_url=url)
+
+
+def test_the_years_marker_is_echoed_on_a_pick_field_and_a_step_request():
+    assert PickRequest(fields=[_pick_field()]).fields[0].years is False
+    assert PickRequest(fields=[_pick_field(years=True)]).fields[0].years is True
+    step = {"fid": "a", "question": "Q", "route": "low_stakes", "candidates": [{"mid": "give_up", "describe": "Stop"}]}
+    assert StepRequest(**step).years is False and StepRequest(**step, years=True).years is True
+
+
+def test_asked_is_a_pick_reason():
+    assert Picked(oids=[], reason="asked").reason == "asked"
 
 
 def test_the_source_hint_is_bounded():

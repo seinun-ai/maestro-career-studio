@@ -546,6 +546,15 @@ def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
 _REASONED_KEYS = frozenset({HISTORY_UNANSWERED, YEARS_UNANSWERED})
 _KEEN_YEARS_KEYS = frozenset({YEARS_UNANSWERED})
 _NO_KEYS: frozenset[str] = frozenset()
+# Wordings of a years question, for code that has only the question: "5+ years", "3 yrs", "5+ YOE", "a decade of".
+_YEARS_WORDING = re.compile(r"(?<![A-Za-z])(?:years?|yrs?|yoe|decades?)(?![A-Za-z])", re.IGNORECASE)
+
+
+def asks_years(question: str, marked: bool = False) -> bool:
+    """Whether a low_stakes field is a "years with a skill" question: /map filed it under the years sentinel
+    (`marked`, the loop echoes it) OR its wording names years. Either one is enough, so a wording the
+    pattern misses is still caught when /map knew, and the reverse."""
+    return marked or bool(_YEARS_WORDING.search(question))
 
 
 def _said_no_fact(picked: tuple[str, float] | None, *, also: frozenset[str] = _NO_KEYS) -> bool:
@@ -639,6 +648,9 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
     out |= decided
     _one_job_per_entry(fields, out)
 
+    def key(answer: tuple[str, float] | None) -> str | None:
+        return answer[0] if answer else None
+
     def leftovers(also: frozenset[str]) -> list[MapField]:
         return [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
                 and not _foreign(f) and _said_no_fact(picked.get(f.fid), also=also)
@@ -653,7 +665,8 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
         keen_years = _KEEN_YEARS_KEYS if level == "queued" and queued else _NO_KEYS
         for fid, judge in _low_stakes(leftovers(keen_years), facts, session, budget,
                                       level=level, queued=queued).items():
-            out[fid] = Mapped(route="low_stakes", trace=DecisionTrace(engine=judge))
+            years = YEARS_UNANSWERED in (key(picked.get(fid)), key(second.get(fid)))
+            out[fid] = Mapped(route="low_stakes", years=years, trace=DecisionTrace(engine=judge))
     if _has_history(facts):
         for fid in _answerable(leftovers(_REASONED_KEYS), session, budget):
             out[fid] = Mapped(route="reasoned", trace=DecisionTrace(engine="fast"))

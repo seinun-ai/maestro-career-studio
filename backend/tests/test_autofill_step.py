@@ -344,31 +344,46 @@ def test_a_plain_click_is_an_answer_only_and_only_a_group_click_is_progress(db_s
     assert step(req(slot="work_auth.sponsorship_now", candidates=plain), db_session)["reason"] == "abstained"
 
 
-def _low_stakes_step_prompt(db_session, monkeypatch, level, queued):
+REQUIREMENT = "Do you meet the listed requirements for this role?"
+YEARS_Q = "Do you have 5+ years of experience with SQL?"
+
+
+def _low_stakes_step_prompt(db_session, monkeypatch, level, queued, question=REQUIREMENT, **kw):
     model_settings.set_answer_level(db_session, level)
     prompts = fake_llm(monkeypatch, {"move": GIVE_UP, "confidence": 0.9})
-    autofill_step.step(req(route="low_stakes", question="Do you have 5+ years of experience with SQL?"),
-                       FACTS, db_session, None, queued=queued)
+    autofill_step.step(req(route="low_stakes", question=question, **kw), FACTS, db_session, None, queued=queued)
     return prompts[0]["prompt"]
 
 
 def test_the_step_states_the_queued_scope_at_the_queued_level_on_a_queued_job(db_session, monkeypatch):
-    """/map routes a requirement or years question low_stakes only there; /step must not refuse it."""
+    """/map routes a requirement question low_stakes only there; /step must not refuse it."""
     prompt = _low_stakes_step_prompt(db_session, monkeypatch, "queued", True)
     scope, never = autofill_map.low_stakes_scope(FACTS, level="queued", queued=True)
     assert f"{never}." in prompt and scope[1:] in prompt
     assert "number of years of experience" not in prompt and "(answered Yes)" in prompt
 
 
+@pytest.mark.parametrize("question, marked", [
+    (YEARS_Q, False), ("Do you have 5+ YOE with SQL?", False), ("Do you have a decade of Java?", False),
+    ("Are you proficient in SQL?", True)])  # /map's marker, whatever the wording
+def test_a_years_question_never_gets_the_blanket_yes_in_a_step_even_at_the_queued_level(
+        db_session, monkeypatch, question, marked):
+    """/pick may leave a years question to the user (the history says fewer years); the adaptive step
+    that follows must not click the Yes the queued scope would give it."""
+    prompt = _low_stakes_step_prompt(db_session, monkeypatch, "queued", True, question, years=marked)
+    assert _NEVER_LOW_STAKES in prompt and "(answered Yes)" not in prompt
+    assert "number of years of experience" in prompt
+
+
 def test_the_step_keeps_years_on_the_never_list_below_the_queued_level_or_off_a_queued_job(db_session, monkeypatch):
     for level, queued in (("history", True), ("queued", False), ("history", False)):
-        prompt = _low_stakes_step_prompt(db_session, monkeypatch, level, queued)
+        prompt = _low_stakes_step_prompt(db_session, monkeypatch, level, queued, YEARS_Q)
         assert _NEVER_LOW_STAKES in prompt and "(answered Yes)" not in prompt, (level, queued)
 
 
 def test_the_step_names_the_protected_list_at_every_level(db_session, monkeypatch):
     for level, queued in (("history", False), ("history", True), ("queued", False), ("queued", True)):
-        prompt = _low_stakes_step_prompt(db_session, monkeypatch, level, queued)
+        prompt = _low_stakes_step_prompt(db_session, monkeypatch, level, queued, YEARS_Q)
         for protected in ("work authorization", "sponsorship", "EEO", "criminal history",
                           "security clearance", "salary", "legal attestation"):
             assert protected in prompt, (level, queued, protected)

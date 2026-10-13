@@ -32,6 +32,7 @@ from app.services.autofill_map import (
     SECOND_OPINION_MAX_S,
     Budget,
     Top,
+    asks_years,
     fast_json,
     keen,
     low_stakes_rule,
@@ -209,6 +210,11 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     budget = Budget()
     # The same level /map and /pick state; read here, never from the client (`queued` is the router's).
     level = model_settings.get_answer_level(session)
+    # The queued level's blanket Yes to a years question is /pick's alone, after it has asked the history
+    # (Yes only if the history is silent). /step reaches a field /pick left to the user, so for a years
+    # question it states the history level's scope: years stay on the never-list and the step gives up.
+    if req.route == "low_stakes" and asks_years(req.question, req.years):
+        queued = False
     if req.route == "low_stakes":
         # Re-checked here, not trusted from the client; and a field naming a
         # slot is a fact field — a keen-applicant guess would answer it.

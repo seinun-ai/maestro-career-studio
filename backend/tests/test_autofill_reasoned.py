@@ -76,7 +76,8 @@ def test_enough_years_in_the_history_is_its_yes_and_no_keen_pick_is_made(db_sess
 def test_fewer_years_than_asked_is_left_to_the_user_never_a_keen_yes(db_session, monkeypatch):
     calls = fake_models(monkeypatch, {"oid": "o2", "confidence": 0.95, "shown_by": ["j1"], "years": "fewer"})
     got = years_pick(db_session)
-    assert (got.oids, got.reason) == ([], "abstained")
+    # "asked", not "abstained": the loop finishes the field and never hands it to /step.
+    assert (got.oids, got.reason) == ([], "asked")
     assert [c["trace_name"] for c in calls] == ["autofill-reasoned-pick"]
 
 
@@ -99,7 +100,7 @@ def test_a_history_silent_about_the_skill_gets_the_keen_yes(db_session, monkeypa
 def test_anything_but_a_clear_enough_or_silent_is_left_to_the_user(db_session, monkeypatch, entry):
     calls = fake_models(monkeypatch, entry)
     got = years_pick(db_session)
-    assert got.oids == [] and got.reason == "abstained"
+    assert got.oids == [] and got.reason == "asked"
     assert "autofill-pick" not in [c["trace_name"] for c in calls]
 
 
@@ -115,7 +116,35 @@ def test_a_failed_reasoning_call_leaves_the_years_question_to_the_user(db_sessio
         raise llm.LLMProviderError("down")
 
     monkeypatch.setattr(autofill_pick.llm, "call_openai", down)
-    assert years_pick(db_session).oids == []
+    got = years_pick(db_session)
+    assert (got.oids, got.reason) == ([], "asked")
+
+
+def test_a_keen_pick_that_names_no_option_is_asked_too(db_session, monkeypatch):
+    def call_openai(**kw):
+        if kw["trace_name"] == "autofill-reasoned-pick":
+            return {"answers": {"y": {"oid": "none", "confidence": 0.9, "shown_by": [], "years": "silent"}}}
+        return {"picks": {"y": {"oids": [], "confidence": 0.9}}}
+
+    monkeypatch.setattr(autofill_pick.llm, "call_openai", call_openai)
+    assert years_pick(db_session).reason == "asked"
+
+
+@pytest.mark.parametrize("question, marked", [
+    ("Do you have 5+ YOE with SQL?", False), ("Do you have a decade of Java?", False),
+    ("5+yrs of Rust?", False), ("Are you proficient in SQL?", True)])
+def test_a_years_question_is_found_by_its_wording_or_by_the_maps_marker(db_session, monkeypatch, question, marked):
+    calls = fake_models(monkeypatch, ENOUGH)
+    model_settings.set_answer_level(db_session, "queued")
+    got = autofill_pick.pick([pf("y", question=question, route="low_stakes", options=opts("Yes", "No"), years=marked)],
+                             HISTORY_FACTS, db_session, None, queued=True)["y"]
+    assert [c["trace_name"] for c in calls] == ["autofill-reasoned-pick"] and got.oids == ["o1"]
+
+
+def test_a_requirement_question_that_is_no_years_question_is_picked_directly(db_session, monkeypatch):
+    calls = fake_models(monkeypatch, ENOUGH)
+    years_pick(db_session, question="Do you meet the listed requirements?")
+    assert [c["trace_name"] for c in calls] == ["autofill-pick"]
 
 
 @pytest.mark.parametrize("level, queued", [("history", True), ("queued", False)])

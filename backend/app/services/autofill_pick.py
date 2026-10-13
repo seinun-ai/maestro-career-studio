@@ -32,6 +32,7 @@ from app.services.autofill_map import (
     SECOND_OPINION_MAX_S,
     Budget,
     Top,
+    asks_years,
     fast_json,
     keen,
     low_stakes_rule,
@@ -349,8 +350,9 @@ def _with_polarity(out: dict[str, Picked], ways: dict[str, autofill_polarity.Pol
         out[fid] = out[fid].model_copy(update={"polarity": polarity_trace(w)})
 
 
-# A question that names a number of years: the only low_stakes field the history is asked about first.
-_ASKS_YEARS = re.compile(r"\b(?:years?|yrs?)\b", re.IGNORECASE)
+# A final abstain, not a miss: the loop must not hand the field to /step (it would be a years question
+# answered Yes by the page's own wording rather than the history).
+_ASKED = Picked(oids=[], reason="asked")
 
 
 def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint | None, session: Session,
@@ -359,7 +361,9 @@ def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint 
     years shown is its Yes; fewer, or anything it could not read, is left to the user; and only a
     history SILENT about the skill gets the keen Yes, asked as any low_stakes field is (never-list
     stated). An optional pass: a failure leaves its fields to the user."""
-    out, silent = reason_years(fields, facts, session, budget, hint.company if hint else None)
+    picks, silent = reason_years(fields, facts, session, budget, hint.company if hint else None)
+    # Everything the history did not answer Yes and was not silent about is the user's, and final.
+    out = {fid: p if p.oids else _ASKED for fid, p in picks.items()}
     rest = [f for f in fields if f.fid in silent]
     if not rest:
         return out
@@ -375,8 +379,9 @@ def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint 
                                                                  level="queued", queued=True), "fast pick")
     except llm.LLMProviderError:
         logger.warning("the keen answer to a years question failed; its fields are left to the user")
-        return out
-    return out | picked
+        return out | {f.fid: _ASKED for f in rest}
+    # A years question the keen pick could not answer is final too: /step could only click a blanket Yes.
+    return out | {fid: p if p.oids else p.model_copy(update={"reason": "asked"}) for fid, p in picked.items()}
 
 
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
@@ -394,7 +399,7 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
     asked = {f.fid for f in askable + reasoned}
     # Level "queued" on a queued job: a years-with-a-skill question asks the history before it may be a keen Yes.
     years = [f for f in askable if f.route == "low_stakes" and level == "queued" and queued
-             and _ASKS_YEARS.search(f.question)]
+             and asks_years(f.question, f.years)]
     askable = [f for f in askable if f not in years]
     out = {f.fid: ABSTAIN for f in fields if f.fid not in asked}
     # A Yes/No fact's answer to the question as worded: polarity first, code
