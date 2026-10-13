@@ -747,15 +747,96 @@ def test_a_sign_in_page_with_no_email_box_types_nothing(page):
     assert page.evaluate("() => [...document.querySelectorAll('input')].map((i) => i.value)") == ["", ""]
 
 
-def test_a_react_style_controlled_box_takes_the_typing(page):
-    """The values arrive as real input events, so a framework that only listens to them sees both."""
+@pytest.mark.parametrize("window", ["page", "page_unfocused"])
+def test_a_react_style_controlled_box_takes_the_typing(window, request):
+    """The values arrive as real input events, so a framework that only listens to them sees both,
+    and each box hears focus and blur like a person's visit (a validating form commits on blur),
+    in a focused window and in one that fires no focus events of its own."""
+    page = request.getfixturevalue(window)
     serve(page, "https://x.test/signin", """<form id='f' onsubmit='return false'><input id='e' type='email'><input id='p' type='password'>
       <button>Sign in</button></form><script>
-      window.state = {e: '', p: ''};
-      for (const id of ['e', 'p']) document.getElementById(id).addEventListener('input', (ev) => { window.state[id] = ev.target.value; });
+      window.state = {e: '', p: ''}; window.heard = [];
+      for (const id of ['e', 'p']) {
+        const box = document.getElementById(id);
+        box.addEventListener('input', (ev) => { window.state[id] = ev.target.value; });
+        for (const t of ['focus', 'blur']) box.addEventListener(t, () => window.heard.push(id + ':' + t));
+      }
       </script>""")
     assert sign_in(page) == {"signedIn": "clicked"}
     assert page.evaluate("() => window.state") == {"e": LOGIN["email"], "p": LOGIN["password"]}
+    assert page.evaluate("() => window.heard") == ["e:focus", "e:blur", "p:focus", "p:blur"]
+
+
+# ---------- sign-in never leaks an error, re-checks its button, and spots a sign-up form ----------
+
+def test_a_click_that_throws_the_password_leaks_none_of_it(page):
+    """Listener exceptions never propagate out of click(), so the throw is modelled where the page
+    can make one propagate: an own `click` on the button (this harness shares the page's world)."""
+    serve(page, "https://x.test/signin", """<form onsubmit='return false'><input id='e' type='email'><input id='p' type='password'>
+      <button id='b'>Sign in</button></form><script>
+      document.getElementById('b').click = () => { throw new Error('bad ' + document.getElementById('p').value); };
+      </script>""")
+    result = sign_in(page)
+    assert result == {"signedIn": False, "why": "click"}
+    assert LOGIN["password"] not in json.dumps(result)
+
+
+def test_a_throw_while_typing_is_a_fixed_word_not_the_message(page):
+    serve(page, "https://x.test/signin", """<form onsubmit='return false'><input id='e' type='email'><input id='p' type='password'>
+      <button>Sign in</button></form><script>
+      const p = document.getElementById('p');
+      p.select = () => { throw new Error('leak ' + p.value + document.getElementById('e').value); };
+      </script>""")
+    result = sign_in(page)
+    assert result["signedIn"] is False
+    assert LOGIN["password"] not in json.dumps(result) and LOGIN["email"] not in json.dumps(result)
+
+
+def test_a_button_relabelled_while_typing_is_not_clicked(page):
+    """The button was judged before typing; the page's input handler turns it into a Submit."""
+    serve(page, "https://x.test/signin", """<form onsubmit='return false'><input id='e' type='email'><input id='p' type='password'>
+      <button id='b' onclick='window.hit = 1'>Sign in</button></form><script>
+      document.getElementById('e').addEventListener('input', () => { document.getElementById('b').textContent = 'Submit application'; });
+      </script>""")
+    assert sign_in(page) == {"signedIn": False, "why": "button"}
+    assert page.evaluate("() => window.hit === 1") is False
+
+
+@pytest.mark.parametrize("change", [
+    "b.disabled = true", "b.style.display = 'none'", "b.remove()", "b.textContent = 'Apply now'",
+])
+def test_a_button_that_stops_being_a_plain_sign_in_while_typing_is_not_clicked(page, change):
+    serve(page, "https://x.test/signin", f"""<form onsubmit='return false'><input id='e' type='email'><input id='p' type='password'>
+      <button id='b' onclick='window.hit = 1'>Sign in</button></form><script>
+      document.getElementById('e').addEventListener('input', () => {{ const b = document.getElementById('b'); {change}; }});
+      </script>""")
+    assert sign_in(page) == {"signedIn": False, "why": "button"}
+    assert page.evaluate("() => window.hit === 1") is False
+
+
+@pytest.mark.parametrize("token", ["new-password", "section-signup new-password", "NEW-PASSWORD billing"])
+def test_a_new_password_token_in_a_list_is_a_sign_up(page, token):
+    serve(page, "https://x.test/join", f"<form onsubmit='return false'><input type='email'>"
+          f"<input type='password' autocomplete='{token}'><button>Continue</button></form>")
+    assert sign_in(page) == {"signedIn": False, "why": "create_account"}
+    assert page.evaluate("() => [...document.querySelectorAll('input')].map((i) => i.value)") == ["", ""]
+
+
+def test_an_autocomplete_list_with_current_password_is_still_a_sign_in(page):
+    serve(page, "https://x.test/signin", "<form onsubmit='return false'><input type='email'>"
+          "<input type='password' autocomplete='section-login current-password'><button>Sign in</button></form>")
+    assert sign_in(page) == {"signedIn": "clicked"}
+
+
+@pytest.mark.parametrize("attrs, box", [("disabled", "password"), ("readonly", "password"),
+                                        ("disabled", "email"), ("readonly", "email")])
+def test_a_disabled_or_read_only_box_parks_before_anything_is_typed(page, attrs, box):
+    email = f"<input type='email' {attrs if box == 'email' else ''}>"
+    password = f"<input type='password' {attrs if box == 'password' else ''}>"
+    serve(page, "https://x.test/signin", f"<form onsubmit='return false'>{email}{password}<button>Sign in</button></form>")
+    result = sign_in(page)
+    assert result["signedIn"] is False and result["why"] in ("locked", "no_email")
+    assert page.evaluate("() => [...document.querySelectorAll('input')].map((i) => i.value)") == ["", ""]
 
 
 # ---------- the ordinary fill never lists a password input ----------

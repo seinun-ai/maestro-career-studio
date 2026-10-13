@@ -143,7 +143,8 @@
   const passwordInputs = () => [...document.querySelectorAll('input[type="password"]')].filter(shown);
 
   const isConfirmPassword = (el) => {
-    if ((el.getAttribute("autocomplete") ?? "").toLowerCase() === "new-password") return true;
+    // A token LIST ("section-signup new-password") counts: the token, not the whole attribute.
+    if ((el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).includes("new-password")) return true;
     const own = [el.name, el.id, el.placeholder, el.getAttribute("aria-label"), ...[...(el.labels ?? [])].map((l) => l.textContent)];
     return own.some((s) => CONFIRM_PASSWORD.test(s ?? ""));
   };
@@ -321,10 +322,23 @@
   /** Type the saved login into the sign-in form and press its Sign in. `{signedIn: "clicked"}` when
    * the button was pressed (whether the site accepted the login is the next page's business), else
    * `{signedIn: false, why}`: "frame", "missing", "host", "captcha", "no_form", "create_account",
-   * "verify", "no_email", "no_button", "typing". Every refusal comes BEFORE anything is typed except
-   * "typing", and the button is found before the first key, so a page with no safe button never
-   * holds the password. */
-  function signIn({ email, password, allowedHost } = {}) {
+   * "verify", "no_email", "locked", "no_button", then after typing began "typing", "button" (the
+   * button changed while typing) and "click". The button is found before the first key, so a page
+   * with no safe button never holds the password.
+   *
+   * NEVER THROWS, and never returns an error's text: page script runs during typing and the click
+   * (input and submit handlers), and its exception message could be the value just typed. Every
+   * failure is a fixed word, so nothing downstream (agent.js's reply, the service worker, the
+   * panel) can carry the password. */
+  function signIn(args) {
+    try {
+      return signInOnce(args ?? {});
+    } catch {
+      return { signedIn: false, why: "error" };
+    }
+  }
+
+  function signInOnce({ email, password, allowedHost }) {
     if (window.top !== window.self) return { signedIn: false, why: "frame" };
     const text = (v) => typeof v === "string" && v !== "";
     if (!text(email) || !text(password) || !text(allowedHost)) return { signedIn: false, why: "missing" };
@@ -337,11 +351,13 @@
       return { signedIn: false, why: "verify" };
     }
     const box = passwords[0];
+    if (!enabled(box) || box.readOnly) return { signedIn: false, why: "locked" };
     const scope = box.form ?? box.closest(FORM) ?? document;
     const emailEl = emailBox(scope);
     if (!emailEl) return { signedIn: false, why: "no_email" };
-    const go = [...scope.querySelectorAll(BUTTONS)].find((el) => !el.closest(CHROME) && shown(el) && enabled(el)
-      && SIGN_IN_BUTTON.test(labelOf(el)) && sortOf(labelOf(el)) !== "submit");
+    const plain = (el) => el.isConnected && !el.closest(CHROME) && shown(el) && enabled(el)
+      && SIGN_IN_BUTTON.test(labelOf(el)) && sortOf(labelOf(el)) !== "submit";
+    const go = [...scope.querySelectorAll(BUTTONS)].find(plain);
     if (!go) return { signedIn: false, why: "no_button" };
 
     const { typeText, enter, leave } = ns.fillBase;
@@ -355,7 +371,13 @@
     } catch {
       return { signedIn: false, why: "typing" };   // a fixed word: an error's text could carry a value
     }
-    go.click();
+    // Typing ran the page's own input handlers, which can relabel or remove the button: judged again.
+    if (!plain(go)) return { signedIn: false, why: "button" };
+    try {
+      go.click();
+    } catch {
+      return { signedIn: false, why: "click" };
+    }
     return { signedIn: "clicked" };
   }
 

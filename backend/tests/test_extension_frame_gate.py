@@ -139,8 +139,14 @@ ns.pageReader = {
   summary: () => { calls.push(["pageReader.summary", 0]); return { host: "x", buttons: [] }; },
   // The Apply flag rides as a third element only when it was true: a plain Next click never carries it.
   advance: (id, opts) => { calls.push(opts?.apply === true ? ["pageReader.advance", id, "apply"] : ["pageReader.advance", id]); return { clicked: true }; },
-  // Records WHICH keys arrived, never the values: the secret must not ride out in a call log.
-  signIn: (a) => { calls.push(["pageReader.signIn", Object.keys(a).sort(), a.allowedHost]); return { signedIn: "clicked" }; },
+  // Records WHICH keys arrived and whether each value is the message's own, never the values: the
+  // secret must not ride out in a call log. `spec.signInThrows` models page script throwing it.
+  signIn: (a) => {
+    calls.push(["pageReader.signIn", Object.keys(a).sort(), a.allowedHost,
+                a.email === "ada@acme.test", a.password === "pw-test-only"]);
+    if (spec.signInThrows) throw new Error("boom " + a.password);
+    return { signedIn: "clicked" };
+  },
   applyUrl: () => null,   // extract_job_posting asks it for the employer's link
 };
 
@@ -605,8 +611,19 @@ def test_the_saved_login_is_typed_in_the_top_frame_only_even_when_a_subframe_has
 
 def test_the_top_frame_forwards_the_three_login_fields_and_nothing_else(tmp_path):
     out = _run(tmp_path, type_="page_sign_in", top_frame=True)
-    assert out["calls"] == [["pageReader.signIn", ["allowedHost", "email", "password"], "x.test"]]
+    assert out["calls"] == [["pageReader.signIn", ["allowedHost", "email", "password"], "x.test", True, True]]
     assert out["data"] == {"signedIn": "clicked"}
+
+
+def test_a_throw_inside_the_sign_in_reader_becomes_a_fixed_word(tmp_path):
+    """The handler's reply would carry err.message to the panel; for this op it never does."""
+    out = run_node(
+        _GATE_DRIVER_JS,
+        {"type": "page_sign_in", "topFrame": True, "form": False, "detectThrows": False, "fileInputs": [],
+         "expect": None, "peek": False, "readOnly": False, "signInThrows": True},
+        tmp_path, source=page_runtime_source())
+    assert out["data"] == {"signedIn": False, "why": "error"}
+    assert "pw-test-only" not in str(out["data"])
 
 
 def test_fill_cancel_reaches_every_frame(tmp_path):

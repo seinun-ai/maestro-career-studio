@@ -653,11 +653,13 @@
     page_advance: (msg) => (frameMayReceiveUserData(msg)
       ? ns.pageReader.advance(msg.id, { apply: msg.apply === true })
       : { clicked: false, why: "gate" }),
-    // The saved login: the TOP frame only, never gated on form evidence (a subframe is refused, not
-    // asked). Reached only through panel_frame0, never the all-frames broadcast.
-    page_sign_in: (msg) => (window.top === window.self
-      ? ns.pageReader.signIn({ email: msg.email, password: msg.password, allowedHost: msg.allowedHost })
-      : { signedIn: false, why: "frame" }),
+    // The saved login: TOP frame only (a subframe is refused, not asked), via panel_frame0 alone.
+    // A fixed word on any failure: an error's text could be the password.
+    page_sign_in: (msg) => {
+      if (window.top !== window.self) return { signedIn: false, why: "frame" };
+      try { return ns.pageReader.signIn({ email: msg.email, password: msg.password, allowedHost: msg.allowedHost }); }
+      catch { return { signedIn: false, why: "error" }; }
+    },
   };
 
   // ONE LIVE listener per isolated world. panel_prepare re-injects this file
