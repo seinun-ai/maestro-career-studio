@@ -254,6 +254,45 @@ def test_an_honest_abstain_on_a_popup_hands_over_to_the_adaptive_step(page, load
     assert all(s["complete"] is True for s in steps)
 
 
+YEARS_POPUP = dict(map={"y": {"route": "low_stakes", "years": True}},
+                   explore={"y": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
+                   apply={"click:o1": {"outcome": "verified"}},
+                   step={"states": [{"version": 1, "complete": True,
+                                     "candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'}]}],
+                         "moves": [{"mid": "click:o1", "reason": "assumed"}]})
+
+
+def test_a_final_ask_on_a_years_popup_never_reaches_the_adaptive_step(page, load):
+    """/pick says the history shows too few years ("asked"): the field is the user's. An honest "abstained"
+    would hand the popup to /step, which is what this must not do."""
+    out = run(page, load, frames=[[f("y", "popup", "Do you have 5+ years of experience with SQL?")]],
+              pick={"y": {"oids": [], "reason": "asked"}}, **YEARS_POPUP)
+    assert statuses(out) == {"y": "needs_answer"}
+    assert "/api/autofill/step" not in out["calls"] and "fill_step_state" not in out["calls"]
+    assert actions(out, "move") == []
+
+
+def test_an_ordinary_abstain_on_the_same_popup_still_adapts(page, load):
+    out = run(page, load, frames=[[f("y", "popup", "Do you have 5+ years of experience with SQL?")]],
+              pick={"y": {"oids": [], "reason": "abstained"}}, **YEARS_POPUP)
+    assert "/api/autofill/step" in out["calls"]
+
+
+def test_the_maps_years_marker_is_echoed_to_pick_and_step(page, load):
+    out = run(page, load, frames=[[f("y", "popup", "Are you proficient in SQL?")]],
+              pick={"y": {"oids": [], "reason": "abstained"}}, **YEARS_POPUP)
+    assert [b["fields"][0]["years"] for b in bodies(out, "/api/autofill/pick")] == [True]
+    assert [b["years"] for b in bodies(out, "/api/autofill/step")] == [True]
+
+
+def test_a_field_the_map_did_not_mark_sends_no_years(page, load):
+    out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]],
+              map={"h": {"route": "low_stakes"}},
+              explore={"h": {"options": [opt("o1", "LinkedIn")], "complete": True}},
+              pick={"h": {"oids": ["o1"], "reason": "assumed"}}, apply={"click:o1": {"outcome": "verified"}})
+    assert all("years" not in b["fields"][0] for b in bodies(out, "/api/autofill/pick"))
+
+
 def test_an_existing_chip_does_not_stop_missing_items_being_added(page, load):
     out = run(page, load, frames=[[f("k", "search", "Skills", multi=True, committed=["SQL"], answered=False)]],
               map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},

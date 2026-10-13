@@ -794,6 +794,7 @@
         offered,
         field: {
           fid: f.fid, question: question(f), route: routeOf(row), slot: row.slot ?? null,
+          ...(row.years ? { years: true } : {}),
           ...(item !== undefined ? { item: String(item).slice(0, 300) } : {}),
           options: offered.slice(0, PICK_OPTIONS).map(({ oid, text }) => ({ oid, text: text.slice(0, 300) })),
           // Complete only when the model sees EVERY answer: none hidden by policy, none past the cap.
@@ -806,7 +807,9 @@
     const pickOf = (got, offered) => {
       if (!got) return null;
       const o = got.oids?.length && STATUS[got.reason] ? offered.find((x) => x.oid === got.oids[0]) : undefined;
-      if (!o?.text) return { abstained: true };
+      // "asked" is /pick's FINAL abstain (a years question the history cannot say Yes to): the field is the
+      // user's, and the adaptive step must not take it over.
+      if (!o?.text) return got.reason === "asked" ? { abstained: true, final: true } : { abstained: true };
       return { text: o.text, reason: got.reason, ...(typeof o.where === "string" ? { where: o.where } : {}) };
     };
     // The option /pick chose, as its 0-based place in the field's PASSIVE list
@@ -915,6 +918,7 @@
         if (!state.candidates.some((c) => c?.mid && c.mid !== "give_up")) return giveUp(f, "gave_up");
         const { res, ms } = await post("/api/autofill/step", {
           ...asked, fid: f.fid, question: question(f), route: routeOf(row), slot: row.slot ?? null,
+          ...(row.years ? { years: true } : {}),
           ...(item !== undefined ? { item: String(item).slice(0, 300) } : {}),
           history: history.slice(-HISTORY_KEPT),
           candidates: state.candidates.slice(0, STEP_CANDIDATES),
@@ -997,7 +1001,7 @@
       if (picked.abstained) {
         // An honest "no option states it" over a popup is where categories,
         // search boxes and "Not in list" live. A native list showed everything.
-        if (adapts(f, row)) return settle(f, await adapt(f, row, historyEntry("choose", "abstained"), item));
+        if (!picked.final && adapts(f, row)) return settle(f, await adapt(f, row, historyEntry("choose", "abstained"), item));
         return finish(f, "needs_answer", { lastOutcome: "abstained" });
       }
       const out = await act(f, withOrder(f, {
@@ -1325,7 +1329,7 @@
           const datePart = narrowed(f, m);
           if (m) {
             set(f.fid, { route: m.route, slot: m.slot ?? null, value: datePart ? datePart.value : m.value ?? null,
-              format, part: datePart?.part ?? null, why: WHY[m.why] ? m.why : null });
+              format, part: datePart?.part ?? null, why: WHY[m.why] ? m.why : null, years: m.years === true });
             // The slot is a fact NAME, never its value; one call served the chunk.
             note(f.fid, {
               op: "map", ms: wholeMs(ms / part.length), route: TRACE_ROUTES.has(m.route) ? m.route : null,
