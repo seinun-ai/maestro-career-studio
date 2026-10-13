@@ -1420,6 +1420,14 @@
     // What each open field is: text (a fact to type), choice, or prose (a
     // free-text answer the model writes); one with nothing to fill it is
     // finished here.
+    // A search box with a pill in it and no fact to put there is answered:
+    // Workday's Country Phone Code showed its one pill but read unanswered (a
+    // pill box of unknown multiplicity may hold the first of several) and was
+    // asked. Only pills count — a popup's committed text can be its
+    // placeholder, which `answered` already covers. A leftover is the engine's
+    // own write for an earlier question, never an answer.
+    const holdsPill = (f, row) => f.shape === "search" && !f.invalid && !row.leftover
+      && Array.isArray(f.committed) && f.committed.some((v) => v != null && String(v).trim() !== "");
     const routed = (open) => {
       const texts = [];
       const choices = [];
@@ -1430,7 +1438,8 @@
           finish(f, "needs_answer", { lastOutcome: "no_date_part", answer: `Your profile has no ${row.part} for this date.` });
         } else if (row.route === "none" && row.why) {
           finish(f, "needs_answer", { lastOutcome: row.why, answer: WHY[row.why] });
-        } else if (!row.route || row.route === "none") finish(f, "needs_answer", { lastOutcome: row.route ? "no_fact" : "not_mapped" });
+        } else if (row.route === "none" && holdsPill(f, row)) finish(f, "already");
+        else if (!row.route || row.route === "none") finish(f, "needs_answer", { lastOutcome: row.route ? "no_fact" : "not_mapped" });
         else if (row.route === "blocked") finish(f, "blocked", { lastOutcome: "blocked" });
         else if (row.route === "free_text") {
           if (f.kind === "text") prose.push(f);

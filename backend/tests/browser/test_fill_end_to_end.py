@@ -763,3 +763,19 @@ def test_a_run_never_writes_a_robot_trap(e2e_page):
     assert not [q for q in out["by_question"] if "robots" in q or q == "Leave this field blank"]
     assert not [p for p in out["posts"] if p["path"] == "/api/autofill/map"
                 for f in p["body"]["fields"] if f["question"] in (trap, "Leave this field blank")]
+
+
+def test_a_held_value_with_no_fact_is_already_there(e2e_page):
+    """Live 2026-10-13: Country Phone Code held "United States of America (+1)"
+    but was asked, because a Workday pill box of unknown multiplicity reads
+    unanswered and the map had no fact for it. A search box whose pill is
+    already there, with nothing to put in it, is `already`; an empty required
+    one with no fact is still the user's to answer."""
+    page = e2e_page
+    out = _run(page, html=fixture_html("workday_misses.html"), limits={"MAX_ROUNDS": 3}, map={})
+    code = out["by_question"]["Country Phone Code"]
+    assert code["status"] == "already", code
+    assert oracle(page, "phoneCode") == "United States of America (+1)"   # left as it stood
+    study = out["by_question"]["Field of Study"]
+    assert (study["status"], study["lastOutcome"]) == ("needs_answer", "no_fact"), study
+    assert oracle(page, "fieldOfStudy") == ""
