@@ -403,17 +403,35 @@ def test_radio_rows_turn_a_one_item_set_into_one_answer(page, load):
     assert [(a["op"], a.get("text")) for a in actions(out)] == [("choose", "UT Arlington")]   # no set, and no close of its own
 
 
-def test_eleven_skills_with_ten_added_is_partial_not_verified(page, load):
-    skills = [f"S{i}" for i in range(11)]
-    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
-              map={"k": {"route": "slot", "slot": "skills", "value": skills}},
-              explore={s: {"options": [opt("o1", s)]} for s in skills},
-              pick={f"k:{s}": {"oids": ["o1"], "reason": "matched"} for s in skills},
-              apply={s: {"outcome": "verified", "added": [s], "missing": []} for s in skills})
+def _skills_set(page, load, skills):
+    return run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
+               map={"k": {"route": "slot", "slot": "skills", "value": skills}},
+               explore={s: {"options": [opt("o1", s)]} for s in skills},
+               pick={f"k:{s}": {"oids": ["o1"], "reason": "matched"} for s in skills},
+               apply={s: {"outcome": "verified", "added": [s], "missing": []} for s in skills})
+
+
+def test_twenty_skills_are_all_worked_by_default(page, load):
+    """The owner's live profile held ~19 skills. A list field works up to twenty
+    items on the ordinary limits (each item is its own commit; the field's clock
+    grows 6 s per item, 139 s for twenty)."""
+    skills = [f"S{i}" for i in range(20)]
+    out = _skills_set(page, load, skills)
+    assert statuses(out) == {"k": "verified"}
+    assert [s["texts"] for s in actions(out, "set")] == [[s] for s in skills]
+    steps = traced(out, "k")["steps"]
+    # 1 map + 20 x (explore, pick, set) = 61 steps; the trace keeps the first and last 20 (diagnostic only).
+    assert len(steps) == 40 and steps[0]["op"] == "map"
+    assert steps[-1]["op"] == "set"
+
+
+def test_a_twenty_first_skill_is_over_the_limit_and_the_field_is_partial(page, load):
+    skills = [f"S{i}" for i in range(21)]
+    out = _skills_set(page, load, skills)
     [r] = out["report"]["fields"]
-    assert (r["status"], r["answer"]) == ("partial", "10 of 11 added")
+    assert (r["status"], r["answer"]) == ("partial", "20 of 21 added")
     sets = actions(out, "set")
-    assert [s["texts"] for s in sets] == [[s] for s in skills[:10]] and [s["terms"] for s in sets] == [[s] for s in skills[:10]]
+    assert [s["texts"] for s in sets] == [[s] for s in skills[:20]] and [s["terms"] for s in sets] == [[s] for s in skills[:20]]
 
 
 def test_an_unchecked_lone_checkbox_is_not_already_answered(page, load):

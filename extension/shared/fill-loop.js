@@ -172,7 +172,7 @@
     MAX_ROUNDS: 4,
     MAX_ATTEMPTS: 3,
     MAX_STEPS: 8,
-    MAX_ITEMS: 10,
+    MAX_ITEMS: 20, // a list field works this many items; each is its own commit, so only the clock grows
     API_MS: 10000,
     FIELD_MS: 25000,
     ITEM_MS: 6000, // a set's clock grows by this per item worked, past the first
