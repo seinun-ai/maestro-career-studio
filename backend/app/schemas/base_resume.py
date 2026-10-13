@@ -1,16 +1,21 @@
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict
 
 from app.schemas.resume import ResumeData
-from app.services.resume_colors import valid_hue
+from app.services.resume_colors import BAD_HUE, valid_hue
 
 
 def _check_hue(value: int | None) -> int | None:
     if value is not None and not valid_hue(value):
-        raise ValueError("Pick a colour hue from 0 to 359.")
+        raise ValueError(BAD_HUE)
     return value
+
+
+# A hue is 0-359; None means "not given" (create/duplicate) or "clear" (identity).
+ColorHue = Annotated[int | None, AfterValidator(_check_hue)]
 
 
 class _BaseResumeIdentityRead(BaseModel):
@@ -78,9 +83,7 @@ class BaseResumeCreate(BaseModel):
     role_category: str | None = None
     role_label: str | None = None
     # Omitted = a random free preset.
-    color_hue: int | None = None
-
-    _hue = field_validator("color_hue")(_check_hue)
+    color_hue: ColorHue = None
 
 
 class BaseResumeUpdate(BaseModel):
@@ -94,9 +97,7 @@ class BaseResumeDuplicate(BaseModel):
     new_slug: str
     new_display_name: str | None = None
     # Omitted = a random free preset, so the copy is told apart from its source.
-    color_hue: int | None = None
-
-    _hue = field_validator("color_hue")(_check_hue)
+    color_hue: ColorHue = None
 
 
 class BaseResumeFromKB(BaseModel):
@@ -125,9 +126,7 @@ class BaseResumeFromKB(BaseModel):
     # include_summary, which only ever carries the whole-career KB summary.
     summary: str | None = None
     # Omitted = a random free preset.
-    color_hue: int | None = None
-
-    _hue = field_validator("color_hue")(_check_hue)
+    color_hue: ColorHue = None
 
 
 class BaseFromKBPlanRequest(BaseModel):
@@ -174,9 +173,7 @@ class BaseResumeIdentity(BaseModel):
     company: str | None = None
     focus: str | None = None
     # The identity colour. Omitted = unchanged; null clears to neutral; 0-359.
-    color_hue: int | None = None
-
-    _hue = field_validator("color_hue")(_check_hue)
+    color_hue: ColorHue = None
 
 
 class BaseResumePortProject(BaseModel):

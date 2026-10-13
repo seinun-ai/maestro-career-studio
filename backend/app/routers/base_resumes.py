@@ -47,7 +47,6 @@ from app.services import (
     pdf_preview,
     role_categories,
 )
-from app.services.resume_colors import hues_in_use, pick_hue
 from app.services.base_resume_data import resume_label
 from app.services.attachment_extract import (
     UPLOAD_UNREADABLE,
@@ -56,6 +55,7 @@ from app.services.attachment_extract import (
     plain_read_error,
 )
 from app.services import resume_ops
+from app.services.resume_colors import BAD_HUE, pick_hue, valid_hue
 from app.services.resume_edit import ContentChangedError
 from app.services.resume_versions import record_version
 from app.services.sync import hooks
@@ -172,7 +172,9 @@ def _validated_anchors(payload: BaseResumeIdentity, fields: set[str]) -> dict:
     caller mutates the row, so a 422 saves nothing. Countries go through
     `countries.normalize` (codes in any case, "UK", English names), keep
     first-seen order without repeats, and null or [] store [] (the column is
-    NOT NULL). A blank text anchor clears to None.
+    NOT NULL). A blank text anchor clears to None. `color_hue` rides along
+    (the schema already range-checked it): it is identity metadata written the
+    same way, and null clears it to neutral.
     """
     updates: dict = {}
     if "countries" in fields:
@@ -194,6 +196,8 @@ def _validated_anchors(payload: BaseResumeIdentity, fields: set[str]) -> dict:
                 detail=f"Keep the {name} to {MAX_LABEL_CHARS} characters or fewer.",
             )
         updates[name] = text or None
+    if "color_hue" in fields:
+        updates["color_hue"] = payload.color_hue
     return updates
 
 
@@ -294,7 +298,7 @@ def create_base_resume(
         role_label=role_label,
         color_hue=payload.color_hue
         if payload.color_hue is not None
-        else pick_hue(hues_in_use(db)),
+        else pick_hue(base_resume_data.hues_in_use(db)),
     )
     db.add(row)
     record_version(db, "base", payload.slug, data_dict, source="create")
@@ -563,6 +567,10 @@ def import_base_resume(
     the file's stem names the resume and a free slug is derived from that.
     """
     hooks.require_profile_writable(db)
+    # Form fields skip the schema validators and the create runs after a model
+    # parse, so a bad hue is refused up front instead of failing after the work.
+    if color_hue is not None and not valid_hue(color_hue):
+        raise HTTPException(status_code=422, detail=BAD_HUE)
     safe_name, parsed, parse_warnings = _parse_resume_upload(db, file)
 
     display = (display_name or "").strip() or (
@@ -627,8 +635,7 @@ def update_base_resume_identity(
     """Set a base resume's role, display name, anchors and/or colour hue.
 
     The anchors are countries (ISO codes), company and focus; saving them is
-    metadata too, so a 422 on any field saves none of them. The colour hue
-    (0-359) is checked by the schema before this body runs.
+    metadata too, so a 422 on any field saves none of them.
 
     Deliberately NOT the full PUT: that rewrites data_json, records a
     ResumeVersion, rewrites the on-disk JSON and recompiles the PDF. Declaring a
@@ -665,8 +672,6 @@ def update_base_resume_identity(
         row.display_name = payload.display_name
     for column, value in anchor_updates.items():
         setattr(row, column, value)
-    if "color_hue" in fields:
-        row.color_hue = payload.color_hue
 
     db.commit()
     db.refresh(row)
@@ -826,7 +831,7 @@ def duplicate_base_resume(
         # The colour tells the copy apart from its source, so it is picked, not copied.
         color_hue=payload.color_hue
         if payload.color_hue is not None
-        else pick_hue(hues_in_use(db), avoid=source.color_hue),
+        else pick_hue(base_resume_data.hues_in_use(db), avoid=source.color_hue),
     )
     db.add(row)
     record_version(

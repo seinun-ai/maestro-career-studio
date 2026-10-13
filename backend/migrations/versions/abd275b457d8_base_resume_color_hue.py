@@ -1,8 +1,10 @@
 """base_resumes.color_hue
 
 The identity colour of a base resume: one hue (0-359), picked on create and
-changed on PATCH /{slug}/identity. Existing live resumes are backfilled with
-distinct presets so today's list is not all one grey.
+changed on PATCH /{slug}/identity. Every existing non-deleted resume is
+backfilled with a preset, so none is grey (an archived one restored later
+included). Live resumes are coloured first, so they get the first, distinct
+presets; archived ones take the next in line and may repeat a live colour.
 
 Revision ID: abd275b457d8
 Revises: cf0804d00ae2
@@ -29,7 +31,7 @@ def upgrade() -> None:
     slugs = [
         row[0]
         for row in conn.execute(
-            sa.text("SELECT slug FROM base_resumes WHERE deleted_at IS NULL ORDER BY created_at, slug")
+            sa.text("SELECT slug FROM base_resumes WHERE deleted_at IS NULL ORDER BY (archived_at IS NOT NULL), created_at, slug")
         )
     ]
     for i, slug in enumerate(slugs):

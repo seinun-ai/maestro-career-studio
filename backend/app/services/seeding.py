@@ -26,7 +26,7 @@ from app.services import (
     text_settings,
     exports as career_exports,
 )
-from app.services.resume_colors import hues_in_use, pick_hue
+from app.services.resume_colors import pick_hue
 from app.services.sync import status
 
 
@@ -65,7 +65,7 @@ def seed_base_resumes(session: Session) -> list[str]:
 
     # Rows are only added to the session below (autoflush is off), so a query per
     # resume would not see the hues just handed out: track them here.
-    used = hues_in_use(session)
+    used = base_resume_data.hues_in_use(session)
     for path in sorted(base_dir.glob("*.json")):
         slug = path.stem
         if session.get(BaseResume, slug) is not None:

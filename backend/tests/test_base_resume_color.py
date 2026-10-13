@@ -19,7 +19,7 @@ from app.main import app
 from app.models.base_resume import BaseResume
 from app.models.resume_version import ResumeVersion
 from app.services import kb_consolidation, kb_import, seeding
-from app.services.resume_colors import PRESET_HUES
+from app.services.resume_colors import BAD_HUE, PRESET_HUES
 
 from tests.test_base_resume_from_kb import _entity, _profile
 from tests.test_base_resume_role_category import SAMPLE, _client
@@ -184,6 +184,19 @@ def test_import_passes_the_hue_through_or_picks_one(client, monkeypatch):
     assert picked.json()["color_hue"] in PRESET_HUES
 
 
+def test_import_rejects_a_hue_out_of_range_and_saves_nothing(client, db_session, monkeypatch):
+    def explode(session, text):
+        raise AssertionError("a bad hue must be refused before the file is parsed")
+
+    monkeypatch.setattr(kb_consolidation, "parse_resume_text", explode)
+
+    res = _import(client, "a.txt", color_hue="360")
+
+    assert res.status_code == 422
+    assert res.json()["detail"] == BAD_HUE
+    assert db_session.query(BaseResume).count() == 0
+
+
 def test_kb_import_mints_each_base_with_a_distinct_preset(db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(kb_import.base_resume_data.settings, "base_resumes_dir", tmp_path)
     monkeypatch.setattr(
@@ -228,7 +241,7 @@ def test_identity_sets_the_hue_without_touching_the_document(client, db_session,
     row = db_session.get(BaseResume, "tinted")
     assert row.color_hue == 230
     assert row.data_json == SAMPLE
-    assert row.pdf_path == "/kept.pdf" and row.pdf_pages == 2 and row.pdf_rendered_at == stamp
+    assert (row.pdf_path, row.pdf_pages, row.pdf_rendered_at) == ("/kept.pdf", 2, stamp)
     assert db_session.query(ResumeVersion).count() == 0
     assert renders == []
 
@@ -259,27 +272,48 @@ def test_the_list_and_detail_carry_the_hue(client, db_session):
 
 # --- the migration --------------------------------------------------------------
 
-def test_migration_backfills_live_resumes_with_distinct_presets_and_round_trips(tmp_path):
+def _db_at_previous_head(tmp_path):
+    """A SQLite file migrated to the head before color_hue, holding five base resumes."""
     path = tmp_path / "hues.sqlite3"
     cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     cfg.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
     command.upgrade(cfg, "cf0804d00ae2")
+    # "old" is archived but created before every live row: it must still queue behind them.
+    rows = [
+        ("old", None, "2026-01-02 00:00:00", "2025-12-01 00:00:00"),
+        ("a", None, None, "2026-01-01 00:00:00"),
+        ("b", None, None, "2026-01-01 00:00:00"),
+        ("gone", "2026-01-01 00:00:00", None, "2026-01-01 00:00:00"),
+        ("c", None, None, "2026-01-01 00:00:00"),
+    ]
     with closing(sqlite3.connect(path)) as db:
-        for slug, deleted in [("a", None), ("b", None), ("gone", "2026-01-01 00:00:00"), ("c", None)]:
+        for slug, deleted, archived, created in rows:
             db.execute(
-                "INSERT INTO base_resumes (slug, data_json, role_category, deleted_at, created_at, updated_at)"
-                " VALUES (?, '{}', 'unknown', ?, '2026-01-01 00:00:00', '2026-01-01 00:00:00')",
-                (slug, deleted),
+                "INSERT INTO base_resumes (slug, data_json, role_category, deleted_at, archived_at,"
+                " created_at, updated_at) VALUES (?, '{}', 'unknown', ?, ?, ?, ?)",
+                (slug, deleted, archived, created, created),
             )
         db.commit()
+    return path, cfg
+
+
+def test_migration_colours_every_kept_resume_and_live_ones_get_the_first_presets(tmp_path):
+    path, cfg = _db_at_previous_head(tmp_path)
 
     command.upgrade(cfg, "head")
+
     with closing(sqlite3.connect(path)) as db:
         hues = dict(db.execute("SELECT slug, color_hue FROM base_resumes"))
-    assert [hues[s] for s in ("a", "b", "c")] == list(PRESET_HUES[:3])
+    assert [hues[s] for s in ("a", "b", "c", "old")] == list(PRESET_HUES[:4])
     assert hues["gone"] is None
 
+
+def test_migration_downgrade_drops_the_column_and_keeps_the_rows(tmp_path):
+    path, cfg = _db_at_previous_head(tmp_path)
+    command.upgrade(cfg, "head")
+
     command.downgrade(cfg, "cf0804d00ae2")
+
     with closing(sqlite3.connect(path)) as db:
         assert "color_hue" not in {r[1] for r in db.execute("PRAGMA table_info(base_resumes)")}
-        assert db.execute("SELECT count(*) FROM base_resumes").fetchone()[0] == 4
+        assert db.execute("SELECT count(*) FROM base_resumes").fetchone()[0] == 5

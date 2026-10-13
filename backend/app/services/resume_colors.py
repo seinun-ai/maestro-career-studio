@@ -14,23 +14,13 @@ import random
 from collections import Counter
 from collections.abc import Iterable
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from app.models.base_resume import BaseResume
-from app.services import base_resume_data
-
 PRESET_HUES: tuple[int, ...] = (5, 40, 80, 125, 160, 195, 230, 265, 300, 335)
+
+BAD_HUE = "Pick a colour hue from 0 to 359."
 
 
 def valid_hue(value: int) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 360
-
-
-def hues_in_use(db: Session) -> list[int | None]:
-    """The hue of every resume a user can still pick. Archived and deleted rows
-    hold no colour (selectable_filter, not active_filter): hiding a resume frees its."""
-    return list(db.scalars(select(BaseResume.color_hue).where(base_resume_data.selectable_filter())))
+    return isinstance(value, int) and 0 <= value < 360
 
 
 def pick_hue(

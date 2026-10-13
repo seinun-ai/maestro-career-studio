@@ -110,7 +110,8 @@
   stored; the app derives its tones. After create it changes ONLY through `PATCH /identity` (MCP
   `set_base_resume_identity`), validated before any write like the anchors, with the same no-version, no-render
   rule; duplicate picks a fresh hue instead of copying. It syncs with the profile row like the anchors (export
-  walks the columns, so the payload is unchanged).
+  walks the columns, so no sync code changes; a pair on different versions is refused by the version check).
+  The MCP tool can set a colour but not clear it (only the REST PATCH with `null` clears).
   **Only countries decide anything.** `services/base_eligibility.py` owns the rule: a job whose country
   is unknown (`countries.normalize` finds no code, "Remote" included) keeps every selectable base; a
   known country keeps the bases listing it plus those with no countries; when none qualify every

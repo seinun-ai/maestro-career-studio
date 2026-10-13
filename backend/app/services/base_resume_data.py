@@ -35,6 +35,12 @@ def selectable_filter() -> ColumnElement[bool]:
     return and_(BaseResume.deleted_at.is_(None), BaseResume.archived_at.is_(None))
 
 
+def hues_in_use(session: Session) -> list[int | None]:
+    """The colour hue of every SELECTABLE base resume. Archived and deleted rows
+    hold no colour (selectable_filter, not active_filter): hiding a resume frees its."""
+    return list(session.scalars(select(BaseResume.color_hue).where(selectable_filter())))
+
+
 def active_base_resume_slugs(session: Session) -> list[str]:
     """Return the active (non-soft-deleted) base resume slugs.
 
