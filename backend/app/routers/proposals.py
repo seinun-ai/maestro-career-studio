@@ -330,7 +330,10 @@ def delete_proposal(proposal_id: UUID, db: Annotated[Session, Depends(get_db)]):
     # COMMIT, only then unlink. ConsentEvents go via the DB-level FK cascade.
     stale: list[Path] = []
     for item in prop.evidence_json or []:
-        name = Path(str(item.get("path", ""))).name
+        # Only rows that name a file under evidence/; the Companion's rows hold a URL path or none.
+        if not str(item.get("path", "")).startswith("evidence/"):
+            continue
+        name = Path(str(item["path"])).name
         if not name:
             continue
         path = proposal_evidence.evidence_file_path(db, prop, name)

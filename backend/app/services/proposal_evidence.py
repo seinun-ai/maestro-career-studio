@@ -67,7 +67,8 @@ def migrate_legacy_evidence(session: Session, prop: ApplicationProposal) -> Path
     manifest = [dict(item) for item in (prop.evidence_json or [])]
     pending_by_name: dict[str, list[dict]] = {}
     for item in manifest:
-        name = Path(str(item.get("path") or "")).name
+        path = str(item.get("path") or "")
+        name = Path(path).name if path.startswith("evidence/") else ""
         if name:
             pending_by_name.setdefault(name, []).append(item)
 

@@ -187,6 +187,11 @@ def test_a_failed_submit_step_leaves_nothing_approved(db_session, queued, monkey
     {"host": "acme.example", "path": "/apply/done", "text": "x" * 301},
     {"host": "h" * 256, "path": "/apply/done", "text": "ok"},
     {"host": "acme.example", "path": "/" + "p" * 2048, "text": "ok"},
+    {"host": "Acme.Example", "path": "/apply/done", "text": "ok"},
+    {"host": "acme.example/apply", "path": "/apply/done", "text": "ok"},
+    {"host": "acme.example", "path": "apply/done", "text": "ok"},
+    {"host": "acme.example", "path": "/apply/done?token=abc", "text": "ok"},
+    {"host": "acme.example", "path": "/apply/done#ada@example.com", "text": "ok"},
     {"host": "acme.example", "text": "ok"},
     {"path": "/apply/done", "text": "ok"},
     {"host": "acme.example", "path": "/apply/done", "text": "ok", "html": "<p>page</p>"},
@@ -265,3 +270,10 @@ def test_bulk_changes_refuse_the_companion_channel(db_session, queued):
         "ids": [str(queued.id)], "status": "rejected", "consent": {"channel": "companion"}})
     assert r.status_code == 422
     _untouched(db_session, queued)
+
+
+def test_the_receipt_url_path_is_never_taken_for_an_evidence_file(db_session, queued):
+    """A closed proposal's receipt row holds a URL path; deleting it must not look for that as a file."""
+    auto_apply_settings.set_settings(AutoApplySettings(company_blocklist=["acme"]), db_session)
+    assert _post(queued, {"confirmation": {**BODY["confirmation"], "path": "/evidence/x.png"}}).status_code == 200
+    assert client.delete(f"/api/proposals/{queued.id}").status_code == 204

@@ -71,7 +71,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
   // Screenshots only. An agent's rows of every kind (step, final_review, submission_receipt) are image
   // files stored as evidence/<name>; the Companion's final-review and confirmation rows are data, and
   // their path is empty or the page's URL path, never a file to request.
-  const evidence = (data.evidence_json ?? []).filter((e) => e.path.startsWith("evidence/"));
+  const evidence = (data.evidence_json ?? []).filter((e) => (e.path ?? "").startsWith("evidence/"));
   // A question or a stop, in the agent's words, and how it is answered (Keep it and Skip sit in the header).
   const needs = needsYouLine(data.status, data.reason);
 
