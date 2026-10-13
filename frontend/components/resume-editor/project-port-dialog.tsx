@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ResumeTag } from "@/components/visual";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
@@ -107,16 +108,18 @@ export function ProjectPortDialog({
               <SelectValue placeholder="Choose a resume">
                 {(value) => {
                   const hit = targets.find((r) => r.slug === value);
-                  return hit
-                    ? (hit.display_name ?? baseResumeLabel(hit.slug))
-                    : baseResumeLabel(String(value ?? ""), resumes.data);
+                  return hit ? (
+                    <ResumeTag hue={hit.color_hue}>{hit.display_name ?? baseResumeLabel(hit.slug)}</ResumeTag>
+                  ) : (
+                    baseResumeLabel(String(value ?? ""), resumes.data)
+                  );
                 }}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {targets.map((r) => (
                 <SelectItem key={r.slug} value={r.slug}>
-                  {r.display_name ?? baseResumeLabel(r.slug)}
+                  <ResumeTag hue={r.color_hue}>{r.display_name ?? baseResumeLabel(r.slug)}</ResumeTag>
                 </SelectItem>
               ))}
             </SelectContent>

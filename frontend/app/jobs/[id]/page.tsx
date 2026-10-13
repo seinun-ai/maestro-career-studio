@@ -51,8 +51,9 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ResumeTag } from "@/components/visual/resume-swatch";
 import { ScoreBar } from "@/components/visual/score-bar";
-import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
+import { useBaseResumeColor, useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
@@ -212,6 +213,7 @@ export default function JobDetailPage({
     queryFn: () => listAtsScores(id),
   });
   const baseName = useBaseResumeLabel();
+  const colorOf = useBaseResumeColor();
   const best = (scoreRows.data ?? [])
     .filter((s) => s.phase === "base")
     .sort((a, b) => b.composite - a.composite)[0];
@@ -568,7 +570,10 @@ export default function JobDetailPage({
                   valueText={best.composite.toFixed(1)}
                   label={`Best score, ${baseName(best.target_id)}`}
                 />
-                <span aria-hidden="true" className="text-muted-foreground hidden truncate 2xl:inline">{baseName(best.target_id)}</span>
+                {/* The square goes with the name: below 2xl neither shows. */}
+                <ResumeTag hue={colorOf(best.target_id)} className="hidden min-w-0 2xl:inline-flex">
+                  <span aria-hidden="true" className="text-muted-foreground truncate">{baseName(best.target_id)}</span>
+                </ResumeTag>
               </span>
             ) : null}
             {hasApp && application ? (

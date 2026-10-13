@@ -8,11 +8,12 @@ import { CardResolution } from "@/components/chat/card-resolution";
 import { EditWordsList } from "@/components/edit-words-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResumeTag } from "@/components/visual";
 import { apiFetch, applyResumeEdits, setChatCardState } from "@/lib/api";
 import { describeEdits, type EditWords, type ResumeLike } from "@/lib/describe-edit";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
-import { useBaseResumeName } from "@/hooks/use-base-resume-label";
+import { useBaseResumeColor, useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { notifyRenderNote } from "@/lib/render-note";
 import type {
   ApplicationDetail,
@@ -45,6 +46,7 @@ export function EditProposalCard({
 }) {
   const qc = useQueryClient();
   const baseName = useBaseResumeName(proposal.target_key, proposal.target_kind === "base");
+  const colorOf = useBaseResumeColor();
   const [resolution, setResolution] = useState<"applied" | "discarded" | null>(
     cardState?.status ?? null,
   );
@@ -105,7 +107,7 @@ export function EditProposalCard({
   const job = app.data?.job;
   const targetLabel =
     proposal.target_kind === "base"
-      ? baseName
+      ? <ResumeTag hue={colorOf(proposal.target_key)}>{baseName}</ResumeTag>
       : job?.title
         ? `the tailored resume for ${job.company ? `${job.title} at ${job.company}` : job.title}`
         : "the tailored resume";

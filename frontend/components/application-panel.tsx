@@ -38,7 +38,8 @@ import {
 } from "@/components/ui/select";
 
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
-import { useBaseResumeName } from "@/hooks/use-base-resume-label";
+import { ResumeTag } from "@/components/visual";
+import { useBaseResumeColor, useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
@@ -154,6 +155,7 @@ export function ApplicationDetailsMenu({
   // lacks it (soft-deleted) and the menu is open.
   const listedName = useBaseResumeName(app.base_resume, open && !app.base_resume_name);
   const resumeName = app.base_resume_name || listedName;
+  const colorOf = useBaseResumeColor();
   const { patch, deleteApp } = useApplicationMutations({
     applicationId: app.id,
     jobId,
@@ -233,7 +235,7 @@ export function ApplicationDetailsMenu({
 
           <div className="grid gap-1">
             <span className="text-muted-foreground text-body-small">Base resume</span>
-            <span className="text-body-medium">{resumeName}</span>
+            <ResumeTag hue={colorOf(app.base_resume)} className="text-body-medium">{resumeName}</ResumeTag>
           </div>
 
           <div className="grid gap-1.5">

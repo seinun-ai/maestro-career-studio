@@ -8,13 +8,14 @@ import { toast } from "sonner";
 import { VersionDiffView } from "@/components/resume-versions/version-diff-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResumeTag } from "@/components/visual";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useBaseResumeName } from "@/hooks/use-base-resume-label";
+import { useBaseResumeColor, useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { restoreResumeVersion } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -24,6 +25,7 @@ import type { ChatChangeCard } from "@/lib/types";
 export function ChangeCard({ card }: { card: ChatChangeCard }) {
   const qc = useQueryClient();
   const baseName = useBaseResumeName(card.resume_key, card.resume_kind === "base");
+  const colorOf = useBaseResumeColor();
   const [diffOpen, setDiffOpen] = useState(false);
 
   const revert = useMutation({
@@ -45,7 +47,8 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
 
   // The card carries only the application's id, no job words, so a tailored
   // target stays "tailored resume" here.
-  const targetLabel = card.resume_kind === "base" ? baseName : "tailored resume";
+  const baseTag = <ResumeTag hue={colorOf(card.resume_key)}>{baseName}</ResumeTag>;
+  const targetLabel = card.resume_kind === "base" ? baseTag : "tailored resume";
 
   return (
     <div className="border-primary/30 bg-primary/5 rounded-corner-md border px-3 py-2">
@@ -84,7 +87,7 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
           <DialogHeader>
             <DialogTitle>
               Changes in version {card.version_number} of{" "}
-              {card.resume_kind === "base" ? baseName : "the tailored resume"}
+              {card.resume_kind === "base" ? baseTag : "the tailored resume"}
             </DialogTitle>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">

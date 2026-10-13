@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { SegmentedBar } from "@/components/visual";
+import { ResumeTag, SegmentedBar } from "@/components/visual";
 import { couldnt, errorDetail, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { isOwnershipRefusal, jobOwnershipView } from "@/lib/job-ownership";
@@ -765,7 +765,10 @@ export default function TailorSessionPage({
         <div className="min-w-0 flex-1">
           <h1 className="text-title-large font-medium tracking-tight">Gap analysis</h1>
           <p className="text-muted-foreground text-body-medium">
-            {baseResume.data?.display_name?.trim() || baseResumeLabel(session.data.base_resume)} · Match score before tailoring:{" "}
+            <ResumeTag hue={baseResume.data?.color_hue}>
+              {baseResume.data?.display_name?.trim() || baseResumeLabel(session.data.base_resume)}
+            </ResumeTag>{" "}
+            · Match score before tailoring:{" "}
             <span className="text-foreground font-medium tabular-nums">
               {gapsJson.base_composite.toFixed(1)}
             </span>

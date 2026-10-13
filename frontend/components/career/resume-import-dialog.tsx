@@ -17,6 +17,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ResumeTag } from "@/components/visual";
+import { useBaseResumeColor } from "@/hooks/use-base-resume-label";
 import { kbImportConsolidate, kbImportResume } from "@/lib/api";
 import { couldnt, errorDetail } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -47,6 +49,8 @@ type ConsolidateState = "idle" | "queued" | "running" | "done" | "failed";
  */
 export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  // The import mints each resume's color on the server; the list invalidated below carries it.
+  const colorOf = useBaseResumeColor();
   const [files, setFiles] = useState<File[]>([]);
   const [rejected, setRejected] = useState<{ file: File; reason: string }[]>([]);
   const [report, setReport] = useState<ImportReport | null>(null);
@@ -237,7 +241,9 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
                 <ul className="space-y-2">
                   {report.bases.map((b) => (
                     <li key={b.slug} className="flex items-center justify-between gap-3">
-                      <span className="truncate text-body-medium">{b.display_name}</span>
+                      <ResumeTag hue={colorOf(b.slug)} className="min-w-0">
+                        <span className="truncate text-body-medium">{b.display_name}</span>
+                      </ResumeTag>
                       <RoleCategoryPicker
                         slug={b.slug}
                         roleCategory={b.role_category}

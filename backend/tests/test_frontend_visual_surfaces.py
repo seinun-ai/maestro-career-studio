@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests._jsx_pins import open_tag, tokens
+
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
@@ -69,7 +71,9 @@ def test_job_header_shows_the_best_score_and_locks_tabs_with_an_icon():
     # The pill's visible words repeat the meter's aria-label ("Best score, <resume>").
     assert 'aria-hidden="true" className="text-muted-foreground">Best</span>' in src
     # The resume name is visible only at 2xl (a long title wrapped at 1280); hover and the meter name it always.
-    assert 'aria-hidden="true" className="text-muted-foreground hidden truncate 2xl:inline">{baseName(best.target_id)}' in src
+    # The square goes with the name (test_frontend_resume_square.py): both hidden, together, below 2xl.
+    tag = open_tag(src[src.index("<ResumeTag hue={colorOf(best.target_id)}") :], "ResumeTag")
+    assert {"hidden", "2xl:inline-flex"} <= tokens(tag)
     assert "title={`Best score: ${best.composite.toFixed(1)}, ${baseName(best.target_id)}`}" in src
     assert 'queryKey: ["ats-scores", id]' in src and '.filter((s) => s.phase === "base")' in src
 

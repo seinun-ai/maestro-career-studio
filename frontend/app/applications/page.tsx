@@ -23,7 +23,7 @@ import {
   type SourceFilter,
 } from "@/components/source-toggle";
 import { LaneDot, SavedJobChip, StatusChip, StatusDot, statusLabel } from "@/components/status-chip";
-import { ScoreBar } from "@/components/visual";
+import { ResumeTag, ScoreBar } from "@/components/visual";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,7 +67,7 @@ import {
   type SetupStatus,
 } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
-import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
+import { useBaseResumeColor, useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 
@@ -234,6 +234,7 @@ function ApplicationsContent() {
   const confirm = useConfirm();
   const sidebarHidden = useSidebarHidden();
   const baseName = useBaseResumeLabel();
+  const colorOf = useBaseResumeColor();
   const [filter, setFilter] = useState<Filter>(() => {
     const v = searchParams.get("status") ?? storedValue(FILTER_STORE_KEY);
     return v && (FILTERS as readonly string[]).includes(v)
@@ -812,8 +813,16 @@ function ApplicationsContent() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-w-0 truncate text-body-small">
-                      {r.kind === "saved" ? "—" : r.app.base_resume_name || baseName(r.app.base_resume)}
+                    <TableCell className="max-w-0 text-body-small">
+                      {r.kind === "saved" ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <ResumeTag hue={colorOf(r.app.base_resume)} className="max-w-full">
+                          <span className="text-foreground min-w-0 truncate">
+                            {r.app.base_resume_name || baseName(r.app.base_resume)}
+                          </span>
+                        </ResumeTag>
+                      )}
                     </TableCell>
                     <TableCell>
                       {(() => {

@@ -367,6 +367,7 @@ export function EditorBody({
                 <EditableTitle
                   slug={slug}
                   value={displayName}
+                  colorHue={(live ?? initial).color_hue}
                   onChange={setDisplayName}
                 />
               }

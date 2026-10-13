@@ -45,14 +45,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
-import { useBaseResumeName } from "@/hooks/use-base-resume-label";
+import { useBaseResumeColor, useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AGENT_APPLICATIONS_URL,
   CONNECTED_AGENTS_SETTINGS,
   JOB_HUNT_SKILL_URL,
 } from "@/lib/agent-links";
-import { ActorChip, ScoreBar } from "@/components/visual";
+import { ActorChip, ResumeTag, ScoreBar } from "@/components/visual";
 import { agentDisplayName, proposalByLine } from "@/lib/agent-name";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
@@ -834,6 +834,7 @@ function ProposalRow({
   const acting = actingIds.has(proposal.id);
   const base = chosenBase(proposal);
   const baseName = useBaseResumeName(base ?? "", base !== null);
+  const colorOf = useBaseResumeColor();
   const score = chosenScore(proposal);
   const byLine = proposalByLine(proposal.proposed_by, proposal.status);
   const meta = [byLine, formatTimeAgo(proposal.created_at)].filter(Boolean).join(" · ");
@@ -930,7 +931,7 @@ function ProposalRow({
               </div>
               {base ? (
                 <span className="text-muted-foreground hidden shrink-0 items-center gap-2 text-body-small sm:inline-flex">
-                  {baseName}
+                  <ResumeTag hue={colorOf(base)}>{baseName}</ResumeTag>
                   {score != null ? <ScoreBar value={score} label="Match score" valueText={score.toFixed(1)} /> : null}
                 </span>
               ) : null}

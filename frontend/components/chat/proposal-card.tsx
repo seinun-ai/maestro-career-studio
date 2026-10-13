@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { CardResolution } from "@/components/chat/card-resolution";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useBaseResumeName } from "@/hooks/use-base-resume-label";
+import { ResumeTag } from "@/components/visual";
+import { useBaseResumeColor, useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { applyResumeEdits, setChatCardState } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { couldnt } from "@/lib/error-text";
@@ -36,6 +37,7 @@ export function ProposalCard({
 }) {
   const qc = useQueryClient();
   const baseName = useBaseResumeName(proposal.target_key, proposal.target_kind === "base");
+  const colorOf = useBaseResumeColor();
   const [resolution, setResolution] = useState<"merged" | "discarded" | null>(
     cardState ? (cardState.status === "applied" ? "merged" : "discarded") : null,
   );
@@ -63,7 +65,12 @@ export function ProposalCard({
     onError: (err: Error) => toast.error(couldnt("add the project", err)),
   });
 
-  const targetLabel = proposal.target_kind === "base" ? baseName : "the tailored resume";
+  const targetLabel =
+    proposal.target_kind === "base" ? (
+      <ResumeTag hue={colorOf(proposal.target_key)}>{baseName}</ResumeTag>
+    ) : (
+      "the tailored resume"
+    );
 
   return (
     <div className={`rounded-corner-md border border-dashed px-3 py-2${resolution ? " opacity-80" : ""}`}>

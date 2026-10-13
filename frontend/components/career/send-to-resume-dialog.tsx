@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ResumeTag } from "@/components/visual";
 import { kbAdapt, kbAdaptApply, kbPort } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
@@ -303,7 +304,11 @@ export function SendToResumeDialog({
                 <SelectTrigger id="kb-send-target" className="w-full">
                   <SelectValue>
                     {selectedTarget
-                      ? (selectedTarget.display_name ?? baseResumeLabel(selectedTarget.slug))
+                      ? (
+                        <ResumeTag hue={selectedTarget.color_hue}>
+                          {selectedTarget.display_name ?? baseResumeLabel(selectedTarget.slug)}
+                        </ResumeTag>
+                      )
                       : resumes.isLoading
                         ? "Loading…"
                         : "Choose a resume"}
@@ -312,7 +317,7 @@ export function SendToResumeDialog({
                 <SelectContent>
                   {targets.map((resume) => (
                     <SelectItem key={resume.slug} value={resume.slug}>
-                      {resume.display_name ?? baseResumeLabel(resume.slug)}
+                      <ResumeTag hue={resume.color_hue}>{resume.display_name ?? baseResumeLabel(resume.slug)}</ResumeTag>
                     </SelectItem>
                   ))}
                 </SelectContent>

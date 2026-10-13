@@ -47,7 +47,7 @@ Use roles, never a palette shade or a hex. Every fill has a named text partner; 
 - Hover on a container is its pre-mixed 8% state layer (`primary-container-hover`, `secondary-container-hover`); a call site never picks an opacity.
 - `chart-1` to `chart-6` are for chart series only, in their fixed order. `brand-blue` and `brand-yellow` are for the mark only.
 - **Base resume color is identity, never state.** Each base resume has one hue, picked at random from the free presets when it is made and changeable in its Target. Draw it as a square (`ResumeSwatch`) beside the resume's name, never alone and never as a round pill or dot (round is status). The tones come from the hue (`resume`, `resume-container`, `on-resume-container`), so any hue holds contrast.
-- **Only a card that stands for one base resume** (its gallery card, its score card) carries the color as a 6px top band and a `resume-container` footer. Rows, pages and the sidebar never take it. PDFs never carry it.
+- **Only a card that stands for one base resume** (its gallery card, its score card) carries the color as a 6px top band; the gallery card also tints its footer with `resume-container`, and the score card keeps its body as it is. Rows, pages and the sidebar never take it. PDFs never carry it.
 - **Charts split by base resume** color each series by its resume. Every other chart keeps `chart-1` to `chart-6`.
 
 ## Surfaces and elevation

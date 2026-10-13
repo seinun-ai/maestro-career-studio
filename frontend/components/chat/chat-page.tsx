@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { ResumeSwatch, ResumeTag } from "@/components/visual";
 import {
   parseFlag,
   serializeFlag,
@@ -630,10 +631,8 @@ export function ChatPage() {
   const showPending =
     streaming !== null && !detail.data?.messages.some((m) => m.id === streaming.userMessageId);
 
-  const pinnedName =
-    target === NO_TARGET
-      ? "No resume chosen"
-      : (resumes.data?.find((r) => r.slug === target)?.display_name ?? target);
+  const pinnedResume = target === NO_TARGET ? undefined : resumes.data?.find((r) => r.slug === target);
+  const pinnedName = target === NO_TARGET ? "No resume chosen" : (pinnedResume?.display_name ?? target);
 
   const composer = (
     <div className="bg-card focus-within:border-ring rounded-corner-md border p-2 transition-[border-color] duration-150">
@@ -706,6 +705,7 @@ export function ChatPage() {
           >
             <CONCEPT_ICONS.baseResume className="size-3.5" />
             <SelectValue className="min-w-0">
+              {target !== NO_TARGET && <ResumeSwatch hue={pinnedResume?.color_hue} />}
               <span className="truncate">{pinnedName}</span>
             </SelectValue>
           </SelectTrigger>
@@ -713,7 +713,7 @@ export function ChatPage() {
             <SelectItem value={NO_TARGET}>No resume chosen</SelectItem>
             {resumes.data?.map((r) => (
               <SelectItem key={r.slug} value={r.slug}>
-                {r.display_name || r.slug}
+                <ResumeTag hue={r.color_hue}>{r.display_name || r.slug}</ResumeTag>
               </SelectItem>
             ))}
           </SelectContent>

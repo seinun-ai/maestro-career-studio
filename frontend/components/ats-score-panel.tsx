@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ProgressCount, ScoreBar } from "@/components/visual";
+import { ProgressCount, ResumeTag, ScoreBar } from "@/components/visual";
 import { useCountUp } from "@/hooks/use-count-up";
 import { focusIfDropped, useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
@@ -39,6 +39,7 @@ import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { countryName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
+import { resumeColorStyle } from "@/lib/resume-color";
 import { cn } from "@/lib/utils";
 import {
   ApiError,
@@ -226,16 +227,21 @@ function AtsScoreCard({
   return (
     <Card
       className={cn(
-        "animate-fade-rise",
+        "animate-fade-rise pt-0",
         top && "ring-primary",
         top && "@3xl:col-span-2",
       )}
-      style={{ animationDelay: `${Math.min(index, 8) * 50}ms` }}
+      // The hue rides on the card, so the band and the square follow it. A score can outlive its resume's colour: grey.
+      style={{ ...resumeColorStyle(resume?.color_hue), animationDelay: `${Math.min(index, 8) * 50}ms` }}
     >
+      {/* This card stands for one base resume: its color as the top edge (no tinted footer; the body stays as it was). */}
+      <div aria-hidden="true" className="h-1.5 shrink-0 bg-resume" />
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
         <div className="grid min-w-0 gap-1">
           <CardTitle className="min-w-0 text-title-small">
-            {baseName(score.target_id)}
+            <ResumeTag hue={resume?.color_hue} className="max-w-full">
+              <span className="min-w-0 truncate">{baseName(score.target_id)}</span>
+            </ResumeTag>
           </CardTitle>
           {resume && <AnchorPills resume={resume} />}
         </div>

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { IconButton } from "@/components/icon-button";
 import { Input } from "@/components/ui/input";
+import { ResumeSwatch } from "@/components/visual";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
@@ -34,10 +35,13 @@ import { baseResumeLabel, type BaseResumeDetail } from "@/lib/types";
 export function EditableTitle({
   slug,
   value,
+  colorHue,
   onChange,
 }: {
   slug: string;
   value: string;
+  /** The resume's color: its square leads the name, and stays put while the name is edited. */
+  colorHue: number | null;
   onChange: (next: string) => void;
 }) {
   const qc = useQueryClient();
@@ -80,26 +84,29 @@ export function EditableTitle({
 
   if (editing) {
     return (
-      <Input
-        autoFocus
-        aria-label="Resume name"
-        value={draft}
-        disabled={save.isPending}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={(e) => commit(e.relatedTarget === null)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            setDraft(committed.current);
-            setEditing(false);
-            focusNext(pencilRef);
-          }
-        }}
-        className="h-9 max-w-md text-title-large font-medium tracking-tight"
-      />
+      <span className="inline-flex items-center gap-2">
+        <ResumeSwatch hue={colorHue} />
+        <Input
+          autoFocus
+          aria-label="Resume name"
+          value={draft}
+          disabled={save.isPending}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={(e) => commit(e.relatedTarget === null)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setDraft(committed.current);
+              setEditing(false);
+              focusNext(pencilRef);
+            }
+          }}
+          className="h-9 max-w-md text-title-large font-medium tracking-tight"
+        />
+      </span>
     );
   }
 
@@ -108,6 +115,7 @@ export function EditableTitle({
     // there is no hover — the failure mode that made every edit control in this
     // directory unusable on a tablet.
     <span className="group/title inline-flex items-center gap-1.5">
+      <ResumeSwatch hue={colorHue} className="mr-0.5" />
       {/* Unnamed: the slug's words, as the gallery card names it. */}
       {value || baseResumeLabel(slug)}
       <IconButton

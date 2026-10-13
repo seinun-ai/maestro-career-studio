@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { ResumeTag } from "@/components/visual";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -695,16 +696,18 @@ function NewBaseResumeForm({
                     <SelectValue placeholder="Choose a resume">
                       {(value) => {
                         const hit = existingResumes.find((r) => r.slug === value);
-                        return hit
-                          ? baseResumeLabel(hit.slug, [hit])
-                          : String(value ?? "");
+                        return hit ? (
+                          <ResumeTag hue={hit.color_hue}>{baseResumeLabel(hit.slug, [hit])}</ResumeTag>
+                        ) : (
+                          String(value ?? "")
+                        );
                       }}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {existingResumes.map((r) => (
                       <SelectItem key={r.slug} value={r.slug}>
-                        {baseResumeLabel(r.slug, [r])}
+                        <ResumeTag hue={r.color_hue}>{baseResumeLabel(r.slug, [r])}</ResumeTag>
                       </SelectItem>
                     ))}
                   </SelectContent>
