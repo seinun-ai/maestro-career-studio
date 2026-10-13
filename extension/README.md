@@ -66,7 +66,9 @@ Everything stays on your machine: the extension talks only to your local
 backend. The only data that leaves your machine is the AI calls your backend
 itself makes.
 
-When you run a fill, the extension records **which fields it found and whether
+**The fill log is off unless you turn it on.** Open the Companion's options
+(right-click its toolbar icon, then **Options**) and tick **Keep a fill log**.
+While it is on, each fill records **which fields it found and whether
 they filled** (the field's label, its type, the outcome, and a dropdown's
 option texts). It **never records what you typed** or what a field held.
 Each record does carry the site's hostname and a timestamp, so over time it
@@ -78,16 +80,9 @@ option was chosen, demographic (EEO) questions included, and never anything you
 typed or any text from your profile. The last 50 runs are kept.
 
 - **Clear it:** in the web app, **Analytics → Autofill coverage → Clear data**.
-  This deletes the records and the run traces but does not turn recording off.
-- **Turn it off:** there is no switch in the panel. On `chrome://extensions`,
-  click the **service worker** link on the Maestro CS Companion card, open its
-  **Console** tab, and run:
-
-  ```js
-  chrome.storage.sync.set({ telemetryEnabled: false })
-  ```
-
-  Run it again with `true` to turn it back on. This turns off run traces too.
+  This deletes the records and the run traces but does not turn the log off.
+- **Turn it off:** untick **Keep a fill log** in the Companion's options. Run
+  traces stop too; nothing is recorded while it is off.
 
 ### Learned widget moves
 

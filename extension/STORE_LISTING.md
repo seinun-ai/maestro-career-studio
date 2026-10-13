@@ -16,7 +16,7 @@ never submits an application or advances to the next page.
 
 | Permission | Why this purpose needs it |
 |---|---|
-| `storage` | Store the backend and app addresses, fill mode and telemetry preference in Chrome settings sync; remember the current application's panel state and learned form-control moves in local browser storage. Career history and saved answers stay in Maestro's backend. |
+| `storage` | Store the backend and app addresses, fill mode and the Keep a fill log choice (off unless the user turns it on) in Chrome settings sync; remember the current application's panel state and learned form-control moves in local browser storage. Career history and saved answers stay in Maestro's backend. |
 | `tabs` | Bind the panel to the tab you are viewing and clear that binding when it leaves a job page, including navigation to browser settings or a local file. Without this permission Chrome omits those destination URLs and the panel can retain the previous job. See [INTERNALS.md, "`tabs` stays"](INTERNALS.md#install-internals) for the measured behavior. |
 | `webNavigation` | Enumerate the page's frames to find embedded application forms and detect when an application frame finishes navigating, so the panel reads the current form. |
 | `scripting` | Inject the packaged content scripts after you press a panel action on a tab opened before installation or reload. This lets capture and filling work without asking you to reload the page first. |
@@ -37,7 +37,7 @@ that provider's policy.
 
 The local usage log records field labels, option texts, outcomes, site hostnames
 and timestamps, never typed answers or profile text. Local run traces keep the
-latest 50 runs; the same opt-out disables both logs and traces. Chrome sync
+latest 50 runs. Both are off unless the user ticks **Keep a fill log** on the options page, next to a plain description of what it keeps; nothing is recorded before that. Chrome sync
 handles extension preferences. See the [privacy policy](../PRIVACY.md) and
 [Companion README](README.md#privacy-and-telemetry) for retention and deletion.
 Use the public repository's `PRIVACY.md` URL for the listing's privacy-policy

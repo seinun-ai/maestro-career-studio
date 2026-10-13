@@ -28,6 +28,15 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Changed
+
+- **The Companion's fill log is now off unless you turn it on.** The record of
+  which fields a fill met and on which sites (never what you typed) and the run
+  traces are kept only after you tick **Keep a fill log** in the Companion's
+  options. That switch is new; the developer-console command is gone. If you
+  never chose, logging stops after this update; records already kept stay until
+  you clear them in **Analytics → Autofill coverage**.
+
 ## [0.10.1] — 2026-10-12
 
 Updating to 0.10.0 could leave the web app showing pages from the version you

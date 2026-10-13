@@ -1326,14 +1326,14 @@ and its values reach no value-free builder (SYSTEM.md
 
 ## Telemetry — what leaves the page
 
-On by default (`telemetryEnabled` in `chrome.storage.sync`, defaulted in
-`sw.js` `DEFAULTS` and gated in its `telemetry` handler, which posts nothing when
-the key is `false`). It is fire-and-forget: it can never surface an error to you
-or delay a fill. **There is no UI switch for it** — the panel's only stored
-preference is the fill mode — so turning it off means setting that key to
-`false` (the user-facing one-liner is in [README.md](README.md#privacy-and-telemetry))
-or flipping the default in `sw.js`. Removing the key does not turn it off: the
-default comes back.
+Off by default: the user's **fill log** (`telemetryEnabled` in
+`chrome.storage.sync`, defaulted to `false` in `sw.js` `DEFAULTS` and gated in its
+`telemetry` and `fill_trace` handlers, which post only when the key is exactly
+`true`). The switch is **Keep a fill log** on the options page (`options.js`
+writes that one key on change, with no Save press); the panel has none. A choice
+never made is not consent, which is also what the Chrome Web Store's user-data
+policy asks for, so removing the key turns it off. It is fire-and-forget: it can
+never surface an error to you or delay a fill.
 
 A batch only ever exists on a page you pointed the panel at: the fill engine is
 the only thing that constructs an observation, and nothing runs it without your
@@ -1419,7 +1419,7 @@ in one select, or a popup's chosen option, must not blank another's list; a type
 No typed or profile string ever sits in a free-text slot. `sw.js` `scrubTrace` then
 rebuilds the trace from a whitelist mirroring `app/schemas/autofill_trace.py` (numbers only, anything
 the schema would reject dropped), and posts it to `POST /api/autofill/runs` only while
-`telemetryEnabled` is not `false` — the same switch as above. The backend keeps the newest 50 runs
+`telemetryEnabled` is `true` — the same switch as above. The backend keeps the newest 50 runs
 and folds each into counters with no host and no label; **Clear data** deletes the runs and keeps
 the counters. Read them with `backend/scripts/fill_trace.py last|report`, which opens a copy of the
 database and refuses the live file.

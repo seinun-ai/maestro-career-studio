@@ -302,11 +302,11 @@ ports in `.env`, open `chrome://extensions` → **Details** on the Maestro CS
 Companion card → **Extension options**. Set **Backend address** and **App address**,
 press **Test connection**, then **Save**. Close and reopen the panel to use them.
 
-The Companion records which form fields it could fill, and keeps that on your
-computer. There is no on/off switch in the panel: to turn it off, set
-`telemetryEnabled` to `false` in the extension's stored settings
-(`chrome.storage.sync`). **Analytics → Autofill coverage → Clear data** deletes
-what was collected. Full detail: [`extension/README.md`](../extension/README.md)
+The Companion can keep a fill log: which form fields it could fill, kept on
+your computer, never what you typed. It is off unless you turn it on in the
+same **Extension options** page (**Keep a fill log**). Turn it on if you want
+**Analytics → Autofill coverage** to show where autofill misses, or to help fix
+it. **Clear data** on that card deletes what was collected. Full detail: [`extension/README.md`](../extension/README.md)
 and the [Companion section of Using Maestro CS](USING_MAESTRO.md#the-companion-browser-extension).
 
 ## 5. Connect your AI assistant (optional)

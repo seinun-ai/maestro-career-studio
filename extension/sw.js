@@ -22,7 +22,12 @@
 const DEFAULTS = {
   backendUrl: "http://localhost:8001",
   appUrl: "http://localhost:3000",
-  telemetryEnabled: true,
+  // The fill log (field labels, outcomes, site host; never a value) and the
+  // run traces, posted to the user's own Maestro. OFF until the user turns it
+  // on in Options > Keep a fill log: a choice never made is not consent, and
+  // the Chrome Web Store asks for consent in the extension's own UI before
+  // anything is collected. The gates below read `=== true` for the same reason.
+  telemetryEnabled: false,
   // The panel's Fill stage: "assist" runs the /choose step, "rules" skips it
   // entirely (the runner's `aiAssist`). A DEFAULT here rather than in the panel
   // for this section's whole reason — a second copy is the one that drifts —
@@ -608,7 +613,7 @@ const HANDLERS = {
    * observation, and nothing runs it without a click. */
   async telemetry(msg) {
     const { telemetryEnabled } = await getSettings();
-    if (telemetryEnabled === false) return { posted: 0 };
+    if (telemetryEnabled !== true) return { posted: 0 };
     const observations = (msg.observations ?? []).map(scrubObservation);
     if (!observations.length) return { posted: 0 };
     await api("/api/autofill/telemetry", {
@@ -630,7 +635,7 @@ const HANDLERS = {
    * trace posts nothing. */
   async fill_trace(msg) {
     const { telemetryEnabled } = await getSettings();
-    if (telemetryEnabled === false) return { posted: 0 };
+    if (telemetryEnabled !== true) return { posted: 0 };
     const trace = scrubTrace(msg.trace);
     if (!trace) return { posted: 0 };
     await api("/api/autofill/runs", { method: "POST", body: JSON.stringify(trace) });

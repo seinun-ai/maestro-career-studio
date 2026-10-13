@@ -319,7 +319,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   another field's value counts at 2+ chars typed, 4+ otherwise); the page's option texts and the chosen option's index
   in that field's own list are kept on every field, EEO too, except a text holding another TYPED field's value; the rest
   is enums and numbers, never a typed or profile string in a free-text slot. `sw.js` `scrubTrace` whitelists against the
-  schema; nothing posts when `telemetryEnabled` is `false`. Runs fold into host/label-free `autofill_mechanism_stats` (a
+  schema; nothing posts unless `telemetryEnabled` is `true` (default off; Options › Keep a fill log). Runs fold into host/label-free `autofill_mechanism_stats` (a
   remembered polarity is not counted). Rows carry `host` + `first_seen_at`, runs `host` + `started_at`: where and when
   you applied, so `DELETE /telemetry` clears rows and runs, keeps counters, never the capture toggle
   (`extension/INTERNALS.md`; `…/telemetry/summary` ranks failures). `scripts/fill_trace.py last|report` reads a DB copy.

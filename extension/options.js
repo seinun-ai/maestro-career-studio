@@ -1,4 +1,5 @@
-/* Address defaults are read from the service worker's settings message. */
+/* Address defaults and the fill-log choice are read from the service worker's
+ * settings message; its DEFAULTS are the one place a default lives. */
 (() => {
   "use strict";
 
@@ -8,6 +9,7 @@
   const save = document.getElementById("save");
   const test = document.getElementById("test");
   const note = document.getElementById("note");
+  const fillLog = document.getElementById("fillLog");
   let ready = false;
   let busy = false;
 
@@ -84,6 +86,23 @@
     }
   });
 
+  // The fill log saves on the change itself: a switch that waits for Save reads
+  // as on while nothing is stored. It writes its one key and nothing else.
+  fillLog.addEventListener("change", async () => {
+    if (!ready) return;
+    const on = fillLog.checked === true;
+    fillLog.disabled = true;
+    try {
+      await chrome.storage.sync.set({ telemetryEnabled: on });
+      note.textContent = on ? "Fill log on." : "Fill log off.";
+    } catch (_) {
+      fillLog.checked = !on;
+      note.textContent = "Couldn't save settings. Try again.";
+    } finally {
+      fillLog.disabled = false;
+    }
+  });
+
   for (const input of [backend, app]) {
     input.addEventListener("input", () => { note.textContent = ""; });
   }
@@ -94,6 +113,8 @@
       if (!reply?.ok) throw new Error();
       backend.value = reply.data.backendUrl;
       app.value = reply.data.appUrl;
+      fillLog.checked = reply.data.telemetryEnabled === true;
+      fillLog.disabled = false;
       ready = true;
       setBusy(false);
     } catch (_) {

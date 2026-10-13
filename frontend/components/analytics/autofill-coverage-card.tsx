@@ -99,9 +99,9 @@ export function AutofillCoverageCard() {
         ` on ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were on and when.` +
         " It also deletes the stored records of how Autofill decided each field's answer." +
         " You can't undo this." +
-        // The Companion has no switch for capture (extension/README.md), so
-        // the confirm names none.
-        " Recording continues while the Companion runs.",
+        // Capture is the Companion's fill log, off unless the user ticks it in
+        // the Companion's options (extension/options.html).
+        " New fills are logged only while Keep a fill log is on in the Companion's options.",
       confirmLabel: "Clear data",
       destructive: true,
     });
@@ -124,7 +124,10 @@ export function AutofillCoverageCard() {
       isLoading={isLoading}
       error={error as Error | null}
       empty={signatures === 0}
-      emptyText="No data yet. Use the Companion on an application form to start."
+      emptyText={
+        "No data yet. The fill log is off unless you turn it on." +
+        " To turn it on, right-click the Companion's toolbar icon, choose Options, and tick Keep a fill log."
+      }
       action={
         signatures > 0 ? (
           <Button

@@ -22,6 +22,9 @@
     #save { background: var(--cs-primary); color: var(--cs-on-primary); border-color: transparent; }
     button:disabled { opacity: 0.5; cursor: default; }
     #note { min-height: 24px; margin-top: 16px; overflow-wrap: anywhere; }
+    h2 { margin: 32px 0 0; padding-top: 24px; border-top: 1px solid var(--cs-line); font-size: 16px; }
+    label.check { display: flex; align-items: center; gap: 10px; }
+    label.check input { width: auto; margin: 0; padding: 0; }
   </style>
 </head>
 <body>
@@ -40,6 +43,16 @@
         <button id="test" type="button" disabled>Test connection</button>
       </div>
     </form>
+    <h2>Fill log</h2>
+    <label class="check" for="fillLog">
+      <input id="fillLog" type="checkbox" disabled aria-describedby="log-help">
+      Keep a fill log
+    </label>
+    <p id="log-help" class="help">Off unless you turn it on. When on, the Companion notes which
+      fields it filled and on which sites, inside your own Maestro, so its Analytics page can
+      show where autofill misses. It records the field labels and whether each one filled,
+      never what you type. Useful for troubleshooting and for contributors. Clear it any time
+      from Analytics in Maestro.</p>
     <div id="note" role="status" aria-live="polite" aria-atomic="true"></div>
   </main>
   <script src="options.js"></script>

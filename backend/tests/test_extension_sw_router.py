@@ -578,10 +578,16 @@ main(async () => {
 """
 
 
+# The fill log is off until the user turns it on (Options > Keep a fill log).
+# Tests about what a posted batch may carry describe a user who turned it on;
+# the gate tests below pass the stored settings explicitly, `{}` included.
+OPTED_IN = {"telemetryEnabled": True}
+
+
 def _telemetry(tmp_path, observations, settings=None):
     return run_node(_TELEMETRY_DRIVER_JS, {
         "observations": observations,
-        "settings": settings or {},
+        "settings": OPTED_IN if settings is None else settings,
         "action": "profile_fill",
         "pageHost": "boards.greenhouse.io",
     }, tmp_path, source=SW_JS)
@@ -602,6 +608,22 @@ def test_telemetry_is_off_when_the_user_turned_it_off(tmp_path):
                      settings={"telemetryEnabled": False})
     assert out["reply"]["data"] == {"posted": 0}
     assert out["posted"] == [], "an opted-out user's batch reached the network"
+
+
+@pytest.mark.parametrize("stored", [{}, {"telemetryEnabled": None}, {"telemetryEnabled": "true"},
+                                    {"telemetryEnabled": 1}],
+                         ids=["never-chosen", "null", "string", "number"])
+def test_telemetry_is_off_until_the_user_turns_it_on(tmp_path, stored):
+    """THE DEFAULT IS OFF, and only an explicit `true` turns it on.
+
+    A user who never opened Options > Keep a fill log has made no choice, and
+    no choice is not consent (Chrome Web Store user-data policy: disclosure in
+    the extension's own UI, consent before collection). A stored value that is
+    merely truthy is not that choice either: the gate reads `=== true`.
+    """
+    out = _telemetry(tmp_path, [{"label": "First name", "outcome": "filled"}], settings=stored)
+    assert out["reply"]["data"] == {"posted": 0}
+    assert out["posted"] == [], "a batch reached the network before the user turned the log on"
 
 
 def test_telemetry_carries_no_value_a_user_typed(tmp_path):
@@ -671,7 +693,8 @@ assert _TRACE_DRIVER_JS != _TELEMETRY_DRIVER_JS, "the telemetry driver's message
 
 def _post_trace(tmp_path, trace, settings=None, missing=False):
     message = {"type": "fill_trace"} if missing else {"type": "fill_trace", "trace": trace}
-    out = run_node(_TRACE_DRIVER_JS, {"message": message, "settings": settings or {}},
+    out = run_node(_TRACE_DRIVER_JS, {"message": message,
+                                      "settings": OPTED_IN if settings is None else settings},
                    tmp_path, source=SW_JS)
     return out
 
@@ -704,6 +727,13 @@ def test_a_trace_is_not_posted_when_the_user_turned_telemetry_off(tmp_path):
     out = _post_trace(tmp_path, _run_trace(), settings={"telemetryEnabled": False})
     assert out["reply"]["data"] == {"posted": 0}
     assert out["posted"] == [], "an opted-out user's run reached the network"
+
+
+def test_a_trace_is_not_posted_until_the_user_turns_the_log_on(tmp_path):
+    """The trace shares the fill log's switch, so it shares its default: off."""
+    out = _post_trace(tmp_path, _run_trace(), settings={})
+    assert out["reply"]["data"] == {"posted": 0}
+    assert out["posted"] == [], "a run reached the network before the user turned the log on"
 
 
 @pytest.mark.parametrize("trace, missing", [(None, False), (None, True), ([], False), ("x", False)],

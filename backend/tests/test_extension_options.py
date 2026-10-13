@@ -125,9 +125,9 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const spec = JSON.parse(fs.readFileSync(0, "utf8"));
 const elements = {};
-for (const id of ["settings", "backendUrl", "appUrl", "save", "test", "note"]) {
+for (const id of ["settings", "backendUrl", "appUrl", "save", "test", "note", "fillLog"]) {
   elements[id] = {
-    value: "", textContent: "", disabled: true, listeners: {}, focused: false,
+    value: "", textContent: "", disabled: true, checked: false, listeners: {}, focused: false,
     addEventListener(type, handler) { this.listeners[type] = handler; },
     focus() { this.focused = true; },
   };
@@ -169,7 +169,12 @@ vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
   await new Promise(setImmediate);
   const initial = { backendUrl: elements.backendUrl.value, appUrl: elements.appUrl.value };
   for (const [key, value] of Object.entries(spec.edit || {})) elements[key].value = value;
-  if (spec.action) {
+  const initialFillLog = { checked: elements.fillLog.checked, disabled: elements.fillLog.disabled };
+  if (spec.action === "toggle") {
+    elements.fillLog.checked = !elements.fillLog.checked;
+    await elements.fillLog.listeners.change?.({ preventDefault() {} });
+    await new Promise(setImmediate);
+  } else if (spec.action) {
     const [id, type] = spec.action === "save" ? ["settings", "submit"] : ["test", "click"];
     await elements[id].listeners[type]({ preventDefault() {} });
     await new Promise(setImmediate);
@@ -179,6 +184,8 @@ vm.runInThisContext(fs.readFileSync(process.argv[1], "utf8"));
     initial, messages, writes, requests, requestOptions, timeouts, connectingNotes,
     note: elements.note.textContent,
     disabled: { save: elements.save.disabled, test: elements.test.disabled },
+    initialFillLog,
+    fillLog: { checked: elements.fillLog.checked, disabled: elements.fillLog.disabled },
   }));
 })().catch((err) => { console.error(err); process.exitCode = 1; });
 """
@@ -328,3 +335,50 @@ def test_settings_save_failure_is_visible():
     assert out["writes"] == []
     assert out["note"] == "Couldn't save settings. Try again."
     assert out["disabled"] == {"save": False, "test": False}
+
+
+@pytest.mark.parametrize("stored, checked", [(False, False), (True, True), (None, False)])
+def test_fill_log_switch_shows_the_stored_choice(stored, checked):
+    """The switch reflects the setting the service worker reports: on only when the
+    user turned it on. The default (never chosen) reads as off."""
+    settings = {"backendUrl": "http://localhost:9123", "appUrl": "https://localhost:3123",
+                "telemetryEnabled": stored, "fillMode": "rules"}
+    out = run_options(settings=settings)
+    assert out["initialFillLog"] == {"checked": checked, "disabled": False}
+
+
+@pytest.mark.parametrize("stored", [False, True])
+def test_fill_log_switch_saves_only_its_own_key_at_once(stored):
+    """Turning the log on or off is saved on the change itself, with no Save press,
+    and writes nothing but `telemetryEnabled`: the address keys are the form's."""
+    settings = {"backendUrl": "http://localhost:9123", "appUrl": "https://localhost:3123",
+                "telemetryEnabled": stored, "fillMode": "rules"}
+    out = run_options(settings=settings, action="toggle")
+    assert out["writes"] == [{"telemetryEnabled": not stored}]
+    assert out["fillLog"]["checked"] is (not stored)
+    assert out["note"] == ("Fill log on." if not stored else "Fill log off.")
+
+
+def test_fill_log_switch_reverts_when_the_save_fails():
+    """A failed write leaves the switch showing what is actually stored."""
+    out = run_options(action="toggle", saveReject=True)
+    assert out["writes"] == []
+    assert out["fillLog"]["checked"] is False
+    assert out["note"] == "Couldn't save settings. Try again."
+
+
+def test_fill_log_switch_stays_disabled_when_settings_fail_to_load():
+    out = run_options(readReject=True)
+    assert out["fillLog"]["disabled"] is True
+
+
+def test_options_page_explains_the_fill_log_in_plain_words():
+    """The disclosure sits next to the switch, in the extension's own UI: what is
+    kept, where, why, and what never is."""
+    html = (EXTENSION / "options.html").read_text()
+    assert 'id="fillLog"' in html and 'type="checkbox"' in html
+    text = re.sub(r"<[^>]+>", " ", html)
+    text = re.sub(r"\s+", " ", text)
+    for phrase in ("Keep a fill log", "inside your own Maestro", "never what you type"):
+        assert phrase in text, phrase
+
