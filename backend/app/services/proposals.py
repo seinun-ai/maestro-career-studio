@@ -218,10 +218,13 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
             raise TransitionError(f"{new_status} requires consent with a valid channel")
     if consent and consent.get("channel") == AUTO_CHANNEL:
         _check_auto_consent(session, prop, new_status, consent, attested)
-    if (consent and consent.get("channel") == COMPANION_CHANNEL and new_status == "approved"
-            and _company_is_blocked(
-                session, prop, auto_apply_settings.get_settings(session).company_blocklist)):
-        raise TransitionError(COMPANY_BLOCKED)
+    if consent and consent.get("channel") == COMPANION_CHANNEL and new_status == "approved":
+        # Like the auto channel: only a job the user queued, and one off the skip list.
+        if prop.status != "accepted":
+            raise TransitionError("the Companion can only approve a job you queued")
+        if _company_is_blocked(
+                session, prop, auto_apply_settings.get_settings(session).company_blocklist):
+            raise TransitionError(COMPANY_BLOCKED)
     if new_status == "approved" and not _evidence_has_kind(prop, "final_review"):
         raise TransitionError("approved requires final_review evidence")
     if new_status == "submitted":

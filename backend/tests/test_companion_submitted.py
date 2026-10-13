@@ -120,6 +120,19 @@ def test_a_closed_proposal_is_not_reopened(db_session, queued, status):
     assert not db_session.get(ApplicationProposal, queued.id).evidence_json
 
 
+@pytest.mark.parametrize("status", ["pending_review", "needs_human"])
+def test_only_a_queued_job_is_recorded(db_session, queued, status):
+    queued.status = status
+    db_session.commit()
+    r = _post(queued)
+    assert r.status_code == 409 and "queued" in r.json()["detail"]
+    db_session.expire_all()
+    row = db_session.get(ApplicationProposal, queued.id)
+    assert row.status == status and not row.evidence_json and row.cap_reserved_at is None
+    assert db_session.query(ConsentEvent).count() == 0
+    assert db_session.get(Application, row.application_id).status == "draft"
+
+
 def test_a_job_the_user_already_marked_applied_is_refused(db_session, queued):
     db_session.get(Application, queued.application_id).status = "applied"
     db_session.commit()
