@@ -104,6 +104,24 @@ def test_next_must_be_the_whole_button_not_a_prefix(tmp_path, text):
     assert sort(tmp_path, text) == "unclear"
 
 
+@pytest.mark.parametrize("text", ["Consent", "I consent", "Present", "Represent", "Apple", "Applicant info",
+                                  "Applications", "Review application"])
+def test_words_that_merely_contain_a_submit_stem_are_not_submit(tmp_path, text):
+    """"sent" ends Consent/Present/Represent and "appl" starts Apple/Applicant; none of them submits."""
+    assert sort(tmp_path, text) != "submit"
+
+
+@pytest.mark.parametrize("text", ["Send", "Sent", "Send application", "Resend", "send_application",
+                                  "sendApplication", "I consent and send"])
+def test_send_and_sent_as_whole_words_still_submit(tmp_path, text):
+    assert sort(tmp_path, text) == "submit"
+
+
+def test_a_consent_step_is_a_form_step_not_a_review(tmp_path):
+    out = kind(tmp_path, fillable=1, buttons=[btn("I consent", id="x"), btn("Continue", id="n")])
+    assert out == {"kind": "form_step", "next": "n"}
+
+
 def test_application_is_not_the_word_apply(tmp_path):
     assert sort(tmp_path, "Review application") == "next"
     assert sort(tmp_path, "Applications") == "unclear"
@@ -258,9 +276,17 @@ def test_unknown_is_nothing_at_all(tmp_path):
     assert kind(tmp_path, buttons=[btn("Cancel")]) == {"kind": "unknown"}
 
 
-def test_a_lone_next_with_nothing_to_fill_is_not_a_form_step(tmp_path):
-    """Design Part 2: a form step is fillable fields AND a Next. A bare "Continue" parks."""
-    assert kind(tmp_path, buttons=[btn("Continue")]) == {"kind": "unknown"}
+def test_a_lone_next_with_nothing_to_fill_advances(tmp_path):
+    """An intro or "before you apply" page has no fields and one Continue: that is the step."""
+    assert kind(tmp_path, buttons=[btn("Continue", id="c")]) == {"kind": "form_step", "next": "c"}
+
+
+def test_several_nexts_with_nothing_to_fill_stop_as_review(tmp_path):
+    assert kind(tmp_path, buttons=[btn("Next"), btn("Continue")]) == {"kind": "review"}
+
+
+def test_a_lone_next_with_nothing_to_fill_beside_a_submit_is_review(tmp_path):
+    assert kind(tmp_path, buttons=[btn("Next"), btn("Submit", visible=True)]) == {"kind": "review"}
 
 
 def test_a_missing_buttons_list_is_tolerated(tmp_path):

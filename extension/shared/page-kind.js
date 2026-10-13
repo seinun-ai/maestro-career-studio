@@ -15,9 +15,12 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
 
-  // Substrings, not words: "Reapply", "Resend" and "Incomplete" are all worth a stop. A false
-  // Submit costs a stopped run; a false Next costs an application.
-  const SUBMIT_WORDS = /submit|appl(y|ying|ies|ied)|send|sent\b|finish|finali[sz]|complet|confirm/;
+  // Mostly substrings, not words: "Reapply", "Incomplete" and "Finished" are all worth a stop. A
+  // false Submit costs a stopped run; a false Next costs an application. The exception is
+  // send/sent, which are bounded: "sent" ends "Consent", "Present" and "Represent", and a consent
+  // step parking every run would be its own bug. ("appl" needs a y/ies/ied after it, so "Apple",
+  // "Applicant" and "application" are not Submit words.)
+  const SUBMIT_WORDS = /submit|appl(y|ying|ies|ied)|\b(re)?(send|sends|sending|sent)\b|finish|finali[sz]|complet|confirm/;
   // Whole label only, after decoration ("Next →", "Continue.") is trimmed off the ends.
   const NEXT_WORDS = /^(next( step)?|continue|save\s*(and|&)\s*(continue|next)|proceed|review( (your )?application)?)$/;
 
@@ -58,10 +61,10 @@
     const submit = sorted.some((b) => b.sort === "submit" && b.visible !== false);
     const next = sorted.filter((b) => b.sort === "next" && b.visible && b.enabled && b.inForm !== false);
     if (submit) return { kind: "review" };
-    if (s.fillable > 0) {
-      // Exactly one Next is the step; none or several is not sure, so the run stops here.
-      return next.length === 1 ? { kind: "form_step", next: next[0].id } : { kind: "review" };
-    }
+    // Exactly one Next is the step, even with nothing to fill (an intro or "before you apply"
+    // page should advance). Several, or fields with no Next, is not sure: the run stops here.
+    if (next.length === 1) return { kind: "form_step", next: next[0].id };
+    if (s.fillable > 0 || next.length > 1) return { kind: "review" };
     return { kind: "unknown" };
   }
 
