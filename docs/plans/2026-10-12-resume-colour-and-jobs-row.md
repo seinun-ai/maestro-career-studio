@@ -20,7 +20,7 @@
 - Whole backend suite (always with xdist): `cd backend && .venv/bin/python -m pytest tests/ mcp_server/tests/ -q -n auto --dist loadfile`
 - Frontend (once: `cd frontend && npm ci`): `npx tsc --noEmit`, `npm run lint`, `npm run build`. There is no frontend unit runner; backend tests pin frontend and extension source by reading files.
 
-**Words on screen:** "Colour" (the README's spelling), sentence case, no placeholder in a blank field, hints only when they add something. One word per thing: "base resume", "Where", "Laptop", "Bot", "Moving".
+**Words on screen:** "Color" (`test_frontend_vocabulary.py` bans the British spelling on screen), sentence case, no placeholder in a blank field, hints only when they add something. One word per thing: "base resume", "Where", "Laptop", "Bot", "Moving".
 
 ---
 
