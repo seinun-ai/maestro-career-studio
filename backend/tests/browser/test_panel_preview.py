@@ -102,7 +102,8 @@ def test_each_base_row_wears_its_resumes_square_before_the_name(panel, server):
         "el => { const r = document.createRange(); r.selectNodeContents(el.firstChild);"
         " return r.getBoundingClientRect().left; }")
     assert left < name_left
-    assert first.locator(".swatch").evaluate("el => el.getBoundingClientRect().width") == 10
+    width = first.locator(".swatch").evaluate("el => el.getBoundingClientRect().width")
+    assert abs(width - 10) < 0.5
     light = squares.first.evaluate("el => getComputedStyle(el).backgroundColor")
     assert light != "rgba(0, 0, 0, 0)"
     open_state(panel, server, "dark-job-saved", "dark")

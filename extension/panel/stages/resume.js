@@ -89,17 +89,20 @@
     return anchor;
   }
 
+  /** The chosen base resume in the library, or undefined (not listed). */
+  function chosenBase({ facts }) {
+    return facts.resumes?.find((resume) => resume.slug === facts.baseSlug);
+  }
+
   /** The chosen base resume's name, as the web app shows it, or null: the
    * slug is an API key, never a word for the user. */
-  function baseName({ facts }) {
-    return facts.resumes?.find((resume) => resume.slug === facts.baseSlug)
-      ?.display_name || null;
+  function baseName(ctx) {
+    return chosenBase(ctx)?.display_name || null;
   }
 
   /** The chosen base resume's colour, or null (not listed, or no colour yet). */
-  function baseHue({ facts }) {
-    return facts.resumes?.find((resume) => resume.slug === facts.baseSlug)
-      ?.color_hue ?? null;
+  function baseHue(ctx) {
+    return chosenBase(ctx)?.color_hue ?? null;
   }
 
   /** The way out of the base-as-is claim, the twin of the claimed Job body's

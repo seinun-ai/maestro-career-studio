@@ -785,8 +785,9 @@ SCORE_RESUMES = [
     {"slug": "data_scientist", "display_name": "Data Scientist"},
     {"slug": "ai_ml_engineer", "display_name": "AI/ML Engineer"},
 ]
-# `SCORE_RESUMES` as the API sends them once a resume has a colour (`color_hue`): the best match has a preset
-# hue (Rose), the second a custom one, the third none. The square is drawn from this and nothing else.
+# `SCORE_RESUMES` as the API sends them once a resume has a colour (`color_hue`): Backend Engineer has none,
+# Data Scientist a custom hue (77), AI/ML Engineer a preset hue (Rose, 5). The square is drawn from this and
+# nothing else.
 HUED_RESUMES = [
     {**SCORE_RESUMES[0], "color_hue": None},
     {**SCORE_RESUMES[1], "color_hue": 77},

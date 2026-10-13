@@ -57,6 +57,7 @@
    * `--resume-c`), and these per-theme tones turn them into a colour. Every hue clears contrast by construction. */
   --cs-resume-swatch-l: 0.52;
   --cs-resume-swatch-c: 1;
+  /* The container pair is copied for parity with the app; no panel rule uses it yet. */
   --cs-resume-container-l: 0.93;
   --cs-resume-container-c: 0.36;
   --cs-on-resume-container-l: 0.38;
@@ -396,7 +397,9 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 }
 .baserow b { font-size: 13px; font-weight: 500; }
 /* A base resume's square (identity, never state: panel.js `swatch`). It is the LAST child of the line it decorates,
- * so the line's words stay that node's own text, and `order: -1` puts it first. No hue draws no square. */
+ * so the line's words stay that node's own text, and `order: -1` puts it first. No hue draws no square. The line's
+ * only other content is its text (the flex parent would drop spaces between inline children). When the text wraps
+ * the square stays on the first line, centred on it by `1lh`; `.ats .lbl` is one line and keeps `center`. */
 .swatch {
   width: 10px; height: 10px; border-radius: 2px; flex: none; order: -1;
   background: oklch(var(--cs-resume-swatch-l) calc(var(--resume-c, 0) * var(--cs-resume-swatch-c)) var(--resume-h, 0));
@@ -404,6 +407,8 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .baserow b:has(> .swatch), .sub:has(> .swatch), .ats .lbl:has(> .swatch) {
   display: flex; align-items: center; gap: 6px;
 }
+.baserow b:has(> .swatch), .sub:has(> .swatch) { align-items: flex-start; }
+.baserow b:has(> .swatch) > .swatch, .sub:has(> .swatch) > .swatch { margin-top: calc((1lh - 10px) / 2); }
 .ats .lbl:has(> .swatch) { justify-content: center; }
 .baserow.sel b { font-weight: 600; }
 /* The composite, as the backend computed it. `good` marks the top of the

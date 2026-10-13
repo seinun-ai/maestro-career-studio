@@ -1075,6 +1075,11 @@
     });
   }
 
+  /** The base resume the card has chosen, as the library lists it, or undefined. */
+  function chosenBase() {
+    return (card.resumes ?? []).find((resume) => resume.slug === card.baseSlug);
+  }
+
   /** The done rows' summaries, out of the store: `railModel` stays a function
    * of its arguments, and this is the one reader of the facts it prints.
    *
@@ -1086,7 +1091,7 @@
    * (archived since) prints nothing: the slug is an API key, not a word. */
   function stageSummaries() {
     const withScore = (words, score) => (score === null ? words : `${words} · ${score}`);
-    const base = (card.resumes ?? []).find((resume) => resume.slug === card.baseSlug);
+    const base = chosenBase();
     const tailored = card.application
       ? compositeFor(card.scores, "application", card.application.id, "tailored") : null;
     return {
@@ -1757,7 +1762,7 @@
     // The Before ring scores the chosen base resume, so its label wears that resume's square; a missing score
     // names no resume.
     const baseHue = before === null ? null
-      : (card.resumes ?? []).find((resume) => resume.slug === card.baseSlug)?.color_hue ?? null;
+      : chosenBase()?.color_hue ?? null;
     if (after === null) {
       // "Not scored yet" and not "after adding the job": a job can be saved
       // and still have no score, and the hint must stay true then too. With a
