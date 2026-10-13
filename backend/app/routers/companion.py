@@ -13,6 +13,7 @@ from app.companion_origin import is_companion
 from app.db import get_db
 from app.models.application_proposal import ApplicationProposal
 from app.services import proposals
+from app.services.sync import hooks as sync_hooks
 
 
 class _LoginRoute(APIRoute):
@@ -30,7 +31,9 @@ class _LoginRoute(APIRoute):
         return handler
 
 
-router = APIRouter(prefix="/api/companion", tags=["companion"], route_class=_LoginRoute)
+router = APIRouter(prefix="/api/companion", tags=["companion"])
+# Only the login route gets the fixed 422; later Companion routes keep FastAPI's own.
+login_router = APIRouter(route_class=_LoginRoute)
 
 
 class LoginRequest(BaseModel):
@@ -38,7 +41,7 @@ class LoginRequest(BaseModel):
     proposal_id: UUID
 
 
-@router.post("/job-site-login")
+@login_router.post("/job-site-login")
 def companion_job_site_login(
     payload: LoginRequest, request: Request, db: Annotated[Session, Depends(get_db)],
 ):
@@ -49,9 +52,15 @@ def companion_job_site_login(
     prop = db.get(ApplicationProposal, payload.proposal_id)
     if prop is None:
         raise HTTPException(404, detail="Proposal not found")
+    # A job this copy does not own (offered, or a replica) is refused before the secret file
+    # is read; the flush hook would only catch it at the audit row's commit.
+    sync_hooks.require_owned(db, prop.job_id)
     try:
         return proposals.share_job_site_login(db, prop, "companion", channel="companion")
     except proposals.TransitionError as exc:
         raise HTTPException(409, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(404, detail=str(exc)) from exc
+
+
+router.include_router(login_router)

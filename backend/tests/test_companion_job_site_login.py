@@ -158,3 +158,12 @@ def test_the_hand_off_never_logs_or_persists_the_password(db_session, queued, ca
     assert SECRET not in caplog.text
     for table in Base.metadata.sorted_tables:
         assert SECRET not in repr(db_session.execute(select(table)).all()), table.name
+
+
+def test_a_later_companion_route_keeps_the_default_validation_error():
+    from fastapi.routing import APIRoute
+
+    from app.routers import companion
+
+    assert companion.router.route_class is APIRoute
+    assert companion.login_router.route_class is companion._LoginRoute
