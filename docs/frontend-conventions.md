@@ -1560,11 +1560,12 @@
   per-chart COLORS arrays; the heatmap uses a `color-mix` primary-blue
   sequential ramp. A chart split by base resume is the one exception: the
   fit-distribution chart fills each series with its resume's own color
-  (`resumeSwatchColor` in `lib/resume-color.ts`, the same recipe as the `resume`
-  colour) and its legend is `ResumeTag`s, so a resume keeps its color across the
-  app. The tones are read from `--resume-swatch-l` and `--resume-swatch-c` by
-  `useResumeSwatchTones` (`getComputedStyle`, re-read when `.dark` changes on
-  `<html>`); never re-declared in JS. Every other chart keeps `--chart-1..6`
+  (`resumeFill` in `lib/resume-color.ts`) and its legend is `ResumeTag`s, so a
+  resume keeps its color across the app. The fill is a CSS string with the theme's
+  tones left as `var(--resume-swatch-l)` and `var(--resume-swatch-c)`, as the
+  palette's `var(--chart-N)` is, so light and dark follow the theme with no JS
+  and nothing re-declares the tones. Two resumes that share a hue draw the same,
+  and a resume with no hue draws grey. Every other chart keeps `--chart-1..6`
   (`test_frontend_resume_chart.py`). ATS-over-time draws at most 4 roles (`MAX_ROLE_SERIES` in
   `lib/analytics-series.ts`) and leaves the tail off the chart, naming the
   hidden count in the caption; role mix folds that tail into one "More roles"

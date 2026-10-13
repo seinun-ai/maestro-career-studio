@@ -28,7 +28,7 @@ def test_round_means_status_and_opacity_means_disabled_so_the_square_has_neither
 
 def test_the_tag_is_the_square_then_the_name():
     tag = _SWATCH.split("export function ResumeTag", 1)[1]
-    assert "inline-flex items-center gap-1.5" in tag
+    assert "inline-flex items-baseline gap-1.5" in tag
     assert tag.index("<ResumeSwatch") < tag.index("{children}")
 
 

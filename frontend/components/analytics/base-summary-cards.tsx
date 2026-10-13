@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ResumeSwatch } from "@/components/visual";
+import { ResumeTag } from "@/components/visual";
 import { useBaseResumeColor, useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { apiFetch } from "@/lib/api";
 import { loadErrorDetail } from "@/lib/error-text";
@@ -64,14 +64,15 @@ export function BaseSummaryCards() {
       {(data ?? []).map((row) => (
         <Card key={row.slug}>
           <CardHeader className="flex flex-row items-start justify-between gap-2">
-            <CardTitle className="flex min-w-0 items-center gap-1.5">
-              <ResumeSwatch hue={colorOf(row.slug)} />
-              <Link
-                href={`/base-resumes/${row.slug}`}
-                className="min-w-0 hover:underline"
-              >
-                {row.display_name ?? baseName(row.slug)}
-              </Link>
+            <CardTitle>
+              <ResumeTag hue={colorOf(row.slug)}>
+                <Link
+                  href={`/base-resumes/${row.slug}`}
+                  className="min-w-0 hover:underline"
+                >
+                  {row.display_name ?? baseName(row.slug)}
+                </Link>
+              </ResumeTag>
             </CardTitle>
             {row.health_grade ? (
               <span

@@ -88,8 +88,9 @@ def test_identity_saves_for_one_resume_run_in_order_and_each_field_has_one_toast
     hook = _hook()
     assert "scope:" not in squash(_TARGET_FILE)
     assert "mutationFn: (value: AnchorValues[K]) => inOrder(`identity-${slug}`, () => apiFetch" in hook
-    role = squash(_TARGET_FILE[_TARGET_FILE.index("export function RoleCategoryPicker(") :])
-    assert "inOrder(`identity-${slug}`" in role
+    role = squash(_TARGET_FILE[_TARGET_FILE.index("export function RoleCategoryPicker(") : _TARGET_FILE.index("export function targetMenuLabel(")])
+    assert "mutationFn: (entry: FavoredRole | null) =>" in role
+    assert role.count("inOrder(`identity-${slug}`") == 1
     assert 'import { inOrder } from "@/lib/in-order";' in _TARGET_FILE
     assert hook.count("{ id: `anchor-${field}` }") == 2
 

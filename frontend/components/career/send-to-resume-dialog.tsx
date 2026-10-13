@@ -305,8 +305,10 @@ export function SendToResumeDialog({
                   <SelectValue>
                     {selectedTarget
                       ? (
-                        <ResumeTag hue={selectedTarget.color_hue}>
-                          {selectedTarget.display_name ?? baseResumeLabel(selectedTarget.slug)}
+                        <ResumeTag hue={selectedTarget.color_hue} className="min-w-0">
+                          <span className="truncate">
+                            {selectedTarget.display_name ?? baseResumeLabel(selectedTarget.slug)}
+                          </span>
                         </ResumeTag>
                       )
                       : resumes.isLoading

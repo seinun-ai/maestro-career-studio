@@ -697,7 +697,9 @@ function NewBaseResumeForm({
                       {(value) => {
                         const hit = existingResumes.find((r) => r.slug === value);
                         return hit ? (
-                          <ResumeTag hue={hit.color_hue}>{baseResumeLabel(hit.slug, [hit])}</ResumeTag>
+                          <ResumeTag hue={hit.color_hue} className="min-w-0">
+                            <span className="truncate">{baseResumeLabel(hit.slug, [hit])}</span>
+                          </ResumeTag>
                         ) : (
                           String(value ?? "")
                         );

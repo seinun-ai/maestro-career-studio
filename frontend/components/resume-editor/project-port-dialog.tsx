@@ -109,7 +109,9 @@ export function ProjectPortDialog({
                 {(value) => {
                   const hit = targets.find((r) => r.slug === value);
                   return hit ? (
-                    <ResumeTag hue={hit.color_hue}>{hit.display_name ?? baseResumeLabel(hit.slug)}</ResumeTag>
+                    <ResumeTag hue={hit.color_hue} className="min-w-0">
+                      <span className="truncate">{hit.display_name ?? baseResumeLabel(hit.slug)}</span>
+                    </ResumeTag>
                   ) : (
                     baseResumeLabel(String(value ?? ""), resumes.data)
                   );

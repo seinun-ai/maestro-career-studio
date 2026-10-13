@@ -17,10 +17,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "@/components/charts/chart-kit";
 import { ResumeTag } from "@/components/visual";
 import { useBaseResumeColor } from "@/hooks/use-base-resume-label";
-import { useResumeSwatchTones } from "@/hooks/use-resume-swatch-tones";
 import { splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
-import { resumeSwatchColor } from "@/lib/resume-color";
+import { resumeFill } from "@/lib/resume-color";
 import { baseResumeLabel, type FitDistributionRow } from "@/lib/types";
 
 const BUCKETS = ["0-20", "20-40", "40-60", "60-80", "80-100"] as const;
@@ -29,7 +28,6 @@ const MAX_FIT_SERIES = 6;
 
 export function FitDistributionChart() {
   const colorOf = useBaseResumeColor();
-  const tones = useResumeSwatchTones();
   const { data, isLoading } = useQuery({
     queryKey: ["explore", "fit-distribution"],
     queryFn: () =>
@@ -102,7 +100,7 @@ export function FitDistributionChart() {
               key={row.base_resume}
               dataKey={row.base_resume}
               name={row.display_name ?? baseResumeLabel(row.base_resume)}
-              fill={resumeSwatchColor(colorOf(row.base_resume), tones)}
+              fill={resumeFill(colorOf(row.base_resume))}
             />
           ))}
         </BarChart>

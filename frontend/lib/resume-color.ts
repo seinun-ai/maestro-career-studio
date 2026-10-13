@@ -30,23 +30,12 @@ export function resumeColorStyle(hue: number | null | undefined): CSSProperties 
   return { "--resume-h": hue, "--resume-c": resumeChroma(hue) } as CSSProperties;
 }
 
-/** The `resume` colour's lightness and its chroma multiple in the current theme. */
-export type SwatchTones = { l: number; c: number };
-
-/** The tones from `--resume-swatch-l` and `--resume-swatch-c` (globals.css declares them per theme and is
- *  their only home). `null` when either is not a plain number. */
-export function parseSwatchTones(l: string, c: string): SwatchTones | null {
-  const tones = { l: Number.parseFloat(l), c: Number.parseFloat(c) };
-  return Number.isFinite(tones.l) && Number.isFinite(tones.c) ? tones : null;
-}
-
-/** The `resume` colour as a literal `oklch()`, for an SVG fill that a CSS class cannot reach (a chart's
- *  bars). Same recipe as `--color-resume` in globals.css, with the tones the caller read from there. No
- *  hue draws grey; no tones yet draws the text colour. */
-export function resumeSwatchColor(hue: number | null | undefined, tones: SwatchTones | null): string {
-  if (!tones) return "currentColor";
-  const chroma = hue === null || hue === undefined ? 0 : resumeChroma(hue) * tones.c;
-  return `oklch(${tones.l} ${Math.round(chroma * 1e4) / 1e4} ${hue ?? 0})`;
+/** The `resume` colour as a CSS string for an SVG fill that a class cannot reach (a chart's bars). The
+ *  recipe of `--color-resume` in globals.css, with the theme's tones left as `var()`s: the browser
+ *  resolves them, so light and dark follow the theme with no JS. No hue draws grey. */
+export function resumeFill(hue: number | null | undefined): string {
+  const chroma = hue === null || hue === undefined ? 0 : resumeChroma(hue);
+  return `oklch(var(--resume-swatch-l) calc(${chroma} * var(--resume-swatch-c)) ${hue ?? 0})`;
 }
 
 /** A random preset no hue in `used` has; else one of the least-used. Same rule as the server. */

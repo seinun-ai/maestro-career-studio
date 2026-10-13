@@ -13,12 +13,13 @@ export function ResumeSwatch({ hue, className }: { hue: number | null | undefine
   );
 }
 
-/** The square, then the resume's name. */
+/** The square, then the resume's name. Baseline-aligned: the square sits level with the name's first line, so a name that
+ *  wraps keeps it there (the empty square's baseline is its bottom edge, about a capital's height). */
 export function ResumeTag({ hue, children, className }: {
   hue: number | null | undefined; children: ReactNode; className?: string;
 }) {
   return (
-    <span className={cn("inline-flex items-center gap-1.5", className)}>
+    <span className={cn("inline-flex items-baseline gap-1.5", className)}>
       <ResumeSwatch hue={hue} />
       {children}
     </span>

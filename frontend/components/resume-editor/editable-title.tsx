@@ -84,7 +84,7 @@ export function EditableTitle({
 
   if (editing) {
     return (
-      <span className="inline-flex items-center gap-2">
+      <span className="flex w-full max-w-md items-center gap-2">
         <ResumeSwatch hue={colorHue} />
         <Input
           autoFocus
@@ -104,7 +104,7 @@ export function EditableTitle({
               focusNext(pencilRef);
             }
           }}
-          className="h-9 max-w-md text-title-large font-medium tracking-tight"
+          className="h-9 min-w-0 text-title-large font-medium tracking-tight"
         />
       </span>
     );

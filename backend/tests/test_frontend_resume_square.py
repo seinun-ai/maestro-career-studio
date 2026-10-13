@@ -38,12 +38,24 @@ def _src(path: str) -> str:
     return (_FRONTEND / path).read_text(encoding="utf-8")
 
 
+# Files that draw the square in more than one place, with how many: a picker draws it in its trigger and in each
+# item, the studio title in its reading and its editing state.
+_TWO_SITES = {
+    "components/chat/chat-page.tsx",
+    "components/resume-editor/editable-title.tsx",
+    "components/base-resumes/new-base-resume-dialog.tsx",
+    "components/resume-editor/project-port-dialog.tsx",
+    "components/career/send-to-resume-dialog.tsx",
+}
+
+
 @pytest.mark.parametrize("path", _SITES)
 def test_the_site_draws_the_square_from_a_hue(path):
     src = _src(path)
     assert re.search(r"import \{[^}]*\bResume(Swatch|Tag)\b[^}]*\} from \"@/components/visual", src), path
     # A hue goes in: from the row, the summary or the slug's lookup, never a literal.
-    assert re.search(r"<Resume(Swatch|Tag)\s+hue=\{[^}]*[A-Za-z]", src), path
+    hued = re.findall(r"<Resume(?:Swatch|Tag)\s+hue=\{(?!null\}|undefined\})[^}]*[A-Za-z]", src)
+    assert len(hued) == (2 if path in _TWO_SITES else 1), path
 
 
 @pytest.mark.parametrize("path", ["components/career/points-list.tsx", "components/career/use-resume-key-label.ts"])
