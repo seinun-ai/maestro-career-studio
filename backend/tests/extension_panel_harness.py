@@ -108,6 +108,7 @@ PANEL_OWN_SRCS = [src for src in PANEL_SCRIPT_SRCS if not src.startswith("../")]
 _PANEL_FAKES_JS = r"""
 let onActivated = null;
 let onUpdated = null;
+let onRemoved = null;
 let onRuntimeMessage = null;
 const heard = (msg, sender) => onRuntimeMessage(msg, sender);
 // A frame of some tab finished loading (`chrome.webNavigation.onCompleted`):
@@ -122,6 +123,10 @@ const writes = [];
 const removals = [];
 const syncWrites = [];
 const sessionWrites = [];
+// Every write to the per-tab job memory (`widget.sessions`), whole map as the
+// panel wrote it. Kept apart from `sessionWrites`, which is the application
+// flow's record: a test that counts one must not see the other.
+const pickWrites = [];
 const broadcasts = [];
 // Every `console.warn` the panel wrote. A warning is not private: Chrome lists
 // an extension page's warnings under chrome://extensions → Errors, so a
@@ -233,6 +238,29 @@ const fillAnswersReply = (message) => {
   return { ok: true, data: [{ frameId: 0, result: stuck }] };
 };
 
+// THE PICK SHORTHAND. The session pick is a per-tab map in
+// `chrome.storage.session` (`widget.sessions`, tab id to entry), and most of the
+// suite predates that: it hands the panel a pick as `stored={"widget.session":
+// entry}` and reads what the panel wrote as `out["writes"][i]["widget.session"]`.
+// Both still mean "the pick of the tab the panel is bound to" (`spec.pickTab`,
+// else the first tab; `spec.pickTabs` gives the same pick to several tabs, for
+// a test whose subject is a switch to another tab of the same wizard). A test that is ABOUT the map says so with
+// `spec.sessionStored["widget.sessions"]`, reads `pickWrites`, or fires
+// `onRemoved`, and the shorthand yields to a map that already has that tab.
+let pickMap = null;
+const pickTabId = () => String(spec.pickTab ?? (spec.tabs ?? [])[0]?.id ?? 7);
+const pickMapNow = () => {
+  if (pickMap === null) {
+    pickMap = JSON.parse(JSON.stringify((spec.sessionStored ?? {})["widget.sessions"] ?? {}));
+    const shorthand = (spec.stored ?? {})["widget.session"];
+    for (const id of (spec.pickTabs ?? [pickTabId()]).map(String)) {
+      if (shorthand && !Object.hasOwn(pickMap, id)) {
+        pickMap[id] = JSON.parse(JSON.stringify(shorthand));
+      }
+    }
+  }
+  return pickMap;
+};
 global.chrome = {
   tabs: {
     // `tabsThrow` is the one way to make BOOT itself fail, and it exists for
@@ -249,6 +277,7 @@ global.chrome = {
     get: async (tabId) => ({ id: tabId, url: (spec.tabUrls ?? {})[tabId] ?? "" }),
     onActivated: { addListener: (fn) => { listeners.push("onActivated"); onActivated = fn; } },
     onUpdated: { addListener: (fn) => { listeners.push("onUpdated"); onUpdated = fn; } },
+    onRemoved: { addListener: (fn) => { listeners.push("onRemoved"); onRemoved = fn; } },
   },
   webNavigation: {
     onCompleted: {
@@ -268,8 +297,13 @@ global.chrome = {
     local: {
       get: async (query) => {
         if (spec.storageThrows) throw new Error("storage is unavailable");
-        const stored = spec.stored ?? {};
-        return { ...query, ...stored };
+        // `widget.session` is not a local key any more: see THE PICK SHORTHAND
+        // below. The one thing that may still answer to it is `spec.legacySession`,
+        // the pre-per-tab entry the panel migrates once.
+        const { "widget.session": _shorthand, ...stored } = spec.stored ?? {};
+        const legacy = spec.legacySession === undefined ? {}
+          : { "widget.session": spec.legacySession };
+        return { ...query, ...stored, ...legacy };
       },
       set: async (patch) => { writes.push(patch); },
       remove: async (keys) => {
@@ -288,10 +322,24 @@ global.chrome = {
     // here, so a browser restart forgets it. `spec.sessionStored` seeds it.
     session: {
       get: async (key) => {
+        if (key === "widget.sessions") return { [key]: pickMapNow() };
         const stored = spec.sessionStored ?? {};
         return Object.hasOwn(stored, key) ? { [key]: stored[key] } : {};
       },
-      set: async (patch) => { sessionWrites.push(patch); },
+      set: async (patch) => {
+        if (!Object.hasOwn(patch, "widget.sessions")) { sessionWrites.push(patch); return; }
+        // The per-tab job memory. Recorded whole, and ALSO as the one entry it
+        // changed under the old name, so a test reads "what the panel wrote
+        // down" the way it always has (see THE PICK SHORTHAND).
+        const before = pickMapNow();
+        const map = JSON.parse(JSON.stringify(patch["widget.sessions"]));
+        const changed = Object.keys(map).filter(
+          (id) => JSON.stringify(map[id]) !== JSON.stringify(before[id]));
+        pickMap = map;
+        pickWrites.push(map);
+        const tabs = changed.length ? changed : [pickTabId()];
+        for (const id of tabs) if (map[id]) writes.push({ "widget.session": map[id] });
+      },
     },
   },
   runtime: {
@@ -751,7 +799,7 @@ loadModules();
 main(async () => {
   await settle();
   // `writes` too, because a plain load is not always write-free.
-  emit({ regions: regions(), sent, writes, removals });
+  emit({ regions: regions(), sent, writes, removals, picks: pickMapNow(), pickWrites });
 });
 """
 
@@ -832,22 +880,29 @@ for (const root of Object.values(REGIONS)) {
     replace(...kids);
   };
 }
-// STORAGE THAT REMEMBERS what the panel wrote. The shared fake records writes
-// and reads back only `spec.stored`, which is right for one page load and
-// wrong for this one: a pick made before Refresh must be the pick
-// `restoreSession` finds after it, exactly as it would be in a browser.
+// STORAGE THAT REMEMBERS what the panel wrote. The shared fake's local store
+// reads back only `spec.stored`, which is right for one page load and wrong for
+// the recipe book here (the pick map already remembers itself, `pickMapNow`):
+// a pick made before Refresh must be the pick `restoreSession` finds after it,
+// exactly as it would be in a browser.
 // `holdPressWrite` holds the write a press makes, so "the user switched tabs
 // while Refresh was still writing the pick down" is a state the driver can
 // stand in.
 const writeLocal = chrome.storage.local.set;
+const writePick = chrome.storage.session.set;
 let pressing = false;
 let releaseWrite = null;
 chrome.storage.local.set = async (patch) => {
-  if (pressing && spec.holdPressWrite) {
-    await new Promise((resolve) => { releaseWrite = resolve; });
-  }
   await writeLocal(patch);
   spec.stored = { ...(spec.stored ?? {}), ...patch };
+};
+// The pick lives in the per-tab session map now (`pickMapNow` keeps what was
+// written), and this is the write a press holds.
+chrome.storage.session.set = async (patch) => {
+  if (pressing && spec.holdPressWrite && Object.hasOwn(patch, "widget.sessions")) {
+    await new Promise((resolve) => { releaseWrite = resolve; });
+  }
+  await writePick(patch);
 };
 // A CLOCK THE DRIVER CAN MOVE, for the session memory's time limit.
 let skew = 0;

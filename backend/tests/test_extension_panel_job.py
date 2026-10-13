@@ -2661,9 +2661,10 @@ def test_a_pick_the_user_walked_away_from_never_unbinds_the_page_they_moved_to(
     spec = _on_apply(api=_deleted_detail(_picker_api()),
                      hold=["GET /api/applications/app-1"],
                      switchTo=9, tabUrls={"9": LIGHTNING_APPLY_URL})
-    # Tab B's own memory. A different origin, so tab A refuses it outright
-    # (`restorableSession`'s first guard) and the pick there is uncontested.
+    # Tab B's own memory: the entry sits under tab B's id, so tab A never sees
+    # it (and its origin differs, which is the older guard saying the same).
     spec["stored"] = {"widget.session": entry()}
+    spec["pickTab"] = 9
     # Tab B's page: nothing matched, and its own draft's detail read simply
     # fails — no status, so its binding survives on its own terms.
     spec["api"]["lightningai"] = _reply(
@@ -2832,6 +2833,7 @@ def test_a_list_read_on_an_earlier_page_stops_offering_the_deleted_draft(tmp_pat
     out = run_node(_DELETED_ACROSS_PAGES_DRIVER_JS, _on_apply(
         api=api,
         stored={"widget.session": _acme_entry()},
+        pickTabs=[7, 9],
         switchTo=9,
         tabUrls={"9": APPLY_NEXT_URL},
     ), tmp_path, source=PANEL_SOURCE)

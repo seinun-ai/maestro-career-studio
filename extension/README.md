@@ -122,7 +122,7 @@ settings message as the panel.
   icon. The shortcut opens the panel but cannot close it; use the panel's own
   close button.
 - **Multi-step applications** may still need some fields entered by hand. The
-  application you picked is remembered for 30 minutes as you move through the
-  steps, so press **Autofill** again on each page.
+  application you picked is remembered in that tab for as long as it stays open,
+  so press **Autofill** again on each page.
 
 How it works inside: [INTERNALS.md](INTERNALS.md).

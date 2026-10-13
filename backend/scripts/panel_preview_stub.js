@@ -2,8 +2,9 @@
 // runs in a normal browser page against these canned replies. The server puts
 // the fixture in `window.__PANEL_PREVIEW_SPEC` first. Spec keys follow the
 // node harness (tests/extension_panel_harness.py `_PANEL_FAKES_JS`): tabs,
-// stored, sessionStored, replies, api, page, frames. A string "$now" anywhere
-// in the spec becomes the current time in ms (the session entry is TTL-guarded).
+// stored, sessionStored, replies, api, page, frames. The per-tab job memory is
+// sessionStored["widget.sessions"] (tab id to entry). A string "$now" anywhere
+// in the spec becomes the current time in ms.
 // Preview-only keys: reopen (a rail row to open once), autoPress (press the
 // footer primary once), fillReport (what a finished fill loop returns).
 (() => {
@@ -47,6 +48,7 @@
       get: async (tabId) => ({ id: tabId, url: (spec.tabUrls ?? {})[tabId] ?? "" }),
       onActivated: { addListener() {} },
       onUpdated: { addListener() {} },
+      onRemoved: { addListener() {} },
     },
     webNavigation: { onCompleted: { addListener() {} } },
     storage: {

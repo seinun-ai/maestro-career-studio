@@ -106,7 +106,7 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
-  const { stageFor, rankBaseResumes, restorableSession, sessionTenant,
+  const { stageFor, rankBaseResumes, restorableSession, sessionTenant, postingLink,
           sameApplication, describesJob, sameSite } = ns.decisions;
   // The drawings (panel/icons.js), read at load like the rosters below: a panel.html that forgot the tag fails on
   // boot naming the file, not on the first render that wants a tick.
@@ -128,36 +128,48 @@
   }
   const { resumeChroma } = ns;
 
-  // `chrome.storage.local` holds TWO keys, and they hold different kinds of
-  // thing: `widget.session`, the session pick (everything down to the
-  // `fill.recipes` paragraph is about it), and `fill.recipes`, the recipe
-  // book (that paragraph).
+  // The panel remembers in two places, and they hold different kinds of thing.
+  // `chrome.storage.session` holds `widget.sessions`, the job memory (everything
+  // down to the `fill.recipes` paragraph is about it). `chrome.storage.local`
+  // holds `fill.recipes`, the recipe book (that paragraph), and until a profile
+  // has been through one boot of this build, the old `widget.session` too.
   //
-  // SESSION PICKS HAVE ONE KEY, holding the bridge entry that carries a
-  // user's pick from the page it was made on to the next page of the same
-  // wizard — which is a different page LOAD, and therefore a different panel
-  // boot with an empty store.
+  // THE JOB MEMORY IS ONE ENTRY PER TAB: a map, tab id to the bridge entry
+  // that carries a user's pick from the page it was made on to the next page of
+  // the same wizard — which is a different page LOAD, and therefore a different
+  // panel boot with an empty store. It used to be one key per browser with a
+  // 30-minute life, and both halves were wrong for the same reason. A long
+  // wizard outlived the 30 minutes and forgot its job, and a second tab's pick
+  // overwrote the first's because there was one slot. A tab's entry now lives
+  // as long as the tab is open: `chrome.tabs.onRemoved` deletes it, and Chrome
+  // closing clears the whole map (it is session storage, held in memory).
+  // There is no clock. What stops a tab's entry being offered on the wrong page
+  // is `restorableSession`'s guards: the origin, the tenant, the backend
+  // naming another job, and a page that is a sibling posting of the one the
+  // pick was made on.
   //
-  // THE NAME IS HISTORICAL AND STAYS THAT WAY. `widget.session` is the key the
-  // floating card wrote, back when two surfaces read one entry so that a pick
-  // in either showed up in the other. R-C deleted the card; this panel is the
-  // only reader and the only writer. The string is not renamed because renaming
-  // it would silently drop every live entry — a user mid-wizard would find
-  // their pick gone, which is exactly the failure the key exists to prevent —
-  // and one stale word in a comment is cheaper than that. (`widget.dock`,
-  // `widget.hiddenOrigins` and `widget.hiddenGlobally` were the card's
-  // placement and its two levels of dismissal. Nothing reads or writes those
-  // now, and nothing sweeps them: a few bytes left in old profiles.)
+  // THE OLD KEY, `widget.session`, WAS RENAMED AND IS READ ONCE. The name was
+  // kept for as long as it was because renaming it would have silently dropped
+  // every live entry, stranding a user mid-wizard, and an entry could be live
+  // for 30 minutes in a profile that survives restarts. That reason has a
+  // bounded end: on the first boot of this build the key is read, adopted by the
+  // active tab if it is under 30 minutes old (the window it was written under)
+  // and on that tab's site, and removed either way (`adoptLegacySession`).
+  // After that no entry anywhere can still be one the old rule would have
+  // restored, so nothing reads the name again. (`widget.dock`,
+  // `widget.hiddenOrigins` and `widget.hiddenGlobally` were the floating
+  // card's placement and its two levels of dismissal. Nothing reads or writes
+  // those now, and nothing sweeps them: a few bytes left in old profiles.)
   //
-  // ONE SESSION KEY RATHER THAN TWO, which is worth keeping written down
-  // because a second session key existed and the reason it went is a rule
+  // ONE ENTRY PER TAB RATHER THAN TWO KINDS, which is worth keeping written
+  // down because a second session key existed and the reason it went is a rule
   // about session picks. Task 8 parked application-less entries on a separate
-  // key, and with two keys populated `restoreSession` preferred by KEY — so an older entry beat a
-  // fresher one for the whole TTL. One key cannot shadow itself, so the
-  // recency tie-break that split needed is not written at all. `panel.pick` is
-  // its remains, unread.
+  // key, and with two keys populated `restoreSession` preferred by KEY — so an
+  // older entry beat a fresher one. One entry per tab cannot shadow itself, so
+  // the recency tie-break that split needed is not written at all.
+  // `panel.pick` is its remains, unread.
   //
-  // WHAT MAKES ONE SESSION KEY SAFE is the `if (entry.applicationId)` guard in
+  // WHAT MAKES ONE ENTRY SAFE is the `if (entry.applicationId)` guard in
   // `restoreSession`. A base picked in the Job step usually has NO application
   // behind it — that is what choosing a base before tailoring IS, and "use base
   // as-is" is the same shape — and restoring `{id: undefined}` as an application, then
@@ -165,7 +177,7 @@
   // not exist on every page load of that tenant. That guard is not optional
   // decoration on this key; it is the condition of sharing it.
   //
-  // `fill.recipes` IS THE SECOND KEY, and no session pick, so the one-key rule
+  // `fill.recipes` IS THE OTHER KEY, and no session pick, so the one-entry rule
   // above does not reach it: not a pick carried between page loads but the
   // book of which of the fill engine's own moves worked for
   // which KIND of form control (`shared/recipe-book.js` is its one reader and
@@ -175,15 +187,12 @@
   // body's "Forget learned widget moves" removes the key whole
   // (`forgetLearnedMoves`). Local, never `sync`: what worked in this browser
   // is this browser's.
-  const KEY = { session: "widget.session", recipes: "fill.recipes" };
+  const KEY = { sessions: "widget.sessions", legacySession: "widget.session",
+                recipes: "fill.recipes" };
 
-  // How long a hand-picked application outlives the page that picked it. An
-  // ATS wizard is six page loads and a user can walk away mid-way, so the
-  // window has to be long enough to survive the walk and short enough that
-  // tomorrow's visit to the same tenant is not answered with yesterday's pick.
-  // (Two surfaces once read this entry and the note here said the two TTLs had
-  // to stay equal. One does now, so the number is simply this one's.)
-  const SESSION_TTL_MS = 30 * 60 * 1000;
+  // How old the OLD single key may be and still be adopted: the life it was
+  // written under (see `adoptLegacySession`). Not a rule about entries.
+  const LEGACY_SESSION_MS = 30 * 60 * 1000;
 
   // Rail order, and the numbers the user sees. The keys are `stageFor`'s, so a
   // stage renamed there fails to render rather than rendering blank.
@@ -901,8 +910,8 @@
    * ask with defaults, and treat a failed read as "nothing remembered" rather
    * than as an error the user has to see. A storage read that fails must not
    * cost anyone the panel. */
-  // The session key and the recipe book (see `KEY`).
-  const STORE_DEFAULTS = { [KEY.session]: null, [KEY.recipes]: null };
+  // The recipe book (see `KEY`): the one key this reader hands out.
+  const STORE_DEFAULTS = { [KEY.recipes]: null };
 
   async function readStore() {
     try {
@@ -927,6 +936,79 @@
   async function writeStore(patch) {
     try {
       await chrome.storage.local.set(patch);
+    } catch (err) {
+      console.warn("[maestro-cs] storage write failed:", err);
+    }
+  }
+
+  /** Every tab's entry, `readStore`'s posture: a failed read is "nothing
+   * remembered". Session storage is shared by every window's panel, so this is
+   * always read fresh and changed through `updateSessions`. */
+  async function readSessions() {
+    try {
+      return (await chrome.storage.session.get(KEY.sessions))?.[KEY.sessions] ?? {};
+    } catch (err) {
+      console.warn("[maestro-cs] session memory read failed:", err);
+      return {};
+    }
+  }
+
+  // Changes to the map run one after another: each is a read, an edit and a
+  // write, and two interleaved (a pick, then a tab closing) would each write
+  // back the map the other had not finished with. Windows are not covered —
+  // two panels racing is the application flow's trade too (`persistFlow`) — but
+  // one panel's own writes are.
+  let sessionsQueue = Promise.resolve();
+
+  /** Edit the map in place of the stored one: `edit` gets a copy and returns
+   * the map to store, or null to leave it as it is. A failure costs the memory
+   * and never the panel, `writeStore`'s rule, so this never rejects. */
+  function updateSessions(edit) {
+    const run = sessionsQueue.then(async () => {
+      try {
+        const next = edit({ ...(await readSessions()) });
+        if (next) await chrome.storage.session.set({ [KEY.sessions]: next });
+      } catch (err) {
+        console.warn("[maestro-cs] session memory write failed:", err);
+      }
+    });
+    sessionsQueue = run;
+    return run;
+  }
+
+  /** A closed tab's job is forgotten. Every window's panel hears the event; the
+   * second to arrive finds nothing to remove and writes nothing. */
+  function forgetTab(tabId) {
+    return updateSessions((sessions) => {
+      if (!Object.hasOwn(sessions, tabId)) return null;
+      delete sessions[tabId];
+      return sessions;
+    });
+  }
+
+  /** The one-time move off the old single key (see `KEY`): the entry becomes
+   * the active tab's, if it is under `LEGACY_SESSION_MS` old, is from this
+   * tab's site and the tab has no entry of its own yet, and the key goes either
+   * way. The guards that apply to any entry (tenant, the backend's answer)
+   * still run when `restoreSession` reads it back, so this only keeps a
+   * foreign or stale value out of the map. A profile with no old key costs one
+   * local read and no write. */
+  async function adoptLegacySession(tab) {
+    let old;
+    try {
+      old = (await chrome.storage.local.get({ [KEY.legacySession]: null }))[KEY.legacySession];
+    } catch (err) {
+      console.warn("[maestro-cs] storage read failed:", err);
+      return;
+    }
+    if (!old) return;
+    const age = Date.now() - (old.at ?? 0);
+    if (age >= 0 && age < LEGACY_SESSION_MS && old.origin === originOf(tab.url ?? "")) {
+      await updateSessions((sessions) => (
+        Object.hasOwn(sessions, tab.id) ? null : { ...sessions, [tab.id]: old }));
+    }
+    try {
+      await chrome.storage.local.remove(KEY.legacySession);
     } catch (err) {
       console.warn("[maestro-cs] storage write failed:", err);
     }
@@ -1558,8 +1640,11 @@
    * stored `claimed` would be a second source for one fact, and the kind that
    * disagrees quietly.
    *
-   * `now` is a PARAMETER rather than a `Date.now()` inside, so this is a
-   * function of its arguments — the same reason `restorableSession` takes one.
+   * IT CARRIES NO TIMESTAMP, because nothing reads one: an entry lives as long as
+   * its tab (see `KEY`). `link` is the replacement for what age used to catch.
+   * It is the address the pick was made on, trimmed to what names the posting
+   * (`postingLink`), and `restorableSession` compares the next page with it to
+   * refuse a sibling posting of the same employer.
    *
    * `null` when the tab's url has no tenant identity, and that is a refusal
    * rather than a default. `restorableSession` compares `entry.tenant` on the
@@ -1574,14 +1659,14 @@
    * posting and spent on the apply page — a different page load, which is
    * exactly what this entry exists to cross.
    */
-  function sessionEntryFrom(store, now) {
+  function sessionEntryFrom(store) {
     const tenant = sessionTenant(store.url);
     const origin = originOf(store.url);
     if (!tenant || !origin) return null;
     return {
       origin,
       tenant,
-      at: now,
+      link: postingLink(store.url),
       applicationId: store.application?.id ?? null,
       status: store.application?.status ?? "draft",
       jobId: store.job?.id ?? null,
@@ -2213,7 +2298,7 @@
     rememberSession();
   }
 
-  /** Write down what this panel is armed with, under the bridge key.
+  /** Write down what this panel is armed with, as the bound tab's entry.
    *
    * IT WRITES AN APPLICATION-LESS ENTRY, which is the whole of Task 9's session
    * decision and the thing to be careful about. A base picked in the Job
@@ -2226,21 +2311,22 @@
    * application that does not exist.
    *
    * NOT generation-guarded, and this is the one store-writing path in the file
-   * where that is correct rather than forgotten. The entry is built from
-   * `card` SYNCHRONOUSLY — before the first await, by a click made on the
-   * render the user is looking at — so there is no window in which a tab
-   * switch could make it stale. It is also scoped to the url it was built
-   * from, so even a write that lands late lands under a tenant that only that
-   * tab's pages read back.
+   * where that is correct rather than forgotten. The entry AND the tab id are
+   * taken from `card` SYNCHRONOUSLY — before the first await, by a click made on
+   * the render the user is looking at — so there is no window in which a tab
+   * switch could make either stale. The entry goes under the id of the tab it
+   * was built from, so even a write that lands late lands in that tab's slot
+   * and no other tab's pages read it.
    */
   function rememberSession() {
-    const entry = sessionEntryFrom(card, Date.now());
-    // No tenant, nothing to scope a memory to. See `sessionEntryFrom`: this is
-    // a refusal, not a fallback.
-    if (!entry) return Promise.resolve();
+    const tabId = card.tabId;
+    const entry = sessionEntryFrom(card);
+    // No tenant, nothing to scope a memory to; no tab, nowhere to keep it. See
+    // `sessionEntryFrom`: this is a refusal, not a fallback.
+    if (!entry || tabId === null) return Promise.resolve();
     // Returned for the one caller that waits on it (`refreshPage`); a write
-    // that fails is `writeStore`'s warning, never a rejection.
-    return writeStore({ [KEY.session]: entry });
+    // that fails is `updateSessions`'s warning, never a rejection.
+    return updateSessions((sessions) => ({ ...sessions, [tabId]: entry }));
   }
 
   /** Open the second fork level. A disclosure and nothing else: it asks the
@@ -2809,6 +2895,9 @@
       healPosting(generation).catch(
         (err) => console.warn(`[maestro-cs] panel could not re-read tab ${tabId}:`, err));
     });
+    // A CLOSED TAB'S JOB IS FORGOTTEN, whether or not it was the bound one: the
+    // memory is a map of every tab this browser has had a pick in (`KEY`).
+    chrome.tabs.onRemoved.addListener(forgetTab);
     // A SUBFRAME of the bound tab finished loading, which is how an embedded
     // application form arrives with no url change (`scheduleFrameDetect`).
     // Frame 0's own loads are `onUpdated`'s above. `webNavigation` is already
@@ -2818,7 +2907,11 @@
       scheduleFrameDetect();
     });
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (tab) await onTab(tab.id, tab.url ?? "");
+    if (tab) {
+      // BEFORE the first load, so the entry it adopts is the one that load reads.
+      await adoptLegacySession(tab);
+      await onTab(tab.id, tab.url ?? "");
+    }
   }
 
   /** "You changed a field", from the bound tab's content script
@@ -2965,12 +3058,13 @@
    * resumes. A switch keeps them; a request to re-read does not.
    *
    * A PICK IS WRITTEN DOWN AGAIN FIRST. It comes back through
-   * `restoreSession`, which trusts the memory for `SESSION_TTL_MS` from when it
-   * was written, and only while this tab's entry is the one under the key: a
-   * pick 31 minutes old, or one another tab's pick has overwritten, would be
-   * dropped by the very button meant to show more. Awaited, so the load reads
-   * the new entry. A draft deleted in the web app is still dropped: the detail
-   * read's 404 does that whatever the memory says.
+   * `restoreSession`, which reads this tab's entry, so the entry has to be the
+   * pick the panel holds now. Normally it already is (every pick writes), and
+   * the rewrite is for the one time it is not: an earlier write that failed
+   * (`updateSessions` swallows it). The 30-minute life and the single slot a
+   * second tab could overwrite are gone, and this no longer guards either.
+   * Awaited, so the load reads the new entry. A draft deleted in the web app is
+   * still dropped: the detail read's 404 does that whatever the memory says.
    *
    * Says so in the note, the panel's one live region, only when the load left
    * it empty: a sentence the load wrote (an unreachable backend) is the news. */
@@ -3223,21 +3317,19 @@
    * and `originOf` refuses it a second time for the same reason.
    */
   async function restoreSession(token) {
-    const stored = await readStore();
+    const sessions = await readSessions();
     if (!current(token)) return;
     const scope = {
-      now: Date.now(),
       origin: originOf(card.url),
       tenant: sessionTenant(card.url),
       matchedJobId: card.job?.id ?? null,
-      ttlMs: SESSION_TTL_MS,
+      url: card.url,
     };
-    // ONE SESSION KEY, ONE SET OF GUARDS, and no tie-break — see `KEY` for the
-    // decision that collapsed Task 8's second key. What was a choice between
-    // two entries is a single read: one key cannot shadow itself, so the
-    // "an older entry beats a fresher pick for the whole TTL" hazard is gone
-    // rather than ordered.
-    const entry = restorableSession(stored[KEY.session], scope);
+    // THIS TAB'S ENTRY, ONE SET OF GUARDS, and no tie-break — see `KEY` for the
+    // decision that collapsed Task 8's second key and for why there is no clock.
+    // Another tab's pick is not in the running: the lookup is by tab id, so the
+    // two tabs of one employer cannot hand each other a job.
+    const entry = restorableSession(sessions[card.tabId], scope);
     if (!entry) return;
     // GUARDED: an entry may name no application at all. This panel writes
     // exactly those — a base picked in the Job step, and the base-as-is

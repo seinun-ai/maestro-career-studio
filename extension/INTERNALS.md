@@ -468,13 +468,26 @@ asking permission of itself.
   was rendered and the day it went out, or no line at all when neither.
 - **The armed application survives the next page load**, and so does a finished
   fill. An ATS application is a multi-step wizard and every step is a page load.
-  The choice is remembered for 30 minutes, in `chrome.storage.local`, scoped to
-  the origin **and the tenant** — origin alone cannot scope it, because
+  The choice is remembered **per tab, for as long as the tab is open**: a map in
+  `chrome.storage.session` (`widget.sessions`, tab id to entry), deleted by
+  `chrome.tabs.onRemoved` and cleared when Chrome closes. There is no clock — the
+  old single key with a 30-minute life made a long wizard forget its job and let
+  a second tab's pick overwrite the first. An entry is scoped to the origin **and
+  the tenant** — origin alone cannot scope it, because
   multi-tenant boards put thousands of companies on one origin, and a pick
   restored onto another tenant's posting offers an application that does not
   belong to the page. A cross-tenant entry is trusted only when the backend
   matched this page to the very job the entry names, and a backend that
   recognises a *different* job discards the memory rather than offering it.
+  With no clock, a **sibling posting** of the same employer opened later in the
+  same tab would inherit the pick, so the entry also keeps the address it was
+  made on (`link`: origin and path, no query) and `restorableSession` refuses a
+  page that is neither above nor below it (`samePosting`, a symmetric prefix; the
+  backend naming the entry's own job outranks it). A wizard step that sits
+  beside the posting's path rather than under it reads as a sibling and asks for
+  the pick again. The old `chrome.storage.local` key `widget.session` is read
+  once on the first boot of this build, adopted by the active tab if it is under
+  30 minutes old and on that tab's site, and removed.
   `done.fill` rides the same entry, which is why reopening the ticked Fill row is
   how you reach Autofill again on page three of a form the extension has
   already finished once.
@@ -1528,9 +1541,12 @@ comma-separated.
   `toggle-widget`, because Chrome keys a user's rebinding by the command NAME and
   renaming it silently discards every custom binding anyone has made; what a user
   sees is its description, "Open the Maestro CS panel on this page". The
-  `widget.session` storage key is the same trade — renaming it drops every live
-  entry, stranding a user mid-wizard; `restoreSession`'s `if (entry.applicationId)`
-  guard is the condition of writing an application-less entry at all. The keys the
+  `widget.session` storage key was the same trade until the pick became a per-tab
+  map (`widget.sessions`, above): renaming it would have dropped every live entry,
+  stranding a user mid-wizard, so it was read once by the build that renamed it
+  (`adoptLegacySession`) and is now only a name in a comment. `restoreSession`'s
+  `if (entry.applicationId)` guard is the condition of writing an
+  application-less entry at all. The keys the
   floating card and an earlier panel build left behind (`widget.dock`, `widget.hiddenOrigins`,
   `widget.hiddenGlobally`, `panel.pick`) are unread and unswept.
 - The hotkey cannot close the panel: `chrome.sidePanel` has an `open` and no

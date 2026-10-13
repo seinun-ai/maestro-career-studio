@@ -133,22 +133,6 @@
       }
     }
   },
-  "stored": {
-    "widget.session": {
-      "origin": "https://job-boards.greenhouse.io",
-      "tenant": "https://job-boards.greenhouse.io/acme",
-      "at": "$now",
-      "applicationId": "app-acme",
-      "status": "draft",
-      "jobId": "job-acme",
-      "company": "Acme",
-      "title": "Senior Data Scientist",
-      "pdfReady": true,
-      "touched": false,
-      "baseSlug": "ai_ml_engineer",
-      "baseArmed": false
-    }
-  },
   "page": {
     "detect_page": {
       "ok": true,
@@ -311,5 +295,23 @@
   "autoPress": true,
   "frames": {
     "fill_inventory": []
+  },
+  "sessionStored": {
+    "widget.sessions": {
+      "7": {
+        "origin": "https://job-boards.greenhouse.io",
+        "tenant": "https://job-boards.greenhouse.io/acme",
+        "at": "$now",
+        "applicationId": "app-acme",
+        "status": "draft",
+        "jobId": "job-acme",
+        "company": "Acme",
+        "title": "Senior Data Scientist",
+        "pdfReady": true,
+        "touched": false,
+        "baseSlug": "ai_ml_engineer",
+        "baseArmed": false
+      }
+    }
   }
 }

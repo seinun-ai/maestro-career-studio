@@ -111,7 +111,7 @@ main(async () => {
   }
   release();
   await settle();
-  emit({ loaded, picked, focusedAfterPick, clicked, settled: regions(), sent, writes,
+  emit({ loaded, picked, focusedAfterPick, clicked, settled: regions(), sent, writes, picks: pickMapNow(),
          scores: ns.panel.actionStore().read().scores, warnings });
 });
 """
@@ -225,8 +225,8 @@ def test_the_pick_is_written_down_scoped_to_the_tenant_it_was_made_on(picked):
     """
     assert len(picked["writes"]) == 1
     [write] = picked["writes"]
-    # THE SHARED KEY, and since Task 9 that is true of an application-less
-    # entry too. It used to land on a key of the panel's own, because the
+    # ONE ENTRY PER TAB (the harness presents the bound tab's slice under the
+    # old name), and since Task 9 that is true of an application-less entry too. It used to land on a key of the panel's own, because the
     # widget's `restoreSession` would have restored `{id: undefined}` as an
     # application and forced `match: "exact"`; that restore now carries the
     # same `if (entry.applicationId)` guard this panel has always had, so one
@@ -239,8 +239,12 @@ def test_the_pick_is_written_down_scoped_to_the_tenant_it_was_made_on(picked):
     assert entry["baseSlug"] == "data_scientist"
     assert entry["applicationId"] is None
     assert entry["jobId"] == "job-lightning"
-    # A live clock, because freshness is one of the guards on the way back in.
-    assert abs(entry["at"] - int(time.time() * 1000)) < 120_000
+    # No timestamp: the entry lives as long as its tab, so nothing reads one.
+    assert "at" not in entry
+    # The address it was made on, trimmed to what names the posting.
+    assert entry["link"] == POSTING_URL
+    # …under the bound tab's id, in the per-tab map.
+    assert picked["picks"] == {"7": entry}
 
 
 def test_a_pick_made_here_comes_back_on_the_next_page_of_the_wizard(picked, tmp_path):
@@ -523,11 +527,9 @@ def test_a_bound_application_with_its_pdf_never_paints_a_no_pdf_resume_step(tmp_
 # reviewer proved it: deleting the clock guard AND the different-posting guard
 # left the suite green at 875.
 #
-# DRIVEN DIRECTLY, with a FROZEN `now`, and both halves of that matter. The
-# function is pure and total, so a table is the honest shape; and every
-# surviving fixture in the suite stamps `at` from a live clock, which means TTL
-# expiry is a branch nothing had ever crossed. A frozen clock is the only way
-# to be on both sides of it.
+# DRIVEN DIRECTLY, as a table: the function is pure and total. There is no clock
+# in it any more (a pick lives as long as its tab), so the rows that used to sit
+# on both sides of the 30-minute boundary are one row that says age is not asked.
 
 _RESTORABLE_DRIVER_JS = _PANEL_FAKES_JS + r"""
 const ns = loadModules();
@@ -545,16 +547,21 @@ main(async () => {
 });
 """
 
-TTL_MS = 30 * 60 * 1000
 OTHER_TENANT = "https://job-boards.greenhouse.io/cohere"
+POSTING_LINK = f"{GREENHOUSE_ORIGIN}/lightningai/jobs/99"
+WORKDAY = "https://acme.wd5.myworkdayjobs.com"
+_AT_WORKDAY = {"origin": WORKDAY, "tenant": f"{WORKDAY}/en-US"}
+_AT_LEVER = {"origin": "https://jobs.lever.co", "tenant": "https://jobs.lever.co/globex"}
+
+
+FROZEN_NOW = 1_760_000_000_000
 
 
 def _entry(**over):
-    """A pick made on this tenant, one minute ago on the frozen clock."""
+    """A pick made on this tenant, on the posting page."""
     return {
         "origin": GREENHOUSE_ORIGIN,
         "tenant": LIGHTNING_TENANT,
-        "at": FROZEN_NOW - 60_000,
         "applicationId": "app-1",
         "jobId": "job-lightning",
         "baseSlug": "ai_ml_engineer",
@@ -564,11 +571,9 @@ def _entry(**over):
 
 def _scope(**over):
     return {
-        "now": FROZEN_NOW,
         "origin": GREENHOUSE_ORIGIN,
         "tenant": LIGHTNING_TENANT,
         "matchedJobId": None,
-        "ttlMs": TTL_MS,
         **over,
     }
 
@@ -582,25 +587,15 @@ def restorable(tmp_path_factory):
         "other_origin": {"entry": _entry(origin="https://jobs.lever.co"),
                          "scope": _scope()},
 
-        # --- THE CLOCK GUARD (`age >= 0`) --------------------------------
-        # An entry stamped in the FUTURE is what a clock that jumped backwards
-        # leaves behind — a DST change, an NTP correction, a laptop resuming.
-        # It is not fresh; it is unreadable, and `age < ttlMs` alone calls it
-        # fresh forever because a negative age is less than anything.
+        # --- NO CLOCK -----------------------------------------------------
+        # A pick lives as long as its tab. Whatever `at` an entry carries (the
+        # shape every profile that ran an earlier build holds), however old,
+        # stamped in the future, or absent, is not asked.
+        "stamped_a_day_ago": {"entry": _entry(at=FROZEN_NOW - 24 * 3600 * 1000),
+                              "scope": _scope()},
         "stamped_in_the_future": {"entry": _entry(at=FROZEN_NOW + 60_000),
                                   "scope": _scope()},
-        "stamped_far_in_the_future": {
-            "entry": _entry(at=FROZEN_NOW + (365 * 24 * 3600 * 1000)),
-            "scope": _scope()},
-
-        # --- TTL EXPIRY, on both sides of the boundary -------------------
-        "one_ms_inside_the_ttl": {"entry": _entry(at=FROZEN_NOW - (TTL_MS - 1)),
-                                  "scope": _scope()},
-        "exactly_at_the_ttl": {"entry": _entry(at=FROZEN_NOW - TTL_MS),
-                               "scope": _scope()},
-        "past_the_ttl": {"entry": _entry(at=FROZEN_NOW - (TTL_MS + 1)),
-                         "scope": _scope()},
-        "no_at_at_all": {"entry": _entry(at=None), "scope": _scope()},
+        "no_at_at_all": {"entry": _entry(), "scope": _scope()},
 
         # --- TENANT SCOPING on a shared origin ---------------------------
         "other_tenant_same_origin": {"entry": _entry(tenant=OTHER_TENANT),
@@ -632,6 +627,61 @@ def restorable(tmp_path_factory):
         # An entry that names no job cannot contradict a match.
         "entry_names_no_job": {"entry": _entry(jobId=None),
                                "scope": _scope(matchedJobId="job-other")},
+
+        # --- THE SIBLING-POSTING GUARD -----------------------------------
+        # With no clock, the tenant is all that kept a pick to its employer, and
+        # a board serves every posting of an employer from one tenant. The entry
+        # remembers the address it was made on (`link`); a page that is neither
+        # above nor below it is another posting.
+        "next_page_of_the_same_posting": {
+            "entry": _entry(link=POSTING_LINK),
+            "scope": _scope(url=f"{POSTING_LINK}/apply")},
+        "the_posting_itself_after_its_apply_page": {
+            "entry": _entry(link=f"{POSTING_LINK}/apply"),
+            "scope": _scope(url=POSTING_LINK)},
+        "query_and_fragment_do_not_make_a_new_posting": {
+            "entry": _entry(link=POSTING_LINK),
+            "scope": _scope(url=f"{POSTING_LINK}/apply?gh_src=x#top")},
+        "a_sibling_posting": {
+            "entry": _entry(link=POSTING_LINK),
+            "scope": _scope(url=f"{GREENHOUSE_ORIGIN}/lightningai/jobs/100/apply")},
+        # Parting at a segment that is NOT an id is a wizard moving between its
+        # own steps, which is exactly what the pick has to survive.
+        "a_wizard_step_beside_the_step": {
+            "entry": _entry(**_AT_WORKDAY, link=f"{WORKDAY}/en-US/careers/apply/applyManually"),
+            "scope": _scope(**_AT_WORKDAY, url=f"{WORKDAY}/en-US/careers/apply/review")},
+        "a_numbered_wizard_step": {
+            "entry": _entry(link=f"{POSTING_LINK}/step2"),
+            "scope": _scope(url=f"{POSTING_LINK}/step3")},
+        "a_workday_requisition_sibling": {
+            "entry": _entry(**_AT_WORKDAY, link=f"{WORKDAY}/en-US/x/job/NYC/Engineer_R-1043/apply"),
+            "scope": _scope(**_AT_WORKDAY,
+                            url=f"{WORKDAY}/en-US/x/job/NYC/Analyst_R-2210/apply")},
+        # No run of two digits anywhere in either id: only the UUID shape can
+        # tell these two apart from a wizard's step names.
+        "a_lever_uuid_sibling": {
+            "entry": _entry(**_AT_LEVER,
+                            link="https://jobs.lever.co/globex/3f2a9c1e-b4ce-a9cd-bc1d-aabbccddeeff"),
+            "scope": _scope(**_AT_LEVER,
+                            url="https://jobs.lever.co/globex/9b8c7d6e-a1bc-b2cd-c3de-abcdefabcdef/apply")},
+        "a_listing_above_the_posting": {
+            "entry": _entry(link=POSTING_LINK),
+            "scope": _scope(url=f"{GREENHOUSE_ORIGIN}/lightningai")},
+        "another_origin": {
+            "entry": _entry(link=POSTING_LINK),
+            "scope": _scope(url="https://boards.example/lightningai/jobs/99")},
+        "a_sibling_posting_the_backend_confirms_is_the_entrys_job": {
+            "entry": _entry(link=POSTING_LINK),
+            "scope": _scope(url=f"{GREENHOUSE_ORIGIN}/lightningai/jobs/100/apply",
+                            matchedJobId="job-lightning")},
+        "legacy_entry_with_no_link": {
+            "entry": _entry(),
+            "scope": _scope(url=f"{GREENHOUSE_ORIGIN}/lightningai/jobs/100/apply")},
+        "a_caller_with_no_url": {
+            "entry": _entry(link=POSTING_LINK), "scope": _scope()},
+        "an_unreadable_link": {
+            "entry": _entry(link="not a url"),
+            "scope": _scope(url=f"{POSTING_LINK}/apply")},
     }
     return run_node(_RESTORABLE_DRIVER_JS, {"cases": cases},
                     tmp_path_factory.mktemp("restorable"), source=PANEL_SOURCE)
@@ -643,33 +693,14 @@ def test_a_fresh_pick_on_its_own_tenant_restores(restorable):
     assert restorable["other_origin"] is None
 
 
-def test_an_entry_from_the_future_is_not_fresh_it_is_unreadable(restorable):
-    """THE CLOCK GUARD, and the reason it is a RANGE test rather than
-    `age < ttlMs`.
-
-    EXPLOIT THIS PIN EXISTS FOR: deleting `age >= 0` left the suite green. A
-    negative age is less than every TTL, so a clock that jumped backwards —
-    DST, an NTP correction, a laptop resuming from sleep — turns a stale pick
-    into one that never expires. The failure is silent and outlives the
-    session it belongs to.
-    """
-    assert restorable["stamped_in_the_future"] is None
-    assert restorable["stamped_far_in_the_future"] is None
-
-
-def test_the_ttl_is_a_boundary_and_the_table_sits_on_both_sides(restorable):
-    """Half-open: inside the window restores, ON the boundary does not.
-
-    Every other restore fixture in this suite stamps `at` from a live clock and
-    therefore never crosses this at all — the frozen clock here is the whole
-    reason these three rows can exist.
-    """
-    assert restorable["one_ms_inside_the_ttl"] == "job-lightning"
-    assert restorable["exactly_at_the_ttl"] is None
-    assert restorable["past_the_ttl"] is None
-    # `?? 0` inside the function: an entry with no timestamp is age-of-the-epoch
-    # old, which is refused rather than treated as brand new.
-    assert restorable["no_at_at_all"] is None
+def test_an_entry_is_never_refused_for_its_age(restorable):
+    """THERE IS NO CLOCK. The 30-minute window made a long wizard forget its job;
+    an entry now lives while its tab is open, so a day-old, future-dated or
+    undated entry restores exactly as a fresh one does (the guards below are what
+    drop it)."""
+    assert restorable["stamped_a_day_ago"] == "job-lightning"
+    assert restorable["stamped_in_the_future"] == "job-lightning"
+    assert restorable["no_at_at_all"] == "job-lightning"
 
 
 def test_a_pick_does_not_cross_tenants_on_a_shared_origin(restorable):
@@ -713,20 +744,52 @@ def test_a_pick_is_never_offered_on_a_posting_the_backend_calls_different(restor
     assert restorable["entry_names_no_job"] == "(no jobId)"
 
 
+def test_a_sibling_posting_on_the_same_tenant_does_not_inherit_a_pick(restorable):
+    """THE SIBLING-POSTING GUARD, and the cost side next to it.
+
+    The backend's `is_same_posting` is directional (a saved posting is a prefix
+    of the page); this one is symmetric, because it only has to veto a page that
+    is another posting, not to say which job a page is. So the posting page after
+    its apply page still restores, and a listing above the posting is no
+    contradiction (that was true before and stays true). It vetoes only when the
+    paths part at a segment that is an id on both sides (digits, a UUID): a
+    wizard's own steps (`applyManually` to `review`, `step2` to `step3`) part at
+    names, and the pick has to survive them.
+
+    The backend naming the entry's own job outranks it, as it outranks the
+    tenant. An entry from before the address was kept has nothing to compare, and
+    a caller that does not pass the page's address (the older table rows) asks
+    nothing.
+    """
+    assert restorable["next_page_of_the_same_posting"] == "job-lightning"
+    assert restorable["the_posting_itself_after_its_apply_page"] == "job-lightning"
+    assert restorable["query_and_fragment_do_not_make_a_new_posting"] == "job-lightning"
+    assert restorable["a_sibling_posting"] is None
+    assert restorable["a_workday_requisition_sibling"] is None
+    assert restorable["a_lever_uuid_sibling"] is None
+    assert restorable["another_origin"] is None
+    assert restorable["a_wizard_step_beside_the_step"] == "job-lightning"
+    assert restorable["a_numbered_wizard_step"] == "job-lightning"
+    assert restorable["a_listing_above_the_posting"] == "job-lightning"
+    assert restorable["a_sibling_posting_the_backend_confirms_is_the_entrys_job"] == "job-lightning"
+    assert restorable["legacy_entry_with_no_link"] == "job-lightning"
+    assert restorable["a_caller_with_no_url"] == "job-lightning"
+    assert restorable["an_unreadable_link"] == "job-lightning"
+
+
 _SESSION_ENTRY_DRIVER_JS = _PANEL_FAKES_JS + r"""
 const ns = loadModules();
 main(async () => {
   await settle();
   const out = {};
   for (const [name, store] of Object.entries(spec.cases)) {
-    out[name] = ns.panel.sessionEntryFrom(store, spec.now);
+    out[name] = ns.panel.sessionEntryFrom(store);
   }
   emit(out);
 });
 """
 
 PANEL_JS = (EXTENSION / "panel" / "panel.js").read_text(encoding="utf-8")
-FROZEN_NOW = 1_760_000_000_000
 
 
 @pytest.fixture(scope="module")
@@ -752,7 +815,7 @@ def entries(tmp_path_factory):
         # why both `sessionTenant` and `originOf` are total.
         "no_url": {"url": "", "job": None, "application": None, "baseSlug": "x"},
     }
-    return run_node(_SESSION_ENTRY_DRIVER_JS, {"cases": cases, "now": FROZEN_NOW},
+    return run_node(_SESSION_ENTRY_DRIVER_JS, {"cases": cases},
                     tmp_path_factory.mktemp("panel_entry"),
                     source=PANEL_SOURCE)
 
@@ -772,7 +835,7 @@ def test_the_bridge_entry_is_the_shape_its_writer_declares(entries):
     ride along untested and restore as absent the day something reads it.
     """
     written, closed, _rest = PANEL_JS.partition(
-        "function sessionEntryFrom(store, now) {")[2].partition("\n    };\n  }")
+        "function sessionEntryFrom(store) {")[2].partition("\n    };\n  }")
     # Anchored on the CLOSING delimiter too. Without it a reindentation leaves
     # the scan running on into the rest of panel.js, and the failure arrives as
     # a diff of whatever it found there rather than as the one sentence that is
@@ -786,7 +849,10 @@ def test_the_bridge_entry_is_the_shape_its_writer_declares(entries):
         "sessionEntryFrom writes a different set of fields than this test "
         f"expects: {sorted(fields ^ set(entries['tailored']))}")
     assert entries["tailored"] == {
-        "origin": GREENHOUSE_ORIGIN, "tenant": LIGHTNING_TENANT, "at": FROZEN_NOW,
+        "origin": GREENHOUSE_ORIGIN, "tenant": LIGHTNING_TENANT,
+        # What the address WAS, as the posting's own part of it (no query, no
+        # fragment). The sibling-posting guard compares the next page with it.
+        "link": POSTING_URL,
         "applicationId": "app-1", "status": "applied", "jobId": "job-lightning",
         "company": "Lightning AI", "title": "Research Engineer",
         "pdfReady": True, "touched": True,

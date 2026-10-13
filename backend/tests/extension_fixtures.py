@@ -18,7 +18,7 @@ duplicate is defensible for an incidental constant; it is not defensible for
 the contract under test.
 
 The addresses travel with the shape because the entry is SCOPED to them:
-`origin` and `tenant` are two of `restorableSession`'s three guards, and an
+`origin` and `tenant` are two of `restorableSession`'s guards, and an
 apply URL the backend cannot name is the page on which the remembered pick is
 the only thing there is (see the comment on `LIGHTNING_APPLY_URL`).
 
@@ -64,10 +64,10 @@ def entry(**overrides):
     `test_extension_panel_job.py`'s legacy-entry section, which writes its own
     literal so the reader can see exactly what is being restored.)
 
-    `at` is a LIVE clock, not a frozen number: freshness is one of the three
-    guards, so an entry stamped at a constant would start failing the day the
-    fixture aged past the TTL — and would then be refused for a reason no test
-    here is about.
+    `at` is still here, as the old shape carried it, and nothing reads it: an
+    entry lives as long as its tab. The legacy-key migration is the one reader
+    (it adopts an old `widget.session` under 30 minutes old), which is why it
+    stays a live clock rather than a constant.
 
     NOT `_entry`, which is what it was called while it lived in one file. A
     leading underscore says "private to this module", and the whole reason this
@@ -86,8 +86,8 @@ def entry(**overrides):
 # The same shape with NO application behind it — "the job is in the library, a
 # base has been picked, and nothing has been tailored yet", which is how a user
 # arrives at the Resume stage and is also the entry `restoreSession`'s
-# `if (entry.applicationId)` guard exists for. `at` is filled per run:
-# freshness is one of the guards. Carries the pre-R-C keys for the reason
+# `if (entry.applicationId)` guard exists for. `at` is filled per run
+# (only the legacy-key migration reads it). Carries the pre-R-C keys for the reason
 # `entry()` above spells out — it is kept as the OLD on-disk shape on purpose.
 PICKED_ENTRY = {
     "origin": GREENHOUSE_ORIGIN, "tenant": LIGHTNING_TENANT,

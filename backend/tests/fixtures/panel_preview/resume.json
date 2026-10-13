@@ -87,20 +87,22 @@
       ]
     }
   },
-  "stored": {
-    "widget.session": {
-      "origin": "https://job-boards.greenhouse.io",
-      "tenant": "https://job-boards.greenhouse.io/acme",
-      "at": "$now",
-      "applicationId": null,
-      "status": "draft",
-      "jobId": "job-acme",
-      "company": "Acme",
-      "title": "Senior Data Scientist",
-      "pdfReady": false,
-      "touched": false,
-      "baseSlug": "ai_ml_engineer",
-      "baseArmed": false
+  "sessionStored": {
+    "widget.sessions": {
+      "7": {
+        "origin": "https://job-boards.greenhouse.io",
+        "tenant": "https://job-boards.greenhouse.io/acme",
+        "at": "$now",
+        "applicationId": null,
+        "status": "draft",
+        "jobId": "job-acme",
+        "company": "Acme",
+        "title": "Senior Data Scientist",
+        "pdfReady": false,
+        "touched": false,
+        "baseSlug": "ai_ml_engineer",
+        "baseArmed": false
+      }
     }
   }
 }

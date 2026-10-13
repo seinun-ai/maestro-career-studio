@@ -13,8 +13,8 @@
  * that used to be split across two files is written out below in full.
  *
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
- * postingId, sessionTenant, restorableSession, reconcileFill, sanitizeAnswer,
- * sameApplication, describesJob, sameSite }.
+ * postingId, sessionTenant, restorableSession, postingLink, samePosting,
+ * reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -307,31 +307,104 @@
     return null;
   }
 
+  /** The part of a page's address that names its posting: origin and path, no
+   * query and no fragment, or null for an address `new URL` refuses.
+   *
+   * What the session entry keeps of the page a pick was made on (`link`), for
+   * `restorableSession`'s sibling-posting guard. A referral id or a tracking
+   * parameter is not a posting, and it is not worth keeping in storage either;
+   * the one query key that IS a posting's identity is already in the entry's
+   * tenant (`sessionTenant`). */
+  function postingLink(url) {
+    try {
+      const u = new URL(url);
+      return u.hostname ? `${u.origin}${u.pathname}` : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // A path segment that carries a posting's identity: a run of digits (a
+  // Greenhouse or iCIMS id, a Workday `_R-1043` requisition, a Smart-style
+  // `743999-title`) or a UUID (Lever, Ashby), which can be all letters in its
+  // first group. A wizard step's name (`review`, `useMyLastApplication`) is
+  // neither. Two digits, not one: `step2` is a wizard step and `99` is a job.
+  const ID_SEGMENT_RE = /\d{2,}|^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+  /** Is the page at `url` the posting `link` names, or a page of that posting's
+   * wizard? Only a SIBLING answers false: another posting of the same employer.
+   *
+   * The paths are compared from the root, and what decides is the first segment
+   * where they part. A page that is above or below the link (a prefix either
+   * way) is the same posting, so `/acme/jobs/99` then `/acme/jobs/99/apply` and
+   * back agree. Parting at a segment that is an ID on both sides
+   * (`/acme/jobs/99` against `/acme/jobs/100/apply`) is two postings.
+   * Parting anywhere else is a wizard moving between its own steps
+   * (`/apply/applyManually` to `/apply/review`) and is the same posting,
+   * because a step's name carries no identity and the user's pick must survive
+   * the steps. The cost of that safety is that a sibling posting whose slug has
+   * no id in it is not caught here; it is also what the pick did before this
+   * guard existed.
+   *
+   * The backend's `is_same_posting` is directional where this is not. That one
+   * answers "is this page the saved job", so a listing above the posting must
+   * not count; this one answers "is there evidence of a different job", and a
+   * page above or below the link gives none. Different origins are different
+   * postings outright.
+   *
+   * TOTAL: an address either side cannot be read answers true, because no
+   * evidence of a different posting is not evidence of one. */
+  function samePosting(link, url) {
+    let saved;
+    let current;
+    try {
+      saved = new URL(link);
+      current = new URL(url);
+    } catch {
+      return true;
+    }
+    if (saved.origin !== current.origin) return false;
+    const [a, b] = [saved, current].map((u) => u.pathname.split("/").filter(Boolean));
+    const parts = a.findIndex((segment, i) => i < b.length && segment !== b[i]);
+    return parts === -1 || !(ID_SEGMENT_RE.test(a[parts]) && ID_SEGMENT_RE.test(b[parts]));
+  }
+
   /** May a remembered pick be restored onto THIS page load?
    *
    * Pure, and its own function for the same reason `stageFor` is: it is a
    * whole judgement rather than a step of one, and it is the piece that
    * decides whether the panel shows an application the user is not looking at.
-   * Three guards, each answering a different way of being wrong:
+   * The guards, each answering a different way of being wrong:
    *
    * ORIGIN. A pick belongs to the site it was made on. Stored per origin
    * rather than per URL because the URL changes on every wizard step, which is
    * exactly the case this exists for.
    *
-   * FRESHNESS. An entry past its TTL is not a pick, it is a memory of one.
-   * A clock that jumped backwards makes `age` negative, which is not fresh
-   * either — hence the range test rather than `age < TTL`.
+   * NO CLOCK. The entry belongs to a tab and lives while the tab is open, so
+   * age is not asked: a long wizard keeps its job. What used to be the
+   * freshness rule's work is done by the other guards, and by the sibling
+   * check below for the one case a clock covered by accident (a different
+   * posting opened later in the same tab).
    *
    * THE BACKEND WINS. If `/api/jobs/match` recognised this page as a job, and
    * it is not the job the pick was made for, the pick is about a different
-   * posting and is discarded. A Workday tenant serves every one of its jobs
-   * from one origin, so without this the application picked for one posting
+   * posting and is discarded. A Workday tenant serves every one of its jobs from
+   * one origin, so without this the application picked for one posting
    * would be offered on the next — which is the most confident wrong thing
    * this surface could say. A match of `null`/`none` is not a contradiction:
    * it is the backend not knowing, which is the ordinary case on an apply URL,
    * and it is precisely when the remembered pick is worth having.
+   *
+   * THE BACKEND NOT KNOWING IS WHERE `link` COMES IN. On an apply URL the match
+   * is silent, the tenant is the employer rather than the job, and a second
+   * posting of the same employer in the same tab would be handed the first one's
+   * application. An entry that kept the address it was made on (`link`) is
+   * refused on a page that `samePosting` calls a sibling. An entry without one
+   * (written before this field, or migrated from the old key) and a caller that
+   * passes no `url` are not asked, and the backend naming the entry's own job
+   * outranks it, exactly as it outranks the tenant.
    */
-  function restorableSession(entry, { now, origin, matchedJobId, ttlMs, tenant }) {
+  function restorableSession(entry, { origin, matchedJobId, tenant, url }) {
     if (!entry || entry.origin !== origin) return null;
     // Origin alone cannot scope the memory: multi-tenant boards
     // (job-boards.greenhouse.io, jobs.lever.co) put thousands of companies on
@@ -344,9 +417,8 @@
     const backendConfirms = Boolean(
       matchedJobId && entry.jobId && matchedJobId === entry.jobId);
     if (entry.tenant !== tenant && !backendConfirms) return null;
-    const age = now - (entry.at ?? 0);
-    if (!(age >= 0 && age < ttlMs)) return null;
     if (matchedJobId && entry.jobId && matchedJobId !== entry.jobId) return null;
+    if (!backendConfirms && entry.link && url && !samePosting(entry.link, url)) return null;
     return entry;
   }
 
@@ -533,7 +605,8 @@
   }
 
   ns.decisions = {
-    stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession,
+    stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession, postingLink,
+    samePosting,
     reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
   };
 })();

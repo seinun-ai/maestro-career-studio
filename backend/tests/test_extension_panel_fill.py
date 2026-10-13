@@ -510,11 +510,12 @@ def test_with_nothing_learned_there_is_nothing_to_forget(tmp_path):
 
 def test_learned_moves_have_their_own_documented_storage_key():
     """The panel source pin: `fill.recipes` is a KEY the storage rule names,
-    read with the session through `STORE_DEFAULTS`, handed to the loop as `deps.recipes`, and the book is loaded by the
+    read through `STORE_DEFAULTS`, handed to the loop as `deps.recipes`, and the book is loaded by the
     document."""
     panel = (EXTENSION / "panel" / "panel.js").read_text(encoding="utf-8")
     key = re.search(r"const KEY = \{([^}]*)\};", panel).group(1)
-    assert 'recipes: "fill.recipes"' in key and 'session: "widget.session"' in key
+    assert 'recipes: "fill.recipes"' in key and 'sessions: "widget.sessions"' in key
+    assert 'legacySession: "widget.session"' in key
     assert re.search(r"const STORE_DEFAULTS = \{[^}]*\[KEY\.recipes\]: null", panel)
     rule = panel[:panel.index("const KEY = {")]
     assert "`fill.recipes`" in rule[rule.rindex("chrome.storage.local"):]
@@ -780,10 +781,6 @@ main(async () => {
   for (const step of spec.steps) {
     if (step.laterMs) {
       Date.now = () => realNow() + step.laterMs;
-      // The remembered pick kept fresh, so its own 30 minutes are not what a
-      // step in the future measures: only the flow's hour is.
-      const pick = (spec.stored ?? {})["widget.session"];
-      if (pick) pick.at = Date.now();
     }
     spec.page.detect_page = step.tops ?? [step.top];
     spec.frames.detect_page = step.frames ?? [];
@@ -1306,7 +1303,7 @@ def test_progress_from_a_fill_on_another_tab_never_paints_this_one(tmp_path):
     """
     next_step = f"{LIGHTNING_APPLY_URL}/step2"
     out = _fill(tmp_path, start=True, hold=["page_broadcast:guided_write"], switchTo=42,
-                tabUrls={"42": next_step})
+                tabUrls={"42": next_step}, pickTabs=[7, 42])
     settled = out["settled"]
     # Tab B is at Fill and its body is the pre-run offer: a mode control, and
     # no report of a fill that happened somewhere else.
@@ -3416,7 +3413,7 @@ def test_a_gone_pdf_answered_after_a_tab_switch_never_stamps_the_new_page(tmp_pa
     next_step = f"{LIGHTNING_APPLY_URL}/step2"
     out = _attach(tmp_path, press=True, switchTo=9,
                   hold=["/api/applications/app-remembered"], holdSkip=1,
-                  tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
+                  tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}], pickTabs=[7, 9],
                   tabUrls={"9": next_step}, pokeAfter=True, releaseOrder="newest",
                   detail=[_reply(_TAILORED_DETAIL), _reply(gone),
                           _reply(_TAILORED_DETAIL)])
@@ -3457,14 +3454,15 @@ def test_an_attach_that_lands_on_a_tab_the_user_left_changes_nothing(tmp_path):
     original version stayed green.
 
     THE SWITCH IS TO THE NEXT STEP OF THE SAME WIZARD, for that test's reason:
-    same tenant, so the arming restores and tab B is itself at Fill with a body
+    same tenant, and the tab holds the same arming (`pickTabs`: each tab keeps its
+    own memory now), so the arming restores and tab B is itself at Fill with a body
     waiting to render. That is the tab that can SHOW the bug — a late write
     would paint tab A's attach as tab B's.
     """
     next_step = f"{LIGHTNING_APPLY_URL}/step2"
     out = _attach(tmp_path, press=True, switchTo=9,
                   hold=["/api/applications/app-remembered"], holdSkip=1,
-                  tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
+                  tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}], pickTabs=[7, 9],
                   tabUrls={"9": next_step})
     settled = out["settled"]
     # Tab B is at Fill and its body is the pre-run offer, carrying no report of

@@ -831,13 +831,14 @@ def test_the_panel_binds_to_the_active_tab_and_stays_bound(booted):
     `fanoutTab` verifies WHO may name a tab, never WHICH — a service worker
     cannot know which tab the user is looking at. So a `card.tabId` left stale
     across a tab switch would aim a fill, or a PDF attach, at the wrong tab and
-    the SW would pass it. The three tab listeners are that guard; the fourth, the
-    runtime listener, hears the content script's value-free `fields_touched` hint
+    the SW would pass it. The tab listeners are that guard (`onRemoved` is the
+    memory's, not the binding's: a closed tab's job is forgotten); the runtime
+    listener hears the content script's value-free `fields_touched` hint
     (it is accepted only from the bound tab: `test_extension_panel_receipt.py`).
     """
     assert booted["queries"] == [{"active": True, "lastFocusedWindow": True}]
     assert booted["listeners"] == ["runtime.onMessage", "onActivated", "onUpdated",
-                                   "webNavigation.onCompleted"]
+                                   "onRemoved", "webNavigation.onCompleted"]
     # The url is the only fact the panel has about a page it has not asked the
     # backend about yet, so it is what the identity line shows — which makes it
     # the visible proof of which tab the panel is bound to.
@@ -3225,10 +3226,10 @@ def _picked_then_refreshed(tmp_path, **spec):
                     }, **spec)
 
 
-def test_a_pick_older_than_the_memory_lasts_survives_a_refresh(tmp_path):
-    """The pick lives in this browser's memory for 30 minutes from when it was
-    written. Refresh writes it again first, so a draft picked 31 minutes ago
-    is still armed afterwards rather than silently dropped."""
+def test_a_pick_made_long_ago_survives_a_refresh(tmp_path):
+    """The pick lives as long as its tab (there is no clock), so a draft picked
+    31 minutes ago, the old window, is still armed after Refresh rather than
+    silently dropped."""
     out = _picked_then_refreshed(tmp_path, advanceMs=31 * 60 * 1000)
     identity = out["refreshed"]["identity"]
     assert _by_class(identity, "chip")[0]["text"] == "Draft application"
