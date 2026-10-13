@@ -46,13 +46,13 @@ export function useBaseResumeLabel() {
   return useCallback((slug: string) => baseResumeLabel(slug, data), [data]);
 }
 
-/** slug -> the resume's colour hue (0-359), or `null` while the list loads, after it
- *  fails, for a slug it lacks, and for a resume with no colour: all draw grey. The
- *  archived-inclusive list, like the label: a score or proposal keeps pointing at a
+/** slug -> the resume's colour hue (0-359). `null` while the list loads, after it fails, for a slug it
+ *  lacks, and for a resume with no colour: all draw grey. Same shape as `useBaseResumeLabel`, so it can be
+ *  called per row inside a `.map()`. The archived-inclusive list: a score or proposal keeps pointing at a
  *  resume after it is archived. */
-export function useBaseResumeColor(slug: string): number | null {
+export function useBaseResumeColor() {
   const { data } = useBaseResumes(true);
-  return data?.find((r) => r.slug === slug)?.color_hue ?? null;
+  return useCallback((slug: string): number | null => data?.find((r) => r.slug === slug)?.color_hue ?? null, [data]);
 }
 
 /** One résumé's name, for a surface that names a single slug which may be

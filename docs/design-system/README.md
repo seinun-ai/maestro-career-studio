@@ -85,6 +85,7 @@ One corner per kind of thing: `radius-corner-2xs` (2px) the resume square; `radi
 ## Selection and state
 
 - **Selected in a set** (a toggle, a filter chip, a segment): `secondary-container`, a leading Check and `aria-pressed`. The tonal fill alone is too faint to say "on".
+- **A color swatch** (the base resume color picker) has no tonal fill to give, so its selected state is a Check and the solid 2px `ring` outline, with its focus drawn as a separate outer ring.
 - **Current in a list or nav** (a sidebar row, the open chat): `secondary-container`, weight 600 and `aria-current`, with no Check.
 - **One filled button per view.** Everything else is tonal, outline, ghost or text-style. A dialog's confirm is filled because the dialog is its own view.
 - **Focus is the solid `ring`**, never a translucent one: a solid 1px `ring` border with a 3px halo on controls, or a 2px `ring` outline. A ring offset names its surface.

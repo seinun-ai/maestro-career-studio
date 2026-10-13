@@ -50,14 +50,23 @@ def test_the_picker_swatch_is_a_control_not_a_pill_and_never_faded():
     assert "opacity-" not in _PICKER
 
 
-def test_a_checked_swatch_draws_a_check_and_the_solid_ring():
+def test_a_checked_swatch_draws_a_check_and_the_solid_outline():
     assert "<Check" in _PICKER and "text-primary-foreground" in _PICKER
-    assert "outline-2" in _PICKER and "outline-offset-2" in _PICKER and "outline-ring" in _PICKER
+    assert 'on && "outline-2 outline-offset-2 outline-ring"' in _PICKER
+
+
+def test_focus_is_a_separate_outer_ring_not_the_selected_outline():
+    """A focused swatch must not look checked: focus is a box-shadow ring outside the outline."""
+    ring = "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-card"
+    assert ring in _PICKER
+    assert "focus-visible:outline" not in _PICKER
+    assert "outline-none" not in _PICKER.replace("`outline-none`", "")  # it would blank the outline utilities
 
 
 def test_a_taken_preset_is_named_and_marked_not_disabled():
     assert ", used by " in _PICKER
-    assert "disabled" not in _PICKER  # a taken colour may still be chosen: two resumes can share one
+    # A taken color may still be chosen: two resumes can share one.
+    assert "disabled={" not in _PICKER and "aria-disabled" not in _PICKER
 
 
 def test_the_arrow_keys_move_between_swatches():
@@ -67,9 +76,20 @@ def test_the_arrow_keys_move_between_swatches():
 
 
 def test_the_custom_hue_is_a_labelled_range_over_the_whole_wheel():
-    assert 'type="range"' in _PICKER and 'min={0}' in _PICKER and 'max={359}' in _PICKER
+    assert 'type="range"' in _PICKER and "min={0}" in _PICKER and "max={359}" in _PICKER
     assert ">Hue<" in _PICKER
-    assert "Custom" in _PICKER and "aria-expanded" in _PICKER
+    assert "aria-valuetext={presetName(value) ?? `Hue ${value ?? 0}`}" in _PICKER
+    assert "Custom" in _PICKER and "aria-expanded={sliderOpen}" in _PICKER
+    assert "aria-controls={sliderOpen ? sliderId : undefined}" in _PICKER
+    # A custom value that arrives after mount opens the slider.
+    assert "customOpen ?? isCustom" in _PICKER
+
+
+def test_the_picker_separates_the_live_value_from_the_settled_choice():
+    """onChange is every step; onCommit is once per choice: a click, a keyup, the slider's pointerup, keyup or blur."""
+    assert "onCommit?: (hue: number) => void;" in _PICKER
+    assert "onCommit?.(preset.hue)" in _PICKER
+    assert "onKeyUp" in _PICKER and "onPointerUp={settle} onKeyUp={settle} onBlur={settle}" in _PICKER
 
 
 def test_the_random_hint_is_only_for_a_random_pick():
@@ -77,6 +97,8 @@ def test_the_random_hint_is_only_for_a_random_pick():
     assert "pickedAtRandom" in _PICKER
 
 
-def test_the_hook_reads_the_archived_inclusive_list():
-    hook = _HOOK.split("export function useBaseResumeColor", 1)[1]
-    assert "useBaseResumes(true)" in hook and "color_hue" in hook
+def test_the_hook_is_a_lookup_over_the_archived_inclusive_list():
+    """Same shape as useBaseResumeLabel, so a row in a .map() can call it."""
+    hook = _HOOK.split("export function useBaseResumeColor", 1)[1].split("/**", 1)[0]
+    assert "useBaseResumes(true)" in hook and "useCallback((slug: string)" in hook
+    assert "color_hue" in hook and "[data]" in hook

@@ -81,6 +81,16 @@ def test_the_text_on_the_container_meets_aa(mode, hue, chroma):
 
 @pytest.mark.parametrize("mode", list(_MODES))
 @pytest.mark.parametrize("hue,chroma", list(_hues()))
+def test_what_the_picker_draws_on_the_square_reads(mode, hue, chroma):
+    """The selected Check (primary-foreground) and the taken marker (card) sit ON a preset's square."""
+    square = _srgb(_oklab(_derived(mode, hue, chroma)["resume"]))
+    for mark in ("primary-foreground", "card"):
+        ratio = _contrast(_rgb(_MODES[mode], mark), square)
+        assert ratio >= 3, f"{mode} hue {hue}: {mark} on resume is {ratio:.2f}:1"
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+@pytest.mark.parametrize("hue,chroma", list(_hues()))
 def test_the_square_reads_on_the_page_and_on_a_card(mode, hue, chroma):
     """A graphic that sits beside its name needs 3:1 (WCAG 1.4.11)."""
     square = _srgb(_oklab(_derived(mode, hue, chroma)["resume"]))
@@ -115,25 +125,11 @@ def test_every_derived_colour_stays_near_srgb(mode, hue, chroma):
 # element that sets --resume-h. They also cannot move to :root/.dark because
 # test_frontend_color_roles._tokens parses those blocks with `oklch\(([^)]*)\)` and
 # asserts on any oklch() it cannot read as `L C H`.
-_THEME_LINES = {
-    name: next(
-        (line.strip() for line in _CSS.splitlines() if line.strip().startswith(f"--color-{name}:")),
-        "",
-    )
-    for name in ("resume", "resume-container", "on-resume-container")
-}
 _EXPECTED_THEME_LINES = {
     "resume": "--color-resume: oklch(var(--resume-swatch-l) calc(var(--resume-c, 0) * var(--resume-swatch-c)) var(--resume-h, 0));",
     "resume-container": "--color-resume-container: oklch(var(--resume-container-l) calc(var(--resume-c, 0) * var(--resume-container-c)) var(--resume-h, 0));",
     "on-resume-container": "--color-on-resume-container: oklch(var(--on-resume-container-l) calc(var(--resume-c, 0) * var(--on-resume-container-c)) var(--resume-h, 0));",
 }
-
-
-def test_no_hue_draws_neutral_grey():
-    """A resume with no hue sets no --resume-c, so the chroma falls back to 0."""
-    assert _THEME_LINES["resume"].count("var(--resume-c, 0)") == 1
-    for line in _THEME_LINES.values():
-        assert "var(--resume-h, 0)" in line
 
 
 def test_the_three_colours_are_theme_inline_lines():
