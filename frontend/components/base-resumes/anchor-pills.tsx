@@ -3,31 +3,45 @@
 import { displayRoleTag, useRoleCategories } from "@/components/role-category-picker";
 import { Badge } from "@/components/ui/badge";
 import { countryName } from "@/lib/place-name";
+import { cn } from "@/lib/utils";
 import type { BaseResumeSummary } from "@/lib/types";
 
 const ITEM_CLASS = "flex min-w-0 max-w-full";
 const PILL_CLASS = "max-w-48 min-w-0";
+// On a tinted footer the secondary fill (a step off the page) is the footer's own tone and the pill's shape
+// vanishes in light mode, so the pill takes the card's fill. Its text contrast is the card pair's, over 15:1.
+const ON_TINT_PILL_CLASS = "bg-card text-card-foreground";
 
 /**
  * What a base resume's Target sets, as small pills: its country codes, role, company and focus.
  * Nothing renders when none is set. An unset role is not a pill: the gallery's own badge invites
- * one.
+ * one. For the gallery, `showRole={false}` leaves the role out (it is the group's heading) and `onTint` fills
+ * the pills with the card's color, so they stay visible on the resume-colored footer.
  */
-export function AnchorPills({ resume }: { resume: BaseResumeSummary }) {
+export function AnchorPills({
+  resume,
+  showRole = true,
+  onTint = false,
+}: {
+  resume: BaseResumeSummary;
+  showRole?: boolean;
+  onTint?: boolean;
+}) {
   const { data: options } = useRoleCategories();
   const roleSet = !(resume.role_category === "unknown" && !resume.role_label);
   const texts = [
-    roleSet ? displayRoleTag(resume.role_category, resume.role_label, options) : null,
+    showRole && roleSet ? displayRoleTag(resume.role_category, resume.role_label, options) : null,
     resume.company,
     resume.focus,
   ].filter((text): text is string => Boolean(text));
   if (resume.countries.length === 0 && texts.length === 0) return null;
+  const pill = cn(PILL_CLASS, onTint && ON_TINT_PILL_CLASS);
   return (
     <ul aria-label="Target" className="flex min-w-0 flex-wrap items-center gap-1">
       {resume.countries.map((code) => (
         <li key={code} className={ITEM_CLASS}>
           {/* The code fits a pill; its name is for the pointer and the screen reader. */}
-          <Badge variant="secondary" className={PILL_CLASS} title={countryName(code)}>
+          <Badge variant="secondary" className={pill} title={countryName(code)}>
             <span aria-hidden="true">{code}</span>
             <span className="sr-only">{countryName(code)}</span>
           </Badge>
@@ -36,7 +50,7 @@ export function AnchorPills({ resume }: { resume: BaseResumeSummary }) {
       {texts.map((text, i) => (
         <li key={i} className={ITEM_CLASS}>
           {/* User text: capped and truncated, whole in `title`. */}
-          <Badge variant="secondary" className={PILL_CLASS} title={text}>
+          <Badge variant="secondary" className={pill} title={text}>
             <span className="truncate">{text}</span>
           </Badge>
         </li>

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 
 import { Card } from "@/components/ui/card";
@@ -30,12 +30,15 @@ export function GalleryCard({
   href,
   ariaLabel,
   className,
+  style,
   children,
 }: {
   href?: string;
   /** Required with `href` — the link has no text of its own to name it. */
   ariaLabel?: string;
   className?: string;
+  /** For CSS variables a card sets for its children, such as a base resume's color. */
+  style?: CSSProperties;
   children: ReactNode;
 }) {
   return (
@@ -50,7 +53,7 @@ export function GalleryCard({
     //
     // A TEXT-first consumer overrides it with `pt-4`: `career/entity-card.tsx`
     // has no preview and reuses this shell purely for the link layering below.
-    <Card className={cn("relative pt-0", className)}>
+    <Card className={cn("relative pt-0", className)} style={style}>
       {href && (
         <Link
           href={href}
