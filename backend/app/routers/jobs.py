@@ -168,11 +168,13 @@ def _job_from_extraction(
     extraction: dict[str, Any],
     source: str = "user",
     session: Session | None = None,
+    apply_url: str | None = None,
 ) -> Job:
     job = Job(
         raw_text=raw_text,
         raw_text_hash=raw_text_hash,
         source_url=(source_url or "").strip() or None,
+        apply_url=apply_url,
         source=source,
     )
     _apply_extraction(job, extraction, session)
@@ -249,6 +251,14 @@ def _insert_skills(session: Session, job_id: UUID, extraction: dict[str, Any]) -
         )
 
 
+def _fill_apply_url(db: Session, job: Job, apply_url: str | None) -> None:
+    """A job saved again gains the apply link it lacked; a link it already has is never replaced."""
+    if apply_url and not job.apply_url:
+        job.apply_url = apply_url
+        db.commit()
+        db.refresh(job)
+
+
 def _persist_job(
     db: Session,
     raw_text: str,
@@ -257,11 +267,13 @@ def _persist_job(
     extraction: dict[str, Any],
     source: str = "user",
     session: Session | None = None,
+    apply_url: str | None = None,
 ) -> Job:
     existing = _find_existing(
         db, source_url, raw_text_hash, url_fallback=not raw_text.strip()
     )
     if existing is not None:
+        _fill_apply_url(db, existing, apply_url)
         # Transient flag read by JobRead: the caller gets the tracked row back,
         # but the UI must not claim a fresh extraction happened (audit C14).
         existing.already_existed = True
@@ -284,10 +296,12 @@ def _persist_job(
             .limit(1)
         )
         if twin is not None:
+            _fill_apply_url(db, twin, apply_url)
             twin.already_existed = True
             return _with_ownership(db, twin)
     job = _job_from_extraction(
-        raw_text, source_url, raw_text_hash, extraction, source=source, session=db
+        raw_text, source_url, raw_text_hash, extraction, source=source, session=db,
+        apply_url=apply_url,
     )
     db.add(job)
     db.flush()
@@ -305,10 +319,13 @@ def create_job(payload: JobCreate, db: Annotated[Session, Depends(get_db)]):
     # reused URL.
     existing = _find_existing(db, payload.source_url, raw_text_hash, url_fallback=False)
     if existing is not None:
+        _fill_apply_url(db, existing, payload.apply_url)
         existing.already_existed = True
         return _with_ownership(db, existing)
     extraction = jd_extraction.extract_jd(payload.raw_text, db)
-    return _persist_job(db, payload.raw_text, payload.source_url, raw_text_hash, extraction)
+    return _persist_job(
+        db, payload.raw_text, payload.source_url, raw_text_hash, extraction, apply_url=payload.apply_url
+    )
 
 
 def _newest_proposal_columns():
@@ -412,7 +429,10 @@ def ingest_job(payload: JobIngest, db: Annotated[Session, Depends(get_db)]):
     # Dedup on raw_text when provided; otherwise fall back to a hash of the
     # extraction JSON so the NOT NULL/unique raw_text_hash constraint still holds.
     raw_text_hash = _hash_text(raw_text) if raw_text else _hash_extraction(extraction)
-    return _persist_job(db, raw_text, payload.source_url, raw_text_hash, extraction, source=payload.source)
+    return _persist_job(
+        db, raw_text, payload.source_url, raw_text_hash, extraction, source=payload.source,
+        apply_url=payload.apply_url,
+    )
 
 
 @router.get("/export", response_model=list[JobExportRow])

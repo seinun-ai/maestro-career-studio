@@ -22,6 +22,9 @@ class Job(Base):
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     raw_text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text)
+    # The employer's own apply link, when the posting page exposed one; a run opens it in
+    # preference to source_url (the board page the job was saved from).
+    apply_url: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(Text, nullable=False, server_default="user")
     owner_machine: Mapped[str | None] = mapped_column(String(32))  # NULL means owned here
     sync_rev: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

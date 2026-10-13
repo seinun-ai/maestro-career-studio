@@ -284,6 +284,20 @@ def test_a_changed_job_updates_the_replica(home, recv, roots):
     assert received == snapshot(home)
 
 
+def test_a_jobs_apply_link_arrives_and_a_change_replaces_it(home, recv, roots):
+    """apply_url is a jobs column, so it travels with the job, NULL included."""
+    ids = build_job(home, roots.home)
+    copy_profile(home, recv, ids)
+    ship(home, recv, roots, ids.job)
+    assert recv.get(models.Job, ids.job).apply_url is None
+
+    home.get(models.Job, ids.job).apply_url = "https://acme.example/careers/apply/1"
+    home.commit()
+    ship(home, recv, roots, ids.job)
+    recv.expire_all()
+    assert recv.get(models.Job, ids.job).apply_url == "https://acme.example/careers/apply/1"
+
+
 def test_rows_removed_at_the_sender_are_removed_at_the_receiver(home, recv, roots):
     ids = build_job(home, roots.home)
     copy_profile(home, recv, ids)

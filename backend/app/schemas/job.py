@@ -1,16 +1,39 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 from app.schemas.job_extraction import JobExtraction
+
+APPLY_URL_MAX = 2048
+
+
+def _http_url(value: str) -> str:
+    """The apply link is opened in a tab by the Companion, so only a real http(s) URL may be stored
+    (never javascript:, data: or a scheme-relative path)."""
+    value = value.strip()
+    if len(value) > APPLY_URL_MAX:
+        raise ValueError(f"must be at most {APPLY_URL_MAX} characters")
+    try:
+        parts = urlsplit(value)
+        host = parts.hostname
+    except ValueError as exc:
+        raise ValueError("must be an http(s) URL") from exc
+    if parts.scheme.lower() not in ("http", "https") or not host:
+        raise ValueError("must be an http(s) URL")
+    return value
+
+
+HttpUrlStr = Annotated[str, AfterValidator(_http_url)]
 
 
 class JobCreate(BaseModel):
     raw_text: str
     source_url: str | None = None
+    apply_url: HttpUrlStr | None = None
 
 
 class JobPatch(BaseModel):
@@ -21,6 +44,7 @@ class JobIngest(BaseModel):
     extracted_json: JobExtraction
     raw_text: str | None = None
     source_url: str | None = None
+    apply_url: HttpUrlStr | None = None
     source: Literal["user", "agent"] = "user"
 
 
@@ -42,6 +66,7 @@ class JobRead(BaseModel):
     raw_text: str
     raw_text_hash: str
     source_url: str | None = None
+    apply_url: str | None = None
     # Provenance lane — the tracker's Saved-lane rule filters on it; dropping
     # it from the projection makes that rule silently no-op.
     source: str = "user"
@@ -94,6 +119,7 @@ class JobSummary(BaseModel):
     id: UUID
     ownership: JobOwnership = Field(default_factory=JobOwnership)
     source_url: str | None = None
+    apply_url: str | None = None
     # Provenance lane — the tracker's Saved-lane rule filters on it; dropping
     # it from the list projection makes that rule silently no-op.
     source: str = "user"
