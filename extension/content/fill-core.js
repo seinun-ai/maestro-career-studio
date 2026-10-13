@@ -68,7 +68,8 @@
  * could not finish. stepState reports the field's state now and the moves code
  * allows — click:<oid> (never a placeholder row, never a blocked option, never
  * an item a multi widget already holds; an option that opens a group is
- * described as one), search:value, search:word:<n>, open, scroll, give_up —
+ * described as one), search:value, search:term (a term the agent writes, sent
+ * with the move), search:word:<n>, open, scroll, give_up —
  * under a fresh VERSION. A long list is
  * offered 50 options at a time, starting at the first one in view. The model chooses one of those ids; move() acts only
  * on the state it was chosen from, consumes that state (one move per state),
@@ -1343,6 +1344,9 @@
   // ---- the adaptive step: the field's state now, and the moves code allows.
   const MAX_CLICKS = 50;
   const MAX_WORDS = 4; // the backend accepts search:word:0..9
+  // A term the agent wrote, in the shape the backend accepts (`TERM`,
+  // autofill_fill.py): checked again here, as the last stop before the page's box.
+  const TERM = /^[\p{L}\p{N}_ .&+/#-]{1,40}$/u;
   const GIVE_UP = { mid: "give_up", describe: "Stop: no move will select the goal's answer to the question" };
   const lastState = new WeakMap(); // el -> { version, mids, clicks: [{oid, text, group}], value, words }
   let stateVersion = 0;
@@ -1443,6 +1447,8 @@
     const candidates = adaptive ? [
       ...clicks.map((o) => ({ mid: `click:${o.oid}`, describe: describeClick(o, shared.has(o.text)) })),
       ...(box && whole ? [{ mid: "search:value", describe: "Type the applicant value into the search box" }] : []),
+      ...(box && whole ? [{ mid: "search:term",
+        describe: "Type a search term you choose (a shorter word, a synonym or the category) into the search box" }] : []),
       ...words.map((w, i) => ({ mid: `search:word:${i}`, describe: `Type ${quote(w)} into the search box` })),
       ...(held ? [] : [{ mid: "open", describe: "Open the dropdown" }]),
       ...(more ? [{ mid: "scroll", describe: "Scroll the list to see more options" }] : []),
@@ -1472,7 +1478,7 @@
   // opened, a search listed results, a category showed its children, the list
   // scrolled), unconfirmed (the click shows but its proof did not move),
   // closed, stale, unexpected (with a reason), blocked.
-  async function move(el, shape, { mid, version, as = "answer", consentForms } = {}, t) {
+  async function move(el, shape, { mid, version, as = "answer", consentForms, term: chosen } = {}, t) {
     b().check(t);
     const last = lastState.get(el);
     const closing = mid === "give_up" || mid === "close";
@@ -1517,7 +1523,10 @@
     }
     if (mid.startsWith("search:")) {
       const box = searchBoxOf(el, shape, held?.pop);
-      const term = mid === "search:value" ? last.value : last.words[Number(mid.slice("search:word:".length))];
+      const written = typeof chosen === "string" ? chosen.trim() : "";
+      if (mid === "search:term" && !TERM.test(written)) return { outcome: "unexpected", reason: "no_term" };
+      const term = mid === "search:term" ? written
+        : mid === "search:value" ? last.value : last.words[Number(mid.slice("search:word:".length))];
       if (!box || !term) return { outcome: "unexpected", reason: "no_search_box" };
       const before = held?.before ?? b().popups();
       if (!held) opened.set(el, before);

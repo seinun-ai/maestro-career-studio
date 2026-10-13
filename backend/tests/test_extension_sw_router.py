@@ -1092,6 +1092,22 @@ def test_a_move_longer_than_the_schema_allows_is_dropped(tmp_path):
     assert got == [{"op": "move", "move": "click:o" + "1" * 33}, {"op": "move"}]
 
 
+def test_a_search_term_move_is_kept_and_its_term_never_is(tmp_path):
+    """The step agent writes its own search term (`search:term`): the trace records the move, never
+    the term (it can carry the value). A term riding on a step, or fused to the move id, is dropped."""
+    from app.schemas.autofill_trace import RunTrace
+
+    steps = [{"op": "step", "move": "search:term", "reason": "progress", "term": "Zanzibar"},
+             {"op": "move", "move": "search:term", "word": "progressed", "term": "Zanzibar", "value": "Zanzibar"},
+             {"op": "move", "move": "search:term:Zanzibar"}]
+    body = _posted_trace(tmp_path, _run_trace(fields=[_trace_field(steps=steps)]))
+    assert body["fields"][0]["steps"] == [{"op": "step", "move": "search:term", "reason": "progress"},
+                                          {"op": "move", "move": "search:term", "word": "progressed"},
+                                          {"op": "move"}]
+    assert "Zanzibar" not in json.dumps(body)
+    RunTrace.model_validate(body)
+
+
 @pytest.mark.parametrize("stamp", [
     "2026-02-30T10:00:00Z", "2026-13-01T10:00:00Z", "2026-10-03T24:00:00Z", "2026-10-03T10:60:00Z",
     "2026-10-03T10:00:60Z", "2026-10-03T10:00:00+24:00", "2026-10-03T10:00:00+05:60", "0000-01-01T00:00:00Z",

@@ -13,6 +13,11 @@ fact comes from the SLOT, server-side; the request carries none. Low-stakes
 (setting re-checked here, never trusted from the client) is only for a field
 with no slot, and states the never-list; its answer click is `assumed` at
 ASSUMED_FLOOR (0.4) and its other moves need PROGRESS_FLOOR like any field's.
+One move is not a page id: `search:term` types a term the agent writes. Jev only
+picks among ids, so when the move chosen is `search:term` ONE fast-model call
+writes the term (1 to 3 words, not one already tried); a term that is invalid,
+repeated, or out of time is a give-up for this step. The term can carry the
+applicant's value: it rides back to the page and nowhere else.
 The fast model is the same-floors fallback when Jev fails and, for a slot
 field, ONE second opinion when Jev gives up or its move is under its floor, on
 the request's `Budget` (out of time or failed, Jev's give-up stands).
@@ -20,11 +25,12 @@ the request's `Budget` (out of time or failed, Jev's give-up stands).
 
 import json
 import logging
+import re
 from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
 
-from app.schemas.autofill_fill import DecisionTrace, Engine, StepRequest, StepResponse
+from app.schemas.autofill_fill import TERM, DecisionTrace, Engine, StepRequest, StepResponse
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
@@ -55,6 +61,8 @@ logger = logging.getLogger(__name__)
 
 PROGRESS_FLOOR = 0.5
 GIVE_UP = "give_up"
+SEARCH_TERM = "search:term"
+TERM_MAX_S = 3.0  # the term call's cap, against the request's budget like a second opinion
 # The page's description of a click that opens a group of options (fill-core
 # stepState). Page text only ever follows it, JSON-quoted.
 GROUP_CLICK = "Open the group "
@@ -65,6 +73,10 @@ _GIVE_UP_TEXT = "Stop: no move will select the goal's answer to the question"
 # For a return that carries no trace (a request no model was asked about). An abstain that has
 # a trace is a fresh StepResponse, so it never equals this one: ask `abstained`, never compare with it.
 ABSTAIN = StepResponse(mid=None, reason="abstained")
+_TERM_PROMPT = """{goal} {data_rule}
+State: {state}
+Write one search term of 1 to 3 words likely to list the goal's answer. Not one of: {tried}.
+Return JSON {{"term": "<the term>"}}."""
 _LLM_PROMPT = """{instructions}
 State: {state}
 Moves (id: what it does): {moves}
@@ -108,26 +120,28 @@ def _progress(mid: str | None, p: float | None, engine: Engine) -> StepResponse:
     return StepResponse(mid=None, reason="abstained", trace=trace)
 
 
-def _instructions(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
-                  answer: Computed | None = None, *, level: str = "history", queued: bool = False) -> str:
+def _goal(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict[str, Fact],
+          answer: Computed | None = None, *, level: str = "history", queued: bool = False) -> str:
     field = f"form field {req.fid} ({json.dumps(req.question)})"
     if req.route == "low_stakes":
         src = (f" If an option names where this job was found ({json.dumps(hint.source)}), that is the one."
                if hint and hint.source else "")
         # The never-list first, as its own condition: see autofill_map.low_stakes_rule.
-        goal = (f"You are filling {field} on a job application; the applicant gave no answer to it. "
+        return (f"You are filling {field} on a job application; the applicant gave no answer to it. "
                 f"{low_stakes_rule(facts, 'give up (the "Stop" move)', level=level, queued=queued)}; for such a field, the goal is to select the option "
                 f"{keen(facts)}.{src}")
-    elif answer is not None:
+    if answer is not None:
         # A Yes/No fact: its polarity decided and the value flipped by code
         # (autofill_pick.polarity_answers); the goal is literal.
         that_is = f"; that is, {answer.statement}" if answer.statement else ""
-        goal = (f"You are filling {field} on a job application. For the applicant, the answer to the question is "
+        return (f"You are filling {field} on a job application. For the applicant, the answer to the question is "
                 f"{json.dumps(answer.answer)}{that_is}: the goal is to select the option that states that answer.")
-    else:
-        fact = facts[req.slot]
-        goal = (f"You are filling {field} on a job application. The goal is to select the option that means the "
-                f"same as the applicant's fact {json.dumps(fact.describe)}: {json.dumps(values[0])}. {NEVER_YES_NO}")
+    fact = facts[req.slot]
+    return (f"You are filling {field} on a job application. The goal is to select the option that means the "
+            f"same as the applicant's fact {json.dumps(fact.describe)}: {json.dumps(values[0])}. {NEVER_YES_NO}")
+
+
+def _instructions(goal: str) -> str:
     return (f"{goal} "
             f"The moves tried so far are the state's history. Which next move gets closer to that goal? {CLICK_RULE} "
             f"Give up when no move will. {_PAGE_TEXT_IS_DATA}")
@@ -138,6 +152,7 @@ class _Ask:
     """What one step asks a model, built once per request: the prompt's instructions and state, the
     moves on offer (mid -> describe), and the fact's policy."""
 
+    goal: str
     instructions: str
     state: dict
     criteria: dict[str, str]
@@ -205,6 +220,39 @@ def _move(req: StepRequest, ask: _Ask, session: Session, budget: Budget) -> Step
     return _with_second_opinion(decided, (got.choice, got.probability) if got else None, second)
 
 
+_TERM_SHAPE = re.compile(TERM)
+
+
+def _term_of(raw: object, tried: list[str]) -> str | None:
+    """The reply's term when it has the schema's shape, has a letter or digit in it, and is
+    not one already tried (case and edge spaces aside); else None."""
+    term = raw.get("term") if isinstance(raw, dict) else None
+    term = term.strip() if isinstance(term, str) else ""
+    if not _TERM_SHAPE.fullmatch(term) or not any(ch.isalnum() for ch in term):
+        return None
+    return None if term.casefold() in {t.strip().casefold() for t in tried} else term
+
+
+def _with_term(req: StepRequest, ask: _Ask, session: Session, budget: Budget, moved: StepResponse) -> StepResponse:
+    """A `search:term` move with the term the fast model writes for it (ONE call, on what is
+    left of the budget). No time, a failed call, or a term that is invalid or already tried: the
+    step gives up, its trace untouched. Nothing here logs the term."""
+    if moved.mid != SEARCH_TERM:
+        return moved
+    giving_up = moved.model_copy(update={"mid": None, "reason": "abstained"})
+    if (timeout := budget.left(TERM_MAX_S)) is None:
+        return giving_up
+    prompt = _TERM_PROMPT.format(goal=ask.goal, data_rule=_PAGE_TEXT_IS_DATA, state=json.dumps(ask.state),
+                                 tried=json.dumps(req.tried_terms))
+    try:
+        raw = fast_json(session, prompt, "autofill-step-term", timeout=timeout)
+    except llm.LLMProviderError:
+        logger.warning("the step's search term could not be written; the step gives up")
+        return giving_up
+    term = _term_of(raw, req.tried_terms)
+    return moved.model_copy(update={"term": term}) if term else giving_up
+
+
 def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> StepResponse:
     budget = Budget()
@@ -236,8 +284,9 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         if answer is None:
             return StepResponse(mid=None, reason="abstained", polarity=polarity)
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
-    ask = _Ask(instructions=_instructions(req, values, hint, facts, answer, level=level, queued=queued),
+    goal = _goal(req, values, hint, facts, answer, level=level, queued=queued)
+    ask = _Ask(goal=goal, instructions=_instructions(goal),
                state={"job": asdict(hint) if hint else None, "history": req.history},
                criteria=criteria, policy=policy)
-    moved = _move(req, ask, session, budget)
+    moved = _with_term(req, ask, session, budget, _move(req, ask, session, budget))
     return moved.model_copy(update={"polarity": polarity})

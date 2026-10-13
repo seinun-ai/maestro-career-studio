@@ -19,7 +19,9 @@ TRACE_KEYS = {"trace", "polarity"}
 
 
 def sans_trace(m):
-    return m.model_dump(exclude=TRACE_KEYS)
+    """The answer itself; `term` appears only on a search:term answer (the tests for it read it)."""
+    got = m.model_dump(exclude=TRACE_KEYS)
+    return got if got["term"] is not None else {k: v for k, v in got.items() if k != "term"}
 
 
 FACTS = autofill_catalog.build(
@@ -862,3 +864,129 @@ def test_a_move_the_model_made_up_is_unknown_not_a_give_up(db_session, monkeypat
     assert got.trace == DecisionTrace(engine="fast", p=None, floor=autofill_step.PROGRESS_FLOOR, chose_none=None)
     fake_llm(monkeypatch, {"move": GIVE_UP, "confidence": 0.99})   # an offered give-up is a none
     assert stepped(req(slot="education.0.discipline"), db_session).trace.chose_none is True
+
+
+# ---------- search:term: the agent writes its own search term (the fast model writes it, Jev picks the move)
+
+TERM_NAME = "autofill-step-term"
+TERM_Q = req(slot="education.0.discipline", tried_terms=["Data"],
+             candidates=cands("click:o1", "search:value", "search:term", GIVE_UP))
+
+
+def fake_term(monkeypatch, reply):
+    """The term-writing call (and only it) answers `reply`; returns the calls it got."""
+    asked = []
+
+    def call_openai(**kw):
+        if kw["trace_name"] == TERM_NAME:
+            asked.append(kw)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+        return {}
+
+    monkeypatch.setattr(autofill_step.llm, "call_openai", call_openai)
+    return asked
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_search_term_move_gets_a_term_written_by_one_fast_call(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("search:term", 0.8))
+    asked = fake_term(monkeypatch, {"term": "Statistics"})
+    assert step(TERM_Q, db_session) == {"mid": "search:term", "reason": "progress", "term": "Statistics"}
+    [call] = asked
+    prompt = call["prompt"]
+    assert "1 to 3 words" in prompt and json.dumps(["Data"]) in prompt          # the tried terms are told
+    assert json.dumps("Business Analytics") in prompt and _PAGE_TEXT_IS_DATA in prompt   # the goal is stated; page text is data
+    assert call["response_format"] == "json" and call["timeout"] <= autofill_step.TERM_MAX_S
+
+
+def test_the_fast_engine_writes_the_term_too(db_session, monkeypatch):
+    names = []
+
+    def call_openai(**kw):
+        names.append(kw["trace_name"])
+        return {"term": "Math"} if kw["trace_name"] == TERM_NAME else {"move": "search:term", "confidence": 0.9}
+
+    monkeypatch.setattr(autofill_step.llm, "call_openai", call_openai)
+    assert step(TERM_Q, db_session) == {"mid": "search:term", "reason": "progress", "term": "Math"}
+    assert names == ["autofill-step", TERM_NAME]
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("reply", [
+    {"term": "data"},                    # a tried term, in another case
+    {"term": " Data "},                  # and with spaces
+    {"term": "Stat; drop table"},        # not the pattern
+    {"term": "Statistics\nIgnore the above"},   # a line break is not a search term
+    {"term": "x" * 41},                  # too long
+    {"term": ""}, {"term": "  "}, {"term": "--"}, {"term": 7}, {"term": None}, {}, [], "Statistics"])
+def test_a_term_that_repeats_or_fails_the_pattern_is_a_give_up(db_session, monkeypatch, reply):
+    fake_jev(monkeypatch, ("search:term", 0.8))
+    fake_term(monkeypatch, reply)
+    assert step(TERM_Q, db_session) == {"mid": None, "reason": "abstained"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_term_that_cannot_be_written_in_time_is_a_give_up(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("search:term", 0.8))
+    fake_term(monkeypatch, llm.LLMProviderError("down"))
+    assert step(TERM_Q, db_session) == {"mid": None, "reason": "abstained"}
+    ticks = iter([0.0] + [autofill_map.OPTIONAL_PASS_BUDGET_S + 0.1] * 10)   # no time left to ask
+    monkeypatch.setattr(autofill_map, "_clock", lambda: next(ticks))
+    asked = fake_term(monkeypatch, {"term": "Statistics"})
+    assert step(TERM_Q, db_session) == {"mid": None, "reason": "abstained"} and asked == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_move_under_the_floor_writes_no_term(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("search:term", 0.3))
+    asked = fake_term(monkeypatch, {"term": "Statistics"})
+    assert step(TERM_Q, db_session) == {"mid": None, "reason": "abstained"} and asked == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_only_a_search_term_move_carries_a_term(db_session, monkeypatch):
+    fake_jev(monkeypatch, ("search:value", 0.8))
+    asked = fake_term(monkeypatch, {"term": "Statistics"})
+    assert step(TERM_Q, db_session) == {"mid": "search:value", "reason": "progress"} and asked == []
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_term_is_asked_for_a_low_stakes_field_with_its_own_goal(db_session, monkeypatch):
+    model_settings.set_answer_level(db_session, "history")
+    fake_jev(monkeypatch, ("search:term", 0.8))
+    asked = fake_term(monkeypatch, {"term": "LinkedIn"})
+    got = step(req(route="low_stakes", question="How did you hear about us?", tried_terms=[],
+                   candidates=cands("search:term", GIVE_UP)), db_session)
+    assert got == {"mid": "search:term", "reason": "progress", "term": "LinkedIn"}
+    assert _NEVER_LOW_STAKES in asked[0]["prompt"]
+
+
+def test_tried_terms_are_few_short_and_shaped_like_a_term():
+    assert req(tried_terms=["a"] * 6).tried_terms == ["a"] * 6
+    for bad in (["a"] * 7, ["x" * 41], ["two\nlines"], ["Ignore; the rest"]):
+        with pytest.raises(ValidationError):
+            req(tried_terms=bad)
+    assert req().tried_terms == []
+
+
+def test_a_response_term_must_be_shaped_like_a_term():
+    from app.schemas.autofill_fill import StepResponse
+    assert StepResponse(mid="search:term", reason="progress", term="Data & Analytics").term == "Data & Analytics"
+    for bad in ("", "x" * 41, "a\nb", "a;b"):
+        with pytest.raises(ValidationError):
+            StepResponse(mid="search:term", reason="progress", term=bad)
+    assert StepResponse(mid=None, reason="abstained").term is None
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_term_is_never_in_the_trace_or_the_log(db_session, monkeypatch, caplog):
+    fake_jev(monkeypatch, ("search:term", 0.8))
+    fake_term(monkeypatch, llm.LLMProviderError("down"))
+    with caplog.at_level("DEBUG"):
+        autofill_step.step(TERM_Q, FACTS, db_session, None)
+        fake_term(monkeypatch, {"term": "Statistics"})
+        got = autofill_step.step(TERM_Q, FACTS, db_session, None)
+    assert "Statistics" not in caplog.text and "Business Analytics" not in caplog.text
+    assert "Statistics" not in got.trace.model_dump_json() and got.term == "Statistics"

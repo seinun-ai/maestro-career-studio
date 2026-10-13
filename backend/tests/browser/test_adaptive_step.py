@@ -7,6 +7,7 @@ from tests.browser.pages import CATEGORY_POPUP, POLICY_PAGE, list_shown, oracle
 
 OPS = "window.careerStudioCompanion.fillOps"
 MOVE_KINDS = {"click", "search", "open", "scroll", "give_up"}
+LONG_VALUE = "Data Science and Analytics"   # no option of the misses page's Field of Study starts all its words
 
 
 def inv(page, **opts):
@@ -469,3 +470,56 @@ def test_a_group_sent_as_progress_that_commits_is_never_verified(page, load):
     move(page, f, "open", "LinkedIn")
     row = move(page, f, "click:o2", "LinkedIn", **{"as": "progress"})  # "Referral": marked, but commits
     assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "group_committed", "Referral")
+
+
+# ---------- search:term: the agent's own search term (workday_misses.html Field of Study)
+
+def _study(page, load):
+    load(page, fixture_html("workday_misses.html"))
+    return inv(page)["Field of Study"]
+
+
+def test_search_term_is_offered_wherever_search_value_is_and_only_there(page, load):
+    f = _study(page, load)
+    s = state(page, f, LONG_VALUE)
+    assert {"search:value", "search:term"} <= set(mids(s))
+    assert [c["describe"] for c in s["candidates"] if c["mid"] == "search:term"] == [
+        "Type a search term you choose (a shorter word, a synonym or the category) into the search box"]
+    assert "search:term" not in mids(state(page, f, ""))   # nothing to search for
+    load(page, fixture_html("workday_listbox.html"))      # a popup with no search box
+    g = inv(page)["Degree"]
+    assert "search:term" not in mids(state(page, g, "Masters")) and "search:value" not in mids(state(page, g, "Masters"))
+
+
+def test_a_search_term_types_the_agents_term_not_the_value_and_lists_its_rows(page, load):
+    f = _study(page, load)
+    assert move(page, f, "search:term", LONG_VALUE, term="Statistics")["outcome"] == "progressed"
+    s = state(page, f, LONG_VALUE)
+    assert s["popupOpen"] is True and [o["text"] for o in s["options"]] == ["Statistics"]
+    assert page.input_value("#fos") == "Statistics"   # typing a search is never an answer
+    assert oracle(page, "fieldOfStudy") == "" and s["complete"] is False   # a filtered view is never complete
+    click = next(c["mid"] for c in s["candidates"] if c["describe"] == 'Click the option "Statistics"')
+    row = move(page, f, click, LONG_VALUE, version=s["version"])
+    assert (row["outcome"], row["committed"]) == ("verified", "Statistics") and oracle(page, "fieldOfStudy") == "Statistics"
+
+
+def test_a_search_term_that_lists_nothing_is_no_results(page, load):
+    f = _study(page, load)
+    row = move(page, f, "search:term", LONG_VALUE, term="Data")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "no_results")
+    assert oracle(page, "fieldOfStudy") == ""
+
+
+def test_a_search_term_the_page_was_not_given_is_never_typed(page, load):
+    f = _study(page, load)
+    for extra in ({}, {"term": ""}, {"term": "   "}, {"term": 7}, {"term": "x" * 41}, {"term": "a;b"}, {"term": "two\nlines"}):
+        row = move(page, f, "search:term", LONG_VALUE, **extra)
+        assert (row["outcome"], row["reason"]) == ("unexpected", "no_term"), extra
+        assert page.input_value("#fos") == "" and not list_shown(page)
+
+
+def test_a_term_rides_only_with_search_term(page, load):
+    """`search:value` and `search:word:n` type their own text; a term sent with them is ignored."""
+    f = _study(page, load)
+    assert move(page, f, "search:value", "Statistics", term="Mathematics")["outcome"] == "progressed"
+    assert [o["text"] for o in state(page, f, "Statistics")["options"]] == ["Statistics"]

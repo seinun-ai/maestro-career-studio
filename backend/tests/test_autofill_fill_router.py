@@ -45,9 +45,10 @@ def _post(db_session, path, payload):
 
 
 def _answer(got):
-    """An answer without its decision trace and polarity: both serialize as None until a
-    model decides, and these pins are about what the route answered, not how it was decided."""
-    return {k: v for k, v in got.items() if k not in ("trace", "polarity")}
+    """An answer without its decision trace and polarity (both serialize as None until a
+    model decides) and a /step `term` nothing wrote: these pins are about what the route
+    answered, not how it was decided."""
+    return {k: v for k, v in got.items() if k not in ("trace", "polarity") and not (k == "term" and v is None)}
 
 
 def _spy_map(monkeypatch):

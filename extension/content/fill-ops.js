@@ -177,7 +177,7 @@
     // `as: "progress"`: /step judged the click a step into a GROUP, not the
     // answer — it is never verified as one (and refused on a plain option).
     if (a.op === "move") {
-      return core().move(el, shape, { mid: a.mid, version: a.version, as: a.as, consentForms }, t);
+      return core().move(el, shape, { mid: a.mid, version: a.version, as: a.as, term: a.term, consentForms }, t);
     }
     return Promise.resolve({ outcome: "unexpected", reason: "unknown_op" });
   };

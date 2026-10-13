@@ -124,6 +124,14 @@ DRIVER = """(spec) => {
       })) };
     }
     if (path === "/api/autofill/step") {
+      // `stepBackend`: /step is the REAL service (`real_step`). `stepScript[question]`: the model's
+      // answers in order: a move as it is, or `click` (the option's text) with a reason.
+      if (spec.stepBackend) return window.__step(body);
+      const scripted = spec.stepScript?.[body.question]?.shift();
+      if (scripted) {
+        const hit = scripted.click ? named(body.candidates, scripted.click) : null;
+        return scripted.click ? (hit ? { mid: hit.mid, reason: scripted.reason } : { mid: null, reason: "abstained" }) : scripted;
+      }
       const c = body.candidates;
       const hit = named(c, factOf(body))
         ?? (c.some((one) => one.mid === "search:value") ? null : named(c, spec.categories[body.question]));
@@ -812,6 +820,10 @@ def _skills_run(page, skills, **spec):
                 map={"Type to Add Skills": fact}, limits={"MAX_ROUNDS": 1, "MAX_ITEMS": 12}, **spec)
 
 
+def bodies_of(out, path):
+    return [p["body"] for p in out["posts"] if p["path"] == path]
+
+
 def _field_trace(out, question):
     fid = out["by_question"][question]["fid"]
     return next(t for t in out["report"]["trace"]["fields"] if t["fid"] == fid)
@@ -873,3 +885,107 @@ def test_a_look_that_finds_one_answer_leaves_no_list_up(e2e_page):
                limits={"MAX_ROUNDS": 1})
     assert out["by_question"]["Field of Study"]["status"] == "needs_answer"
     assert oracle(page, "fieldOfStudy") == "" and not page.locator("[data-automation-id=activeListContainer]").count()
+
+
+# ---------- the agent writes its own search term (Task 30), on Field of Study
+
+STUDY_FACT = "Data Science and Analytics"
+STUDY_MAP = {"Field of Study": {"route": "slot", "slot": "education.0.discipline", "value": STUDY_FACT}}
+
+
+def _study_run(page, **spec):
+    return _run(page, html=fixture_html("workday_misses.html"), url="https://careers.acme.test/apply",
+                map=STUDY_MAP, limits={"MAX_ROUNDS": 1}, **spec)
+
+
+def _study_moves(out):
+    return [(a["mid"], a.get("term")) for m in out["sent"] if m["type"] == "fill_apply"
+            for a in m["actions"] if a["op"] == "move" and a["mid"] != "give_up"]
+
+
+def test_a_value_that_lists_nothing_is_searched_again_with_the_agents_term(e2e_page):
+    """Live 2026-10-13: Field of Study was searched with the value eight times, then
+    cannot_operate. The value and "Data" list nothing; the agent writes "Statistics",
+    which lists one row; that row is the answer, as the nearest option."""
+    page = e2e_page
+    out = _study_run(page, stepScript={"Field of Study": [
+        {"mid": "search:value", "reason": "progress"},
+        {"mid": "search:term", "reason": "progress", "term": "Statistics"},
+        {"click": "Statistics", "reason": "closest"}]})
+    study = out["by_question"]["Field of Study"]
+    assert study["status"] == "closest", study
+    assert oracle(page, "fieldOfStudy") == "Statistics"
+    moves = _study_moves(out)
+    assert [m[0] for m in moves[:2]] == ["search:value", "search:term"] and moves[1][1] == "Statistics"
+    assert moves[2][0].startswith("click:o") and moves[2][1] is None
+    steps = bodies_of(out, "/api/autofill/step")
+    assert steps[2]["tried_terms"] == ["Statistics"] and "search:term" in [c["mid"] for c in steps[1]["candidates"]]
+    # The trace records the move, not the term, and survives the sw's whitelist as it is.
+    assert not page.locator("[data-automation-id=activeListContainer]").count()
+    trace = _field_trace(out, "Field of Study")["steps"]
+    assert [s["move"] for s in trace if s.get("move") == "search:term"] == ["search:term", "search:term"]
+    assert not [s for s in trace if "term" in s]
+
+
+def test_the_scrubbed_trace_of_a_term_run_keeps_the_move_and_no_term(e2e_page, tmp_path):
+    from tests.test_extension_sw_router import _posted_trace
+
+    page = e2e_page
+    out = _study_run(page, stepScript={"Field of Study": [
+        {"mid": "search:term", "reason": "progress", "term": "Zanzibar Stats"},
+        {"mid": "search:term", "reason": "progress", "term": "Statistics"},
+        {"click": "Statistics", "reason": "matched"}]})
+    trace = out["report"]["trace"]
+    sent = _posted_trace(tmp_path, {**trace, "host": "careers.acme.test"})
+    for shown in (trace, sent):
+        text = json.dumps(shown)
+        assert "Zanzibar" not in text and '"term"' not in text
+    [field] = [f for f in sent["fields"] if f["steps"] and any(s.get("move") == "search:term" for s in f["steps"])]
+    assert [s["move"] for s in field["steps"] if s.get("move") == "search:term"] == ["search:term"] * 4
+
+
+def real_step(page, monkeypatch, facts, script):
+    """Serve /step from the real service over `facts` (run with `stepBackend=True`): the verdict,
+    the floors and the term check are production's; only the models are scripted. `script`: per
+    call, (the move's id or an option's text to click, Jev's probability); the fast model's terms
+    come from the moves that name one, `("search:term", p, "Statistics")`."""
+    from app.schemas.autofill_fill import StepRequest
+    from app.services import autofill_step, jev, model_settings
+    from tests.test_autofill_choose_jev import _answer
+
+    calls = iter(script)
+    terms = []
+    monkeypatch.setattr(model_settings, "get_autofill_engine", lambda session: "jev")
+    monkeypatch.setattr(model_settings, "get_answer_level", lambda session: "history")
+
+    def decide(questions, state, session=None):
+        want, p, *term = next(calls)
+        terms.extend(term)
+        return {fid: _answer(q["criteria"], want, p) for fid, q in questions.items()}
+
+    monkeypatch.setattr(jev, "decide", decide)
+    monkeypatch.setattr(autofill_step, "fast_json", lambda session, prompt, name, **kw: {"term": terms.pop(0)})
+    page.expose_function("__step", lambda body: autofill_step.step(
+        StepRequest.model_validate(body), facts, None, None).model_dump(mode="json", exclude={"trace", "polarity"}))
+
+
+def _study_facts():
+    from app.services import autofill_catalog
+
+    return autofill_catalog.build({"education": [{"discipline": STUDY_FACT}]}, [], [])
+
+
+@pytest.mark.parametrize("p, status, held", [(0.7, "needs_answer", ""), (0.95, "verified", "Statistics")])
+def test_a_searched_list_is_never_complete_so_the_nearest_row_clears_only_the_matched_floor(
+        e2e_page, monkeypatch, p, status, held):
+    """The real verdict over the page's real state. A search's list is filtered, so the page reports
+    it incomplete and /step cannot call a row the nearest option (`closest`): a row the agent is
+    not sure of (0.7) is left to the user; one it is sure of (0.95) is a match."""
+    page = e2e_page
+    real_step(page, monkeypatch, _study_facts(), [("search:term", 0.9, "Statistics"),
+                                                  ('Click the option "Statistics"', p)])
+    out = _study_run(page, stepBackend=True)
+    assert out["by_question"]["Field of Study"]["status"] == status, out["by_question"]["Field of Study"]
+    assert oracle(page, "fieldOfStudy") == held
+    assert [s["complete"] for s in bodies_of(out, "/api/autofill/step")][:2] == [False, False]
+    assert _study_moves(out)[0] == ("search:term", "Statistics")

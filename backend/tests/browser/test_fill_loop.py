@@ -23,7 +23,7 @@ LOOP_SOURCES = ["shared/policy.js", "shared/choose.js", "shared/guided-run.js", 
 # The backend's own patterns (app/schemas/autofill_fill.py), restated so a
 # history entry the loop builds is checked against what /step accepts.
 HISTORY_ENTRY = re.compile(
-    r"^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up|choose) -> [a-z_]+( \([a-z_]+\))?$")
+    r"^(click:o\d+|search:value|search:term|search:word:\d|open|scroll|close|give_up|choose) -> [a-z_]+( \([a-z_]+\))?$")
 GIVE_UP = {"mid": "give_up", "describe": "stop"}
 
 DRIVER = """async (spec) => {
@@ -1698,6 +1698,87 @@ def test_a_search_for_another_value_is_a_fresh_count(page, load):
     searched = [m["value"] for m in out["sent"] if m["type"] == "fill_step_state"]
     assert searched.count("Go") == 3 and searched.count("Rust") == 3   # two runs, then the state kept for two refusals
     assert [m["mid"] for m in actions(out, "move")].count("search:value") == 4
+
+
+# ---------- search:term: the agent's own search term (Task 30)
+
+TERM_MOVE = {"mid": "search:term", "describe": "Type a search term you choose into the search box"}
+
+
+def _terms(*terms, states=None, apply=None, then=()):
+    """Field of Study, whose model writes `terms` one after another, then `then`."""
+    states = states or [{"version": 1, "popupOpen": True, "options": [{"oid": f"o{i}", "text": f"Row {i}"}],
+                         "candidates": [{"mid": "search:value", "describe": 'Type "Data Science and Analytics" into the search box'},
+                                        TERM_MOVE, GIVE_UP]} for i in range(1, 12)]
+    return dict(frames=[[f("k", "search", "Field of Study", required=True)]] * 3,
+                map={"k": {"route": "slot", "slot": "education.0.discipline", "value": "Data Science and Analytics"}},
+                explore={"Data Science and Analytics": {"options": [], "complete": False, "error": "empty_popup"}},
+                apply=apply or {"search:term": {"outcome": "progressed"}},
+                step={"states": states, "moves": [{"mid": "search:term", "reason": "progress", "term": t} for t in terms] + list(then)})
+
+
+def test_a_search_term_move_carries_the_agents_term_to_the_page_and_back_as_tried(page, load):
+    out = run(page, load, **_terms("Statistics", "Mathematics", then=[{"mid": "give_up", "reason": "abstained"}]))
+    moves = actions(out, "move")
+    assert [(m["mid"], m.get("term")) for m in moves] == [
+        ("search:term", "Statistics"), ("search:term", "Mathematics"), ("give_up", None)]
+    steps = bodies(out, "/api/autofill/step")
+    assert [s.get("tried_terms") for s in steps] == [None, ["Statistics"], ["Statistics", "Mathematics"]]
+    assert all(HISTORY_ENTRY.match(e) for s in steps for e in s["history"])
+    assert steps[1]["history"][-1] == "search:term -> progressed"
+
+
+def test_a_term_that_lists_nothing_does_not_block_another_term_from_the_same_state(page, load):
+    """`no_results` fails the move from that state; a different term is a different move."""
+    state = {"version": 1, "popupOpen": True, "candidates": [TERM_MOVE, GIVE_UP]}
+    out = run(page, load, **_terms("Data", "Statistics", states=[dict(state), dict(state)],
+                                   apply={"search:term": [{"outcome": "unexpected", "reason": "no_results"},
+                                                          {"outcome": "progressed"}]}))
+    assert [m.get("term") for m in actions(out, "move")][:2] == ["Data", "Statistics"]
+    assert bodies(out, "/api/autofill/step")[1]["history"][-1] == "search:term -> unexpected (no_results)"
+
+
+def test_the_same_term_runs_twice_and_a_different_one_is_a_fresh_count(page, load):
+    """Case aside, a term is the same term: the third "Statistics" is refused, "Math" and "Physics" are new."""
+    out = run(page, load, **_terms("Statistics", "Statistics", "Math", "STATISTICS", "Physics"))
+    assert [m.get("term") for m in actions(out, "move") if m["mid"] == "search:term"] == [
+        "Statistics", "Statistics", "Math", "Physics"]
+    assert "search:term -> already_failed" in bodies(out, "/api/autofill/step")[-1]["history"]
+
+
+def test_a_term_proposed_a_third_time_is_refused_like_any_move(page, load):
+    out = run(page, load, **_terms("Statistics", "Statistics", "Statistics", "Statistics"))
+    assert [m.get("term") for m in actions(out, "move") if m["mid"] == "search:term"] == ["Statistics"] * 2
+    assert bodies(out, "/api/autofill/step")[-1]["history"][-1] == "search:term -> already_failed"
+
+
+@pytest.mark.parametrize("reply", [
+    {"mid": "search:term", "reason": "progress"}, {"mid": "search:term", "reason": "progress", "term": ""},
+    {"mid": "search:term", "reason": "progress", "term": "a;b"}, {"mid": "search:term", "reason": "progress", "term": 5},
+    {"mid": "search:term", "reason": "progress", "term": "x" * 41}])
+def test_a_search_term_without_a_usable_term_is_never_sent_to_the_page(page, load, reply):
+    spec = _terms()
+    spec["step"]["moves"] = [reply]
+    out = run(page, load, **spec)
+    assert [m["mid"] for m in actions(out, "move")] == ["give_up"]
+
+
+def test_tried_terms_are_per_value_few_and_the_term_stops_being_offered_after_six(page, load):
+    out = run(page, load, **_terms("one", "two", "three", "four", "five", "six", "seven"))
+    steps = bodies(out, "/api/autofill/step")
+    assert steps[-1]["tried_terms"] == ["one", "two", "three", "four", "five", "six"]
+    assert "search:term" not in [c["mid"] for c in steps[-1]["candidates"]]
+    assert "search:term" in [c["mid"] for c in steps[-2]["candidates"]]
+
+
+def test_the_term_is_in_no_trace_report_or_receipt_only_the_move(page, load):
+    out = run(page, load, **_terms("Zanzibar Stats", then=[{"mid": "give_up", "reason": "abstained"}]))
+    assert "Zanzibar" not in json.dumps(out["report"])
+    moves = [s for s in traced(out, "k")["steps"] if s.get("move") == "search:term"]
+    assert {s["op"] for s in moves} == {"step", "move"} and len(moves) == 2
+    assert not [s for s in traced(out, "k")["steps"] if "term" in s]
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert "Zanzibar" not in json.dumps(obs)
 
 
 def test_a_recommit_whose_explore_left_another_value_names_that_value(page, load):

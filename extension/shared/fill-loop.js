@@ -41,6 +41,12 @@
  *   re-takes the state and steps again. A group click that committed a value
  *   (group_committed) is left for the user, named — never "filled". History is
  *   built only from move ids and outcomes (`mid -> outcome (reason)`), last 8.
+ *   `search:term` is the exception to "a move is an id": the model also writes a
+ *   term (`res.term`), typed into the search box. The loop sends the terms
+ *   already tried for the value (`tried_terms`, at most 6, then the move is no
+ *   longer offered); a term is part of the move's identity (a different term is
+ *   a fresh count), and it lives in the row only: never the report, the trace
+ *   (the move id is) or the history, since it can carry the value.
  * - ONE CONTROLLER PER FIELD. The generic commit, the adaptive step and a
  *   re-commit are ways of proposing the field's next move, not separate
  *   executors: they share the field's one budget (FIELD_MS, charged for the
@@ -213,7 +219,7 @@
   };
   const HISTORY_KEPT = 8;
   const FID = /^[A-Za-z0-9_-]{1,64}$/;
-  const HISTORY_ENTRY = /^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up|choose) -> [a-z_]+( \([a-z_]+\))?$/;
+  const HISTORY_ENTRY = /^(click:o\d+|search:value|search:term|search:word:\d|open|scroll|close|give_up|choose) -> [a-z_]+( \([a-z_]+\))?$/;
   const FINAL = new Set(["verified", "closest", "assumed", "already", "blocked", "yours", "partial", "unconfirmed",
     "needs_answer", "left_blank", "cannot_operate", "unsupported"]);
   // What the engine itself committed and confirmed: the only rows a sweep may
@@ -224,6 +230,9 @@
   const STEP_REASONS = new Set([...Object.keys(STATUS), "progress"]);
   const REFUSED = { yours: "yours", blocked: "blocked", unsupported: "cannot_operate" };
   const CAN_ADAPT = new Set(["popup", "search"]);
+  // A search term the agent wrote (`search:term`): the shape the backend and the page accept, at most six per value.
+  const TERM = /^[\p{L}\p{N}_ .&+/#-]{1,40}$/u;
+  const MAX_TERMS = 6;
   const NO_EFFECT_KINDS = 2; // different kinds of gesture that changed nothing: the widget ignores the engine
 
   const sourceHintOf = (url) => {
@@ -343,7 +352,7 @@
   const TRACE_STEPS = 40; // the schema's per-field cap: the first half and the last half are kept
   const TRACE_WORD = /^[a-z_]{1,40}$/;
   const TRACE_SLOT = /^[a-z_]+(\.[a-z0-9_]+)*$/;
-  const MOVE_ID = /^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$/;
+  const MOVE_ID = /^(click:o\d+|search:value|search:term|search:word:\d|open|scroll|give_up)$/;
   const TRACE_MOVE_MAX = 40;
   const TRACE_COUNT_MAX = 5000; // a capped count still reads true, as "at least this many"
   // A cut inside an emoji leaves half a surrogate pair, which the schema's
@@ -924,7 +933,13 @@
       // Kept on the row like `failedMoves`.
       const ran = rows.get(f.fid).moveRuns ?? new Map();
       const left = rows.get(f.fid).moveLeft ?? new Map();
-      set(f.fid, { failedMoves, moveRuns: ran, moveLeft: left });
+      // The search terms the agent wrote for this field, per value: sent back
+      // as `tried_terms` so the next one is new. Kept in the row, never in the
+      // report or the trace (a term can carry the value).
+      const termsTried = rows.get(f.fid).termsTried ?? new Map();
+      const tried_ = termsTried.get(value ?? "") ?? [];
+      termsTried.set(value ?? "", tried_);
+      set(f.fid, { failedMoves, moveRuns: ran, moveLeft: left, termsTried });
       let after = null; // { key, tried }: a move that progressed, whose state is read next
       let state = null; // kept (not re-read) when a proposed move was refused here: the page's state is untouched
       let refusals = 0; // proposals refused in a row as already failed
@@ -958,18 +973,21 @@
           } else left.set(after.key, shown);
           after = null;
         }
+        // The agent's own search term stops being offered after MAX_TERMS for this value.
+        const offered = state.candidates.filter((c) => c?.mid !== "search:term" || tried_.length < MAX_TERMS);
         // Nothing but give_up on offer: no model is asked.
-        if (!state.candidates.some((c) => c?.mid && c.mid !== "give_up")) return giveUp(f, "gave_up");
+        if (!offered.some((c) => c?.mid && c.mid !== "give_up")) return giveUp(f, "gave_up");
         const { res, ms } = await post("/api/autofill/step", {
           ...asked, fid: f.fid, question: question(f), route: routeOf(row), slot: row.slot ?? null,
           ...(row.years ? { years: true } : {}),
           ...(item !== undefined ? { item: String(item).slice(0, 300) } : {}),
           history: history.slice(-HISTORY_KEPT),
-          candidates: state.candidates.slice(0, STEP_CANDIDATES),
+          candidates: offered.slice(0, STEP_CANDIDATES),
+          ...(tried_.length ? { tried_terms: tried_ } : {}),
           complete: Boolean(state.complete),
         }, rows.get(f.fid).deadline);
         const chosen = res?.mid && res.mid !== "give_up" && STEP_REASONS.has(res.reason)
-          ? state.candidates.find((c) => c.mid === res.mid) : null;
+          ? offered.find((c) => c.mid === res.mid) : null;
         // The model's own word: a give_up it chose is as visible as a click.
         noteAnswer(f.fid, "step", res, res, ms, {
           move: traceMove(res?.mid), reason: TRACE_REASONS.has(res?.reason) ? res.reason : null,
@@ -977,8 +995,13 @@
         if (halt()) return halted(f);
         if (fieldLate(f)) return giveUp(f, "late");
         if (!chosen) return giveUp(f, res ? "gave_up" : "no_answer");
-        const tried = `${stateKey(state, value)}:${chosen.mid}`;
-        const key = JSON.stringify([chosen.mid, value ?? null, res.term ?? null]);
+        // The term the agent wrote, for a move that types one: a move with no
+        // usable term is not run. Same term, any case: the same move.
+        const term = chosen.mid === "search:term" && typeof res.term === "string" && TERM.test(res.term.trim())
+          ? res.term.trim() : null;
+        if (chosen.mid === "search:term" && !term) return giveUp(f, "gave_up");
+        const tried = `${stateKey(state, value)}:${chosen.mid}${term ? `:${term.toLowerCase()}` : ""}`;
+        const key = JSON.stringify([chosen.mid, value ?? null, term?.toLowerCase() ?? null]);
         if (failedMoves.has(tried) || (chosen.mid !== "scroll" && (ran.get(key) ?? 0) >= MAX_RUNS)) {
           // Proposed again on the same state, or after its two runs: not
           // executed. The model hears so, and chooses again from the same
@@ -992,8 +1015,10 @@
         refusals = 0;
         const asProgress = res.reason === "progress" && chosen.mid.startsWith("click:");
         ran.set(key, (ran.get(key) ?? 0) + 1);
+        if (term && !tried_.some((t) => t.toLowerCase() === term.toLowerCase())) tried_.push(term);
         const out = await act(f, {
-          op: "move", mid: chosen.mid, version: state.version, ...(asProgress ? { as: "progress" } : {}),
+          op: "move", mid: chosen.mid, version: state.version, ...(term ? { term } : {}),
+          ...(asProgress ? { as: "progress" } : {}),
         });
         state = null; // a move consumes the state it was chosen from
         if (out.outcome === "halted") return halted(f);

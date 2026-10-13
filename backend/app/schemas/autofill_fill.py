@@ -194,11 +194,16 @@ MAX_STEP_CANDIDATES = 60
 MAX_STEP_HISTORY = 8
 # The structural injection guard: only ids shaped like the ones the page's code
 # generates get in — never an option's text, never a free-form instruction.
-MOVE_ID = r"^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$"
+MOVE_ID = r"^(click:o\d+|search:value|search:term|search:word:\d|open|scroll|give_up)$"
 # A history entry is built by the loop from a move id (or the generic `choose`)
 # and its outcome, with an optional reason — never from page text.
-HISTORY_ENTRY = (r"^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up|choose)"
+HISTORY_ENTRY = (r"^(click:o\d+|search:value|search:term|search:word:\d|open|scroll|close|give_up|choose)"
                  r" -> [a-z_]+( \([a-z_]+\))?$")
+# A search term the step agent chose (`search:term`): a few plain words. No
+# quote, bracket, colon or line break, so a model-written term cannot carry
+# markup or an instruction into the page's search box or a later prompt.
+TERM = r"^[\w .&+/#-]{1,40}$"
+MAX_TRIED_TERMS = 6
 # Reasons a /step answer can carry: /pick's, plus `progress` for a move that is
 # not an answer (open, search, scroll, or opening a group of options).
 StepReason = Literal["matched", "closest", "assumed", "progress", "abstained"]
@@ -219,6 +224,10 @@ class StepRequest(Selector):
     history: list[Annotated[str, Field(max_length=80, pattern=HISTORY_ENTRY)]] = Field(
         default_factory=list, max_length=MAX_STEP_HISTORY)
     candidates: list[StepCandidate] = Field(min_length=1, max_length=MAX_STEP_CANDIDATES)
+    # The search terms already typed into this field for this value, so the
+    # agent writes a new one (`search:term`). Page-sent, so the same pattern.
+    tried_terms: list[Annotated[str, Field(max_length=40, pattern=TERM)]] = Field(
+        default_factory=list, max_length=MAX_TRIED_TERMS)
     # True only when every option is in view (the page says so) — a closest
     # match over a capped, unscrolled or filtered list is never allowed.
     complete: bool = False
@@ -239,6 +248,9 @@ class StepResponse(BaseModel):
     # answer (open, search, scroll, open a group) and clears the progress
     # floor: progress. `abstained` (mid None) = give up.
     reason: StepReason
+    # Only for `search:term`: the term to type (written by the fast model, not
+    # chosen from the page's moves). Never traced or logged: it can carry the value.
+    term: str | None = Field(default=None, max_length=40, pattern=TERM)
     trace: DecisionTrace | None = None
     polarity: PolarityTrace | None = None
 
