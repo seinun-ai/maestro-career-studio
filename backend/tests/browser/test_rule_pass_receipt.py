@@ -145,3 +145,28 @@ def test_the_saved_answers_fill_checks_a_trap_by_its_own_label(page, load):
         "async (p) => window.careerStudioCompanion.fillFormFromProfile(p, [], false, [], false)",
         {"personal": {"website": "https://example.com"}})
     assert page.evaluate("['site', 'website'].map((i) => document.getElementById(i).value)") == ["https://example.com", ""]
+
+
+def test_a_robot_trap_is_never_an_open_question_nor_a_missing_field(page, load):
+    """The saved-answers path (guided-run's rule pass, then collectOpenQuestions):
+    a honeypot is not offered to the model and not counted among the blanks,
+    while the real empty boxes beside it still are."""
+    from tests.browser.conftest import fixture_html
+
+    trap_area = "<label for='ta'>Leave this field blank</label><textarea id='ta'></textarea>"
+    load(page, fixture_html("workday_misses.html") + trap_area, [*SOURCES, "content/open-questions.js"])
+    collect = """async () => {
+      const ns = window.careerStudioCompanion;
+      await ns.fillFormFromProfile({ personal: { website: "https://example.com" } }, [], false, [], false);
+      const r = ns.collectOpenQuestions();
+      return { labels: r.questions.map((q) => q.label), blank: r.blank };
+    }"""
+    got = page.evaluate(collect)
+    assert not [x for x in got["labels"] if "robots" in x or "leave this field blank" in x]
+    # The same page without the three traps counts the same blanks: none came from a trap.
+    page.evaluate("() => document.querySelectorAll('#hp, #hp2, #ta').forEach((n) => n.remove())")
+    clean = page.evaluate(collect)
+    assert got["blank"] == clean["blank"] and clean["blank"] > 0
+    # A real empty box is still counted (Middle name is a blank, not a trap).
+    page.evaluate("() => document.getElementById('middle').remove()")
+    assert page.evaluate(collect)["blank"] == clean["blank"] - 1
