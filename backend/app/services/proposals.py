@@ -75,10 +75,11 @@ AUTO_CHANNEL = "auto"
 LOGIN_STATUSES = frozenset({"accepted", "approved"})
 
 
-def share_job_site_login(session: Session, prop: ApplicationProposal,
-                         agent: str | None) -> dict[str, str]:
+def share_job_site_login(session: Session, prop: ApplicationProposal, agent: str | None,
+                         *, channel: str = "mcp") -> dict[str, str]:
     """{email, password} for an open job in full automation mode; one audit row per call
-    (never the value). SYSTEM.md {#inv-job-site-password-local}."""
+    (never the value). `channel` says who asked: a connected agent (`mcp`) or the Companion
+    (`companion`). SYSTEM.md {#inv-job-site-password-local}."""
     cfg = auto_apply_settings.get_settings(session)
     if not cfg.full_automation:
         raise TransitionError("the job-site login needs full automation turned on in Settings")
@@ -89,7 +90,7 @@ def share_job_site_login(session: Session, prop: ApplicationProposal,
     email, password = job_site_login.read()
     if not email or not password:
         raise LookupError("No job-site login is saved in Settings")
-    session.add(ConsentEvent(proposal_id=prop.id, action="login_shared", channel="mcp", note=agent))
+    session.add(ConsentEvent(proposal_id=prop.id, action="login_shared", channel=channel, note=agent))
     session.commit()
     return {"email": email, "password": password}
 

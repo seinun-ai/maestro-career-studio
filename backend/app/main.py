@@ -25,6 +25,7 @@ from app.routers import (
     base_resumes,
     career_kb,
     chat,
+    companion,
     countries,
     explore,
     exports,
@@ -416,6 +417,7 @@ app.include_router(tailoring_sessions.router)
 app.include_router(applications.router)
 app.include_router(qa.router)
 app.include_router(proposals.router)
+app.include_router(companion.router)
 app.include_router(referrals.router)
 app.include_router(explore.router)
 app.include_router(setup.router)
