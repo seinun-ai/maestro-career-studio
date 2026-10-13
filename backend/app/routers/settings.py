@@ -75,10 +75,10 @@ class JevSettingsPayload(BaseModel):
 
 
 class AutofillOptions(BaseModel):
-    """GET/PUT /api/settings/autofill-options — how far the Companion's fill may go."""
+    """GET/PUT /api/settings/autofill-options — how far a fill answers without asking."""
 
     model_config = ConfigDict(extra="forbid")
-    low_stakes: bool
+    answer_level: Literal["facts", "history", "queued"]
 
 
 class JevProbeResult(BaseModel):
@@ -624,12 +624,12 @@ def put_jev_info(payload: JevSettingsPayload, db: Annotated[Session, Depends(get
 
 @router.get("/autofill-options", response_model=AutofillOptions)
 def get_autofill_options(db: Annotated[Session, Depends(get_db)]):
-    return AutofillOptions(low_stakes=model_settings.get_autofill_low_stakes(db))
+    return AutofillOptions(answer_level=model_settings.get_answer_level(db))
 
 
 @router.put("/autofill-options", response_model=AutofillOptions)
 def put_autofill_options(payload: AutofillOptions, db: Annotated[Session, Depends(get_db)]):
-    model_settings.set_autofill_low_stakes(db, payload.low_stakes)
+    model_settings.set_answer_level(db, payload.answer_level)
     return get_autofill_options(db)
 
 

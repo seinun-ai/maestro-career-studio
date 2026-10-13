@@ -81,7 +81,8 @@ def test_map_builds_facts_from_the_consent_gated_profile(db_session, monkeypatch
         "a": {"route": "none", "slot": None, "value": None, "format": None, "why": None}}
     assert "personal.city" in seen["facts"]
     assert not [slot for slot in seen["facts"] if slot.startswith("eeo")]
-    assert seen["kw"] == {"eeo_consented": False, "low_stakes": False}
+    # No answer-level row reads the default level, "history", which has low-stakes answers on.
+    assert seen["kw"] == {"eeo_consented": False, "low_stakes": True}
 
 
 @pytest.mark.usefixtures("profile")
@@ -137,7 +138,7 @@ def test_an_unreadable_agreement_permission_is_no_agreement(db_session, monkeypa
 @pytest.mark.usefixtures("profile")
 def test_map_reads_low_stakes_from_the_setting_not_the_client(db_session, monkeypatch):
     seen = _spy_map(monkeypatch)
-    model_settings.set_autofill_low_stakes(db_session, True)
+    model_settings.set_answer_level(db_session, "history")
     assert _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]}).status_code == 200
     assert seen["kw"]["low_stakes"] is True
     assert _post(db_session, "/api/autofill/map",

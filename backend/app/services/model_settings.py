@@ -1,5 +1,6 @@
 import json
 from dataclasses import asdict, dataclass
+from typing import Literal
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -270,19 +271,34 @@ def set_autofill_engine(session: Session, value: str) -> str:
     return value
 
 
-AUTOFILL_LOW_STAKES_KEY = "autofill.low_stakes"
+AUTOFILL_LOW_STAKES_KEY = "autofill.low_stakes"  # the retired on/off switch; only ever cleared now
+ANSWER_LEVEL_KEY = "autofill.answer_level"
+AnswerLevel = Literal["facts", "history", "queued"]
+ANSWER_LEVELS: tuple[str, ...] = ("facts", "history", "queued")
+DEFAULT_ANSWER_LEVEL: AnswerLevel = "history"
+
+
+def get_answer_level(session: Session | None = None) -> AnswerLevel:
+    """How far a fill answers without asking (docs/plans/2026-10-10-companion-queued-run-design.md
+    Part 3). Read by the server on every /map, /pick and /step; never taken from the client.
+    facts: saved answers and career history only. history (default): plus the low-stakes kinds
+    and history-backed "N years of a skill" Yes. queued: plus every requirement question on a
+    job the user queued. The protected list sits outside every level."""
+    value = _read(session, ANSWER_LEVEL_KEY)
+    return value if value in ANSWER_LEVELS else DEFAULT_ANSWER_LEVEL
+
+
+def set_answer_level(session: Session, level: AnswerLevel) -> None:
+    if level not in ANSWER_LEVELS:
+        raise ValueError(f"unknown answer level {level!r}")
+    _set_raw_value(session, ANSWER_LEVEL_KEY, level)
+    # The old switch is derived from the level now; drop its row so nothing reads a stale one.
+    _set_raw_value(session, AUTOFILL_LOW_STAKES_KEY, None)
 
 
 def get_autofill_low_stakes(session: Session | None = None) -> bool:
-    """Whether the fill may answer low-stakes preference questions (how you heard,
-    travel, relocation…) that no profile fact answers. Default off; read by the
-    server on every /map and /pick, never taken from the client."""
-    return _read(session, AUTOFILL_LOW_STAKES_KEY) == "on"
-
-
-def set_autofill_low_stakes(session: Session, enabled: bool) -> None:
-    # Off is the default, so store nothing rather than a redundant row.
-    _set_raw_value(session, AUTOFILL_LOW_STAKES_KEY, "on" if enabled else None)
+    """Low-stakes answers are on at every level but "facts" (derived from the answer level)."""
+    return get_answer_level(session) != "facts"
 
 
 def using_custom_endpoint(session: Session | None = None) -> bool:

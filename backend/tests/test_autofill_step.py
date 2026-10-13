@@ -234,7 +234,7 @@ def test_malformed_fast_model_json_is_a_provider_error(db_session, monkeypatch):
 
 @pytest.mark.usefixtures("jev_on")
 def test_low_stakes_click_is_assumed(db_session, monkeypatch):
-    model_settings.set_autofill_low_stakes(db_session, True)
+    model_settings.set_answer_level(db_session, "history")
     calls = fake_jev(monkeypatch, ("click:o1", 0.45))
     hint = JobHint(title="Data Scientist", company="Acme", source="rec_linkedin")
     assert step(req(route="low_stakes"), db_session, hint) == {"mid": "click:o1", "reason": "assumed"}
@@ -248,6 +248,7 @@ def test_low_stakes_click_is_assumed(db_session, monkeypatch):
 @pytest.mark.usefixtures("jev_on")
 def test_low_stakes_is_refused_when_the_setting_is_off(db_session, monkeypatch):
     """The client's route is not the setting: it is re-checked here."""
+    model_settings.set_answer_level(db_session, "facts")
     calls = fake_jev(monkeypatch, ("click:o1", 0.99))
     assert step(req(route="low_stakes"), db_session) == {"mid": None, "reason": "abstained"}
     assert calls == []
@@ -255,14 +256,14 @@ def test_low_stakes_is_refused_when_the_setting_is_off(db_session, monkeypatch):
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_low_stakes_step_that_names_a_slot_abstains(db_session, monkeypatch):
-    model_settings.set_autofill_low_stakes(db_session, True)
+    model_settings.set_answer_level(db_session, "history")
     calls = fake_jev(monkeypatch, ("click:o1", 0.99))
     assert step(req(route="low_stakes", slot="work_auth.sponsorship_now"), db_session)["reason"] == "abstained"
     assert calls == []
 
 
 def test_the_fast_model_low_stakes_step_states_the_never_list(db_session, monkeypatch):
-    model_settings.set_autofill_low_stakes(db_session, True)
+    model_settings.set_answer_level(db_session, "history")
     prompts = fake_llm(monkeypatch, {"move": GIVE_UP, "confidence": 0.9})
     assert step(req(route="low_stakes"), db_session)["reason"] == "abstained"
     assert _NEVER_LOW_STAKES in prompts[0]["prompt"]
@@ -346,7 +347,7 @@ def test_a_plain_click_is_an_answer_only_and_only_a_group_click_is_progress(db_s
 def test_a_low_stakes_step_says_which_way_a_conflict_question_goes(db_session, monkeypatch):
     """Owner, 2026-09-26: "related to / previously employed by the company" is
     low-stakes, answered No — the step says so, as /pick does."""
-    model_settings.set_autofill_low_stakes(db_session, True)
+    model_settings.set_answer_level(db_session, "history")
     prompts = []
 
     def call_openai(**kw):
@@ -361,7 +362,7 @@ def test_a_low_stakes_step_says_which_way_a_conflict_question_goes(db_session, m
 
 
 def test_with_worked_here_the_low_stakes_step_drops_the_previously_employed_no(db_session, monkeypatch):
-    model_settings.set_autofill_low_stakes(db_session, True)
+    model_settings.set_answer_level(db_session, "history")
     facts = autofill_catalog.build({}, [{"employer": "Guidehouse", "title": "Consultant", "start_date": "2019-01",
                                          "end_date": "2021-06"}], [], company="Guidehouse")
     prompts = []
@@ -458,7 +459,7 @@ def test_a_move_jev_took_is_jevs(db_session, monkeypatch):
 
 @pytest.mark.usefixtures("jev_on")
 def test_a_low_stakes_step_keeps_its_engine(db_session, monkeypatch):
-    model_settings.set_autofill_low_stakes(db_session, True)
+    model_settings.set_answer_level(db_session, "history")
     fake_jev(monkeypatch, (GIVE_UP, 0.9))
     prompts = fake_llm(monkeypatch, {"move": "click:o1", "confidence": 0.99})
     assert step(req(route="low_stakes"), db_session) == {"mid": None, "reason": "abstained"}
@@ -507,7 +508,7 @@ ONE_SHOT = __import__("re").compile(r"Read the question as it is worded", __impo
 
 @pytest.mark.usefixtures("jev_on")
 def test_no_step_goal_or_move_asks_for_the_option_that_states_the_value(db_session, monkeypatch):
-    model_settings.set_autofill_low_stakes(db_session, True)
+    model_settings.set_answer_level(db_session, "history")
     for r in (req(slot="work_auth.sponsorship_now"), req(slot="education.0.discipline"), req(route="low_stakes")):
         calls = fake_jev(monkeypatch)
         step(r, db_session)
@@ -610,7 +611,7 @@ def test_an_answer_click_traces_the_verdicts_own_floor(db_session, monkeypatch):
 def test_an_abstain_still_carries_the_engine_and_p(db_session, monkeypatch, choice):
     """A give-up's p is calibration evidence; its floor is PROGRESS_FLOOR (it has none of its own)."""
     fake_jev(monkeypatch, choice)
-    model_settings.set_autofill_low_stakes(db_session, True)   # no second opinion: Jev's abstain is the answer
+    model_settings.set_answer_level(db_session, "history")   # no second opinion: Jev's abstain is the answer
     got = stepped(req(route="low_stakes"), db_session)
     assert got.mid is None and got.reason == "abstained"
     assert got.trace == DecisionTrace(engine="jev", p=choice[1], floor=autofill_step.PROGRESS_FLOOR,
