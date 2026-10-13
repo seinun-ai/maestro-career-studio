@@ -252,8 +252,10 @@ def _insert_skills(session: Session, job_id: UUID, extraction: dict[str, Any]) -
 
 
 def _fill_apply_url(db: Session, job: Job, apply_url: str | None) -> None:
-    """A job saved again gains the apply link it lacked; a link it already has is never replaced."""
-    if apply_url and job.apply_url is None:
+    """A job saved again gains the apply link it lacked; a link it already has is never replaced.
+    A job another copy owns is left alone: writing it would raise NotOwnedHere and turn a plain
+    dedup hit into a 409, and its owner records the link."""
+    if apply_url and job.apply_url is None and sync_hooks.owned_here(db, job.id):
         job.apply_url = apply_url
         db.commit()
         db.refresh(job)

@@ -106,7 +106,20 @@ def test_a_saved_again_job_keeps_a_stored_empty_link(client, monkeypatch, db_ses
     assert again["apply_url"] == ""
 
 
-def test_an_ingested_twin_gains_the_link_too(client):
+def test_a_requisition_twin_gains_the_link_too(client, monkeypatch):
+    """The same requisition from another board has different text, so only the twin rule finds it."""
+    extraction = {"company": "Acme", "title": "Data Engineer", "requisition_id": "R-777", "skills": []}
+    monkeypatch.setattr(jobs.jd_extraction, "extract_jd", lambda raw_text, session=None: dict(extraction))
+    first = client.post("/api/jobs", json={"raw_text": "Acme posting as rendered by a board"}).json()
+
+    again = client.post("/api/jobs", json={"raw_text": "Acme posting as rendered by the careers site",
+                                           "apply_url": APPLY}).json()
+
+    assert again["id"] == first["id"] and again["already_existed"] is True
+    assert again["apply_url"] == APPLY
+
+
+def test_an_ingested_duplicate_gains_the_link_too(client):
     body = {"extracted_json": {"company": "Globex", "title": "Analyst"}, "raw_text": "Analyst at Globex"}
     first = client.post("/api/jobs/ingest", json=body).json()
 
