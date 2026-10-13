@@ -557,7 +557,7 @@ Rename `LowStakesSwitch` to `ScreeningAnswers`: the same query/mutation, a radio
 Base UI `RadioGroup`; copy the pattern from another settings radio group, `grep -rn RadioGroup
 frontend/components/settings`). Label "Screening answers", one short line under each option:
 - **Facts only**: "Only your saved answers and career history. Anything else waits for you."
-- **Backed by your history** (default): "Also answers low-stakes questions in the job's favour, and
+- **Backed by your history** (default): "Also answers low-stakes questions in the job's favor, and
   years-with-a-skill questions when your history shows the skill."
 - **Queued means I qualify**: "On jobs you queued, also says yes to every requirement question."
 Under the group, one line: "Work authorization, sponsorship, salary, EEO, background, clearance and
