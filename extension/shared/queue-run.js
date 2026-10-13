@@ -67,7 +67,7 @@
   // field gets a longer clock and more steps than the user's own Autofill (fill-loop's defaults).
   // RUN_MS is per page: a long page (a Workday skills list) must not be cut off at the 180 s the
   // field clocks would otherwise outgrow.
-  const RUN_LIMITS = { FIELD_MS: 60000, MAX_STEPS: 12, RUN_MS: 600000 };
+  const RUN_LIMITS = Object.freeze({ FIELD_MS: 60000, MAX_STEPS: 12, RUN_MS: 600000 });
   // Task 1a's spike: a fill in a background tab of the run window works.
   const HIDDEN_TABS_OK = true;
   const POLL_MS = 500;
@@ -249,7 +249,7 @@
         // form_step | review: fill the page, read it again, then judge it.
         if (!pageFilled) {
           await update({ status: "filling" });
-          const report = await act(deps.fill, record, { limits: options.fillLimits ?? RUN_LIMITS });
+          const report = await act(deps.fill, record, { limits: { ...RUN_LIMITS, ...options.fillLimits } });
           if (!Array.isArray(report?.fields)) throw new Error("the fill gave no report");
           if (report.stopped) throw HALT;
           await update({ filled: true });

@@ -328,9 +328,9 @@ def test_a_resume_reads_the_page_again_and_keeps_the_open_tab(tmp_path):
     assert (out["record"]["status"], out["record"]["why"], out["record"]["open"]) == ("ready", None, [])
 
 
-def test_the_fill_limits_are_passed_through_and_a_run_defaults_to_trying_harder(tmp_path):
+def test_the_fill_limits_layer_over_the_runs_defaults_and_a_run_defaults_to_trying_harder(tmp_path):
     out = _drive(tmp_path, [REVIEW], options={"fillLimits": {"FIELD_MS": 5000}})
-    assert names(out, "fill") == [["fill", {"limits": {"FIELD_MS": 5000}}]]
+    assert names(out, "fill") == [["fill", {"limits": {"FIELD_MS": 5000, "MAX_STEPS": 12, "RUN_MS": 600000}}]]
     plain = _drive(tmp_path, [REVIEW])
     assert names(plain, "fill") == [["fill", {"limits": {"FIELD_MS": 60000, "MAX_STEPS": 12, "RUN_MS": 600000}}]]
 
@@ -716,6 +716,13 @@ def test_the_fingerprint_is_the_address_without_the_hash_the_step_key_the_sorted
     out = run_node(driver, {}, tmp_path, source=SOURCE)
     assert out["a"] == out["b"] == "https://x.test/p?q=1\nk1\nBack,Next\n3"
     assert len({out["a"], out["c"], out["d"], out["g"]}) == 4 and out["e"].startswith("\nk1")
+
+
+def test_the_run_limits_cannot_be_changed_by_a_caller(tmp_path):
+    driver = """const ns = loadModules(); try { ns.queueRun.RUN_LIMITS.FIELD_MS = 1; } catch {}
+      emit({ run: ns.queueRun.RUN_LIMITS, frozen: Object.isFrozen(ns.queueRun.RUN_LIMITS) });"""
+    out = run_node(driver, {}, tmp_path, source=SOURCE)
+    assert out["run"]["FIELD_MS"] == 60000 and out["frozen"] is True
 
 
 def test_the_limits_and_the_hidden_tab_finding_are_published(tmp_path):
