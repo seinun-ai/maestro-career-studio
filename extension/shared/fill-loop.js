@@ -1077,7 +1077,7 @@
       const landed = [];
       let landedHow = "group_committed"; // how the last landed value got there
       let committed = null;
-      let listUp = false; // an item's explore left its list up and no set has used it yet
+      let listUp = Boolean(learnt?.up); // an item's explore left its list up and no set has used it yet
       // One picked option, committed under its own page budget. Undefined: the
       // field is decided (stopped, refused, out of time) and commitSet ends.
       const commitItem = async (item, p) => {
@@ -1121,9 +1121,9 @@
             let shown = opts;
             let whole = complete;
             if (f.shape === "search") {
-              const fresh = learnt?.item !== item; // fillChoice's own explore closed its list
+              const fresh = learnt?.item !== item; // else fillChoice's look, whose list may still be up
               const got = fresh ? await explore(f, item, { keep: true }) : learnt.got;
-              listUp = fresh && Boolean(got?.options?.length) && !got.error;
+              if (fresh) listUp = Boolean(got?.options?.length) && !got.error;
               if (!got) {
                 if (halt()) return undefined;
                 late.push(...todo.slice(i));
@@ -1235,21 +1235,37 @@
       // before deciding. One known to take a single answer is not explored.
       let multi = Boolean(f.multi);
       let learnt = null;
+      // The first item's look leaves its list up (`keep`): if the rows say
+      // "several" it is a set, and that item is committed in this very list
+      // (commitSet takes it over). Every other way out closes it.
+      let up = false;
+      const closeUp = async () => {
+        if (!up) return;
+        up = false;
+        await act(f, { op: "close" }, { closing: true });
+      };
       if (f.shape === "search" && f.multi == null && Array.isArray(value) && value.length > 1) {
         const first = String(value[0]);
-        const got = await explore(f, first);
+        const got = await explore(f, first, { keep: true });
         if (!got) return lateOrHalted(f);
         if (exploreRefused(f, got, first)) return undefined;
-        if (holdsOne(f, row, got)) return keepHeld(f, row);
+        up = Boolean(got.options?.length) && !got.error;
+        if (holdsOne(f, row, got)) {
+          await closeUp();
+          return keepHeld(f, row);
+        }
         if (got.multi === true) {
           multi = true;
-          learnt = { item: first, got };
+          learnt = { item: first, got, up };
         }
       }
       const isSet = Array.isArray(value) && multi;
       const item = itemOf(f, row);
       // A set fact on a one-answer field: no single item is THE answer — unless it holds just one.
-      if (Array.isArray(value) && !isSet && item === undefined) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
+      if (Array.isArray(value) && !isSet && item === undefined) {
+        await closeUp();
+        return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
+      }
       let opts = f.options ?? [];
       let complete = Boolean(f.optionsComplete);
       let term;
@@ -1267,7 +1283,10 @@
           noOptions = historyEntry(term ? "search:value" : "open", "unexpected", got.error ?? "empty_popup");
         }
       }
-      if (allBlocked(opts)) return finish(f, "blocked", { lastOutcome: "blocked" });
+      if (allBlocked(opts)) {
+        await closeUp();
+        return finish(f, "blocked", { lastOutcome: "blocked" });
+      }
       if (isSet) return commitSet(f, row, opts, complete, noOptions, learnt);
       if (noOptions && routeOf(row) === "reasoned") return finish(f, "needs_answer", { lastOutcome: "no_options" });
       if (noOptions) return settle(f, await adapt(f, row, noOptions, item));

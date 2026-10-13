@@ -327,8 +327,8 @@ def test_a_search_whose_rows_show_checkboxes_takes_the_set_path(page, load):
     # Each explore carries what the field's clock has left, so the page's explore never outlives it.
     assert all(0 < r["ms"] <= 31000 for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"])
     assert [a["texts"] for a in actions(out, "set")] == [["SQL"], ["Python"]]   # each item committed as it goes
-    # The first item reuses fillChoice's explore (its list is closed); the next is explored to be committed in.
-    assert [r.get("keep") for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"]] == [None, True]
+    # Every item's look leaves its list up for its own commit; the first is reused (explored once).
+    assert [r.get("keep") for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"]] == [True, True]
 
 
 def test_a_search_whose_rows_show_radios_takes_one_answer(page, load):
@@ -337,7 +337,8 @@ def test_a_search_whose_rows_show_radios_takes_one_answer(page, load):
               explore={"UT Arlington": {"options": [opt("o1", "UT Arlington")], "multi": False}})
     assert (row(out, "k")["status"], row(out, "k")["lastOutcome"]) == ("needs_answer", "set_for_one")
     assert explored_terms(out) == ["UT Arlington"]   # asked the rows first
-    assert "/api/autofill/pick" not in out["calls"] and not actions(out)
+    # Nothing picked or committed; only the list the first look left up is closed.
+    assert "/api/autofill/pick" not in out["calls"] and [a["op"] for a in actions(out)] == ["close"]
 
 
 def test_a_search_known_to_take_one_answer_is_not_explored_for_a_set(page, load):

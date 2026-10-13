@@ -846,3 +846,30 @@ def test_a_skill_the_list_never_offers_is_missing_and_the_rest_still_land(e2e_pa
     assert skills["status"] == "partial", skills
     assert "11 of 12 added" in skills["answer"], skills
     assert sorted(oracle(page, "slowSkills")) == sorted(s for s in wanted if s != "Rust")
+
+
+def test_every_skill_is_searched_once_the_first_included(e2e_page):
+    """The first item of a field not yet known to take several is looked at before
+    anything is decided; that look's list is the one the item is committed in,
+    so no item (the first included) is searched twice."""
+    page = e2e_page
+    count = """() => { window.enters = [];
+      document.addEventListener('keyup', (e) => { if (e.key === 'Enter' && e.target.id === 'skills') window.enters.push(1); }, true); }"""
+    skills = ["Python", "SQL", "Tableau"]
+    out = _run(page, page_js=count, html=fixture_html("workday_misses.html"), url="https://careers.acme.test/apply",
+               map={"Type to Add Skills": {"route": "slot", "slot": "skills", "value": skills}},
+               limits={"MAX_ROUNDS": 1})
+    assert out["by_question"]["Type to Add Skills"]["status"] == "verified"
+    assert sorted(oracle(page, "slowSkills")) == sorted(skills)
+    assert len(page.evaluate("window.enters")) == len(skills)
+
+
+def test_a_look_that_finds_one_answer_leaves_no_list_up(e2e_page):
+    """Field of Study takes one answer: a fact of several items is the user's, and
+    the list the first item's look left up is closed, not left on the page."""
+    page = e2e_page
+    out = _run(page, html=fixture_html("workday_misses.html"), url="https://careers.acme.test/apply",
+               map={"Field of Study": {"route": "slot", "slot": "education.0.discipline", "value": ["Statistics", "Mathematics"]}},
+               limits={"MAX_ROUNDS": 1})
+    assert out["by_question"]["Field of Study"]["status"] == "needs_answer"
+    assert oracle(page, "fieldOfStudy") == "" and not page.locator("[data-automation-id=activeListContainer]").count()
