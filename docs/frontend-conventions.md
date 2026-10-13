@@ -1130,13 +1130,14 @@
   location), so every row is one height; nothing a row can gain (an ownership mark, a notice) goes
   inside the Role cell. Ownership is the **Where** column after Status: a muted icon (whoever holds
   the job now) and one word (`ownershipWhere` in `lib/job-ownership.ts`: Laptop, Bot, Moving), the
-  long sentence as its tooltip and an sr-only sentence, and a small "Queued" under the label while a
-  request of yours waits for the next sync. It shows only when some visible row has an owner (sync
+  long sentence as its tooltip and an sr-only sentence, and a small "Waiting" under the label while a
+  request of yours waits for the next sync (any request, so it is only a note; "Queued" is a saved job's
+  chip). It shows only when some visible row has an owner (sync
   off: no column, Role takes its room). The page reads only each row's own `ownership`, never
   `use-job-ownership`. A chip locks while the job is moving between copies (`StatusChip`
   `lockedReason`: a lock, the reason as title and `aria-describedby`, `aria-disabled` so it stays
   focusable). **Work on it here** / **Keep it here** are in the row's ⋯ menu (`OwnershipMenuItem`,
-  disabled while a request is in flight or waiting); the header mark and the menu share one request
+  disabled only while its own request is in flight); the header mark and the menu share one request
   state per job (`ownershipKey`). Columns with fixed content are in rem (the table scrolls at 52rem,
   where a percentage of it left "Offer accepted" no room); Role and Resume share the rest, Role more
   when Where is not shown. The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.

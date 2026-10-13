@@ -360,9 +360,9 @@ the answer is "Synced moments ago."
 On the laptop's web app, each job shows who owns it. In the Jobs list that is the Where column (Laptop,
 Bot, or Moving while a handover is on its way), which appears only once sync is on; the job's page
 shows the mark in words. In the list, **Work on it here** and **Keep it here** sit in the row's ⋯ menu.
-While a request of yours waits for the next sync, the Where cell shows "Queued" under its label and
-its tooltip ends with "Sent at the next sync"; the menu item is disabled and reads the same, so a
-second request cannot go out.
+While a request of yours waits for the next sync (a status change, a skip or a take-over), the Where
+cell shows "Waiting" under its label and its tooltip ends with "Sent at the next sync". The menu items
+stay available: asking for a job back twice keeps one request.
 
 - **With your bot.** The always-on copy owns this job. You can read it. To
   change it you ask the bot. The button **Work on it here** asks for it back.

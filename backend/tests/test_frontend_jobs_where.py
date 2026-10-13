@@ -41,8 +41,18 @@ def test_columns_with_fixed_content_are_in_rem_and_role_and_resume_share_the_res
     for key in ("ats", "status", "applied_at", "created_at"):
         width = re.search(rf'header\("{key}", "[^"]+", "(w-[^"]+)"\)', head)
         assert width and "%" not in width.group(1), key
+        assert "px-3" in width.group(1), key  # head and cell share the tighter padding
     where = tokens(open_tag(head, "TableHead", after="{showWhere ?"))
     assert any(re.fullmatch(r"w-(\d+|\[[\d.]+rem\])", t) for t in where), where
+    assert "px-3" in where
+
+
+def test_the_fixed_columns_pad_their_cells_like_their_heads_and_role_and_resume_keep_the_table_padding():
+    row = _TABLE[_TABLE.index("<TableRow\n                    key={key}") :]
+    starts = [m.start() for m in re.finditer("<TableCell", row)]
+    padded = ["px-3" in open_tag(row[i:], "TableCell") for i in starts]
+    # Role, Resume, then Match score, Status, Where, Applied, Added carry px-3; the actions cell is last.
+    assert padded == [False, False, True, True, True, True, True, False]
 
 
 def test_role_widens_and_resume_narrows_when_where_is_not_shown():
@@ -68,13 +78,14 @@ def test_the_where_cell_is_an_icon_and_a_word_with_the_long_sentence_for_the_too
     assert '<span className="sr-only">{where.sentence}</span>' in squashed
 
 
-def test_a_request_still_on_its_way_shows_as_queued_under_the_label():
+def test_a_request_still_on_its_way_shows_as_waiting_under_the_label():
     cell = _TABLE[_TABLE.index("{showWhere ? (") :]
     cell = cell[: cell.index("</TableCell>")]
     squashed = squash(cell)
     # A request still on its way shows as a small muted word under the label; the sentence says the rest.
     queued = open_tag(cell, "span", after="{where.pending ?")
-    assert "text-muted-foreground" in tokens(queued) and ">Queued</span>" in squashed
+    assert "text-muted-foreground" in tokens(queued) and ">Waiting</span>" in squashed
+    assert ">Queued<" not in squashed  # Queued is a saved job's status chip
     # Every row of a table that shows Where has an owner; a row without one just leaves the cell empty.
     assert "—" not in cell
 
@@ -112,14 +123,15 @@ def test_a_locked_chip_explains_itself_and_does_not_invite_a_click():
 
 def test_the_row_menu_offers_the_ownership_action_before_delete():
     menu = squash(_TABLE[_TABLE.index("<DropdownMenuContent") : _TABLE.index("</DropdownMenuContent>")])
-    action = ("{ownership.action ? ( <> <OwnershipMenuItem jobId={jobId} action={ownership.action} "
-              "pending={ownership.pending} /> <DropdownMenuSeparator /> </> ) : null}")
+    action = ("{ownership.action ? ( <> <OwnershipMenuItem jobId={jobId} action={ownership.action} /> "
+              "<DropdownMenuSeparator /> </> ) : null}")
     assert action in menu and menu.index(action) < menu.index("Delete job")
     comp = _src("components/job-ownership.tsx")
     item = squash(comp[comp.index("export function OwnershipMenuItem") : comp.index("export function JobOwnershipNotice")])
-    assert "<DropdownMenuItem disabled={busy || pending}" in item and "CONCEPT_ICONS.laptop" in item
-    # The words come from one table; a request already waiting for the next sync replaces the label.
-    assert "{pending ? REQUEST_QUEUED : ACTION_LABEL[action]}" in item
+    assert "<DropdownMenuItem disabled={busy}" in item and "CONCEPT_ICONS.laptop" in item
+    # The words come from one table. A request merely waiting for the next sync does not disable it:
+    # pending_requests counts status changes too, and the server keeps one take-over per job.
+    assert "{ACTION_LABEL[action]}" in item and "pending" not in item.replace("pending_requests", "")
     assert "ACTION_LABEL[view.action]" in comp
 
 

@@ -738,13 +738,13 @@ function ApplicationsContent() {
           <Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
               <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
-                {header("role", "Role", showWhere ? "w-[60%]" : "w-[68%]")}
-                <TableHead className={showWhere ? "w-[40%]" : "w-[32%]"}>Resume</TableHead>
-                {header("ats", "Match score", "w-28")}
-                {header("status", "Status", "w-[9.5rem]")}
-                {showWhere ? <TableHead className="w-20 px-3">Where</TableHead> : null}
-                {header("applied_at", "Applied", "w-24")}
-                {header("created_at", "Added", "w-24")}
+                {header("role", "Role", showWhere ? "w-[65%]" : "w-[72%]")}
+                <TableHead className={showWhere ? "w-[35%]" : "w-[28%]"}>Resume</TableHead>
+                {header("ats", "Match score", "w-[6.75rem] px-3")}
+                {header("status", "Status", "w-[9.25rem] px-3")}
+                {showWhere ? <TableHead className="w-[4.5rem] px-3">Where</TableHead> : null}
+                {header("applied_at", "Applied", "w-[5.5rem] px-3")}
+                {header("created_at", "Added", "w-[5.5rem] px-3")}
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -829,7 +829,7 @@ function ApplicationsContent() {
                         </ResumeTag>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-3">
                       {(() => {
                         const score = rowScore(r);
                         return score === null ? (
@@ -847,7 +847,7 @@ function ApplicationsContent() {
                         );
                       })()}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-3">
                       {r.kind === "saved" ? (
                         <SavedJobChip proposalStatus={r.job.proposal_status} />
                       ) : (
@@ -884,17 +884,17 @@ function ApplicationsContent() {
                               {where.word}
                             </span>
                             {where.pending ? (
-                              <span className="text-muted-foreground pl-5 text-label-small" aria-hidden="true">Queued</span>
+                              <span className="text-muted-foreground pl-5 text-label-small" aria-hidden="true">Waiting</span>
                             ) : null}
                             <span className="sr-only">{where.sentence}</span>
                           </span>
                         ) : null}
                       </TableCell>
                     ) : null}
-                    <TableCell className="text-muted-foreground text-body-small tabular-nums">
+                    <TableCell className="px-3 text-muted-foreground text-body-small tabular-nums">
                       {r.kind === "saved" ? "—" : formatDate(r.app.applied_at)}
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-body-small tabular-nums">
+                    <TableCell className="px-3 text-muted-foreground text-body-small tabular-nums">
                       {formatDate(
                         r.kind === "saved" ? r.job.created_at : r.app.created_at,
                       )}
@@ -932,7 +932,7 @@ function ApplicationsContent() {
                           <DropdownMenuContent align="end" className="w-max">
                             {ownership.action ? (
                               <>
-                                <OwnershipMenuItem jobId={jobId} action={ownership.action} pending={ownership.pending} />
+                                <OwnershipMenuItem jobId={jobId} action={ownership.action} />
                                 <DropdownMenuSeparator />
                               </>
                             ) : null}

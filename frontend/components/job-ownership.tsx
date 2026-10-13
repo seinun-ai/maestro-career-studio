@@ -62,17 +62,18 @@ export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownershi
 }
 
 /** The row menu's "Work on it here" / "Keep it here". A menu closes on click, so the request's progress
- * is read from the query client: reopening the menu mid-request finds the item disabled. A request of
- * yours that is still waiting for the next sync disables it too, so no second one goes out. */
-export function OwnershipMenuItem({ jobId, action, pending }: { jobId: string; action: OwnershipActionName; pending: boolean }) {
+ * is read from the query client: reopening the menu mid-request finds the item disabled. A request
+ * waiting for the next sync does not disable it: the count includes status changes and take-overs, and
+ * the server already keeps one take-over per job. */
+export function OwnershipMenuItem({ jobId, action }: { jobId: string; action: OwnershipActionName }) {
   const mutation = useOwnershipAction(jobId);
   const act = useSingleFlight(mutation.mutate);
   const busy = useOwnershipBusy(jobId);
   const Icon = CONCEPT_ICONS.laptop;
   return (
-    <DropdownMenuItem disabled={busy || pending} onClick={() => act(action)}>
+    <DropdownMenuItem disabled={busy} onClick={() => act(action)}>
       <Icon className="size-4" aria-hidden="true" />
-      {pending ? REQUEST_QUEUED : ACTION_LABEL[action]}
+      {ACTION_LABEL[action]}
     </DropdownMenuItem>
   );
 }
