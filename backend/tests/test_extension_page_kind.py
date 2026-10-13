@@ -105,10 +105,11 @@ def test_next_must_be_the_whole_button_not_a_prefix(tmp_path, text):
 
 
 @pytest.mark.parametrize("text", ["Consent", "I consent", "Present", "Represent", "Apple", "Applicant info",
-                                  "Applications", "Review application"])
-def test_words_that_merely_contain_a_submit_stem_are_not_submit(tmp_path, text):
-    """"sent" ends Consent/Present/Represent and "appl" starts Apple/Applicant; none of them submits."""
-    assert sort(tmp_path, text) != "submit"
+                                  "Applications"])
+def test_words_that_merely_contain_a_submit_stem_are_unclear(tmp_path, text):
+    """"sent" ends Consent/Present/Represent and "appl" starts Apple/Applicant. Not submit, and not
+    next either: an exact "unclear" so neither error can hide behind the other."""
+    assert sort(tmp_path, text) == "unclear"
 
 
 @pytest.mark.parametrize("text", ["Send", "Sent", "Send application", "Resend", "send_application",
@@ -178,6 +179,8 @@ def test_captcha_beats_everything(tmp_path):
 
 def test_create_account_is_a_confirm_password_field(tmp_path):
     assert kind(tmp_path, passwordInputs=2, confirmPassword=True, otpInput=True)["kind"] == "create_account"
+    # The flag alone, with one password input (a confirm field the counter missed), still parks.
+    assert kind(tmp_path, passwordInputs=1, confirmPassword=True)["kind"] == "create_account"
 
 
 def test_two_password_inputs_without_a_confirm_flag_still_park_as_create_account(tmp_path):
