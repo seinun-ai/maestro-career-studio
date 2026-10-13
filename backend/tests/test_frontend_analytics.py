@@ -40,7 +40,7 @@ _PRESENT = {
     "ats-hidden-caption": (_ATS, "Pick a role above to see the other ${hidden.length}."),
     "mix-split": (_MIX, "splitTopSeries("),
     "mix-more-roles": (_MIX, 'name={cat === MORE_ROLES ? "More roles" : label(cat)}'),
-    "fit-cap-at-palette": (_FIT, "(row) => row.n,\n      COLORS.length,"),
+    "fit-series-cap": (_FIT, "(row) => row.n,\n      MAX_FIT_SERIES,"),
     "fit-hidden-caption": (_FIT, '${hidden.length} more ${hidden.length === 1 ? "is" : "are"} not shown.'),
     # The legend says the resume's own name; the slug stays the dataKey
     # because two resumes may share a display name.

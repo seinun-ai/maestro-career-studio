@@ -1558,7 +1558,14 @@
   (separate light/dark steps; re-run the dataviz palette validator if changed);
   shared helpers live in `components/charts/chart-kit.tsx` — never re-declare
   per-chart COLORS arrays; the heatmap uses a `color-mix` primary-blue
-  sequential ramp. ATS-over-time draws at most 4 roles (`MAX_ROLE_SERIES` in
+  sequential ramp. A chart split by base resume is the one exception: the
+  fit-distribution chart fills each series with its resume's own color
+  (`resumeSwatchColor` in `lib/resume-color.ts`, the same recipe as the `resume`
+  colour) and its legend is `ResumeTag`s, so a resume keeps its color across the
+  app. The tones are read from `--resume-swatch-l` and `--resume-swatch-c` by
+  `useResumeSwatchTones` (`getComputedStyle`, re-read when `.dark` changes on
+  `<html>`); never re-declared in JS. Every other chart keeps `--chart-1..6`
+  (`test_frontend_resume_chart.py`). ATS-over-time draws at most 4 roles (`MAX_ROLE_SERIES` in
   `lib/analytics-series.ts`) and leaves the tail off the chart, naming the
   hidden count in the caption; role mix folds that tail into one "More roles"
   series so the week still sums. Role text on these charts, the filters, the
@@ -1584,7 +1591,8 @@
   `baseResumeLabel(slug)` or a `humanizeSlug(` at a naming call site. A new acronym in the catalog
   goes in `TOKEN_CASE`; `test_frontend_analytics.py` fails until it does. The
   fit-distribution legend names each resume by `display_name` and draws at
-  most the palette's six. Colours follow that order and are never cycled. **The gap sweeps read ONE base per job.** Both
+  most six (`MAX_FIT_SERIES`), the ones with the most scores; each takes its
+  resume's color. **The gap sweeps read ONE base per job.** Both
   `explore_gaps.gap_frequency` and `explore_build_areas.build_areas` go through
   `explore_gaps._best_base_gap_rows` — the single highest-composite base-phase
   row per job (ties break `target_id` asc for deterministic reruns). Pooling
