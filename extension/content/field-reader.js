@@ -27,15 +27,17 @@
   // and the word "required" as a trailing whole word: in parentheses, after a
   // separator ("Phone - required") or bare ("Phone Required"). A question
   // ending in "?" ("Is a degree required?") and the word elsewhere ("Required
-  // skills") are no mark. Marking a field required only ever makes it asked,
-  // so a bare trailing word on a long sentence ("Which of these is required")
-  // still counts, but only a short label ("Phone Number Required") has the
-  // word cut from its question. A star counts at the start of the text, or
+  // skills") are no mark, and nor is a bare word on a label that opens like a
+  // question ("Is travel required", "Which of these is required"): that is
+  // the question's own word. Marking a field required only ever makes it
+  // asked, so a bare trailing word on a longer statement still counts, but
+  // only a short label ("Phone Number Required") has the word cut. A star counts at the start of the text, or
   // after a word or a space with a space, colon, bracket or the end behind it,
   // so "a*b" is left alone.
   const STAR_CHARS = "*\u2731\u2217\uFF0A\uFE61\u204E";
   const STARS = new RegExp(`^\\s*[${STAR_CHARS}]+\\s*|\\s*[${STAR_CHARS}]+(?=[\\s:(\\[]|$)`, "gu");
   const SET_OFF_REQUIRED = /(?:\s*[([]\s*required\s*[)\]]|\s*[-\u2013\u2014|,:]\s*required)\s*:?\s*$/i;
+  const QUESTION_LED = /^(?:is|are|was|were|do|does|did|will|would|can|could|should|shall|may|might|must|have|has|had|which|what|who|whom|whose|when|where|why|how)\b/i;
   const BARE_REQUIRED_WORD = /(?:^|\s)required\s*:?\s*$/i;
   const MARKER_WORDS = 3;
   const unmark = (t) => {
@@ -44,7 +46,8 @@
     const starred = unstarred !== raw;
     const setOff = SET_OFF_REQUIRED.exec(unstarred);
     if (setOff) return { text: clean(unstarred.slice(0, setOff.index)), required: true };
-    const bare = /\?\s*$/.test(unstarred) ? null : BARE_REQUIRED_WORD.exec(unstarred);
+    const asking = /\?\s*$/.test(unstarred) || QUESTION_LED.test(clean(unstarred));
+    const bare = asking ? null : BARE_REQUIRED_WORD.exec(unstarred);
     if (!bare) return { text: clean(unstarred), required: starred };
     const before = clean(unstarred.slice(0, bare.index));
     const label = before.split(" ").filter(Boolean).length <= MARKER_WORDS;

@@ -989,6 +989,9 @@ def test_a_star_or_a_required_suffix_marks_the_field_and_leaves_the_question(pag
 @pytest.mark.parametrize("label", [
     "Is a degree required for this role?",
     "Is a degree required?",
+    "Is travel required",
+    "Which of these is required",
+    "Does the role need a visa, and is it required",
     "Required skills",
     "Model a*b number",
 ])
@@ -1045,8 +1048,11 @@ LABEL_SOURCES = {
     ("Phone Required", "Phone", True),
     ("Email Address Required", "Email Address", True),
     ("Phone Number required:", "Phone Number", True),
-    # A long sentence: still required (asking is the safe side), its words kept.
-    ("Which of these is required", "Which of these is required", True),
+    # A statement longer than a label: still required (asking is the safe side), its words kept.
+    ("Enter the reason for leaving required", "Enter the reason for leaving required", True),
+    # A question's own word, with or without the mark: never a marker.
+    ("Which of these is required", "Which of these is required", False),
+    ("Is travel required", "Is travel required", False),
     ("Is a degree required?", "Is a degree required?", False),
     ("Required skills", "Required skills", False),
 ])
