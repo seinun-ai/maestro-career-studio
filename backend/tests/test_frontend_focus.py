@@ -559,11 +559,33 @@ def test_a_list_item_hands_focus_to_its_neighbour_then_its_landmark():
         "const siblings = [item?.nextElementSibling, item?.previousElementSibling]; "
         "const landmark = focusReturnPoint( "
         "item?.parentElement?.closest<HTMLElement>('[tabindex=\"-1\"]') ?? document.getElementById(MAIN_CONTENT_ID), ); "
-        "return () => { const sibling = siblings.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected); "
+        "return () => successorOf(siblings, landmark, control);"
+    )
+    # The shared tail: the first CONNECTED candidate, its matching control, and the landmark when it cannot take focus.
+    tail = _fn_body(_FOCUS, "function successorOf(")
+    assert tail == (
+        "const sibling = candidates.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected); "
         "if (!sibling) return landmark(); "
         "const target = (control ? sibling.querySelector<HTMLElement>(control) : null) ?? focusTarget(sibling); "
         "// A neighbour with nothing that takes focus (a row with no action): its focus() would do nothing. "
-        "return canTakeFocus(target) ? target : landmark(); };"
+        "return canTakeFocus(target) ? target : landmark();"
+    )
+
+
+def test_a_grouped_list_hands_focus_to_the_next_item_across_groups():
+    # Cards under role headings are not one parent's children. Mutants: the neighbours taken from the item's own
+    # parent (a group's last card fell to the landmark); the neighbours read after the item has gone.
+    assert (
+        "export function focusSuccessorIn(item: Element | null | undefined, itemSelector: string): () => HTMLElement | null {"
+    ) in _FOCUS
+    body = _fn_body(_FOCUS, "export function focusSuccessorIn(")
+    assert body == (
+        "const region = item?.closest<HTMLElement>('[tabindex=\"-1\"]') ?? document.getElementById(MAIN_CONTENT_ID); "
+        "const items = region ? Array.from(region.querySelectorAll(itemSelector)) : []; "
+        "const at = item ? items.indexOf(item) : -1; "
+        "const neighbours = at === -1 ? [] : [items[at + 1], items[at - 1]]; "
+        "const landmark = focusReturnPoint(region); "
+        "return () => successorOf(neighbours, landmark);"
     )
     can = _fn_body(_FOCUS, "function canTakeFocus(")
     assert can == "return el.matches(TABBABLE) || el.matches('[tabindex=\"-1\"]');"
@@ -589,7 +611,7 @@ def test_archiving_a_card_hands_focus_to_the_next_card():
     ) in menu
     assert (
         "onClick={() => { if (hidesArchived && !resume.archived_at) "
-        "leaving.current = focusSuccessor(triggerRef.current?.closest('[data-slot=\"card\"]')); onToggleArchive(); }}"
+        "leaving.current = focusSuccessorIn(triggerRef.current?.closest(CARD), CARD); onToggleArchive(); }}"
     ) in menu
     assert "ref={triggerRef}" in menu
     page = _squash(_BASE_LIST)
@@ -602,7 +624,8 @@ def test_deleting_a_card_hands_focus_to_the_next_card():
     # Mutants: the successor never handed over on success; Cancel sent to the
     # successor too (it must return to ⋯); Delete natively disabled.
     menu = _squash(_function(_BASE_LIST, "function CardMenu("))
-    assert "onClick={() => onDelete(focusSuccessor(triggerRef.current?.closest('[data-slot=\"card\"]')))}" in menu
+    assert "onClick={() => onDelete(focusSuccessorIn(triggerRef.current?.closest(CARD), CARD))}" in menu
+    assert "const CARD = '[data-slot=\"card\"]';" in _squash(_BASE_LIST)
     page = _squash(_BASE_LIST)
     assert "onDelete={(next) => { deleteNext.current = next; setDeleteTarget(r); }}" in page
     success = page[page.index("const del = useMutation(") :]

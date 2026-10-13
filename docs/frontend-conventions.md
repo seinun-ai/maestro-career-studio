@@ -1056,6 +1056,14 @@
   for the z-10-link/z-20-actions layering, overriding `pt-0` with `pt-4`. Reach
   for this shell whenever a card's whole face is a link AND it carries an
   actions menu — that pairing is the invariant, a preview image is not.
+  `GalleryCard` takes `style` for the CSS variables a card sets for its children.
+  The Base resumes gallery groups its cards under a plain heading per role (first
+  seen first, "Role not set" last, `lib/role-groups.ts`), and each card carries
+  the resume's color: a 6px `bg-resume` band above the full-size thumbnail and a
+  `bg-resume-container` footer with `text-on-resume-container` text, the name led
+  by the square. Pills on that footer take the card fill (`AnchorPills onTint`),
+  because the secondary fill is the tint's own tone; the role is the group's
+  heading, so cards pass `showRole={false}`. Pinned by `test_frontend_base_resume_gallery.py`.
 - **Sidebar: one create action, and a current page you can see and hear.** Every
   row (`SidebarMenuButton`, its sub-menu row, skeleton and count) is
   `rounded-full`, so hover and the current row share one pill shape
@@ -1510,7 +1518,8 @@
   button that scores and reads again with `include_other_countries` for that view and hands focus
   to Update scores. With no resume set for the job's country every resume is scored, and the line
   says so (`noResumeForCountry`). Gallery and score cards show a resume's Target as pills
-  (`AnchorPills`). Pinned by `test_frontend_base_resume_anchors.py`.
+  (`AnchorPills`; the gallery passes `showRole={false}`, since the role is the group heading, and
+  `onTint`, for the card fill on its tinted footer). Pinned by `test_frontend_base_resume_anchors.py`.
 - Career history pages follow the Base resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.

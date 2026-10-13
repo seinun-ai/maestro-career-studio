@@ -32,7 +32,7 @@ import { Switch } from "@/components/ui/switch";
 import { NewBaseResumeDialog } from "@/components/base-resumes/new-base-resume-dialog";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
-import { finalFocusOn, focusIfDropped, focusSuccessor } from "@/lib/focus";
+import { finalFocusOn, focusIfDropped, focusSuccessorIn } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import { uniqueSlug } from "@/lib/slug";
@@ -43,6 +43,9 @@ import {
 } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
+
+/** A gallery card. Cards sit in a grid per role, so a card's neighbour is the next one in the flat list. */
+const CARD = '[data-slot="card"]';
 
 export default function BaseResumesListPage() {
   const router = useRouter();
@@ -283,7 +286,7 @@ export default function BaseResumesListPage() {
 /**
  * A card's ⋯ menu. Archive (with archived cards hidden) removes the card and
  * this trigger with it, so when the menu's popup goes, a focus it dropped moves
- * to the next card, else the previous one, else the list. Read at the popup's
+ * to the next card in the list (across role groups), else the previous one, else the list. Read at the popup's
  * close, not after the refetch: the refetch can land first, and then this menu
  * unmounts with its card. The menu moves focus itself (a microtask after the
  * unmount) because Base UI 1.4.1 reads a function `finalFocus` after a pointer
@@ -341,7 +344,7 @@ function CardMenu({
         <DropdownMenuItem
           onClick={() => {
             if (hidesArchived && !resume.archived_at)
-              leaving.current = focusSuccessor(triggerRef.current?.closest('[data-slot="card"]'));
+              leaving.current = focusSuccessorIn(triggerRef.current?.closest(CARD), CARD);
             onToggleArchive();
           }}
         >
@@ -350,7 +353,7 @@ function CardMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"
-          onClick={() => onDelete(focusSuccessor(triggerRef.current?.closest('[data-slot="card"]')))}
+          onClick={() => onDelete(focusSuccessorIn(triggerRef.current?.closest(CARD), CARD))}
         >
           Delete
         </DropdownMenuItem>

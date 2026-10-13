@@ -7,6 +7,8 @@ A resume color picker chooses a base resume's color: ten preset swatches and a c
 - The checked swatch draws a 16px `Check` in `primary-foreground` and the solid 2px `ring` outline with an offset. Focus is a separate solid `ring` (a 2px box-shadow, 4px out, over a `card` offset) outside that outline, so a focused swatch never looks checked, and the checked, focused one shows both.
 - Arrow keys, Home and End move between swatches and choose as they go; one swatch is in the tab order (the checked one, else the first).
 - A taken preset is not disabled: two resumes may share a color. It carries a small `card` dot in its corner and its name in the accessible name, never a faded fill (a faded fill reads as disabled).
+- The slider latches open on first touch, on both `focus` and `pointerdown`: Safari does not focus a range input on click, and a drag onto a preset hue would otherwise unmount the slider before its pointerup commits.
+- The New base resume dialog holds no value until the list of other resumes has loaded, and sends none until then: the picker gets `null` and the server picks a free color the same way.
 - "Custom" is an outline button (`aria-expanded`) that opens a "Hue" slider (open on its own while the value is a custom hue), a native range input from 0 to 359, spoken as the preset's name or "Hue 120", over a gradient track drawn from the same recipe as the square. The thumb is a small bar, not a dot.
 
 Source: `frontend/components/base-resumes/resume-color-picker.tsx`.

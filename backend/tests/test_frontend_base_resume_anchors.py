@@ -98,7 +98,7 @@ def test_every_patch_sends_only_the_key_it_changed():
     assert "body: JSON.stringify({ [field]: value })," in hook
     assert "qc.setQueryData([\"base-resumes\", slug], updated);" in hook
     assert "qc.invalidateQueries({ queryKey: [\"base-resumes\"] });" in hook
-    assert "onError: (err: Error) => toast.error(couldnt(`save the ${FIELD_WORDS[field]}`, err))," in hook
+    assert "onError: (err: Error) => toast.error(couldnt(`save the ${FIELD_WORDS[field]}`, err), {" in hook
 
 
 def test_countries_save_on_change_and_the_picker_is_named_and_read_only_while_it_saves():

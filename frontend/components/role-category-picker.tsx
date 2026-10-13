@@ -98,6 +98,7 @@ export function RoleCategoryPicker({
   const guessing = proposed && !confirmed;
 
   const save = useMutation({
+    scope: { id: `identity-${slug}` }, // in step with the other identity saves (useAnchorSave)
     mutationFn: (entry: FavoredRole | null) =>
       apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/identity`, {
         method: "PATCH",
@@ -188,6 +189,9 @@ const FIELD_WORDS: Record<keyof AnchorValues, string> = {
 function useAnchorSave<K extends keyof AnchorValues>(slug: string, field: K) {
   const qc = useQueryClient();
   return useMutation({
+    // One at a time per resume: two quick saves reach the server in the order they were made, so the last
+    // choice is the one that stays. The scope is shared by every field of this resume's identity.
+    scope: { id: `identity-${slug}` },
     mutationFn: (value: AnchorValues[K]) =>
       apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/identity`, {
         method: "PATCH",
@@ -210,9 +214,10 @@ function useAnchorSave<K extends keyof AnchorValues>(slug: string, field: K) {
             ? updated.color_hue !== null
             : Boolean(updated[field]);
       const words = FIELD_WORDS[field];
-      toast.success(`${words[0].toUpperCase()}${words.slice(1)} ${set ? "saved" : "cleared"}`);
+      // One toast per field: a quick run of saves replaces the toast rather than stacking them.
+      toast.success(`${words[0].toUpperCase()}${words.slice(1)} ${set ? "saved" : "cleared"}`, { id: `anchor-${field}` });
     },
-    onError: (err: Error) => toast.error(couldnt(`save the ${FIELD_WORDS[field]}`, err)),
+    onError: (err: Error) => toast.error(couldnt(`save the ${FIELD_WORDS[field]}`, err), { id: `anchor-${field}` }),
   });
 }
 
@@ -283,15 +288,16 @@ function AnchorTextField({
 
 /**
  * The Target dialog: the resume's countries, role, company and focus, behind the studio's ⋯ (the code
- * calls the four anchors). Countries decide which jobs the resume is scored for; the other three
- * steer tailoring and Ask for changes.
+ * calls the four anchors), and its color. Countries decide which jobs the resume is scored for; the
+ * other three steer tailoring and Ask for changes; the color is how the resume is told apart.
  *
  * A dialog rather than the pickers nested straight into the dropdown: a picker is itself a popup, and
  * a combobox popup inside a menu popup fights the menu for focus and dismissal. The dialog also gives
  * the free-text mapping strip ("Count 'X' as Y?") somewhere to appear.
  *
- * Every field saves itself (countries and role on change, company and focus on blur), so there is
- * nothing to save here; the footer button only closes.
+ * Every field saves itself (countries and role on change, company and focus on blur, the color on a
+ * settled choice: a swatch, or the slider let go), so there is nothing to save here; the footer button
+ * only closes.
  */
 export function TargetDialog({
   slug,
@@ -311,7 +317,7 @@ export function TargetDialog({
   countries: string[];
   company: string | null;
   focus: string | null;
-  /** The saved color. The dialog holds its own live copy while a slider drags, and follows this. */
+  /** The saved color. */
   colorHue: number | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -325,13 +331,10 @@ export function TargetDialog({
 }) {
   const saveCountries = useAnchorSave(slug, "countries");
   const saveColor = useAnchorSave(slug, "color_hue");
-  // The live value drives the preview while a slider drags; only a settled choice saves (onCommit).
-  const [live, setLive] = useState(colorHue);
-  const [seen, setSeen] = useState(colorHue);
-  if (seen !== colorHue) {
-    setSeen(colorHue);
-    setLive(colorHue);
-  }
+  // What the picker shows: the hue being dragged, else the one being saved, else the saved one. A failed save
+  // drops the pending value, so the saved color comes back with no copy of it held in state.
+  const [drag, setDrag] = useState<number | null>(null);
+  const shown = drag ?? (saveColor.isPending ? saveColor.variables : colorHue);
   const others = useBaseResumes(false, { enabled: open }).data;
   const used = (others ?? [])
     .filter((r) => r.slug !== slug)
@@ -390,9 +393,12 @@ export function TargetDialog({
             value={focus}
           />
           <ResumeColorPicker
-            value={live}
-            onChange={setLive}
-            onCommit={(hue) => saveColor.mutate(hue, { onError: () => setLive(colorHue) })}
+            value={shown}
+            onChange={setDrag}
+            onCommit={(hue) => {
+              setDrag(null);
+              saveColor.mutate(hue);
+            }}
             used={used}
           />
         </div>

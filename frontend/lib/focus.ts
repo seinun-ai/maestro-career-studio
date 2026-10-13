@@ -56,13 +56,35 @@ export function focusSuccessor(item: Element | null | undefined, control?: strin
   const landmark = focusReturnPoint(
     item?.parentElement?.closest<HTMLElement>('[tabindex="-1"]') ?? document.getElementById(MAIN_CONTENT_ID),
   );
-  return () => {
-    const sibling = siblings.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected);
-    if (!sibling) return landmark();
-    const target = (control ? sibling.querySelector<HTMLElement>(control) : null) ?? focusTarget(sibling);
-    // A neighbour with nothing that takes focus (a row with no action): its focus() would do nothing.
-    return canTakeFocus(target) ? target : landmark();
-  };
+  return () => successorOf(siblings, landmark, control);
+}
+
+/**
+ * `focusSuccessor` for a list that is not one parent's children: items grouped under headings. The neighbours are
+ * the next and previous element matching `itemSelector` in document order inside the item's nearest
+ * `tabIndex={-1}` region (else the main area), so the last card of one group hands focus to the first of the next.
+ * Read NOW, like `focusSuccessor`.
+ */
+export function focusSuccessorIn(item: Element | null | undefined, itemSelector: string): () => HTMLElement | null {
+  const region = item?.closest<HTMLElement>('[tabindex="-1"]') ?? document.getElementById(MAIN_CONTENT_ID);
+  const items = region ? Array.from(region.querySelectorAll(itemSelector)) : [];
+  const at = item ? items.indexOf(item) : -1;
+  const neighbours = at === -1 ? [] : [items[at + 1], items[at - 1]];
+  const landmark = focusReturnPoint(region);
+  return () => successorOf(neighbours, landmark);
+}
+
+/** The first connected candidate's control (else field or tabbable), else the landmark. */
+function successorOf(
+  candidates: (Element | null | undefined)[],
+  landmark: () => HTMLElement | null,
+  control?: string,
+): HTMLElement | null {
+  const sibling = candidates.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected);
+  if (!sibling) return landmark();
+  const target = (control ? sibling.querySelector<HTMLElement>(control) : null) ?? focusTarget(sibling);
+  // A neighbour with nothing that takes focus (a row with no action): its focus() would do nothing.
+  return canTakeFocus(target) ? target : landmark();
 }
 
 /**

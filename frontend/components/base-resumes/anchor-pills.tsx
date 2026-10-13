@@ -3,6 +3,7 @@
 import { displayRoleTag, useRoleCategories } from "@/components/role-category-picker";
 import { Badge } from "@/components/ui/badge";
 import { countryName } from "@/lib/place-name";
+import { isRoleUnset } from "@/lib/role-groups";
 import { cn } from "@/lib/utils";
 import type { BaseResumeSummary } from "@/lib/types";
 
@@ -10,7 +11,7 @@ const ITEM_CLASS = "flex min-w-0 max-w-full";
 const PILL_CLASS = "max-w-48 min-w-0";
 // On a tinted footer the secondary fill (a step off the page) is the footer's own tone and the pill's shape
 // vanishes in light mode, so the pill takes the card's fill. Its text contrast is the card pair's, over 15:1.
-const ON_TINT_PILL_CLASS = "bg-card text-card-foreground";
+export const ON_TINT_PILL_CLASS = "bg-card text-card-foreground";
 
 /**
  * What a base resume's Target sets, as small pills: its country codes, role, company and focus.
@@ -28,7 +29,7 @@ export function AnchorPills({
   onTint?: boolean;
 }) {
   const { data: options } = useRoleCategories();
-  const roleSet = !(resume.role_category === "unknown" && !resume.role_label);
+  const roleSet = !isRoleUnset(resume);
   const texts = [
     showRole && roleSet ? displayRoleTag(resume.role_category, resume.role_label, options) : null,
     resume.company,

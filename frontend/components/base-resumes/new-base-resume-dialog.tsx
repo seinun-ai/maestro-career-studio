@@ -208,12 +208,14 @@ function NewBaseResumeForm({
   const [file, setFile] = useState<File | null>(null);
   const [fileRejected, setFileRejected] = useState<DropzoneRejection[]>([]);
   const slugsTaken = existingResumes.map((r) => r.slug);
-  // The color: random from the ones no other resume uses until the person chooses. The random number is
-  // drawn once per form, so the pick holds still while the list loads or the form re-renders.
+  // The color: a random preset no other resume uses, until the person chooses. The form stays mounted while the
+  // dialog is closed (keepMounted) and the list loads only once it opens, so there is no color to show or send
+  // until then (`null`): the server picks with the same rule when `color_hue` is absent. The random number is
+  // drawn once per form, so the pick holds still while the form re-renders.
   const [chosen, setChosen] = useState<number | null>(null);
   const [seed] = useState(Math.random);
   const others = useBaseResumes(false, { enabled: open }).data;
-  const randomHue = pickFreeHue((others ?? []).map((r) => r.color_hue), () => seed);
+  const randomHue = others ? pickFreeHue(others.map((r) => r.color_hue), () => seed) : null;
   const hue = chosen ?? randomHue;
   // Per instance: Getting started keeps one form per suggestion mounted at
   // once, and a fixed id would name the first (hidden) form's field.
@@ -367,7 +369,7 @@ function NewBaseResumeForm({
           role_category: coarseFromTag(tag),
           entity_ids: Array.from(selected),
           summary,
-          color_hue: hue,
+          ...(hue !== null && { color_hue: hue }),
         }),
       });
     }
@@ -382,7 +384,7 @@ function NewBaseResumeForm({
         form.append("display_name", display);
         form.append("slug", uniqueSlug(display, slugsTaken));
       }
-      form.append("color_hue", String(hue));
+      if (hue !== null) form.append("color_hue", String(hue));
       const identity = identityFromFavoredRole(tag);
       if (identity.role_category) form.append("role_category", identity.role_category);
       if (identity.role_label) form.append("role_label", identity.role_label);
@@ -399,7 +401,7 @@ function NewBaseResumeForm({
           body: JSON.stringify({
             new_slug: uniqueSlug(name || `${source} copy`, slugsTaken),
             new_display_name: display,
-            color_hue: hue,
+            ...(hue !== null && { color_hue: hue }),
           }),
         },
       );
@@ -432,7 +434,7 @@ function NewBaseResumeForm({
         slug: uniqueSlug(name, slugsTaken),
         display_name: display,
         data: EMPTY_DATA,
-        color_hue: hue,
+        ...(hue !== null && { color_hue: hue }),
         ...(tag
           ? tagBody
           : {}),
@@ -562,7 +564,7 @@ function NewBaseResumeForm({
             <ResumeColorPicker
               value={hue}
               onChange={setChosen}
-              pickedAtRandom={chosen === null}
+              pickedAtRandom={chosen === null && hue !== null}
               used={(others ?? []).map((r) => ({ hue: r.color_hue, name: baseResumeLabel(r.slug, [r]) }))}
             />
 

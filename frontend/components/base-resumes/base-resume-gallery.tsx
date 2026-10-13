@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import {
   GalleryCard,
@@ -13,11 +13,12 @@ import { CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbsoluteDateTime, formatLabeledAgo } from "@/lib/format-date";
 import { ResumeSwatch } from "@/components/visual";
 import { displayRoleTag, roleLabel, useRoleCategories } from "@/components/role-category-picker";
+import { groupByRole, isRoleUnset, type RoleGroup } from "@/lib/role-groups";
 import { resumeColorStyle } from "@/lib/resume-color";
 import { cn } from "@/lib/utils";
-import { baseResumeLabel, type BaseResumeSummary, type RoleCategory } from "@/lib/types";
+import { baseResumeLabel, type BaseResumeSummary } from "@/lib/types";
 
-import { AnchorPills } from "./anchor-pills";
+import { AnchorPills, ON_TINT_PILL_CLASS } from "./anchor-pills";
 import { BaseResumeThumbnail } from "./base-resume-thumbnail";
 
 /**
@@ -38,7 +39,7 @@ function BaseResumeCardBody({
   actions?: ReactNode;
 }) {
   const isArchived = !!resume.archived_at;
-  const roleUnset = resume.role_category === "unknown";
+  const roleUnset = isRoleUnset(resume);
   const name = baseResumeLabel(resume.slug, [resume]);
 
   return (
@@ -66,17 +67,17 @@ function BaseResumeCardBody({
                 {formatLabeledAgo(resume.updated_at, "Updated")}
               </span>
               <HealthListChip slug={resume.slug} />
-              {/* Card fill and a border in the footer's own text color: the default secondary fill and
-                  border are the tint's tone and would vanish on it. */}
+              {/* The default secondary fill is the tint's own tone and would vanish on it: the card fill shows. */}
               {isArchived && (
-                <Badge variant="secondary" className="bg-card text-card-foreground">
+                <Badge variant="secondary" className={ON_TINT_PILL_CLASS}>
                   Archived
                 </Badge>
               )}
               {roleUnset && (
                 <Badge
                   variant="outline"
-                  className="border-on-resume-container/40"
+                  // The default outline border is the tint's tone too: border and text take the footer's own color.
+                  className="border-on-resume-container/40 text-on-resume-container"
                   title="No target role. Set one in the resume to group it by role."
                 >
                   Role not set
@@ -92,41 +93,20 @@ function BaseResumeCardBody({
   );
 }
 
-type RoleGroup = { key: string; label: string | null; resumes: BaseResumeSummary[] };
-
-/** Resumes grouped by their role, in the order each role first appears in `resumes`. A resume with no role
- *  goes in a last group of its own (`label: null`). Archived ones stay in their group. */
-function groupByRole(resumes: BaseResumeSummary[], options: RoleCategory[] | undefined): RoleGroup[] {
-  const groups = new Map<string, RoleGroup>();
-  const unset: RoleGroup = { key: "", label: null, resumes: [] };
-  for (const r of resumes) {
-    if (r.role_category === "unknown" && !r.role_label) {
-      unset.resumes.push(r);
-      continue;
-    }
-    const label = displayRoleTag(r.role_category, r.role_label, options);
-    const key = label.toLowerCase();
-    const group = groups.get(key) ?? { key, label, resumes: [] };
-    group.resumes.push(r);
-    groups.set(key, group);
-  }
-  return [...groups.values(), ...(unset.resumes.length > 0 ? [unset] : [])];
-}
-
 function RoleSection({
   group,
   href,
   renderActions,
 }: {
-  group: RoleGroup;
+  group: RoleGroup<BaseResumeSummary>;
   href: (r: BaseResumeSummary) => string;
   renderActions?: (r: BaseResumeSummary) => ReactNode;
 }) {
-  const headingId = useId();
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+    // A plain div: the heading names the group for a screen reader, and a region per group would add landmarks.
+    <div className="flex flex-col gap-3">
       <div className="flex items-baseline gap-2">
-        <h2 id={headingId} className="text-title-small">
+        <h2 className="text-title-small">
           {group.label ?? "Role not set"}
         </h2>
         <span className="text-label-small text-muted-foreground">
@@ -148,7 +128,7 @@ function RoleSection({
           </GalleryCard>
         ))}
       </GalleryGrid>
-    </section>
+    </div>
   );
 }
 
@@ -165,9 +145,10 @@ export function BaseResumeGallery({
   renderActions?: (r: BaseResumeSummary) => ReactNode;
 }) {
   const { data: options } = useRoleCategories();
+  const labelOf = (r: BaseResumeSummary) => displayRoleTag(r.role_category, r.role_label, options);
   return (
     <div className="flex flex-col gap-6">
-      {groupByRole(resumes, options).map((group) => (
+      {groupByRole(resumes, labelOf).map((group) => (
         <RoleSection key={group.key} group={group} href={href} renderActions={renderActions} />
       ))}
     </div>

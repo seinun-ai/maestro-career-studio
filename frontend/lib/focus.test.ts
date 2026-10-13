@@ -9,6 +9,7 @@ import {
   focusIfStranded,
   focusReturnPoint,
   focusSuccessor,
+  focusSuccessorIn,
   focusTarget,
   holdsDraft,
 } from "./focus.ts";
@@ -83,6 +84,8 @@ class El {
     if (selector === "[inert]") return "inert" in this.attrs;
     const present = /^\[([\w-]+)\]$/.exec(selector); // a caller's control marker, e.g. `[data-chip]`
     if (present) return present[1] in this.attrs;
+    const valued = /^\[([\w-]+)="([^"]*)"\]$/.exec(selector); // e.g. `[data-slot="card"]`
+    if (valued) return this.attrs[valued[1]] === valued[2];
     throw new Error(`stand-in DOM: unknown selector ${selector}`);
   }
 
@@ -98,6 +101,10 @@ class El {
       if (deeper) return deeper;
     }
     return null;
+  }
+
+  querySelectorAll(selector: string): El[] {
+    return this.children.flatMap((kid) => [...(kid.matches(selector) ? [kid] : []), ...kid.querySelectorAll(selector)]);
   }
 
   focus(): void {
@@ -242,6 +249,48 @@ test("the only item hands focus to the list, then the main area", () => {
   assert.equal(back(), list, "the list outlives the grid");
   list.remove();
   assert.equal(back(), main);
+});
+
+/** A grouped gallery: cards in two grids under headings, in one `tabIndex={-1}` region inside the main area. */
+function groupedGallery() {
+  const card = (id: string) => h("div", { id, "data-slot": "card" }, h("a", { href: `/${id}` }), h("button"));
+  const cards = ["a", "b", "c"].map(card);
+  const first = h("section", {}, h("h2"), h("div", {}, cards[0], cards[1]));
+  const second = h("section", {}, h("h2"), h("div", {}, cards[2]));
+  const region = h("section", { tabindex: "-1" }, first, second);
+  const main = h("main", { id: "main-content", tabindex: "-1" }, region);
+  doc.body.append(main);
+  return { cards, region, main };
+}
+
+test("a grouped card hands focus to the next card in the flat list, across a group", () => {
+  const { cards } = groupedGallery();
+  const back = focusSuccessorIn(asEl(cards[1]), '[data-slot="card"]');
+  cards[1].remove();
+  assert.equal(back(), cards[2].children[0], "the last card of one group hands focus to the first of the next");
+});
+
+test("the last grouped card hands focus to the previous one, in whichever group it is", () => {
+  const { cards } = groupedGallery();
+  const back = focusSuccessorIn(asEl(cards[2]), '[data-slot="card"]');
+  cards[2].remove();
+  assert.equal(back(), cards[1].children[0]);
+});
+
+test("the only grouped card hands focus to the region, then the main area", () => {
+  const { cards, region, main } = groupedGallery();
+  cards[0].remove();
+  cards[2].remove();
+  const back = focusSuccessorIn(asEl(cards[1]), '[data-slot="card"]');
+  assert.equal(back(), region, "never the card itself, though it is still attached");
+  region.remove();
+  assert.equal(back(), main);
+});
+
+test("a card that is not in the list, or none, falls back to the main area", () => {
+  const { main } = groupedGallery();
+  assert.equal(focusSuccessorIn(asEl(h("div", { "data-slot": "card" })), '[data-slot="card"]')(), main);
+  assert.equal(focusSuccessorIn(null, '[data-slot="card"]')(), main);
 });
 
 /** A table: three rows, each a focusable row holding a status chip and a ⋯. */

@@ -5,86 +5,113 @@ Source pins in the style of test_frontend_resume_swatch.py: the frontend has no 
 
 from pathlib import Path
 
+from tests._jsx_pins import open_tag, squash
+
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 _NEW = (_FRONTEND / "components/base-resumes/new-base-resume-dialog.tsx").read_text(encoding="utf-8")
 _TARGET_FILE = (_FRONTEND / "components/role-category-picker.tsx").read_text(encoding="utf-8")
 _STUDIO = (_FRONTEND / "components/resume-editor/editor-body.tsx").read_text(encoding="utf-8")
 _PICKER = (_FRONTEND / "components/base-resumes/resume-color-picker.tsx").read_text(encoding="utf-8")
 
-
-def _squash(src: str) -> str:
-    return " ".join(src.split())
+_SEND = "...(hue !== null && { color_hue: hue })"
 
 
 def _target() -> str:
     return _TARGET_FILE[_TARGET_FILE.index("export function TargetDialog(") :]
 
 
+def _hook() -> str:
+    return squash(_TARGET_FILE[_TARGET_FILE.index("function useAnchorSave<") : _TARGET_FILE.index("/** A Target field:")])
+
+
 # ── The New base resume dialog ─────────────────────────────────────────────
 
 
 def test_the_new_dialog_mounts_the_picker_and_starts_at_a_free_random_color():
-    new = _squash(_NEW)
-    assert "<ResumeColorPicker" in new
+    new = squash(_NEW)
+    picker = open_tag(_NEW, "ResumeColorPicker")
     assert "pickFreeHue(" in new and "useBaseResumes(false" in new
+    # Drawn once per form, so the pick holds still while the form re-renders.
     assert "const [seed] = useState(Math.random);" in new
-    # Random until the person chooses: the hint is on while nothing was chosen.
-    assert "pickedAtRandom={chosen === null}" in new
-    assert "const hue = chosen ?? randomHue;" in new
-    assert "onChange={setChosen}" in new
+    # The "picked at random" hint is for a pick nobody made, and only once there is one.
+    assert "pickedAtRandom={chosen === null && hue !== null}" in picker
+    assert "onChange={setChosen}" in picker
     # The picker's `used` is the OTHER resumes, by name.
-    assert "baseResumeLabel(r.slug, [r])" in new
+    assert "baseResumeLabel(r.slug, [r])" in picker
 
 
-def test_every_create_path_sends_the_color():
-    request = _squash(_NEW[_NEW.index("const request = async () => {") : _NEW.index("const create = useMutation")])
+def test_the_new_dialog_holds_no_color_until_the_list_has_loaded():
+    """The form stays mounted while closed and loads the list on open: until then there is nothing to pick from, so
+    nothing is shown or sent, and the server picks with the same rule."""
+    new = squash(_NEW)
+    assert "const randomHue = others ? pickFreeHue(" in new and ": null;" in new
+    assert "const hue = chosen ?? randomHue;" in new
+
+
+def test_every_create_path_sends_the_color_when_it_is_known():
+    request = squash(_NEW[_NEW.index("const request = async () => {") : _NEW.index("const create = useMutation")])
     # kb, duplicate and blank are JSON bodies; the file lane is FormData.
-    assert request.count("color_hue: hue,") == 3
-    assert 'form.append("color_hue", String(hue));' in request
+    assert request.count(_SEND) == 3
+    assert 'if (hue !== null) form.append("color_hue", String(hue));' in request
 
 
-def test_start_over_throws_a_chosen_color_away_with_the_rest_of_the_draft():
-    assert "chosen !== null" in _squash(_NEW[_NEW.index("const touched =") :])
+def test_a_chosen_color_counts_as_a_draft_that_start_over_throws_away():
+    assert "chosen !== null" in squash(_NEW[_NEW.index("const touched =") :])
 
 
 # ── The Target dialog ──────────────────────────────────────────────────────
 
 
-def test_target_saves_the_color_on_commit_not_on_every_change():
-    dialog = _squash(_target())
-    picker = dialog[dialog.index("<ResumeColorPicker") : dialog.index("/>", dialog.index("<ResumeColorPicker")) + 2]
-    assert "value={live}" in picker
-    assert "onChange={setLive}" in picker
-    assert "onCommit={(hue) => saveColor.mutate(hue, { onError: () => setLive(colorHue) })}" in picker
+def test_target_saves_a_color_only_when_the_choice_settles():
+    """onChange is every drag step and never saves; onCommit saves once."""
+    picker = open_tag(_target(), "ResumeColorPicker")
+    change = picker[picker.index("onChange=") : picker.index("onCommit=")]
+    commit = picker[picker.index("onCommit=") :]
+    assert "mutate" not in change
+    assert commit.count("saveColor.mutate(") == 1
     assert "pickedAtRandom" not in picker
-    assert "const saveColor = useAnchorSave(slug, \"color_hue\");" in dialog
 
 
-def test_target_keeps_the_live_value_in_state_and_follows_the_saved_one():
-    dialog = _squash(_target())
-    assert "const [live, setLive] = useState(colorHue);" in dialog
-    # A changed saved color (a save landing, or another tab) is adopted; a failed save puts it back.
-    assert "if (seen !== colorHue) {" in dialog and "setLive(colorHue);" in dialog
+def test_target_shows_the_drag_then_the_pending_save_then_the_saved_color_with_no_copy_in_state():
+    dialog = squash(_target())
+    assert "const [drag, setDrag] = useState<number | null>(null);" in dialog
+    assert "const shown = drag ?? (saveColor.isPending ? saveColor.variables : colorHue);" in dialog
+    assert "value={shown}" in open_tag(_target(), "ResumeColorPicker")
+    # A settled choice hands the display from the drag to the save; a failed save falls back to the saved color.
+    assert "setDrag(null);" in dialog
+    assert "setLive" not in dialog and "seen" not in dialog.split("useAnchorSave", 1)[1].split("return (", 1)[0]
+
+
+def test_identity_saves_for_one_resume_run_in_order_and_each_field_has_one_toast():
+    hook = _hook()
+    assert "scope: { id: `identity-${slug}` }," in hook
+    assert "{ id: `anchor-${field}` }" in hook and hook.count("{ id: `anchor-${field}` }") == 2
+    assert 'scope: { id: `identity-${slug}` }, // in step with the other identity saves' in squash(_TARGET_FILE)
 
 
 def test_the_color_save_invalidates_both_list_keys_and_the_detail_key_and_reports_an_error():
-    hook = _squash(_TARGET_FILE[_TARGET_FILE.index("function useAnchorSave<") : _TARGET_FILE.index("/** A Target field:")])
+    hook = _hook()
     assert 'qc.setQueryData(["base-resumes", slug], updated);' in hook
     assert 'qc.invalidateQueries({ queryKey: ["base-resumes"] });' in hook  # prefix: both list keys and the detail key
-    assert "toast.error(couldnt(`save the ${FIELD_WORDS[field]}`, err))" in hook
-    assert 'color_hue: "color"' in _squash(_TARGET_FILE)
+    assert "toast.error(couldnt(`save the ${FIELD_WORDS[field]}`, err)" in hook
+    assert 'color_hue: "color"' in squash(_TARGET_FILE)
+
+
+def test_a_hue_of_zero_is_a_color_not_a_cleared_one():
+    """0 is falsy: the saved/cleared word must test `!== null` for the color, as `Boolean(updated[field])` would say cleared."""
+    assert 'field === "color_hue" ? updated.color_hue !== null' in _hook()
 
 
 def test_the_studio_passes_the_saved_color_to_target():
-    dialog = _squash(_STUDIO[_STUDIO.index("<TargetDialog") :][:400])
-    assert "colorHue={(live ?? initial).color_hue}" in dialog
+    assert "colorHue={(live ?? initial).color_hue}" in squash(_STUDIO[_STUDIO.index("<TargetDialog") :][:400])
 
 
 # ── The picker, on Safari ──────────────────────────────────────────────────
 
 
-def test_the_slider_latches_open_on_pointer_down_too():
+def test_the_slider_latches_open_on_pointer_down_and_on_focus():
     """Safari does not focus a range input on click, so onFocus alone never latches the slider before a drag."""
-    latch = "if (customOpen === null) setCustomOpen(true);"
-    assert f"onPointerDown={{() => {{ {latch} }}}}" in _squash(_PICKER)
-    assert f"onFocus={{() => {{ {latch} }}}}" in _squash(_PICKER)
+    slider = open_tag(_PICKER, "input", after='type="range"'.replace('type="range"', "<input id={sliderId}"))
+    latch = "{() => { if (customOpen === null) setCustomOpen(true); }}"
+    assert f"onPointerDown={latch}" in slider
+    assert f"onFocus={latch}" in slider
