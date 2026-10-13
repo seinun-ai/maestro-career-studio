@@ -620,7 +620,7 @@ def test_popup_with_search_commits_the_searched_option(page, load):
 
 
 # --- workday_misses.html (owner's live run 2026-10-13, run traces + screenshots)
-# Timings in the fixture: stage one 300 ms, stage two 900 ms, a skills pill 600 ms
+# Timings in the fixture: stage one 300 ms, stage two 700 ms, a skills pill 600 ms
 # after the click, the Country redraw 400 ms after the choice.
 SKILLS_PILLS = "document.getElementById('skills').closest('[data-automation-id=multiSelectContainer]')"
 
@@ -653,6 +653,8 @@ def test_misses_phone_code_holds_one_pill_and_the_extension_is_optional_and_empt
     assert page.evaluate("document.getElementById('phone-code').closest('[data-automation-id=multiSelectContainer]')"
                          ".dataset.uxiWidgetType") == "multiselect"
     assert page.input_value("#phone-ext") == "" and oracle(page, "phoneExt") is None
+    assert page.inner_text("label[for=fos]") == "Field of Study*" and page.get_attribute("#fos", "aria-required") == "true"
+    assert page.input_value("#fos") == "" and pills(page, "fos") == [] and oracle(page, "fieldOfStudy") == ""
     assert page.get_attribute("#phone-ext", "aria-required") is None and "*" not in page.inner_text("label[for=phone-ext]")
     assert page.inner_text("label[for=phone-ext]") == "Phone Extension"
 
@@ -695,14 +697,16 @@ def test_misses_skills_answer_in_two_stages_and_other_clicks_are_never_ignored(p
     page.click("#skills")
     page.wait_for_selector(LIST)
     page.fill("#skills", "Git")
-    page.evaluate("""() => { window.stages = [];
+    page.evaluate("""() => { window.stages = []; window.at = [];
       const list = document.querySelector('[data-automation-id=activeListContainer]');
       new MutationObserver(() => { const n = list.querySelectorAll('[role=option]').length;
-        if (window.stages[window.stages.length - 1] !== n) window.stages.push(n); })
+        if (window.stages[window.stages.length - 1] !== n) { window.stages.push(n); window.at.push(performance.now()); } })
         .observe(list, { childList: true, subtree: true }); }""")
     page.keyboard.press("Enter")
     wait_rows(page, ["Git", "GitHub"])
     assert page.evaluate("window.stages") == [1, 2]   # one row, then the full list
+    gap = page.evaluate("window.at[1] - window.at[0]")
+    assert 300 <= gap < 500   # shorter than the engine's 500 ms quiet period
     for text in ("Git", "GitHub"):   # two quick picks both land
         tick_of(page, text).first.click()
     wait_oracle(page, "slowSkills", ["Git", "GitHub"])
@@ -737,8 +741,10 @@ def test_misses_the_first_pandas_row_text_click_is_ignored_and_the_second_works(
     page.wait_for_timeout(900)
     assert pills(page, "skills") == [] and oracle(page, "slowSkills") == []
     assert page.evaluate("window.firstRow.isConnected") is False
-    text_of(page, "Pandas").click()
-    text_of(page, "Pandas").click()   # a repeat while the pick is pending changes nothing
+    # Both clicks in ONE task, so load cannot push the repeat past the 600 ms pick window.
+    page.evaluate("""() => { const t = [...document.querySelectorAll(
+        '[data-automation-id=activeListContainer] [role=option] [data-automation-id=promptOption]')]
+        .find((p) => p.textContent === 'Pandas'); t.click(); t.click(); }""")   # a repeat while the pick is pending changes nothing
     wait_oracle(page, "slowSkills", ["Pandas"])
     page.wait_for_timeout(PAST_SEARCH_MS)
     assert pills(page, "skills") == ["Pandas"] and oracle(page, "slowSkills") == ["Pandas"]

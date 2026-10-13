@@ -54,11 +54,11 @@
     <div data-automation-id="multiselectInputContainer"><div>
       <input id="skills" type="text" data-uxi-widget-type="selectinput"></div></div>
   </div></div>
-<div data-automation-id="formField-fieldOfStudy"><label for="fos">Field of Study</label>
+<div data-automation-id="formField-fieldOfStudy"><label for="fos">Field of Study*</label>
   <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
     <ul data-automation-id="selectedItemList" role="listbox"></ul>
     <div data-automation-id="multiselectInputContainer"><div>
-      <input id="fos" type="text" data-uxi-widget-type="selectinput"></div></div>
+      <input id="fos" type="text" aria-required="true" data-uxi-widget-type="selectinput"></div></div>
   </div></div>
 
 <div data-automation-id="formField-country">
@@ -115,6 +115,8 @@
 
   // ---- Country (§3/§8a popup) and the section it redraws.
   const COUNTRIES = ["Select One", "United States of America", "Canada", "India"];
+  // A caller's wait after a Country choice must exceed this (the engine waits
+  // for a quiet period of at least 600 ms after a choice).
   const REDRAW_MS = 400;
   oracle.countryChoice = "";
   const redrawAddress = () => {
@@ -195,9 +197,12 @@
     fos: { key: "fieldOfStudy", multi: false, leaves: FIELDS, pillMs: 0 },
   };
   // Two stages (the traces: a single row first, the full list after). The
-  // notes give no gap beyond "stage two comes later"; these are the traces' round numbers.
+  // notes give no gap beyond "stage two comes later". The 400 ms gap is
+  // deliberately SHORTER than the engine's 500 ms quiet period (QUIET_MS in
+  // fill-core.js), so an engine that waits for quiet cannot settle on stage
+  // one's single row.
   const STAGE_1_MS = 300;
-  const STAGE_2_MS = 900;
+  const STAGE_2_MS = 700;
   const state = { "phone-code": [CODES[0]], skills: [], fos: [] };
   oracle.phoneCode = CODES[0];
   oracle.slowSkills = [];
