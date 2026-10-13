@@ -391,6 +391,16 @@ def test_the_loops_unconfirmed_and_unsupported_are_accepted_failures():
     assert {"unconfirmed", "unsupported"} <= FAILURE_OUTCOMES
 
 
+def test_the_loops_left_blank_is_accepted_and_neutral():
+    """An optional field nothing answered, left empty on purpose: neither a fill
+    nor a failure, so it moves no rate on the coverage card."""
+    batch = TelemetryBatch(page_host="x.myworkdayjobs.com", action="loop_fill", observations=[
+        {"label": "Phone Extension", "kind": "text", "host": "x.myworkdayjobs.com",
+         "outcome": "left_blank", "rule_id": "route:none"}])
+    assert [o.outcome for o in batch.observations] == ["left_blank"]
+    assert "left_blank" in NEUTRAL_OUTCOMES
+
+
 def test_loop_fill_is_an_accepted_action():
     batch = TelemetryBatch(
         page_host="boards.greenhouse.io", action="loop_fill", observations=[]

@@ -3826,6 +3826,37 @@ def test_a_group_with_no_rows_is_not_shown(tmp_path):
         ("1 filled", []), ("Needs your answer 1", ["Preferred shift"]), ("1 already filled", [])]
 
 
+def test_optional_fields_left_blank_are_a_count_never_a_question(tmp_path):
+    """An optional field nothing answered is said once, as a count among the
+    lines for what the loop left alone: no row to click, nothing under Needs
+    your answer, and it adds nothing to the note's count of open fields."""
+    one = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
+        *DONE_REPORT["fields"], _field("n1", "Preferred shift", "needs_answer"),
+        _field("e1", "Phone Extension", "left_blank", route="none", lastOutcome="no_fact")]})
+    assert _loop_groups(one["settled"]["rail"]) == [
+        ("1 filled", []), ("Needs your answer 1", ["Preferred shift"]),
+        ("1 already filled · 1 optional field left blank", [])]
+    [note] = _by_class(one["settled"]["foot"], "note")
+    assert note["text"] == "1 field needs your answer."
+    two = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
+        *DONE_REPORT["fields"], _field("n1", "Preferred shift", "needs_answer"),
+        _field("e1", "Phone Extension", "left_blank"), _field("e2", "Fax", "left_blank")]})
+    assert _loop_groups(two["settled"]["rail"])[-1] == ("1 already filled · 2 optional fields left blank", [])
+
+
+def test_a_loop_that_left_only_optional_fields_blank_is_finished(tmp_path):
+    """Nothing is open, so the step ticks like any finished fill."""
+    out = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
+        *DONE_REPORT["fields"], _field("e1", "Fax", "left_blank")]})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == "Fill finished. Review before you submit."
+    assert _rows(_rail_rows({"regions": out["settled"]}))["fill"]["state"] == "done"
+    blank = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [_field("e1", "Fax", "left_blank")]})
+    [note] = _by_class(blank["settled"]["foot"], "note")
+    assert note["text"] == "Nothing left to fill here. Review before you submit."
+    assert blank["writes"] == []
+
+
 def test_unconfirmed_and_unsupported_rows_are_listed_never_counted_filled(tmp_path):
     """A value the page shows but never confirmed is its own check-it list,
     never in the Filled count; a control that ignored every synthetic input

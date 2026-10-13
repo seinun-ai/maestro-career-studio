@@ -114,11 +114,15 @@ ObservationOutcome = Literal[
     # ignored every synthetic input the engine sent. A value that landed
     # without being chosen as the answer (a group click that committed one, a
     # search that picked while exploring) reuses `filled_unverified`.
+    # `left_blank` is an optional field nothing answered, left empty on
+    # purpose (no fact, nothing in it, not flagged invalid): the loop did not
+    # ask the user about it.
     "verified",
     "closest_filled",
     "assumed_filled",
     "partial",
     "needs_answer",
+    "left_blank",
     "cannot_operate",
     "user_edited",
     "prefilled",

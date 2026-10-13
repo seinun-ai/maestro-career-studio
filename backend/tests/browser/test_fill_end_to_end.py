@@ -678,7 +678,8 @@ def test_an_icims_dropdown_showing_make_a_selection_is_filled(e2e_page):
     offered = [o["text"] for p in out["posts"] if p["path"] == "/api/autofill/pick"
                for fld in p["body"]["fields"] for o in fld["options"]]
     assert "BS" in offered and not [t for t in offered if "Make a Selection" in t]
-    assert out["by_question"]["State/Province"]["status"] == "needs_answer"   # unanswered, not "already"
+    # Unanswered, not "already": optional with no fact, so left blank rather than asked.
+    assert out["by_question"]["State/Province"]["status"] == "left_blank"
 
 
 def test_icims_date_parts_get_their_own_part_and_a_current_job_no_end(e2e_page, monkeypatch):
@@ -779,3 +780,17 @@ def test_a_held_value_with_no_fact_is_already_there(e2e_page):
     study = out["by_question"]["Field of Study"]
     assert (study["status"], study["lastOutcome"]) == ("needs_answer", "no_fact"), study
     assert oracle(page, "fieldOfStudy") == ""
+
+
+def test_an_optional_field_with_no_fact_is_left_blank_and_a_required_one_is_asked(e2e_page):
+    """Live 2026-10-13: Phone Extension (optional, empty, nothing in the profile)
+    was asked, so a question sat on the user's list that skipping answers. It is
+    left blank and reported so; Field of Study, which the page marks required,
+    is still the user's to answer."""
+    page = e2e_page
+    out = _run(page, html=fixture_html("workday_misses.html"), limits={"MAX_ROUNDS": 3}, map={})
+    ext = out["by_question"]["Phone Extension"]
+    assert (ext["status"], ext["lastOutcome"]) == ("left_blank", "no_fact"), ext
+    assert page.input_value("#phone-ext") == ""
+    study = out["by_question"]["Field of Study"]
+    assert (study["status"], study["required"]) == ("needs_answer", True), study

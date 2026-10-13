@@ -247,7 +247,7 @@ def test_a_revert_stays_reported_when_the_recommit_cannot_find_its_option(page, 
 # ---------- "Volunteer Experience" above "Work Experience": which section wins one-section-per-kind
 
 
-VOLUNTEER = [f("v1", question="Organization", section="Volunteer Experience 1")]
+VOLUNTEER = [f("v1", question="Organization", section="Volunteer Experience 1", required=True)]
 
 
 def test_volunteer_experience_read_as_none_leaves_work_experience_placed(page, load):

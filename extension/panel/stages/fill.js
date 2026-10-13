@@ -638,6 +638,8 @@
     }
     const left = [
       [having("already").length, (n) => `${n} already filled`],
+      // An optional field nothing answered: a count, never a row to answer (it is not in LOOP_OPEN).
+      [having("left_blank").length, (n) => `${build.plural(n, "optional field")} left blank`],
       [having("blocked").length, (n) => `${n} left to you by policy`],
       [having("yours").length, (n) => `${n} you edited`],
     ].filter(([n]) => n).map(([n, say]) => say(n));

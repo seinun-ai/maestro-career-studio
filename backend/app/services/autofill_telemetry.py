@@ -61,8 +61,8 @@ NON_FORM_KINDS = frozenset({"signal"})
 # unsupported — a control the engine could not work, or one that ignored every
 # synthetic input — and unconfirmed — a value the page never confirmed — are
 # its failures, the coverage gap this card exists to show. partial,
-# needs_answer, prefilled, blocked and user_edited are neutral: nothing
-# answered the field, or the loop rightly left it alone.
+# needs_answer, left_blank, prefilled, blocked and user_edited are neutral:
+# nothing answered the field, or the loop rightly left it alone.
 SUCCESS_OUTCOMES = frozenset(
     {
         "filled",

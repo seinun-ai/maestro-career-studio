@@ -128,15 +128,17 @@
  *                  partial | unconfirmed (a value that shows but was never
  *                  confirmed; or one that reverted and was not re-committed
  *                  in time, `timeout`, or reverted again, `unstable`) |
- *                  needs_answer |
+ *                  needs_answer | left_blank (an optional field nothing
+ *                  answered, left empty on purpose) |
  *                  cannot_operate | unsupported (the widget ignored every
  *                  synthetic input) — what the panel shows.
  *   telemetry      the report status as the contract's outcome (verified,
  *                  closest_filled, assumed_filled, partial, prefilled, blocked,
- *                  user_edited, unconfirmed, needs_answer, cannot_operate,
- *                  unsupported; filled_unverified for a needs_answer row a value
- *                  landed on without being chosen as the answer: a group that
- *                  committed, a search that picked while exploring) —
+ *                  user_edited, unconfirmed, needs_answer, left_blank,
+ *                  cannot_operate, unsupported; filled_unverified for a
+ *                  needs_answer row a value landed on without being chosen as
+ *                  the answer: a group that committed, a search that picked
+ *                  while exploring) —
  *                  buildLoopObservations, value-free.
  *
  * THE RUN TRACE (`report.trace`, app/schemas/autofill_trace.py) records each
@@ -211,7 +213,7 @@
   const FID = /^[A-Za-z0-9_-]{1,64}$/;
   const HISTORY_ENTRY = /^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up|choose) -> [a-z_]+( \([a-z_]+\))?$/;
   const FINAL = new Set(["verified", "closest", "assumed", "already", "blocked", "yours", "partial", "unconfirmed",
-    "needs_answer", "cannot_operate", "unsupported"]);
+    "needs_answer", "left_blank", "cannot_operate", "unsupported"]);
   // What the engine itself committed and confirmed: the only rows a sweep may
   // reopen. `unconfirmed` and `unsupported` are final, never filled.
   const DONE = new Set(["verified", "closest", "assumed", "partial"]);
@@ -1428,6 +1430,14 @@
     // own write for an earlier question, never an answer.
     const holdsPill = (f, row) => f.shape === "search" && !f.invalid && !row.leftover
       && Array.isArray(f.committed) && f.committed.some((v) => v != null && String(v).trim() !== "");
+    // An optional field with no fact and nothing in it is left empty: asking
+    // it (Workday's Phone Extension) puts a question on the user's list that
+    // skipping answers. Never one the page flags invalid (a required star the
+    // reader missed shows up here), one holding something (a value the reader
+    // could not tell from a placeholder), or one carrying the engine's own
+    // earlier write.
+    const leftBlank = (f, row) => !f.required && !f.invalid && !row.leftover
+      && [f.committed].flat().every((v) => v == null || String(v).trim() === "");
     const routed = (open) => {
       const texts = [];
       const choices = [];
@@ -1439,6 +1449,7 @@
         } else if (row.route === "none" && row.why) {
           finish(f, "needs_answer", { lastOutcome: row.why, answer: WHY[row.why] });
         } else if (row.route === "none" && holdsPill(f, row)) finish(f, "already");
+        else if (row.route === "none" && leftBlank(f, row)) finish(f, "left_blank", { lastOutcome: "no_fact" });
         else if (!row.route || row.route === "none") finish(f, "needs_answer", { lastOutcome: row.route ? "no_fact" : "not_mapped" });
         else if (row.route === "blocked") finish(f, "blocked", { lastOutcome: "blocked" });
         else if (row.route === "free_text") {
@@ -1899,7 +1910,7 @@
   const TELEMETRY_OUTCOME = {
     verified: "verified", closest: "closest_filled", assumed: "assumed_filled", partial: "partial",
     already: "prefilled", blocked: "blocked", yours: "user_edited", unconfirmed: "unconfirmed",
-    needs_answer: "needs_answer", cannot_operate: "cannot_operate", unsupported: "unsupported",
+    needs_answer: "needs_answer", left_blank: "left_blank", cannot_operate: "cannot_operate", unsupported: "unsupported",
   };
   // A needs_answer row a value landed on without being chosen as the answer
   // (a group click that committed one, a search or a keyboard open that

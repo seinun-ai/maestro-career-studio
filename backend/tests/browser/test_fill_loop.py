@@ -10,6 +10,7 @@ import pytest
 
 from app.schemas.autofill_choose import ChooseRequest
 from app.schemas.autofill_fill import MapRequest, PickRequest, SectionsRequest, StepRequest
+from app.schemas.autofill_telemetry import TelemetryBatch
 from app.schemas.autofill_trace import RunTrace
 from tests.browser.conftest import EXTENSION
 
@@ -354,6 +355,40 @@ def test_a_one_answer_search_box_that_already_holds_a_value_is_left_alone(page, 
               pick={"k": {"oids": ["o1"], "reason": "matched"}})
     assert statuses(out) == {"k": "already"}
     assert not actions(out) and "/api/autofill/pick" not in out["calls"]
+
+
+def test_an_optional_field_with_no_fact_is_left_blank_not_asked(page, load):
+    """Workday's Phone Extension: optional, empty, nothing in the profile. Asking it
+    puts a question on the user's list that skipping answers; the report says it
+    was left blank, on purpose."""
+    out = run(page, load, frames=[[f("e", question="Phone Extension")]],
+              map={"e": {"route": "none"}})
+    assert (row(out, "e")["status"], row(out, "e")["lastOutcome"]) == ("left_blank", "no_fact")
+    assert not actions(out)
+    # Its telemetry outcome is its own, and the trace the run stores accepts the status (`run` validates it).
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert [o["outcome"] for o in obs] == ["left_blank"]
+    TelemetryBatch(page_host="x.test", action="loop_fill", observations=obs)
+
+
+def test_a_required_field_with_no_fact_is_asked(page, load):
+    out = run(page, load, frames=[[f("e", question="Field of Study", required=True)]],
+              map={"e": {"route": "none"}})
+    assert (row(out, "e")["status"], row(out, "e")["lastOutcome"]) == ("needs_answer", "no_fact")
+
+
+def test_an_optional_field_the_page_marks_invalid_is_asked(page, load):
+    # Task 13 reads the page's errors after Next: a star the page never drew still shows here.
+    out = run(page, load, frames=[[f("e", question="Phone Extension", invalid=True)]],
+              map={"e": {"route": "none"}})
+    assert statuses(out) == {"e": "needs_answer"}
+
+
+def test_an_optional_field_holding_text_it_does_not_count_as_an_answer_is_asked(page, load):
+    # Something is in the box (a placeholder the reader could not tell from a value): leave the call to the user.
+    out = run(page, load, frames=[[f("e", question="Phone Extension", committed="ext.")]],
+              map={"e": {"route": "none"}})
+    assert statuses(out) == {"e": "needs_answer"}
 
 
 def test_radio_rows_turn_a_one_item_set_into_one_answer(page, load):
@@ -1596,6 +1631,7 @@ def test_a_commit_explore_could_not_take_back_is_left_for_the_user(page, load):
 def work(n, **kw):
     """Work Experience entry n's Job Title and Company, as the inventory lists them."""
     sec = {"section": f"Work Experience {n}", "repeatIndex": n - 1}
+    kw.setdefault("required", True)   # as the forms mark them: an optional field with no fact is left blank
     return [f(f"t{n}", question="Job Title", **sec, **kw), f(f"c{n}", question="Company", **sec, **kw)]
 
 
@@ -2404,7 +2440,7 @@ def test_only_a_date_slot_on_a_part_control_is_narrowed(page, load):
 def test_an_end_date_whose_job_is_unclear_is_left_with_its_own_note(page, load):
     """/map left an end date because the entry's job could not be told (its
     `why`): the profile has the date, so the row never says "no fact"."""
-    out = run(page, load, frames=[[f("e", question="End Date: Year", part="year"), f("n", question="Nickname")]],
+    out = run(page, load, frames=[[f("e", question="End Date: Year", part="year"), f("n", question="Nickname", required=True)]],
               map={"e": {"route": "none", "why": "unclear_job"}, "n": {"route": "none"}})
     assert statuses(out) == {"e": "needs_answer", "n": "needs_answer"}
     assert (row(out, "e")["lastOutcome"], row(out, "e")["answer"]) == (
