@@ -671,3 +671,55 @@ def test_the_inventory_lists_no_box_that_declares_itself_a_password_by_autocompl
                "<label>Current <input autocomplete='current-password'></label>"
                "<label>Nickname <input autocomplete='nickname'></label>", SOURCES)
     assert [f["question"] for f in _inventory(page, consentForms=True, runId="r1")] == ["Nickname"]
+
+
+# ---------- the employer's apply link (queued-run plan Task 16) ----------
+
+def apply_link(page):
+    return page.evaluate(f"() => {READER}.applyLink()")
+
+
+def _served(page, host, html):
+    """The page served under `host`, so "off the site" has a site to be off (the context is
+    offline: the route only answers the page request)."""
+    page.route(f"https://{host}/job", lambda route: route.fulfill(
+        status=200, content_type="text/html", body=html))
+    page.goto(f"https://{host}/job")
+    for src in SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("label", ["Apply on company site", "Apply on the company's website",
+                                   "Apply on employer site", "Apply now", "Apply"])
+def test_an_absolute_link_to_another_site_worded_as_apply_is_the_employers(page, label):
+    _served(page, "www.linkedin.com",
+            f'<h1>Analyst</h1><a href="https://careers.acme.example/apply/9?src=li">{label}</a>')
+    assert apply_link(page) == "https://careers.acme.example/apply/9?src=li"
+
+
+def test_an_apply_link_that_stays_on_the_board_is_not_one(page):
+    """LinkedIn / Indeed's own Apply: same host, so no employer link."""
+    _served(page, "www.indeed.com",
+            '<a href="https://www.indeed.com/applystart?jk=1">Apply now</a>'
+            '<a href="/applystart?jk=1">Apply</a>')
+    assert apply_link(page) is None
+
+
+@pytest.mark.parametrize("href", ["javascript:void(0)", "/apply", "apply", "#apply", "mailto:a@b.test",
+                                  "ftp://careers.acme.example/x", "http://", "https:///apply"])
+def test_a_script_relative_or_non_http_apply_href_is_not_a_link(page, href):
+    _served(page, "www.linkedin.com", f'<a href="{href}">Apply now</a>')
+    assert apply_link(page) is None
+
+
+def test_only_a_visible_link_worded_as_apply_counts(page):
+    _served(page, "www.linkedin.com",
+            '<a href="https://tracker.example/x">Read more</a>'
+            '<a href="https://careers.acme.example/hidden" style="display:none">Apply now</a>'
+            '<a href="https://careers.acme.example/real">Apply now</a>')
+    assert apply_link(page) == "https://careers.acme.example/real"
+
+
+def test_a_button_has_no_href_to_read(page):
+    _served(page, "www.linkedin.com", "<button>Apply now</button>")
+    assert apply_link(page) is None

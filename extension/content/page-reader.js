@@ -18,7 +18,10 @@
  * CAPTCHAs are refused and park. The password is a parameter of that one call: never stored, never
  * logged, never in the return value (a fixed reason word, nothing else).
  *
- * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, advance, signIn }.
+ * `applyLink` / `applyTarget` read the EMPLOYER's apply link off the posting page the user is
+ * viewing (design Part 7): an absolute http(s) link to another site, never fetched, never followed.
+ *
+ * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, advance, signIn, applyUrl, applyLink, applyTarget }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -27,6 +30,11 @@
   const APPLY_TEXT = /^\s*apply( now| for this job)?\s*$/i;
   const CONFIRMATION = /thank you for (applying|your application)|application (was )?(submitted|received)|we('ve| have) received your application/i;
   const CLOSED = /no longer (accepting applications|available)|this (job|position) (has been|is) (closed|filled)/i;
+  // An external Apply link often says where it goes ("Apply on company site"), which APPLY_TEXT
+  // alone would not match; the link reader accepts either.
+  const APPLY_OFFSITE_TEXT = /^\s*apply\b[^.]{0,30}\b(company|employer)(?:'s|\u2019s)?\s+(?:web)?site\s*$/i;
+  // The backend's ceiling on `apply_url` (a longer one is a 422 that would lose the whole save).
+  const MAX_APPLY_URL = 2048;
   const BOARD_HOST = /(^|\.)(linkedin|indeed)\.com$/i;
   const CONFIRM_PASSWORD = /confirm|re-?enter|re-?type|repeat|verify/i;
   const ONE_TIME_CODE = /\botp\b|one[- ]?time|verification code|security code|confirmation code|authentication code|passcode/i;
@@ -167,6 +175,40 @@
     };
   }
 
+  const withoutWww = (host) => String(host ?? "").toLowerCase().replace(/^www\./, "");
+
+  /** `href` when it is an absolute http(s) address on a DIFFERENT site from this page's, else
+   * null. Relative, `javascript:`, `mailto:` and same-site addresses are not an employer's link:
+   * a board's own Apply (LinkedIn Easy Apply, Indeed Apply) stays on the board and has none.
+   * Returned as written (trimmed, tracking parameters and all): the backend owns what counts as
+   * the same posting. */
+  function applyTarget(href) {
+    const raw = typeof href === "string" ? href.trim() : "";
+    // A host straight after the slashes: the backend rejects `http://` and `https:///x` outright.
+    if (!/^https?:\/\/[^\s/?#]\S*$/i.test(raw) || raw.length > MAX_APPLY_URL) return null;
+    try {
+      return withoutWww(new URL(raw).hostname) === withoutWww(location.hostname) ? null : raw;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /** The employer's apply link off this page: the first visible link worded as Apply whose href
+   * `applyTarget` accepts. Reads the document only; a button has no address to read. */
+  function applyLink() {
+    for (const el of document.querySelectorAll("a[href]")) {
+      if (!shown(el) || !labels(el).some((t) => APPLY_TEXT.test(t) || APPLY_OFFSITE_TEXT.test(t))) continue;
+      const target = applyTarget(el.getAttribute("href"));
+      if (target) return target;
+    }
+    return null;
+  }
+
+  /** The employer's apply link for a posting page, or null: the posting's structured `url` when
+   * it points off this site, else a visible external Apply link. Board-native apply has none, and
+   * the panel then omits `apply_url`. Read from the page the user is on and nothing else. */
+  const applyUrl = (posting) => applyTarget(posting?.url) ?? applyLink();
+
   /** Press the Next button the last `summary()` named `id`, if it is still one. Returns
    * `{clicked: true}` or `{clicked: false, why}`: "submit" (its text now carries a Submit word),
    * "not_next" (no such tagged button, or it is hidden, disabled or not worded as a Next). */
@@ -237,5 +279,5 @@
     return { signedIn: "clicked" };
   }
 
-  ns.pageReader = { summary, advance, signIn };
+  ns.pageReader = { summary, advance, signIn, applyUrl, applyLink, applyTarget };
 })();

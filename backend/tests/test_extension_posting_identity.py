@@ -228,3 +228,90 @@ def test_the_longest_job_description_container_is_the_answer(tmp_path):
     long = "The role builds reliable data systems for the whole company. " * 10
     found = _source(tmp_path, jd=[short, long])
     assert (found["source"], found["text"]) == ("content", long.strip())
+
+
+# ---------- the employer's apply link (queued-run plan Task 16) ----------
+#
+# `applyUrl` rides every extraction answer: a link OFF the page's own site, or
+# null. The JSON-LD `url` is judged by `pageReader.applyTarget`, the visible
+# Apply link by `pageReader.applyLink` (real DOM, tests/browser/test_page_reader.py);
+# this half drives the wiring in agent.js with the real page reader over a one-link
+# fake document.
+
+_APPLY_SOURCES = [SHARED / "decisions.js", CONTENT / "job-posting.js", CONTENT / "page-reader.js",
+                  CONTENT / "agent.js"]
+
+# A visible "Apply now" link, just real enough for page-reader's `shown` / `labels`; the rest of
+# the document is the extraction driver's.
+_APPLY_DRIVER_JS = _EXTRACT_DRIVER_JS.replace(
+    "  const ns = loadModules();\n",
+    "  global.HTMLInputElement = class {};\n"
+    "  global.getComputedStyle = () => ({ visibility: 'visible' });\n"
+    "  const link = spec.page.link ? [{\n"
+    "    isConnected: true, textContent: 'Apply now', ownerDocument: { getElementById: () => null },\n"
+    "    getBoundingClientRect: () => ({ width: 80, height: 20 }),\n"
+    "    getAttribute: (name) => (name === 'href' ? spec.page.link : null),\n"
+    "  }] : [];\n"
+    "  const inner = document.querySelectorAll;\n"
+    "  document.querySelectorAll = (sel) => (sel === 'a[href]' ? link : inner(sel));\n"
+    "  const ns = loadModules();\n")
+
+
+def _apply(tmp_path, *, url, posting_url, link=None, body="Job B body text " * 40):
+    posting = {
+        "@context": "https://schema.org", "@type": "JobPosting",
+        "title": "Job A", "description": "<p>Job A description</p>",
+        "hiringOrganization": {"@type": "Organization", "name": "Acme"},
+    }
+    if posting_url is not None:
+        posting["url"] = posting_url
+    return run_node(
+        _APPLY_DRIVER_JS,
+        {"page": {"url": url, "jsonLd": [json.dumps(posting)], "body": body,
+                  "title": "Job | Board", "link": link}},
+        tmp_path, source=_content_source(_APPLY_SOURCES))
+
+
+EMPLOYER = "https://careers.acme.example/jobs/ml-engineer?src=board"
+
+
+def test_a_json_ld_url_off_the_board_is_the_apply_link(tmp_path):
+    out = _apply(tmp_path, url="https://www.linkedin.com/jobs/view/4001/", posting_url=EMPLOYER)
+    assert out["source"] == "json-ld"
+    assert out["applyUrl"] == EMPLOYER
+
+
+def test_a_json_ld_url_on_the_same_site_is_not_an_apply_link(tmp_path):
+    """LinkedIn's JSON-LD names its own page; Indeed's too. That is the
+    `source_url`, not an employer's link — and board-native apply has none."""
+    out = _apply(tmp_path, url="https://www.linkedin.com/jobs/view/4001/", posting_url=LI_A)
+    assert out["source"] == "json-ld"
+    assert out["applyUrl"] is None
+    on_indeed = _apply(tmp_path, url="https://www.indeed.com/viewjob?jk=abc",
+                       posting_url="https://www.indeed.com/viewjob?jk=abc&from=serp")
+    assert on_indeed["applyUrl"] is None
+
+
+def test_the_visible_apply_link_answers_when_the_json_ld_has_no_url(tmp_path):
+    out = _apply(tmp_path, url=LI_B, posting_url=None, link=EMPLOYER)
+    assert out["applyUrl"] == EMPLOYER
+    # …and a JSON-LD url off the board wins over a link on the page.
+    other = "https://jobs.globex.example/apply/9"
+    assert _apply(tmp_path, url=LI_B, posting_url=other, link=EMPLOYER)["applyUrl"] == other
+
+
+@pytest.mark.parametrize("bad", [
+    "javascript:alert(1)", "/apply/ml-engineer", "apply", "mailto:jobs@acme.example",
+    "ftp://careers.acme.example/x", "", "http://", "https:///apply",
+    "https://careers.acme.example/" + "a" * 2048,
+])
+def test_an_unusable_json_ld_url_is_no_apply_link(tmp_path, bad):
+    out = _apply(tmp_path, url=LI_B, posting_url=bad)
+    assert out["applyUrl"] is None
+
+
+def test_a_page_without_a_posting_still_answers_the_link_or_null(tmp_path):
+    """The visible-content path carries `applyUrl` too (null here, since this
+    page has no Apply link)."""
+    out = _source(tmp_path, main="Plenty of words about something. " * 20)
+    assert out["applyUrl"] is None

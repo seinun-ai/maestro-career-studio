@@ -69,6 +69,8 @@ POSTING_REPLY = _reply({"url": POSTING_URL, "title": "ML Engineer | Lightning AI
                         "text": POSTING_TEXT, "source": "json-ld"})
 # The url a real board hands out: a click id, a campaign, a source. Every one of
 # them survives to the backend — see the unstripped test for why.
+# What the page's Apply link points at: the employer's own site, off the board.
+APPLY_LINK = "https://careers.acme.example/apply/ml-engineer?ref=board"
 TRACKED_URL = f"{POSTING_URL}?gh_src=4d2&utm_campaign=spring&utm_source=linkedin"
 SAVED_JOB = {"id": "job-just-saved", "company": "Lightning AI, Inc.",
              "title": "Machine Learning Engineer",
@@ -303,6 +305,30 @@ def ingested(tmp_path_factory):
                 "We are hiring an ML engineer.",
             ])},
             "url": POSTING_URL},
+        # The employer's apply link rides the posting's answer, through the
+        # preview, to the body. An edit leaves it where it was.
+        "with_apply": {"posting": {**POSTING_REPLY["data"], "applyUrl": APPLY_LINK},
+                       "url": TRACKED_URL},
+        "edited_with_apply": {"preview": {"title": "Staff ML Engineer", "company": "",
+                                          "location": "", "text": "the description",
+                                          "applyUrl": APPLY_LINK},
+                              "url": POSTING_URL},
+        # Anything the backend would 422 the WHOLE save over is left off: an
+        # empty string, a scheme that is not http(s), no host (`http://`), a link over 2048.
+        "empty_apply": {"posting": {**POSTING_REPLY["data"], "applyUrl": ""},
+                        "url": POSTING_URL},
+        "script_apply": {"posting": {**POSTING_REPLY["data"], "applyUrl": "javascript:alert(1)"},
+                         "url": POSTING_URL},
+        "hostless_apply": {"posting": {**POSTING_REPLY["data"], "applyUrl": "http://"},
+                           "url": POSTING_URL},
+        "slashes_apply": {"posting": {**POSTING_REPLY["data"], "applyUrl": "https:///apply"},
+                          "url": POSTING_URL},
+        "spaced_apply": {"posting": {**POSTING_REPLY["data"],
+                                     "applyUrl": "https://careers.acme.example/a b"},
+                         "url": POSTING_URL},
+        "huge_apply": {"posting": {**POSTING_REPLY["data"],
+                                   "applyUrl": "https://careers.acme.example/" + "a" * 2048},
+                       "url": POSTING_URL},
     }
     return run_node(_INGEST_DRIVER_JS, {"cases": cases},
                     tmp_path_factory.mktemp("panel_ingest"),
@@ -324,6 +350,21 @@ def test_the_url_reaches_the_backend_exactly_as_the_tab_holds_it(ingested):
     assert ingested["nothing"]["body"]["source_url"] == POSTING_URL
 
 
+def test_the_apply_link_is_sent_when_the_page_had_one_and_the_key_is_absent_otherwise(ingested):
+    """`POST /api/jobs` answers an EMPTY `apply_url` with a 422 that would lose
+    the whole save, so "no link" is no key at all, never `""` or `null`."""
+    assert ingested["with_apply"]["preview"]["applyUrl"] == APPLY_LINK
+    assert ingested["with_apply"]["body"]["apply_url"] == APPLY_LINK
+    assert ingested["edited_with_apply"]["body"]["apply_url"] == APPLY_LINK
+    for name in ("extracted", "plain_page", "edited", "nothing", "empty_apply",
+                 "script_apply", "hostless_apply", "slashes_apply", "spaced_apply",
+                 "huge_apply"):
+        assert "apply_url" not in ingested[name]["body"], name
+    # The other two keys are exactly what they were.
+    assert ingested["with_apply"]["body"]["raw_text"] == POSTING_TEXT
+    assert ingested["with_apply"]["body"]["source_url"] == TRACKED_URL
+
+
 def test_an_unedited_posting_reaches_the_backend_exactly_as_the_page_wrote_it(ingested):
     """The round trip is the identity. `extractJobPosting` prefixes a described
     posting's text with `Title:` / `Company:` / `Location:` lines; the preview
@@ -332,7 +373,7 @@ def test_an_unedited_posting_reaches_the_backend_exactly_as_the_page_wrote_it(in
     of each and let it pick."""
     assert ingested["extracted"]["preview"] == {
         "title": "Machine Learning Engineer", "company": "Lightning AI",
-        "location": "Remote, US", "source": "json-ld",
+        "location": "Remote, US", "source": "json-ld", "applyUrl": None,
         "text": "We are hiring an ML engineer to work on distributed training.",
     }
     assert ingested["extracted"]["body"]["raw_text"] == POSTING_TEXT
@@ -489,6 +530,25 @@ def test_a_save_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_path)
     # early return leaves this tab's own render untouched rather than half-lit.
     assert [n for n in _walk(settled["foot"]) if "error" in str(n.get("class"))] == []
     assert [n for n in _walk(settled["foot"]) if "spin" in str(n.get("class"))] == []
+
+
+def test_save_job_posts_the_apply_link_the_page_exposed(tmp_path):
+    """Through the panel's own capture: the Save press posts `apply_url` beside
+    the other two keys when the extraction found one."""
+    page = _reply({**POSTING_REPLY["data"], "applyUrl": APPLY_LINK})
+    out = _job_stage(tmp_path, click=True, page={"extract_job_posting": page}, api={
+        "job-boards": [
+            _reply({"match": "none", "job": None, "application": None}),
+            _reply({"match": "exact", "job": SAVED_JOB, "application": None}),
+        ],
+        "POST /api/jobs": _reply(SAVED_JOB),
+        "/api/base-resumes": _reply(BASE_RESUMES),
+        "GET /api/ats-scores": _reply(SCORES[:2]),
+        "POST /api/ats-scores": _reply(SCORES[:2]),
+    })
+    assert json.loads(_posts(out)[0]["init"]["body"]) == {
+        "raw_text": POSTING_TEXT, "source_url": TRACKED_URL, "apply_url": APPLY_LINK,
+    }
 
 
 def test_a_saved_job_is_sent_as_edited_and_the_stage_advances_on_the_reload(tmp_path):

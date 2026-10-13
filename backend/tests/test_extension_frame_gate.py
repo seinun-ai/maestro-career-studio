@@ -140,6 +140,7 @@ ns.pageReader = {
   advance: (id) => { calls.push(["pageReader.advance", id]); return { clicked: true }; },
   // Records WHICH keys arrived, never the values: the secret must not ride out in a call log.
   signIn: (a) => { calls.push(["pageReader.signIn", Object.keys(a).sort(), a.allowedHost]); return { signedIn: "clicked" }; },
+  applyUrl: () => null,   // extract_job_posting asks it for the employer's link
 };
 
 main(async () => {

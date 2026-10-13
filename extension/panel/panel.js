@@ -1266,7 +1266,7 @@
   // everything that has no preview yet. A stray write to it would be a default
   // that quietly became a claim about the last page anyone looked at.
   const EMPTY_PREVIEW = Object.freeze(
-    { title: "", company: "", location: "", text: "", source: null });
+    { title: "", company: "", location: "", text: "", source: null, applyUrl: null });
 
   /** What the page said about itself, split into the parts the user may edit
    * and the part they may not.
@@ -1299,6 +1299,8 @@
       ...EMPTY_PREVIEW,
       source: posting === null || posting === undefined
         ? UNREACHABLE : (posting.source ?? null),
+      // Carried as the page read it; `ingestBodyFrom` decides whether it is sendable.
+      applyUrl: typeof posting?.applyUrl === "string" && posting.applyUrl ? posting.applyUrl : null,
     };
     const labelled = new Map(PREVIEW_FIELDS.map(([key, label]) => [label, key]));
     const lines = String(posting?.text ?? "").split("\n");
@@ -1329,10 +1331,25 @@
     return preview;
   }
 
+  /** The backend's `apply_url` rule (schemas/job.py `_http_url`), applied here because its answer
+   * to a bad one is a 422 on the WHOLE save: an http(s) address with a host, at most 2048
+   * characters. `https:///x` parses as a host in a browser but has none to the backend. */
+  function isSendableApplyUrl(value) {
+    if (!/^https?:\/\/[^\s/?#]\S*$/i.test(value) || value.length > 2048) return false;
+    try {
+      return new URL(value).hostname !== "";
+    } catch (_) {
+      return false;
+    }
+  }
+
   /** The body of `POST /api/jobs`, from the preview and the tab's url.
    *
-   * TWO KEYS AND NO MORE, because `POST /api/jobs` has one client and this is
-   * it. Two things about the shape are worth writing down:
+   * THREE KEYS AND NO MORE, because `POST /api/jobs` has one client and this is
+   * it. The third, `apply_url`, exists so a queued run opens the employer's own
+   * application rather than the board's posting page; it is present only when
+   * the posting page exposed one (board-native apply has none). Things about
+   * the shape worth writing down:
    *
    * - the text is REBUILT from the preview rather than passed through, which is
    *   the whole point of an editable preview: a title the user corrected has to
@@ -1340,6 +1357,10 @@
    * - the url is the TAB's (`card.url`), never `location.href` — in this
    *   document that address is the panel's own `chrome-extension://` one, and
    *   a `location.href` fallback here would post the extension as the job.
+   *
+   * - `apply_url` is OMITTED, never `""` or null: the endpoint answers an empty
+   *   one with a 422 that would lose the whole save. Anything that is not an
+   *   http(s) address with a host, of at most 2048 characters, is left off for the same reason.
    *
    * UNSTRIPPED, deliberately: tracking parameters and all. Whether two urls are
    * the same posting is the SERVER's question (`is_same_posting`, SYSTEM.md §11
@@ -1367,7 +1388,10 @@
     parts.push(String(preview?.text ?? "").trim());
     // The extraction's own ceiling, applied again because the header lines are
     // added after it sliced.
-    return { raw_text: parts.join("\n").trim().slice(0, 60000), source_url: url };
+    const body = { raw_text: parts.join("\n").trim().slice(0, 60000), source_url: url };
+    const apply = String(preview?.applyUrl ?? "").trim();
+    if (isSendableApplyUrl(apply)) body.apply_url = apply;
+    return body;
   }
 
   // Every count this surface prints goes through it, because "1 skills" is the

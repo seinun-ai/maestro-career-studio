@@ -54,6 +54,7 @@
         title: document.title,
         text: parts.join("\n").slice(0, 60000),
         source: "json-ld",
+        applyUrl: ns.pageReader?.applyUrl(posting) ?? null, // the employer's link, read off this page only
       };
     }
 
@@ -85,6 +86,7 @@
       title: document.title,
       text: (best ?? document.body.innerText ?? "").trim().slice(0, 60000),
       source: described !== null ? "content" : page !== null ? "page" : "body",
+      applyUrl: ns.pageReader?.applyUrl(null) ?? null,
     };
   }
 
