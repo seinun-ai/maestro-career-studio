@@ -456,6 +456,8 @@ def test_the_steps_own_heading_can_be_the_submit_context(page, load):
     "<div role='alertdialog' aria-label='Finish your application?'><button>Proceed</button></div>",
     "<div role='dialog'><p>Ready to send? Your details go to Acme.</p><button>Continue</button></div>",
     "<dialog open aria-labelledby='t'><span id='t'>Confirm and apply</span><button>Continue</button></dialog>",
+    "<div role='dialog'><p>Your application will be submitted.</p><button>Continue</button></div>",
+    "<div role='dialog'><p>By continuing you will submit your application.</p><button>Proceed</button></div>",
 ])
 def test_a_dialog_with_any_submit_word_in_its_question_is_a_submit_context(page, load, dialog):
     """Dialogs are judged by the full button sort, not the narrow step-heading words; the lone

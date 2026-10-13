@@ -217,17 +217,20 @@
    *
    * A DIALOG is judged by the full button sort (any Submit word: apply, send, finish...): a dialog
    * that names its title that way is asking, and the cost of a wrong guess is a stopped run. Its
-   * body text counts too when it asks a question. The page's own STEP HEADING keeps the narrow
-   * SUBMIT_HEADING, since "Apply to Acme" and "Complete your profile" head ordinary steps. */
+   * body text counts too (the full sort when it asks a question, the narrow words when it
+   * states). The page's own STEP HEADING keeps the narrow SUBMIT_HEADING, since "Apply to Acme" and "Complete your profile" head ordinary steps. */
   const submitContext = () => {
     const asks = [...document.querySelectorAll(DIALOG)].filter(shown).some((d) => {
       const body = squash((d.textContent ?? "").slice(0, 300));
-      return [
+      const named = [
         d.getAttribute("aria-label"), d.getAttribute("title"),
         ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => d.ownerDocument.getElementById(id)?.textContent),
         ...[...d.querySelectorAll("h1, h2, h3, h4, [role='heading']")].map((h) => h.textContent),
-        body.includes("?") ? body : "",
-      ].map(squash).some((text) => text && sortOf(text) === "submit");
+      ].map(squash);
+      // The body: a question gets the full sort ("Ready to send?"); a statement only the narrow
+      // words ("Your application will be submitted."), so a cookie notice's "confirm" does not park.
+      return named.some((text) => text && sortOf(text) === "submit")
+        || (body.includes("?") ? sortOf(body) === "submit" : SUBMIT_HEADING.test(body));
     });
     return asks || SUBMIT_HEADING.test(stepHeading());
   };
