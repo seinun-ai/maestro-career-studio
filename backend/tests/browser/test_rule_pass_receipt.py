@@ -117,3 +117,19 @@ def test_a_typed_id_number_is_absent_from_the_receipt_under_standing_consent(pag
     built = page.evaluate(f"(fields) => {NS}.receipt.fromEdits([{{result: {{fields}}}}], {{}})", fields)
     assert [(f["question"], f["answer"]) for f in built["fields"]] == [("First name", "Ada")]
     assert "000-00-0000" not in json.dumps(built)
+
+
+def test_the_saved_answers_fill_leaves_a_robot_trap_empty(page, load):
+    """The legacy fill matches by label too: a honeypot whose label says
+    "website" would take the profile's website. Neither trap is written,
+    filled, or counted among the fields the pass could not fill."""
+    html = ("<label for='site'>Website</label><input id='site'>"
+            + "<label for='hp'>Enter website. This input is for robots only, do not enter if you're human.</label><input id='hp'>"
+            + "<div style='position:absolute; left:-9999px'><label for='hp2'>Website</label><input id='hp2'></div>")
+    load(page, html, SOURCES)
+    result = page.evaluate(
+        "async (p) => window.careerStudioCompanion.fillFormFromProfile(p, [], false, [], false)",
+        {"personal": {"website": "https://example.com"}})
+    assert page.evaluate("['site', 'hp', 'hp2'].map((i) => document.getElementById(i).value)") == ["https://example.com", "", ""]
+    assert [item["rule"] for item in result["filled"]] == ["website"]
+    assert result["seen"] == 1

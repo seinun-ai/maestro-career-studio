@@ -746,3 +746,20 @@ def test_icims_type_boxes_ask_their_group_and_never_get_the_phone_number(e2e_pag
     for q in (phone_type, address_type):
         assert out["by_question"][q]["status"] == "needs_answer", out["by_question"][q]
     assert out["by_question"]["Enter in your mobile number: Number"]["status"] == "verified"
+
+
+def test_a_run_never_writes_a_robot_trap(e2e_page):
+    """Live 2026-10-13: a box labelled "for robots only, do not enter if you're
+    human" was mapped to the website and filled. With a website in the profile
+    both honeypots stay empty and the report lists neither, filled or missing."""
+    page = e2e_page
+    site = {"route": "slot", "slot": "personal.website", "value": "https://example.com"}
+    trap = "Enter website. This input is for robots only, do not enter if you're human."
+    out = _run(page, html=fixture_html("workday_misses.html"), limits={"MAX_ROUNDS": 3},
+               map={"Website": site, trap: site, "Leave this field blank": site})
+    assert oracle(page, "website") == "https://example.com"   # the real box was filled
+    assert [oracle(page, "robotWebsite"), oracle(page, "robotBlank")] == [None, None]
+    assert page.evaluate("[document.getElementById('hp').value, document.getElementById('hp2').value]") == ["", ""]
+    assert not [q for q in out["by_question"] if "robots" in q or q == "Leave this field blank"]
+    assert not [p for p in out["posts"] if p["path"] == "/api/autofill/map"
+                for f in p["body"]["fields"] if f["question"] in (trap, "Leave this field blank")]

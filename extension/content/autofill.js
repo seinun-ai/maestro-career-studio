@@ -1392,11 +1392,18 @@ async function fillFormFromProfile(
   // written, and it must keep doing so — but a block whose ONLY control is an
   // offscreen select is a template, not a job, and may not claim an entry.
   const labelByInput = new Map();
+  // Honeypots (shared with the fill loop's inventory): never filled, never
+  // observed, never counted as seen or as part of a block.
+  const traps = new Set();
   const blockOrder = [];
   const visibleBlocks = new Set();
   for (const input of inputs) {
     if (isFormJunk(input)) continue;
     const labelText = labelFor(input);
+    if (ns.fillBase?.robotTrap(input, labelText)) {
+      traps.add(input);
+      continue;
+    }
     labelByInput.set(input, labelText);
     const block = labelText && blockKeyOf(labelText);
     if (!block) continue;
@@ -1416,7 +1423,7 @@ async function fillFormFromProfile(
   const withinBlock = new Map();
 
   for (const input of inputs) {
-    if (isFormJunk(input)) continue;
+    if (isFormJunk(input) || traps.has(input)) continue;
     seen += 1;
     const isSelect = input instanceof HTMLSelectElement;
     const kind = kindOf(input);

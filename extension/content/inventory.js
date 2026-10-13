@@ -98,7 +98,9 @@
     if (el instanceof HTMLSelectElement && ns.shapes.backsABox(el)) return false;
     // An unrecognised wrapper around a real control: the control is the field.
     if (!shape && el.querySelector(ns.fieldControls.CONTROL)) return false;
-    return shown(el);
+    if (!shown(el)) return false;
+    // A honeypot is never a field: not filled, listed, asked or counted missing.
+    return !ns.fillBase.robotTrap(el, ns.shapes.readField(el).question);
   };
   const describe = (el, shape) => {
     const own = ns.shapes.readField(el);

@@ -121,6 +121,20 @@
     return s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) !== 0;
   };
 
+  // Phrases a honeypot uses to tell humans to stay out. "Bots" alone is not one
+  // ("Have you built bots?" is a real question), and "leave blank if none" is an
+  // optional field's hint, not a trap.
+  const TRAP_WORDS = /\bhoney ?pot\b|\bfor (?:spam ?)?(?:ro)?bots only\b|\bif you(?:'|\u2019)?(?:re| are) (?:a )?human\b|\b(?:do not|don(?:'|\u2019)t) (?:fill|enter|complete|type)(?: in)? (?:this|it)\b|^leave (?:this|it) (?:field |input |box )?(?:blank|empty)[.!]?$/i;
+  const robotTrap = (el, labelText) => {
+    const words = [labelText, el.getAttribute("aria-label"), el.getAttribute("placeholder")]
+      .filter(Boolean).map((s) => s.trim());
+    if (words.some((s) => TRAP_WORDS.test(s))) return true;
+    // Drawn wholly outside the page (a classic honeypot), though `visible` passes
+    // it. Page coordinates, so a field merely scrolled out of view is not one.
+    const r = el.getBoundingClientRect();
+    return r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0;
+  };
+
   const ERROR_NODE = '[data-automation-id="errorMessage"], [role="alert"], [class*="error" i]';
   const ERROR_WORDS = /error|required|must|invalid|enter a/i;
   const byId = (el, id) => el.getRootNode().getElementById?.(id) ?? document.getElementById(id);
@@ -420,6 +434,6 @@
   ns.fillBase = {
     Cancelled, Unfocusable, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,
     popups, ownedPopup, optionsOf, press, closePopups, enter, leave, keyPress, typeText, equivalent, clean,
-    markEnginePopup, insideEnginePopup, engineOpen,
+    markEnginePopup, insideEnginePopup, engineOpen, robotTrap,
   };
 })();

@@ -434,6 +434,53 @@ def test_a_visible_select_marked_aria_hidden_is_still_a_field(page, load):
         ("select", "Country", "", False), ("popup", "State", "Texas", True)]
 
 
+def test_a_robot_trap_is_never_a_field(page, load):
+    """Workday's honeypots (live 2026-10-13): one visible beside the real
+    Website box, one drawn off the left edge. Only the text tells the visible
+    one apart; a "leave blank if none" hint is a real optional field."""
+    load(page, fixture_html("workday_misses.html"))
+    questions = [f["question"] for f in fields(page)]
+    assert "Website" in questions and "Middle name (leave blank if none)" in questions
+    assert not [q for q in questions if "robots" in q or q == "Leave this field blank"]
+
+
+@pytest.mark.parametrize("html", [
+    "<label for='t'>Enter website. This input is for robots only, do not enter if you're human.</label><input id='t'>",
+    "<label for='t'>If you are human, leave this blank</label><input id='t'>",
+    "<label for='t'>Do not fill this field</label><input id='t'>",
+    "<label for='t'>Leave this field blank</label><input id='t'>",
+    "<label for='t'>Honeypot</label><input id='t'>",
+    "<input id='t' aria-label='For robots only'>",
+    "<input id='t' aria-label='Website' placeholder='Do not fill this field'>",
+])
+def test_a_trap_by_its_wording_is_skipped(page, load, html):
+    load(page, "<label for='ok'>First name</label><input id='ok'>" + html)
+    assert [f["question"] for f in fields(page)] == ["First name"]
+
+
+@pytest.mark.parametrize("label", [
+    "Have you built bots or automation tools?",
+    "Middle name (leave blank if none)",
+    "Do not include your country code",
+    "Website",
+])
+def test_an_ordinary_question_is_not_taken_for_a_trap(page, load, label):
+    load(page, f"<label for='t'>{label}</label><input id='t'>")
+    assert [f["question"] for f in fields(page)] == [label]
+
+
+def test_a_field_far_down_the_page_is_still_a_field(page, load):
+    """The off-page rule uses page coordinates: a box below the fold, or one
+    inside a horizontally scrolled strip, is on the page."""
+    load(page, """<label for='top'>First name</label><input id='top'>
+      <div style='height:5000px'></div><label for='low'>Salary expectations</label><input id='low'>
+      <div style='width:200px; overflow-x:auto'><div style='width:3000px'>
+        <label for='wide' style='margin-left:2500px'>Notice period</label><input id='wide'></div></div>""")
+    page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")   # First name is now above the viewport
+    assert page.evaluate("() => document.getElementById('top').getBoundingClientRect().bottom") < 0
+    assert [f["question"] for f in fields(page)] == ["First name", "Salary expectations", "Notice period"]
+
+
 def test_real_select2_hiding_is_one_field_not_two(page, load):
     """select2 hides its select with a 1px clip (`select2-hidden-accessible`),
     which counts as visible: tied to the box, it is the box's backing, never a
