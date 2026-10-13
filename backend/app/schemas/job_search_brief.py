@@ -64,6 +64,13 @@ class BriefAutoApply(BaseModel):
     cap: BriefCapStatus
 
 
+class BriefApplying(BaseModel):
+    """The user's Screening answers level (facts | history | queued), so an
+    applying agent knows how far a fill may answer without asking."""
+
+    answer_level: Literal["facts", "history", "queued"]
+
+
 class BriefSync(BaseModel):
     enabled: bool
     role: Literal["home", "remote"] | None
@@ -84,6 +91,7 @@ class JobSearchBriefResponse(BaseModel):
     persona: str
     job_preferences: dict[str, Any]
     auto_apply: BriefAutoApply
+    applying: BriefApplying
     sync: BriefSync
     jobs: list[BriefJob]
     base_resumes: list[dict[str, Any]]

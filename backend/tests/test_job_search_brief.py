@@ -371,3 +371,19 @@ def test_search_brief_tolerates_empty_everything(db_session, tmp_path, monkeypat
     # page the answers live on (Profile › Autofill, never Settings).
     assert any("incomplete" in w for w in body["warnings"])
     _assert_points_to_profile_autofill(body["warnings"])
+
+
+@pytest.mark.parametrize("level", ["facts", "history", "queued"])
+def test_the_brief_carries_the_answer_level(db_session, tmp_path, monkeypatch, level):
+    # The external agent's apply helpers need the user's Screening answers level
+    # up front; the server reads it from settings, the agent never guesses it.
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    from app.services import model_settings
+
+    model_settings.set_answer_level(db_session, level)
+    assert _get_brief(db_session).json()["applying"] == {"answer_level": level}
+
+
+def test_the_brief_answer_level_defaults_to_history(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    assert _get_brief(db_session).json()["applying"] == {"answer_level": "history"}

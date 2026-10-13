@@ -449,7 +449,8 @@ def get_job_search_brief() -> Any:
     captured in the last 30 days by role category. It is the entry point of the
     agentic job-search workflow (playbook: docs/agentic-job-search.md), which
     covers capture, scoring and proposals; applying is outside its scope.
-    sync carries enabled and role (home, remote, or null when sync is off)."""
+    sync carries enabled and role (home, remote, or null when sync is off).
+    applying.answer_level is the Screening answers level (facts, history, queued)."""
     return _client.get_job_search_brief()
 
 

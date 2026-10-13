@@ -15,7 +15,13 @@ from sqlalchemy.orm import Session
 
 from app.models.job import Job
 from app.models.referral import Referral
-from app.services import auto_apply_settings, autofill_profile, job_preferences, persona
+from app.services import (
+    auto_apply_settings,
+    autofill_profile,
+    job_preferences,
+    model_settings,
+    persona,
+)
 from app.services import proposals as proposals_svc
 from app.services.explore_base_summaries import base_summaries
 from app.services.explore_build_areas import build_areas
@@ -90,6 +96,12 @@ def _auto_apply_block(db: Session) -> dict[str, Any]:
         "max_proposals_per_run": cfg.max_proposals_per_run,
         "cap": proposals_svc.cap_status(db),
     }
+
+
+def _applying_block(db: Session) -> dict[str, Any]:
+    # The Screening answers level decides how far a fill answers without asking;
+    # an agent that applies reads it here instead of assuming the default.
+    return {"answer_level": model_settings.get_answer_level(db)}
 
 
 def _sync_block() -> dict[str, Any]:
@@ -183,6 +195,7 @@ def build_brief(db: Session) -> dict[str, Any]:
         "job_preferences": job_preferences.get_preferences(db).model_dump(),
         "jobs": jobs,
         "auto_apply": _auto_apply_block(db),
+        "applying": _applying_block(db),
         "sync": _sync_block(),
         "base_resumes": base_summaries(db),
         "role_mix": overview["role_mix"],
