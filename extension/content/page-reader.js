@@ -17,10 +17,11 @@
  * what `summary().applyId` named, on a page with no fillable control, when the VISIBLE text is
  * exactly an apply wording (APPLY_TEXT: "Apply", "Apply now", "Apply for this job") and any other
  * label (aria-label, title) is an apply wording or "Apply for/to/at <something>" that carries no
- * Submit word. And it presses only a control that cannot submit a form: a link that navigates
- * (a real href, not "#" or javascript:, not target=_blank, which opens a tab the run cannot
- * follow), or a button with no form to submit. A form's own "Apply" is a Submit, whatever the page
- * shows around it (a draft's review page can hold only hidden inputs). Whether the run may ask at
+ * Submit word. And it presses only a real navigation LINK (an <a> with an http(s) href that is not
+ * "#", not javascript:, not target=_blank, which opens a tab the run cannot follow). A <button>
+ * Apply is never pressed, form or no form: a form-less one is page script (a quick-apply, a
+ * draft's review) that may well send the application, so the page parks as a posting. Whether the
+ * run may ask at
  * all (the first page of a tab it opened itself) is the driver's (shared/queue-run.js).
  *
  * `signIn` is the one place the saved job-site login is typed (design Part 4,
@@ -47,10 +48,22 @@
   // The backend's ceiling on `apply_url` (a longer one is a 422 that would lose the whole save).
   const MAX_APPLY_URL = 2048;
   const BOARD_HOST = /(^|\.)(linkedin|indeed)\.com$/i;
-  const CONFIRM_PASSWORD = /confirm|re-?enter|re-?type|repeat|verify/i;
+  // "Create a password", "choose a password", "new password", "set your password": a sign-up box
+  // with no confirmation field beside it.
+  const CONFIRM_PASSWORD = /confirm|re-?enter|re-?type|repeat|verify|\b(create|choose|new|set)[ _-]?(a |your |my )?password/i;
   const ONE_TIME_CODE = /\botp\b|verification code|authentication code|passcode/i;
-  // Site chrome: a "Continue" in a header or nav is the site's, never the application step's.
-  const CHROME = 'header, nav, [role="banner"], [role="navigation"], [role="search"], [role="contentinfo"], [role="menubar"]';
+  // Site chrome: a "Continue" in a header or nav is the site's, never the application step's, and a
+  // newsletter form in a footer is not "the form".
+  const CHROME = 'header, nav, footer, [role="banner"], [role="navigation"], [role="search"], [role="contentinfo"], [role="menubar"]';
+  // Everything on a page a person could press as a button, for the "is there a Submit here" check
+  // ONLY (what may be pressed as a Next stays BUTTONS): an ARIA button of any tag, an image input,
+  // a plain link.
+  const WIDE_BUTTONS = 'button, input[type="submit"], input[type="button"], input[type="image"], [role="button"], a';
+  const SUBMIT_MARK_ATTRS = ["id", "name", "data-qa", "data-automation-id", "formaction"];
+  // A dialog or step heading that asks about submitting. Narrower than the button sort on purpose:
+  // "Apply to Acme" and "Complete your application" head ordinary steps.
+  const SUBMIT_HEADING = /\bsubmit(ting|ted)?\b|\bsend (your|my) application\b|\bfinali[sz]e\b/i;
+  const DIALOG = 'dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]';
   const FORM = 'form, [role="form"]';
   // "Continue" is allowed here: pressing it on a sign-in page is not a submit of the application.
   const SIGN_IN_BUTTON = /^\s*(sign in|log in|login|continue|next)\s*$/i;
@@ -99,11 +112,12 @@
   const shownTextOf = (el) => squash(el instanceof HTMLInputElement
     ? el.value || (el.type === "submit" ? "Submit" : "")
     : el.textContent);
-  /** Every text a button answers to: what it shows, its accessible name, its tooltip. */
+  /** Every text a button answers to: what it shows, its accessible name, its tooltip, an image's alt. */
   const labels = (el) => {
     const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/)
       .map((id) => el.ownerDocument.getElementById(id)?.textContent);
-    return [shownTextOf(el), ...named, el.getAttribute("aria-label"), el.getAttribute("title")].map(squash).filter(Boolean);
+    return [shownTextOf(el), ...named, el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("alt")]
+      .map(squash).filter(Boolean);
   };
   /** The one label the sort reads: a Submit-worded one if ANY label is, else the shown text. */
   const labelOf = (el) => {
@@ -151,7 +165,7 @@
     return /recaptcha\/api2\/anchor/.test(src) && !/size=invisible/.test(src) && !iframe.closest(".grecaptcha-badge");
   };
 
-  const passwordInputs = () => [...document.querySelectorAll('input[type="password"]')].filter(shown);
+  const passwordInputs = () => [...document.querySelectorAll("input")].filter((el) => ns.fillBase.isPasswordBox(el) && shown(el));
 
   const isConfirmPassword = (el) => {
     // A token LIST ("section-signup new-password") counts: the token, not the whole attribute.
@@ -164,6 +178,41 @@
     if ((el.getAttribute("autocomplete") ?? "").toLowerCase().includes("one-time-code")) return true;
     const own = [el.name, el.id, el.placeholder, el.getAttribute("aria-label"), ...[...(el.labels ?? [])].map((l) => l.textContent)];
     return own.some((s) => ONE_TIME_CODE.test(s ?? ""));
+  };
+
+  const hasCodeInput = () => [...document.querySelectorAll("input")]
+    .some((el) => !ns.fillBase.isPasswordBox(el) && shown(el) && isCodeInput(el));
+
+  /** The id, name, data-qa, data-automation-id or formaction says submit. Not the label: a page
+   * names its Submit that way when the label is an icon, "Done" or a translation. */
+  const submitMarked = (el) => SUBMIT_MARK_ATTRS.some((attr) => /submit/i.test(el.getAttribute(attr) ?? ""));
+
+  /** A Submit anywhere a person could press one (WIDE_BUTTONS), shown, enabled or not. Beyond
+   * BUTTONS, site chrome is the site's, and a long block of text in a link is not a button label. */
+  const submitSeen = () => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
+    if (!shown(el)) return false;
+    const extra = !el.matches(BUTTONS);
+    if (extra && (el.closest(CHROME) || shownTextOf(el).length > MAX_TEXT)) return false;
+    return submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit");
+  });
+
+  /** The step's first visible h1/h2 text, outside site chrome. */
+  const stepHeading = () => {
+    const heading = [...document.querySelectorAll("h1, h2")].find((el) => shown(el) && !el.closest(CHROME) && squash(el.textContent));
+    return heading ? squash(heading.textContent) : "";
+  };
+
+  /** True when a visible dialog, or the step's own heading, asks about submitting ("Submit your
+   * application?", "Review and submit"): then its Proceed or Continue is the Submit's. A boolean;
+   * the words never leave the page. */
+  const submitContext = () => {
+    const dialogs = [...document.querySelectorAll(DIALOG)].filter(shown).map((d) => [
+      d.getAttribute("aria-label"), d.getAttribute("title"),
+      ...(d.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => d.ownerDocument.getElementById(id)?.textContent),
+      ...[...d.querySelectorAll("h1, h2, h3, h4, [role='heading']")].map((h) => h.textContent),
+      (d.textContent ?? "").slice(0, 300),
+    ].map(squash).join(" "));
+    return [stepHeading(), ...dialogs].some((text) => SUBMIT_HEADING.test(text));
   };
 
   const tag = (el) => {
@@ -181,28 +230,26 @@
   const isApply = (el) => APPLY_TEXT.test(shownTextOf(el))
     && labels(el).every((t) => APPLY_TEXT.test(t) || applyDetail(t));
 
-  // Only a control that cannot submit a form: a link that goes to an http(s) page in THIS tab, or
-  // a button with no form to submit (`el.form` also covers the form="id" attribute). The scheme is
-  // the PARSED one (`el.protocol`): a raw-text test is beaten by "java&#10;script:", which the
+  // Only a real navigation link: an <a href> that goes to an http(s) page in THIS tab. Never a
+  // <button>, even one with no form: a form-less button is page script, and script can submit
+  // (owner, batch-4 review). The scheme is the PARSED one (`el.protocol`): a raw-text test is beaten by "java&#10;script:", which the
   // parser reads as javascript:. A target other than "" or "_self" (any case, a named window, or a
   // <base target>) opens a tab the run cannot follow.
   const applyPressable = (el) => {
-    if (el.tagName === "A") {
-      const href = (el.getAttribute("href") ?? "").trim();
-      const target = (el.getAttribute("target") ?? document.querySelector("base[target]")?.getAttribute("target") ?? "").trim().toLowerCase();
-      return href !== "" && !href.startsWith("#") && /^https?:$/.test(el.protocol) && (target === "" || target === "_self");
-    }
-    return !el.form;
+    if (el.tagName !== "A") return false;
+    const href = (el.getAttribute("href") ?? "").trim();
+    const target = (el.getAttribute("target") ?? document.querySelector("base[target]")?.getAttribute("target") ?? "").trim().toLowerCase();
+    return href !== "" && !href.startsWith("#") && /^https?:$/.test(el.protocol) && (target === "" || target === "_self");
   };
 
   /** A short, stable key for the step's heading (the page's first visible h1 or h2): the same step
    * reads the same, another step differs, and the heading itself never leaves the page (the summary
    * carries no prose). It tells two wizard steps apart that share a URL and a button row. */
   function stepKey() {
-    const heading = [...document.querySelectorAll("h1, h2")].find((el) => shown(el) && !el.closest(CHROME) && squash(el.textContent));
+    const heading = stepHeading();
     if (!heading) return "";
     let hash = 0x811c9dc5;
-    for (const ch of squash(heading.textContent).toLowerCase()) hash = Math.imul(hash ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+    for (const ch of heading.toLowerCase()) hash = Math.imul(hash ^ ch.charCodeAt(0), 0x01000193) >>> 0;
     return hash.toString(36);
   }
 
@@ -217,8 +264,6 @@
       return {
         id,
         text: clip(labelOf(el)),
-        type: el.tagName === "A" ? "link" : (el.getAttribute("type") || (el.tagName === "BUTTON" ? "submit" : "text")).toLowerCase(),
-        marker: el.getAttribute("data-automation-id") ?? "",
         inForm: inForm(el) || isNavigation(el),
         visible: shown(el),
         enabled: enabled(el),
@@ -237,13 +282,15 @@
       buttons,
       passwordInputs: passwords.length,
       confirmPassword: passwords.some(isConfirmPassword),
-      otpInput: [...document.querySelectorAll("input")].some((el) => el.type !== "password" && shown(el) && isCodeInput(el)),
+      otpInput: hasCodeInput(),
       captchaVisible: [...document.querySelectorAll("iframe")].some(challengeFrame),
       fillable: ns.fillableControls(),
       hasApplyLink: [...document.querySelectorAll(`a[href], ${BUTTONS}`)].some((el) => shown(el) && labels(el).some((t) => APPLY_TEXT.test(t))),
       confirmationText: CONFIRMATION.test(bodyText),
       closedText: CLOSED.test(bodyText),
       boardNative: BOARD_HOST.test(location.hostname),
+      submitSeen: submitSeen(),
+      submitContext: submitContext(),
     };
   }
 
@@ -312,14 +359,14 @@
   /** The posting's Apply, pressed on the driver's say-so and the page's own re-check: the control
    * the last `summary()` named `applyId`, no fillable control anywhere on the page, and every label
    * an apply wording. `{clicked: true}` or `{clicked: false, why}`: "not_apply" (not that
-   * control, or not plainly worded as Apply), "would_submit" (it belongs to a form, or its link goes
-   * nowhere or opens a new tab), "not_posting" (the page has fields: it is a form, and
+   * control, or not plainly worded as Apply), "would_submit" (it is not a real same-tab link: a button, or a link
+   * that goes nowhere or opens a new tab), "not_posting" (the page has fields: it is a form, and
    * its Apply-worded button is a Submit), "submit" (the vendor's table calls it one). */
   function pressApply(id) {
     const el = typeof id === "string" && id ? document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`) : null;
     if (!el || !el.matches(`a[href], ${BUTTONS}`)) return { clicked: false, why: "not_apply" };
     if (ns.fillableControls() > 0) return { clicked: false, why: "not_posting" };
-    if (knownOf(el) === "submit") return { clicked: false, why: "submit" };
+    if (knownOf(el) === "submit" || submitMarked(el)) return { clicked: false, why: "submit" };
     if (!shown(el) || !enabled(el) || !isApply(el)) return { clicked: false, why: "not_apply" };
     if (!applyPressable(el)) return { clicked: false, why: "would_submit" };
     el.click();
@@ -339,7 +386,7 @@
     // other check: the Submit refusal never depends on what the panel was told earlier. A Submit
     // word in the text beats the table's "next"; the table's "submit" beats a Next-worded text.
     const sort = ns.pageKind.sortButton({ text: labelOf(el), known: knownOf(el) });
-    if (sort === "submit") return { clicked: false, why: "submit" };
+    if (sort === "submit" || submitMarked(el)) return { clicked: false, why: "submit" };
     if (sort !== "next" || !shown(el) || !enabled(el)) return { clicked: false, why: "not_next" };
     el.click();
     return { clicked: true };
@@ -348,7 +395,7 @@
   // The email or username box of the sign-in form: by type, then by autocomplete token, then by a
   // label (or name, placeholder, aria-label) that says so. Only a text-like input that can be typed in.
   const emailBox = (scope) => {
-    const boxes = [...scope.querySelectorAll("input")].filter((el) => shown(el) && enabled(el) && !el.readOnly
+    const boxes = [...scope.querySelectorAll("input")].filter((el) => shown(el) && enabled(el) && !el.readOnly && !ns.fillBase.isPasswordBox(el)
       && !/^(password|hidden|checkbox|radio|file|submit|button|reset|image|search)$/.test(el.type));
     const named = (el) => [el.name, el.placeholder, el.getAttribute("aria-label"), ...[...(el.labels ?? [])].map((l) => l.textContent)]
       .some((text) => EMAIL_LABEL.test(text ?? ""));
@@ -385,7 +432,7 @@
     const passwords = passwordInputs();
     if (!passwords.length) return { signedIn: false, why: "no_form" };
     if (passwords.length > 1 || isConfirmPassword(passwords[0])) return { signedIn: false, why: "create_account" };
-    if ([...document.querySelectorAll("input")].some((el) => el.type !== "password" && shown(el) && isCodeInput(el))) {
+    if (hasCodeInput()) {
       return { signedIn: false, why: "verify" };
     }
     const box = passwords[0];

@@ -450,8 +450,14 @@
     return false;
   };
 
+  // A password box by SHAPE, never by label: its type, or (a show-password toggle makes it
+  // type=text) the autocomplete token it still carries. ONE definition for the inventory, which
+  // never lists one, and the page reader, which counts them and types the saved login into one.
+  const isPasswordBox = (el) => el instanceof HTMLInputElement
+    && (el.type === "password" || /(^|\s)(current|new)-password(\s|$)/i.test(el.getAttribute("autocomplete") ?? ""));
+
   ns.fillBase = {
-    Cancelled, Unfocusable, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,
+    isPasswordBox, Cancelled, Unfocusable, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,
     popups, ownedPopup, optionsOf, press, closePopups, enter, leave, keyPress, typeText, equivalent, clean,
     markEnginePopup, insideEnginePopup, engineOpen, robotTrap, isTrapField,
   };

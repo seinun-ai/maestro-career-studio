@@ -98,8 +98,9 @@ def test_the_summary_is_counts_texts_and_booleans_and_never_a_value(page, load):
     s = summary(page)
     assert "Zelda-Secret-9" not in json.dumps(s)
     assert set(s) == {"host", "stepKey", "applyId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
-                      "fillable", "hasApplyLink", "confirmationText", "closedText", "boardNative"}
-    assert set(s["buttons"][0]) == {"id", "text", "type", "marker", "inForm", "visible", "enabled"}
+                      "fillable", "hasApplyLink", "confirmationText", "closedText", "boardNative", "submitSeen",
+                      "submitContext"}
+    assert set(s["buttons"][0]) == {"id", "text", "inForm", "visible", "enabled"}
     assert (s["passwordInputs"], s["fillable"]) == (1, 3)
 
 
@@ -410,19 +411,135 @@ def test_the_pin_covers_a_submit_that_is_disabled_or_hidden_too(page, load):
     assert page.evaluate("() => window.hit === 1") is False
 
 
+# ---------- what the page says about submitting (batch-4 review) ----------
+
+def test_a_dialog_that_asks_about_submitting_is_a_submit_context(page, load):
+    load(page, """<h1>Your details</h1><div role='dialog' aria-labelledby='t'><h2 id='t'>Submit your application?</h2>
+      <button>Proceed</button><button>Cancel</button></div>""", SOURCES)
+    assert summary(page)["submitContext"] is True
+    assert classify(page)["kind"] == "review"
+
+
+def test_a_native_open_dialog_and_an_aria_modal_count_too(page, load):
+    load(page, "<dialog open><p>Are you ready to submit?</p><button>Proceed</button></dialog>", SOURCES)
+    assert summary(page)["submitContext"] is True
+    load(page, "<div aria-modal='true'><h3>Review and submit</h3><button>Continue</button></div>", SOURCES)
+    assert summary(page)["submitContext"] is True
+
+
+def test_the_steps_own_heading_can_be_the_submit_context(page, load):
+    load(page, "<h1>Review and submit</h1><button>Continue</button>", SOURCES)
+    assert summary(page)["submitContext"] is True
+    assert classify(page)["kind"] == "review"
+
+
+@pytest.mark.parametrize("html", [
+    "<h1>Apply to Acme: Data Analyst</h1><label for='a'>Name</label><input id='a'><button>Next</button>",
+    "<h1>Complete your profile</h1><label for='a'>Name</label><input id='a'><button>Next</button>",
+    "<h1>Your details</h1><div role='dialog'><h2>Cookie preferences</h2><button>Accept</button></div><button>Next</button>",
+    "<h1>Your details</h1><div role='dialog' style='display:none'><h2>Submit your application?</h2></div><button>Next</button>",
+])
+def test_an_ordinary_heading_or_a_hidden_dialog_is_no_submit_context(page, load, html):
+    load(page, html, SOURCES)
+    assert summary(page)["submitContext"] is False
+
+
+@pytest.mark.parametrize("control", [
+    "<div role='button'>Submit application</div>",
+    "<span role='button'>Send my application</span>",
+    "<input type='image' alt='Submit application' src='data:image/gif;base64,R0lGODlhAQABAAAAACw='>",
+    "<a href='/finish'>Submit application</a>",
+    "<button id='submit-btn'>Done</button>",
+    "<button name='submitForm'>Go</button>",
+    "<button data-qa='btn-submit'>Done</button>",
+    "<button data-automation-id='submitApp'>Done</button>",
+    "<input type='button' value='Go' formaction='/apply/submit'>",
+])
+def test_a_submit_the_button_list_cannot_see_still_stops_the_step(page, load, control):
+    load(page, f"<label for='a'>Name</label><input id='a'><button>Next</button>{control}", SOURCES)
+    assert summary(page)["submitSeen"] is True
+    assert classify(page)["kind"] == "review"
+
+
+@pytest.mark.parametrize("control", [
+    "<div role='button' style='display:none'>Submit application</div>",
+    "<header><a href='/jobs'>Submit your CV</a></header>",
+    "<footer><a href='/feedback'>Send feedback</a></footer>",
+    "<a href='/faq'>Frequently asked questions</a>",
+])
+def test_an_unseen_or_chrome_extra_is_no_submit_signal(page, load, control):
+    load(page, f"<label for='a'>Name</label><input id='a'><button>Next</button>{control}", SOURCES)
+    assert summary(page)["submitSeen"] is False
+    assert classify(page)["kind"] == "form_step"
+
+
+def test_a_next_whose_id_says_submit_is_never_pressed(page, load):
+    load(page, "<button id='submit_step' onclick='window.hit = 1'>Next</button>", SOURCES)
+    b = summary(page)["buttons"][0]
+    assert advance(page, b["id"]) == {"clicked": False, "why": "submit"}
+    assert page.evaluate("() => window.hit === 1") is False
+
+
+# ---------- passwords, footers and boards ----------
+
+@pytest.mark.parametrize("label", ["Create a password", "Choose a password", "New password", "Set your password",
+                                   "createPassword"])
+def test_a_single_sign_up_password_box_is_not_a_sign_in(page, load, label):
+    load(page, f"<label>{label} <input type='password' name='pw'></label>", SOURCES)
+    s = summary(page)
+    assert (s["passwordInputs"], s["confirmPassword"]) == (1, True)
+    assert classify(page)["kind"] == "create_account"
+
+
+def test_a_plain_password_box_is_still_a_sign_in(page, load):
+    load(page, "<label>Password <input type='password' name='pw'></label>", SOURCES)
+    assert classify(page)["kind"] == "sign_in"
+
+
+def test_a_toggled_password_box_counts_as_a_password(page, load):
+    """A show-password toggle makes it type=text; its autocomplete token still says what it is
+    (one definition with the inventory, which never lists one)."""
+    load(page, "<input type='text' autocomplete='current-password' name='pw'>", SOURCES)
+    assert summary(page)["passwordInputs"] == 1
+    assert page.evaluate("() => window.careerStudioCompanion.fillBase.isPasswordBox(document.querySelector('input'))")
+    assert page.evaluate("() => window.careerStudioCompanion.fillInventory.list({}).fields.length") == 0
+
+
+def test_a_footer_newsletter_form_is_not_the_pages_form(page, load):
+    load(page, NO_FORM_PAGE + "<footer><form><label for='em'>Email</label><input id='em'>"
+                              "<button type='button'>Subscribe</button></form></footer>", SOURCES)
+    in_form = {b["text"]: b["inForm"] for b in summary(page)["buttons"]}
+    assert in_form["Save and Continue"] is True and in_form["Subscribe"] is False
+    assert classify(page)["kind"] == "form_step"
+
+
+def test_the_summary_carries_no_button_type_or_marker(page, load):
+    load(page, "<button data-automation-id='someMarker with page text'>Next</button>", SOURCES)
+    assert "someMarker" not in json.dumps(summary(page))
+
+
+def test_a_boards_easy_apply_page_with_a_stray_control_is_board_native(page, load):
+    body = "<h1>Data Analyst</h1><label for='s'>Salary</label><input id='s'><button>Easy Apply</button>"
+    page.route("https://www.linkedin.com/jobs/view/2", lambda route: route.fulfill(
+        status=200, content_type="text/html", body=body))
+    page.goto("https://www.linkedin.com/jobs/view/2")
+    for src in SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+    assert classify(page)["kind"] == "board_native"
+
+
 # ---------- the posting's Apply: the one narrow exception ----------
 
 CLICK = "onclick='window.hit = (window.hit || 0) + 1; return false;'"
 
 
 @pytest.mark.parametrize("html", [
-    f"<h1>Analyst</h1><button {CLICK}>Apply</button>",
-    f"<h1>Analyst</h1><button {CLICK}>Apply now</button>",
+    f"<h1>Analyst</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply</a>",
+    f"<h1>Analyst</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply now</a>",
     f"<h1>Analyst</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK}>Apply for this job</a>",
     f"<h1>Analyst</h1><a href='https://jobs.acme.test/jobs/9/apply' role='button' {CLICK}>  APPLY  </a>",
-    f"<h1>Analyst</h1><button {CLICK} aria-label='Apply for Staff Engineer at Acme'>Apply</button>",
-    f"<h1>Analyst</h1><button {CLICK} title='Apply to this role'>Apply now</button>",
-    f"<h1>Analyst</h1><input type='button' value='Apply now' {CLICK}>",
+    f"<h1>Analyst</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK} aria-label='Apply for Staff Engineer at Acme'>Apply</a>",
+    f"<h1>Analyst</h1><a href='https://jobs.acme.test/jobs/9/apply' {CLICK} title='Apply to this role'>Apply now</a>",
 ])
 def test_the_postings_plain_apply_is_named_and_pressed_only_by_the_apply_call(page, load, html):
     load(page, html, SOURCES)
@@ -434,6 +551,26 @@ def test_the_postings_plain_apply_is_named_and_pressed_only_by_the_apply_call(pa
     assert page.evaluate("() => window.hit || 0") == 0
     assert advance_apply(page, s["applyId"]) == {"clicked": True}
     assert page.evaluate("() => window.hit") == 1
+
+
+@pytest.mark.parametrize("html", [
+    f"<h1>Analyst</h1><button {CLICK}>Apply</button>",
+    f"<h1>Analyst</h1><button {CLICK}>Apply now</button>",
+    f"<h1>Analyst</h1><input type='button' value='Apply now' {CLICK}>",
+    f"<h1>Analyst</h1><button {CLICK} aria-label='Apply for Staff Engineer at Acme'>Apply</button>",
+])
+def test_a_form_less_apply_button_is_neither_named_nor_pressed(page, load, html):
+    """Owner decision (batch-4 review): only a real navigation link is ever pressed. A button is page
+    script (a quick-apply, a form-less draft review) that may record or send a submission."""
+    load(page, html + "<script>window.submitted = 0; for (const el of document.querySelectorAll('button,input,div'))"
+                      " el.addEventListener('click', () => { window.submitted += 1; });</script>", SOURCES)
+    s = summary(page)
+    assert s["applyId"] is None
+    for b in s["buttons"]:
+        assert advance_apply(page, b["id"])["clicked"] is False
+        assert advance(page, b["id"])["clicked"] is False
+    assert page.evaluate("() => [window.hit || 0, window.submitted]") == [0, 0]
+    assert classify(page)["kind"] == "posting"
 
 
 @pytest.mark.parametrize("html", [
@@ -460,14 +597,14 @@ def test_nothing_but_a_plain_apply_is_ever_named_or_pressed_as_one(page, load, h
 
 def test_the_apply_call_refuses_a_page_that_has_fields(page, load):
     """An Apply-worded button beside a fillable control is a form's Submit, not a posting's link."""
-    load(page, f"<label for='a'>Name</label><input id='a'><button {CLICK}>Apply</button>", SOURCES)
+    load(page, f"<label for='a'>Name</label><input id='a'><a href='https://jobs.acme.test/9' {CLICK}>Apply</a>", SOURCES)
     s = summary(page)
     assert advance_apply(page, s["applyId"]) == {"clicked": False, "why": "not_posting"}
     assert page.evaluate("() => window.hit || 0") == 0
 
 
 def test_the_apply_call_refuses_a_stale_hidden_or_untagged_target(page, load):
-    load(page, f"<h1>A</h1><button id='b' {CLICK}>Apply</button><button id='n' {CLICK}>Next</button>", SOURCES)
+    load(page, f"<h1>A</h1><a id='b' href='https://jobs.acme.test/9' {CLICK}>Apply</a><button id='n' {CLICK}>Next</button>", SOURCES)
     old = summary(page)["applyId"]
     fresh = summary(page)["applyId"]
     assert old != fresh
@@ -483,7 +620,7 @@ def test_the_apply_call_refuses_a_stale_hidden_or_untagged_target(page, load):
 
 
 def test_an_apply_relabelled_between_the_summary_and_the_press_is_refused(page, load):
-    load(page, f"<h1>A</h1><button id='b' {CLICK}>Apply</button>", SOURCES)
+    load(page, f"<h1>A</h1><a id='b' href='https://jobs.acme.test/9' {CLICK}>Apply</a>", SOURCES)
     apply_id = summary(page)["applyId"]
     page.evaluate("() => { document.getElementById('b').textContent = 'Submit application'; }")
     assert advance_apply(page, apply_id) == {"clicked": False, "why": "not_apply"}
@@ -500,21 +637,19 @@ def test_a_review_like_page_with_no_fields_is_a_posting_to_the_page_and_the_driv
 
 @pytest.mark.parametrize("word", PIN_WORDS)
 @pytest.mark.parametrize("flavour", sorted(FLAVOURS))
-def test_the_apply_call_presses_a_pin_word_only_when_it_is_exactly_an_apply_wording(page, load, word, flavour):
+def test_the_apply_call_presses_no_button_flavour_at_any_wording(page, load, word, flavour):
     load(page, FLAVOURS[flavour].format(w=word), SOURCES)
     page.evaluate("""() => {
       window.hit = 0;
       document.getElementById('t').addEventListener('click', (e) => { e.preventDefault(); window.hit += 1; });
     }""")
     s = summary(page)
-    # A "link button" is `<a href='#'>`: it goes nowhere, so the apply call will not press it.
-    plain = (re.fullmatch(r"\s*apply( now| for this job)?\s*", word, re.I) is not None
-             and flavour not in ("aria label", "link button"))
+    # None of these is a real link (the "link button" is `<a href='#'>`, which goes nowhere): the
+    # apply call presses nothing, whatever the wording.
     ids = [b["id"] for b in s["buttons"]] + ["unknown-id", ""]
-    results = [advance_apply(page, i)["clicked"] for i in ids]
-    assert page.evaluate("() => window.hit") == (1 if plain else 0)
-    assert results.count(True) == (1 if plain else 0)
-    assert (s["applyId"] is not None) == plain
+    assert [advance_apply(page, i)["clicked"] for i in ids].count(True) == 0
+    assert page.evaluate("() => window.hit") == 0
+    assert s["applyId"] is None
 
 
 def test_the_step_key_tells_steps_apart_and_never_carries_the_heading(page, load):
@@ -604,12 +739,14 @@ def test_the_press_re_checks_the_link_if_the_page_rewrites_it_after_naming(page,
     assert page.evaluate("() => window.hit || 0") == 0
 
 
-def test_the_apply_call_re_checks_the_form_owner_at_press_time(page, load):
-    """Named while the button was free-standing; the page then moves it into a form."""
-    load(page, f"<h1>A</h1><button id='b' {CLICK}>Apply</button><form id='f'></form>", SOURCES)
+def test_the_apply_call_re_checks_that_it_is_still_a_link_at_press_time(page, load):
+    """Named while it was a link; the page then swaps it for a button of the same id and text."""
+    load(page, f"<h1>A</h1><a id='b' href='https://jobs.acme.test/9'>Apply</a>", SOURCES)
     apply_id = summary(page)["applyId"]
     assert apply_id
-    page.evaluate("() => document.getElementById('f').appendChild(document.getElementById('b'))")
+    page.evaluate("""() => { const b = document.createElement('button'); b.id = 'b2'; b.textContent = 'Apply';
+      b.onclick = () => { window.hit = 1; }; const a = document.getElementById('b');
+      b.setAttribute('data-maestro-btn', a.getAttribute('data-maestro-btn')); a.replaceWith(b); }""")
     assert advance_apply(page, apply_id) == {"clicked": False, "why": "would_submit"}
     assert page.evaluate("() => window.hit || 0") == 0
 
@@ -637,6 +774,7 @@ DRIVE = """async ({record, swap, signIn}) => {
 }"""
 
 APPLY_URL = "https://jobs.acme.test/apply"
+WORKDAY_URL = "https://acme.wd5.myworkdayjobs.com/apply"   # the saved login is typed only on a known ATS host
 DRAFT_REVIEW = f"<h1>Review your draft</h1><form><input type='hidden' name='d' value='1'><button {CLICK}>Apply</button></form>"
 
 
@@ -713,12 +851,14 @@ def test_a_table_submit_is_a_submit_even_when_it_reads_done(page):
 
 
 def test_a_marker_looking_id_on_a_host_with_no_rows_has_no_verdict(page):
-    """The shipped table has no row for this host, so "Done" is the text's to judge (unclear) and
-    the summary carries no `known` key at all."""
+    """The shipped table has no row for this host, so the summary carries no `known` key at all.
+    The text ("Done") is unclear, but the control's own id is a Submit signal."""
     serve(page, "https://careers.acme-example.test/jobs/1", ODD_SUBMIT_STEP)
     s = summary(page)
     assert all("known" not in b for b in s["buttons"])
-    assert advance(page, button(s, "Done")["id"]) == {"clicked": False, "why": "not_next"}
+    # The id says submit, and a page names its Submit that way when the label is "Done": it stops.
+    assert advance(page, button(s, "Done")["id"]) == {"clicked": False, "why": "submit"}
+    assert classify(page)["kind"] == "review"
 
 
 NEXT_ENTRY = """() => {
@@ -774,7 +914,6 @@ LOGIN = {"email": "ada@acme.test", "password": "Pw-Zelda-9-not-real", "allowedHo
 
 def sign_in(page, **over):
     return page.evaluate(f"(a) => {READER}.signIn(a)", {**LOGIN, **over})
-WORKDAY_URL = "https://acme.wd5.myworkdayjobs.com/apply"   # the saved login is typed only on a known ATS host
 
 
 def serve_signin(page, name="signin.html", url="https://x.test/signin"):
@@ -1166,8 +1305,8 @@ def test_another_hosts_lookalike_redirect_is_just_an_off_site_link_not_unwrapped
 # only form with a field, so without the marker the nav button counts as outside "the form".
 WORKDAY_FOOTER_PAGE = """<div data-automation-id='applyFlowMyInfoPage'>
   <label for='fn'>First Name</label><input id='fn' type='text'></div>
-<footer><form><label for='em'>Email</label><input id='em' type='text'>
-  <button type='button'>Subscribe</button></form></footer>
+<div class='newsletter'><form><label for='em'>Email</label><input id='em' type='text'>
+  <button type='button'>Subscribe</button></form></div>
 <button type='button' data-automation-id='pageFooterNextButton'
   onclick='window.hit = 1'>{text}</button>"""
 WORKDAY_URL = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Analyst_R1/apply/applyManually"
