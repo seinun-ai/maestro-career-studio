@@ -177,15 +177,34 @@
 
   const withoutWww = (host) => String(host ?? "").toLowerCase().replace(/^www\./, "");
 
+  const sendable = (raw) => /^https?:\/\/[^\s/?#]\S*$/i.test(raw) && raw.length <= MAX_APPLY_URL;
+
+  /** LinkedIn sends an external Apply through its own interstitial,
+   * `https://www.linkedin.com/safety/go/?url=<the employer's address, encoded>`. The employer's
+   * address is the `url` parameter, decoded. This one known shape and nothing generic, and only
+   * one level deep: what it carries still goes through every check `applyTarget` makes. */
+  function linkedinRedirectTarget(raw) {
+    try {
+      const url = new URL(raw);
+      if (/(^|\.)linkedin\.com$/i.test(url.hostname) && /^\/safety\/go\/?$/.test(url.pathname)) {
+        return (url.searchParams.get("url") ?? "").trim();
+      }
+    } catch (_) { /* not an address at all; the caller's checks say so */ }
+    return raw;
+  }
+
   /** `href` when it is an absolute http(s) address on a DIFFERENT site from this page's, else
    * null. Relative, `javascript:`, `mailto:` and same-site addresses are not an employer's link:
    * a board's own Apply (LinkedIn Easy Apply, Indeed Apply) stays on the board and has none.
+   * LinkedIn's `/safety/go/?url=` redirect is read through to the address it carries.
    * Returned as written (trimmed, tracking parameters and all): the backend owns what counts as
    * the same posting. */
   function applyTarget(href) {
-    const raw = typeof href === "string" ? href.trim() : "";
+    const given = typeof href === "string" ? href.trim() : "";
     // A host straight after the slashes: the backend rejects `http://` and `https:///x` outright.
-    if (!/^https?:\/\/[^\s/?#]\S*$/i.test(raw) || raw.length > MAX_APPLY_URL) return null;
+    if (!sendable(given)) return null;
+    const raw = linkedinRedirectTarget(given);
+    if (!sendable(raw)) return null;
     try {
       return withoutWww(new URL(raw).hostname) === withoutWww(location.hostname) ? null : raw;
     } catch (_) {

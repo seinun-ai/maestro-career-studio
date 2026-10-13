@@ -723,3 +723,46 @@ def test_only_a_visible_link_worded_as_apply_counts(page):
 def test_a_button_has_no_href_to_read(page):
     _served(page, "www.linkedin.com", "<button>Apply now</button>")
     assert apply_link(page) is None
+
+
+def _safety_go(url, path="/safety/go/", host="www.linkedin.com"):
+    from urllib.parse import quote
+    return f"https://{host}{path}" + ("" if url is None else f"?url={quote(url, safe='')}")
+
+
+EMPLOYER_SITE = "https://careers.acme.example/apply/9?src=li&x=a b".replace(" ", "%20")
+
+
+@pytest.mark.parametrize("path", ["/safety/go/", "/safety/go"])
+def test_linkedins_safety_redirect_is_read_through_to_the_employers_address(page, path):
+    _served(page, "www.linkedin.com",
+            f'<a href="{_safety_go(EMPLOYER_SITE, path)}">Apply on company website</a>')
+    assert apply_link(page) == EMPLOYER_SITE
+
+
+@pytest.mark.parametrize("carried", [
+    "https://www.linkedin.com/jobs/view/1", "javascript:alert(1)", "/apply", "http://", None,
+    "https://" + "a" * 2048 + ".example/x",
+    # one level only: a redirect carrying a redirect is not unwrapped twice
+    "https://www.linkedin.com/safety/go/?url=https%3A%2F%2Fcareers.acme.example%2Fx",
+])
+def test_a_safety_redirect_carrying_nothing_usable_is_no_link(page, carried):
+    _served(page, "www.linkedin.com",
+            f'<a href="{_safety_go(carried)}">Apply now</a>')
+    assert apply_link(page) is None
+
+
+@pytest.mark.parametrize("href", [
+    "https://www.linkedin.com/jobs/view/1/apply?url=https%3A%2F%2Fcareers.acme.example%2Fx",
+    "https://www.linkedin.com/safety/gone/?url=https%3A%2F%2Fcareers.acme.example%2Fx",
+])
+def test_only_linkedins_own_safety_redirect_is_unwrapped(page, href):
+    _served(page, "www.linkedin.com", f'<a href="{href}">Apply now</a>')
+    assert apply_link(page) is None
+
+
+def test_another_hosts_lookalike_redirect_is_just_an_off_site_link_not_unwrapped(page):
+    """`notlinkedin.com` is not dot-bounded `linkedin.com`: the link is that other site's, as written."""
+    href = "https://notlinkedin.com/safety/go/?url=https%3A%2F%2Fcareers.acme.example%2Fx"
+    _served(page, "www.linkedin.com", f'<a href="{href}">Apply now</a>')
+    assert apply_link(page) == href
