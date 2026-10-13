@@ -536,7 +536,7 @@ def test_the_screening_answers_dial_replaces_the_low_stakes_switch():
     assert "toast.success(`Screening answers: ${" in flat
     for line in (
         "Only your saved answers and career history. Anything else waits for you.",
-        "Also answers low-stakes questions in the job's favour, and years-with-a-skill questions "
+        "Also answers low-stakes questions in the job's favor, and years-with-a-skill questions "
         "when your history shows the skill.",
         "On jobs you queued, also says yes to every requirement question.",
         "Work authorization, sponsorship, salary, EEO, background, clearance and legal statements "

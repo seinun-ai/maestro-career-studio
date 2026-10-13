@@ -1300,7 +1300,7 @@ const ANSWER_LEVELS: {
     value: "history",
     label: "Backed by your history",
     line:
-      "Also answers low-stakes questions in the job's favour, and "
+      "Also answers low-stakes questions in the job's favor, and "
       + "years-with-a-skill questions when your history shows the skill.",
   },
   {
