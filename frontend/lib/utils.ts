@@ -27,7 +27,7 @@ const twMerge = extendTailwindMerge({
         "label-medium",
         "label-small",
       ],
-      radius: ["corner-xs", "corner-sm", "corner-md", "corner-lg", "corner-xl"],
+      radius: ["corner-2xs", "corner-xs", "corner-sm", "corner-md", "corner-lg", "corner-xl"],
       shadow: ["level1", "level2", "level3"],
       ease: ["standard", "emphasized-decelerate", "emphasized-accelerate"],
     },

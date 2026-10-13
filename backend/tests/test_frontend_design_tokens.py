@@ -451,11 +451,13 @@ def test_no_corner_is_written_by_hand():
 
 
 def test_every_corner_name_is_on_the_scale():
-    """`rounded-corner-2xl` or a typo would compile to nothing and leave a square corner."""
+    """`rounded-corner-2xl` or a typo would compile to nothing and leave a square corner.
+
+    `2xs` (2px) is the base resume square's corner, the only step below the checkbox's."""
     hits = [
         f"{rel}:{number}: {match.group(0)}"
         for rel, number, match in _literal_matches(_CORNER_NAME)
-        if match.group(1) not in ("xs", "sm", "md", "lg", "xl")
+        if match.group(1) not in ("2xs", "xs", "sm", "md", "lg", "xl")
     ]
     assert not hits, "a corner name is not on the scale at:\n" + "\n".join(hits)
 
