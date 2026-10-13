@@ -86,8 +86,8 @@ _SENTINELS = {
                         "answers",
     # Apart from the history sentinel because only THIS one may ever reach a keen
     # Yes (level "queued" on a queued job): a clearance or agency question never does.
-    YEARS_UNANSWERED: "A question about years of experience with a specific skill or tool (at least N years of "
-                      "something), which none of the listed applicant facts answers",
+    YEARS_UNANSWERED: "A question about N months or years of experience with a specific skill or tool (at "
+                      "least N years of something), which none of the listed applicant facts answers",
     # Always offered too: without consent it marks the field `blocked`; with
     # consent the EEO facts are listed, and choosing this means none answers it.
     BLOCKED_EEO: "A voluntary diversity / EEO question (gender, race or ethnicity, Hispanic or Latino, "
@@ -546,8 +546,13 @@ def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
 _REASONED_KEYS = frozenset({HISTORY_UNANSWERED, YEARS_UNANSWERED})
 _KEEN_YEARS_KEYS = frozenset({YEARS_UNANSWERED})
 _NO_KEYS: frozenset[str] = frozenset()
-# Wordings of a years question, for code that has only the question: "5+ years", "3 yrs", "5+ YOE", "a decade of".
-_YEARS_WORDING = re.compile(r"(?<![A-Za-z])(?:years?|yrs?|yoe|decades?)(?![A-Za-z])", re.IGNORECASE)
+# Wordings of a years question, for code that has only the question: "5+ years", "3 yrs", "5+ YOE", "a decade
+# of", and months only when they measure experience ("36 months with Kubernetes", "months of experience"):
+# "how many months until you can start" is a notice question, and "monthly" is no month count. A notice
+# question worded "months of notice" is flagged too; that errs toward asking the history first.
+_YEARS_WORDING = re.compile(
+    r"(?<![A-Za-z])(?:years?|yrs?|yoe|decades?)(?![A-Za-z])"
+    r"|(?<![A-Za-z])(?:months?|mos)(?![A-Za-z])\s+(?:of|with|using|working|experience|as)\b", re.IGNORECASE)
 
 
 def asks_years(question: str, marked: bool = False) -> bool:

@@ -365,6 +365,7 @@ def test_the_step_states_the_queued_scope_at_the_queued_level_on_a_queued_job(db
 
 @pytest.mark.parametrize("question, marked", [
     (YEARS_Q, False), ("Do you have 5+ YOE with SQL?", False), ("Do you have a decade of Java?", False),
+    ("Do you have at least 36 months with Kubernetes?", False),
     ("Are you proficient in SQL?", True)])  # /map's marker, whatever the wording
 def test_a_years_question_never_gets_the_blanket_yes_in_a_step_even_at_the_queued_level(
         db_session, monkeypatch, question, marked):

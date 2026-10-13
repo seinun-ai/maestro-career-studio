@@ -229,7 +229,11 @@ def test_a_low_stakes_field_filed_under_the_years_sentinel_is_marked_a_years_que
     ("Do you have 5+ years of SQL?", False, True), ("Do you have 3 yrs with Kafka?", False, True),
     ("5+ YOE with Python?", False, True), ("A decade of Java?", False, True), ("5yrs Go?", False, True),
     ("Are you proficient in SQL?", True, True), ("Are you proficient in SQL?", False, False),
-    ("Willing to travel?", False, False), ("Do you have a yearly bonus preference?", False, False)])
+    ("Willing to travel?", False, False), ("Do you have a yearly bonus preference?", False, False),
+    ("Do you have at least 36 months with Kubernetes?", False, True), ("36 mos using Terraform?", False, True),
+    ("How many months of experience do you have with SQL?", False, True),
+    ("What is your desired monthly salary?", False, False),
+    ("How many months until you can start?", False, False), ("Is the monthly commute acceptable?", False, False)])
 def test_asks_years_reads_the_wording_or_the_marker(question, marked, expected):
     assert autofill_map.asks_years(question, marked) is expected
 
