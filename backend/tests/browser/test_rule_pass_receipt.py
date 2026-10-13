@@ -170,3 +170,16 @@ def test_a_robot_trap_is_never_an_open_question_nor_a_missing_field(page, load):
     # A real empty box is still counted (Middle name is a blank, not a trap).
     page.evaluate("() => document.getElementById('middle').remove()")
     assert page.evaluate(collect)["blank"] == clean["blank"] - 1
+
+
+def test_open_questions_judge_a_trap_by_the_field_readers_label(page, load):
+    """aria-labelledby names the field for the reader, not for questionTextFor:
+    the trap is still a trap, listed nowhere and counted nowhere."""
+    load(page, "<span id='t1'>Leave this field blank</span><textarea aria-labelledby='t1' placeholder='Tell us more'></textarea>"
+               "<span id='t2'>Do not fill this field</span><input aria-labelledby='t2' placeholder='Extra notes'>"
+               "<label for='ok'>Anything else we should know</label><input id='ok'>",
+         [*SOURCES, "content/open-questions.js"])
+    got = page.evaluate("() => { const r = window.careerStudioCompanion.collectOpenQuestions();"
+                        " return { labels: r.questions.map((q) => q.label), blank: r.blank }; }")
+    assert not [x for x in got["labels"] if "tell us" in x or "extra notes" in x]
+    assert got["blank"] + len(got["labels"]) == 1   # only the real box is an open field

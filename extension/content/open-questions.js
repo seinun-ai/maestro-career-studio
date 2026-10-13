@@ -93,6 +93,12 @@ function collectOpenQuestions() {
     return false;
   };
 
+  // A honeypot is judged by the field reader's label, the one the inventory and
+  // the saved-answers fill use (it follows aria-labelledby, which
+  // questionTextFor does not); questionTextFor's text only if the reader is absent.
+  const isTrap = (el, fallbackText) => ns.fillBase?.robotTrap(
+    el, ns.shapes?.readField(el).question ?? fallbackText) ?? false;
+
   const questionTextFor = (input) => {
     if (input.id) {
       const lab = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
@@ -132,7 +138,7 @@ function collectOpenQuestions() {
     const label = norm(pageText);
     if (!label) continue;
     // A honeypot is never asked about (nor counted missing, in countBlank).
-    if (ns.fillBase?.robotTrap(el, pageText)) continue;
+    if (isTrap(el, pageText)) continue;
     const k = renderedKind(el);
     // Ahead of EXCLUDE, and ahead of the per-type ladder below: declining to
     // show a consent field to the model is a policy decision, not a side
@@ -288,7 +294,7 @@ function collectOpenQuestions() {
       if (el instanceof HTMLInputElement && NOT_A_FIELD.has(el.type)) continue;
       const label = norm(questionTextFor(el));
       if (!label || /\bsearch\b/.test(label)) continue;
-      if (ns.fillBase?.robotTrap(el, label)) continue;
+      if (isTrap(el, label)) continue;
       // A radio group, or a named set of checkboxes ("select all that
       // apply"), is ONE field: blank when none of it is checked.
       if (el.type === "radio" || (el.type === "checkbox" && el.name)) {
