@@ -187,6 +187,11 @@ text. At most 15 steps per application; the same fingerprint seen twice parks.
 - No retries: a failed sign-in parks at once ("Sign-in didn't work"), so the account is not locked.
 - `inv-job-site-password-local` is rewritten to name the second route.
 
+**Batch-4 review decisions (owner, 2026-10-13):** the saved job-site password is typed only on
+known ATS hosts (the Companion's ATS host list); any other sign-in page parks for the user
+(`sign_in_yourself`). A posting's Apply is pressed only when it is a same-tab http(s) link on the first
+read of a tab the run opened. Board pages (LinkedIn, Indeed) are `board_native` before any other check.
+
 ## Part 5: Running several tabs, the run list, Needs you
 
 - **The Queue view** (shown while full automation is On) reads `GET /api/autofill/queue-run`:

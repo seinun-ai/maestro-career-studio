@@ -1443,6 +1443,11 @@ Expected: FAIL (8 sends). **Step 3: Implement.** **Step 4: Run** all of
 `test_adaptive_step.py`. Expected: PASS. **Step 5: Commit** `fix(fill-loop): a move that changed
 nothing is not repeated`.
 
+**As built (planner, 2026-10-13):** `scroll` is exempt from the twice-per-move cap (a long list needs
+one scroll per window); a scroll that shows the same options is still `no_change`, and the page
+refuses one past the list's end. The `no_change` check compares the options shown, not the whole
+state.
+
 ### Task 30: Tools: the agent writes its own search term
 
 A new move, `search:term`: type a term the AGENT chose (a shorter word, a synonym, the category),
