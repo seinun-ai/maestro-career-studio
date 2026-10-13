@@ -1,8 +1,9 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
@@ -10,9 +11,12 @@ import { couldnt } from "@/lib/error-text";
 import { jobOwnershipView, syncActionMessage } from "@/lib/job-ownership";
 import type { JobOwnership } from "@/lib/types";
 
+const ACTION_LABEL = { "keep-here": "Keep it here", "work-here": "Work on it here" } as const;
+
 function useOwnershipAction(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: ["job-ownership", jobId],
     mutationFn: (action: string) => apiFetch(`/api/jobs/${jobId}/${action}`, { method: "POST" }),
     onSuccess: (result) => {
       toast.success(syncActionMessage(result, "Kept on your laptop"));
@@ -40,11 +44,26 @@ export function JobOwnershipMark({ jobId, ownership }: { jobId: string; ownershi
       </span>
       {view.action ? (
         <Button size="xs" variant="outline" pending={mutation.isPending} onClick={() => act(view.action!)}>
-          {view.action === "keep-here" ? "Keep it here" : "Work on it here"}
+          {ACTION_LABEL[view.action]}
         </Button>
       ) : null}
       {view.pending ? <span role="status" className="text-muted-foreground text-body-small">Sent at the next sync</span> : null}
     </div>
+  );
+}
+
+/** The row menu's "Work on it here" / "Keep it here". A menu closes on click, so the request's progress
+ * is read from the query client: reopening the menu mid-request finds the item disabled. */
+export function OwnershipMenuItem({ jobId, action }: { jobId: string; action: "keep-here" | "work-here" }) {
+  const mutation = useOwnershipAction(jobId);
+  const act = useSingleFlight(mutation.mutate);
+  const busy = useIsMutating({ mutationKey: ["job-ownership", jobId] }) > 0;
+  const Icon = CONCEPT_ICONS.laptop;
+  return (
+    <DropdownMenuItem disabled={busy} onClick={() => act(action)}>
+      <Icon className="size-4" aria-hidden="true" />
+      {ACTION_LABEL[action]}
+    </DropdownMenuItem>
   );
 }
 

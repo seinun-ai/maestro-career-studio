@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { CONFIRM_MS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { SegmentTone } from "@/components/visual";
@@ -191,12 +192,15 @@ export function StatusChip({
   onSelect,
   pending = false,
   disabled = false,
+  lockedReason,
   className,
 }: {
   status: string | null;
   onSelect: (status: ApplicationStatus) => void;
   pending?: boolean;
   disabled?: boolean;
+  /** Why the chip cannot change right now (a job that is on the other copy): the chevron becomes a lock. */
+  lockedReason?: string;
   className?: string;
 }) {
   const current = (status ?? "draft") as ApplicationStatus;
@@ -234,6 +238,7 @@ export function StatusChip({
             disabled={disabled}
             aria-disabled={pending || undefined}
             data-confirm={confirm || undefined}
+            title={lockedReason}
             aria-label={disabled ? `Status: ${style.label}` : `Status: ${style.label}. Change status`}
             className={cn(chipClasses(true), style.chip, "data-confirm:animate-confirm", className)}
             onClick={(e) => e.stopPropagation()}
@@ -244,7 +249,11 @@ export function StatusChip({
               <span className={cn("size-1.5 rounded-full", style.dot)} />
             )}
             {style.label}
-            <ChevronDown className="size-3 opacity-50" />
+            {lockedReason ? (
+              <CONCEPT_ICONS.locked className="size-3 opacity-50" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="size-3 opacity-50" />
+            )}
           </button>
         }
       />

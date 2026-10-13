@@ -357,7 +357,9 @@ the answer is "Synced moments ago."
 
 ## What the marks mean
 
-On the laptop's web app, each job shows who owns it.
+On the laptop's web app, each job shows who owns it. In the Jobs list that is the Where column (Laptop,
+Bot, or Moving while a handover is on its way), which appears only once sync is on; the job's page
+shows the mark in words. In the list, **Work on it here** and **Keep it here** sit in the row's ⋯ menu.
 
 - **With your bot.** The always-on copy owns this job. You can read it. To
   change it you ask the bot. The button **Work on it here** asks for it back.

@@ -1126,6 +1126,16 @@
   filter and the source toggle (Tracked, Yours, Agents) write the URL with
   `router.replace(…, { scroll: false })`: the default scrolls to the top, off the rows being read
   (`test_a_filter_change_keeps_the_scroll_position`).
+- **Jobs row** (`app/applications/page.tsx`): every row is two lines (company, then role and
+  location), so every row is one height; nothing a row can gain (an ownership mark, a notice) goes
+  inside the Role cell. Ownership is the **Where** column after Status: an icon and one word
+  (`ownershipWhere` in `lib/job-ownership.ts`: Laptop, Bot, Moving), the long sentence as its
+  tooltip, shown only when some visible row has an owner (sync off: no column, Role takes its
+  width). The page reads only each row's own `ownership`, never `use-job-ownership`. A chip that
+  cannot change because the job is on the other copy trades its chevron for a lock
+  (`StatusChip` `lockedReason`). **Work on it here** / **Keep it here** are in the row's ⋯ menu
+  (`OwnershipMenuItem`). The job header, gap page and proposals keep `JobOwnershipMark`/`Notice`.
+  Pinned by `test_frontend_jobs_where.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means

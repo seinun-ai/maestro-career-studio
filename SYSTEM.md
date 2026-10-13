@@ -160,7 +160,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their
    names): the tracker. Two queries (summary list with server-joined job fields + saved jobs of the
    toggle's source), a grouped status `Select` with counts, inline `StatusChip` per row (PATCHes
-   directly), a read-only Match score column (`ats_score` / `best_ats_score`), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
+   directly; locked while the job is moving between copies), a Where column (Laptop/Bot/Moving) once sync is on, a read-only Match score column (`ats_score` / `best_ats_score`), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
    toggle; `?source=` deep-linkable; Analytics' copy reads All, as it counts every application).
    "Saved" = job with no application — agent-captured jobs stay out unless the toggle is `Agents`,
    which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,

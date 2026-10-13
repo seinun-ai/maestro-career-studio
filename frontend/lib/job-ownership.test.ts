@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { jobOwnershipView, isOwnershipRefusal, isSyncQueued, syncActionMessage } from "./job-ownership.ts";
+import {
+  jobOwnershipView, isOwnershipRefusal, isSyncQueued, ownershipReason, ownershipWhere, syncActionMessage,
+} from "./job-ownership.ts";
 
 const off = { owned_here: true, owner: null, handover: null, pending_requests: 0 };
 
@@ -69,4 +71,15 @@ test("only the server's other-copy sentences count as an ownership refusal", () 
   assert.equal(isOwnershipRefusal("This job is with your bot; ask for it back with Work on it here."), true);
   assert.equal(isOwnershipRefusal("This gap analysis is out of date."), false);
   assert.equal(isOwnershipRefusal(undefined), false);
+});
+
+test("the Where column says Laptop, Bot or Moving, with the long sentence behind it", () => {
+  assert.equal(ownershipWhere(undefined), null);
+  assert.equal(ownershipWhere(off), null);
+  assert.deepEqual(ownershipWhere({ ...off, owner: "laptop" }), { word: "Laptop", bot: false, sentence: "On your laptop" });
+  const withBot = ownershipWhere({ ...off, owned_here: false, owner: "bot" });
+  assert.deepEqual(withBot, { word: "Bot", bot: true, sentence: ownershipReason({ ...off, owned_here: false, owner: "bot" }) });
+  const offered = { ...off, owner: "laptop" as const, handover: "offered", can_keep_here: true };
+  assert.deepEqual(ownershipWhere(offered), { word: "Moving", bot: false, sentence: ownershipReason(offered) });
+  assert.equal(ownershipWhere({ ...off, owned_here: false, owner: "bot", handover: "returning" })?.word, "Moving");
 });

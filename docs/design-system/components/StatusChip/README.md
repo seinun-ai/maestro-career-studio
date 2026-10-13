@@ -28,6 +28,7 @@ StatusChip is the only place an application's or a proposal's state is named and
 - Every status also has a dot role for `StatusDot` and `LaneDot` (see StatusDot): Needs you and Check if sent `attention`, Proposed `primary`, Queued `on-secondary-container`, Approved and Applied `success`, Skipped and Expired `muted-foreground`.
 - The label always carries the meaning; the color only repeats it.
 - Needs you is `attention` (orange), never `warning`: Interviewing sits in the same column.
+- A chip that cannot change because its job is on the other copy swaps the chevron for a lock and gives the reason as its tooltip (`lockedReason`).
 - An interactive chip shows a chevron, lifts with a shadow on hover and takes the solid `ring` outline on focus.
 - Never write a status color at a call site, and never add a second label map.
 

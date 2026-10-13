@@ -6,8 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Bot, Check, FilePlus2, KeyRound, Inbox, SendHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { JobOwnershipMark, JobOwnershipNotice } from "@/components/job-ownership";
-import { isSyncQueued, jobOwnershipView } from "@/lib/job-ownership";
+import { OwnershipMenuItem } from "@/components/job-ownership";
+import { isSyncQueued, jobOwnershipView, ownershipWhere } from "@/lib/job-ownership";
 
 import { CompanyMonogram } from "@/components/company-monogram";
 import { EmptyState, TableFrame } from "@/components/empty-state";
@@ -30,6 +30,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -447,6 +448,9 @@ function ApplicationsContent() {
     });
   }, [sourceScopedRows, filter, q, sortKey, sortDir]);
 
+  // With sync off no row carries ownership and the table stays as it was, with no Where column.
+  const showWhere = filtered.some((r) => ownershipWhere(r.kind === "saved" ? r.job.ownership : r.app.ownership));
+
   // Kept rows are only worth keeping when there are some: an empty kept list would say "Nothing
   // matches" about rows that are still on their way.
   // The strip counts what the Status filter counts (source-scoped, nothing while the other source loads).
@@ -734,12 +738,13 @@ function ApplicationsContent() {
           <Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
               <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
-                {header("role", "Role", "w-[34%]")}
-                <TableHead className="w-[14%]">Resume</TableHead>
-                {header("ats", "Match score", "w-[12%]")}
-                {header("status", "Status", "w-[14%]")}
-                {header("applied_at", "Applied", "w-[11%]")}
-                {header("created_at", "Added", "w-[11%]")}
+                {header("role", "Role", showWhere ? "w-[27%]" : "w-[36%]")}
+                <TableHead className="w-[15%]">Resume</TableHead>
+                {header("ats", "Match score", "w-[11%]")}
+                {header("status", "Status", "w-[16%]")}
+                {showWhere ? <TableHead className="w-[9%] px-3">Where</TableHead> : null}
+                {header("applied_at", "Applied", "w-[9%]")}
+                {header("created_at", "Added", "w-[9%]")}
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -749,6 +754,8 @@ function ApplicationsContent() {
                 const jobId = r.kind === "saved" ? r.job.id : r.app.job_id;
                 const owner = r.kind === "saved" ? r.job.ownership : r.app.ownership;
                 const ownership = jobOwnershipView(owner);
+                const where = ownershipWhere(owner);
+                const WhereIcon = where?.bot ? CONCEPT_ICONS.agentInbox : CONCEPT_ICONS.laptop;
                 const href =
                   r.kind === "saved"
                     ? `/jobs/${r.job.id}`
@@ -808,8 +815,6 @@ function ApplicationsContent() {
                               ? ` · ${r.app.job_location}`
                               : ""}
                           </p>
-                          {ownership.mark ? <div className="mt-1"><JobOwnershipMark jobId={jobId} ownership={owner} /></div> : null}
-                          <JobOwnershipNotice ownership={owner} />
                         </div>
                       </div>
                     </TableCell>
@@ -849,6 +854,7 @@ function ApplicationsContent() {
                         <StatusChip
                           status={r.app.status}
                           disabled={!ownership.canRequest}
+                          lockedReason={ownership.canRequest ? undefined : (ownership.reason ?? undefined)}
                           pending={
                             patchStatus.isPending &&
                             patchStatus.variables?.id === r.app.id
@@ -867,6 +873,21 @@ function ApplicationsContent() {
                         />
                       )}
                     </TableCell>
+                    {showWhere ? (
+                      <TableCell className="px-3 text-body-small">
+                        {where ? (
+                          <span className="inline-flex items-center gap-1.5" title={where.sentence}>
+                            <WhereIcon
+                              className="text-muted-foreground size-3.5 shrink-0"
+                              aria-hidden="true"
+                            />
+                            {where.word}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground" aria-hidden="true">—</span>
+                        )}
+                      </TableCell>
+                    ) : null}
                     <TableCell className="text-muted-foreground text-body-small tabular-nums">
                       {r.kind === "saved" ? "—" : formatDate(r.app.applied_at)}
                     </TableCell>
@@ -905,7 +926,13 @@ function ApplicationsContent() {
                               </Button>
                             }
                           />
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end" className="w-max">
+                            {ownership.action ? (
+                              <>
+                                <OwnershipMenuItem jobId={jobId} action={ownership.action} />
+                                <DropdownMenuSeparator />
+                              </>
+                            ) : null}
                             {r.kind === "saved" ? (
                               <DropdownMenuItem
                                 variant="destructive"

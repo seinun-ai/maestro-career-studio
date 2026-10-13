@@ -6,11 +6,27 @@ export function jobOwnershipView(ownership?: JobOwnership) {
     reason: null, pending: false };
   const canWrite = ownership.owned_here;
   const owner = ownership.owner;
-  const moving = ["offered", "returning"].includes(ownership.handover ?? "");
+  const moving = isMoving(ownership);
   return { mark: owner ? ownershipMark(ownership) : null, action: ownershipAction(ownership),
     canWrite, canRequest: canWrite || !moving,
     reason: canWrite ? null : ownershipReason(ownership),
     pending: ownership.pending_requests > 0 };
+}
+
+function isMoving(ownership: JobOwnership): boolean {
+  return ["offered", "returning"].includes(ownership.handover ?? "");
+}
+
+/** The Jobs table's Where cell: one word, whose copy it is, and the long sentence for its tooltip.
+ * Null where the row has no mark, which is every row with sync off. */
+export function ownershipWhere(ownership?: JobOwnership):
+  { word: "Laptop" | "Bot" | "Moving"; bot: boolean; sentence: string } | null {
+  const view = jobOwnershipView(ownership);
+  if (!ownership || !view.mark) return null;
+  const bot = ownership.owner === "bot";
+  const moving = isMoving(ownership);
+  return { word: moving ? "Moving" : bot ? "Bot" : "Laptop", bot,
+    sentence: moving || !view.canWrite ? ownershipReason(ownership) : view.mark };
 }
 
 function ownershipMark(ownership?: JobOwnership): string {
@@ -24,7 +40,7 @@ function ownershipAction(ownership?: JobOwnership): "keep-here" | "work-here" | 
   return !ownership.owned_here && ownership.owner === "bot" ? "work-here" : null;
 }
 
-function ownershipReason(ownership?: JobOwnership): string {
+export function ownershipReason(ownership?: JobOwnership): string {
   if (ownership?.handover === "offered" && ownership.can_keep_here) {
     return "This job is on its way to your bot. Use Keep it here to keep working on it.";
   }
