@@ -211,7 +211,8 @@ global.chrome = {
 };
 
 main(async () => {
-  const frames = await broadcastToFrames(spec.tabId, { type: spec.messageType });
+  const frames = await broadcastToFrames(spec.tabId, { type: spec.messageType },
+    ...(spec.onlyFrame === undefined ? [] : [spec.onlyFrame]));
 
   // The aggregation the widget actually performs, run here rather than
   // asserted in Python: the point is that THIS expression still works against
@@ -246,10 +247,11 @@ main(async () => {
 """
 
 
-def run_fanout(tmp_path, frames, tab_id=7, message_type="profile_fill") -> dict:
+def run_fanout(tmp_path, frames, tab_id=7, message_type="profile_fill", only_frame=None) -> dict:
     out = run_node(
         _FANOUT_DRIVER_JS,
-        {"tabId": tab_id, "frames": frames, "messageType": message_type},
+        {"tabId": tab_id, "frames": frames, "messageType": message_type,
+         **({} if only_frame is None else {"onlyFrame": only_frame})},
         tmp_path,
         source=_FANOUT_SOURCE,
     )
@@ -283,6 +285,21 @@ def test_every_frame_of_the_tab_is_asked(tmp_path):
     out = run_fanout(tmp_path, _GREENHOUSE)
 
     assert [f["frameId"] for f in out["frames"]] == [0, 3, 9]
+
+
+def test_a_named_frame_is_the_only_one_asked(tmp_path):
+    """The queued run's Apply press goes to the frame that named the control, not the whole tab."""
+    out = run_fanout(tmp_path, _GREENHOUSE, message_type="page_advance", only_frame=3)
+    assert [f["frameId"] for f in out["frames"]] == [3]
+    assert [a["options"]["frameId"] for a in out["addressed"]] == [3]
+    gone = run_fanout(tmp_path, _GREENHOUSE, message_type="page_advance", only_frame=42)
+    assert gone["frames"] == [] and gone["addressed"] == []
+    none_named = run_fanout(tmp_path, _GREENHOUSE, message_type="page_advance")
+    assert [f["frameId"] for f in none_named["frames"]] == [0, 3, 9]
+
+
+def test_page_broadcast_hands_the_named_frame_to_the_fan_out():
+    assert "broadcastToFrames(tabId, msg.message, msg.frameId)" in js_code(SW_JS)
 
 
 def test_a_frame_with_no_content_script_is_skipped_not_fatal(tmp_path):

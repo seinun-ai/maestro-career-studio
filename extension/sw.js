@@ -186,8 +186,11 @@ function unwrapPageReply(reply) {
  * callback. It is the MV3 form and every other API here is used that way, but
  * that is one API's evidence for another's. The `?? []` is what keeps the
  * failure a "nobody answered" rather than a TypeError. */
-async function broadcastToFrames(tabId, message) {
-  const frames = (await chrome.webNavigation.getAllFrames({ tabId })) ?? [];
+async function broadcastToFrames(tabId, message, onlyFrame) {
+  const all = (await chrome.webNavigation.getAllFrames({ tabId })) ?? [];
+  // One frame, when the caller names it (the queued run's Apply press goes to the frame that
+  // named the control); a frame that is gone leaves nothing to ask, which reads as unreached.
+  const frames = Number.isInteger(onlyFrame) ? all.filter((frame) => frame.frameId === onlyFrame) : all;
   // A READ asked of every frame on most pages the panel is bound to, and on
   // every retry rung. Nearly every page has a frame with no content script, so
   // a warning per silent frame filled chrome://extensions → Errors (Chrome
@@ -749,7 +752,7 @@ const HANDLERS = {
     if (!BROADCASTABLE.includes(msg.message?.type)) {
       throw new Error(`not broadcastable: ${JSON.stringify(msg.message?.type)}`);
     }
-    return broadcastToFrames(tabId, msg.message);
+    return broadcastToFrames(tabId, msg.message, msg.frameId);
   },
 
   /** Make sure the content scripts exist in the panel's tab before a fill or
