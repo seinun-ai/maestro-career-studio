@@ -184,6 +184,20 @@ def panel_handlers(tmp_path_factory):
         "frame0_questions": {"sender": PANEL, "reply": {"ok": True, "data": {"questions": []}},
                              "msg": {"type": "panel_frame0", "tabId": 7,
                                      "message": {"type": "collect_open_questions"}}},
+        # The saved login (queued-run Task 15) goes to the top document ONLY: allowed here, and
+        # refused through the all-frames broadcast below.
+        "frame0_sign_in": {"sender": PANEL, "reply": {"ok": True, "data": {"signedIn": "clicked"}},
+                           "msg": {"type": "panel_frame0", "tabId": 7,
+                                   "message": {"type": "page_sign_in", "email": "ada@acme.test",
+                                               "password": "pw-test-only", "allowedHost": "x.test"}}},
+        "frame0_sign_in_from_a_page": {"sender": TOP_FRAME, "reply": {"ok": True, "data": {}},
+                                       "msg": {"type": "panel_frame0", "tabId": 9,
+                                               "message": {"type": "page_sign_in", "email": "a@b.test",
+                                                           "password": "pw-test-only", "allowedHost": "x"}}},
+        "broadcast_sign_in": {"sender": PANEL, "reply": {"ok": True, "data": {}},
+                              "msg": {"type": "page_broadcast", "tabId": 7,
+                                      "message": {"type": "page_sign_in", "email": "ada@acme.test",
+                                                  "password": "pw-test-only", "allowedHost": "x.test"}}},
         "frame0_from_a_page": {"sender": TOP_FRAME, "reply": {"ok": True, "data": {}},
                                "msg": {"type": "panel_frame0", "tabId": 9,
                                        "message": POSTING}},
@@ -250,7 +264,7 @@ def test_the_panel_only_handlers_refuse_a_sender_that_carries_a_tab(panel_handle
     assertion would stay green if the refusal moved to some later, accidental
     failure.
     """
-    for name in ("prepare_from_a_page", "frame0_from_a_page"):
+    for name in ("prepare_from_a_page", "frame0_from_a_page", "frame0_sign_in_from_a_page"):
         refused = panel_handlers[name]
         assert refused["reply"] == {"ok": False, "error": "not a panel sender"}, name
         assert refused["injected"] == [], name
@@ -314,6 +328,21 @@ def test_frame_zero_reads_are_allow_listed_and_addressed_to_the_top_document(pan
             "ok": False, "error": f'not allowed at frame 0: "{refused_type}"'}, name
         # Refused BEFORE the page was touched, rather than after.
         assert refused["addressed"] == [], name
+
+
+def test_the_saved_login_reaches_the_top_document_only_and_never_the_broadcast(panel_handlers):
+    """`page_sign_in` carries the job-site password, so it is the one frame-0 type that is NOT a
+    harmless read: allowed through `panel_frame0` (addressed to frame 0 alone), refused through the
+    all-frames `page_broadcast` (an ad or chat iframe must never be handed it), and refused from a
+    page (a content script cannot name a tab). The source pin below keeps it off BROADCASTABLE."""
+    sent = panel_handlers["frame0_sign_in"]
+    assert sent["reply"] == {"ok": True, "data": {"signedIn": "clicked"}}
+    assert [a["options"] for a in sent["addressed"]] == [{"frameId": 0}]
+    assert sent["addressed"][0]["message"]["type"] == "page_sign_in"
+    refused = panel_handlers["broadcast_sign_in"]
+    assert refused["reply"] == {"ok": False, "error": 'not broadcastable: "page_sign_in"'}
+    assert refused["addressed"] == []
+    assert panel_handlers["frame0_sign_in_from_a_page"]["addressed"] == []
 
 
 def test_a_sender_that_is_not_this_extension_never_reaches_a_handler(panel_handlers):

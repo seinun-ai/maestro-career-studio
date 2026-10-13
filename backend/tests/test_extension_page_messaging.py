@@ -543,8 +543,8 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
 
     reachable = sent | called
     # The queued run's page reader landed before its driver (queued-run plan Task 13, then the
-    # panel runner): these two have no sender YET. The task that adds the sender empties this set.
-    awaiting_sender = {"page_classify", "page_advance"}
+    # panel runner): these three have no sender YET. The task that adds the sender empties this set.
+    awaiting_sender = {"page_classify", "page_advance", "page_sign_in"}
     assert reachable & handled == handled - awaiting_sender, (
         f"page handlers nobody reaches: {sorted(handled - reachable - awaiting_sender)}")
     assert handled == {
@@ -561,6 +561,8 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
         "fill_sections", "fill_add",
         # The queued run's page reader and its Next click (content/page-reader.js).
         "page_classify", "page_advance",
+        # The saved login, typed into the top frame only (reached through panel_frame0).
+        "page_sign_in",
     }
     assert called == set(), (
         "something calls a page handler in-frame again — see this test's "

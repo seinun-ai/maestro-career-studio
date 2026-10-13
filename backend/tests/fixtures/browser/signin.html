@@ -1,5 +1,8 @@
 <!doctype html>
-<!-- A generic sign-in step (no vendor modelled): an email box, ONE password input, a Sign in. -->
+<!-- A generic sign-in step (no vendor modelled): an email box, ONE password input, a Sign in.
+     Oracle: `typed` is what the two boxes held at their last input event (so a value only counts if
+     it arrived as a real input event), `signedIn` is set only by the form's own submit, i.e. a click
+     on Sign in. Made-up credentials only; this file is public. -->
 <html><head><title>Sign in to Acme Careers</title></head><body>
 <main>
   <h1>Sign in</h1>
@@ -9,4 +12,14 @@
     <button type="submit">Sign in</button>
   </form>
 </main>
+<script>
+  window.__oracle = { typed: { email: "", password: "" }, signedIn: false };
+  for (const [id, key] of [["email", "email"], ["pw", "password"]]) {
+    document.getElementById(id).addEventListener("input", (e) => { window.__oracle.typed[key] = e.target.value; });
+  }
+  document.querySelector("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    window.__oracle.signedIn = true;
+  });
+</script>
 </body></html>

@@ -81,8 +81,12 @@
     if (el.type !== "radio" && el.type !== "checkbox") return false;
     return [...(el.labels ?? []), el.closest("label"), el.parentElement].some((n) => n && visible(n));
   };
+  // A password by SHAPE, never by label, so no consent setting can lift it: its type, or (a
+  // show-password toggle makes it type=text) the autocomplete token it still carries. Only the
+  // sign-in operation (page-reader.js) ever types one.
+  const isPassword = (el) => el instanceof HTMLInputElement && /(^|\s)(current|new)-password(\s|$)/i.test(el.getAttribute("autocomplete") ?? "");
   const eligible = (el) => {
-    if (el instanceof HTMLInputElement && SKIP.has(el.type)) return false;
+    if (el instanceof HTMLInputElement && (SKIP.has(el.type) || isPassword(el))) return false;
     if (el.disabled) return false;
     const shape = ns.shapes.of(el);
     // Read-only is not fillable — unless it opens a list when pressed.

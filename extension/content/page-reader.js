@@ -12,7 +12,13 @@
  * times, re-read from the button itself at click time. Every label a person or a screen reader
  * could read counts; if any one of them carries a Submit word the button is a Submit.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, advance }.
+ * `signIn` is the one place the saved job-site login is typed (design Part 4,
+ * inv-job-site-password-local). It runs in the TOP frame only, on the host the run reached from the
+ * job's apply link, on a page with exactly one plain password box; account creation, email codes and
+ * CAPTCHAs are refused and park. The password is a parameter of that one call: never stored, never
+ * logged, never in the return value (a fixed reason word, nothing else).
+ *
+ * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, advance, signIn }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -27,6 +33,9 @@
   // Site chrome: a "Continue" in a header or nav is the site's, never the application step's.
   const CHROME = 'header, nav, [role="banner"], [role="navigation"], [role="search"], [role="contentinfo"], [role="menubar"]';
   const FORM = 'form, [role="form"]';
+  // "Continue" is allowed here: pressing it on a sign-in page is not a submit of the application.
+  const SIGN_IN_BUTTON = /^\s*(sign in|log in|login|continue|next)\s*$/i;
+  const EMAIL_LABEL = /e-?mail|user ?name/i;
   const FIELD = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"])'
     + ':not([type="image"]):not([type="search"]), select, textarea';
   const MAX_TEXT = 80;
@@ -175,5 +184,58 @@
     return { clicked: true };
   }
 
-  ns.pageReader = { summary, advance };
+  // The email or username box of the sign-in form: by type, then by autocomplete token, then by a
+  // label (or name, placeholder, aria-label) that says so. Only a text-like input that can be typed in.
+  const emailBox = (scope) => {
+    const boxes = [...scope.querySelectorAll("input")].filter((el) => shown(el) && enabled(el) && !el.readOnly
+      && !/^(password|hidden|checkbox|radio|file|submit|button|reset|image|search)$/.test(el.type));
+    const named = (el) => [el.name, el.placeholder, el.getAttribute("aria-label"), ...[...(el.labels ?? [])].map((l) => l.textContent)]
+      .some((text) => EMAIL_LABEL.test(text ?? ""));
+    return boxes.find((el) => el.type === "email")
+      ?? boxes.find((el) => (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).includes("username"))
+      ?? boxes.find(named) ?? null;
+  };
+
+  /** Type the saved login into the sign-in form and press its Sign in. `{signedIn: "clicked"}` when
+   * the button was pressed (whether the site accepted the login is the next page's business), else
+   * `{signedIn: false, why}`: "frame", "missing", "host", "captcha", "no_form", "create_account",
+   * "verify", "no_email", "no_button", "typing". Every refusal comes BEFORE anything is typed except
+   * "typing", and the button is found before the first key, so a page with no safe button never
+   * holds the password. */
+  function signIn({ email, password, allowedHost } = {}) {
+    if (window.top !== window.self) return { signedIn: false, why: "frame" };
+    const text = (v) => typeof v === "string" && v !== "";
+    if (!text(email) || !text(password) || !text(allowedHost)) return { signedIn: false, why: "missing" };
+    if (location.hostname.toLowerCase() !== allowedHost.toLowerCase()) return { signedIn: false, why: "host" };
+    if ([...document.querySelectorAll("iframe")].some(challengeFrame)) return { signedIn: false, why: "captcha" };
+    const passwords = passwordInputs();
+    if (!passwords.length) return { signedIn: false, why: "no_form" };
+    if (passwords.length > 1 || isConfirmPassword(passwords[0])) return { signedIn: false, why: "create_account" };
+    if ([...document.querySelectorAll("input")].some((el) => el.type !== "password" && shown(el) && isCodeInput(el))) {
+      return { signedIn: false, why: "verify" };
+    }
+    const box = passwords[0];
+    const scope = box.form ?? box.closest(FORM) ?? document;
+    const emailEl = emailBox(scope);
+    if (!emailEl) return { signedIn: false, why: "no_email" };
+    const go = [...scope.querySelectorAll(BUTTONS)].find((el) => !el.closest(CHROME) && shown(el) && enabled(el)
+      && SIGN_IN_BUTTON.test(labelOf(el)) && sortOf(labelOf(el)) !== "submit");
+    if (!go) return { signedIn: false, why: "no_button" };
+
+    const { typeText, enter, leave } = ns.fillBase;
+    try {
+      for (const [el, value] of [[emailEl, email], [box, password]]) {
+        enter(el);
+        typeText(el, value);
+        leave(el);
+        if (el.value !== value) return { signedIn: false, why: "typing" };
+      }
+    } catch {
+      return { signedIn: false, why: "typing" };   // a fixed word: an error's text could carry a value
+    }
+    go.click();
+    return { signedIn: "clicked" };
+  }
+
+  ns.pageReader = { summary, advance, signIn };
 })();

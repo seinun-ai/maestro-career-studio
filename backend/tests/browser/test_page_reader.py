@@ -474,3 +474,200 @@ def test_a_submit_word_beats_a_table_next_at_click_time(page):
     assert advance(page, go["id"]) == {"clicked": False, "why": "submit"}
     assert page.evaluate("() => window.hit === 1") is False
     assert classify(page)["kind"] == "review"
+
+
+# ---------- sign-in with the saved login (Task 15) ----------
+
+# Made-up credentials: this repo is public, and these never leave the test page.
+LOGIN = {"email": "ada@acme.test", "password": "Pw-Zelda-9-not-real", "allowedHost": "x.test"}
+
+
+def sign_in(page, **over):
+    return page.evaluate(f"(a) => {READER}.signIn(a)", {**LOGIN, **over})
+
+
+def serve_signin(page, name="signin.html", url="https://x.test/signin"):
+    serve(page, url, fixture_html(name))
+
+
+def test_sign_in_types_both_values_and_clicks_sign_in(page):
+    serve_signin(page)
+    result = sign_in(page)
+    assert result == {"signedIn": "clicked"}
+    assert oracle(page, "typed") == {"email": LOGIN["email"], "password": LOGIN["password"]}
+    assert oracle(page, "signedIn") is True
+    # Nothing in what comes back carries either value.
+    assert LOGIN["password"] not in json.dumps(result) and LOGIN["email"] not in json.dumps(result)
+
+
+def test_sign_in_never_writes_the_password_to_the_console(page):
+    seen = []
+    page.on("console", lambda m: seen.append(m.text))
+    serve_signin(page)
+    sign_in(page)
+    assert LOGIN["password"] not in " ".join(seen)
+
+
+@pytest.mark.parametrize("allowed", ["y.test", "x.test.evil.example", "evil-x.test", "www.x.test"])
+def test_a_host_mismatch_types_nothing(page, allowed):
+    serve_signin(page)
+    assert sign_in(page, allowedHost=allowed) == {"signedIn": False, "why": "host"}
+    assert oracle(page, "typed") == {"email": "", "password": ""}
+    assert oracle(page, "signedIn") is False
+
+
+def test_a_missing_host_or_credential_types_nothing(page):
+    serve_signin(page)
+    for over in ({"allowedHost": None}, {"password": ""}, {"password": None}, {"email": ""}, {"email": 3}):
+        assert sign_in(page, **over)["signedIn"] is False, over
+    assert oracle(page, "typed") == {"email": "", "password": ""}
+
+
+def test_the_host_comparison_ignores_case(page):
+    serve_signin(page)
+    assert sign_in(page, allowedHost="X.Test") == {"signedIn": "clicked"}
+
+
+def _frame_with_signin(page, srcdoc_name="signin.html"):
+    """A top page on x.test whose only sign-in form is inside an iframe, with the engine loaded in
+    BOTH frames (the manifest runs it in every frame)."""
+    import html
+    body = f"<h1>Careers</h1><iframe id='f' srcdoc=\"{html.escape(fixture_html(srcdoc_name))}\"></iframe>"
+    serve(page, "https://x.test/careers", body)
+    page.wait_for_function("() => document.getElementById('f').contentDocument?.getElementById('pw')")
+    child = next(f for f in page.frames if f != page.main_frame)
+    for src in SOURCES:
+        child.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+    return child
+
+
+def test_a_sign_in_form_inside_an_iframe_is_never_filled(page):
+    child = _frame_with_signin(page)
+    # Asked inside the subframe, it refuses before looking at anything else (even with the host right).
+    got = child.evaluate(f"(a) => {READER}.signIn(a)", {**LOGIN, "allowedHost": ""})
+    assert got == {"signedIn": False, "why": "frame"}
+    # Asked of the top document, the form it cannot see is not there to fill.
+    assert sign_in(page)["signedIn"] is False
+    typed = child.evaluate("() => window.__oracle.typed")
+    assert typed == {"email": "", "password": ""}
+    assert child.evaluate("() => window.__oracle.signedIn") is False
+
+
+def test_a_create_account_page_is_refused_with_nothing_typed(page):
+    serve_signin(page, "create_account.html")
+    assert sign_in(page) == {"signedIn": False, "why": "create_account"}
+    assert page.evaluate("() => [...document.querySelectorAll('input')].map((i) => i.value)") == ["", "", ""]
+
+
+def test_a_lone_new_password_box_is_a_sign_up_too(page):
+    serve(page, "https://x.test/join", "<input type='email'><input type='password' autocomplete='new-password'>"
+                                      "<button>Continue</button>")
+    assert sign_in(page) == {"signedIn": False, "why": "create_account"}
+
+
+def test_a_visible_captcha_parks_a_sign_in_page(page):
+    body = (fixture_html("signin.html").replace(
+        "</main>", "<iframe src='about:blank#recaptcha/api2/bframe' style='width:400px;height:580px'></iframe></main>"))
+    serve(page, "https://x.test/signin", body)
+    assert sign_in(page) == {"signedIn": False, "why": "captcha"}
+    assert oracle(page, "typed") == {"email": "", "password": ""}
+
+
+def test_an_email_code_page_is_not_a_sign_in(page):
+    serve_signin(page, "verify_code.html")
+    assert sign_in(page) == {"signedIn": False, "why": "no_form"}
+
+
+def test_a_code_box_beside_the_password_parks(page):
+    serve(page, "https://x.test/signin", "<input type='email'><input type='password'>"
+          "<label>Verification code <input name='code' autocomplete='one-time-code'></label><button>Sign in</button>")
+    assert sign_in(page) == {"signedIn": False, "why": "verify"}
+
+
+@pytest.mark.parametrize("buttons", [
+    "<button>Submit application</button>",
+    "<button>Sign in and submit</button>",
+    "<button>Sign in with Google</button>",
+    "<button aria-label='Submit application'>Sign in</button>",
+    "<button disabled>Sign in</button>",
+    "<button style='display:none'>Sign in</button>",
+    "",
+])
+def test_without_a_plain_sign_in_button_nothing_is_typed(page, buttons):
+    """The button is found BEFORE anything is typed, so a page with no safe button never holds
+    the password. A Submit-worded label (any source) is never the sign-in button."""
+    serve(page, "https://x.test/signin", f"<form><input type='email'><input type='password'>{buttons}</form>")
+    assert sign_in(page) == {"signedIn": False, "why": "no_button"}
+    assert page.evaluate("() => [...document.querySelectorAll('input')].map((i) => i.value)") == ["", ""]
+
+
+@pytest.mark.parametrize("label", ["Sign in", "Log in", "LOGIN", "Continue", "Next", "  sign   in "])
+def test_the_sign_in_button_is_any_of_the_plain_wordings(page, label):
+    serve(page, "https://x.test/signin", f"<form><input type='email'><input type='password'>"
+          f"<button type='button' onclick='window.hit = 1'>{label}</button></form>")
+    assert sign_in(page) == {"signedIn": "clicked"}
+    assert page.evaluate("() => window.hit") == 1
+
+
+def test_the_email_box_is_found_by_type_then_autocomplete_then_label(page):
+    password = "<input type='password'><button>Sign in</button>"
+    for markup, expected in [
+        ("<input type='text' id='a'><input type='email' id='b'>", "b"),
+        ("<input type='text' id='a'><input type='text' autocomplete='username' id='b'>", "b"),
+        ("<label>Username <input id='b'></label><input id='a'>", "b"),
+        ("<label>Work e-mail <input id='b'></label><input id='a'>", "b"),
+    ]:
+        serve(page, "https://x.test/signin", f"<form onsubmit='return false'>{markup}{password}</form>")
+        assert sign_in(page) == {"signedIn": "clicked"}
+        assert page.evaluate("(id) => document.getElementById(id).value", expected) == LOGIN["email"]
+        assert page.evaluate("() => document.getElementById('a').value") == ""
+
+
+def test_a_sign_in_page_with_no_email_box_types_nothing(page):
+    serve(page, "https://x.test/signin", "<form><input type='text' aria-label='Search'><input type='password'>"
+                                         "<button>Sign in</button></form>")
+    assert sign_in(page) == {"signedIn": False, "why": "no_email"}
+    assert page.evaluate("() => [...document.querySelectorAll('input')].map((i) => i.value)") == ["", ""]
+
+
+def test_a_react_style_controlled_box_takes_the_typing(page):
+    """The values arrive as real input events, so a framework that only listens to them sees both."""
+    serve(page, "https://x.test/signin", """<form id='f' onsubmit='return false'><input id='e' type='email'><input id='p' type='password'>
+      <button>Sign in</button></form><script>
+      window.state = {e: '', p: ''};
+      for (const id of ['e', 'p']) document.getElementById(id).addEventListener('input', (ev) => { window.state[id] = ev.target.value; });
+      </script>""")
+    assert sign_in(page) == {"signedIn": "clicked"}
+    assert page.evaluate("() => window.state") == {"e": LOGIN["email"], "p": LOGIN["password"]}
+
+
+# ---------- the ordinary fill never lists a password input ----------
+
+def _inventory(page, **opts):
+    return page.evaluate(f"async (o) => (await window.careerStudioCompanion.fillOps.inventory(o)).fields", opts)
+
+
+@pytest.mark.parametrize("name", ["signin.html", "create_account.html"])
+def test_the_fill_inventory_never_lists_a_password_input_even_with_consent(page, load, name):
+    """`consentForms: true` lifts every LABEL refusal; a password is refused by its SHAPE, so no
+    setting reaches it. The listed questions are the email box at most."""
+    load(page, fixture_html(name), SOURCES)
+    for opts in ({}, {"consentForms": True, "runId": "r1"}):
+        fields = _inventory(page, **opts)
+        assert all("assword" not in f["question"] for f in fields), fields
+        assert page.evaluate("() => [...document.querySelectorAll('input[type=password]')].length") >= 1
+
+
+def test_the_inventory_lists_no_password_even_when_the_box_is_labelled_like_a_plain_field(page, load):
+    load(page, "<label>Email <input type='password' autocomplete='new-password'></label>"
+               "<label>Full name <input type='password' name='name'></label>", SOURCES)
+    assert _inventory(page, consentForms=True, runId="r1") == []
+
+
+def test_the_inventory_lists_no_box_that_declares_itself_a_password_by_autocomplete(page, load):
+    """A show-password toggle turns a password box into type=text: its autocomplete token still says
+    what it is, and that is a shape, not a label."""
+    load(page, "<label>Choose a value <input type='text' autocomplete='new-password'></label>"
+               "<label>Current <input autocomplete='current-password'></label>"
+               "<label>Nickname <input autocomplete='nickname'></label>", SOURCES)
+    assert [f["question"] for f in _inventory(page, consentForms=True, runId="r1")] == ["Nickname"]

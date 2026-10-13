@@ -778,7 +778,11 @@ const HANDLERS = {
    * here is a type that can be aimed at the top document of any tab. Panel-only,
    * and `fanoutTab` is asked FIRST, as in `panel_prepare`.
    *
-   * TWO types, and both answer the same question — "what does the top document
+   * `page_sign_in` is the third and the odd one out: it carries the saved job-site login, so it
+   * is the reason this list is not the broadcast one. It lands on the top document alone (never
+   * every frame, where an ad or chat iframe would be handed the password) and nothing here logs it.
+   *
+   * The two reads: both answer the same question — "what does the top document
    * say about itself?". `extract_job_posting` reads the posting's JSON-LD;
    * `detect_page` returns `detectPage()`'s verdict, which is how the panel
    * learns whether the tab holds a form at all (it runs in no page, so it
@@ -799,7 +803,7 @@ const HANDLERS = {
    * page, and it must not render that as a fact about the page. */
   async panel_frame0(msg, sender) {
     const tabId = fanoutTab(msg, sender);
-    const ALLOWED = ["extract_job_posting", "detect_page"];
+    const ALLOWED = ["extract_job_posting", "detect_page", "page_sign_in"];
     if (!ALLOWED.includes(msg.message?.type)) {
       throw new Error(`not allowed at frame 0: ${JSON.stringify(msg.message?.type)}`);
     }

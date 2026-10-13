@@ -650,6 +650,11 @@
     page_advance: (msg) => (frameMayReceiveUserData(msg)
       ? ns.pageReader.advance(msg.id)
       : { clicked: false, why: "gate" }),
+    // The saved login: the TOP frame only, never gated on form evidence (a subframe is refused, not
+    // asked). Reached only through panel_frame0, never the all-frames broadcast.
+    page_sign_in: (msg) => (window.top === window.self
+      ? ns.pageReader.signIn({ email: msg.email, password: msg.password, allowedHost: msg.allowedHost })
+      : { signedIn: false, why: "frame" }),
   };
 
   // ONE LIVE listener per isolated world. panel_prepare re-injects this file

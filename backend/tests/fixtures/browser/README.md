@@ -63,7 +63,8 @@ use them, which is why they are files and not inline): `wizard_step1.html` (a re
 `<button type="submit">Next</button>`; oracle `advanced`, set only by the form's own submit),
 `wizard_step2.html` (a plain "Save and Continue" button; oracle `advancedStep2`), `wizard_review.html`
 (a Submit, no Next; oracle `submitted`, which no test may ever see true), `wizard_confirmation.html`,
-`signin.html`, `create_account.html`, `verify_code.html`, `captcha.html` (a challenge frame wrapper;
+`signin.html` (oracle `typed` {email, password} as of the last input event, `signedIn` set only by the
+form's own submit), `create_account.html`, `verify_code.html`, `captcha.html` (a challenge frame wrapper;
 its markup is ASSUMED, not captured), `posting_external.html` (Apply link), `posting_board_native.html`
 (Apply button, served under a board hostname by its test) and `closed.html`. They reproduce no
 observed vendor behaviour: change one and `tests/browser/test_page_reader.py` first.

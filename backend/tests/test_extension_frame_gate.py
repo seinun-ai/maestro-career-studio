@@ -138,6 +138,8 @@ ns.fillOps = {
 ns.pageReader = {
   summary: () => { calls.push(["pageReader.summary", 0]); return { host: "x", buttons: [] }; },
   advance: (id) => { calls.push(["pageReader.advance", id]); return { clicked: true }; },
+  // Records WHICH keys arrived, never the values: the secret must not ride out in a call log.
+  signIn: (a) => { calls.push(["pageReader.signIn", Object.keys(a).sort(), a.allowedHost]); return { signedIn: "clicked" }; },
 };
 
 main(async () => {
@@ -150,6 +152,7 @@ main(async () => {
     consentForms: true, runId: "run-2", requests: [{ fid: "f-1", fp: "p" }],
     actions: [{ fid: "f-1", fp: "p", op: "write", value: "x" }], fid: "f-1", fp: "p", value: "v",
     sid: "f-s1", heading: "Websites", entries: 0, id: "tag-3",
+    email: "ada@acme.test", password: "pw-test-only", allowedHost: "x.test",
     // Only when the fixture states one — `undefined` is the shape the floating
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
@@ -574,6 +577,20 @@ def test_page_classify_says_whether_it_is_the_top_frame_and_page_advance_forward
     assert sub["data"]["top"] is False
     out = _run(tmp_path, type_="page_advance", top_frame=True)
     assert out["calls"] == [["pageReader.advance", "tag-3"]] and out["data"] == {"clicked": True}
+
+
+@pytest.mark.parametrize("form", [False, True])
+def test_the_saved_login_is_typed_in_the_top_frame_only_even_when_a_subframe_has_a_form(tmp_path, form):
+    """Not `frameMayReceiveUserData`: a subframe with a perfectly good form earns a profile fill and
+    still never receives the password. Refused with the reason, and the reader is not even called."""
+    sub = _run(tmp_path, type_="page_sign_in", top_frame=False, form=form)
+    assert sub["calls"] == [] and sub["data"] == {"signedIn": False, "why": "frame"}
+
+
+def test_the_top_frame_forwards_the_three_login_fields_and_nothing_else(tmp_path):
+    out = _run(tmp_path, type_="page_sign_in", top_frame=True)
+    assert out["calls"] == [["pageReader.signIn", ["allowedHost", "email", "password"], "x.test"]]
+    assert out["data"] == {"signedIn": "clicked"}
 
 
 def test_fill_cancel_reaches_every_frame(tmp_path):
