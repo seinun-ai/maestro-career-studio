@@ -221,6 +221,11 @@ def test_the_content_script_is_the_split_modules_in_dependency_order(content_scr
         # salary rule is the policy's own pattern, never a second copy), and
         # autofill.js spreads its patterns into the rule table that fills them.
         "shared/profile-fields.js",
+        # Pure: a plain page summary in, a page kind and a Next/Submit sort out, with no DOM
+        # read. The page reader (a later task) builds the summary and the queued run's driver
+        # acts on the verdict, so both worlds load the one copy of the rule that a Submit-worded
+        # button is never clicked.
+        "shared/page-kind.js",
         # The fill engine (fill-engine plan Tasks 2-4), in dependency order:
         # the field reader, the primitives that read its control rule, the
         # shapes, the inventory over them, the generic mechanics, and the

@@ -67,7 +67,10 @@
      second opinion about what may be filled. profile-fields.js beside it: the
      label patterns that name a TYPED home in the autofill profile, read by the
      fill engine's rule table and by the pause row's save router, which is one
-     table with two readers rather than two tables that agree today.
+     table with two readers rather than two tables that agree today. page-kind.js
+     after it: the pure page-kind classifier and Next/Submit button sort, which the
+     queued run's driver reads the verdict words of (`ns.pageKind`, read when it
+     RUNS, not at load) and the content script loads for the same one rule.
 
      status-roles.js (an application status's word and colour role, the web app's status chip in the
      panel's language) sits with the shared modules; panel.js reads `ns.statusRoles` at load and throws,
@@ -122,6 +125,7 @@
 <script src="../shared/recipe-book.js"></script>
 <script src="../shared/policy.js"></script>
 <script src="../shared/profile-fields.js"></script>
+<script src="../shared/page-kind.js"></script>
 <script src="../shared/status-roles.js"></script>
 <script src="../shared/resume-color.js"></script>
 <script src="icons.js"></script>

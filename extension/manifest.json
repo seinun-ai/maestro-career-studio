@@ -19,6 +19,7 @@
         "shared/choose.js",
         "shared/policy.js",
         "shared/profile-fields.js",
+        "shared/page-kind.js",
         "content/field-reader.js",
         "content/fill-base.js",
         "content/shapes.js",
