@@ -2,8 +2,8 @@
 own stable markers, for the cases where the TEXT alone cannot say what a button is.
 
 `extension/shared/ats-buttons.js` is pure, so node drives it. What these tests hold:
-the table can only ever make a button MORE stopped (every shipped verdict is "submit"), a marker
-counts only on its own vendor's host, and an unknown host has no say at all. A Submit word in a
+the table can only ever make a button MORE stopped (every shipped verdict is "submit" or "text",
+never "next"), a marker counts only on its own vendor's host, and an unknown host has no say at all. A Submit word in a
 button's text still beats a "next" verdict; that half lives in `shared/page-kind.js` and is pinned
 in test_extension_page_kind.py and, end to end, in tests/browser/test_page_reader.py.
 """
@@ -61,25 +61,52 @@ def test_a_marker_counts_only_on_its_own_vendors_host(tmp_path):
     assert out["known"] == [None] * 6
 
 
+def test_workdays_footer_marker_names_the_navigation_button_and_leaves_the_verdict_to_its_text(tmp_path):
+    """Recorded in test_extension_detection.py (`_WORKDAY_MY_INFORMATION`). The verdict is "text",
+    never "next": Workday's last step relabels the same button "Submit"."""
+    for host in ["acme.wd5.myworkdayjobs.com", "myworkdayjobs.com", "Acme.WD1.MyWorkdayJobs.com"]:
+        assert known(tmp_path, host, automationId="pageFooterNextButton") == "text"
+    out = _run(tmp_path, [
+        ("acme.wd5.myworkdayjobs.com", {"automationId": "pageFooterNextButton2"}),
+        ("acme.wd5.myworkdayjobs.com", {"id": "pageFooterNextButton"}),
+        ("acme.wd5.myworkdayjobs.com", {"automationId": "add-button"}),
+        ("boards.greenhouse.io", {"automationId": "pageFooterNextButton"}),
+        ("myworkdayjobs.com.example.com", {"automationId": "pageFooterNextButton"}),
+        ("evilmyworkdayjobs.com", {"automationId": "pageFooterNextButton"}),
+    ])
+    assert out["known"] == [None] * 6
+
+
 def test_an_unknown_host_or_marker_has_no_say(tmp_path):
     out = _run(tmp_path, [
         ("example.com", {}),
         ("boards.greenhouse.io", {}),
         ("boards.greenhouse.io", {"id": "next"}),
         ("boards.greenhouse.io", {"id": "submit_app_2"}),
-        ("acme.wd5.myworkdayjobs.com", {"automationId": "pageFooterNextButton"}),
         ("", {"id": "submit_app"}),
         (None, {"id": "submit_app"}),
         ("boards.greenhouse.io", None),
     ])
-    assert out["known"] == [None] * 8
+    assert out["known"] == [None] * 7
 
 
-def test_the_table_can_only_ever_say_submit(tmp_path):
+def test_the_table_never_says_next(tmp_path):
     """A "next" entry would be a button the run clicks on a marker's word alone, so none ships
-    without a recorded fixture that shows the marker (and then this pin is changed on purpose)."""
+    without a recorded fixture that shows the marker (and then this pin is changed on purpose).
+    "text" hands the verdict back to the button's own label, and "submit" only stops."""
     verdicts = _run(tmp_path)["verdicts"]
-    assert verdicts and set(verdicts) == {"submit"}
+    assert verdicts and set(verdicts) == {"submit", "text"}
+
+
+def test_an_unknown_verdict_string_is_a_submit_and_text_is_a_known_one(tmp_path):
+    out = run_node(
+        """const ns = loadModules();
+        ns.atsButtons.HOSTS.acme = /^ats\\.acme-example\\.test$/;
+        const at = (verdict) => { ns.atsButtons.RULES.push({vendor: "acme", buttons: [{id: "b", verdict}]});
+          return ns.atsButtons.knownSort("ats.acme-example.test", {id: "b"}); };
+        emit({text: at("text"), odd: (ns.atsButtons.RULES.pop(), at("maybe"))});""",
+        {}, tmp_path, source=ATS_BUTTONS_JS)
+    assert out == {"text": "text", "odd": "submit"}
 
 
 def test_the_hosts_are_detect_jss_hosts(tmp_path):

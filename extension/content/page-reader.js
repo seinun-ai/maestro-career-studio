@@ -60,11 +60,20 @@
   /** What this vendor's table (shared/ats-buttons.js) says of the button, read from its own
    * markers on the page's host. Re-derived wherever it is used: `advance` never trusts a verdict
    * it was handed. Null for an unlisted host or marker, and then the text alone decides. */
-  const knownOf = (el) => ns.atsButtons.knownSort(location.hostname, {
+  const verdictOf = (el) => ns.atsButtons.knownSort(location.hostname, {
     id: el.getAttribute("id"),
     qa: el.getAttribute("data-qa"),
     automationId: el.getAttribute("data-automation-id"),
   });
+  // What the sort is handed: "text" (the vendor's navigation button, whose own label decides)
+  // hands it nothing, so the text alone decides Next or Submit.
+  const knownOf = (el) => {
+    const verdict = verdictOf(el);
+    return verdict === "text" ? null : verdict;
+  };
+  /** The vendor's own navigation button, wherever it sits: it counts as the step's even when a
+   * site-wide form elsewhere (a newsletter box in the footer) made that form "the form". */
+  const isNavigation = (el) => verdictOf(el) === "text";
 
   // Non-zero box and not visibility:hidden. A Submit that is only display:none is not one the
   // person can press; a Next that is would be a click on nothing.
@@ -152,7 +161,7 @@
         text: clip(labelOf(el)),
         type: el.tagName === "A" ? "link" : (el.getAttribute("type") || (el.tagName === "BUTTON" ? "submit" : "text")).toLowerCase(),
         marker: el.getAttribute("data-automation-id") ?? "",
-        inForm: inForm(el),
+        inForm: inForm(el) || isNavigation(el),
         visible: shown(el),
         enabled: enabled(el),
         ...(known ? { known } : {}),

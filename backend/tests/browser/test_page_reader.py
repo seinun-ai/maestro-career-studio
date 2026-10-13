@@ -766,3 +766,49 @@ def test_another_hosts_lookalike_redirect_is_just_an_off_site_link_not_unwrapped
     href = "https://notlinkedin.com/safety/go/?url=https%3A%2F%2Fcareers.acme.example%2Fx"
     _served(page, "www.linkedin.com", f'<a href="{href}">Apply now</a>')
     assert apply_link(page) == href
+
+
+# ---------- Workday's footer button: known navigation, its text decides (Task 14 follow-up) ----------
+
+# Modelled on the apply page test_extension_detection.py records (`_WORKDAY_MY_INFORMATION`): no
+# <form> around the step's fields, the footer button data-automation-id="pageFooterNextButton"
+# reading "Save and Continue". The newsletter form is added here: a site-wide footer form is the
+# only form with a field, so without the marker the nav button counts as outside "the form".
+WORKDAY_FOOTER_PAGE = """<div data-automation-id='applyFlowMyInfoPage'>
+  <label for='fn'>First Name</label><input id='fn' type='text'></div>
+<footer><form><label for='em'>Email</label><input id='em' type='text'>
+  <button type='button'>Subscribe</button></form></footer>
+<button type='button' data-automation-id='pageFooterNextButton'
+  onclick='window.hit = 1'>{text}</button>"""
+WORKDAY_URL = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Analyst_R1/apply/applyManually"
+
+
+def test_workdays_footer_button_is_the_step_and_its_text_decides_next(page):
+    serve(page, WORKDAY_URL, WORKDAY_FOOTER_PAGE.format(text="Save and Continue"))
+    nav = button(summary(page), "Save and Continue")
+    assert nav["inForm"] is True and "known" not in nav    # the text, not the table, says Next
+    assert classify(page)["kind"] == "form_step"
+    go = button(summary(page), "Save and Continue")
+    assert advance(page, go["id"]) == {"clicked": True}
+    assert page.evaluate("() => window.hit === 1")
+
+
+def test_workdays_footer_button_relabelled_submit_is_a_submit_and_never_pressed(page):
+    serve(page, WORKDAY_URL, WORKDAY_FOOTER_PAGE.format(text="Save and Continue"))
+    stale = button(summary(page), "Save and Continue")["id"]
+    page.evaluate("() => { document.querySelector('[data-automation-id=pageFooterNextButton]').textContent = 'Submit'; }")
+    assert advance(page, stale) == {"clicked": False, "why": "submit"}
+    nav = button(summary(page), "Submit")
+    assert nav["inForm"] is True
+    assert classify(page)["kind"] == "review"
+    assert advance(page, button(summary(page), "Submit")["id"]) == {"clicked": False, "why": "submit"}
+    assert page.evaluate("() => window.hit === 1") is False
+
+
+def test_the_workday_marker_means_nothing_on_another_host(page):
+    """On any host but Workday's the button is outside the only form like any other button: the
+    page does not read as a step, and the marker earns it no `inForm`."""
+    serve(page, "https://careers.acme-example.test/apply", WORKDAY_FOOTER_PAGE.format(text="Save and Continue"))
+    nav = button(summary(page), "Save and Continue")
+    assert nav["inForm"] is False and "known" not in nav
+    assert classify(page)["kind"] == "review"
