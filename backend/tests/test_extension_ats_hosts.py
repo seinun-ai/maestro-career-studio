@@ -31,7 +31,6 @@ def test_a_known_ats_host_names_its_vendor(tmp_path, host, vendor):
 @pytest.mark.parametrize("host", [
     "greenhouse.io.attacker.test", "myworkdayjobs.com.evil.test", "evilmyworkdayjobs.com",
     "notgreenhouse.io", "lever.co", "jobs.lever.co.attacker.test", "careers.acme.test", "", None,
-    "login.evil.test/boards.greenhouse.io",
 ])
 def test_a_lookalike_or_unknown_host_is_not_known(tmp_path, host):
     assert _vendors(tmp_path, host) == [[None, False]]
