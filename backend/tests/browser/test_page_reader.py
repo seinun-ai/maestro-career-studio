@@ -20,7 +20,8 @@ from tests.test_extension_page_kind import SUBMIT
 
 READER = "window.careerStudioCompanion.pageReader"
 KIND = "window.careerStudioCompanion.pageKind"
-SOURCES = ENGINE_SOURCES + ["content/detect.js", "shared/page-kind.js", "content/page-reader.js"]
+SOURCES = ENGINE_SOURCES + ["content/detect.js", "shared/ats-buttons.js", "shared/page-kind.js",
+                           "content/page-reader.js"]
 
 
 def summary(page):
@@ -377,3 +378,99 @@ def test_the_pin_covers_a_submit_that_is_disabled_or_hidden_too(page, load):
     for b in summary(page)["buttons"]:
         assert advance(page, b["id"])["clicked"] is False
     assert page.evaluate("() => window.hit === 1") is False
+
+
+# ---------- the ATS table's verdicts (Task 14) ----------
+
+ATS = "window.careerStudioCompanion.atsButtons"
+
+
+def serve(page, url, body):
+    """Serve `body` at `url` (the route answers the page request; the context is offline) and load
+    the extension on it, so `location.hostname` is the vendor's."""
+    page.route(url, lambda route: route.fulfill(status=200, content_type="text/html", body=body))
+    page.goto(url)
+    for src in SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+
+
+GREENHOUSE_STEP = """<form><label for='a'>Name</label><input id='a'>
+  <button type='button'>Back</button>
+  <input type='submit' id='submit_app' value='Done' onclick='window.hit = 1; return false;'></form>"""
+
+
+def test_greenhouses_submit_control_is_a_submit_even_when_it_reads_done(page):
+    """The case the text cannot catch: the sort alone calls "Done" unclear and would offer no
+    Submit at all; the vendor's own id says it is one. The page stops, and nothing is clicked."""
+    serve(page, "https://boards.greenhouse.io/acme/jobs/1", GREENHOUSE_STEP)
+    assert classify(page)["kind"] == "review"   # classify re-tags the buttons, so read ids after it
+    s = summary(page)
+    done = button(s, "Done")
+    assert done["known"] == "submit"
+    assert "known" not in button(s, "Back")
+    assert advance(page, done["id"]) == {"clicked": False, "why": "submit"}
+    assert page.evaluate("() => window.hit === 1") is False
+
+
+def test_the_same_control_on_an_unlisted_host_has_no_verdict(page):
+    """A marker is the vendor's only on the vendor's host: on any other host "Done" is the text's
+    to judge (unclear), and the summary carries no `known` key at all."""
+    serve(page, "https://careers.acme-example.test/jobs/1", GREENHOUSE_STEP)
+    s = summary(page)
+    assert all("known" not in b for b in s["buttons"])
+    assert advance(page, button(s, "Done")["id"]) == {"clicked": False, "why": "not_next"}
+
+
+def test_levers_submit_control_is_known_by_its_data_qa(page):
+    serve(page, "https://jobs.lever.co/acme/1", """<form><label for='a'>Name</label><input id='a'>
+      <button type='button' data-qa='btn-submit' onclick='window.hit = 1'>Go</button></form>""")
+    assert classify(page)["kind"] == "review"
+    s = summary(page)
+    assert s["buttons"][0]["known"] == "submit"
+    assert advance(page, s["buttons"][0]["id"]) == {"clicked": False, "why": "submit"}
+    assert page.evaluate("() => window.hit === 1") is False
+
+
+NEXT_ENTRY = """() => {
+  window.careerStudioCompanion.atsButtons.HOSTS.acmeats = /^ats\\.acme-example\\.test$/;
+  window.careerStudioCompanion.atsButtons.RULES.push(
+    { vendor: "acmeats", buttons: [{ automationId: "go-on", verdict: "next" }] });
+}"""
+NEXT_PAGE = """<form><label for='a'>Name</label><input id='a'>
+  <button type='button' data-automation-id='go-on' onclick='window.hit = 1'>{text}</button></form>"""
+
+
+def test_a_table_next_makes_an_odd_label_the_step_and_advance_clicks_it(page):
+    """The wiring for a verdict of "next", with an entry no shipped table has (a made-up vendor
+    added for this test only): summary carries it, classify offers the button, advance presses it."""
+    serve(page, "https://ats.acme-example.test/apply", NEXT_PAGE.format(text="Go"))
+    page.evaluate(NEXT_ENTRY)
+    offered = classify(page)
+    assert offered["kind"] == "form_step"
+    go = page.evaluate(f"() => {READER}.summary().buttons[0]")   # ids are re-minted on every read
+    assert go["known"] == "next"
+    assert advance(page, go["id"]) == {"clicked": True}
+    assert page.evaluate("() => window.hit === 1")
+
+
+def test_advance_rederives_the_verdict_and_never_trusts_the_summary(page):
+    """An id the summary offered as a table Next stops being one the moment the table no longer
+    says so: nothing the panel was told earlier reaches the click."""
+    serve(page, "https://ats.acme-example.test/apply", NEXT_PAGE.format(text="Go"))
+    page.evaluate(NEXT_ENTRY)
+    go = summary(page)["buttons"][0]
+    assert go["known"] == "next"
+    page.evaluate("() => window.careerStudioCompanion.atsButtons.RULES.pop()")
+    assert advance(page, go["id"]) == {"clicked": False, "why": "not_next"}
+    assert page.evaluate("() => window.hit === 1") is False
+
+
+def test_a_submit_word_beats_a_table_next_at_click_time(page):
+    """Relabelled after the summary, a table-Next button that now says Submit is refused as one."""
+    serve(page, "https://ats.acme-example.test/apply", NEXT_PAGE.format(text="Go"))
+    page.evaluate(NEXT_ENTRY)
+    go = summary(page)["buttons"][0]
+    page.evaluate("() => { document.querySelector('[data-automation-id=go-on]').textContent = 'Submit application'; }")
+    assert advance(page, go["id"]) == {"clicked": False, "why": "submit"}
+    assert page.evaluate("() => window.hit === 1") is False
+    assert classify(page)["kind"] == "review"

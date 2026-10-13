@@ -221,6 +221,10 @@ def test_the_content_script_is_the_split_modules_in_dependency_order(content_scr
         # salary rule is the policy's own pattern, never a second copy), and
         # autofill.js spreads its patterns into the rule table that fills them.
         "shared/profile-fields.js",
+        # Pure: the few navigation buttons an ATS names by its own markers (a verdict per
+        # vendor host). Read by the page reader at call time, so only the namespace order is
+        # fixed; it sits beside page-kind.js, whose Next/Submit sort it informs.
+        "shared/ats-buttons.js",
         # Pure: a plain page summary in, a page kind and a Next/Submit sort out, with no DOM
         # read. The page reader (a later task) builds the summary and the queued run's driver
         # acts on the verdict, so both worlds load the one copy of the rule that a Submit-worded

@@ -146,6 +146,7 @@ PAGE_RUNTIME_SOURCES = [
     SHARED / "choose.js",
     SHARED / "policy.js",
     SHARED / "profile-fields.js",
+    SHARED / "ats-buttons.js",
     SHARED / "page-kind.js",
     CONTENT / "job-posting.js",
     CONTENT / "eeo.js",

@@ -8,8 +8,9 @@
  * THE ONE RULE (design Part 2): a Submit-worded button is never clicked, at any setting. The
  * sort happens twice on purpose: once to classify (so a Submit never becomes the offered Next),
  * once here at click time (so a page that relabelled the button, or a stale or forged id, still
- * cannot reach a Submit). Every label a person or a screen reader could read counts; if any one of
- * them carries a Submit word the button is a Submit.
+ * cannot reach a Submit). The ATS table's verdict (shared/ats-buttons.js) joins the sort both
+ * times, re-read from the button itself at click time. Every label a person or a screen reader
+ * could read counts; if any one of them carries a Submit word the button is a Submit.
  *
  * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, advance }.
  */
@@ -38,6 +39,15 @@
 
   const squash = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
   const sortOf = (text) => ns.pageKind.sortButton({ text });
+
+  /** What this vendor's table (shared/ats-buttons.js) says of the button, read from its own
+   * markers on the page's host. Re-derived wherever it is used: `advance` never trusts a verdict
+   * it was handed. Null for an unlisted host or marker, and then the text alone decides. */
+  const knownOf = (el) => ns.atsButtons.knownSort(location.hostname, {
+    id: el.getAttribute("id"),
+    qa: el.getAttribute("data-qa"),
+    automationId: el.getAttribute("data-automation-id"),
+  });
 
   // Non-zero box and not visibility:hidden. A Submit that is only display:none is not one the
   // person can press; a Next that is would be a click on nothing.
@@ -119,6 +129,7 @@
     const buttons = [...document.querySelectorAll(BUTTONS)].map((el) => {
       const id = `${FRAME_TAG}-${++seq}`;
       el.setAttribute("data-maestro-btn", id);
+      const known = knownOf(el);
       return {
         id,
         text: clip(labelOf(el)),
@@ -127,6 +138,7 @@
         inForm: inForm(el),
         visible: shown(el),
         enabled: enabled(el),
+        ...(known ? { known } : {}),
       };
     });
     const bodyText = (document.body?.innerText ?? "").slice(0, BODY_SLICE);
@@ -153,9 +165,10 @@
     if (typeof id !== "string" || !id) return { clicked: false, why: "not_next" };
     const el = document.querySelector(`[data-maestro-btn="${CSS.escape(id)}"]`);
     if (!el || !el.matches(BUTTONS)) return { clicked: false, why: "not_next" };
-    // Re-sorted from the CURRENT labels, before any other check: the Submit refusal never
-    // depends on what the panel was told earlier.
-    const sort = sortOf(labelOf(el));
+    // Re-sorted from the CURRENT labels and the table's verdict for this very button, before any
+    // other check: the Submit refusal never depends on what the panel was told earlier. A Submit
+    // word in the text beats the table's "next"; the table's "submit" beats a Next-worded text.
+    const sort = ns.pageKind.sortButton({ text: labelOf(el), known: knownOf(el) });
     if (sort === "submit") return { clicked: false, why: "submit" };
     if (sort !== "next" || !shown(el) || !enabled(el)) return { clicked: false, why: "not_next" };
     el.click();
