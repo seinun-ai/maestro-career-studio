@@ -1956,6 +1956,29 @@ Expected: PASS.
 
 **Step 5: Commit** `feat(companion): run list, Needs you with Resume, auto-mark after your Submit`.
 
+**Phase 2 host wiring for a one-record run (planner, 2026-10-13, after the batch-5 review).** Task 19
+is Phase 3, but a one-job run in the CURRENT tab needs its driver deps now. Task 20 (one-job parts)
+owns them, in `extension/panel/actions/run.js` (created here, extended by Task 19 later):
+- `openTab`: for a run started on the current tab, returns that tab when it is already on `openUrl`,
+  else `chrome.tabs.update` and resolves once the page is readable; always seeds `record.hosts` with
+  the tab's host (so sign-in and the posting Apply work when the run starts on an open page).
+- `fill`: pinned to `record.tabId`, using the record's job and application, forwarding `opts.limits`
+  as runFill's `options.limits`, and `cancelled: () => cancelled(record)` NOT tied to the panel's tab
+  generation.
+- `tabBroadcast`: `ask("page_broadcast", {tabId, message, frameId})` (frameId at the top level).
+- Stop: sets the flag `cancelled(record)` reads AND sends `fill_cancel` to `record.tabId`.
+- `onTab` and generation changes do NOT end or cancel a run (today `onTab` sends fill_cancel to the
+  tab being left, panel.js ~2973-2985; the panel fill is tied to the generation, actions/fill.js
+  ~435-441); `withFlowOrigin`/`flowFor` vouch for the run tab, not only `card.tabId`.
+- Run tabs bind through their run record (design Part 6): for a tab with a live run record, the card,
+  Resume's receipt and the fill facts take the job and application from the record, not from
+  `restoreSession` (whose origin/tenant guard drops the job after a cross-origin Apply); optionally
+  rewrite that tab's `widget.sessions` entry from the record at each page boundary.
+- Copy and a Resume/Skip rule for every driver `why`: sign_in_yourself, sign_in_failed, posting,
+  unknown_page, already_applied, moved_away, loop ("go to the next page yourself, then Resume"),
+  step_limit (no Resume), no_change, open_questions, captcha, create_account, verify, board_native,
+  bad_link, closed, error, user; status `confirming` reads "Marking applied".
+
 ### Task 20a: Job step: Apply and Queue
 
 Design "Job step buttons". With full automation on, the Job step's footer primary becomes **Apply**,
