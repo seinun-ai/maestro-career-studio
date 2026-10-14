@@ -65,6 +65,25 @@ export function historyStatusOf(
   return status === "rejected" && reason === APPLIED_MANUALLY ? "submitted" : status;
 }
 
+/**
+ * The job header's proposal pill. An application's own status is the one status in the header, so a job
+ * with an application shows no pill. Without one, the pill reads like the History lane: a skip that
+ * records "applied manually" says Applied yourself (and takes Applied's colour), never Skipped.
+ * `fallbackLabel` is the status's ordinary label.
+ */
+export function headerProposalPill(args: {
+  hasApplication: boolean;
+  status: string | null | undefined;
+  reason: string | null | undefined;
+  fallbackLabel: string;
+}): { label: string; styleStatus: ProposalStatus } | null {
+  if (args.hasApplication || !args.status) return null;
+  return {
+    label: historyLabel(args.status, args.reason, args.fallbackLabel),
+    styleStatus: historyStatusOf(args.status as ProposalStatus, args.reason),
+  };
+}
+
 /** Created after the last visit. No visit time known yet: nothing is marked new. */
 export function isNew(createdAt: string, since: string | null): boolean {
   return since != null && Date.parse(createdAt) > Date.parse(since);

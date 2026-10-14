@@ -60,6 +60,7 @@ import { proposalByLine, queuedToast } from "@/lib/agent-name";
 import { apiFetch, listAtsScores, promoteJobToAgentQueue } from "@/lib/api";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
+import { headerProposalPill } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
@@ -217,13 +218,13 @@ export default function JobDetailPage({
   const best = (scoreRows.data ?? [])
     .filter((s) => s.phase === "base")
     .sort((a, b) => b.composite - a.composite)[0];
-  // Keep it on a question links the job's application when the proposal has none: the proposal
-  // says whether it has one (the same query as the Overview card's).
-  const asking = data?.job.proposal_status === "needs_decision" ? data.job.proposal_id ?? null : null;
-  const asked = useQuery({
-    queryKey: ["proposal", asking],
-    queryFn: () => apiFetch<ProposalDetail>(`/api/proposals/${asking}`),
-    enabled: asking !== null,
+  // The newest proposal, in full: the header pill's reason, Keep it's application link (the proposal says
+  // whether it has one) and the Overview card all read it, so it is asked once (the card shares the key).
+  const proposalId = data?.job.proposal_id ?? null;
+  const proposalQuery = useQuery({
+    queryKey: ["proposal", proposalId],
+    queryFn: () => apiFetch<ProposalDetail>(`/api/proposals/${proposalId}`),
+    enabled: proposalId !== null,
   });
   const { patch } = useApplicationMutations({
     applicationId: application?.id ?? "",
@@ -375,11 +376,18 @@ export default function JobDetailPage({
   ]);
 
   const proposalStatus = job.proposal_status ?? null;
-  const proposalId = job.proposal_id ?? null;
   const proposalBy = proposalStatus
     ? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;
   const isProposalStatus = (s: string | null): s is ProposalStatus =>
     !!s && s in STATUS_LABELS;
+  const pill = isProposalStatus(proposalStatus)
+    ? headerProposalPill({
+        hasApplication: hasApp,
+        status: proposalStatus,
+        reason: proposalQuery.data?.reason,
+        fallbackLabel: STATUS_LABELS[proposalStatus],
+      })
+    : null;
 
   const showAccept = proposalStatus === "pending_review";
   const showKeep = proposalStatus === "needs_decision";
@@ -459,19 +467,18 @@ export default function JobDetailPage({
             {ownership.mark ? <div className="mt-2"><JobOwnershipMark jobId={id} ownership={job.ownership} /></div> : null}
           </div>
           <div ref={actionsRef} className="mt-1 ml-auto flex flex-wrap items-center justify-end gap-2">
-            {isProposalStatus(proposalStatus) ? (
+            {pill ? (
               <Badge
-                className={cn("shrink-0", STATUS_BADGE_CLASS[proposalStatus])}
+                className={cn("shrink-0", STATUS_BADGE_CLASS[pill.styleStatus])}
                 variant="secondary"
                 title={proposalBy ?? undefined}
               >
-                {/* The status is the pill's text (the ONE status vocabulary);
-                    who filed it is heard first and shown on hover. The
-                    Overview card shows it visibly. */}
+                {/* The status is the pill's text (the ONE status vocabulary); who filed it is heard first
+                    and shown on hover. An application's own status replaces the pill: one status here. */}
                 {proposalBy ? <span className="sr-only">{proposalBy}, status </span> : null}
-                {STATUS_LABELS[proposalStatus]}
+                {pill.label}
               </Badge>
-            ) : proposalStatus ? (
+            ) : proposalStatus && !hasApp && !isProposalStatus(proposalStatus) ? (
               <SavedJobChip proposalStatus={proposalStatus} />
             ) : null}
             {showAccept && proposalId ? (
@@ -496,7 +503,7 @@ export default function JobDetailPage({
                 size="sm"
                 variant="outline"
                 // Waits for the proposal's link: a second, different application would be refused.
-                disabled={triagePending || !asked.data}
+                disabled={triagePending || !proposalQuery.data}
                 {...ownershipControlProps(!ownership.canWrite)}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
@@ -505,7 +512,7 @@ export default function JobDetailPage({
                   proposalActions.transition({
                     id: proposalId,
                     status: "pending_review",
-                    applicationId: asked.data?.application ? undefined : application?.id,
+                    applicationId: proposalQuery.data?.application ? undefined : application?.id,
                   });
                 }}
               >

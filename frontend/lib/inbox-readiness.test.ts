@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { historyLabel, historyStatusOf, isNew, isReady, readinessMarks, readinessSteps, readyFirst } from "./inbox-readiness.ts";
+import { headerProposalPill, historyLabel, historyStatusOf, isNew, isReady, readinessMarks, readinessSteps, readyFirst } from "./inbox-readiness.ts";
 
 const ready = { tailored: true, knockout: null, to_check: 0 };
 
@@ -116,4 +116,28 @@ test("readiness steps count what is done", () => {
   // A resume for another country blocks like a knock-out: the meter is never full on a row that is not ready.
   assert.deepEqual(readinessSteps({ tailored: true, knockout: null, to_check: 0, base_country: "US" }), { done: 2, total: 3 });
   assert.deepEqual(readinessSteps({ tailored: true, knockout: "opt", to_check: 0, base_country: "US" }), { done: 2, total: 3 });
+});
+
+test("the job header shows one status: an application's, never the proposal pill beside it", () => {
+  assert.equal(
+    headerProposalPill({ hasApplication: true, status: "rejected", reason: "applied manually", fallbackLabel: "Skipped" }),
+    null,
+  );
+  assert.equal(headerProposalPill({ hasApplication: true, status: "accepted", reason: null, fallbackLabel: "Queued" }), null);
+});
+
+test("with no application the header pill reads like the inbox History lane", () => {
+  assert.deepEqual(
+    headerProposalPill({ hasApplication: false, status: "rejected", reason: "applied manually", fallbackLabel: "Skipped" }),
+    { label: "Applied yourself", styleStatus: "submitted" },
+  );
+  assert.deepEqual(
+    headerProposalPill({ hasApplication: false, status: "rejected", reason: "not a fit", fallbackLabel: "Skipped" }),
+    { label: "Skipped", styleStatus: "rejected" },
+  );
+  assert.deepEqual(
+    headerProposalPill({ hasApplication: false, status: "accepted", reason: undefined, fallbackLabel: "Queued" }),
+    { label: "Queued", styleStatus: "accepted" },
+  );
+  assert.equal(headerProposalPill({ hasApplication: false, status: null, reason: null, fallbackLabel: "" }), null);
 });

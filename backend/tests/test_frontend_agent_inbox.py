@@ -286,7 +286,7 @@ def test_every_proposal_surface_names_who_filed_it():
     assert "? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;" in _JOB
     pill = _JOB[_JOB.index("title={proposalBy ?? undefined}") :]
     assert pill.index('<span className="sr-only">{proposalBy}, status </span>') < pill.index(
-        "{STATUS_LABELS[proposalStatus]}"
+        "{pill.label}"
     )
 
 
@@ -754,8 +754,8 @@ def test_the_job_page_keeps_a_question_with_the_jobs_application():
     """Keep it links the job's application only for a proposal linked to none."""
     assert 'const showKeep = proposalStatus === "needs_decision";' in _JOB
     job_keep = _block(_JOB, "{showKeep && proposalId ? (", ") : null}")
-    for part in ('status: "pending_review",', "applicationId: asked.data?.application ? undefined : application?.id,",
-                 "disabled={triagePending || !asked.data}", "triaged.current = true;"):
+    for part in ('status: "pending_review",', "applicationId: proposalQuery.data?.application ? undefined : application?.id,",
+                 "disabled={triagePending || !proposalQuery.data}", "triaged.current = true;"):
         assert part in job_keep, part
     assert 'toast.success("Kept. It\'s back in To review.")' in _TRIAGE and "Kept. It's back" not in _JOB
 
