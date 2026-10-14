@@ -107,7 +107,7 @@ def test_a_middle_name_box_is_skipped_never_given_another_name(tmp_path):
 
 
 def test_a_phone_type_box_is_skipped_never_given_the_number(tmp_path):
-    labels = ["Phone Device Type", "Enter in your mobile number: Type", "Phone type", "Type of phone", "Cell phone type"]
+    labels = ["Phone Device Type", "Enter in your mobile number: Type", "Phone type", "Type of phone", "Cell phone type", "Phone number type", "Mobile number type"]
     result = run_profile_fill(
         tmp_path,
         profile={"personal": {"phone": "5551234567"}},

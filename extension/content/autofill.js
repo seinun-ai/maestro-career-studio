@@ -364,7 +364,7 @@ async function fillFormFromProfile(
     { id: "email", re: /e-?mail/i, value: p.email, identity: true },
     // The kind of phone (a device-type picker: "Phone Device Type", "Mobile number: Type"), not the number: the
     // profile never says it, and the number must never land in it. The fill loop answers it (derived.phone_type).
-    { id: "phone-type", re: /(?:phone|mobile|cell)(?:\s+phone)?\s*(?:device\s*)?type\b|\btype\s+of\s+(?:phone|device)|\bdevice\s*type\b|(?:phone|mobile|cell)[^:]*:\s*type\b/i, skip: true },
+    { id: "phone-type", re: /(?:phone|mobile|cell)(?:\s+phone)?\s*(?:number\s+|device\s*)?type\b|\btype\s+of\s+(?:phone|device)|\bdevice\s*type\b|(?:phone|mobile|cell)[^:]*:\s*type\b/i, skip: true },
     // Guards BEFORE the broad /phone/ rule: extension/fax must never get the
     // phone number, and "phone country code" selects want the country.
     { id: "phone-ext-fax", re: /extension|\bext\.?\b|fax/i, skip: true },
