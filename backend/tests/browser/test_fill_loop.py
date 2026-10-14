@@ -2535,6 +2535,39 @@ def test_an_adaptive_step_that_failed_is_not_the_recipes_fault(page, load):
     assert out["lessons"] is None
 
 
+# ---------- technique cards and what worked here (Task 31)
+
+STEP_OPEN = {"states": [{"candidates": [{"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}],
+             "moves": [{"mid": "give_up", "reason": "abstained"}]}
+
+
+def test_the_step_request_carries_the_widgets_kind_and_the_moves_that_worked_on_this_site(page, load):
+    """A recipe that taught the keyboard open (and an Enter-less search) says which of the
+    page's own moves worked here: move ids only, never the recipe's words or any value."""
+    book = {"f:fam1": {"key": "s:sitea", "variant": {"open": ["keys", "press"], "search": ["debounce", "enter"]}}}
+    out = popup_run(page, load, recipes={"book": book}, pick={"d": {"oids": [], "reason": "abstained"}}, step=STEP_OPEN)
+    [body] = bodies(out, "/api/autofill/step")
+    assert body["kind"] == "popup" and body["worked_here"] == ["open", "search:value"]
+
+
+def test_a_field_without_a_recipe_sends_its_kind_and_no_worked_moves(page, load):
+    out = popup_run(page, load, recipes={}, pick={"d": {"oids": [], "reason": "abstained"}}, step=STEP_OPEN)
+    [body] = bodies(out, "/api/autofill/step")
+    assert body["kind"] == "popup" and "worked_here" not in body
+
+
+def test_a_search_box_sends_search_and_a_set_of_items_sends_multi(page, load):
+    one = run(page, load, **_terms("Statistics"))
+    assert {b["kind"] for b in bodies(one, "/api/autofill/step")} == {"search"}
+    many = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]] * 3,
+               map={"k": {"route": "slot", "slot": "skills", "value": ["Go", "Rust"]}},
+               explore={t: {"options": [], "complete": False, "error": "empty_popup"} for t in ("Go", "Rust")},
+               apply={"search:value": {"outcome": "progressed"}},
+               step={"states": [_shown(f"Row {i}") for i in range(12)],
+                     "moves": [{"mid": "give_up", "reason": "abstained"}] * 4})
+    assert {b["kind"] for b in bodies(many, "/api/autofill/step")} == {"multi"}
+
+
 def test_an_outright_failure_with_no_recipe_in_use_teaches_nothing(page, load):
     out = popup_run(page, load, recipes={}, apply={"Yes": {"outcome": "unexpected", "reason": "committed_while_opening"}})
     assert out["lessons"] is None

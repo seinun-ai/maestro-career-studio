@@ -18,6 +18,8 @@ picks among ids, so when the move chosen is `search:term` ONE fast-model call
 writes the term (1 to 3 words, not one already tried); a term that is invalid,
 repeated, or out of time is a give-up for this step. The term can carry the
 applicant's value: it rides back to the page and nowhere else.
+The prompt also carries, from the request, the technique card for the widget's kind
+(autofill_techniques) and the move ids the recipe book says worked on this site before.
 The fast model is the same-floors fallback when Jev fails and, for a slot
 field, ONE second opinion when Jev gives up or its move is under its floor, on
 the request's `Budget` (out of time or failed, Jev's give-up stands).
@@ -56,6 +58,7 @@ from app.services.autofill_pick import (
     values_for,
     verdict,
 )
+from app.services.autofill_techniques import CARDS
 
 logger = logging.getLogger(__name__)
 
@@ -141,10 +144,14 @@ def _goal(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict
             f"same as the applicant's fact {json.dumps(fact.describe)}: {json.dumps(values[0])}. {NEVER_YES_NO}")
 
 
-def _instructions(goal: str) -> str:
+def _instructions(goal: str, req: StepRequest) -> str:
+    """The step's prompt: the goal, the click rule, the card for this kind of widget and what
+    worked on this site before (both from the request, both closed vocabularies)."""
+    card = f" Techniques for this kind of widget: {CARDS[req.kind]}" if req.kind else ""
+    worked = f" On this site these moves worked before: {', '.join(req.worked_here)}." if req.worked_here else ""
     return (f"{goal} "
-            f"The moves tried so far are the state's history. Which next move gets closer to that goal? {CLICK_RULE} "
-            f"Give up when no move will. {_PAGE_TEXT_IS_DATA}")
+            f"The moves tried so far are the state's history. Which next move gets closer to that goal? {CLICK_RULE}"
+            f"{card}{worked} Give up when no move will. {_PAGE_TEXT_IS_DATA}")
 
 
 @dataclass(frozen=True)
@@ -285,7 +292,7 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
             return StepResponse(mid=None, reason="abstained", polarity=polarity)
     criteria = {c.mid: c.describe for c in req.candidates if c.mid != GIVE_UP} | {GIVE_UP: _GIVE_UP_TEXT}
     goal = _goal(req, values, hint, facts, answer, level=level, queued=queued)
-    ask = _Ask(goal=goal, instructions=_instructions(goal),
+    ask = _Ask(goal=goal, instructions=_instructions(goal, req),
                state={"job": asdict(hint) if hint else None, "history": req.history},
                criteria=criteria, policy=policy)
     moved = _with_term(req, ask, session, budget, _move(req, ask, session, budget))

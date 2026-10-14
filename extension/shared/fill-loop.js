@@ -230,6 +230,11 @@
   const STEP_REASONS = new Set([...Object.keys(STATUS), "progress"]);
   const REFUSED = { yours: "yours", blocked: "blocked", unsupported: "cannot_operate" };
   const CAN_ADAPT = new Set(["popup", "search"]);
+  // The widget kinds the step agent has a technique card for (backend autofill_techniques); a set of items is `multi`.
+  const STEP_KINDS = new Set(["popup", "search", "group", "select", "date"]);
+  // A recipe holds the moves of an axis; the page's own move of that axis is what worked here.
+  const WORKED_MOVE = { open: "open", search: "search:value" };
+  const MAX_WORKED = 4; // the backend's cap
   // A search term the agent wrote (`search:term`): the shape the backend and the page accept, at most six per value.
   const TERM = /^[\p{L}\p{N}_ .&+/#-]{1,40}$/u;
   const MAX_TERMS = 6;
@@ -748,6 +753,14 @@
       // The order itself is a string of moves, not a move id: only that one was used.
       if (rows.get(f.fid).recipe) note(f.fid, { op: "recipe" });
     };
+    // The page's own moves the field's recipe says worked on this site: ids only, so no
+    // recipe word, value or label rides along. Empty without a recipe.
+    const workedHere = (f) => [...new Set(Object.keys(rows.get(f.fid)?.recipe?.variant ?? {})
+      .map((axis) => WORKED_MOVE[axis]).filter((mid) => mid && MOVE_ID.test(mid)))].slice(0, MAX_WORKED);
+    // The technique card's key: a set of items (a multi-select, or a list fact filled item by item) is
+    // `multi`, else the field's own shape.
+    const kindOf = (f, row, item) => (f.multi || (item !== undefined && Array.isArray(row.value) && row.value.length > 1)
+      ? "multi" : STEP_KINDS.has(f.shape) ? f.shape : undefined);
     // The field's recipe order on an explore or a commit, when it has one.
     const withOrder = (f, action) => {
       const variant = rows.get(f.fid)?.recipe?.variant;
@@ -977,6 +990,8 @@
         const offered = state.candidates.filter((c) => c?.mid !== "search:term" || tried_.length < MAX_TERMS);
         // Nothing but give_up on offer: no model is asked.
         if (!offered.some((c) => c?.mid && c.mid !== "give_up")) return giveUp(f, "gave_up");
+        const kind = kindOf(f, row, item);
+        const worked = workedHere(f);
         const { res, ms } = await post("/api/autofill/step", {
           ...asked, fid: f.fid, question: question(f), route: routeOf(row), slot: row.slot ?? null,
           ...(row.years ? { years: true } : {}),
@@ -984,6 +999,8 @@
           history: history.slice(-HISTORY_KEPT),
           candidates: offered.slice(0, STEP_CANDIDATES),
           ...(tried_.length ? { tried_terms: tried_ } : {}),
+          ...(kind ? { kind } : {}),
+          ...(worked.length ? { worked_here: worked } : {}),
           complete: Boolean(state.complete),
         }, rows.get(f.fid).deadline);
         const chosen = res?.mid && res.mid !== "give_up" && STEP_REASONS.has(res.reason)

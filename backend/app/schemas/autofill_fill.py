@@ -204,6 +204,7 @@ HISTORY_ENTRY = (r"^(click:o\d+|search:value|search:term|search:word:\d|open|scr
 # markup or an instruction into the page's search box or a later prompt.
 TERM = r"^[\w .&+/#-]{1,40}$"
 MAX_TRIED_TERMS = 6
+MAX_WORKED_HERE = 4
 # Reasons a /step answer can carry: /pick's, plus `progress` for a move that is
 # not an answer (open, search, scroll, or opening a group of options).
 StepReason = Literal["matched", "closest", "assumed", "progress", "abstained"]
@@ -228,6 +229,13 @@ class StepRequest(Selector):
     # agent writes a new one (`search:term`). Page-sent, so the same pattern.
     tried_terms: list[Annotated[str, Field(max_length=40, pattern=TERM)]] = Field(
         default_factory=list, max_length=MAX_TRIED_TERMS)
+    # The widget's kind, from the page's shape (a set of items: `multi`): picks the technique card
+    # the prompt carries (autofill_techniques). A name from a closed list, never page text.
+    kind: Literal["popup", "search", "multi", "group", "select", "date"] | None = None
+    # Which of the moves the recipe book holds for this widget worked on this site before: ids
+    # only, shaped like the page's own, so no value or text can ride in.
+    worked_here: list[Annotated[str, Field(max_length=40, pattern=MOVE_ID)]] = Field(
+        default_factory=list, max_length=MAX_WORKED_HERE)
     # True only when every option is in view (the page says so) — a closest
     # match over a capped, unscrolled or filtered list is never allowed.
     complete: bool = False

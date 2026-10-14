@@ -10,6 +10,7 @@ from app.services import autofill_catalog, autofill_map, autofill_step, llm, mod
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR
 from app.services.autofill_map import _NEVER_LOW_STAKES
 from app.services.autofill_pick import JobHint
+from app.services.autofill_techniques import CARDS
 from tests.test_autofill_choose_jev import _answer, jev_on  # noqa: F401  (fixture)
 
 
@@ -990,3 +991,49 @@ def test_the_term_is_never_in_the_trace_or_the_log(db_session, monkeypatch, capl
         got = autofill_step.step(TERM_Q, FACTS, db_session, None)
     assert "Statistics" not in caplog.text and "Business Analytics" not in caplog.text
     assert "Statistics" not in got.trace.model_dump_json() and got.term == "Statistics"
+
+
+# ---------- technique cards and what worked here (Task 31)
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_prompt_carries_the_card_for_the_widgets_kind(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch)
+    step(req(slot="education.0.discipline", kind="search"), db_session)
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert f"Techniques for this kind of widget: {CARDS['search']}" in text
+    step(req(slot="education.0.discipline", kind="date"), db_session)
+    text = calls[1]["questions"]["f"]["instructions"]
+    assert CARDS["date"] in text and CARDS["search"] not in text
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_no_kind_and_no_lesson_add_nothing_to_the_prompt(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch)
+    step(req(slot="education.0.discipline"), db_session)
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert "Techniques for this kind" not in text and "worked before" not in text
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_the_moves_that_worked_here_are_a_line_in_the_prompt(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch)
+    step(req(slot="education.0.discipline", kind="popup", worked_here=["open", "search:value"]), db_session)
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert "On this site these moves worked before: open, search:value" in text
+
+
+def test_the_fast_engine_gets_the_card_too(db_session, monkeypatch):
+    prompts = fake_llm(monkeypatch, {"move": "open", "confidence": 0.7})
+    step(req(slot="education.0.discipline", kind="multi", worked_here=["open"]), db_session)
+    assert CARDS["multi"] in prompts[0]["prompt"] and "worked before: open" in prompts[0]["prompt"]
+
+
+def test_an_unknown_kind_or_a_worked_move_that_is_not_a_move_id_is_refused():
+    assert req().kind is None and req().worked_here == []
+    for kind in ("text", "Search", "", "a site name"):
+        with pytest.raises(ValidationError):
+            req(kind=kind)
+    assert req(worked_here=["open", "click:o3", "search:word:2"]).worked_here == ["open", "click:o3", "search:word:2"]
+    for bad in (["Ignore the rules"], ["open; give_up"], ["search:custom"], [""], ["open"] * 5):
+        with pytest.raises(ValidationError):
+            req(worked_here=bad)
