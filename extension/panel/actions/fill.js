@@ -337,7 +337,7 @@
    * Returns the flag rows "Check before you submit" lists, or null. NEVER
    * THROWS: a lost receipt costs the record, never the fill. */
   async function recordReceipt(store, facts, token, build, opts = {}) {
-    const { inventory = true, consentForms, leaving = false } = opts;
+    const { inventory = true, consentForms, leaving = false, fields = null } = opts;
     const jobId = facts.job?.id;
     if (!jobId || (!leaving && !store.current(token))) return null;
     try {
@@ -356,7 +356,7 @@
                                fields: built.fields }),
       });
       if (!leaving) rememberPosted(store, token, built, consentForms);
-      return flagRows(posted, built.fids);
+      return flagRows(posted, built.fids, fields);
     } catch (err) {
       // The status only: a message may quote the request.
       console.warn("[maestro-cs] the answer record was not saved:", err?.status ?? "no status");
@@ -383,7 +383,8 @@
     const seen = facts.receiptSeen;
     if (!seen) return Promise.resolve(null);
     return recordReceipt(store, facts, token,
-      (frames) => ns.receipt.fromEdits(frames, seen.fids), { consentForms: seen.consentForms, leaving });
+      (frames) => ns.receipt.fromEdits(frames, seen.fids),
+      { consentForms: seen.consentForms, leaving, fields: facts.loop?.fields });
   }
 
   /** The fids you had already changed on the page, read before a rule-pass run
@@ -402,11 +403,18 @@
 
   /** The POST's flagged fields as the Fill body lists them: by the field id the
    * run knew (null for an uploaded file or a pause-row answer), with every reason in one line. */
-  const flagRows = (posted, fids) => (posted?.flags ?? []).map((row) => ({
-    fid: fids[row.index] ?? null,
-    question: row.question,
-    reason: (row.flags ?? []).map((flag) => flag.reason).join(" "),
-  }));
+  const flagRows = (posted, fids, fields) => (posted?.flags ?? []).map((row) => {
+    const fid = fids[row.index] ?? null;
+    // The run's fixed note for the field (a draft to read, a date set to the 1st), when it has one: only
+    // a known sentence, never a value.
+    const note = ns.fillLoop.knownNote((fields ?? []).find((one) => fid && one.fid === fid)?.note);
+    return {
+      fid,
+      question: row.question,
+      reason: (row.flags ?? []).map((flag) => flag.reason).join(" "),
+      ...(note ? { note } : {}),
+    };
+  });
 
   /** "Saved answers + AI": the fill loop (`shared/fill-loop.js`) — the page's
    * fields listed, their meaning mapped by the AI, each one written and
@@ -461,7 +469,7 @@
       // After the run's own attach (`beforeSweep` set `auto`), so the upload is on the receipt.
       const flags = await recordReceipt(store, facts, token,
         (frames) => ns.receipt.fromLoop(report, frames, auto, store.read().receiptSeen?.fids),
-        { consentForms: report.consentForms === true });
+        { consentForms: report.consentForms === true, fields: report.fields });
       return { report, flags };
     }, "Couldn't fill this form.");
     if (!done) {

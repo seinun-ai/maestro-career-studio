@@ -176,7 +176,7 @@
  * emitted); `ignored`, `help` and every explore result are never read.
  * Recording is additive: it changes no status, request or page action.
  *
- * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, pageUrlOf, limits,
+ * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, knownNote, sourceHintOf, pageUrlOf, limits,
  * buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines }.
  */
 (() => {
@@ -1515,11 +1515,8 @@
     // Why /map left a field the profile could answer (`why`, a known word
     // only), said in the report: never "no fact" when the profile has one.
     const WHY = { unclear_job: "Left for you: it isn't clear which of your jobs this entry is." };
-    const ASSUMED_DATE = {
-      day: "Day set to the 1st", month: "Month set to January", month_day: "Set to the 1st of January",
-    };
     // `reason`: how the answer came ("assumed": /choose drafted it, and the report tells the user to read it).
-    const fillText = async (f, value, format, reason = "matched") => {
+    const fillText = async (f, value, format, reason = "matched", note) => {
       // An empty write is no answer: refused here, never sent (and never retried).
       if (!String(value ?? "").trim()) return finish(f, "needs_answer", { lastOutcome: "no_value" });
       const out = await act(f, { op: "write", value: format === "url" ? withScheme(value) : value, ...(format ? { format } : {}) });
@@ -1527,7 +1524,7 @@
       // A date the box asked more of than the profile has (the 1st of the month, January): written, and
       // reported as answered for the user to check (owner decision: low stakes are decisive decisions).
       if (out.outcome === "verified" && ASSUMED_DATE[out.assumed]) return done(f, "assumed", out.committed, ASSUMED_DATE[out.assumed]);
-      if (out.outcome === "verified") return done(f, reason, out.committed);
+      if (out.outcome === "verified") return done(f, reason, out.committed, reason === "assumed" ? knownNote(note) ?? undefined : undefined);
       if (out.outcome === "unconfirmed") return unconfirmed(f, value);
       return fail(f, out.reason ?? out.outcome);
     };
@@ -2119,7 +2116,7 @@
             finish(f, "needs_answer", { lastOutcome: "abstained" });
             continue;
           }
-          await onFieldClock(f, L.FIELD_MS, () => fillText(f, choice.answer, undefined, choice.reason));
+          await onFieldClock(f, L.FIELD_MS, () => fillText(f, choice.answer, undefined, choice.reason, choice.note));
         }
       };
       // Picks made ahead, while the texts are written, in two calls: the
@@ -2420,8 +2417,18 @@
     return [`${s.heading}: ${s.added} of ${needed} added. Add the rest yourself.`];
   });
 
+  // The date notes a row carries when a box asked more of a date than the profile has.
+  const ASSUMED_DATE = {
+    day: "Day set to the 1st", month: "Month set to January", month_day: "Set to the 1st of January",
+  };
+  // The only sentences a row's `note` may be: the date notes and the backend's fixed draft note (qa.DRAFT_NOTE).
+  // Anything else /choose sends is dropped, so server text never reaches the panel.
+  const DRAFT_NOTE = "Drafted from your history: read it";
+  const KNOWN_NOTES = new Set([...Object.values(ASSUMED_DATE), DRAFT_NOTE]);
+  const knownNote = (note) => (KNOWN_NOTES.has(note) ? note : null);
+
   // The run record's memory for `runFill(..., { memory })`: made once per record and cleared when the
   // step changes. It holds search terms, which can carry a value, so it saves as nothing.
   const newMemory = () => Object.defineProperty({}, "toJSON", { value: () => undefined });
-  ns.fillLoop = { runFill, newMemory, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
+  ns.fillLoop = { runFill, newMemory, knownNote, sourceHintOf, pageUrlOf, limits, buildLoopObservations, buildRunTrace, effectOf, exploreEffect, sectionLines };
 })();

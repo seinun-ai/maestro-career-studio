@@ -238,7 +238,9 @@
         name.type = "button";
         name.addEventListener("click", () => ctx.act.focusField(row.fid));
       }
-      attach(list, attach(node("li"), name, node("span", "kindmark", ` · ${row.reason} `)));
+      const note = ns.fillLoop.knownNote(row.note);
+      attach(list, attach(node("li"), name, node("span", "kindmark", ` · ${row.reason} `),
+        note ? node("span", "row-note", note) : null));
     }
     return attach(node("div", "flagged"), head, list);
   }

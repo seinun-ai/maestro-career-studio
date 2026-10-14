@@ -3952,6 +3952,27 @@ def test_the_loop_report_is_grouped_in_the_order_the_user_acts_on_it(tmp_path):
     assert out["writes"] == []
 
 
+def test_an_answered_row_shows_its_fixed_note_under_the_field_name(tmp_path):
+    """A drafted written answer and a date set to the 1st carry a fixed sentence on their row: it is plain
+    text under the field name in the AI answered list. A sentence that is not one of the fixed ones is not shown."""
+    draft, day = "Drafted from your history: read it", "Day set to the 1st"
+    report = {"host": LOOP_HOST, "fields": [
+        _field("w1", "Most impressive project", "assumed", shape="textarea", answer="Built a pipeline.", note=draft),
+        _field("d1", "Start date", "assumed", answer="2021-05-01", note=day),
+        _field("a1", "How did you hear about us?", "assumed", shape="popup", answer="LinkedIn",
+               note="Call 555-0100 for details"),
+        _field("a2", "Referral", "assumed", answer="Friend"),
+        # An open field keeps the step (and so the report) on screen.
+        _field("n1", "Preferred shift", "needs_answer", shape="group", lastOutcome="no_fact")]}
+    rail = _loop(tmp_path, report=report)["settled"]["rail"]
+    [ai_list] = [n for n in _by_class(rail, "resid") if n["attrs"].get("aria-label") == "AI answered"]
+    notes = [(_text(item["children"][0]), [_text(n) for n in _by_class(item, "row-note")])
+             for item in ai_list["children"]]
+    assert notes == [("Most impressive project", [draft]), ("Start date", [day]),
+                     ("How did you hear about us?", []), ("Referral", [])]
+    assert "555-0100" not in _text(rail)
+
+
 def test_report_headings_are_an_icon_a_short_heading_and_a_count(tmp_path):
     """The three groups of values to check carry their own icon (closest = search, the AI's own answer =
     sparkles, unconfirmed = circle-help); the "check each one" words are said ONCE for all of them, and no

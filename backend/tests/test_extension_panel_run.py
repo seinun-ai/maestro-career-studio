@@ -944,6 +944,20 @@ def test_ready_lists_the_receipts_flags_as_check_before_you_submit(tmp_path):
     assert _buttons(_card(out["shots"][1])["body"]) == {"run-done": "Done"}
 
 
+def test_ready_shows_each_flagged_fields_fixed_note_under_its_name(tmp_path):
+    """A drafted written answer and a date set to the 1st each carry a fixed note under the field name; a
+    sentence that is not a fixed one is not shown."""
+    draft, day = "Drafted from your history: read it", "Day set to the 1st"
+    flags = [{"fid": "f1", "question": "Most impressive project", "reason": "Answered for you: check", "note": draft},
+             {"fid": "f2", "question": "Start date", "reason": "Answered for you: check", "note": day},
+             {"fid": "f3", "question": "Phone", "reason": "Answered for you: check", "note": "Call 555-0100"}]
+    out = _run(tmp_path, [{"seed": [_seeded("ready", readyAt=1, flags=flags)]}])
+    [flagged] = _by_class(_card(out["shots"][1])["body"], "flags")
+    rows = [(_text(item["children"][0]), [_text(n) for n in _by_class(item, "row-note")])
+            for item in flagged["children"]]
+    assert rows == [("Most impressive project", [draft]), ("Start date", [day]), ("Phone", [])]
+
+
 def test_a_confirmation_page_after_your_submit_starts_a_countdown_and_posts_nothing_before_it_ends(tmp_path):
     out = _ready_then_confirmation(tmp_path, [])
     shot = out["shots"][-1]

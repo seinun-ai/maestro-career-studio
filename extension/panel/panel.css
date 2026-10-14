@@ -583,6 +583,8 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
 }
 .resid .kindmark { color: var(--cs-muted); }
+/* A row's fixed note (a draft to read, a date set to the 1st): a short muted line under the field name. */
+.resid .row-note { display: block; color: var(--cs-muted); font-size: 12px; }
 /* The essay row's handoff into the drawer below, and NOT a second underlined
    link: the two buttons in that row go to different places — one asks the page
    to scroll, one fills the composer — and two identical links would read as two

@@ -689,6 +689,23 @@ def test_a_drafted_answer_is_written_and_reported_assumed(page, load):
     assert [a.get("value") for a in actions(out, "write")][0] == "Built a pipeline."
 
 
+def test_a_drafted_answer_carries_the_fixed_draft_note_onto_its_row(page, load):
+    """/choose returns the fixed draft note with an `assumed` draft: the row carries it for the panel. A note
+    that is not one of the fixed backend sentences (or a value-shaped string) is dropped, never shown."""
+    out = run(page, load, frames=[[f("w", question="What is your most impressive project? Why?", required=True),
+                                   f("x", question="Why this team?", required=True),
+                                   f("y", question="Anything else?")]],
+              map={"w": {"route": "free_text"}, "x": {"route": "free_text"}, "y": {"route": "free_text"}},
+              choose={"w": {"answer": "Built a pipeline.", "reason": "assumed",
+                            "note": "Drafted from your history: read it"},
+                      "x": {"answer": "Because.", "reason": "assumed", "note": "Call 555-0100 for details"},
+                      "y": {"answer": "No.", "reason": "matched", "note": "Drafted from your history: read it"}})
+    assert row(out, "w")["note"] == "Drafted from your history: read it"
+    assert statuses(out)["x"] == "assumed" and row(out, "x")["note"] is None
+    # Only a draft carries the note: a matched answer never does.
+    assert row(out, "y")["note"] is None
+
+
 def test_only_a_prose_field_the_map_marked_draftable_asks_for_a_draft(page, load):
     """/map says which free_text routes the model filed as free text or years (`draft`); the loop forwards that,
     so /choose never drafts a history or protected question."""

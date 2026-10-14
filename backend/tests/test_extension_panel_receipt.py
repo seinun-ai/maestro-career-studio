@@ -756,3 +756,22 @@ def test_marking_applied_refreshes_the_flags_from_the_capture_it_made(tmp_path):
 def test_marking_applied_with_nothing_to_capture_keeps_the_flags(tmp_path):
     out = _run(tmp_path, pressStatus="Applied", api_extra=APPLIED)
     assert [row["question"] for row in out["receiptFlags"]] == ["How did you hear about us?"]
+
+
+def test_a_flag_row_carries_the_fixed_note_of_its_field_from_the_report(tmp_path):
+    """The flagged field's row on the report has a fixed note: the flag row (what Check before you submit lists,
+    and what the queued run's Ready list is built from) carries it, and the list prints it under the name."""
+    note = "Drafted from your history: read it"
+    fields = [{**f, "note": note} if f["fid"] == "a1" else f for f in LOOP_REPORT["fields"]]
+    out = _run(tmp_path, report={**LOOP_REPORT, "fields": fields})
+    assert [(row["question"], row.get("note")) for row in out["receiptFlags"]] == [
+        ("How did you hear about us?", note)]
+    [flags] = _by_class(out["settled"]["rail"], "flags")
+    assert [_text(n) for n in _by_class(flags, "row-note")] == [note]
+
+
+def test_a_flag_row_never_carries_a_note_that_is_not_a_fixed_sentence(tmp_path):
+    fields = [{**f, "note": "Call 555-0100"} if f["fid"] == "a1" else f for f in LOOP_REPORT["fields"]]
+    out = _run(tmp_path, report={**LOOP_REPORT, "fields": fields})
+    assert [row.get("note") for row in out["receiptFlags"]] == [None]
+    assert "555-0100" not in _text(out["settled"]["rail"])

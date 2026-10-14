@@ -525,6 +525,13 @@
    * with none, an uploaded file or a pause-row answer, are plain text.
    * Returns the heading and the list, or nothing. */
   const CHECK_HEADING = "Check before you submit";
+
+  /** A row's fixed note (a draft to read, a date set to the 1st) as a short muted line under the field name: plain
+   * text in the row. Only a sentence the loop knows is drawn, so a value or server text never is; none, nothing. */
+  function noteLine(build, note) {
+    const said = ns.fillLoop.knownNote(note);
+    return said ? build.node("span", "row-note", said) : null;
+  }
   function flagNodes({ facts, act, build }) {
     const rows = facts.receiptFlags ?? [];
     if (!rows.length) return [];
@@ -540,7 +547,7 @@
         name.addEventListener("click", () => act.focusField(row.fid));
       }
       build.attach(list, build.attach(build.node("li"), name,
-        build.node("span", "kindmark", ` · ${row.reason} `)));
+        build.node("span", "kindmark", ` · ${row.reason} `), noteLine(build, row.note)));
     }
     return [head, list];
   }
@@ -608,7 +615,7 @@
       button.addEventListener("click", () => act.focusField(row.fid));
       const said = mark(row) || null;
       build.attach(list, build.attach(build.node("li"), button,
-        said ? build.node("span", "kindmark", ` · ${said} `) : null));
+        said ? build.node("span", "kindmark", ` · ${said} `) : null, noteLine(build, row.note)));
     }
     return list;
   }
