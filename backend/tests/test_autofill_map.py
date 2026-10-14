@@ -2023,6 +2023,10 @@ NAMES_THE_COMPANY = [
     "Do you hold a work permit that lets you work at Acme Wireless?",
     "Are you a customer, vendor or partner of Acme Wireless?",
     "Have you been disciplined or dismissed by Acme Wireless?",
+    "Are you currently employed by Acme Wireless, or are you related to an employee?",
+    "Have you worked for Acme Wireless in the last 12 months?",
+    "Have you worked for Acme Wireless within the past 5 years?",
+    "Have you worked for Acme Wireless since 2022?",
 ]
 
 
@@ -2056,6 +2060,7 @@ def test_an_unreadable_map_answer_is_not_rerouted_even_for_the_real_question():
     "Have you ever been a contractor for Acme Wireless?", "Has Acme Wireless ever employed you? Have you ever worked for Acme Wireless?",
     "Have you previously worked with Acme Wireless?", "Did you ever work for Acme Wireless?",
     "Are you currently employed by Acme Wireless?", "Were you ever an employee of Acme Wireless?",
+    "Have you worked for Acme Wireless in the past?",
     "Are you a current or former Acme Wireless employee?",
 ])
 def test_the_worked_here_wordings_are_rerouted(db_session, monkeypatch, question):

@@ -726,11 +726,14 @@ _FORMER_ROLE = re.compile(
 # background checks, terminations, non-competes, where the applicant heard of the job, eligibility, willingness,
 # other people's employment, competitors, customers and vendors.
 _NOT_WORKED_HERE = re.compile(
-    r"relative|family|friend|spouse|anyone|someone|referr|applied|interview|convict|criminal|felony|authori|"
+    r"relat(?:ed|ive)|family|friend|spouse|anyone|someone|referr|applied|interview|convict|criminal|felony|authori|"
     r"sponsor|visa|clearance|background|terminat|non-?compete|hear\s+about|eligib|legal|able\s+to|willing|want|"
     r"h-?1b|petition|permit|household|member|compet|fired|disciplin|dismiss|customer|product|vendor|partner|"
     # the company listed beside a KIND of organisation is another question ("Acme or a federal contractor")
-    r"government|federal|\bstate\b|\blocal\b|agency|public\s+sector|military|defen[cs]e|\bu\.s\b|united\s+states",
+    r"government|federal|\bstate\b|\blocal\b|agency|public\s+sector|military|defen[cs]e|\bu\.s\b|united\s+states|"
+    # a time window ("in the last 12 months") narrows the question past "ever worked here"; a plain "in the past" does not
+    r"(?:last|past)\s+(?:\d+|few|several|two|three|five|ten|twelve)\s+(?:months?|years?)|within\b|"
+    r"since\s+(?:19|20)\d\d|\b\d+\s+(?:months?|years?)\b",
     re.IGNORECASE)
 # Where the company list ends in a clause.
 _CLAUSE_END = re.compile(
