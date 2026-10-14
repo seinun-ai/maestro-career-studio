@@ -374,33 +374,45 @@
 
     // The account settle: after Create Account the site keeps showing the sign-up form (and may show errorish text that
     // was already there) for a while before it shows the next page. Poll every POLL_MS for up to ACCOUNT_SETTLE_MS, the
-    // errors of the pre-press read as the baseline. Taken: the page reads as anything but the sign-up form or a blank
-    // (a step, an email check, a CAPTCHA or a sign-in page: the main loop parks or signs in as it does for any page), or a
-    // Workday read whose header Sign In button is gone with fewer than two password boxes and a Next in the form.
-    // Not taken: the sign-up form with an error that was NOT there before the press, held for REJECT_HOLD_MS, or still the
-    // sign-up form when the time runs out.
-    const accountTaken = async (before) => {
+    // errors of the pre-press read as the baseline. Answers "taken", "failed" or "blank".
+    //   taken   a verify, captcha or sign-in page (the main loop parks or signs in as it does for any page); a Workday read
+    //           whose header Sign In button is gone with fewer than two password boxes and a Next in the step; or any
+    //           other page that is no longer the sign-up form AND has left it (another address or step heading: a failed
+    //           sign-up redrawn without its password boxes is the same page).
+    //   failed  the sign-up form with an error that was NOT there before the press, held for REJECT_HOLD_MS; or, when the
+    //           time runs out, the sign-up form or a page that never left it.
+    //   blank   the time ran out on a page that stayed blank: nothing says the site refused, so the main loop judges it
+    //           (the old unknown_page park).
+    const accountTaken = async (before, beforeUrl) => {
       const baseline = new Set(before.errorKeys ?? []);
+      const [wasAt, wasKey] = fingerprint(beforeUrl, before).split("\n");
       const startedAt = deps.now();
       let heldSince = null;
+      let last = "blank";
       for (;;) {
         await act(deps.sleep, POLL_MS);
         const read = pickFrame(await act(deps.classify, record.tabId));
         const seen = read?.result.summary ?? null;
         if (seen) {
           const now = ns.pageKind.classify(seen).kind;
-          if (now !== "create_account" && now !== "unknown") return true;
+          const [at, key] = fingerprint(await act(deps.tabUrl, record.tabId), seen).split("\n");
+          last = now === "unknown" ? "blank" : "failed";   // a read that does not return "taken" below is the sign-up page still
+          if (["verify", "captcha", "sign_in"].includes(now)) return "taken";
+          if (now !== "create_account" && now !== "unknown") {
+            // Workday names a signed-in account in its header; elsewhere the page has to have left the sign-up page.
+            if (seen.headerSignIn !== undefined || at !== wasAt || key !== wasKey) return "taken";
+          }
           if (now === "create_account") {
-            if (ns.pageKind.signedUpRead(seen)) return true;
-            if ((seen.errorKeys ?? []).some((key) => !baseline.has(key))) {
+            if (ns.pageKind.signedUpRead(seen)) return "taken";
+            if ((seen.errorKeys ?? []).some((k) => !baseline.has(k))) {
               heldSince ??= deps.now();
-              if (deps.now() - heldSince >= REJECT_HOLD_MS) return false;
+              if (deps.now() - heldSince >= REJECT_HOLD_MS) return "failed";
             } else {
               heldSince = null;
             }
           }
         }
-        if (deps.now() - startedAt >= ACCOUNT_SETTLE_MS) return false;
+        if (deps.now() - startedAt >= ACCOUNT_SETTLE_MS) return last === "blank" ? "blank" : "failed";
       }
     };
 
@@ -575,7 +587,7 @@
             await update({ accountTried: false });
             return await park("create_account");
           }
-          if (!(await accountTaken(summary))) return await park("create_account_failed");
+          if ((await accountTaken(summary, url)) === "failed") return await park("create_account_failed");
           moved();
           continue;
         }

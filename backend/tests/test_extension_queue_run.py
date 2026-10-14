@@ -405,6 +405,25 @@ def test_a_workday_read_with_the_header_sign_in_gone_and_a_next_is_a_taken_accou
     assert _drive(tmp_path, [ACCOUNT, no_next], accountMoves=True, record=ON_WD)["record"]["why"] == "create_account_failed"
 
 
+def test_a_page_that_stays_blank_after_the_press_is_an_unknown_page_not_a_failed_account(tmp_path):
+    """Nothing says the site refused: the clock ran out on a blank page, which is the old unknown_page park."""
+    out = _drive(tmp_path, [ACCOUNT, {"t": "unknown", "host": WD}], accountMoves=True, record=ON_WD)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unknown_page")
+    assert len(names(out, "createAccount")) == 1
+
+
+def test_a_failed_sign_up_redrawn_without_its_password_boxes_on_the_same_page_is_not_a_taken_account(tmp_path):
+    """Email box left, no password boxes: it no longer classifies as the sign-up form, but it is the same page."""
+    redrawn = step(1, host=WD, url="/p/0", key="create_account")
+    out = _drive(tmp_path, [ACCOUNT, redrawn], accountMoves=True, record={"openUrl": f"https://{WD}/apply"})
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account_failed")
+    assert out["pressed"] == []
+    # The same read on another address or under another heading is a page the run moved to.
+    moved_url = _drive(tmp_path, [ACCOUNT, step(1, host=WD, url="/elsewhere", key="create_account"), {**REVIEW, "host": WD}],
+                       accountMoves=True, record=ON_WD)
+    assert moved_url["record"]["status"] == "ready"
+
+
 def test_a_sign_up_seen_again_after_a_settled_success_is_still_not_created(tmp_path):
     """The 'seen again' rule is for a LATER read, after the settle took the account."""
     out = _drive(tmp_path, [ACCOUNT, step(1, host=WD), {**ACCOUNT, "key": "back"}], accountMoves=True, record=ON_WD)
