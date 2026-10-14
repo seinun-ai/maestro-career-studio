@@ -465,7 +465,10 @@
     // button waits for it.
     const ask = facts.needsPick ? "Pick a resume to apply with"
       : facts.companionApply?.stopEachStep === true ? "Use this resume" : "Apply with this resume";
-    return attach(body, node("div", "sub", ask), list,
+    const prompt = node("div", "sub", ask);
+    // The disabled Apply below points at this line, which says why it waits.
+    if (facts.needsPick) prompt.id = "pick-prompt";
+    return attach(body, prompt, list,
                   node("div", "sub", rankingNote(ctx, ranked)),
                   node("div", "sub", ATS_SCORE_LEAD),
                   ...promiseLines(ctx), ways);

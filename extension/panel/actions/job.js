@@ -113,6 +113,8 @@
       note: { text: saved },
     });
     store.render();
+    // A Stop pressed during the save ends the press here: scoring is the next call, and it is not sent.
+    if (steps?.halted()) return;
     await scoreAllBases(store, { lead: `${saved} `, as, steps });
     if (!store.current(token)) return;
     // Queue and Apply go on from here and re-read when they end, so they ask for no reload now.
@@ -395,6 +397,11 @@
   // ---------- the Apply checklist ----------
 
   const PICK_NOTE = "Pick a resume to apply with.";
+  const ANOTHER_TAB = "Another tab is already applying to this job. Finish or stop that run first.";
+  /** The run statuses that are over (`actions/run.js` `TERMINAL`); any other run holds its job. */
+  const ENDED = new Set(["stopped", "applied"]);
+  /** A job another copy holds is a stop with a line of its own: nothing was running to cross. */
+  const heldStop = (sentence) => ({ stop: sentence, line: "Using this copy of the job", why: "Held elsewhere" });
   const WAITING = "Waiting for your pick";
   const READY_NOTE = "Resume ready. Press Start filling to go on.";
 
@@ -455,10 +462,12 @@
         lines.push({ key, text, state: "done", after: AFTER[key], ...extra });
         paint();
       },
-      /** The step that was running did not finish. */
-      fail(why) {
-        const line = last("run");
-        if (line) Object.assign(line, { state: "fail", why: why ?? WHY[line.key] });
+      /** The step that was running did not finish. A stop that happened between steps names the line it
+       * stopped on (`line`, a fixed phrase) so it is crossed too, with its own fixed reason. */
+      fail(why, line = null) {
+        const running = last("run");
+        if (running) Object.assign(running, { state: "fail", why: why ?? WHY[running.key] });
+        else if (line) lines.push({ key: "stop", text: line, state: "fail", why });
         paint();
       },
       /** Nothing is running; the next move is the user's. */
@@ -466,7 +475,9 @@
         lines.push({ key: "wait", text: WAITING, state: "wait" });
         paint();
       },
-      halted: () => !over && store.current(token) && store.read().applyStop === true,
+      // A press whose tab was left (the generation moved, which also reset the Stop flag with the page's
+      // facts) counts as stopped: carrying on would write to a job nobody is looking at.
+      halted: () => over || !store.current(token) || store.read().applyStop === true,
       /** Say where the Stop landed: after the last step that finished. */
       stopped() {
         state.stopped = last("done")?.after ?? "the last step";
@@ -484,6 +495,11 @@
       },
     };
   }
+
+  /** Is the job in the library as far as the page can tell: the backend matched this page to it. A job a
+   * remembered pick put in the store (`restoreSession`) is not that, and neither `applyPress` nor this file
+   * may call it saved. */
+  const savedJob = (facts) => facts.match === "exact" && Boolean(facts.job?.id);
 
   /** The line that names the resume Apply is using, with its square (drawn by stages/job.js from `hue`)
    * and its match score for this job when there is one. */
@@ -514,7 +530,11 @@
     const jobId = facts.job.id;
     const read = await readApplyFacts(store, jobId);
     if (read.applied) return { stop: ALREADY_APPLIED };
-    if (!canRunHere(read.ownership)) return { stop: heldSentence(read.ownership) };
+    if (!canRunHere(read.ownership)) return heldStop(heldSentence(read.ownership));
+    // Another tab's run holds this job's proposal: a relink under it would move the application the run
+    // is filling. The server cannot see the panel's runs, so the panel checks.
+    if (read.proposalId && store.read().runs.some((one) => one.proposalId === read.proposalId
+        && !ENDED.has(one.status))) return { stop: ANOTHER_TAB };
     const inPlace = facts.claimed === true;
     // Before anything is written: a pick that no longer stands is the user's to make again.
     const picked = inPlace ? await pickedDraft(store, facts.application?.id, jobId) : null;
@@ -538,17 +558,19 @@
       proposalId = queued.id;
       if (read.ownership) {
         const held = await claimHere(store, jobId);
-        if (held) return { stop: held };
+        if (held) return heldStop(held);
       }
       if (steps.halted()) return { halted: true };
     }
     if (applicationId === null) {
-      if (finishFirst) return { stop: FINISH_FIRST };
+      if (finishFirst) {
+        return { stop: FINISH_FIRST, line: "Tailoring the resume", why: "Finish it in Maestro CS" };
+      }
       steps.begin("tailor", withBase ? "Using your base resume" : "Tailoring the resume");
       ({ applicationId, pdfReady } = await newResume(store, jobId, base, withBase));
       steps.done("tailor");
     } else {
-      steps.put("tailor", "Using your tailored resume", { after: "choosing your resume" });
+      steps.put("tailor", "Using your resume for this job", { after: "choosing your resume" });
     }
     if (steps.halted()) return { halted: true };
     if (!pdfReady) {
@@ -569,7 +591,10 @@
     // Sync can deliver a link that never met the server's check, so it is vouched for here: http(s) only.
     const openUrl = inPlace ? httpUrl(facts.url)
       : httpUrl(read.applyUrl) ?? httpUrl(read.sourceUrl) ?? httpUrl(facts.url);
-    if (!openUrl) return { stop: "This job has no web link the Companion can open." };
+    if (!openUrl) {
+      return { stop: "This job has no web link the Companion can open.", line: "Opening the application",
+               why: WHY.open };
+    }
     if (inPlace && !read.applyUrl) await saveApplyLink(store, jobId, openUrl);
     // The last point a Stop can land: after this the run is the card, with its own Stop.
     if (steps.halted()) return { halted: true };
@@ -608,6 +633,8 @@
    * never touched. Submit is nowhere in this file: the run stops at the review. */
   async function applyJob(store, { start, running, withBase = false }) {
     if (store.read().busy !== null || store.read().fullAutomation !== true) return;
+    // Between two of its round trips `busy` is released; the checklist is what says a press is still going.
+    if (store.read().applySteps?.live === true) return;
     // A binding taken from a run record is not the user's pick for this page: not ours to apply in place.
     if (store.read().claimed === true && store.read().claimFrom !== "pick") return;
     // Before any write: queueing, tailoring and linking a job to a tab that cannot take its run is work
@@ -629,14 +656,18 @@
   }
 
   async function runApply(store, token, steps, { start, withBase, through }) {
-    if (!store.read().job) {
-      await addJob(store, { as: "apply", reload: through === "save", steps });
-      if (!store.current(token) || !store.read().job) return;
+    if (!savedJob(store.read())) {
+      await addJob(store, { as: "apply", reload: false, steps });
+      if (!store.current(token) || !savedJob(store.read())) return;
       if (steps.halted()) {
         steps.stopped();
         return;
       }
       if (through === "save") {
+        // The press is over: Stop goes before the re-read that shows what the save made true.
+        steps.end();
+        await store.loadContext(token);
+        if (!store.current(token)) return;
         reportPick(store, steps);
         store.render();
         return;
@@ -656,7 +687,7 @@
       steps.stopped();
     } else if (out.stop) {
       if (out.pick) steps.wait();
-      else steps.fail();
+      else steps.fail(out.why, out.line);
       store.write({ note: { text: out.stop } });
     } else if (out.ready) {
       // The resume exists now and the user's next press is the run.
@@ -672,6 +703,8 @@
       await start(out.seed);
       return;
     }
+    // The press is over; Stop goes before the re-read that follows it.
+    steps.end();
     store.render();
     await store.loadContext(done.token);
   }

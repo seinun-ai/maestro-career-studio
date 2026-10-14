@@ -1734,11 +1734,12 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     # Every endpoint is the widget's, unchanged — a panel that invented a route
     # would 404 in the browser and pass here.
     paths = [msg["path"] for msg in out["sent"] if msg["type"] == "api"]
-    # The full-automation setting is asked beside the match, once per bind.
-    assert paths[:2] == [
-        "/api/settings/auto-apply",
+    # The full-automation setting and the Companion's Apply switches are asked beside the match, once per
+    # bind, both at once.
+    assert paths[:3] == [
+        "/api/settings/auto-apply", "/api/settings/companion-apply",
         "/api/jobs/match?url=https%3A%2F%2Fjob-boards.greenhouse.io%2Flightningai%2Fjobs%2F99"]
-    assert set(paths[2:]) == {"/api/base-resumes", "/api/ats-scores?job_id=job-lightning",
+    assert set(paths[3:]) == {"/api/base-resumes", "/api/ats-scores?job_id=job-lightning",
                               "/api/applications/app-1"}
 
 

@@ -1987,10 +1987,14 @@
       // "60 Base — tailor to raise it" joined two clauses with a dash (Task 25).
       // What an ATS score IS is said once, in the Job step's base list
       // (`stages/job.js`).
+      // Scored but nothing picked (the user is to pick) is not "not scored": the rows have numbers.
+      const unpicked = before === null && rankBaseResumes(card.resumes, card.scores)
+        .some((one) => one.score !== null);
       attach(ats, ringColumn(before, "var(--cs-primary)",
                              before === null ? "Match score" : "Base resume score", baseHue),
              node("span", "hint",
-                  before === null ? "Not scored yet." : "Tailoring can raise it."));
+                  unpicked ? "Pick a resume."
+                    : before === null ? "Not scored yet." : "Tailoring can raise it."));
       return ats;
     }
     attach(ats, ringColumn(before, "var(--cs-primary)",
@@ -2959,6 +2963,7 @@
     // once, it stays on screen, disabled, until the run hands back its report.
     if (card.busy === "fill" && card.fillRound !== null) {
       const stop = actionButton("stop", card.stopRequested ? "Stopping…" : "Stop", stopFill);
+      stop.id = "fill-stop";
       stop.setAttribute("aria-label", "Stop filling");
       stop.disabled = card.stopRequested;
       controls.push(stop);
@@ -2968,8 +2973,11 @@
     // what it stops, since the footer also shows the fill's Stop.
     if (card.applySteps?.live === true) {
       const stop = actionButton("stop", card.applyStop ? "Stopping…" : "Stop", stopApply);
+      stop.id = "apply-stop";
       stop.setAttribute("aria-label", card.applyStop ? "Stopping preparing to apply" : "Stop preparing to apply");
-      stop.disabled = card.applyStop;
+      // Not `disabled`: a disabled button drops the focus the user pressed it with, and `stopApply` already
+      // ignores a second press.
+      if (card.applyStop) stop.setAttribute("aria-disabled", "true");
       controls.push(stop);
     }
     // THE PRIMARY BELONGS TO THE OPEN ROW, not to the inferred stage, and the
@@ -3002,7 +3010,14 @@
       cta.disabled = card.busy !== null;
       controls.push(cta);
     }
+    // The Stop buttons are the footer's controls a user is IN while a repaint lands (a step ticking over
+    // rebuilds this row): `withPlaceKept` guards the header and the rail and its comment says why it
+    // cannot reach here, so the two stable ids are put back by name.
+    const held = document.activeElement?.id;
     region("foot-controls").replaceChildren(...controls);
+    if (held === "apply-stop" || held === "fill-stop") {
+      document.getElementById(held)?.focus({ preventScroll: true });
+    }
   }
 
   /** Does the open Job step offer Apply (and Queue) instead of Save job? With full automation on,
@@ -3035,6 +3050,8 @@
     const apply = actionButton(alone ? `cta${spin("apply")}` : `cta pair${spin("apply")}`, press.label,
                                () => applyJob());
     apply.disabled = card.busy !== null || card.applySteps?.live === true || press.needsPick;
+    // A button that waits says why: the line above the list asks for the pick (`stages/job.js`).
+    if (press.needsPick) apply.setAttribute("aria-describedby", "pick-prompt");
     if (alone) return [apply];
     const queue = actionButton(`cta pair alt${spin("queue")}`, "Queue", () => queueJob());
     queue.disabled = card.busy !== null;
@@ -3475,31 +3492,29 @@
    * known": the Job step stays Save job, and the match's own failure already told the user the
    * backend is unreachable. Never throws, so the load that awaits it cannot be broken by it.
    *
-   * Beside it: the pick limits Auto-apply holds (`auto_pick_floor`, `auto_pick_margin`) and, with full
-   * automation on, the Companion's two Apply switches (`/api/settings/companion-apply`), which the panel
-   * obeys now that the Companion picks a resume. A switch it cannot read is the default (on, off). */
+   * Beside it, asked in the same breath: the pick limits Auto-apply holds (`auto_pick_floor`,
+   * `auto_pick_margin`) and the Companion's two Apply switches (`/api/settings/companion-apply`), which
+   * the panel obeys, with full automation on, now that the Companion picks a resume. A switch it cannot
+   * read is the default (on, off). */
   async function loadAutomation(token) {
     let on = null;
     const mine = { autoPick: true, stopEachStep: false, floor: 60, margin: 5 };
-    try {
-      const value = (await api("/api/settings/auto-apply"))?.value;
+    // Both asked at once; the switches are read below only if automation turned out to be on.
+    const [auto, companion] = await Promise.allSettled([
+      api("/api/settings/auto-apply"), api("/api/settings/companion-apply")]);
+    if (auto.status === "fulfilled") {
+      const value = auto.value?.value;
       on = value?.full_automation === true;
       // The pick limits are Auto-apply's own; the defaults stand when they are not numbers.
       if (Number.isFinite(value?.auto_pick_floor)) mine.floor = value.auto_pick_floor;
       if (Number.isFinite(value?.auto_pick_margin)) mine.margin = value.auto_pick_margin;
-    } catch (_) {
-      // Left null on purpose; nothing to say that the match has not.
     }
-    // The switches only mean something with full automation on, so they are read only then. Anything but
-    // a plain yes/no is the default: a switch the panel could not read has not been turned.
-    if (on) {
-      try {
-        const value = (await api("/api/settings/companion-apply"))?.value;
-        if (value?.auto_pick === false) mine.autoPick = false;
-        if (value?.stop_each_step === true) mine.stopEachStep = true;
-      } catch (_) {
-        // The defaults stand.
-      }
+    // The switches only mean something with full automation on. Anything but a plain yes/no is the
+    // default: a switch the panel could not read has not been turned.
+    if (on && companion.status === "fulfilled") {
+      const value = companion.value?.value;
+      if (value?.auto_pick === false) mine.autoPick = false;
+      if (value?.stop_each_step === true) mine.stopEachStep = true;
     }
     if (current(token)) {
       card.fullAutomation = on;

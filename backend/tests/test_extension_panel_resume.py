@@ -552,7 +552,8 @@ def test_quick_tailor_creates_the_application_and_the_rings_say_so(tmp_path):
     # page and the panel asked for it once.
     assert [f'{(msg.get("init") or {}).get("method", "GET")} {msg["path"].split("?")[0]}'
             for msg in out["sent"] if msg["type"] == "api"] == [
-        "GET /api/settings/auto-apply", "GET /api/jobs/match", "GET /api/base-resumes",
+        "GET /api/settings/auto-apply", "GET /api/settings/companion-apply", "GET /api/jobs/match",
+        "GET /api/base-resumes",
         "GET /api/ats-scores", "POST /api/jobs/job-lightning/quick-tailor", "GET /api/ats-scores"]
     settled = out["settled"]
     [note] = _by_class(settled["foot"], "note")

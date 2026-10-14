@@ -136,6 +136,16 @@ spec.frames.fill_inventory = [{ frameId: 0, result: { fields: [] } }];
 spec.frames.fill_cancel = [{ frameId: 0, result: true }];
 spec.page = spec.page ?? {};
 
+// A BROWSER BLURS A REMOVED NODE: focus falls to the body when the focused control leaves the document (the
+// shared fake models no removal, and the Refresh driver patches it the same way).
+const holds = (node, target) => node === target || node.children.some((kid) => holds(kid, target));
+for (const root of [...Object.values(REGIONS), CONTROLS]) {
+  const replace = root.replaceChildren.bind(root);
+  root.replaceChildren = (...kids) => {
+    if (ACTIVE && root.children.some((kid) => holds(kid, ACTIVE))) ACTIVE = null;
+    replace(...kids);
+  };
+}
 const ns = loadModules();
 const seeds = [];
 const fills = [];
@@ -155,7 +165,7 @@ console.error = (...args) => { errors.push(args.map(String).join(" ")); };
 const actions = ns.panelActions(ns.panel.actionStore());
 
 const hit = (node, match) => (match(node) ? node : node.children.map((kid) => hit(kid, match)).find(Boolean));
-const snap = () => ({ regions: regions(), facts: JSON.parse(JSON.stringify((({ runs, fullAutomation, apply, tailorFirst,
+const snap = () => ({ focused: document.activeElement?.id ?? null, regions: regions(), facts: JSON.parse(JSON.stringify((({ runs, fullAutomation, apply, tailorFirst,
   baseSlug }) => ({ runs, fullAutomation, apply, tailorFirst, baseSlug }))(ns.panel.actionStore().read()))) });
 main(async () => {
   await settle();
@@ -181,6 +191,15 @@ main(async () => {
       if (!select) throw new Error("no draft picker on screen");
       select.value = step.pick;
       select.dispatch("change");
+    }
+    if (step.focus !== undefined) {
+      const node = document.getElementById(step.focus);
+      if (!node) throw new Error(`no control #${step.focus} to focus`);
+      node.focus();
+    }
+    if (step.write) {
+      ns.panel.actionStore().write(step.write);
+      ns.panel.actionStore().render();
     }
     if (step.seed) {
       ns.panel.actionStore().write({ runs: step.seed });
@@ -979,7 +998,7 @@ def test_a_step_that_was_not_needed_is_not_listed(tmp_path):
                                                    application=_draft())})
     out = _apply(tmp_path, api=api, hold=["POST /api/proposals"], steps=[{"foot": "Apply"}])
     assert _lines(out["shots"][1]) == [
-        ("done", "Using AI/ML Engineer (72)"), ("done", "Using your tailored resume"),
+        ("done", "Using AI/ML Engineer (72)"), ("done", "Using your resume for this job"),
         ("run", "Linking the resume to the job")]
 
 
@@ -1020,7 +1039,7 @@ def test_stop_after_scoring_leaves_no_proposal_and_no_tailoring(tmp_path):
     # Held mid-score: the first save is done, scoring is running, and Stop has been heard.
     assert _lines(out["shots"][1]) == [("done", "Saving the job"), ("run", "Scoring your resumes")]
     [pressed] = _stop_button(out["shots"][2])
-    assert _text(pressed) == "Stopping…" and pressed["disabled"]
+    assert _text(pressed) == "Stopping…" and pressed["attrs"]["aria-disabled"] == "true"
     end = out["shots"][-1]
     assert _order(out) == ["POST /api/jobs", "POST /api/ats-scores"]
     assert out["seeds"] == []
@@ -1252,29 +1271,146 @@ def test_a_setting_the_panel_cannot_read_leaves_apply_picking_and_running_every_
     assert _labels(shot) == ["Apply"]
 
 
-def test_the_switches_are_read_only_when_full_automation_is_on(tmp_path):
-    off = _apply(tmp_path, api=_fresh(**{"/api/settings/auto-apply": AUTOMATION_OFF}, **_companion(False, True)))
-    assert _api(off, "GET", "/api/settings/companion-apply") == []
-    on = _apply(tmp_path, api=_fresh(**_companion(False, True)))
-    assert len(_api(on, "GET", "/api/settings/companion-apply")) == 1
-    # And what it read is in force: with Stop after each step on, an unsaved posting's press is Save job.
-    assert _labels(on["shots"][0]) == ["Save job"] and _labels(off["shots"][0]) == ["Save job"]
+# ---------- the review's fixes ----------
 
 
-# ---------- Track this is a pick ----------
+def test_a_stop_pressed_before_a_rebind_still_ends_the_press(tmp_path):
+    """The rebind resets the page's facts, Stop flag included; the press from the tab left behind must
+    still count as stopped rather than carry on to render, link and run."""
+    other = "https://other.example.test/jobs/2"
+    api = {"other.example.test": NO_MATCH, **_fresh(**{"/quick-tailor": _reply({**TAILORED, "pdf_ready": False})})}
+    out = _apply(tmp_path, api=api, tabs=[{"id": 7, "url": BOARD_URL}, {"id": 8, "url": other}],
+                 tabUrls={"7": BOARD_URL, "8": other}, hold=["/quick-tailor"],
+                 steps=[{"foot": "Apply"}, {"foot": "Stop"}, {"activate": 8}, {"release": True, "settles": 3}])
+    assert len(_api(out, "POST", "/quick-tailor")) == 1
+    assert _api(out, "POST", "/render") == []
+    assert [msg for msg in _api(out, "POST", "/api/proposals") if "application_id" in _body(msg)] == []
+    assert out["seeds"] == []
 
 
-def test_apply_shows_right_after_track_this_without_a_reload(tmp_path):
-    tracked = _draft(pdf=False)
-    api = _saved(**{"POST /api/applications/from-base": _reply(tracked)})
-    out = _apply(tmp_path, api=api, steps=[{"call": "trackThis", "settles": 3}])
-    assert _labels(out["shots"][0]) == ["Apply"]
-    shot = out["shots"][-1]
-    assert _primary(shot) == ["Apply"] and PROMISE in _text(shot["regions"]["rail"])
+def test_focus_on_stop_survives_a_step_repaint(tmp_path):
+    out = _apply(tmp_path, api=_fresh(), hold=["POST /api/proposals", "/quick-tailor"], holdSkip=1,
+                 steps=[{"foot": "Apply"}, {"focus": "apply-stop"}, {"release": True}])
+    before, after = out["shots"][1], out["shots"][-1]
+    assert _lines(before)[-1] == ("run", "Tailoring the resume")
+    assert _lines(after)[-1] == ("run", "Linking the resume to the job")
+    assert after["focused"] == "apply-stop"
+    assert [one["id"] for one in _stop_button(after)] == ["apply-stop"]
 
 
-def test_track_this_with_nothing_picked_asks_for_a_pick_instead_of_a_save(tmp_path):
-    api = _saved(**_companion(auto_pick=False))
-    out = _apply(tmp_path, api=api, steps=[{"call": "trackThis"}])
-    assert _api(out, "POST", "/api/applications/from-base") == []
-    assert _note(out["shots"][-1]) == "Pick a base resume first."
+def test_a_stop_that_has_been_pressed_keeps_focus_and_says_so_without_going_disabled(tmp_path):
+    out = _apply(tmp_path, api=_flow(), hold=["POST /api/ats-scores"],
+                 steps=[{"foot": "Apply"}, {"focus": "apply-stop"}, {"id": "apply-stop"}])
+    [pressed] = _stop_button(out["shots"][-1])
+    assert _text(pressed) == "Stopping…" and pressed["attrs"]["aria-disabled"] == "true"
+    assert not pressed["disabled"] and out["shots"][-1]["focused"] == "apply-stop"
+
+
+def test_the_fill_stop_has_a_stable_id_too():
+    assert 'stop.id = "fill-stop";' in PANEL_SOURCE
+
+
+def test_save_job_works_after_a_session_restore_set_a_job_the_backend_did_not_match(tmp_path):
+    """A remembered pick names a job (so `card.job` is set) on a page the backend does not match: the
+    footer says Save job and the press must save, not do nothing."""
+    entry = {"origin": "https://board.example.test", "tenant": "https://board.example.test/jobs",
+             "at": 1, "jobId": "job-1", "company": "Acme", "title": "Data Scientist",
+             "baseSlug": "ai_ml_engineer", "baseArmed": False}
+    api = _flow(**_companion(auto_pick=True, stop_each_step=True))
+    api["/api/jobs/match"] = [NO_MATCH, SAVED_MATCH]
+    out = _apply(tmp_path, api=api, stored={"widget.session": entry}, steps=[{"foot": "Save job", "settles": 3}])
+    assert _labels(out["shots"][0]) == ["Save job"]
+    assert _order(out)[:2] == ["POST /api/jobs", "POST /api/ats-scores"]
+
+
+def test_stop_between_saving_and_scoring_ends_before_the_score_is_asked(tmp_path):
+    out = _apply(tmp_path, api=_flow(), hold=["POST /api/jobs"],
+                 steps=[{"foot": "Apply"}, {"foot": "Stop"}, {"release": True, "settles": 3}])
+    assert _order(out) == ["POST /api/jobs"]
+    end = out["shots"][-1]
+    assert _lines(end) == [("done", "Saving the job"), ("stop-line", "Stopped after saving the job.")]
+
+
+def test_apply_does_nothing_while_a_checklist_is_live(tmp_path):
+    live = {"applySteps": {"live": True, "stopped": None, "lines": []}}
+    out = _apply(tmp_path, api=_saved(), steps=[{"write": live}, {"call": "applyJob", "settles": 2}])
+    assert _order(out) == [] and out["seeds"] == []
+
+
+def test_stop_is_gone_while_the_press_re_reads_the_page_it_ended_on(tmp_path):
+    # Stopped at the tailoring, which is inside the span that ends in a reload; the reload is held.
+    out = _apply(tmp_path, api=_fresh(), hold=["/quick-tailor", "/api/jobs/match"], holdSkip=1,
+                 steps=[{"foot": "Apply"}, {"foot": "Stop"}, {"release": True, "settles": 2}])
+    assert _stop_button(out["shots"][-1]) == []
+    assert _lines(out["shots"][-1])[-1] == ("stop-line", "Stopped after tailoring the resume.")
+
+
+def test_the_stops_that_crossed_nothing_now_cross_a_line(tmp_path):
+    bot = _owned(owned_here=False, owner="bot")
+    held = _apply(tmp_path, api=_saved(**{"/api/jobs/job-1/detail": _job(ownership=bot)}), steps=[{"foot": "Apply"}])
+    assert _lines(held["shots"][1])[-1] == ("fail", "Using this copy of the job")
+    sessions = _saved(**{"/api/tailoring-sessions?job_id": _reply([{"id": "sess-1", "status": "open"}])})
+    first = _apply(tmp_path, api=sessions, steps=[{"foot": "Apply"}])
+    assert _lines(first["shots"][1])[-1] == ("fail", "Tailoring the resume")
+    detail = _job(apply_url=None, source_url=None, application=_draft())
+    # A page the panel has no address for (the tab went away between the read and the press).
+    nolink = _apply(tmp_path, api=_saved(**{"/api/jobs/job-1/detail": detail}),
+                    steps=[{"write": {"url": ""}}, {"call": "applyJob", "settles": 2}])
+    assert _lines(nolink["shots"][-1])[-1] == ("fail", "Opening the application")
+
+
+def test_the_resume_line_does_not_claim_a_tailoring_the_panel_cannot_see(tmp_path):
+    api = _saved(**{"/api/jobs/job-1/detail": _job(proposal_id="prop-1", proposal_status="accepted",
+                                                   application=_draft())})
+    out = _apply(tmp_path, api=api, hold=["POST /api/proposals"], steps=[{"foot": "Apply"}])
+    assert ("done", "Using your resume for this job") in _lines(out["shots"][1])
+    assert "tailored" not in str(_lines(out["shots"][1]))
+
+
+def test_the_header_ring_asks_for_a_pick_when_scores_exist_and_nothing_is_picked(tmp_path):
+    shot = _apply(tmp_path, api=_saved(**{"GET /api/ats-scores": _reply(_rows(45, 44))}))["shots"][0]
+    assert "Pick a resume." in _text(shot["regions"]["identity"])
+    assert "Not scored yet." not in _text(shot["regions"]["identity"])
+
+
+def test_the_switches_are_fetched_with_the_automation_setting_and_ignored_when_it_is_off(tmp_path):
+    api = _saved(**{"/api/settings/auto-apply": AUTOMATION_OFF, "GET /api/ats-scores": _reply(_rows(45, 44)),
+                    **_companion(auto_pick=False)})
+    out = _apply(tmp_path, api=api)
+    paths = [msg["path"] for msg in out["sent"] if msg["type"] == "api"]
+    assert paths.index("/api/settings/companion-apply") == paths.index("/api/settings/auto-apply") + 1
+    # With automation off the best match is preselected as it always was, whatever the switch says.
+    assert out["shots"][0]["facts"]["baseSlug"] == "ai_ml_engineer"
+
+
+def test_a_disabled_apply_points_at_the_line_that_says_why(tmp_path):
+    shot = _apply(tmp_path, api=_saved(**{"GET /api/ats-scores": _reply(_rows(45, 44))}))["shots"][0]
+    [apply] = [one for one in _buttons(shot) if _text(one) == "Apply"]
+    assert apply["disabled"] and apply["attrs"]["aria-describedby"] == "pick-prompt"
+    [prompt] = [one for one in _walk(shot["regions"]["rail"]) if one["id"] == "pick-prompt"]
+    assert PICK_NOTE.rstrip(".") in _text(prompt)
+
+
+def test_apply_will_not_move_a_job_another_tab_is_running(tmp_path):
+    """A second Apply (the user tailored a newer draft) would relink the proposal under the other tab's run."""
+    api = _saved(**{"/api/jobs/job-1/detail": _job(proposal_id="prop-1", proposal_status="accepted",
+                                                   application=_draft())})
+    other = {**_run_record(8, "filling"), "proposalId": "prop-1"}
+    out = _apply(tmp_path, api=api, tabs=[{"id": 7, "url": BOARD_URL}, {"id": 8, "url": APP_URL}],
+                 steps=[{"seed": [other], "call": "applyJob", "settles": 2}])
+    assert out["seeds"] == [] and _order(out) == []
+    assert "Another tab" in _note(out["shots"][-1])
+    # A run that is over does not hold the job.
+    done = _apply(tmp_path, api=api, steps=[{"seed": [{**other, "status": "stopped"}], "call": "applyJob"}])
+    assert len(done["seeds"]) == 1
+
+
+def test_apply_shows_after_the_real_track_this_button_is_pressed_and_the_job_row_reopened(tmp_path):
+    """From the Track stage (armed base, filled): the button the user presses, then the Job row's door."""
+    entry = {"origin": "https://board.example.test", "tenant": "https://board.example.test/jobs",
+             "at": 1, "jobId": "job-1", "company": "Acme", "title": "Data Scientist", "touched": True,
+             "baseSlug": "ai_ml_engineer", "baseArmed": True}
+    api = _saved(**{"POST /api/applications/from-base": _reply(_draft(pdf=False))})
+    out = _apply(tmp_path, api=api, stored={"widget.session": entry},
+                 steps=[{"body": "Track this application", "settles": 3}, {"id": "stg-open-job", "settles": 2}])
+    assert _primary(out["shots"][-1]) == ["Apply"]

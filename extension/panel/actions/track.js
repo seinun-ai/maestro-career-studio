@@ -149,9 +149,8 @@
     if (facts.busy !== null) return;
     if (facts.application) return;
     if (!facts.job?.id || !facts.baseSlug) {
-      // A saved job with nothing picked (the user is to pick) is told so, not told to save what is saved.
       store.write({
-        note: { text: facts.job?.id ? "Pick a base resume first." : "Nothing to track yet. Save this job first." },
+        note: { text: "Nothing to track yet. Save this job first." },
       });
       store.render();
       return;
