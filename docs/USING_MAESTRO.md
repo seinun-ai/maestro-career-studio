@@ -382,7 +382,8 @@ it, and fill application forms from your saved answers (**Profile › Autofill**
 signatures, agreement boxes, passwords and government IDs to you unless you turn
 on the agreement permission in Profile, and it never submits. Autofill does not move to the next page either; only **Apply** does, with full automation on (see the Companion's README).
 
-With full automation on, **Apply** shows a live checklist while it gets ready (save, score, the resume it
+With full automation on, a job page you have not saved yet shows **Add job** beside **Apply**: it saves the job and
+scores your resumes, then stops on the ranked list without tailoring or starting anything. **Apply** shows a live checklist while it gets ready (save, score, the resume it
 uses, queue, tailor, make the PDF, open the application) and a **Stop** button that ends it between steps.
 Two switches under **Settings › AI & models › Form filling** steer it. **Choose the base resume for me**
 (on) picks a resume only when its match score clearly wins, using the limits in Auto-apply, and asks you

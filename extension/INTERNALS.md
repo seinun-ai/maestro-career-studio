@@ -1718,7 +1718,10 @@ footer alone).
   segment or a posting-id query key, never a job board), and without its fragment or any query but that key; a job that has a link keeps it,
   and a refused save does not stop the run. The next visit then matches: `/api/jobs/match` reads `apply_url` as well as `source_url`
   (`is_same_posting`), trusting an apply link only when it names a posting (`job_url_match.names_posting`). With full automation
-  Off the footer is Save job plus "Turn on full automation in Settings to apply from here."
+  Off the footer is Save job plus "Turn on full automation in Settings to apply from here." On a page whose job is not saved yet, with Apply
+  as the button, **Add job** (`decisions.offersAddJob`, secondary, beside Apply) runs the Save job press (`applyJob` with `saveOnly`, busy kind
+  `add`): save, score, stop on the ranked list, with no tailoring, queue or run; once the job is saved only Apply shows. With **Stop after each
+  step** on, or **Choose the base resume for me** off, the one button already reads Save job and Add job is not drawn.
 - **The Apply checklist and Stop** (`panel/actions/job.js` `applyChecklist`, store key `applySteps`, drawn by `panel/stages/job.js`). While a press
   prepares, the Job card lists each step it takes, in order: Saving the job, Scoring your resumes, Using <base> (<score>) with the base's colour
   square, Queueing the job, Tailoring the resume (or Using your tailored resume), Making the PDF, Linking the resume to the job, Opening the

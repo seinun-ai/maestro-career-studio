@@ -92,7 +92,7 @@
  * nobody can measure against is not one.
  *
  * WHAT THIS FILE PUBLISHES: ns.panelActions = (store) => ({ addJob, queueJob,
- * applyJob, applyWithBase, pickApplication, unpickApplication, dropDeletedApplication, scoreAllBases,
+ * applyJob, addJobOnly, applyWithBase, pickApplication, unpickApplication, dropDeletedApplication, scoreAllBases,
  * quickTailor, useBaseAsIs, stopUsingBaseAsIs, createPdf, startFill, submitAnswer,
  * askQuestion, setStatus, trackThis, startRun, stopRun, resumeRun, skipRun, closeRun, moveRun, undoLearned,
  * undoMark, markApplied, restoreRuns }).
@@ -141,6 +141,9 @@
     // tab). `startRun` is handed in because an action reaches no other action.
     queueJob: () => job.queueJob(store),
     applyJob: () => job.applyJob(store, { start: (seed) => run.startRun(store, seed), running: () => run.runningHere(store) }),
+    // Add job: the Save job press offered beside Apply on an unsaved page (save, score, stop on the ranked list).
+    addJobOnly: () => job.applyJob(store, { start: (seed) => run.startRun(store, seed),
+                                            running: () => run.runningHere(store), saveOnly: true }),
     applyWithBase: () => job.applyWithBase(store, {
       start: (seed) => run.startRun(store, seed), running: () => run.runningHere(store) }),
     pickApplication: (applicationId) => pick.pickApplication(store, applicationId),

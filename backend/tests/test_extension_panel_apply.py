@@ -305,10 +305,51 @@ def test_a_setting_that_cannot_be_read_leaves_save_job_exactly_as_it_was(tmp_pat
 
 
 def test_with_full_automation_on_apply_is_the_only_primary_until_the_queue_view_exists(tmp_path):
-    shot = _apply(tmp_path)["shots"][0]
+    shot = _apply(tmp_path, api=_saved())["shots"][0]
     assert _foot(shot) == [("Apply", ["cta"])]
     assert PROMISE in _text(shot["regions"]["rail"])
     assert "Queue" not in _rail_buttons(shot)
+
+
+def test_an_unsaved_posting_offers_add_job_beside_apply(tmp_path):
+    shot = _apply(tmp_path)["shots"][0]
+    assert _foot(shot) == [("Apply", ["cta", "pair"]), ("Add job", ["cta", "pair", "alt"])]
+    assert PROMISE in _text(shot["regions"]["rail"])
+    assert not [one for one in _buttons(shot) if one["disabled"]]
+
+
+def test_add_job_saves_and_scores_then_stops_on_the_ranked_list_with_nothing_started(tmp_path):
+    out = _apply(tmp_path, api=_flow(), steps=[{"foot": "Add job", "settles": 3}])
+    # The same two calls as the Save job press, and no proposal, no tailoring, no render, no run.
+    assert _order(out) == ["POST /api/jobs", "POST /api/ats-scores"]
+    assert _api(out, "POST", "/api/proposals") == [] and _api(out, "PATCH", "/api/proposals") == []
+    assert _api(out, "POST", "/quick-tailor") == [] and out["seeds"] == [] and out["created"] == []
+    end = out["shots"][-1]
+    assert _lines(end) == [("done", "Saving the job"), ("done", "Scoring your resumes"),
+                           ("done", "Using AI/ML Engineer (72)")]
+    assert [row["id"] for row in _rows_in_rail(end)] == ["base-ai_ml_engineer", "base-data_scientist"]
+    # The job is saved now, so Apply stands alone again.
+    assert _foot(end) == [("Apply", ["cta"])]
+    assert out["errors"] == []
+
+
+def test_add_job_spins_while_it_saves_and_both_buttons_wait(tmp_path):
+    out = _apply(tmp_path, api=_flow(), hold=["POST /api/jobs"], steps=[{"foot": "Add job"}, {"release": True, "settles": 3}])
+    mid = out["shots"][1]
+    # The checklist's Stop sits first, as in every press; the two buttons wait and the pressed one spins.
+    assert _foot(mid)[1:] == [("Apply", ["cta", "pair"]), ("Add job", ["cta", "pair", "alt", "spin"])]
+    assert all(one["disabled"] for one in _buttons(mid) if "stop" not in one["class"].split())
+    assert not [one for one in _buttons(out["shots"][-1]) if one["disabled"]]
+
+
+def test_a_saved_job_shows_apply_alone_not_add_job(tmp_path):
+    shot = _apply(tmp_path, api=_saved())["shots"][0]
+    assert "Add job" not in _labels(shot)
+
+
+def test_with_stop_after_each_step_on_the_one_button_stays_save_job_and_add_job_is_not_offered(tmp_path):
+    shot = _apply(tmp_path, api=_flow(**_stepwise()))["shots"][0]
+    assert _foot(shot) == [("Save job", ["cta"])]
 
 
 def test_with_the_queue_button_on_it_sits_beside_apply(tmp_path):

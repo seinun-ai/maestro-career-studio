@@ -35,7 +35,8 @@ at to your local Maestro CS app.
   it shows a checklist with a **Stop** button. Two switches under **Settings › AI &
   models › Form filling** steer it: **Choose the base resume for me** (picks only when
   one resume clearly wins, else asks) and **Stop after each step** (three presses:
-  **Save job**, **Tailor resume**, **Start filling**).
+  **Save job**, **Tailor resume**, **Start filling**). On a job page you have not saved yet,
+  **Add job** beside **Apply** saves it and scores your resumes, then stops on the ranked list.
   Running several jobs at once from a Queue view is not built yet.
   **Ready to submit** means nothing is missing: the page has a real Submit button
   and no Next, shows no error, and has no required box left empty. If the

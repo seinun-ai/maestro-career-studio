@@ -639,7 +639,7 @@
    * `withBase` is the open-custom-session state's "Apply with the base resume": the same road, but
    * the base resume stands in for the tailoring the user has not finished, and their session is
    * never touched. Submit is nowhere in this file: the run stops at the review. */
-  async function applyJob(store, { start, running, withBase = false }) {
+  async function applyJob(store, { start, running, withBase = false, saveOnly = false }) {
     if (store.read().busy !== null || store.read().fullAutomation !== true) return;
     // Between two of its round trips `busy` is released; the checklist is what says a press is still going.
     if (store.read().applySteps?.live === true) return;
@@ -653,23 +653,24 @@
       return;
     }
     const token = store.token();
-    const { through } = applyPress(store.read());
+    // Add job is the Save job press, whatever the label would say: save, score, stop on the ranked list.
+    const { through } = saveOnly ? { through: "save" } : applyPress(store.read());
     const steps = applyChecklist(store, token);
     steps.open();
     try {
-      await runApply(store, token, steps, { start, withBase, through });
+      await runApply(store, token, steps, { start, withBase, through, kind: saveOnly ? "add" : "apply" });
     } finally {
       steps.end();
     }
   }
 
-  async function runApply(store, token, steps, { start, withBase, through }) {
+  async function runApply(store, token, steps, { start, withBase, through, kind }) {
     // The Save job press saves a page the backend has not matched even when a remembered pick named a job
     // for it (the button says Save job, and `applyPress` reads the match); every other press goes on
     // from a job that is known.
     const unsaved = (facts) => !savedJob(facts) || (through === "save" && facts.match !== "exact");
     if (unsaved(store.read())) {
-      await addJob(store, { as: "apply", reload: false, steps });
+      await addJob(store, { as: kind, reload: false, steps });
       if (!store.current(token) || unsaved(store.read())) return;
       if (steps.halted()) {
         steps.stopped();

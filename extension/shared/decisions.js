@@ -15,7 +15,7 @@
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
  * postingId, sessionTenant, restorableSession, postingLink, samePosting, withoutLocale,
  * applyFacts, httpUrl, reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
- * preselect, applyPress }.
+ * preselect, applyPress, offersAddJob }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -235,6 +235,14 @@
         if (b.score === null) return -1;
         return b.score - a.score;
       });
+  }
+
+  /** Does the Job step show "Add job" beside Apply? Only on a page whose job is not saved yet while Apply
+   * (not Save job) is the button: with "Stop after each step" on, or "Choose the base resume for me" off,
+   * the one button already reads Save job, so a second save button would be the same press twice. Add job
+   * is that Save job press, offered up front: save, score, stop on the ranked list. */
+  function offersAddJob(facts) {
+    return offersApply(facts) && !facts.job?.id && applyPress(facts).label === "Apply";
   }
 
   /** What `baseSlug` becomes when scores arrive and the user has not picked: a slug, null ("nobody is
@@ -791,7 +799,7 @@
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession, postingLink,
     samePosting, withoutLocale, applyFacts, httpUrl, namesPosting, applyLink, offersApply, boardHost,
-    preselect, applyPress,
+    preselect, applyPress, offersAddJob,
     reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
   };
 })();

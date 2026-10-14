@@ -57,6 +57,9 @@ view for several is still ahead.
   asking about submitting, a CAPTCHA, an email code, an account on a site it does not know or a job
   board's own apply button stops the run and the panel says why. You fix it in the page and press
   **Resume**.
+- **Add job beside Apply.** On a job page you have not saved yet, the Job step shows **Add job**
+  next to **Apply**: it saves the job and scores your resumes, then stops on the ranked list without
+  tailoring, queueing or running anything.
 - **Your answers are remembered.** Whatever you type into a field while a run waits for you is saved
   to your profile when you press Resume, with an Undo. A written answer that names the job's company
   or city is kept for that job only: the same question at another job adds its own answer instead of

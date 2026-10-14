@@ -562,7 +562,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   (the active one, or a DONE row reopened as view state; the active row is the way back). Painted as direction C: a `#progress` bar ("Step N
   of 4", from the active row), the active row as a "Next" card, done rows as compact lines, locked rows hidden by CSS (still in the DOM);
   `scripts/panel_preview.py` renders each state. The footer's one primary follows the OPEN row: Save job (then Update scores), Quick tailor
-  (Create PDF when an application lacks its PDF), Autofill; with full automation On the Job step's primary is Apply (below). The panel document is a family of scripts (panel.html owns roster and order):
+  (Create PDF when an application lacks its PDF), Autofill; with full automation On the Job step's primary is Apply (below; **Add job**, the Save job press, sits beside it on an unsaved page). The panel document is a family of scripts (panel.html owns roster and order):
   `panel.js` owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`) get a per-render snapshot,
   per-CONCERN actions (`panel/actions/*.js`) a handle with one `write(patch)` door, and each roster THROWS at boot naming a missing script.
   `panel/icons.js` (`ns.icon`, inline Lucide svg) draws every icon; no emoji or text glyph (`test_extension_panel_icons.py`).

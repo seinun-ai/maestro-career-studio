@@ -3051,7 +3051,9 @@
    * yet, because the save is how a pick becomes possible. */
   function applyButtons() {
     const press = ns.decisions.applyPress(card);
-    const alone = card.apply?.queued === true || !QUEUE_BUTTON;
+    // An unsaved page also offers the Save job press by its own name (the Queue button, once it exists, saves too).
+    const addJobBeside = !QUEUE_BUTTON && ns.decisions.offersAddJob(card);
+    const alone = (card.apply?.queued === true || !QUEUE_BUTTON) && !addJobBeside;
     const spin = (kind) => (card.busy === kind ? " spin" : "");
     // The job's run is parked in another tab on a step the user does by hand, and this tab is the job's too: the
     // press is to bring the run here (it stays parked until the user presses Continue here).
@@ -3066,6 +3068,11 @@
     apply.disabled = card.busy !== null || card.applySteps?.live === true || press.needsPick;
     // A button that waits says why: the line above the list asks for the pick (`stages/job.js`).
     if (press.needsPick) apply.setAttribute("aria-describedby", "pick-prompt");
+    if (addJobBeside) {
+      const add = actionButton(`cta pair alt${spin("add")}`, "Add job", () => addJobOnly());
+      add.disabled = card.busy !== null || card.applySteps?.live === true;
+      return [apply, add];
+    }
     if (alone) return [apply];
     const queue = actionButton(`cta pair alt${spin("queue")}`, "Queue", () => queueJob());
     queue.disabled = card.busy !== null;
@@ -4972,7 +4979,7 @@
    * forgot the `<script>` tag fails on boot rather than rendering a rail whose
    * every primary throws on the first click — the quiet version of the same
    * fault, and the one a user would have to notice for us. */
-  const { addJob, queueJob, applyJob, applyWithBase, pickApplication, unpickApplication,
+  const { addJob, queueJob, applyJob, addJobOnly, applyWithBase, pickApplication, unpickApplication,
           dropDeletedApplication, scoreAllBases, quickTailor, useBaseAsIs,
           stopUsingBaseAsIs, createPdf, startFill,
           attachResume, submitAnswer, askQuestion, setStatus, trackThis, startRun, stopRun, resumeRun,
