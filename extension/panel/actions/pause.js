@@ -159,7 +159,9 @@
       rows.push({ question, answer, ...scopeOf(question, job) });
       return rows;
     }
-    rows[at] = { ...rows[at], answer };
+    // A row saved before scoping existed has no `only_for`; when this question names THIS job it
+    // gets one now, so its answer stops being offered at every other employer. A scoped row keeps its own.
+    rows[at] = { ...rows[at], answer, ...(rows[at].only_for ? {} : scopeOf(question, job)) };
     return rows;
   }
 

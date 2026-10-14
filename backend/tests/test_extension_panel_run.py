@@ -642,6 +642,20 @@ def test_undo_restores_a_replaced_custom_answer_and_removes_a_new_one(tmp_path):
     assert out["profile"] == OLD_PROFILE
 
 
+def test_resume_scopes_an_old_general_answer_that_names_this_jobs_company_and_undo_restores_it(tmp_path):
+    friend = "Do you have a friend at Acme?"
+    legacy = {"custom": [{"question": friend, "answer": "No"}]}
+    out = _run(tmp_path, [{"start": SEED}, {"press": "run-resume"}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [needs("q1", friend)]}, {"fields": [verified("f1")]}],
+               inventory=[_field("q1", "Yes", question=friend)], profileStore=json.loads(json.dumps(legacy)))
+    assert out["profile"]["custom"] == [{"question": friend, "answer": "Yes", "only_for": "Acme",
+                                         "only_for_kind": "company"}]
+    undone = _run(tmp_path, [{"start": SEED}, {"press": "run-resume"}, {"press": "run-undo-saved"}],
+                  pages=(STEP1, REVIEW), reports=[{"fields": [needs("q1", friend)]}, {"fields": [verified("f1")]}],
+                  inventory=[_field("q1", "Yes", question=friend)], profileStore=json.loads(json.dumps(legacy)))
+    assert undone["profile"] == legacy
+
+
 def test_a_field_the_user_left_alone_or_the_policy_never_fills_is_not_learned(tmp_path):
     untouched = [_field("q1", "Yes", question="Have you used our product before?", touched=False),
                  _field("q3", "x", question="Signature", policyBlocked=True)]

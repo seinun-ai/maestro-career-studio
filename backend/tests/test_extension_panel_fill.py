@@ -1977,7 +1977,8 @@ SCOPED_ACME = {"question": "Have you worked at Acme before?", "answer": "No",
 def test_an_answer_that_names_this_jobs_company_or_city_is_kept_for_this_job(tmp_path):
     """"Have you worked at Acme before?" is true of Acme and false-looking-true everywhere else, so a
     saved answer whose question names THIS job's company, or the city of its location, is scoped to it.
-    A question that names neither stays general, and a general row is not scoped by a later page."""
+    A question that names neither stays general. A general row from before scoping existed is scoped
+    when it is updated at a job its question names."""
     out = run_node(_CUSTOM_DRIVER_JS, {"cases": [
         [[], "Have you worked at Acme before?", "No", ACME],
         [[], "Willing to relocate to Austin?", "Yes", ACME],
@@ -1989,6 +1990,8 @@ def test_an_answer_that_names_this_jobs_company_or_city_is_kept_for_this_job(tmp
         [[], "Do you know Al?", "No", {"company": "Al", "location": "Ny, NY"}],
         [[{"question": "Willing to relocate to Austin?", "answer": "Yes"}],
          "Willing to relocate to Austin?", "No", ACME],
+        [[{"question": "Willing to relocate to Austin?", "answer": "Yes"}],
+         "Willing to relocate to Austin?", "No", {"company": "Globex", "location": "Denver, CO"}],
         # No job (a run with nothing bound): nothing is scoped.
         [[], "Have you worked at Acme before?", "No", None],
     ]}, tmp_path, source=PANEL_SOURCE)
@@ -1999,6 +2002,7 @@ def test_an_answer_that_names_this_jobs_company_or_city_is_kept_for_this_job(tmp
         [SCOPED_ACME],
         [{"question": "Worked at Acme Corp before?", "answer": "No", "only_for": "Acme", "only_for_kind": "company"}],
         [{"question": "Do you know Al?", "answer": "No"}],
+        [{"question": "Willing to relocate to Austin?", "answer": "No", "only_for": "Austin", "only_for_kind": "city"}],
         [{"question": "Willing to relocate to Austin?", "answer": "No"}],
         [{"question": "Have you worked at Acme before?", "answer": "No"}],
     ]
@@ -2059,6 +2063,15 @@ def test_undoing_a_scoped_learn_puts_back_only_its_own_row(tmp_path):
         "profile": {"custom": [scoped]}, "items": items, "job": ACME}, tmp_path, source=PANEL_SOURCE)
     assert out["after"]["custom"] == [{**scoped, "answer": "Yes"}]
     assert out["undone"]["custom"] == [scoped]
+
+
+def test_undoing_the_scoping_of_a_general_row_puts_the_general_row_back(tmp_path):
+    general = {"question": "Do you have a friend at Acme?", "answer": "No"}
+    out = run_node(_LEARN_DRIVER_JS, {
+        "profile": {"custom": [general]}, "items": [{"label": general["question"], "answer": "Yes"}],
+        "job": ACME}, tmp_path, source=PANEL_SOURCE)
+    assert out["after"]["custom"] == [{**general, "answer": "Yes", "only_for": "Acme", "only_for_kind": "company"}]
+    assert out["undone"]["custom"] == [general]
 
 
 # One table both languages answer: the panel decides what an answer is scoped to, the backend decides where
