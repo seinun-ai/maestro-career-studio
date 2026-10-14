@@ -145,7 +145,7 @@ def test_a_persistent_failure_is_repaired_and_never_stored(db_session, tmp_path,
         [
             ADD_KEYWORD,
             _summary("Data engineer at Rivera Logistics, where she built the platform."),
-            _bullet("Built the routing platform and he raised uptime to 99.9%."),
+            _bullet("Built the routing platform, where he raised uptime to 99.9%."),
         ],
     )
 
@@ -214,7 +214,7 @@ def test_an_unchanged_bad_bullet_is_repaired_but_is_not_a_reason_to_retry(
     db_session, tmp_path, monkeypatch, client
 ):
     base = {**BASE, "experience": [{**BASE["experience"][0],
-            "bullets": ["Built the platform, and he cut load time 20%."]}]}
+            "bullets": ["Built the platform, where he cut load time 20%."]}]}
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex5", resume_json=base)
     created = _open_session(client, job, slug, resolutions=[KEYWORD])
@@ -261,7 +261,7 @@ def test_caller_ops_with_a_hit_return_400_and_store_nothing(db_session, tmp_path
 
     response = _tailor(
         client, created["id"],
-        body={"ops": [_summary("Data engineer, and he built the billing platform.")]},
+        body={"ops": [_summary("Data engineer, where he built the billing platform.")]},
     )
 
     assert response.status_code == 400
@@ -315,7 +315,7 @@ def test_caller_ops_leaving_a_third_person_base_bullet_alone_store_it_repaired(
     db_session, tmp_path, monkeypatch, client
 ):
     base = {**BASE, "experience": [{**BASE["experience"][0],
-            "bullets": ["Built the platform, and he cut load time 20%."]}]}
+            "bullets": ["Built the platform, where he cut load time 20%."]}]}
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex9", resume_json=base)
     created = _open_session(client, job, slug)
@@ -348,7 +348,7 @@ def test_a_pre_ops_only_tailor_still_repairs_what_it_stores(db_session, tmp_path
 
     base = {**BASE, "projects": [{
         "name": "Ingestion Pipeline", "enabled": False, "tech": "Kafka",
-        "bullets": ["He streamed events with Kafka, and she cut lag 20%."],
+        "bullets": ["He streamed events with Kafka, where she cut lag 20%."],
     }]}
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex11", resume_json=base)
@@ -414,7 +414,7 @@ def test_a_real_employer_that_shares_a_name_token_is_left_alone(db_session, tmp_
 
 def test_the_response_lists_the_paths_the_repair_touched(db_session, tmp_path, monkeypatch, client):
     base = {**BASE, "experience": [{**BASE["experience"][0],
-            "bullets": ["Built the platform, and he cut load time 20%."]}]}
+            "bullets": ["Built the platform, where he cut load time 20%."]}]}
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex12", resume_json=base)
     created = _open_session(client, job, slug, resolutions=[KEYWORD])
@@ -439,3 +439,25 @@ def test_the_mcp_tool_description_names_the_voice_rule():
     doc = source[source.index("def tailor_session("):]
     doc = doc[: doc.index('return {**result, "next": next_hint}')]
     assert "implied first person" in doc
+
+
+def test_unchanged_lines_about_other_people_are_stored_byte_for_byte(
+    db_session, tmp_path, monkeypatch, client
+):
+    """"They" and "he" after a noun mean other people: the tailor must not touch them
+    (a "mechanical" join once turned this into "that; used daily")."""
+    lines = ["Built the dashboard that they used daily.",
+             "Trained 40 nurses, and they adopted the EHR within a month.",
+             "Wrote the model they trusted for fraud checks."]
+    base = {**BASE, "experience": [{**BASE["experience"][0], "bullets": list(lines)}]}
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, slug="alex13", resume_json=base)
+    created = _open_session(client, job, slug, resolutions=[KEYWORD])
+    calls = _scripted(monkeypatch, [ADD_KEYWORD])
+
+    response = _tailor(client, created["id"])
+
+    stored = _stored(db_session, response)
+    assert len(calls) == 1
+    assert stored["experience"][0]["bullets"] == lines
+    assert response.json()["voice_repairs"] == []

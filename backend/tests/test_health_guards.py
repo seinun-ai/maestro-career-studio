@@ -248,14 +248,14 @@ def test_question_reaches_guarded_rewrite_without_allowing_invented_numbers(db_s
 
 def test_third_person_rewrite_is_rejected():
     violations = guard_violations(
-        ORIGINAL, "Built ETL pipelines processing 2M rows daily using Spark and Airflow, which he owns."
+        ORIGINAL, "Built ETL pipelines processing 2M rows daily using Spark and Airflow. He owns it."
     )
     assert any("written about someone else" in v for v in violations)
 
 
 def test_a_pronoun_already_in_the_original_is_still_rejected_in_the_rewrite():
-    original = "Mentored engineers so they could ship Spark jobs; cut load 2M rows."
-    violations = guard_violations(original, "Mentored engineers so they could ship Spark jobs; cut 2M rows.")
+    original = "She mentored engineers shipping Spark jobs; cut load 2M rows."
+    violations = guard_violations(original, "She mentored engineers shipping Spark jobs; cut 2M rows.")
     assert any("written about someone else" in v for v in violations)
 
 
