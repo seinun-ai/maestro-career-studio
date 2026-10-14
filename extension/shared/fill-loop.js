@@ -1632,7 +1632,11 @@
     // reader missed shows up here), one holding something (a value the reader
     // could not tell from a placeholder), or one carrying the engine's own
     // earlier write.
+    // Never one with no label of its own that is a box for prose, or that the
+    // page may need: with no question to read, "optional" is only a guess.
+    const unlabelled = (f) => !String(f.question ?? "").trim();
     const leftBlank = (f, row) => !f.required && !f.invalid && !row.leftover
+      && !(unlabelled(f) && (f.multiline || f.required))
       && [f.committed].flat().every((v) => v == null || String(v).trim() === "");
     // What each open field is: text (a fact to type), choice, or prose (a
     // free-text answer the model writes); one with nothing to fill it is
