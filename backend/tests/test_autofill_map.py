@@ -919,7 +919,7 @@ def test_the_reasoning_question_describes_the_history_and_never_sends_it(db_sess
     prompts = fake_llm(monkeypatch, {"q": {"key": "none", "confidence": 0.95}}, reasoned={"q": 0.95})
     assert run([field("q", question, "select", options=["Yes", "No"])], db_session)["q"].route == "reasoned"
     [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-reasoned"]
-    assert autofill_map.REASONED_FROM in asked and autofill_map.NEVER_REASONED in asked
+    assert autofill_map.REASONED_FROM in asked and autofill_map.never_reasoned(FACTS) in asked
     assert _PAGE_TEXT_IS_DATA in asked
     assert not [v for v in VALUES if v in asked and v not in question]
 
@@ -1125,6 +1125,29 @@ def test_the_history_sentinel_is_a_kind_of_organization_not_any_employer():
             in autofill_map.NEVER_REASONED)
 
 
+def test_the_history_sentinel_reaches_a_question_that_names_companies():
+    assert "companies the question itself names" in autofill_map._SENTINELS[HISTORY]
+
+
+def test_the_worked_here_clause_leaves_the_never_list_only_when_the_fact_is_absent():
+    worked = "whether the applicant worked for, or is related to someone at, the company applied to"
+    related = "whether the applicant is related to someone at the company applied to"
+    assert autofill_map.never_reasoned(WORKED_HERE) == autofill_map.NEVER_REASONED and worked in autofill_map.NEVER_REASONED
+    absent = autofill_map.never_reasoned(FACTS)
+    assert worked not in absent and related in absent
+    for kind in ("work authorization", "salary", "preference or willingness", "legal attestation or signature"):
+        assert kind in absent, kind
+
+
+def test_a_named_companies_question_is_reasoned_without_the_worked_here_fact(db_session, monkeypatch):
+    question = "Have you worked at Globex or Initech before?"
+    prompts = fake_llm(monkeypatch, {"p": {"key": HISTORY, "confidence": 0.9}}, reasoned={"p": 0.9})
+    got = run([field("p", question, "popup", options=["Yes", "No"])], db_session)
+    assert got["p"].route == "reasoned"
+    [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-reasoned"]
+    assert "worked for, or is related to" not in asked and "is related to someone at the company applied to" in asked
+
+
 def test_previously_employed_by_the_company_applied_to_is_never_reasoned(db_session, monkeypatch):
     """Probe: filed history_unanswered, then a reasoned "No" citing every job.
     The reasoning question names the company applied to as never, and a
@@ -1144,7 +1167,7 @@ def test_worked_here_takes_previously_employed_out_of_the_low_stakes_scope(db_se
     [asked] = [p["prompt"] for p in prompts if p["trace_name"] == "autofill-low-stakes"]
     assert "was previously employed by" not in asked
     assert "related to someone at the company (answered No)" in asked  # a relative is still a keen No
-    assert "whether the applicant worked for this company (their history says they did)" in asked
+    assert "whether the applicant worked for this company (the work history answers it)" in asked
     # Without the derived fact, the full scope stands.
     prompts = fake_llm(monkeypatch, {"t": {"key": "none", "confidence": 0.95}}, yes={"t": 0.9})
     run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
@@ -1159,7 +1182,7 @@ def test_worked_here_narrows_the_jev_low_stakes_question_too(db_session, monkeyp
                             eeo_consented=True, low_stakes=True)
     text = calls[1]["questions"]["t"]["instructions"]
     assert "was previously employed by" not in text
-    assert "their history says they did" in text
+    assert "the work history answers it" in text
 
 
 def test_the_optional_passes_carry_a_timeout_and_no_retries(db_session, monkeypatch):

@@ -170,6 +170,7 @@ function AnswerRow({
         {field.edited_by_you ? (
           <span className="text-body-small text-muted-foreground">Edited by you</span>
         ) : null}
+        {field.note ? <span className="text-body-small text-muted-foreground">{field.note}</span> : null}
       </div>
       <AnswerValue field={field} hidden={hidden} onOpenTab={onOpenTab} />
       {field.flags.map((flag) => (

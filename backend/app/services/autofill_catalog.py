@@ -396,22 +396,55 @@ def _now_or_future(work_auth: dict[str, Any]) -> str | None:
     return "No" if answers == ["No", "No"] else None
 
 
-def _worked_here(out: dict[str, Fact], company: str | None) -> None:
-    """The job's company among the history's employers: Yes for THIS
-    application — "Yes, currently" when a matching job is current, else "Yes,
-    previously", so a pick between "Current Associate" and "Former Associate"
-    has the words to choose by — and the company-agnostic standing answer
-    goes. Only ever Yes: a company the resume does not list may still be a
-    past employer."""
-    key = name_key(company or "")
-    matched = [m[1] for slot, f in out.items()
-               if (m := re.fullmatch(r"experience\.(\d+)\.employer", slot)) and key and name_key(str(f.value)) == key]
-    if not matched:
+# Where one string names several companies ("Acme, Globex, or Initech"): the commas, semicolons,
+# slashes and "or" / "and" between them. A name that holds one of these itself ("Procter and
+# Gamble") still matches whole: the whole string is tried as one name before the parts.
+_COMPANY_SEPARATORS = re.compile(r"\s*(?:[,;/]|\bor\b|\band\b)\s*", re.IGNORECASE)
+
+
+def _company_keys(company: str | None) -> set[str]:
+    """The name keys a company string stands for: the whole string and each part."""
+    text = company or ""
+    return {key for part in (text, *_COMPANY_SEPARATORS.split(text)) if (key := name_key(part))}
+
+
+def _akin(a: str, b: str) -> bool:
+    """One name is the other's start, whole words only ("amazon", "amazon web services"): a parent
+    and a subsidiary, so a history that holds only one of them cannot say No for the other."""
+    short, long = sorted((a, b), key=len)
+    return long.startswith(f"{short} ")
+
+
+def _worked_here(out: dict[str, Fact], company: str | None, *, complete: bool = True) -> None:
+    """The job's company among the history's employers, for THIS application.
+
+    A match is Yes — "Yes, currently" when a matching job is current, else "Yes, previously", so a
+    pick between "Current Associate" and "Former Associate" has the words to choose by — and the
+    company-agnostic standing answer goes. When the history lists jobs and none is at the company
+    (or at any company the string names), it is "No": the resume says where the applicant worked
+    (owner, 2026-10-14). Nothing is derived with no jobs listed, with no company, when an employer
+    is a parent or a subsidiary of the company by name ("Amazon" and "Amazon Web Services"), when the
+    history was cut at MAX_EXPERIENCE jobs (`complete` False: the job that matches may be cut),
+    or when the standing answer says Yes (the user's own word outranks an inference): then the
+    question is asked, as it was. A match is still a Yes however long the history."""
+    wanted = _company_keys(company)
+    employers = {m[1]: name_key(str(f.value)) for slot, f in out.items()
+                 if (m := re.fullmatch(r"experience\.(\d+)\.employer", slot))}
+    employers = {i: key for i, key in employers.items() if key}
+    if not wanted or not employers:
         return
-    current = any(getattr(out.get(f"experience.{i}.current"), "value", None) == "Yes" for i in matched)
+    matched = [i for i, key in employers.items() if key in wanted]
+    standing = out.get("eligibility.previously_employed_here")
+    if matched:
+        current = any(getattr(out.get(f"experience.{i}.current"), "value", None) == "Yes" for i in matched)
+        answer = "Yes, currently" if current else "Yes, previously"
+    elif (not complete or any(_akin(key, name) for key in employers.values() for name in wanted)
+          or (standing is not None and yes_no_word(str(standing.value)) == "Yes")):
+        return
+    else:
+        answer = "No"
     out.pop("eligibility.previously_employed_here", None)
-    out["derived.previously_employed_here"] = make_fact("derived.previously_employed_here",
-                                                        "Yes, currently" if current else "Yes, previously")
+    out["derived.previously_employed_here"] = make_fact("derived.previously_employed_here", answer)
 
 
 AGREES_TO_TERMS = "derived.agrees_to_terms"
@@ -439,7 +472,7 @@ def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: lis
     _derived(out, profile, today or date.today())
     _education(out, profile.get("education"))
     _experience(out, employment or [])
-    _worked_here(out, company)
+    _worked_here(out, company, complete=len(employment or []) <= MAX_EXPERIENCE)
     _languages(out, profile.get("languages"))
     _add(out, "skills", tuple(s for s in (skills or []) if s))
     _custom(out, profile.get("custom"), company, location)

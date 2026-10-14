@@ -258,12 +258,75 @@ def test_the_jobs_company_in_the_history_derives_previously_employed_yes():
     assert "eligibility.previously_employed_here" not in f
 
 
-@pytest.mark.parametrize("company", [None, "", "Globex", "Tata"])
-def test_no_match_derives_nothing_and_keeps_the_standing_answer(company):
+@pytest.mark.parametrize("company", [None, "", "Tata"])
+def test_no_company_or_a_parent_or_subsidiary_name_derives_nothing_and_keeps_the_standing_answer(company):
+    """No company known, or one that is the start of an employer's name ("Tata" / "Tata Consultancy
+    Services"): the history cannot say No, so the question is asked as before."""
     f = cat.build({"eligibility": {"previously_employed_here": False}},
                   [{"employer": "Tata Consultancy Services", "title": "Engineer"}], [], company=company)
     assert "derived.previously_employed_here" not in f
     assert f["eligibility.previously_employed_here"].value == "No"
+
+
+HISTORY = [{"employer": "Initech", "title": "Engineer", "start_date": "2018-01", "end_date": "2020-06"},
+           {"employer": "Hooli Inc.", "title": "Lead", "start_date": "2020-07", "current": True}]
+
+
+def test_a_history_with_jobs_and_none_at_the_company_derives_no():
+    f = cat.build({"eligibility": {"previously_employed_here": False}}, HISTORY, [], company="Acme")
+    fact = f["derived.previously_employed_here"]
+    assert fact.value == "No" and fact.yes_no and "from the work history" in fact.describe
+    assert fact.policy == "flag"   # the receipt reads a derived fact as `inferred`
+    assert "eligibility.previously_employed_here" not in f   # one answer for this job, the history's
+
+
+def test_a_match_is_still_yes_not_no():
+    f = cat.build({}, HISTORY, [], company="Initech, Inc.")
+    assert f["derived.previously_employed_here"].value == "Yes, previously"
+    f = cat.build({}, HISTORY, [], company="HOOLI")
+    assert f["derived.previously_employed_here"].value == "Yes, currently"
+
+
+def test_an_empty_history_leaves_the_question_unanswered():
+    f = cat.build({"eligibility": {"previously_employed_here": False}}, [], [], company="Acme")
+    assert "derived.previously_employed_here" not in f
+    assert f["eligibility.previously_employed_here"].value == "No"
+
+
+@pytest.mark.parametrize("company, expected", [
+    ("Acme, Globex, or Initech", "Yes, previously"),   # one of three matches
+    ("Acme, Globex or Umbrella", "No"),                # none of three does
+    ("Acme / Hooli", "Yes, currently"),
+    ("Procter and Gamble", "No"),                      # "and" inside a name still reads as a name
+])
+def test_a_string_naming_several_companies_is_no_only_when_none_matches(company, expected):
+    f = cat.build({}, HISTORY, [], company=company)
+    assert f["derived.previously_employed_here"].value == expected
+
+
+def test_a_whole_name_that_holds_and_still_matches_whole():
+    f = cat.build({}, [{"employer": "Procter and Gamble", "title": "Analyst"}], [], company="Procter and Gamble")
+    assert f["derived.previously_employed_here"].value == "Yes, previously"
+
+
+def test_a_history_cut_at_the_job_limit_cannot_say_no_but_can_say_yes():
+    jobs = [{"employer": f"Firm{i}", "title": "Engineer"} for i in range(cat.MAX_EXPERIENCE)]
+    assert "derived.previously_employed_here" not in cat.build({}, jobs + [{"employer": "Acme"}], [], company="Zeta")
+    assert cat.build({}, jobs + [{"employer": "Acme"}], [], company="Firm3")[
+        "derived.previously_employed_here"].value == "Yes, previously"
+    assert cat.build({}, jobs, [], company="Zeta")["derived.previously_employed_here"].value == "No"
+
+
+def test_a_standing_yes_outranks_an_inferred_no():
+    """The user said they worked there: no job in the history changes their word."""
+    f = cat.build({"eligibility": {"previously_employed_here": True}}, HISTORY, [], company="Acme")
+    assert "derived.previously_employed_here" not in f
+    assert f["eligibility.previously_employed_here"].value == "Yes"
+
+
+def test_a_parent_and_its_subsidiary_are_not_a_no():
+    f = cat.build({}, [{"employer": "Amazon", "title": "Engineer"}], [], company="Amazon Web Services")
+    assert "derived.previously_employed_here" not in f
 
 
 def test_company_names_match_the_way_sections_match_employers():

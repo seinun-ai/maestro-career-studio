@@ -120,6 +120,8 @@ class FilledFieldRead(BaseModel):
     eeo_answered: bool = False
     edited_by_you: bool = False
     version: int | None = None
+    # Where an inferred answer was read from, in a few words (a derived fact's); read-time, never stored.
+    note: str | None = None
     flags: list[FlagRead] = []
 
 

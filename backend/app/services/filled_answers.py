@@ -200,10 +200,16 @@ def _section(step: dict[str, Any], name: str | None) -> dict[str, Any]:
     return section
 
 
+# A derived fact's answer says where it was read from: an inferred pill alone does not.
+_NOTES = {"derived.previously_employed_here": "From your work history."}
+
+
 def _readable(field: dict[str, Any], flags: list[dict[str, str]], consented: bool) -> dict[str, Any]:
     """The field as the tab reads it. Consent is asked again at read time: an EEO value stored
     while it was recorded is not served once it is withdrawn (`eeo_answered` still says it was)."""
     view = {**field, "flags": flags}
+    if field.get("source") == "inferred" and (note := _NOTES.get(field.get("slot") or "")):
+        view["note"] = note
     if field.get("eeo") and not consented:
         view["answer"] = None
     return view

@@ -30,6 +30,14 @@ def test_the_protected_list_stays_in_the_reasoned_prompt_at_every_level():
         assert autofill_reasoned.NEVER_REASONED in autofill_reasoned.prompt_rules(level=level), level
 
 
+def test_the_never_list_is_the_requests_own():
+    from app.services.autofill_map import never_reasoned
+
+    narrowed = never_reasoned({})
+    assert narrowed != autofill_reasoned.NEVER_REASONED
+    assert narrowed in autofill_reasoned.prompt_rules(level="history", never=narrowed)
+
+
 def test_the_reasoned_pass_asks_with_the_answer_level_the_setting_holds(db_session, monkeypatch):
     for level, expect in (("facts", False), ("history", True), ("queued", True)):
         model_settings.set_answer_level(db_session, level)

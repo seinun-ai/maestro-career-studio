@@ -2221,6 +2221,8 @@ export interface FilledField {
   edited_by_you: boolean;
   /** The application's resume version, on a resume upload. */
   version: number | null;
+  /** Where an inferred answer was read from ("From your work history."). */
+  note?: string | null;
   flags: AnswerFlag[];
 }
 

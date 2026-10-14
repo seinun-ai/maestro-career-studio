@@ -513,6 +513,22 @@ def test_private_employers_answer_the_government_question_no_and_it_is_assumed(d
         assert shown in asked["prompt"], shown
 
 
+def test_the_reasoned_never_list_keeps_worked_here_while_its_fact_stands(db_session, monkeypatch):
+    """With the derived worked-here fact (a Yes or a No), the company applied to is the fact's; without
+    it, only a relative stays on the never-list and a named company is the history's to answer."""
+    from app.services.autofill_map import NEVER_REASONED, never_reasoned
+
+    worked = "worked for, or is related to someone at, the company applied to"
+    for facts, kept in ((HISTORY_FACTS, False),
+                        (autofill_catalog.build(HISTORY_PROFILE, JOBS, ["SQL"], today=date(2026, 9, 26),
+                                                company="Globex"), True)):
+        prompts = fake_reasoner(monkeypatch)
+        pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session, facts)
+        assert (worked in prompts[0]["prompt"]) is kept
+        assert never_reasoned(facts) in prompts[0]["prompt"]
+    assert worked in NEVER_REASONED
+
+
 def test_the_government_rule_is_stated_as_positive_evidence_only(db_session, monkeypatch):
     prompts = fake_reasoner(monkeypatch)
     pick_from_history([reasoned("g", GOVERNMENT, "Yes", "No")], db_session)
@@ -562,9 +578,9 @@ def test_the_reasoning_payload_never_carries_name_contact_address_or_eeo(db_sess
     [asked] = prompts
     assert not [v for v in NOT_HISTORY if v in asked["prompt"]]
     assert _PAGE_TEXT_IS_DATA in asked["prompt"]
-    from app.services.autofill_map import NEVER_REASONED
+    from app.services.autofill_map import never_reasoned
 
-    assert NEVER_REASONED in asked["prompt"]
+    assert never_reasoned(HISTORY_FACTS) in asked["prompt"]
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -768,7 +784,7 @@ def test_with_worked_here_no_pick_prompt_says_answer_previously_employed_no(db_s
                        WORKED_HERE, db_session, None)
     text = calls[0]["questions"]["h"]["instructions"]
     assert "previously employed" not in text.split("Otherwise")[1]   # the scope and the keen answer
-    assert "their history says they did" in text
+    assert "the work history answers it" in text
     model_settings.set_autofill_engine(db_session, "fast")
     prompts = fake_llm(monkeypatch)
     autofill_pick.pick([pf("h", question="How did you hear?", route="low_stakes", options=opts("LinkedIn"))],

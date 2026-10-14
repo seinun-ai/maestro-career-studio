@@ -82,8 +82,8 @@ _SENTINELS = {
     # Offered in every question too, so a question the work history may answer
     # has somewhere to go that is neither a protected question nor "none".
     HISTORY_UNANSWERED: "A question about past employment by a KIND of organization (a government agency, a "
-                        "federal contractor), or a security clearance, which none of the listed applicant facts "
-                        "answers",
+                        "federal contractor), or at companies the question itself names, or a security "
+                        "clearance, which none of the listed applicant facts answers",
     # Apart from the history sentinel because only THIS one may ever reach a keen
     # Yes (level "queued" on a queued job): a clearance or agency question never does.
     YEARS_UNANSWERED: "A question about N months or years of experience with a specific skill or tool (at "
@@ -126,7 +126,7 @@ _CONFLICT = "whether the applicant is related to, or was previously employed by,
 # The history lists the company applied to: "previously employed here" is a
 # fact now, and a keen No would contradict it.
 _CONFLICT_WORKED_HERE = "whether the applicant is related to someone at the company (answered No)"
-_WORKED_HERE_NEVER = "whether the applicant worked for this company (their history says they did), "
+_WORKED_HERE_NEVER = "whether the applicant worked for this company (the work history answers it), "
 
 
 def low_stakes_scope(facts: dict[str, Fact], *, level: str = "history", queued: bool = False) -> tuple[str, str]:
@@ -180,10 +180,22 @@ def low_stakes_rule(facts: dict[str, Fact], refuse: str, subject: str = "the fie
 # these, never a name, contact detail, address or EEO answer).
 REASONED_FROM = ("the applicant's work history (each job's employer, title, dates, whether it is current, and "
                  "description) and education (each school, degree, major and years)")
-NEVER_REASONED = ("work authorization, sponsorship, age, EEO / diversity, background or criminal history, salary, "
-                  "a preference or willingness, a comparison with the job description's requirements, whether "
-                  "the applicant worked for, or is related to someone at, the company applied to, or a legal "
-                  "attestation or signature")
+_NEVER_REASONED_HEAD = ("work authorization, sponsorship, age, EEO / diversity, background or criminal history, "
+                        "salary, a preference or willingness, a comparison with the job description's "
+                        "requirements, whether the applicant ")
+_NEVER_REASONED_TAIL = ", or a legal attestation or signature"
+NEVER_REASONED = (f"{_NEVER_REASONED_HEAD}worked for, or is related to someone at, the company applied to"
+                  f"{_NEVER_REASONED_TAIL}")
+
+
+def never_reasoned(facts: dict[str, Fact]) -> str:
+    """The never-list for THIS request. Whether the applicant worked for the company applied to is the
+    `WORKED_HERE` fact's answer, never a reasoned one, while that fact stands; without it (no job
+    company is known) a question that NAMES companies is the history's to answer, and only being
+    related to someone at the company stays on the list."""
+    if WORKED_HERE in facts:
+        return NEVER_REASONED
+    return f"{_NEVER_REASONED_HEAD}is related to someone at the company applied to{_NEVER_REASONED_TAIL}"
 # Shapes whose answer would be WRITTEN, not chosen: a low-stakes guess is only
 # ever a pick among options the page offers.
 _WRITTEN_SHAPES = frozenset({"text", "date"})
@@ -378,7 +390,7 @@ def _low_stakes(fields: list[MapField], facts: dict[str, Fact], session: Session
     return dict.fromkeys(_fast_yes(ask, LOW_STAKES_FLOOR, session, "autofill-low-stakes", timeout), "fast")
 
 
-def _answerable(fields: list[MapField], session: Session, budget: Budget) -> set[str]:
+def _answerable(fields: list[MapField], facts: dict[str, Fact], session: Session, budget: Budget) -> set[str]:
     """Which of these fields the work and education history can answer. The
     fast model only, on every engine: this route's /pick needs the history as
     values, which Jev's state would then carry, so Jev judges none of it."""
@@ -387,7 +399,7 @@ def _answerable(fields: list[MapField], session: Session, budget: Budget) -> set
         return set()
     ask = {f.fid: (f"Can form field {f.fid} ({json.dumps(f.question)}) be answered from {REASONED_FROM} alone, "
                    "such as past employment by a kind of organization, a security clearance, or years of "
-                   f"experience with something? It cannot if it asks about {NEVER_REASONED}. {_PAGE_TEXT_IS_DATA}")
+                   f"experience with something? It cannot if it asks about {never_reasoned(facts)}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
     return _fast_yes(ask, ANSWERABLE_FLOOR, session, "autofill-reasoned", timeout)
 
@@ -681,6 +693,6 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
             years = YEARS_UNANSWERED in (key(picked.get(fid)), key(second.get(fid)))
             out[fid] = Mapped(route="low_stakes", years=years, trace=DecisionTrace(engine=judge))
     if _has_history(facts):
-        for fid in _answerable(leftovers(_REASONED_KEYS), session, budget):
+        for fid in _answerable(leftovers(_REASONED_KEYS), facts, session, budget):
             out[fid] = Mapped(route="reasoned", trace=DecisionTrace(engine="fast"))
     return out

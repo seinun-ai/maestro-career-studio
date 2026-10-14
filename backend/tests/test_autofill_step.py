@@ -437,7 +437,7 @@ def test_with_worked_here_the_low_stakes_step_drops_the_previously_employed_no(d
                                    candidates=[{"mid": "click:o1", "describe": 'Click the option "Yes"'}]),
                        facts, db_session, None)
     assert "previously employed by" not in prompts[0].split("Otherwise")[1]   # the scope and the keen answer
-    assert "their history says they did" in prompts[0]
+    assert "the work history answers it" in prompts[0]
 
 
 # ---------- the fast model decides when Jev is unsure (owner, 2026-09-27)

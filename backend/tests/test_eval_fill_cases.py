@@ -34,10 +34,14 @@ def test_every_pick_case_is_well_formed(case):
     facts = ev.case_facts(case, PICKS["today"])
     if case.get("slot"):
         assert facts[case["slot"]].policy == policy_for(case["slot"])
-    # Only a case whose history lists the job's company carries "worked here".
-    listed = any(j["employer"] == ev.HINT_COMPANY for j in (case.get("history") or {}).get("jobs", []))
+    # Only a case with a job history carries "worked here": Yes when it lists the job's company,
+    # else No.
+    jobs = (case.get("history") or {}).get("jobs", [])
     if case.get("slot") != "derived.previously_employed_here":
-        assert ("derived.previously_employed_here" in facts) is listed
+        assert ("derived.previously_employed_here" in facts) is bool(jobs)
+        if jobs:
+            listed = any(j["employer"] == ev.HINT_COMPANY for j in jobs)
+            assert facts["derived.previously_employed_here"].value.startswith("Yes") is listed
 
 
 @pytest.mark.parametrize("case", STEPS["cases"], ids=lambda c: c["id"])

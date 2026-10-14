@@ -32,7 +32,7 @@ from app.schemas.autofill_fill import Picked, PickField
 from app.services import jev, llm
 from app.services.autofill_catalog import MAX_EXPERIENCE, Fact, name_key
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR
-from app.services.autofill_map import _HISTORY_KINDS, NEVER_REASONED, Budget, fast_json
+from app.services.autofill_map import _HISTORY_KINDS, NEVER_REASONED, Budget, fast_json, never_reasoned
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +70,11 @@ YEARS_COVERAGE_RULE = ('For a question asking for at least N years with a skill 
                        "the skill at all.")
 
 
-def prompt_rules(level: str, today: str = "the date in the history", *, coverage: bool = False) -> str:
+def prompt_rules(level: str, today: str = "the date in the history", *, coverage: bool = False,
+                 never: str = NEVER_REASONED) -> str:
     """The rules of the reasoning prompt, as the answer level states them. The
-    never-list is the same at every level. `coverage`: also tell enough from
-    fewer from silent for a years question."""
+    never-list is the same at every level (`never`: this request's, `never_reasoned`).
+    `coverage`: also tell enough from fewer from silent for a years question."""
     years = f"- {YEARS_YES_RULE}\n" if level in ("history", "queued") else ""
     if coverage:
         years += f"- {YEARS_COVERAGE_RULE}\n"
@@ -81,7 +82,7 @@ def prompt_rules(level: str, today: str = "the date in the history", *, coverage
             f"- Count years of experience from the dates of the jobs that show it: today is {today}, "
             "and a current job runs to today.\n"
             f"{years}"
-            f"- Never answer a question about {NEVER_REASONED}: return none.\n")
+            f"- Never answer a question about {never}: return none.\n")
 
 
 _PROMPT = """You answer job-application questions from the applicant's history below, and only from it. {rule}
@@ -193,13 +194,13 @@ def _names_company(field: PickField, company: str | None) -> bool:
 
 
 def _ask(asked: list[PickField], hist: dict, session: Session, timeout: float, level: str, *,
-         coverage: bool = False) -> dict | None:
+         coverage: bool = False, never: str = NEVER_REASONED) -> dict | None:
     """The model's answers by field id, or None when the call failed."""
     payload = [{"id": f.fid, "question": f.question, "options": [o.model_dump() for o in f.options]}
                for f in asked]
     try:
         raw = fast_json(session, _PROMPT.format(
-            rule=_PAGE_TEXT_IS_DATA, rules=prompt_rules(level, hist["today"], coverage=coverage),
+            rule=_PAGE_TEXT_IS_DATA, rules=prompt_rules(level, hist["today"], coverage=coverage, never=never),
             history=json.dumps(hist), fields=json.dumps(payload)),
             "autofill-reasoned-pick", timeout=timeout)
     except llm.LLMProviderError:
@@ -218,7 +219,7 @@ def reason(fields: list[PickField], facts: dict[str, Fact], session: Session, bu
     timeout = budget.left()
     if not asked or not shown or timeout is None:
         return out
-    answers = _ask(asked, hist, session, timeout, level)
+    answers = _ask(asked, hist, session, timeout, level, never=never_reasoned(facts))
     if answers is None:
         return out
     return out | {f.fid: _verdict(answers.get(f.fid), {o.oid: o.text for o in f.options}, hist, shown)
@@ -245,7 +246,8 @@ def reason_years(fields: list[PickField], facts: dict[str, Fact], session: Sessi
     if not shown:
         return out, {f.fid for f in asked}
     timeout = budget.left()
-    answers = _ask(asked, hist, session, timeout, "queued", coverage=True) if timeout is not None else None
+    answers = (_ask(asked, hist, session, timeout, "queued", coverage=True, never=never_reasoned(facts))
+               if timeout is not None else None)
     if answers is None:
         return out, set()
     silent: set[str] = set()

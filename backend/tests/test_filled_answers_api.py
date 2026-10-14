@@ -244,3 +244,15 @@ def test_a_post_keeps_the_base_resume_it_was_filled_for(db_session):
     body = _post(job, [_f("First name", "Ada")], base_resume="data_scientist").json()
     assert db_session.get(FilledAnswer, UUID(body["id"])).base_resume == "data_scientist"
     assert _post(job, [_f("First name", "Ada")], base_resume="x" * 121).status_code == 422
+
+
+def test_an_inferred_worked_here_answer_says_it_came_from_the_work_history(db_session):
+    """"Have you worked at Acme before?" answered No from the history is an inferred row that says where
+    it was read from; an inferred answer with no such source, and a typed one, say nothing."""
+    job = _mk_job(db_session, company="Acme")
+    _post(job, [_f("Have you worked at Acme before?", "No", "inferred", slot="derived.previously_employed_here"),
+                _f("Willing to relocate?", "Yes", "inferred", slot="preferences.willing_to_relocate"),
+                _f("Have you worked at Acme before? (again)", "Yes", "you", slot="derived.previously_employed_here")])
+    notes = {field["question"]: field["note"] for field in _fields(client.get(f"/api/jobs/{job.id}/filled-answers").json())}
+    assert notes == {"Have you worked at Acme before?": "From your work history.", "Willing to relocate?": None,
+                     "Have you worked at Acme before? (again)": None}
