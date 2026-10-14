@@ -822,7 +822,7 @@ def test_ready_lists_the_receipts_flags_as_check_before_you_submit(tmp_path):
     text = _body_text(out["shots"][1])
     assert "Check before you submit" in text and "Salary" in text and "Not in your profile" in text
     # Nothing to press in the panel: the user submits in the tab. (The flag's jump link has no id.)
-    assert _buttons(_card(out["shots"][1])["body"]) == {}
+    assert _buttons(_card(out["shots"][1])["body"]) == {"run-done": "Done"}
 
 
 def test_a_confirmation_page_after_your_submit_starts_a_countdown_and_posts_nothing_before_it_ends(tmp_path):
@@ -879,11 +879,50 @@ def test_a_mark_that_fails_as_the_tab_closes_says_so_on_the_stopped_card(tmp_pat
     assert "Couldn't mark this applied" in _body_text(out["shots"][-1])
 
 
+def test_a_confirmation_page_on_a_host_the_run_never_reached_starts_no_countdown(tmp_path):
+    """The user decided against Submitting and opened another employer's thank-you in the same tab."""
+    other = page("confirmation", 9, host="careers.globex.test")
+    out = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": other["url"]}}},
+                          {"fire": True}], pages=(STEP1, REVIEW, other), api=POSTED)
+    shot = out["shots"][-1]
+    assert (_record(shot)["status"], _record(shot)["noAutoMark"]) == ("ready", True)
+    assert out["held"] == 0 and not _api_calls(out, "companion-submitted")
+    assert set(_buttons(_card(shot)["body"])) == {"run-mark", "run-done"}
+
+
+def test_a_ready_tab_that_browses_on_loses_the_auto_mark_and_a_later_thank_you_does_not_get_it_back(tmp_path):
+    away = page("closed", 4)
+    out = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": away["url"]}}},
+                          {"page": 3, "update": {"tab": 7, "change": {"url": CONFIRM["url"]}}}],
+               pages=(STEP1, REVIEW, away, CONFIRM), api=POSTED)
+    assert _record(out["shots"][-1])["status"] == "ready" and out["held"] == 0
+
+
+def test_done_on_a_ready_card_ends_the_record_writes_nothing_and_frees_the_tab(tmp_path):
+    before = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW))
+    out = _run(tmp_path, [{"start": SEED}, {"press": "run-done"}], pages=(STEP1, REVIEW))
+    assert "Done" in _buttons(_card(out["shots"][1])["body"]).values()
+    assert out["shots"][-1]["runs"] == []
+    posted = lambda one: [(m["path"], m["init"].get("method")) for m in one["sent"]  # noqa: E731
+                          if m["type"] == "api" and (m.get("init") or {}).get("method") in ("POST", "PATCH", "PUT")]
+    assert posted(out) == posted(before)
+    # The tab is free: a new Apply starts a record again.
+    again = _run(tmp_path, [{"start": SEED}, {"press": "run-done"}, {"start": SEED}], pages=(STEP1, REVIEW))
+    assert _record(again["shots"][-1])["status"] == "ready"
+
+
+def test_done_on_a_ready_card_is_not_undone_by_a_confirmation_read_in_flight(tmp_path):
+    out = _run(tmp_path, [{"start": SEED}, {"press": "run-done"},
+                          {"page": 2, "update": {"tab": 7, "change": {"url": CONFIRM["url"]}}}, {"fire": True}],
+               pages=(STEP1, REVIEW, CONFIRM), api=POSTED)
+    assert out["shots"][-1]["runs"] == [] and not _api_calls(out, "companion-submitted")
+
+
 def test_undo_inside_the_8_seconds_posts_nothing_and_leaves_a_manual_mark_applied(tmp_path):
     out = _ready_then_confirmation(tmp_path, [{"press": "run-undo"}, {"fire": True}])
     assert not _api_calls(out, "companion-submitted")
     shot = out["shots"][-1]
-    assert _record(shot)["status"] == "ready" and _buttons(_card(shot)["body"]) == {"run-mark": "Mark applied"}
+    assert _record(shot)["status"] == "ready" and _buttons(_card(shot)["body"]) == {"run-mark": "Mark applied", "run-done": "Done"}
 
 
 def test_the_manual_mark_applied_posts_to_the_same_endpoint(tmp_path):

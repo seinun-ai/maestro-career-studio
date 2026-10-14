@@ -446,10 +446,17 @@
     persist(store);
   }
 
-  /** Done: take a finished or stopped record off the tab, so the page's own steps show again. */
+  /** Done: take a finished or stopped record off the tab, so the page's own steps show again. A
+   * ready one too (the user is not submitting this job): it ends as stopped first, so a read of the
+   * tab already in flight cannot start a countdown for a record that is gone. Nothing is written. */
   function closeRun(store, id) {
     const record = recordById(store, id);
-    if (!record || live(record)) return;
+    if (!record || (live(record) && record.status !== "ready")) return;
+    if (record.status === "ready") {
+      state.timers.get(record.id)?.();
+      state.timers.delete(record.id);
+      Object.assign(record, { status: "stopped", why: "user", stopRequested: true, markAt: null });
+    }
     state.facts.delete(record.id);
     state.undo.delete(record.id);
     state.phrases.delete(record.id);

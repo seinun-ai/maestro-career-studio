@@ -145,6 +145,11 @@ main(async () => {
   let threw = null;
   try {
     await ns.queueRun.drive(record, deps, spec.options ?? {});
+    // Later reads of the same record (a ready tab is watched by one drive per read): page indexes.
+    for (const next of spec.then ?? []) {
+      at = next;
+      await ns.queueRun.drive(record, deps, spec.options ?? {});
+    }
   } catch (err) {
     threw = `${err.name}: ${err.message}`;
   }
@@ -686,11 +691,36 @@ def test_a_resume_on_a_host_the_run_never_navigated_to_parks_moved_away_and_fill
     assert names(out, "fill") == [] and names(out, "advance") == []
 
 
-@pytest.mark.parametrize("why", ["sign_in_yourself", "verify"])
+@pytest.mark.parametrize("why", ["sign_in_yourself", "verify", "posting", "unknown_page"])
 def test_a_park_that_asked_the_user_to_navigate_may_resume_on_a_new_host(tmp_path, why):
     parked = {"tabId": 7, "status": "parked", "why": why, "hosts": ["careers.acme.test"]}
     out = _drive(tmp_path, [REVIEW], record=parked)
     assert out["record"]["status"] == "ready"
+
+
+@pytest.mark.parametrize("why", ["posting", "unknown_page"])
+def test_a_resume_from_apply_yourself_on_the_ats_fills_the_form_and_remembers_its_host(tmp_path, why):
+    """The card says "open the application form in the tab": that is usually another host (the ATS)."""
+    parked = {"tabId": 7, "status": "parked", "why": why, "hosts": ["careers.acme.test"]}
+    out = _drive(tmp_path, [step(1, urlHost=WD), {**REVIEW, "urlHost": WD}], record=parked)
+    r = out["record"]
+    assert r["status"] == "ready" and out["fillCalls"] == 2 and out["pressed"] == ["next-1"]
+    assert r["hosts"] == ["careers.acme.test", WD]
+    # A confirmation on the ATS host is then the run's own, and one on a host it never saw is not.
+    confirmed = _drive(tmp_path, [{"t": "confirmation", "urlHost": WD}], record={**r, "status": "ready"})
+    assert confirmed["record"]["status"] == "confirming"
+
+
+def test_a_resume_that_stays_on_the_same_host_does_not_repeat_it_in_the_host_list(tmp_path):
+    parked = {"tabId": 7, "status": "parked", "why": "posting", "hosts": ["jobs.acme.test"]}
+    out = _drive(tmp_path, [REVIEW], record=parked)
+    assert out["record"]["hosts"] == ["jobs.acme.test"]
+
+
+def test_a_resume_after_a_different_park_still_parks_moved_away_on_a_new_host(tmp_path):
+    parked = {"tabId": 7, "status": "parked", "why": "no_change", "hosts": ["jobs.acme.test"], "filled": True}
+    out = _drive(tmp_path, [step(1, urlHost=WD)], record=parked)
+    assert out["record"]["why"] == "moved_away" and out["record"]["hosts"] == ["jobs.acme.test"]
 
 
 def test_a_resume_on_a_host_the_run_did_reach_goes_on(tmp_path):
@@ -710,17 +740,52 @@ def test_a_confirmation_page_before_ready_parks_as_already_applied_never_ready(t
 
 
 def test_a_ready_tab_that_shows_the_confirmation_becomes_confirming(tmp_path):
-    ready = {"tabId": 7, "status": "ready", "readyAt": 5, "filled": True}
+    ready = {"tabId": 7, "status": "ready", "readyAt": 5, "filled": True, "hosts": ["jobs.acme.test"]}
     out = _drive(tmp_path, [{"t": "confirmation"}], record=ready)
     assert out["record"]["status"] == "confirming" and out["record"]["readyAt"] == 5
     assert names(out, "fill") == [] and names(out, "advance") == []
 
 
 def test_a_ready_tab_still_on_its_review_page_is_left_alone(tmp_path):
-    ready = {"tabId": 7, "status": "ready", "readyAt": 5, "filled": True}
+    ready = {"tabId": 7, "status": "ready", "readyAt": 5, "filled": True, "hosts": ["jobs.acme.test"]}
     out = _drive(tmp_path, [REVIEW], record=ready)
     assert (out["record"]["status"], out["record"]["readyAt"]) == ("ready", 5)
     assert names(out, "fill") == [] and names(out, "advance") == [] and out["events"] == []
+
+
+READY = {"tabId": 7, "status": "ready", "readyAt": 5, "filled": True, "hosts": ["jobs.acme.test"]}
+
+
+def test_a_confirmation_on_a_host_the_run_never_reached_is_not_auto_marked(tmp_path):
+    """Another employer's thank-you, or a candidate portal's "Application received", opened in the same
+    tab is not this job's Submit."""
+    elsewhere = {"t": "confirmation", "host": "careers.globex.test"}
+    out = _drive(tmp_path, [elsewhere], record=READY)
+    assert (out["record"]["status"], out["record"]["noAutoMark"]) == ("ready", True)
+
+
+def test_a_confirmation_on_the_runs_own_host_straight_after_the_review_is_auto_marked(tmp_path):
+    out = _drive(tmp_path, [{"t": "confirmation"}], record=READY)
+    assert (out["record"]["status"], out["record"].get("noAutoMark")) == ("confirming", None)
+
+
+def test_a_confirmation_after_the_tab_left_the_review_page_is_not_auto_marked(tmp_path):
+    """Review, then some other page (the user decided against it and browsed on), then a page that reads
+    as a confirmation, even on the run's own host: only the manual Mark applied is left."""
+    pages = [REVIEW, {"t": "closed"}, {"t": "confirmation"}]
+    out = _drive(tmp_path, pages, record=READY, **{"then": [1, 2]})
+    assert (out["record"]["status"], out["record"]["noAutoMark"]) == ("ready", True)
+
+
+def test_a_ready_tab_that_moves_to_a_page_that_is_neither_review_nor_confirmation_loses_the_auto_mark(tmp_path):
+    out = _drive(tmp_path, [{"t": "closed"}], record=READY)
+    assert (out["record"]["status"], out["record"]["noAutoMark"]) == ("ready", True)
+
+
+def test_a_ready_tab_back_on_the_review_page_keeps_the_auto_mark(tmp_path):
+    """A Submit that came back with errors is still the review page, and a confirmation after it counts."""
+    out = _drive(tmp_path, [REVIEW, {"t": "confirmation"}], record=READY, **{"then": [1]})
+    assert out["record"]["status"] == "confirming"
 
 
 # ---------- frames ----------

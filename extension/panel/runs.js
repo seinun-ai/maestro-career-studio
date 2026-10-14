@@ -11,7 +11,8 @@
  * ONE CARD, FIVE KINDS OF STATE (design Part 5, direction C's "one next step"):
  *   working     opening, signing in, filling page N: a progress bar, the pages so far, Stop
  *   Needs you   parked: why in the user's words, what to do, Resume, Skip this job
- *   Ready       a review page, filled: the answers to check; the Submit press is the user's
+ *   Ready       a review page, filled: the answers to check; the Submit press is the user's (Done
+               ends the record without marking anything)
  *   Marking     the confirmation page was seen: "Marking applied in 8 s · Undo"
  *   finished    Applied, or Stopped with the reason
  * There is no Submit control anywhere in it. Nothing the Companion does ever presses one, and the
@@ -213,11 +214,15 @@
     const out = [node("div", "sub", "Check the page, then press Submit in the tab. The Companion never presses it for you."),
       flagsBlock(ctx, run)];
     if (run.markNote) out.push(node("div", "sub run-mark-note", run.markNote));
-    // After an Undo, or when Maestro CS would not take the automatic mark: the user's own press.
+    // Done: not submitting this one. It ends the record and writes nothing, so the tab is free again.
+    const actions = node("div", "run-actions");
+    // After an Undo, a page that was not the confirmation, or when Maestro CS would not take the
+    // automatic mark: the user's own press.
     if (run.noAutoMark) {
-      out.push(attach(node("div", "run-actions"),
-        button(ctx, "save", "run-mark", "Mark applied", () => ctx.act.markApplied(run.id))));
+      attach(actions, button(ctx, "save", "run-mark", "Mark applied", () => ctx.act.markApplied(run.id)));
     }
+    attach(actions, button(ctx, "unpick", "run-done", "Done", () => ctx.act.closeRun(run.id)));
+    out.push(actions);
     return out;
   }
 

@@ -13,7 +13,9 @@
  *                    wrote or confirmed. A start chooser or a posting with a stray control parks
  *                    `unknown_page` instead. A field-less page with a lone Next after step 0 is
  *                    treated as review too (when unsure whether it is Next or Submit, stop).
- *     → confirming   a ready tab that now shows the confirmation page (Task 20 marks it applied)
+ *     → confirming   a ready tab that now shows the confirmation page (Task 20 marks it applied), but
+ *                    only on a host the run reached and straight from the application's own pages. Any
+ *                    other page the tab moves to sets `noAutoMark` (the manual Mark applied is left).
  *     → parked       the run needs the user or hit a wall; `why` says which:
  *         captcha | create_account | verify | board_native   the page kind, a wall by design
  *         sign_in_failed   the saved login did not work; never retried (a lockout)
@@ -25,7 +27,9 @@
  *         posting          an Apply it may not press (see below); unknown_page  nothing it knows
  *         already_applied  a "thank you" page BEFORE the run reached review: not this run's Submit
  *         moved_away       a Resume found the tab on a host the run never navigated to: another
- *                          page must not be filled with this job's answers
+ *                          page must not be filled with this job's answers (not after a park that
+ *                          told the user to go somewhere: sign_in_yourself, verify, posting,
+ *                          unknown_page; the host they land on joins `hosts`)
  *     → stopped      closed | bad_link | error | user (a Stop; nothing is called after it)
  *   Resume re-enters `drive` on a parked record: the open tab is kept, the page is read again.
  *
@@ -100,6 +104,11 @@
   // A fill "wrote or confirmed" a field when it ended in one of these (not unconfirmed, yours, blocked).
   const WROTE_STATUSES = new Set(["verified", "closest", "assumed", "already", "partial"]);
   const WALLS = new Set(["captcha", "create_account", "verify", "board_native"]);
+  // The parks whose card tells the user to go somewhere themselves (sign in, enter a code, open the
+  // application form): where they land on Resume is theirs, and the run follows them there.
+  const USER_NAVIGATES = new Set(["sign_in_yourself", "verify", "posting", "unknown_page"]);
+  // The pages an application is made of, for a ready tab that stays on them.
+  const APPLICATION_PAGES = new Set(["review", "posting", "form_step"]);
   const DEPS = ["openTab", "classify", "advance", "fill", "signIn", "waitForChange", "tabUrl",
     "sleep", "save", "onUpdate", "now", "cancelled"];
   const HALT = Symbol("halt");
@@ -277,7 +286,7 @@
     try {
       gate();
       const resumed = record.tabId != null;
-      const userNavigates = record.why === "sign_in_yourself" || record.why === "verify";
+      const userNavigates = USER_NAVIGATES.has(record.why);
       if (record.tabId == null) {
         const host = hostOf(record.openUrl);
         if (!host) return await finish("stopped", "bad_link");
@@ -308,18 +317,28 @@
         }
         // A Resume finds the tab where the user left it. On a host the run never navigated to it is
         // another page, and it is not filled with this job's answers. (A ready tab is only watched,
-        // and a park that asked the user to navigate, to sign in or enter a code, is exempt:
-        // where they land is theirs.)
+        // and a park that asked the user to navigate, to sign in, enter a code or open the
+        // application form, is exempt: where they land is theirs, and its host joins the run's.)
         if (resumed && !arrived && record.readyAt == null && !movedChecked) {
           movedChecked = true;
-          if (!userNavigates && url && record.hosts.length && !record.hosts.includes(hostOf(url))) return await park("moved_away");
+          if (userNavigates) await noteHost(url);
+          else if (url && record.hosts.length && !record.hosts.includes(hostOf(url))) return await park("moved_away");
         }
         const verdict = ns.pageKind.classify(summary);
         let kind = verdict.kind;
 
-        // A finished run only watches for the confirmation of the user's own Submit.
+        // A finished run only watches for the confirmation of the user's own Submit, and only believes
+        // one that follows the application itself: on a host the run reached, with every read since
+        // Ready on the application's own pages (a page not drawn yet says nothing). Anything else the
+        // tab shows (a "thank you" for another employer, a candidate portal, a page the user browsed
+        // to after deciding against Submitting) ends the auto-mark; the manual Mark applied is left.
         if (record.readyAt != null) {
-          return kind === "confirmation" ? await finish("confirming", null) : record;
+          if (record.noAutoMark === true || kind === "unknown") return record;
+          const onRunHost = record.hosts.includes(hostOf(url));
+          if (onRunHost && kind === "confirmation") return await finish("confirming", null);
+          if (onRunHost && APPLICATION_PAGES.has(kind)) return record;
+          await update({ noAutoMark: true });
+          return record;
         }
         // A "thank you" page before the run reached review is an application someone else sent
         // (a draft this browser's session already submitted): not ready, not this run's to mark.
