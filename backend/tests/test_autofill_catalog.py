@@ -439,6 +439,30 @@ def test_the_parser_reads_a_list_it_can_and_the_safety_net_asks_for_the_rest(que
     assert (got != cat.ASK_THE_USER) is parsed
 
 
+@pytest.mark.parametrize("employer, question", [
+    ("Initech Software", "Were you at Initech?"),                  # the history holds the subsidiary
+    ("Initech Software", "Previous Initech employee?"),
+    ("Initech", "Were you at Initech Software?"),                  # the history holds the parent
+    ("Initech", "Previous Initech Software employee?"),
+])
+def test_a_parent_or_subsidiary_in_a_wording_the_parser_does_not_read_is_asked_not_no(employer, question):
+    f = cat.build({}, [{"employer": employer, "title": "Engineer"}], [], company="Acme")
+    assert f["derived.previously_employed_here"].value == "No"
+    assert cat.named_employer_fact(f, question) == cat.ASK_THE_USER
+
+
+@pytest.mark.parametrize("employer, question, options", [
+    ("eInitech", "Did you intern at eInitech?", ()),
+    ("iTech Labs", "Previous iTech employee?", ()),                 # a lowercase initial, a capital inside
+    ("iTech Labs", "Which company?", ["iTech"]),
+])
+def test_a_brand_with_a_lowercase_initial_is_still_a_capitalised_mention(employer, question, options):
+    f = cat.build({}, [{"employer": employer, "title": "Engineer"}], [], company="Acme")
+    assert cat.named_employer_fact(f, question, options) == cat.ASK_THE_USER
+    if not options:   # an option is read as a company whatever its case; a question's words are not
+        assert cat.named_employer_fact(f, question.lower()) is None
+
+
 def test_a_lowercase_word_that_is_a_history_employer_is_not_a_mention():
     """The safety net looks for a CAPITALISED whole word: "box" in "the box below" is not a company."""
     f = cat.build({}, [{"employer": "Box", "title": "Engineer"}], [], company="Acme")

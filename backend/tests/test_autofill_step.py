@@ -1149,3 +1149,12 @@ def test_step_never_answers_a_question_that_names_a_veteran_from_another_eeo_ans
                   candidates=[{"mid": "click:o1", "describe": 'Click the option "Yes"'},
                               {"mid": "click:o2", "describe": 'Click the option "No"'}] + cands(GIVE_UP))
     assert sans_trace(autofill_step.step(request, facts, db_session, None)) == {"mid": None, "reason": "abstained"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_step_never_answers_a_veteran_class_question_from_a_saved_custom_yes_no_row(db_session, monkeypatch):
+    facts = autofill_catalog.build({"custom": [{"question": "Are you a veteran?", "answer": "Yes"}]}, [], [])
+    fake_jev(monkeypatch, ("click:o1", 0.99))
+    request = req(slot="custom.0", question="Are you a disabled veteran?",
+                  candidates=[{"mid": "click:o1", "describe": 'Click the option "Yes"'}] + cands(GIVE_UP))
+    assert sans_trace(autofill_step.step(request, facts, db_session, None)) == {"mid": None, "reason": "abstained"}

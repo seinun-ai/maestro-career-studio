@@ -524,7 +524,7 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     if picked is None or _foreign(field):
         return Mapped(route="none"), SLOT_FLOOR
     key, p = picked
-    if names_veteran_off_slot(key, field.question):   # "Are you a disabled veteran?" is not the disability answer
+    if names_veteran_off_slot(key, field.question, facts.get(key)):   # "Are you a disabled veteran?" is not the disability answer
         return Mapped(route="none"), SLOT_FLOOR
     # "Acme, Globex, or Initech?" names companies the derived No (about the job's company) does not cover.
     if key == WORKED_HERE_SLOT and (named := named_employer_fact(facts, field.question, field.options)):

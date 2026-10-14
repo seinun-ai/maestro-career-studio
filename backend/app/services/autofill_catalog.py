@@ -438,13 +438,26 @@ def _akin(a: str, b: str) -> bool:
 
 WORKED_HERE_SLOT = "derived.previously_employed_here"
 _VETERAN_WORD = re.compile(r"veteran", re.IGNORECASE)
+# The classes a protected-veteran question names, with or without the word "protected" (VEVRAA's: disabled,
+# recently separated, active duty wartime or campaign badge, Armed Forces service medal, and how forms word
+# them). One pattern reads a question, its options and a chosen option (autofill_pick).
+NAMES_PROTECTED_CLASS = re.compile(
+    r"\bprotected\b|\bclassifications?\b|\bvevraa\b|\bcategor(?:y|ies)\s+of\b[^.?]*\bveterans?\b"
+    r"|\bdisabled\s+veterans?\b|\b(?:recently\s+)?separated\s+veterans?\b|\bactive\s+duty\s+wartime\b"
+    r"|\bcampaign\s+badge\b|\barmed\s+forces\s+service\s+medal\b"
+    r"|\bcovered\s+veterans?\b|\bservice[-\s]connected\b|\bvietnam[-\s]era\b"
+    r"|\bactive\s+duty\b.*\b(?:war|campaign)", re.IGNORECASE)
 
 
-def names_veteran_off_slot(slot: str | None, question: str) -> bool:
-    """A question that names a veteran, under another voluntary-disclosure answer ("Are you a disabled
-    veteran?" under the disability answer): the disability answer says nothing about service, so it claims
-    veteran status the applicant never gave. Only `eeo.veteran_status` answers such a question."""
-    return bool(slot and slot.startswith("eeo.") and slot != "eeo.veteran_status" and _VETERAN_WORD.search(question))
+def names_veteran_off_slot(slot: str | None, question: str, fact: "Fact | None" = None) -> bool:
+    """A question that names a veteran, under an answer that is not the veteran answer. Under another
+    voluntary-disclosure answer ("Are you a disabled veteran?" under the disability answer) it claims
+    veteran status the applicant never gave. Under any other saved Yes/No fact, a saved custom row
+    included, it is refused when it names a veteran CLASS: a saved "Are you a veteran?" says nothing about
+    which class applies. Only `eeo.veteran_status` answers such a question (autofill_pick guards that)."""
+    if not slot or slot == "eeo.veteran_status" or not _VETERAN_WORD.search(question):
+        return False
+    return slot.startswith("eeo.") or bool(fact is not None and fact.yes_no and NAMES_PROTECTED_CLASS.search(question))
 
 
 def _history_employers(out: dict[str, Fact], employment: list[dict[str, Any]] | None) -> list[tuple[str, bool]]:
@@ -533,17 +546,38 @@ def _listed_company_keys(question: str, options: tuple[str, ...]) -> set[str]:
     return {key for phrase in _listed_phrases(question, options) if (key := name_key(phrase))} - _NOT_AN_EMPLOYER
 
 
-def _capitalised_mention(key: str, texts: tuple[str, ...]) -> bool:
-    """Whether the name `key` (a name key) stands in any of `texts` as capitalised whole words: "Initech"
-    is a mention of "initech", "the initech box" is not. The safety net for what the parser misses."""
-    words = key.split()
+def _is_capitalised(token: str) -> bool:
+    """A capital letter anywhere ("Initech", "eInitech", "iTech"), or a digit first ("3M")."""
+    return token[0].isdigit() or any(ch.isupper() for ch in token)
+
+
+def _capital_windows(texts: tuple[str, ...]) -> set[str]:
+    """The name key of every stretch of consecutive capitalised words in `texts`, and of every part of one
+    ("Previous Initech" holds "previous initech", "previous" and "initech"). What a question could be
+    naming in a wording nothing parses."""
+    keys: set[str] = set()
     for text in texts:
-        tokens = re.findall(r"\w+", text)
-        for i in range(len(tokens) - len(words) + 1):
-            window = tokens[i:i + len(words)]
-            if [t.casefold() for t in window] == words and all(t[0].isupper() or t[0].isdigit() for t in window):
-                return True
-    return False
+        run: list[str] = []
+        for token in [*re.findall(r"\w+", text), ""]:
+            if token and _is_capitalised(token):
+                run.append(token)
+                continue
+            keys |= {name_key(" ".join(run[i:j])) for i in range(len(run)) for j in range(i + 1, len(run) + 1)}
+            run = []
+    return keys - {""}
+
+
+def _capitalised_mention(key: str, texts: tuple[str, ...]) -> bool:
+    """Whether the name `key` stands in `texts` as capitalised words: "Initech" is a mention of "initech",
+    "the initech box" is not."""
+    return key in _capital_windows(texts)
+
+
+def _mentions_or_is_akin(employers: list[str], texts: tuple[str, ...]) -> bool:
+    """Whether a capitalised stretch of `texts` is an employer's name, or the start of one or the name it
+    starts ("Initech" and "Initech Software"): a mention the parser did not read, which can never be a No."""
+    windows = _capital_windows(texts)
+    return any(key == window or _akin(key, window) for key in employers for window in windows)
 
 
 def question_names_company(facts: dict[str, Fact], question: str) -> bool:
@@ -581,7 +615,7 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
     if named:
         return make_fact(WORKED_HERE_SLOT, "Yes, currently" if any(named) else "Yes, previously")
     if (any(_akin(key, name) for key, _ in employers for name in listed)
-            or any(_capitalised_mention(key, (question, *options)) for key, _ in employers)):
+            or _mentions_or_is_akin([key for key, _ in employers], (question, *options))):
         return ASK_THE_USER
     return None
 

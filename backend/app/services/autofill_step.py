@@ -299,7 +299,7 @@ def _option_text(describe: str) -> str | None:
 def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None, *,
          queued: bool = False) -> StepResponse:
     budget = Budget()
-    if req.route == "slot" and names_veteran_off_slot(req.slot, req.question):
+    if req.route == "slot" and names_veteran_off_slot(req.slot, req.question, facts.get(req.slot or "")):
         return StepResponse(mid=None, reason="abstained")
     # A question that names an employer of the history is not the derived No (the job's company only).
     if req.route == "slot" and req.slot == WORKED_HERE_SLOT and (

@@ -1353,6 +1353,8 @@ def test_the_vevraa_wordings_are_classes(text):
 
 
 @pytest.mark.parametrize("text, claims", [
+    ("Disabled", True), ("Recently separated", True), ("Campaign", True), ("Wartime", True),
+    ("Not disabled", False), ("No, none of the above", False),
     ("Covered veteran", True), ("Protected class: other", True), ("I identify as one or more of those", True),
     ("I belong to a protected class", True), ("I identify as a person of color", True), ("Yes", False),
     ("I am not a covered veteran", False), ("No, I do not belong to any of them", False),
@@ -1895,3 +1897,20 @@ def test_neither_the_trace_nor_the_polarity_holds_the_fact_value(db_session, mon
     assert trace["engine"] == "jev" and polarity["way"] == "same"
     assert value not in got.model_dump_json(include={"trace", "polarity"})
     assert all(v is None or isinstance(v, (str, float, bool)) for v in (*trace.values(), *polarity.values()))
+
+
+# ---------- M-c: any saved Yes/No answer, a custom row included, is refused on a veteran-class question
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("answer", ["Yes", "No"])
+def test_a_saved_custom_yes_no_row_never_answers_a_veteran_class_question(db_session, monkeypatch, answer):
+    facts = autofill_catalog.build({"custom": [{"question": "Are you a veteran?", "answer": answer}]}, [], [])
+    assert facts["custom.0"].yes_no
+    fake_jev(monkeypatch, {"v": ("o1", 0.99)}, ways={"v": ("same", 0.99)})
+    got = autofill_pick.pick([pf("v", question="Are you a disabled veteran?", slot="custom.0",
+                                 options=opts("Yes", "No"))], facts, db_session, None)
+    assert got["v"].oids == [] and got["v"].reason == "asked"
+    # …and the same row still answers the question it was saved for.
+    got = autofill_pick.pick([pf("v", question="Are you a veteran?", slot="custom.0", options=opts("Yes", "No"))],
+                             facts, db_session, None)
+    assert got["v"].oids == ["o1"]

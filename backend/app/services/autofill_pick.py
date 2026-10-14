@@ -27,6 +27,7 @@ from app.schemas.autofill_fill import DecisionTrace, Engine, Picked, PickField, 
 from app.services import autofill_polarity, jev, llm, model_settings
 from app.services.autofill_catalog import (
     ASK_THE_USER,
+    NAMES_PROTECTED_CLASS,
     WORKED_HERE_SLOT,
     Fact,
     named_employer_fact,
@@ -405,19 +406,17 @@ _OPENS_BY_IDENTIFYING = re.compile(r"^\W*i\s+(?:identify\s+as|belong\s+to)\b", r
 _OPENS_WITH_NEGATION = re.compile(
     r"^\W*(?:no\b|not\b|non-?veterans?\b|i\s+am\s+not\b|i['\u2019]m\s+not\b|i\s+do\s+not\b|i\s+don['\u2019]?t\b"
     r"|never\s+served\b|i\s+(?:have\s+)?never\b)", re.IGNORECASE)
-_NAMES_PROTECTED_CLASS = re.compile(
-    r"\bprotected\b|\bclassifications?\b|\bvevraa\b|\bcategor(?:y|ies)\s+of\b[^.?]*\bveterans?\b"
-    r"|\bdisabled\s+veterans?\b|\b(?:recently\s+)?separated\s+veterans?\b|\bactive\s+duty\s+wartime\b"
-    r"|\bcampaign\s+badge\b|\barmed\s+forces\s+service\s+medal\b"
-    r"|\bcovered\s+veterans?\b|\bservice[-\s]connected\b|\bvietnam[-\s]era\b"
-    r"|\bactive\s+duty\b.*\b(?:war|campaign)", re.IGNORECASE)
+_NAMES_PROTECTED_CLASS = NAMES_PROTECTED_CLASS
+# A bare class as an option after a No: "Disabled", "Recently separated", "Campaign", "Wartime".
+_BARE_CLASS = re.compile(r"\b(?:disabled|recently\s+separated|campaign|wartime)\b", re.IGNORECASE)
 
 
 def _claims_veteran(text: str) -> bool:
     """An option that does not open with a negation and that mentions a veteran, names a protected class, or
     opens "I identify as" / "I belong to". A bare "Yes" claims nothing."""
     return not _OPENS_WITH_NEGATION.search(text) and bool(
-        _MENTIONS_VETERAN.search(text) or _NAMES_PROTECTED_CLASS.search(text) or _OPENS_BY_IDENTIFYING.search(text))
+        _MENTIONS_VETERAN.search(text) or _NAMES_PROTECTED_CLASS.search(text) or _BARE_CLASS.search(text)
+        or _OPENS_BY_IDENTIFYING.search(text))
 
 
 def veteran_said(fact: Fact | None) -> str | None:
@@ -482,7 +481,7 @@ def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint
          queued: bool = False) -> dict[str, Picked]:
     fields, facts, dropped = named_employers(fields, facts)
     # Another voluntary-disclosure answer never answers a question that names a veteran: final, the user's.
-    cross = {f.fid for f in fields if names_veteran_off_slot(f.slot, f.question)}
+    cross = {f.fid for f in fields if names_veteran_off_slot(f.slot, f.question, facts.get(f.slot or ""))}
     dropped |= cross
     fields = [f for f in fields if f.fid not in cross]
     budget = Budget()

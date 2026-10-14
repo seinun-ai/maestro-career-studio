@@ -1843,6 +1843,17 @@ def test_a_question_that_names_a_veteran_is_never_mapped_to_another_eeo_answer(d
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_a_veteran_class_question_is_never_mapped_to_a_saved_custom_yes_no_row(db_session, monkeypatch):
+    facts = autofill_catalog.build({"custom": [{"question": "Are you a veteran?", "answer": "Yes"}]}, [], [])
+    fake_jev(monkeypatch, {"d": ("custom.0", 0.99), "v": ("custom.0", 0.99)})
+    fake_llm(monkeypatch)
+    got = autofill_map.map_fields([field("d", "Are you a disabled veteran?", "select"),
+                                   field("v", "Are you a veteran?", "select")], facts, db_session,
+                                  eeo_consented=True, low_stakes=False)
+    assert got["d"].route == "none" and (got["v"].route, got["v"].slot) == ("slot", "custom.0")
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_trace_a_field_the_model_omitted_has_no_chose_none(db_session, monkeypatch):
     monkeypatch.setattr(autofill_map.jev, "decide", lambda q, s, session=None: {})
     fake_llm(monkeypatch)
