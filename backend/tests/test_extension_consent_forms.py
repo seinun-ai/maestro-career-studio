@@ -170,3 +170,28 @@ def test_the_old_question_collector_never_receives_the_permission(tmp_path):
         fields=[{"label": "I agree to the terms of service", "kind": "textarea"}],
     )
     assert rejection_reasons(result)["i agree to the terms of service"] == "policy_blocked"
+
+
+# The authorising box (a consumer report, a background check, a release) is a consent form like "I certify":
+# refused without the standing permission, lifted with it. A question ABOUT authorization is not.
+_AUTHORISE_BOXES = [
+    "I authorize Acme and its agents to obtain a consumer report about me for employment purposes",
+    "I hereby authorise a background check",
+    "Background check authorization",
+    "Background check authorisation",
+]
+_NOT_AUTHORISE_BOXES = [
+    "Are you authorized to work in the United States?",
+    "Are you willing to submit to a background check?",
+    "Work authorization status",
+]
+
+
+def test_an_authorising_box_is_a_consent_form_refused_without_the_permission_and_lifted_with_it():
+    off, on = _policy_verdicts(_AUTHORISE_BOXES, [{"consentForms": False}, {"consentForms": True}])
+    assert off == [True] * len(_AUTHORISE_BOXES) and on == [False] * len(_AUTHORISE_BOXES)
+
+
+def test_a_question_about_authorization_or_willingness_is_not_a_consent_form():
+    (off,) = _policy_verdicts(_NOT_AUTHORISE_BOXES, [{"consentForms": False}])
+    assert off == [False] * len(_NOT_AUTHORISE_BOXES)

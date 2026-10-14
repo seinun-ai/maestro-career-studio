@@ -36,6 +36,7 @@
   const CONSENT_FORMS = [
     /\bi\b[^|]{0,25}\b(certify|attest|acknowledge|consent|agree)\b/i,
     /certif(y|ication) that|\b(acknowledge?ment|attestation)\b|\bconsent (to|for)\b|authoriz\w+ (to|for) (release|disclose)/i,
+    /\bi\b[^|]{0,25}\bauthori[sz]e\b|background check authori[sz]ation/i,
     /\bterms (of|and) (use|service|conditions)\b|terms & conditions|privacy policy|arbitration|waiver|release of liability/i,
   ];
 

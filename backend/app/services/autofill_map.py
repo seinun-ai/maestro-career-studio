@@ -114,12 +114,14 @@ _LOW_STAKES_TEMPLATE = (
     "A low-stakes question an applicant keen on this job would answer in its favor: how the applicant heard "
     "about the job or a referral source; preferred contact method; willingness or comfort with relocation, "
     "travel (any share of time), on-site work, shifts, overtime or a drug test; openness to other roles; "
-    "{conflict}; a yes/no about a status, affiliation or circumstance the profile does not record and that "
-    "would only add something for the applicant, such as tribal, union or association membership or a referral "
-    "by an employee (No, or Not applicable when that is offered); willingness, readiness or consent to a "
-    "standard pre-employment step (a background check, drug test, reference check, I-9 or E-Verify, providing "
-    "documents) or having basic means the profile does not record, such as reliable transportation or "
-    "internet access (the answer is Yes); what the applicant would do if employed by the company; consent to be "
+    "{conflict}; a yes/no about a status, affiliation or circumstance the profile does not record, only one of "
+    "exactly these: tribal, union or association membership, a referral by an employee, or a relative or "
+    "household member at the company (No, or Not applicable when that is offered); a yes/no question about "
+    "willingness, readiness or consent to a standard pre-employment step (a background check, drug test, "
+    "reference check, consent to complete the I-9 or E-Verify process, providing documents; never a box that "
+    "itself gives the authorization, and whether the applicant can prove eligibility to work is work "
+    "authorization) or about having basic means the profile does not record, such as reliable transportation "
+    "or internet access (the answer is Yes); what the applicant would do if employed by the company; consent to be "
     "contacted by SMS, "
     "automated calls or texts, or marketing messages; or a yes/no self-assessment against the job description as "
     "a whole, such as having the required experience or meeting the educational requirement{years}")
@@ -133,8 +135,11 @@ _LOW_STAKES_TEMPLATE = (
 _NEVER_LOW_STAKES_TEMPLATE = (
     "a factual education or experience question (a school, degree, employer, title, date, licence or "
     "certification{years}), "
-    "work authorization, sponsorship, age or eligibility facts, EEO / diversity, background or "
-    "criminal history, security clearance, salary, {worked}or a legal attestation or signature")
+    "work authorization, sponsorship, age or eligibility facts, EEO / diversity / voluntary self-identification "
+    "(gender, race or ethnicity, veteran or disability status), background or criminal history, termination or "
+    "discipline, a non-compete or other agreement, debarment or exclusion, security clearance, salary, {worked}"
+    "or a legal attestation, authorization, release or signature (such as a box authorizing a background check "
+    "or a consumer report)")
 # What the years clause says below the queued level, in the scope and in the never-list.
 _YEARS_IN_SCOPE = " (one naming a number of years with a specific skill or tool is a factual experience question instead)"
 _YEARS_NEVER = (', or a number of years of experience with a specific skill or tool, such as '
@@ -178,10 +183,12 @@ _KEEN_WAY = "for a question in that scope, the answer that shows they fit and wa
 # model reads "No" as the answer to a willingness question, and with only the fit rule it says No to a
 # background check it would pass.
 _KEEN_NO = ("No, or Not applicable when it is offered, to a status, affiliation or circumstance the profile "
-            "does not record that would only add something (tribal, union or association membership, a referral)")
+            "does not record, only one of these: tribal, union or association membership, a referral, a relative or "
+            "household member at the company")
 _KEEN_YES = ("Yes to willingness, readiness or consent to a standard pre-employment step (a background check, "
-             "drug test, reference check, I-9 or E-Verify, providing documents) or to having basic means "
-             "(reliable transportation, internet access)")
+             "drug test, reference check, consent to complete the I-9 or E-Verify process, providing documents; "
+             "never a box that itself gives the authorization) or to having basic means (reliable transportation, "
+             "internet access)")
 
 
 def keen(facts: dict[str, Fact]) -> str:

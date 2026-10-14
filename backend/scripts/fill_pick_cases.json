@@ -100,6 +100,11 @@
     {"id": "low-stakes-reliable-transportation", "route": "low_stakes", "low_stakes": "on", "question": "Do you have reliable transportation to get to work?", "options": ["Yes", "No"], "expected": "Yes"},
     {"id": "low-stakes-never-pending-charge", "route": "low_stakes", "low_stakes": "on", "question": "Do you have any pending criminal charges?", "options": ["Yes", "No"], "expected": null},
     {"id": "low-stakes-never-drivers-licence", "route": "low_stakes", "low_stakes": "on", "question": "Do you hold a valid driver's licence?", "options": ["Yes", "No"], "expected": null},
-    {"id": "low-stakes-never-certification", "route": "low_stakes", "low_stakes": "on", "question": "Do you hold an active project management certification?", "options": ["Yes", "No"], "expected": null}
+    {"id": "low-stakes-never-certification", "route": "low_stakes", "low_stakes": "on", "question": "Do you hold an active project management certification?", "options": ["Yes", "No"], "expected": null},
+    {"id": "low-stakes-never-fcra-authorise", "route": "low_stakes", "low_stakes": "on", "question": "I authorize Acme and its agents to obtain a consumer report about me for employment purposes", "options": ["I agree", "I do not agree"], "expected": null},
+    {"id": "low-stakes-never-non-compete", "route": "low_stakes", "low_stakes": "on", "question": "Are you bound by a non-compete agreement that would restrict your work for Acme?", "options": ["Yes", "No"], "expected": null},
+    {"id": "low-stakes-never-terminated", "route": "low_stakes", "low_stakes": "on", "question": "Have you ever been terminated or asked to resign from a job?", "options": ["Yes", "No"], "expected": null},
+    {"id": "low-stakes-never-i9-proof", "route": "low_stakes", "low_stakes": "on", "question": "Can you provide documents proving your eligibility to work in the United States (Form I-9)?", "options": ["Yes", "No"], "expected": null},
+    {"id": "low-stakes-never-debarred", "route": "low_stakes", "low_stakes": "on", "question": "Have you ever been debarred or excluded from working on government contracts?", "options": ["Yes", "No"], "expected": null}
   ]
 }

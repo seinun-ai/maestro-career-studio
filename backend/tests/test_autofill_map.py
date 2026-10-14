@@ -259,7 +259,7 @@ def test_the_low_stakes_question_states_the_never_list(db_session, monkeypatch):
     run([field("t", "Willing to travel?", "select")], db_session, low_stakes=True)
     text = calls[1]["questions"]["t"]["instructions"]
     assert f"It is NOT if it is about anything on this never-list: {autofill_map._NEVER_LOW_STAKES}." in text
-    assert "a legal attestation or signature" in text
+    assert "a legal attestation, authorization, release or signature" in text
     assert _PAGE_TEXT_IS_DATA in text
 
 
@@ -865,7 +865,7 @@ def test_the_never_list_keeps_facts_knockouts_and_attestations_out():
     never = autofill_map._NEVER_LOW_STAKES
     for kind in ("factual education or experience", "school", "degree", "employer", "work authorization",
                  "sponsorship", "age or eligibility", "EEO", "background or criminal history",
-                 "security clearance", "salary", "legal attestation or signature"):
+                 "security clearance", "salary", "legal attestation, authorization, release or signature"):
         assert kind in never, kind
     # Self-assessments and contact consents are no longer on it.
     assert "agrees to" not in never and "skills" not in never
@@ -2170,7 +2170,8 @@ def test_keen_states_the_no_and_the_yes_directions_outright():
 def test_the_never_list_keeps_the_owners_protected_kinds_and_adds_licences(level, queued):
     _, never = autofill_map.low_stakes_scope({}, level=level, queued=queued)
     for kind in ("work authorization", "sponsorship", "age", "EEO", "background or criminal history",
-                 "security clearance", "salary", "legal attestation or signature", "licence", "certification",
+                 "security clearance", "salary", "legal attestation, authorization, release or signature", "licence",
+                 "certification",
                  "school", "degree", "employer"):
         assert kind in never, (level, queued, kind)
     assert "background-check" not in never
@@ -2336,3 +2337,43 @@ def test_asks_worked_here_of_another_company_reads_the_shape_the_company_and_the
     assert not ask(facts, "Are you eligible to work for Initrode?")
     assert not ask({}, "Are you currently employed by Initrode?")
     assert not ask(_globex_history(employers=("Acme Wireless",)), "Are you currently employed by Initrode?")
+
+
+# ---------- N2 review fixes: an authorising box stays protected; the No kind is a closed list
+
+AUTHORISE_BOX = "I authorize Acme and its agents to obtain a consumer report about me for employment purposes"
+
+
+def test_the_scope_takes_willingness_questions_only_never_a_box_that_gives_the_authorization():
+    scope = autofill_map._LOW_STAKES
+    assert "a yes/no question about willingness, readiness or consent to" in scope
+    assert "never a box that itself gives the authorization" in scope
+    assert "consent to complete the I-9 or E-Verify process" in scope
+    assert "whether the applicant can prove eligibility to work is work authorization" in scope
+
+
+def test_the_no_kind_is_a_closed_list_and_the_never_list_names_the_new_kinds():
+    scope, never = autofill_map.low_stakes_scope({})
+    for kind in ("tribal, union or association membership", "a referral", "a relative or household member"):
+        assert kind in scope, kind
+    assert "exactly these" in scope
+    for kind in ("authorization, release or signature", "a box authorizing a background check or a consumer report",
+                 "termination or discipline", "a non-compete or other agreement", "debarment or exclusion",
+                 "EEO / diversity / voluntary self-identification (gender, race or ethnicity, veteran or "
+                 "disability status)"):
+        assert kind in never, kind
+
+
+@pytest.mark.parametrize("facts", [{}, {autofill_map.WORKED_HERE: object()}])
+def test_keen_names_the_closed_no_list(facts):
+    text = autofill_map.keen(facts)
+    assert "a relative or household member at the company" in text and "union or association membership" in text
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_an_authorising_consumer_report_box_is_asked_with_the_never_list_that_refuses_it(db_session, monkeypatch):
+    calls = fake_jev(monkeypatch, {"q": ("none", 0.9)}, noul={"q": 0.1})
+    got = run([field("q", AUTHORISE_BOX, "popup", options=["I agree", "I do not agree"])], db_session, low_stakes=True)
+    assert got["q"].route == "none"
+    text = calls[1]["questions"]["q"]["instructions"]
+    assert "a box authorizing a background check or a consumer report" in text
