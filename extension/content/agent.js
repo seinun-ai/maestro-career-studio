@@ -249,7 +249,10 @@
   const FILE_ROW = /[^\s/\\:*?"<>|(,]\.(?:pdf|docx?|rtf|odt|txt|pages)(?![\p{L}\p{N}])/iu;
   const REMOVE_CONTROL = /(?<![\p{L}\p{N}])(?:remove|delete|replace)(?![\p{L}\p{N}])/iu;
   const SECTION_HEADING = 'h2, h3, h4, h5, h6, [role="heading"]:not([aria-level="1"])';
-  const SECTION_CLIMB = 6;
+  // Ten levels: Workday seats the heading seven wrappers above the box. Past the sixth, the climb also
+  // stops at an ancestor holding another field, whose heading is no longer this box's alone.
+  const SECTION_CLIMB = 10;
+  const NEAR_CLIMB = 6;
   // "candidate_cv", "resumeUpload" → "candidate cv", "resume Upload".
   const words = (value) => String(value ?? "")
     .replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_\-.]+/g, " ");
@@ -265,6 +268,8 @@
     let el = input.parentElement;
     for (let level = 0; el && level < SECTION_CLIMB; level += 1, el = el.parentElement) {
       if (el === document.body || el === document.documentElement) break;
+      if (level >= NEAR_CLIMB && [...el.querySelectorAll(`${NOT_AN_UPLOADER}, input[type="file"]`)]
+        .some((other) => other !== input)) break;
       const precedes = (h) => h.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING;
       const before = [...el.querySelectorAll(SECTION_HEADING)]
         .filter((h) => !h.contains(input) && precedes(h));
