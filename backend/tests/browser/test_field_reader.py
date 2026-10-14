@@ -298,3 +298,32 @@ def test_a_radio_option_named_like_a_part_is_never_prefixed(page, load):
     load(page, "<span>Preferred contact</span><div><label><input type=radio name=q id=a>Type</label>"
                "<label><input type=radio name=q id=b>Number</label></div>")
     assert [page.evaluate(READ, s)["question"] for s in ("#a", "#b")] == ["Type", "Number"]
+
+
+# Live check 2 (ATS-G): a written question sits outside any <label>, two
+# sentences long and over 12 words. It is a question because it ends in "?".
+LONG_Q = "What is the hardest bug you fixed for Acme? Why was it hard?"
+
+
+def test_a_long_question_ending_in_a_question_mark_is_the_label_and_its_star_marks_it_required(page, load):
+    load(page, f"<div><span>{LONG_Q} <span>*</span></span><div><div><textarea id=a></textarea></div></div></div>")
+    got = page.evaluate(READ, "#a")
+    assert (got["question"], got["source"], got["required"]) == (LONG_Q, "preceding", True)
+
+
+@pytest.mark.parametrize("html", [
+    # a sentence that asks nothing
+    "<div><span>Tell us in your own words what excites you about this role and our team.</span>"
+    "<div><textarea id=a></textarea></div></div>",
+    # over 200 characters
+    f"<div><span>{'Why do you want to work here and what would you do in your first year? ' * 4}</span>"
+    "<div><textarea id=a></textarea></div></div>",
+], ids=["no-question-mark", "over-200"])
+def test_a_long_text_still_needs_a_question_mark_and_a_sane_length_to_be_a_label(page, load, html):
+    load(page, html)
+    assert page.evaluate(READ, "#a")["question"] == ""
+
+
+def test_a_long_question_is_no_label_for_a_choice(page, load):
+    load(page, f"<div><span>{LONG_Q}</span><div><input type=radio name=q id=a><span>Yes</span></div></div>")
+    assert page.evaluate(READ, "#a")["question"] != LONG_Q

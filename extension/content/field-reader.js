@@ -110,6 +110,11 @@
   const MAX_CLIMB = 6;
   // A label is short and is no sentence ("Phone", "Are you over 18?", "City:").
   const labelish = (t) => t.length <= 80 && t.split(" ").length <= 12 && !/[.!]$/.test(unmark(t).text);
+  // A WRITTEN QUESTION is no short label but it ends in "?" ("What is the
+  // hardest bug you fixed for Acme? Why was it hard? *", Gem, live 2026-10-14):
+  // a non-choice field takes it whole, up to 200 characters.
+  const MAX_QUESTION = 200;
+  const questionish = (t) => t.length <= MAX_QUESTION && unmark(t).text.endsWith("?");
   // A CHOICE GROUP may be asked by a paragraph (iCIMS VEVRAA: "2. If you
   // believe you belong to … please indicate by checking the appropriate box
   // below. As a Government contractor …"). Its question is the one sentence
@@ -148,7 +153,7 @@
   // own, not ours) — unless `own` is labelled (the page labels its options,
   // so text after a labelled control is not a trailing label). A single
   // field with any text after it at a level has its label there: abstain.
-  const precedingLabel = (start, own, { group = false, prose = false } = {}) => {
+  const precedingLabel = (start, own, { group = false, prose = false, written = false } = {}) => {
     const mine = (c) => own.some((o) => o === c || o.contains(c));
     const ownLabels = new Set(own.flatMap((o) => [...(o.labels ?? [])]));
     const attached = ownLabels.size > 0;
@@ -171,7 +176,7 @@
         if (!blocks && !t) continue;
         if (cand === null) {
           if (!blocks && !labelish(t) && prose) return askingSentence(t);
-          if (blocks || !labelish(t)) return "";
+          if (blocks || !(labelish(t) || (written && questionish(t)))) return "";
           cand = t;
         } else {
           return heading(s) || (attached && foreign(s)) ? cand : "";
@@ -363,7 +368,7 @@
     ["trailing-text", (el) => (isChoice(el) ? trailingText(el) : "")],
     // LAST: the text before a box nothing names (Gem). A radio's or
     // checkbox's own label FOLLOWS it; the text before it is a neighbour's.
-    ["preceding", (el) => (isChoice(el) ? "" : precedingLabel(el, [el]))],
+    ["preceding", (el) => (isChoice(el) ? "" : precedingLabel(el, [el], { written: true }))],
   ];
   // "Work Experience 2" is the second repeat; "Step 2 of 4" / "Page 2" is not.
   // ONE rule for what a numbered title is: `ns.repeatOf` (also content/
