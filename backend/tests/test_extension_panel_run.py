@@ -137,9 +137,14 @@ chrome.tabs.update = async (id, props) => { updates.push([id, props]); if (props
 
 // What each save of the runs held AT THAT MOMENT (the harness keeps references, which later changes rewrite).
 const queueSaves = [];
+// ... and which keys each run in a save carried as it reached chrome.storage (before any serialiser runs).
+const queueSaveKeys = [];
 const realSessionSet = chrome.storage.session.set;
 chrome.storage.session.set = async (patch) => {
-  if (patch.queueRun) queueSaves.push(JSON.parse(JSON.stringify(patch.queueRun)));
+  if (patch.queueRun) {
+    queueSaves.push(JSON.parse(JSON.stringify(patch.queueRun)));
+    queueSaveKeys.push(patch.queueRun.map((run) => Object.keys(run)));
+  }
   return realSessionSet(patch);
 };
 
@@ -227,7 +232,7 @@ main(async () => {
     if (started && step.finish) await started;
     shots.push(snap());
   }
-  emit({ shots, mids, queueSaves, fills, receiptCalls, pressed, updates, sent, writes, sessionWrites, broadcasts, held: heldTimers.filter(Boolean).length,
+  emit({ shots, mids, queueSaves, queueSaveKeys, fills, receiptCalls, pressed, updates, sent, writes, sessionWrites, broadcasts, held: heldTimers.filter(Boolean).length,
          profile: PROFILE, errors, warnings });
 });
 """
@@ -1208,6 +1213,10 @@ def test_the_page_memory_is_never_written_to_storage(tmp_path):
     # Serialised it is nothing (JSON.stringify gives undefined, so the key is absent), on the record too.
     assert all("memoryJson" not in call for call in out["fills"])
     assert not any(run.get("memory") for save in out["queueSaves"] for run in save)
+    # Not left to a serialiser's toJSON: the key is absent from what `save` hands to chrome.storage.
+    assert out["queueSaveKeys"] and not any("memory" in keys for save in out["queueSaveKeys"] for keys in save)
+    # The live record still has it: the repair above read the same memory the first fill built.
+    assert out["fills"][0]["memoryId"] is not None
 
 
 def test_a_repair_that_leaves_the_field_open_parks_naming_it(tmp_path):

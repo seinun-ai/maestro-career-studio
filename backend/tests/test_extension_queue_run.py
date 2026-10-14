@@ -163,6 +163,8 @@ const deps = {
   attachTo: async (rec, box) => {
     tick("attachTo", box.target, rec.step);
     if (spec.cancelOnAttach) { cancelFlag = true; callsWhenCancelled = calls.length; }
+    // The host's own refusal (panel/actions/run.js attachBox): the resume was written on this page already.
+    if (["attached", "unconfirmed"].includes(rec.attach?.outcome)) return { attached: false };
     return spec.attachTo ?? { attached: true };
   },
   signIn: async (...args) => {
@@ -1596,6 +1598,15 @@ def test_a_resume_that_finds_the_tab_on_another_page_fills_it_as_any_page(tmp_pa
     out = _resumed(tmp_path, why, [step(1), REVIEW], parked=elsewhere)
     assert out["fillCalls"] == 2, "the page is not the one the user fixed: it is filled"
     assert names(out, "pageErrors") == [] and names(out, "uploads") == []
+
+
+def test_a_resume_on_another_page_after_an_upload_park_can_attach_on_the_new_page(tmp_path):
+    elsewhere = {"where": "https://jobs.acme.test/p/0", "key": "step9"}
+    record = {"tabId": 7, "status": "parked", "why": "upload", "step": 0, "hosts": ["jobs.acme.test"], "filled": True,
+              "wrote": True, "parkedPage": elsewhere, "attach": {"outcome": "attached", "target": "t-old"}, "open": []}
+    out = _drive(tmp_path, [step(1), REVIEW], record=record, attaches=[NEEDS_UPLOAD])
+    assert names(out, "attachTo") == [["attachTo", "t-up", 0]], "the parked page's attach note is not this page's"
+    assert out["record"]["status"] == "ready"
 
 
 @pytest.mark.parametrize("why", ["page_errors", "upload"])

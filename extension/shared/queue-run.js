@@ -396,6 +396,13 @@
             if (parked && parked.key !== "" && parked.where === where && parked.key === key) {
               recheck = resumeWhy;
               pageFilled = true;
+            } else {
+              // The user moved on by hand: nothing the park learnt is about this page (what moved() clears).
+              fixRounds = 0;
+              attempted = new Set();
+              wroteResume = false;
+              record.attach = null;
+              record.memory = null;
             }
             resumeWhy = null;
             record.parkedPage = null;

@@ -4923,7 +4923,8 @@
           ask("fill_gaps", { gaps }).catch((err) => console.warn("[maestro-cs] gaps failed:", err));
         },
         // Session storage: gone when Chrome closes, which is the life a run has.
-        save: (records) => chrome.storage.session.set({ queueRun: records }),
+        // The fill memory is stripped by name, not left to a serialiser's toJSON; the live records keep it.
+        save: (records) => chrome.storage.session.set({ queueRun: records.map(({ memory, ...rest }) => rest) }),
         load: async () => (await chrome.storage.session.get("queueRun"))?.queueRun ?? [],
       },
       // Record that the scorer was asked about this job (`autoScored`).
