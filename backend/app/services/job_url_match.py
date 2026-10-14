@@ -146,6 +146,29 @@ def _query_identity(query: str) -> str | None:
     return None
 
 
+# A path segment that carries a posting's identity: a run of digits (a Greenhouse id, a Workday
+# `_JR1043` requisition) or a UUID (Lever, Ashby). A short counter after a word (`step2`) is a wizard
+# step's name. THE SAME RULES as the extension's `isIdSegment` (shared/decisions.js).
+_ID_SEGMENT_RE = re.compile(r"\d{2,}|^[0-9a-f]{8}-[0-9a-f]{4}-", re.IGNORECASE)
+_STEP_COUNTER_RE = re.compile(r"^[a-z]+\d{1,3}$", re.IGNORECASE)
+
+
+def names_posting(url: str | None) -> bool:
+    """Does `url` carry a posting's identity: an id in the query (`posting_id`) or an id-like path
+    segment? A link that does not (a sign-in page, a candidate home, `/careers/apply`) is a prefix of
+    every posting below it, so `is_same_posting` would call them all the same job. Never raises."""
+    if not url:
+        return False
+    if posting_id(url) is not None:
+        return True
+    parts = _host_and_segments(url)
+    if parts is None:
+        return False
+    return any(
+        _ID_SEGMENT_RE.search(segment) and not _STEP_COUNTER_RE.match(segment) for segment in parts[1]
+    )
+
+
 def is_same_posting(saved: str | None, current: str | None) -> bool:
     """Is the page at `current` the same job posting as the saved link `saved`?
 

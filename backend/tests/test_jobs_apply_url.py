@@ -130,8 +130,8 @@ def test_an_ingested_duplicate_gains_the_link_too(client):
 
 # --- the Companion saves the page it ran on -----------------------------------------
 
-WORKDAY_APPLY = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_R-1/apply/applyManually"
-WORKDAY_POSTING = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_R-1"
+WORKDAY_APPLY = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_JR1043/apply/applyManually"
+WORKDAY_POSTING = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_JR1043"
 
 
 def _board_job(client, monkeypatch, **body):
@@ -192,15 +192,39 @@ def test_the_match_reads_the_apply_links_below_a_saved_posting_and_the_wizards_o
     assert client.get("/api/jobs/match", params={"url": WORKDAY_APPLY}).json()["job"]["id"] == posting["id"]
     # ...and a saved apply link matches the same page with a fragment or a referral query.
     other = _board_job(client, monkeypatch, raw_text="Analyst at Globex", source_url="https://board.example/jobs/9",
-                       apply_url=WORKDAY_APPLY.replace("Data-Scientist_R-1", "Analyst_R-9"))
-    page = WORKDAY_APPLY.replace("Data-Scientist_R-1", "Analyst_R-9") + "?source=x#step2"
+                       apply_url=WORKDAY_APPLY.replace("Data-Scientist_JR1043", "Analyst_JR9099"))
+    page = WORKDAY_APPLY.replace("Data-Scientist_JR1043", "Analyst_JR9099") + "?source=x#step2"
     assert client.get("/api/jobs/match", params={"url": page}).json()["job"]["id"] == other["id"]
+
+
+@pytest.mark.parametrize("saved", [
+    "https://acme.wd5.myworkdayjobs.com/en-US/careers",
+    "https://acme.wd5.myworkdayjobs.com/en-US/careers/login",
+    "https://acme.wd5.myworkdayjobs.com/en-US/careers/apply",
+    "https://jobs.shared.test/apply?org=acme",
+], ids=["candidate-home", "sign-in", "no-id-apply", "tenant-in-query"])
+def test_an_apply_link_that_names_no_posting_matches_nothing(client, monkeypatch, saved):
+    """A link without a posting id would otherwise be a prefix of every posting of that employer."""
+    _board_job(client, monkeypatch, apply_url=saved)
+
+    assert client.get("/api/jobs/match", params={"url": WORKDAY_APPLY}).json()["match"] == "none"
+    assert client.get("/api/jobs/match", params={"url": saved}).json()["match"] == "none"
+
+
+def test_an_apply_link_with_a_posting_id_key_matches_by_that_id(client, monkeypatch):
+    job = _board_job(client, monkeypatch, apply_url="https://acme.example/careers?gh_jid=555")
+
+    same = client.get("/api/jobs/match", params={"url": "https://acme.example/careers?gh_jid=555&utm=x"})
+    other = client.get("/api/jobs/match", params={"url": "https://acme.example/careers?gh_jid=556"})
+
+    assert same.json()["job"]["id"] == job["id"]
+    assert other.json()["match"] == "none"
 
 
 def test_a_sibling_posting_is_not_matched_by_an_apply_link(client, monkeypatch):
     job = _board_job(client, monkeypatch, apply_url=WORKDAY_APPLY)
 
-    sibling = WORKDAY_APPLY.replace("Data-Scientist_R-1", "Data-Scientist_R-2")
+    sibling = WORKDAY_APPLY.replace("JR1043", "JR2044")
 
     assert client.get("/api/jobs/match", params={"url": sibling}).json()["match"] == "none"
     assert job["apply_url"] == WORKDAY_APPLY

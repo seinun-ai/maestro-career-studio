@@ -512,7 +512,8 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
     #
     # The saved link and the employer's apply link both name the job: a posting saved from a board
     # is matched on the employer's own form, once the Companion has remembered that page as the
-    # apply link. is_not(None) narrows the scan only; it is not a safety guard, since
+    # apply link. An apply link counts only when it names a posting (an id in the path or query):
+    # one that does not is a prefix of every posting of that employer. is_not(None) narrows the scan only; it is not a safety guard, since
     # is_same_posting returns False for a null or unparseable link.
     stmt = (
         select(Job.id, Job.source_url, Job.apply_url)
@@ -524,7 +525,7 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
             job_id
             for job_id, source_url, apply_url in db.execute(stmt)
             if job_url_match.is_same_posting(source_url, url)
-            or job_url_match.is_same_posting(apply_url, url)
+            or (job_url_match.names_posting(apply_url) and job_url_match.is_same_posting(apply_url, url))
         ),
         None,
     )

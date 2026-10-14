@@ -4,7 +4,7 @@ import pytest
 
 from app.models.application import Application
 from app.models.job import Job
-from app.services.job_url_match import is_same_posting, posting_id
+from app.services.job_url_match import is_same_posting, names_posting, posting_id
 
 
 LEVER = "https://jobs.lever.co/acme/abc"
@@ -325,3 +325,29 @@ def test_match_ties_resolve_to_the_newest_capture(db_session, client):
     body = response.json()
     assert body["match"] == "exact"
     assert body["job"]["id"] == str(newer.id)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        # An id in the path: a Workday requisition, a Greenhouse or Lever id, a UUID.
+        ("https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_JR1043/apply", True),
+        ("https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-Scientist_R-1043", True),
+        (GREENHOUSE, True),
+        ("https://jobs.lever.co/acme/0b9e5c1a-1d2e-4f3a-9b8c-7d6e5f4a3b2c/apply", True),
+        # An id in the query or a LinkedIn permalink.
+        ("https://acme.example/careers?gh_jid=555", True),
+        (LI_VIEW, True),
+        # A link that names no posting: a prefix of every posting below it.
+        ("https://acme.wd5.myworkdayjobs.com/en-US/careers", False),
+        ("https://acme.wd5.myworkdayjobs.com/en-US/careers/apply", False),
+        ("https://acme.example/apply/step2", False),
+        ("https://jobs.shared.test/apply?org=acme", False),
+        (None, False),
+        ("", False),
+        ("not a url", False),
+        ("http://[", False),
+    ],
+)
+def test_names_posting(url, expected):
+    assert names_posting(url) is expected
