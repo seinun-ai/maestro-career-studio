@@ -129,9 +129,9 @@ view for several is still ahead.
   your history: read it". Nothing is saved as a standing answer; edit it and press Resume to teach it.
   At **Facts only** nothing is drafted, and work authorization, pay, demographic, background,
   availability and "have you worked here" questions never are.
-- **"How did you hear about us?" walks the list.** A site that groups its answers (a website, an
-  online source, a job board) is opened category by category to the job board that listed the job, or
-  the company's careers site, and the row says it was assumed.
+- **"How did you hear about us?" finds the board.** A job board that listed the job is searched by
+  name first; a site that groups its answers is walked category by category only when the search does
+  not find it, and the row says it was assumed. The company's careers site is picked for a website answer.
 - **The Ask box is back under a run.** Paste a question, get one grounded paragraph, copy it. It
   opens when the run pauses, not while it is working.
 - **A line when the fill log is off.** If **Keep a fill log** is off the run card says so and when the
@@ -172,8 +172,8 @@ view for several is still ahead.
   you clear them in **Analytics → Autofill coverage**.
 - **Ready to submit is stricter.** The run says Ready only on a page that has a real Submit button
   and no Next, with no error showing and no required box empty. A review page that is not plainly the
-  end (no Submit, or a Next still on it) stops as "Not sure this is the last page": check it, then
-  press **Resume** to say it is. A page with nothing to fill and only a "Continue" or "Proceed" stops
+  end stops and says why (More than one Next, May send the application, No Next button found, or Not
+  sure about this page): check it, then press **Resume**. A page with nothing to fill and only a "Continue" or "Proceed" stops
   instead of being pressed. A stepper's step names, a cookie notice's buttons and a footer's links are
   no longer mistaken for Submit or Next.
 - **A closed posting means closed.** A job description that says a position "is filled" no longer
@@ -192,6 +192,33 @@ view for several is still ahead.
   eligibility, a competitor, or a time window are no longer mistaken for it.
 - **A degree is compared by its level.** "Master's/Advanced Degree" on a form matches your Master of
   Science without a warning; a form that names a field is compared by its words.
+
+### Fixed
+
+- **Third live check of Apply on a Workday tenant.**
+  - A Workday "Start Your Application" page no longer stops the run. It presses **Apply Manually**, the one link
+    that only opens the form, and never **Autofill with Resume** or **Use My Last Application**; anywhere else
+    it says **Choose how to apply** and waits for you.
+  - A dropdown or a Yes/No button whose question mentions "submit" is a field, not a Submit or a Next, and the
+    footer's Next decides the step. A normal step is no longer called "maybe the last page".
+  - A page is filled before it is judged, and a page that still looks unfinished after about 2 seconds is
+    what stops the run. The stop now says why, and **Resume** fills what is still open before it counts as
+    your word that this is the last page (it does not, once a Next is on the page).
+  - An account that was created is no longer reported as not created: after **Create Account** the run waits
+    up to 20 seconds for the site to move on.
+  - A page that lists its errors on two lines now maps each one to its question.
+  - Questions your profile cannot answer get a safe default: No (or Not applicable) for tribal, union or
+    association membership, a referral, or relatives at the company; Yes for willingness to a background
+    check, drug test, references, I-9 or documents, and for transport and internet. Criminal or background
+    history, salary, work authorization, demographic questions, licences, terminations, agreements and
+    boxes that authorize a check are never defaulted. Every default is listed under **Check before you submit**.
+  - "Are you currently employed by X?" answers No from your history when X is neither your employer nor the
+    job's company as the page spells it, and says it was assumed.
+  - A job you marked applied and then set back to Draft can be queued again; while it still says applied, the
+    message says so instead of calling it skipped.
+  - A job posting with no built-in job data (a Darwinbox careers page, for one) is read from the section under
+    its description heading, with its title, company and location, and only from what is on screen.
+    Darwinbox's apply page needs a CAPTCHA, so the run stops there.
 
 ## [0.10.1] — 2026-10-12
 

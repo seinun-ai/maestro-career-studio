@@ -392,14 +392,27 @@ page refuses Next and says why, Apply fixes only the fields it names and stops i
 it attaches your resume before pressing Next and never presses Next over an empty required upload.
 
 **Ready to submit** means nothing is missing: the page has a real Submit button and no Next, shows no
-error and has no required box left empty. When a review page is not plainly the last one, Apply stops
-with "Not sure this is the last page"; look, then press **Resume** to say it is. On a known application
-site that asks you to make an account, Apply makes it with your saved job-site login, once, and stops
-with **Account not created** if the site refuses it, **Email code** if the site wants an email check and **CAPTCHA** if it shows one. A required
+error and has no required box left empty. When Apply is not sure about a page it stops and says why:
+**More than one Next**, **May send the application**, **No Next button found** or **Not sure about this
+page**. Look, then press **Resume**: Apply fills what is still open first, and your Resume counts as
+"this is the last page" only when no Next is left on it. Dropdowns and Yes/No buttons are fields, never
+Next or Submit. On a Workday "Start Your Application" page Apply presses **Apply Manually** and nothing
+else there; if it cannot, it says **Choose how to apply** and waits for you. On a known application
+site that asks you to make an account, Apply makes it with your saved job-site login, once, waits up to
+20 seconds for the site to finish, and only then stops with **Account not created** if the site refuses
+it, **Email code** if the site wants an email check and **CAPTCHA** if it shows one. A required
 written question your saved answers cannot answer is **drafted from your career history for you to
 read** ("Drafted from your history: read it"), never saved as a standing answer; **Facts only** turns
 drafting off. The **Ask** box at the foot of the Fill step answers any question from a form in one
 paragraph you can copy; it opens when a run pauses.
+
+A question your profile cannot answer gets a safe default from **Backed by your history** up: No (or Not
+applicable when offered) for membership of a tribe, union or association, a referral, or relatives at the
+company; Yes for willingness to a standard step such as a background check, drug test, references,
+I-9 or providing documents, and for basic means such as transport and internet. Criminal or background
+history, salary, work authorization and demographic questions are never defaulted. Every default is listed under **Check before
+you submit**. The Companion also reads a job posting that has no built-in job data, taking the
+description from the section under a "Job Description" or "About the role" heading.
 
 Veteran status is one question in **Profile › Autofill**: "Are you a veteran?" (Yes, No, or "I don't
 wish to answer"). A No answers every "I am not a protected veteran" option on a form. A Yes never picks

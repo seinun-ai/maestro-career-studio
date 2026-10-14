@@ -38,12 +38,19 @@ at to your local Maestro CS app.
   **Save job**, **Tailor resume**, **Start filling**).
   Running several jobs at once from a Queue view is not built yet.
   **Ready to submit** means nothing is missing: the page has a real Submit button
-  and no Next, shows no error, and has no required box left empty. If a review
-  page is not plainly the last one (no Submit, or a Next still on it), the run
-  stops with "Not sure this is the last page"; check it and press **Resume** to
-  say it is. A page whose only button is "Continue" stops for you the same way.
+  and no Next, shows no error, and has no required box left empty. If the
+  Companion is not sure about a page it stops and says why: "More than one Next",
+  "May send the application", "No Next button found" or "Not sure about this
+  page". Check it, then press **Resume**; the Companion fills what is still open
+  first, and your Resume counts as "this is the last page" only when no Next is
+  left on it. A page whose only button is "Continue" stops for you the same way.
+  Dropdowns and Yes/No buttons are fields, never Next or Submit, so a question
+  that mentions "submit" no longer stops a run. On a Workday "Start Your
+  Application" page the run presses **Apply Manually** and nothing else on that
+  page; if it cannot, it says "Choose how to apply" and waits for you.
   On a known application site that asks you to make an account, the run makes it
-  with your saved job-site login, once (see below). While a run is working the
+  with your saved job-site login, once, and waits up to 20 seconds for the site
+  to finish before it says "Account not created" (see below). While a run is working the
   panel says "Ask opens when the run pauses"; the Ask box returns when it stops.
 - **Written questions are drafted for you to read.** A required question such as
   "Why do you want to work here?" that your saved answers cannot answer is drafted
@@ -53,6 +60,18 @@ at to your local Maestro CS app.
   the page and press **Resume** to keep your version. **Facts only** (Settings ›
   Form filling) turns drafting off, and pay, work authorization, demographic,
   background and "have you worked here" questions are never drafted.
+- **Safe defaults for questions your profile cannot answer.** From **Backed by your
+  history** up, a Yes/No about membership or relatives at the company is answered
+  No (Not applicable when offered), and willingness to a standard step (background
+  check, drug test, references, I-9, documents) or basic means (transport,
+  internet) is answered Yes. Criminal or background history, salary, work
+  authorization and demographic questions are never defaulted, and every default is listed under **Check before you
+  submit**.
+- **Postings without built-in job data are read too.** The Job step reads the
+  description from the section under a "Job Description" or "About the role"
+  heading, and the title, company and location from a recorded page layout (a
+  Darwinbox careers page) or the page's own heading. Darwinbox's apply page needs
+  a CAPTCHA, so the run stops there and leaves the application to you.
 - **Ask one question.** The **Ask** box at the foot of the Fill step takes any
   question from a form, answers it in one paragraph from your history and the job,
   and lets you copy it. It never writes into the page.

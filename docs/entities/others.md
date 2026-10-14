@@ -727,8 +727,10 @@
   + the apply playbook). Bulk triage: `POST /api/proposals/bulk-transition` —
   accepted|rejected are the ONLY bulk-legal statuses; mass-approve/submit stay
   impossible. **Skips are posting-scoped** (owner decision; the UI says Skip,
-  the stored status stays `rejected` — §8 Naming): create_proposal 409s "job
-  was declined" when a rejected proposal exists for THAT job;
+  the stored status stays `rejected` — §8 Naming): create_proposal 409s "You
+  skipped this job before" when a rejected proposal exists for THAT job, except one closed as `APPLIED_MANUALLY` (the user marked the job applied):
+  it blocks only while an application of the job is still in a submitted stage ("You marked this job applied. Set its application back to Draft"),
+  so Applied, then back to Draft, queues again;
   `company_blocklist` is the only company-level gate (`cooldown_days` is
   deprecated-but-kept in `AutoApplySettings` — extra=forbid would reset
   hand-edited files). Deleting the rejected proposal is the re-propose reset.

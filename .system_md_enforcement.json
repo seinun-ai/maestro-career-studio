@@ -262,7 +262,9 @@
       {"path": "backend/tests/test_autofill_catalog.py", "symbol": "test_a_parent_or_subsidiary_in_a_wording_the_parser_does_not_read_is_asked_not_no"},
       {"path": "backend/app/services/autofill_catalog.py", "symbol": "def named_employer_fact"},
       {"path": "backend/tests/test_autofill_catalog.py", "symbol": "test_asks_worked_here_is_an_allowlist_of_question_shapes"},
-      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_question_that_only_names_the_company_is_not_the_worked_here_answer"}
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_question_that_only_names_the_company_is_not_the_worked_here_answer"},
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_derived_no_reroute_for_another_company_traces_as_the_codes_call"},
+      {"path": "backend/tests/test_autofill_map.py", "symbol": "test_a_history_with_an_entry_that_is_no_company_derives_no_no_for_another_company"}
     ],
     "inv-veteran-yes-no": [
       {"path": "backend/tests/test_autofill_pick.py", "symbol": "test_a_no_picks_every_option_that_denies_being_a_veteran_at_the_exact_floor"},
@@ -273,6 +275,8 @@
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_review_that_is_not_a_real_submit_page_parks_unsure_and_never_ready"},
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_page_the_fill_listed_nothing_on_with_only_a_continue_parks_confirm_page_and_is_not_pressed"},
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_vouched_page_still_gets_its_errors_and_required_empties_checked"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_resume_on_the_same_unsure_page_fills_it_and_then_goes_ready"},
+      {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_resume_on_a_several_nexts_park_fills_but_does_not_vouch"},
       {"path": "backend/tests/test_extension_queue_run.py", "symbol": "test_a_required_empty_gets_one_scoped_fix_then_ready_when_it_is_filled"},
       {"path": "backend/tests/test_extension_page_kind.py", "symbol": "test_the_closed_words_in_a_posting_that_still_has_an_apply_or_a_form_are_not_a_closed_page"}
     ],

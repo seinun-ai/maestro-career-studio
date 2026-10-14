@@ -406,7 +406,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `POST /api/proposals` moves an `accepted` proposal to a newer draft of its job only for that origin, when the yes came on channel `companion`, no final review exists and
   the old draft is gone or still a draft (every other mismatch stays a 409, and an application of another job is refused on every linking route); the user's real Submit,
   seen as a confirmation page, is recorded only by `POST /api/proposals/{id}/companion-submitted` (approved then attested submitted, host/path/text as the receipt), which
-  clicks nothing and, past the daily cap or skip list, files an applied-yourself record. Pins: `tests/test_full_automation_setting.py`, `test_proposal_state_machine.py`,
+  clicks nothing and, past the daily cap or skip list, files an applied-yourself record. A skipped (rejected) proposal blocks queuing its job again, except an "applied manually" one, which blocks only while an application of the job is still applied. Pins: `tests/test_full_automation_setting.py`, `test_proposal_state_machine.py`,
   `test_companion_submitted.py`, `test_proposals_router.py` (symbols in `.system_md_enforcement.json`).
 - **One writer per job; the laptop owns the profile.** `{#inv-one-writer-ownership}` With sync on (a key file exists) every job has one owner
   machine (`jobs.owner_machine`, NULL = this one) and the other copy holds a read-only replica; the laptop owns the whole profile, which
@@ -467,19 +467,21 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   an employer's name standing in the question as capitalised words, is ASKED (`autofill_catalog.named_employer_fact`, read by /pick, /step and /map).
   Only an ALLOWLIST of question shapes about the applicant's own employment, with the company directly after the phrase, is rerouted to it
   (`asks_worked_here`, backed by an exclusion list): never eligibility, willingness, relatives, referrals, applications, a competitor, a public body beside the
-  company or a time window. Pinned by `tests/test_autofill_catalog.py`.
+  company or a time window. One OTHER company (the page's word for the job's own, or a stranger) is rerouted too, by employment verbs only, one capitalised
+  name that is no group of companies and no history entry that is no company (`asks_worked_here_of_other`), and is reported `assumed`
+  (`derived.previously_employed_here#other`, `ASSUMED_SLOTS`). Pinned by `tests/test_autofill_catalog.py`, `test_autofill_map.py`.
 - **Veteran status is one Yes/No.** `{#inv-veteran-yes-no}` A No settles every "not a (protected) veteran" option; a Yes, and any other saved Yes/No
   fact, never picks or answers a protected class (/pick, /step, /map and `content/eeo.js`). Legacy `veteran` reads as yes; legacy `not_veteran` reads
   as UNANSWERED and the profile lists it under `stale_answers`. Pinned by `tests/test_autofill_pick.py`.
 - **Ready means a real review page with nothing missing.** `{#inv-ready-real-review}` The run reports Ready to submit only when the page is a review whose
   `by` is `submit_button` (a real Submit control inside the application and no real Next), shows no errors and has no required box empty (`requiredEmpty`:
   one scoped fix, then `open_questions`). Any other reason a page reads as a review (a Submit the reader could not see, a dialog about submitting, several
-  Nexts, fields and no Next) parks `unsure_page`; a field-less page with only a bare Continue or Proceed parks `confirm_page`; a plain Next is pressed. A
-  Resume on an `unsure_page` is the user vouching for that page (no refill, errors and empties still checked, `readyBy` "user"). The one resume the run already wrote on the page excuses ONE required resume box, never a second. Closed means closed: a strict
+  Nexts, fields and no Next) parks `unsure_page` only after the same read held for 4 reads (a page with errors or empties gets its fix first); a field-less page with only a bare Continue or Proceed parks `confirm_page`; a plain Next is pressed. A
+  Resume on an `unsure_page` FILLS the page; the user's word feeds Ready (`readyBy` "user", errors and empties still checked) only for `submit_seen`, `submit_context` and `fields_no_next`, and is void once the read shows a Next. The one resume the run already wrote on the page excuses ONE required resume box, never a second. Closed means closed: a strict
   notice, nothing fillable and no Apply, and resumable. Pinned by `tests/test_extension_queue_run.py`, `test_extension_page_kind.py` and `tests/browser/test_page_reader.py`.
 - **Low stakes are decisive; a draft is read, not trusted.** `{#inv-drafted-answers}` A low-stakes gap is filled and reported `assumed` with a fixed note, never
   left blank and never invented as a fact: a date box asking for more than the fact has takes the 1st (January for a year), https goes on a host, a phone type
-  is Mobile, a dialing-code picker takes the profile country's code. A middle name is never made from the first name; the name is used as stored. `/choose`
+  is Mobile, a dialing-code picker takes the profile country's code. The owner's No/Yes safe defaults are in the §7 dial. A middle name is never made from the first name; the name is used as stored. `/choose`
   DRAFTS only a REQUIRED text or textarea that `/map` filed as `free_text` or `years_unanswered`, with an application, never at **Facts only**, never when the
   never-list matches (protected, EEO, work authorization, money, background, signatures, logistics, public service, employment here), in the owner's voice,
   about 120 words or the label's stated limit, `""` when the history cannot answer; it returns `assumed` with "Drafted from your history: read it" and saves nothing. Pinned by `tests/test_autofill_choose.py`, `test_autofill_map.py` and `tests/browser/test_fill_core_fields.py`.
@@ -571,11 +573,10 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   (Create PDF when an application lacks its PDF), Autofill; with full automation On the Job step's primary is Apply (below). The panel document is a family of scripts (panel.html owns roster and order):
   `panel.js` owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`) get a per-render snapshot,
   per-CONCERN actions (`panel/actions/*.js`) a handle with one `write(patch)` door, and each roster THROWS at boot naming a missing script.
-  `panel/icons.js` (`ns.icon`, inline Lucide svg) draws every icon; the panel carries no emoji or text glyph
-  (`test_extension_panel_icons.py`). `shared/status-roles.js` is the application status table (word + colour role) the web `StatusChip`
-  shares (`test_extension_status_roles.py`). `shared/resume-color.js` holds the base resume presets behind the Companion's base resume
-  square (`swatch`; §6 inv-resume-color-identity). `shared/` is what both worlds load: `decisions.js` (the ONE home of panel rules),
-  `choose.js` (routing, /choose batch, `rest_fill` shaping, `QUESTIONY`). `guided-run.js` (runner, injected transport) is panel-only.
+  `panel/icons.js` (`ns.icon`, inline Lucide svg) draws every icon; no emoji or text glyph (`test_extension_panel_icons.py`).
+  `shared/status-roles.js` is the application status table the web `StatusChip` shares (`test_extension_status_roles.py`);
+  `shared/resume-color.js` the base resume presets (`swatch`; §6 inv-resume-color-identity). `shared/` is what both worlds load: `decisions.js`
+  (the ONE home of panel rules), `choose.js` (routing, /choose batch, `rest_fill` shaping, `QUESTIONY`). `guided-run.js` is panel-only.
   Failure copy (never server text; `failureNote`), revisit rules, sender model, COMMIT GESTURE and the ONE `attachableFileInputs`
   definition: `extension/INTERNALS.md`. Never rename bridge storage key `widget.sessions` (tab id → job entry) — that drops every live entry. **Posting identity
   is ONE table in two languages** — `job_url_match.posting_id` ↔ `decisions.postingId` (LinkedIn `currentJobId` / `/jobs/view/<id>`, Indeed
@@ -583,27 +584,24 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `options.js`) read `read_settings`, save `backendUrl`/`appUrl` in `storage.sync` and test `/health`. `scripts/pack_extension.py` gates
   matching versions; store upload and key handoff: `docs/RELEASING.md`. Rest: `extension/INTERNALS.md`.
 - **Guided fill** (design doc `2026-08-16-guided-apply-design`, unpublished — §10): the panel's **Fill** stage — **Autofill** →
-  `panel_prepare` (the gesture-backed injection; `preparePage` is the only other injector) → a run. `fillMode` (`storage.sync`): "Saved
+  `panel_prepare` (the gesture-backed injection; `preparePage` is the only other) → a run. `fillMode` (`storage.sync`): "Saved
   answers + AI" (default) runs the fill loop (`shared/fill-loop.js`: Stop, report grouped by status, jump via `fill_focus`, `loop_fill`
   telemetry); "Saved answers only" runs the rule pass below; its rows are `reconcileFill`'s buckets plus the run's own
   writeResults-minus-residue, and the EEO row is the BACKEND's standing consent, never a local toggle. It claims `done.fill` (`touched`)
-  only when a run both wrote something and left nothing open — a tick takes the open-fields list off screen, so a partial fill keeps the
-  user on the step; a wizard's LATER pages are reached by REOPENING the ticked row, and `startFill`'s per-run clear keeps that re-run's
-  report its own. Per stage ONE runner (`ns.guidedRun.runGuidedFill(deps, {aiAssist, applicationId})`; `aiAssist: false` skips `/choose` and
+  only when a run both wrote something and left nothing open (a tick hides the open-fields list); a wizard's LATER pages are reached by
+  REOPENING the ticked row, and `startFill`'s per-run clear keeps that re-run's report its own. Per stage ONE runner (`ns.guidedRun.runGuidedFill(deps, {aiAssist, applicationId})`; `aiAssist: false` skips `/choose` and
   residues the whole remainder) runs rule pass → collect → one batched `POST /api/autofill/choose` (qid-keyed, ≤40/call; the option guard
   lives SERVER-side only — any answer not among rendered options, invented qid, or skipped qid collapses to abstain) → `ns.guidedWrite`
   sequenced by widget shape with ONE bounded retry. EXCLUDE'd controls a rule tried and missed become RETRYABLES (`ns.lastRuleAttempts`,
   in-memory per run) routed straight to `guidedWrite`, so their identity VALUES never reach `/choose`; its prompt does carry the saved
   answers (EEO only under inv-eeo-standing-consent) and the career history. Readback is timer-sampled and never defaults to failure:
-  unconfirmable is `filled_unverified`, not `not_stuck`. Submit stays human at every setting; Next only in the run below. After each run, both modes, the panel posts the
-  page's answer receipt (`shared/receipt.js`) and lists its flags under **Check before you submit**; a matched job's knock-out heads Fill.
-  The loop never fills a robot trap (`fillBase.robotTrap`), leaves an optional field with no fact blank (`left_blank`, listed, not asked),
-  reads Yes/No pill buttons, category rows, slow autocomplete lists, street addresses, URLs and split dates as widgets of their own (`extension/INTERNALS.md`, "The fill agent's rules"),
-  commits and confirms each item of a list field (up to 20, none already shown as a pill; never a closest pick), repeats no move that changed
-  nothing (a run record's `memory` keeps what failed across calls on one page; `only` limits a call to named fields), waits for the page to
-  settle before typing, and gives its adaptive step a technique card per widget kind, what worked on this site and its own `search:term`.
-  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`, Settings › AI & models › **Form filling**); how each decides, and
-  the Jev key's host rule, are reference tier: `docs/entities/others.md`, "Form-filling engines".
+  unconfirmable is `filled_unverified`, not `not_stuck`. Submit stays human at every setting; Next only in the run below. After each run the panel posts the page's answer receipt
+  (`shared/receipt.js`) and lists its flags under **Check before you submit**; a matched job's knock-out heads Fill.
+  The loop never fills a robot trap (`fillBase.robotTrap`), leaves an optional field with no fact blank (`left_blank`, listed, not asked), reads pills,
+  category rows, slow autocompletes, addresses, URLs and split dates as widgets of their own, commits and confirms each item of a list field (up to 20;
+  never a closest pick), repeats no move that changed nothing (a run record's `memory` keeps what failed; `only` limits a call to named fields) and
+  waits for the page to settle before typing (`extension/INTERNALS.md`, "The fill agent's rules").
+  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`; Settings › AI & models › **Form filling**): `docs/entities/others.md`, "Form-filling engines".
 - **Queued run, one job (Apply)** (`shared/queue-run.js` driver, pure with injected deps; host `panel/actions/run.js`; card `panel/runs.js`;
   `extension/INTERNALS.md`, "Queued run"): with full automation On the Job step offers **Apply**: save, score, pick the resume (never overwriting a
   tailored draft or an open session), queue as the user's yes (consent channel `companion`), then drive THIS tab from the job's apply link
@@ -615,10 +613,10 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   each step** (default Off: three presses, Save job, Tailor resume or Make PDF, Start filling, and the user's yes is given at Start filling, not
   before). **Submit is never clicked, at any setting**: `shared/page-kind.js` treats any Submit word, a dialog about submitting or an unseen Submit as
   the review page (Ready only on a real Submit: §6 inv-ready-real-review), and Next is pressed only by `page_advance` (`content/page-reader.js`), which re-sorts the button's labels at click time. A
-  posting's Apply is followed only as a same-tab http(s) link (no click handlers) on the first read of a tab the run opened. CAPTCHA, email code,
+  posting's Apply, and a Workday start chooser's Apply Manually link alone, are followed only as a same-tab http(s) link (no click handlers) on the first read of a tab the run opened. CAPTCHA, email code,
   an account on a site it does not know (on a known ATS it creates the account itself, §6 inv-job-site-password-local), a job board's own apply, a review
-  page that is not plainly the end and any unrecognised page PARK (Needs you), as does a required field it could not answer, once per page,
-  and a refused Next it cannot repair (inv-rejected-next) or a required upload it cannot fill (inv-one-resume-write). The user answers in the page and
+  page that is not plainly the end, any other start chooser and any unrecognised page PARK (Needs you), as does a required field it could not answer, once per page,
+  a refused Next it cannot repair (inv-rejected-next) and a required upload it cannot fill (inv-one-resume-write). The user answers in the page and
   presses **Resume**: every typed answer is remembered (Undo; long written ones never); one naming the job's company or city is held for that job only
   (`only_for` + `only_for_kind`, whole word, by `autofill_job.profile_for_job` for both `/context` and `/choose`; Settings has Use for every job). The
   hand fix teaches the recipe book (§6 gesture report). The user's own Submit is recorded only from a confirmation page on a host the run reached at
@@ -632,9 +630,12 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   job's favour, and "N years of a skill" Yes when the history shows it), **Queued means I qualify** (also every requirement question Yes,
   and a years question Yes only when the history is silent or shows enough, else asked; only for the job's own posting: accepted/approved
   proposal plus `page_url` `is_same_posting` against `apply_url`/`source_url`). The protected list sits outside every level and parks unless
-  a saved fact answers it: work authorization and sponsorship, salary, EEO (unless consented), criminal or background history, clearance and
-  agency employment (never a keen guess), signatures and attestations (unless Agreements consent), unsupported education or experience
-  claims. Every dial answer is marked on the receipt; written drafts: §6 inv-drafted-answers.
+  a saved fact answers it: work authorization and sponsorship, salary, EEO (unless consented), criminal or background history, termination,
+  agreements, debarment, clearance and agency employment (never a keen guess), signatures, attestations and authorization boxes (unless Agreements
+  consent), licences, unsupported education or experience claims. **Safe defaults** (owner; History level up): a status the profile lacks and that only
+  adds something (tribal, union or association membership, a referral, a relative or household member at the company) is No (Not applicable if offered);
+  willingness or consent to a standard pre-employment step (background check, drug test, references, I-9/E-Verify, documents) and basic means
+  (transport, internet) is Yes. Every dial answer is marked on the receipt, so defaults are listed under **Check before you submit**; written drafts: §6 inv-drafted-answers.
 - **Streaming chat** runs through `llm_providers` on any provider; eligibility is the tools probe.
 
 ## 8. Frontend conventions

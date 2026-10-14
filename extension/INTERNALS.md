@@ -761,7 +761,8 @@ know, and each one was learned from a live failure.
   than trusting that collection already refused it.
 - **An application's own agreement boxes** — "Yes, I have read and consent to
   the terms and conditions", acknowledgements, attestations, arbitration and
-  waiver boxes (`CONSENT_FORMS`) — are also refused without that permission.
+  waiver boxes (`CONSENT_FORMS`, which also reads "I ... authorize" and "background check
+  authorization": a box that itself authorizes a check) — are also refused without that permission.
   **With it** (an explicit `consentForms: true`) `isPolicyBlocked` refuses NO
   label: every field above, agreement boxes and salary history become fillable
   (owner's decision, 2026-09-26: it is your application and your recorded,
@@ -1437,8 +1438,9 @@ footer alone).
   one frame to ask), `page_errors`, `page_uploads` and `page_required` (broadcastable like the others; below), `page_sign_in` and `page_create_account` (top frame only, in
   `panel_frame0`'s allow list and NOT broadcastable), `fill_watch` and `fill_watch_report` (below). `summary()` is counts, button texts and booleans, never a value or a password;
   its `errors` is a COUNT of what the page complains about, `errorKeys` are hashes of those errors (which ones, never what they say), and a
-  button that is only a line of the error summary carries `inErrors` (and `errorLine` when its own text reads as "Error - <field>").
-- **Page kinds** (`shared/page-kind.js`, pure): the posting, sign-in, create-account, email-code, CAPTCHA, board-native, form step,
+  button that is only a line of the error summary carries `inErrors` (and `errorLine` when its own text reads as "Error - <field>"). It also names
+  `fieldControl` and `navigation` on a button, `chooserId` (the start chooser's one link) and, on the Workday host only, `headerSignIn` (below).
+- **Page kinds** (`shared/page-kind.js`, pure): the posting, start chooser, sign-in, create-account, email-code, CAPTCHA, board-native, form step,
   review, confirmation and closed pages. A button sorts as Submit when ANY Submit stem appears in its text (submit, apply, send, finish,
   finalize, complete, confirm: substrings, because a wrong match only stops), as Next only when the whole label is a Next word
   (next, continue, save and continue, review), and otherwise as unclear. A review carries `by`, WHY it reads as one, because only one reason is the
@@ -1453,6 +1455,25 @@ footer alone).
   bare "Continue" or "Proceed". **Closed** is the notice wordings only (this job, position, posting or requisition has been or is now closed, has
   been filled, no longer accepting applications, available or open; "has been filled" after until, once, when, after, before, if or unless is
   prose) and counts only on a page with nothing fillable and no Apply control, so a job description's own prose never ends a run.
+- **A field's own control is never an action** (`fieldControl` on the summary's button, `content/page-reader.js`). A Workday question popup carries its
+  question in its aria-label ("... willing to submit to a background check? Select One Required"), which sorted by words is a Submit. So a popup button
+  (`aria-haspopup` listbox or true), a member of a pill group (the shape reader's `pills`, or a real group of `aria-pressed` toggles; a lone toggle, one worded
+  as a Next and one that is a whole Submit or Send phrase are not) and a button inside a field holder (`fieldset`, `[role=group]`, `formField*` automation
+  ids, when it holds another field or is a vendor wrapper) are left out of the Submit/Next sort, of `submitSeen` and of `page_advance`. Exceptions stay
+  actions: a form's own submit (a button with no type inside a form, `type=submit`, a submit mark), a button whose SHOWN text says Submit or Send when it is
+  an `aria-haspopup="true"` button or sits in a holder, and a holder button worded as a Next. A listbox popup and a pill show the answer picked ("Yes, I am
+  willing to submit..."), which stays the field's.
+- **The footer decides the step** (`navigation`). The vendor's footer button (`shared/ats-buttons.js`, Workday `pageFooterNextButton`, verdict `text`) that
+  is visible, enabled and worded as a Next makes the page a `form_step` with that button as the Next: it settles several Nexts and outweighs a Submit the
+  button list could not see (`submitSeen`). It never overrides a real Submit button or a dialog that asks about submitting, and a footer worded Submit is a Submit.
+- **The start chooser** (Workday's "Start Your Application": Autofill with Resume, Apply Manually, Use My Last Application, three same-tab links). The page
+  reads `chooser` (`chooserId` set and nothing fillable) before the posting and Submit checks, because "Apply Manually" is a Submit word. `shared/ats-buttons.js`
+  `CHOOSERS` allows exactly one link by host, automation id, exact text and path end, citing `fixtures/browser/workday_chooser.html`; the other two
+  links (the resume parser, the last application's answers) are never named, so never followed. The reader names it only when no control on the page is
+  fillable; the press (`advance(.., {chooser: true})` -> `pressChooser`) re-checks everything and NAVIGATES to the checked address (`location.assign`),
+  never a click. The driver allows it only at step 0, with nothing filled, no sign-in or account made, not on a Resume or a run in place, on the host the
+  run reached, and on the first page read after it opened the tab or the one read right after its own posting Apply moved the page. Anything else parks
+  `chooser` ("Choose how to apply": press Apply Manually in the tab, then Resume; the host the user lands on joins the run's).
 - **`page_advance` is the only navigation click in the extension.** It re-sorts the button's CURRENT labels (text, value, aria-label,
   aria-labelledby, title) at click time and refuses any Submit-worded one, a disabled or hidden one, and a forged id; ids are minted
   per read and tagged per frame, and the press goes to the one frame that named the button. `shared/ats-buttons.js` adds only
@@ -1462,13 +1483,15 @@ footer alone).
   of a tab the run opened itself, at step 0, with nothing filled, on the host the apply link led to, and when the page has no fillable
   control and one control worded exactly Apply / Apply now / Apply for this job that is not a form's submit. Never after a sign-in
   or a Resume: a site that restores a saved draft lands on its review page, whose "Apply" is a Submit.
-- **Walls park, they do not retry.** CAPTCHA, email code, account creation on a host that is not a known ATS or that the page refuses, a sign-up page seen again after the press (`create_account_failed`), board-native apply, a failed sign-in, a page it does not
-  recognise (a start chooser such as Workday's "Autofill with Resume / Apply Manually"), a "thank you" page before the run reached
+- **Walls park, they do not retry.** CAPTCHA, email code, account creation on a host that is not a known ATS or that the page refuses, a sign-up page seen again after the press (`create_account_failed`), board-native apply, a failed sign-in, a start chooser it may not follow (`chooser`), a page it does not
+  recognise, a "thank you" page before the run reached
   review, the tab on a host the run never navigated to (not after a park that told the user to go somewhere, `sign_in_yourself`,
-  `verify`, `posting` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps, a Next that changes nothing
+  `verify`, `posting`, `chooser` or `unknown_page`: where they land on Resume is theirs, and that host joins the run's), the same page again, more than 15 steps, a Next that changes nothing
   (after one refill), a Next the page refuses and names (`page_errors`), a required upload it could not fill (`upload`), a review page that is not
-  plainly the end (`unsure_page`) and a field-less page with only a bare Continue or Proceed (`confirm_page`; a step whose only content is an upload box the fill wrote or listed is a step, not this: `hadUpload`) each park with a fixed `why` word;
-  `panel/runs.js` holds the words and which of Resume or Skip this job each offers. A **closed** page ends the run as stopped (`closed`) and offers
+  plainly the end (`unsure_page`, after it held; below) and a field-less page with only a bare Continue or Proceed (`confirm_page`; a step whose only content is an upload box the fill wrote or listed is a step, not this: `hadUpload`) each park with a fixed `why` word;
+  `panel/runs.js` holds the words and which of Resume or Skip this job each offers. An `unsure_page` card is worded per reason (`run.lastBy`), never
+  "the last page" while a real Next is visible: `several_next` "More than one Next", `submit_seen` and `submit_context` "May send the application", `fields_no_next`
+  "No Next button found", else "Not sure about this page". A **closed** page ends the run as stopped (`closed`) and offers
   Resume ("Open the application in the tab, then press Resume").
 - **Sign-in.** `pageOps().signIn` fetches the login (`POST /api/companion/job-site-login`) and types it in one call, the password a
   local that goes out of scope with it. It types only on a known ATS host (`shared/ats-hosts.js`, anchored at a dot, never a
@@ -1487,18 +1510,28 @@ footer alone).
   alerts or marketing. A REQUIRED box it will not tick, and the user has not, refuses the page (`agreement`: nothing typed or pressed, the `create_account` wall,
   the attempt not used). It presses only the one visible control whose WHOLE label is "Create Account" (never one in site chrome, one with a Submit word
   in any label, or one the page marks as a submit). The status shows "Creating account". After the
-  press the driver waits for the page: a changed page goes on (an email check that reads as one parks `verify`, a CAPTCHA parks `captcha`); the same page with errors, or no
-  change, or a sign-up page seen again, parks `create_account_failed` (the "Account not created" card), never retried. An account that already exists is one of the failures:
-  the user signs in or fixes the page and presses Resume.
+  press the run SETTLES (`accountTaken`): it reads the page every `POLL_MS` for up to `ACCOUNT_SETTLE_MS` (20 s), because the site keeps showing the sign-up form
+  for a while before the next page, with the pre-press error keys as the baseline (errorish text already there is not new). **Taken**: a verify, CAPTCHA or
+  sign-in page (the main loop then parks or signs in as for any page); on the Workday host a read whose header Sign In button (`headerSignIn`) is gone with fewer than
+  two password boxes, no code box and a Next in the step (`pageKind.signedUpRead`); or any other page that is no longer the sign-up form and has left it (another
+  address or step heading; a failed sign-up redrawn without its password boxes is the same page). **Failed** (`create_account_failed`, the "Account not created" card,
+  never retried): the sign-up form with an error that was not there before the press, held for `REJECT_HOLD_MS` (3 s), or the sign-up form still showing at the
+  timeout. **Blank**: a page that stayed blank to the timeout is not called a refusal; the main loop judges it (the unknown-page park). An account that
+  already exists is one of the failures: the user signs in or fixes the page and presses Resume.
 - **Ready is a real review page.** `finish("ready")` needs, in order: the page is a review with `by` = `submit_button` (the record keeps `lastBy`;
-  any other `by` parks `unsure_page`, and the card says "If it is, press Resume. Submit stays yours."), evidence the
+  any other `by` parks `unsure_page` after the unsure hold, below, worded per reason), evidence the
   page was the application (a step behind it, or a field this page's fill wrote or confirmed), no page errors (`summary.errors`: one repair of the
   fields they name as after a rejected Next, then `page_errors`), and no required box left empty (`summary.requiredEmpty`, below). A required empty
   gets ONE scoped fix (`requiredTried`, `deps.fix` over exactly those items, the way a rejected Next is repaired) and must then be filled, else
   `open_questions` names them; an upload item follows the box-kind rules of the next bullet. `readyBy` is `submit_button`, or `user` when the Ready
-  came from a **Resume on an `unsure_page`**: that Resume is the user vouching for the page (`vouched`, `record.parkedPage` kept for the park; the
-  page is not filled again, errors and required empties are still checked, and an attach an earlier run wrote, even unconfirmed, is not asked of the
-  page again). A review page with no heading is vouched for by its address alone (an empty step key proves nothing, but the address does). The
+  came from a **Resume on an `unsure_page`** whose `lastBy` was `submit_seen`, `submit_context` or `fields_no_next` (`VOUCHABLE`): the user's word that it
+  is the last page (`vouched`, `record.parkedPage` kept for the park). The page is FILLED first like any Resume's (the fill answers nothing that already
+  holds an answer); errors and required empties are still checked, and an attach an earlier run wrote, even unconfirmed, is not asked of the page again.
+  The vouch is void once the page reads as a `form_step` (a real Next: that Next is pressed) and never covers `several_next`. A review page with no
+  heading is matched to its park by its address alone (an empty step key proves nothing, but the address does).
+  **The unsure hold.** A review whose `by` is not `submit_button` and is not vouched must read the same, unchanged, for `LONE_STABLE` (4) reads in a row
+  (about 2 s; capped at `LIMITS.changeMs`, 15 s) before the run parks, because a step half drawn reads as fields and no Next for a moment. Page errors
+  and required empties are dealt with BEFORE the verdict, so a page with boxes empty gets its fix (or names them) first. The
   confirmation watch and the auto-mark work the same for either `readyBy`. A ready tab the user took back to a form step (a real Next) shows "You
   moved on" with a Resume.
 - **The page reader's required items and overlays** (`content/page-reader.js`). `summary()` carries `requiredEmpty` (a count) and `requiredKeys`
@@ -1514,9 +1547,10 @@ footer alone).
   its Next. **A stepper** (a container named `stepper`, `-steps` or `steps-item` that holds no form field, or a progressbar) lists step names, the
   last often "Submit": those are labels, not Submit controls, and only a real button inside one still counts.
 - **The one refill.** A page that draws its fields after its footer (Workday question steps: popups mounting ~2.5 s later) showed none when it was
-  filled: when the fill LISTED no field and read no control (`listed === 0 && seenAtFill === 0`) and the re-read shows controls, the page is filled
-  once more (`refilled`) before Next or Ready. A Next that changes nothing is refilled once more too (`tried`). The trigger is the control count; a
-  changed set of field fingerprints is not a trigger. Per-page flags (`pageFilled`, `tried`, `fixRounds`, `requiredTried`, `vouched`, `listed`,
+  filled: when the fill LISTED no field (`listed === 0`) while the re-read reports fillable controls (`summary.fillable > 0`; the guard no longer asks
+  what the pre-fill read counted, since a page that showed one other control at the fill still listed none of its popups), the page is filled once more
+  (`refilled`) before Next or Ready, and it is filled BEFORE it is judged. A Next that changes nothing is refilled once more too (`tried`). The trigger is the
+  control count; a changed set of field fingerprints is not a trigger. Per-page flags (`pageFilled`, `tried`, `fixRounds`, `requiredTried`, `vouched`, `unsureRun`, `listed`,
   `refilled`, `attempted`, `wroteResume`, `record.attach`, `record.memory`) reset in `moved()`; `record.flags` (Check before you submit) is the LAST
   page's alone, so a page whose receipt is null shows none. `record.assumedRows` is the run's, NOT reset per page: every answer the run made for you on any
   page (a drafted answer, a date set to the 1st) as `{fid, question, step, note}`, one per question and step, never a value; Ready merges it into
@@ -1543,9 +1577,12 @@ footer alone).
   `field` | `upload` | `unknown`. Sources: a visible alert or `aria-live` region that reads like an error (not `aria-live="off"`; a region that holds a
   field is the step around it), a block headed "Errors Found" / "Please correct" and the like, and each control marked invalid (the field reader's
   `invalid`, extended to upload boxes: the box's own `aria-invalid`, an error node in its widget, an error referenced by `aria-describedby`; never a
-  fieldset around a neighbour). One item per field (the summary's line and the field's own mark are one error). A summary item maps to its field by its link
-  (`href="#id"`, `aria-controls`, the `for` of its label), else by `aria-describedby`, else by an exact normalised label; "Error - X" and "The field X
-  is required" reduce to `X`. A mapped error is worded by the field's own question; an unmapped one by its line's field name; a name that could carry
+  fieldset around a neighbour). One item per field (the summary's line and the field's own mark are one error). **One error line is read as one line** (`lineParts`): Workday sets the "Error - X" button and "The field X is required and must have a value." in one list
+  item with no space between, so the name comes from the line's own "Error - X" button or link when it holds one (its linked control is the field), else from the
+  first non-empty line of its text, never from the item's text run together; the X of a "The field X is required" sentence is kept as a second name. A summary item maps to its field by its link
+  (`href="#id"`, `aria-controls`, the `for` of its label), else by `aria-describedby`, else by an exact normalised label (the name, then the sentence's X),
+  both compared after the same 160-character clip, so a long question still matches; popup buttons count among the controls a name can map to. "Error - X" and
+  "The field X is required" reduce to `X`. A mapped error is worded by the field's own question; an unmapped one by its line's field name; a name that could carry
   something of the user's (a file name, an address, a quoted string, a value the page holds, `heldValues`) becomes "Something the page names". A
   block that merely sits under "please correct any errors" is not a summary when it holds a button that is no error line, and a Submit-sorted
   button always counts as a Submit, wherever it sits.
@@ -1572,12 +1609,13 @@ footer alone).
   saved as a standing one), posts a "you" receipt row, and continues; a record ended under the read is not driven. Resume also makes the
   record belong to the panel that pressed it (its lease), so the mark after the user's Submit has exactly one owner even when another window's
   panel left the record. A `page_errors`, `upload` or `unsure_page` park remembers its page (`record.parkedPage`: address and step key, cleared on the first
-  read after the Resume; an `unsure_page` page is matched by address alone when it has no heading). A Resume skips the fill only when that first read is that page (an empty step key proves nothing, so that page is filled
+  read after the Resume; an `unsure_page` page is matched by address alone when it has no heading). A Resume after `page_errors` or `upload` skips the fill only when that first read is that page (an empty step key proves nothing, so that page is filled
   as usual); then after a `page_errors` park the errors are read and any that remain get a repair round, and after an `upload` park the upload
   boxes are only LOOKED at (`deps.uploads`, never an attach): a required box still empty parks `upload` again, naming only it, except the box
   an `unconfirmed` write went into (excused by its tag, or, if the page redrew it, when it is the only one left), and Next is pressed only when
-  none is. After an `unsure_page` park, the Resume on that page is the user's vouch (`vouched`): no refill, but errors and required empties are still
-  checked, and a clean page goes Ready with `readyBy` "user". On any other page a Resume fills as usual, so it never presses Next over an unfilled page.
+  none is. After an `unsure_page` park the Resume FILLS the page (a fill never overwrites an answered field) and the user's word (`vouched`) feeds only the Ready
+  judgement, for the parks that were about a Submit or a missing Next (above); errors and required empties are still checked, and a clean page goes Ready
+  with `readyBy` "user". On any other page a Resume fills as usual, so it never presses Next over an unfilled page.
 - **A saved answer that names this job stays with this job.** The panel (`panel/actions/pause.js` `scopeOf`) saves a row with `only_for`
   and `only_for_kind` (`company` or `city`) when the QUESTION names the job's company (the legal-suffix-free name first) or its city. The
   company match is case-sensitive on the job's own spelling (a company called Lapse is not "any lapse in employment"); a city is taken only from
@@ -1660,15 +1698,23 @@ footer alone).
 - **Relinking the proposal.** Apply links the draft it made to the open proposal; a draft the user tailors afterwards used to meet "proposal already
   linked" on every later press. `POST /api/proposals` now moves an `accepted` proposal to a newer draft of the same job, only for the Companion's
   exact origin, only when the proposal was queued on the `companion` channel with no final review taken, and while the old draft is gone or still a
-  draft (the draft it leaves goes back to the user lane); an application of another job is refused on every linking route. Everything else is a 409.
+  draft (the draft it leaves goes back to the user lane); an application of another job is refused on every linking route. Everything else is a 409. A job
+  the user marked applied (its proposal closed as "applied manually") and set back to Draft queues again; while an application still says applied, the 409 says
+  "You marked this job applied. Set its application back to Draft", not "You skipped this job before".
 - **Per-run fill limits.** `runFill` copies its limits per run; a driven tab passes `RUN_LIMITS` (60 s a field, 12 adaptive steps,
   10 minutes a page), the user's Autofill keeps 25 s, 8 and 3 minutes, and the module defaults are never written.
 
 ### Known limits (Queued run)
 
+- **A Next drawn as a div is not seen.** The button list is `button`, `input[type=submit|button]` and `a[role=button]`; a page whose only Next is a div (even
+  with `role=button`) reads as fields and no Next (`fields_no_next`), and the run parks after the unsure hold. The user presses that Next and Resume.
+- **The chooser needs a page with nothing fillable.** Any fillable control on the start chooser's page (a cookie notice's checkbox, a search box) means no
+  `chooserId`: the page reads as something else and the user presses Apply Manually once in the tab, then Resume. Only the one Workday row exists.
+- **Darwinbox is not a known ATS host** (`shared/ats-hosts.js`). Its postings are read (Save job), but its Apply leads to a sign-in with a CAPTCHA, so the run
+  never types a login or creates an account there and parks for the user.
 - **A page with no heading can never read as a rejected Next** (the fingerprint has no step key, so "same step" is unknown, never true); such a
-  page that refuses a Next shows as "no change" and parks after one refill. A headingless REVIEW page, though, is vouched for by its address when
-  the user presses Resume on an `unsure_page`.
+  page that refuses a Next shows as "no change" and parks after one refill. A headingless REVIEW page, though, is matched to its park by its address
+  when the user presses Resume on an `unsure_page`.
 - **`heldValues` misses a select's visible text and a custom combobox's value** (it reads typed inputs and a multi-select's pills), so an error line
   that echoes one of those is shown as the page wrote it instead of "Something the page names".
 - **A file the user attached by hand is seen in the run's own frame only.** A targeted attach refuses when another box in the frame holds a file; one
@@ -1797,13 +1843,25 @@ footer alone).
 
 `autofill.answer_level` (Settings › Form filling; `facts` | `history` | `queued`, default `history`) is read by `/map`, `/pick` and
 `/step` (the same level in each prompt), by the Companion and by agents through the Job Search Brief's `applying.answer_level`. The
-protected list (work authorization and sponsorship, salary, EEO, criminal or background history, security clearance and agency
-employment, signatures and attestations, unsupported education or experience claims) sits outside every level. `queued` applies only
+protected list (work authorization and sponsorship, salary, EEO, criminal or background history, termination or discipline, agreements, debarment, security
+clearance and agency employment, signatures, attestations and authorization boxes, licences and certifications, unsupported education or experience claims)
+sits outside every level. `queued` applies only
 to the job's own posting: `/map`, `/pick` and `/step` carry the page's address (`page_url`, http(s), no fragment; never in a trace) and
 the server needs an accepted or approved proposal and `job_url_match.is_same_posting` against the job's `apply_url` or `source_url`.
 At the top level a years question is Yes only when the history is silent or shows enough years (fewer: asked, in `/step` too); at the
 middle level it is Yes when the history shows the skill and does not contradict the years. Clearance and agency questions are never
 a keen guess. An answer the level gives is an `inferred` receipt row, so the `guessed_screening` flag lists it under "Check before you submit".
+
+**The safe default** (owner decision, 2026-10-14; `autofill_map._LOW_STAKES_TEMPLATE`, `_KEEN_NO`, `_KEEN_YES`, read by `/map` and `keen()` for `/pick` and
+`/step`; from `history` up, never at `facts`). When the profile has no fact: a yes/no about a status, affiliation or circumstance that would only add
+something, from a CLOSED list (tribal, union or association membership, an employee referral, a relative or household member at the company), is No (Not
+applicable when offered); a yes/no about willingness, readiness or consent to a standard pre-employment step (background check, drug test, reference check,
+I-9/E-Verify, providing documents) or about basic means (reliable transportation, internet) is Yes, both directions stated outright to the model. Never
+defaulted (the never-list): work authorization, sponsorship, age or eligibility facts, EEO and voluntary self-identification (the safe answer there is
+"decline", never No), background or criminal HISTORY (a record, a conviction, a pending charge; the protected sentinel names only that, so willingness to a
+check is no longer protected), termination or discipline, non-competes and other agreements, debarment, clearance, salary, signatures and attestations, a box
+that itself authorizes a check or a consumer report, licences and certifications, factual education or experience. A skills section that is not required stays
+empty. Such a box is the user's alone: `CONSENT_FORMS` refuses it without the Agreements permission, and with that standing consent (owner model, 2026-09-26) the consent-forms rule ticks it, never a model.
 
 ### Answers the backend derives or drafts (live check 2)
 
@@ -1815,14 +1873,24 @@ a keen guess. An answer the level gives is an `inferred` receipt row, so the `gu
   authorization, sponsorship, clearance, background checks, terminations, non-competes, eligibility, willingness, a competitor, customer, vendor or
   partner, a government, agency, military or other public body beside the company, or a time window. `/map` reroutes a choice the model filed as history
   or no-fact (never a refusal or an unreadable map answer), and the trace names it as code's call. A derived Yes also asks the user when the question lists
-  only a parent or subsidiary of an employer.
+  only a parent or subsidiary of an employer. **Another company's name** (the page's word for the job's own company, which the record spells as its legal
+  entity, or a stranger) is rerouted too while the derived answer is No (`asks_worked_here_of_other`): employment verbs only (`_OTHER_SHAPES`; "worked with" is
+  use or collaboration, never employment), the exclusion list, ONE capitalised proper name that is no group of companies ("FAANG", "Fortune 500", "Big Four"),
+  no company the history or a parent or subsidiary of it holds, and no history entry that is no employer ("Confidential", "Freelance": the resume cannot say
+  where it was). It is its own slot, `derived.previously_employed_here#other`, in `ASSUMED_SLOTS`, so the answer is reported `assumed` and listed under "Check
+  before you submit".
 - **Phone type and country (J5).** `derived.phone_type` is "Mobile", reported `assumed`; `derived.phone_country` is the profile country's calling code and name
   ("+1 United States", from a fixed table). Neither receives the number, and `content/autofill.js` skips a phone-type box ("Phone number type", "Mobile number type")
   before its phone rule; the rule reads "type" as a noun, so "Please type your mobile number" is still the phone box.
-- **How did you hear (J6).** A saved source that reads as a board (or names one) gets a `/step` goal that opens the website, online or job-board category (else
-  Other) and picks the leaf for the board that listed THIS job (the job hint's `source`, else the saved URL's host: `linkedin.com` is LinkedIn); a website or
-  careers-page answer picks the careers-site leaf and names no board; any other saved word ("Referral", "Internet search") is walked to its own leaf by the
-  ordinary goal. A leaf that is not the saved word itself is reported `assumed`.
+- **How did you hear (J6).** A saved source that reads as a board (or names one) is answered by code before any model (`autofill_step._board_move`, traced as
+  code's call). The board is the job hint's `source`, else a board named in the saved value, matched as whole tokens against the known board names
+  (`board_of`: "rec_linkedin" names LinkedIn, "prejudice" does not name Dice; `linkedin.com` is LinkedIn). **Board search first**: a plain click candidate whose
+  first quoted text equals the board is clicked unless it was already tried and missed; else, when the page offers a search and that board was not searched
+  yet, the board's name is searched (a tree is searched whole, where a model walking categories cannot back out of a wrong one: on one tenant LinkedIn sits
+  under Social Media, on another under Job Board); else the MODEL decides, with a goal that says to search the board's name first, then open the category most
+  likely to hold it (names like Job Board, Online, Internet, Website, Social Media or Other) and try the next if it is not there. The goal never names one
+  category. A website or careers-page answer picks the careers-site leaf and names no board; any other saved word ("Referral", "Internet search") is walked to
+  its own leaf by the ordinary goal. A leaf that is not the saved word itself is reported `assumed`.
 - **Degree levels (J7).** `answer_flags.differs_from_profile` compares a degree by level when the page's value names only a level ("Master's/Advanced Degree"
   matches a Master of Science), reads M.B.A. as a master's in business administration only, treats a bare MS, MA, BS or BA as a degree in its own field, and
   compares a named field by its words.
