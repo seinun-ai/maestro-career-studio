@@ -319,6 +319,17 @@ def test_every_status_is_the_next_cards_title_and_only_the_working_ones_say_appl
     assert "Autofill" not in _text(out["shots"][1]["regions"]["foot"])
 
 
+def test_a_ready_run_card_keeps_the_ask_box_under_it(tmp_path):
+    """The Ask drawer is about the user's own question, so a run card does not take it away."""
+    out = _run(tmp_path, [{"seed": [_seeded("ready", readyAt=1)]}, {"pressText": "Ask"}])
+    closed, opened = out["shots"][1]["regions"]["rail"], out["shots"][2]["regions"]["rail"]
+    [drawer] = _by_class(closed, "qna")
+    [toggle] = _by_class(drawer, "linkish")
+    assert toggle["attrs"]["aria-expanded"] == "false"
+    assert not [one for one in _walk(closed) if one["id"] == "qna-question"]
+    assert [one for one in _walk(opened) if one["id"] == "qna-question"]
+
+
 def test_the_running_card_shows_the_pages_so_far_a_bar_stop_and_the_fixed_line(tmp_path):
     record = _seeded("filling", step=1, pages=[{"n": 1, "filled": 12}], progress={"done": 5, "total": 9})
     out = _run(tmp_path, [{"seed": [record]}])

@@ -835,8 +835,9 @@
   }
   // The body, with the Forget control under it on every path.
   function fillBody(ctx) {
-    // A queued run on this tab is the fill in progress: its card (panel/runs.js) is the whole body.
-    if (ctx.facts.run) return ns.panelRuns.render(ctx);
+    // A queued run on this tab is the fill in progress: its card (panel/runs.js) is the body.
+    // The Ask box still sits under it: it is about the user's own question, not about the run.
+    if (ctx.facts.run) return ctx.build.attach(ns.panelRuns.render(ctx), qnaDrawer(ctx));
     const body = fillBodyOf(ctx);
     const forget = forgetRow(ctx);
     return forget ? ctx.build.attach(body, forget) : body;
