@@ -45,7 +45,9 @@
       {"path": "backend/tests/test_extension_frame_gate.py", "symbol": "test_a_subframe_without_form_evidence_is_refused"}
     ],
     "inv-policy-deny-list-single-source": [
-      {"path": "extension/shared/policy.js", "symbol": "NEVER_FILLED"}
+      {"path": "extension/shared/policy.js", "symbol": "NEVER_FILLED"},
+      {"path": "backend/tests/test_extension_page_kind.py", "symbol": "test_any_submit_word_sorts_as_submit_even_beside_a_next_word"},
+      {"path": "backend/tests/test_extension_page_kind.py", "symbol": "test_a_dialog_or_heading_that_asks_about_submitting_makes_its_proceed_a_review"}
     ],
     "inv-one-label-pattern-table": [
       {"path": "backend/tests/test_extension_eligibility.py", "symbol": "test_the_shared_pattern_table_fails_loudly_when_it_is_wired_wrong"},
@@ -77,7 +79,10 @@
       {"path": "backend/tests/test_autofill_trace_router.py", "symbol": "test_an_unknown_key_in_the_body_is_a_422"},
       {"path": "backend/tests/test_autofill_trace_router.py", "symbol": "test_no_counter_key_or_count_holds_a_host_or_label"},
       {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_no_value_reaches_the_trace"},
-      {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_what_the_trace_keeps_of_the_page_is_its_labels_and_options"}
+      {"path": "backend/tests/browser/test_fill_loop.py", "symbol": "test_what_the_trace_keeps_of_the_page_is_its_labels_and_options"},
+      {"path": "backend/tests/test_extension_sw_router.py", "symbol": "test_gaps_are_posted_only_for_a_user_who_turned_the_fill_log_on"},
+      {"path": "backend/tests/test_autofill_gaps.py", "symbol": "test_any_extra_key_is_refused_and_nothing_is_stored"},
+      {"path": "backend/tests/test_autofill_gaps.py", "symbol": "test_clearing_telemetry_also_clears_the_gaps_because_they_hold_hosts"}
     ],
     "inv-filled-answers-local": [
       {"path": "backend/tests/test_filled_answers_invariant.py", "symbol": "test_telemetry_and_trace_never_read_the_receipt"},
@@ -117,7 +122,8 @@
       {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_refused_for_a_closed_proposal"},
       {"path": "backend/tests/test_job_site_login_handoff.py", "symbol": "test_handoff_never_logs_or_persists_the_password"},
       {"path": "backend/mcp_server/tests/test_client_job_site_login.py", "symbol": "test_login_failure_uses_a_fixed_status_message_without_response_body"},
-      {"path": "backend/mcp_server/tests/test_client_job_site_login.py", "symbol": "test_transport_errors_cannot_expose_a_password_in_their_message"}
+      {"path": "backend/mcp_server/tests/test_client_job_site_login.py", "symbol": "test_transport_errors_cannot_expose_a_password_in_their_message"},
+      {"path": "backend/tests/test_companion_job_site_login.py", "symbol": "test_no_extension_origin_means_no_login"}
     ],
     "inv-auto-consent-gated": [
       {"path": "backend/tests/test_full_automation_setting.py", "symbol": "test_full_automation_is_off_by_default_and_round_trips"},
@@ -133,7 +139,8 @@
       {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_the_agents_word_needs_a_note_naming_the_confirmation"},
       {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_submission_uncertain_can_be_confirmed_by_the_agents_word"},
       {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_the_agents_word_is_refused_once_full_automation_is_off"},
-      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_consent_cannot_submit_without_attestation_even_with_a_receipt"}
+      {"path": "backend/tests/test_proposal_state_machine.py", "symbol": "test_auto_consent_cannot_submit_without_attestation_even_with_a_receipt"},
+      {"path": "backend/tests/test_companion_submitted.py", "symbol": "test_only_the_companion_may_record_it"}
     ],
     "inv-one-writer-ownership": [
       {"path": "backend/tests/sync/test_guard.py", "symbol": "test_write_paths"},

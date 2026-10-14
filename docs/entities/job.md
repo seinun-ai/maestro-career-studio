@@ -46,6 +46,15 @@ the list never scores or backfills).
   `_find_existing`'s url_fallback above — so the no-raw-text capture path dedupes
   by POSTING too. Both scan newest-first and take the first hit, so overlapping
   saves resolve deterministically to the most recent capture.
+- **`apply_url`** (nullable; migration `d3ea5090cc80`): the employer's own apply link, recorded when the Companion saves a job from a
+  page that exposes one (an external Apply link, a LinkedIn `/safety/go` wrapper unwrapped one level, or the posting's structured data;
+  only the page the user is viewing is read, nothing is fetched). It is written only through `HttpUrlStr` (http/https with a host, at most
+  2048 characters; `javascript:`, `data:`, scheme-relative and empty values are a 422 on create and ingest) and `JobPatch` does not take it.
+  A job saved again gains the link it lacked (`_fill_apply_url`, on the hash, `source_url` and requisition-twin dedup paths) but a stored
+  link is never replaced, and a replica or an offered job is left alone for its owner to record. The Companion's run opens `apply_url`
+  when present, else `source_url`, and `queued` answers match the page against either (`is_same_posting`). Reads are plain `str | None`
+  on purpose, so one bad synced value cannot break job listing. Sync carries it; a duplicate resolution that keeps the laptop's twin drops
+  the other copy's link.
 - **Ownership under sync** (`owner_machine`, `sync_rev`, `handover`; docs/sync-setup.md). `owner_machine`
   is the machine id of the job's one writer; NULL means this machine. `sync_rev` is the job's revision
   from a local clock: any write to the job or a row attached to it bumps it (`services/sync/hooks.py`,

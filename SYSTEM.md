@@ -270,17 +270,15 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   `test_template_id_containment.py`. Related: `model_settings.set_base_url` rejects non-`http(s)` schemes — that value
   decides **where the stored API key is sent** (`llm._client`); both containers run non-root `APP_UID` over the PII
   mounts; and `llm._log_call` keeps metadata only unless `llm_log_content` is set (0600 either way).
-- **An empty environment variable means UNSET.** `{#inv-empty-env-unset}` `config.scrub_empty_env()` deletes every
-  empty/whitespace env var at import, before any SDK client is constructed (`config.SCRUBBED_ENV` records what went).
-  `docker-compose.yml` writes `VAR: ${VAR:-}` for optional settings — an EMPTY STRING, not an omission — and third-party
-  SDKs read `os.environ` directly (the OpenAI SDK adopts an empty `OPENAI_BASE_URL` and every request loses its scheme,
-  surfacing as a misleading `APIConnectionError`). App-level `or None` guards cannot help, so the rule is enforced once
-  at the environment boundary. Do not "simplify" it away, and do not add a `${VAR:-}` line believing the app will cope.
-  Pinned by `tests/test_config.py` (the import-time case runs in a SUBPROCESS — reloading `app.config` in-process
-  poisons later tests with `/app` paths). Related: `llm._get_client` raises a named error when there is no key AND no
-  custom endpoint; Langfuse tracing requires an explicit `LANGFUSE_HOST` alongside both keys (opt-in by DESTINATION —
-  keys without a host fall back to Langfuse Cloud and would ship resume text to a third party); compose does not forward
-  the Langfuse vars.
+- **An empty environment variable means UNSET.** `{#inv-empty-env-unset}` `config.scrub_empty_env()` deletes every empty/whitespace env var
+  at import, before any SDK client is constructed (`config.SCRUBBED_ENV` records what went). `docker-compose.yml` writes `VAR: ${VAR:-}` for
+  optional settings — an EMPTY STRING, not an omission — and third-party SDKs read `os.environ` directly (the OpenAI SDK adopts an empty
+  `OPENAI_BASE_URL` and every request loses its scheme, surfacing as a misleading `APIConnectionError`). App-level `or None` guards cannot
+  help, so the rule is enforced once at the environment boundary. Do not "simplify" it away, and do not add a `${VAR:-}` line believing the
+  app will cope. Pinned by `tests/test_config.py` (the import-time case runs in a SUBPROCESS — reloading `app.config` in-process poisons
+  later tests with `/app` paths). Related: `llm._get_client` raises a named error when there is no key AND no custom endpoint; Langfuse
+  tracing requires an explicit `LANGFUSE_HOST` alongside both keys (opt-in by DESTINATION — keys without a host fall back to Langfuse Cloud
+  and would ship resume text to a third party); compose does not forward the Langfuse vars.
 - **Staged artifact removal** `{#inv-staged-artifact-removal}`: NEVER delete rendered files in a transaction that can
   roll back. Every `customized_json` write uses `services/application_writes.stage_resume_update` (sets draft, clears
   refs, records version, returns stale paths); callers commit, THEN call `artifacts.remove_files(stale)` to remove
@@ -310,135 +308,130 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 - **`tailor_application` vs `edit_application`** `{#inv-tailor-vs-edit}` (MCP): the former REPLACES `customized_json`
   wholesale from the BASE resume; the latter applies ops to the CURRENT draft — docstrings lead with this; keep them
   unmistakable. Edit indices are **0-based into the full JSON array**, including `enabled: false` rows omitted from PDF; PATCH `/edits` echoes `applied[]`.
-- **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST
-  /api/autofill/telemetry` stores label, kind, rule id, option texts, outcome, host — never what was typed, was there
-  before, or any AI answer: no value column, `extra="forbid"`, sw re-filters to six keys. `POST /runs` stores one strict
-  `RunTrace` (newest 50 kept): a label or section holding a value the run wrote, was answered, left or found committed
-  is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`; a field's own option texts and a lone checkbox's yes/no excepted;
-  another field's value counts at 2+ chars typed, 4+ otherwise); the page's option texts and the chosen option's index
-  in that field's own list are kept on every field, EEO too, except a text holding another TYPED field's value; the rest
-  is enums and numbers, never a typed or profile string in a free-text slot. `sw.js` `scrubTrace` whitelists against the
-  schema; nothing posts unless `telemetryEnabled` is `true` (default off; Options › Keep a fill log). Runs fold into host/label-free `autofill_mechanism_stats` (a
-  remembered polarity is not counted). Rows carry `host` + `first_seen_at`, runs `host` + `started_at`: where and when
-  you applied, so `DELETE /telemetry` clears rows and runs, keeps counters, never the capture toggle
-  (`extension/INTERNALS.md`; `…/telemetry/summary` ranks failures). `scripts/fill_trace.py last|report` reads a DB copy.
-- **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an agent
-  filled into an application form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`) lives only in the
-  local `filled_answers` table (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run,
-  linked to an application by job + base resume. It never enters telemetry, run traces, Langfuse or exports. An EEO
-  value is stored only under recorded EEO consent (the fill's own gate, `eeo_consent.withhold_unconsented`, asked at
-  write; without it the row keeps the question with `answer: null`); withdrawing consent clears stored EEO answers
-  (`eeo_consent.set_consent` → `filled_answers.clear_eeo_answers`; `eeo_answered` stays true) and reads are gated again
-  as a second guard. No agent read returns an EEO value, marked or not (the server classifies by question words too):
-  `get_final_review`'s `flags` carry `eeo_answered`, the MCP client strips again, and no MCP path reads `GET
-  /api/jobs/{id}/filled-answers`, which serves EEO values to the web UI. The Companion panel (`shared/receipt.js`,
-  posted by `panel/actions/fill.js` `recordReceipt`) posts the receipt through the generic `api` door, never
-  `telemetry`/`fill_trace`, so it works with telemetry off; after each run, while you edit (a value-free fids-only
-  hint), at Mark applied and as it leaves a page it reads only frames that earn the data (inv-frame-earns-data), records
-  no never-fill field even under standing consent (`ns.isNeverFilled`), and its values never reach the run-trace
-  builders. Pinned by `tests/test_filled_answers_invariant.py`, `test_extension_panel_receipt.py`,
-  `test_filled_answers_api.py`, `test_filled_answers_agent.py` and `mcp_server/tests/test_client_filled_answers.py`.
-- **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at the sender, but
-  `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat iframes, and the ISOLATED world
-  protects the message in transit, NOT the DOM written into: a frame owns its DOM, so a profile value in a third-party
-  frame's input is readable by that frame's script. `agent.js` gates every fan-out write (`profile_fill`, the `fill_*`
-  ops, attach…) on `frameMayReceiveUserData(msg)`: the TOP frame passes; a SUBFRAME must show `detectPage().form`, OR
-  sit on exactly the http(s) `flowOrigin` the panel vouches for — whose frame held a confirmed form in this tab, same
-  employer, within the hour (panel.js `withFlowOrigin`; iCIMS EEO steps score 0). Detection throwing refuses. A refused
-  frame returns the handler's EMPTY shape, never a throw. Attach also requires a VISIBLE input (`input.files` is
-  readable with no gesture). Pinned by `tests/test_extension_frame_gate.py`.
-- **The policy deny-list is single-source, and it is TWO lists.** `{#inv-policy-deny-list-single-source}`
-  `extension/shared/policy.js` (in `shared/`, not `content/`, since the panel consults it too) declares each exactly
-  once: `NEVER_FILLED` (signatures/initials, passwords, government IDs) and `CONSENT_FORMS` (the application's OWN
-  certify/acknowledge/attest/terms/arbitration/waiver boxes). WITHOUT the standing `consent_forms` permission
-  (inv-eeo-standing-consent) both lists and the salary rule refuse; WITH it `isPolicyBlocked(label, {consentForms:
-  true})` refuses NO label (owner, 2026-09-26: the user's application, recorded revocable consent); Next/Submit stay the
-  user's at every setting. It DEFAULTS to false and only a literal `true` counts, so omitting it unlocks nothing; only
-  `fillFormFromProfile` and the fill loop's inventory pass it. FOUR consumers across THREE surfaces:
-  `fillFormFromProfile` ahead of rule matching and `collectOpenQuestions` ahead of EXCLUDE and the per-type ladder — so
-  a consent question rendered as a select/radio is never offered to the model or tagged `data-rt-qid` — plus the panel's
-  PAIR, the half a reader would not guess: the pause row's body renders no input for a blocked label AND `submitAnswer`
-  refuses one again, because the first decides what to draw and the second is what touches the page. Salary
-  history/current/CTC and unqualified salary/wage/compensation mentions are also blocked without consent; explicit
-  salary expectations are allowed only AFTER both lists, so an expectation phrase cannot bypass a list match.
-  `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one declaration of EACH list; only the
-  commit ladder stays a deliberate, pinned-identical twin so each writer is self-contained (`…commit_ladder_stay_identical`).
-- **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`). The
-  eleven patterns naming a TYPED home in the autofill profile (`eligibility.*`, `work_auth.*`, `preferences.*`) are read
-  by `content/autofill.js`'s rule table, which FILLS those fields, and by the panel's `saveTargetFor`, which decides
-  where a pause-row answer is LEARNED. They must be one table: an answer learned into `profile.custom` for a field the
-  rules fill from `preferences.notice_period` lands where the rules do not look, so the same question pauses on every
-  later application with nothing failing. **The learn store is the autofill profile, never `qa_entries`** — that table
-  is application-scoped and no reader feeds it back into a fill, so "pause once, learn forever" is only true of
-  `profile.custom` (matched by the deterministic rule pass on every later form) and the typed keys. Wiring faults are
-  made loud rather than left silent: `profile-fields.js` throws at load if `shared/policy.js` has not run (it borrows
-  `salaryExpectationRe`), and `autofill.js`'s `pf()` throws on an unknown id — an undefined pattern does not error, it
-  just never matches.
+- **Autofill telemetry and run traces carry no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry` stores label,
+  kind, rule id, option texts, outcome, host — never what was typed, was there before, or any AI answer: no value column, `extra="forbid"`,
+  sw re-filters to six keys. `POST /runs` stores one strict `RunTrace` (newest 50 kept): a label or section holding a value the run wrote,
+  was answered, left or found committed is blanked (`fill-loop.js` `rowKeys`/`siblingKeys`; a field's own option texts and a lone checkbox's
+  yes/no excepted; another field's value counts at 2+ chars typed, 4+ otherwise); the page's option texts and the chosen option's index in
+  that field's own list are kept on every field, EEO too, except a text holding another TYPED field's value; the rest is enums and numbers,
+  never a typed or profile string in a free-text slot. `sw.js` `scrubTrace` whitelists against the schema; nothing posts unless
+  `telemetryEnabled` is `true` (default off; Options › Keep a fill log). Runs fold into host/label-free `autofill_mechanism_stats` (a
+  remembered polarity is not counted). Rows carry `host` + `first_seen_at`, runs `host` + `started_at`: where and when you applied, so
+  `DELETE /telemetry` clears rows and runs, keeps counters, never the capture toggle (`extension/INTERNALS.md`; `…/telemetry/summary` ranks
+  failures). `scripts/fill_trace.py last|report` reads a DB copy. The **known-gaps table** (`autofill_widget_gap`, `POST
+  /api/autofill/gaps`, `extra="forbid"`, closed enums) holds only a widget family hash, host, field shape, outcome (`cannot_operate`,
+  `unconfirmed`, `user_fixed`, `missing_technique`) and counts; `sw.js` `fill_gaps` posts it only while `telemetryEnabled === true`, and
+  `DELETE /telemetry` clears it with the rows and runs. The **gesture report** that teaches the recipe book after a hand fix
+  (`content/recipes.js` `watch`/`report`) holds event types and an allowlisted few key names, never `value` or other keys; it stays local,
+  with the fill log off too.
+- **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an agent filled into an
+  application form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`) lives only in the local `filled_answers` table
+  (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run, linked to an application by job + base resume. It
+  never enters telemetry, run traces, Langfuse or exports. An EEO value is stored only under recorded EEO consent (the fill's own gate,
+  `eeo_consent.withhold_unconsented`, asked at write; without it the row keeps the question with `answer: null`); withdrawing consent clears
+  stored EEO answers (`eeo_consent.set_consent` → `filled_answers.clear_eeo_answers`; `eeo_answered` stays true) and reads are gated again
+  as a second guard. No agent read returns an EEO value, marked or not (the server classifies by question words too): `get_final_review`'s
+  `flags` carry `eeo_answered`, the MCP client strips again, and no MCP path reads `GET /api/jobs/{id}/filled-answers`, which serves EEO
+  values to the web UI. The Companion panel (`shared/receipt.js`, posted by `panel/actions/fill.js` `recordReceipt`) posts the receipt
+  through the generic `api` door, never `telemetry`/`fill_trace`, so it works with telemetry off; after each run, while you edit (a
+  value-free fids-only hint), at Mark applied and as it leaves a page it reads only frames that earn the data (inv-frame-earns-data),
+  records no never-fill field even under standing consent (`ns.isNeverFilled`), and its values never reach the run-trace builders. Pinned by
+  `tests/test_filled_answers_invariant.py`, `test_extension_panel_receipt.py`, `test_filled_answers_api.py`, `test_filled_answers_agent.py`
+  and `mcp_server/tests/test_client_filled_answers.py`.
+- **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at the sender, but `broadcastToFrames`
+  targets every frame — a job page carries ad/analytics/chat iframes, and the ISOLATED world protects the message in transit, NOT the DOM
+  written into: a frame owns its DOM, so a profile value in a third-party frame's input is readable by that frame's script. `agent.js` gates
+  every fan-out write (`profile_fill`, the `fill_*` ops, attach…) on `frameMayReceiveUserData(msg)`: the TOP frame passes; a SUBFRAME must
+  show `detectPage().form`, OR sit on exactly the http(s) `flowOrigin` the panel vouches for — whose frame held a confirmed form in this
+  tab, same employer, within the hour (panel.js `withFlowOrigin`; iCIMS EEO steps score 0). Detection throwing refuses. A refused frame
+  returns the handler's EMPTY shape, never a throw. Attach also requires a VISIBLE input (`input.files` is readable with no gesture). Pinned
+  by `tests/test_extension_frame_gate.py`.
+- **The policy deny-list is single-source, and it is TWO lists.** `{#inv-policy-deny-list-single-source}` `extension/shared/policy.js` (in
+  `shared/`, not `content/`, since the panel consults it too) declares each exactly once: `NEVER_FILLED` (signatures/initials, passwords,
+  government IDs) and `CONSENT_FORMS` (the application's OWN certify/acknowledge/attest/terms/arbitration/waiver boxes). WITHOUT the
+  standing `consent_forms` permission (inv-eeo-standing-consent) both lists and the salary rule refuse; WITH it `isPolicyBlocked(label,
+  {consentForms: true})` refuses NO label (owner, 2026-09-26: the user's application, recorded revocable consent); Submit stays the user's
+  at every setting, and Next is clicked only by `page_advance` in a run the user started with Apply, full automation On (§7). It DEFAULTS to
+  false and only a literal `true` counts, so omitting it unlocks nothing; only `fillFormFromProfile` and the fill loop's inventory pass it.
+  FOUR consumers across THREE surfaces: `fillFormFromProfile` ahead of rule matching and `collectOpenQuestions` ahead of EXCLUDE and the
+  per-type ladder — so a consent question rendered as a select/radio is never offered to the model or tagged `data-rt-qid` — plus the
+  panel's PAIR, the half a reader would not guess: the pause row's body renders no input for a blocked label AND `submitAnswer` refuses one
+  again, because the first decides what to draw and the second is what touches the page. Salary history/current/CTC and unqualified
+  salary/wage/compensation mentions are also blocked without consent; explicit salary expectations are allowed only AFTER both lists, so an
+  expectation phrase cannot bypass a list match. `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one declaration
+  of EACH list; only the commit ladder stays a deliberate, pinned-identical twin so each writer is self-contained
+  (`…commit_ladder_stay_identical`).
+- **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`). The eleven patterns
+  naming a TYPED home in the autofill profile (`eligibility.*`, `work_auth.*`, `preferences.*`) are read by `content/autofill.js`'s rule
+  table, which FILLS those fields, and by the panel's `saveTargetFor`, which decides where a pause-row answer is LEARNED. They must be one
+  table: an answer learned into `profile.custom` for a field the rules fill from `preferences.notice_period` lands where the rules do not
+  look, so the same question pauses on every later application with nothing failing. **The learn store is the autofill profile, never
+  `qa_entries`** — that table is application-scoped and no reader feeds it back into a fill, so "pause once, learn forever" is only true of
+  `profile.custom` (matched by the deterministic rule pass on every later form) and the typed keys. Wiring faults are made loud rather than
+  left silent: `profile-fields.js` throws at load if `shared/policy.js` has not run (it borrows `salaryExpectationRe`), and `autofill.js`'s
+  `pf()` throws on an unknown id — an undefined pattern does not error, it just never matches.
 - **Em-dash rule** `{#inv-em-dash}`: generated Q&A answers and cover letters are scrubbed of U+2014/U+2013 at store time
-  (`qa.scrub_typographic_dashes`); rendered PDFs must not contain em-dashes (ATS parsers). The MCP client's slim
-  `get_rendered_pdf` scan remains a resume-PDF backstop (metadata + page paths; no `page_images_b64` — use
-  `get_rendered_pdf_page_image` for one page).
-- **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record
-  (`settings/eeo_consent.json`, `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`), TWO permissions
-  kept apart on purpose: `enabled` authorizes disclosing protected characteristics, `consent_forms` lifts the label
-  policy (inv-policy-deny-list-single-source), only if agreed under policy ≥ 2 (an older yes is served off,
-  `consent_forms_lapsed`). The server owns the stamp (`acknowledged_at`, `policy_version`); `consent_forms` turns on
-  only on its own yes carrying the current policy (`agreed_policy`; `test_eeo_consent.py`). One flag for both would make
-  an EEO yes agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled` for
-  every outward reader: `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog (model
-  providers — OpenAI, Gemini, Claude, OpenRouter, Jev — are recipients too); it fails CLOSED when consent cannot be computed. The
-  MCP client keeps its OWN strip — two gates, not a relocated one. Which path asks never decides whether protected-class
-  data is served. Pins (router, `/choose`, Jev): `.system_md_enforcement.json`. No inference or invented EEO answers;
-  never solicit pasted demographic answers in chat when consented values are in Profile. Human-only at ANY setting is
-  Next/Submit and nothing wider; `consent_forms` lifts every label refusal for the callers that pass it (the fill loop,
-  a model included; never the old collector/pause rows), and only it, as served (lapsed or unreadable: absent), adds
-  `derived.agrees_to_terms`.
+  (`qa.scrub_typographic_dashes`); rendered PDFs must not contain em-dashes (ATS parsers). The MCP client's slim `get_rendered_pdf` scan
+  remains a resume-PDF backstop (metadata + page paths; no `page_images_b64` — use `get_rendered_pdf_page_image` for one page).
+- **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record (`settings/eeo_consent.json`,
+  `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`), TWO permissions kept apart on purpose: `enabled` authorizes
+  disclosing protected characteristics, `consent_forms` lifts the label policy (inv-policy-deny-list-single-source), only if agreed under
+  policy ≥ 2 (an older yes is served off, `consent_forms_lapsed`). The server owns the stamp (`acknowledged_at`, `policy_version`);
+  `consent_forms` turns on only on its own yes carrying the current policy (`agreed_policy`; `test_eeo_consent.py`). One flag for both would
+  make an EEO yes agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled` for every outward
+  reader: `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog (model providers — OpenAI, Gemini, Claude,
+  OpenRouter, Jev — are recipients too); it fails CLOSED when consent cannot be computed. The MCP client keeps its OWN strip — two gates,
+  not a relocated one. Which path asks never decides whether protected-class data is served. Pins (router, `/choose`, Jev):
+  `.system_md_enforcement.json`. No inference or invented EEO answers; never solicit pasted demographic answers in chat when consented
+  values are in Profile. Human-only at ANY setting is Submit and nothing wider (Next belongs to the run, per inv-policy-deny-list-single-source); `consent_forms` lifts
+  every label refusal for the callers that pass it (the fill loop, a model included; never the old collector/pause rows), and only it, as
+  served (lapsed or unreadable: absent), adds `derived.agrees_to_terms`.
 - **Provider data** `{#inv-provider-tagged-meta}`: opaque blocks (`ProviderMeta`: Claude thinking signatures, Gemini thought
   signatures) carry their provider and reach only that provider; `replay.for_provider` strips them for any other, so a model
   switch mid-chat never leaks one vendor's blocks to another. Pinned by `tests/test_replay.py`.
-- **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict extractors;
-  `pdfinterwordspaceon` + the parse_certified gate protect this — see the shared header partial `_header.tex.j2`, which
-  BOTH resume and cover-letter templates include (format/scanner changes must handle both). pdfTeX 1.40.27 misplaces
-  that space for many Type 1 fonts (e.g. Helvetica, Charter, Garamond, Fira) → overprinted words that still extract
-  cleanly; `template_validation.text_overprints` refuses such a LaTeX sample and `engines` warns on that build, where
-  boot re-validates ready LaTeX templates once (`template_registry.recheck_ready_latex_for_engine_warning`). A uv
+- **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict extractors; `pdfinterwordspaceon` + the
+  parse_certified gate protect this — see the shared header partial `_header.tex.j2`, which BOTH resume and cover-letter templates include
+  (format/scanner changes must handle both). pdfTeX 1.40.27 misplaces that space for many Type 1 fonts (e.g. Helvetica, Charter, Garamond,
+  Fira) → overprinted words that still extract cleanly; `template_validation.text_overprints` refuses such a LaTeX sample and `engines`
+  warns on that build, where boot re-validates ready LaTeX templates once (`template_registry.recheck_ready_latex_for_engine_warning`). A uv
   install uses the HOST's TeX, not Docker's TL 2026 — a PDF's `PTEX.Fullbanner` names the pdfTeX that made it.
-- **A render never changes engine silently** `{#inv-render-fallback-explained}`: `services/engines` is the ONE probe;
-  `MAESTRO_CS_PDFLATEX` overrides and fails CLOSED. Without `pdflatex`, `pdf_render.resolve_render_template` uses the
-  first ready Typst template for LaTeX resumes, bases and cover letters; `render_note` names both. VALIDATION never
-  substitutes. `base_resume_render.record_render_error`: committed writes persist `render_error`; render-only requests
-  return 400, never 500. Startup validates seed templates before rendering bases; seed-render failures persist
-  `render_error`, warn with tracebacks and leave the base usable; its first save retries. Call sites:
+- **A render never changes engine silently** `{#inv-render-fallback-explained}`: `services/engines` is the ONE probe; `MAESTRO_CS_PDFLATEX`
+  overrides and fails CLOSED. Without `pdflatex`, `pdf_render.resolve_render_template` uses the first ready Typst template for LaTeX
+  resumes, bases and cover letters; `render_note` names both. VALIDATION never substitutes. `base_resume_render.record_render_error`:
+  committed writes persist `render_error`; render-only requests return 400, never 500. Startup validates seed templates before rendering
+  bases; seed-render failures persist `render_error`, warn with tracebacks and leave the base usable; its first save retries. Call sites:
   `tests/test_render_note_coverage.py`. Pins: `tests/test_render_fallback.py`, `tests/test_seeding.py`.
-- **`user_cannot_confirm` is durable.** `{#inv-provenance-no-decay}` No code path upgrades that provenance to anything
-  else — including the gap flow that writes it: a "cannot confirm" gap outcome stores a retired `user_cannot_confirm`
-  point (on the entity its placement names, else the archived "Unconfirmed claims" holder) and future sessions
-  pre-resolve the claim instead of re-asking (normalized-text match, evidence autos win). Base-sync of the same claim
-  drafts a NEW `user_authored` point and leaves the record untouched — new first-party evidence beats an old "don't
-  know"; the draft queue is where the user reconciles. Pinned by `tests/test_kb_provenance_stamping.py`
-  (`test_no_writer_flips_user_cannot_confirm`) and `tests/test_gap_cannot_confirm.py`
-  (`test_nothing_upgrades_user_cannot_confirm`).
-- **Column types come from ONE module.** `{#inv-single-dialect}` SQLite is the only runtime database.
-  `app/models/types.py` (`JSONDoc`, `UUIDType`, `UTCDateTime`) is the only place a column type is chosen, and nothing
-  under `app/` imports `sqlalchemy.dialects`. `UTCDateTime` is the whole timezone story: aware in Python, naive UTC on
-  disk, and a NAIVE bind raises; the APP writes every timestamp (`default=utcnow`, `onupdate=utcnow`) so one format
-  lands on disk. Pinned by `tests/test_db_portability.py`.
-- **Job-site passwords stay in their local file.** `{#inv-job-site-password-local}`
-  `settings/secrets/job-site-login.json` is 0600 (directory 0700); writes serialize and replace from unique temp files;
-  damaged JSON/non-object files read empty. Never DB, exports, telemetry or logs. Settings GET/PUT return only `{email,
-  password_set}`; validation errors are sanitized. POST `/api/proposals/{id}/job-site-login` requires NO `Origin`, MCP
-  origin, full automation On, a Queued/approved proposal and a company off the skip list. Each hand-off records
-  `ConsentEvent(action="login_shared", channel="mcp", note=client name)`, never the value; the login passes through the
-  agent's AI provider. Pins: `tests/test_job_site_login.py`, `test_job_site_login_handoff.py`,
+- **`user_cannot_confirm` is durable.** `{#inv-provenance-no-decay}` No code path upgrades that provenance to anything else — including the
+  gap flow that writes it: a "cannot confirm" gap outcome stores a retired `user_cannot_confirm` point (on the entity its placement names,
+  else the archived "Unconfirmed claims" holder) and future sessions pre-resolve the claim instead of re-asking (normalized-text match,
+  evidence autos win). Base-sync of the same claim drafts a NEW `user_authored` point and leaves the record untouched — new first-party
+  evidence beats an old "don't know"; the draft queue is where the user reconciles. Pinned by `tests/test_kb_provenance_stamping.py`
+  (`test_no_writer_flips_user_cannot_confirm`) and `tests/test_gap_cannot_confirm.py` (`test_nothing_upgrades_user_cannot_confirm`).
+- **Column types come from ONE module.** `{#inv-single-dialect}` SQLite is the only runtime database. `app/models/types.py` (`JSONDoc`,
+  `UUIDType`, `UTCDateTime`) is the only place a column type is chosen, and nothing under `app/` imports `sqlalchemy.dialects`.
+  `UTCDateTime` is the whole timezone story: aware in Python, naive UTC on disk, and a NAIVE bind raises; the APP writes every timestamp
+  (`default=utcnow`, `onupdate=utcnow`) so one format lands on disk. Pinned by `tests/test_db_portability.py`.
+- **Job-site passwords stay in their local file.** `{#inv-job-site-password-local}` `settings/secrets/job-site-login.json` is 0600
+  (directory 0700); writes serialize and replace from unique temp files; damaged JSON/non-object files read empty. Never DB, exports,
+  telemetry or logs. Settings GET/PUT return only `{email, password_set}`; validation errors are sanitized. TWO routes hand it out, both
+  needing full automation On, a Queued/approved proposal and a company off the skip list, each recording
+  `ConsentEvent(action="login_shared")`, never the value. POST `/api/proposals/{id}/job-site-login` requires NO `Origin` (MCP origin;
+  channel `mcp`, note = client name) and the login passes through the agent's AI provider. POST `/api/companion/job-site-login`
+  (`{proposal_id}`; channel `companion`) is admitted only for the Companion extension's origin: `page_sign_in` types it in the TOP frame
+  alone, only on a known ATS host (`shared/ats-hosts.js`; elsewhere the run parks `sign_in_yourself`), once (a failure parks, never
+  retried), and the password never reaches a model, run record, card, receipt, trace, telemetry or error. Pins:
+  `tests/test_job_site_login.py`, `test_job_site_login_handoff.py`, `test_companion_job_site_login.py`,
   `mcp_server/tests/test_client_job_site_login.py` (symbols in `.system_md_enforcement.json`).
-- **Automatic consent is gated by the user's switch.** `{#inv-auto-consent-gated}` Off by default; only PUT
-  `/api/settings/full-automation` (`{value: bool}`, StrictBool) writes it; PUT `/api/settings/auto-apply` preserves it.
-  Channel `auto` approves only `accepted` (Queued), requires `final_review` evidence, re-checks the company blocklist,
-  and keeps the daily-cap/already-applied gates. An auto-attested submit, including from `submission_uncertain`, needs a
-  note with at least one letter or digit; both auto paths require full automation On. A company blocked after approval
-  still has its submit recorded. Eligibility is the agent's `apply-auto` prompt, not a server-side review judgment.
-  Pins: `tests/test_full_automation_setting.py`, `test_proposal_state_machine.py` (symbols in
-  `.system_md_enforcement.json`).
+- **Automatic consent is gated by the user's switch.** `{#inv-auto-consent-gated}` Off by default; only PUT `/api/settings/full-automation`
+  (`{value: bool}`, StrictBool) writes it; PUT `/api/settings/auto-apply` preserves it. Channel `auto` approves only `accepted` (Queued),
+  requires `final_review` evidence, re-checks the company blocklist, and keeps the daily-cap/already-applied gates. An auto-attested submit,
+  including from `submission_uncertain`, needs a note with at least one letter or digit; both auto paths require full automation On. A
+  company blocked after approval still has its submit recorded. Eligibility is the agent's `apply-auto` prompt, not a server-side review
+  judgment. Channel `companion` is the Companion's own and only its exact extension origin may name it: PATCH uses it for the user's Apply
+  (Queued only); the user's real Submit, seen as a confirmation page, is recorded only by `POST /api/proposals/{id}/companion-submitted`
+  (approved then attested submitted, host/path/text as the receipt), which clicks nothing and, past the daily cap or skip list, files an
+  applied-yourself record. Pins: `tests/test_full_automation_setting.py`, `test_proposal_state_machine.py`, `test_companion_submitted.py`
+  (symbols in `.system_md_enforcement.json`).
 - **One writer per job; the laptop owns the profile.** `{#inv-one-writer-ownership}` With sync on (a key file exists) every job has one owner
   machine (`jobs.owner_machine`, NULL = this one) and the other copy holds a read-only replica; the laptop owns the whole profile, which
   the always-on copy replaces on every round and never merges. A queue, skip, status or note change on the other copy's job is a
@@ -456,20 +449,16 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   inside `hooks.standing_aside(db)` (it sets `session.info["sync_apply"]` and restores the earlier value); a missing previous parent allows repair; no key allows every write; transaction end and rollback
   clear the hook's state. Pinned by `tests/sync/test_guard.py`.
 - **Every sync message is sealed; the key never travels.** `{#inv-sync-channel}` Peer routes and `/api/sync/enroll` are AES-256-GCM,
-  with HKDF-SHA256 keys derived from the sync key or the one-time pairing code. A header MAC is checked before any body. An unsealed request,
-  a failed seal, or an `Origin` on a sealed route is a bare 404, byte-identical to sync being off (empty; a 403 would show that sync is on).
-  With no key file every `/api/sync/*` route is that 404, and the always-on copy serves no home routes. After a good seal: the protocol and
-  schema check (409), one request at a time (409), a body cap (413) and a chunk timeout (408); those answers are sealed. Replays are refused,
-  including a seal stamped in a second before this process started. Only `/api/sync` may be published, through Tailscale Funnel. While `SYNC_PUBLIC_HOST` is
-  set, every response on `/api/sync` is sealed or the bare 404, whatever Host says; an empty setting changes nothing, and the public name stays refused off that tree. `/api/sync`, `/api/sync/round`, and any `/api/sync/` path with `//`, `..`, `\\` or `%` is the bare 404 directly; an unsealed response on an admitted path is that same 404. A loopback
-  `SYNC_REMOTE_URL` is the SSH tunnel and ignores the proxy environment; any other address must be `https://` with no path or query and uses
-  the proxy environment, or the round is a `needs_person` skip and no request is made. The profile, the AI key and the job-site login ride
-  only this channel. No key, pairing code, seal plaintext, bundle value or local path reaches a log or an error (fixed sentences). A received
-  job's artifact folders and file paths must sit in their own application's folder and may not overlap another job's folder, compared
-  case-folded and by inode (`services/sync/folders.py`: APFS ignores case), also before a tombstone removes a folder. `POST /api/sync/round`
-  is the always-on copy's own loopback call (404 on the laptop, 403 for an `Origin`, as is `/api/sync-setup/*`). Settings' **Second copy**
-  shows a 16-character code, once, for 10 minutes, with no attempt limit. `GET /api/settings/second-copy/setup-prompt` serves `backend/app/automations/bot-setup.md` (no sync lock; 409 on the always-on copy). Pinned by `tests/sync/test_seal.py`, `test_sealed_home.py`,
-  `test_public_host.py`, `test_pairing.py` and `test_two_machines.py`.
+  with HKDF-SHA256 keys derived from the sync key or the one-time pairing code; a header MAC is checked before any body. An unsealed
+  request, a failed seal, or an `Origin` on a sealed route is a bare 404, byte-identical to sync being off (a 403 would show that sync
+  is on); with no key file every `/api/sync/*` route is that 404 and the always-on copy serves no home routes. Only `/api/sync` may be
+  published (Tailscale Funnel); while `SYNC_PUBLIC_HOST` is set every response on it is sealed or the bare 404, whatever Host says, and
+  the public name stays refused off that tree. The profile, the AI key and the job-site login ride only this channel, and no key,
+  pairing code, seal plaintext, bundle value or local path reaches a log or an error (fixed sentences). `POST /api/sync/round` is the
+  always-on copy's own loopback call (404 on the laptop, 403 for an `Origin`, as is `/api/sync-setup/*`). The post-seal checks (protocol,
+  one request at a time, body cap, chunk timeout), replay refusal, path rules, the proxy rule for `SYNC_REMOTE_URL`, artifact-folder
+  containment and the pairing code's life: `docs/entities/others.md`, "Sync channel details". Pinned by `tests/sync/test_seal.py`,
+  `test_sealed_home.py`, `test_public_host.py`, `test_pairing.py` and `test_two_machines.py`.
 - **One data folder per user; nothing writes into the install.** `{#inv-one-home}` A uv install's `MAESTRO_HOME` defaults to
   `~/Library/Application Support/Maestro Career Studio` (macOS), `%APPDATA%\Maestro Career Studio` (Windows) or
   `$XDG_DATA_HOME/maestro-career-studio` (Linux), the folder the future desktop app uses, so its data needs no import.
@@ -536,86 +525,96 @@ this contract. Code citing "§4" lands here; the table says which file to open.
     `enable_entry`/`port_kb_point`) still hold.
   - **Apply readiness** reads `setup/status`'s `autofill` block; the server cannot see whether the client holds
     browser tools, so the render offer says the handoff needs them rather than asserting the capability.
-- **Onboarding workflow** (`workflow.py`): `kb_ingest_resume` (drafts) → `kb_approve_points` (the user's gate)
-  → `create_base_resume_from_kb` → `render_pdf` (an application render returns a nullable `copy_path`, the visible copy) walks ingest-several → KB → role-targeted bases with zero
-  in-house LLM (the client agent parses/authors; ingest the CURRENT resume first — over single-source MCP
-  calls `_seed_profile` is first-write-wins). Ingest hints are offer-only (multi-resume loop, same
-  mass-capture lesson as `score_ats`); `brief=true` suppresses before any settings read. Hint options carry
-  only verbatim-callable args or none at all, offer prose is derived from the filtered options, and composers
-  take the requested state explicitly rather than inferring intent from results. Scoring is mentioned in
-  prose, never as an option — it needs a `job_id` no composer can know.
+- **Onboarding workflow** (`workflow.py`): `kb_ingest_resume` (drafts) → `kb_approve_points` (the user's gate) →
+  `create_base_resume_from_kb` → `render_pdf` (an application render returns a nullable `copy_path`, the visible copy) walks ingest-several
+  → KB → role-targeted bases with zero in-house LLM (the client agent parses/authors; ingest the CURRENT resume first — over single-source
+  MCP calls `_seed_profile` is first-write-wins). Ingest hints are offer-only (multi-resume loop, same mass-capture lesson as `score_ats`);
+  `brief=true` suppresses before any settings read. Hint options carry only verbatim-callable args or none at all, offer prose is derived
+  from the filtered options, and composers take the requested state explicitly rather than inferring intent from results. Scoring is
+  mentioned in prose, never as an option — it needs a `job_id` no composer can know.
 - **Automations page** (`/automations`, sidebar after Agent inbox): **Copy prompt** hands work to the user's agent;
   Maestro runs NO scheduler. Each run prompt ends with MCP `record_run`; cards show Last ran.
   Catalog, wrappers and startup rules: [docs/entities/others.md](docs/entities/others.md), "Automations page".
-- **In-app chat**, on screen the **Assistant** (`services/chat_agent.py` + `chat_tools.py`): a distinct
-  toolset (resume edit, KB capture, template admin including the mutations MCP
-  deliberately lacks). Its resume-edit tool runs the SAME pipeline as the REST
-  endpoints (`services/resume_ops.py`); scope checks and ToolError mapping
-  remain chat-side. Cards, selections and the analytics tools: `docs/entities/others.md`, "In-app chat: interaction model". **Pinned-resume resolution**: the pin is a HINT, not a guard (the enforced guard is
-  `check_ops_in_scope` over selection PATHS); how it resolves, reloads and follows a changed base is reference
-  tier: `docs/entities/others.md`, "In-app chat: pinned-resume resolution". **Social posts**: chat
-  drafts LinkedIn/social posts as copy-out markdown — no card, no persistence,
-  the transcript is the history — grounded via read-only `get_career_context`;
-  conventions live in chat_system.txt. The router checks the Assistant's key before the
-  capability check (no key → a 422 "The Assistant needs an API key…"); `run_turn` streams through the adapter; working chips are words (`TOOL_PHRASES`), and deleting a chat asks first.
-  Prompt rows seed at startup. `prompts.get_prompt` lazy-seeds only with a caller's session; its own session reads
-  the file default without writing when a row is absent. Prompt-file changes need the DB `prompt.chat_system` row
-  reset (Settings › AI & models › AI instructions → Reset to default, or delete the row); a deploy uses a
-  SQLite-chain migration that deletes the row only while it still equals the previous default
+- **In-app chat**, on screen the **Assistant** (`services/chat_agent.py` + `chat_tools.py`): a distinct toolset (resume edit, KB capture,
+  template admin including the mutations MCP deliberately lacks). Its resume-edit tool runs the SAME pipeline as the REST endpoints
+  (`services/resume_ops.py`); scope checks and ToolError mapping remain chat-side. Cards, selections and the analytics tools:
+  `docs/entities/others.md`, "In-app chat: interaction model". **Pinned-resume resolution**: the pin is a HINT, not a guard (the enforced
+  guard is `check_ops_in_scope` over selection PATHS); how it resolves, reloads and follows a changed base is reference tier:
+  `docs/entities/others.md`, "In-app chat: pinned-resume resolution". **Social posts**: chat drafts LinkedIn/social posts as copy-out
+  markdown — no card, no persistence, the transcript is the history — grounded via read-only `get_career_context`; conventions live in
+  chat_system.txt. The router checks the Assistant's key before the capability check (no key → a 422 "The Assistant needs an API key…");
+  `run_turn` streams through the adapter; working chips are words (`TOOL_PHRASES`), and deleting a chat asks first. Prompt rows seed at
+  startup. `prompts.get_prompt` lazy-seeds only with a caller's session; its own session reads the file default without writing when a row
+  is absent. Prompt-file changes need the DB `prompt.chat_system` row reset (Settings › AI & models › AI instructions → Reset to default, or
+  delete the row); a deploy uses a SQLite-chain migration that deletes the row only while it still equals the previous default
   (`4022b54933e6` did it for `chat_system`; `tests/test_prompt_sync_guard.py` explains the mechanic).
-- **Chrome extension** (`extension/`; on screen **the Companion**): MV3; the **side panel**
-  (`panel/`) runs capture and fill; toolbar icon (`openPanelOnActionClick`) and hotkey
-  (Alt+Shift+J → `sidePanel.open`, guarded: that method is Chrome 116 and the minimum is 114)
-  both open it. Four-stage rail — Job → Resume → Fill → Track — INFERRED from the store by
-  `ns.decisions.stageFor` every render, never set by a click. Job = saved AND a base chosen (a pick,
-  the scored best preselected, or a bound application's own `base_resume`); Save job scores the
-  bases in the same press, and an unscored saved job is scored once when Job opens. `hasForm` is
-  NOT a stage input. ONE row shows a body (the active one, or a DONE row reopened as view state;
-  the active row is the way back). Painted as direction C: a `#progress` bar ("Step N of 4", from the
-  active row), the active row as a "Next" card, done rows as compact lines, locked rows hidden by CSS
-  (still in the DOM); `scripts/panel_preview.py` renders each state. The footer's one primary follows the OPEN row: Save job (then
-  Update scores), Quick tailor (Create PDF when an application lacks its PDF), Autofill.
-  The panel document is a family of scripts (panel.html owns roster and order): `panel.js`
-  owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`)
-  get a per-render snapshot, per-CONCERN actions (`panel/actions/*.js`) a handle with one
-  `write(patch)` door, and each roster THROWS at boot naming a missing script. `panel/icons.js` (`ns.icon`, inline Lucide svg) draws every icon;
-  the panel carries no emoji or text glyph (`test_extension_panel_icons.py`). `shared/status-roles.js` is the application status table (word + colour role) the web `StatusChip` shares (`test_extension_status_roles.py`). `shared/resume-color.js` holds the base resume presets behind the Companion's base resume square (`swatch`; §6 inv-resume-color-identity). `shared/` is
-  what both worlds load: `decisions.js` (the ONE home of panel rules), `choose.js` (routing, /choose batch, `rest_fill` shaping, `QUESTIONY`).
-  `guided-run.js` (runner, injected transport) is panel-only.
-  Failure copy (never server text; `failureNote`), revisit rules, sender model, COMMIT GESTURE and the ONE `attachableFileInputs` definition:
-  `extension/INTERNALS.md`. Never rename bridge storage key `widget.session` — that drops every live entry.
-  **Posting identity is ONE table in two languages** — `job_url_match.posting_id` ↔
-  `decisions.postingId` (LinkedIn `currentJobId` / `/jobs/view/<id>`, Indeed `jk`/`vjk`,
-  embedded Greenhouse `gh_jid`), pinned by `test_extension_posting_identity.py`; add a key to
-  BOTH. Options (`options.html`, `options.js`) read `read_settings`, save `backendUrl`/`appUrl` in `storage.sync` and test `/health`.
-  `scripts/pack_extension.py` gates matching versions; store upload and key handoff: `docs/RELEASING.md`. Rest: `extension/INTERNALS.md`.
-- **Guided fill** (design doc `2026-08-16-guided-apply-design`, unpublished — §10):
-  the panel's **Fill** stage — **Autofill** → `panel_prepare` (the
-  gesture-backed injection; `preparePage` is the only other injector) → a run. `fillMode` (`storage.sync`):
-  "Saved answers + AI" (default) runs the fill loop (`shared/fill-loop.js`: Stop, report grouped by status,
-  jump via `fill_focus`, `loop_fill` telemetry); "Saved answers only" runs the rule pass below; its rows are `reconcileFill`'s
-  buckets plus the run's own writeResults-minus-residue, and the EEO row is the
-  BACKEND's standing consent, never a local toggle. It claims `done.fill`
-  (`touched`) only when a run both wrote something and left nothing open — a
-  tick takes the open-fields list off screen, so a partial fill keeps the user
-  on the step; a wizard's LATER pages are reached by REOPENING the ticked row,
-  and `startFill`'s per-run clear keeps that re-run's report its own. Per stage
-  ONE runner (`ns.guidedRun.runGuidedFill(deps, {aiAssist,
-  applicationId})`; `aiAssist: false` skips `/choose` and residues the whole
-  remainder) runs rule pass → collect → one batched `POST
-  /api/autofill/choose` (qid-keyed, ≤40/call; the option guard
-  lives SERVER-side only — any answer not among rendered options, invented qid,
-  or skipped qid collapses to abstain) → `ns.guidedWrite` sequenced by widget
-  shape with ONE bounded retry. EXCLUDE'd controls a rule tried and missed
-  become RETRYABLES (`ns.lastRuleAttempts`, in-memory per run) routed straight
-  to `guidedWrite`, so their identity VALUES never reach `/choose`; its prompt does carry the
-  saved answers (EEO only under inv-eeo-standing-consent) and the career history. Readback is
-  timer-sampled and never defaults to failure: unconfirmable is
-  `filled_unverified`, not `not_stuck`. Navigation and submit stay human. After each run, both modes, the panel posts the
-  page's answer receipt (`shared/receipt.js`) and lists its flags under **Check before you submit**; a matched job's
-  knock-out heads Fill.
-  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`, Settings › AI & models › **Form filling**);
-  how each decides, and the Jev key's host rule, are reference tier: `docs/entities/others.md`, "Form-filling engines".
+- **Chrome extension** (`extension/`; on screen **the Companion**): MV3; the **side panel** (`panel/`) runs capture and fill; toolbar icon
+  (`openPanelOnActionClick`) and hotkey (Alt+Shift+J → `sidePanel.open`, guarded: that method is Chrome 116 and the minimum is 114) both
+  open it. Four-stage rail — Job → Resume → Fill → Track — INFERRED from the store by `ns.decisions.stageFor` every render, never set by a
+  click. Job = saved AND a base chosen (a pick, the scored best preselected, or a bound application's own `base_resume`); Save job scores
+  the bases in the same press, and an unscored saved job is scored once when Job opens. `hasForm` is NOT a stage input. ONE row shows a body
+  (the active one, or a DONE row reopened as view state; the active row is the way back). Painted as direction C: a `#progress` bar ("Step N
+  of 4", from the active row), the active row as a "Next" card, done rows as compact lines, locked rows hidden by CSS (still in the DOM);
+  `scripts/panel_preview.py` renders each state. The footer's one primary follows the OPEN row: Save job (then Update scores), Quick tailor
+  (Create PDF when an application lacks its PDF), Autofill; with full automation On the Job step's primary is Apply (below). The panel document is a family of scripts (panel.html owns roster and order):
+  `panel.js` owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`) get a per-render snapshot,
+  per-CONCERN actions (`panel/actions/*.js`) a handle with one `write(patch)` door, and each roster THROWS at boot naming a missing script.
+  `panel/icons.js` (`ns.icon`, inline Lucide svg) draws every icon; the panel carries no emoji or text glyph
+  (`test_extension_panel_icons.py`). `shared/status-roles.js` is the application status table (word + colour role) the web `StatusChip`
+  shares (`test_extension_status_roles.py`). `shared/resume-color.js` holds the base resume presets behind the Companion's base resume
+  square (`swatch`; §6 inv-resume-color-identity). `shared/` is what both worlds load: `decisions.js` (the ONE home of panel rules),
+  `choose.js` (routing, /choose batch, `rest_fill` shaping, `QUESTIONY`). `guided-run.js` (runner, injected transport) is panel-only.
+  Failure copy (never server text; `failureNote`), revisit rules, sender model, COMMIT GESTURE and the ONE `attachableFileInputs`
+  definition: `extension/INTERNALS.md`. Never rename bridge storage key `widget.sessions` (tab id → job entry) — that drops every live entry. **Posting identity
+  is ONE table in two languages** — `job_url_match.posting_id` ↔ `decisions.postingId` (LinkedIn `currentJobId` / `/jobs/view/<id>`, Indeed
+  `jk`/`vjk`, embedded Greenhouse `gh_jid`), pinned by `test_extension_posting_identity.py`; add a key to BOTH. Options (`options.html`,
+  `options.js`) read `read_settings`, save `backendUrl`/`appUrl` in `storage.sync` and test `/health`. `scripts/pack_extension.py` gates
+  matching versions; store upload and key handoff: `docs/RELEASING.md`. Rest: `extension/INTERNALS.md`.
+- **Guided fill** (design doc `2026-08-16-guided-apply-design`, unpublished — §10): the panel's **Fill** stage — **Autofill** →
+  `panel_prepare` (the gesture-backed injection; `preparePage` is the only other injector) → a run. `fillMode` (`storage.sync`): "Saved
+  answers + AI" (default) runs the fill loop (`shared/fill-loop.js`: Stop, report grouped by status, jump via `fill_focus`, `loop_fill`
+  telemetry); "Saved answers only" runs the rule pass below; its rows are `reconcileFill`'s buckets plus the run's own
+  writeResults-minus-residue, and the EEO row is the BACKEND's standing consent, never a local toggle. It claims `done.fill` (`touched`)
+  only when a run both wrote something and left nothing open — a tick takes the open-fields list off screen, so a partial fill keeps the
+  user on the step; a wizard's LATER pages are reached by REOPENING the ticked row, and `startFill`'s per-run clear keeps that re-run's
+  report its own. Per stage ONE runner (`ns.guidedRun.runGuidedFill(deps, {aiAssist, applicationId})`; `aiAssist: false` skips `/choose` and
+  residues the whole remainder) runs rule pass → collect → one batched `POST /api/autofill/choose` (qid-keyed, ≤40/call; the option guard
+  lives SERVER-side only — any answer not among rendered options, invented qid, or skipped qid collapses to abstain) → `ns.guidedWrite`
+  sequenced by widget shape with ONE bounded retry. EXCLUDE'd controls a rule tried and missed become RETRYABLES (`ns.lastRuleAttempts`,
+  in-memory per run) routed straight to `guidedWrite`, so their identity VALUES never reach `/choose`; its prompt does carry the saved
+  answers (EEO only under inv-eeo-standing-consent) and the career history. Readback is timer-sampled and never defaults to failure:
+  unconfirmable is `filled_unverified`, not `not_stuck`. Submit stays human at every setting; Next only in the run below. After each run, both modes, the panel posts the
+  page's answer receipt (`shared/receipt.js`) and lists its flags under **Check before you submit**; a matched job's knock-out heads Fill.
+  The loop never fills a robot trap (`fillBase.robotTrap`: honeypot wording on any control, off-page geometry on text boxes only, never
+  a required field), leaves an optional field with no fact blank (`left_blank`, named in a collapsed list, not asked), commits and
+  confirms each item of a list field (up to 20, never a closest pick), repeats no move that changed nothing, waits for the page to settle
+  before typing, and gives its adaptive step a technique card per widget kind, what worked on this site and its own `search:term`
+  (a flagged closest only after it).
+  **`/choose` has two engines**, `fast` and `jev` (`llm.autofill_engine`, Settings › AI & models › **Form filling**); how each decides, and
+  the Jev key's host rule, are reference tier: `docs/entities/others.md`, "Form-filling engines".
+- **Queued run, one job (Apply)** (`shared/queue-run.js` driver, pure with injected deps; host `panel/actions/run.js`; card `panel/runs.js`;
+  `extension/INTERNALS.md`, "Queued run"): with full automation On the Job step offers **Apply**: save, pick the resume (never overwriting a
+  tailored draft or an open session), queue as the user's yes (consent channel `companion`), then drive THIS tab from the job's apply link
+  (`apply_url`, else `source_url`; http(s) only) through sign-in, fill and Next to **Ready to submit**. Parallel tabs, the run list, the
+  Queue view and the **Queue** button are not built. **Submit is never clicked, at any setting**: `shared/page-kind.js` treats any Submit
+  word, a dialog about submitting or an unseen Submit as the review page, and Next is pressed only by `page_advance`
+  (`content/page-reader.js`), which re-sorts the button's labels at click time; `shared/ats-buttons.js` holds only recorded markers (today
+  Workday's footer, whose text still decides). A posting's Apply is followed only as a same-tab http(s) link (no click handlers) on the
+  first read of a tab the run opened. CAPTCHA, email code, account creation, a job board's own apply and any unrecognised page PARK (Needs
+  you), as does a required field it could not answer, once per page. The user answers in the page and presses **Resume**: every typed answer
+  is remembered (Undo; long written ones never), one naming the job's company or city only for that job (`only_for`), and the hand fix
+  teaches the recipe book (§6 gesture report). A confirmation page after the user's own Submit is marked applied after an 8 s Undo. Run tabs
+  fill with per-run limits (60 s a field, 12 adaptive steps, 10 min a page; single-page Autofill keeps 25 s and 8). The job memory is per
+  tab (`chrome.storage.session` `widget.sessions`, no clock; origin, tenant, sibling-posting and backend-wins guards).
+- **Screening answers dial** (Settings › Form filling; `autofill.answer_level`, default **Backed by your history**, so an install that had
+  the old low-stakes switch off now answers low-stakes questions; the one setting for the Companion, `/map` `/pick` `/step` and agents, via
+  the brief's `applying.answer_level`): **Facts only** (saved answers and history), **Backed by your history** (also low-stakes kinds in the
+  job's favour, and "N years of a skill" Yes when the history shows it), **Queued means I qualify** (also every requirement question Yes,
+  and a years question Yes only when the history is silent or shows enough, else asked; only for the job's own posting: accepted/approved
+  proposal plus `page_url` `is_same_posting` against `apply_url`/`source_url`). The protected list sits outside every level and parks unless
+  a saved fact answers it: work authorization and sponsorship, salary, EEO (unless consented), criminal or background history, clearance and
+  agency employment (never a keen guess), signatures and attestations (unless Agreements consent), unsupported education or experience
+  claims. Every dial answer is marked on the receipt.
 - **Streaming chat** runs through `llm_providers` on any provider; eligibility is the tools probe.
 
 ## 8. Frontend conventions
@@ -633,37 +632,31 @@ with the failure mode that bought it. Code citing "§8" lands here.
 - **MCP loopback and public URL:** `BACKEND_URL` targets REST inside this backend (`http://localhost:8000` in Docker;
   native exports `http://127.0.0.1:$MAESTRO_PORT`). `MAESTRO_CS_PUBLIC_BACKEND_URL` is the assistant-facing local address
   used by Connect an agent app (compose host port, default 8001; native exports its port). Neither publishes `/mcp`.
-- **The database is a file.** `data/maestro_cs.sqlite3` (compose bind-mounts `./data` to `/app/data`), WAL,
-  pragmas set per connection by `app/db.make_engine` — the ONE engine constructor (app, tests, tools);
-  `prepare_sqlite_file` mints it 0600 and `migrations/env.py` calls it too, so a first boot creates the file
-  through alembic. **`env.py` then builds a PLAIN `create_engine` on purpose** — SQLite's batch ALTER recipe
-  must run with `foreign_keys` OFF and `make_engine` turns it ON — so do not "fix" it to `make_engine`; it is
-  the one exception. Never open the container's file from the host while the backend runs: WAL needs shared
-  memory the Docker Desktop mount does not promise — stop the stack or read a `backups/` snapshot.
-  `SQLITE_JOURNAL_MODE=DELETE` (forwarded by compose, commented in `.env.example`) is the escape hatch for a
-  filesystem WAL cannot trust. There is no Postgres: v0.4.0 was the one release that imported a
-  pre-SQLite install (see the update bullet below). If more than one stack or checkout runs on a machine, they differ by host ports
-  (`*_HOST_PORT` in each `.env`) and by `data/` directory — go by those, not by a database name.
-- **ATS calibration** — the engine is corpus-tunable, so measure, don't argue.
-  `backend/scripts/ats_snapshot.py` prints a ranking table; `backend/scripts/ats_calibration.py` writes a
-  machine-readable snapshot, diffs two (stack stopped:
-  `DATABASE_URL=sqlite:///<main-checkout>/data/maestro_cs.sqlite3
-  BASE_RESUMES_DIR=<main-checkout>/base_resumes python -m scripts.ats_calibration snapshot
-  before.json`). It pins `as_of` and groups contribution drops by match-form transition: a CHANGED form is a deliberate
-  reclassification, an UNCHANGED one is the shape a real regression takes (exit 1). Base-resume JSON is
-  gitignored PII living only in the main checkout — a worktree run needs `BASE_RESUMES_DIR`; snapshots store
-  JD skill names only, never resume text. `python -m scripts.ats_calibration monotonicity` (same env)
-  asserts "adding true evidence never lowers the score" over the whole corpus — run it after ANY matcher or
-  tier change, not just a scoring-weight one.
+- **The database is a file.** `data/maestro_cs.sqlite3` (compose bind-mounts `./data` to `/app/data`), WAL, pragmas set per connection by
+  `app/db.make_engine` — the ONE engine constructor (app, tests, tools); `prepare_sqlite_file` mints it 0600 and `migrations/env.py` calls
+  it too, so a first boot creates the file through alembic. **`env.py` then builds a PLAIN `create_engine` on purpose** — SQLite's batch
+  ALTER recipe must run with `foreign_keys` OFF and `make_engine` turns it ON — so do not "fix" it to `make_engine`; it is the one
+  exception. Never open the container's file from the host while the backend runs: WAL needs shared memory the Docker Desktop mount does not
+  promise — stop the stack or read a `backups/` snapshot. `SQLITE_JOURNAL_MODE=DELETE` (forwarded by compose, commented in `.env.example`)
+  is the escape hatch for a filesystem WAL cannot trust. There is no Postgres: v0.4.0 was the one release that imported a pre-SQLite install
+  (see the update bullet below). If more than one stack or checkout runs on a machine, they differ by host ports (`*_HOST_PORT` in each
+  `.env`) and by `data/` directory — go by those, not by a database name.
+- **ATS calibration** — the engine is corpus-tunable, so measure, don't argue. `backend/scripts/ats_snapshot.py` prints a ranking table;
+  `backend/scripts/ats_calibration.py` writes a machine-readable snapshot, diffs two (stack stopped:
+  `DATABASE_URL=sqlite:///<main-checkout>/data/maestro_cs.sqlite3 BASE_RESUMES_DIR=<main-checkout>/base_resumes python -m
+  scripts.ats_calibration snapshot before.json`). It pins `as_of` and groups contribution drops by match-form transition: a CHANGED form is
+  a deliberate reclassification, an UNCHANGED one is the shape a real regression takes (exit 1). Base-resume JSON is gitignored PII living
+  only in the main checkout — a worktree run needs `BASE_RESUMES_DIR`; snapshots store JD skill names only, never resume text. `python -m
+  scripts.ats_calibration monotonicity` (same env) asserts "adding true evidence never lowers the score" over the whole corpus — run it
+  after ANY matcher or tier change, not just a scoring-weight one.
 - Backend tests: `pytest tests/ mcp_server/tests/ -q -n auto --dist loadfile` from `backend/`; bare `tests/` skips MCP.
   CI cold-installs `.[mcp]`, checks six stdio profiles and `/mcp` + `/mcp/hunt` over HTTP. xdist (~15 → ~3.5 min)
   uses `loadfile` to keep browser tests per file. conftest makes a SQLite file per process/worker (`TEST_DATABASE_URL` may name another,
   never under `data/` or with `-n`) and blanks the four provider keys (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`): a worker's `load_dotenv()` finds the
   nearest `.env`, so unstubbed tests made billed calls. Parity tests (`tests/node_ts.py`) need node 24: skip locally, FAIL in `CI`.
-- **Deploying a local change = rebuilding BOTH images** (MAINTAINER path, MAIN checkout):
-  `docker build -t maestro-career-studio-backend backend/` AND `…-frontend frontend/`, then
-  `docker compose up -d --no-build --force-recreate backend frontend`. A frontend-only change still needs
-  the frontend image rebuilt — a stale image once made fixed UI look broken for a whole review.
+- **Deploying a local change = rebuilding BOTH images** (MAINTAINER path, MAIN checkout): `docker build -t maestro-career-studio-backend
+  backend/` AND `…-frontend frontend/`, then `docker compose up -d --no-build --force-recreate backend frontend`. A frontend-only change
+  still needs the frontend image rebuilt — a stale image once made fixed UI look broken for a whole review.
 - **A USER updates instead** — `./scripts/update.sh`: online SQLite snapshot
   (`app.tools.backup_db --stdout` through the running backend container, else the checkout's own image tag —
   `.env`'s `latest` can predate the tool; 0600, magic-byte checked) → ff-only to the newest `v*` tag → images pinned to that tag →
@@ -690,11 +683,10 @@ with the failure mode that bought it. Code citing "§8" lands here.
 - **Version identity**: the tag bakes into both images as `APP_VERSION`, served by `GET /api/version` with
   the live alembic revision; the frontend warns when its baked copy disagrees, unless either side STARTS
   WITH `dev` (local or dispatch build) = do not compare — which also keeps it off contributors.
-- Never verify new code against the docker-compose stack (old images). Launch fresh: uvicorn on a free port
-  with data-dir env overrides (its own sqlite file, never `data/`); frontend `API_PROXY_BACKEND=... npm run
-  dev`. TeX is optional (`services/engines` searches the TeX homes itself, and
-  `MAESTRO_CS_PDFLATEX=/nonexistent` simulates a TeX-less host). Full recipe: the maintainer's local
-  `verify` skill (not shipped). Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send button.
+- Never verify new code against the docker-compose stack (old images). Launch fresh: uvicorn on a free port with data-dir env overrides (its
+  own sqlite file, never `data/`); frontend `API_PROXY_BACKEND=... npm run dev`. TeX is optional (`services/engines` searches the TeX homes
+  itself, and `MAESTRO_CS_PDFLATEX=/nonexistent` simulates a TeX-less host). Full recipe: the maintainer's local `verify` skill (not
+  shipped). Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send button.
 - **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors for editable/dev installs
   (`pip install -e ".[dev,mcp]"`, also CI); the container installs hash-pinned `backend/requirements.lock`.
   Regenerate that lock with **`mcp` + `tracing` only, on Linux/Python 3.12** (command in `backend/Dockerfile`;
@@ -703,28 +695,24 @@ with the failure mode that bought it. Code citing "§8" lands here.
   The SDK is the `tracing` extra (included in Docker and native; uv and the desktop build omit it); `services/tracing.py` requires
   all three `LANGFUSE_*` settings. Tracing points at the user's host; `langfuse_host` defaults to empty.
 - Alembic revision ids are hand-written fake-hex and COLLIDE easily — generate with `uuid.uuid4().hex[:12]`.
-- **SYSTEM.md gate**: `python3 scripts/check_system_md.py` (CI `docs-gate` job) enforces this file's header
-  contract and FAILS (not warns) on: the size ceiling; a `(YYYY-MM-DD` date in §1–§10 or any reference-tier
-  file; a shipped item left in §11; a section over its line budget; and any §6 invariant whose enforcement
-  pin in `.system_md_enforcement.json` has lost its file or symbol — the "docs promise what the code no
-  longer does" class. Re-baselining requires `--update-baselines --reason "<text>"`, recorded in
-  `.slopledger.json`. It anchors the repo root on the script's own parent directory, deliberately: a walk-up
-  search finds the MAIN checkout's copy from a worktree and validates the wrong file.
-- **On merge, re-verify the doc.** Two lanes each update the sections they know about, and the merge can
-  produce a file describing neither branch — least accurate exactly when the most agents are reading it.
-  After any non-trivial merge, list the SYSTEM.md sections whose subject files changed on BOTH sides and
-  re-read each. The pins catch the worst subclass; nothing catches the rest but this checklist.
-- **Slop ratchet.** Per-surface `.slopconfig.json` + committed `.slop-baseline.json` in `backend/`,
-  `frontend/`, `extension/`; the maintainer runs `python3 ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py
-  check <surface>` from the repo root (not shipped; see CONTRIBUTING); non-zero means a metric regressed — fix, or
-  re-baseline with a reason. **RUN EVERY SURFACE YOU TOUCHED AND NAME EACH ONE IN THE CLAIM** (the extension's tests
-  live in `backend/`; an unnamed "slop ratchet OK" was the 2026-08-17 false green). **`complexity_hotspots` is a
-  COUNT — re-baseline it rather than chasing it**: adding code, adding tests or decomposing a monster all raise it;
-  judge erosion by hotspot density per KLOC and the worst cc. Orphan LOC and duplication are honest ratchets. Scan a
-  SURFACE dir, never the repo root (it orphans the whole backend); jscpd is optional. The extension's allowlisted clones are the
-  documented commit-ladder twin, but the matcher pairs FILE NAMES by substring and `allowlisted_clones` is PRINTED, not
-  gated: check it by eye. Graph signals read the gitignored `graphify-out/graph.json` (`graphify extract . --no-cluster
-  --code-only`, PyPI `graphifyy`).
+- **SYSTEM.md gate**: `python3 scripts/check_system_md.py` (CI `docs-gate` job) enforces this file's header contract and FAILS (not warns)
+  on: the size ceiling; a `(YYYY-MM-DD` date in §1–§10 or any reference-tier file; a shipped item left in §11; a section over its line
+  budget; and any §6 invariant whose enforcement pin in `.system_md_enforcement.json` has lost its file or symbol — the "docs promise what
+  the code no longer does" class. Re-baselining requires `--update-baselines --reason "<text>"`, recorded in `.slopledger.json`. It anchors
+  the repo root on the script's own parent directory, deliberately: a walk-up search finds the MAIN checkout's copy from a worktree and
+  validates the wrong file.
+- **On merge, re-verify the doc.** Two lanes each update the sections they know about, and the merge can produce a file describing neither
+  branch — least accurate exactly when the most agents are reading it. After any non-trivial merge, list the SYSTEM.md sections whose
+  subject files changed on BOTH sides and re-read each. The pins catch the worst subclass; nothing catches the rest but this checklist.
+- **Slop ratchet.** Per-surface `.slopconfig.json` + committed `.slop-baseline.json` in `backend/`, `frontend/`, `extension/`; the
+  maintainer runs `python3 ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py check <surface>` from the repo root (not shipped; see
+  CONTRIBUTING); non-zero means a metric regressed — fix, or re-baseline with a reason. **RUN EVERY SURFACE YOU TOUCHED AND NAME EACH ONE IN
+  THE CLAIM** (the extension's tests live in `backend/`; an unnamed "slop ratchet OK" was the 2026-08-17 false green).
+  **`complexity_hotspots` is a COUNT — re-baseline it rather than chasing it**: adding code, adding tests or decomposing a monster all raise
+  it; judge erosion by hotspot density per KLOC and the worst cc. Orphan LOC and duplication are honest ratchets. Scan a SURFACE dir, never
+  the repo root (it orphans the whole backend); jscpd is optional. The extension's allowlisted clones are the documented commit-ladder twin,
+  but the matcher pairs FILE NAMES by substring and `allowlisted_clones` is PRINTED, not gated: check it by eye. Graph signals read the
+  gitignored `graphify-out/graph.json` (`graphify extract . --no-cluster --code-only`, PyPI `graphifyy`).
 
 ## 10. Design-decision record
 
@@ -772,9 +760,8 @@ citation. Priority lives in the item text, not in the ordinal.
 13. Quick-tailor: derive `applied` from the committed resume DIFF, not planned intent; employment-blocks v2.
 14. Telemetry v2: option-set fingerprint + normalization; capture-session record for per-site/per-kind saturation;
     failure-count ranking + Analytics drill-down/export; label/option-text redaction; summary pagination.
-15. Typst phase 2 (the LaTeX retirement itself is §13): `typst query` AST introspection over source-text capability
-    heuristics; web engine picker; in-product .tex→Typst conversion (expose `backend/scripts/template_parity.py
-    --compare` as a backend tool).
+15. Typst phase 2 (the LaTeX retirement itself is §13): `typst query` AST introspection over source-text capability heuristics; web engine
+    picker; in-product .tex→Typst conversion (expose `backend/scripts/template_parity.py --compare` as a backend tool).
 16. Onboarding intake: entity resolution ACROSS kinds (a certificate merges into its experience entity, not a
     sibling); a re-runnable "import more"; bounding LLM cost (file cap of 10 in `services/kb_import`).
 17. ATS follow-ups: (a) alias/adjacency vocabulary via an OFFLINE human-gated miner over stored `extracted_json`,
@@ -785,24 +772,21 @@ citation. Priority lives in the item text, not in the ordinal.
     v1); extension-less CDP fill (HARD constraint: backend CORS must never admit ATS/web origins).
 20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested extra-section entry/bullet ops are
     unbuilt (a bullet op would make the health check's custom-section suggestions appliable, not copy-only).
-21. MCP onboarding follow-ups: `near_duplicate_of` hints in the ingest report (normalized-distance vs existing points,
-    so the agent can retire one copy without the LLM clusterer); a batch `sources` variant of `kb_ingest_resume`
-    (single-source calls make profile seeding order-dependent); a consent story for `_seed_profile`/`_merge_skills` —
-    profile contact and skills have no draft state yet compose onto EVERY base; `enabled: false` entries still ingest
-    (LLM-path parity, revisit).
-22. Guided Apply follow-ups (design doc has R2 stepper + R3 vault): checkbox collection needs its own safe design
-    (group-level collection, legend-level policy screening, mirroring radios; `skipped_checkbox` holds until then);
-    auto-advance toggle; per-ATS selector blueprints; the essay path onto qid-keyed `/choose`; `guidedIsListboxButton`
-    stays looser than the two pinned strict discriminators (it rechecks vetted elements only).
+21. MCP onboarding follow-ups: `near_duplicate_of` hints in the ingest report (normalized-distance vs existing points, so the agent can
+    retire one copy without the LLM clusterer); a batch `sources` variant of `kb_ingest_resume` (single-source calls make profile seeding
+    order-dependent); a consent story for `_seed_profile`/`_merge_skills` — profile contact and skills have no draft state yet compose onto
+    EVERY base; `enabled: false` entries still ingest (LLM-path parity, revisit).
+22. Guided Apply follow-ups (design doc has R2 stepper + R3 vault): checkbox collection needs its own safe design (group-level collection,
+    legend-level policy screening, mirroring radios; `skipped_checkbox` holds until then); per-ATS selector blueprints; the essay path onto
+    qid-keyed `/choose`; `guidedIsListboxButton` stays looser than the two pinned strict discriminators (it rechecks vetted elements only).
 23. **Some §6 invariants have no enforcement pin** (`unpinned` in `.system_md_enforcement.json`): when next working in
     one of those areas, add the pin or demote the rule to a convention note.
 24. Surface `schemas/job_extraction._coerce_enum` warnings through the jobs-ingest response, so `store_extracted_jd`
     callers see that input X was stored as `unstated` (audit 2026-08-22, finding A1).
-25. SQLite has one write lock, and two transactions hold it across LLM calls: `kb_consolidation.consolidate` (flush,
-    one LLM call per entity, one commit — `seeding.seed_career_kb` relies on that via `commit=False`) and
-    `tailoring_session.create_session` with enrichment (score flush + supersede UPDATE, then the call). A concurrent
-    writer waits `busy_timeout` (30 s), then fails "database is locked". Fix: compute every LLM result first, then
-    write in one short transaction, keeping the seeder's `commit=False` contract.
+25. SQLite has one write lock, and two transactions hold it across LLM calls: `kb_consolidation.consolidate` (flush, one LLM call per
+    entity, one commit — `seeding.seed_career_kb` relies on that via `commit=False`) and `tailoring_session.create_session` with enrichment
+    (score flush + supersede UPDATE, then the call). A concurrent writer waits `busy_timeout` (30 s), then fails "database is locked". Fix:
+    compute every LLM result first, then write in one short transaction, keeping the seeder's `commit=False` contract.
 26. Tailored-studio adoption gaps (`TailoredResumeStudio`): (a) two Saves in one refetch window, the second returning
     to adopted content, read as foreign (`onSaved` queues no key equal to `adoptedKey`): a false "changed outside the
     editor" banner; (b) the parent-held `templateId` never re-syncs from the server, so it survives Rebuild and Load
@@ -813,18 +797,15 @@ citation. Priority lives in the item text, not in the ordinal.
 29. Focus lands on `<body>` on Escape from the <768px sidebar sheet (which stays open after a nav tap) and after any
     client-side link navigation. `Button nativeButton={false} render={<a>}` announces a link as a button (~40 sites,
     21 files): use `buttonVariants` on a plain `<a>` or `GuardedLink`, the sidebar's pattern.
-30. Raw keys or jargon still reach the user or an agent: MCP `explore_*` results carry role slugs with no
-    `role_label`; the Assistant's Edited and project cards call an application target only "tailored resume";
-    `resume_diff.attribute` labels any unmatched change `"llm"` (the Review changes chip is hidden for it; an
-    `"unknown"` value would change the endpoint's response).
-32. Small UI gaps: `/base-resumes/<unknown>/health` shows a skeleton ~7 s before its error (the 404 takes
-    react-query's three default retries; `app/providers.tsx` sets no `retry`); `/templates`' stale-chip tooltip sits
-    under `GalleryCard`'s `z-10` stretched link; three hint/control pairs keep hardcoded ids
-    (`new_id_hint`/`new_id_error`, `kb-profile-notes-hint`, `job-preferences-locations-hint`); Escape out of the job
-    Details date field blur-saves `applied_at: null`; an Assistant edit card's Discard stays clickable while Apply
-    runs; a failing settings autosave toasts once per keystroke; a failed send in a NEW chat leaves an "Untitled chat"
-    (the session is created before the message); the proposal's Overview card shows "expires" on a Queued proposal,
-    which never expires.
+30. Raw keys or jargon still reach the user or an agent: MCP `explore_*` results carry role slugs with no `role_label`; the Assistant's
+    Edited and project cards call an application target only "tailored resume"; `resume_diff.attribute` labels any unmatched change `"llm"`
+    (the Review changes chip is hidden for it; an `"unknown"` value would change the endpoint's response).
+32. Small UI gaps: `/base-resumes/<unknown>/health` shows a skeleton ~7 s before its error (the 404 takes react-query's three default
+    retries; `app/providers.tsx` sets no `retry`); `/templates`' stale-chip tooltip sits under `GalleryCard`'s `z-10` stretched link; three
+    hint/control pairs keep hardcoded ids (`new_id_hint`/`new_id_error`, `kb-profile-notes-hint`, `job-preferences-locations-hint`); Escape
+    out of the job Details date field blur-saves `applied_at: null`; an Assistant edit card's Discard stays clickable while Apply runs; a
+    failing settings autosave toasts once per keystroke; a failed send in a NEW chat leaves an "Untitled chat" (the session is created
+    before the message); the proposal's Overview card shows "expires" on a Queued proposal, which never expires.
 33. inv-render-fallback-explained gaps: `PUT /base-resumes/{slug}` commits, then a pdflatex failure is a 500 over the
     saved change; `POST /{slug}/render` answers 500, not 400, on a generic failure; the preview-page route's unlocked
     `exists()` can race a re-render; `STARTER_SOURCE` fails on a blank email with a link present.
@@ -843,15 +824,19 @@ citation. Priority lives in the item text, not in the ordinal.
 40. Companion reliability: ARIA label resolution, retry identity, unmatched combobox discovery, live-option decisions,
     popup ownership and committed-selection verification remain open. Reproductions and Jev-first proposal: [extension
     research report](docs/reports/2026-09-25-extension-reliability-research.md).
-41. Health check follow-ups: one-at-a-time question mode; repeated-opener notes; a rubric check on tailored drafts; a
-    dispute MCP tool (disputes are web-only); a **Not right?** reply on a row queued for Write is overwritten by its
-    draft; a hand-set "Shows a result" leaves the report, so Done can't reset it; rename
-    `BaseResumeDetail.version_number` to `edit_version_number`.
+41. Health check follow-ups: one-at-a-time question mode; repeated-opener notes; a rubric check on tailored drafts; a dispute MCP tool
+    (disputes are web-only); a **Not right?** reply on a row queued for Write is overwritten by its draft; a hand-set "Shows a result"
+    leaves the report, so Done can't reset it; rename `BaseResumeDetail.version_number` to `edit_version_number`.
 42. Answer trust follow-ups: fix-and-learn from the receipt; the auto-submit preview; a "What Maestro knows about you"
     page; a JD-extracted graduation/enrollment knock-out; `RECORD_NEVER` folded into `NEVER_FILLED`; receipt capture
     across a full-page navigation and for a manual Attach press. Phase-4 source limits: `docs/entities/filled-answers.md`.
 43. "In N resumes" (`services/career_kb.used_in_bases`) reads `kb_port_log`, which is append-only: it means "added to or came
     from", so it can overcount; `create_from_kb` and base duplication write no rows, so those bases are missed.
+44. Companion run limits left on purpose: a robot-trap option inside a real checkbox/radio group (shared name) is not filtered
+    (honeypots are standalone text boxes); sync's duplicate resolution that keeps the laptop's twin drops the other copy's
+    `apply_url`, and a replica's link is never sent to its owner; a password-only second sign-in screen parks (`no_email`); technique
+    cards for group, select and date widgets are never reached (the adaptive step runs for popup and search only); the run list,
+    Queue view and parallel tabs wait for Phase 3 (`docs/plans/2026-10-10-companion-queued-run.md`).
 
 ## 12. Gotchas that have bitten before
 

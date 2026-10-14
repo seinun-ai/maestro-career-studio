@@ -240,6 +240,20 @@
   nothing. Options are offered under code-owned keys (`o1…`, `none`), never page text, and every
   question says page text is data. One pooled `httpx.Client` serves every call (a TLS handshake per
   call costs about Jev's whole answer); 429/503/529 retry with doubling backoff inside the 2 s budget.
+  **The answer level** (`autofill.answer_level`, Settings › Form filling › **Screening answers**; `facts`, `history` default, `queued`;
+  `model_settings.get_answer_level`, with the old `autofill.low_stakes` row cleared on a write and an install with no row reading the
+  default) decides how far `/map`, `/pick` and `/step` answer without asking: `facts` saved answers and career history only; `history` also
+  the low-stakes kinds in the job's favour and "N years of a skill" Yes when the history shows the skill and does not contradict the years;
+  `queued` also every requirement question Yes on a job the user queued, and a years question Yes only when the history is silent or shows
+  enough (fewer: asked). The protected list (work authorization and sponsorship, salary, EEO unless consented, criminal or background
+  history, security clearance and agency employment, signatures and attestations unless consented, unsupported education or experience
+  claims) is outside every level, and clearance and agency questions never reach the low-stakes judge as a keen guess. `queued` holds only
+  for the job's own posting: the request carries the page's address and `routers/autofill._queued` needs an accepted or approved proposal
+  plus `job_url_match.is_same_posting` against the job's `apply_url` or `source_url`. `PUT /api/settings/autofill-options` takes
+  `{answer_level}` (the old `{low_stakes}` is a 422). The same level reaches agents as the Job Search Brief's `applying.answer_level`. An
+  answer saved with `only_for` (a question naming the job's company or city) is offered, and filled by the deterministic pass, only for
+  that job (`autofill_catalog.custom_for_job`). The `/step` prompt carries a technique card per widget kind
+  (`services/autofill_techniques.py`) and, with `search:term`, one fast-model call that writes the agent's own search term.
 - **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
   compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
   persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
@@ -601,6 +615,16 @@
   gets no ask. Editors render no amber zone wash and make no "read first by a recruiter" claim (a
   fixed positional heuristic must not be stated as fact about a reader); the marker survives ONLY on
   the health report, labelled `Higher priority`.
+- **Sync channel details** (SYSTEM.md §6 inv-sync-channel holds the rule; `services/sync/`): after a good seal the protocol and schema
+  check answers 409, one request at a time 409, a body cap 413 and a chunk timeout 408, and those answers are sealed. Replays are refused,
+  including a seal stamped in a second before this process started. An empty `SYNC_PUBLIC_HOST` changes nothing. `/api/sync`,
+  `/api/sync/round`, and any `/api/sync/` path with `//`, `..`, `\\` or `%` is the bare 404 directly; an unsealed response on an admitted
+  path is that same 404. A loopback `SYNC_REMOTE_URL` is the SSH tunnel and ignores the proxy environment; any other address must be
+  `https://` with no path or query and uses the proxy environment, or the round is a `needs_person` skip and no request is made. A received
+  job's artifact folders and file paths must sit in their own application's folder and may not overlap another job's folder, compared
+  case-folded and by inode (`services/sync/folders.py`: APFS ignores case), also before a tombstone removes a folder. Settings' **Second
+  copy** shows a 16-character code, once, for 10 minutes, with no attempt limit. `GET /api/settings/second-copy/setup-prompt` serves
+  `backend/app/automations/bot-setup.md` (no sync lock; 409 on the always-on copy).
 - **ApplicationProposal + ConsentEvent** (auto-apply ledger; migrations
   `56ade310b259` + `11b61fe1ace9`, lifecycle fields `0c677ba4cbcb`, filer
   `9a5744f9b9d9`, the one revision after the SQLite baseline): the
@@ -721,6 +745,20 @@
   **Auto-apply** card (deprecated `cooldown_days` hidden but preserved on save;
   the model is extra=forbid) and a **Full automation** card whose On switch
   asks for confirmation. Turning it Off refuses auto consent and login hand-offs.
+  **The Companion's run** (SYSTEM.md §7; `routers/companion.py`, `app/companion_origin.py`): consent channel `companion` is legal only on the
+  Companion extension's exact origin (403 otherwise). A PATCH with it queues (`accepted`, from `pending_review`) and refuses `approved` and
+  `submitted`; those come only from `POST /api/proposals/{id}/companion-submitted` (`{confirmation: {host, path, text}}`, `extra=forbid`),
+  which records a Submit the USER pressed and the Companion saw confirmed: the final review and the confirmation (`submission_receipt`
+  evidence, host/path/text) are stored, and the proposal goes approved then attested submitted on channel `companion` in one commit. It
+  clicks nothing, 409s a job this copy does not own, and past the daily cap or on the skip list closes the proposal as rejected
+  `APPLIED_MANUALLY` and marks the application applied, so the ledger matches what happened. `POST /api/companion/job-site-login`
+  (`{proposal_id}`) hands the saved login to the Companion under the same gates as the agent hand-off, recording `login_shared` on
+  channel `companion`. Neither the run's queue view nor `prepare_queued` exists yet (Phase 3 of `docs/plans/2026-10-10-companion-queued-run.md`).
+- **Known gaps** (`models/autofill_widget_gap.py`, `services/autofill_gaps.py`, `routers/autofill.py`): the durable, value-free list the fill
+  engine learns from. A row is the widget family hash, host, field shape and an outcome (`cannot_operate`, `unconfirmed`, `user_fixed`,
+  `missing_technique`) with a count; `POST /api/autofill/gaps` (204, at most 40, `extra=forbid`) upserts, `GET /api/autofill/gaps/summary`
+  returns kinds, sites and the top ten without hosts, and `DELETE /api/autofill/telemetry` clears it because it holds hosts. The Companion
+  posts it only while the fill log is on. `scripts/fill_trace.py report` ranks it. It is local to a copy (not synced).
   **Web surface**: `/proposals` (the Agent inbox) — summary
   rows link to `/jobs/[id]?from=proposals`; Queue/Skip on a row and in bulk
   (channel `frontend`) stay on the list, and the lanes are one table
