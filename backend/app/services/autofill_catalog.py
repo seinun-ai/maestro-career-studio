@@ -236,6 +236,8 @@ class Fact:
     # The same fact: the name keys of the job's own company (`_company_keys`), so a question that names it
     # is known to (`question_names_company`).
     companies: tuple[str, ...] = field(default=(), compare=False, repr=False)
+    # The same fact: the name keys of the history's employers written as an acronym ("IBM", "SAP", "AWS").
+    acronyms: frozenset[str] = field(default=frozenset(), compare=False, repr=False)
 
 
 _YES_WORDS, _NO_WORDS = {"yes", "true"}, {"no", "false"}
@@ -475,9 +477,28 @@ def _company_keys(company: str | None) -> set[str]:
     return {key for part in _name_parts(company or "") if (key := name_key(part))}
 
 
+# Companies known by more than one name: a history that holds one cannot say No for another. Name keys
+# (`name_key`), every spelling a form uses. Small on purpose; the acronym rule in `named_employer_fact` is the
+# net for the names this table does not hold.
+_ALIASES = tuple(frozenset(group) for group in (
+    ("meta", "meta platforms", "facebook", "instagram", "whatsapp"),
+    ("alphabet", "google", "youtube", "deepmind", "waymo"),
+    ("amazon", "aws", "amazon web services", "whole foods", "whole foods market"),
+    ("x", "twitter"),
+    ("microsoft", "linkedin", "github"),
+    ("procter gamble", "procter and gamble", "p g", "pg"),
+    ("ernst young", "ernst and young", "ey"),
+    ("pricewaterhousecoopers", "pricewaterhouse coopers", "pwc"),
+    ("jpmorgan", "jp morgan", "jpmorgan chase", "chase"),
+))
+
+
 def _akin(a: str, b: str) -> bool:
     """One name is the other's start, whole words only ("acme", "acme web services"): a parent
-    and a subsidiary, so a history that holds only one of them cannot say No for the other."""
+    and a subsidiary, so a history that holds only one of them cannot say No for the other. Two names of
+    one company (`_ALIASES`) are akin too."""
+    if a != b and any(a in group and b in group for group in _ALIASES):
+        return True
     short, long = sorted((a, b), key=len)
     return long.startswith(f"{short} ")
 
@@ -518,6 +539,16 @@ def _history_employers(out: dict[str, Fact], employment: list[dict[str, Any]] | 
     return [(key, current) for key, current in pairs if key]
 
 
+_ACRONYM = re.compile(r"[A-Z][A-Z0-9]{1,4}")
+
+
+def _acronym_employers(out: dict[str, Fact], employment: list[dict[str, Any]] | None) -> frozenset[str]:
+    """The name keys of the employers the history writes as an acronym (2 to 5 capitals)."""
+    raw = ([str(block.get("employer") or "") for block in employment] if employment is not None else
+           [str(f.value) for slot, f in out.items() if re.fullmatch(r"experience\.\d+\.employer", slot)])
+    return frozenset(name_key(name) for name in (r.strip() for r in raw) if _ACRONYM.fullmatch(name))
+
+
 def _worked_here(out: dict[str, Fact], company: str | None,
                  employment: list[dict[str, Any]] | None = None) -> None:
     """The job's company among the history's employers, for THIS application.
@@ -548,7 +579,8 @@ def _worked_here(out: dict[str, Fact], company: str | None,
         answer = "No"
     out.pop("eligibility.previously_employed_here", None)
     fact = make_fact(WORKED_HERE_SLOT, answer)
-    out[WORKED_HERE_SLOT] = replace(fact, employers=tuple(employers), companies=tuple(sorted(wanted)))
+    out[WORKED_HERE_SLOT] = replace(fact, employers=tuple(employers), companies=tuple(sorted(wanted)),
+                                    acronyms=_acronym_employers(out, employment))
 
 
 # A history "employer" that is not a company: matching a question against it would answer from a word
@@ -698,6 +730,10 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
     if named:
         return make_fact(WORKED_HERE_SLOT, "Yes, currently" if any(named) else "Yes, previously")
     generic = {name for name in listed if set(name.split()) <= _STOP_WORDS}   # "yes", "current employee"
+    # An employer known by an acronym ("IBM", "SAP", "AWS") may be a name in a list the question holds
+    # under its long form; no alias table is complete, so a list beside such an employer is asked.
+    if len(listed - generic) > 1 and any(key in fact.acronyms for key, _ in employers):
+        return ASK_THE_USER
     if (any(_akin(key, name) for key, _ in employers for name in listed - generic)
             or _mentions_or_is_akin([key for key, _ in employers], (question, *options))):
         return ASK_THE_USER
@@ -733,6 +769,10 @@ _NOT_WORKED_HERE = re.compile(
     r"relat(?:ed|ive)|family|friend|spouse|anyone|someone|referr|applied|interview|convict|criminal|felony|authori|"
     r"sponsor|visa|clearance|background|terminat|non-?compete|hear\s+about|eligib|legal|able\s+to|willing|want|"
     r"h-?1b|petition|permit|household|member|compet|fired|disciplin|dismiss|customer|product|vendor|partner|"
+    # willingness, being asked, a foreign agent (an attestation), a public body: other questions
+    r"comfortable|open\s+to|prepared|happy|interested|consider|\bok(?:ay)?\b|asked|foreign|principal|"
+    r"\barmy\b|\bnavy\b|air\s+force|\bmarines?\b|marine\s+corps|coast\s+guard|national\s+guard|space\s+force|"
+    r"\bnasa\b|\bdod\b|department\s+of|"
     # the company listed beside a KIND of organisation is another question ("Acme or a federal contractor")
     r"government|federal|\bstate\b|\blocal\b|agency|public\s+sector|military|defen[cs]e|\bu\.s\b|united\s+states|"
     # a time window ("in the last 12 months") narrows the question past "ever worked here"; a plain "in the past" does not
@@ -783,16 +823,17 @@ _OTHER_SHAPES = tuple(re.compile(rx, re.IGNORECASE) for rx in (
     rf"\bare\s+you\s+(?:currently\s+)?{_OTHER_VERB}",
 ))
 # A group of companies is no company ("FAANG companies", "Fortune 500", "the Big Four", "Big 4 firms").
-_COMPANY_GROUP = re.compile(r"\b(?:faang|maang|fang|big\s*(?:tech|four|4|three|3|five|5)|fortune|global\s*500|"
+_COMPANY_GROUP = re.compile(r"\b(?:faang|maang|fang|big\s*(?:tech|four|4|three|3|five|5|pharma)|fortune|global\s*500|"
                             r"inc\.?\s*5000)\b", re.IGNORECASE)
-_NAME_JOINERS = frozenset({"of", "and", "&", "de", "la", "the", "by"})   # "Bank of Initrode", "Metro by Initrode"
+_NAME_JOINERS = frozenset({"of", "and", "&", "de", "la", "the"})
 
 
 def _is_a_name(part: str) -> bool:
     """A proper company name: every word with a letter has a capital in it ("Initrode & Sons",
     "Bank of Initrode"; not "Initrode consultants", "accounting firms"), and it is no group of companies."""
     words = part.split()
-    return bool(words) and not _COMPANY_GROUP.search(part) and not _NOT_A_NAME.match(part) and all(
+    return bool(words) and not _COMPANY_GROUP.search(part) and not _NOT_A_NAME.match(part) and (
+        not _PRONOUN_PART.match(part) and words[-1].casefold() not in _GENERIC_NOUNS) and all(
         any(ch.isupper() for ch in w) or not any(ch.isalpha() for ch in w) or w.casefold() in _NAME_JOINERS
         for w in words)
 
@@ -813,18 +854,37 @@ def _other_company_clause(question: str) -> str | None:
 # "working as a contractor for Acme" (live check 4, 2026-10-14). The history lists employers, so it never says
 # whether one of them dealt for or contracted to the company; a No is the Companion's inference even when the
 # company is the job's own, and is reported assumed through the same path as another company's.
-_AGENT = (r"(?:authori[sz]ed\s+)?(?:dealers?|dealerships?|resellers?|retailers?|agents?|distributors?|franchisees?)")
-_YOU_ASKED = r"\b(?:have|has|are|were|was|did)\s+you\b[^?.;]*?"
+_AGENT = r"(?:authori[sz]ed\s+)?(?:dealers?|dealerships?|resellers?|retailers?|distributors?|franchisees?)"
+# As strict as `_OTHER_SHAPES`: nothing but the adverbs between "you" and the verb, the auxiliary decides the
+# verb. "Have you or your husband ever worked …", "Did you manage people who worked …", "Are you comfortable
+# working …" and "Have you ever been asked to work …" are not the applicant's own employment. The compound
+# "Have you previously or are you currently working as …" is the one two-clause wording forms use.
+_ADV = r"(?:(?:ever|previously|directly|formally|officially)\s+)*"
+_RELATED_PRE = (rf"(?:\b(?:have|has)\s+you\s+{_ADV}(?:been\s+)?{_ADV}(?:(?:worked|employed|working)\s+)?"
+                r"(?:or\s+are\s+you\s+(?:currently\s+)?)?"
+                rf"|\b(?:were|was)\s+you\s+{_ADV}|\bdid\s+you\s+{_ADV}|\bare\s+you\s+(?:currently\s+)?)")
 _RELATED_SHAPES = tuple(re.compile(rx, re.IGNORECASE) for rx in (
-    # "employed with an authorized dealer of Acme", "worked for a reseller of Acme"
-    rf"{_YOU_ASKED}\b(?:employed|worked|work|working)\s+(?:for|at|by|with)\s+(?:an?\s+)?{_AGENT}\s+(?:of|for)\s+(?P<co>.+)",
+    # "employed with an authorized dealer of Acme", "worked for a reseller of Acme"; "with" only after "employed"
+    rf"{_RELATED_PRE}(?:employed\s+(?:for|at|by|with)|(?:worked|working|work)\s+(?:for|at))\s+(?:an?\s+)?"
+    rf"{_AGENT}\s+(?:of|for)\s+(?P<co>.+)",
     # "working as a contractor for Acme", "worked as an independent contractor with Acme"
-    rf"{_YOU_ASKED}\b(?:employed|worked|work|working|engaged)\s+as\s+(?:an?\s+)?"
-    r"(?:(?:independent|third[- ]party|temporary|contract)\s+)?(?:contractors?|subcontractors?|consultants?)\s+"
+    rf"{_RELATED_PRE}(?:worked|working|work|employed|engaged)\s+as\s+an?\s+"
+    r"(?:(?:independent|third[- ]party|temporary|contract)\s+)?(?:contractor|subcontractor|consultant)\s+"
     r"(?:for|at|with|of)\s+(?P<co>.+)",
 ))
-_AUTHORISED_AGENT = re.compile(r"\bauthori[sz]ed\s+(?=dealers?|dealerships?|resellers?|retailers?|agents?|distributors?|franchisees?)",
+_AUTHORISED_AGENT = re.compile(r"\bauthori[sz]ed\s+(?=dealers?|dealerships?|resellers?|retailers?|distributors?|franchisees?)",
                                re.IGNORECASE)
+# Another question when a list holds "its affiliates", "its subsidiaries", a parent or a sister company.
+_NOT_A_LIST_OF_NAMES = re.compile(r"affiliat|subsidiar|parent\s+compan|sister\s+compan", re.IGNORECASE)
+# A part that is no company: a pronoun phrase, or a generic noun for a KIND of organisation
+# ("Healthcare Clients", "Startups", "Acme Dealers": the title case is the page's, not a name's).
+_PRONOUN_PART = re.compile(r"^(?:its|their|all|any)\b", re.IGNORECASE)
+_GENERIC_NOUNS = frozenset({
+    "client", "clients", "companies", "firm", "firms", "organization", "organizations", "organisation",
+    "organisations", "agency", "agencies", "startup", "startups", "brand", "brands", "account", "accounts",
+    "customer", "customers", "partner", "partners", "dealer", "dealers", "agent", "agents", "reseller", "resellers",
+    "distributor", "distributors", "retailer", "retailers", "vendor", "vendors", "employee", "employees",
+    "contractor", "contractors", "consultant", "consultants"})
 # The most companies one question may name and still take the derived No (a list longer than this is not a
 # worked-here question about a few brands).
 _MAX_LISTED = 4
@@ -865,14 +925,14 @@ def asks_worked_here_of_other(facts: dict[str, Fact], question: str,
     related = _related_company_clause(question)
     # "Authorized" in "authorized dealer" is the dealer's word, not the work-authorization question's.
     texts = [_AUTHORISED_AGENT.sub("", t) if related is not None else t for t in (question, *options)]
-    if any(_NOT_WORKED_HERE.search(t) for t in texts):
+    if any(_NOT_WORKED_HERE.search(t) for t in texts) or _NOT_A_LIST_OF_NAMES.search(question):
         return False
     if any(key in _NOT_AN_EMPLOYER for key, _ in fact.employers):
         return False
     clause = related if related is not None else _other_company_clause(question)
     names = _listed_names(clause) if clause else []
     keys = {name_key(n) for n in names}
-    if not names or "" in keys or len(keys) > _MAX_LISTED or not all(_is_a_name(n) for n in names):
+    if not names or "" in keys or len(keys) > _MAX_LISTED or not _are_names(names, keys, set(fact.companies)):
         return False
     if keys & _NOT_AN_EMPLOYER:
         return False
@@ -881,6 +941,19 @@ def asks_worked_here_of_other(facts: dict[str, Fact], question: str,
     if related is None and keys & set(fact.companies):
         return False
     return named_employer_fact(facts, question, options) is None
+
+
+def _are_names(names: list[str], keys: set[str], parents: set[str]) -> bool:
+    """Every listed part is a proper company name. "Metro by Acme" is one only when its parent after "by" is
+    itself named in the question or is the job's company: "Initech by Contract" names no brand."""
+    for name in names:
+        if m := re.fullmatch(r"(.+?)\s+by\s+(.+)", name, re.IGNORECASE):
+            left, right = m[1], m[2]
+            if not (_is_a_name(left) and _is_a_name(right) and name_key(right) in (keys - {name_key(name)}) | parents):
+                return False
+        elif not _is_a_name(name):
+            return False
+    return True
 
 
 def lists_job_company(facts: dict[str, Fact], question: str, options: tuple[str, ...] | list[str] = ()) -> bool:

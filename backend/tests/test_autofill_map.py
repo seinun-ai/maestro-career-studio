@@ -2571,3 +2571,138 @@ def test_an_unsure_worked_here_slot_for_a_question_that_is_not_an_employment_sha
 def test_the_company_the_job_names_belongs_to_the_listed_path_not_the_other_company_one():
     facts = _globex_history()
     assert not autofill_catalog.asks_worked_here_of_other(facts, "Are you currently employed by Acme Wireless?")
+
+
+# ---------- Review of R3: the dealer/contractor shapes are as strict as the employment ones; names, lists, aliases
+
+def _routed(question, employers=("Lockheed Martin",), company="Acme Wireless", key="none", p=0.9):
+    """What /map's code does with one Yes/No question the model filed under `key` at `p`."""
+    mapped, _ = autofill_map._route(field("q", question, "select", options=["Yes", "No"]), (key, p),
+                                    _globex_history(company=company, employers=employers), eeo_consented=True)
+    return mapped
+
+
+def _is_the_derived_no(question, **kw):
+    mapped = _routed(question, **kw)
+    return (mapped.route, mapped.slot, mapped.value) == ("slot", autofill_catalog.WORKED_HERE_SLOT, "No")
+
+
+# Words between "you" and the verb, a present-tense "work", a plural role, a foreign agent: other questions.
+ASKED_NOT_NO = [
+    # C1: willingness, kin, managing others, being asked
+    "Are you comfortable working as a contractor for Acme Wireless?",
+    "Are you open to working as a contractor for Acme Wireless?",
+    "Would you consider working as a contractor for Acme Wireless?",
+    "Are you OK working as a contractor with Acme Wireless?",
+    "Are you okay working as a contractor for Acme Wireless?",
+    "Are you prepared to work as a contractor for Acme Wireless?",
+    "Are you happy working as a contractor for Acme Wireless?",
+    "Are you interested in working as a contractor for Acme Wireless?",
+    "Have you or your husband ever worked as a contractor for Initech?",
+    "Have you or your wife worked for an authorized dealer of Acme Wireless?",
+    "Did you manage people who worked as contractors for Initech?",
+    "Have you managed teams that worked as consultants for Globex?",
+    "Have you hired vendors who worked as contractors at Initech?",
+    "Have you ever been asked to work as a consultant for Initech?",
+    "Have you led projects where you worked as a consultant for Initech?",
+    # I1: "worked with" is collaboration
+    "Have you worked with a distributor of Acme Wireless?",
+    "Have you worked with a reseller of Acme Wireless?",
+    # I2: a foreign agent attestation
+    "Have you ever worked for an agent of China?",
+    "Were you employed by an agent of Russia?",
+    "Have you worked for a foreign agent of Acme Wireless?",
+    # I3: a generic noun is no company name, a public body is no employer of the history
+    "Have you worked as a consultant for Healthcare Clients?",
+    "Have you worked as a consultant for McKinsey Clients?",
+    "Have you worked as a consultant for Deloitte Clients?",
+    "Have you worked as a consultant for Big Pharma?",
+    "Have you worked as a contractor for Startups?",
+    "Have You Worked For Startups?",
+    "Have you worked as a contractor for the US Navy?",
+    "Have you worked as a contractor for NASA or the DoD?",
+    "Have you ever worked for the US Navy?",
+    "Have you been employed by the Army?",
+    "Have you worked for the Air Force or the Marines?",
+    "Have you worked for the Department of Defense?",
+    "Have you worked for Acme Wireless Dealers or Agents?",
+    "Are you currently working as a consultant for Initech Clients?",
+    # I4: its affiliates and subsidiaries are not a name
+    "Have you worked for Initech or Its Affiliates?",
+    "Have you been employed by Initech or Any of Its Affiliates?",
+    "Have you been employed by Initech and/or Its Subsidiaries?",
+    "Have you worked for Initech or an Initech Company?",
+    # S3: "by" is a joiner only in "<Brand> by <Parent>"
+    "Have you worked at Initech by Contract?",
+    "Have you worked for Initech by Referral?",
+    "Have you worked as a contractor for Amazon by way of Robert Half?",
+]
+
+
+@pytest.mark.parametrize("question", ASKED_NOT_NO)
+def test_a_lookalike_of_the_dealer_and_contractor_shapes_is_asked_never_the_derived_no(question):
+    facts = _globex_history(company="Acme Wireless", employers=("Lockheed Martin",))
+    assert not autofill_catalog.asks_worked_here_of_other(facts, question), question
+    assert not _is_the_derived_no(question), question
+    assert not _is_the_derived_no(question, key="history_unanswered"), question
+
+
+@pytest.mark.parametrize("question", [
+    "Are you currently working as a contractor for Acme Wireless?",
+    "Have you been employed with an authorized dealer of Acme Wireless?",
+    "Have you worked as a contractor for Acme Wireless, Verizon, AT&T or T-Mobile?",
+    "Have you ever worked for a distributor of Acme Wireless?",
+    "Were you ever employed by a reseller of Acme Wireless?",
+    "Did you work for a retailer of Acme Wireless?",
+    "Have you previously worked as an independent contractor for Initech?",
+    DEALER, CONTRACTOR, DIRECTLY,
+])
+def test_the_dealer_and_contractor_shapes_in_their_strict_wording_still_take_the_derived_no(question):
+    assert autofill_catalog.asks_worked_here_of_other(_globex_history(company="Acme"), question), question
+
+
+@pytest.mark.parametrize(("employers", "question"), [
+    (("Alphabet", "AWS"), "Have you worked for Google, Meta, Amazon or Apple?"),
+    (("Alphabet",), "Have you worked for Google or Initech?"),
+    (("Amazon Web Services",), "Have you worked for Google, Meta, Amazon or Apple?"),
+    (("Facebook",), "Have you worked for Google, Meta, Amazon or Apple?"),
+    (("Facebook",), "Have you worked for Meta (Instagram)?"),
+    (("Procter & Gamble",), "Have you ever worked for Procter and Gamble?"),
+    (("Procter & Gamble",), "Have you ever worked for P&G or Unilever?"),
+    (("YouTube",), "Have you worked for Google or Microsoft?"),
+    (("LinkedIn",), "Have you worked for Microsoft or Initech?"),
+    (("Ernst & Young",), "Have you ever worked for EY or Initech?"),
+    (("Twitter",), "Have you ever worked for X or Initech?"),
+    (("Chase",), "Have you ever worked for JPMorgan or Initech?"),
+    (("PwC",), "Have you ever worked for PricewaterhouseCoopers or Initech?"),
+    (("Initech Staffing",), "Have you worked as a contractor for Initech?"),
+    # an employer known by an acronym, and a list of names: no alias table is complete
+    (("IBM",), "Have you worked for Initech or Hooli?"),
+    (("SAP",), "Have you worked for Initrode, Hooli or Vandelay?"),
+])
+def test_an_employer_known_by_another_name_is_asked_not_the_derived_no(employers, question):
+    facts = _globex_history(company="Acme Wireless", employers=employers)
+    assert not autofill_catalog.asks_worked_here_of_other(facts, question), (employers, question)
+    assert not _is_the_derived_no(question, employers=employers), (employers, question)
+
+
+def test_a_short_acronym_employer_does_not_stop_a_question_naming_one_company():
+    facts = _globex_history(company="Acme Wireless", employers=("IBM",))
+    assert autofill_catalog.asks_worked_here_of_other(facts, "Have you ever worked for Initech?")
+
+
+@pytest.mark.parametrize("question", ["Have you worked with Salesforce?", "Have you worked with Salesforce before?",
+                                      "Have you ever worked with Salesforce?"])
+def test_an_unsure_worked_here_slot_for_worked_with_is_asked_but_a_none_keeps_the_pinned_reroute(question):
+    """"Worked with" carries no employment verb: when the map named the slot BELOW its floor, code does not
+    take over. A map that filed it as `none` or a history question keeps today's behaviour."""
+    assert _routed(question, employers=("Globex",), company="Salesforce", key=autofill_catalog.WORKED_HERE_SLOT,
+                   p=0.3).route == "none"
+    assert _routed(question, employers=("Globex",), company="Salesforce", key="none").route == "slot"
+    assert _routed(question, employers=("Globex",), company="Salesforce", key="history_unanswered").route == "slot"
+
+
+def test_an_unsure_worked_here_slot_with_an_employment_verb_is_still_code_s_call():
+    assert _is_the_derived_no("Have you ever worked for Salesforce?", employers=("Globex",), company="Salesforce",
+                              key=autofill_catalog.WORKED_HERE_SLOT, p=0.3)
+

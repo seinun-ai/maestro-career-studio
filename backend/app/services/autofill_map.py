@@ -562,6 +562,9 @@ _FILED_ELSEWHERE = frozenset({HISTORY_UNANSWERED, NO_SLOT})
 # The worked-here slot itself is code's call too once the wording is an allowlisted shape: a model that named
 # it at p 0.63 (a hair over the floor, live check 4) and one that named it at 0.3 get the same answer.
 _REROUTABLE = _FILED_ELSEWHERE | {WORKED_HERE_SLOT}
+# ... except "worked with X" with no employment verb, which only a map sure of the slot may call worked-here.
+_WORKED_WITH = re.compile(r"\bwork(?:ed|ing)?\s+with\b", re.IGNORECASE)
+_EMPLOYMENT_VERB = re.compile(r"\bemploy|\bwork(?:ed|ing)?\s+(?:for|at)\b|\bemployee|\bintern\b|\bcontractor", re.IGNORECASE)
 MIDDLE_NAME_SLOT = "personal.middle_name"
 _MIDDLE_NAME = re.compile(r"\bmiddle\s*(name|initial)\b", re.IGNORECASE)
 
@@ -570,6 +573,9 @@ def _rerouted(field: MapField, picked: tuple[str, float], facts: dict[str, Fact]
     """Whether code takes this field for the worked-here question the map filed elsewhere (or filed under the
     worked-here slot itself, however unsure): one that lists the job's company, or that names companies the
     history does not hold while the derived answer is No."""
+    if (picked[0] == WORKED_HERE_SLOT and WORKED_HERE_SLOT in facts and picked[1] < _floor(facts[WORKED_HERE_SLOT])
+            and _WORKED_WITH.search(field.question) and not _EMPLOYMENT_VERB.search(field.question)):
+        return False   # an unsure map on "worked with Salesforce": collaboration, not employment (the user's)
     return (picked[0] in _REROUTABLE and field.shape not in _WRITTEN_SHAPES
             and ((lists_job_company(facts, field.question, field.options)
                   and asks_worked_here(facts, field.question, field.options))
