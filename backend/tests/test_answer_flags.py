@@ -201,6 +201,9 @@ QUIET += [
     ("Master's/Advanced Degree against Masters of Science",
      _field("Highest level of education", "Master's/Advanced Degree", "profile", slot="education.0.degree"),
      {"education": [{"degree": "Masters of Science"}]}),
+    ("M.B.A. against a Master of Business Administration",
+     _field("Degree", "M.B.A.", "profile", slot="education.0.degree"),
+     {"education": [{"degree": "Master of Business Administration"}]}),
     ("an MBA against a Master of Business Administration",
      _field("Degree", "MBA", "profile", slot="education.0.degree"),
      {"education": [{"degree": "Master of Business Administration"}]}),
@@ -236,6 +239,15 @@ def test_answers_that_need_no_second_look_are_not_flagged(field, profile):
 
 
 DIFFERS = [
+    ("an MBA against a Masters of Business Analytics: the MBA names its field",
+     _field("Degree", "MBA", "profile", slot="education.0.degree"),
+     {"education": [{"degree": "Masters of Business Analytics"}]}),
+    ("a named field keeps the word comparison (Master of Science against a Master of Arts)",
+     _field("Degree", "Master of Science", "profile", slot="education.0.degree"),
+     {"education": [{"degree": "Master of Arts"}]}),
+    ("a dotted abbreviation inside a word is no degree (Web Services is not a BS)",
+     _field("Degree", "Web Services Certificate", "profile", slot="education.0.degree"),
+     {"education": [{"degree": "Bachelor of Science"}]}),
     ("a bachelor's against a master's, whatever the wording",
      _field("Highest level of education", "Bachelor's Degree", "profile", slot="education.0.degree"),
      {"education": [{"degree": "Masters of Science"}]}),

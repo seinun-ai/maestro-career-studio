@@ -75,7 +75,7 @@ EEO_KEY_WORDS = (
 _NOT_SCREENING_SLOTS = ("languages.", "derived.agrees_to_terms")
 # Clock-based facts: whatever the form says, "today" moves, so a stored difference means nothing. The
 # phone's device type is the Companion's own assumption (the profile never says it), worded the page's way.
-_CLOCK_SLOTS = frozenset({"derived.today", "derived.earliest_start_date", "derived.phone_type"})
+_UNFLAGGED_SLOTS = frozenset({"derived.today", "derived.earliest_start_date", "derived.phone_type"})
 
 
 def is_eeo(question: str, slot: str | None) -> bool:
@@ -151,27 +151,66 @@ def _same_date(said: Any, kept: Any) -> bool | None:
     return None if a is None or b is None else a == b
 
 
-# A degree is compared by its LEVEL, not its words: "Master's/Advanced Degree" is a "Masters of Science".
-# Most advanced first; the first level a text names is its level.
-_DEGREE_LEVELS = (
-    ("doctorate", re.compile(r"\b(?:ph\.?\s?d|doctor(?:ate|al)?|d\.?\s?phil|ed\.?\s?d|dba)\b", re.IGNORECASE)),
-    ("master", re.compile(r"\b(?:master'?s?|m\.?\s?s\.?c?|m\.?\s?a|mba|m\.?\s?eng|m\.?\s?f\.?\s?a|m\.?\s?p\.?\s?h"
-                         r"|advanced\s+degree|graduate\s+degree)\b", re.IGNORECASE)),
-    ("bachelor", re.compile(r"\b(?:bachelor'?s?|b\.?\s?s\.?c?|b\.?\s?a|b\.?\s?eng|b\.?\s?tech|undergraduate)\b",
-                           re.IGNORECASE)),
-    ("associate", re.compile(r"\b(?:associate'?s?|a\.a\.?s?|a\.s\.|aas?)\b", re.IGNORECASE)),
-    ("high school", re.compile(r"\b(?:high\s*school|ged|secondary\s+school|hs\s+diploma)\b", re.IGNORECASE)),
+# A degree is compared by its LEVEL when the page's value names only a level: "Master's/Advanced Degree" is a
+# "Masters of Science". A value that names a field ("Master of Science", "MBA") keeps the word comparison, so an
+# MBA against a Masters of Business Analytics is still flagged. Most advanced first; the first level a text
+# names is its level. The lookbehind keeps an abbreviation whole ("Web Services" is no B.S.).
+_NOT_INSIDE = r"(?<![\w.'-])"
+_LEVEL_ONLY = (
+    ("doctorate", r"ph\.?\s?d|doctor(?:ate|al)?"),
+    ("master", r"master'?s?|m\.?\s?s\.?c?|m\.?\s?a|advanced\s+degree|graduate\s+degree"),
+    ("bachelor", r"bachelor'?s?|b\.?\s?s\.?c?|b\.?\s?a|undergraduate"),
+    ("associate", r"associate'?s?|a\.a\.?s?|a\.s\.|aas?"),
+    ("high school", r"high\s*school|ged|secondary\s+school|hs\s+diploma"),
 )
+# Abbreviations that carry their field (business administration, engineering…): a level, but not level-only.
+_WITH_FIELD = (
+    ("doctorate", r"d\.?\s?b\.?\s?a|ed\.?\s?d|d\.?\s?phil"),
+    ("master", r"m\.?\s?b\.?\s?a|m\.?\s?eng|m\.?\s?f\.?\s?a|m\.?\s?p\.?\s?h"),
+    ("bachelor", r"b\.?\s?eng|b\.?\s?tech"),
+)
+_LEVEL_ONLY_RE = {level: re.compile(rf"{_NOT_INSIDE}(?:{words})\b", re.IGNORECASE) for level, words in _LEVEL_ONLY}
+_WITH_FIELD_RE = {level: re.compile(rf"{_NOT_INSIDE}(?:{words})\b", re.IGNORECASE) for level, words in _WITH_FIELD}
+_LEVELS = [level for level, _ in _LEVEL_ONLY]
+# Words that add no field to a level ("Master's/Advanced Degree", "Bachelor's degree or equivalent").
+_NO_FIELD = frozenset({"degree", "degrees", "s", "advanced", "graduate", "level", "equivalent", "or", "and", "of",
+                       "the", "a", "an", "diploma", "program", "programme"})
 _DEGREE_SLOT = re.compile(r"education\.\d+\.degree")
+_ACRONYM_SKIP = frozenset({"of", "in", "and", "the", "for"})
 
 
 def degree_level(text: Any) -> str | None:
     """"doctorate", "master", "bachelor", "associate" or "high school", or None when the text names none."""
-    return next((level for level, pattern in _DEGREE_LEVELS if pattern.search(str(text))), None)
+    text = str(text)
+    return next((level for level in _LEVELS
+                 if _LEVEL_ONLY_RE[level].search(text) or (level in _WITH_FIELD_RE and _WITH_FIELD_RE[level].search(text))),
+                None)
+
+
+def _names_only_a_level(text: Any) -> bool:
+    """A degree value that is a level and nothing else: "Master's/Advanced Degree", "Bachelor's Degree", "B.S.",
+    "PhD". Not "Master of Science" (a field), nor an abbreviation that carries one ("MBA")."""
+    text = str(text)
+    if degree_level(text) is None or any(rx.search(text) for rx in _WITH_FIELD_RE.values()):
+        return False
+    for rx in _LEVEL_ONLY_RE.values():
+        text = rx.sub(" ", text)
+    return all(word in _NO_FIELD for word in _fold(text).split())
+
+
+def _same_degree(said: str, kept: str) -> bool | None:
+    """True when the degrees agree by level (the page's value names only a level) or by initials; None when this
+    cannot tell and the words decide."""
+    if _names_only_a_level(said) and degree_level(said) == degree_level(kept):
+        return True
+    initials = "".join(w[0] for w in _fold(kept).split() if w not in _ACRONYM_SKIP)
+    if len(initials) >= 2 and _fold(said).replace(" ", "") == initials:
+        return True
+    return None
 
 
 def _same_text(slot: str, said: str, kept: str) -> bool:
-    if _DEGREE_SLOT.fullmatch(slot) and (level := degree_level(said)) and level == degree_level(kept):
+    if _DEGREE_SLOT.fullmatch(slot) and _same_degree(said, kept):
         return True
     if slot.endswith("phone") and len(_digits(said)) >= 7 and len(_digits(kept)) >= 7:
         return _digits(said) == _digits(kept)
@@ -223,7 +262,7 @@ def _comparable(fact: Fact | None, answer: Any) -> bool:
 def _differs(field: dict[str, Any], facts: dict[str, Fact]) -> bool:
     slot = field.get("slot") or ""
     fact, answer = facts.get(slot), field.get("answer")
-    if slot in _CLOCK_SLOTS or not _comparable(fact, answer):
+    if slot in _UNFLAGGED_SLOTS or not _comparable(fact, answer):
         return False
     if fact.yes_no:
         return _yes_no_differs(field.get("question", ""), answer, fact.value)
