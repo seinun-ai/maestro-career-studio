@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- A read-only Ant Design select, as an ATS-D application form draws it (live 2026-10-14, Initech-style made-up
+     labels). Observed on the live page: the combobox <input> is type=search, readonly, role=combobox with
+     aria-haspopup=listbox / aria-controls=<id>_list, and carries style="opacity: 0" (the visible words are
+     the sibling .ant-select-selection-item span, or an empty .ant-select-selection-placeholder). A press on
+     the box opens a dropdown rendered into <body>: a role=listbox holder (id <input id>_list) whose rows are
+     role=option, class ant-select-item-option, title = the text. A row click shows the pick and closes the
+     dropdown; the page's own state is window.__oracle.antd_contact, set only by that click. -->
+<style>
+  .ant-select { position: relative; display: inline-block; width: 260px; }
+  .ant-select-selector { position: relative; height: 32px; border: 1px solid #bbb; border-radius: 6px; }
+  .ant-select-selection-search { position: absolute; inset: 0 11px; }
+  .ant-select-selection-search-input { width: 100%; height: 100%; border: 0; padding: 0; background: transparent; }
+  .ant-select-selection-item, .ant-select-selection-placeholder { position: absolute; inset: 0 11px; line-height: 30px; pointer-events: none; }
+  .ant-select-dropdown { position: absolute; z-index: 10; background: #fff; border: 1px solid #ddd; width: 260px; }
+  .ant-select-item { padding: 5px 12px; }
+</style>
+<form>
+  <div class="ant-form-item">
+    <label for="contact_method" class="ant-form-item-required" title="Preferred Contact Method">Preferred Contact Method</label>
+    <div class="ant-select ant-select-single" id="contact_select">
+      <div class="ant-select-selector">
+        <span class="ant-select-selection-search"><input type="search" id="contact_method" autocomplete="off" class="ant-select-selection-search-input" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-owns="contact_method_list" aria-autocomplete="list" aria-controls="contact_method_list" aria-required="true" readonly unselectable="on" value="" style="opacity: 0;"></span>
+        <span class="ant-select-selection-placeholder"></span>
+      </div>
+    </div>
+  </div>
+</form>
+<script>
+(() => {
+  window.__oracle = window.__oracle || {};
+  window.__oracle.antd_contact = "";
+  const rows = ["Email", "Mobile Phone", "Home Phone"];
+  const select = document.getElementById("contact_select");
+  const input = document.getElementById("contact_method");
+  const selector = select.querySelector(".ant-select-selector");
+  let dropdown = null;
+  const close = () => {
+    dropdown?.remove();
+    dropdown = null;
+    input.setAttribute("aria-expanded", "false");
+  };
+  const show = (text) => {
+    selector.querySelector(".ant-select-selection-item")?.remove();
+    const holder = selector.querySelector(".ant-select-selection-placeholder");
+    holder.style.display = text ? "none" : "";
+    if (!text) return;
+    const item = document.createElement("span");
+    item.className = "ant-select-selection-item";
+    item.title = text;
+    item.textContent = text;
+    selector.appendChild(item);
+  };
+  const open = () => {
+    if (dropdown) return;
+    dropdown = document.createElement("div");
+    dropdown.className = "ant-select-dropdown";
+    const r = select.getBoundingClientRect();
+    dropdown.style.left = `${r.left + window.scrollX}px`;
+    dropdown.style.top = `${r.bottom + window.scrollY + 4}px`;
+    const list = document.createElement("div");
+    list.setAttribute("role", "listbox");
+    list.id = "contact_method_list";
+    rows.forEach((text, i) => {
+      const row = document.createElement("div");
+      row.setAttribute("role", "option");
+      row.id = `contact_method_list_${i}`;
+      row.setAttribute("aria-selected", String(window.__oracle.antd_contact === text));
+      row.className = "ant-select-item ant-select-item-option";
+      row.title = text;
+      row.innerHTML = `<div class="ant-select-item-option-content"></div>`;
+      row.firstChild.textContent = text;
+      row.addEventListener("mousedown", (e) => e.preventDefault());
+      row.addEventListener("click", () => {
+        window.__oracle.antd_contact = text;
+        show(text);
+        close();
+      });
+      list.appendChild(row);
+    });
+    dropdown.appendChild(list);
+    document.body.appendChild(dropdown);
+    input.setAttribute("aria-expanded", "true");
+  };
+  select.addEventListener("mousedown", () => (dropdown ? close() : open()));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "Enter") open();
+    if (e.key === "Escape") close();
+  });
+  document.addEventListener("mousedown", (e) => { if (dropdown && !select.contains(e.target) && !dropdown.contains(e.target)) close(); });
+})();
+</script>

@@ -85,9 +85,19 @@
     }
     return out;
   };
+  // A read-only input that opens a list is drawn invisibly over the words the
+  // widget shows (Ant Design: `opacity: 0` on the combobox input, the pick in a
+  // sibling span). Only opacity is forgiven: it must still have a box on the
+  // page, not be hidden, and sit in a widget box that is visible.
+  const invisibleButDrawn = (el) => {
+    const { visible } = ns.fillBase;
+    return el instanceof HTMLInputElement && el.readOnly && ns.shapes.of(el)?.name === "popup"
+      && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden"
+      && visible(ns.shapes.box(el) ?? el.parentElement);
+  };
   const shown = (el) => {
     const { visible } = ns.fillBase;
-    if (visible(el)) return true;
+    if (visible(el) || invisibleButDrawn(el)) return true;
     // Custom radios/checkboxes hide the input and show a label.
     if (el.type !== "radio" && el.type !== "checkbox") return false;
     return [...(el.labels ?? []), el.closest("label"), el.parentElement].some((n) => n && visible(n));
