@@ -1669,7 +1669,7 @@ def test_a_ready_card_that_has_not_been_left_offers_no_resume_and_no_moved_on_li
 def test_the_closed_stop_says_how_to_take_it_back_and_resume_drives_the_page(tmp_path):
     out = _run(tmp_path, [{"seed": [_seeded("stopped", why="closed", readyAt=None)]}])
     body = _card(out["shots"][1])["body"]
-    assert "Not closed? Press Resume." in _text(body) and _buttons(body)["run-resume"] == "Resume"
+    assert "Not closed? Open the application in the tab, then press Resume." in _text(body) and _buttons(body)["run-resume"] == "Resume"
     again = _run(tmp_path, [{"seed": [_seeded("stopped", why="closed")]}, {"press": "run-resume"}], pages=(STEP1, REVIEW))
     assert _record(again["shots"][-1])["status"] == "ready"
 
@@ -1752,3 +1752,17 @@ def test_a_log_that_never_recorded_a_run_has_no_last_trace_time(tmp_path):
                replies={"fill_trace": _reply({"posted": 0, "why": "off", "lastAt": None})})
     text = _text(_card(out["shots"][-1])["body"])
     assert LOG_OFF in text and "Last trace" not in text
+
+
+def test_the_unsure_card_says_what_resume_means_here(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("parked", why="unsure_page")]}])
+    text = _text(_card(out["shots"][1])["body"])
+    assert "Not sure this is the last page" in text and "If it is, press Resume. Submit stays yours." in text
+
+
+def test_the_fill_log_note_is_kept_with_the_record(tmp_path):
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [verified("f1")], "trace": TRACE}, {"fields": [verified("f2")], "trace": TRACE}],
+               replies={"fill_trace": _reply({"posted": 0, "why": "off", "lastAt": "2026-10-13T12:00:00.000Z"})})
+    saved = [runs[0] for runs in out["queueSaves"] if runs]
+    assert saved[-1].get("logOff") is True and saved[-1].get("logLast") == "2026-10-13T12:00:00.000Z"

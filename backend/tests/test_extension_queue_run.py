@@ -330,7 +330,7 @@ def test_a_resume_on_the_same_sign_up_never_creates_a_second_time(tmp_path):
     first = _drive(tmp_path, [ACCOUNT], record=ON_WD)
     again = _drive(tmp_path, [ACCOUNT], record=first["record"])
     assert len(names(again, "createAccount")) == 0
-    assert (again["record"]["status"], again["record"]["why"]) == ("parked", "verify")
+    assert (again["record"]["status"], again["record"]["why"]) == ("parked", "create_account_failed")
 
 
 def test_a_sign_up_that_comes_back_with_the_pages_complaint_parks_account_not_created(tmp_path):
@@ -341,10 +341,11 @@ def test_a_sign_up_that_comes_back_with_the_pages_complaint_parks_account_not_cr
     assert len(names(out, "createAccount")) == 1
 
 
-def test_a_sign_up_that_comes_back_without_a_complaint_is_waiting_on_the_email(tmp_path):
+def test_a_sign_up_that_comes_back_without_a_complaint_is_not_called_an_email_check(tmp_path):
+    """Nothing says the site is waiting on the email: an email-check page reads as verify by itself."""
     again = {**ACCOUNT, "key": "after"}
     out = _drive(tmp_path, [ACCOUNT, again], accountMoves=True, record=ON_WD)
-    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "verify")
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "create_account_failed")
 
 
 def test_an_email_check_page_after_the_press_parks_verify_and_the_resume_signs_in(tmp_path):
@@ -763,10 +764,17 @@ def test_every_plain_next_wording_on_a_fieldless_page_advances(tmp_path, text):
 
 
 @pytest.mark.parametrize("text", ["Continue", "Proceed", "Review application"])
-def test_a_fieldless_page_with_only_a_continue_parks_confirm_page_and_is_not_pressed(tmp_path, text):
-    out = _drive(tmp_path, [step(1), step(2, fillable=0, nextText=text), REVIEW])
+def test_a_page_the_fill_listed_nothing_on_with_only_a_continue_parks_confirm_page_and_is_not_pressed(tmp_path, text):
+    out = _drive(tmp_path, [step(1), step(2, fillable=0, nextText=text), REVIEW], fills=[[needs("a", status="verified")], []])
     assert (out["record"]["status"], out["record"]["why"]) == ("parked", "confirm_page")
     assert out["pressed"] == ["next-1"] and out["record"]["readyAt"] is None
+
+
+def test_a_continue_page_whose_fill_listed_fields_is_a_step_whatever_the_reader_counted(tmp_path):
+    """The count the reader takes can lag the fill (popups drawn late): what the fill LISTED decides."""
+    out = _drive(tmp_path, [step(1), step(2, fillable=0, nextText="Continue"), REVIEW],
+                 fills=[[needs("a", status="verified")], [needs("q", "Degree", required=False, status="verified")], []])
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1", "next-2"]
 
 
 def test_an_intro_page_at_the_first_step_still_advances(tmp_path):
@@ -883,6 +891,80 @@ def test_a_review_whose_fields_mount_after_an_empty_fill_is_filled_before_it_can
     out = _drive(tmp_path, [step(1), {**REVIEW, "late": True}],
                  fills=[[needs("a", status="verified")], [], [needs("q1", "Degree", required=False, status="verified")]])
     assert out["record"]["status"] == "ready" and out["fillCalls"] == 3
+
+
+# ---------- the required upload is the resume's, or nobody's (I2) ----------
+
+def _up(label, box, target="u1"):
+    return {"label": label, "target": target, "kind": "upload", "box": box}
+
+
+@pytest.mark.parametrize("box", ["other", "parser"])
+def test_a_required_box_for_another_document_parks_upload_and_never_gets_the_resume(tmp_path, box):
+    out = _drive(tmp_path, [step(1), {**REVIEW, "needs": [_up("Cover letter", box)]}], fixClears=True)
+    r = out["record"]
+    assert (r["status"], r["why"], r["readyAt"]) == ("parked", "upload", None)
+    assert [o["question"] for o in r["open"]] == ["Cover letter"]
+    assert names(out, "fix") == [] and names(out, "attachTo") == []
+
+
+def test_a_cover_letter_box_beside_a_resume_one_parks_upload_without_a_fix(tmp_path):
+    needs = [_up("Resume", "resume", "u1"), _up("Cover letter", "other", "u2")]
+    out = _drive(tmp_path, [step(1), {**REVIEW, "needs": needs}], fixClears=True)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "upload") and names(out, "fix") == []
+
+
+@pytest.mark.parametrize("box", ["resume", "unknown"])
+def test_a_lone_resume_or_unknown_required_box_gets_the_fix(tmp_path, box):
+    out = _drive(tmp_path, [step(1), {**REVIEW, "needs": [_up("Upload", box)]}], fixClears=True)
+    assert out["record"]["status"] == "ready" and [c[1] for c in names(out, "fix")] == [["Upload"]]
+
+
+def test_two_required_upload_boxes_are_the_users_to_choose_between(tmp_path):
+    needs = [_up("Upload one", "unknown", "u1"), _up("Upload two", "unknown", "u2")]
+    out = _drive(tmp_path, [step(1), {**REVIEW, "needs": needs}], fixClears=True)
+    assert (out["record"]["status"], out["record"]["why"]) == ("parked", "upload") and names(out, "fix") == []
+
+
+# ---------- a Resume on an unsure page is the user vouching for it (I4) ----------
+
+UNSURE = {"t": "fields_only", "url": "/last", "key": "lastpage"}
+
+
+def _parked_unsure(tmp_path):
+    first = _drive(tmp_path, [step(1), UNSURE])
+    assert (first["record"]["status"], first["record"]["why"]) == ("parked", "unsure_page")
+    return first["record"]
+
+
+def test_an_unsure_park_remembers_its_page(tmp_path):
+    parked = _parked_unsure(tmp_path)
+    assert parked["parkedPage"]["key"] == "lastpage" and parked["parkedPage"]["where"].endswith("/last")
+
+
+def test_a_resume_on_the_same_unsure_page_goes_ready_without_a_refill(tmp_path):
+    parked = _parked_unsure(tmp_path)
+    again = _drive(tmp_path, [UNSURE], record=parked)
+    r = again["record"]
+    assert (r["status"], r["readyBy"]) == ("ready", "user") and r["readyAt"] is not None
+    assert again["fillCalls"] == 0 and again["pressed"] == [] and r["tenant"] is not None
+
+
+def test_a_vouched_page_still_gets_its_errors_and_required_empties_checked(tmp_path):
+    parked = _parked_unsure(tmp_path)
+    errs = _drive(tmp_path, [{**UNSURE, "errs": [ERR]}], record=dict(parked))
+    assert (errs["record"]["status"], errs["record"]["why"]) == ("parked", "page_errors")
+    need = _drive(tmp_path, [{**UNSURE, "needs": [NEED]}], record=dict(parked))
+    assert (need["record"]["status"], need["record"]["why"]) == ("parked", "open_questions")
+    clean = _drive(tmp_path, [{**UNSURE, "errs": [ERR]}], record=dict(parked), fixClears=True)
+    assert clean["record"]["status"] == "ready" and clean["record"]["readyBy"] == "user"
+
+
+def test_a_resume_after_the_user_moved_on_does_not_vouch_for_the_new_page(tmp_path):
+    parked = _parked_unsure(tmp_path)
+    other = _drive(tmp_path, [{"t": "fields_only", "url": "/elsewhere", "key": "other"}], record=dict(parked))
+    assert (other["record"]["status"], other["record"]["why"]) == ("parked", "unsure_page")
+    assert other["fillCalls"] == 1
 
 
 def test_a_lone_parser_box_does_not_park_upload(tmp_path):

@@ -466,7 +466,7 @@
       if (record.logOff === off && (record.logLast ?? null) === last) return;
       record.logOff = off;
       record.logLast = last;
-      store.render();
+      persist(store);   // kept with the record, so a reopened panel still says it
     }).catch(warn("could not read the fill log's answer"));
   }
 

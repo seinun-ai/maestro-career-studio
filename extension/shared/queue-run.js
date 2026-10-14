@@ -251,7 +251,7 @@
       return record;
     };
     const park = (why, extra = {}) => finish("parked", why, { open: [], ...extra,
-      ...(why === "page_errors" || why === "upload" ? { parkedPage: thisPage } : {}) });
+      ...(why === "page_errors" || why === "upload" || why === "unsure_page" ? { parkedPage: thisPage } : {}) });
 
     const gate = () => {
       if (deps.cancelled(record)) throw HALT;
@@ -275,6 +275,7 @@
     let listed = null;       // how many fields the last fill on this page reported (null: none yet)
     let seenAtFill = 0;      // how many controls the page showed when that fill began
     let refilled = false;    // fields that showed up after an empty fill have had their one more fill
+    let vouched = false;     // a Resume on the very page that parked "unsure": the user says it is the last one
     let requiredTried = false;  // the one scoped fix for required boxes still empty on this review page
     let attempted = new Set();  // the errors already repaired on this page (by their label)
     let wroteResume = false; // the resume has been written on this page (by the fill's attach or the gate): never twice
@@ -306,6 +307,7 @@
       tried = 0;
       fixRounds = 0;
       requiredTried = false;
+      vouched = false;
       listed = null;
       seenAtFill = 0;
       refilled = false;
@@ -380,7 +382,7 @@
       const userNavigates = USER_NAVIGATES.has(record.why);
       // After a page_errors or upload park the user fixed what was named: if the tab is still on that page
       // (the first read decides) it is not filled again; its errors or upload boxes are looked at, then Next.
-      if (resumed && (record.why === "page_errors" || record.why === "upload")) resumeWhy = record.why;
+      if (resumed && (record.why === "page_errors" || record.why === "upload" || record.why === "unsure_page")) resumeWhy = record.why;
       if (record.tabId == null) {
         const host = hostOf(record.openUrl);
         if (!host) return await finish("stopped", "bad_link");
@@ -416,6 +418,7 @@
             if (parked && parked.key !== "" && parked.where === where && parked.key === key) {
               recheck = resumeWhy;
               pageFilled = true;
+              vouched = resumeWhy === "unsure_page";
             } else {
               // The user moved on by hand: nothing the park learnt is about this page (what moved() clears).
               fixRounds = 0;
@@ -484,9 +487,9 @@
         // A sign-up page on a known ATS host: the run creates the account with the saved login, once (owner
         // decision 2026-10-14). Everywhere else, and for anything the page refuses, it is still a wall.
         if (kind === "create_account") {
-          // Seen again after the press: the site complained (a password rule, an account that exists), or it
-          // is waiting on the email.
-          if (record.accountTried === true) return await park((summary.errors ?? 0) > 0 ? "create_account_failed" : "verify");
+          // Seen again after the press: the site did not take it (a password rule, an account that exists). An
+          // email-check page that reads as one parks `verify` by itself; nothing here says it was one.
+          if (record.accountTried === true) return await park("create_account_failed");
           const allowedHost = record.hosts.at(-1);
           if (!ns.atsHosts.isKnown(allowedHost)) return await park("create_account");
           await update({ status: "creating_account" });
@@ -503,15 +506,6 @@
         if (WALLS.has(kind)) return await park(kind);
         if (kind === "closed") return await finish("stopped", "closed");
         if (kind === "unknown") return await park("unknown_page");
-
-        // Later than the first page, a page with nothing to fill and one button: a plain Next ("Next",
-        // "Save and continue") is a step like any other (a page of cards). A bare "Continue" or "Proceed" there
-        // may be a final "are you sure" page's, so it parks for the user rather than being pressed. (An intro
-        // page at step 0 still advances.)
-        if (kind === "form_step" && record.step > 0 && (summary.fillable ?? 0) === 0) {
-          const lone = (summary.buttons ?? []).find((b) => b.id === verdict.next);
-          if (!ns.pageKind.isPlainNext(lone?.text)) return await park("confirm_page");
-        }
 
         if (kind === "sign_in") {
           // Marked BEFORE the attempt: whatever happens, the login is tried once.
@@ -581,6 +575,16 @@
           continue;
         }
 
+        // Later than the first page, a page the fill found NOTHING on and one button: a plain Next ("Next",
+        // "Save and continue") is a step like any other (a page of cards). A bare "Continue" or "Proceed" there
+        // may be a final "are you sure" page's, so it parks for the user rather than being pressed. What the fill
+        // LISTED decides, not the reader's count, which lags a page that draws its fields late. (An intro page at
+        // step 0 still advances.)
+        if (kind === "form_step" && record.step > 0 && listed === 0) {
+          const lone = (summary.buttons ?? []).find((b) => b.id === verdict.next);
+          if (!ns.pageKind.isPlainNext(lone?.text)) return await park("confirm_page");
+        }
+
         if (kind === "review") {
           // "Ready to submit" needs evidence this was the application: a step behind it, or a field
           // this page's fill wrote or confirmed. A start chooser or a posting with a stray control
@@ -590,7 +594,7 @@
           // reason a page reads as a review (a Submit the reader could not see, a dialog that asks, several
           // Nexts, fields and no Next) means "stop, not sure": never Ready.
           await update({ lastBy: by });
-          if (by !== "submit_button") return await park("unsure_page");
+          if (by !== "submit_button" && !vouched) return await park("unsure_page");
           // The page still complains: one repair of what it names, as after a rejected Next; the same
           // complaint again parks naming it.
           if ((summary.errors ?? 0) > 0) {
@@ -604,6 +608,12 @@
             const found = await act(deps.pageRequired, record.tabId, frame.frameId);
             const pending = (Array.isArray(found?.items) ? found.items : [])
               .filter((one) => !(one.kind === "upload" && wroteResume));
+            // The resume goes in a resume box and nowhere else: a box for another document (or the site's own
+            // import), and a choice between several, are the user's.
+            const uploads = pending.filter((one) => one.kind === "upload");
+            if (uploads.some((one) => one.box === "other" || one.box === "parser") || uploads.length > 1) {
+              return await park("upload", { open: errorsOpen(pending) });
+            }
             if (pending.length) {
               const open = errorsOpen(pending);
               if (requiredTried) return await park("open_questions", { open });
@@ -614,7 +624,7 @@
               continue;
             }
           }
-          return await finish("ready", null, { readyAt: deps.now(), open: [], readyBy: by, tenant: ns.decisions.sessionTenant(url) });
+          return await finish("ready", null, { readyAt: deps.now(), open: [], readyBy: by === "submit_button" ? by : "user", tenant: ns.decisions.sessionTenant(url) });
         }
 
         const here = fingerprint(url, summary);

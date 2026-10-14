@@ -51,7 +51,7 @@
     posting: ["Apply yourself",
       "The Companion didn't press this page's Apply. Open the application form in the tab, then press Resume."],
     unsure_page: ["Not sure this is the last page",
-      "Check it in the tab, then press Resume or Submit yourself."],
+      "If it is, press Resume. Submit stays yours."],
     confirm_page: ["Check this page",
       "This page has only a Continue button, and the Companion can't tell whether it sends the application. "
       + "Check it in the tab, then press Resume or go on yourself."],
@@ -72,7 +72,7 @@
       "This job board has its own apply button, and the Companion doesn't use it. Apply there yourself."],
   };
   const STOPS = {
-    closed: ["Position closed", "This job is no longer taking applications. Not closed? Press Resume."],
+    closed: ["Position closed", "This job is no longer taking applications. Not closed? Open the application in the tab, then press Resume."],
     bad_link: ["Bad link", "The saved apply link isn't a web address the Companion can open."],
     error: ["Something went wrong", "The Companion stopped. Nothing was submitted. You can carry on in the tab yourself."],
     user: ["Stopped", "You stopped it. Nothing was submitted."],
