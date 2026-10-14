@@ -538,9 +538,12 @@
   const HINTY = /\b(?:marked|denotes?|indicates?|indicated)\b|^\s*(?:all\s+)?(?:fields?|questions?|items?)\b[^?]*\brequired\b/i;
   const NOT_A_LABEL = '[role="alert"], [aria-live]:not([aria-live="off"]), [class*="error" i], script, style, template';
   const HEADINGS = "h1, h2, h3, h4, h5, h6, [role='heading']";
-  // A pill group (buttons that hold `aria-pressed`, or ARIA radios that are not inputs) is a field only when
-  // the shape reader says it is a GROUP with a question (`pills`): a lone toggle or a toolbar is not one.
-  const PILL_BOX = 'button[aria-pressed], [role="button"][aria-pressed], [role="radio"]:not(input)';
+  // A pill group (buttons that hold `aria-pressed`, ARIA radios that are not inputs, or the buttons of a
+  // labelled list of button-only items that carry no ARIA state at all) is a field only when the shape
+  // reader says it is a GROUP with a question (`pills`): a lone toggle, a toolbar or a list of files with
+  // Remove buttons is not one.
+  const PILL_BOX = 'button[aria-pressed], [role="button"][aria-pressed], [role="radio"]:not(input), '
+    + 'ul[role="list"][aria-label] > li > button:only-child';
   const FIELD_BOX = `${CONTROLS}, input[type="file"], button[aria-haspopup="listbox"], button[aria-haspopup="true"], ${PILL_BOX}`;
   const MAX_REQUIRED_LABEL = 200;
   const MAX_CLIMB = 6;

@@ -200,6 +200,10 @@
   };
   // Whether the box's value is read from its own text alone and by the weak rule above
   // (no value node, no pill, no backing input, no JET marker).
+  // Whether the box is of that kind BEFORE anything is typed or picked: select-style, with no value node,
+  // pill, backing input or JET marker to prove a pick by (the read above is then all it has).
+  const weakBox = (el) => !workdayBox(el) && selectStructure(el) && !box(el)?.querySelector(SINGLE) && chips(el).length === 0
+    && !jetHost(el) && !backingInput(el);
   const weakRead = (el) => !workdayBox(el) && selectStructure(el) && !box(el)?.querySelector(SINGLE) && chips(el).length === 0
     && !jetHost(el) && !backingInput(el) && restingText(el) !== "";
   // A multi widget is never finished (items may be missing), and a Workday
@@ -421,7 +425,7 @@
   const ARIA_RADIO = '[role="radio"][aria-checked]';
   // A list of buttons with no ARIA state at all (`ul[role=list][aria-label]` of button-only items): the
   // state, when the page shows one, is a class on the button.
-  const LISTED = 'ul[role="list"][aria-label] > li > button';
+  const LISTED = 'ul[role="list"][aria-label] > li > button:only-child';
   const SELECTED_CLASS = /(^|[-_\s])(selected|active|pressed|checked)($|[-_\s])/i;
   const stateless = (m) => !m.hasAttribute("aria-pressed") && !m.hasAttribute("aria-checked");
   const pillOn = (m) => m.getAttribute("aria-pressed") === "true" || m.getAttribute("aria-checked") === "true"
@@ -440,18 +444,22 @@
     }
     return false;
   };
-  // A `ul[role=list][aria-label]` whose items each hold ONE plain button and nothing else, two or more
-  // of them. Not a menu, a pager or a tab list: any button that says so is the end of it.
+  // A `ul[role=list][aria-label]` whose items each ARE one plain button: the button is the item's only
+  // child and the item says nothing else (a file's name beside its Remove button is not a pill), two or
+  // more of them. Not a menu, a pager, a tab list, or buttons that act on something (Remove, Edit...).
   const NOT_A_PILL = '[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded], [aria-current], [aria-controls], [role="tab"], [role="menuitem"]';
+  const ACTION_WORDS = /\b(remove|delete|edit|view|download|upload|replace)\b/i;
   const listedGroup = (el) => {
     const container = el.closest('ul[role="list"][aria-label]');
     if (!container || container.closest('[role="toolbar"]')) return null;
     const items = [...container.children];
-    const members = items.map((li) => (li.tagName === "LI" && li.children.length > 0 ? li.querySelectorAll("button, input, select, textarea, a[href]") : []));
-    if (items.length < 2 || !members.every((m) => m.length === 1 && m[0].tagName === "BUTTON" && m[0].parentElement === items[members.indexOf(m)]
-      && !m[0].matches(NOT_A_PILL))) return null;
+    const members = items.map((li) => (li.tagName === "LI" && li.childElementCount === 1 && li.firstElementChild.tagName === "BUTTON"
+      ? li.firstElementChild : null));
+    const pill = (b) => b && !b.matches(NOT_A_PILL) && clean(b.parentElement.textContent) === clean(b.textContent)
+      && !ACTION_WORDS.test(`${clean(b.textContent)} ${b.getAttribute("aria-label") ?? ""}`);
+    if (items.length < 2 || !members.every(pill)) return null;
     const q = describeBy(container);
-    return q.question ? { container, members: members.map((m) => m[0]), ...q, radio: false } : null;
+    return q.question ? { container, members, ...q, radio: false } : null;
   };
   const pillGroup = (el) => memo("pills", el, () => {
     if (el instanceof HTMLInputElement || !el.matches(`${PRESSABLE}, ${ARIA_RADIO}, ${LISTED}`)) return null;
@@ -564,6 +572,7 @@
       answered: searchAnswered,
       read: readSearch,
       weakRead,
+      weakBox,
       evidence: searchEvidence,
     },
     {

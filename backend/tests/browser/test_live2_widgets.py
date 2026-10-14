@@ -298,13 +298,42 @@ def test_a_filled_backing_input_is_the_committed_value(page, load):
     assert inv(page)["Country"]["committed"] == "CA"
 
 
-def test_a_pick_the_page_rejected_is_not_verified_when_the_boxs_only_proof_is_the_text_it_typed(page, load):
-    """The widget closes its list on the click and commits nothing; the box keeps the query (E).
-    The query equals the option's text, so the text cannot prove a pick: unconfirmed, never verified."""
+def test_a_pick_the_page_rejected_is_never_a_commit_on_a_box_that_proves_only_by_its_text(page, load):
+    """The widget closes its list on the click and commits nothing (Ep). The engine types a PREFIX of the
+    option's text, so the rejected box keeps "Canad" and cannot look like the pick "Canada"."""
     f = strict(page, load, onclick="i.blur();")
     row = apply(page, f, op="choose", text="Canada")
+    assert row["outcome"] != "verified" and row.get("committed") != "Canada", row
+    assert page.evaluate("window.picks") >= 1
+
+
+def test_a_text_too_short_for_a_prefix_is_typed_whole_and_a_rejected_pick_is_unconfirmed(page, load):
+    load(page, STRICT.replace("{hidden}", "").replace("{onclick}", "i.blur();").replace("Canada", "UK"))
+    row = apply(page, inv(page)["Country"], op="choose", text="UK")
     assert row["outcome"] == "unconfirmed", row
-    assert page.evaluate("window.picks") == 1
+
+
+def test_a_correct_pick_that_blurs_is_verified_with_the_prefix_term(page, load):
+    f = strict(page, load, onclick="i.value = 'Canada'; i.blur();")   # H
+    row = apply(page, f, op="choose", text="Canada")
+    assert (row["outcome"], row["committed"]) == ("verified", "Canada"), row
+    assert page.evaluate("document.getElementById('c').value") == "Canada"
+
+
+def test_a_correct_pick_that_keeps_focus_is_verified_with_the_prefix_term(page, load):
+    f = strict(page, load, onclick="i.value = 'Canada'; i.focus();")   # G2p
+    row = apply(page, f, op="choose", text="Canada")
+    assert (row["outcome"], row["committed"]) == ("verified", "Canada"), row
+
+
+def test_the_prefix_is_not_typed_into_boxes_with_real_proof(page, load):
+    """JET (its marker), a backing input and a Workday box are typed the term as given."""
+    load(page, fixture_html("jet_combobox.html"))
+    f = inv(page)["City or state"]
+    explore(page, f, "Washington")
+    row = apply(page, f, op="choose", text="Washington, DC, United States", term="Washington, DC, United States")
+    assert (row["outcome"], row["committed"]) == ("verified", "Washington, DC, United States")
+    assert page.evaluate("window.__oracle.jet_picks") == 1
 
 
 def test_a_rejected_pick_over_an_empty_backing_input_is_not_committed(page, load):
@@ -374,3 +403,31 @@ def test_a_default_port_is_not_a_different_site(page, load):
     same = lambda a, b: page.evaluate("([a, b]) => window.careerStudioCompanion.fillBase.equivalent(a, b, { format: 'url' })", [a, b])  # noqa: E731
     assert same("https://example.dev:443/", "example.dev") and same("http://EXAMPLE.dev:80", "https://www.example.dev/")
     assert not same("example.dev:8080", "example.dev")
+
+
+# --- a list of buttons is a pill group only when each item is the button and nothing else
+def groups(page):
+    return [q for q, f in inv(page).items() if f["shape"] == "group"]
+
+
+def test_a_list_of_uploaded_files_with_remove_buttons_is_not_a_pill_group(page, load):
+    load(page, "<ul role='list' aria-label='Uploaded files'><li><span>resume.pdf</span><button type='button'>Remove</button></li>"
+               "<li><span>letter.pdf</span><button type='button'>Remove</button></li></ul>")
+    assert groups(page) == []
+
+
+def test_a_list_of_profiles_with_edit_buttons_is_not_a_pill_group(page, load):
+    load(page, "<ul role='list' aria-label='Your profiles'><li><button type='button'>Edit</button></li>"
+               "<li><button type='button'>Edit</button></li></ul>")
+    assert groups(page) == []
+
+
+def test_an_item_whose_text_is_more_than_its_button_is_not_a_pill(page, load):
+    load(page, "<ul role='list' aria-label='Offers'><li>Offer one <button type='button'>Yes</button></li>"
+               "<li>Offer two <button type='button'>No</button></li></ul>")
+    assert groups(page) == []
+
+
+def test_the_real_pill_list_is_still_a_group(page, load):
+    load(page, NO_ARIA_PILLS)
+    assert groups(page) == ["Do you hold a clearance?"]

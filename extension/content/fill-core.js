@@ -1251,10 +1251,16 @@
       if (!keep) await tidy(el, t);
       return result;
     };
+    // A box whose only proof of a pick is its own text (nothing to read a pick from but the text the engine
+    // typed) is typed a PREFIX of the option's text when the term would be the whole text: after the click a
+    // real commit shows a change (Canad -> Canada), and a widget that rejected the click keeps the prefix.
+    const query = shape.open === "search" ? (term ?? text) : "";
+    const typedTerm = shape.open === "search" && shape.weakBox?.(el) && query.length >= 3 && b().equivalent(query, text)
+      ? query.slice(0, -1) : query;
     try {
       for (let attempt = 0; ; attempt += 1) {
         const { pop, before: popsBefore, committed, unsettled } = await open(el, shape,
-          shape.open === "search" ? (term ?? text) : term, t, w, { reclaim: !undo, variant, used, address });
+          shape.open === "search" ? typedTerm : term, t, w, { reclaim: !undo, variant, used, address });
         if (committed) return { outcome: "unexpected", reason: "committed_while_opening" };
         // Only a list the search let settle is picked from — or, once an
         // Enter's commit was taken back, the list still up after it.
@@ -1323,7 +1329,7 @@
         // A box whose only proof is its own text, equal to the query the engine typed to find the
         // pick, proves nothing: a strict widget that rejects the click and keeps the query looks
         // the same. Said so, never verified.
-        if (got === "verified" && shape.weakRead?.(el) && b().equivalent(shape.open === "search" ? (term ?? text) : "", hit.text)) {
+        if (got === "verified" && shape.weakRead?.(el) && b().equivalent(typedTerm, hit.text)) {
           got = "unconfirmed";
         }
         if (got === "verified") return { outcome: "verified", text: hit.text };

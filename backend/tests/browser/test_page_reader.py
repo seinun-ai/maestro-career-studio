@@ -765,6 +765,40 @@ def test_a_review_page_with_a_required_pill_group_unanswered_is_never_ready_and_
     assert done["status"] == "ready" and done["readyAt"] is not None, done
 
 
+STATELESS_REVIEW = """<form><div class="input-row">
+  <label class="input-row__label input-row__label--required"><span>Have you worked for Globex before?</span>
+    <span class="input-row__label--required-star" aria-hidden="true"></span></label>
+  <ul role="list" aria-label="Have you worked for Globex before?">
+    <li><button type="button" class="pill"><span class="icon"></span><span>No</span></button></li>
+    <li><button type="button" class="pill"><span class="icon"></span><span>Yes</span></button></li></ul></div>
+  <button type="submit">Submit application</button></form>
+<script>window.__mountQuestions = () => {};
+for (const b of document.querySelectorAll('.pill')) b.addEventListener('click', () => {
+  for (const o of document.querySelectorAll('.pill')) o.classList.toggle('pill--selected', o === b); });</script>"""
+
+
+def test_a_required_stateless_pill_group_is_a_required_empty_until_a_pill_is_chosen(page, load):
+    """Buttons in a labelled list that carry no aria-pressed at all (the state is a class) are still a group."""
+    load(page, STATELESS_REVIEW, SOURCES)
+    assert summary(page)["requiredEmpty"] == 1
+    [item] = required(page)["items"]
+    assert item["kind"] == "field" and item["label"] == "Have you worked for Globex before?"
+    page.click("button:has-text('Yes')")
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_list_of_files_with_remove_buttons_is_never_a_required_empty(page, load):
+    load(page, """<ul role="list" aria-label="Uploaded files"><li><span>resume.pdf</span><button type="button">Remove</button></li>
+      <li><span>letter.pdf</span><button type="button">Remove</button></li></ul>""", SOURCES)
+    assert summary(page)["requiredEmpty"] == 0
+
+
+def test_a_review_page_with_a_required_stateless_pill_group_unanswered_is_never_ready(page):
+    out = _popup_drive(page, STATELESS_REVIEW, step=1, wrote=True, mount=False)
+    assert (out["status"], out["why"]) == ("parked", "open_questions") and out["readyAt"] is None
+    assert out["open"] == ["Have you worked for Globex before?"]
+
+
 def test_a_parser_upload_box_is_never_a_required_empty(page):
     """The site's own import-from-resume box (H's `parser` kind) is not a box the run owes a file, even
     marked required; the real resume box beside it still is."""
