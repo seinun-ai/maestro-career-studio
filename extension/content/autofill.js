@@ -355,6 +355,9 @@ async function fillFormFromProfile(
     /authoriz|sponsor|visa|willing(?:\s+and\s+able)?\s+to/i;
   // Ordered: first matching rule wins for a given field.
   const RULES = [
+    // A middle name is never invented (owner, 2026-10-14: the profile name is stored as entered and never
+    // split). The profile holds none, so the box is skipped: BEFORE first-name, which "given name (middle)" matches.
+    { id: "middle-name", re: /\bmiddle\s*(name|initial)\b/i, skip: true },
     { id: "first-name", re: /first\s*name|given\s*name/i, value: p.first_name, identity: true },
     { id: "last-name", re: /last\s*name|family\s*name|surname/i, value: p.last_name, identity: true },
     { id: "full-name", re: /full\s*name|your\s*name|^name\b|legal name/i, value: fullName },

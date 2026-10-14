@@ -92,6 +92,20 @@ def test_a_skip_rule_still_wins_over_the_rules_below_it(tmp_path):
     assert result["values"]["Phone Extension"] == "", "the extension got the phone number"
 
 
+def test_a_middle_name_box_is_skipped_never_given_another_name(tmp_path):
+    """A middle name is never invented (owner, 2026-10-14). The profile has none,
+    and a label that also says "given name" or "first" must not pull the first name in."""
+    labels = ["Middle Name", "Given name (middle name)", "Middle initial"]
+    result = run_profile_fill(
+        tmp_path,
+        profile={"personal": {"first_name": "Jane Marie", "last_name": "Doe"}},
+        fields=[{"label": label, "kind": "text"} for label in labels],
+    )
+    for label in labels:
+        assert outcome_for(result, label) == "skip_rule", label
+        assert result["values"][label] == "", label
+
+
 def test_first_matching_valueless_rule_is_the_one_reported(tmp_path):
     """When nothing can fill, the report names the rule that matched FIRST.
 

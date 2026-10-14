@@ -1870,3 +1870,35 @@ def test_second_trace_helpers_state_the_rules():
     assert (unreadable.first_p, unreadable.first_same) == (None, None)
     assert autofill_map.second_asked(base).second == "asked"
     assert base.second is None  # the helpers copy, never mutate
+
+
+# ---------- J1: a middle name is never invented
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", ["Middle Name", "Middle name (optional)", "Middle Initial", "Your middle  initial"])
+@pytest.mark.parametrize("key", ["personal.first_name", "personal.last_name", "derived.full_name", "free_text"])
+def test_a_middle_name_box_is_never_filled_from_another_name(db_session, monkeypatch, question, key):
+    """The profile's First Name may hold two words; a Middle Name box must not
+    take the second one (owner, 2026-10-14: the name is never split)."""
+    facts = autofill_catalog.build({"personal": {"first_name": "Jane Marie", "last_name": "Doe"}}, [], [])
+    fake_jev(monkeypatch, {"m": (key, 0.95)})
+    got = autofill_map.map_fields([field("m", question)], facts, db_session, eeo_consented=True, low_stakes=False)
+    assert got["m"].route == "none"
+    assert "Marie" not in got["m"].model_dump_json()
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_stored_middle_name_does_fill_a_middle_name_box(db_session, monkeypatch):
+    facts = autofill_catalog.build({"personal": {"first_name": "Jane", "middle_name": "Marie", "last_name": "Doe"}},
+                                   [], [])
+    fake_jev(monkeypatch, {"m": ("personal.middle_name", 0.95)})
+    got = autofill_map.map_fields([field("m", "Middle Name")], facts, db_session, eeo_consented=True, low_stakes=False)
+    assert (got["m"].route, got["m"].value) == ("slot", "Marie")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_first_name_box_still_takes_the_first_name_whole(db_session, monkeypatch):
+    facts = autofill_catalog.build({"personal": {"first_name": "Jane Marie", "last_name": "Doe"}}, [], [])
+    fake_jev(monkeypatch, {"f": ("personal.first_name", 0.95)})
+    got = autofill_map.map_fields([field("f", "First Name")], facts, db_session, eeo_consented=True, low_stakes=False)
+    assert (got["f"].route, got["f"].value) == ("slot", "Jane Marie")

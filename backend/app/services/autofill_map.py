@@ -516,6 +516,10 @@ def _placed_entry_key(field: MapField, key: str) -> str | None:
     return f"{m[1]}.{field.profile_entry}.{m[3]}"
 
 
+MIDDLE_NAME_SLOT = "personal.middle_name"
+_MIDDLE_NAME = re.compile(r"\bmiddle\s*(name|initial)\b", re.IGNORECASE)
+
+
 def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact], *,
            eeo_consented: bool) -> tuple[Mapped, float]:
     """The route, and the floor the model's answer was held to: that of the fact
@@ -524,6 +528,10 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     if picked is None or _foreign(field):
         return Mapped(route="none"), SLOT_FLOOR
     key, p = picked
+    # The name is stored as entered and never split: a Middle Name box takes only a stored middle name
+    # (there is none in the profile today), never a part of the first name, nor a drafted answer.
+    if _MIDDLE_NAME.search(field.question) and key != MIDDLE_NAME_SLOT:
+        return Mapped(route="none"), SLOT_FLOOR
     if names_veteran_off_slot(key, field.question, facts.get(key)):   # "Are you a disabled veteran?" is not the disability answer
         return Mapped(route="none"), SLOT_FLOOR
     # "Acme, Globex, or Initech?" names companies the derived No (about the job's company) does not cover.

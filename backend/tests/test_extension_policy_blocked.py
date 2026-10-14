@@ -343,25 +343,20 @@ def test_eeo_self_identification_wording_survives_the_attestation_pattern(
     assert outcome_for(result, label) != "policy_blocked"
 
 
-def test_middle_initial_is_a_reportable_gap_and_not_a_blocked_field(tmp_path):
-    """The exact shape of over-blocking this deny-list is most likely to cause.
+def test_middle_initial_is_a_skipped_field_and_not_a_blocked_one(tmp_path):
+    """The shape of over-blocking this deny-list is most likely to cause.
 
-    "Middle Initial"/"MI" is one of the most common fields on an ATS form and
-    there is no rule for it, so `no_rule` is the CORRECT outcome: it is a real
-    coverage gap, and the failure metric is how it gets prioritised. An
-    /initial\\b/ pattern turns it neutral, and the gap disappears from
-    top_failures without anyone deciding it should — the exact corruption this
-    task exists to undo, running backwards.
-
-    It is also a trap with a fuse on it: the queued profile expansion adds
-    `middle_name`, and a rule for it could never fire, because the deny-list
-    runs first.
+    "Middle Initial"/"MI" is one of the most common fields on an ATS form. The owner
+    decided (2026-10-14) a middle name is never invented and the profile has none, so
+    the `middle-name` guard rule skips the box (`skip_rule`). What must hold is that the
+    deny-list does not turn it neutral: an /initial\\b/ pattern would report it as
+    `policy_blocked`, a decision nobody made.
     """
     result = run_profile_fill(
         tmp_path, profile=_PROFILE, fields=[{"label": "Middle Initial", "kind": "text"}]
     )
 
-    assert outcome_for(result, "Middle Initial") == "no_rule"
+    assert outcome_for(result, "Middle Initial") == "skip_rule"
 
 
 def test_an_account_creation_legend_does_not_block_the_fields_under_it(tmp_path):
