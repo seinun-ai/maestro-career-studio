@@ -77,8 +77,7 @@
     await sleep(ms);
     check(t);
   };
-  // Resolves once the page has had no change for `ms` (a new node, a shown or
-  // hidden one), or after `max` whatever it is still doing: a page that never
+  // Resolves once the page has had no change for `ms` (a node, a text or an attribute), or after `max` whatever it is still doing: a page that never
   // stops (a ticking clock) must not hold a write for ever. Sleeps like every
   // other wait, so a hidden tab's timers do not stretch it.
   const quiet = async (t, { ms = 300, max = 2000 } = {}) => {
@@ -88,10 +87,8 @@
     const watch = new MutationObserver(() => {
       last = performance.now();
     });
-    watch.observe(document.body, {
-      childList: true, subtree: true, attributes: true,
-      attributeFilter: ["style", "class", "hidden", "disabled", "readonly", "aria-hidden", "role"],
-    });
+    // Everything counts: a spinner's label or any attribute still moving is a page still changing.
+    watch.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
     try {
       for (;;) {
         const now = performance.now();

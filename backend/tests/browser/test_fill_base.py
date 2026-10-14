@@ -467,3 +467,33 @@ def test_quiet_stops_with_a_stop(page, load):
       return run;
     }}""")
     assert err == "Cancelled"
+
+
+def test_quiet_waits_past_text_and_attribute_changes(page, load):
+    load(page, "<div id='box'>0</div><div id='flag'></div>")
+    got = page.evaluate(f"""async () => {{
+      const run = async (tick) => {{
+        const start = performance.now();
+        let n = 0;
+        const timer = setInterval(() => tick(n++), 50);
+        setTimeout(() => clearInterval(timer), 500);   // moving for 500 ms, then still
+        const end = await ({QUIET})([200, 2000]);
+        return end - start;
+      }};
+      return {{
+        text: await run((n) => {{ box.firstChild.data = String(n); }}),
+        attribute: await run((n) => {{ flag.setAttribute('data-n', String(n)); }}),
+      }};
+    }}""")
+    assert 680 <= got["text"] < 1100 and 680 <= got["attribute"] < 1100, got
+
+
+def test_quiet_is_capped_for_a_page_that_animates_forever(page, load):
+    load(page, "<div id='box'>0</div>")
+    got = page.evaluate(f"""async () => {{
+      const start = performance.now();
+      let n = 0;
+      setInterval(() => {{ box.firstChild.data = String(n++); box.dataset.n = n; }}, 20);
+      return ({QUIET})([200, 500]).then((end) => end - start);
+    }}""")
+    assert 480 <= got < 800, got
