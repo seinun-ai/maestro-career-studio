@@ -1482,6 +1482,9 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # claimed arming carried to the next tab would open a Job door on a
         # posting the user never claimed.
         "claimed": True,
+        # Apply and Queue's reading of the server about THIS job, and the claim to tailor before
+        # applying: both are about one posting.
+        "apply": {"queued": True, "sessionId": "sess-1"}, "tailorFirst": True,
     }
     out = run_node(_RESET_DRIVER_JS, {"store": populated}, tmp_path,
                    source=PANEL_SOURCE)
@@ -1492,7 +1495,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "fileInputs": 0, "attached": None, "autoAttach": None, "baseSlug": None,
         "baseSelected": False, "baseFromApplication": False, "baseArmed": False,
         "scores": None, "busy": None, "note": None, "preview": None, "previewTyped": False,
-        "prepared": False, "tailorOpen": False,
+        "prepared": False, "tailorOpen": False, "apply": None, "tailorFirst": False,
         "revisit": None,
         "fill": None, "writeResults": None, "residue": None, "essays": None,
         "closest": None, "blank": None, "aiNote": None,
@@ -1725,9 +1728,11 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     # Every endpoint is the widget's, unchanged — a panel that invented a route
     # would 404 in the browser and pass here.
     paths = [msg["path"] for msg in out["sent"] if msg["type"] == "api"]
-    assert paths[0] == (
-        "/api/jobs/match?url=https%3A%2F%2Fjob-boards.greenhouse.io%2Flightningai%2Fjobs%2F99")
-    assert set(paths[1:]) == {"/api/base-resumes", "/api/ats-scores?job_id=job-lightning",
+    # The full-automation setting is asked beside the match, once per bind.
+    assert paths[:2] == [
+        "/api/settings/auto-apply",
+        "/api/jobs/match?url=https%3A%2F%2Fjob-boards.greenhouse.io%2Flightningai%2Fjobs%2F99"]
+    assert set(paths[2:]) == {"/api/base-resumes", "/api/ats-scores?job_id=job-lightning",
                               "/api/applications/app-1"}
 
 

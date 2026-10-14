@@ -608,9 +608,9 @@ def test_a_saved_job_is_sent_as_edited_and_the_stage_advances_on_the_reload(tmp_
     # is not offered a picker.
     assert [f'{(msg.get("init") or {}).get("method", "GET")} {msg["path"].split("?")[0]}'
             for msg in out["sent"] if msg["type"] == "api"] == [
-        "GET /api/jobs/match", "GET /api/applications", "GET /api/base-resumes",
-        "POST /api/jobs", "POST /api/ats-scores", "GET /api/jobs/match",
-        "GET /api/ats-scores"]
+        "GET /api/settings/auto-apply", "GET /api/jobs/match", "GET /api/applications",
+        "GET /api/base-resumes", "POST /api/jobs", "POST /api/ats-scores",
+        "GET /api/settings/auto-apply", "GET /api/jobs/match", "GET /api/ats-scores"]
     settled = out["settled"]
     [note] = _by_class(settled["foot"], "note")
     assert note["text"] == "Saved. Found 3 skills. Best match: Data Scientist (match score 72)."

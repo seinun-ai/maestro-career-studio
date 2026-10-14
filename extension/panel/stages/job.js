@@ -100,8 +100,20 @@
     }
     const body = attach(node("div", "stg-body"), kv,
                         node("div", "sub", previewNote(facts.preview)));
+    const where = automationLine(facts);
+    if (where) attach(body, node("div", "sub", where));
     const pick = picker(ctx);
     return pick ? attach(body, pick) : body;
+  }
+
+  /** The one line that says where Apply is. Full automation on: what Apply does, and the one thing
+   * it never does. Off: where to turn it on, so Save job is not the end of the road. Not known
+   * (the setting could not be read) says nothing, because a guess about a setting is not help. */
+  const APPLY_PROMISE = "Apply fills every page here and stops before Submit.";
+  const TURN_ON = "Turn on full automation in Settings to apply from here.";
+  function automationLine(facts) {
+    if (facts.fullAutomation === true) return APPLY_PROMISE;
+    return facts.fullAutomation === false ? TURN_ON : null;
   }
 
   /** A claimed binding, reopened. The preview inputs are the unmatched Job
@@ -352,9 +364,62 @@
     list.setAttribute("role", "radiogroup");
     list.setAttribute("aria-label", "Base resume, best match first");
     ranked.forEach((entry, index) => attach(list, baseRow(ctx, entry, index === best)));
+    if (ctx.facts.fullAutomation === true) return applyBody(ctx, body, list, ranked);
     return attach(body, list,
                   node("div", "sub", rankingNote(ctx, ranked)),
                   node("div", "sub", ATS_SCORE_LEAD));
+  }
+
+  /** The same list when full automation is on: the Job step is where the user applies, so the list is
+   * the card that answers "apply with which resume" (the rows keep their squares), the promise sits
+   * under it, and the two other ways on are below: score again, or tailor first and apply later.
+   * With a custom tailoring session of the user's open, the card in front says to finish it first. */
+  function applyBody(ctx, body, list, ranked) {
+    const { facts, act, build } = ctx;
+    const { node, attach } = build;
+    if (facts.apply?.sessionId) attach(body, finishFirstCard(ctx));
+    const ways = node("div", "fork");
+    for (const [id, label, onClick] of [
+      ["job-update-scores", "Update scores", act.scoreBases],
+      ["job-tailor-first", "Tailor first, then apply", act.tailorFirst]]) {
+      const button = node("button", null, label);
+      button.type = "button";
+      button.id = id;
+      button.disabled = facts.busy === true;
+      button.addEventListener("click", onClick);
+      attach(ways, button);
+    }
+    return attach(body, node("div", "sub", "Apply with this resume"), list,
+                  node("div", "sub", rankingNote(ctx, ranked)),
+                  node("div", "sub", ATS_SCORE_LEAD),
+                  node("div", "sub", APPLY_PROMISE), ways);
+  }
+
+  /** "Finish tailoring first": the user's own tailoring session is open in the web app, and Apply
+   * will not tailor over it. Two ways on: finish it there (a real link, to that session), or apply
+   * with the base resume as it stands, which leaves the session exactly as it is. Neither line
+   * names a base resume, so no square is owed; the list below shows the pick. */
+  function finishFirstCard({ facts, act, build }) {
+    const { node, attach } = build;
+    const ways = node("div", "fork");
+    if (facts.appUrl && facts.job?.id) {
+      const link = attach(node("a", null, "Finish in Maestro CS"), build.icon("external-link", { size: 12 }));
+      link.setAttribute("aria-label", "Finish in Maestro CS (opens in a new tab)");
+      link.href = `${facts.appUrl}/jobs/${facts.job.id}/tailor/${facts.apply.sessionId}`;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      attach(ways, link);
+    }
+    const base = node("button", null, "Apply with the base resume");
+    base.type = "button";
+    base.id = "job-apply-base";
+    base.disabled = facts.busy === true;
+    base.addEventListener("click", act.applyWithBase);
+    attach(ways, base);
+    return attach(node("div", "apply-first"),
+                  node("b", null, "Finish tailoring first"),
+                  node("div", "sub", "You're tailoring this job in Maestro CS. Apply won't replace your work."),
+                  ways);
   }
 
   ns.panelStageJob = jobBody;

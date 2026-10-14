@@ -561,6 +561,23 @@
      * about a different job.
      */
     tailorOpen: false,
+    /** Is full automation on? The backend's auto-apply setting (`GET /api/settings/auto-apply`), read
+     * once per bind, `true`, `false`, or `null` when it was not read or could not be: the Job step
+     * then stays what it was, Save job, because a setting the panel could not read is not a yes.
+     *
+     * NOT A FACT ABOUT THE PAGE, so `resetPageFacts` leaves it: the next bind reads it again. It is
+     * the backend's, which is why it is a field of its own and not a key of `settings` (the
+     * extension's own options, from the service worker). */
+    fullAutomation: null,
+    /** What Apply and Queue need to know about THIS saved job, as the server holds it now
+     * (`ns.decisions.applyFacts`): its newest proposal, whether it is applied, an open tailoring
+     * session of the user's own, the job's link. Null until read, with full automation off, and for
+     * a job that is not saved. Page-shaped, so `resetPageFacts` clears it. */
+    apply: null,
+    /** "Tailor first, then apply": the user chose to open the Resume step before applying. With full
+     * automation on the Job step stays open on a saved job (`stageFor`'s `applyHere`); this is the
+     * one claim that lets it close. Carried through Refresh with the rest of the user's work. */
+    tailorFirst: false,
     /** Which row the user has REOPENED, or `null` when the rail is showing the
      * stage the data infers. `{row, over}` — the stage key whose body is open,
      * and the INFERRED stage it was opened over.
@@ -806,6 +823,10 @@
     store.scores = null;
     // The fork the user opened belonged to the posting they opened it on.
     store.tailorOpen = false;
+    // What Apply and Queue read off the server about the job on the page, and the claim to tailor
+    // first: both are about one posting.
+    store.apply = null;
+    store.tailorFirst = false;
     // And so did the done row they reopened. Every fact the reopened body
     // renders is cleared by the lines around this one, so a `revisit` that
     // survived would hold open a Fill report about a form the user has left —
@@ -1641,6 +1662,7 @@
       hasScores: Array.isArray(store.scores) && store.scores.length > 0,
       baseChosen: store.baseSelected === true || (store.baseSlug !== null
         && compositeFor(store.scores, "base_resume", store.baseSlug, "base") !== null),
+      applyHere: store.fullAutomation === true && store.tailorFirst !== true,
     };
   }
 
@@ -2136,6 +2158,10 @@
         // the same rule `deepLink` follows for the header.
         appUrl: card.settings?.appUrl ?? null,
         tailorOpen: card.tailorOpen === true,
+        // The Job step's two shapes: Save job (full automation off, or not known) and Apply with
+        // Queue. `apply` is what the server said about this job when the page was read.
+        fullAutomation: card.fullAutomation,
+        apply: card.apply,
         // The base-as-is CLAIM, and the Resume body is the only reader: armed,
         // that body names the choice and offers the way out of it instead of
         // re-offering the limb the user already pressed. It also feeds
@@ -2209,7 +2235,8 @@
           ? card.qna : { ...card.qna, answered: null, answer: null, copied: false },
       },
       act: { editPreview, pickApplication, unpickApplication, pickBase, useBaseAsIs,
-             stopUsingBaseAsIs, openTailor, quickTailor,
+             stopUsingBaseAsIs, openTailor, quickTailor, tailorFirst, applyWithBase,
+             scoreBases: () => scoreAllBases(),
              setFillMode, forgetLearnedMoves, startFill, attachResume, scrollToField, focusField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis, stopRun, resumeRun, skipRun, closeRun, undoLearned,
@@ -2398,6 +2425,20 @@
    * tailoring options" is not a choice anyone has made yet. */
   function openTailor() {
     card.tailorOpen = true;
+    render();
+  }
+
+  /** "Tailor first, then apply": the Job step's way into today's Resume step. With full automation on
+   * the Job step stays open on a saved job so Apply is there to press; this is the user saying they
+   * want to tailor before applying, which is the one claim that lets the data move the rail on
+   * (`stageFor`'s `applyHere`). A view claim like `openTailor`: no round trip, no `busy`, the Tailor
+   * fork opens with it. When the job has no scores yet the step cannot close, and the note says
+   * what is missing instead of leaving a press that changed nothing. */
+  function tailorFirst() {
+    card.tailorFirst = true;
+    card.tailorOpen = true;
+    card.revisit = null;
+    card.note = decide().stage === "job" ? { text: "Select Update scores first, then tailor." } : null;
     render();
   }
 
@@ -2881,7 +2922,9 @@
     // active, which row is ticked and what the identity line says; this is the
     // one control that follows the body, because it is the body's.
     const label = primaryRefused(open) ? null : stageAction(open);
-    if (label) {
+    if (open === "job" && jobAppliesHere()) {
+      controls.push(...applyButtons());
+    } else if (label) {
       // Busy is keyed on the STAGE, because one stage has one primary. (A
       // surface whose several primaries share ONE button has to key its
       // spinner on an action id instead; this one does not.)
@@ -2896,6 +2939,27 @@
       controls.push(cta);
     }
     region("foot-controls").replaceChildren(...controls);
+  }
+
+  /** Does the open Job step offer Apply (and Queue) instead of Save job? With full automation on,
+   * unless the step is read-only (a bound application answered it) or the job is already applied.
+   * Off or not known, the footer is exactly what it was. */
+  function jobAppliesHere() {
+    return card.fullAutomation === true && !primaryRefused("job") && card.apply?.applied !== true;
+  }
+
+  /** Apply, with Queue beside it. A job already queued is the user's yes, so Apply stands alone and
+   * takes the whole line. Both wait for any running action; the spinner is on the one pressed. */
+  function applyButtons() {
+    const queued = card.apply?.queued === true;
+    const spin = (kind) => (card.busy === kind ? " spin" : "");
+    const apply = actionButton(queued ? `cta${spin("apply")}` : `cta pair${spin("apply")}`, "Apply",
+                               () => applyJob());
+    apply.disabled = card.busy !== null;
+    if (queued) return [apply];
+    const queue = actionButton(`cta pair alt${spin("queue")}`, "Queue", () => queueJob());
+    queue.disabled = card.busy !== null;
+    return [apply, queue];
   }
 
   /** The decision, with a queued run on the bound tab read as the fact it is: the run IS the Fill
@@ -3116,7 +3180,7 @@
    * default is re-derived from the re-read library. */
   const PAGE_WORK = [
     "touched", "hasForm", "fileInputs", "attached", "autoAttach", "baseSelected",
-    "baseArmed", "tailorOpen", "revisit", "fill", "eeoConsent", "residue", "essays",
+    "baseArmed", "tailorOpen", "tailorFirst", "revisit", "fill", "eeoConsent", "residue", "essays",
     "closest", "blank", "aiNote", "writeResults", "loop", "receiptFlags", "receiptSeen",
     "answers", "qna",
     "preview", "previewTyped", "prepared",
@@ -3248,6 +3312,9 @@
     // as long as the match takes — and the tab's host is a fact we already
     // have, and the visible proof of which tab this panel is bound to.
     render();
+    // In flight beside the match, and awaited before the first paint of the matched page: the Job
+    // step's footer (Save job, or Apply and Queue) and its stage both turn on it.
+    const automation = loadAutomation(token);
     let result;
     try {
       result = await api(`/api/jobs/match?url=${encodeURIComponent(card.url)}`);
@@ -3266,6 +3333,7 @@
     // own answer always wins over it. A storage read, so it costs the paint
     // below no round trip.
     if (!card.application && !bindFromRun()) await restoreSession(token);
+    await automation;
     if (!current(token)) return;
 
     // THE SCORES ARE A STAGE INPUT for a saved job with no application: the
@@ -3286,6 +3354,10 @@
       await loadApplicationDetail(token);
       if (!current(token)) return;
     }
+    // What Apply and Queue need, before the paint that draws their buttons: a queued job shows Apply
+    // alone, and an open tailoring session of the user's own shows its own card.
+    await loadApplyFacts(token);
+    if (!current(token)) return;
     render();
 
     // AWAITED: this one decides whether filling can happen here. A rail whose
@@ -3317,6 +3389,43 @@
     // base question without it, and a slow or failed read leaves the Job step
     // open on its list with its own primary, never a stage claimed wrongly.
     if (!scoresFirst) loadBaseScores(token);
+  }
+
+  /** Is full automation on? One cheap read of the backend's auto-apply setting per bind. Anything
+   * but a plain `true` (an unreachable backend, an older server, a malformed answer) reads as "not
+   * known": the Job step stays Save job, and the match's own failure already told the user the
+   * backend is unreachable. Never throws, so the load that awaits it cannot be broken by it. */
+  async function loadAutomation(token) {
+    let on = null;
+    try {
+      const setting = await api("/api/settings/auto-apply");
+      on = setting?.value?.full_automation === true;
+    } catch (_) {
+      // Left null on purpose; nothing to say that the match has not.
+    }
+    if (current(token)) card.fullAutomation = on;
+  }
+
+  /** What Apply and Queue need to know about the saved job on this page, read from the server (its
+   * detail and its tailoring sessions) only when the Job step can offer them: full automation on, a
+   * saved job, no application bound (an application answers the question itself). Otherwise nothing
+   * is asked and `apply` is null. A failed read leaves it null, and Apply re-reads at press time
+   * anyway, so a stale or missing answer here can only cost a button's state, never a decision. */
+  async function loadApplyFacts(token) {
+    const ready = card.fullAutomation === true && card.match === "exact" && card.job?.id
+      && card.application === null;
+    if (!ready) {
+      card.apply = null;
+      return;
+    }
+    const id = encodeURIComponent(card.job.id);
+    try {
+      const [detail, sessions] = await Promise.all([
+        api(`/api/jobs/${id}/detail`), api(`/api/tailoring-sessions?job_id=${id}`)]);
+      if (current(token)) card.apply = ns.decisions.applyFacts(detail, sessions);
+    } catch (_) {
+      if (current(token)) card.apply = null;
+    }
   }
 
   /** The bound application's detail: its PDF, its evidence, its status.
@@ -4699,8 +4808,8 @@
    * forgot the `<script>` tag fails on boot rather than rendering a rail whose
    * every primary throws on the first click — the quiet version of the same
    * fault, and the one a user would have to notice for us. */
-  const { addJob, pickApplication, unpickApplication, dropDeletedApplication,
-          scoreAllBases, quickTailor, useBaseAsIs,
+  const { addJob, queueJob, applyJob, applyWithBase, pickApplication, unpickApplication,
+          dropDeletedApplication, scoreAllBases, quickTailor, useBaseAsIs,
           stopUsingBaseAsIs, createPdf, startFill,
           attachResume, submitAnswer, askQuestion, setStatus, trackThis, startRun, stopRun, resumeRun,
           skipRun, closeRun, undoLearned, undoMark, markApplied, restoreRuns } =

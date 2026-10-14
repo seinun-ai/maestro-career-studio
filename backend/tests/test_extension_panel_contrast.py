@@ -53,7 +53,7 @@ def _mix(tokens, base, toward, weight):
 # (text, fill, where it is used). Every `color:` the stylesheet puts on a fill that is not the panel's own
 # surface is here, and so is every text token on the two surfaces.
 _TEXT_PAIRS = [
-    ("text", "surface", "body copy"),
+    ("text", "surface", "body copy, .cta.alt, .stop"),
     ("text", "surface-2", "body copy on the Next card"),
     ("muted", "surface", ".sub, .note, .ats .lbl, .qna"),
     ("muted", "surface-2", ".sub and .stg-sum inside the Next card"),

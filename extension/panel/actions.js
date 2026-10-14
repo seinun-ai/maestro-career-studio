@@ -87,12 +87,12 @@
  * candidate. TRIGGER for cutting it: a SECOND full-page pipeline beside
  * `runGuidedFill`. Do not cut it because it is the longest file here.
  *
- * SIZES: during 158 · job 187 · pick 266 · resume 269 · fill 720 ·
+ * SIZES: during 158 · job 432 · pick 266 · resume 269 · fill 720 ·
  * pause 360 · qna 145 · track 179 · run 567, this roster. Stated because a threshold
  * nobody can measure against is not one.
  *
- * WHAT THIS FILE PUBLISHES: ns.panelActions = (store) => ({ addJob,
- * pickApplication, unpickApplication, dropDeletedApplication, scoreAllBases,
+ * WHAT THIS FILE PUBLISHES: ns.panelActions = (store) => ({ addJob, queueJob,
+ * applyJob, applyWithBase, pickApplication, unpickApplication, dropDeletedApplication, scoreAllBases,
  * quickTailor, useBaseAsIs, stopUsingBaseAsIs, createPdf, startFill, submitAnswer,
  * askQuestion, setStatus, trackThis, startRun, stopRun, resumeRun, skipRun, closeRun, undoLearned,
  * undoMark, markApplied, restoreRuns }).
@@ -137,6 +137,11 @@
    * quiet failure `need()` above exists to refuse. */
   ns.panelActions = (store) => ({
     addJob: () => job.addJob(store),
+    // Full automation on: the Job step's Queue, and Apply (queue, the resume, then one run in this
+    // tab). `startRun` is handed in because an action reaches no other action.
+    queueJob: () => job.queueJob(store),
+    applyJob: () => job.applyJob(store, { start: (seed) => run.startRun(store, seed) }),
+    applyWithBase: () => job.applyWithBase(store, { start: (seed) => run.startRun(store, seed) }),
     pickApplication: (applicationId) => pick.pickApplication(store, applicationId),
     unpickApplication: () => pick.unpickApplication(store),
     // Bound like the rest, and called by a LOADER rather than by a control —

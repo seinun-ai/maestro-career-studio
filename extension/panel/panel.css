@@ -424,6 +424,11 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 }
 .baserow .score.good { background: var(--cs-good-tonal); color: var(--cs-good); }
 
+/* "Finish tailoring first": the user's own tailoring session is open, so Apply waits (or uses the base). */
+.apply-first { margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--cs-line); border-radius: 8px; }
+.apply-first b { font-size: 13px; font-weight: 600; }
+.apply-first .sub { margin: 2px 0 0; }
+
 /* The Job-stage application picker: recent drafts, a native select.
  *
  * Replaced the stacked `.approw` buttons: four-plus drafts overflowed the
@@ -777,6 +782,10 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   color: var(--cs-text); cursor: pointer;
 }
 .stop + .cta { flex: 1 0 auto; width: auto; }
+/* Apply and Queue, the Job step's pair: equal halves of one line. Queue is outlined like Stop, so it
+ * never reads as the primary beside it; a job already queued shows Apply alone, which is a plain .cta. */
+.cta.pair { flex: 1 1 0; width: auto; min-width: 0; }
+.cta.alt { background: var(--cs-surface); color: var(--cs-text); border: 1px solid var(--cs-line); }
 .stop:disabled { opacity: .6; cursor: default; }
 /* One spinner for every busy button on this surface, so a user who has waited
    once recognises the wait. */
@@ -832,7 +841,7 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   transition: background-color 150ms, transform 140ms;
 }
 .cta:hover:not(:disabled):not([aria-disabled="true"]) { background: color-mix(in oklab, var(--cs-primary), var(--cs-on-primary) 12%); }
-.stop:hover:not(:disabled):not([aria-disabled="true"]), .fork button:hover:not(:disabled):not([aria-disabled="true"]), .fork a:hover,
+.cta.alt:hover:not(:disabled):not([aria-disabled="true"]), .stop:hover:not(:disabled):not([aria-disabled="true"]), .fork button:hover:not(:disabled):not([aria-disabled="true"]), .fork a:hover,
 .seg button:hover:not(:disabled):not([aria-disabled="true"]), .status-seg button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: color-mix(in oklab, var(--cs-surface), var(--cs-text) 6%);
 }

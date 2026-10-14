@@ -1,6 +1,8 @@
-/* Maestro CS Companion — the Job stage's two actions: save the job, and score
- * the base resumes against it (the Score step's action until Score merged into
- * Job, 2026-09-27). A save runs the scoring in the same press.
+/* Maestro CS Companion — the Job stage's actions: save the job, score the base
+ * resumes against it (the Score step's action until Score merged into Job,
+ * 2026-09-27), and — with full automation on — Queue and Apply. A save runs the
+ * scoring in the same press; Queue is a save plus the user's yes; Apply is
+ * Queue plus the resume plus a one-job run in THIS tab.
  *
  * One of the concern files behind `ns.panelActions`; `panel/actions.js` is the
  * joiner and carries the whole contract. Read it before adding anything here.
@@ -22,7 +24,7 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const duringAction = ns.panelDuringAction;
-  const { rankBaseResumes, describesJob } = ns.decisions;
+  const { rankBaseResumes, describesJob, applyFacts, httpUrl } = ns.decisions;
 
   /** The backend's two refusals of a job the scorer cannot read yet, both 422:
    * no skills in its description (`normalize_jd`), or no description read at
@@ -61,7 +63,7 @@
    * is deterministic and base rows upsert, so scoring a job saved last week
    * again costs one local pass per base and changes nothing that was right.
    */
-  async function addJob(store) {
+  async function addJob(store, { as = "job", reload = true } = {}) {
     const facts = store.read();
     if (facts.busy !== null) return;
     const body = store.build.ingestBodyFrom(facts.preview, facts.url);
@@ -90,7 +92,7 @@
     // The tab this posting came off may not be the tab the answer arrives on —
     // `duringAction` holds that guard on both limbs and hands back `null` when
     // there is nothing here left to say.
-    const done = await duringAction(store, "job", () =>
+    const done = await duringAction(store, as, () =>
       store.api("/api/jobs", { method: "POST", body: JSON.stringify(body) }),
     "Couldn't save the job.");
     if (!done) return;
@@ -108,8 +110,10 @@
       note: { text: saved },
     });
     store.render();
-    await scoreAllBases(store, { lead: `${saved} ` });
+    await scoreAllBases(store, { lead: `${saved} `, as });
     if (!store.current(token)) return;
+    // Queue and Apply go on from here and re-read when they end, so they ask for no reload now.
+    if (!reload) return;
     // The stage advances because the data moved, not because anything here
     // said so. `loadContext` keeps the note it did not write, so what the user
     // just did survives the reload that confirms it.
@@ -144,7 +148,7 @@
    * save's spinner keeps turning), a note on failure, and the generation check
    * on BOTH limbs.
    */
-  async function scoreAllBases(store, { lead = "", quiet = false } = {}) {
+  async function scoreAllBases(store, { lead = "", quiet = false, as = "job" } = {}) {
     if (store.read().busy !== null) return;
     const job = store.read().job;
     if (!job) {
@@ -156,7 +160,7 @@
     }
     store.scored(job.id);
     const what = `${lead}Couldn't score your base resumes.`;
-    const done = await duringAction(store, "job", () =>
+    const done = await duringAction(store, as, () =>
       store.api("/api/ats-scores", {
         method: "POST", body: JSON.stringify({ job_id: job.id }),
       }), {
@@ -214,5 +218,215 @@
     store.render();
   }
 
-  ns.panelActionsJob = { addJob, scoreAllBases };
+  // ---------- Queue and Apply (full automation on) ----------
+
+  const QUEUED = "Queued. Apply to queued will pick it up.";
+  const ALREADY_APPLIED = "You've already applied to this job.";
+  const FINISH_FIRST = "You're tailoring this job in Maestro. Finish it, then press Apply.";
+  const TAILOR_BLOCKED = "Couldn't tailor your resume. Use Tailor in Maestro CS to see what's in the way.";
+  // A proposal that is already in motion in the web app, as its chip words it.
+  const IN_MOTION = { needs_decision: "Needs you", needs_human: "Needs you", approved: "Approved" };
+  const COMPANION_YES = { status: "accepted", consent: { channel: "companion" } };
+
+  /** An error whose words are already the sentence for the note (`failureNote` passes `shown` ones
+   * through untouched). */
+  function shown(sentence) {
+    return Object.assign(new Error(sentence), { shown: true });
+  }
+
+  /** Where a job the always-on copy holds stands, in words. Only reached when the job cannot be run
+   * from this copy: with the laptop's own offer pending, Keep it here is Apply's own first move. */
+  function heldSentence(ownership) {
+    if (ownership.handover === "returning") {
+      return "This job is on its way back to your laptop. Try again after the next sync.";
+    }
+    return "This job is with your bot. Ask for it back with Work on it here in Maestro CS, then press Apply.";
+  }
+
+  const canRunHere = (ownership) => !ownership || ownership.owned_here === true || ownership.can_keep_here === true;
+
+  /** The proposal body: the job, and the Job step's pick with the panel's own scores (the web app's
+   * Queue sends the same shape, `promoteJobToAgentQueue`, with its best match as the pick). */
+  function proposalBody(facts) {
+    const rows = (facts.scores ?? []).filter((row) => row?.target_type === "base_resume" && row?.phase === "base");
+    return {
+      job_id: facts.job.id,
+      fit: rows.length && facts.baseSlug
+        ? { chosen_base: facts.baseSlug, scores: Object.fromEntries(rows.map((row) => [row.target_id, row.composite])),
+            decided_by: "user" }
+        : null,
+      plan: { summary: "Queued from the Companion by the user" },
+      proposed_by: "you",
+    };
+  }
+
+  /** The user's yes: a proposal for the job, accepted under the Companion's own consent channel (the
+   * server takes `companion` from the extension's origin and only to queue). A job already queued is
+   * left alone; one that is already in motion in the web app is not ours to move. Returns
+   * `{id}` or `{stop}`; the server's own sentence for a refusal (a skipped job, the skip list, the
+   * other copy) is shown as it is, because it is written for a person. */
+  async function queueProposal(store, facts, read) {
+    if (read.queued && read.proposalId) return { id: read.proposalId };
+    try {
+      let prop = await store.api("/api/proposals", { method: "POST", body: JSON.stringify(proposalBody(facts)) });
+      if (prop.status === "pending_review") {
+        prop = await store.api(`/api/proposals/${encodeURIComponent(prop.id)}`,
+          { method: "PATCH", body: JSON.stringify(COMPANION_YES) });
+      }
+      if (prop.status === "accepted") return { id: prop.id };
+      return { stop: `This job is already in the Agent inbox (${IN_MOTION[prop.status] ?? prop.status}). `
+        + "Open it in Maestro CS to carry on." };
+    } catch (err) {
+      throw err.status === 409 ? shown(`Couldn't queue the job. ${err.message}`) : err;
+    }
+  }
+
+  /** Queue: save the job as today (extract and score), then the user's yes. The note names what
+   * happened; Apply to queued, in the Queue view, picks the job up later. */
+  async function queueJob(store) {
+    if (store.read().busy !== null || store.read().fullAutomation !== true) return;
+    const token = store.token();
+    if (!store.read().job) {
+      await addJob(store, { as: "queue", reload: false });
+      // The press belongs to the tab it was made on: a stale answer finds a different job in the store.
+      if (!store.current(token) || !store.read().job) return;
+    }
+    const facts = store.read();
+    const done = await duringAction(store, "queue", async () => {
+      const read = await readApplyFacts(store, facts.job.id);
+      if (read.applied) return { stop: ALREADY_APPLIED };
+      return queueProposal(store, facts, read);
+    }, { what: "Couldn't queue the job.", answered: "Couldn't queue the job. Try again." });
+    if (!done) return;
+    store.write({ note: { text: done.out.stop ?? QUEUED } });
+    store.render();
+    await store.loadContext(done.token);
+  }
+
+  /** What the server holds for the job now (its detail and its tailoring sessions), picked out by
+   * `applyFacts`. Read at press time rather than trusted from the page: the user may have started a
+   * custom tailoring, or applied, in the web app since. */
+  async function readApplyFacts(store, jobId) {
+    const id = encodeURIComponent(jobId);
+    const [detail, sessions] = await Promise.all([
+      store.api(`/api/jobs/${id}/detail`), store.api(`/api/tailoring-sessions?job_id=${id}`)]);
+    return applyFacts(detail, sessions);
+  }
+
+  /** The job is this copy's to work on, or a sentence saying why not. With sync on, queueing offers
+   * the job to the always-on copy at the next round (`mark_when_queued`), and its routes then
+   * refuse this copy; Apply is the user saying "here", so it claims the job first (Keep it here).
+   * Re-read after the queue write, because that write is what offers it. */
+  async function claimHere(store, jobId) {
+    const id = encodeURIComponent(jobId);
+    const now = await store.api(`/api/jobs/${id}`);
+    const held = now?.ownership;
+    if (!held || held.owned_here) return null;
+    if (!held.can_keep_here) return heldSentence(held);
+    await store.api(`/api/jobs/${id}/keep-here`, { method: "POST" });
+    return null;
+  }
+
+  /** A resume for a job that has none: Quick tailor with the Job step's pick, or the base resume as
+   * it stands. Reached only when the job has no application AND no open custom session of the
+   * user's (or the user chose Apply with the base resume), so nothing of theirs is replaced. Quick
+   * tailor with nothing to change leaves a session open on its own; it is closed here so it does
+   * not read as the user's own custom tailoring on the next press. */
+  async function newResume(store, jobId, base, withBase) {
+    const id = encodeURIComponent(jobId);
+    if (!withBase) {
+      let out;
+      try {
+        out = await store.api(`/api/jobs/${id}/quick-tailor`, { method: "POST", body: JSON.stringify({ base_resume: base }) });
+      } catch (err) {
+        throw err.status === 409 ? shown(TAILOR_BLOCKED) : err;
+      }
+      if (!out.nothing_to_tailor) return { applicationId: out.application_id, pdfReady: out.pdf_ready !== false };
+      await store.api(`/api/tailoring-sessions/${encodeURIComponent(out.session_id)}/close`, { method: "POST" })
+        .catch((err) => console.warn("[maestro-cs] could not close the empty tailoring session:", err));
+    }
+    const made = await store.api("/api/applications/from-base", {
+      method: "POST", body: JSON.stringify({ job_id: jobId, base_resume: base, ops: [] }) });
+    return { applicationId: made.id, pdfReady: Boolean(made.pdf_path) };
+  }
+
+  /** Everything between the press and the run, as one span of `busy`: the user's yes, the claim on
+   * the job, a resume that is ready, and the proposal tied to its application. Returns `{stop}`
+   * (a sentence: nothing more was done) or `{seed, application}` for `startRun`. */
+  async function prepareApply(store, facts, withBase) {
+    const jobId = facts.job.id;
+    const read = await readApplyFacts(store, jobId);
+    if (read.applied) return { stop: ALREADY_APPLIED };
+    if (!canRunHere(read.ownership)) return { stop: heldSentence(read.ownership) };
+    const queued = await queueProposal(store, facts, read);
+    if (queued.stop) return queued;
+    if (read.ownership) {
+      const held = await claimHere(store, jobId);
+      if (held) return { stop: held };
+    }
+    let applicationId = read.applicationId;
+    let pdfReady = read.hasPdf;
+    const base = read.baseResume ?? facts.baseSlug;
+    if (applicationId === null) {
+      // The user's own custom tailoring is never tailored over; the other way round it is theirs to choose.
+      if (read.sessionId && !withBase) return { stop: FINISH_FIRST };
+      if (!base) return { stop: "Pick a base resume first." };
+      ({ applicationId, pdfReady } = await newResume(store, jobId, base, withBase));
+    }
+    if (!pdfReady) {
+      await store.api(`/api/applications/${encodeURIComponent(applicationId)}/render`, { method: "POST" });
+    }
+    try {
+      await store.api("/api/proposals", {
+        method: "POST", body: JSON.stringify({ job_id: jobId, application_id: applicationId }) });
+    } catch (err) {
+      throw err.status === 409 ? shown(`Couldn't link the resume to the job. ${err.message}`) : err;
+    }
+    // Sync can deliver a link that never met the server's check, so it is vouched for here: http(s) only.
+    const openUrl = httpUrl(read.applyUrl) ?? httpUrl(read.sourceUrl) ?? httpUrl(facts.url);
+    if (!openUrl) return { stop: "This job has no web link the Companion can open." };
+    return {
+      application: { id: applicationId },
+      seed: { proposalId: queued.id, jobId, applicationId, company: facts.job.company ?? null,
+              title: facts.job.title ?? null, baseSlug: base, openUrl },
+    };
+  }
+
+  /** Apply: Queue, then run this one job in THIS tab. `start` is the run host's `startRun`, handed
+   * in by the roster (an action reaches no other action). Everything up to the run holds one `busy`
+   * span; the run itself is not an action and holds none (it has its own card and Stop).
+   *
+   * `withBase` is the open-custom-session state's "Apply with the base resume": the same road, but
+   * the base resume stands in for the tailoring the user has not finished, and their session is
+   * never touched. Submit is nowhere in this file: the run stops at the review. */
+  async function applyJob(store, { start, withBase = false }) {
+    if (store.read().busy !== null || store.read().fullAutomation !== true) return;
+    const token = store.token();
+    if (!store.read().job) {
+      await addJob(store, { as: "apply", reload: false });
+      if (!store.current(token) || !store.read().job) return;
+    }
+    const facts = store.read();
+    const done = await duringAction(store, "apply", () => prepareApply(store, facts, withBase), {
+      what: "Couldn't start the application.", answered: "Couldn't start the application. Try again." });
+    if (!done) return;
+    if (done.out.stop) {
+      store.write({ note: { text: done.out.stop } });
+      store.render();
+      await store.loadContext(done.token);
+      return;
+    }
+    // The application exists now, whatever the run does next.
+    store.write({ application: { id: done.out.application.id, status: "draft" }, pdfReady: true, note: null });
+    store.render();
+    store.remember();
+    await start(done.out.seed);
+  }
+
+  /** Apply with the base resume: the open-custom-session state's way on. */
+  function applyWithBase(store, options) {
+    return applyJob(store, { ...options, withBase: true });
+  }
+
+  ns.panelActionsJob = { addJob, scoreAllBases, queueJob, applyJob, applyWithBase };
 })();
