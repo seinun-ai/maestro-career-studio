@@ -461,8 +461,11 @@
     Promise.resolve(reply).then((got) => {
       if (got === undefined || got === null) return;
       const off = got.why === "off";
-      if (record.logOff === off) return;
+      // The time the log last recorded a run (an ISO time from the worker), kept to date a gap.
+      const last = off && typeof got.lastAt === "string" ? got.lastAt.slice(0, 30) : null;
+      if (record.logOff === off && (record.logLast ?? null) === last) return;
       record.logOff = off;
+      record.logLast = last;
       store.render();
     }).catch(warn("could not read the fill log's answer"));
   }

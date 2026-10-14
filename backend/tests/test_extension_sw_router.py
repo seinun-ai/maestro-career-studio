@@ -568,6 +568,7 @@ def test_the_vouched_origin_rides_the_attach_to_the_frames(tmp_path, extra, forw
 _TELEMETRY_DRIVER_JS = r"""
 let listener = null;
 let posted = [];
+const stored = { ...(spec.local ?? {}) };
 
 global.fetch = async (url, init) => {
   posted.push({ url, body: JSON.parse(init.body) });
@@ -587,6 +588,11 @@ global.chrome = {
     sync: {
       get: async (defaults) => ({ ...defaults, ...spec.settings }),
     },
+    // Device-local memory (the log's last trace time): a plain map.
+    local: {
+      get: async (key) => (key in stored ? { [key]: stored[key] } : {}),
+      set: async (items) => { Object.assign(stored, items); },
+    },
   },
   tabs: { sendMessage: async () => null },
 };
@@ -602,7 +608,7 @@ main(async () => {
       resolve);
     if (!keptOpen) reject(new Error("the router declined telemetry"));
   });
-  emit({ reply, posted });
+  emit({ reply, posted, stored });
 });
 """
 
@@ -720,9 +726,9 @@ _TRACE_DRIVER_JS = _TELEMETRY_DRIVER_JS.replace(
 assert _TRACE_DRIVER_JS != _TELEMETRY_DRIVER_JS, "the telemetry driver's message moved"
 
 
-def _post_trace(tmp_path, trace, settings=None, missing=False):
+def _post_trace(tmp_path, trace, settings=None, missing=False, local=None):
     message = {"type": "fill_trace"} if missing else {"type": "fill_trace", "trace": trace}
-    out = run_node(_TRACE_DRIVER_JS, {"message": message,
+    out = run_node(_TRACE_DRIVER_JS, {"message": message, "local": local or {},
                                       "settings": OPTED_IN if settings is None else settings},
                    tmp_path, source=SW_JS)
     return out
@@ -754,8 +760,30 @@ def _posted_trace(tmp_path, trace, **kw):
 def test_a_trace_is_not_posted_when_the_user_turned_telemetry_off(tmp_path):
     """The same switch as telemetry's, read the same way. A gate, not a filter."""
     out = _post_trace(tmp_path, _run_trace(), settings={"telemetryEnabled": False})
-    assert out["reply"]["data"] == {"posted": 0, "why": "off"}, "the answer says the log is off, so the run card can"
+    assert out["reply"]["data"] == {"posted": 0, "why": "off", "lastAt": None}, "the answer says the log is off, so the run card can"
     assert out["posted"] == [], "an opted-out user's run reached the network"
+
+
+def test_the_off_answer_carries_when_the_log_last_recorded_a_run(tmp_path):
+    out = _post_trace(tmp_path, _run_trace(), settings={"telemetryEnabled": False},
+                      local={"lastTraceAt": "2026-10-13T06:27:41.512Z"})
+    assert out["reply"]["data"] == {"posted": 0, "why": "off", "lastAt": "2026-10-13T06:27:41.512Z"}
+
+
+@pytest.mark.parametrize("stored", [{}, {"lastTraceAt": "yesterday"}, {"lastTraceAt": 5}, {"lastTraceAt": "<b>x</b>"}])
+def test_a_missing_or_odd_last_trace_time_is_null(tmp_path, stored):
+    out = _post_trace(tmp_path, _run_trace(), settings={"telemetryEnabled": False}, local=stored)
+    assert out["reply"]["data"] == {"posted": 0, "why": "off", "lastAt": None}
+
+
+def test_a_posted_trace_remembers_its_time_and_nothing_else(tmp_path):
+    out = _post_trace(tmp_path, _run_trace())
+    assert out["reply"]["data"] == {"posted": 1}
+    assert list(out["stored"]) == ["lastTraceAt"] and re.fullmatch(r"\d{4}-\d\d-\d\dT[\d:.]+Z", out["stored"]["lastTraceAt"])
+
+
+def test_a_trace_that_builds_nothing_remembers_no_time(tmp_path):
+    assert _post_trace(tmp_path, None, missing=True)["stored"] == {}
 
 
 def test_a_trace_with_the_log_on_never_says_the_log_is_off(tmp_path):
@@ -766,7 +794,7 @@ def test_a_trace_with_the_log_on_never_says_the_log_is_off(tmp_path):
 def test_a_trace_is_not_posted_until_the_user_turns_the_log_on(tmp_path):
     """The trace shares the fill log's switch, so it shares its default: off."""
     out = _post_trace(tmp_path, _run_trace(), settings={})
-    assert out["reply"]["data"] == {"posted": 0, "why": "off"}
+    assert out["reply"]["data"] == {"posted": 0, "why": "off", "lastAt": None}
     assert out["posted"] == [], "a run reached the network before the user turned the log on"
 
 

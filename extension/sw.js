@@ -607,6 +607,17 @@ function proxyInit(init) {
  * `sender` is the raw one Chrome supplied: an extension page has no tab and a
  * content script always has one, which is what `fanoutTab` reads. Handlers that
  * never fan out ignore it. */
+// When the fill log last recorded a run: an ISO time and nothing else.
+const LAST_TRACE_KEY = "lastTraceAt";
+async function lastTraceAt() {
+  try {
+    const at = (await chrome.storage.local?.get(LAST_TRACE_KEY))?.[LAST_TRACE_KEY];
+    return typeof at === "string" && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(at) ? at : null;
+  } catch {
+    return null;
+  }
+}
+
 const HANDLERS = {
   async api(msg) {
     return api(assertBackendPath(msg.path), proxyInit(msg.init));
@@ -666,11 +677,13 @@ const HANDLERS = {
    * trace posts nothing. */
   async fill_trace(msg) {
     const { telemetryEnabled } = await getSettings();
-    // `why: "off"` lets the run card say the fill log is off (a trace nobody can read helps nobody).
-    if (telemetryEnabled !== true) return { posted: 0, why: "off" };
+    // `why: "off"` lets the run card say the fill log is off, and `lastAt` when the log last recorded a run
+    // (a time only, kept on this device), so a gap in the log has a date.
+    if (telemetryEnabled !== true) return { posted: 0, why: "off", lastAt: await lastTraceAt() };
     const trace = scrubTrace(msg.trace);
     if (!trace) return { posted: 0 };
     await api("/api/autofill/runs", { method: "POST", body: JSON.stringify(trace) });
+    await chrome.storage.local?.set({ [LAST_TRACE_KEY]: new Date().toISOString() }).catch(() => {});
     return { posted: 1 };
   },
 

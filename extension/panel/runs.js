@@ -238,12 +238,20 @@
     return attach(node("div", "flagged"), head, list);
   }
 
+  /** When the fill log last recorded a run, in the user's own locale: "Oct 13, 6:27 AM". */
+  function whenWords(iso) {
+    const at = new Date(iso);
+    return Number.isNaN(at.getTime()) ? ""
+      : at.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+
   /** One line when the fill log is off, shown once a run has ended: the log is what lets Maestro CS see what each
-   * field tried, and it is the user's switch (Options). */
+   * field tried, and it is the user's switch (Options). It says when the log last recorded a run, if it ever did. */
   function logOffLine(ctx, run) {
-    return run.logOff === true
-      ? ctx.build.node("div", "sub run-log-off", "Fill log is off. Turn it on in Options to let Maestro CS see what each field tried.")
-      : null;
+    if (run.logOff !== true) return null;
+    const when = run.logLast ? whenWords(run.logLast) : "";
+    return ctx.build.node("div", "sub run-log-off",
+      `Fill log is off. Turn it on in Options to let Maestro CS see what each field tried.${when ? ` Last trace: ${when}.` : ""}`);
   }
 
   function readyBody(ctx, run) {

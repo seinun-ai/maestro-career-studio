@@ -1680,3 +1680,21 @@ def test_a_page_with_no_receipt_does_not_show_the_previous_pages_flags(tmp_path)
                 inventoryByPage=[[_field("f1", "Ada", question="Name")]],
                 api={"POST /api/jobs/job-1/filled-answers": _reply(flags)})
     assert "Salary" in _body_text(kept["shots"][-1])
+
+
+def test_the_fill_log_line_also_says_when_the_log_last_recorded_a_run(tmp_path):
+    reply = _reply({"posted": 0, "why": "off", "lastAt": "2026-10-13T12:00:00.000Z"})
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [verified("f1")], "trace": TRACE}, {"fields": [verified("f2")], "trace": TRACE}],
+               replies={"fill_trace": reply})
+    text = _text(_card(out["shots"][-1])["body"])
+    assert LOG_OFF in text and "Last trace: Oct 1" in text
+    assert _record(out["shots"][-1])["logLast"] == "2026-10-13T12:00:00.000Z"
+
+
+def test_a_log_that_never_recorded_a_run_has_no_last_trace_time(tmp_path):
+    out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW),
+               reports=[{"fields": [verified("f1")], "trace": TRACE}, {"fields": [verified("f2")], "trace": TRACE}],
+               replies={"fill_trace": _reply({"posted": 0, "why": "off", "lastAt": None})})
+    text = _text(_card(out["shots"][-1])["body"])
+    assert LOG_OFF in text and "Last trace" not in text
