@@ -689,6 +689,16 @@ def test_a_drafted_answer_is_written_and_reported_assumed(page, load):
     assert [a.get("value") for a in actions(out, "write")][0] == "Built a pipeline."
 
 
+def test_only_a_prose_field_the_map_marked_draftable_asks_for_a_draft(page, load):
+    """/map says which free_text routes the model filed as free text or years (`draft`); the loop forwards that,
+    so /choose never drafts a history or protected question."""
+    out = run(page, load, frames=[[f("a", question="What is your most impressive project? Why?", required=True),
+                                   f("b", question="Which agencies have you worked with?", required=True)]],
+              map={"a": {"route": "free_text", "draft": True}, "b": {"route": "free_text", "draft": False}})
+    asked = {fl["qid"]: fl["draft"] for body in bodies(out, "/api/autofill/choose") for fl in body["fields"]}
+    assert asked == {"a": True, "b": False}
+
+
 def test_a_field_that_keeps_reverting_is_given_up_after_three_attempts(page, load):
     out = run(page, load, frames=[[f("a")]] * 5, map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}},
               apply={"X": {"outcome": "reverted"}})

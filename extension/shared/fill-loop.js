@@ -1440,7 +1440,8 @@
 
     const answerProse = async (fields) => {
       const got = await ns.requestChoose(
-        fields.map((f) => ({ qid: f.fid, label: question(f), kind: "textarea", options: [], required: Boolean(f.required) })),
+        fields.map((f) => ({ qid: f.fid, label: question(f), kind: "textarea", options: [], required: Boolean(f.required),
+          draft: rows.get(f.fid)?.draft === true })),
         {
           postChoose: (body) => bounded(() => api("/api/autofill/choose", { method: "POST", body: JSON.stringify(body) })),
           applicationId: selector.application_id,
@@ -1540,7 +1541,8 @@
           const datePart = narrowed(f, m);
           if (m) {
             set(f.fid, { route: m.route, slot: m.slot ?? null, value: datePart ? datePart.value : m.value ?? null,
-              format, part: datePart?.part ?? null, why: WHY[m.why] ? m.why : null, years: m.years === true });
+              format, part: datePart?.part ?? null, why: WHY[m.why] ? m.why : null, years: m.years === true,
+              draft: m.draft === true });
             // The slot is a fact NAME, never its value; one call served the chunk.
             note(f.fid, {
               op: "map", ms: wholeMs(ms / part.length), route: TRACE_ROUTES.has(m.route) ? m.route : null,
