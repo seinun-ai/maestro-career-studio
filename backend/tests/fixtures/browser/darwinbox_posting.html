@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- A Darwinbox candidate-portal job page (Angular), live 2026-10-14, markup captured then made-up names
+     (Acme Robotics, Data Analyst, Pune). Served by tests/browser/test_posting_read.py at
+     https://acme.darwinbox.in/ms/candidatev2/main/careers/jobDetails/<id>?src=Linkedin.
+     What the live page does and this keeps: NO JSON-LD, no <main>, no <article>, no <h1>; the document title is
+     "Job Details Page"; the company is only in the meta description as "Job Title | <Company>"; the title is a
+     span.title in the header section; the description is .jd-container > .details-box (a div.title
+     "Job Description" + .jd); the Job Snapshot labels its Location; a SECOND, display:none copy of the description
+     (.mobile-view-jd, longer here than the visible one so a reader that ignores visibility picks it) sits in the
+     DOM. Apply Now leads to a sign-in page, so nothing here is a form. -->
+<html>
+<head>
+<title>Job Details Page</title>
+<meta name="description" content="Job Title | Acme Robotics">
+<style>
+  body { font: 14px sans-serif; margin: 0; }
+  .mobile-view-jd { display: none; }
+  .left, .right { display: inline-block; vertical-align: top; width: 48%; }
+  .grid-item { display: inline-block; width: 45%; }
+</style>
+</head>
+<body>
+<app-root>
+  <header class="topbar">
+    <div class="logo"><img alt="Company Logo" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></div>
+    <div class="nav"><a href="/ms/candidatev2/main/careers/home">Home</a> <a href="/ms/candidatev2/main/careers/allJobs">Open Jobs</a></div>
+    <div class="auth"><button class="db-btn login-btn">Sign In</button></div>
+  </header>
+  <div class="view-container">
+    <div class="navigation"><span class="route-to">Open Jobs</span> &gt; <span class="route-to">Analytics</span> &gt; <span>Data Analyst</span></div>
+    <div class="details-container">
+      <div class="header-section">
+        <div class="header">
+          <div class="title-section">
+            <span class="title">Data Analyst</span>
+            <div class="sub-title">
+              <div class="sub-section"><span> Pune, Maharashtra, India </span></div>
+              <div class="sub-section"><span>2 - 5 Years</span></div>
+            </div>
+          </div>
+          <div class="actions"><button class="db-btn style-primary action-btn">Apply Now</button></div>
+        </div>
+      </div>
+      <div class="job-body">
+        <div class="left">
+          <div class="jd-container">
+            <div class="details-box no-border">
+              <div class="title">Job Description</div>
+              <div class="jd">
+                <p><b>Key Responsibilities:</b></p>
+                <p>&#9679; Build dashboards that show the operations team how the robot fleet is performing each week.</p>
+                <p>&#9679; Query the telemetry warehouse with SQL and explain what changed between releases.</p>
+                <p>&#9679; Work with the firmware group to decide which signals are worth collecting next quarter.</p>
+                <p>&#9679; Write short reports that a plant manager can act on without a call to the analytics team.</p>
+                <p><b>Requirements:</b></p>
+                <p>&#9679; Two or more years of analytics work, fluent SQL and one scripting language.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="right">
+          <div class="section mobile-section">
+            <div class="title">Job Snapshot</div>
+            <div class="grid-container body">
+              <div class="grid-item"><div class="label">Updated Date</div><div class="value">23-09-2026</div></div>
+              <div class="grid-item"><div class="label">Job ID</div><div class="value">JOB_0001</div></div>
+              <div class="grid-item"><div class="label">Location</div><span class="value"> Pune, Maharashtra, India </span></div>
+              <div class="grid-item"><div class="label">Experience</div><div class="value">2 - 5 Years</div></div>
+            </div>
+          </div>
+          <div class="mobile-view-jd">
+            <div class="details-box no-border">
+              <div class="title">Job Description</div>
+              <div class="jd">
+                <p><b>Key Responsibilities:</b></p>
+                <p>&#9679; Build dashboards that show the operations team how the robot fleet is performing each week.</p>
+                <p>&#9679; Query the telemetry warehouse with SQL and explain what changed between releases.</p>
+                <p>&#9679; Work with the firmware group to decide which signals are worth collecting next quarter.</p>
+                <p>&#9679; Write short reports that a plant manager can act on without a call to the analytics team.</p>
+                <p><b>Requirements:</b></p>
+                <p>&#9679; Two or more years of analytics work, fluent SQL and one scripting language.</p>
+                <p>&#9679; THE HIDDEN COPY ONLY: an extra line so this copy is the longer one of the two. It repeats nothing a candidate needs and must never be the answer.</p>
+              </div>
+            </div>
+          </div>
+          <div class="section watermark">
+            <div class="title">Share the opportunity</div>
+            <div class="body"><a class="share-icon" href="https://www.linkedin.com/shareArticle?mini=true">LinkedIn</a></div>
+          </div>
+        </div>
+      </div>
+      <div class="similar-jobs"><div class="heading"> View Similar Jobs </div></div>
+      <div class="footer-container"><span>Powered by:</span> <a href="https://www.darwinbox.com/">darwinbox</a> | <a href="https://www.darwinbox.com/privacy-policy">Privacy Policy</a></div>
+    </div>
+  </div>
+</app-root>
+</body>
+</html>

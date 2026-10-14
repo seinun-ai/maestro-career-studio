@@ -66,11 +66,11 @@
       document.querySelector("main"),
       document.querySelector("article"),
     ].filter(Boolean);
-    const usable = (node) => (node.innerText?.trim() ?? "").length > 300;
-    const longest = (nodes) => nodes.filter(usable).map((node) => node.innerText.trim())
+    const longest = (nodes) => nodes.filter(ns.usableDescriptionNode).map((node) => node.innerText.trim())
       .reduce((best, text) => (best === null || text.length > best.length ? text : best), null);
     // WHERE the text came from, which is what the panel may claim about it:
-    // `content` when a job-description container on this page held a usable
+    // `content` when a visible job-description container, or the section under
+    // a description heading (`descriptionUnderHeading`), held a usable
     // description, `page` for a long <main>/<article> with none (a blog, a
     // recipe), `body` for the whole page.
     //
@@ -78,7 +78,7 @@
     // <article> around it: a frame can hold the description AND an application
     // form, and a custom widget there shows the user's own value as plain text
     // (a name, an email), which would then ride into the preview and a save.
-    const described = longest(describedNodes);
+    const described = longest(describedNodes) ?? ns.descriptionUnderHeading();
     const page = described === null ? longest(candidates) : null;
     const best = described ?? page;
     return {

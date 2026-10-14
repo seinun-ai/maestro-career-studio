@@ -196,7 +196,7 @@ def test_the_backend_rule_the_guard_mirrors():
 
 _SOURCE_DRIVER_JS = r"""
 global.chrome = { runtime: { id: "ext", onMessage: { addListener() {} } } };
-const node = (text) => (text == null ? null : { innerText: text });
+const node = (text) => (text == null ? null : { innerText: text, getClientRects: () => [{}] });
 global.document = {
   title: "Some page",
   // The job-description selector list is one querySelectorAll; the JSON-LD
