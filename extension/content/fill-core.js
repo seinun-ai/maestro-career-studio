@@ -1306,7 +1306,13 @@
           return { outcome: "unexpected", reason: "group_committed" };
         }
         if (!keep) await tidy(el, t);
-        const got = verify(el, shape, hit.text, { before, undo });
+        let got = verify(el, shape, hit.text, { before, undo });
+        // A box whose only proof is its own text, equal to the query the engine typed to find the
+        // pick, proves nothing: a strict widget that rejects the click and keeps the query looks
+        // the same. Said so, never verified.
+        if (got === "verified" && shape.weakRead?.(el) && b().equivalent(shape.open === "search" ? (term ?? text) : "", hit.text)) {
+          got = "unconfirmed";
+        }
         if (got === "verified") return { outcome: "verified", text: hit.text };
         // It shows the pick, but the app did not take it: never a second click
         // (the loop decides what an unconfirmed value needs).

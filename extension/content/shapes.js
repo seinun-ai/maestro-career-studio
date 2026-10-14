@@ -127,7 +127,8 @@
   };
   // A search widget's hidden backing input counts only inside the widget's
   // root — never a form's csrf token.
-  const searchBacking = (el) => widgetRoot(el)?.querySelector('input[type="hidden"]')?.value ?? "";
+  const backingInput = (el) => widgetRoot(el)?.querySelector('input[type="hidden"]') ?? null;
+  const searchBacking = (el) => backingInput(el)?.value ?? "";
   const chips = (el) => [...(box(el)?.querySelectorAll(CHIP) ?? [])].map((c) => clean(c.textContent)).filter(Boolean);
 
   // Single or several. Live Workday wraps School (one answer) and Skills
@@ -167,15 +168,16 @@
   const selectStructure = (el) => Boolean(widgetRoot(el) || box(el)?.querySelector(SELECT_STRUCTURE));
   // A select-style box that keeps its pick as the INPUT's own text, with no
   // separate value node. Oracle JET's `oj-combobox-one` says so itself: the host
-  // loses `oj-has-no-value` once it holds a value. Any other autocomplete reads
-  // its text as the value only while it is AT REST: the list closed and the box
-  // not focused — a query being typed, or one whose list is still coming, is
-  // never a value.
+  // loses `oj-has-no-value` once it holds a value (REAL proof, ahead of anything
+  // else). Any other autocomplete, with no hidden backing input to say otherwise,
+  // reads its text as the value only while it is AT REST: the list closed and the
+  // box not focused — a query being typed, or one whose list is still coming, is
+  // never a value. That is a WEAK read (`weakRead`): the text may be nothing but
+  // the query the engine typed.
+  const jetHost = (el) => el.closest("oj-combobox-one");
   const restingText = (el) => {
     const text = el.value.trim();
     if (!text) return "";
-    const jet = el.closest("oj-combobox-one");
-    if (jet) return jet.classList.contains("oj-has-no-value") ? "" : text;
     const live = el.getAttribute("aria-autocomplete");
     if (!live || live === "none" || el.getAttribute("aria-expanded") === "true") return "";
     return el.getRootNode().activeElement === el ? "" : text;
@@ -191,8 +193,15 @@
     const single = box(el)?.querySelector(SINGLE);
     if (single) return clean(single.textContent);
     if (pills[0]) return pills[0];
-    return searchBacking(el) || restingText(el);
+    const jet = jetHost(el);
+    if (jet) return jet.classList.contains("oj-has-no-value") ? "" : el.value.trim();
+    const backing = backingInput(el);
+    return backing ? backing.value : restingText(el);
   };
+  // Whether the box's value is read from its own text alone and by the weak rule above
+  // (no value node, no pill, no backing input, no JET marker).
+  const weakRead = (el) => !workdayBox(el) && selectStructure(el) && !box(el)?.querySelector(SINGLE) && chips(el).length === 0
+    && !jetHost(el) && !backingInput(el) && restingText(el) !== "";
   // A multi widget is never finished (items may be missing), and a Workday
   // pill box whose multiplicity is not known yet is not either: its one pill
   // may be the first of several.
@@ -534,6 +543,7 @@
       multi: searchMulti,
       answered: searchAnswered,
       read: readSearch,
+      weakRead,
       evidence: searchEvidence,
     },
     {

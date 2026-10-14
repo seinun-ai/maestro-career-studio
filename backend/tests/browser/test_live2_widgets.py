@@ -266,3 +266,54 @@ def test_an_applied_choice_counts_one_change_and_a_repeat_none(page, load):
     f = pill_fields(page)["Have you worked for Globex before?"]
     assert apply(page, f, op="choose", text="Yes")["changes"] == 1
     assert apply(page, pill_fields(page)["Have you worked for Globex before?"], op="choose", text="Yes")["changes"] == 1
+
+
+# --- review follow-ups: a box that keeps its pick as its own text (no value node, no JET marker)
+STRICT = ("<label for='c'>Country</label><div class='combo-container'>{hidden}<input id='c' role='combobox' aria-autocomplete='list' "
+          "aria-expanded='false' aria-controls='drop'></div><div id='drop' role='listbox' style='display:none'><div role='option'>Canada</div></div>"
+          "<script>window.picks = 0; const i = document.getElementById('c'), d = document.getElementById('drop');"
+          "i.addEventListener('input', () => { const on = i.value !== ''; d.style.display = on ? '' : 'none'; i.setAttribute('aria-expanded', String(on)); });"
+          "d.firstChild.addEventListener('click', () => { window.picks++; {onclick} d.style.display = 'none'; i.setAttribute('aria-expanded', 'false'); });"
+          "</script>")
+BACKING = "<input type='hidden' name='country' value=''>"
+
+
+def strict(page, load, hidden="", onclick=""):
+    load(page, STRICT.replace("{hidden}", hidden).replace("{onclick}", onclick))
+    return inv(page)["Country"]
+
+
+def test_an_empty_backing_input_means_not_committed_whatever_the_box_shows(page, load):
+    strict(page, load, hidden=BACKING)
+    page.fill("#c", "Canad")
+    page.evaluate("document.getElementById('drop').style.display = 'none'; document.getElementById('c').setAttribute('aria-expanded', 'false');"
+                  "document.activeElement.blur()")
+    f = inv(page)["Country"]
+    assert (f["committed"], f["answered"]) == ("", False)
+
+
+def test_a_filled_backing_input_is_the_committed_value(page, load):
+    strict(page, load, hidden=BACKING)
+    page.evaluate("document.querySelector('[name=country]').value = 'CA'")
+    assert inv(page)["Country"]["committed"] == "CA"
+
+
+def test_a_pick_the_page_rejected_is_not_verified_when_the_boxs_only_proof_is_the_text_it_typed(page, load):
+    """The widget closes its list on the click and commits nothing; the box keeps the query (E).
+    The query equals the option's text, so the text cannot prove a pick: unconfirmed, never verified."""
+    f = strict(page, load, onclick="i.blur();")
+    row = apply(page, f, op="choose", text="Canada")
+    assert row["outcome"] == "unconfirmed", row
+    assert page.evaluate("window.picks") == 1
+
+
+def test_a_rejected_pick_over_an_empty_backing_input_is_not_committed(page, load):
+    f = strict(page, load, hidden=BACKING, onclick="i.blur();")   # F
+    row = apply(page, f, op="choose", text="Canada")
+    assert row["outcome"] == "unexpected" and row["reason"] == "not_committed", row
+
+
+def test_a_pick_typed_with_a_shorter_term_still_verifies_when_the_text_changed(page, load):
+    f = strict(page, load, onclick="i.value = 'Canada';")
+    row = apply(page, f, op="choose", text="Canada", term="Can")
+    assert (row["outcome"], row["committed"]) == ("verified", "Canada")
