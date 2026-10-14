@@ -224,6 +224,7 @@
       onUpdate: (one) => onUpdate(store, one),
       cancelled: (one) => one.stopRequested === true,
       fill: (one, { limits }) => fillPage(store, one, limits),
+      fix: (one, errors, { limits }) => fixPage(store, one, errors, limits),
     };
   }
 
@@ -331,8 +332,11 @@
   /** The fill of one page, pinned to the run's tab: its job and application from the record, the
    * run's limits, and a `cancelled` that only the run's own Stop moves. Posts the answer receipt,
    * tries the resume attach as Autofill does, and sends the same value-free telemetry and trace. */
-  async function fillPage(store, record, limits) {
+  async function fillPage(store, record, limits, scope = {}) {
     const host = store.run;
+    // A repair of the fields a page's errors named (`scope.only`): only those are worked, the page's
+    // progress count and page row stay as the full fill left them, and the resume attach is not repeated.
+    const scoped = Array.isArray(scope.only);
     const rs = runStore(store, record);
     const url = await host.tabUrl(record.tabId);
     rs.write({ url });
@@ -340,13 +344,13 @@
     const finished = new Set();
     let total = 0;
     let auto = null;
-    record.progress = { done: 0, total: 0 };
+    if (!scoped) record.progress = { done: 0, total: 0 };
     const report = await ns.fillLoop.runFill({
       broadcast: async (message) => {
         const frames = await host.tabBroadcast(record.tabId, message);
         // The page's field count is the length of the page: a full inventory (not a peek, not the
         // receipt's read) names every field the loop is about to work.
-        if (message.type === "fill_inventory" && !message.peek && !message.readOnly) {
+        if (!scoped && message.type === "fill_inventory" && !message.peek && !message.readOnly) {
           total = frames.reduce((n, frame) => n + (frame.result?.fields?.length ?? 0), 0);
           record.progress = { done: finished.size, total };
           store.render();
@@ -357,11 +361,12 @@
       recipes: store.recipes(),
       cancelled: stopped,
       beforeSweep: async () => {
+        if (scoped) return 0;
         auto = await ns.panelRunAttach.attach(rs, 0, stopped);
         return ns.panelRunAttach.wrote(auto) ? ns.panelRunAttach.settleMs : 0;
       },
       onProgress: (update) => {
-        if (update.phase !== "field") return;
+        if (update.phase !== "field" || scoped) return;
         finished.add(update.fid);
         record.progress = { done: finished.size, total: Math.max(total, finished.size) };
         store.render();
@@ -372,6 +377,10 @@
       sourceHint: ns.fillLoop.sourceHintOf(url),
       pageUrl: ns.fillLoop.pageUrlOf(url),
       limits,
+      // What the loop learnt on this page (moves that failed, terms tried) survives to the next call on
+      // it. The record owns it; the driver clears it when the step changes, and it never reaches storage.
+      memory: (record.memory ??= ns.fillLoop.newMemory()),
+      ...(scoped ? { only: scope.only } : {}),
     });
     ns.panelRunAttach.land(rs, auto);
     rs.write({ consentForms: report.consentForms === true });
@@ -382,12 +391,34 @@
     host.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(report), url);
     if (report.trace) store.trace(report.trace);
     postGaps(store, record, leftovers(report.trace));
-    if (!report.stopped) {
+    if (!report.stopped && !scoped) {
       const filled = report.fields.filter((row) => WROTE.has(row.status)).length;
       const n = (record.step ?? 0) + 1;
       record.pages = [...(record.pages ?? []).filter((page) => page.n !== n), { n, filled }];
     }
     return report;
+  }
+
+  // What counts as a field repaired: the engine wrote it and checked it, or found it answered.
+  const REPAIRED = new Set([...WROTE, "already"]);
+
+  /** The repair after the page refused a Next, by what its errors named (`pageErrors`): ONLY those
+   * fields, never the rest of the page. A fill field is worked again with `only` (and the page's
+   * memory); an error that names nothing the run can work (an unmapped label) is a blocker, and
+   * the driver parks on it. `{fixed}` says whether every named field was repaired. */
+  async function fixPage(store, record, errors, limits) {
+    if (errors.some((one) => !one.target || (one.kind !== "field" && one.kind !== "upload"))) return { fixed: false };
+    let fixed = true;
+    // (An upload box the page named is repaired by the targeted attach.)
+    if (errors.some((one) => one.kind === "upload")) return { fixed: false };
+    const fids = errors.filter((one) => one.kind === "field").map((one) => one.target);
+    if (fids.length) {
+      const report = await fillPage(store, record, limits, { only: fids });
+      if (report.stopped) return { fixed: false };
+      const byFid = new Map(report.fields.map((row) => [row.fid, row]));
+      fixed = fids.every((fid) => REPAIRED.has(byFid.get(fid)?.status));
+    }
+    return { fixed };
   }
 
   // ---------- starting, stopping, resuming ----------

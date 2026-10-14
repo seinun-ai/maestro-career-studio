@@ -577,7 +577,7 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
         # Repeating sections: read them, and press one section's own Add.
         "fill_sections", "fill_add",
         # The queued run's page reader and its Next click (content/page-reader.js).
-        "page_classify", "page_advance",
+        "page_classify", "page_advance", "page_errors",
         # Learn from the user's fix: watch a parked field's gestures, then ask what the user did.
         "fill_watch", "fill_watch_report",
         # The saved login, typed into the top frame only (reached through panel_frame0).

@@ -665,6 +665,10 @@
     page_classify: (msg) => (frameMayReceiveUserData(msg)
       ? { summary: ns.pageReader.summary(), top: window.top === window.self }
       : { summary: null }),
+    // What the page itself complains about after a refused Next: words and handles, never values.
+    page_errors: (msg) => (frameMayReceiveUserData(msg)
+      ? ns.pageReader.pageErrors()
+      : { count: 0, items: [] }),
     page_advance: (msg) => (frameMayReceiveUserData(msg)
       ? ns.pageReader.advance(msg.id, { apply: msg.apply === true })
       : { clicked: false, why: "gate" }),

@@ -33,8 +33,9 @@ const btn = (id, text, extra = {}) => ({ id, text, type: "button", marker: "", i
   visible: true, enabled: true, ...extra });
 
 // A page descriptor -> the summary the page reader would give.
-const summaryOf = (p) => {
+const summaryOf = (p, banner = false) => {
   const s = { ...base, host: p.host ?? base.host, stepKey: p.key ?? `${p.t}${p.n ?? ""}` };
+  if (banner) s.errors = (p.errorItems ?? []).length;
   switch (p.t) {
     case "step": s.fillable = p.fillable ?? 2; s.buttons = [btn(`next-${p.n}`, "Next"), btn(`back-${p.n}`, "Back")]; break;
     case "review": s.fillable = 2; s.buttons = [btn("submit-1", p.submitText ?? "Submit application"), btn("back-r", "Back")]; break;
@@ -78,6 +79,8 @@ const tick = (name, ...args) => {
   }
 };
 const earlyReads = {};
+const banner = {};         // page index -> the page is showing its error banner
+let lastRejected = false;  // the last press was one the page rejected
 let fillCalls = 0;
 let clock = 1000;
 
@@ -94,7 +97,7 @@ const deps = {
     const p = base.always ?? (early.length ? early.shift() : base);
     if (p.t === "none") return [];
     if (p.frames) return p.frames.map((f) => ({ frameId: f.frameId, result: f.page ? { summary: summaryOf(f.page), top: Boolean(f.top) } : { summary: null } }));
-    return [{ frameId: 0, result: { summary: summaryOf(p), top: true } }];
+    return [{ frameId: 0, result: { summary: summaryOf(p, banner[at] === true), top: true } }];
   },
   tabUrl: async () => {
     tick("tabUrl");
@@ -107,14 +110,36 @@ const deps = {
     const p = current();
     if (p.refuse) return { clicked: false, why: "submit" };
     presses[at] = (presses[at] ?? 0) + 1;
+    lastRejected = false;
+    if (presses[at] <= (p.rejects ?? 0)) {
+      // The page refuses: it stays, draws its banner. Its new buttons made the OLD fingerprint differ,
+      // so the wait says "changed" unless the spec says the banner's buttons are left out of it.
+      banner[at] = true;
+      lastRejected = true;
+      moved = spec.bannerChangesNothing !== true;
+      return { clicked: true };
+    }
+    banner[at] = false;
     if (presses[at] > (p.stuck ?? 0)) { at += 1; moved = true; }
     return { clicked: true };
   },
-  waitForChange: async (tabId, before, ms, stop) => {
-    tick("waitForChange", ms, typeof stop);
+  waitForChange: async (tabId, before, ms, stop, baseline) => {
+    tick("waitForChange", ms, typeof stop, baseline ?? null);
     const c = moved;
     moved = false;
-    return { changed: c, url: "ignored" };
+    const shown = lastRejected ? (current().errorCount ?? (current().errorItems ?? []).length) : 0;
+    return { changed: c, url: "ignored", errors: shown, sameStep: lastRejected };
+  },
+  pageErrors: async (tabId, frameId) => {
+    tick("pageErrors", frameId);
+    const p = current();
+    const items = banner[at] === true ? (p.errorItems ?? []) : [];
+    return { count: items.length, items };
+  },
+  fix: async (rec, errors) => {
+    // What the record says AT the moment of the fix: a rejected press is no step and no seen page.
+    tick("fix", errors.map((e) => e.label), rec.step, rec.seen.length, rec.status);
+    return spec.fix ?? { fixed: true };
   },
   fill: async (record, options) => {
     tick("fill", options ?? null);
@@ -950,7 +975,7 @@ def test_a_fill_that_reports_it_was_stopped_is_a_stopped_run(tmp_path):
 
 def test_the_wait_is_given_the_stop_check(tmp_path):
     out = _drive(tmp_path, [step(1), REVIEW])
-    assert names(out, "waitForChange")[0][1:] == [15000, "function"]
+    assert names(out, "waitForChange")[0][1:] == [15000, "function", 0]   # the 0: no error on the page before the press
 
 
 # ---------- links, errors, records ----------
@@ -981,7 +1006,7 @@ def test_a_fill_that_returns_no_report_is_an_error_not_a_clean_page(tmp_path):
 
 
 @pytest.mark.parametrize("dep", ["openTab", "classify", "advance", "fill", "signIn", "waitForChange",
-                                 "tabUrl", "sleep", "save", "onUpdate", "now", "cancelled"])
+                                 "tabUrl", "sleep", "save", "onUpdate", "now", "cancelled", "pageErrors", "fix"])
 def test_a_missing_dependency_is_a_type_error_before_anything_runs(tmp_path, dep):
     out = _drive(tmp_path, [step(1)], omitDep=dep)
     assert out["threw"] == f"TypeError: queue-run: missing dep {dep}"
@@ -1028,6 +1053,8 @@ let t = 0;
 let pollN = 0;
 const t0 = { summary: { host: "x", fillable: 2, stepKey: "a", buttons: [{ text: "Next", visible: true }] }, top: true };
 const t1 = { summary: { host: "x", fillable: 2, stepKey: "b", buttons: [{ text: "Next", visible: true }] }, top: true };
+// The step as t0, now showing one error (and the banner's own buttons).
+const e1 = { summary: { ...t0.summary, errors: 1, buttons: [...t0.summary.buttons, { text: "Errors Found", visible: true, inErrors: true }] }, top: true };
 
 const ops = ns.queueRun.pageOps({
   broadcast: async (tabId, message, ...only) => {
@@ -1037,7 +1064,10 @@ const ops = ns.queueRun.pageOps({
     if (message.type === "page_classify") {
       const pages = spec.polls ?? [t0];
       const p = pages[Math.min(pollN - 1, pages.length - 1)];
-      return p === null ? [{ frameId: 0, result: { summary: null } }] : [{ frameId: 0, result: p === "t1" ? t1 : t0 }];
+      return p === null ? [{ frameId: 0, result: { summary: null } }] : [{ frameId: 0, result: p === "t1" ? t1 : p === "e1" ? e1 : t0 }];
+    }
+    if (message.type === "page_errors") {
+      return [{ frameId: 3, result: { count: 1, items: [{ label: "City", target: "f-1", kind: "field" }] } }];
     }
     return spec.advanceFrames ?? [{ frameId: 0, result: { clicked: true } }];
   },
@@ -1066,8 +1096,9 @@ main(async () => {
   }
   if (spec.op === "wait") {
     const before = ns.queueRun.fingerprint(spec.beforeUrl ?? "https://jobs.acme.test/a", t0.summary);
-    result = await ops.waitForChange(4, before, spec.ms ?? 3000, spec.stop ? () => true : undefined);
+    result = await ops.waitForChange(4, before, spec.ms ?? 3000, spec.stop ? () => true : undefined, spec.baseline);
   }
+  if (spec.op === "errors") result = await ops.pageErrors(4, spec.frameId);
   emit({ result, sent, logged, polls: pollN, slept: t });
 });
 """
@@ -1198,3 +1229,125 @@ def test_the_limits_and_the_hidden_tab_finding_are_published(tmp_path):
     assert out["run"] == {"FIELD_MS": 60000, "MAX_STEPS": 12, "RUN_MS": 600000}
     assert out["hidden"] is True
     assert "next" not in out["keys"], "the scheduler is Phase 3"
+
+
+# ---------- a Next the page rejects is not a move ----------
+#
+# Workday's "Errors Found" banner adds buttons, which once changed the page fingerprint, so the press
+# read as "moved", the step counter went up and the card said "page 3" over the same page. A rejected
+# press keeps the step and the seen pages, reads the page's errors, repairs only the fields they
+# name, presses once more, and otherwise parks naming them.
+
+UPLOAD = {"label": "Upload a file (5MB max)", "target": "t-up", "kind": "upload"}
+CITY = {"label": "City", "target": "f-9", "kind": "field"}
+
+
+def test_a_rejected_press_is_not_a_step_not_a_seen_page_and_calls_fix_with_the_errors(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UPLOAD]), REVIEW])
+    r = out["record"]
+    assert (r["status"], r["step"], len(r["seen"])) == ("ready", 1, 1)
+    # At the moment of the fix: no step taken, no page remembered, the run is filling not advancing.
+    assert names(out, "fix") == [["fix", ["Upload a file (5MB max)"], 0, 0, "filling"]]
+    assert out["pressed"] == ["next-1", "next-1"]
+    # The page was NOT refilled by the driver: the repair is `fix`'s and it touches the named fields only.
+    assert out["fillCalls"] == 2   # page 1 once, the review once
+
+
+def test_the_errors_are_read_from_the_frame_that_was_pressed(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UPLOAD]), REVIEW])
+    assert names(out, "pageErrors") == [["pageErrors", 0]]
+
+
+def test_a_rejection_is_caught_even_when_the_wait_says_the_page_changed(tmp_path):
+    """The old bug's shape: the banner's buttons made the fingerprint differ."""
+    out = _drive(tmp_path, [step(1, rejects=2, errorItems=[CITY])], bannerChangesNothing=False)
+    assert (out["record"]["step"], out["record"]["seen"]) == (0, [])
+    assert out["record"]["why"] == "page_errors"
+
+
+def test_a_rejection_is_caught_when_the_wait_says_nothing_changed_too(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=2, errorItems=[CITY])], bannerChangesNothing=True)
+    assert (out["record"]["step"], out["record"]["why"]) == (0, "page_errors")
+
+
+def test_the_same_errors_after_one_fix_park_naming_the_upload_and_press_no_third_time(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=9, errorItems=[UPLOAD])])
+    r = out["record"]
+    assert (r["status"], r["why"], r["step"]) == ("parked", "page_errors", 0)
+    assert r["open"] == [{"fid": None, "question": "Upload a file (5MB max)", "required": True}]
+    assert len(names(out, "fix")) == 1 and out["pressed"] == ["next-1", "next-1"]
+    assert r["seen"] == []
+
+
+def test_a_field_errors_open_entry_carries_the_fid_to_look_at(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=9, errorItems=[CITY])])
+    assert out["record"]["open"] == [{"fid": "f-9", "question": "City", "required": True}]
+
+
+def test_a_blocker_the_fix_cannot_repair_parks_at_once_with_no_second_press(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=9, errorItems=[UPLOAD])], fix={"fixed": False})
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "page_errors")
+    assert out["pressed"] == ["next-1"] and len(names(out, "fix")) == 1
+
+
+def test_a_rejection_that_names_nothing_readable_parks(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=9, errorItems=[], errorCount=1)])
+    # The page counts an error and the read names none: nothing to repair, and nothing to press over.
+    r = out["record"]
+    assert (r["status"], r["why"], r["open"], r["step"]) == ("parked", "page_errors", [], 0)
+    assert names(out, "fix") == [] and out["pressed"] == ["next-1"]
+
+
+def test_a_rejection_resets_with_the_next_page(tmp_path):
+    out = _drive(tmp_path, [step(1, rejects=1, errorItems=[UPLOAD]), step(2, rejects=1, errorItems=[CITY]), REVIEW])
+    r = out["record"]
+    assert (r["status"], r["step"]) == ("ready", 2)
+    assert [c[1] for c in names(out, "fix")] == [["Upload a file (5MB max)"], ["City"]]
+
+
+def test_a_page_that_moves_is_still_a_step_when_no_error_shows(tmp_path):
+    out = _drive(tmp_path, [step(1), REVIEW])
+    assert out["record"]["step"] == 1 and names(out, "fix") == [] and names(out, "pageErrors") == []
+
+
+def test_the_banners_buttons_stay_out_of_the_fingerprint(tmp_path):
+    driver = r"""
+    const ns = loadModules();
+    const f = ns.queueRun.fingerprint;
+    const step = { stepKey: "k", fillable: 3, buttons: [{ text: "Save and Continue", visible: true }] };
+    const banner = [{ text: "Errors Found", visible: true, inErrors: true },
+                    { text: "Error - Upload a file (5MB max)", visible: true, inErrors: true }];
+    emit({ plain: f("https://x.test/p", step), banner: f("https://x.test/p", { ...step, buttons: [...step.buttons, ...banner] }) });
+    """
+    out = run_node(driver, {}, tmp_path, source=SOURCE)
+    assert out["plain"] == out["banner"]
+
+
+def test_wait_for_change_reports_new_errors_on_an_unchanged_step_at_once(tmp_path):
+    out = _ops(tmp_path, "wait", polls=["e1"], ms=15000)
+    assert out["result"]["changed"] is False and out["result"]["sameStep"] is True and out["result"]["errors"] == 1
+    assert out["polls"] == 1 and out["slept"] == 0
+
+
+def test_wait_for_change_does_not_call_stale_errors_a_rejection_before_the_hold(tmp_path):
+    """A Next pressed over an old banner may be a slow success: only a banner that stays is a rejection."""
+    out = _ops(tmp_path, "wait", polls=["e1"], ms=15000, baseline=1)
+    assert out["result"]["changed"] is False and out["result"]["errors"] == 1
+    assert 3000 <= out["slept"] <= 3500
+
+
+def test_wait_for_change_leaves_a_page_that_moved_alone(tmp_path):
+    out = _ops(tmp_path, "wait", polls=["t0", "t1"])
+    assert out["result"]["changed"] is True and out["result"]["errors"] == 0 and out["result"]["sameStep"] is False
+
+
+def test_page_errors_asks_the_frame_that_was_pressed_and_only_it(tmp_path):
+    out = _ops(tmp_path, "errors", frameId=3)
+    assert out["sent"] == [["broadcast", 4, {"type": "page_errors"}, 3]]
+    assert out["result"] == {"count": 1, "items": [{"label": "City", "target": "f-1", "kind": "field"}]}
+
+
+def test_page_errors_from_a_frame_that_did_not_answer_is_empty(tmp_path):
+    out = _ops(tmp_path, "errors", frameId=9)
+    assert out["result"] == {"count": 0, "items": []}

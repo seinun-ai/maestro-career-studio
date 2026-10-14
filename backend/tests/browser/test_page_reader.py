@@ -117,7 +117,8 @@ def test_the_summary_is_counts_texts_and_booleans_and_never_a_value(page, load):
     assert "Zelda-Secret-9" not in json.dumps(s)
     assert set(s) == {"host", "stepKey", "applyId", "buttons", "passwordInputs", "confirmPassword", "otpInput", "captchaVisible",
                       "fillable", "hasApplyLink", "confirmationText", "confirmationPhrase", "closedText", "boardNative",
-                      "submitSeen", "submitContext"}
+                      "submitSeen", "submitContext", "errors"}
+    assert s["errors"] == 0
     assert set(s["buttons"][0]) == {"id", "text", "inForm", "visible", "enabled"}
     assert (s["passwordInputs"], s["fillable"]) == (1, 3)
 
@@ -827,6 +828,7 @@ DRIVE = """async ({record, swap, signIn}) => {
     fill: async () => ({fields: []}),
     signIn: async () => { calls.push(["signIn"]); document.body.innerHTML = swap; return {signedIn: true}; },
     waitForChange: async () => ({changed: Boolean(signIn)}),
+    pageErrors: async () => ({count: 0, items: []}), fix: async () => ({fixed: false}),
     sleep: async () => {}, save() {}, onUpdate() {}, now: () => (clock += 1000), cancelled: () => false,
   };
   await ns.queueRun.drive(record, deps);
@@ -1468,3 +1470,122 @@ def test_the_ceiling_is_on_the_unwrapped_address_not_on_linkedins_wrapper(page):
     assert _target(page, wrapped) == "https://careers.acme.example/apply/9"
     # …and the other direction: a long address inside a short wrapper is still too long.
     assert _target(page, _safety_go("https://careers.acme.example/" + "a" * 2048)) is None
+
+
+# ---------- the page's own complaints (page_errors) ----------
+#
+# A Next the page rejects draws an error banner, marks the box invalid and says so in words. The
+# driver needs those words (never a value), a handle for the field each one names, and the banner's
+# own buttons kept out of what it compares pages by.
+
+ERRORS_PAGE = fixture_html("workday_errors.html")
+
+
+def page_errors(page):
+    return page.evaluate(f"() => {READER}.pageErrors()")
+
+
+def press_next(page):
+    page.click("[data-automation-id=pageFooterNextButton]")
+
+
+def element_id(page, attr, target):
+    return page.evaluate("([a, t]) => document.querySelector(`[${a}='${t}']`)?.id ?? null", [attr, target])
+
+
+def test_a_page_with_no_complaint_has_no_errors(page, load):
+    load(page, ERRORS_PAGE, SOURCES)
+    assert page_errors(page) == {"count": 0, "items": []}
+    assert summary(page)["errors"] == 0
+
+
+def test_a_rejected_next_is_read_as_one_error_naming_the_upload_box(page, load):
+    load(page, ERRORS_PAGE, SOURCES)
+    press_next(page)
+    errors = page_errors(page)
+    assert errors["count"] == 1
+    (item,) = errors["items"]
+    # The page's own words for the field, with the banner's "Error - " lead cut, and never a value.
+    assert (item["label"], item["kind"]) == ("Upload a file (5MB max)", "upload")
+    assert element_id(page, "data-maestro-up", item["target"]) == "upload-input"
+    assert summary(page)["errors"] == 1
+
+
+def test_the_banner_and_the_boxs_own_complaint_are_one_error_not_two(page, load):
+    load(page, ERRORS_PAGE, SOURCES)
+    press_next(page)
+    assert page.evaluate("document.getElementById('upload-error').hidden") is False
+    assert page_errors(page)["count"] == 1
+
+
+def test_the_banners_buttons_are_marked_so_the_fingerprint_can_leave_them_out(page, load):
+    load(page, ERRORS_PAGE, SOURCES)
+    before = summary(page)
+    shown = lambda s, **kw: sorted(b["text"] for b in s["buttons"] if b["visible"] and bool(b.get("inErrors")) == kw["errors"])
+    assert shown(before, errors=True) == []
+    press_next(page)
+    after = summary(page)
+    assert shown(after, errors=True) == ["Error - Upload a file (5MB max)", "Errors Found"]
+    # What is left is the step's own buttons, exactly as before the banner.
+    assert shown(after, errors=False) == shown(before, errors=False)
+
+
+def test_a_submit_worded_error_in_the_banner_does_not_make_the_step_a_review(page, load):
+    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li><button type="button">Error - Please submit a
+      resume</button></li></ul></div><h2>My Experience</h2><label for="c">City</label><input id="c">
+      <button type="button">Save and Continue</button>""", SOURCES)
+    s = summary(page)
+    assert s["submitSeen"] is False
+    assert classify(page)["kind"] == "form_step"
+
+
+def test_a_field_error_is_mapped_by_its_describedby_to_the_field(page, load):
+    load(page, """<h2>Contact</h2><label for="phone">Phone Number</label>
+      <input id="phone" aria-invalid="true" aria-describedby="e-phone">
+      <div id="e-phone" data-automation-id="errorMessage">The field Phone Number is required and must have a value.</div>
+      <label for="city">City</label><input id="city">""", SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert (item["label"], item["kind"]) == ("Phone Number", "field")
+    fid = page.evaluate(f"() => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById('phone'))")
+    assert item["target"] == fid
+
+
+def test_a_summary_item_with_no_link_is_mapped_by_its_exact_label(page, load):
+    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li>Error - City</li></ul></div>
+      <label for="phone">Phone Number</label><input id="phone">
+      <label for="city">City*</label><input id="city" aria-required="true">""", SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert (item["label"], item["kind"]) == ("City", "field")
+    fid = page.evaluate(f"() => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById('city'))")
+    assert item["target"] == fid
+
+
+def test_a_summary_link_to_a_field_names_that_field_whatever_its_label(page, load):
+    load(page, """<div role="alert"><h3>Please fix the following</h3>
+      <ul><li><a href="#c2">Error - the second box</a></li></ul></div>
+      <label for="c1">Name</label><input id="c1"><label for="c2">Anything</label><input id="c2">""", SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert item["kind"] == "field"
+    fid = page.evaluate(f"() => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById('c2'))")
+    assert item["target"] == fid
+
+
+def test_an_error_that_matches_no_field_keeps_its_label(page, load):
+    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li>Error - Security Question</li></ul></div>
+      <label for="c1">Name</label><input id="c1">""", SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert item == {"label": "Security Question", "target": None, "kind": "unknown"}
+
+
+def test_a_polite_status_message_is_not_an_error(page, load):
+    load(page, """<div role="alert">Successfully Uploaded!</div><div aria-live="polite">Saving…</div>
+      <label for="c1">Name</label><input id="c1">""", SOURCES)
+    assert page_errors(page) == {"count": 0, "items": []}
+
+
+def test_the_errors_are_words_never_values(page, load):
+    load(page, """<div role="alert"><h3>Errors Found</h3><ul><li>Error - Phone Number</li></ul></div>
+      <label for="phone">Phone Number</label><input id="phone" value="Zelda-Secret-9" aria-invalid="true">""", SOURCES)
+    out = page_errors(page)
+    assert "Zelda-Secret-9" not in json.dumps(out) and out["count"] == 1
+    assert "Zelda-Secret-9" not in json.dumps(summary(page))

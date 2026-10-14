@@ -25,6 +25,14 @@
  * onclick or router script, which can send the application too. Whether the run may ask at all
  * (the first page of a tab it opened itself) is the driver's (shared/queue-run.js).
  *
+ * `pageErrors()` reads what the page itself complains about after a Next it refused: its error
+ * summary (an alert or live region, or a list headed "Errors Found") and each field it marks
+ * invalid, upload boxes included. Words only, never a value: `{count, items: [{label, target, kind}]}`,
+ * `label` the page's own wording for the field, `target` the handle of the field it names (a fill
+ * field's `fid`, or an upload box's `data-maestro-up` tag), `kind` "field" | "upload" | "unknown".
+ * `summary().errors` is the count alone, and the summary's own buttons carry `inErrors` so the
+ * driver's page fingerprint ignores them: a banner that adds buttons is not a page that moved.
+ *
  * `signIn` is the one place the saved job-site login is typed (design Part 4,
  * inv-job-site-password-local). It runs in the TOP frame only, on the host the run reached from the
  * job's apply link, on a page with exactly one plain password box; account creation, email codes and
@@ -34,7 +42,7 @@
  * `applyLink` / `applyTarget` read the EMPLOYER's apply link off the posting page the user is
  * viewing (design Part 7): an absolute http(s) link to another site, never fetched, never followed.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, advance, signIn, applyUrl, applyLink, applyTarget }.
+ * WHAT THIS FILE PUBLISHES: ns.pageReader = { summary, pageErrors, advance, signIn, applyUrl, applyLink, applyTarget }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -198,8 +206,9 @@
 
   /** A Submit anywhere a person could press one (WIDE_BUTTONS), shown, enabled or not. Beyond
    * BUTTONS, site chrome is the site's, and a long block of text in a link is not a button label. */
-  const submitSeen = () => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
+  const submitSeen = (regions) => [...document.querySelectorAll(WIDE_BUTTONS)].some((el) => {
     if (!shown(el)) return false;
+    if (inErrorRegion(el, regions)) return false;
     const extra = !el.matches(BUTTONS);
     if (extra && (inChrome(el) || shownTextOf(el).length > MAX_TEXT)) return false;
     return submitMarked(el) || labels(el).some((text) => sortOf(text) === "submit");
@@ -234,6 +243,161 @@
     });
     return asks || SUBMIT_HEADING.test(stepHeading());
   };
+
+
+  // ---------- the page's own complaints ----------
+
+  // A heading that says the page has errors; the words an error summary or live region must carry.
+  const ERROR_HEADING = /errors? found|please (fix|correct)|there (is|are) \d+ errors?/i;
+  const ERRORISH = /error|required|must|invalid|please (fix|correct|enter|select|provide|choose)|can(?:no|['’])t|unable/i;
+  const ERROR_LEAD = /^\s*errors?\s*[-:–—]\s*/i;
+  const FIELD_REQUIRED = /^\s*the field\s+(.+?)\s+is required\b.*$/i;
+  const REGION_ITEMS = 'li, a[href], button, [role="button"], [role="link"], [role="listitem"]';
+  const CONTROLS = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"])'
+    + ':not([type="image"]), select, textarea, [role="combobox"]';
+
+  const normal = (text) => squash(text).replace(/\*/g, "").replace(/[\s.:]+$/, "").toLowerCase();
+  /** The page's wording for the field an error names: "Error - X", "Error: X", "The field X is
+   * required and must have a value." and "X" all read as X. */
+  const fieldNamed = (raw) => {
+    let text = squash(raw).replace(ERROR_LEAD, "");
+    const m = FIELD_REQUIRED.exec(text);
+    if (m) text = m[1];
+    return text.replace(/[\s.:]+$/, "").slice(0, MAX_TEXT * 2);
+  };
+
+  const byId = (id) => (id ? document.getElementById(id) : null);
+  const isFileInput = (el) => el instanceof HTMLInputElement && el.type === "file";
+  const upTags = new WeakMap();
+  /** An upload box's handle: set once and kept, so the one `page_errors` names stays valid until the page redraws it. */
+  const upTagOf = (input) => {
+    if (!upTags.has(input)) {
+      const id = `${FRAME_TAG}-u${++seq}`;
+      input.setAttribute("data-maestro-up", id);
+      upTags.set(input, id);
+    }
+    return upTags.get(input);
+  };
+
+  /** The error summaries on the page: a visible alert or live region that reads like an error, or
+   * the nearest block around a short element headed "Errors Found" and the like. A region that holds
+   * a field is the step around it, not a summary. */
+  function errorRegions() {
+    const regions = new Set();
+    const hasField = (el) => el.querySelector(CONTROLS) !== null;
+    for (const el of document.querySelectorAll('[role="alert"], [aria-live]')) {
+      if (shown(el) && ERRORISH.test(squash(el.textContent)) && !hasField(el)) regions.add(el);
+    }
+    for (const el of document.querySelectorAll("body *")) {
+      if (el.childElementCount > 1 || !shown(el)) continue;
+      const own = squash(el.textContent);
+      if (own.length > 60 || !ERROR_HEADING.test(own)) continue;
+      // The nearest block around the heading that holds more than the heading: the summary.
+      let region = el.parentElement;
+      for (let level = 0; level < 3 && region; level += 1, region = region.parentElement) {
+        if (region === document.body || region.tagName === "FORM" || hasField(region)) break;
+        if (squash(region.textContent).length > own.length + 8) {
+          regions.add(region);
+          break;
+        }
+      }
+    }
+    // Outermost only: an alert inside the banner is the banner's.
+    return [...regions].filter((r) => ![...regions].some((o) => o !== r && o.contains(r)));
+  }
+
+  /** Whether an upload box carries the page's complaint: the field reader's own test (its error
+   * node, its described-by), or aria-invalid on the box or the uploader wrapped around it. */
+  const uploadInvalid = (input) => input.closest('[aria-invalid="true"]') !== null || ns.fillBase.invalid(input);
+
+  const boxShown = (el) => shown(el) || (isFileInput(el) && Boolean(el.parentElement) && shown(el.parentElement));
+  /** The page's own words for a control's question, else "". */
+  const questionOf = (el) => {
+    let question = "";
+    try {
+      question = squash(ns.readField(el).question);
+    } catch {
+      question = "";
+    }
+    if (!question) {
+      const named = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => byId(id)?.textContent);
+      question = squash([el.getAttribute("aria-label"), ...named].find((t) => squash(t)) ?? "");
+    }
+    return fieldNamed(question);
+  };
+
+  /** The handle a later op can find `el` by, or null: a fill field's fid (resolving it can re-list the
+   * inventory, so the count-only read never asks), or an upload box's tag. */
+  function handleOf(el, withTargets) {
+    if (isFileInput(el)) return { kind: "upload", target: withTargets ? upTagOf(el) : null };
+    return { kind: "field", target: withTargets ? ns.fillInventory?.fidFor(el) ?? null : null };
+  }
+
+  /** The control a summary item points at: the target of its link (`href="#id"`), `aria-controls`, or
+   * the `for` of a label it holds; the control itself or the first one inside the element named. */
+  function linkedControl(item) {
+    const link = item.matches("a[href]") ? item : item.querySelector("a[href]");
+    const ids = [
+      (link?.getAttribute("href") ?? "").startsWith("#") ? link.getAttribute("href").slice(1) : "",
+      ...[item, ...item.querySelectorAll("[aria-controls]")].flatMap((n) => (n.getAttribute("aria-controls") ?? "").split(/\s+/)),
+      item.querySelector("label[for]")?.getAttribute("for") ?? "",
+    ].filter(Boolean);
+    for (const id of ids) {
+      const hit = byId(id);
+      if (!hit) continue;
+      if (hit.matches(CONTROLS)) return hit;
+      const inside = hit.querySelector(CONTROLS);
+      if (inside) return inside;
+    }
+    return null;
+  }
+
+  /** What the page complains about: `{count, items: [{label, target, kind}]}`, one item per field
+   * (the summary's line and the field's own mark are one error). `withTargets` false is the cheap
+   * read `summary()` makes: the count and no handle, which would re-list the fill inventory. */
+  function collectErrors(withTargets) {
+    const controls = [...document.querySelectorAll(`${CONTROLS}, input[type="file"]`)].filter(boxShown);
+    const labelled = controls.map((el) => {
+      const question = questionOf(el);
+      return { el, question, label: normal(question) };
+    });
+    const items = [];
+    const seen = new Set();
+    const add = (label, el) => {
+      const handle = el ? handleOf(el, withTargets) : { kind: "unknown", target: null };
+      const key = el ? el : `label:${normal(label)}`;
+      if (seen.has(key) || (el === null && items.some((one) => normal(one.label) === normal(label)))) return;
+      seen.add(key);
+      items.push({ label, ...handle, el });
+    };
+
+    for (const region of errorRegions()) {
+      const all = [...region.querySelectorAll(REGION_ITEMS)]
+        .filter((n) => shown(n) && squash(n.textContent) && !ERROR_HEADING.test(squash(n.textContent)));
+      const lines = all.filter((n) => !all.some((o) => o !== n && o.contains(n)));
+      const texts = lines.length ? lines : [region];
+      for (const line of texts) {
+        const label = fieldNamed(line.textContent);
+        if (!label) continue;
+        let el = line === region ? null : linkedControl(line);
+        if (!el) {
+          const wanted = normal(label);
+          const same = labelled.filter((c) => c.label === wanted).map((c) => c.el);
+          el = same.length === 1 ? same[0] : same.filter((c) => (isFileInput(c) ? uploadInvalid(c) : ns.fillBase.invalid(c)))[0] ?? null;
+          if (same.length > 1 && same.filter((c) => (isFileInput(c) ? uploadInvalid(c) : ns.fillBase.invalid(c))).length !== 1) el = null;
+        }
+        add(label, el);
+      }
+    }
+    for (const { el, question } of labelled) {
+      if (!(isFileInput(el) ? uploadInvalid(el) : ns.fillBase.invalid(el))) continue;
+      add(question || "Field", el);
+    }
+    return { count: items.length, items: items.map(({ el, ...item }) => item) };
+  }
+
+  const pageErrors = () => collectErrors(true);
+  const inErrorRegion = (el, regions) => regions.some((r) => r.contains(el));
 
   const tag = (el) => {
     const id = `${FRAME_TAG}-${++seq}`;
@@ -278,6 +442,7 @@
   function summary() {
     for (const old of document.querySelectorAll("[data-maestro-btn]")) old.removeAttribute("data-maestro-btn");
     const inForm = inFormOf(fieldForms());
+    const regions = errorRegions();
     const buttons = [...document.querySelectorAll(BUTTONS)].map((el) => {
       const id = tag(el);
       const known = knownOf(el);
@@ -288,6 +453,8 @@
         visible: shown(el),
         enabled: enabled(el),
         ...(known ? { known } : {}),
+        // The error summary's own buttons ("Errors Found", "Error - <field>"): not part of the step.
+        ...(inErrorRegion(el, regions) ? { inErrors: true } : {}),
       };
     });
     const bodyText = (document.body?.innerText ?? "").slice(0, BODY_SLICE);
@@ -311,8 +478,9 @@
       confirmationPhrase: CONFIRMATION.exec(bodyText)?.[0] ?? null,
       closedText: CLOSED.test(bodyText),
       boardNative: BOARD_HOST.test(location.hostname),
-      submitSeen: submitSeen(),
+      submitSeen: submitSeen(regions),
       submitContext: submitContext(),
+      errors: collectErrors(false).count,
     };
   }
 
@@ -494,5 +662,5 @@
     return { signedIn: "clicked" };
   }
 
-  ns.pageReader = { summary, advance, signIn, applyUrl, applyLink, applyTarget };
+  ns.pageReader = { summary, pageErrors, advance, signIn, applyUrl, applyLink, applyTarget };
 })();

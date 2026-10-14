@@ -150,8 +150,12 @@ const ns = loadModules();
 // ---- the fill stub: reports instead of touching a page ----
 const fills = [];
 let gate = null;
+const memoryIds = new Map();
 ns.fillLoop.runFill = async (deps, options) => {
-  const call = { options, cancelledAtStart: deps.cancelled() };
+  // The run record's memory: an object per record, which the page it belongs to keeps and the next page does not.
+  if (options.memory && typeof options.memory === "object" && !memoryIds.has(options.memory)) memoryIds.set(options.memory, memoryIds.size + 1);
+  const call = { options, cancelledAtStart: deps.cancelled(), memoryId: memoryIds.get(options.memory) ?? null,
+                 memoryJson: JSON.stringify(options.memory ?? null) };
   fills.push(call);
   const planned = (spec.reports ?? [])[fills.length - 1] ?? spec.report ?? { fields: [{ fid: "f1", question: "Name", required: true, status: "verified" }] };
   if (spec.callBeforeSweep) await deps.beforeSweep?.();
@@ -335,6 +339,7 @@ def test_no_state_ever_draws_a_submit_control(tmp_path):
 
 @pytest.mark.parametrize("why,reason,resume,skip", [
     ("open_questions", "Questions on this page", True, True),
+    ("page_errors", "The page asks for more", True, True),
     ("captcha", "CAPTCHA", True, True),
     ("create_account", "Create an account", True, True),
     ("verify", "Email code", True, True),
@@ -1154,3 +1159,71 @@ def test_a_reopened_panel_gives_the_runs_tab_its_job_back_from_the_record(tmp_pa
     out = _run(tmp_path, [], pages=(page("captcha", 1),), sessionStored={"queueRun": [parked]})
     assert "Data Scientist" in _text(out["shots"][0]["regions"]["identity"])
     assert _card(out["shots"][0])["title"] == "Needs you"
+
+
+# ---------- a Next the page rejects: its errors are read, only the fields they name are repaired ----------
+
+BANNER = [_btn("e-1", "Errors Found", inErrors=True), _btn("e-2", "Error - City", inErrors=True)]
+# The same step, the same address, after a press the page refused: its banner is up.
+STEP1_REJECTED = {"summary": {**STEP1["summary"], "errors": 1,
+                              "buttons": [*STEP1["summary"]["buttons"], *BANNER]}, "url": STEP1["url"]}
+CITY_ERROR = {"count": 1, "items": [{"label": "City", "target": "f-city", "kind": "field"}]}
+UPLOAD_ERROR = {"count": 1, "items": [{"label": "Upload a file (5MB max)", "target": "t-up", "kind": "upload"}]}
+
+
+def _rejected(tmp_path, error=CITY_ERROR, pages=(STEP1, STEP1_REJECTED, REVIEW), **spec):
+    spec.setdefault("reports", [{"fields": [verified("f-city", "City")]}, {"fields": [verified("f-city", "City")]},
+                                {"fields": [verified("f1")]}])
+    spec["frames"] = {"page_errors": [{"frameId": 0, "result": error}], **spec.get("frames", {})}
+    return _run(tmp_path, [{"start": SEED}], pages=pages, **spec)
+
+
+def test_a_rejected_next_repairs_only_the_named_field_and_presses_again(tmp_path):
+    out = _rejected(tmp_path)
+    record = _record(out["shots"][1])
+    assert (record["status"], record["step"], record["readyAt"] is not None) == ("ready", 1, True)
+    # Page 1's fill, the repair of City alone, then the review page's fill.
+    only = [call["options"].get("only") for call in out["fills"]]
+    assert only == [None, ["f-city"], None]
+    assert len(_page_messages(out, "page_advance")) == 2
+    assert len(_page_messages(out, "page_errors")) == 1
+    # The repair is no page: the pages list counts the page once.
+    assert [page["n"] for page in record["pages"]] == [1, 2]
+
+
+def test_the_page_memory_lives_through_a_repair_and_is_new_on_the_next_page(tmp_path):
+    out = _rejected(tmp_path)
+    first, repair, review = (call["memoryId"] for call in out["fills"])
+    assert first is not None and repair == first, "the repair keeps what the page's fill learnt"
+    assert review != first, "a new step starts with an empty memory"
+
+
+def test_the_page_memory_is_never_written_to_storage(tmp_path):
+    out = _rejected(tmp_path)
+    # Serialised it is nothing (JSON.stringify gives undefined, so the key is absent), on the record too.
+    assert all("memoryJson" not in call for call in out["fills"])
+    assert not any(run.get("memory") for save in out["queueSaves"] for run in save)
+
+
+def test_a_repair_that_leaves_the_field_open_parks_naming_it(tmp_path):
+    reports = [{"fields": [verified("f1")]}, {"fields": [needs("f-city", "City")]}]
+    out = _rejected(tmp_path, reports=reports)
+    record = _record(out["shots"][1])
+    assert (record["status"], record["why"], record["step"]) == ("parked", "page_errors", 0)
+    assert record["open"] == [{"fid": "f-city", "question": "City", "required": True}]
+    assert len(_page_messages(out, "page_advance")) == 1
+
+
+def test_the_card_for_a_page_errors_park_names_the_field_and_the_upload(tmp_path):
+    record = _seeded("parked", why="page_errors", open=[
+        {"fid": "f-city", "question": "City", "required": True},
+        {"fid": None, "question": "Upload a file (5MB max)", "required": True}])
+    out = _run(tmp_path, [{"seed": [record]}, {"pressText": "City"}])
+    body = _card(out["shots"][1])["body"]
+    assert "The page asks for more" in _text(body)
+    [named] = _by_class(body, "resid")
+    assert [_text(item) for item in named["children"]] == ["City", "Upload a file (5MB max)"]
+    # The upload has nothing in the page to jump to; the field has.
+    assert [btn for btn in _walk(named) if btn["tag"] == "BUTTON"] and len([b for b in _walk(named) if b["tag"] == "BUTTON"]) == 1
+    [focus] = _page_messages(out, "fill_focus")
+    assert focus["message"]["fid"] == "f-city"

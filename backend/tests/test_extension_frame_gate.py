@@ -144,6 +144,7 @@ ns.recipes = {
 // The page reader needs a real DOM too (tests/browser/test_page_reader.py drives it).
 ns.pageReader = {
   summary: () => { calls.push(["pageReader.summary", 0]); return { host: "x", buttons: [] }; },
+  pageErrors: () => { calls.push(["pageReader.pageErrors"]); return { count: 1, items: [{ label: "City", target: "f-1", kind: "field" }] }; },
   // The Apply flag rides as a third element only when it was true: a plain Next click never carries it.
   advance: (id, opts) => { calls.push(opts?.apply === true ? ["pageReader.advance", id, "apply"] : ["pageReader.advance", id]); return { clicked: true }; },
   // Records WHICH keys arrived and whether each value is the message's own, never the values: the
@@ -592,6 +593,7 @@ def test_fill_add_forwards_the_section_and_the_view_it_was_decided_on(tmp_path):
 @pytest.mark.parametrize("type_, refused_shape", [
     ("page_classify", {"summary": None}),
     ("page_advance", {"clicked": False, "why": "gate"}),
+    ("page_errors", {"count": 0, "items": []}),
 ])
 def test_the_page_reader_and_the_next_click_are_gated_by_frame(tmp_path, type_, refused_shape):
     """An ad or chat iframe must never be read for its buttons, and above all never pressed."""
@@ -609,6 +611,12 @@ def test_page_classify_says_whether_it_is_the_top_frame_and_page_advance_forward
     assert sub["data"]["top"] is False
     out = _run(tmp_path, type_="page_advance", top_frame=True)
     assert out["calls"] == [["pageReader.advance", "tag-3"]] and out["data"] == {"clicked": True}
+
+
+def test_page_errors_reads_the_page_and_forwards_nothing(tmp_path):
+    out = _run(tmp_path, type_="page_errors", top_frame=True)
+    assert out["calls"] == [["pageReader.pageErrors"]]
+    assert out["data"] == {"count": 1, "items": [{"label": "City", "target": "f-1", "kind": "field"}]}
 
 
 @pytest.mark.parametrize("apply, expected", [

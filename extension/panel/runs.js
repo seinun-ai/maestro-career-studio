@@ -35,6 +35,8 @@
   const PARKS = {
     open_questions: ["Questions on this page",
       "Answer them in the page, then press Resume. Your answers are saved to your profile."],
+    page_errors: ["The page asks for more",
+      "The page wouldn't move on and names what it needs. Fix those in the tab, then press Resume."],
     captcha: ["CAPTCHA", WALL_STEP],
     create_account: ["Create an account", WALL_STEP],
     verify: ["Email code", WALL_STEP],
@@ -159,9 +161,15 @@
     const { node, attach } = ctx.build;
     if (!(run.open ?? []).length) return null;
     const list = node("ul", "resid");
-    list.setAttribute("aria-label", "Questions on this page");
+    list.setAttribute("aria-label", run.why === "open_questions" ? "Questions on this page" : "What the page asks for");
     for (const one of run.open) {
-      const jump = node("button", null, one.question || "A field with no label");
+      const label = one.question || "A field with no label";
+      // A field the page named by its words only (an upload box) has nothing to jump to.
+      if (!one.fid) {
+        attach(list, node("li", null, label));
+        continue;
+      }
+      const jump = node("button", null, label);
       jump.type = "button";
       jump.addEventListener("click", () => ctx.act.focusField(one.fid));
       attach(list, attach(node("li"), jump));
@@ -173,7 +181,7 @@
     const { node, attach } = ctx.build;
     const [reason, say] = PARKS[run.why] ?? ["Needs you", "Do this step in the tab, then press Resume."];
     const box = attach(node("div", "needs run-needs"), node("div", "run-reason", reason), node("div", "opts", say),
-      run.why === "open_questions" ? questions(ctx, run) : null);
+      ["open_questions", "page_errors"].includes(run.why) ? questions(ctx, run) : null);
     const actions = node("div", "run-actions");
     if (canResume(run)) attach(actions, button(ctx, "save", "run-resume", "Resume", () => ctx.act.resumeRun(run.id)));
     attach(box, actions);

@@ -59,7 +59,9 @@
     if (s.closedText) return { kind: "closed" };
     if (s.hasApplyLink && !s.fillable) return { kind: "posting" };
 
-    const sorted = (s.buttons ?? []).map((b) => ({ ...b, sort: sortButton(b) }));
+    // The error summary's own buttons ("Errors Found", "Error - <field>") belong to no step: their
+    // wording must neither make the page a review nor offer a Next.
+    const sorted = (s.buttons ?? []).filter((b) => b.inErrors !== true).map((b) => ({ ...b, sort: sortButton(b) }));
     // A Submit counts when it can be SEEN, enabled or not: it is often disabled until the form
     // validates, and a Next beside it is then not to be trusted. Outside the form counts too.
     const submit = sorted.some((b) => b.sort === "submit" && b.visible !== false);

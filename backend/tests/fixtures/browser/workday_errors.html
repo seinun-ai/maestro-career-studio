@@ -1,0 +1,142 @@
+<!-- A Workday-style "My Experience" step that refuses its Next (owner's live run, 2026-10-13;
+     employer made up). Pressing the footer's Save and Continue with the required upload empty keeps the step
+     and draws the page's "Errors Found" banner: a collapse button and one button per error ("Error - <the
+     field>"), the box's aria-invalid, and "The field <X> is required and must have a value." beside it. The
+     banner's buttons are NEW buttons, which is what once made the driver think the page had moved.
+     The upload box is labelled only "Upload a file (5MB max)", seven levels below the section heading, whose
+     text is the only place that says "resume". The input is emptied at once and the uploaded file's row is the
+     proof (workday_upload.html, §7). With a file held, Save and Continue changes the step heading.
+     Skills hold fifteen pills already; Field of Study is an optional search box. Where the notes are silent
+     (the banner's exact markup) this takes the simplest shape consistent with the run. -->
+<div data-automation-id="errorBanner" id="banner" hidden>
+  <button type="button" data-automation-id="errorCollapse" id="banner-toggle" aria-expanded="true">Errors Found</button>
+  <ul id="banner-list"></ul>
+</div>
+<h2 id="step">My Experience</h2>
+<div data-automation-id="formField-skills"><label for="skills">Skills</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox" id="pills"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="skills" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+<div data-automation-id="formField-fos"><label for="fos">Field of Study</label>
+  <div data-automation-id="multiSelectContainer" data-uxi-widget-type="multiselect">
+    <ul data-automation-id="selectedItemList" role="listbox"></ul>
+    <div data-automation-id="multiselectInputContainer"><div>
+      <input id="fos" type="text" data-uxi-widget-type="selectinput"></div></div>
+  </div></div>
+<section id="resume-section">
+  <h4 id="resume-heading">Resume/CV</h4>
+  <p>Please upload your resume and any additional documents.</p>
+  <div><div><div><div><div><div>
+    <div data-automation-id="attachments-FileUpload" id="uploader">
+      <span id="upload-name">Upload a file (5MB max)</span>
+      <button type="button" id="select-files">Select files</button>
+      <input type="file" id="upload-input" data-automation-id="file-upload-input-ref" aria-labelledby="upload-name"
+             aria-required="true" style="display:none">
+      <div id="upload-error" data-automation-id="errorMessage" hidden></div>
+      <div id="uploaded"></div>
+    </div>
+  </div></div></div></div></div></div>
+</section>
+<div data-automation-id="pageFooter">
+  <button type="button" data-automation-id="pageFooterBackButton">Back</button>
+  <button type="button" data-automation-id="pageFooterNextButton" id="next">Save and Continue</button>
+</div>
+<style>
+  [data-automation-id="selectedItem"] { display: inline-flex; margin: 2px; padding: 2px 6px; border: 1px solid #888; }
+  #banner { border: 1px solid #b00; padding: 4px; }
+</style>
+<script>
+(() => {
+  // __oracle: `files` is what the fake app HOLDS (names of the files it finished uploading); `step` is the
+  // step the app is on, moved only by a Save and Continue it accepted; `nexts` counts every press it got.
+  // The engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.files = [];
+  oracle.step = "My Experience";
+  oracle.nexts = 0;
+
+  const SKILLS = ["SQL", "Python", "Tableau", "Excel", "R", "Spark", "Airflow", "dbt", "Looker", "Git", "Docker",
+    "AWS", "Statistics", "Forecasting", "Pandas"];
+  const pills = document.getElementById("pills");
+  for (const text of SKILLS) {
+    const li = document.createElement("li");
+    const pill = document.createElement("div");
+    pill.setAttribute("data-automation-id", "selectedItem");
+    pill.setAttribute("role", "option");
+    pill.setAttribute("aria-label", `${text}, press delete to clear value.`);
+    const p = document.createElement("p");
+    p.setAttribute("data-automation-id", "promptOption");
+    p.textContent = text;
+    pill.append(p);
+    li.append(pill);
+    pills.append(li);
+  }
+
+  const input = document.getElementById("upload-input");
+  const uploaded = document.getElementById("uploaded");
+  const uploader = document.getElementById("uploader");
+  document.getElementById("select-files").addEventListener("click", () => input.click());
+  input.addEventListener("change", () => {
+    const names = [...input.files].map((f) => f.name);
+    input.value = "";   // emptied in the same tick, as live Workday does
+    if (!names.length) return;
+    setTimeout(() => {
+      for (const name of names) {
+        const item = document.createElement("div");
+        item.setAttribute("data-automation-id", "file-upload-item");
+        const label = document.createElement("div");
+        label.setAttribute("data-automation-id", "file-upload-item-name");
+        label.textContent = name;
+        const status = document.createElement("div");
+        status.textContent = "Successfully Uploaded!";
+        item.append(label, status);
+        uploaded.append(item);
+        oracle.files.push(name);
+      }
+      clearError();
+    }, 200);
+  });
+
+  const banner = document.getElementById("banner");
+  const list = document.getElementById("banner-list");
+  const errorBox = document.getElementById("upload-error");
+  function showError() {
+    uploader.setAttribute("aria-invalid", "true");
+    errorBox.textContent = "The field Upload a file (5MB max) is required and must have a value.";
+    errorBox.hidden = false;
+    list.replaceChildren();
+    const li = document.createElement("li");
+    const link = document.createElement("button");
+    link.type = "button";
+    link.textContent = "Error - Upload a file (5MB max)";
+    link.addEventListener("click", () => uploader.scrollIntoView());
+    li.append(link);
+    list.append(li);
+    banner.hidden = false;
+  }
+  function clearError() {
+    uploader.removeAttribute("aria-invalid");
+    errorBox.hidden = true;
+    errorBox.textContent = "";
+    banner.hidden = true;
+    list.replaceChildren();
+  }
+  document.getElementById("banner-toggle").addEventListener("click", () => {
+    const open = list.hidden;
+    list.hidden = !open;
+    document.getElementById("banner-toggle").setAttribute("aria-expanded", String(open));
+  });
+  document.getElementById("next").addEventListener("click", () => {
+    oracle.nexts += 1;
+    if (!oracle.files.length) {
+      showError();
+      return;
+    }
+    clearError();
+    document.getElementById("step").textContent = "Application Questions";
+    oracle.step = "Application Questions";
+  });
+})();
+</script>

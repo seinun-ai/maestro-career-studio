@@ -431,6 +431,31 @@ def test_an_upload_shows_its_row_while_the_input_is_emptied_at_once(page, load):
     assert oracle(page, "files") == ["resume.pdf"]
 
 
+# --- workday_errors.html (owner's live run, 2026-10-13)
+def test_a_next_with_no_file_keeps_the_step_and_draws_the_banner_a_file_clears(page, load):
+    load(page, fixture_html("workday_errors.html"), sources=[])
+    assert page.is_hidden("#banner") and oracle(page, "step") == "My Experience"
+    # The box is labelled only by its own words, seven levels below the section that says "resume".
+    assert page.inner_text("#upload-name") == "Upload a file (5MB max)"
+    depth = page.evaluate("(() => { let n = 0; for (let e = document.getElementById('upload-input'); e.id !== 'resume-section'; e = e.parentElement) n += 1; return n; })()")
+    assert depth >= 7
+    assert "resume" not in page.inner_text("#uploader").lower()
+    assert page.evaluate("document.querySelectorAll('[data-automation-id=selectedItem]').length") == 15
+    page.click("[data-automation-id=pageFooterNextButton]")
+    assert oracle(page, "step") == "My Experience" and oracle(page, "nexts") == 1
+    assert page.inner_text("#step") == "My Experience"
+    assert page.is_visible("#banner")
+    assert [b.inner_text() for b in page.locator("#banner button").all()] == ["Errors Found", "Error - Upload a file (5MB max)"]
+    assert page.get_attribute("#uploader", "aria-invalid") == "true"
+    assert page.inner_text("#upload-error") == "The field Upload a file (5MB max) is required and must have a value."
+    # The file arrives (the input is emptied at once; the row proves it) and the error goes with it.
+    page.set_input_files("#upload-input", {"name": "resume.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4"})
+    page.wait_for_selector("[data-automation-id=file-upload-item]")
+    assert oracle(page, "files") == ["resume.pdf"] and page.is_hidden("#banner")
+    page.click("[data-automation-id=pageFooterNextButton]")
+    assert oracle(page, "step") == "Application Questions" and page.inner_text("#step") == "Application Questions"
+
+
 # --- workday_sections.html (§5, §4)
 def test_sections_list_their_entries_and_add_appends_a_numbered_required_entry(page, load):
     load(page, fixture_html("workday_sections.html"), sources=[])
