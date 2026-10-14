@@ -68,14 +68,14 @@ def test_job_header_shows_the_best_score_and_locks_tabs_with_an_icon():
     src = _read("app/jobs/[id]/page.tsx")
     assert "ScoreBar" in src and "CONCEPT_ICONS.locked" in src
     assert 'id={lockedReasonId} className="sr-only"' in src  # still the triggers' aria-describedby target
-    # The pill's visible words repeat the meter's aria-label ("Best score, <resume>").
-    assert 'aria-hidden="true" className="text-muted-foreground">Best</span>' in src
+    # The pill's visible words repeat the meter's aria-label ("Best base resume, <resume>").
+    assert 'aria-hidden="true" className="text-muted-foreground">{scoreShown.label}</span>' in src
     # The resume name is visible only at 2xl (a long title wrapped at 1280); hover and the meter name it always.
     # The square goes with the name (test_frontend_resume_square.py): both hidden, together, below 2xl.
-    tag = open_tag(src[src.index("<ResumeTag hue={colorOf(best.target_id)}") :], "ResumeTag")
+    tag = open_tag(src[src.index("<ResumeTag hue={colorOf(scoreResume)}") :], "ResumeTag")
     assert {"hidden", "2xl:inline-flex"} <= tokens(tag)
-    assert "title={`Best score: ${best.composite.toFixed(1)}, ${baseName(best.target_id)}`}" in src
-    assert 'queryKey: ["ats-scores", id]' in src and '.filter((s) => s.phase === "base")' in src
+    assert "${scoreShown.value.toFixed(1)}, ${baseName(scoreResume)}`}" in src
+    assert 'queryKey: ["ats-scores", id]' in src and "scorePill(scoreRows.data" in src
 
 
 # --- Task 18: score and tailor cards ---------------------------------------------------

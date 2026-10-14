@@ -28,3 +28,16 @@ def test_the_header_shows_one_status_and_the_proposal_pill_reads_like_history():
     assert "STATUS_BADGE_CLASS[pill.styleStatus]" in _JOB
     # The pill's reason comes from the proposal itself (the same query the Overview card shares).
     assert 'queryKey: ["proposal", proposalId]' in _JOB
+
+
+# ── A2: a clear score ───────────────────────────────────────────────────────
+
+
+def test_the_score_pill_says_what_it_scores():
+    assert "const scoreShown = scorePill(scoreRows.data ?? [], application?.id ?? null);" in _JOB
+    pill = _JOB[_JOB.index("{scoreShown ? (") :]
+    pill = pill[: pill.index("{hasApp && application ? (")]
+    assert "{scoreShown.label}" in pill and "(tailored)" in pill
+    assert "Best</span>" not in pill
+    # The tailored score belongs to the application, so its resume's name is the application's base.
+    assert "application?.base_resume" in _JOB

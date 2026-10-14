@@ -63,6 +63,7 @@ import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { headerProposalPill } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
+import { scorePill } from "@/lib/job-standing";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
@@ -215,9 +216,9 @@ export default function JobDetailPage({
   });
   const baseName = useBaseResumeLabel();
   const colorOf = useBaseResumeColor();
-  const best = (scoreRows.data ?? [])
-    .filter((s) => s.phase === "base")
-    .sort((a, b) => b.composite - a.composite)[0];
+  // The header's one score: the application's tailored score, else the best base score.
+  const scoreShown = scorePill(scoreRows.data ?? [], application?.id ?? null);
+  const scoreResume = scoreShown?.tailored ? application?.base_resume ?? "" : scoreShown?.targetId ?? "";
   // The newest proposal, in full: the header pill's reason, Keep it's application link (the proposal says
   // whether it has one) and the Overview card all read it, so it is asked once (the card shares the key).
   const proposalId = data?.job.proposal_id ?? null;
@@ -564,22 +565,23 @@ export default function JobDetailPage({
                 {promote.isPending ? "Queueing…" : "Queue in Agent inbox"}
               </Button>
             ) : null}
-            {best ? (
+            {scoreShown ? (
               // The resume's name shows only at 2xl: at 1280 it squeezed a long job title onto two lines.
               // The hover title and the meter's accessible name carry it at every width.
               <span
-                title={`Best score: ${best.composite.toFixed(1)}, ${baseName(best.target_id)}`}
+                title={`${scoreShown.label}${scoreShown.tailored ? " (tailored)" : ""}: ${scoreShown.value.toFixed(1)}, ${baseName(scoreResume)}`}
                 className="bg-surface-container-low inline-flex h-7 min-w-0 items-center gap-2 rounded-full px-2.5 text-label-medium"
               >
-                <span aria-hidden="true" className="text-muted-foreground">Best</span>
+                <span aria-hidden="true" className="text-muted-foreground">{scoreShown.label}</span>
                 <ScoreBar
-                  value={best.composite}
-                  valueText={best.composite.toFixed(1)}
-                  label={`Best score, ${baseName(best.target_id)}`}
+                  value={scoreShown.value}
+                  valueText={scoreShown.value.toFixed(1)}
+                  label={`${scoreShown.label}${scoreShown.tailored ? ", tailored" : ""}, ${baseName(scoreResume)}`}
                 />
+                {scoreShown.tailored ? <span aria-hidden="true" className="text-muted-foreground">(tailored)</span> : null}
                 {/* The square goes with the name: below 2xl neither shows. */}
-                <ResumeTag hue={colorOf(best.target_id)} className="hidden min-w-0 2xl:inline-flex">
-                  <span aria-hidden="true" className="text-muted-foreground truncate">{baseName(best.target_id)}</span>
+                <ResumeTag hue={colorOf(scoreResume)} className="hidden min-w-0 2xl:inline-flex">
+                  <span aria-hidden="true" className="text-muted-foreground truncate">{baseName(scoreResume)}</span>
                 </ResumeTag>
               </span>
             ) : null}

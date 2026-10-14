@@ -103,7 +103,7 @@ def test_a_score_card_carries_its_resumes_color_as_a_top_band_and_a_square_besid
 
 def test_the_best_pill_hides_the_square_with_the_name():
     page = _src("app/jobs/[id]/page.tsx")
-    tag = open_tag(page[page.index("<ResumeTag hue={colorOf(best.target_id)}") :], "ResumeTag")
+    tag = open_tag(page[page.index("<ResumeTag hue={colorOf(scoreResume)}") :], "ResumeTag")
     assert "hidden" in tokens(tag) and "2xl:inline-flex" in tokens(tag)
 
 
