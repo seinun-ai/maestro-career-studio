@@ -321,6 +321,37 @@
     return `${build.plural(scored, "base resume")} scored for this job`;
   }
 
+  const BASE_LIST_ID = "base-list";
+
+  /** Which base resumes the list shows. Once any base is scored for this job, only the scored ones
+   * and the selected one are on screen (the rest are other-country or off-target bases the scorer
+   * skipped); the button reveals them. With nothing scored, every base shows. `index` is the row's
+   * place in the ranking, which the "best" mark is read from. */
+  function splitBases(facts, ranked, selectedSlug) {
+    const rows = ranked.map((entry, index) => ({ entry, index }));
+    if (!ranked.some((entry) => entry.score !== null)) return { shown: rows, extra: 0 };
+    const kept = rows.filter(({ entry }) => entry.score !== null || entry.slug === selectedSlug);
+    return { shown: facts.baseMore === true ? rows : kept, extra: rows.length - kept.length };
+  }
+
+  /** The disclosure under the list: "Show N more (not scored for this job)", then, once open, "Show
+   * fewer". Nothing when every base is scored or none is. A real button with
+   * `aria-expanded`, and `aria-controls` naming the list. */
+  function showMore({ facts, act, build }, extra) {
+    if (!extra) return [];
+    const open = facts.baseMore === true;
+    const button = build.node("button", "linkish",
+      open ? "Show fewer" : `Show ${extra} more (not scored for this job)`);
+    button.type = "button";
+    button.id = "base-more";
+    // Locked with the list while Apply works, like the two ways round below it.
+    button.disabled = facts.busy === true || facts.applying === true;
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.setAttribute("aria-controls", BASE_LIST_ID);
+    button.addEventListener("click", act.toggleBaseMore);
+    return [button];
+  }
+
   /** One selectable base resume: the radio dot, the name, the composite.
    *
    * `role="radio"` on a real button rather than an `<input type=radio>`: the
@@ -432,12 +463,16 @@
       return body;
     }
     const list = node("div");
+    list.id = BASE_LIST_ID;
     list.setAttribute("role", "radiogroup");
     list.setAttribute("aria-label", "Base resume, best match first");
     if (ctx.facts.applying === true) list.setAttribute("aria-disabled", "true");
-    ranked.forEach((entry, index) => attach(list, baseRow(ctx, entry, index === best)));
-    if (ctx.facts.fullAutomation === true) return applyBody(ctx, body, list, ranked);
-    return attach(body, list,
+    const { shown, extra } = splitBases(ctx.facts, ranked, ctx.facts.baseSlug);
+    shown.forEach(({ entry, index }) => attach(list, baseRow(ctx, entry, index === best)));
+    // The button sits OUTSIDE the radiogroup: a radiogroup holds radios, and this is not one.
+    const more = showMore(ctx, extra);
+    if (ctx.facts.fullAutomation === true) return applyBody(ctx, body, list, ranked, more);
+    return attach(body, list, ...more,
                   node("div", "sub", rankingNote(ctx, ranked)),
                   node("div", "sub", ATS_SCORE_LEAD));
   }
@@ -446,7 +481,7 @@
    * the card that answers "apply with which resume" (the rows keep their squares), the promise sits
    * under it, and the two other ways on are below: score again, or tailor first and apply later.
    * With a custom tailoring session of the user's open, the card in front says to finish it first. */
-  function applyBody(ctx, body, list, ranked) {
+  function applyBody(ctx, body, list, ranked, more) {
     const { facts, act, build } = ctx;
     const { node, attach } = build;
     if (facts.apply?.sessionId) attach(body, finishFirstCard(ctx));
@@ -468,7 +503,7 @@
     const prompt = node("div", "sub", ask);
     // The disabled Apply below points at this line, which says why it waits.
     if (facts.needsPick) prompt.id = "pick-prompt";
-    return attach(body, prompt, list,
+    return attach(body, prompt, list, ...more,
                   node("div", "sub", rankingNote(ctx, ranked)),
                   node("div", "sub", ATS_SCORE_LEAD),
                   ...promiseLines(ctx), ways);

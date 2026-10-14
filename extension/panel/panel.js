@@ -759,6 +759,9 @@
      * job the user has left.
      */
     qna: EMPTY_QNA,
+    /** The Job step's "Show N more": true once the user asked to see the base resumes that were not
+     * scored for this job. Page-shaped like the rest of the Job step's choices. */
+    baseMore: false,
     /** The queued runs' records (`shared/queue-run.js` keeps the shape, `actions/run.js` the host):
      * one per tab a run was started in, kept until the user presses Done.
      *
@@ -890,6 +893,7 @@
     // version of that mistake. Closed as well as emptied: an open drawer on the
     // next page would be this panel asking a question nobody typed.
     store.qna = EMPTY_QNA;
+    store.baseMore = false;
     // Cleared HERE is what lets a stale action simply RETURN without unwinding
     // anything: `generation` is bumped in `bindPage` immediately after this runs,
     // so by the time an in-flight `addJob` finds its token stale, its `busy`
@@ -2268,6 +2272,7 @@
         // the body renders them as one control and they are written together.
         // The answer only beside the application it was grounded in: the draft
         // question and the open drawer are the page's, and stay either way.
+        baseMore: card.baseMore === true,
         qna: sameApplication(card.qna.applicationId, card.application)
           ? card.qna : { ...card.qna, answered: null, answer: null, copied: false },
       },
@@ -2275,7 +2280,7 @@
              stopUsingBaseAsIs, openTailor, quickTailor, tailorFirst, applyWithBase,
              scoreBases: () => scoreAllBases(),
              setFillMode, forgetLearnedMoves, startFill, attachResume, scrollToField, focusField, editAnswer,
-             rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
+             rememberAnswer, submitAnswer, toggleQna, toggleBaseMore, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis, stopRun, resumeRun, skipRun, closeRun, undoLearned,
              undoMark, markApplied },
       build: { node, attach, plural, statusLabel, dayLabel, icon, swatch },
@@ -2310,6 +2315,12 @@
    * render would rebuild the box mid-click. */
   function rememberAnswer(qid, learn) {
     card.answers = { ...card.answers, [qid]: { ...card.answers[qid], learn } };
+  }
+
+  /** Show or hide the base resumes that were not scored for this job. A disclosure and nothing else. */
+  function toggleBaseMore() {
+    card.baseMore = !card.baseMore;
+    render();
   }
 
   /** Open or close the QnA drawer. A disclosure and nothing else, `openTailor`'s
@@ -3280,7 +3291,7 @@
     "touched", "hasForm", "fileInputs", "attached", "autoAttach", "baseSelected",
     "baseArmed", "tailorOpen", "tailorFirst", "revisit", "fill", "eeoConsent", "residue", "essays",
     "closest", "blank", "aiNote", "writeResults", "loop", "receiptFlags", "receiptSeen",
-    "answers", "qna",
+    "answers", "qna", "baseMore",
     "preview", "previewTyped", "prepared",
   ];
 

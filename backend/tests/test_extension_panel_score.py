@@ -79,6 +79,13 @@ main(async () => {
     door.click();
     await settle();
   }
+  // "Show N more": the bases that were not scored for this job are behind this button.
+  if (spec.showMore === true) {
+    const more = findById(REGIONS.rail, "base-more");
+    if (!more) throw new Error("no Show more button");
+    more.click();
+    await settle();
+  }
   const loaded = regions();
   let picked = null;
   let focusedAfterPick = null;
@@ -146,7 +153,10 @@ def test_the_ranked_list_is_the_ranking_and_never_the_library_order(tmp_path):
     last — "not scored yet" is not a bad score, and sorting it as one would be
     the panel inventing a judgement.
     """
-    out = _score(tmp_path, reopen="job")
+    collapsed = _score(tmp_path, reopen="job")
+    assert [name for name, _chip in _base_rows(collapsed["loaded"]["rail"])] == [
+        "AI/ML Engineer 72", "Data Scientist 64"]
+    out = _score(tmp_path, reopen="job", showMore=True)
     assert _base_rows(out["loaded"]["rail"]) == [
         ("AI/ML Engineer 72", "score good"),   # 71.8, rounded, and the best
         ("Data Scientist 64", "score"),        # 63.6
@@ -1186,7 +1196,7 @@ def test_the_count_is_of_the_rows_the_ranking_shows(tmp_path):
     listing it. Those rows are not counted, are not rendered, and cannot be
     picked, so a count over them would name a number nobody can see.
     """
-    out = _score(tmp_path, reopen="job", api={"GET /api/ats-scores": _reply([
+    out = _score(tmp_path, reopen="job", showMore=True, api={"GET /api/ats-scores": _reply([
         *SCORE_ROWS,
         # Retired from the library, still scored, and scored by an older
         # engine — the exact row a wider scan would trip over.
@@ -1258,7 +1268,7 @@ def _squares(node):
 
 
 def test_a_base_row_wears_its_resumes_square_before_the_name(tmp_path):
-    out = _score(tmp_path, reopen="job", api=HUED)
+    out = _score(tmp_path, reopen="job", showMore=True, api=HUED)
     rows = _by_class(out["loaded"]["rail"], "baserow")
     # Ranked: AI/ML Engineer (hue 5, a preset: its chroma), Data Scientist (77: the custom chroma), Backend (none).
     assert [_squares(row) for row in rows] == [

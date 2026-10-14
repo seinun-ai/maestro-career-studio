@@ -1078,15 +1078,50 @@ def test_a_step_that_fails_is_crossed_with_a_short_reason_and_no_server_words(tm
     assert out["seeds"] == []
 
 
+def test_bases_not_scored_for_this_job_hide_behind_a_show_more_button(tmp_path):
+    """Three bases, two scored: the list shows the two, and one accessible button reveals the third."""
+    out = _apply(tmp_path, api=_saved(), steps=[{"id": "base-more"}])
+    before, after = out["shots"][0], out["shots"][1]
+    assert [row["id"] for row in _rows_in_rail(before)] == ["base-ai_ml_engineer", "base-data_scientist"]
+    [more] = [one for one in _walk(before["regions"]["rail"]) if one["id"] == "base-more"]
+    assert (more["tag"], _text(more)) == ("BUTTON", "Show 1 more (not scored for this job)")
+    assert "linkish" in more["class"].split() and more["attrs"]["aria-expanded"] == "false"
+    [group] = [one for one in _walk(before["regions"]["rail"]) if one["attrs"].get("role") == "radiogroup"]
+    assert more["attrs"]["aria-controls"] == group["id"]
+    # Every name keeps its colour square (Backend Engineer has no colour, so it has no square to keep).
+    assert all(_by_class(row, "swatch") for row in _rows_in_rail(before))
+    rows = _rows_in_rail(after)
+    assert [row["id"] for row in rows] == ["base-ai_ml_engineer", "base-data_scientist", "base-swe_backend"]
+    assert all(_by_class(row, "swatch") for row in rows[:2])
+    [open_more] = [one for one in _walk(after["regions"]["rail"]) if one["id"] == "base-more"]
+    assert open_more["attrs"]["aria-expanded"] == "true"
+
+
+def test_the_selected_base_stays_in_the_list_when_it_was_not_scored(tmp_path):
+    out = _apply(tmp_path, api=_saved(), steps=[{"id": "base-more"}, {"id": "base-swe_backend"}])
+    mid = out["shots"][2]
+    assert [row["id"] for row in _rows_in_rail(mid)] == [
+        "base-ai_ml_engineer", "base-data_scientist", "base-swe_backend"]
+    assert [row["attrs"]["aria-checked"] for row in _rows_in_rail(mid)] == ["false", "false", "true"]
+
+
+def test_with_nothing_scored_every_base_shows_and_there_is_no_show_more_button(tmp_path):
+    api = _saved(**{"GET /api/ats-scores": _reply([])})
+    shot = _apply(tmp_path, api=api)["shots"][0]
+    assert len(_rows_in_rail(shot)) == 3
+    assert not [one for one in _walk(shot["regions"]["rail"]) if one["id"] == "base-more"]
+
+
 def test_the_base_list_is_locked_while_apply_works_and_a_click_changes_nothing(tmp_path):
     api = _saved()
     out = _apply(tmp_path, api=api, hold=["POST /api/proposals"], holdSkip=1,
                  steps=[{"foot": "Apply"}, {"id": "base-data_scientist"}, {"release": True, "settles": 2}])
     before, during, after = out["shots"][0], out["shots"][2], out["shots"][-1]
     rows = _rows_in_rail(before)
-    assert len(rows) == 3 and not any(row["disabled"] for row in rows)
+    # Two of the three bases are scored for this job; the third waits behind "Show 1 more".
+    assert len(rows) == 2 and not any(row["disabled"] for row in rows)
     rows = _rows_in_rail(during)
-    assert len(rows) == 3 and all(row["disabled"] and row["attrs"]["aria-disabled"] == "true" for row in rows)
+    assert len(rows) == 2 and all(row["disabled"] and row["attrs"]["aria-disabled"] == "true" for row in rows)
     [group] = [one for one in _walk(during["regions"]["rail"]) if one["attrs"].get("role") == "radiogroup"]
     assert group["attrs"]["aria-disabled"] == "true"
     # The click on a locked row (the harness fires it even though a browser would not) is refused.
@@ -1133,8 +1168,8 @@ def test_a_close_call_stops_apply_after_scoring_and_asks_with_the_list_unlocked(
     assert _lines(end) == [("done", "Saving the job"), ("done", "Scoring your resumes"), ("wait", "Waiting for your pick")]
     assert _note(end) == PICK_NOTE
     rows = _rows_in_rail(end)
-    assert len(rows) == 3 and not any(row["disabled"] for row in rows)
-    assert [row["attrs"]["aria-checked"] for row in rows] == ["false"] * 3
+    assert len(rows) == 2 and not any(row["disabled"] for row in rows)
+    assert [row["attrs"]["aria-checked"] for row in rows] == ["false"] * 2
     assert _foot(end)[-1][0] == "Apply" and _buttons(end)[-1]["disabled"]
 
 
@@ -1158,7 +1193,7 @@ def test_with_choose_for_me_off_nothing_is_preselected_and_an_unsaved_posting_of
     assert _labels(first) == ["Save job"] and _order(out) == ["POST /api/jobs", "POST /api/ats-scores"]
     # Saved and scored; the best match is named, but nothing is chosen, and Apply waits for the user.
     assert end["facts"]["baseSlug"] is None and out["seeds"] == []
-    assert [row["attrs"]["aria-checked"] for row in _rows_in_rail(end)] == ["false"] * 3
+    assert [row["attrs"]["aria-checked"] for row in _rows_in_rail(end)] == ["false"] * 2
     assert _foot(end)[-1][0] == "Apply" and _buttons(end)[-1]["disabled"]
     assert _lines(end)[-1] == ("wait", "Waiting for your pick")
 
