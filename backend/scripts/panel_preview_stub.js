@@ -49,6 +49,7 @@
       onActivated: { addListener() {} },
       onUpdated: { addListener() {} },
       onRemoved: { addListener() {} },
+      onCreated: { addListener() {} },
     },
     webNavigation: { onCompleted: { addListener() {} } },
     storage: {
