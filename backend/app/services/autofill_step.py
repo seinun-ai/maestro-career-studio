@@ -66,6 +66,7 @@ from app.services.autofill_pick import (
     polarity_ways,
     values_for,
     verdict,
+    veteran_inferred,
     veteran_overreach,
     veteran_said,
     worked_elsewhere,
@@ -469,4 +470,7 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
         moved = moved.model_copy(update={"reason": "assumed"})
     if said and veteran_overreach(said, req.question, [], shown.get(moved.mid or "")):
         return StepResponse(mid=None, reason="abstained", polarity=polarity)
+    if (said and moved.mid and moved.reason == "matched"
+            and veteran_inferred(said, req.question, [t for t in (shown.get(moved.mid),) if t])):
+        moved = moved.model_copy(update={"reason": "assumed"})
     return moved.model_copy(update={"polarity": polarity})

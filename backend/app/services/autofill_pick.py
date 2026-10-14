@@ -430,12 +430,27 @@ _NAMES_PROTECTED_CLASS = NAMES_PROTECTED_CLASS
 _BARE_CLASS = re.compile(r"\b(?:disabled|recently\s+separated|campaign|wartime)\b", re.IGNORECASE)
 
 
-# A question about CURRENT service. A saved Yes says the applicant served at some time, never that they
-# serve now, so such a question (an "ever or currently" one included) is the user's after a Yes; a No
-# answers it, a person who is no veteran serves nowhere.
-_ASKS_CURRENT_SERVICE = re.compile(
-    r"\b(?:currently|presently|now)\b[^?.]{0,40}?\b(?:serv(?:e|es|ed|ing)|active[-\s]duty|(?:in|of)\s+the\s+"
-    r"(?:military|armed|reserves?|national\s+guard)|member)\b|\bactive[-\s]duty\b|\bserving\b", re.IGNORECASE)
+# A saved Yes says the applicant served at some time, never that they serve now. So a question about
+# CURRENT service alone ("Are you currently serving?", "presently a member of the Reserves?") is the user's
+# after a Yes. A question that also asks about the past ("currently or have you ever served", "ever")
+# is a Yes for a veteran, and so is "active duty" in a question about history: there only an OPTION that
+# claims current service ("Yes, I am currently serving") is taken back. A No answers all of them, a person
+# who is no veteran serves nowhere, but "not a veteran" is not "never served" for someone in the Guard
+# or Reserves, so such a No is the Companion's inference (`veteran_inferred`).
+_ASKS_ONLY_CURRENT = re.compile(
+    r"\b(?:currently|presently)\b[^?.]{0,40}?\b(?:serv(?:e|es|ed|ing)|active[-\s]duty|member)\b", re.IGNORECASE)
+_ASKS_THE_PAST = re.compile(r"\b(?:ever|previously|formerly|past)\b|\bhave\s+you\b", re.IGNORECASE)
+_CLAIMS_CURRENT_SERVICE = re.compile(
+    r"\b(?:currently|presently)\s+(?:serv(?:e|es|ing)|on\s+active|in\s+the|a\s+member)\b"
+    r"|\b(?:am|is)\s+(?:now\s+)?serving\b|\bon\s+active[-\s]duty\b", re.IGNORECASE)
+_ASKS_SERVICE = re.compile(r"\bserv(?:e|es|ed|ing)\b", re.IGNORECASE)
+_SAYS_NEVER_SERVED = re.compile(r"\bnever\s+served\b|\bnot\s+(?:now\s+|currently\s+)?served\b", re.IGNORECASE)
+
+
+def veteran_inferred(said: str, question: str, chosen: list[str]) -> bool:
+    """Whether a saved No answering this question is the Companion's inference: a question about SERVING
+    (not about being a veteran), or a chosen option that says "never served"."""
+    return said == "No" and (bool(_ASKS_SERVICE.search(question)) or any(_SAYS_NEVER_SERVED.search(t) for t in chosen))
 
 
 def _claims_veteran(text: str) -> bool:
@@ -457,11 +472,13 @@ def veteran_said(fact: Fact | None) -> str | None:
 def veteran_overreach(said: str, question: str, options: list[str], chosen: str | list[str] | None = None) -> bool:
     """Whether choosing `chosen` (every option, or with None answering at all) would say more than a saved
     `said` does. After a No: a chosen option that claims veteran status. After a Yes: a question or any
-    option, offered or chosen, that names a protected class, or a question about current service."""
+    option, offered or chosen, that names a protected class, a question about current service alone, or a
+    chosen option that claims current service."""
     picks = [chosen] if isinstance(chosen, str) else list(chosen or [])
     if said == "No":
         return any(_claims_veteran(text) for text in picks)
-    return bool(_ASKS_CURRENT_SERVICE.search(question)) or any(
+    asks_only_current = bool(_ASKS_ONLY_CURRENT.search(question)) and not _ASKS_THE_PAST.search(question)
+    return asks_only_current or any(_CLAIMS_CURRENT_SERVICE.search(text) for text in picks) or any(
         _NAMES_PROTECTED_CLASS.search(text) for text in (question, *options, *picks))
 
 
@@ -479,6 +496,8 @@ def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[s
         texts = [o.text for o in f.options if o.oid in picked.oids]
         if veteran_overreach(said, f.question, [o.text for o in f.options], texts):
             out[f.fid] = picked.model_copy(update={"oids": [], "reason": "asked"})
+        elif picked.reason == "matched" and veteran_inferred(said, f.question, texts):
+            out[f.fid] = picked.model_copy(update={"reason": "assumed"})
 
 
 def named_employers(fields: list[PickField], facts: dict[str, Fact]

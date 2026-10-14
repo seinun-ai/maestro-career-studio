@@ -1127,6 +1127,29 @@ def test_a_yes_still_clicks_a_plain_veteran_option_in_step(db_session, monkeypat
 
 
 @pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question, no_text, reason", [
+    ("Do you currently or have you ever served in the U.S. Military?", "No, I have never served", "assumed"),
+    ("Are you a veteran?", "No, I have never served", "assumed"),
+    ("Are you a veteran?", "No", "matched"),
+])
+def test_a_no_that_says_never_served_is_reported_assumed_in_step(db_session, monkeypatch, question, no_text, reason):
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
+    fake_jev(monkeypatch, ("click:o2", 0.99))
+    got = sans_trace(autofill_step.step(_veteran_req(question, "Yes", no_text), facts, db_session, None))
+    assert got == {"mid": "click:o2", "reason": reason}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_yes_never_clicks_a_current_service_option_or_answers_a_current_only_question_in_step(db_session, monkeypatch):
+    facts = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
+    fake_jev(monkeypatch, ("click:o1", 0.99))
+    for question, options in (("Are you currently serving in the military?", ("Yes", "No")),
+                              ("Do you currently or have you ever served?", ("Yes, I am currently serving", "No"))):
+        got = sans_trace(autofill_step.step(_veteran_req(question, *options), facts, db_session, None))
+        assert got == {"mid": None, "reason": "abstained"}, question
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_a_no_never_clicks_an_option_that_claims_to_be_a_veteran_in_step(db_session, monkeypatch):
     facts = autofill_catalog.build({"eeo": {"veteran_status": "no"}}, [], [])
     fake_jev(monkeypatch, ("click:o1", 0.99))
