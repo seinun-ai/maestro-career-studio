@@ -850,3 +850,33 @@ def test_the_phone_type_is_mobile_when_the_profile_has_a_phone():
 @pytest.mark.parametrize("personal", [{}, {"phone": " "}, {"city": "Springfield"}])
 def test_a_phone_type_is_never_derived_without_a_phone(personal):
     assert "derived.phone_type" not in derived({"personal": personal})
+
+
+# ---------- J4 review: a parent or subsidiary of an employer is never a Yes
+
+def _worked_at(job_company, history):
+    return cat.build({}, [{"employer": e, "title": "Analyst", "start_date": "2019-01", "end_date": "2021-06"}
+                          for e in history], [], company=job_company)
+
+
+def test_a_derived_yes_asks_when_the_listed_company_is_only_a_parent_or_subsidiary():
+    facts = _worked_at("Acme", ["Acme"])
+    assert facts[cat.WORKED_HERE_SLOT].value == "Yes, previously"
+    assert cat.named_employer_fact(facts, "Have you worked for Acme Labs?") == cat.ASK_THE_USER
+    # The job's own company named too, or nothing akin: the derived answer stands.
+    assert cat.named_employer_fact(facts, "Have you worked for Acme Labs or Acme?") is None
+    assert cat.named_employer_fact(facts, "Have you worked for Globex?") is None
+
+
+@pytest.mark.parametrize(("question", "options", "expected"), [
+    ("Have you ever worked for Acme Wireless?", (), True),
+    ("Are you a current or former employee of Acme Wireless?", (), True),
+    ("Are you a current or former employee?", ("Acme Wireless employee", "No"), True),
+    ("Were you referred by an employee of Acme Wireless?", (), False),
+    ("Are you related to anyone who works at Acme Wireless?", (), False),
+    ("Have you applied to Acme Wireless before?", (), False),
+    ("Have you ever been convicted of a felony? Acme Wireless asks all applicants.", (), False),
+    ("How did you hear about Acme Wireless?", (), False),
+])
+def test_asks_worked_here_reads_the_wording_about_the_applicant(question, options, expected):
+    assert cat.asks_worked_here(question, options) is expected

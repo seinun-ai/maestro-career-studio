@@ -50,6 +50,7 @@ from app.services.autofill_catalog import (
     WORKED_HERE_SLOT,
     Fact,
     named_employer_fact,
+    asks_worked_here,
     lists_job_company,
     names_veteran_off_slot,
     question_names_company,
@@ -521,11 +522,19 @@ def _placed_entry_key(field: MapField, key: str) -> str | None:
     return f"{m[1]}.{field.profile_entry}.{m[3]}"
 
 
-# The map's answers that mean "no fact in the list answers this": a question that lists the job's own company
-# is the worked-here answer's anyway.
-_FILED_ELSEWHERE = frozenset({HISTORY_UNANSWERED, PROTECTED_UNANSWERED, NO_SLOT})
+# The map's answers that mean "no fact in the list fits, it is a history question": a question that asks whether
+# the applicant worked for the company it lists is the worked-here answer's anyway. A protected question, or a
+# map that said nothing readable, is never rerouted: code does not second-guess a refusal.
+_FILED_ELSEWHERE = frozenset({HISTORY_UNANSWERED, NO_SLOT})
 MIDDLE_NAME_SLOT = "personal.middle_name"
 _MIDDLE_NAME = re.compile(r"\bmiddle\s*(name|initial)\b", re.IGNORECASE)
+
+
+def _rerouted(field: MapField, picked: tuple[str, float], facts: dict[str, Fact]) -> bool:
+    """Whether code takes this field for the worked-here question the map filed elsewhere."""
+    return (picked[0] in _FILED_ELSEWHERE and field.shape not in _WRITTEN_SHAPES
+            and lists_job_company(facts, field.question, field.options)
+            and asks_worked_here(field.question, field.options))
 
 
 def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact], *,
@@ -536,10 +545,9 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
     if _foreign(field):
         return Mapped(route="none"), SLOT_FLOOR
     # "Have you worked for Acme, Globex or Initech?" on an Acme job is the worked-here question, however the
-    # map filed it (a history, a protected question, no fact, or no readable answer): the derived answer, and
-    # what the list adds to it (`named_employer_fact`, below), decide. A choice only: a text box is prose.
-    if (picked is None or picked[0] in _FILED_ELSEWHERE) and field.shape not in _WRITTEN_SHAPES \
-            and lists_job_company(facts, field.question, field.options):
+    # map filed it as a history or no-fact question: the derived answer, and what the list adds to it
+    # (`named_employer_fact`, below), decide. A choice only: a text box is prose.
+    if picked is not None and _rerouted(field, picked, facts):
         picked = (WORKED_HERE_SLOT, 1.0)
     if picked is None:
         return Mapped(route="none"), SLOT_FLOOR
@@ -601,6 +609,9 @@ def _traced(field: MapField, picked: tuple[str, float] | None, facts: dict[str, 
     mapped, floor = _route(field, picked, facts, eeo_consented=eeo_consented)
     if _foreign(field):
         return mapped
+    # Code's reroute is not the model choosing a sentinel or none: the trace says the model named nothing.
+    if picked is not None and mapped.slot == WORKED_HERE_SLOT and picked[0] != WORKED_HERE_SLOT:
+        picked = (WORKED_HERE_SLOT, picked[1])
     return mapped.model_copy(update={"trace": DecisionTrace(
         engine=engine, p=picked[1] if picked else None, floor=floor,
         chose_none=None if picked is None else _no_fact_key(picked[0], eeo_consented),

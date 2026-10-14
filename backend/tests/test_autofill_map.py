@@ -1933,13 +1933,13 @@ def _worked(history):
 
 
 @pytest.mark.usefixtures("jev_on")
-@pytest.mark.parametrize("key", ["history_unanswered", "protected_unanswered", "none"])
+@pytest.mark.parametrize("key", ["history_unanswered", "none"])
 @pytest.mark.parametrize(("history", "answer"), [
     (["Hooli", "Vandelay"], "No"),
     (["Hooli", "Initech"], "Yes, previously"),
 ])
 def test_a_question_listing_the_jobs_company_is_the_worked_here_answer(db_session, monkeypatch, key, history, answer):
-    """The map filed it as a history, protected or no-fact question; the list names the company applied to,
+    """The map filed it as a history or no-fact question; the list names the company applied to,
     so the derived worked-here answer (and what the list adds to it) decides."""
     fake_jev(monkeypatch, {"q": (key, 0.95)})
     got = autofill_map.map_fields([field("q", LISTED_Q, "select", options=["Yes", "No"])], _worked(history), db_session,
@@ -1992,3 +1992,67 @@ def test_a_phone_device_type_field_maps_to_the_phone_type_never_the_number(db_se
                                   db_session, eeo_consented=True, low_stakes=False)
     assert (got["t"].route, got["t"].slot, got["t"].value, got["t"].format) == ("slot", "derived.phone_type", "Mobile", None)
     assert "kind of phone" in calls[0]["questions"]["t"]["criteria"]["derived.phone_type"]
+
+
+# Questions that merely NAME the company (or the employment word) and ask something else: never the worked-here answer.
+NAMES_THE_COMPANY = [
+    "Have you ever been convicted of a felony? Acme Wireless asks every applicant.",
+    "Are you legally authorized to work for Acme Wireless in the United States?",
+    "Will you now or in the future require visa sponsorship to work at Acme Wireless?",
+    "Are you related to anyone who works at Acme Wireless?",
+    "Do you have a relative or friend employed by Acme Wireless?",
+    "Were you referred by an employee of Acme Wireless?",
+    "Have you applied to Acme Wireless before?",
+    "Have you interviewed with Acme Wireless in the past?",
+    "Do you hold a security clearance that Acme Wireless requires?",
+    "Have you consented to a background check by Acme Wireless?",
+    "Were you terminated from a job you held before applying to Acme Wireless?",
+    "Are you bound by a non-compete that would stop you working for Acme Wireless?",
+    "How did you hear about Acme Wireless?",
+]
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("key", ["history_unanswered", "protected_unanswered", "none", "free_text"])
+@pytest.mark.parametrize("question", NAMES_THE_COMPANY)
+def test_a_question_that_only_names_the_company_is_not_the_worked_here_answer(db_session, monkeypatch, key, question):
+    fake_jev(monkeypatch, {"q": (key, 0.95)})
+    got = autofill_map.map_fields([field("q", question, "select", options=["Yes", "No"])], _worked(["Hooli"]),
+                                  db_session, eeo_consented=True, low_stakes=False)
+    assert got["q"].slot != autofill_catalog.WORKED_HERE_SLOT and got["q"].route != "slot", question
+
+
+@pytest.mark.parametrize("question", NAMES_THE_COMPANY)
+def test_an_unreadable_map_answer_never_becomes_the_worked_here_answer(question):
+    mapped, _ = autofill_map._route(field("q", question, "select", options=["Yes", "No"]), None, _worked(["Hooli"]),
+                                    eeo_consented=True)
+    assert mapped.route == "none"
+
+
+def test_an_unreadable_map_answer_is_not_rerouted_even_for_the_real_question():
+    mapped, _ = autofill_map._route(field("q", LISTED_Q, "select", options=["Yes", "No"]), None, _worked(["Hooli"]),
+                                    eeo_consented=True)
+    assert mapped.route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", [
+    "Have you ever worked for Acme Wireless?", "Are you a current employee of Acme Wireless?",
+    "Were you previously employed by Acme Wireless or Globex?", "Have you ever interned at Acme Wireless?",
+    "Have you ever been a contractor for Acme Wireless?",
+])
+def test_the_worked_here_wordings_are_rerouted(db_session, monkeypatch, question):
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = autofill_map.map_fields([field("q", question, "select", options=["Yes", "No"])], _worked(["Hooli"]),
+                                  db_session, eeo_consented=True, low_stakes=False)
+    assert (got["q"].route, got["q"].slot) == ("slot", autofill_catalog.WORKED_HERE_SLOT), question
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_rerouted_field_traces_as_the_codes_call_not_the_models(db_session, monkeypatch):
+    """The model said "a history question"; code rerouted it. The trace must not read as the model choosing
+    a sentinel (nor as it choosing none): `sentinel` null, `chose_none` false."""
+    fake_jev(monkeypatch, {"q": ("history_unanswered", 0.95)})
+    got = autofill_map.map_fields([field("q", LISTED_Q, "select", options=["Yes", "No"])], _worked(["Hooli"]),
+                                  db_session, eeo_consented=True, low_stakes=False)
+    assert got["q"].trace.sentinel is None and got["q"].trace.chose_none is False

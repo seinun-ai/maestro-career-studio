@@ -679,10 +679,16 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
     never become a No). None: nothing of the history is mentioned; the fact stands. A history "employer"
     that is no company (Freelance, Contractor …) never counts."""
     fact = facts.get(WORKED_HERE_SLOT)
-    if fact is None or fact.value != "No":
+    if fact is None:
         return None
     options = tuple(options)
     listed = _listed_company_keys(question, options)
+    if fact.value != "No":
+        # A derived Yes is about the job's company. A question that lists only a parent or a subsidiary of an
+        # employer ("Acme Labs" for a history of "Acme") is about another company: neither is true.
+        employers = [key for key, _ in fact.employers if key not in _NOT_AN_EMPLOYER]
+        akin = any(_akin(key, name) and key != name for key in employers for name in listed)
+        return ASK_THE_USER if akin and not set(fact.companies) & listed else None
     employers = [(key, current) for key, current in fact.employers if key not in _NOT_AN_EMPLOYER]
     named = [current for key, current in employers if key in listed]
     if named:
@@ -694,11 +700,35 @@ def named_employer_fact(facts: dict[str, Fact], question: str,
     return None
 
 
+# The wording of a worked-here question about the applicant: "Have you ever worked for…", "Are you a current or
+# former employee of…", "Were you previously employed by…", an intern or a contractor. Or an option saying "employee".
+_ASKS_WORKED = re.compile(
+    r"\b(?:have|has|were|are|did|do)\s+you\b[^?.]*?\b(?:work(?:ed)?\s+(?:for|at|with)|employed|employee|intern(?:ed)?|"
+    r"contract(?:ed|or))", re.IGNORECASE)
+_OPTION_EMPLOYEE = re.compile(r"\bemployee\b", re.IGNORECASE)
+# What turns a question that names the company into another question: kin and friends, referrals, applications and
+# interviews, convictions, work authorization and sponsorship, clearance and background checks, terminations,
+# non-competes, and where the applicant heard of the job.
+_NOT_WORKED_HERE = re.compile(
+    r"relative|family|friend|spouse|anyone|someone|referr|applied|interview|convict|criminal|felony|authori|"
+    r"sponsor|visa|clearance|background|terminat|non-?compete|hear\s+about", re.IGNORECASE)
+
+
+def asks_worked_here(question: str, options: tuple[str, ...] | list[str] = ()) -> bool:
+    """Whether a question asks whether the applicant worked for the company, by its wording, and is none of the
+    questions that only name the company (`_NOT_WORKED_HERE`)."""
+    if _NOT_WORKED_HERE.search(question) or any(_NOT_WORKED_HERE.search(o) for o in options):
+        return False
+    return bool(_ASKS_WORKED.search(question) or any(_OPTION_EMPLOYEE.search(o) for o in options))
+
+
 def lists_job_company(facts: dict[str, Fact], question: str, options: tuple[str, ...] | list[str] = ()) -> bool:
     """Whether a question (or its options) lists the company applied to: "Have you worked for Acme, Globex or
     Initech?" on an Acme job. A listed name, or the company as capitalised words anywhere in it. False with no
     worked-here fact (no company is known, or the history cannot say). Such a question is the worked-here
-    answer's, whatever else it lists (`named_employer_fact` reads the rest)."""
+    answer's, whatever else it lists (`named_employer_fact` reads the rest). Needs the wording too
+    (`asks_worked_here`): a question that only NAMES the company ("referred by an employee of Acme", "legally
+    authorized to work for Acme") asks something else."""
     fact = facts.get(WORKED_HERE_SLOT)
     if fact is None or not fact.companies:
         return False
