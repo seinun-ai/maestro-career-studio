@@ -317,6 +317,32 @@ def test_several_boxes_without_one_empty_resume_box_are_left(tmp_path, boxes, sa
     assert "This page has 2 upload boxes" in _attach_text(out["settled"])
 
 
+PARSER_BOX = {"kind": "parser", "occupied": False}
+
+
+def test_a_box_that_fills_the_form_from_a_resume_is_never_auto_attached(tmp_path):
+    """The site's own parser ("Import Resume") rewrites fields after the
+    file lands: no press writes it, and the line says why."""
+    out = _autofill(tmp_path, PARSER_BOX)
+    assert _attach_asks(out) == []
+    assert _note(out["settled"]).endswith(
+        "The upload box fills in the form from a resume, so the Companion left it.")
+
+
+def test_beside_a_parser_box_the_real_resume_box_is_attached(tmp_path):
+    out = _autofill(tmp_path, PARSER_BOX, EMPTY_RESUME_BOX)
+    [ask] = _attach_asks(out)
+    assert (ask["expect"], ask["resumeOnly"]) == (2, True)
+    assert _note(out["settled"]).endswith(ATTACHED)
+
+
+def test_only_a_parser_and_a_cover_letter_box_are_both_left(tmp_path):
+    out = _autofill(tmp_path, PARSER_BOX, COVER_LETTER_BOX)
+    assert _attach_asks(out) == []
+    assert _note(out["settled"]).endswith(
+        "None of the upload boxes is a plain resume upload, so the Companion left them.")
+
+
 def test_no_pdf_no_attach_and_nothing_said(tmp_path):
     out = _autofill(tmp_path, EMPTY_RESUME_BOX,
                     detail={"id": "app-remembered", "status": "draft",

@@ -283,6 +283,20 @@
       REMOVE_CONTROL.test(`${control.textContent} ${control.getAttribute("aria-label") ?? ""}`));
   }
 
+  // A PARSER BOX is the site's own "fill this form from my resume": it imports, parses or autofills
+  // from the file and rewrites fields the Companion filled (live check 2: wrong education rows, a
+  // middle name, a cut-off link). Its wording says so, in its own words, its uploader's or its
+  // section's. It is NEVER written, by any press. Doubt falls to "parser": a skipped attach costs a
+  // press, a wrong write costs the form.
+  const RESUME = String.raw`(?:r[eé]sum[eé]s?|cv|curriculum\s+vitae)(?![\p{L}\p{N}])`;
+  const FILL = String.raw`(?:auto-?\s?fill|pre-?\s?fill|populate|fill)`;
+  const PARSER_WORDS = WORD([
+    String.raw`(?:import|parse|auto-?\s?fill|pre-?\s?fill|populate)\b[^.]{0,40}?\b${RESUME}`,
+    String.raw`apply\s+with\b[^.]{0,12}?\b${RESUME}`,
+    String.raw`\b${RESUME}[^.]{0,30}?\bto\s+${FILL}\b`,
+    String.raw`fill\b[^.]{0,40}?\b(?:from|with|using)\b[^.]{0,20}?\b${RESUME}`,
+  ].join("|"));
+
   /** What the box is called when the field reader gave up at the uploader's own text ("Click to
    * upload"): a react-dropzone's name ("Resume *") is a sibling of the WIDGET. The text before the
    * widget, its star read as required. Empty when the reader already named the box. */
@@ -298,7 +312,8 @@
   }
 
   function uploadBoxOf(input) {
-    const box = uploadWidgetOf(input) ?? input.parentElement;
+    const widget = uploadWidgetOf(input);
+    const box = widget ?? input.parentElement;
     const read = typeof ns.readField === "function" ? ns.readField(input) : { question: "" };
     const outside = outsideName(input, read);
     const own = [read.question, outside.text, words(input.id), words(input.name)];
@@ -308,11 +323,41 @@
         own.push(document.getElementById(id)?.textContent);
       }
     }
-    let kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([sectionOf(input)]) ?? "unknown";
+    const section = sectionOf(input);
+    // Only an uploader of its own speaks for the box: a bare input's parent may be the whole form.
+    const parser = [...own, widget?.innerText, section].some((t) => PARSER_WORDS.test(String(t ?? "")));
+    if (parser) return { kind: "parser", occupied: hasFile(input, box) };
+    let kind = kindOf(own) ?? kindOf([box?.innerText]) ?? kindOf([section]) ?? "unknown";
     // A REQUIRED box that is the page's only upload, and whose words name no document, is the resume's
     // (live Workday: "Upload a file (5MB max)", seven levels under the heading that says resume).
     if (kind === "unknown" && (read.required || outside.required) && attachableFileInputs().length === 1) kind = "resume";
     return { kind, occupied: hasFile(input, box) };
+  }
+
+  /** `uploadBoxOf` for each of `inputs`, in order; a box whose read throws is unknown and occupied
+   * (nothing is attached to it). SEVERAL RESUME-LOOKING BOXES: keep the ones whose section names a
+   * resume upload and demote the rest to unknown (live ATS-D: "Candidate Info" beside "Resume
+   * Upload"). When no section names one, all stay and the callers' "exactly one" rule refuses. */
+  function readBoxes(inputs) {
+    const boxes = inputs.map((input) => {
+      try {
+        return uploadBoxOf(input);
+      } catch (_) {
+        return { kind: "unknown", occupied: true };
+      }
+    });
+    const resumes = boxes.map((box, i) => (box.kind === "resume" ? i : -1)).filter((i) => i >= 0);
+    if (resumes.length > 1) {
+      const named = resumes.filter((i) => {
+        try {
+          return kindOf([sectionOf(inputs[i])]) === "resume";
+        } catch (_) {
+          return false;
+        }
+      });
+      if (named.length) for (const i of resumes) if (!named.includes(i)) boxes[i] = { ...boxes[i], kind: "unknown" };
+    }
+    return boxes;
   }
 
   /** The box a page's own error named (`target`: its `data-maestro-up` tag), if this frame holds it,
@@ -321,12 +366,13 @@
    * done by hand: no other box in the frame holds a file already (the resume is on the page, in the
    * box the error did not name), and among several boxes the named one must read as a resume box. */
   function targetBox(inputs, target) {
-    const input = inputs.find((one) => one.getAttribute("data-maestro-up") === target);
+    const at = inputs.findIndex((one) => one.getAttribute("data-maestro-up") === target);
     try {
-      const box = input ? uploadBoxOf(input) : null;
-      if (!box || box.kind === "other" || box.occupied) return [];
-      if (inputs.length > 1 && (box.kind !== "resume" || inputs.some((one) => one !== input && uploadBoxOf(one).occupied))) return [];
-      return [input];
+      const boxes = at < 0 ? [] : readBoxes(inputs);
+      const box = boxes[at];
+      if (!box || box.kind === "other" || box.kind === "parser" || box.occupied) return [];
+      if (inputs.length > 1 && (box.kind !== "resume" || boxes.some((one, i) => i !== at && one.occupied))) return [];
+      return [inputs[at]];
     } catch (_) {
       return [];
     }
@@ -335,41 +381,30 @@
   /** The page's upload boxes in its own words, for the run: `{label, target, required, occupied,
    * kind}` per attachable box. The label is the field reader's question; the target an opaque tag. */
   function pageUploads() {
-    return attachableFileInputs().map((input) => {
-      let box = { kind: "unknown", occupied: true };
-      try {
-        box = uploadBoxOf(input);
-      } catch (_) { /* unknown and occupied: nothing is written to it */ }
+    const inputs = attachableFileInputs();
+    const boxes = readBoxes(inputs);
+    return inputs.map((input, i) => {
+      const box = boxes[i];
       const read = ns.readField?.(input);
       const outside = outsideName(input, read ?? { question: "" });
+      // A parser box is never asked for: it is not a field the run owes a file.
       return { label: ns.pageReader.fieldWords(input) || outside.text, target: ns.pageReader.uploadTag(input),
-               required: Boolean(read?.required || outside.required), occupied: box.occupied, kind: box.kind };
+               required: box.kind !== "parser" && Boolean(read?.required || outside.required),
+               occupied: box.occupied, kind: box.kind };
     });
   }
 
   /** Autofill's one target, re-checked at write time for `expect`'s reason:
    * the page's only resume box, while it holds no file; else none. */
   function theResumeBox(inputs) {
-    const resumes = inputs.filter((input) => {
-      try {
-        return uploadBoxOf(input).kind === "resume";
-      } catch (_) {
-        return false;
-      }
-    });
-    return resumes.length === 1 && !uploadBoxOf(resumes[0]).occupied ? resumes : [];
+    const boxes = readBoxes(inputs);
+    const at = boxes.map((box, i) => (box.kind === "resume" ? i : -1)).filter((i) => i >= 0);
+    return at.length === 1 && !boxes[at[0]].occupied ? [inputs[at[0]]] : [];
   }
 
-  /** `uploadBoxOf` for every box `attachableFileInputs` counts, in its order.
-   * A box whose read throws is unknown and occupied: nothing is attached to it. */
+  /** `readBoxes` for every box `attachableFileInputs` counts, in its order. */
   function uploadBoxes() {
-    return attachableFileInputs().map((input) => {
-      try {
-        return uploadBoxOf(input);
-      } catch (_) {
-        return { kind: "unknown", occupied: true };
-      }
-    });
+    return readBoxes(attachableFileInputs());
   }
 
   /** Error words in `text`, with the filename cut out first so a file called
@@ -486,7 +521,9 @@
     const reply = (written, proven) => (resumeOnly || targeted ? { written, proven } : proven);
     const all = attachableFileInputs();
     if (!targeted && Number.isInteger(expect) && all.length !== expect) return reply(0, 0);
-    const inputs = targeted ? targetBox(all, target) : resumeOnly ? theResumeBox(all) : all;
+    // The button writes every box but a parser (the site's own fill-from-resume), which no press writes.
+    const inputs = targeted ? targetBox(all, target) : resumeOnly ? theResumeBox(all)
+      : all.filter((_, i) => readBoxes(all)[i].kind !== "parser");
     if (!inputs.length) return reply(0, 0);
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const file = new File([bytes], filename, { type: "application/pdf" });
@@ -721,6 +758,7 @@
     page_errors: (msg) => (frameMayReceiveUserData(msg)
       ? ns.pageReader.pageErrors()
       : { count: 0, items: [] }),
+    // The required boxes still empty: words and handles, never values (the sibling of `page_errors`).
     page_uploads: (msg) => (frameMayReceiveUserData(msg) ? pageUploads() : []),
     page_advance: (msg) => (frameMayReceiveUserData(msg)
       ? ns.pageReader.advance(msg.id, { apply: msg.apply === true })

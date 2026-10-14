@@ -384,3 +384,89 @@ def test_a_dropzone_labelled_cover_letter_outside_its_widget_is_another_document
     assert _uploads(blank) == [{"kind": "other", "occupied": False}]
     assert _page_uploads(blank)[0]["required"] is True
     assert _proven(_attach(blank)) == 0
+
+
+# ---------- live check 2: a resume box that is the site's own PARSER ----------
+#
+# ATS-D has two hidden inputs with one id. One is "Import Resume" in Candidate Info (the site's
+# parser, which pre-fills the form from the file), the other the real "Resume Upload" section.
+# A parser box is never written; of several resume-looking boxes only those whose section names a
+# resume upload stay resume boxes.
+
+TWO_RESUMES = """<form>
+<section><h3>Candidate Info</h3>
+  <div class="up"><button type="button">{import_text}</button>
+    <input type="file" id="files_resume" style="display:none"></div></section>
+<section><h3>{second_heading}</h3>
+  <div class="up"><p>{second_text}</p>
+    <input type="file" id="files_resume" style="display:none"></div></section></form>"""
+BOTH = TWO_RESUMES.format(import_text="Import Resume", second_heading="Resume Upload", second_text="Drag your resume here")
+
+
+def _held_nth(page, n):
+    return page.evaluate("(n) => [...document.querySelectorAll('input[type=file]')[n].files].map((f) => f.name)", n)
+
+
+def test_of_two_resume_inputs_the_import_one_is_a_parser_and_the_upload_one_a_resume(blank):
+    _load(blank, BOTH)
+    assert [box["kind"] for box in _uploads(blank)] == ["parser", "resume"]
+
+
+@pytest.mark.parametrize("resume_only", [True, False], ids=["autofill", "button"])
+def test_the_file_lands_only_in_the_real_resume_box(blank, resume_only):
+    _load(blank, BOTH)
+    _attach(blank, resume_only=resume_only, expect=2)
+    assert _held_nth(blank, 0) == []
+    assert _held_nth(blank, 1) == ["Jane_Doe_Resume.pdf"]
+
+
+def test_page_uploads_reports_the_parser_as_never_required_and_never_the_runs_to_write(blank):
+    _load(blank, BOTH.replace('id="files_resume" style="display:none"></div></section>\n<section>',
+                              'id="files_resume" style="display:none" required></div></section>\n<section>'))
+    parser, real = _page_uploads(blank)
+    assert (parser["kind"], parser["required"]) == ("parser", False)
+    assert real["kind"] == "resume"
+    reply = blank.evaluate("""([b64, target]) => new Promise((resolve) => {
+      const msg = { type: "attach_resume_pdf", b64, filename: "Jane_Doe_Resume.pdf", target };
+      if (window.__pageListener(msg, { id: "t" }, resolve) !== true) resolve(null);
+    })""", [PDF, parser["target"]])
+    assert reply["data"]["written"] == 0
+    assert _held_nth(blank, 0) == []
+
+
+@pytest.mark.parametrize("wording", [
+    "Import Resume", "Autofill with resume", "Apply with resume", "Upload your resume to fill in the form",
+    "Auto-fill application from CV", "Parse my resume",
+])
+def test_a_lone_box_that_imports_parses_or_autofills_from_the_resume_is_never_written(blank, wording):
+    _load(blank, f'<form><h3>Candidate Info</h3><div class="up"><button type="button">{wording}</button>'
+                 f'<input type="file" id="p" style="display:none" required></div></form>')
+    assert _uploads(blank) == [{"kind": "parser", "occupied": False}]
+    assert _proven(_attach(blank)) == 0
+    assert _proven(_attach(blank, resume_only=False, expect=1)) == 0
+    assert _held(blank, "#p") == []
+    [box] = _page_uploads(blank)
+    assert (box["kind"], box["required"]) == ("parser", False)
+
+
+def test_a_box_that_only_asks_for_a_resume_is_still_a_resume_box(blank):
+    _load(blank, '<form><h3>Application</h3><div class="up"><p>Upload your resume (PDF)</p>'
+                 '<input type="file" id="r" style="display:none"></div></form>')
+    assert _uploads(blank) == [{"kind": "resume", "occupied": False}]
+
+
+def test_of_several_resume_looking_boxes_only_those_in_a_resume_section_stay_resume(blank):
+    _load(blank, TWO_RESUMES.format(import_text="Attach your CV", second_heading="Resume Upload",
+                                    second_text="Drag your resume here"))
+    assert [box["kind"] for box in _uploads(blank)] == ["unknown", "resume"]
+    assert _attach(blank, expect=2)["written"] == 1
+    assert _held_nth(blank, 0) == []
+    assert _held_nth(blank, 1) == ["Jane_Doe_Resume.pdf"]
+
+
+def test_several_resume_boxes_none_in_a_resume_section_are_all_kept(blank):
+    _load(blank, TWO_RESUMES.format(import_text="Attach your CV", second_heading="Documents",
+                                    second_text="Drag your resume here"))
+    assert [box["kind"] for box in _uploads(blank)] == ["resume", "resume"]
+    assert _attach(blank, expect=2)["written"] == 0
+    assert _held_nth(blank, 0) == _held_nth(blank, 1) == []

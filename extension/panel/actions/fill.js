@@ -942,7 +942,14 @@
     if (resumes.length === 1 && resumes[0].occupied) {
       return skipped("A file is already attached. The Companion left it.", "occupied");
     }
-    if (!resumes.length && uploads.every((box) => box.kind === "other")) {
+    // A PARSER BOX (the site's own fill-from-resume) is no resume box and is never written, by this
+    // press or any other (`uploadBoxOf`, content/agent.js): it is left with its own sentence.
+    if (!resumes.length && uploads.every((box) => box.kind === "other" || box.kind === "parser")) {
+      const parser = uploads.some((box) => box.kind === "parser");
+      if (parser) {
+        return skipped(one ? "The upload box fills in the form from a resume, so the Companion left it."
+          : "None of the upload boxes is a plain resume upload, so the Companion left them.");
+      }
       return skipped(one ? "The upload box isn't for a resume, so the Companion left it."
         : "None of the upload boxes is for a resume, so the Companion left them.");
     }
