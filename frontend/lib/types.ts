@@ -42,6 +42,9 @@ export interface Job {
   raw_text: string;
   raw_text_hash: string;
   source_url: string | null;
+  /** The employer's own apply link, when the posting page exposed one; a run
+   *  opens it before source_url. Optional: an older backend does not send it. */
+  apply_url?: string | null;
   source: ProvenanceSource;
   extracted_json: Record<string, unknown> | null;
   title: string | null;
@@ -1989,6 +1992,7 @@ interface ProposalJobSummary {
   id: UUID;
   ownership?: JobOwnership;
   source_url: string | null;
+  apply_url?: string | null;
   company: string | null;
   title: string | null;
   role_category: string | null;
