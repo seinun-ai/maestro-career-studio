@@ -364,6 +364,9 @@ async function fillFormFromProfile(
     { id: "email", re: /e-?mail/i, value: p.email, identity: true },
     // Guards BEFORE the broad /phone/ rule: extension/fax must never get the
     // phone number, and "phone country code" selects want the country.
+    // The kind of phone (a device-type picker: "Phone Device Type", "Mobile number: Type"), not the number: the
+    // profile never says it, and the number must never land in it. The fill loop answers it (derived.phone_type).
+    { id: "phone-type", re: /(phone|mobile|cell).*\btype\b|\btype\b.*(phone|mobile|cell)|device\s*type/i, skip: true },
     { id: "phone-ext-fax", re: /extension|\bext\.?\b|fax/i, skip: true },
     { id: "phone-country-code", re: /phone.*(country|code)|country.*code|dial.*code/i, value: p.country },
     // `formatTolerant`: the already-holds check may ignore punctuation for

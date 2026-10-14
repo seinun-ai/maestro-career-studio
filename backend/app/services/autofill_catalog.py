@@ -109,6 +109,9 @@ _DESCRIBES: dict[str, str] = {
     # A dialing-code picker ("Country dialing code", "+1 United States") asks for the country, not the number.
     "derived.phone_country": ("the phone number's country and calling code (a dialing-code picker); "
                               "never the number itself"),
+    # The profile holds a number, never what kind of phone it is: a device-type picker is answered Mobile
+    # (autofill_pick reports it assumed).
+    "derived.phone_type": "the kind of phone the number is (mobile, home or work)",
     "derived.today": "today's date, for a date the applicant signs or fills in today",
     "derived.earliest_start_date": "the earliest date you can start, as a calendar date",
     "derived.previously_employed_here": ("works, or has worked, for this company (from the work history: "
@@ -417,6 +420,8 @@ def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None
         out["derived.full_name"] = make_fact("derived.full_name",
                                              f"{identity['legal_first']} {identity['legal_last']}")
     out["derived.today"] = make_fact("derived.today", today.isoformat())
+    if _as_text(personal.get("phone")) is not None:
+        out["derived.phone_type"] = make_fact("derived.phone_type", "Mobile")
     if (dialing := phone_country(personal.get("country"))) is not None:
         out["derived.phone_country"] = make_fact("derived.phone_country", dialing)
     work_auth = profile.get("work_auth") if isinstance(profile.get("work_auth"), dict) else {}

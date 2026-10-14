@@ -588,7 +588,7 @@ def test_the_map_cases_hold_the_live_wrong_writes():
     for case in ("agree-to-relocate", "sms-opt-in", "talent-community"):
         assert "derived.agrees_to_terms" not in by_id[case]["expected"], case
     # Live iCIMS (2026-10-01): a phone type is no phone, and the current job has no end.
-    assert by_id["phone-type"]["expected"] == ["none"]
+    assert "personal.phone" not in by_id["phone-type"]["expected"]   # the kind of phone, never the number
     assert by_id["start-date-year"]["expected"] == ["experience.0.start"]
     assert by_id["current-job-end-year"]["expected"] == ["none"]
     # Criminal history is never an agreement: a Yes there would be a catastrophic wrong write.

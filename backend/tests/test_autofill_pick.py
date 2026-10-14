@@ -297,6 +297,24 @@ def test_verdict_is_one_rule_for_pick_and_step(field, p, policy, expected):
     assert autofill_pick.verdict(field, "o1", p, policy, engine="jev").reason == expected
 
 
+PHONE_TYPE = pf("f", slot="derived.phone_type", options=opts("Mobile", "Home"))
+
+
+@pytest.mark.parametrize("p, expected", [(0.95, "assumed"), (0.4, "assumed"), (0.39, "abstained")])
+def test_the_phone_type_is_an_assumption_the_user_is_told_about(p, expected):
+    """The profile holds a number, never what kind of phone it is: "Mobile" is the Companion's assumption."""
+    assert autofill_pick.verdict(PHONE_TYPE, "o1", p, "any", engine="jev").reason == expected
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_phone_device_type_select_picks_mobile_and_reports_it_assumed(db_session, monkeypatch):
+    facts = autofill_catalog.build({"personal": {"phone": "5551234567"}}, [], [])
+    fake_jev(monkeypatch, {"t": ("o2", 0.9)})
+    got = autofill_pick.pick([pf("t", slot="derived.phone_type", options=opts("Home", "Mobile", "Work"))],
+                             facts, db_session, None)
+    assert sans_trace(got["t"]) == {"oids": ["o2"], "reason": "assumed"}
+
+
 def test_verdict_never_answers_without_an_option():
     for oid in (None, "", "none"):
         assert autofill_pick.verdict(SLOT, oid, 0.99, "any", engine="jev").reason == "abstained"

@@ -511,7 +511,7 @@ def test_page_text_is_quoted_as_data(db_session, monkeypatch):
     ("personal.payroll_id", None), ("personal.paypal_email", None), ("custom.display_name", None),
     ("personal.city", None), ("experience.0.title", None), (None, None),
     # The phone's COUNTRY ("+1 United States") is a picker's option, not a phone number to re-punctuate.
-    ("derived.phone_country", None),
+    ("derived.phone_country", None), ("derived.phone_type", None),
     # A date slot: the loop writes only the part a Month or Year control holds.
     ("experience.0.start", "date"), ("experience.12.end", "date"), ("education.1.end_year", "date"),
     ("education.0.start_year", "date"), ("derived.today", "date"), ("derived.earliest_start_date", "date"),
@@ -1979,3 +1979,16 @@ def test_lists_job_company_reads_the_company_as_a_listed_name_or_capitalised_wor
     assert autofill_catalog.lists_job_company(facts, "Are you a current or former employee?", ("Acme Wireless employee", "No"))
     assert not autofill_catalog.lists_job_company(facts, "Have you worked for Globex?")
     assert not autofill_catalog.lists_job_company({}, LISTED_Q)
+
+
+# ---------- J5: a phone device type picker takes derived.phone_type
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("question", ["Phone Device Type", "Enter in your mobile number: Type"])
+def test_a_phone_device_type_field_maps_to_the_phone_type_never_the_number(db_session, monkeypatch, question):
+    facts = autofill_catalog.build({"personal": {"phone": "5551234567"}}, [], [])
+    calls = fake_jev(monkeypatch, {"t": ("derived.phone_type", 0.9)})
+    got = autofill_map.map_fields([field("t", question, "select", options=["Home", "Mobile", "Work"])], facts,
+                                  db_session, eeo_consented=True, low_stakes=False)
+    assert (got["t"].route, got["t"].slot, got["t"].value, got["t"].format) == ("slot", "derived.phone_type", "Mobile", None)
+    assert "kind of phone" in calls[0]["questions"]["t"]["criteria"]["derived.phone_type"]

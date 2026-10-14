@@ -111,10 +111,15 @@ def abstained(picked: Picked) -> bool:
     return not picked.oids
 
 
+# Slots whose answer is the Companion's assumption, not the profile's word: judged at the assumed floor
+# and reported `assumed`, so the user is told to check it (the profile never says what kind of phone it is).
+ASSUMED_SLOTS = frozenset({"derived.phone_type"})
+
+
 def _bar(field, chance: float, policy: str, *, closest_ok: bool) -> tuple[float, Reason]:
     """The floor an answer is judged against and the reason it carries if it clears it. A
     `closest` near miss is a flag slot's, within [CLOSEST_FLOOR, MATCH_FLOOR) only."""
-    if field.route == "low_stakes":
+    if field.route == "low_stakes" or getattr(field, "slot", None) in ASSUMED_SLOTS:
         return ASSUMED_FLOOR, "assumed"
     if closest_ok and policy == "flag" and CLOSEST_FLOOR <= chance < MATCH_FLOOR[policy]:
         return CLOSEST_FLOOR, "closest"

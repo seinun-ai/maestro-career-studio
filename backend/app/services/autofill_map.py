@@ -430,6 +430,10 @@ _DATE = re.compile(r"(?:experience|education)\.\d+\.(?:start|end)(?:_year)?|deri
 _JOB_FACT = re.compile(r"experience\.(\d+)\.(\w+)")
 
 
+# The phone's country ("+1 United States") and device type ("Mobile") are picker options, not numbers to re-punctuate.
+_PHONE_WORDS = frozenset({"derived.phone_country", "derived.phone_type"})
+
+
 def format_of(slot: str | None) -> Format | None:
     """How a value written for `slot` compares with what the page shows: a
     page re-punctuates a phone number, and writes "$80,000" for 80000. A date
@@ -437,7 +441,7 @@ def format_of(slot: str | None) -> Format | None:
     holds."""
     if not slot:
         return None
-    if _PHONE.search(slot) and slot != "derived.phone_country":
+    if _PHONE.search(slot) and slot not in _PHONE_WORDS:
         return "phone"
     if _DATE.fullmatch(slot):
         return "date"

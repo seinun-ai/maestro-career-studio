@@ -836,3 +836,17 @@ def test_the_phone_country_is_built_from_the_profile_country(country, expected):
 @pytest.mark.parametrize("personal", [{}, {"country": " "}, {"country": "Atlantis"}, {"phone": "5551234567"}])
 def test_a_phone_country_is_never_invented(personal):
     assert "derived.phone_country" not in derived({"personal": personal})
+
+
+# ---------- J5: the phone's device type
+
+def test_the_phone_type_is_mobile_when_the_profile_has_a_phone():
+    f = derived({"personal": {"phone": "5551234567"}})
+    assert f["derived.phone_type"].value == "Mobile"
+    assert f["derived.phone_type"].describe == "the kind of phone the number is (mobile, home or work)"
+    assert f["derived.phone_type"].policy == "any"
+
+
+@pytest.mark.parametrize("personal", [{}, {"phone": " "}, {"city": "Springfield"}])
+def test_a_phone_type_is_never_derived_without_a_phone(personal):
+    assert "derived.phone_type" not in derived({"personal": personal})

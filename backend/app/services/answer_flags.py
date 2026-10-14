@@ -73,8 +73,9 @@ EEO_KEY_WORDS = (
 # Slots whose policy is `exact` but whose question is no knock-out: a language's name and level,
 # agreeing to the application's own terms.
 _NOT_SCREENING_SLOTS = ("languages.", "derived.agrees_to_terms")
-# Clock-based facts: whatever the form says, "today" moves, so a stored difference means nothing.
-_CLOCK_SLOTS = frozenset({"derived.today", "derived.earliest_start_date"})
+# Clock-based facts: whatever the form says, "today" moves, so a stored difference means nothing. The
+# phone's device type is the Companion's own assumption (the profile never says it), worded the page's way.
+_CLOCK_SLOTS = frozenset({"derived.today", "derived.earliest_start_date", "derived.phone_type"})
 
 
 def is_eeo(question: str, slot: str | None) -> bool:
