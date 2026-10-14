@@ -32,7 +32,8 @@
  * which neither the card nor `chrome.storage.session` ever sees.
  *
  * WHAT THIS FILE PUBLISHES: ns.panelActionsRun = { startRun, runningHere, stopRun, resumeRun, skipRun,
- * closeRun, undoLearned, undoMark, markApplied, restoreRuns }.
+ * closeRun, undoLearned, undoMark, markApplied, restoreRuns, TERMINAL }. `TERMINAL` is the set of run
+ * statuses that are over, read by the Job step's Apply to see whether another tab's run holds a job.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -850,5 +851,5 @@
   }
 
   ns.panelActionsRun = { startRun, runningHere, stopRun, resumeRun, skipRun, closeRun, undoLearned, undoMark,
-                         markApplied, restoreRuns };
+                         markApplied, restoreRuns, TERMINAL };
 })();

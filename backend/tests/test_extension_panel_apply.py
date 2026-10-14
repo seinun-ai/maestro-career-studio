@@ -23,6 +23,7 @@ import pytest
 from tests.extension_harness import run_node
 from tests.extension_panel_harness import (
     HUED_RESUMES,
+    PANEL_CSS,
     PANEL_SOURCE,
     SCORE_ROWS,
     SETTINGS_REPLY,
@@ -1414,3 +1415,53 @@ def test_apply_shows_after_the_real_track_this_button_is_pressed_and_the_job_row
     out = _apply(tmp_path, api=api, stored={"widget.session": entry},
                  steps=[{"body": "Track this application", "settles": 3}, {"id": "stg-open-job", "settles": 2}])
     assert _primary(out["shots"][-1]) == ["Apply"]
+
+
+def _restored(**extra):
+    """A remembered pick that names a job on a page the backend did not match (`restoreSession`)."""
+    return {"widget.session": {"origin": "https://board.example.test", "tenant": "https://board.example.test/jobs",
+                               "at": 1, "jobId": "job-1", "company": "Acme", "title": "Data Scientist",
+                               "baseSlug": "ai_ml_engineer", "baseArmed": False, **extra}}
+
+
+def test_apply_after_a_restored_pick_works_on_the_remembered_job_and_saves_nothing_twice(tmp_path):
+    """Default mode: the job is known (its id came back with the pick), so Apply must not save the page
+    again as a second job."""
+    out = _apply(tmp_path, api=_fresh(), stored=_restored(), steps=[{"foot": "Apply", "settles": 3}])
+    assert _labels(out["shots"][0]) == ["Apply"]
+    assert [msg for msg in _api(out, "POST", "/api/jobs") if msg["path"] == "/api/jobs"] == []
+    assert _body(_api(out, "POST", "/quick-tailor")[0]) == {"base_resume": "ai_ml_engineer"}
+    assert _api(out, "POST", "/quick-tailor")[0]["path"] == "/api/jobs/job-1/quick-tailor"
+    link = [msg for msg in _api(out, "POST", "/api/proposals") if "application_id" in _body(msg)]
+    assert [_body(msg)["job_id"] for msg in link] == ["job-1"]
+    assert out["seeds"][0]["jobId"] == "job-1"
+
+
+def test_the_save_press_shows_which_resume_is_picked_before_the_reload_and_without_stop(tmp_path):
+    """The pick is reported inside the press, so a late repaint cannot land on a newer press's checklist."""
+    api = _flow(**_stepwise())
+    out = _apply(tmp_path, api=api, hold=["/api/jobs/match"], holdSkip=1, steps=[{"foot": "Save job"}])
+    shot = out["shots"][-1]
+    assert _lines(shot)[-1] == ("done", "Using AI/ML Engineer (72)")
+    assert _stop_button(shot) == []
+
+
+def test_apply_stops_that_name_another_tab_or_a_finished_application_cross_a_line(tmp_path):
+    detail = _job(proposal_id="prop-1", proposal_status="accepted", application=_draft())
+    other = {**_run_record(8, "filling"), "proposalId": "prop-1"}
+    busy = _apply(tmp_path, api=_saved(**{"/api/jobs/job-1/detail": detail}),
+                  tabs=[{"id": 7, "url": BOARD_URL}, {"id": 8, "url": APP_URL}],
+                  steps=[{"seed": [other], "call": "applyJob", "settles": 2}])
+    assert _lines(busy["shots"][-1])[-1] == ("fail", "Opening the application")
+    [failed] = [item for item in _by_class(busy["shots"][-1]["regions"]["rail"], "apply-steps")[0]["children"]
+                if item["class"] == "fail"]
+    assert _by_class(failed, "why")[0]["text"] == "Running in another tab"
+    done = _apply(tmp_path, api=_saved(**{"/api/jobs/job-1/detail": _job(proposal_status="submitted")}),
+                  steps=[{"call": "applyJob", "settles": 2}])
+    [applied] = [item for item in _by_class(done["shots"][-1]["regions"]["rail"], "apply-steps")[0]["children"]
+                 if item["class"] == "fail"]
+    assert _by_class(applied, "why")[0]["text"] == "Already applied"
+
+
+def test_a_pressed_stop_is_drawn_dimmed(tmp_path):
+    assert '.stop[aria-disabled="true"] { opacity: .6; cursor: default; }' in PANEL_CSS

@@ -2965,7 +2965,9 @@
       const stop = actionButton("stop", card.stopRequested ? "Stopping…" : "Stop", stopFill);
       stop.id = "fill-stop";
       stop.setAttribute("aria-label", "Stop filling");
-      stop.disabled = card.stopRequested;
+      // Not `disabled`: a disabled button drops the focus it was pressed with, and `stopFill` already
+      // ignores a second press.
+      if (card.stopRequested) stop.setAttribute("aria-disabled", "true");
       controls.push(stop);
     }
     // STOP FOR APPLY, the same way, while its checklist is live. It is keyed on the checklist rather than

@@ -398,8 +398,6 @@
 
   const PICK_NOTE = "Pick a resume to apply with.";
   const ANOTHER_TAB = "Another tab is already applying to this job. Finish or stop that run first.";
-  /** The run statuses that are over (`actions/run.js` `TERMINAL`); any other run holds its job. */
-  const ENDED = new Set(["stopped", "applied"]);
   /** A job another copy holds is a stop with a line of its own: nothing was running to cross. */
   const heldStop = (sentence) => ({ stop: sentence, line: "Using this copy of the job", why: "Held elsewhere" });
   const WAITING = "Waiting for your pick";
@@ -487,6 +485,8 @@
       end() {
         state.live = false;
         paint();
+        // Nothing of this press paints again: a newer press owns the checklist from here.
+        over = true;
       },
       /** The run takes over: the card drawn from here on is its own. */
       clear() {
@@ -496,10 +496,9 @@
     };
   }
 
-  /** Is the job in the library as far as the page can tell: the backend matched this page to it. A job a
-   * remembered pick put in the store (`restoreSession`) is not that, and neither `applyPress` nor this file
-   * may call it saved. */
-  const savedJob = (facts) => facts.match === "exact" && Boolean(facts.job?.id);
+  /** Is the job known: it has an id. A remembered pick (`restoreSession`) puts the job's id in the store on a
+   * page the backend did not match, and saving that page again would make a second copy of the job. */
+  const savedJob = (facts) => Boolean(facts.job?.id);
 
   /** The line that names the resume Apply is using, with its square (drawn by stages/job.js from `hue`)
    * and its match score for this job when there is one. */
@@ -529,12 +528,14 @@
   async function prepareApply(store, facts, { withBase, through, steps }) {
     const jobId = facts.job.id;
     const read = await readApplyFacts(store, jobId);
-    if (read.applied) return { stop: ALREADY_APPLIED };
+    if (read.applied) return { stop: ALREADY_APPLIED, line: "Opening the application", why: "Already applied" };
     if (!canRunHere(read.ownership)) return heldStop(heldSentence(read.ownership));
     // Another tab's run holds this job's proposal: a relink under it would move the application the run
     // is filling. The server cannot see the panel's runs, so the panel checks.
     if (read.proposalId && store.read().runs.some((one) => one.proposalId === read.proposalId
-        && !ENDED.has(one.status))) return { stop: ANOTHER_TAB };
+        && !ns.panelActionsRun.TERMINAL.has(one.status))) {
+      return { stop: ANOTHER_TAB, line: "Opening the application", why: "Running in another tab" };
+    }
     const inPlace = facts.claimed === true;
     // Before anything is written: a pick that no longer stands is the user's to make again.
     const picked = inPlace ? await pickedDraft(store, facts.application?.id, jobId) : null;
@@ -656,20 +657,22 @@
   }
 
   async function runApply(store, token, steps, { start, withBase, through }) {
-    if (!savedJob(store.read())) {
+    // The Save job press saves a page the backend has not matched even when a remembered pick named a job
+    // for it (the button says Save job, and `applyPress` reads the match); every other press goes on
+    // from a job that is known.
+    const unsaved = (facts) => !savedJob(facts) || (through === "save" && facts.match !== "exact");
+    if (unsaved(store.read())) {
       await addJob(store, { as: "apply", reload: false, steps });
-      if (!store.current(token) || !savedJob(store.read())) return;
+      if (!store.current(token) || unsaved(store.read())) return;
       if (steps.halted()) {
         steps.stopped();
         return;
       }
       if (through === "save") {
-        // The press is over: Stop goes before the re-read that shows what the save made true.
+        // Reported inside the press, then Stop goes before the re-read that shows what the save made true.
+        reportPick(store, steps);
         steps.end();
         await store.loadContext(token);
-        if (!store.current(token)) return;
-        reportPick(store, steps);
-        store.render();
         return;
       }
     } else if (through === "save") {

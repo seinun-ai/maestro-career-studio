@@ -4086,7 +4086,9 @@ def test_stop_is_offered_only_while_the_loop_runs_and_cancels_the_page_too(tmp_p
     # The primary still spins beside it: the run is not over until it reports.
     assert _by_class(out["running"]["foot"], "cta")[0]["class"] == "cta spin"
     [stopping] = _by_class(out["stopping"]["foot"], "stop")
-    assert (stopping["text"], stopping["disabled"]) == ("Stopping…", True)
+    # Not `disabled`: a disabled button drops the focus it was pressed with.
+    assert (stopping["text"], stopping["disabled"], stopping["attrs"]["aria-disabled"]) == (
+        "Stopping…", False, "true")
     cancels = [msg for msg in out["broadcasts"] if msg["message"]["type"] == "fill_cancel"]
     assert [(msg["tabId"], msg["message"]) for msg in cancels] == [(7, {"type": "fill_cancel"})]
     [run] = out["runs"]

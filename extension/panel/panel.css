@@ -811,6 +811,7 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .cta.pair { flex: 1 1 0; width: auto; min-width: 0; }
 .cta.alt { background: var(--cs-surface); color: var(--cs-text); border: 1px solid var(--cs-line); }
 .stop:disabled { opacity: .6; cursor: default; }
+.stop[aria-disabled="true"] { opacity: .6; cursor: default; }
 /* One spinner for every busy button on this surface, so a user who has waited
    once recognises the wait. */
 .spin::after {
