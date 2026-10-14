@@ -368,6 +368,11 @@
       // does not have gets the 1st of the month, or January when the month is missing too — written,
       // reported `assumed`, never left blank. The fact itself is never changed or invented.
       const missing = ["month", "day"].filter((part) => asks.includes(part) && !d[part]);
+      // A box that already shows every part the fact has keeps what it shows: an assumed day is
+      // never typed over a real one (2021-05-17 for the fact 2021-05).
+      if (missing.length && displayed(el, shape, value, { format }) === "verified") {
+        return { outcome: verify(el, shape, value, { format }) };
+      }
       const date = { ...d, ...(missing.includes("month") ? { month: "01" } : {}), ...(missing.includes("day") ? { day: "01" } : {}) };
       if (missing.length) {
         assumed = missing.length === 2 ? "month_day" : missing[0];
@@ -378,9 +383,17 @@
         text = kind === "month" ? `${date.year}-${date.month}` : kind === "date" ? `${date.year}-${date.month}-${date.day}`
           : formatPattern(placeholder, date);
       }
-      // A native box states its own range: a date outside it is refused, nothing typed.
+      // A native box states its own range. A date outside it is refused, nothing typed — unless only the
+      // part the engine assumed put it there: that part is moved inside the range, within the fact's own
+      // month (or year) and never into another, and reported (`assumed: "range"`).
       if ((kind === "date" || kind === "month") && ((el.min && text < el.min) || (el.max && text > el.max))) {
-        return { outcome: "unexpected", reason: "outside_date_range" };
+        const moved = el.min && text < el.min ? el.min : el.max;
+        const inside = missing.length && moved.startsWith(`${d.year}${d.month ? `-${d.month}` : ""}`)
+          && !(el.min && moved < el.min) && !(el.max && moved > el.max);
+        if (!inside) return { outcome: "unexpected", reason: "outside_date_range" };
+        text = moved;
+        assumed = "range";
+        shownAs = moved;
       }
     }
     // A URL is written whole or not at all: a box shorter than it would keep a truncated link.

@@ -374,3 +374,33 @@ def test_the_sweep_catches_a_popup_whose_backing_input_emptied(page, load):
     assert apply(page, f, op="choose", text="Masters")["outcome"] == "verified" and oracle(page, "degree") == "Masters"
     page.evaluate("() => { document.getElementById('degree').parentElement.querySelector('.hidden-backing').value = ''; }")
     assert {r["fid"]: r["outcome"] for r in page.evaluate(f"() => {OPS}.sweep()")}[f["fid"]] == "reverted"
+
+
+# --- review follow-ups on the assumed date
+def test_a_box_that_already_holds_a_real_day_is_never_overwritten_with_an_assumed_one(page, load):
+    load(page, "<label for='d'>Start date</label><input id='d' type='date' value='2021-05-17'>"
+               "<script>window.inputs = 0; document.getElementById('d').addEventListener('input', () => window.inputs++);</script>")
+    row = apply(page, inv(page)["Start date"], op="write", value="2021-05")
+    assert row["outcome"] == "verified" and "assumed" not in row
+    assert page.input_value("#d") == "2021-05-17" and page.evaluate("window.inputs") == 0
+
+
+def test_an_assumed_part_outside_min_or_max_is_moved_inside_the_same_month(page, load):
+    load(page, "<label for='d'>Start date</label><input id='d' type='date' min='2021-05-10'>")
+    row = apply(page, inv(page)["Start date"], op="write", value="2021-05")
+    assert (row["outcome"], row["assumed"]) == ("verified", "range") and page.input_value("#d") == "2021-05-10"
+
+
+def test_an_assumed_year_moves_inside_the_same_year_and_never_into_another(page, load):
+    load(page, "<label for='d'>Start date</label><input id='d' type='date' min='2024-03-01'>")
+    row = apply(page, inv(page)["Start date"], op="write", value="2024")
+    assert (row["assumed"], page.input_value("#d")) == ("range", "2024-03-01")
+    load(page, "<label for='d'>Start date</label><input id='d' type='date' min='2025-01-01'>")
+    row = apply(page, inv(page)["Start date"], op="write", value="2024")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "outside_date_range") and page.input_value("#d") == ""
+
+
+def test_a_fact_that_is_itself_out_of_range_is_refused_not_moved(page, load):
+    load(page, "<label for='d'>Start date</label><input id='d' type='date' min='2021-06-01'>")
+    row = apply(page, inv(page)["Start date"], op="write", value="2021-05")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "outside_date_range")

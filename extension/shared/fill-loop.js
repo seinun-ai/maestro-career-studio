@@ -338,7 +338,7 @@
   // "date", the slot's); the field reader says a control holds one part
   // (`part`). A Year box gets "2026" of "2026-06", a Month box "06"; a Month
   // or Year LIST is chosen here by the part's own spellings, never by a model.
-  // A part the fact lacks (a day; the month of a year-only fact) is no value.
+  // A part the fact lacks is January or the 1st (month, day; `assumed`), never an invented year.
   const PARTS = new Set(["year", "month", "day"]);
   const MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september",
     "october", "november", "december"];
@@ -348,7 +348,12 @@
   const narrowed = (f, m) => {
     if (m?.route !== "slot" || m.format !== "date" || f.shape === "date" || !PARTS.has(f.part)) return null;
     const d = DATE_FACT.exec(String(m.value ?? "").trim());
-    return { part: f.part, value: (d && { year: d[1], month: d[2], day: d[3] }[f.part]) || "" };
+    const own = d && { year: d[1], month: d[2], day: d[3] }[f.part];
+    if (own) return { part: f.part, value: own };
+    // Owner decision (low stakes are decisive decisions): a month or day the fact lacks is January
+    // or the 1st, reported assumed. A year the fact lacks stays the user's.
+    if (d && (f.part === "month" || f.part === "day")) return { part: f.part, value: "01", assumed: f.part };
+    return { part: f.part, value: "" };
   };
   // The texts that state a part's value: month "06" is 6, 06, June or Jun.
   const spellings = (part, value) => {
@@ -1153,6 +1158,7 @@
         ...(f.shape === "search" ? { term: term ?? picked.text } : {}),
       }));
       if (notDone(f, out)) return undefined;
+      if (out.outcome === "verified" && row.assumedPart) return done(f, "assumed", out.committed, ASSUMED_DATE[row.assumedPart]);
       if (out.outcome === "verified") return done(f, picked.reason, out.committed);
       if (out.outcome === "unconfirmed") return unconfirmed(f, picked.text);
       if (out.outcome === "unexpected" && adapts(f, row)) {
@@ -1526,6 +1532,9 @@
       if (out.outcome === "verified" && ASSUMED_DATE[out.assumed]) return done(f, "assumed", out.committed, ASSUMED_DATE[out.assumed]);
       if (out.outcome === "verified") return done(f, reason, out.committed, reason === "assumed" ? knownNote(note) ?? undefined : undefined);
       if (out.outcome === "unconfirmed") return unconfirmed(f, value);
+      if (FIXED_REFUSALS[out.reason]) {
+        return finish(f, "needs_answer", { lastOutcome: out.reason, answer: FIXED_REFUSALS[out.reason] });
+      }
       return fail(f, out.reason ?? out.outcome);
     };
 
@@ -1640,7 +1649,7 @@
           const datePart = narrowed(f, m);
           if (m) {
             set(f.fid, { route: m.route, slot: m.slot ?? null, value: datePart ? datePart.value : m.value ?? null,
-              format, part: datePart?.part ?? null, why: WHY[m.why] ? m.why : null, years: m.years === true,
+              format, part: datePart?.part ?? null, assumedPart: datePart?.assumed ?? null, why: WHY[m.why] ? m.why : null, years: m.years === true,
               draft: m.draft === true });
             // The slot is a fact NAME, never its value; one call served the chunk.
             note(f.fid, {
@@ -2146,7 +2155,8 @@
         worked.add(f.fid).add(sameField(f));
         if (leftForAnotherEntry(f)) continue;
         if (f.kind === "text") {
-          await onFieldClock(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), row.format));
+          await onFieldClock(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), row.format,
+            row.assumedPart ? "assumed" : "matched", row.assumedPart ? ASSUMED_DATE[row.assumedPart] : undefined));
           await writeProse();
           continue;
         }
@@ -2420,6 +2430,12 @@
   // The date notes a row carries when a box asked more of a date than the profile has.
   const ASSUMED_DATE = {
     day: "Day set to the 1st", month: "Month set to January", month_day: "Set to the 1st of January",
+    range: "Date set to the nearest the box allows",
+  };
+  // A write the page refused outright is the user's, said in a fixed sentence: asking again cannot help.
+  const FIXED_REFUSALS = {
+    outside_date_range: "This date is outside the range the box allows. Left for you.",
+    too_long: "This box is too short for the whole link, so nothing was typed. Left for you.",
   };
   // The only sentences a row's `note` may be: the date notes and the backend's fixed draft note (qa.DRAFT_NOTE).
   // Anything else /choose sends is dropped, so server text never reaches the panel.

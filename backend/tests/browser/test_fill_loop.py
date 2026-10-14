@@ -2864,18 +2864,22 @@ def test_a_year_list_and_an_explored_month_popup_are_chosen_by_their_part(page, 
     assert "/api/autofill/pick" not in out["calls"] and "/api/autofill/step" not in out["calls"]
 
 
-def test_a_part_the_date_does_not_have_is_left_calmly(page, load):
-    """No day in a YYYY-MM fact, no month in a year-only one: nothing is
-    written, nothing is asked, and the row says why."""
+def test_a_part_the_date_does_not_have_is_the_first_and_reported_assumed(page, load):
+    """Owner decision (low stakes are decisive decisions): no day in a YYYY-MM fact is the 1st, no month in
+    a year-only one is January. The part is written and the row says it was assumed, with its fixed note."""
     days = [opt(f"o{i}", str(i)) for i in range(1, 32)]
     out = run(page, load, frames=[[f("d", "select", "Start: Day", part="day", options=days, optionsComplete=True),
                                    f("m", question="Graduated: Month", part="month")]],
               map={"d": dated(), "m": dated("2019", "education.0.end_year")})
-    assert statuses(out) == {"d": "needs_answer", "m": "needs_answer"}
-    assert [row(out, x)["lastOutcome"] for x in ("d", "m")] == ["no_date_part", "no_date_part"]
-    assert row(out, "d")["answer"] == "Your profile has no day for this date."
-    assert row(out, "m")["answer"] == "Your profile has no month for this date."
-    assert actions(out) == [] and "/api/autofill/pick" not in out["calls"]
+    assert statuses(out) == {"d": "assumed", "m": "assumed"}
+    assert [row(out, x)["note"] for x in ("d", "m")] == ["Day set to the 1st", "Month set to January"]
+    assert [a["text"] for a in actions(out, "choose")] == ["1"] and [a["value"] for a in actions(out, "write")] == ["01"]
+
+
+def test_a_year_the_date_does_not_have_is_never_invented(page, load):
+    out = run(page, load, frames=[[f("y", question="Start: Year", part="year")]],
+              map={"y": {"route": "slot", "slot": "experience.0.start", "value": "", "format": "date"}})
+    assert statuses(out) == {"y": "needs_answer"} and actions(out) == []
 
 
 def test_a_month_list_with_no_option_for_the_month_is_left(page, load):

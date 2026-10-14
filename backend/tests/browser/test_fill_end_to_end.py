@@ -695,7 +695,7 @@ def test_icims_date_parts_get_their_own_part_and_a_current_job_no_end(e2e_page, 
     both Year boxes were mapped to a start date and given "2026-06", and the
     current job's End Date Year got the earlier job's end. Each part now asks
     its row's question, a Year box gets the year, a Month list the month in
-    its own spelling, a Day list (no day in the profile) is left, and a
+    its own spelling, a Day list (no day in the profile) gets the 1st, and a
     current job's End Date gets nothing — even when the model reaches for
     another job's end, as it did live."""
     page = e2e_page
@@ -706,13 +706,13 @@ def test_icims_date_parts_get_their_own_part_and_a_current_job_no_end(e2e_page, 
     out = _run(page, fixtures=["icims_profile.html"], backend=True)
     assert page.input_value("#icims_0_startdate_year") == "2026"
     assert page.evaluate("document.getElementById('icims_0_startdate_month').selectedOptions[0].text") == "Jun"
-    assert page.input_value("#icims_0_startdate_date") == ""
     for part in ("month", "date", "year"):
         assert page.input_value(f"#icims_0_enddate_{part}") == "", part
     status = {q: (r["status"], r["lastOutcome"]) for q, r in out["by_question"].items()}
     assert status[f"{START}: Year"][0] == "verified" and status[f"{START}: Month"][0] == "verified"
-    assert status[f"{START}: Day"] == ("needs_answer", "no_date_part")
-    assert out["by_question"][f"{START}: Day"]["answer"] == "Your profile has no day for this date."
+    # No day in the profile: the 1st (owner decision), written and reported assumed.
+    assert status[f"{START}: Day"][0] == "assumed" and out["by_question"][f"{START}: Day"]["note"] == "Day set to the 1st"
+    assert page.evaluate("document.getElementById('icims_0_startdate_date').selectedOptions[0].text") == "1"
     for part in ("Month", "Day", "Year"):
         assert status[f"{END}: {part}"] == ("needs_answer", "unclear_job"), part
     assert out["by_question"][f"{END}: Year"]["answer"] == "Left for you: it isn't clear which of your jobs this entry is."

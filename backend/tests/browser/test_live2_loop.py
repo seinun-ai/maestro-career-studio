@@ -124,3 +124,32 @@ def test_the_trace_records_took_back_and_the_fields_value_changes(e2e_page, tmp_
     assert "Analytics" not in str([s for s in posted["steps"]])
     [row] = [r for r in out["report"]["fields"] if r["question"] == "Field of study"]
     assert row["changes"] == field["changes"]
+
+
+# --- review follow-ups: fixed sentences instead of retries, and the date parts
+def test_a_date_outside_the_boxs_range_is_the_users_with_a_fixed_sentence_and_is_not_retried(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<form><label for='s'>Start date</label><input id='s' type='date' max='2021-04-30'></form>",
+               map={"Start date": {"route": "slot", "slot": "experience.0.start", "value": "2021-05", "format": "date"}})
+    row = out["by_question"]["Start date"]
+    assert (row["status"], row["lastOutcome"]) == ("needs_answer", "outside_date_range"), row
+    assert row["answer"] == "This date is outside the range the box allows. Left for you."
+    assert len([m for m in out["sent"] if m["type"] == "fill_apply"]) == 1   # one write, no retries
+
+
+def test_a_url_longer_than_its_box_is_the_users_with_a_fixed_sentence_and_is_not_retried(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<form><label for='w'>Website</label><input id='w' maxlength='20'></form>", map={"Website": WEBSITE})
+    row = out["by_question"]["Website"]
+    assert (row["status"], row["lastOutcome"]) == ("needs_answer", "too_long"), row
+    assert row["answer"] == "This box is too short for the whole link, so nothing was typed. Left for you."
+    assert len([m for m in out["sent"] if m["type"] == "fill_apply"]) == 1
+
+
+def test_a_clamped_date_is_reported_assumed_with_its_own_note(e2e_page):
+    page = e2e_page
+    out = _run(page, html="<form><label for='s'>Start date</label><input id='s' type='date' min='2021-05-10'></form>",
+               map={"Start date": {"route": "slot", "slot": "experience.0.start", "value": "2021-05", "format": "date"}})
+    row = out["by_question"]["Start date"]
+    assert (row["status"], row["note"]) == ("assumed", "Date set to the nearest the box allows"), row
+    assert page.input_value("#s") == "2021-05-10"
