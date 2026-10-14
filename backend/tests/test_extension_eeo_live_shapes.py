@@ -65,11 +65,46 @@ def test_not_a_veteran_is_never_answered_as_a_veteran(tmp_path, answer):
 
 
 @pytest.mark.parametrize("answer", _YES)
-def test_a_veteran_still_matches_an_affirmative(tmp_path, answer):
-    """Anchoring the negatives must not cost the positive answer."""
+def test_a_yes_picks_a_plain_veteran_option(tmp_path, answer):
+    """Anchoring the negatives must not cost the positive answer when the form has one."""
     label = "veterans status: select one required | personalinfous--veteranstatus"
-    result = _run(tmp_path, label, _VETERAN_OPTIONS, {"veteran_status": answer})
-    assert "identify as" in result["values"][label]
+    options = ["Select One", "I am not a veteran", "I am a veteran", "I don't wish to answer"]
+    result = _run(tmp_path, label, options, {"veteran_status": answer})
+    assert result["values"][label] == "I am a veteran"
+    assert outcome_for(result, label) == "filled"
+
+
+@pytest.mark.parametrize("answer", _YES)
+@pytest.mark.parametrize("protected", [
+    "I identify as one or more of the classifications of protected veterans listed above",
+    "I identify as a veteran, just not a protected veteran",
+    "Disabled veteran", "Recently separated veteran", "Active duty wartime or campaign badge veteran",
+    "Armed Forces service medal veteran",
+])
+def test_a_yes_alone_never_picks_a_protected_class(tmp_path, answer, protected):
+    """A Yes says they served, not WHICH protected class (if any) applies: the list is the user's."""
+    label = "veterans status: select one required | personalinfous--veteranstatus"
+    options = ["Select One", protected, "I am not a veteran", "I don't wish to answer"]
+    result = _run(tmp_path, label, options, {"veteran_status": answer})
+    assert result["values"][label] == "Select One"
+    assert result["eeoFilled"] == []
+
+
+def test_workdays_real_list_is_left_to_a_yes(tmp_path):
+    label = "veterans status: select one required | personalinfous--veteranstatus"
+    result = _run(tmp_path, label, _VETERAN_OPTIONS, {"veteran_status": "yes"})
+    assert result["values"][label] == "Select One"
+
+
+@pytest.mark.parametrize("answer", _YES)
+def test_a_yes_never_answers_a_protected_veteran_question_even_with_yes_no_options(tmp_path, answer):
+    label = "Are you a protected veteran? | personalinfous--protectedveteran"
+    result = _run(tmp_path, label, ["Select One", "Yes", "No"], {"veteran_status": answer})
+    assert result["values"][label] == "Select One"
+    assert result["eeoFilled"] == []
+    # …while a No still answers it.
+    result = _run(tmp_path, label, ["Select One", "Yes", "No"], {"veteran_status": "no"})
+    assert result["values"][label] == "No"
 
 
 def test_declining_still_finds_the_decline_option(tmp_path):

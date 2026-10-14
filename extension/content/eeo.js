@@ -38,10 +38,16 @@
         /^\s*i\s+(?:do\s+not|don'?t)\s+identify\s+as\b/i,
         /^\s*no\b/i,
       ],
-      // Left unanchored on purpose — every wording of an affirmative starts
-      // with the claim — but see `veteranClaimIsAmbiguous` below for the case
-      // this cannot decide.
-      veteran: [/identify as .*veteran/i, /^yes/i],
+      // A Yes to "Are you a veteran?" (owner, 2026-10-14) says they served, never WHICH protected
+      // class applies, nor whether any does. So an affirmative here is a plain claim of being a
+      // veteran or a bare Yes, and nothing that names a protected class: "I identify as one or more
+      // of the classifications of protected veterans", "Disabled veteran", "Recently separated
+      // veteran", "Active duty wartime or campaign badge veteran", "Armed Forces service medal
+      // veteran" are the user's to choose, as the backend leaves them (autofill_pick._veteran_claims).
+      veteran: [
+        /^\s*yes\b(?!.*(?:protected|classification|disabled|separated|wartime|campaign|service medal))/i,
+        /^\s*i\s+(?:am|identify\s+as)\s+a\s+veteran\s*\.?\s*$/i,
+      ],
       disability_no: [/no,? i do,?n'?t have a disability/i, /don'?t have a disability/i, /^no\b/i],
       disability_yes: [/yes,? i have a disability/i, /^yes\b/i],
       male: [/^male$/i, /^man$/i],
@@ -67,6 +73,11 @@
     const selfDescription = String(e.gender_self_describe ?? "").trim();
     const yesNo = (value) =>
       (value === true ? "yes" : value === false ? "no" : value);
+    // A question about protected-veteran classifications, whatever its options say: a Yes does not answer it.
+    const PROTECTED_CLASS_QUESTION = /protected\s+veteran|classifications?|categories\s+of\s+(?:protected\s+)?veterans/i;
+    const yesToVeteranCannotAnswer = (kind, value, labelText) =>
+      kind === "veteran" && (value === "yes" || value === "veteran")
+      && PROTECTED_CLASS_QUESTION.test(String(labelText ?? ""));
     const isEeoLabel = (label) =>
       /veteran|disab|hispanic|latino|gender|\bsex\b|race|ethnic/i.test(label)
       || SELF_DESCRIBE.test(label);
@@ -178,7 +189,7 @@
     };
 
     return {
-      rules, isEeoLabel, optionWordsFor, optionFor, canonicalOptionText,
+      rules, isEeoLabel, optionWordsFor, optionFor, canonicalOptionText, yesToVeteranCannotAnswer,
       ownWords, bestGenderItem, textAnswer, retryValue,
     };
   }
@@ -263,6 +274,12 @@
     commitValue,
     commitOk,
   }) {
+    // A Yes never answers a protected-veteran classification question: left to the user.
+    if (context.yesToVeteranCannotAnswer(res.kind, res.value, labelText)) {
+      observe(input, kind, labelText, rule, "skip_rule");
+      return;
+    }
+
     const record = (item, stuck = true) => {
       filled.push({ ...item, rule: rule.id, fid: ns.fillInventory?.fidFor(input) ?? null });
       if (stuck) {

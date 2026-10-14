@@ -1256,19 +1256,31 @@ def test_a_no_never_lands_on_an_option_that_claims_to_be_a_veteran(db_session, m
     assert got["v"].oids == [] and got["v"].reason == "abstained"
 
 
+# VEVRAA's protected classes, as forms word them (with or without the word "protected").
+VEVRAA_CLASSES = ("Disabled veteran", "Recently separated veteran", "Active duty wartime or campaign badge veteran",
+                  "Armed Forces service medal veteran")
+
+
 @pytest.mark.usefixtures("jev_on")
-@pytest.mark.parametrize("options, wanted", [
-    (MILITARY, 1),                                               # the protected-class list
-    (SERVED_OR_NOT, 1),                                          # "a veteran, but not a protected one"
-    (("I identify as a Protected Veteran", "I am not a Veteran."), 1),
+@pytest.mark.parametrize("question, options, wanted", [
+    ("Protected veteran status", MILITARY, 1),                    # the protected-class list
+    ("Veteran Status", SERVED_OR_NOT, 1),                         # "a veteran, but not a protected one"
+    ("Veteran Status", ("I identify as a Protected Veteran", "I am not a Veteran."), 1),
+    # A form that names the classes without the word "protected": the class itself, or a plain
+    # "I am a veteran" beside it, is still an answer to which class applies.
+    *[("Veteran Status", (cls, "I am not a Veteran."), 1) for cls in VEVRAA_CLASSES],
+    *[("Veteran Status", ("I am a veteran", cls, "I am not a Veteran."), 1) for cls in VEVRAA_CLASSES],
+    # The QUESTION asks about protected classes: a bare Yes does not answer it.
+    ("Are you a protected veteran?", ("Yes", "No"), 1),
+    ("Please check the classification that applies", ("Yes", "No"), 1),
 ])
-def test_a_yes_alone_never_picks_a_protected_class(db_session, monkeypatch, options, wanted):
+def test_a_yes_alone_never_picks_a_protected_class(db_session, monkeypatch, question, options, wanted):
     """A Yes says they served, not WHICH protected class (or whether any) applies: asked, however sure
-    the model is."""
+    the model is, whatever the chosen option says: the question and the whole list are read."""
     facts = autofill_catalog.build({"eeo": {"veteran_status": "yes"}}, [], [])
     fake_jev(monkeypatch, {"v": (f"o{wanted}", 0.99)}, ways={"v": ("same", 0.95)})
-    got = autofill_pick.pick([pf("v", question="Protected veteran status", slot="eeo.veteran_status",
-                                 options=opts(*options))], facts, db_session, None)
+    got = autofill_pick.pick([pf("v", question=question, slot="eeo.veteran_status", options=opts(*options))],
+                             facts, db_session, None)
     assert got["v"].oids == [] and got["v"].reason == "abstained"
 
 

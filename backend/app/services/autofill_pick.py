@@ -387,30 +387,43 @@ def _years_first(fields: list[PickField], facts: dict[str, Fact], hint: JobHint 
 # The veteran answer is a Yes/No ("Are you a veteran?", owner 2026-10-14): a No settles every option that
 # says "not a (protected) veteran", but never one that claims veteran status (an option that opens "I am a
 # veteran, but not a protected veteran" does, and it contains the words "not a protected veteran"); a Yes
-# claims nothing about a protected class, so an option that names one is the user's. Anchored as the
-# Companion's own option words are (content/eeo.js).
+# claims nothing about a protected class. So after a Yes, a QUESTION about protected classes, or a list that
+# offers one anywhere, is the user's whatever option was chosen: the classes are VEVRAA's (disabled,
+# recently separated, active duty wartime or campaign badge, Armed Forces service medal), and a form may
+# name them with or without the word "protected". Anchored as the Companion's own option words are
+# (content/eeo.js).
 VETERAN_SLOT = "eeo.veteran_status"
 _CLAIMS_VETERAN = re.compile(r"^\W*(?:i\s+(?:am|was)\s+(?:a\s+)?(?:protected\s+)?veteran\b|i\s+identify\s+as\b)",
                              re.IGNORECASE)
-_NAMES_PROTECTED_CLASS = re.compile(r"\bprotected\b|\bclassifications?\b", re.IGNORECASE)
+_NAMES_PROTECTED_CLASS = re.compile(
+    r"\bprotected\b|\bclassifications?\b|\bvevraa\b|\bdisabled\s+veterans?\b"
+    r"|\b(?:recently\s+)?separated\s+veterans?\b|\bactive\s+duty\s+wartime\b|\bcampaign\s+badge\b"
+    r"|\barmed\s+forces\s+service\s+medal\b", re.IGNORECASE)
+_ASKS_PROTECTED_CLASS = re.compile(r"\bprotected\s+veterans?\b|\bclassifications?\b|\bcategor(?:y|ies)\s+of\b.*\bveterans?\b",
+                                   re.IGNORECASE)
 
 
 def _veteran_claims(fields: list[PickField], facts: dict[str, Fact], out: dict[str, Picked]) -> None:
-    """Take back a veteran pick that says more than the saved answer does: after a No, an option that
-    claims veteran status; after a Yes, an option that names a protected class. Left to the user."""
+    """Take back a veteran pick that says more than the saved answer does. After a No: an option that
+    claims veteran status. After a Yes: any pick on a question about protected classes, or among options
+    that name one (the chosen option or any other of the list). Left to the user."""
     fact = facts.get(VETERAN_SLOT)
     if fact is None or not isinstance(fact.value, str):
         return
-    said = yes_no_word(fact.value)
-    wrong = {"No": _CLAIMS_VETERAN, "Yes": _NAMES_PROTECTED_CLASS}.get(said.split(",", 1)[0])
-    if wrong is None:
+    said = yes_no_word(fact.value).split(",", 1)[0]
+    if said not in ("No", "Yes"):
         return
     for f in fields:
         picked = out.get(f.fid)
         if f.slot != VETERAN_SLOT or picked is None or not picked.oids:
             continue
         text = next((o.text for o in f.options if o.oid == picked.oids[0]), "")
-        if wrong.search(text):
+        if said == "No":
+            wrong = bool(_CLAIMS_VETERAN.search(text))
+        else:
+            wrong = (bool(_ASKS_PROTECTED_CLASS.search(f.question))
+                     or any(_NAMES_PROTECTED_CLASS.search(o.text) for o in f.options))
+        if wrong:
             out[f.fid] = picked.model_copy(update={"oids": [], "reason": "abstained"})
 
 
