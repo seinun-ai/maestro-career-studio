@@ -184,6 +184,39 @@ def test_confirmation_and_closed_text(page, load):
     assert s["confirmationPhrase"] is None
 
 
+@pytest.mark.parametrize("words", [
+    "This job has been closed.", "This position is now closed", "This posting is closed", "This requisition has been closed",
+    "The role has been filled.", "This job is no longer accepting applications.", "This position is no longer available",
+    "No longer open for applications", "No longer accepting applications",
+])
+def test_every_closed_wording_reads_as_closed(page, load, words):
+    load(page, f"<h1>Analyst</h1><p>{words}</p>", SOURCES)
+    assert summary(page)["closedText"] is True
+    assert classify(page)["kind"] == "closed"
+
+
+@pytest.mark.parametrize("prose", [
+    "Hires are made at the level at which this position is filled.",
+    "Applications are reviewed until the job is filled by a candidate.",
+    "Our teams are always open to new ideas.",
+])
+def test_job_description_prose_is_not_a_closed_notice(page, load, prose):
+    load(page, f"<h1>Analyst</h1><p>{prose}</p><a href='/apply'>Apply</a>", SOURCES)
+    assert summary(page)["closedText"] is False
+    assert classify(page)["kind"] == "posting"
+
+
+def test_a_posting_with_the_closed_sentence_in_its_description_and_an_apply_link_is_a_posting(page, load):
+    load(page, "<h1>Analyst</h1><p>Pay is set at the level at which this position has been filled before.</p>"
+               "<a href='https://jobs.acme.test/apply'>Apply now</a>", SOURCES)
+    assert classify(page)["kind"] == "posting"
+
+
+def test_this_position_has_been_filled_with_no_apply_is_closed(page, load):
+    load(page, "<h1>Analyst</h1><p>This position has been filled.</p>", SOURCES)
+    assert classify(page)["kind"] == "closed"
+
+
 def test_the_confirmation_phrase_is_the_match_and_none_of_the_page_around_it(page, load):
     load(page, "<p>Hi Zelda-Secret-9, thank you for applying to Acme. Your reference is 4471.</p>", SOURCES)
     s = summary(page)

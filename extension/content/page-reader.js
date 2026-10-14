@@ -50,7 +50,9 @@
   const BUTTONS = 'button, input[type="submit"], input[type="button"], a[role="button"]';
   const APPLY_TEXT = /^\s*apply( now| for this job)?\s*$/i;
   const CONFIRMATION = /thank you for (applying|your application)|application (was )?(submitted|received)|we('ve| have) received your application/i;
-  const CLOSED = /no longer (accepting applications|available)|this (job|position) (has been|is) (closed|filled)/i;
+  // A closed notice, not a job description's prose ("…the level at which this position is filled"): the page
+  // also has to hold nothing fillable and no Apply before the classifier believes it (shared/page-kind.js).
+  const CLOSED = /\bthis (?:job|position|posting|requisition) (?:has been|is now|is) closed\b|\bhas been filled\b|\b(?:is )?no longer (?:accepting applications|available|open)\b/i;
   // An external Apply link often says where it goes ("Apply on company site"), which APPLY_TEXT
   // alone would not match; the link reader accepts either.
   const APPLY_OFFSITE_TEXT = /^\s*apply\b[^.]{0,30}\b(company|employer)(?:'s|\u2019s)?\s+(?:web)?site\s*$/i;

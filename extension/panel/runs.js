@@ -69,7 +69,7 @@
       "This job board has its own apply button, and the Companion doesn't use it. Apply there yourself."],
   };
   const STOPS = {
-    closed: ["Position closed", "This job is no longer taking applications."],
+    closed: ["Position closed", "This job is no longer taking applications. Not closed? Press Resume."],
     bad_link: ["Bad link", "The saved apply link isn't a web address the Companion can open."],
     error: ["Something went wrong", "The Companion stopped. Nothing was submitted. You can carry on in the tab yourself."],
     user: ["Stopped", "You stopped it. Nothing was submitted."],
@@ -82,7 +82,7 @@
   // Parked: no Resume where the user cannot fix it in the tab (the run has hit its own limit, or the
   // job board's button is the site's). Stopped: only the ones a user may take back.
   const NO_RESUME = new Set(["step_limit", "board_native"]);
-  const RESUMABLE_STOPS = new Set(["error", "user", "interrupted"]);
+  const RESUMABLE_STOPS = new Set(["error", "user", "interrupted", "closed"]);
   // A ready tab the user took back to a form step (`movedOn`) can be resumed to fill that page.
   const canResume = (run) => (run.status === "parked" ? !NO_RESUME.has(run.why)
     : run.status === "ready" ? run.movedOn === true

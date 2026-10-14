@@ -289,6 +289,13 @@ def test_a_wall_parks_with_its_own_kind_and_presses_nothing(tmp_path, kind):
     assert names(out, "advance") == [] and names(out, "fill") == []
 
 
+def test_a_resume_after_a_closed_stop_drives_the_page_it_finds(tmp_path):
+    """"Not closed? Press Resume": the page was misread, or the user reopened it."""
+    stopped = {"tabId": 7, "status": "stopped", "why": "closed", "hosts": ["jobs.acme.test"], "filled": True}
+    out = _drive(tmp_path, [step(1), REVIEW], record=stopped)
+    assert out["record"]["status"] == "ready" and out["pressed"] == ["next-1"]
+
+
 def test_a_closed_posting_stops_the_run(tmp_path):
     out = _drive(tmp_path, [{"t": "closed"}])
     assert (out["record"]["status"], out["record"]["why"]) == ("stopped", "closed")

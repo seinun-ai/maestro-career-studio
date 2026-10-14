@@ -65,7 +65,9 @@
     if (s.otpInput) return { kind: "verify" };
     if (s.passwordInputs === 1) return { kind: "sign_in" };
     if (s.confirmationText && !s.fillable) return { kind: "confirmation" };
-    if (s.closedText) return { kind: "closed" };
+    // The closed words count only on a page with nothing to fill and no Apply: a job description can say
+    // "this position has been filled" in its prose, and the form or the Apply beside it says it is open.
+    if (s.closedText && !s.fillable && !s.hasApplyLink) return { kind: "closed" };
     if (s.hasApplyLink && !s.fillable) return { kind: "posting" };
 
     // A button that is only a line of the error summary ("Error - <what>", not marked as a submit by the page)

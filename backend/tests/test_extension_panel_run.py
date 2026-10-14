@@ -424,7 +424,7 @@ def test_every_park_has_words_and_the_resume_and_skip_it_allows(tmp_path, why, r
 
 
 @pytest.mark.parametrize("why,reason,resume", [
-    ("closed", "Position closed", False), ("bad_link", "Bad link", False),
+    ("closed", "Position closed", True), ("bad_link", "Bad link", False),
     ("error", "Something went wrong", True), ("user", "Stopped", True),
     ("tab_closed", "Tab closed", False), ("interrupted", "Interrupted", True),
 ])
@@ -1569,3 +1569,11 @@ def test_a_ready_card_that_has_not_been_left_offers_no_resume_and_no_moved_on_li
     out = _run(tmp_path, [{"start": SEED}], pages=(STEP1, REVIEW))
     body = _card(out["shots"][-1])["body"]
     assert "run-resume" not in _buttons(body) and "You moved on" not in _text(body)
+
+
+def test_the_closed_stop_says_how_to_take_it_back_and_resume_drives_the_page(tmp_path):
+    out = _run(tmp_path, [{"seed": [_seeded("stopped", why="closed", readyAt=None)]}])
+    body = _card(out["shots"][1])["body"]
+    assert "Not closed? Press Resume." in _text(body) and _buttons(body)["run-resume"] == "Resume"
+    again = _run(tmp_path, [{"seed": [_seeded("stopped", why="closed")]}, {"press": "run-resume"}], pages=(STEP1, REVIEW))
+    assert _record(again["shots"][-1])["status"] == "ready"

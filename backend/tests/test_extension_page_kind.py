@@ -205,8 +205,15 @@ def test_confirmation_needs_the_text_and_no_fillable_field(tmp_path):
     assert kind(tmp_path, confirmationText=True, fillable=2, buttons=[btn("Next")])["kind"] != "confirmation"
 
 
-def test_closed_is_the_closed_text(tmp_path):
-    assert kind(tmp_path, closedText=True, hasApplyLink=True)["kind"] == "closed"
+def test_closed_is_the_closed_text_on_a_page_with_nothing_to_fill_and_no_apply(tmp_path):
+    assert kind(tmp_path, closedText=True)["kind"] == "closed"
+    assert kind(tmp_path, closedText=True, buttons=[btn("Back")])["kind"] == "closed"
+
+
+def test_the_closed_words_in_a_posting_that_still_has_an_apply_or_a_form_are_not_a_closed_page(tmp_path):
+    """A job description can say "this position is filled…" in its prose; an Apply or a form says it is open."""
+    assert kind(tmp_path, closedText=True, hasApplyLink=True)["kind"] == "posting"
+    assert kind(tmp_path, closedText=True, fillable=2, buttons=[btn("Next", id="n")]) == {"kind": "form_step", "next": "n"}
 
 
 def test_posting_is_an_apply_link_and_nothing_to_fill(tmp_path):
