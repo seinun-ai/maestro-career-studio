@@ -155,19 +155,45 @@ def how_heard_kind(value: str) -> str | None:
 _NON_ALNUM = re.compile(r"[^0-9a-z]+")
 
 
-def _folded(text: str) -> str:
-    return _NON_ALNUM.sub("", text.casefold())
+def _tokens(text: str) -> list[str]:
+    return [t for t in _NON_ALNUM.split(text.casefold()) if t]
+
+
+def _names_board(text: str, board: str) -> bool:
+    """Whether `text` names `board` as whole tokens ("rec_linkedin" names LinkedIn; "prejudice" does not name
+    Dice). A name of several words also matches run together ("builtin"), which no single token could."""
+    want, have = _tokens(board), _tokens(text)
+    if any(have[i:i + len(want)] == want for i in range(len(have) - len(want) + 1)):
+        return True
+    return len(want) > 1 and "".join(want) in have
 
 
 def board_of(value: str, hint: JobHint | None) -> str | None:
     """The known board a "how did you hear" answer is about: the board the page's `source` hint names
     ("linkedin", "rec_linkedin"), else a board named in the saved value; None when neither names one."""
     for text in (hint.source if hint and hint.source else None, value):
-        folded = _folded(text or "")
-        named = [name for name in BOARD_NAMES if _folded(name) in folded]
+        named = [name for name in BOARD_NAMES if text and _names_board(text, name)]
         if named:
             return max(named, key=len)
     return None
+
+
+def _quoted_text(describe: str) -> str | None:
+    """The first JSON-quoted string of a move's description (the option's own text; a suffix like
+    '(under "Social Media")' is not it)."""
+    if m := _QUOTED.search(describe):
+        try:
+            text = json.loads(m.group())
+        except ValueError:
+            return None
+        return text if isinstance(text, str) else None
+    return None
+
+
+def _tried_and_missed(history: list[str], mid: str) -> bool:
+    """Whether the step's history shows a move on `mid` that did not just progress (a failed click, a refused
+    repeat, no change, a timeout): the model gets the next turn."""
+    return any(e.startswith(f"{mid} -> ") and not e.startswith(f"{mid} -> progressed") for e in history)
 
 
 def _board_move(req: StepRequest, value: str, hint: JobHint | None) -> StepResponse | None:
@@ -178,9 +204,9 @@ def _board_move(req: StepRequest, value: str, hint: JobHint | None) -> StepRespo
     if not (board := board_of(value, hint)):
         return None
     for c in req.candidates:
-        text = _option_text(c.describe)
+        text = _quoted_text(c.describe)
         if (c.mid.startswith("click:") and not c.describe.startswith(GROUP_CLICK) and text is not None
-                and text.casefold() == board.casefold()):
+                and text.casefold() == board.casefold() and not _tried_and_missed(req.history, c.mid)):
             # The saved word itself is the profile's answer; any other leaf is the Companion's pick.
             return StepResponse(mid=c.mid, reason="matched" if text.casefold() == value.casefold() else "assumed",
                                 trace=DecisionTrace())

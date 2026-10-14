@@ -1436,3 +1436,42 @@ def test_a_worked_here_step_states_the_histories_answer_for_the_company_the_ques
             candidates=[{"mid": "click:o1", "describe": 'Click the option "No"'}, {"mid": GIVE_UP, "describe": "Stop"}])
     autofill_step.step(r, facts, db_session, None)
     assert f"the answer to the question is {json.dumps(answer)}" in calls[0]["questions"]["f"]["instructions"]
+
+
+# ---------- N1 review fixes: a failed leaf click, an option with a suffix, whole-token board names
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("entry", ["click:o9 -> already_failed", "click:o9 -> unexpected (group_committed)",
+                                   "click:o9 -> no_change", "click:o9 -> timeout"])
+def test_a_leaf_click_that_already_failed_gives_the_model_a_turn(db_session, monkeypatch, entry):
+    calls = fake_jev(monkeypatch, ("click:o2", 0.9))
+    leaves = [{"mid": "click:o2", "describe": 'Click the option "Indeed"'},
+              {"mid": "click:o9", "describe": 'Click the option "LinkedIn"'}, {"mid": GIVE_UP, "describe": "Stop"}]
+    got = heard_step(db_session, heard(candidates=leaves, history=["search:term -> progressed", entry]), BOARD_HINT)
+    assert len(calls) == 1 and got.mid == "click:o2"
+
+
+def test_a_leaf_click_that_only_progressed_earlier_is_still_taken(db_session, monkeypatch):
+    no_model(monkeypatch)
+    leaves = [{"mid": "click:o9", "describe": 'Click the option "LinkedIn"'}]
+    got = heard_step(db_session, heard(candidates=leaves, history=["click:o9 -> progressed"]), BOARD_HINT)
+    assert got.mid == "click:o9"
+
+
+def test_an_option_described_with_a_suffix_still_matches_by_its_first_quoted_text(db_session, monkeypatch):
+    no_model(monkeypatch)
+    leaves = [{"mid": "click:o9", "describe": 'Click the option "LinkedIn" (under "Social Media")'}]
+    got = heard_step(db_session, heard(candidates=leaves), BOARD_HINT)
+    assert (got.mid, got.reason) == ("click:o9", "assumed")
+
+
+@pytest.mark.parametrize("source", ["prejudice", "monsterenergy", "dicey", "paradice", "indeedless"])
+def test_a_source_that_only_contains_a_board_name_is_no_board(source):
+    assert autofill_step.board_of("Job board", JobHint(title=None, company=None, source=source)) is None
+
+
+@pytest.mark.parametrize(("source", "board"), [("rec_linkedin", "LinkedIn"), ("utm-dice", "Dice"),
+                                               ("Built In", "Built In"), ("builtin", "Built In"),
+                                               ("levels.fyi", "Levels.fyi"), ("careerbuilder", "CareerBuilder")])
+def test_a_board_is_matched_as_whole_tokens_or_a_multi_word_name_run_together(source, board):
+    assert autofill_step.board_of("Job board", JobHint(title=None, company=None, source=source)) == board
