@@ -1256,6 +1256,17 @@ def test_a_resume_on_a_several_nexts_park_fills_but_does_not_vouch(tmp_path):
     assert again["fillCalls"] == 1 and again["pressed"] == []
 
 
+def test_a_resume_vouch_does_not_survive_a_read_that_now_shows_several_nexts(tmp_path):
+    """Parked on fields with no Next, then the page reads as several Nexts: a real Next is on it, so it is not vouched."""
+    first = _drive(tmp_path, [step(1), UNSURE])
+    assert first["record"]["lastBy"] == "fields_no_next"
+    page = {"t": "review_next", "url": "/last", "key": "lastpage"}
+    again = _drive(tmp_path, [page], record=first["record"])
+    r = again["record"]
+    assert (r["status"], r["why"], r["lastBy"]) == ("parked", "unsure_page", "several_next")
+    assert r.get("readyBy") is None and again["pressed"] == []
+
+
 def test_a_resume_that_finds_a_form_step_voids_the_vouch_fills_and_presses_next(tmp_path):
     parked = _parked_unsure(tmp_path)
     last = {"t": "step", "n": 9, "url": "/last", "key": "lastpage", "needs": [NEED]}

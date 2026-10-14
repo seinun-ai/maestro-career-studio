@@ -684,7 +684,8 @@
           // reason a page reads as a review (a Submit the reader could not see, a dialog that asks, several
           // Nexts, fields and no Next) means "stop, not sure": never Ready.
           await update({ lastBy: by });
-          const unsure = by !== "submit_button" && !vouched;
+          // A vouch is for the reason the Resume was given for: a read that now shows several Nexts is not vouched.
+          const unsure = by !== "submit_button" && !(vouched && VOUCHABLE.has(by));
           // The page still complains: one repair of what it names, as after a rejected Next; the same
           // complaint again parks naming it.
           if ((summary.errors ?? 0) > 0) {
