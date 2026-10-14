@@ -617,7 +617,7 @@ def test_a_map_case_is_scored_against_the_slot_it_routes(monkeypatch):
     cases = [c for c in MAPS["cases"] if c["id"] in ("phone-extension", "phone-number", "country-phone-code")]
     routed = {"phone-extension": Mapped(route="slot", slot="personal.phone", value="555-0100"),
               "phone-number": Mapped(route="none"),
-              "country-phone-code": Mapped(route="slot", slot="personal.country", value="United States")}
+              "country-phone-code": Mapped(route="slot", slot="derived.phone_country", value="+1 United States")}
     fid_of = {f"m{i}": c["id"] for i, c in enumerate(cases)}
     monkeypatch.setattr(autofill_map, "map_fields",
                         lambda fields, *_a, **_k: {f.fid: routed[fid_of[f.fid]] for f in fields})
