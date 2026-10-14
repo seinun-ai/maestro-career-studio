@@ -1452,6 +1452,17 @@ def test_an_empty_or_placeholder_commit_is_never_verified(page, load):
         assert [o["outcome"] for o in obs] == ["unconfirmed"]
 
 
+def test_an_optional_written_history_question_routed_free_text_is_written_not_left_blank(page, load):
+    """"Experience with A/B testing? For how long and for which companies?" is optional prose. /map
+    routes it free_text (autofill_map._route), so the loop writes the career-history answer: it is not
+    the `left_blank` an optional field with no fact gets."""
+    q = "Do you have experience with A/B testing? For how long and for which companies?"
+    out = run(page, load, frames=[[f("h", question=q)]], map={"h": {"route": "free_text"}},
+              choose={"h": {"answer": "Three years at Acme.", "reason": "matched"}})
+    assert (row(out, "h")["status"], row(out, "h")["lastOutcome"]) == ("verified", "verified")
+    assert [a["op"] for a in actions(out)] == ["write"] and out["calls"].count("/api/autofill/choose") == 1
+
+
 def test_an_empty_answer_is_never_written(page, load):
     out = run(page, load, frames=[[f("p", question="Why us?")]], map={"p": {"route": "free_text"}},
               choose={"p": {"answer": "   ", "reason": "matched"}})

@@ -512,11 +512,19 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
         value = facts[key].value
         return Mapped(route="slot", slot=key, value=list(value) if isinstance(value, tuple) else value,
                       format=format_of(key)), floor
-    if key == FREE_TEXT and field.shape == "text" and p >= SLOT_FLOOR:
+    # A written history question ("experience with X? For how long, at which companies?") has no
+    # fact and no option list: the prose route, which carries the career history, answers it.
+    # A choice keeps its route (the reasoning pass picks among options).
+    if key in _WRITTEN_KEYS and field.shape == "text" and p >= SLOT_FLOOR:
         return Mapped(route="free_text"), floor
     if key == BLOCKED_EEO and not eeo_consented and p >= SLOT_FLOOR:
         return Mapped(route="blocked"), floor
     return Mapped(route="none"), floor
+
+
+# The keys that send a TEXT box to the prose route: free text itself, and the two "the history may
+# answer this" sentinels, which a text box cannot use as a pick.
+_WRITTEN_KEYS = frozenset({FREE_TEXT, YEARS_UNANSWERED, HISTORY_UNANSWERED})
 
 
 def _no_fact_key(key: str, eeo_consented: bool) -> bool:

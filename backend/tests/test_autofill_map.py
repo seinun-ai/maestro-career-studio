@@ -294,6 +294,27 @@ def test_free_text_only_routes_a_text_box(db_session, monkeypatch):
 
 
 @pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("key", [autofill_map.YEARS_UNANSWERED, autofill_map.HISTORY_UNANSWERED])
+def test_a_written_history_question_routes_free_text_but_a_choice_keeps_its_route(db_session, monkeypatch, key):
+    """"Experience with A/B testing? For how long and which companies?" is a text box: no fact answers
+    it, and the prose route (which carries the history) writes it. A radio with the same key still
+    goes to the reasoning pass, as before."""
+    fake_jev(monkeypatch, {"t": (key, 0.95), "r": (key, 0.95), "p": (key, 0.95)})
+    fake_llm(monkeypatch)
+    got = run([field("t", "Experience with A/B testing? For how long and for which companies?"),
+               field("r", "Do you have 3+ years of SQL?", "group"),
+               field("p", "Pick one", "popup")], db_session)
+    assert (got["t"].route, got["r"].route, got["p"].route) == ("free_text", "none", "none")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_written_history_question_under_the_floor_is_not_routed_free_text(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"t": (autofill_map.YEARS_UNANSWERED, 0.5)})
+    fake_llm(monkeypatch)
+    assert run([field("t", "How long have you used Tableau?")], db_session)["t"].route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_a_malformed_jev_answer_places_nothing(db_session, monkeypatch):
     monkeypatch.setattr(autofill_map.jev, "decide", lambda q, s, session=None: {
         "a": {"choice": "personal.city", "probabilities": {"personal.city": 1.0}, "confidence": 1.0}})
