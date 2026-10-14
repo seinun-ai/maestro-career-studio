@@ -374,12 +374,12 @@
   // A cut inside an emoji leaves half a surrogate pair, which the schema's
   // string refuses (the sw strips the same way, and also cleans a page's own).
   const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+  const TRACE_SENTINELS = new Set(["free_text", "none", "protected_unanswered", "history_unanswered",
+    "years_unanswered", "blocked_eeo"]);
   const TRACE_ROUTES = new Set(["slot", "free_text", "low_stakes", "reasoned", "none", "blocked"]);
   const TRACE_REASONS = new Set(["matched", "closest", "assumed", "progress", "abstained"]);
   const TRACE_ENGINES = new Set(["jev", "fast"]);
   const TRACE_SECONDS = new Set(["asked", "decided"]);
-  const TRACE_SENTINELS = new Set(["free_text", "none", "protected_unanswered", "history_unanswered",
-    "years_unanswered", "blocked_eeo"]);
   const TRACE_WAYS = new Set(["same", "opposite", "neither", "unsure"]);
   const unit = (x) => typeof x === "number" && x >= 0 && x <= 1;
   // What a model's trace may carry, each value checked as the schema checks it.
