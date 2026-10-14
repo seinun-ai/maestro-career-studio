@@ -438,7 +438,8 @@ _BARE_CLASS = re.compile(r"\b(?:disabled|recently\s+separated|campaign|wartime)\
 # who is no veteran serves nowhere, but "not a veteran" is not "never served" for someone in the Guard
 # or Reserves, so such a No is the Companion's inference (`veteran_inferred`).
 _ASKS_ONLY_CURRENT = re.compile(
-    r"\b(?:currently|presently)\b[^?.]{0,40}?\b(?:serv(?:e|es|ed|ing)|active[-\s]duty|member)\b", re.IGNORECASE)
+    r"\b(?:currently|presently)\b[^?.]{0,40}?\b(?:serv(?:e|es|ed|ing)|active[-\s]duty|member\s+of\s+the\s+(?:military|armed|reserves?|national\s+guard))\b",
+    re.IGNORECASE)
 _ASKS_THE_PAST = re.compile(r"\b(?:ever|previously|formerly|past)\b|\bhave\s+you\b", re.IGNORECASE)
 _CLAIMS_CURRENT_SERVICE = re.compile(
     r"\b(?:currently|presently)\s+(?:serv(?:e|es|ing)|on\s+active|in\s+the|a\s+member)\b"

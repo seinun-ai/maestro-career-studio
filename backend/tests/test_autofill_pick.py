@@ -1421,6 +1421,13 @@ def test_after_a_no_an_option_that_mentions_veteran_is_a_claim_unless_it_opens_w
     assert autofill_pick.veteran_overreach("No", "Veteran status", [text], text) is claims
 
 
+def test_a_member_of_something_else_is_no_current_service_question():
+    assert not autofill_pick.veteran_overreach("Yes", "Are you currently a member of a professional association?",
+                                               ["Yes", "No"], "Yes")
+    assert autofill_pick.veteran_overreach("Yes", "Are you presently a member of the National Guard or Reserves?",
+                                           ["Yes", "No"], "Yes")
+
+
 def test_after_a_no_every_chosen_option_is_checked_not_only_the_first():
     assert autofill_pick.veteran_overreach("No", "Veteran status", [], ["I am not a veteran", "Protected Veteran"])
     assert not autofill_pick.veteran_overreach("No", "Veteran status", [], ["I am not a veteran", "No"])
