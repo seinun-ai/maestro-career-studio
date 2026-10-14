@@ -36,7 +36,10 @@
  *
  * `pageErrors()` reads what the page itself complains about after a Next it refused: its error
  * summary (an alert or live region, or a list headed "Errors Found") and each field it marks
- * invalid, upload boxes included. Words only, never a value: `{count, items: [{label, target, kind}]}`,
+ * invalid, upload boxes and popup buttons included. ONE LINE, ONE NAME: Workday sets the "Error - <question>" button
+ * and "The field <question> is required and must have a value." in one list item with no space between, so a line is
+ * read from its own button or its own first line, never across the two, and a name that maps to no field is tried
+ * again as the name in the "The field X is required" sentence. Words only, never a value: `{count, items: [{label, target, kind}]}`,
  * `label` the page's own wording for the field, `target` the handle of the field it names (a fill
  * field's `fid`, or an upload box's `data-maestro-up` tag), `kind` "field" | "upload" | "unknown".
  * `summary().errors` is the count alone, and the summary's own buttons carry `inErrors` so the
@@ -497,6 +500,24 @@
     };
   }
 
+  // A button or link of an error line that is the line's own "Error - <what>" lead.
+  const LEAD_ITEM = 'button, a[href], [role="button"], [role="link"]';
+  const SENTENCE_NAME = LINE_NAMES[0];   // "The field X is required ..."
+
+  /** One error line, read as ONE line: `{name, control, sentence}` or null when it is no error line. The name comes from
+   * the line's own "Error - <what>" button or link when it holds one (its linked control is the field), else from the
+   * first non-empty line of its text, never from the text of the whole item run together. `sentence` is the X in a
+   * "The field X is required" sentence of the same item, a second name for the same field. */
+  function lineParts(line) {
+    const lead = [...line.querySelectorAll(LEAD_ITEM)].find((n) => ERROR_LEAD.test(squash(n.textContent)));
+    const rows = String(line.innerText ?? line.textContent ?? "").split(/\n+/).map(squash).filter(Boolean);
+    const sentence = rows.map((row) => SENTENCE_NAME.exec(row)?.[1]).find(Boolean) ?? "";
+    const clip = (name) => name.replace(/[\s.:]+$/, "").slice(0, MAX_TEXT * 2);
+    const own = lead ? errorLineOf(lead.textContent) : rows.map((row) => errorLineOf(row)).find(Boolean) ?? null;
+    if (!own) return null;
+    return { name: own.name, control: lead ? linkedControl(lead) : linkedControl(line), sentence: clip(sentence) };
+  }
+
   /** What the page complains about: `{count, items: [{label, target, kind}], keys}`, one item per field
    * (the summary's line and the field's own mark are one error). A mapped item is worded by the field's
    * own question, never by the error line; an unmapped one by its line's field name, and a name that
@@ -504,7 +525,7 @@
    * holds) is UNNAMED. `withTargets` false is the cheap read `summary()` makes: no handle, which would
    * re-list the fill inventory. `keys` are hashes of the labels: which errors, never what. */
   function collectErrors(withTargets, regions = errorRegions()) {
-    const controls = [...document.querySelectorAll(`${CONTROLS}, input[type="file"]`)].filter(boxShown);
+    const controls = [...document.querySelectorAll(`${CONTROLS}, input[type="file"], ${POPUP_BUTTON}`)].filter(boxShown);
     const isInvalid = (el) => (isFileInput(el) ? uploadInvalid(el) : ns.fillBase.invalid(el));
     const questions = new Map();   // read lazily: only a control a line may name, or an invalid one
     const questionFor = (el) => {
@@ -525,19 +546,22 @@
       }
     };
 
+    // The control a name points at: a control whose question is exactly the name, or the one invalid control of those.
+    // Both are the same 160-character clip, so a long question still matches.
+    const mapName = (name) => {
+      const wanted = normal(name);
+      if (!wanted) return null;
+      const same = controls.filter((c) => normal(questionFor(c)) === wanted);
+      const bad = same.filter(isInvalid);
+      return same.length === 1 ? same[0] : bad.length === 1 ? bad[0] : null;
+    };
     for (const region of regions) {
       const all = [...region.querySelectorAll(REGION_ITEMS)].filter((n) => squash(n.textContent) && shown(n));
       for (const line of all.filter((n) => !all.some((o) => o !== n && o.contains(n)))) {
-        const named = errorLineOf(line.textContent);
-        if (!named) continue;
-        let el = linkedControl(line);
-        if (!el) {
-          const wanted = normal(named.name);
-          const same = controls.filter((c) => normal(questionFor(c)) === wanted);
-          const bad = same.filter(isInvalid);
-          el = same.length === 1 ? same[0] : bad.length === 1 ? bad[0] : null;
-        }
-        add(named.name, el);
+        const parts = lineParts(line);
+        if (!parts) continue;
+        const el = parts.control ?? mapName(parts.name) ?? mapName(parts.sentence) ?? linkedControl(line);
+        add(parts.name, el);
       }
     }
     for (const el of controls) {

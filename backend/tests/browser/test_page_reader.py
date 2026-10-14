@@ -2442,6 +2442,77 @@ def test_the_errors_are_words_never_values(page, load):
     assert "Zelda-Secret-9" not in json.dumps(summary(page))
 
 
+# ---------- one error line, one name (Phase 2d, M4) ----------
+#
+# Workday's error list puts the "Error - <question>" button and "The field <question> is required and must
+# have a value." in ONE li with no whitespace between them, so the textContent runs the two together.
+
+GUILD_Q = "Are you a member of the Acme Guild? Please reference this link for a list."
+GUILD_NAME = GUILD_Q.rstrip(".")   # a name loses its trailing full stop, as every error label does
+
+
+def joined_page(question=GUILD_Q, line=None, control=None):
+    line = line if line is not None else (
+        f'<button type="button">Error - {question}</button>'
+        f'<div>The field {question} is required and must have a value.</div>')
+    control = control if control is not None else (
+        f'<div data-automation-id="formField-guild"><label for="guild" id="guild-l">{question}</label>'
+        f'<button id="guild" type="button" aria-haspopup="listbox" aria-invalid="true" '
+        f'aria-label="{question} Select One Required">Select One</button></div>')
+    return f"""<div role="alert"><h3>Errors Found</h3><ul><li>{line}</li></ul></div>
+      <label for="c1">City</label><input id="c1">{control}"""
+
+
+def target_fid(page, element_id):
+    return page.evaluate(f"(id) => window.careerStudioCompanion.fillInventory.fidFor(document.getElementById(id))", element_id)
+
+
+def test_a_joined_error_line_is_named_by_its_button_and_maps_to_the_field(page, load):
+    load(page, joined_page(), SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert item["label"] == GUILD_NAME and "The field" not in item["label"]
+    assert item["kind"] == "field" and item["target"] == target_fid(page, "guild")
+    assert summary(page)["errors"] == 1
+
+
+def test_a_joined_line_with_a_text_box_maps_the_same(page, load):
+    control = (f'<label for="t1">{GUILD_Q}</label><input id="t1" aria-invalid="true" aria-required="true">')
+    load(page, joined_page(control=control), SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert (item["label"], item["kind"], item["target"]) == (GUILD_NAME, "field", target_fid(page, "t1"))
+
+
+def test_a_question_longer_than_the_name_clip_still_maps(page, load):
+    long = "In as much detail as you can, which Acme product lines have you worked on in the last five years "\
+           "and what part did you play in each one of them, including the teams you led and the people you mentored there?"
+    assert len(long) > 160
+    load(page, joined_page(question=long), SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert item["kind"] == "field" and item["target"] == target_fid(page, "guild")
+    assert "The field" not in item["label"] and long.startswith(item["label"][:100])
+
+
+def test_the_line_without_a_lead_button_is_read_by_its_first_line_not_across_lines(page, load):
+    line = (f"<div>Error - {GUILD_Q}</div><div>The field {GUILD_Q} is required and must have a value.</div>")
+    load(page, joined_page(line=line), SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert (item["label"], item["kind"]) == (GUILD_NAME, "field")
+
+
+def test_a_lead_name_that_maps_to_nothing_falls_back_to_the_name_in_the_field_sentence(page, load):
+    line = (f'<button type="button">Error - Question 7 of 12</button>'
+            f'<div>The field {GUILD_Q} is required and must have a value.</div>')
+    load(page, joined_page(line=line), SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert (item["label"], item["kind"], item["target"]) == (GUILD_NAME, "field", target_fid(page, "guild"))
+
+
+def test_a_plain_error_line_with_only_a_sentence_is_unchanged(page, load):
+    load(page, joined_page(line=f"The field {GUILD_Q} is required and must have a value."), SOURCES)
+    (item,) = page_errors(page)["items"]
+    assert (item["label"], item["kind"]) == (GUILD_NAME, "field")
+
+
 # ---------- a real Submit is never swallowed by a region that only looks like an error summary ----------
 
 CONTINUE_ELSEWHERE = "<main><h1>Review</h1><div><button type='button'>Continue</button></div>{block}</main>"
