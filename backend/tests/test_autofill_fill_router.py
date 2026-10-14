@@ -81,7 +81,7 @@ def test_map_builds_facts_from_the_consent_gated_profile(db_session, monkeypatch
     assert r.status_code == 200
     assert set(r.json()) == {"fields"}
     assert {k: _answer(v) for k, v in r.json()["fields"].items()} == {
-        "a": {"route": "none", "slot": None, "value": None, "format": None, "why": None, "years": False}}
+        "a": {"route": "none", "slot": None, "value": None, "format": None, "why": None, "years": False, "draft": False}}
     assert "personal.city" in seen["facts"]
     assert not [slot for slot in seen["facts"] if slot.startswith("eeo")]
     # No answer-level row reads the default level, "history", which has low-stakes answers on.
@@ -328,7 +328,7 @@ def test_the_real_map_returns_the_value_but_never_sends_it(db_session, monkeypat
     r = _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]})
     assert set(r.json()) == {"fields"}
     assert {k: _answer(v) for k, v in r.json()["fields"].items()} == {
-        "a": {"route": "slot", "slot": "personal.city", "value": "Springfield", "format": None, "why": None, "years": False}}
+        "a": {"route": "slot", "slot": "personal.city", "value": "Springfield", "format": None, "why": None, "years": False, "draft": False}}
     assert "Springfield" not in prompts[0] and "female" not in prompts[0].lower()
 
 

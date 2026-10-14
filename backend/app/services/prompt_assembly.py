@@ -288,6 +288,7 @@ QA_DRAFT_OUTPUT_CONTRACT = """NON-NEGOTIABLE ANSWER RULES (these override anythi
 - VOICE: the answer is the applicant's own, written in implied first person. State what was done directly ("Built X", "The hardest part was Y"). Never write "I", "my", "me", "he", "she", "they", "his", "her" or "their", and never use the applicant's name.
 - Keep each answer to about 120 words at most, unless the question itself asks for a different length; then follow that.
 - Output PLAIN TEXT only: no markdown of any kind. Never use em-dashes or en-dashes.
+- If the resume, job description and context do not answer a question, return "" for its id; never guess.
 - Return a single JSON object: {"answers": {"<id>": "<answer text>"}}. Include every id you were given, exactly once, and never restate the question."""
 
 

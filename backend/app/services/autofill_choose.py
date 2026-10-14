@@ -20,6 +20,7 @@ import dataclasses
 import logging
 import re
 import time
+from collections.abc import Callable
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -82,9 +83,10 @@ def _answer_for(field: ChooseField, raw: object) -> str | None:
     return answer or None
 
 
-# The fill loop gives /choose 10 s in all (its API_MS). The draft is one request on what the
-# choose pass left of REPLY_BUDGET_S, never under MIN_DRAFT_S: with less left, nothing is drafted.
-REPLY_BUDGET_S = 9.0
+# The fill loop gives /choose 10 s in all (its API_MS). The draft is one request on what is left of
+# REPLY_BUDGET_S since /choose began (reading the context counts), never under MIN_DRAFT_S: with less left,
+# nothing is drafted.
+REPLY_BUDGET_S = 7.5
 MIN_DRAFT_S = 2.0
 _clock = time.monotonic
 
@@ -99,22 +101,37 @@ def choose(
         out = _choose_with_jev(fields, application_id, session)
     else:
         out = _choose_with_llm(fields, application_id, session)
-    return _with_drafts(fields, out, application_id, session, REPLY_BUDGET_S - (_clock() - began))
+    def time_left() -> float | None:
+        left = REPLY_BUDGET_S - (_clock() - began)
+        return left if left >= MIN_DRAFT_S else None
+
+    return _with_drafts(fields, out, application_id, session, time_left)
 
 
-# What is never drafted: the protected and EEO kinds, work authorization, money, a background or
-# a clearance, a legal attestation or signature, and employment by this company. The same list
-# the low-stakes pass keeps (autofill_map._NEVER_LOW_STAKES_TEMPLATE), as /map's route is not the
-# only way a field reaches /choose. A question that merely MENTIONS one is still not drafted.
+# What is never drafted, as a BACKSTOP behind the map's own sentinel (only a free_text or years question is
+# offered at all, `ChooseField.draft`): the protected and EEO kinds, work authorization and eligibility, money,
+# a background or a clearance, a legal attestation or signature, logistics a profile or the user answers (start
+# date, notice, relocation, references, licences, travel, GPA, an address), public-sector service, and
+# employment by this company. A question that merely MENTIONS one is still not drafted: skipping is the safe side.
 _NEVER_DRAFTED = re.compile(
     r"gender|\bsex\b|sexual|transgender|pronoun|\brace\b|\bracial|ethnic|hispanic|latino|veteran|military|"
-    r"disab|handicap|diversity|religio|marital|pregnan|citizen|nationality|"
-    r"authori[sz]|work\s+permit|\bvisa\b|sponsor|immigra|eligib|\bage\b|\bover\s+18\b|birth|"
-    r"salary|compensation|\bpay\b|wage|"
+    r"disab|handicap|diversity|religio|marital|pregnan|citizen|nationality|accommodat|medical|lgbt|indigenous|"
+    r"native\s+american|"
+    r"authori[sz]|work\s+permit|\bvisa\b|sponsor|immigra|eligib|\bage\b|\bover\s+18\b|\b18\b|birth|"
+    r"right\s+to\s+work|legally|green\s*card|h-?1b|permanent\s+resident|"
+    r"salary|compensation|\bpay\b|wage|\bctc\b|remuneration|"
+    r"\b(?:hourly|desired|expected|day|daily|billing|pay)\s+rate\b|\brate\s+of\s+pay\b|"
     r"criminal|felony|convict|arrest|misdemeanor|background\s+check|clearance|drug\s+test|"
+    r"charged|terminated|\bfired\b|dismissed|"
     r"signature|\bsign\b|certif|attest|\bagree|acknowledg|consent|\bpledge|"
     r"social\s+security|\bssn\b|passport|"
-    r"(previously|formerly|ever)\s+(been\s+)?(employed|worked)|related\s+to\s+(anyone|someone|any|an?\s)|\brelatives?\b(?!\s+to)",
+    r"start\s+date|\bnotice\b|relocat|references?\b|referred|referral|licen[cs]e|\btravel|\bgpa\b|"
+    r"\b(?:home|mailing|street|email|current|your)\s+address\b|\baddress\s+(?:line|1|2)\b|"
+    r"government|federal|\bagency\b|public\s+sector|"
+    r"(?:previously|formerly|ever|currently)\s+(?:been\s+)?(?:employed|work(?:ed|ing)?\s+(?:for|at|by))|"
+    r"\b(?:have|has|were|are|did)\s+you\b[^?.]*?\b(?:work(?:ed|ing|s)?\s+(?:for|at)|employed|employee|"
+    r"intern(?:ed)?\s+(?:for|at|with))|former\s+employee|current\s+employee|employee\s+of|"
+    r"related\s+to\s+(?:anyone|someone|any|an?\s)|\brelatives?\b(?!\s+to)",
     re.IGNORECASE)
 # A label that asks for something written, not a field's name: a question, or an instruction to
 # describe, explain or tell, or a sentence of six words or more.
@@ -126,8 +143,8 @@ MAX_DRAFTS = 6
 
 def _draftable(field: ChooseField, answer: Choice | None) -> bool:
     """A REQUIRED written question the chooser had no answer for (text or textarea, no options,
-    no known value) that is not on the never-list."""
-    if answer is None or answer.answer is not None or not field.required or field.known_value:
+    no known value) that /map filed as free text or years (`draft`) and that is not on the never-list."""
+    if answer is None or answer.answer is not None or not (field.required and field.draft) or field.known_value:
         return False
     if field.kind not in ("text", "textarea") or field.options:
         return False
@@ -138,19 +155,20 @@ def _draftable(field: ChooseField, answer: Choice | None) -> bool:
 
 def _with_drafts(
     fields: list[ChooseField], out: dict[str, Choice], application_id: UUID | None, session: Session,
-    time_left: float,
+    time_left: Callable[[], float | None],
 ) -> dict[str, Choice]:
     """The essay writer's draft (`qa.draft_answers`) for each required written question `out` left
     null: written, and reported `assumed` so the user reads it. Grounded in an application's resume
     and job, so none without one. A draft that fails leaves the field open, as it was."""
-    if application_id is None or time_left < MIN_DRAFT_S:
+    # "Facts only" answers from saved answers and the career history, never a model's prose.
+    if application_id is None or model_settings.get_answer_level(session) == "facts":
         return out
     asked = {f.qid: f.label for f in fields if _draftable(f, out.get(f.qid))}
     asked = dict(list(asked.items())[:MAX_DRAFTS])
     if not asked:
         return out
     try:
-        drafts = qa.draft_answers(application_id, asked, session, timeout=time_left)
+        drafts = qa.draft_answers(application_id, asked, session, time_left=time_left)
     except (ValueError, llm.LLMProviderError) as exc:
         logger.warning("drafting %d written answers failed (%s); they stay open", len(asked), exc)
         return out

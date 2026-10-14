@@ -205,7 +205,8 @@ def _application(db_session):
 
 
 def _written(qid="w", label=IMPRESSIVE, **kw):
-    return ChooseField(qid=qid, label=label, kind=kw.pop("kind", "textarea"), required=kw.pop("required", True), **kw)
+    return ChooseField(qid=qid, label=label, kind=kw.pop("kind", "textarea"), required=kw.pop("required", True),
+                       draft=kw.pop("draft", True), **kw)
 
 
 class Writer:
@@ -357,6 +358,7 @@ def test_drafts_are_asked_in_one_call_and_matched_by_qid(db_session, monkeypatch
     "What is the most interesting technology you have used, relative to your peers?",
     "Tell us about a time you embraced a hard change at work.",
     "Why do you want to work at Acme?",
+    "Describe a conflict you addressed with a teammate and how you rate its outcome.",
 ])
 def test_ordinary_written_questions_are_drafted(db_session, monkeypatch, label):
     application = _application(db_session)
@@ -365,9 +367,9 @@ def test_ordinary_written_questions_are_drafted(db_session, monkeypatch, label):
     assert out["w"].reason == "assumed", label
 
 
-def test_the_draft_takes_what_is_left_of_the_loops_ten_seconds_and_never_more(db_session, monkeypatch):
-    """The loop gives /choose 10 s in all: the draft is one request on what the choose pass left, no
-    retries, and is not started at all when the pass left too little."""
+def test_the_draft_takes_what_is_left_of_seven_and_a_half_seconds_and_never_more(db_session, monkeypatch):
+    """The loop gives /choose 10 s in all, and the reply must be home well inside it: the draft is one request on
+    what the choose pass left of 7.5 s, no retries, and is not started at all when less than 2 s is left."""
     application = _application(db_session)
     now = [100.0]
     monkeypatch.setattr(autofill_choose, "_clock", lambda: now[0])
@@ -383,7 +385,104 @@ def test_the_draft_takes_what_is_left_of_the_loops_ten_seconds_and_never_more(db
     monkeypatch.setattr(autofill_choose.llm, "call_openai", call_openai)
     ELAPSED = [3.0]
     autofill_choose.choose([_written()], application.id, db_session)
-    assert len(seen) == 1 and seen[0]["max_retries"] == 0 and 5.0 <= seen[0]["timeout"] <= 6.0
-    ELAPSED[0] = 8.0
+    assert len(seen) == 1 and seen[0]["max_retries"] == 0 and 4.0 <= seen[0]["timeout"] <= 4.5
+    ELAPSED[0] = 6.0
     out = autofill_choose.choose([_written()], application.id, db_session)
     assert len(seen) == 1 and (out["w"].answer, out["w"].reason) == (None, "abstained")
+
+
+def test_loading_the_context_counts_against_the_budget(db_session, monkeypatch):
+    """The clock runs from the start of /choose: the time the draft spends reading the history and the job
+    before it can ask is not free."""
+    application = _application(db_session)
+    now = [100.0]
+    monkeypatch.setattr(autofill_choose, "_clock", lambda: now[0])
+    seen = []
+
+    def slow_context(session=None):
+        now[0] += 6.0
+        return "memory"
+
+    monkeypatch.setattr(autofill_choose.qa.career_kb, "compose_context", slow_context)
+    monkeypatch.setattr(autofill_choose.llm, "call_openai", lambda **kw: (
+        seen.append(kw["trace_name"]) or ({"answers": {"w": "Built a pipeline."}} if kw["trace_name"] == "autofill-draft"
+                                          else {"choices": {}})))
+    out = autofill_choose.choose([_written()], application.id, db_session)
+    assert "autofill-draft" not in seen and (out["w"].answer, out["w"].reason) == (None, "abstained")
+
+
+@pytest.mark.parametrize("draft", [False])
+def test_only_a_field_the_map_filed_as_written_is_drafted(db_session, monkeypatch, draft):
+    """The map's free_text and years sentinels allow a draft; a history, protected or no-fact text box does not
+    (the loop sends `draft` only for the first two)."""
+    application = _application(db_session)
+    writer = Writer(monkeypatch, {"w": "Should not be used."})
+    out = autofill_choose.choose([_written(draft=draft)], application.id, db_session)
+    assert (out["w"].answer, out["w"].reason) == (None, "abstained") and writer.prompts == []
+
+
+@pytest.mark.parametrize(("level", "drafted"), [("facts", False), ("history", True), ("queued", True)])
+def test_the_answer_dial_decides_whether_written_questions_are_drafted(db_session, monkeypatch, level, drafted):
+    from app.services import model_settings
+
+    application = _application(db_session)
+    model_settings.set_answer_level(db_session, level)
+    writer = Writer(monkeypatch, {"w": "Built a pipeline."})
+    out = autofill_choose.choose([_written()], application.id, db_session)
+    assert (out["w"].reason == "assumed") is drafted and bool(writer.prompts) is drafted
+
+
+def test_a_question_the_history_cannot_answer_comes_back_empty_and_stays_open(db_session, monkeypatch):
+    application = _application(db_session)
+    writer = Writer(monkeypatch, {"w": ""})
+    out = autofill_choose.choose([_written()], application.id, db_session)
+    assert (out["w"].answer, out["w"].reason) == (None, "abstained")
+    assert 'return "" for' in writer.prompts[0] and "never guess" in writer.prompts[0]
+
+
+@pytest.mark.parametrize("label", [
+    # work authorization and eligibility
+    "Do you have the right to work in the United States? Please explain.",
+    "Are you legally permitted to be employed here? Describe your status.",
+    "Do you hold a green card or an H-1B? Please explain.", "Are you a permanent resident? Explain.",
+    "Are you over 18? Explain.",
+    # background
+    "Have you ever been charged with a crime? Describe it.", "Have you been terminated from a job? Explain why.",
+    "Were you fired or dismissed from any position? Describe.",
+    # pay
+    "What is your current CTC and your expectation? Explain.", "State your hourly rate and why.",
+    "Describe your remuneration expectations.",
+    # EEO-adjacent
+    "Do you need accommodations to apply? Please describe them.", "Do you have any medical conditions we should know of?",
+    "Do you identify as LGBTQ? Please describe.", "Are you Indigenous? Please explain.",
+    "Are you Native American? Please describe.",
+    # logistics
+    "What is your start date and why? Explain.", "What is your notice period? Please explain.",
+    "Are you willing to relocate? Tell us why.", "Please list three references and describe your relationship to each.",
+    "Who referred you to this job? Describe.", "Do you hold a valid driver's licence? Explain.",
+    "Are you willing to travel? Describe how much.", "What was your GPA, and how did you earn it? Explain.",
+    "What is your home address? Please describe where you live.",
+    # public sector
+    "Have you worked for a government agency? Please describe.", "Have you served in a federal role? Describe it.",
+    "Have you worked in the public sector? Explain.",
+    # worked-here variants
+    "Have you worked at Acme Wireless? Please describe the role.", "Are you a former employee of Acme Wireless? Explain.",
+    "Are you currently working for Acme Wireless? Describe.",
+])
+def test_the_backstop_never_drafts_these_even_if_the_map_allowed_it(db_session, monkeypatch, label):
+    application = _application(db_session)
+    writer = Writer(monkeypatch, {"w": "Should not be used."})
+    out = autofill_choose.choose([_written(label=label)], application.id, db_session)
+    assert (out["w"].answer, out["w"].reason) == (None, "abstained") and writer.prompts == [], label
+
+
+def test_a_label_that_gives_a_character_limit_is_honoured(db_session, monkeypatch):
+    application = _application(db_session)
+    long = "Built a forecasting pipeline for forty stores. It cut stockouts by a third. " * 10
+    Writer(monkeypatch, {"a": long, "b": long})
+    out = autofill_choose.choose(
+        [_written("a", "What is the most impressive project you've worked on? (max 200 characters)"),
+         _written("b", "Most interesting technology you've used? Maximum of 300 characters.")],
+        application.id, db_session)
+    assert 0 < len(out["a"].answer) <= 200 and out["a"].answer.endswith(".")
+    assert 0 < len(out["b"].answer) <= 300 and out["b"].answer.endswith(".")

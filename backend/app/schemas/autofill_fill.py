@@ -149,6 +149,9 @@ class Mapped(BaseModel):
     # A low_stakes field /map filed under the years sentinel: a "years with a skill" question, whatever its
     # wording. The loop echoes it to /pick and /step, which treat it as a years question (autofill_map.asks_years).
     years: bool = False
+    # A free_text route the map filed under the free_text or years sentinel: /choose may DRAFT a required
+    # one from the career history (never one filed as a history or protected question).
+    draft: bool = False
     trace: DecisionTrace | None = None
 
 

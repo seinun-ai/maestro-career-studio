@@ -578,7 +578,7 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
         # A years question is always prose from the history; a history question that names a company
         # (listed, the job's or the history's) is NOT: whether the applicant worked there is a fact.
         if key != HISTORY_UNANSWERED or not question_names_company(facts, field.question):
-            return Mapped(route="free_text"), floor
+            return Mapped(route="free_text", draft=key in _DRAFTABLE_KEYS), floor
     if key == BLOCKED_EEO and not eeo_consented and p >= SLOT_FLOOR:
         return Mapped(route="blocked"), floor
     return Mapped(route="none"), floor
@@ -587,6 +587,9 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
 # The keys that send a TEXT box to the prose route: free text itself, and the two "the history may
 # answer this" sentinels, which a text box cannot use as a pick.
 _WRITTEN_KEYS = frozenset({FREE_TEXT, YEARS_UNANSWERED, HISTORY_UNANSWERED})
+# Of those, the two a required box may be DRAFTED for (/choose): a question in the applicant's own words, and
+# "experience with X, how long, which companies". A history question is the history's, never a model's prose.
+_DRAFTABLE_KEYS = frozenset({FREE_TEXT, YEARS_UNANSWERED})
 
 
 def _no_fact_key(key: str, eeo_consented: bool) -> bool:

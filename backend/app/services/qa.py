@@ -1,4 +1,5 @@
 import re
+from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
@@ -231,6 +232,10 @@ def answer_questions(
 DRAFT_NOTE = "Drafted from your history: read it"
 DRAFT_WORDS = 150
 _STATED_WORDS = re.compile(r"(\d{2,4})\s*(?:-|\s)?\s*words?\b", re.IGNORECASE)
+# "(max 200 characters)", "Maximum of 300 characters", "200 character limit", "up to 500 chars".
+_STATED_CHARS = re.compile(
+    r"(?:max(?:imum)?(?:\s+of)?|up\s+to|limit(?:ed)?\s+to|no\s+more\s+than|within)\s*:?\s*(\d{2,5})\s*(?:char|characters)\b"
+    r"|(\d{2,5})\s*(?:-\s*)?(?:char|characters?)\s*(?:max|maximum|limit)", re.IGNORECASE)
 
 
 def _within(text: str, words: int) -> str:
@@ -246,6 +251,18 @@ def _within(text: str, words: int) -> str:
     return " ".join(kept) if kept else " ".join(text.split()[:words])
 
 
+def _within_chars(text: str, chars: int) -> str:
+    """`text` cut to whole sentences of at most `chars` characters (the first cut hard at a word when it alone is longer)."""
+    if len(text) <= chars:
+        return text
+    kept: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        if len(" ".join([*kept, sentence])) > chars:
+            break
+        kept.append(sentence)
+    return " ".join(kept) if kept else text[:chars].rsplit(" ", 1)[0].rstrip(",;:") + "."
+
+
 def _in_owners_voice(text: str, resume_json: dict[str, Any]) -> str | None:
     """`text` with every third-person or "I" shape repaired in code (the prompt asks for it, code
     makes sure); None when what is left would not be the owner's own words."""
@@ -254,13 +271,15 @@ def _in_owners_voice(text: str, resume_json: dict[str, Any]) -> str | None:
 
 
 def draft_answers(
-    application_id: UUID, questions: dict[str, str], session: Session, *, timeout: float | None = None
+    application_id: UUID, questions: dict[str, str], session: Session, *,
+    time_left: Callable[[], float | None] | None = None,
 ) -> dict[str, str]:
     """id -> a drafted answer, for written questions the profile could not answer: one smart-model
     call over the career history and the job, in the owner's voice. NOTHING IS SAVED: a draft is
     not a standing answer (the user edits it and resumes to teach it). An id the model skipped, or
-    whose draft could not be put in the owner's voice, is absent. `timeout`: a caller on a clock gets one
-    request of that many seconds with no retries. Raises what `_application_context`
+    whose draft could not be put in the owner's voice, is absent, as is one the model answered with "" (the
+    history cannot answer it). `time_left`: a caller on a clock; asked AFTER the context is read, it returns the
+    seconds the call may take (one request, no retries) or None when there are too few: nothing is asked then. Raises what `_application_context`
     and the provider raise; the caller decides what a failure means."""
     if not questions:
         return {}
@@ -272,6 +291,9 @@ def draft_answers(
         questions=questions,
         persona=persona.get_persona(session),
     )
+    timeout = time_left() if time_left is not None else None
+    if time_left is not None and timeout is None:
+        return {}
     response = llm.call_openai(
         prompt=prompt,
         model=model_settings.get_smart_model(session),
@@ -287,6 +309,8 @@ def draft_answers(
             continue
         stated = _STATED_WORDS.search(label)
         text = _within(text, int(stated[1]) if stated else DRAFT_WORDS)
+        if chars := _STATED_CHARS.search(label):
+            text = _within_chars(text, int(chars[1] or chars[2]))
         if text := _in_owners_voice(text, resume_json):
             out[qid] = text
     return out

@@ -36,6 +36,9 @@ class ChooseField(BaseModel):
     # The page marks the field required. Only a required written question the chooser
     # has no answer for is drafted from the career history (`/choose`, "assumed").
     required: bool = False
+    # /map filed the field under the free_text or years sentinel (`Mapped.draft`): the only fields a draft may
+    # answer. A history, protected or no-fact text box is the user's.
+    draft: bool = False
 
 
 class ChooseRequest(BaseModel):

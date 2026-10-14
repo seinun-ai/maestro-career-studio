@@ -77,7 +77,7 @@ def test_a_confident_slot_returns_its_value_for_code_to_type(db_session, monkeyp
     got = run([field("a", "City")], db_session)
     # `trace` is pinned by the decision-trace tests; here only the answer itself.
     assert got["a"].model_dump(exclude={"trace"}) == {"route": "slot", "slot": "personal.city",
-                                                      "value": "Springfield", "format": None, "why": None, "years": False}
+                                                      "value": "Springfield", "format": None, "why": None, "years": False, "draft": False}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -930,7 +930,7 @@ def test_a_choice_no_fact_answers_is_reasoned_when_the_history_can_answer_it(db_
     prompts = fake_llm(monkeypatch, {"g": {"key": "none", "confidence": 0.95}}, reasoned={"g": 0.9})
     got = run([field("g", HISTORY_WORDINGS[0], "popup", options=["Yes", "No"])], db_session)
     assert got["g"].model_dump(exclude={"trace"}) == {"route": "reasoned", "slot": None, "value": None,
-                                                      "format": None, "why": None, "years": False}
+                                                      "format": None, "why": None, "years": False, "draft": False}
     [asked] = [p for p in prompts if p["trace_name"] == "autofill-reasoned"]
     assert HISTORY_WORDINGS[0] in asked["prompt"]
 
@@ -2056,3 +2056,21 @@ def test_a_rerouted_field_traces_as_the_codes_call_not_the_models(db_session, mo
     got = autofill_map.map_fields([field("q", LISTED_Q, "select", options=["Yes", "No"])], _worked(["Hooli"]),
                                   db_session, eeo_consented=True, low_stakes=False)
     assert got["q"].trace.sentinel is None and got["q"].trace.chose_none is False
+
+
+# ---------- J3 review: only a free_text or years question may be drafted
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize(("key", "draft"), [("free_text", True), ("years_unanswered", True),
+                                            ("history_unanswered", False)])
+def test_only_a_free_text_or_years_text_box_is_marked_draftable(db_session, monkeypatch, key, draft):
+    fake_jev(monkeypatch, {"w": (key, 0.95)})
+    got = run([field("w", "Describe your experience with forecasting. For how long?")], db_session)
+    assert (got["w"].route, got["w"].draft) == ("free_text", draft)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_slot_or_none_is_never_draftable(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"a": ("personal.city", 0.9), "b": ("none", 0.9), "c": ("protected_unanswered", 0.9)})
+    got = run([field("a", "City"), field("b", "Pet name"), field("c", "Are you a citizen?")], db_session)
+    assert [got[k].draft for k in "abc"] == [False, False, False]
