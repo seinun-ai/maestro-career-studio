@@ -766,7 +766,7 @@
     try {
       const [a, b] = [new URL(base), new URL(url)];
       if (a.origin !== b.origin) return false;
-      const [x, y] = [a, b].map((one) => one.pathname.split("/").filter(Boolean));
+      const [x, y] = ns.decisions.withoutLocale(...[a, b].map((one) => one.pathname.split("/").filter(Boolean)));
       const n = Math.min(x.length, y.length);
       return n >= 2 && x.slice(0, n).every((segment, i) => segment === y[i]);
     } catch {

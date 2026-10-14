@@ -13,7 +13,7 @@
  * that used to be split across two files is written out below in full.
  *
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
- * postingId, sessionTenant, restorableSession, postingLink, samePosting,
+ * postingId, sessionTenant, restorableSession, postingLink, samePosting, withoutLocale,
  * applyFacts, httpUrl, reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
  * preselect, applyPress }.
  */
@@ -448,6 +448,17 @@
   const STEP_COUNTER_RE = /^[a-z]+\d{1,3}$/i;
   const isIdSegment = (segment) => ID_SEGMENT_RE.test(segment) && !STEP_COUNTER_RE.test(segment);
 
+  // A leading locale segment (`en-US`, `fr_ca`) a tenant adds to the page it opens and the saved link lacks. THE SAME
+  // RULE as the backend's `_without_locale` (job_url_match.py): dropped from the side that has one when the other has
+  // none; two locales, or none, compare as they are, so `/us/jobs/55` and `/uk/jobs/55` stay two pages.
+  const LOCALE_RE = /^[a-z]{2}(?:[-_][A-Za-z]{2})?$/;
+  function withoutLocale(a, b) {
+    const [x, y] = [a, b].map((segments) => segments.length > 0 && LOCALE_RE.test(segments[0]));
+    if (x && !y) return [a.slice(1), b];
+    if (y && !x) return [a, b.slice(1)];
+    return [a, b];
+  }
+
   /** Does this address carry a posting's identity: an id in the query (`postingId`) or an id-like path
    * segment? One that does not (a sign-in page, a candidate home, `/careers/apply`) names no job, and
    * is a prefix of every posting below it. THE SAME RULE as the backend's `job_url_match.names_posting`,
@@ -536,7 +547,7 @@
       return true;
     }
     if (saved.origin !== current.origin) return false;
-    const [a, b] = [saved, current].map((u) => u.pathname.split("/").filter(Boolean));
+    const [a, b] = withoutLocale(...[saved, current].map((u) => u.pathname.split("/").filter(Boolean)));
     const parts = a.findIndex((segment, i) => i < b.length && segment !== b[i]);
     return parts === -1 || !(isIdSegment(a[parts]) && isIdSegment(b[parts]));
   }
@@ -779,7 +790,7 @@
 
   ns.decisions = {
     stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession, postingLink,
-    samePosting, applyFacts, httpUrl, namesPosting, applyLink, offersApply, boardHost,
+    samePosting, withoutLocale, applyFacts, httpUrl, namesPosting, applyLink, offersApply, boardHost,
     preselect, applyPress,
     reconcileFill, sanitizeAnswer, sameApplication, describesJob, sameSite,
   };

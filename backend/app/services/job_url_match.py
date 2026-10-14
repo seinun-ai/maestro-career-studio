@@ -112,6 +112,25 @@ def _host_and_segments(url: str | None) -> tuple[str, list[str]] | None:
     return host, [segment for segment in path.split("/") if segment]
 
 
+# A leading locale segment (`en-US`, `fr_ca`, `de`): some tenants add it to the page they open
+# (`/en-US/External/job/...`) while the saved link has none. THE SAME RULE as the extension's
+# `withoutLocale` (shared/decisions.js).
+_LOCALE_RE = re.compile(r"^[a-z]{2}(?:[-_][A-Za-z]{2})?$")
+
+
+def _without_locale(saved: list[str], current: list[str]) -> tuple[list[str], list[str]]:
+    """Drop a locale from the side that has one when the other side has none. Two locales, or none, are
+    compared as they are: `/us/jobs/55` and `/uk/jobs/55` stay two pages, and the rest of the path still
+    has to agree."""
+    saved_locale = bool(saved) and _LOCALE_RE.match(saved[0]) is not None
+    current_locale = bool(current) and _LOCALE_RE.match(current[0]) is not None
+    if saved_locale and not current_locale:
+        return saved[1:], current
+    if current_locale and not saved_locale:
+        return saved, current[1:]
+    return saved, current
+
+
 def posting_id(url: str | None) -> tuple[str, str] | None:
     """(hostname, posting id) when `url` carries its posting's identity in the
     query string (POSTING_ID_QUERY_KEYS) or, on LinkedIn, in the permalink
@@ -193,6 +212,7 @@ def is_same_posting(saved: str | None, current: str | None) -> bool:
     current_host, current_segments = current_parts
     if saved_host != current_host:
         return False
+    saved_segments, current_segments = _without_locale(saved_segments, current_segments)
     # A pathless saved link would otherwise prefix every page on the host.
     if not saved_segments:
         return False

@@ -44,6 +44,18 @@ WD_POSTING = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Remote/Data-S
         (WD_POSTING, f"{WD_POSTING}/apply/applyManually", True),
         (f"{WD_POSTING}/apply/applyManually", f"{WD_POSTING}/apply/applyManually?source=x#step2", True),
         (WD_POSTING, WD_POSTING.replace("Data-Scientist_R-1", "Data-Scientist_R-2") + "/apply", False),
+        # --- a locale segment the tenant inserts (or drops) is not identity ---
+        ("https://acme.wd1.myworkdayjobs.com/External/job/Remote/X_REQ123/apply?source=LinkedIn",
+         "https://acme.wd1.myworkdayjobs.com/en-US/External/job/Remote/X_REQ123/apply/applyManually", True),
+        ("https://acme.wd1.myworkdayjobs.com/en-US/External/job/Remote/X_REQ123",
+         "https://acme.wd1.myworkdayjobs.com/External/job/Remote/X_REQ123/apply", True),
+        ("https://acme.wd1.myworkdayjobs.com/External/job/Remote/X_REQ123/apply",
+         "https://acme.wd1.myworkdayjobs.com/en-US/External/job/Remote/X_REQ999/apply", False),
+        # Two locales, or a two-letter segment that is part of the path, never match on that segment alone.
+        ("https://acme.test/us/jobs/55", "https://acme.test/uk/jobs/55", False),
+        ("https://acme.test/us/jobs/55", "https://acme.test/us/jobs/55/apply", True),
+        ("https://acme.test/jobs/55", "https://acme.test/us/careers/55", False),
+        ("https://acme.test/jobs/55", "https://acme.test/careers/55", False),
         # --- reverse direction: saved is more specific than current ---
         # The employer index is an ANCESTOR of the saved posting. Matching the
         # reverse direction would claim a search listing is the job.

@@ -1382,6 +1382,19 @@ def test_a_tab_the_page_opened_to_another_page_of_the_same_site_is_not_this_jobs
     assert _record(out["shots"][-1])["tabId"] == (8 if "myworkdayjobs" in url else 7)
 
 
+def test_a_tab_whose_address_arrives_with_a_locale_the_saved_link_lacks_is_still_the_application(tmp_path):
+    """A Workday tenant inserts /en-US/ in the page it opens; the saved link has none."""
+    located = WORKDAY_APPLY.split("?")[0].replace(".com/External", ".com/en-US/External") + "/applyManually"
+    steps = [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, "")},
+             {"update": {"tab": 8, "change": {"url": located}}}]
+    out = _follow(tmp_path, steps, tabUrls={"7": CAREER_POSTING, "8": located})
+    assert _record(out["shots"][-1])["tabId"] == 8
+    other = located.replace("Data-Scientist_R1", "Other-Role_R999")
+    out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, "")},
+                             {"update": {"tab": 8, "change": {"url": other}}}], tabUrls={"7": CAREER_POSTING, "8": other})
+    assert _record(out["shots"][-1])["tabId"] == 7
+
+
 def test_a_tab_opened_to_the_form_under_the_queued_link_or_the_postings_last_apply_link_is_followed_at_once(tmp_path):
     step_of_the_form = WORKDAY_APPLY.split("?")[0] + "/applyManually"
     out = _follow(tmp_path, [{"seed": [_parked_on_the_posting()]}, {"created": _opened_by(8, step_of_the_form)}])

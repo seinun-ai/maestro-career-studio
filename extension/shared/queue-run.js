@@ -693,7 +693,9 @@
         if (pageFilled && filledPage && (pathOf(filledPage.where) !== pathOf(thisPage.where) || filledPage.key !== thisPage.key)) {
           // Bounded like any step: a site that keeps rewriting its address cannot walk the run through forty fills.
           if (record.step + 1 >= LIMITS.stepMax) return await park("step_limit");
-          if (record.seen.some((one) => one.startsWith(`${thisPage.where}\n${thisPage.key}\n`))) return await park("loop");
+          // `seen` holds a pressed page as its whole fingerprint and a page left unpressed as `where\nkey`.
+          const here = `${thisPage.where}\n${thisPage.key}`;
+          if (record.seen.some((one) => one === here || one.startsWith(`${here}\n`))) return await park("loop");
           await update({ step: record.step + 1, seen: [...record.seen, filledPage.here ?? `${filledPage.where}\n${filledPage.key}`] });
           moved();
         } else if (pageFilled && filledPage && filledPage.where !== thisPage.where) {

@@ -122,7 +122,7 @@ const deps = {
     tick("tabUrl");
     const p = current();
     // `drift`: the address changes with every fill on the page (a query string or a path the site rewrites).
-    const drift = p.drift === "query" ? `?v=${fillCalls}` : p.drift === "path" ? `/${fillCalls}` : "";
+    const drift = p.drift === "query" ? `?v=${fillCalls}` : p.drift === "path" ? `/${fillCalls}` : p.drift === "toggle" ? `/${fillCalls % 2}` : "";
     return `https://${p.urlHost ?? p.host ?? "jobs.acme.test"}${p.url ?? `/p/${at}`}${drift}#frag`;
   },
   advance: async (tabId, frameId, id, opts) => {
@@ -884,6 +884,28 @@ def test_the_posting_the_run_parks_on_is_remembered_by_the_address_of_its_apply_
     assert out["record"]["applyHref"] == WD_APPLY
 
 
+_SAME = r"""
+const ns = loadModules();
+main(async () => emit(spec.pairs.map(([a, b]) => ns.decisions.samePosting(a, b))));
+"""
+
+W = "https://acme.wd1.myworkdayjobs.com"
+
+
+@pytest.mark.parametrize("saved, current, expected", [
+    # A tenant that inserts the locale: the saved link has none, the page does (and the other way round).
+    (f"{W}/External/job/Remote/Role_REQ123/apply", f"{W}/en-US/External/job/Remote/Role_REQ123/apply/applyManually", True),
+    (f"{W}/en-US/External/job/Remote/Role_REQ123/apply", f"{W}/External/job/Remote/Role_REQ123/apply", True),
+    (f"{W}/en_gb/External/job/Remote/Role_REQ123", f"{W}/en_gb/External/job/Remote/Role_REQ123/apply", True),
+    # ... and another job under it is still another job (the locale no longer hides the id).
+    (f"{W}/External/job/Remote/Role_REQ123/apply", f"{W}/en-US/External/job/Remote/Role_REQ456/apply", False),
+    # Words that are not locales are not dropped.
+    ("https://jobs.acme.test/jobs/55", "https://jobs.acme.test/careers/55", True),   # parts at a non-id word: as before
+])
+def test_the_extensions_same_posting_reads_past_a_locale_segment(tmp_path, saved, current, expected):
+    assert run_node(_SAME, {"pairs": [[saved, current]]}, tmp_path, source=SOURCE) == [expected]
+
+
 def test_a_career_site_apply_is_not_pressed_on_a_resume(tmp_path):
     record = {"tabId": 7, "status": "parked", "why": "posting", "hosts": ["careers.acme.test"], "openUrl": WD_APPLY}
     out = _drive(tmp_path, [_career_posting(WD_APPLY)], record=record)
@@ -1246,7 +1268,9 @@ def test_a_real_submit_button_is_not_held_back_by_the_unsure_wait(tmp_path):
 
 
 def test_a_read_that_changes_during_the_hold_starts_the_count_again(tmp_path):
-    shifting = {**FIELDS_ONLY, "early": [FIELDS_ONLY, {"t": "unseen_submit"}, {"t": "unseen_submit"}]}
+    # The same page (same heading) whose reading shifts while it draws: a different heading would be a different page.
+    same = {"t": "unseen_submit", "key": "fields_only"}
+    shifting = {**FIELDS_ONLY, "early": [FIELDS_ONLY, same, same]}
     out = _drive(tmp_path, [step(1), shifting])
     assert (out["record"]["status"], out["record"]["why"]) == ("parked", "unsure_page")
     assert len(names(out, "sleep")) >= 4
@@ -2251,6 +2275,14 @@ def test_a_page_whose_path_changes_after_every_fill_stops_at_the_step_limit_not_
     r = out["record"]
     assert (r["status"], r["why"]) == ("parked", "step_limit")
     assert out["fillCalls"] <= 16
+
+
+def test_a_filled_page_the_site_swaps_back_and_forth_is_a_loop_even_though_it_was_never_pressed(tmp_path):
+    """The page left behind is remembered by address and heading alone (no press ever saw its buttons)."""
+    out = _drive(tmp_path, [step(1, drift="toggle")])
+    r = out["record"]
+    assert (r["status"], r["why"]) == ("parked", "loop")
+    assert out["fillCalls"] == 2 and out["pressed"] == []
 
 
 def test_a_page_the_guard_lands_on_that_the_run_has_already_been_through_is_a_loop(tmp_path):
