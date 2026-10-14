@@ -740,3 +740,109 @@ def test_keep_it_answers_the_agents_question_from_the_web(db_session):
     detail = r3.json()["detail"]
     assert detail == "This job has no tailored resume to link yet. Tailor one first, then try again."
     assert re.match(r"^[A-Z][^{}[\]<>_`|\\]*[.!?]$", detail)
+
+
+# ---------- relink: the Companion's Apply moves an accepted proposal to the job's newer draft ----------
+
+COMPANION = {"Origin": "chrome-extension://abcdefghijklmnopabcdefghijklmnop"}
+
+
+def _accepted_with_draft(db_session, company):
+    """An accepted proposal linked to a first draft, and a second, newer draft of the same job."""
+    job = _mk_job(db_session, company=company)
+    first = Application(job_id=job.id, base_resume="business_analyst", status="draft")
+    newer = Application(job_id=job.id, base_resume="data_scientist", status="draft")
+    db_session.add_all([first, newer])
+    db_session.commit()
+    pid = client.post("/api/proposals", json={"job_id": str(job.id), "application_id": str(first.id)}).json()["id"]
+    assert client.patch(f"/api/proposals/{pid}", json={
+        "status": "accepted", "consent": {"channel": "companion"}}, headers=COMPANION).status_code == 200
+    return job, first, newer, pid
+
+
+def _link(job, app_row, headers=COMPANION):
+    return client.post("/api/proposals", json={"job_id": str(job.id), "application_id": str(app_row.id)},
+                       headers=headers)
+
+
+def test_the_companion_moves_an_accepted_proposal_to_the_jobs_newer_draft(db_session):
+    job, first, newer, pid = _accepted_with_draft(db_session, "RelinkCo")
+    r = _link(job, newer)
+    assert r.status_code == 200
+    assert r.json()["id"] == pid and r.json()["application_id"] == str(newer.id)
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, UUID(pid)).application_id == newer.id
+    assert db_session.get(Application, newer.id).source == "agent"
+    # And a second press on the same draft is the ordinary idempotent return.
+    assert _link(job, newer).status_code == 200
+
+
+def test_the_relink_also_works_when_the_old_application_is_gone(db_session):
+    job, first, newer, pid = _accepted_with_draft(db_session, "GoneAppCo")
+    db_session.delete(db_session.get(Application, first.id))
+    db_session.commit()
+    r = _link(job, newer)
+    assert r.status_code == 200 and r.json()["application_id"] == str(newer.id)
+
+
+def test_a_relink_is_refused_without_the_companions_origin(db_session):
+    job, first, newer, pid = _accepted_with_draft(db_session, "NoOriginCo")
+    # An unknown extension never gets this far (the origin guard 403s it); the web app and a bare
+    # client reach the route and are refused the relink.
+    assert _link(job, newer, {"Origin": "chrome-extension://someoneelseidsomeoneelseid"}).status_code == 403
+    for headers in ({}, {"Origin": "http://localhost:3000"}):
+        r = _link(job, newer, headers)
+        assert r.status_code == 409 and "already linked" in r.json()["detail"]
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, UUID(pid)).application_id == first.id
+
+
+def test_a_relink_is_refused_once_the_proposal_is_approved(db_session):
+    job, first, newer, pid = _accepted_with_draft(db_session, "ApprovedCo")
+    prop = db_session.get(ApplicationProposal, UUID(pid))
+    prop.evidence_json = [{"step": 99, "label": "final review", "path": "evidence/fr.png",
+                           "sha256": "fr", "kind": "final_review"}]
+    db_session.commit()
+    r = client.patch(f"/api/proposals/{pid}", json={"status": "approved", "consent": {"channel": "chat"}})
+    assert r.status_code == 200
+    assert _link(job, newer).status_code == 409
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, UUID(pid)).application_id == first.id
+
+
+def test_a_relink_is_refused_when_the_old_application_is_no_longer_a_draft(db_session):
+    job, first, newer, pid = _accepted_with_draft(db_session, "AppliedFirstCo")
+    db_session.get(Application, first.id).status = "applied"
+    db_session.commit()
+    assert _link(job, newer).status_code == 409
+
+
+def test_a_relink_is_refused_for_an_application_that_is_not_a_draft_or_belongs_to_another_job(db_session):
+    job, first, newer, pid = _accepted_with_draft(db_session, "WrongTargetCo")
+    other_job = _mk_job(db_session, company="OtherJobCo")
+    elsewhere = Application(job_id=other_job.id, base_resume="data_scientist", status="draft")
+    sent = Application(job_id=job.id, base_resume="data_scientist", status="applied")
+    db_session.add_all([elsewhere, sent])
+    db_session.commit()
+    assert _link(job, elsewhere).status_code == 409
+    assert _link(job, sent).status_code == 409
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, UUID(pid)).application_id == first.id
+
+
+def test_linking_another_jobs_application_is_refused_on_every_route(db_session):
+    job = _mk_job(db_session, company="CrossLinkCo")
+    other_job = _mk_job(db_session, company="CrossLinkOtherCo")
+    elsewhere = Application(job_id=other_job.id, base_resume="hybrid", status="draft")
+    db_session.add(elsewhere)
+    db_session.commit()
+    # On create, and as a late link on an open proposal.
+    assert _link(job, elsewhere).status_code == 409
+    pid = client.post("/api/proposals", json={"job_id": str(job.id)}).json()["id"]
+    assert _link(job, elsewhere).status_code == 409
+    # And on a PATCH that supplies the application.
+    r = client.patch(f"/api/proposals/{pid}", json={
+        "status": "accepted", "consent": {"channel": "frontend"}, "application_id": str(elsewhere.id)})
+    assert r.status_code == 409
+    db_session.expire_all()
+    assert db_session.get(ApplicationProposal, UUID(pid)).application_id is None

@@ -104,6 +104,7 @@ def _detail(db: Session, prop: ApplicationProposal) -> ProposalDetail:
 @router.post("", response_model=ProposalDetail)
 def create_proposal(
     payload: ProposalCreate,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     response: Response,
     write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
@@ -140,17 +141,24 @@ def create_proposal(
     if open_prop is not None:
         # Idempotent resume: return the open proposal instead of 409. When the
         # caller supplies application_id and the proposal is still unlinked,
-        # late-link (never relink if already set to a different application).
+        # late-link. A proposal already linked to a different application is
+        # relinked only by the Companion's Apply (`_may_relink`); every other
+        # caller gets the 409.
         if payload.application_id is not None:
             if (
                 open_prop.application_id is not None
                 and open_prop.application_id != payload.application_id
             ):
-                raise HTTPException(
-                    409, detail="proposal already linked to an application",
-                )
-            if open_prop.application_id is None:
-                _validate_and_stamp_application(db, payload.application_id)
+                if not _may_relink(db, request, open_prop, payload):
+                    raise HTTPException(
+                        409, detail="proposal already linked to an application",
+                    )
+                _validate_and_stamp_application(db, payload.application_id, open_prop.job_id)
+                open_prop.application_id = payload.application_id
+                db.commit()
+                db.refresh(open_prop)
+            elif open_prop.application_id is None:
+                _validate_and_stamp_application(db, payload.application_id, open_prop.job_id)
                 open_prop.application_id = payload.application_id
                 db.commit()
                 db.refresh(open_prop)
@@ -175,7 +183,7 @@ def create_proposal(
         )
 
     if payload.application_id is not None:
-        _validate_and_stamp_application(db, payload.application_id)
+        _validate_and_stamp_application(db, payload.application_id, payload.job_id)
 
     # The idempotent return above keeps the FIRST filer.
     prop = svc.create_proposal(
@@ -193,10 +201,31 @@ def create_proposal(
     return _detail(db, prop)
 
 
-def _validate_and_stamp_application(db: Session, application_id: UUID) -> Application:
+def _may_relink(
+    db: Session, request: Request, open_prop: ApplicationProposal, payload: ProposalCreate
+) -> bool:
+    """May this create move the open proposal to another application of its job?
+
+    Only the Companion's Apply: the user tailored a newer draft after Apply first linked one, and
+    every press since asked for the newer one. The proposal must still be queued (`accepted`, so no
+    approval or submit has happened), the new application a draft of THIS job, and the one it
+    holds gone or still a draft; a sent application is never unlinked from its proposal.
+    """
+    if not is_companion(request) or open_prop.status != "accepted":
+        return False
+    new = db.get(Application, payload.application_id)
+    if new is None or new.job_id != open_prop.job_id or new.status != "draft":
+        return False
+    old = db.get(Application, open_prop.application_id)
+    return old is None or old.status == "draft"
+
+
+def _validate_and_stamp_application(db: Session, application_id: UUID, job_id: UUID) -> Application:
     app_row = db.get(Application, application_id)
     if app_row is None:
         raise HTTPException(404, detail="Application not found")
+    if app_row.job_id != job_id:
+        raise HTTPException(409, detail="That resume belongs to a different job.")
     # Being linked to a proposal is what defines the agent lane for an
     # application; the creation flows (from-base, quick-tailor) default to
     # source="user" and know nothing about proposals.
@@ -379,7 +408,7 @@ def transition_proposal(
         if payload.application_id is not None:
             if prop.application_id is not None and prop.application_id != payload.application_id:
                 raise HTTPException(409, detail="proposal already linked to an application")
-            _validate_and_stamp_application(db, payload.application_id)
+            _validate_and_stamp_application(db, payload.application_id, prop.job_id)
             prop.application_id = payload.application_id
         if payload.fit is not None:
             fit = dict(prop.fit_json or {})
