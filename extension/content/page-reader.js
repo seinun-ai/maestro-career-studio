@@ -85,7 +85,6 @@
   // ONLY (what may be pressed as a Next stays BUTTONS): an ARIA button of any tag, an image input,
   // a plain link.
   const WIDE_BUTTONS = 'button, input[type="submit"], input[type="button"], input[type="image"], [role="button"], a';
-  const SUBMIT_MARK_ATTRS = ["id", "name", "data-qa", "data-automation-id", "formaction"];
   // A progress stepper lists every step by name, the last often "Submit": those are labels, not controls.
   // Only a real button inside one still counts.
   // Named so by its class: "stepper", "...-steps" or "steps-item". A plain "steps" or "nextsteps" is not a
@@ -226,9 +225,7 @@
   const hasCodeInput = () => [...document.querySelectorAll("input")]
     .some((el) => !ns.fillBase.isPasswordBox(el) && shown(el) && isCodeInput(el));
 
-  /** The id, name, data-qa, data-automation-id or formaction says submit. Not the label: a page
-   * names its Submit that way when the label is an icon, "Done" or a translation. */
-  const submitMarked = (el) => SUBMIT_MARK_ATTRS.some((attr) => /submit/i.test(el.getAttribute(attr) ?? ""));
+  const submitMarked = (el) => ns.pageKind.submitMarked(el);
 
   /** A Submit anywhere a person could press one (WIDE_BUTTONS), shown, enabled or not. Beyond
    * BUTTONS, site chrome is the site's, and a long block of text in a link is not a button label. */

@@ -1115,6 +1115,10 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   };
 
+  // Defence in depth for the group readers (shapes.js): a button that sorts as a Submit or a Next, or is
+  // submit-marked or type=submit, is never pressed as an answer, whatever read it as a pill.
+  const movesOnAsPill = (m) => !m.matches('[role="radio"]') && Boolean(ns.pageKind?.movesOn(m));
+
   async function choosePassive(el, shape, text, t, consentForms) {
     const options = flag(shape.passive(el).options, consentForms);
     const hits = match(options, text);
@@ -1136,6 +1140,7 @@
       // Look first: a pressed pill is never clicked (a second click un-selects it).
       const pill = shape.members(el).find((m) => shape.labelOf(m) === want);
       if (!pill) return { outcome: "unexpected", reason: "option_missing", options };
+      if (movesOnAsPill(pill)) return { outcome: "unexpected", reason: "submit_like" };
       if (!shape.pressed(pill)) gesture = () => tick(pill, t);
     } else if (shape.lone(el)) {
       if (want !== "Yes" && want !== "No") return { outcome: "unexpected", reason: "option_missing", options };
@@ -1377,6 +1382,7 @@
       } else {
         for (const want of wanted) {
           const input = shape.members(el).find((m) => shape.labelOf(m) === want);
+          if (input && shape.name === "pills" && movesOnAsPill(input)) continue;
           if (input && !(shape.pressed ? shape.pressed(input) : input.checked)) {
             tick(input, t);
             await b().settle(t, 60);

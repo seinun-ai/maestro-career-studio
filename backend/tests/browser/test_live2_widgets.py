@@ -113,6 +113,62 @@ def test_a_toolbar_of_toggle_buttons_and_a_lone_toggle_are_not_fields(page, load
     assert inv(page) == {}
 
 
+def test_a_list_holding_back_and_submit_buttons_is_not_a_field(page, load):
+    """A labelled list of button-only items is a pill group only when no button moves the form on (the I-2 regression)."""
+    load(page, "<ul role='list' aria-label='Form actions'><li><button type='button'>Back</button></li>"
+               "<li><button type='button'>Submit application</button></li></ul>")
+    assert inv(page) == {}
+    assert page.evaluate("(el) => window.careerStudioCompanion.shapes.of(el)", page.query_selector("button")) is None
+
+
+def test_an_aria_pressed_next_and_back_pair_is_not_a_field(page, load):
+    load(page, "<fieldset><legend>Navigation</legend><button type='button' aria-pressed='false'>Back</button>"
+               "<button type='button' aria-pressed='false'>Next</button></fieldset>")
+    assert inv(page) == {}
+
+
+def test_a_group_with_a_submit_typed_or_submit_marked_member_is_not_a_field(page, load):
+    load(page, "<ul role='list' aria-label='Choices'><li><button type='submit'>Option A</button></li>"
+               "<li><button type='button'>Option B</button></li></ul>"
+               "<ul role='list' aria-label='Others'><li><button type='button' id='btn-submit'>Option C</button></li>"
+               "<li><button type='button'>Option D</button></li></ul>"
+               "<ul role='list' aria-label='Marked'><li><button type='button' data-qa='submit'>Option E</button></li>"
+               "<li><button type='button'>Option F</button></li></ul>")
+    assert inv(page) == {}
+
+
+def test_a_yes_no_group_still_works_beside_a_form_actions_list(page, load):
+    load(page, "<label>Are you over 18?</label><ul role='list' aria-label='Are you over 18?'>"
+               "<li><button type='button' aria-pressed='false'>Yes</button></li>"
+               "<li><button type='button' aria-pressed='false'>No</button></li></ul>"
+               "<ul role='list' aria-label='Form actions'><li><button type='button'>Back</button></li>"
+               "<li><button type='button'>Submit application</button></li></ul>")
+    assert list(pill_fields(page)) == ["Are you over 18?"]
+
+
+def test_the_engine_never_presses_a_pill_that_sorts_as_submit_or_next(page, load):
+    """Defence in depth: even where a group were wrongly read, choose refuses to click a Submit or Next."""
+    load(page, "<ul role='list' aria-label='Are you over 18?'><li><button type='button' aria-pressed='false'>Yes</button></li>"
+               "<li><button type='button' aria-pressed='false'>No</button></li></ul>"
+               "<button type='button' id='real-next' onclick='window.__clicks = (window.__clicks || 0) + 1'>Next</button>"
+               "<button type='button' id='real-submit' onclick='window.__clicks = (window.__clicks || 0) + 1'>Submit application</button>")
+    got = page.evaluate("""async () => {
+      const ns = window.careerStudioCompanion;
+      const el = document.querySelector("button[aria-pressed]");
+      const base = ns.shapes.of(el);
+      const out = [];
+      for (const id of ["real-next", "real-submit"]) {
+        const btn = document.getElementById(id);
+        const shape = { ...base, passive: () => ({ options: [{ oid: "o1", text: btn.textContent, selected: false }], complete: true }),
+          members: () => [btn], labelOf: (m) => m.textContent, pressed: () => false };
+        out.push(await ns.fillBase.withinBudget((t) => ns.fillCore.choose(el, shape, { text: btn.textContent }, t), 4000));
+      }
+      return out;
+    }""")
+    assert [(g["outcome"], g["reason"]) for g in got] == [("unexpected", "submit_like")] * 2
+    assert page.evaluate("window.__clicks || 0") == 0
+
+
 def test_a_pill_group_multiple_is_added_to_never_unpressed(page, load):
     """A multi-select pill group (the vendor's class says so) takes a set of items; a pill already on stays on."""
     load(page, "<div class='input-row--multiselect cx-multi-select-pills'><ul role='list' aria-label='Which tools do you use?'>"

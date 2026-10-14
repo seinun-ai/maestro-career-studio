@@ -449,6 +449,9 @@
   // more of them. Not a menu, a pager, a tab list, or buttons that act on something (Remove, Edit...).
   const NOT_A_PILL = '[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded], [aria-current], [aria-controls], [role="tab"], [role="menuitem"]';
   const ACTION_WORDS = /\b(remove|delete|edit|view|download|upload|replace)\b/i;
+  // A button that sends or moves the form on (Back, Next, Submit) is never an answer: a group holding one is
+  // a row of actions. ARIA radios are not buttons and cannot send anything.
+  const movesOn = (m) => !m.matches(ARIA_RADIO) && Boolean(ns.pageKind?.movesOn(m));
   const listedGroup = (el) => {
     const container = el.closest('ul[role="list"][aria-label]');
     if (!container || container.closest('[role="toolbar"]')) return null;
@@ -457,7 +460,7 @@
       ? li.firstElementChild : null));
     const pill = (b) => b && !b.matches(NOT_A_PILL) && clean(b.parentElement.textContent) === clean(b.textContent)
       && !ACTION_WORDS.test(`${clean(b.textContent)} ${b.getAttribute("aria-label") ?? ""}`);
-    if (items.length < 2 || !members.every(pill)) return null;
+    if (items.length < 2 || !members.every(pill) || members.some(movesOn)) return null;
     const q = describeBy(container);
     return q.question ? { container, members, ...q, radio: false } : null;
   };
@@ -477,7 +480,7 @@
       found = whole(n);
       break;
     }
-    if (!found) return null;
+    if (!found || found.members.some(movesOn)) return null;
     const q = describeBy(found.container);
     return radio || q.question ? { ...found, ...q, radio } : null;
   });

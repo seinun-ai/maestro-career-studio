@@ -10,7 +10,8 @@
  * words match as substrings (a "Reapply", an "Incomplete" and a "Submit_application" all stop),
  * the Next words must be the WHOLE label, and a visible-but-disabled Submit still counts.
  *
- * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, isPlainNext, KINDS }.
+ * WHAT THIS FILE PUBLISHES: ns.pageKind = { classify, sortButton, isPlainNext, submitMarked, movesOn, KINDS }.
+ * (submitMarked and movesOn read one button element's attributes and words, nothing else of the DOM.)
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -51,6 +52,20 @@
   /** Whether a button's text is a plain Next ("Next", "Next step", "Save and continue/next"). */
   function isPlainNext(text) {
     return PLAIN_NEXT.test(normalise(text).replace(/^[^a-z]+|[^a-z]+$/g, ""));
+  }
+
+  /** The id, name, data-qa, data-automation-id or formaction says submit. Not the label: a page
+   * names its Submit that way when the label is an icon, "Done" or a translation. */
+  const SUBMIT_MARK_ATTRS = ["id", "name", "data-qa", "data-automation-id", "formaction"];
+  const submitMarked = (el) => SUBMIT_MARK_ATTRS.some((attr) => /submit/i.test(el.getAttribute(attr) ?? ""));
+
+  /** Whether pressing this button element could send the form or move it on: type=submit, a submit
+   * mark, or words that sort as a Submit or a Next. A pill group's member never is (a Yes/No answer),
+   * and a press of one that is must never happen. */
+  function movesOn(el) {
+    if (el.getAttribute("type")?.toLowerCase() === "submit" || submitMarked(el)) return true;
+    return [el.textContent, el.getAttribute("aria-label"), el.getAttribute("value"), el.getAttribute("title")]
+      .some((text) => text && sortButton({ text }) !== "unclear");
   }
 
   function classify(s) {
@@ -108,6 +123,6 @@
     return { kind: "unknown" };
   }
 
-  ns.pageKind = { classify, sortButton, isPlainNext, KINDS: ["captcha", "create_account", "verify", "sign_in",
+  ns.pageKind = { classify, sortButton, isPlainNext, submitMarked, movesOn, KINDS: ["captcha", "create_account", "verify", "sign_in",
     "confirmation", "closed", "posting", "board_native", "form_step", "review", "unknown"] };
 })();
