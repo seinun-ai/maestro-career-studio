@@ -181,6 +181,8 @@ export interface JobDetail {
   knockout: KnockoutScan | null;
   /** Whether anything was recorded as filled into this job's form (the What was submitted tab). */
   has_filled_answers: boolean;
+  /** The application's base resume's own name; null with no application or no name. Optional: an older backend omits it. */
+  base_resume_name?: string | null;
 }
 
 export interface ContactInfo {

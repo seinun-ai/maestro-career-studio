@@ -57,13 +57,14 @@ import { useBaseResumeColor, useBaseResumeLabel } from "@/hooks/use-base-resume-
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
-import { apiFetch, listAtsScores, promoteJobToAgentQueue } from "@/lib/api";
+import { apiFetch, apiUrlForBrowserPdf, listAtsScores, promoteJobToAgentQueue } from "@/lib/api";
 import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { headerProposalPill } from "@/lib/inbox-readiness";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
-import { scorePill } from "@/lib/job-standing";
+import { formatShortDate } from "@/lib/format-date";
+import { scorePill, standingLine } from "@/lib/job-standing";
 import { jobOwnershipView, ownershipControlProps } from "@/lib/job-ownership";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
@@ -218,6 +219,9 @@ export default function JobDetailPage({
   const colorOf = useBaseResumeColor();
   // The header's one score: the application's tailored score, else the best base score.
   const scoreShown = scorePill(scoreRows.data ?? [], application?.id ?? null);
+  const bestBaseRow = (scoreRows.data ?? [])
+    .filter((s) => s.phase === "base")
+    .sort((a, b) => b.composite - a.composite)[0];
   const scoreResume = scoreShown?.tailored ? application?.base_resume ?? "" : scoreShown?.targetId ?? "";
   // The newest proposal, in full: the header pill's reason, Keep it's application link (the proposal says
   // whether it has one) and the Overview card all read it, so it is asked once (the card shares the key).
@@ -362,6 +366,13 @@ export default function JobDetailPage({
   const { job } = data;
   const hasApp = !!application;
   const showSubmitted = Boolean(data.has_filled_answers) || submittedSeen;
+  const standing = standingLine({
+    application,
+    appliedOn: application?.applied_at ? formatShortDate(application.applied_at) : null,
+    resumeName: application ? data.base_resume_name ?? baseName(application.base_resume) : null,
+    bestBase: bestBaseRow ? { name: baseName(bestBaseRow.target_id), value: bestBaseRow.composite } : null,
+    hasFilledAnswers: Boolean(data.has_filled_answers),
+  });
   const salary = formatSalary(
     job.salary_min,
     job.salary_max,
@@ -638,6 +649,37 @@ export default function JobDetailPage({
             />
           </div>
         </header>
+        {/* Where this stands, in one line: what the header's pills cannot say. */}
+        <p
+          data-testid="job-standing"
+          className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-body-medium"
+        >
+          <span>{standing.text}</span>
+          {standing.pdf && application ? (
+            <a
+              href={apiUrlForBrowserPdf(`/api/applications/${application.id}/pdf`)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              View PDF
+            </a>
+          ) : null}
+          {standing.submitted ? (
+            <button type="button" onClick={() => setTab("submitted")} className="text-primary hover:underline">
+              What was submitted
+            </button>
+          ) : null}
+          {standing.kind === "draft" ? (
+            <span>
+              Tailor and Apply in the Companion, or open{" "}
+              <button type="button" onClick={() => setTab("fit")} className="text-primary hover:underline">
+                Score and tailor
+              </button>
+              .
+            </span>
+          ) : null}
+        </p>
         <JobOwnershipNotice ownership={job.ownership} />
 
         <Tabs

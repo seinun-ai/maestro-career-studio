@@ -635,6 +635,9 @@ def get_job_detail(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
         application=ApplicationRead.model_validate(application) if application else None,
         knockout=scan,
         has_filled_answers=filled_answers.has_any(db, job_id),
+        base_resume_name=(
+            base_resume_data.display_name_of(db, application.base_resume) if application else None
+        ),
     )
 
 

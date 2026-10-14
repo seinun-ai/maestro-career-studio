@@ -365,6 +365,26 @@ def test_get_job_detail_with_application(db_session, client):
     assert body["application"]["status"] == "applied"
 
 
+def test_get_job_detail_names_the_applications_resume(db_session, client):
+    """The job page's "Applied <date> with <resume> resume" line reads the name from the detail."""
+    from app.models.base_resume import BaseResume
+
+    db_session.add(BaseResume(slug="data_engineer", data_json={}, display_name="Data Engineer"))
+    job = Job(raw_text="JD body 3", raw_text_hash="hash-detail-3", title="Data Engineer", company="Beta")
+    db_session.add(job)
+    db_session.flush()
+    db_session.add(Application(job_id=job.id, base_resume="data_engineer", status="applied"))
+    db_session.commit()
+
+    body = client.get(f"/api/jobs/{job.id}/detail").json()
+    assert body["base_resume_name"] == "Data Engineer"
+
+    bare = Job(raw_text="JD body 4", raw_text_hash="hash-detail-4", title="Analyst", company="Beta")
+    db_session.add(bare)
+    db_session.commit()
+    assert client.get(f"/api/jobs/{bare.id}/detail").json()["base_resume_name"] is None
+
+
 def test_get_job_detail_404(db_session, client):
     response = client.get(f"/api/jobs/{uuid.uuid4()}/detail")
     assert response.status_code == 404
