@@ -1239,6 +1239,8 @@
         hit = await refind(live, hit, text, t, undo);
         if (!hit) return done({ outcome: "unexpected", reason: "option_missing", options: flag(b().optionsOf(live), consentForms) });
         if ((multi || shape.multi?.(el)) && isHeld(hit)) return done(alreadyThere(el, shape, hit.text));
+        const rowPath = pathOf(hit.el, live); // read before the click: a redraw detaches the row
+        const category = isGroup(hit.el) || knownGroup(el, hit.text, rowPath);
         const gestures = gesturesFor(hit.el);
         // A set's item gets one click more: a page may drop a click that lands
         // while its list redraws, and the row to click again is read afresh on
@@ -1260,8 +1262,14 @@
         const after = own(el, popsBefore);
         const next = after ? b().optionsOf(after) : [];
         if (next.length && next.map((o) => o.text).join("\n") !== shown && same(shape.read(el), before.display)) {
+          if (!category) learnGroup(el, hit.text, rowPath);
           leftOpen.set(el, { pop: after, before: popsBefore });
           return { outcome: "unexpected", reason: "new_options", options: flag(next, consentForms) };
+        }
+        // A category is never the answer: a click that committed one is reported, not verified.
+        if (category && !undo && !same(shape.read(el), before.display)) {
+          await tidy(el, t);
+          return { outcome: "unexpected", reason: "group_committed" };
         }
         if (!keep) await tidy(el, t);
         const got = verify(el, shape, hit.text, { before, undo });
@@ -1367,12 +1375,39 @@
     while (JSON.stringify(s).length > max) s = s.slice(0, -10);
     return JSON.stringify(s);
   };
+  // A category row, as Workday draws one: no selection control of its own (no
+  // radio, checkbox or aria-checked) and a chevron icon as the LAST thing in the
+  // row. Leaves carry a radio or checkbox, or at least no icon.
+  const SELECTION = 'input[type="radio"], input[type="checkbox"], [aria-checked]';
+  const CHEVRON = /chevron|caret|angle-?right|arrow-?right/i;
+  const iconWords = (n) => [n.getAttribute("class"), n.getAttribute("data-automation-id"), n.getAttribute("data-icon"),
+    n.getAttribute("aria-label"), n.id, n.querySelector("use")?.getAttribute("href"),
+    n.querySelector("use")?.getAttribute("xlink:href")].filter(Boolean).join(" ");
+  const trailingChevron = (row) => {
+    const icon = [...row.querySelectorAll("*")].filter((n) => CHEVRON.test(iconWords(n))).at(-1);
+    if (!icon) return false;
+    for (let n = icon; n && n !== row; n = n.parentElement) {
+      for (let x = n.nextSibling; x; x = x.nextSibling) if (b().clean(x.textContent)) return false;
+    }
+    return true;
+  };
   // An option that opens a group of options rather than being an answer.
   const isGroup = (o) => {
     const popup = o.getAttribute("aria-haspopup");
     return (Boolean(popup) && popup !== "false") || o.hasAttribute("aria-expanded")
-      || (o.getAttribute("role") === "treeitem" && o.querySelector('[role="group"]') !== null);
+      || (o.getAttribute("role") === "treeitem" && o.querySelector('[role="group"]') !== null)
+      || (!o.hasAttribute("aria-checked") && !o.querySelector(SELECTION) && trailingChevron(o));
   };
+  // Rows whose click showed children although nothing marked them (no icon, no
+  // ARIA): remembered per field, by text and place, so the next state calls
+  // them a group and a choose never takes one as the answer.
+  const learnedGroups = new WeakMap(); // el -> Set("text\nplace")
+  const groupKey = (text, where) => `${text}\n${where}`;
+  const learnGroup = (el, text, where) => {
+    if (!learnedGroups.has(el)) learnedGroups.set(el, new Set());
+    learnedGroups.get(el).add(groupKey(text, where));
+  };
+  const knownGroup = (el, text, where) => learnedGroups.get(el)?.has(groupKey(text, where)) === true;
   const wordsOf = (value) => {
     const whole = String(value ?? "").trim();
     return [...new Set(whole.split(/[\s,/()&-]+/).filter((w) => w.length > 2 && w !== whole))].slice(0, MAX_WORDS);
@@ -1417,7 +1452,10 @@
     return options.slice(start, start + MAX_CLICKS);
   };
   const offered = (el, shape, pop, consentForms) => windowOf(clickable(el, shape, pop, consentForms), scrollerOf(pop))
-    .map((o) => ({ ...o, group: isGroup(o.el), where: pathOf(o.el, pop), place: placeOf(o.el, pop) }));
+    .map((o) => {
+      const where = pathOf(o.el, pop);
+      return { ...o, group: isGroup(o.el) || knownGroup(el, o.text, where), where, place: placeOf(o.el, pop) };
+    });
   const ids = (options) => options.map(({ oid, text, group, where }) => ({ oid, text, group, where }));
   // A click move's words. The same text under more than one category path
   // names its place, so the two moves read differently: `Click the option
@@ -1594,6 +1632,7 @@
           const next = after ? b().optionsOf(after).map((o) => o.text).join("\n") : "";
           const unchanged = same(shape.read(el), before.display);
           if (next && next !== shown && unchanged) { // a category: its children are the next state
+            if (!hit.group) learnGroup(el, hit.text, hit.where);
             leftOpen.set(el, { pop: after, before: held.before });
             return { outcome: "progressed" };
           }

@@ -565,3 +565,64 @@ def test_a_value_search_after_the_agents_term_makes_the_view_incomplete_again(pa
     again = move(page, f, "search:value", value)
     assert again["outcome"] == "progressed", again
     assert state(page, f, value)["complete"] is False
+
+
+# ---------- category rows: a chevron and no selection control (workday_category_rows.html)
+
+def _clicks(s):
+    return [c["describe"] for c in s["candidates"] if c["mid"].startswith("click:")]
+
+
+def test_a_row_with_a_trailing_chevron_and_no_selection_control_is_described_as_a_group(page, load):
+    load(page, fixture_html("workday_category_rows.html"))
+    f = inv(page)["How did you hear about us?"]
+    move(page, f, "open", "LinkedIn")
+    assert _clicks(state(page, f, "LinkedIn")) == [
+        'Open the group "Website"', 'Open the group "Social Media"', 'Click the option "Events"',
+        'Click the option "Employee Referral"']
+
+
+def test_a_chevron_category_opens_to_its_leaves_and_a_leaf_is_the_answer(page, load):
+    load(page, fixture_html("workday_category_rows.html"))
+    f = inv(page)["How did you hear about us?"]
+    move(page, f, "open", "Job Board")
+    assert move(page, f, "click:o1", "Job Board", **{"as": "progress"})["outcome"] == "progressed"
+    s = state(page, f, "Job Board")
+    assert _clicks(s) == ['Click the option "Company Careers Site"', 'Click the option "Job Board"']
+    row = move(page, f, "click:o2", "Job Board")
+    assert (row["outcome"], row["committed"]) == ("verified", "Job Board") and oracle(page, "heard_tree") == "Job Board"
+
+
+def test_a_category_that_commits_itself_is_never_the_answer_through_a_step_click_or_a_choose(page, load):
+    load(page, fixture_html("workday_category_rows.html"))
+    page.evaluate("window.categoriesCommit = true")
+    f = inv(page)["How did you hear about us?"]
+    move(page, f, "open", "Website")
+    row = move(page, f, "click:o1", "Website", **{"as": "progress"})
+    assert (row["outcome"], row["reason"]) == ("unexpected", "group_committed")
+    f = inv(page)["How did you hear about us?"]
+    got = page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f["fid"], "fp": f["fp"], "op": "choose", "text": "Social Media"})[0]
+    assert (got["outcome"], got["reason"]) == ("unexpected", "group_committed")
+
+
+def test_a_row_whose_click_revealed_children_is_remembered_as_a_group(page, load):
+    """"Events" shows no chevron, so the first state offers it as an answer; a click on it progressed, and
+    from then on the field's states call it a group (no icon is needed to learn it)."""
+    load(page, fixture_html("workday_category_rows.html"))
+    f = inv(page)["How did you hear about us?"]
+    move(page, f, "open", "Webinar")
+    assert 'Click the option "Events"' in _clicks(state(page, f, "Webinar"))
+    assert move(page, f, "click:o3", "Webinar")["outcome"] == "progressed"
+    move(page, f, "close", "Webinar")
+    move(page, f, "open", "Webinar")
+    assert 'Open the group "Events"' in _clicks(state(page, f, "Webinar"))
+
+
+def test_a_choose_that_opened_an_unmarked_category_remembers_it(page, load):
+    load(page, fixture_html("workday_category_rows.html"))
+    f = inv(page)["How did you hear about us?"]
+    got = page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f["fid"], "fp": f["fp"], "op": "choose", "text": "Events"})[0]
+    assert (got["outcome"], got["reason"]) == ("unexpected", "new_options")
+    move(page, f, "close", "Webinar")
+    move(page, f, "open", "Webinar")
+    assert 'Open the group "Events"' in _clicks(state(page, f, "Webinar"))

@@ -1,0 +1,61 @@
+<!doctype html>
+<!-- A Workday-style "How did you hear about us?" prompt whose list mixes CATEGORY rows and LEAF rows (ATS-W
+     question step, live 2026-10-14, as the owner's run described it; the chevron icon's exact markup was NOT
+     captured, so its element and class words are ASSUMED from the description "a trailing chevron icon").
+     Categories ("Website", "Social Media") carry a trailing chevron icon span and NO selection control (no radio,
+     no aria-checked, no aria-haspopup/aria-expanded); a click replaces the list with the category's children
+     (leaves under "Website": Company Careers Site, Job Board). "Employee Referral" is a leaf. "Events" is a
+     category the page draws WITHOUT an icon (an unmarked one the engine can only learn by clicking it).
+     `window.categoriesCommit = true` makes a category click commit its own text as the answer, as a widget that
+     does not distinguish them would. The page's state is window.__oracle.heard_tree (set only by a leaf click,
+     or a category click under categoriesCommit). -->
+<form>
+  <fieldset><legend>How did you hear about us? *</legend>
+    <button type="button" id="heard_tree" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button>
+  </fieldset>
+</form>
+<div id="portal-tree"></div>
+<script>
+(() => {
+  window.__oracle = window.__oracle || {};
+  window.__oracle.heard_tree = "";
+  const TREE = [
+    ["Website", ["Company Careers Site", "Job Board"], true],
+    ["Social Media", ["LinkedIn", "Other Social"], true],
+    ["Events", ["Career Fair", "Webinar"], false],
+    ["Employee Referral", null, false],
+  ];
+  const CHEVRON = `<span data-automation-id="chevronIcon" class="wd-icon-chevron-right-small wd-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m9 18 6-6-6-6"></path></svg></span>`;
+  const portal = document.getElementById("portal-tree");
+  const btn = document.getElementById("heard_tree");
+  const close = () => { portal.innerHTML = ""; };
+  const commit = (text) => {
+    window.__oracle.heard_tree = text;
+    btn.textContent = text;
+    btn.setAttribute("aria-label", ` ${text} Required`);
+    close();
+  };
+  const render = (rows) => {
+    portal.innerHTML = "";
+    const list = document.createElement("ul");
+    list.setAttribute("role", "listbox");
+    for (const [text, kids, chevron] of rows) {
+      const row = document.createElement("li");
+      row.setAttribute("role", "option");
+      row.setAttribute("data-automation-id", "menuItem");
+      row.innerHTML = `<div data-automation-id="promptOption"></div>${chevron ? CHEVRON : ""}`;
+      row.firstChild.textContent = text;
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (kids && window.categoriesCommit) commit(text);
+        else if (kids) render(kids.map((k) => [k, null, false]));
+        else commit(text);
+      });
+      list.appendChild(row);
+    }
+    portal.appendChild(list);
+  };
+  btn.addEventListener("click", (e) => { e.stopPropagation(); render(TREE); });
+  document.addEventListener("click", close);
+})();
+</script>
