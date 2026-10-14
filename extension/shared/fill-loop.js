@@ -1365,19 +1365,29 @@
       circle: "cir", cir: "cir", terrace: "ter", ter: "ter", parkway: "pkwy", pkwy: "pkwy", highway: "hwy",
       hwy: "hwy", trail: "trl", trl: "trl", way: "way",
     };
+    // A direction after the road suffix ("121 Allora Pl NW") is part of the street: NW and SW are
+    // different streets.
+    const DIRECTION = {
+      n: "n", s: "s", e: "e", w: "w", ne: "ne", nw: "nw", se: "se", sw: "sw", north: "n", south: "s", east: "e", west: "w",
+      northeast: "ne", northwest: "nw", southeast: "se", southwest: "sw",
+    };
+    const canonical = (w) => ROAD_SUFFIX[w] ?? DIRECTION[w] ?? w;
     const addressWords = (text) => String(text ?? "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
       .replace(/[.,#]/g, " ").split(/\s+/).filter(Boolean);
     const parseAddress = (line) => {
       const words = addressWords(line);
       const number = words.find((w) => /^\d+[a-z]?$/.test(w)) ?? null;
       const rest = words.filter((w) => w !== number);
-      const end = rest.findIndex((w) => ROAD_SUFFIX[w]); // what follows the road suffix is a unit, not the street
-      const street = end >= 0 ? rest.slice(0, end + 1) : rest;
-      return { number, core: street.map((w) => ROAD_SUFFIX[w] ?? w) };
+      // The LAST suffix word ends the street ("100 Court St": Court is a name); a direction right after
+      // it belongs to it; whatever else follows is a unit, not the street.
+      const end = rest.findLastIndex((w) => ROAD_SUFFIX[w]);
+      const last = end >= 0 && DIRECTION[rest[end + 1]] ? end + 1 : end;
+      const street = end >= 0 ? rest.slice(0, last + 1) : rest;
+      return { number, core: street.map(canonical) };
     };
     const scoreAddress = (parsed, text, hints) => {
       const words = addressWords(text);
-      const canon = words.map((w) => ROAD_SUFFIX[w] ?? w);
+      const canon = words.map(canonical);
       const number = Boolean(parsed.number) && words.includes(parsed.number);
       const street = parsed.core.length > 0 && parsed.core.every((w) => canon.includes(w));
       const joined = ` ${words.join(" ")} `;
@@ -1402,7 +1412,7 @@
       const hints = { city: factOf("personal.city"), zip: factOf("personal.postal_code") };
       // The same line without its road suffix and unit ("121 Allora"), when that is a different query.
       const tokens = line.split(/\s+/);
-      const at = tokens.findIndex((w) => ROAD_SUFFIX[addressWords(w)[0]]);
+      const at = tokens.findLastIndex((w) => ROAD_SUFFIX[addressWords(w)[0]]);
       const short = parsed.number && at > 0 ? tokens.slice(0, at).join(" ") : null;
       for (const term of [line, ...(short && short !== line ? [short] : [])]) {
         const got = await explore(f, term, { address: true });
@@ -1754,11 +1764,11 @@
     // reader missed shows up here), one holding something (a value the reader
     // could not tell from a placeholder), or one carrying the engine's own
     // earlier write.
-    // Never one with no label of its own that is a box for prose, or that the
-    // page may need: with no question to read, "optional" is only a guess.
+    // Never one with no label of its own that is a box for prose: with no question
+    // to read, "optional" is only a guess (a required one is already excluded above).
     const unlabelled = (f) => !String(f.question ?? "").trim();
     const leftBlank = (f, row) => !f.required && !f.invalid && !row.leftover
-      && !(unlabelled(f) && (f.multiline || f.required))
+      && !(unlabelled(f) && f.multiline)
       && [f.committed].flat().every((v) => v == null || String(v).trim() === "");
     // What each open field is: text (a fact to type), choice, or prose (a
     // free-text answer the model writes); one with nothing to fill it is

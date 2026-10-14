@@ -10,7 +10,8 @@
        - "retry": the full line "121 Allora PL" is answered with the partial address only; the shorter query
          "121 Allora" (number + street name, no suffix) is answered with both;
        - "none": nothing but the partial address, whatever is typed;
-       - "twins": the full line is answered with two equally good rows in two cities.
+       - "twins": the full line is answered with two equally good rows in two cities;
+       - `window.addressRows` (an array) overrides all of the above: those rows, whatever is typed.
      State of the fake app: window.__oracle.address_line (the picked suggestion), address_clicks (every row
      clicked, in order), address_queries (the query the list was answered for, in order), address_enters
      (Enter presses), address_city / address_zip (what the pick wrote into the City and ZIP boxes). -->
@@ -38,6 +39,7 @@
   const rowsFor = (query) => {
     const q = query.toLowerCase();
     const mode = window.addressMode;
+    if (window.addressRows) return window.addressRows;   // a test scripts the suggestions outright
     if (!q.includes("allora")) return [];
     if (mode === "none") return [PARTIAL];
     if (mode === "twins") return ["121 Allora Pl, Springfield", "121 Allora Pl, Shelbyville"];

@@ -96,3 +96,24 @@ def test_a_box_that_keeps_free_text_keeps_the_typed_line_and_the_field_is_flagge
     row = out["by_question"]["Address Line 1"]
     assert page.input_value("#a") == "121 Allora PL", row
     assert row["status"] == "unconfirmed", row
+
+
+def rows_run(page, line, rows, **spec):
+    return _run(page, html=fixture_html("address_autocomplete.html"), page_js=f"window.addressRows = {rows!r}",
+                map={"Address Line 1": {"route": "slot", "slot": "personal.address", "value": line}},
+                limits={"MAX_ROUNDS": 2}, **spec)
+
+
+def test_a_trailing_direction_is_part_of_the_street(e2e_page):
+    page = e2e_page
+    out = rows_run(page, "121 Allora PL NW", ["121 Allora Pl SW, Springfield", "121 Allora Pl NW, Springfield"])
+    assert oracle(page, "address_clicks") == ["121 Allora Pl NW, Springfield"]
+    assert out["by_question"]["Address Line 1"]["status"] == "verified"
+
+
+def test_the_last_suffix_word_ends_the_street(e2e_page):
+    """"Court" is a street suffix and a street name: "100 Court St" ends at St, so "100 Court Pl" is another street."""
+    page = e2e_page
+    out = rows_run(page, "100 Court St", ["100 Court Pl, Springfield", "100 Court St, Springfield"])
+    assert oracle(page, "address_clicks") == ["100 Court St, Springfield"]
+    assert out["by_question"]["Address Line 1"]["status"] == "verified"
