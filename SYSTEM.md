@@ -606,7 +606,7 @@ this contract. Code citing "§4" lands here; the table says which file to open.
   for that job only: matched as a whole word, in that field, by `autofill_job.profile_for_job` for both `/context` and `/choose` (a general
   row whose question names this job is scoped on update; the same question at another job adds a row; Settings has Use for every job). The
   hand fix teaches the recipe book (§6 gesture report). The user's own Submit is recorded only from a confirmation page on a host the run
-  reached, straight from the application's own pages, after an 8 s Undo (a tab closed during it marks at once); any other page sets
+  reached at the same employer, straight from the application's own pages, after an 8 s Undo (a tab closed during it marks at once); any other page sets
   `noAutoMark`, leaving the manual Mark applied, and Done on the Ready card ends the record writing nothing. Only the panel holding a
   record's lease arms its mark, and Apply on a tab with a live run writes nothing. Run tabs fill with per-run limits (60 s a field, 12
   adaptive steps, 10 min a page; single-page Autofill keeps 25 s and 8). The job memory is per tab (`chrome.storage.session`

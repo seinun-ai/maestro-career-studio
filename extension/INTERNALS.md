@@ -1416,7 +1416,9 @@ footer alone).
 - **Resume** turns the record to `filling` BEFORE its first await (Resume and Skip leave the card and Stop shows, so a second Resume cannot
   post the receipt twice or replace Undo's memory, and a Skip pressed meanwhile is honoured; Skip also sets `stopRequested`), then re-reads
   the parked page, learns every answer the user typed (`learnAnswer`, with Undo; never a multiline box, so a long written answer is not
-  saved as a standing one), posts a "you" receipt row, and continues; a record ended under the read is not driven.
+  saved as a standing one), posts a "you" receipt row, and continues; a record ended under the read is not driven. Resume also makes the
+  record belong to the panel that pressed it (its lease), so the mark after the user's Submit has exactly one owner even when another window's
+  panel left the record.
 - **A saved answer that names this job stays with this job.** The panel (`panel/actions/pause.js` `scopeOf`) saves a row with `only_for`
   and `only_for_kind` (`company` or `city`) when the QUESTION names the job's company (the legal-suffix-free name first) or its city. The
   company match is case-sensitive on the job's own spelling (a company called Gap is not "any gap in employment"); a city is taken only from
@@ -1437,12 +1439,15 @@ footer alone).
   recipe book at probation for that site (one demonstration never makes it trusted), and a gesture that matches nothing joins the known-gaps list as `missing_technique`, as do leftovers the fill could not operate (`cannot_operate`,
   `unconfirmed`) and fields the user fixed (`user_fixed`). The recipe book is local and is taught whatever the fill log says; the gaps
   post only while `telemetryEnabled === true`. A gap is posted once per field and outcome and never retried (each post adds one).
-- **Recording the user's Submit.** A ready tab believes a confirmation page only when it is on a host the run reached and every read since
-  Ready was one of the application's own pages (a page not drawn yet says nothing); any other page the tab shows (another employer's thank-you,
-  a portal) sets `noAutoMark` and leaves the manual Mark applied. A believed confirmation shows "Marking applied in 8 s · Undo"; after 8 s the
+- **Recording the user's Submit.** A ready tab believes a confirmation page only when it is on a host the run reached, at the employer of the
+  page that reached Ready, and every read since Ready was a review or form step of that application (a page not drawn yet says nothing). The
+  record keeps that employer as `tenant` (the panel's `sessionTenant`: origin plus first path segment), because a shared ATS host serves every
+  employer and the host alone proves nothing. Any other page the tab shows (another employer on the same host, a posting, which after Ready is
+  another job being looked at, a portal) sets `noAutoMark` and leaves the manual Mark applied. A believed confirmation shows "Marking applied in 8 s · Undo"; after 8 s the
   host posts `companion-submitted` (host, path and the matched words; no page text beyond them). The host and path are kept from the read that
-  saw the page, so a tab closed during the countdown marks at once (a failure shows on the stopped card) and a tab that moved on cannot change
-  the address sent. Undo posts nothing and offers Mark applied. A 409 shows the server's own sentence and falls back to the status PATCH. The
+  saw the page, so a tab closed during the countdown marks at once and a tab that moved on cannot change the address sent. A mark that fails
+  after the tab closed (also one already in flight when it closed) ends the record as `stopped` / `tab_closed`, where its note shows on the
+  stopped card, not as a ready card nobody would see. Undo posts nothing and offers Mark applied. A 409 shows the server's own sentence and falls back to the status PATCH. The
   user's time ends when the confirmation is detected. The Ready card's **Done** ends the record as stopped with no server write and frees the
   tab for a new Apply. A read that fails on a ready tab leaves it ready (the driver does not stop a run mid-Submit). Each record carries the
   lease of the panel that owns it, and only that panel arms its auto-mark (every window's panel hears every tab; a reopened panel takes over the
