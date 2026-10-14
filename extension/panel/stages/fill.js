@@ -835,6 +835,8 @@
   }
   // The body, with the Forget control under it on every path.
   function fillBody(ctx) {
+    // A queued run on this tab is the fill in progress: its card (panel/runs.js) is the whole body.
+    if (ctx.facts.run) return ns.panelRuns.render(ctx);
     const body = fillBodyOf(ctx);
     const forget = forgetRow(ctx);
     return forget ? ctx.build.attach(body, forget) : body;

@@ -159,6 +159,8 @@
   }
 
   ns.panelDuringAction = duringAction;
+  // Read by the queued run's host (`actions/run.js`), whose failures are not inside a `busy` span.
+  ns.panelFailureNote = failureNote;
   // Read by the Fill action, which reports a `/choose` failure the runner
   // swallowed: the same key words, from the same patterns.
   ns.panelKeyProblem = keyProblem;

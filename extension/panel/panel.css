@@ -616,12 +616,12 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * declarations would drift on the tenth. The attach's was written as a fourth
  * copy first and the duplication gate caught it, which is this comment's whole
  * claim demonstrated. */
-.needs .save, .qna .save, .attach .save {
+.needs .save, .qna .save, .attach .save, .run .save {
   margin-top: 7px; font: 700 12px/1 var(--cs-font);
   background: var(--cs-primary); color: var(--cs-on-primary);
   border: none; border-radius: 9px; padding: 8px 12px; cursor: pointer;
 }
-.needs .save:disabled, .qna .save:disabled, .attach .save:disabled {
+.needs .save:disabled, .qna .save:disabled, .attach .save:disabled, .run .save:disabled {
   opacity: .6; cursor: default;
 }
 
@@ -790,6 +790,33 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 }
 @keyframes cs-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin::after { animation: none; } }
+
+/* ------- a queued run in the Next card (panel/runs.js) ------------------- */
+
+/* The eyebrow says who is working: "Applying" while the Companion is, "Next" (the card's own) when the
+ * next move is the user's. */
+.stg.active.applying > .stg-row::before { content: "Applying"; }
+/* This page's fields as a bar: the fill is a share of the track, set by the panel as --v (percent). */
+.run-bar { height: 4px; border-radius: 999px; background: var(--cs-line); overflow: hidden; margin: 2px 0 10px; }
+.run-fill { display: block; height: 100%; width: calc(var(--v, 0) * 1%); background: var(--cs-primary); border-radius: 999px; }
+/* The pages so far: a tick and the filled count for each finished page, the one in hand last. */
+.run-pages { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
+.run-pages li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.run-pages li.done { color: var(--cs-muted); }
+.run-pages li.done .ico { color: var(--cs-good); }
+.run-pages li.now { font-weight: 600; padding-left: 22px; }
+.run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; }
+/* Needs you: the warm box of the pause row, with the reason first and the sentence at body size. */
+.run-needs { margin-top: 0; }
+.run-reason { font-weight: 600; color: var(--cs-warn-text); }
+.needs.run-needs .opts { margin-top: 4px; font-size: 13px; }
+.run-needs .resid { margin-top: 8px; }
+.run-needs .resid button { color: var(--cs-warn-text); }
+.run .unpick { margin-top: 4px; }
+.run-learned, .run-marking { margin-top: 10px; }
+.run-marking { display: flex; align-items: center; flex-wrap: wrap; gap: 0; margin-top: 0; }
+.run-marking .linkish, .run-learned .linkish { border: none; background: none; cursor: pointer; padding: 4px 6px; }
+.run-mark-note { margin-top: 8px; overflow-wrap: anywhere; }
 
 /* The answer receipt's flags (stages/fill.js `flagNodes`) and the knock-out
  * banner (`knockoutLine`): warn-tinted, never a control. Their heading and list

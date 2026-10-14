@@ -724,6 +724,14 @@
      * job the user has left.
      */
     qna: EMPTY_QNA,
+    /** The queued runs' records (`shared/queue-run.js` keeps the shape, `actions/run.js` the host):
+     * one per tab a run was started in, kept until the user presses Done.
+     *
+     * NOT A FACT ABOUT THE ACTIVE PAGE, which is why `resetPageFacts` leaves it alone: a record is
+     * pinned to its own tab, and a tab switch, a navigation inside the tab or a generation change
+     * neither ends nor cancels a run. What the panel DRAWS from it is the record of the BOUND tab
+     * (`boundRun`), in the Fill row's Next card. */
+    runs: [],
     // A fault in the panel's own plumbing rather than a fact about a page. It
     // survives `resetPageFacts`, which `note` deliberately does not — a broken
     // panel is broken on every tab, and a user who saw the sentence once and
@@ -1186,6 +1194,33 @@
     return (card.resumes ?? []).find((resume) => resume.slug === card.baseSlug);
   }
 
+  /** The queued run pinned to the bound tab, or undefined. Found by TAB, never by the page in it: the
+   * run's employer changes under it as Apply and Next move the tab, and its record is what says
+   * which job this still is. */
+  function boundRun() {
+    return card.runs.find((run) => (run.tabId ?? run.startTabId) === card.tabId);
+  }
+
+  /** A tab with a run takes its job and application from the run's record, not from
+   * `restoreSession`: that restore refuses an entry once the tab is on another origin or tenant (a
+   * cross-origin Apply), which is exactly where a run spends its time. The backend's own match still
+   * wins (this runs only when it named no application), and the application's detail is read after
+   * as for any binding, so the PDF and status are the backend's. Returns whether it bound. */
+  function bindFromRun() {
+    const run = boundRun();
+    if (!run?.applicationId) return false;
+    card.application = { id: run.applicationId, status: "draft", job_company: run.company, job_title: run.title };
+    card.job ??= { id: run.jobId, company: run.company, title: run.title };
+    card.match = "exact";
+    card.claimed = true;
+    card.pdfReady = true;
+    if (run.baseSlug) {
+      card.baseSlug = run.baseSlug;
+      card.baseSelected = true;
+    }
+    return true;
+  }
+
   /** The done rows' summaries, out of the store: `railModel` stays a function
    * of its arguments, and this is the one reader of the facts it prints.
    *
@@ -1288,7 +1323,9 @@
     // A reopened done Resume row: Quick tailor would replace the tailored
     // draft unasked, so its one way on is the body's link to Maestro CS.
     if (stage === "resume") return card.application !== null && card.pdfReady === true;
-    if (stage === "fill") return card.hasForm !== true;
+    // A run on this tab is the fill: its card has its own Stop, and a second Autofill under it would
+    // fill the page twice.
+    if (stage === "fill") return boundRun() !== undefined || card.hasForm !== true;
     return false;
   }
 
@@ -2156,6 +2193,8 @@
         knockout: card.knockout,
         // Whether the recipe book holds anything to forget.
         learnedMoves: card.learnedMoves,
+        // The queued run pinned to this tab (a copy: a body reads, it does not write), or null.
+        run: boundRun() ? { ...boundRun() } : null,
         fillRound: card.fillRound,
         // The pause rows' drafts. Handed over whole rather than per row: a body
         // renders the whole list in one pass, and a per-row lookup callback
@@ -2173,7 +2212,8 @@
              stopUsingBaseAsIs, openTailor, quickTailor,
              setFillMode, forgetLearnedMoves, startFill, attachResume, scrollToField, focusField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
-             askQuestion, copyAnswer, trackThis },
+             askQuestion, copyAnswer, trackThis, stopRun, resumeRun, skipRun, closeRun, undoLearned,
+             undoMark, markApplied },
       build: { node, attach, plural, statusLabel, dayLabel, icon, swatch },
     };
   }
@@ -2543,7 +2583,7 @@
     const closing = card.revisit?.row === key;
     card.revisit = closing
       ? null
-      : { row: key, over: stageFor(cardFacts(card)).stage };
+      : { row: key, over: decide().stage };
     render();
     // A claimed Job body needs the draft list to offer a switch. Unmatched
     // Job already loads it via shouldLoadApplications; a restored pick on
@@ -2555,7 +2595,10 @@
 
   function renderRail(decision, open) {
     region("rail").replaceChildren(...railModel(decision, stageSummaries()).map((row) => {
-      const stage = node("li", `stg ${row.state}`);
+      // The bound run's state is the open Fill row's title (direction C: the Next card changes as the run
+      // moves), and "Applying" its eyebrow while the Companion is the one working.
+      const run = row.key === open && row.key === "fill" ? boundRun() : undefined;
+      const stage = node("li", `stg ${row.state}${run && ns.panelRuns.working(run) ? " applying" : ""}`);
       // Announced, not merely coloured: the rail IS "where am I", and a screen
       // reader gets none of the border, the tick, or the opacity. `aria-current`
       // marks the one you are on; the numeral carries the rest in words.
@@ -2609,7 +2652,7 @@
         line.addEventListener("click", () => toggleRevisit(wayBack ? open : row.key));
       }
       attach(line, numeral,
-             node("span", "stg-name", row.name),
+             node("span", "stg-name", run ? ns.panelRuns.title(run) : row.name),
              STATE_MARKS[row.state]
                ? attach(node("span", "stg-state"), icon(STATE_MARKS[row.state], { size: 12 }),
                         node("span", null, row.stateLabel))
@@ -2707,7 +2750,7 @@
   const CONTROL_ROWS = [
     ["preview-", "job"], ["draft-pick", "job"], ["base-", "job"],
     ["tailor-options", "resume"], ["resume-", "resume"],
-    ["fill-mode-", "fill"], ["answer-", "fill"], ["qna-", "fill"],
+    ["fill-mode-", "fill"], ["answer-", "fill"], ["qna-", "fill"], ["run-", "fill"],
   ];
 
   /** The two statuses this panel WRITES, which is not the two it can read.
@@ -2855,8 +2898,19 @@
     region("foot-controls").replaceChildren(...controls);
   }
 
-  function render() {
+  /** The decision, with a queued run on the bound tab read as the fact it is: the run IS the Fill
+   * step in progress, whatever the page's own facts say (a restored `touched`, a resume not read
+   * yet). Fill is active and not ticked, so the Next card is the run's and the progress bar says
+   * "Fill". Nothing is written: the override lives for one paint. */
+  function decide() {
     const decision = stageFor(cardFacts(card));
+    if (!boundRun()) return decision;
+    return { ...decision, stage: "fill", done: { ...decision.done, fill: false },
+             skipped: decision.skipped.filter((key) => key !== "fill") };
+  }
+
+  function render() {
+    const decision = decide();
     // ONCE PER RENDER, and passed to both readers rather than asked twice: this
     // is the call that drops a stale `revisit`, so a second one would be a
     // second place the store can change during a paint.
@@ -2900,6 +2954,9 @@
     // the guard: acting on another tab's url would leave the panel showing —
     // and then acting on — a page the user is not looking at.
     chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      // A queued run watches its own tab for the page after the user's Submit, whichever tab the
+      // panel is bound to.
+      runWatch.updated?.(tabId, changeInfo);
       if (tabId !== card.tabId) return;
       if (changeInfo.url) {
         // IN PLACE: the tab changed its address, and on an SPA (a Workday
@@ -2921,7 +2978,10 @@
     });
     // A CLOSED TAB'S JOB IS FORGOTTEN, whether or not it was the bound one: the
     // memory is a map of every tab this browser has had a pick in (`KEY`).
-    chrome.tabs.onRemoved.addListener(forgetTab);
+    chrome.tabs.onRemoved.addListener((tabId) => {
+      forgetTab(tabId);
+      runWatch.removed?.(tabId);
+    });
     // A SUBFRAME of the bound tab finished loading, which is how an embedded
     // application form arrives with no url change (`scheduleFrameDetect`).
     // Frame 0's own loads are `onUpdated`'s above. `webNavigation` is already
@@ -3205,7 +3265,7 @@
     // `restorableSession` owns whether the memory may be used; the backend's
     // own answer always wins over it. A storage read, so it costs the paint
     // below no round trip.
-    if (!card.application) await restoreSession(token);
+    if (!card.application && !bindFromRun()) await restoreSession(token);
     if (!current(token)) return;
 
     // THE SCORES ARE A STAGE INPUT for a saved job with no application: the
@@ -3605,6 +3665,10 @@
   const FLOW_TTL_MS = 60 * 60 * 1000;
   const FLOW_KEY = "applicationFlows";
   const flows = new Map();
+  // tab id -> {origin}: the origin of the frame a queued run last found its form in.
+  const runFlows = new Map();
+  // The queued run's tab listeners (`actions/run.js` registers them through `actionStore().run.watch`).
+  let runWatch = {};
   const isWebOrigin = (origin) => /^https?:\/\//.test(origin ?? "");
   const fresh = (entry, now) => now - Number(entry?.at) <= FLOW_TTL_MS;
 
@@ -3620,6 +3684,10 @@
   /** The tab's flow while it is fresh and the tab is still on the employer it
    * began on, or null. Only the bound tab has a page to compare. */
   function flowFor(tabId) {
+    // A RUN TAB is vouched by what the run read there (`runFlows`), not by the bound page: it is not
+    // `card.tabId` once the user looks elsewhere, and its employer changes under it as Apply and
+    // Next move it. The run refreshes the origin at every read and drops it when the run ends.
+    if (runFlows.has(tabId)) return runFlows.get(tabId);
     const entry = flows.get(tabId);
     if (!entry || tabId !== card.tabId) return null;
     if (!fresh(entry, Date.now())) {
@@ -4578,6 +4646,41 @@
         ask("fill_trace", { trace }).catch((err) => console.warn("[maestro-cs] trace failed:", err));
       },
       remember: rememberSession,
+      /** THE QUEUED RUN'S DOOR: the browser things `actions/run.js` may not reach for itself (it is
+       * under the actions rule: no `chrome`, no timers). Every one names its TAB, because a run is
+       * not the bound page. The page fan-out goes through `ask`, so the flow vouch
+       * (`withFlowOrigin`) rides it like any gated message; `frameId` is a top-level field of
+       * `page_broadcast` (the service worker sends to that frame only). */
+      run: {
+        tabBroadcast: (tabId, message, frameId) => ask("page_broadcast",
+          { tabId, message, ...(Number.isInteger(frameId) ? { frameId } : {}) }),
+        // The top document alone: the only door `page_sign_in` may use.
+        tabFrame0: (tabId, message) => ask("panel_frame0", { tabId, message }),
+        prepare: (tabId) => ask("panel_prepare", { tabId }),
+        attachPdf: (tabId, path, filename, expect, resumeOnly) =>
+          ask("attach_pdf", { tabId, path, filename, expect, resumeOnly }),
+        tabUrl: async (tabId) => (await chrome.tabs.get(tabId))?.url ?? "",
+        // Not "loading": a fake or an older tab that reports no status counts as loaded.
+        loaded: async (tabId) => (await chrome.tabs.get(tabId))?.status !== "loading",
+        navigate: (tabId, url) => chrome.tabs.update(tabId, { url }),
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        now: () => Date.now(),
+        // A timer the caller can cancel: the auto-mark's 8 s.
+        after: (ms, fn) => {
+          const timer = setTimeout(fn, ms);
+          return () => clearTimeout(timer);
+        },
+        vouch: (tabId, origin) => { if (tabId != null) runFlows.set(tabId, { origin, at: Date.now() }); },
+        unvouch: (tabId) => { runFlows.delete(tabId); },
+        watch: (handlers) => { runWatch = handlers; },
+        telemetry: (action, observations, url) => {
+          ask("telemetry", { action, observations, page_host: hostOf(url) })
+            .catch((err) => console.warn("[maestro-cs] telemetry failed:", err));
+        },
+        // Session storage: gone when Chrome closes, which is the life a run has.
+        save: (records) => chrome.storage.session.set({ queueRun: records }),
+        load: async () => (await chrome.storage.session.get("queueRun"))?.queueRun ?? [],
+      },
       // Record that the scorer was asked about this job (`autoScored`).
       scored: (jobId) => autoScored.add(jobId),
       // The recipe book's door for one fill run (`recipeDoor`).
@@ -4599,7 +4702,8 @@
   const { addJob, pickApplication, unpickApplication, dropDeletedApplication,
           scoreAllBases, quickTailor, useBaseAsIs,
           stopUsingBaseAsIs, createPdf, startFill,
-          attachResume, submitAnswer, askQuestion, setStatus, trackThis } =
+          attachResume, submitAnswer, askQuestion, setStatus, trackThis, startRun, stopRun, resumeRun,
+          skipRun, closeRun, undoLearned, undoMark, markApplied, restoreRuns } =
     ns.panelActions(actionStore());
 
   /** The one primary per stage, as BEHAVIOUR — keyed on the same strings as
@@ -4644,11 +4748,14 @@
     card.learnedMoves = ns.recipeBook.size((await readStore())[KEY.recipes]);
     render();
     await loadFlows();
+    // The runs the last panel left, BEFORE the first bind: the tab a run is pinned to takes its job
+    // from the record (`bindFromRun`).
+    await restoreRuns();
     await bindActiveTab();
   }
 
   ns.panel = { railModel, resetPageFacts, applyMatch, previewFrom,
-               ingestBodyFrom, evidenceFrom, sessionEntryFrom, actionStore };
+               ingestBodyFrom, evidenceFrom, sessionEntryFrom, actionStore, startRun };
   // Nobody awaits the boot, so an unhandled rejection here would leave a blank
   // panel and an empty log — the exact report sw.js's registration carries its
   // own `.catch` for ("the icon does nothing").

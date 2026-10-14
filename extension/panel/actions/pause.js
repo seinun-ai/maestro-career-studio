@@ -122,17 +122,19 @@
     };
   };
 
+  // An `answer` of undefined takes the key out again: Undo puts back a profile that never had it.
   function withProfileAnswer(profile, path, answer) {
     const [head, ...rest] = path;
     const base = { ...(profile ?? {}) };
     const child = head === "work_auth" && rest.length
       ? workAuthForWrite(base[head])
       : base[head] ?? {};
-    base[head] = rest.length
-      ? withProfileAnswer(child, rest, answer)
-      : answer;
+    if (!rest.length && answer === undefined) delete base[head];
+    else base[head] = rest.length ? withProfileAnswer(child, rest, answer) : answer;
     return base;
   }
+
+  const valueAt = (profile, path) => path.reduce((at, key) => (at && typeof at === "object" ? at[key] : undefined), profile);
 
   /** The custom Q&A list with this question answered — appended, or UPDATED in
    * place when it is already there.
@@ -162,6 +164,27 @@
     return rows;
   }
 
+  /** One answer applied to a profile: the profile with it, where it went, and what it replaced.
+   *
+   * `before` is what Undo needs and nothing more: the typed key's old value (undefined when the
+   * profile had none), or the custom row this question had (null when it had none). */
+  function applyAnswer(profile, label, answer) {
+    const target = saveTargetFor(label);
+    if (target.store === "profile") {
+      return { profile: withProfileAnswer(profile, target.path, answer), target,
+               before: { path: target.path, value: valueAt(profile, target.path) } };
+    }
+    const key = ns.normLabel(label);
+    const old = (Array.isArray(profile.custom) ? profile.custom : [])
+      .find((row) => ns.normLabel(row?.question) === key);
+    return { profile: { ...profile, custom: withCustomAnswer(profile.custom, label, answer) }, target,
+             before: { label, row: old ? { ...old } : null } };
+  }
+
+  async function putProfile(store, profile) {
+    await store.api("/api/settings/autofill", { method: "PUT", body: JSON.stringify({ value: profile }) });
+  }
+
   /** Learn the answer: read the profile, put it back with this one added.
    *
    * READ-MODIFY-WRITE against `/api/settings/autofill`, which is the same
@@ -187,16 +210,45 @@
    * rollback — see `submitAnswer`.
    */
   async function learnAnswer(store, row, answer) {
-    const target = saveTargetFor(row.label);
     const current = await store.api("/api/settings/autofill");
-    const profile = current?.value ?? {};
-    const next = target.store === "profile"
-      ? withProfileAnswer(profile, target.path, answer)
-      : { ...profile, custom: withCustomAnswer(profile.custom, row.label, answer) };
-    await store.api("/api/settings/autofill", {
-      method: "PUT", body: JSON.stringify({ value: next }),
-    });
+    const { profile, target } = applyAnswer(current?.value ?? {}, row.label, answer);
+    await putProfile(store, profile);
     return target;
+  }
+
+  /** Learn several answers in ONE read-modify-write (a queued run's Resume saves everything the user
+   * typed on a page at once), and say what each replaced so `unlearnAnswers` can put it back. The
+   * whole-object PUT is why this is one round trip and not one per answer: a second PUT built from
+   * a read taken before the first would erase it. Items are `{label, answer}`. */
+  async function learnAnswers(store, items) {
+    const current = await store.api("/api/settings/autofill");
+    let profile = current?.value ?? {};
+    const saved = [];
+    for (const { label, answer } of items) {
+      const next = applyAnswer(profile, label, answer);
+      profile = next.profile;
+      saved.push({ target: next.target, before: next.before });
+    }
+    await putProfile(store, profile);
+    return saved;
+  }
+
+  /** Put back what `learnAnswers` replaced, newest first (a typed key to its old value, or gone;
+   * a custom row to the row it had, or gone). */
+  async function unlearnAnswers(store, saved) {
+    const current = await store.api("/api/settings/autofill");
+    let profile = current?.value ?? {};
+    for (const { before } of [...saved].reverse()) {
+      if ("path" in before) {
+        profile = withProfileAnswer(profile, before.path, before.value);
+        continue;
+      }
+      const key = ns.normLabel(before.label);
+      const rows = (Array.isArray(profile.custom) ? profile.custom : [])
+        .filter((row) => ns.normLabel(row?.question) !== key);
+      profile = { ...profile, custom: before.row ? [...rows, before.row] : rows };
+    }
+    await putProfile(store, profile);
   }
 
   /** Answer ONE open field from the panel, and — unless the user said not to —
@@ -361,5 +413,6 @@
   // behaviour table behind it, and a test that had to build a store handle to
   // reach it would be testing the handle.
   ns.saveTargetFor = saveTargetFor;
+  ns.panelLearn = { learnAnswers, unlearnAnswers };
   ns.withCustomAnswer = withCustomAnswer;
 })();

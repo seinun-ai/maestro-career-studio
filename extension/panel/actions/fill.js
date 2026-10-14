@@ -981,6 +981,10 @@
   }
 
   ns.panelActionsFill = { startFill, attachResume };
+  // The queued run attaches the resume the way Autofill does (`actions/run.js` hands these a store
+  // of its own, bound to the run's tab).
+  ns.panelRunAttach = { attach: autoAttachResume, land: landAutoAttach, wrote: wroteFile,
+                        settleMs: ATTACH_SETTLE_MS };
   ns.panelFillFinished = fillFinished;
   ns.panelLeftSentence = leftSentence;
   ns.panelRecordReceipt = recordReceipt;

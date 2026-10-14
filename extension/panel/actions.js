@@ -88,13 +88,14 @@
  * `runGuidedFill`. Do not cut it because it is the longest file here.
  *
  * SIZES: during 158 · job 187 · pick 266 · resume 269 · fill 720 ·
- * pause 360 · qna 145 · track 179, this roster. Stated because a threshold
+ * pause 360 · qna 145 · track 179 · run 567, this roster. Stated because a threshold
  * nobody can measure against is not one.
  *
  * WHAT THIS FILE PUBLISHES: ns.panelActions = (store) => ({ addJob,
  * pickApplication, unpickApplication, dropDeletedApplication, scoreAllBases,
  * quickTailor, useBaseAsIs, stopUsingBaseAsIs, createPdf, startFill, submitAnswer,
- * askQuestion, setStatus, trackThis }).
+ * askQuestion, setStatus, trackThis, startRun, stopRun, resumeRun, skipRun, closeRun, undoLearned,
+ * undoMark, markApplied, restoreRuns }).
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -121,6 +122,7 @@
   const pause = need("actions/pause.js", ns.panelActionsPause);
   const qna = need("actions/qna.js", ns.panelActionsQna);
   const track = need("actions/track.js", ns.panelActionsTrack);
+  const run = need("actions/run.js", ns.panelActionsRun);
 
   /** The actions, bound to one store handle. Called once, at load, by panel.js.
    *
@@ -155,5 +157,15 @@
     askQuestion: () => qna.askQuestion(store),
     setStatus: (status) => track.setStatus(store, status),
     trackThis: () => track.trackThis(store),
+    // The queued run's host (Task 20 for one job in the current tab). `startRun` is Apply's door.
+    startRun: (seed) => run.startRun(store, seed),
+    stopRun: (id) => run.stopRun(store, id),
+    resumeRun: (id) => run.resumeRun(store, id),
+    skipRun: (id) => run.skipRun(store, id),
+    closeRun: (id) => run.closeRun(store, id),
+    undoLearned: (id) => run.undoLearned(store, id),
+    undoMark: (id) => run.undoMark(store, id),
+    markApplied: (id) => run.markApplied(store, id),
+    restoreRuns: () => run.restoreRuns(store),
   });
 })();

@@ -65,7 +65,7 @@ _TEXT_PAIRS = [
     ("good", "surface", ".prog .st.done, the done tick"),
     ("good", "surface-2", "the done tick inside the Next card"),
     ("good", "good-tonal", ".ats .delta, .baserow .score.good"),
-    ("warn-text", "warn-tonal", ".sub.ko, .needs .opts, .needs .learn"),
+    ("warn-text", "warn-tonal", ".sub.ko, .needs .opts, .needs .learn, .run-reason, .run-needs .resid button"),
     ("warn-text", "surface", ".prog .st.open, .resid.flags .kindmark"),
     ("warn-text", "surface-2", ".prog .st.open inside the Next card"),
     ("danger-text", "surface", ".note.error"),
