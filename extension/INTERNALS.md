@@ -86,7 +86,7 @@ an SPA's pushState also fires) rebinds at once, while an SPA still shows the
 step being left, so after one that first count is not shown (zero until the
 ladder's first rung answers) and the ladder runs every rung even over a yes,
 re-reading the count on each: a Workday step change otherwise kept the
-previous step's count, and the attach offer came one step late (CarMax). It reads,
+previous step's count, and the attach offer came one step late (seen on a live Workday tenant). It reads,
 scores and returns seven keys: the tier, whether a form's evidence held, the
 score behind it, how many upload boxes a resume could go into (frame 0's
 count only, so the attach offer is unchanged), per box its kind and whether it
