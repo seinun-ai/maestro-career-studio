@@ -1216,3 +1216,44 @@ def test_a_how_heard_option_that_says_the_saved_word_is_the_profiles_answer(db_s
     r = heard(candidates=[{"mid": "click:o1", "describe": 'Click the option "Job Board"'},
                           {"mid": GIVE_UP, "describe": "Stop"}])
     assert sans_trace(heard_step(db_session, r)) == {"mid": "click:o1", "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("saved", ["Referral", "Career fair", "Friend"])
+def test_a_saved_source_that_is_no_board_walks_the_tree_to_its_own_leaf(db_session, monkeypatch, saved):
+    """The board goal is for a saved "Job board", online or website answer, or one that names a board. A
+    "Referral" is not answered with LinkedIn: the goal is the option meaning the saved word, wherever the tree puts it."""
+    facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
+    calls = fake_jev(monkeypatch, ("click:o1", 0.9))
+    r = heard(candidates=[{"mid": "click:o1", "describe": f'Click the option "{saved}"'}, {"mid": GIVE_UP, "describe": "Stop"}])
+    got = autofill_step.step(r, facts, db_session, JobHint(title="Analyst", company="Acme", source="LinkedIn"))
+    text = calls[0]["questions"]["f"]["instructions"]
+    assert "website, online or job-board category" not in text and "LinkedIn" not in text and saved in text
+    assert sans_trace(got) == {"mid": "click:o1", "reason": "matched"}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("saved", ["Job board", "Online", "Company website", "LinkedIn"])
+def test_a_saved_board_online_or_website_answer_takes_the_board_goal(db_session, monkeypatch, saved):
+    facts = autofill_catalog.build({"preferences": {"how_heard": saved}}, [], [])
+    calls = fake_jev(monkeypatch)
+    autofill_step.step(heard(), facts, db_session, None)
+    assert "website, online or job-board category" in calls[0]["questions"]["f"]["instructions"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_made_up_category_tree_is_walked_to_the_boards_leaf(db_session, monkeypatch):
+    """Step 1 sees the categories; opening "Online" is progress. Step 2 sees that group's leaves; the board's
+    own leaf is the assumed answer. The category itself is never the answer."""
+    hint = JobHint(title="Analyst", company="Acme", source="LinkedIn")
+    categories = [{"mid": "click:o1", "describe": 'Open the group "Employee referral"'},
+                  {"mid": "click:o2", "describe": 'Open the group "Online"'},
+                  {"mid": "click:o3", "describe": 'Open the group "Events"'}, {"mid": GIVE_UP, "describe": "Stop"}]
+    leaves = [{"mid": "click:o1", "describe": 'Click the option "Company careers site"'},
+              {"mid": "click:o2", "describe": 'Click the option "LinkedIn"'},
+              {"mid": "click:o3", "describe": 'Click the option "Other job board"'}, {"mid": GIVE_UP, "describe": "Stop"}]
+    fake_jev(monkeypatch, ("click:o2", 0.9))
+    opened = heard_step(db_session, heard(candidates=categories), hint)
+    assert sans_trace(opened) == {"mid": "click:o2", "reason": "progress"}
+    picked = heard_step(db_session, heard(candidates=leaves, history=["click:o2 -> progressed"]), hint)
+    assert sans_trace(picked) == {"mid": "click:o2", "reason": "assumed"}

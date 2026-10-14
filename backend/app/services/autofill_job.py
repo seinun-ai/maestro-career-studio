@@ -43,6 +43,9 @@ _BOARDS = {
 }
 
 
+BOARD_NAMES = frozenset(_BOARDS.values())
+
+
 def board_of_url(url: str | None) -> str | None:
     """The job board a posting URL's host names ("https://www.linkedin.com/jobs/view/1" is LinkedIn), else
     None: the host of a careers site or an applicant tracking system is the employer's."""

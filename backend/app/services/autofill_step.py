@@ -42,6 +42,7 @@ from app.services.autofill_catalog import (
     names_veteran_off_slot,
 )
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA
+from app.services.autofill_job import BOARD_NAMES
 from app.services.autofill_map import (
     SECOND_OPINION_MAX_S,
     Budget,
@@ -119,8 +120,7 @@ def _decide(req: StepRequest, mid: str | None, p: float | None, policy: str, *,
     mid = None if mid == GIVE_UP else mid
     if mid and _is_answer(req, mid):
         picked = verdict(req, mid, p, policy, engine=engine)
-        reason = picked.reason
-        return StepResponse(mid=picked.oids[0] if picked.oids else None, reason=reason, trace=picked.trace)
+        return StepResponse(mid=picked.oids[0] if picked.oids else None, reason=picked.reason, trace=picked.trace)
     return _progress(mid, p, engine)
 
 
@@ -137,6 +137,16 @@ def _progress(mid: str | None, p: float | None, engine: Engine) -> StepResponse:
 
 
 HOW_HEARD_SLOT = "preferences.how_heard"
+# A saved source the BOARD goal fits: a job board, something online, a website, or a board by name. Any other
+# ("Referral", "Career fair") is walked to its own leaf by the ordinary goal.
+_BOARD_ANSWER = re.compile(r"\bboards?\b|\bonline\b|\bweb\s*sites?\b|\binternet\b|\bweb\b|\bcareers?\s+(?:site|page)\b",
+                           re.IGNORECASE)
+
+
+def board_answer(value: str) -> bool:
+    """Whether a saved "how did you hear" answer is a board, online or website kind of source, or names a board."""
+    folded = value.casefold()
+    return bool(_BOARD_ANSWER.search(value) or any(name.casefold() in folded for name in BOARD_NAMES))
 
 
 def _how_heard_goal(field: str, value: str, hint: JobHint | None) -> str:
@@ -168,7 +178,7 @@ def _goal(req: StepRequest, values: list[str], hint: JobHint | None, facts: dict
         return (f"You are filling {field} on a job application. For the applicant, the answer to the question is "
                 f"{json.dumps(answer.answer)}{that_is}: the goal is to select the option that states that answer.")
     fact = facts[req.slot]
-    if req.slot == HOW_HEARD_SLOT:
+    if req.slot == HOW_HEARD_SLOT and board_answer(values[0]):
         return _how_heard_goal(field, values[0], hint)
     return (f"You are filling {field} on a job application. The goal is to select the option that means the "
             f"same as the applicant's fact {json.dumps(fact.describe)}: {json.dumps(values[0])}. {NEVER_YES_NO}")
@@ -365,7 +375,7 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     moved = _with_term(req, ask, session, budget, _move(req, ask, session, budget))
     # A tree's leaf (the board) is the Companion's pick, not the saved word: the user is told to check it.
     # An option that says the saved word itself ("Job board" for "Job board") is the profile's answer.
-    if (req.slot == HOW_HEARD_SLOT and moved.mid and moved.reason in ("matched", "closest")
+    if (req.slot == HOW_HEARD_SLOT and board_answer(values[0]) and moved.mid and moved.reason in ("matched", "closest")
             and (text := shown.get(moved.mid)) is not None and text.casefold() != values[0].casefold()):
         moved = moved.model_copy(update={"reason": "assumed"})
     if said and veteran_overreach(said, req.question, [], shown.get(moved.mid or "")):
