@@ -33,6 +33,9 @@ class ChooseField(BaseModel):
     # "what is the answer" to "which of these IS this answer" — one field, not a
     # second code path.
     known_value: str | None = Field(default=None, max_length=300)
+    # The page marks the field required. Only a required written question the chooser
+    # has no answer for is drafted from the career history (`/choose`, "assumed").
+    required: bool = False
 
 
 class ChooseRequest(BaseModel):
@@ -49,7 +52,10 @@ class Choice(BaseModel):
     answer: str | None
     # closest: written, but the page had no exact option for the profile's value
     # (Jev path, `flag` slots only) — the Fill report tells the user to check it.
-    reason: Literal["matched", "closest", "abstained"]
+    # assumed: a required written question the chooser had no answer for, DRAFTED from the
+    # career history and the job (`note` says so): written, and the user is told to read it.
+    reason: Literal["matched", "closest", "assumed", "abstained"]
+    note: str | None = None
 
 
 class ChooseResponse(BaseModel):

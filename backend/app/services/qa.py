@@ -16,6 +16,7 @@ from app.services import (
     model_settings,
     persona,
     prompt_assembly,
+    resume_voice,
 )
 
 
@@ -223,6 +224,70 @@ def answer_questions(
     finally:
         if owns_session:
             session.close()
+
+
+#: What a drafted answer is called on the page's report, and how long it runs when the
+#: question names no length (about, with a sentence's slack).
+DRAFT_NOTE = "Drafted from your history: read it"
+DRAFT_WORDS = 150
+_STATED_WORDS = re.compile(r"(\d{2,4})\s*(?:-|\s)?\s*words?\b", re.IGNORECASE)
+
+
+def _within(text: str, words: int) -> str:
+    """`text` cut to whole sentences of at most `words` words (the first sentence cut hard when it
+    alone is longer)."""
+    if len(text.split()) <= words:
+        return text
+    kept: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        if len(" ".join([*kept, sentence]).split()) > words:
+            break
+        kept.append(sentence)
+    return " ".join(kept) if kept else " ".join(text.split()[:words])
+
+
+def _in_owners_voice(text: str, resume_json: dict[str, Any]) -> str | None:
+    """`text` with every third-person or "I" shape repaired in code (the prompt asks for it, code
+    makes sure); None when what is left would not be the owner's own words."""
+    fixed = resume_voice.repair(text, resume_voice.contact_name(resume_json), resume_voice.org_names(resume_json))
+    return fixed if fixed and len(fixed.split()) >= 3 else None
+
+
+def draft_answers(
+    application_id: UUID, questions: dict[str, str], session: Session
+) -> dict[str, str]:
+    """id -> a drafted answer, for written questions the profile could not answer: one smart-model
+    call over the career history and the job, in the owner's voice. NOTHING IS SAVED: a draft is
+    not a standing answer (the user edits it and resumes to teach it). An id the model skipped, or
+    whose draft could not be put in the owner's voice, is absent. Raises what `_application_context`
+    and the provider raise; the caller decides what a failure means."""
+    if not questions:
+        return {}
+    _application, job, resume_json = _application_context(session, application_id)
+    prompt = prompt_assembly.build_qa_draft_prompt(
+        resume_json=resume_json,
+        jd_json=job.extracted_json or {},
+        memory=career_kb.compose_context(session),
+        questions=questions,
+        persona=persona.get_persona(session),
+    )
+    response = llm.call_openai(
+        prompt=prompt,
+        model=model_settings.get_smart_model(session),
+        response_format="json",
+        trace_name="autofill-draft",
+    )
+    raw = response.get("answers") if isinstance(response, dict) else None
+    out: dict[str, str] = {}
+    for qid, label in questions.items():
+        text = raw.get(qid) if isinstance(raw, dict) else None
+        if not isinstance(text, str) or not (text := _plain_text(text)):
+            continue
+        stated = _STATED_WORDS.search(label)
+        text = _within(text, int(stated[1]) if stated else DRAFT_WORDS)
+        if text := _in_owners_voice(text, resume_json):
+            out[qid] = text
+    return out
 
 
 def generate_cover_letter(

@@ -18,6 +18,7 @@ model's prompt below, unchanged — so the user always gets a fill.
 
 import dataclasses
 import logging
+import re
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -33,6 +34,7 @@ from app.services import (
     model_settings,
     persona,
     prompt_assembly,
+    qa,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,8 +87,64 @@ def choose(
     session: Session,
 ) -> dict[str, Choice]:
     if model_settings.get_autofill_engine(session) == "jev":
-        return _choose_with_jev(fields, application_id, session)
-    return _choose_with_llm(fields, application_id, session)
+        out = _choose_with_jev(fields, application_id, session)
+    else:
+        out = _choose_with_llm(fields, application_id, session)
+    return _with_drafts(fields, out, application_id, session)
+
+
+# What is never drafted: the protected and EEO kinds, work authorization, money, a background or
+# a clearance, a legal attestation or signature, and employment by this company. The same list
+# the low-stakes pass keeps (autofill_map._NEVER_LOW_STAKES_TEMPLATE), as /map's route is not the
+# only way a field reaches /choose. A question that merely MENTIONS one is still not drafted.
+_NEVER_DRAFTED = re.compile(
+    r"gender|\bsex\b|sexual|transgender|pronoun|\brace\b|\bracial|ethnic|hispanic|latino|veteran|military|"
+    r"disab|handicap|diversity|religio|marital|pregnan|citizen|nationality|"
+    r"authori[sz]|work\s+permit|\bvisa\b|sponsor|immigra|eligib|\bage\b|\bover\s+18\b|birth|"
+    r"salary|compensation|\bpay\b|wage|"
+    r"criminal|felony|convict|arrest|misdemeanor|background\s+check|clearance|drug\s+test|"
+    r"signature|\bsign\b|certif|attest|\bagree|acknowledg|consent|\bpledge|"
+    r"social\s+security|\bssn\b|passport|"
+    r"(previously|formerly|ever)\s+(been\s+)?(employed|worked)|related\s+to\s+(anyone|someone|any|an?\s)|\brelatives?\b(?!\s+to)",
+    re.IGNORECASE)
+# A label that asks for something written, not a field's name: a question, or an instruction to
+# describe, explain or tell, or a sentence of six words or more.
+_WRITTEN_ASK = re.compile(
+    r"\?|^\W*(please\s+)?(describe|explain|tell|share|discuss|give|write|list|outline|detail|why|what|how|"
+    r"which|who|when|where)\b", re.IGNORECASE)
+MAX_DRAFTS = 6
+
+
+def _draftable(field: ChooseField, answer: Choice | None) -> bool:
+    """A REQUIRED written question the chooser had no answer for (text or textarea, no options,
+    no known value) that is not on the never-list."""
+    if answer is None or answer.answer is not None or not field.required or field.known_value:
+        return False
+    if field.kind not in ("text", "textarea") or field.options:
+        return False
+    if _NEVER_DRAFTED.search(field.label):
+        return False
+    return bool(_WRITTEN_ASK.search(field.label)) or len(field.label.split()) >= 6
+
+
+def _with_drafts(
+    fields: list[ChooseField], out: dict[str, Choice], application_id: UUID | None, session: Session
+) -> dict[str, Choice]:
+    """The essay writer's draft (`qa.draft_answers`) for each required written question `out` left
+    null: written, and reported `assumed` so the user reads it. Grounded in an application's resume
+    and job, so none without one. A draft that fails leaves the field open, as it was."""
+    if application_id is None:
+        return out
+    asked = {f.qid: f.label for f in fields if _draftable(f, out.get(f.qid))}
+    asked = dict(list(asked.items())[:MAX_DRAFTS])
+    if not asked:
+        return out
+    try:
+        drafts = qa.draft_answers(application_id, asked, session)
+    except (ValueError, llm.LLMProviderError) as exc:
+        logger.warning("drafting %d written answers failed (%s); they stay open", len(asked), exc)
+        return out
+    return out | {qid: Choice(answer=text, reason="assumed", note=qa.DRAFT_NOTE) for qid, text in drafts.items()}
 
 
 def _map_slots(

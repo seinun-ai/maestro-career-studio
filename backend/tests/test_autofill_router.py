@@ -370,7 +370,7 @@ def test_choose_returns_a_choice_for_every_qid(db_session, monkeypatch):
         "fields": [{"qid": "a-0", "label": "Relocate?", "kind": "radio",
                     "options": ["Yes", "No"]}]})
     assert response.status_code == 200
-    assert response.json()["choices"]["a-0"] == {"answer": "Yes", "reason": "matched"}
+    assert response.json()["choices"]["a-0"] == {"answer": "Yes", "reason": "matched", "note": None}
 
 
 def test_choose_works_with_no_application(db_session, monkeypatch):
