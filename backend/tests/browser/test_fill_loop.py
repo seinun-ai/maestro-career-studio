@@ -673,6 +673,22 @@ def test_prose_goes_to_choose_and_an_abstain_is_left_for_the_user(page, load):
     assert statuses(out) == {"w": "verified", "x": "needs_answer"}
 
 
+def test_a_drafted_answer_is_written_and_reported_assumed(page, load):
+    """/choose drafts a REQUIRED written question it has no answer for (reason "assumed"): the loop says the
+    field is required so it can, writes the draft, and reports it assumed (the panel lists those under
+    "Check before you submit"). An optional prose field is not marked required."""
+    q = "What's the most impressive project you've worked on? Why?"
+    out = run(page, load, frames=[[f("w", question=q, required=True), f("x", question="Anything else?")]],
+              map={"w": {"route": "free_text"}, "x": {"route": "free_text"}},
+              choose={"w": {"answer": "Built a pipeline.", "reason": "assumed",
+                            "note": "Drafted from your history: read it"},
+                      "x": {"answer": "Never written.", "reason": "assumed"}})
+    asked = {fl["qid"]: fl["required"] for body in bodies(out, "/api/autofill/choose") for fl in body["fields"]}
+    assert asked == {"w": True, "x": False}
+    assert statuses(out)["w"] == "assumed"
+    assert [a.get("value") for a in actions(out, "write")][0] == "Built a pipeline."
+
+
 def test_a_field_that_keeps_reverting_is_given_up_after_three_attempts(page, load):
     out = run(page, load, frames=[[f("a")]] * 5, map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}},
               apply={"X": {"outcome": "reverted"}})

@@ -254,12 +254,13 @@ def _in_owners_voice(text: str, resume_json: dict[str, Any]) -> str | None:
 
 
 def draft_answers(
-    application_id: UUID, questions: dict[str, str], session: Session
+    application_id: UUID, questions: dict[str, str], session: Session, *, timeout: float | None = None
 ) -> dict[str, str]:
     """id -> a drafted answer, for written questions the profile could not answer: one smart-model
     call over the career history and the job, in the owner's voice. NOTHING IS SAVED: a draft is
     not a standing answer (the user edits it and resumes to teach it). An id the model skipped, or
-    whose draft could not be put in the owner's voice, is absent. Raises what `_application_context`
+    whose draft could not be put in the owner's voice, is absent. `timeout`: a caller on a clock gets one
+    request of that many seconds with no retries. Raises what `_application_context`
     and the provider raise; the caller decides what a failure means."""
     if not questions:
         return {}
@@ -276,6 +277,7 @@ def draft_answers(
         model=model_settings.get_smart_model(session),
         response_format="json",
         trace_name="autofill-draft",
+        **({"timeout": timeout, "max_retries": 0} if timeout is not None else {}),
     )
     raw = response.get("answers") if isinstance(response, dict) else None
     out: dict[str, str] = {}

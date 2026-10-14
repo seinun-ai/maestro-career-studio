@@ -1418,19 +1418,20 @@
     // Why /map left a field the profile could answer (`why`, a known word
     // only), said in the report: never "no fact" when the profile has one.
     const WHY = { unclear_job: "Left for you: it isn't clear which of your jobs this entry is." };
-    const fillText = async (f, value, format) => {
+    // `reason`: how the answer came ("assumed": /choose drafted it, and the report tells the user to read it).
+    const fillText = async (f, value, format, reason = "matched") => {
       // An empty write is no answer: refused here, never sent (and never retried).
       if (!String(value ?? "").trim()) return finish(f, "needs_answer", { lastOutcome: "no_value" });
       const out = await act(f, { op: "write", value, ...(format ? { format } : {}) });
       if (notDone(f, out)) return undefined;
-      if (out.outcome === "verified") return done(f, "matched", out.committed);
+      if (out.outcome === "verified") return done(f, reason, out.committed);
       if (out.outcome === "unconfirmed") return unconfirmed(f, value);
       return fail(f, out.reason ?? out.outcome);
     };
 
     const answerProse = async (fields) => {
       const got = await ns.requestChoose(
-        fields.map((f) => ({ qid: f.fid, label: question(f), kind: "textarea", options: [] })),
+        fields.map((f) => ({ qid: f.fid, label: question(f), kind: "textarea", options: [], required: Boolean(f.required) })),
         {
           postChoose: (body) => bounded(() => api("/api/autofill/choose", { method: "POST", body: JSON.stringify(body) })),
           applicationId: selector.application_id,
@@ -1989,11 +1990,11 @@
           if (halt()) break;
           if (!onPage.has(f.fid)) continue;
           const choice = answers[f.fid];
-          if (!(choice?.answer && choice.reason === "matched")) {
+          if (!(choice?.answer && (choice.reason === "matched" || choice.reason === "assumed"))) {
             finish(f, "needs_answer", { lastOutcome: "abstained" });
             continue;
           }
-          await onFieldClock(f, L.FIELD_MS, () => fillText(f, choice.answer));
+          await onFieldClock(f, L.FIELD_MS, () => fillText(f, choice.answer, undefined, choice.reason));
         }
       };
       // Picks made ahead, while the texts are written, in two calls: the

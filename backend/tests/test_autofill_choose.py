@@ -363,3 +363,27 @@ def test_ordinary_written_questions_are_drafted(db_session, monkeypatch, label):
     Writer(monkeypatch, {"w": "Built a forecasting pipeline for 40 stores."})
     out = autofill_choose.choose([_written(label=label)], application.id, db_session)
     assert out["w"].reason == "assumed", label
+
+
+def test_the_draft_takes_what_is_left_of_the_loops_ten_seconds_and_never_more(db_session, monkeypatch):
+    """The loop gives /choose 10 s in all: the draft is one request on what the choose pass left, no
+    retries, and is not started at all when the pass left too little."""
+    application = _application(db_session)
+    now = [100.0]
+    monkeypatch.setattr(autofill_choose, "_clock", lambda: now[0])
+    seen = []
+
+    def call_openai(**kw):
+        if kw["trace_name"] == "autofill-draft":
+            seen.append(kw)
+            return {"answers": {"w": "Built a pipeline."}}
+        now[0] += ELAPSED[0]
+        return {"choices": {}}
+
+    monkeypatch.setattr(autofill_choose.llm, "call_openai", call_openai)
+    ELAPSED = [3.0]
+    autofill_choose.choose([_written()], application.id, db_session)
+    assert len(seen) == 1 and seen[0]["max_retries"] == 0 and 5.0 <= seen[0]["timeout"] <= 6.0
+    ELAPSED[0] = 8.0
+    out = autofill_choose.choose([_written()], application.id, db_session)
+    assert len(seen) == 1 and (out["w"].answer, out["w"].reason) == (None, "abstained")

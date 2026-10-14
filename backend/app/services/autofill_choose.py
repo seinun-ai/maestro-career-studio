@@ -19,6 +19,7 @@ model's prompt below, unchanged — so the user always gets a fill.
 import dataclasses
 import logging
 import re
+import time
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -81,16 +82,24 @@ def _answer_for(field: ChooseField, raw: object) -> str | None:
     return answer or None
 
 
+# The fill loop gives /choose 10 s in all (its API_MS). The draft is one request on what the
+# choose pass left of REPLY_BUDGET_S, never under MIN_DRAFT_S: with less left, nothing is drafted.
+REPLY_BUDGET_S = 9.0
+MIN_DRAFT_S = 2.0
+_clock = time.monotonic
+
+
 def choose(
     fields: list[ChooseField],
     application_id: UUID | None,
     session: Session,
 ) -> dict[str, Choice]:
+    began = _clock()
     if model_settings.get_autofill_engine(session) == "jev":
         out = _choose_with_jev(fields, application_id, session)
     else:
         out = _choose_with_llm(fields, application_id, session)
-    return _with_drafts(fields, out, application_id, session)
+    return _with_drafts(fields, out, application_id, session, REPLY_BUDGET_S - (_clock() - began))
 
 
 # What is never drafted: the protected and EEO kinds, work authorization, money, a background or
@@ -128,19 +137,20 @@ def _draftable(field: ChooseField, answer: Choice | None) -> bool:
 
 
 def _with_drafts(
-    fields: list[ChooseField], out: dict[str, Choice], application_id: UUID | None, session: Session
+    fields: list[ChooseField], out: dict[str, Choice], application_id: UUID | None, session: Session,
+    time_left: float,
 ) -> dict[str, Choice]:
     """The essay writer's draft (`qa.draft_answers`) for each required written question `out` left
     null: written, and reported `assumed` so the user reads it. Grounded in an application's resume
     and job, so none without one. A draft that fails leaves the field open, as it was."""
-    if application_id is None:
+    if application_id is None or time_left < MIN_DRAFT_S:
         return out
     asked = {f.qid: f.label for f in fields if _draftable(f, out.get(f.qid))}
     asked = dict(list(asked.items())[:MAX_DRAFTS])
     if not asked:
         return out
     try:
-        drafts = qa.draft_answers(application_id, asked, session)
+        drafts = qa.draft_answers(application_id, asked, session, timeout=time_left)
     except (ValueError, llm.LLMProviderError) as exc:
         logger.warning("drafting %d written answers failed (%s); they stay open", len(asked), exc)
         return out
