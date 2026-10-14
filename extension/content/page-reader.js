@@ -32,7 +32,7 @@
  * button inside a field holder (a formField wrapper, or a fieldset or group that holds another field)
  * unless it is a form's own submit button (a button with no type inside a form, or `type=submit`) or one the page
  * marks as a submit, or it is a menu button (`aria-haspopup="true"`) or a button in a holder whose SHOWN text says
- * Submit or Send, or a holder button worded as a Next. A listbox popup and a pill (any button holding `aria-pressed`)
+ * Submit or Send, or a holder button worded as a Next. A listbox popup and a pill (a button holding `aria-pressed` beside others)
  * show the answer picked, which may say those words and is still the field's. The vendor's footer Next (shared/ats-buttons.js, "text") is marked
  * `navigation`: the classifier takes it as the step's Next over a Submit the button list could not see.
  *
@@ -260,13 +260,22 @@
   // `aria-haspopup="true"` button, or a plain button in a field holder. A listbox popup (Workday's) and a pill group SHOW
   // the answer picked ("Yes, I am willing to submit to a background check", "Send me texts"), which is still the field's.
   const ACTION_WORDS = /\b(?:submit|send)\b/i;
+  const ACTION_PHRASE = /^\s*(?:submit|send)(?: (?:my|your|the|this))?(?: application| form)?(?: now)?\s*$/i;
+  /** Whether another `aria-pressed` button shares this one's group: its parent, or its labelled list, group or fieldset. */
+  const pressedGroup = (el) => [el.parentElement, el.closest('fieldset, [role="group"], ul[role="list"][aria-label]')]
+    .some((box) => box && [...box.querySelectorAll("[aria-pressed]")].some((other) => other !== el));
   function fieldControl(el) {
     // A real submit control stays one: a form's own submit button (the property, so a button with no type counts), the
     // type attribute, or a submit mark.
     if ((el.type === "submit" && el.form) || el.getAttribute("type")?.toLowerCase() === "submit" || submitMarked(el)) return false;
     if (el.matches(POPUP_BUTTON)) return !(el.getAttribute("aria-haspopup") === "true" && ACTION_WORDS.test(shownTextOf(el)));
-    // A button that holds `aria-pressed` is a toggle by its own ARIA role, whatever it says ("Send me texts"): never an action.
-    if (el.matches("[aria-pressed]")) return true;
+    // A toggle in a GROUP of toggles shows an answer, whatever it says ("Send me texts"): never an action. A lone
+    // toggle, one that is worded as a Next, and one that is a whole action phrase ("Submit", "Send application") are
+    // not: some sites mark every button aria-pressed.
+    if (el.matches("[aria-pressed]") && pressedGroup(el)) {
+      const shownText = shownTextOf(el);
+      if (sortOf(shownText) !== "next" && !ACTION_PHRASE.test(shownText)) return true;
+    }
     if (el.matches(PILL_MEMBER)) {
       try {
         if (ns.shapes?.of(el)?.name === "pills") return true;

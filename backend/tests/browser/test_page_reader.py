@@ -2296,6 +2296,26 @@ def test_a_pressed_pill_showing_send_me_texts_is_still_a_field_on_workday(page):
     assert verdict["kind"] == "form_step"
 
 
+@pytest.mark.parametrize("html, expected", [
+    # Every button marked aria-pressed (a toggle-button style), a Submit among them.
+    ("<button type='button' aria-pressed='false'>Submit application</button><button type='button'>Next</button>",
+     {"kind": "review", "by": "several_next"}),
+    ("<button type='button' aria-pressed='false'>Submit application</button>", {"kind": "review", "by": "submit_button"}),
+    ("<div><button type='button' aria-pressed='true'>Your details</button><button type='button' aria-pressed='false'>Submit</button></div>"
+     "<button type='button'>Next</button>", {"kind": "review", "by": "several_next"}),
+    ("<button type='button' aria-pressed='false'>Save and Continue</button><input id='a'>", {"kind": "form_step"}),
+])
+def test_an_aria_pressed_button_that_is_a_whole_action_or_alone_is_still_an_action(page, load, html, expected):
+    load(page, "<input id='fn'>" + html, SOURCES)
+    verdict = classify(page)
+    assert {k: v for k, v in verdict.items() if k != "next"} == expected
+
+
+def test_an_aria_pressed_submit_outside_any_workday_field_is_still_an_action_beside_the_footer(page):
+    serve(page, WORKDAY_URL, f"<label for='fn'>First Name</label><input id='fn'><button type='button' aria-pressed='false'>Submit</button>{FOOTER_SAVE}")
+    assert classify(page) == {"kind": "review", "by": "several_next"}
+
+
 def test_off_workday_a_filled_popup_and_a_pressed_pill_with_those_words_are_fields_beside_a_next(page, load):
     load(page, """<fieldset><legend>Willing?</legend><button type='button' aria-haspopup='listbox'>Yes, I will submit to a background check</button></fieldset>
       <button type='button'>Next</button>""", SOURCES)
