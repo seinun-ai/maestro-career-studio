@@ -3560,7 +3560,8 @@ def test_the_loops_trace_vocabularies_mirror_the_backends():
     from app.schemas import autofill_trace as T
 
     for name, literal in [("TRACE_SHAPES", F.Shape), ("TRACE_ROUTES", F.Route), ("TRACE_ENGINES", F.Engine),
-                          ("TRACE_SECONDS", F.Second), ("TRACE_WAYS", F.PolarityWay), ("TRACE_REASONS", F.StepReason)]:
+                          ("TRACE_SECONDS", F.Second), ("TRACE_WAYS", F.PolarityWay), ("TRACE_REASONS", F.StepReason),
+                          ("TRACE_SENTINELS", F.Sentinel)]:
         assert _set_of(name) == set(get_args(literal)), name
     checks = re.search(r"const DECISION_CHECKS = \{(.*?)\n  \};", SOURCE, re.S).group(1)
     assert set(re.findall(r"(?:^|,)\s*([a-z_]+):", checks)) == set(F.DecisionTrace.model_fields)
@@ -3676,3 +3677,15 @@ def test_only_sends_its_fids_to_the_sweep_and_without_only_the_sweep_is_unscoped
     assert sweeps and all(m["only"] == ["d"] for m in sweeps)
     open_ = run(page, load, **_two_fields())
     assert all("only" not in m for m in open_["sent"] if m["type"] == "fill_sweep")
+
+
+def test_a_scoped_runs_trace_still_hides_a_value_an_excluded_field_holds(page, load):
+    """`only` reads no row for the other fields, but what they hold is still a value the
+    trace must never carry: here in the included field's label and in its options."""
+    held = "Secret Corp"
+    fields = [f("k", "search", "Employers", multi=True, committed=[held]),
+              f("d", "select", f"Did you work at {held}?", options=[opt("o1", held), opt("o2", "Other")], optionsComplete=True)]
+    out = run(page, load, frames=[fields], map={"k": {"route": "slot", "slot": "skills", "value": ["SQL"]}},
+              options={"sourceHint": None, "only": ["d"]})
+    assert [t["fid"] for t in trace_of(out)["fields"]] == ["d"]
+    assert held not in json.dumps(out["report"]["trace"])

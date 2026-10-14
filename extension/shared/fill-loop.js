@@ -481,6 +481,8 @@
     // re-committing and ends anywhere but a fill says the page took the value
     // back (finish → tookBack).
     const rows = new Map();
+    // Out-of-scope fields (`only`), as the latest inventory read them: for the trace's redaction keys alone.
+    const outOfScope = new Map();
     let listed = []; // the latest inventory's fids, in page order
     // Page actions sent (a close aside) and commits an explore left: whether a field's work changed the page.
     let pageActions = 0;
@@ -1442,7 +1444,11 @@
       listed = [];
       const open = [];
       for (const [frameId, f] of now) {
-        if (!inScope(f.fid)) continue;
+        if (!inScope(f.fid)) {
+          // Never worked or reported, but what it holds is still a value the trace must not carry.
+          outOfScope.set(f.fid, { fid: f.fid, field: f });
+          continue;
+        }
         const had = rows.get(f.fid);
         if (had?.field && had.field.fp !== f.fp) {
           // The same element now asks something else (relabelled, re-purposed):
@@ -2092,7 +2098,7 @@
     // read of the page after the run (the answer receipt) judges never-fill
     // fields by the same policy the run did. It is not in `report`, which the
     // value-free trace is built from.
-    return { ...report, consentForms, trace: buildRunTrace(report, rows, { startedAt, endedAt: new Date() }) };
+    return { ...report, consentForms, trace: buildRunTrace(report, outOfScope.size ? new Map([...outOfScope, ...rows]) : rows, { startedAt, endedAt: new Date() }) };
   }
 
   // ---- telemetry: one observation per reported field, and never a value.
