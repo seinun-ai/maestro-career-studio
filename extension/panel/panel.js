@@ -4789,6 +4789,11 @@
           const timer = setTimeout(fn, ms);
           return () => clearTimeout(timer);
         },
+        // Whether a tab is in this panel's own window (a side panel is one per window).
+        ownsTab: async (tabId) => {
+          const [tab, here] = await Promise.all([chrome.tabs.get(tabId), chrome.windows.getCurrent()]);
+          return tab.windowId === here.id;
+        },
         vouch: (tabId, origin) => { if (tabId != null) runFlows.set(tabId, { origin, at: Date.now() }); },
         unvouch: (tabId) => { runFlows.delete(tabId); },
         watch: (handlers) => { runWatch = handlers; },

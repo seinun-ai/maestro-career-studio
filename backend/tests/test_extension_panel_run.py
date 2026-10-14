@@ -100,7 +100,10 @@ const pressed = [];
 const updates = [];
 spec.frames = spec.frames ?? {};
 Object.defineProperty(spec.frames, "page_classify", { configurable: true, enumerable: true,
-  get: () => (here() ? [{ frameId: 0, url: here().url, result: { summary: here().summary, top: true } }] : []) });
+  get: () => {
+    if (here()?.throws) throw new Error("the tab is navigating");
+    return here() ? [{ frameId: 0, url: here().url, result: { summary: here().summary, top: true } }] : [];
+  } });
 Object.defineProperty(spec.frames, "page_advance", { configurable: true, enumerable: true,
   get: () => { at += 1; return [{ frameId: 0, result: { clicked: true } }]; } });
 spec.frames.fill_inventory = [{ frameId: 0, result: { fields: spec.inventory ?? [] } }];
@@ -126,9 +129,19 @@ let skew = 0;
 const realNow = Date.now;
 Date.now = () => realNow() + skew;
 
-chrome.tabs.get = async (id) => ({ id, status: "complete",
+// Two windows: the panel is the one with id 1, and `windowIds` moves a tab to another.
+chrome.windows = { getCurrent: async () => ({ id: 1 }) };
+chrome.tabs.get = async (id) => ({ id, status: "complete", windowId: (spec.windowIds ?? {})[id] ?? 1,
   url: tabUrlOverride ?? (spec.tabUrls ?? {})[id] ?? here()?.url ?? "" });
 chrome.tabs.update = async (id, props) => { updates.push([id, props]); if (props.url) at = spec.afterNavigate ?? at; };
+
+// What each save of the runs held AT THAT MOMENT (the harness keeps references, which later changes rewrite).
+const queueSaves = [];
+const realSessionSet = chrome.storage.session.set;
+chrome.storage.session.set = async (patch) => {
+  if (patch.queueRun) queueSaves.push(JSON.parse(JSON.stringify(patch.queueRun)));
+  return realSessionSet(patch);
+};
 
 const errors = [];
 console.error = (...args) => { errors.push(args.map(String).join(" ")); };
@@ -204,7 +217,7 @@ main(async () => {
     if (started && step.finish) await started;
     shots.push(snap());
   }
-  emit({ shots, mids, fills, pressed, updates, sent, writes, sessionWrites, broadcasts, held: heldTimers.filter(Boolean).length,
+  emit({ shots, mids, queueSaves, fills, pressed, updates, sent, writes, sessionWrites, broadcasts, held: heldTimers.filter(Boolean).length,
          profile: PROFILE, errors, warnings });
 });
 """
@@ -496,6 +509,26 @@ def test_a_closed_run_tab_ends_its_run(tmp_path):
                reports=[{"fields": [verified("f1")], "hold": True}])
     record = _record(out["shots"][-1])
     assert (record["status"], record["why"]) == ("stopped", "tab_closed")
+
+
+def test_a_run_tab_that_leaves_the_runs_hosts_is_no_longer_vouched_for(tmp_path):
+    """The vouch lets a subframe of the run's origin take a fill. A tab that has gone to another site
+    (the user's own browsing while the run waits) must not lend that to whatever is on it now."""
+    news = page("unknown", 1, host="news.example.test")
+    pages = (STEP1, page("captcha", 1), news)
+    out = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": news["url"]}}},
+                          {"press": "run-resume"}], pages=pages)
+    reads = _page_messages(out, "page_classify")
+    # (The panel's own look at the new page may vouch for ITS origin; the run's old one is what goes.)
+    assert reads[-1]["message"].get("flowOrigin") != "https://jobs.acme.test"
+    assert all(msg["message"].get("flowOrigin") == "https://jobs.acme.test" for msg in reads[:-1])
+
+
+def test_a_run_tab_that_stays_on_the_runs_hosts_keeps_its_vouch(tmp_path):
+    pages = (STEP1, page("captcha", 1), page("step", 2))
+    out = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": pages[2]["url"]}}},
+                          {"press": "run-resume"}], pages=pages)
+    assert all(msg["message"].get("flowOrigin") == "https://jobs.acme.test" for msg in _page_messages(out, "page_classify"))
 
 
 # ---------- walls: Resume, and Skip this job ----------
@@ -918,6 +951,15 @@ def test_done_on_a_ready_card_is_not_undone_by_a_confirmation_read_in_flight(tmp
     assert out["shots"][-1]["runs"] == [] and not _api_calls(out, "companion-submitted")
 
 
+def test_a_read_that_fails_mid_submit_leaves_the_run_ready_and_never_saved_as_stopped(tmp_path):
+    navigating = {"throws": True, "summary": STEP1["summary"], "url": "https://jobs.acme.test/apply/loading"}
+    out = _run(tmp_path, [{"start": SEED}, {"page": 2, "update": {"tab": 7, "change": {"url": navigating["url"]}}}],
+               pages=(STEP1, REVIEW, navigating))
+    assert _record(out["shots"][-1])["status"] == "ready"
+    saved = [runs[0]["status"] for runs in out["queueSaves"]]
+    assert saved[-1] == "ready" and "stopped" not in saved
+
+
 def test_undo_inside_the_8_seconds_posts_nothing_and_leaves_a_manual_mark_applied(tmp_path):
     out = _ready_then_confirmation(tmp_path, [{"press": "run-undo"}, {"fire": True}])
     assert not _api_calls(out, "companion-submitted")
@@ -1025,6 +1067,23 @@ def test_a_ready_run_a_reopened_panel_still_sees_is_marked_after_the_users_submi
     out = _run(tmp_path, [{"page": 0, "update": {"tab": 7, "change": {"url": CONFIRM["url"]}}}],
                pages=(CONFIRM,), sessionStored={"queueRun": [ready]})
     assert _record(out["shots"][0])["status"] == "ready" and "Check the page" in _body_text(out["shots"][0])
+    assert _record(out["shots"][-1])["status"] == "confirming" and out["held"] == 1
+
+
+def test_a_ready_run_on_another_windows_tab_is_shown_but_this_panel_arms_nothing_for_it(tmp_path):
+    """Every window's panel hears every tab. The one that owns the record arms the auto-mark; a second
+    would post it again, and an Undo in the first would not reach its timer."""
+    theirs = _seeded("ready", readyAt=1, lease="panel-of-the-other-window")
+    out = _run(tmp_path, [{"page": 0, "update": {"tab": 7, "change": {"url": CONFIRM["url"]}}}],
+               pages=(CONFIRM,), sessionStored={"queueRun": [theirs]}, windowIds={"7": 2})
+    assert _record(out["shots"][0])["status"] == "ready" and "Check the page" in _body_text(out["shots"][0])
+    assert _record(out["shots"][-1])["status"] == "ready" and out["held"] == 0
+
+
+def test_a_ready_run_a_reopened_panel_finds_in_its_own_window_becomes_its_own(tmp_path):
+    left_by_the_last_panel = _seeded("ready", readyAt=1, lease="panel-that-was-closed")
+    out = _run(tmp_path, [{"page": 0, "update": {"tab": 7, "change": {"url": CONFIRM["url"]}}}],
+               pages=(CONFIRM,), sessionStored={"queueRun": [left_by_the_last_panel]})
     assert _record(out["shots"][-1])["status"] == "confirming" and out["held"] == 1
 
 

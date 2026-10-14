@@ -85,6 +85,7 @@ const deps = {
   sleep: async (ms) => { tick("sleep", ms); clock += ms; },
   classify: async (tabId) => {
     tick("classify", tabId);
+    if (spec.classifyThrows) throw new Error("the tab is navigating");
     // A page not drawn yet: `early` reads (consumed once per page) or `always` (never settles) show
     // another descriptor first; {"t": "none"} is a tab no content script has answered from.
     const base = current();
@@ -786,6 +787,18 @@ def test_a_ready_tab_back_on_the_review_page_keeps_the_auto_mark(tmp_path):
     """A Submit that came back with errors is still the review page, and a confirmation after it counts."""
     out = _drive(tmp_path, [REVIEW, {"t": "confirmation"}], record=READY, **{"then": [1]})
     assert out["record"]["status"] == "confirming"
+
+
+def test_a_read_that_fails_on_a_ready_tab_leaves_it_ready_and_changes_nothing(tmp_path):
+    """The tab is mid-navigation in the middle of the user's own Submit: not a failed run."""
+    out = _drive(tmp_path, [REVIEW], record=READY, classifyThrows=True)
+    assert (out["record"]["status"], out["record"]["why"]) == ("ready", None)
+    assert out["events"] == []
+
+
+def test_a_read_that_fails_before_ready_is_still_an_error(tmp_path):
+    out = _drive(tmp_path, [REVIEW], classifyThrows=True)
+    assert (out["record"]["status"], out["record"]["why"]) == ("stopped", "error")
 
 
 # ---------- frames ----------

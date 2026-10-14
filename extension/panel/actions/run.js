@@ -73,6 +73,10 @@
     // Per run: where the confirmation page was SEEN ({host, path}), kept apart from the tab, which
     // may have moved on or closed by the time the mark is made.
     confirmed: new Map(),
+    // This panel's own mark on the records it owns. Every window's panel hears every tab, and only
+    // the one that owns a ready record may arm its auto-mark (two would each post it, and an Undo in
+    // one would not reach the other's timer).
+    lease: `panel-${Math.random().toString(36).slice(2)}`,
     // Per run: the fids the page watches for the user's hands, and the gap rows already posted.
     watching: new Map(), gapped: new Map(),
   };
@@ -95,7 +99,7 @@
   function newRecord(seed, tabId) {
     state.count += 1;
     return {
-      id: `run-${Date.now().toString(36)}-${state.count}`,
+      id: `run-${Date.now().toString(36)}-${state.count}`, lease: state.lease,
       proposalId: seed.proposalId, jobId: seed.jobId ?? null, applicationId: seed.applicationId ?? null,
       company: seed.company ?? null, location: seed.location ?? null, title: seed.title ?? null,
       baseSlug: seed.baseSlug ?? null,
@@ -564,13 +568,23 @@
   // ---------- the confirmation: a Submit the user pressed, seen, and marked 8 s later ----------
 
   function onTabUpdated(store, tabId, change) {
+    for (const record of store.read().runs) {
+      if (record.tabId !== tabId || !live(record)) continue;
+      // A tab that went to a host the run never reached is no longer the run's page: its vouch (the
+      // origin a subframe may take a fill from) goes with it. A Resume reads the page again and
+      // vouches for what it finds if it is the application.
+      if (change.url && !(record.hosts ?? []).includes(hostOf(change.url))) store.run.unvouch(tabId);
+    }
     if (!change.url && change.status !== "complete") return;
     for (const record of store.read().runs) {
-      if (record.tabId === tabId && record.status === "ready" && !record.noAutoMark) {
+      if (record.tabId === tabId && record.status === "ready" && !record.noAutoMark && ownedHere(record)) {
         checkConfirmation(store, record).catch(warn("could not read the page after Submit"));
       }
     }
   }
+
+  // A record with no lease predates the field (or was made by a test): this panel's to watch.
+  const ownedHere = (record) => record.lease == null || record.lease === state.lease;
 
   function onTabRemoved(store, tabId) {
     for (const record of store.read().runs) {
@@ -594,17 +608,14 @@
   }
 
   /** Read a ready tab after its address changed: the driver names a confirmation page, and the
-   * countdown starts. A tab that is mid-navigation is read a few times; an error in the middle of the
-   * user's own Submit never turns a ready run into a failed one. */
+   * countdown starts. A tab that is mid-navigation is read a few times (the driver keeps a ready run
+   * ready when a read fails: an error in the middle of the user's own Submit is not a failed run). */
   async function checkConfirmation(store, record) {
     if (state.checking.has(record.id) || state.driving.has(record.id)) return;
     state.checking.add(record.id);
     try {
       for (let i = 0; i < CONFIRM_POLLS && record.status === "ready" && !record.noAutoMark; i += 1) {
         await drive(store, record);
-        if (record.status === "stopped" && record.why === "error") {
-          Object.assign(record, { status: "ready", why: null });
-        }
         if (record.status !== "ready") break;
         await store.run.sleep(CONFIRM_POLL_MS);
       }
@@ -714,11 +725,16 @@
     store.run.watch({ updated: (tabId, change) => onTabUpdated(store, tabId, change),
                       removed: (tabId) => onTabRemoved(store, tabId) });
     const saved = await store.run.load().catch(() => []);
-    const records = (Array.isArray(saved) ? saved : []).filter((one) => one && typeof one.id === "string").map((one) => {
-      if (IN_AIR.has(one.status)) return { ...one, status: "stopped", why: "interrupted", stopRequested: false };
-      if (one.status === "confirming") return { ...one, status: "ready", markAt: null, noAutoMark: true };
-      return one;
-    });
+    const kept = (Array.isArray(saved) ? saved : []).filter((one) => one && typeof one.id === "string");
+    // A reopened panel takes over the records on tabs of ITS window; another window's stay that
+    // panel's (this one shows them and arms nothing for them).
+    const records = await Promise.all(kept.map(async (one) => {
+      const ours = await store.run.ownsTab(tabOf(one)).catch(() => true);
+      const mine = ours ? { ...one, lease: state.lease } : one;
+      if (IN_AIR.has(mine.status)) return { ...mine, status: "stopped", why: "interrupted", stopRequested: false };
+      if (mine.status === "confirming") return { ...mine, status: "ready", markAt: null, noAutoMark: true };
+      return mine;
+    }));
     if (!records.length) return;
     store.write({ runs: records });
     store.render();

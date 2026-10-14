@@ -426,6 +426,9 @@
         pageFilled = false;
       }
     } catch (err) {
+      // A read that fails on a ready tab (mid-navigation, in the middle of the user's own Submit) is
+      // not a failed run: it stays ready, unsaved and still vouched for, and the next read tries again.
+      if (err !== HALT && record.readyAt != null && record.status === "ready") return record;
       // The reason is a fixed word: an error's text could carry a value from the page or the login.
       return await finish("stopped", err === HALT ? "user" : "error");
     }
