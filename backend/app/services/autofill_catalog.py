@@ -406,8 +406,8 @@ def _now_or_future(work_auth: dict[str, Any]) -> str | None:
 
 
 # Where one string names several companies ("Acme, Globex, or Initech"): the commas, semicolons,
-# slashes and "or" / "and" between them. A name that holds one of these itself ("Procter and
-# Gamble") still matches whole: the whole string is tried as one name before the parts.
+# slashes and "or" / "and" between them. A name that holds one of these itself ("Globex and
+# Sons") still matches whole: the whole string is tried as one name before the parts.
 _COMPANY_SEPARATORS = re.compile(r"\s*(?:[,;/]|\bor\b|\band\b)\s*", re.IGNORECASE)
 
 
@@ -418,7 +418,7 @@ def _company_keys(company: str | None) -> set[str]:
 
 
 def _akin(a: str, b: str) -> bool:
-    """One name is the other's start, whole words only ("amazon", "amazon web services"): a parent
+    """One name is the other's start, whole words only ("acme", "acme web services"): a parent
     and a subsidiary, so a history that holds only one of them cannot say No for the other."""
     short, long = sorted((a, b), key=len)
     return long.startswith(f"{short} ")
